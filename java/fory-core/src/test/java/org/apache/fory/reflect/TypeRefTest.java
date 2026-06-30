@@ -26,6 +26,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -114,8 +115,7 @@ public class TypeRefTest extends ForyTestBase {
   static class FixedElementList<A> extends ArrayList<TypeUseItem> {}
 
   static class ContainerTypeUseStruct {
-    MultiParamList<String, List<@Ref(enable = false) TypeUseItem>> nestedItems;
-    MultiParamMap<String, @Ref(enable = false) TypeUseItem, @Ref(enable = true) TypeUseItem> refMap;
+    MultiParamList<String, List<TypeUseItem>> nestedItems;
     FixedElementList<@Ref(enable = false) TypeUseItem> fixedItems;
   }
 
@@ -166,19 +166,36 @@ public class TypeRefTest extends ForyTestBase {
     Assert.assertEquals(nestedItemsType.getTypeArguments().size(), 1);
     TypeRef<?> nestedListType = nestedItemsType.getTypeArguments().get(0);
     Assert.assertEquals(nestedListType.getRawType(), List.class);
-    TypeExtMeta nestedElementMeta = nestedListType.getTypeArguments().get(0).getTypeExtMeta();
-    Assert.assertEquals(nestedElementMeta.typeId(), Types.UNKNOWN);
-    Assert.assertFalse(nestedElementMeta.trackingRef());
+    Assert.assertEquals(nestedListType.getTypeArguments().get(0), TypeRef.of(TypeUseItem.class));
 
-    Field refMapField = ContainerTypeUseStruct.class.getDeclaredField("refMap");
-    TypeRef<?> refMapType = TypeRef.ofTypeUse(refMapField.getAnnotatedType());
+    TypeExtMeta elementMeta = TypeExtMeta.of(Types.UNKNOWN, true, false);
+    TypeRef<?> refItemsType =
+        TypeRef.of(
+            new TypeRef.ParameterizedTypeImpl(
+                null, MultiParamList.class, new Type[] {String.class, TypeUseItem.class}),
+            null,
+            Arrays.asList(TypeRef.of(String.class), TypeRef.of(TypeUseItem.class, elementMeta)),
+            null);
+    Assert.assertEquals(refItemsType.getTypeArguments().size(), 1);
+    Assert.assertEquals(refItemsType.getTypeArguments().get(0).getTypeExtMeta(), elementMeta);
+
+    TypeExtMeta keyMeta = TypeExtMeta.of(Types.UNKNOWN, true, false);
+    TypeExtMeta valueMeta = TypeExtMeta.of(Types.UNKNOWN, true, true);
+    TypeRef<?> refMapType =
+        TypeRef.of(
+            new TypeRef.ParameterizedTypeImpl(
+                null,
+                MultiParamMap.class,
+                new Type[] {String.class, TypeUseItem.class, TypeUseItem.class}),
+            null,
+            Arrays.asList(
+                TypeRef.of(String.class),
+                TypeRef.of(TypeUseItem.class, keyMeta),
+                TypeRef.of(TypeUseItem.class, valueMeta)),
+            null);
     Assert.assertEquals(refMapType.getTypeArguments().size(), 2);
-    TypeExtMeta keyMeta = refMapType.getTypeArguments().get(0).getTypeExtMeta();
-    TypeExtMeta valueMeta = refMapType.getTypeArguments().get(1).getTypeExtMeta();
-    Assert.assertEquals(keyMeta.typeId(), Types.UNKNOWN);
-    Assert.assertFalse(keyMeta.trackingRef());
-    Assert.assertEquals(valueMeta.typeId(), Types.UNKNOWN);
-    Assert.assertTrue(valueMeta.trackingRef());
+    Assert.assertEquals(refMapType.getTypeArguments().get(0).getTypeExtMeta(), keyMeta);
+    Assert.assertEquals(refMapType.getTypeArguments().get(1).getTypeExtMeta(), valueMeta);
 
     Field fixedItemsField = ContainerTypeUseStruct.class.getDeclaredField("fixedItems");
     TypeRef<?> fixedItemsType = TypeRef.ofTypeUse(fixedItemsField.getAnnotatedType());

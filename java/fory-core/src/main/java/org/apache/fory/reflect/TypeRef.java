@@ -14,9 +14,9 @@
 
 package org.apache.fory.reflect;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
 import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.GenericDeclaration;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -26,9 +26,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.CheckForNull;
@@ -208,7 +210,7 @@ public class TypeRef<T> {
   }
 
   private static List<TypeRef<?>> normalizeFromRawIterable(
-      Class<?> rawType, Map<TypeVariable<?>, TypeRef<?>> typeVarRefs) {
+      Class<?> rawType, Map<TypeVariableKey, TypeRef<?>> typeVarRefs) {
     return Collections.singletonList(
         resolveTypeVariables(rawIterableElementType(rawType), typeVarRefs));
   }
@@ -227,7 +229,7 @@ public class TypeRef<T> {
   }
 
   private static List<TypeRef<?>> normalizeFromRawMap(
-      Class<?> rawType, Map<TypeVariable<?>, TypeRef<?>> typeVarRefs) {
+      Class<?> rawType, Map<TypeVariableKey, TypeRef<?>> typeVarRefs) {
     Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = rawMapKeyValueTypes(rawType);
     return Arrays.asList(
         resolveTypeVariables(keyValueType.f0, typeVarRefs),
@@ -241,20 +243,29 @@ public class TypeRef<T> {
         && rawType.getTypeParameters().length == typeArguments.size();
   }
 
-  private static Map<TypeVariable<?>, TypeRef<?>> explicitTypeVarRefs(
+  private static Map<TypeVariableKey, TypeRef<?>> explicitTypeVarRefs(
       Class<?> rawType, List<TypeRef<?>> typeArguments) {
     TypeVariable<?>[] variables = rawType.getTypeParameters();
-    Map<TypeVariable<?>, TypeRef<?>> typeVarRefs = new HashMap<>();
+    Map<TypeVariableKey, TypeRef<?>> typeVarRefs = new HashMap<>();
     int len = Math.min(variables.length, typeArguments.size());
     for (int i = 0; i < len; i++) {
-      typeVarRefs.put(variables[i], typeArguments.get(i));
+      typeVarRefs.put(new TypeVariableKey(variables[i]), typeArguments.get(i));
     }
     return typeVarRefs;
   }
 
   private static TypeRef<?> rawIterableElementType(Class<?> rawType) {
     if (isScalaIterable(rawType)) {
-      return ScalaTypes.getElementType(rawTypeRef(rawType));
+      // Keep Scala supertype lookup on the raw path. ScalaTypes.getElementType uses public
+      // TypeRef construction, which re-enters container argument normalization for Scala
+      // collection traits while the normalized argument view is being built.
+      @SuppressWarnings({"rawtypes", "unchecked"})
+      TypeRef<?> iterableType =
+          ((TypeRef) rawTypeRef(rawType))
+              .getRawSupertype((Class) ScalaTypes.getScalaIterableType());
+      return iterableType
+          .resolveTypeRaw(ScalaTypes.getScalaIteratorReturnType())
+          .resolveTypeRaw(ScalaTypes.getScalaNextReturnType());
     }
     @SuppressWarnings("unchecked")
     TypeRef<?> iterableType =
@@ -264,7 +275,10 @@ public class TypeRef<T> {
 
   private static Tuple2<TypeRef<?>, TypeRef<?>> rawMapKeyValueTypes(Class<?> rawType) {
     if (isScalaMap(rawType)) {
-      return ScalaTypes.getMapKeyValueType(rawTypeRef(rawType));
+      TypeRef<?> kvTupleType = rawIterableElementType(rawType);
+      ParameterizedType type = (ParameterizedType) kvTupleType.getType();
+      Type[] types = type.getActualTypeArguments();
+      return Tuple2.of(rawTypeRef(types[0]), rawTypeRef(types[1]));
     }
     @SuppressWarnings("unchecked")
     TypeRef<?> mapType =
@@ -275,14 +289,14 @@ public class TypeRef<T> {
   }
 
   private static TypeRef<?> resolveTypeVariables(
-      TypeRef<?> typeRef, Map<TypeVariable<?>, TypeRef<?>> typeVarRefs) {
+      TypeRef<?> typeRef, Map<TypeVariableKey, TypeRef<?>> typeVarRefs) {
     return resolveTypeVariables(typeRef.getType(), typeVarRefs);
   }
 
   private static TypeRef<?> resolveTypeVariables(
-      Type type, Map<TypeVariable<?>, TypeRef<?>> typeVarRefs) {
+      Type type, Map<TypeVariableKey, TypeRef<?>> typeVarRefs) {
     if (type instanceof TypeVariable) {
-      TypeRef<?> typeRef = typeVarRefs.get(type);
+      TypeRef<?> typeRef = typeVarRefs.get(new TypeVariableKey((TypeVariable<?>) type));
       return typeRef == null ? TypeRef.of(type) : typeRef;
     }
     if (type instanceof WildcardType) {
@@ -325,7 +339,7 @@ public class TypeRef<T> {
     return TypeRef.of(type);
   }
 
-  private static Type[] resolveTypes(Type[] types, Map<TypeVariable<?>, TypeRef<?>> typeVarRefs) {
+  private static Type[] resolveTypes(Type[] types, Map<TypeVariableKey, TypeRef<?>> typeVarRefs) {
     Type[] resolvedTypes = new Type[types.length];
     for (int i = 0; i < types.length; i++) {
       resolvedTypes[i] = resolveTypeVariables(types[i], typeVarRefs).getType();
@@ -779,15 +793,20 @@ public class TypeRef<T> {
   }
 
   private static void populateTypeMapping(Map<TypeVariableKey, Type> storage, Type... types) {
+    populateTypeMapping(storage, new HashSet<>(), types);
+  }
+
+  private static void populateTypeMapping(
+      Map<TypeVariableKey, Type> storage, Set<Class<?>> visitedClasses, Type... types) {
     for (Type type : types) {
       if (type == null) {
         continue;
       }
 
       if (type instanceof TypeVariable) {
-        populateTypeMapping(storage, ((TypeVariable<?>) type).getBounds());
+        populateTypeMapping(storage, visitedClasses, ((TypeVariable<?>) type).getBounds());
       } else if (type instanceof WildcardType) {
-        populateTypeMapping(storage, ((WildcardType) type).getUpperBounds());
+        populateTypeMapping(storage, visitedClasses, ((WildcardType) type).getUpperBounds());
       } else if (type instanceof ParameterizedType) {
         ParameterizedType parameterizedType = (ParameterizedType) type;
 
@@ -818,12 +837,21 @@ public class TypeRef<T> {
           }
           storage.put(key, arg);
         }
-        populateTypeMapping(storage, rawClass);
-        populateTypeMapping(storage, parameterizedType.getOwnerType());
+        // Scala collection traits can form recursive generic supertype graphs. The parameterized
+        // occurrence above still contributes its mappings; the raw class hierarchy only needs one
+        // walk per resolution.
+        if (visitedClasses.add(rawClass)) {
+          populateTypeMapping(storage, visitedClasses, rawClass.getGenericSuperclass());
+          populateTypeMapping(storage, visitedClasses, rawClass.getGenericInterfaces());
+        }
+        populateTypeMapping(storage, visitedClasses, parameterizedType.getOwnerType());
       } else if (type instanceof Class) {
         Class<?> clazz = (Class<?>) type;
-        populateTypeMapping(storage, clazz.getGenericSuperclass());
-        populateTypeMapping(storage, clazz.getGenericInterfaces());
+        if (!visitedClasses.add(clazz)) {
+          continue;
+        }
+        populateTypeMapping(storage, visitedClasses, clazz.getGenericSuperclass());
+        populateTypeMapping(storage, visitedClasses, clazz.getGenericInterfaces());
       } else {
         throw new AssertionError("Unknown type: " + type);
       }
@@ -1717,12 +1745,11 @@ public class TypeRef<T> {
 
     @Override
     public int hashCode() {
-      Annotation[] declaredAnnotations = typeVariable.getDeclaredAnnotations();
+      GenericDeclaration declaration = typeVariable.getGenericDeclaration();
       String name = typeVariable.getName();
 
       int result = 1;
-      result =
-          31 * result + (declaredAnnotations != null ? Arrays.hashCode(declaredAnnotations) : 0);
+      result = 31 * result + (declaration != null ? declaration.hashCode() : 0);
       result = 31 * result + (name != null ? name.hashCode() : 0);
       return result;
     }
