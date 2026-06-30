@@ -51,20 +51,12 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
-  static final class CollectionTypeCache {
-    GenericType partialGenericElementTypeKey0;
-    GenericType partialGenericElementTypeValue0;
-    GenericType partialGenericElementTypeKey1;
-    GenericType partialGenericElementTypeValue1;
-  }
-
   private MethodHandle constructor;
   private int numElements;
   protected final Config config;
   protected final boolean supportCodegenHook;
   protected final TypeInfoHolder elementTypeInfoHolder;
   protected final TypeResolver typeResolver;
-  private CollectionTypeCache collectionTypeCache;
 
   // For subclass whose element type are instantiated already, such as
   // `Subclass extends ArrayList<String>`. If declared `Collection` doesn't specify
@@ -97,15 +89,6 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     this.typeResolver = typeResolver;
   }
 
-  final CollectionTypeCache collectionTypeCache() {
-    CollectionTypeCache state = collectionTypeCache;
-    if (state == null) {
-      state = new CollectionTypeCache();
-      collectionTypeCache = state;
-    }
-    return state;
-  }
-
   private GenericType getElementGenericType(ReadContext readContext, int depth) {
     GenericType genericType = readContext.getGenerics().nextGenericType(depth);
     return getElementGenericType(genericType);
@@ -120,43 +103,16 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     if (genericType == null) {
       return null;
     }
-    GenericType elementGenericType = getCachedElementGenericType(genericType);
-    if (elementGenericType == null) {
-      TypeRef<?> typeRef = genericType.getTypeRef();
-      TypeRef<?> elementTypeRef =
-          COLLECTION_TYPE.isSupertypeOf(typeRef) ? TypeUtils.getElementType(typeRef) : OBJECT_TYPE;
-      if (typeRef.equals(elementTypeRef) || genericType.getCls() == elementTypeRef.getRawType()) {
-        elementTypeRef = OBJECT_TYPE;
-      }
-      if (elementTypeRef.equals(OBJECT_TYPE) && !genericType.hasGenericParameters()) {
-        return null;
-      }
-      elementGenericType = typeResolver.buildGenericType(elementTypeRef);
-      cacheElementGenericType(genericType, elementGenericType);
+    TypeRef<?> typeRef = genericType.getTypeRef();
+    TypeRef<?> elementTypeRef =
+        COLLECTION_TYPE.isSupertypeOf(typeRef) ? TypeUtils.getElementType(typeRef) : OBJECT_TYPE;
+    if (genericType.getCls() == elementTypeRef.getRawType()) {
+      elementTypeRef = OBJECT_TYPE;
     }
-    return elementGenericType;
-  }
-
-  private GenericType getCachedElementGenericType(GenericType genericType) {
-    CollectionTypeCache state = collectionTypeCache;
-    if (state == null) {
+    if (elementTypeRef.equals(OBJECT_TYPE) && !genericType.hasGenericParameters()) {
       return null;
     }
-    if (genericType == state.partialGenericElementTypeKey0) {
-      return state.partialGenericElementTypeValue0;
-    }
-    if (genericType == state.partialGenericElementTypeKey1) {
-      return state.partialGenericElementTypeValue1;
-    }
-    return null;
-  }
-
-  private void cacheElementGenericType(GenericType genericType, GenericType elementGenericType) {
-    CollectionTypeCache state = collectionTypeCache();
-    state.partialGenericElementTypeKey1 = state.partialGenericElementTypeKey0;
-    state.partialGenericElementTypeValue1 = state.partialGenericElementTypeValue0;
-    state.partialGenericElementTypeKey0 = genericType;
-    state.partialGenericElementTypeValue0 = elementGenericType;
+    return typeResolver.buildGenericType(elementTypeRef);
   }
 
   /**
@@ -192,9 +148,9 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
    *
    * @return a bitmap, higher 24 bits are reserved.
    */
-  protected final int writeElementsHeader(WriteContext writeContext, Collection value) {
+  protected final int writeElementsHeader(
+      WriteContext writeContext, Collection value, GenericType elemGenericType) {
     MemoryBuffer buffer = writeContext.getBuffer();
-    GenericType elemGenericType = getElementGenericType(writeContext, writeContext.getDepth());
     if (elemGenericType != null) {
       boolean trackingRef = elemGenericType.trackingRef(typeResolver);
       if (elemGenericType.isMonomorphic()) {
@@ -388,8 +344,8 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   }
 
   protected final void writeElements(WriteContext writeContext, Collection value) {
-    int flags = writeElementsHeader(writeContext, value);
     GenericType elemGenericType = getElementGenericType(writeContext, writeContext.getDepth());
+    int flags = writeElementsHeader(writeContext, value, elemGenericType);
     if (elemGenericType != null) {
       javaWriteWithGenerics(writeContext, value, elemGenericType, flags);
     } else {
