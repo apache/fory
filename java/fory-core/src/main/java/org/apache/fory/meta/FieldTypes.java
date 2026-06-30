@@ -275,9 +275,9 @@ public class FieldTypes {
 
       TypeRef<?> elementTypeRef = TypeUtils.getElementType(genericType.getTypeRef());
       // Recursive collection element types must keep the collection wrapper but stop descending
-      // into their own metadata. TypeRef equality can miss the same raw type through a supertype.
-      if (genericType.getTypeRef().equals(elementTypeRef)
-          || genericType.getCls() == elementTypeRef.getRawType()) {
+      // into their own metadata. Compare raw types because supertype resolution may rebuild
+      // TypeRef.
+      if (genericType.getCls() == elementTypeRef.getRawType()) {
         elementTypeRef = OBJECT_TYPE;
       }
 
