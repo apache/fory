@@ -264,7 +264,8 @@ public class GuavaCollectionSerializers {
 
     @Override
     public T read(ReadContext readContext) {
-      int size = readMapSize(readContext);
+      MemoryBuffer buffer = readContext.getBuffer();
+      int size = readMapSize(readContext, buffer);
       Map map = new HashMap();
       readElements(readContext, size, map);
       return xnewInstance(map);

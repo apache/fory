@@ -965,10 +965,6 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     this.numElements = numElements;
   }
 
-  protected final int readMapSize(ReadContext readContext) {
-    return readMapSize(readContext, readContext.getBuffer());
-  }
-
   protected final int readMapSize(ReadContext readContext, MemoryBuffer buffer) {
     int numElements = buffer.readVarUInt32Small7();
     checkMapSize(numElements);

@@ -337,7 +337,8 @@ public class CollectionSerializers {
     @Override
     public List<?> read(ReadContext readContext) {
       if (config.isXlang()) {
-        int numElements = readCollectionSize(readContext);
+        MemoryBuffer buffer = readContext.getBuffer();
+        int numElements = readCollectionSize(readContext, buffer);
         if (numElements != 0) {
           throw new DeserializationException(
               "Empty list body must have zero elements but got " + numElements);
@@ -998,7 +999,7 @@ public class CollectionSerializers {
       int capacity = buffer.readVarUInt32Small7();
       checkBoundedQueueCapacity(numElements, capacity);
       // LinkedBlockingQueue capacity is a logical bound, not preallocated backing storage. The
-      // current node storage is already charged by readCollectionSize(numElements).
+      // current node storage is already reserved by readCollectionSize(numElements).
       LinkedBlockingQueue queue = new LinkedBlockingQueue<>(capacity);
       readContext.reference(queue);
       return queue;
