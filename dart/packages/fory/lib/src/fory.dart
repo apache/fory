@@ -64,14 +64,6 @@ final class Fory {
         Config.defaultMaxAverageSchemaVersionsPerType,
     int maxGraphMemoryBytes = Config.defaultMaxGraphMemoryBytes,
   }) {
-    if (maxGraphMemoryBytes != Config.defaultMaxGraphMemoryBytes &&
-        maxGraphMemoryBytes <= 0) {
-      throw ArgumentError.value(
-        maxGraphMemoryBytes,
-        'maxGraphMemoryBytes',
-        'must be -1 or positive',
-      );
-    }
     final config = Config(
       compatible: compatible,
       checkStructVersion: checkStructVersion,

@@ -390,6 +390,28 @@ constexpr size_t collection_element_memory_bytes() {
   return sizeof(Elem);
 }
 
+template <size_t elem_bytes>
+inline bool reserve_collection_storage(ReadContext &ctx, uint32_t length) {
+  constexpr size_t kMaxLength =
+      static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+  if constexpr (elem_bytes <=
+                std::numeric_limits<size_t>::max() / kMaxLength) {
+    return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
+  } else {
+    if (FORY_PREDICT_FALSE(
+            elem_bytes != 0 &&
+            static_cast<size_t>(length) >
+                std::numeric_limits<size_t>::max() / elem_bytes)) {
+      ctx.set_error(Error::invalid_data(
+          "graph memory estimate overflows: length=" +
+          std::to_string(length) + " elementBytes=" +
+          std::to_string(elem_bytes)));
+      return false;
+    }
+    return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
+  }
+}
+
 template <typename Container>
 inline bool reserve_collection(Container &result, ReadContext &ctx,
                                uint32_t length) {
@@ -400,7 +422,7 @@ inline bool reserve_collection(Container &result, ReadContext &ctx,
   }
   constexpr size_t elem_bytes = collection_element_memory_bytes<Container>();
   if (FORY_PREDICT_FALSE(
-          (!ctx.template reserve_counted_graph_memory<elem_bytes>(length)))) {
+          (!reserve_collection_storage<elem_bytes>(ctx, length)))) {
     return false;
   }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
@@ -418,7 +440,15 @@ inline bool reserve_collection(std::vector<bool, Alloc> &result,
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
-  const size_t packed_bytes = (static_cast<size_t>(length) + 7) / 8;
+  const size_t length_bytes = static_cast<size_t>(length);
+  if (FORY_PREDICT_FALSE(length_bytes >
+                         std::numeric_limits<size_t>::max() - 7)) {
+    ctx.set_error(Error::invalid_data(
+        "graph memory estimate overflows: length=" +
+        std::to_string(length) + " elementBytes=1"));
+    return false;
+  }
+  const size_t packed_bytes = (length_bytes + 7) / 8;
   if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(packed_bytes))) {
     return false;
   }

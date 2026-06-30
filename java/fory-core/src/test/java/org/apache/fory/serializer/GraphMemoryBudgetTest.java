@@ -19,10 +19,12 @@
 
 package org.apache.fory.serializer;
 
+import static org.apache.fory.io.ForyStreamReader.of;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -37,27 +39,23 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.testng.annotations.Test;
 
 public class GraphMemoryBudgetTest extends ForyTestBase {
-  private static final long KNOWN_ROOT_MULTIPLIER = 8L;
-  private static final long KNOWN_ROOT_SLACK_BYTES = 64L * 1024;
-  private static final long STREAM_ROOT_BYTES = 128L * 1024 * 1024;
+  private static final long DEFAULT_GRAPH_MEMORY_BYTES = 128L * 1024 * 1024;
   private static final int REFERENCE_BYTES = 4;
   private static final int OBJECT_SELF_BYTES = 1;
 
   @Test
-  public void testConfigValidation() {
-    assertEquals(newFory(-1).getConfig().maxGraphMemoryBytes(), -1);
+  public void testConfigDefaultsAndDisable() {
+    assertEquals(builder().build().getConfig().maxGraphMemoryBytes(), DEFAULT_GRAPH_MEMORY_BYTES);
     assertEquals(newFory(123).getConfig().maxGraphMemoryBytes(), 123);
-    assertThrows(IllegalArgumentException.class, () -> builder().withMaxGraphMemoryBytes(0));
-    assertThrows(IllegalArgumentException.class, () -> builder().withMaxGraphMemoryBytes(-2));
+    assertEquals(newFory(0).getConfig().maxGraphMemoryBytes(), 0);
+    assertEquals(newFory(-2).getConfig().maxGraphMemoryBytes(), -2);
   }
 
   @Test
-  public void testKnownAutoBudget() {
-    Fory fory = newFory(-1);
-    ReadContext readContext = prepareContext(fory, 17, false);
+  public void testDefaultFixedBudget() {
+    ReadContext readContext = prepareContext(builder().build());
     try {
-      long budget = knownAutoBytes(17);
-      readContext.reserveGraphMemory(budget);
+      readContext.reserveGraphMemory(DEFAULT_GRAPH_MEMORY_BYTES);
       assertThrows(InsecureException.class, () -> readContext.reserveGraphMemory(1));
     } finally {
       readContext.reset();
@@ -65,12 +63,11 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   }
 
   @Test
-  public void testStreamAutoBudget() {
-    Fory fory = newFory(-1);
-    ReadContext readContext = prepareContext(fory, 17, true);
+  public void testDisabledBudget() {
+    ReadContext readContext = prepareContext(newFory(0));
     try {
-      readContext.reserveGraphMemory(STREAM_ROOT_BYTES);
-      assertThrows(InsecureException.class, () -> readContext.reserveGraphMemory(1));
+      readContext.reserveGraphMemory(DEFAULT_GRAPH_MEMORY_BYTES + 1);
+      readContext.reserveGraphMemory(Long.MAX_VALUE);
     } finally {
       readContext.reset();
     }
@@ -79,7 +76,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   @Test
   public void testExplicitBudgetWins() {
     Fory fory = newFory(7);
-    ReadContext readContext = prepareContext(fory, 1024 * 1024, false);
+    ReadContext readContext = prepareContext(fory);
     try {
       readContext.reserveGraphMemory(7);
       assertThrows(InsecureException.class, () -> readContext.reserveGraphMemory(1));
@@ -91,17 +88,21 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   @Test
   public void testNestedEmptyContainersUseParentStorage() {
     List<Object> value = emptyLists(1);
-    byte[] bytes = newFory(-1).serialize(value);
+    byte[] bytes = builder().build().serialize(value);
     long required = collectionBytes(1) + collectionBytes(0);
 
     assertThrows(InsecureException.class, () -> newFory(required - 1).deserialize(bytes));
+    assertThrows(
+        InsecureException.class,
+        () -> newFory(required - 1).deserialize(of(new ByteArrayInputStream(bytes))));
     assertEquals(newFory(required).deserialize(bytes), value);
+    assertEquals(newFory(required).deserialize(of(new ByteArrayInputStream(bytes))), value);
   }
 
   @Test
   public void testSiblingBudgetIsCumulative() {
     List<Object> value = nullLists(2, 64);
-    byte[] bytes = newFory(-1).serialize(value);
+    byte[] bytes = builder().build().serialize(value);
     long firstChildOnly = collectionBytes(2) + collectionBytes(64);
 
     assertThrows(InsecureException.class, () -> newFory(firstChildOnly).deserialize(bytes));
@@ -111,7 +112,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   @Test
   public void testMapBudgetAndOverflow() {
     Fory fory = newFory(mapBytes(1) - 1);
-    ReadContext readContext = prepareContext(fory, 8, false);
+    ReadContext readContext = prepareContext(fory);
     try {
       assertThrows(InsecureException.class, () -> readContext.reserveGraphMemory(mapBytes(1)));
     } finally {
@@ -119,7 +120,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     }
 
     Fory exactFory = newFory(mapBytes(1));
-    ReadContext exactContext = prepareContext(exactFory, 8, false);
+    ReadContext exactContext = prepareContext(exactFory);
     try {
       exactContext.reserveGraphMemory(mapBytes(1));
       assertThrows(InsecureException.class, () -> exactContext.reserveGraphMemory(1));
@@ -130,9 +131,9 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
     buffer.writeVarUInt32Small7(Integer.MAX_VALUE);
     buffer = trimBuffer(buffer);
-    Fory reader = newFory(STREAM_ROOT_BYTES);
+    Fory reader = newFory(DEFAULT_GRAPH_MEMORY_BYTES);
     ReadContext mapContext = reader.getReadContext();
-    mapContext.prepare(buffer, null, false, buffer.remaining(), false);
+    mapContext.prepare(buffer, null, false);
     try {
       assertThrows(
           DeserializationException.class,
@@ -147,7 +148,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     Fory exactFory = newFory(1);
     ReadContext exactContext = exactFory.getReadContext();
     MemoryBuffer exactBuffer = objectArraySizeBuffer(0);
-    exactContext.prepare(exactBuffer, null, false, exactBuffer.remaining(), false);
+    exactContext.prepare(exactBuffer, null, false);
     try {
       Object[] array = (Object[]) exactFory.getSerializer(Object[].class).read(exactContext);
       assertEquals(array.length, 0);
@@ -158,7 +159,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     Fory slotFory = newFory(objectArrayBytes(2) - 1);
     ReadContext slotContext = slotFory.getReadContext();
     MemoryBuffer slotBuffer = objectArraySizeBuffer(2);
-    slotContext.prepare(slotBuffer, null, false, slotBuffer.remaining(), false);
+    slotContext.prepare(slotBuffer, null, false);
     try {
       assertThrows(
           InsecureException.class, () -> slotFory.getSerializer(Object[].class).read(slotContext));
@@ -170,7 +171,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   @Test
   public void testPojoGraphBudget() {
     Pojo value = new Pojo(7, 9L, "child string is skipped as a leaf");
-    byte[] bytes = newFory(-1).serialize(value);
+    byte[] bytes = builder().build().serialize(value);
     long required = pojoBytes();
 
     assertThrows(InsecureException.class, () -> newFory(required - 1, false).deserialize(bytes));
@@ -185,7 +186,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     ArrayList<Object> value = new ArrayList<>();
     value.add(new EmptyPojo());
     value.add(new EmptyPojo());
-    byte[] bytes = newFory(-1).serialize(value);
+    byte[] bytes = builder().build().serialize(value);
     long required = collectionBytes(2) + 2L * emptyPojoBytes();
 
     assertThrows(InsecureException.class, () -> newFory(required - 1).deserialize(bytes));
@@ -219,7 +220,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     buffer.writeByte(0);
     buffer = trimBuffer(buffer);
     ReadContext readContext = fory.getReadContext();
-    readContext.prepare(buffer, null, false, buffer.remaining(), false);
+    readContext.prepare(buffer, null, false);
     try {
       assertThrows(
           IndexOutOfBoundsException.class,
@@ -237,11 +238,10 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     return builder().withMaxGraphMemoryBytes(maxGraphMemoryBytes).withCodegen(codegen).build();
   }
 
-  private static ReadContext prepareContext(
-      Fory fory, int rootInputBytes, boolean unknownLengthInput) {
+  private static ReadContext prepareContext(Fory fory) {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(0);
     ReadContext readContext = fory.getReadContext();
-    readContext.prepare(buffer, null, false, rootInputBytes, unknownLengthInput);
+    readContext.prepare(buffer, null, false);
     return readContext;
   }
 
@@ -263,10 +263,6 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
 
   private static long pojoBytes() {
     return OBJECT_SELF_BYTES + 4 + 8 + REFERENCE_BYTES;
-  }
-
-  private static long knownAutoBytes(int inputBytes) {
-    return inputBytes * KNOWN_ROOT_MULTIPLIER + KNOWN_ROOT_SLACK_BYTES;
   }
 
   private static List<Object> emptyLists(int numElements) {

@@ -39,6 +39,20 @@ fn write_chunk_size(context: &mut WriteContext, header_offset: usize, size: u8) 
     context.writer.set_bytes(header_offset + 1, &[size]);
 }
 
+#[inline(always)]
+fn reserve_map_storage(
+    context: &mut ReadContext,
+    len: u32,
+    elem_bytes: usize,
+) -> Result<usize, Error> {
+    let len = len as usize;
+    let bytes = len
+        .checked_mul(elem_bytes)
+        .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
+    context.reserve_graph_memory(bytes)?;
+    Ok(len)
+}
+
 pub fn write_map_data<'a, K, V, I>(
     iter: I,
     length: usize,
@@ -556,7 +570,7 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
         let elem_bytes = K::fory_graph_storage_size()
             .checked_add(V::fory_graph_storage_size())
             .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
-        let capacity = context.reserve_counted_graph_memory(len, elem_bytes)?;
+        let capacity = reserve_map_storage(context, len, elem_bytes)?;
         if len == 0 {
             return Ok(HashMap::new());
         }
@@ -716,7 +730,7 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
         let elem_bytes = K::fory_graph_storage_size()
             .checked_add(V::fory_graph_storage_size())
             .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
-        let len_usize = context.reserve_counted_graph_memory(len, elem_bytes)?;
+        let len_usize = reserve_map_storage(context, len, elem_bytes)?;
         if len == 0 {
             return Ok(BTreeMap::new());
         }

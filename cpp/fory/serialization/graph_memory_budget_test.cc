@@ -38,7 +38,7 @@ namespace fory {
 namespace serialization {
 namespace {
 
-constexpr size_t kKnownBudgetSlack = 64 * 1024;
+constexpr int64_t kDefaultGraphMemoryBytes = 128LL * 1024LL * 1024LL;
 
 struct BudgetItem {
   int32_t id = 0;
@@ -94,7 +94,8 @@ template <typename Fn> auto with_fory(int64_t max_graph_memory_bytes, Fn &&fn) {
 }
 
 template <typename T> std::vector<uint8_t> serialize_value(const T &value) {
-  auto bytes = with_fory(-1, [&](Fory &fory) { return fory.serialize(value); });
+  auto bytes = with_fory(kDefaultGraphMemoryBytes,
+                         [&](Fory &fory) { return fory.serialize(value); });
   EXPECT_TRUE(bytes.ok()) << bytes.error().to_string();
   return std::move(bytes).value();
 }
@@ -125,40 +126,58 @@ void expect_budget_boundary(const T &value, size_t required) {
   EXPECT_EQ(exact_result.value(), value);
 }
 
-TEST(GraphMemoryBudgetTest, KnownLengthAutoBudget) {
+TEST(GraphMemoryBudgetTest, FixedDefaultBudgetAndDisable) {
   Config config;
-  config.max_graph_memory_bytes = -1;
   ReadContext context(config, std::make_unique<TypeResolver>());
-  constexpr size_t root_bytes = 17;
-  const size_t expected = root_bytes * 8 + kKnownBudgetSlack;
 
-  ASSERT_TRUE(context.init_graph_budget_known(root_bytes));
-  ASSERT_TRUE(context.reserve_graph_memory(expected));
+  ASSERT_TRUE(context.init_graph_budget());
+  ASSERT_TRUE(context.reserve_graph_memory(
+      static_cast<size_t>(kDefaultGraphMemoryBytes)));
   ASSERT_FALSE(context.reserve_graph_memory(1));
   EXPECT_EQ(context.take_error().code(), ErrorCode::InvalidData);
+
+  Config disabled_config;
+  disabled_config.max_graph_memory_bytes = 0;
+  ReadContext disabled(disabled_config, std::make_unique<TypeResolver>());
+  ASSERT_TRUE(disabled.init_graph_budget());
+  ASSERT_TRUE(disabled.reserve_graph_memory(std::numeric_limits<size_t>::max()));
 }
 
-TEST(GraphMemoryBudgetTest, StreamAutoBudget) {
-  constexpr size_t count = 10000;
+TEST(GraphMemoryBudgetTest, RootKindsShareConfiguredBudget) {
+  constexpr size_t count = 3;
   std::vector<std::vector<std::string>> value(count);
   auto bytes = serialize_value(value);
-  const size_t known_limit = bytes.size() * 8 + kKnownBudgetSlack;
-  ASSERT_GT(nested_empty_budget(count), known_limit);
+  const size_t required = nested_empty_budget(count);
 
-  auto known_result = with_fory(-1, [&](Fory &fory) {
-    return fory.deserialize<std::vector<std::vector<std::string>>>(bytes);
-  });
-  ASSERT_FALSE(known_result.ok());
-  EXPECT_EQ(known_result.error().code(), ErrorCode::InvalidData);
+  auto byte_result = with_fory(static_cast<int64_t>(required - 1),
+                               [&](Fory &fory) {
+                                 return fory.deserialize<
+                                     std::vector<std::vector<std::string>>>(
+                                     bytes);
+                               });
+  ASSERT_FALSE(byte_result.ok());
+  EXPECT_EQ(byte_result.error().code(), ErrorCode::InvalidData);
 
   std::string input(reinterpret_cast<const char *>(bytes.data()), bytes.size());
   std::istringstream source(input);
   StdInputStream stream(source, 8);
-  auto stream_result = with_fory(-1, [&](Fory &fory) {
-    return fory.deserialize<std::vector<std::vector<std::string>>>(stream);
+  auto stream_result = with_fory(static_cast<int64_t>(required - 1),
+                                 [&](Fory &fory) {
+                                   return fory.deserialize<
+                                       std::vector<std::vector<std::string>>>(
+                                       stream);
+                                 });
+  ASSERT_FALSE(stream_result.ok());
+  EXPECT_EQ(stream_result.error().code(), ErrorCode::InvalidData);
+
+  std::istringstream exact_source(input);
+  StdInputStream exact_stream(exact_source, 8);
+  auto exact_result = with_fory(static_cast<int64_t>(required), [&](Fory &fory) {
+    return fory.deserialize<std::vector<std::vector<std::string>>>(
+        exact_stream);
   });
-  ASSERT_TRUE(stream_result.ok()) << stream_result.error().to_string();
-  EXPECT_EQ(stream_result.value(), value);
+  ASSERT_TRUE(exact_result.ok()) << exact_result.error().to_string();
+  EXPECT_EQ(exact_result.value(), value);
 }
 
 TEST(GraphMemoryBudgetTest, ExplicitOverride) {

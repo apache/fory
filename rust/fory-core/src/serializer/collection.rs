@@ -42,6 +42,20 @@ fn check_collection_len(context: &ReadContext, len: u32) -> Result<usize, Error>
     Ok(len)
 }
 
+#[inline(always)]
+fn reserve_collection_storage(
+    context: &mut ReadContext,
+    len: u32,
+    elem_bytes: usize,
+) -> Result<usize, Error> {
+    let len = len as usize;
+    let bytes = len
+        .checked_mul(elem_bytes)
+        .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
+    context.reserve_graph_memory(bytes)?;
+    Ok(len)
+}
+
 pub fn write_collection_type_info(
     context: &mut WriteContext,
     collection_type_id: u32,
@@ -239,7 +253,7 @@ where
     C: FromIterator<T>,
 {
     let len = context.reader.read_var_u32()?;
-    let len_usize = context.reserve_counted_graph_memory(len, T::fory_graph_storage_size())?;
+    let len_usize = reserve_collection_storage(context, len, T::fory_graph_storage_size())?;
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
@@ -284,7 +298,7 @@ where
     T: Serializer + ForyDefault,
 {
     let len = context.reader.read_var_u32()?;
-    let len_usize = context.reserve_counted_graph_memory(len, T::fory_graph_storage_size())?;
+    let len_usize = reserve_collection_storage(context, len, T::fory_graph_storage_size())?;
     if len == 0 {
         return Ok(Vec::new());
     }
@@ -733,7 +747,7 @@ where
 {
     let element_type = generic_field_type(remote_field_type, 0, "list")?;
     let len = context.reader.read_var_u32()?;
-    let len_usize = context.reserve_counted_graph_memory(len, T::fory_graph_storage_size())?;
+    let len_usize = reserve_collection_storage(context, len, T::fory_graph_storage_size())?;
     if len == 0 {
         return Ok(Vec::new());
     }

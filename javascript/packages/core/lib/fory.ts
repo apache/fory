@@ -38,7 +38,7 @@ const DEFAULT_MAX_TYPE_FIELDS = 512 as const;
 const DEFAULT_MAX_TYPE_META_BYTES = 4096 as const;
 const DEFAULT_MAX_SCHEMA_VERSIONS_PER_TYPE = 10 as const;
 const DEFAULT_MAX_AVERAGE_SCHEMA_VERSIONS_PER_TYPE = 3 as const;
-const DEFAULT_MAX_GRAPH_MEMORY_BYTES = -1 as const;
+const DEFAULT_MAX_GRAPH_MEMORY_BYTES = 128 * 1024 * 1024;
 export default class Fory {
   readonly typeResolver: TypeResolver;
   readonly anySerializer: Serializer;
@@ -108,12 +108,9 @@ export default class Fory {
     }
     const maxGraphMemoryBytes =
       config?.maxGraphMemoryBytes ?? DEFAULT_MAX_GRAPH_MEMORY_BYTES;
-    if (
-      !Number.isSafeInteger(maxGraphMemoryBytes) ||
-      (maxGraphMemoryBytes !== -1 && maxGraphMemoryBytes <= 0)
-    ) {
+    if (!Number.isSafeInteger(maxGraphMemoryBytes)) {
       throw new Error(
-        `maxGraphMemoryBytes must be -1 or a positive safe integer but got ${maxGraphMemoryBytes}`,
+        `maxGraphMemoryBytes must be a safe integer but got ${maxGraphMemoryBytes}`,
       );
     }
     return {

@@ -140,7 +140,7 @@ class Fory:
         max_type_meta_bytes: int = 4096,
         max_schema_versions_per_type: int = 10,
         max_average_schema_versions_per_type: int = 3,
-        max_graph_memory_bytes: int = -1,
+        max_graph_memory_bytes: int = 128 * 1024 * 1024,
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
@@ -186,7 +186,8 @@ class Fory:
                 across accepted remote types.
 
             max_graph_memory_bytes: Maximum estimated graph memory per root
-                deserialization. `-1` means auto; positive values are explicit byte limits.
+                deserialization. Defaults to 128 MiB; positive values are explicit byte limits,
+                and non-positive values intentionally disable this protection.
 
             policy: Custom deserialization policy for security checks. When provided,
                 it controls which types can be deserialized, overriding the default policy.
@@ -220,10 +221,10 @@ class Fory:
             raise ValueError("max_average_schema_versions_per_type must be a positive integer")
         if (
             not isinstance(max_graph_memory_bytes, int)
-            or (max_graph_memory_bytes != -1 and max_graph_memory_bytes <= 0)
             or max_graph_memory_bytes > (1 << 63) - 1
+            or max_graph_memory_bytes < -(1 << 63)
         ):
-            raise ValueError("max_graph_memory_bytes must be -1 or a positive 63-bit integer")
+            raise ValueError("max_graph_memory_bytes must be a 63-bit integer")
         self.max_graph_memory_bytes = max_graph_memory_bytes
         self.config = Config(
             xlang=xlang,
@@ -572,7 +573,6 @@ class Fory:
             buffers=buffers,
             unsupported_objects=unsupported_objects,
             peer_out_of_band_enabled=peer_out_of_band_enabled,
-            root_input_bytes=buffer.size() - reader_index,
         )
         return read_context.read_ref()
 

@@ -15,9 +15,10 @@ Load this file when changing `javascript/`.
 - Keep `TypeInfo` as schema metadata. Compatibility-sensitive decisions belong on `TypeResolver` or explicit operations, not as retained resolver state on metadata objects.
 - Normalize optional boolean config values at config construction; do not carry `null` through runtime paths when it means `false`.
 - JavaScript root deserialization graph memory budgeting belongs to `ReadContext`.
-  `maxGraphMemoryBytes` uses `-1` auto, positive explicit limits, and known
-  `Uint8Array` root length as `inputBytes * 8 + 64 KiB`. `ReadContext` may expose only raw
-  byte reservation and generic counted-byte arithmetic; generated and dynamic
+  `maxGraphMemoryBytes` uses a fixed `128 MiB` default, positive explicit limits override it, and
+  explicit non-positive values intentionally disable graph-memory enforcement. Do not derive the
+  budget from the `Uint8Array` root length. `ReadContext` may expose only raw
+  byte reservation; generated and dynamic
   list/set/map/array/struct/object readers must reserve before allocation while preserving existing
   byte checks. Lists/sets/object arrays reserve nonzero owner self cost plus 4-byte reference slots,
   maps reserve nonzero owner self cost plus key/value reference storage, object/struct readers

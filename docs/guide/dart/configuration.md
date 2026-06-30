@@ -115,12 +115,7 @@ Dart lists, sets, maps, object/reference arrays, structs, objects, and compatibl
 materialization. It does not count strings, binary values, or dense typed-array payloads, which are
 protected by byte-availability checks.
 
-The default is `-1`, which means auto. Dart root inputs are memory-backed, so auto derives from the
-root input size:
-
-```text
-inputBytes * 8 + 64 KiB
-```
+The default is a fixed `128 MiB` and is not derived from input size.
 
 Set a positive value when a trusted workload legitimately contains compact, container-heavy
 payloads:
@@ -129,18 +124,21 @@ payloads:
 final fory = Fory(maxGraphMemoryBytes: 256 * 1024 * 1024);
 ```
 
+Passing an explicit non-positive value disables this budget and can expose deserialization DoS risk
+from compact inputs that materialize large object graphs.
+
 ## Defaults
 
-| Option                            | Default |
-| --------------------------------- | ------- |
-| `compatible`                      | `true`  |
-| `checkStructVersion`              | `false` |
-| `maxDepth`                        | 256     |
-| `maxTypeFields`                   | 512     |
-| `maxTypeMetaBytes`                | 4096    |
-| `maxSchemaVersionsPerType`        | 10      |
-| `maxAverageSchemaVersionsPerType` | 3       |
-| `maxGraphMemoryBytes`             | -1      |
+| Option                            | Default   |
+| --------------------------------- | --------- |
+| `compatible`                      | `true`    |
+| `checkStructVersion`              | `false`   |
+| `maxDepth`                        | 256       |
+| `maxTypeFields`                   | 512       |
+| `maxTypeMetaBytes`                | 4096      |
+| `maxSchemaVersionsPerType`        | 10        |
+| `maxAverageSchemaVersionsPerType` | 3         |
+| `maxGraphMemoryBytes`             | 134217728 |
 
 ## Xlang Notes
 
@@ -157,8 +155,8 @@ Security-related configuration:
 - Register only the expected generated models before deserializing untrusted payloads.
 - Use `checkStructVersion: true` with `compatible: false` for intentional same-schema payloads.
 - Set `maxDepth` to reject unexpectedly deep payload shapes.
-- Keep `maxGraphMemoryBytes` at the auto default for most inputs, or set an explicit positive byte
-  limit for known trusted graph-heavy payloads.
+- Keep `maxGraphMemoryBytes` at the default for most inputs, or set an explicit positive byte limit
+  for known trusted graph-heavy payloads. Avoid disabling it for untrusted data.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer generated schemas and explicit field metadata over broad dynamic fields for untrusted input.

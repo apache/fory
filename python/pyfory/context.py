@@ -37,9 +37,6 @@ INT64_TYPE_ID = TypeId.VARINT64
 FLOAT64_TYPE_ID = TypeId.FLOAT64
 BOOL_TYPE_ID = TypeId.BOOL
 STRING_TYPE_ID = TypeId.STRING
-_KNOWN_ROOT_BUDGET_MULTIPLIER = 8
-_KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024
-_STREAM_ROOT_BUDGET_BYTES = 128 * 1024 * 1024
 _MAX_GRAPH_MEMORY_BYTES = (1 << 63) - 1
 
 
@@ -529,26 +526,14 @@ class ReadContext:
         buffers=None,
         unsupported_objects=None,
         peer_out_of_band_enabled=False,
-        root_input_bytes=None,
     ):
-        if self.max_graph_memory_bytes > 0:
-            limit = self.max_graph_memory_bytes
-        elif buffer.has_input_stream():
-            limit = _STREAM_ROOT_BUDGET_BYTES
-        else:
-            if root_input_bytes is None:
-                root_input_bytes = buffer.size() - buffer.get_reader_index()
-            if root_input_bytes < 0:
-                raise ValueError("root input byte count is negative")
-            if root_input_bytes > (_MAX_GRAPH_MEMORY_BYTES - _KNOWN_ROOT_BUDGET_SLACK_BYTES) // _KNOWN_ROOT_BUDGET_MULTIPLIER:
-                raise ValueError("max_graph_memory_bytes auto budget overflow")
-            limit = root_input_bytes * _KNOWN_ROOT_BUDGET_MULTIPLIER + _KNOWN_ROOT_BUDGET_SLACK_BYTES
+        limit = self.max_graph_memory_bytes if self.max_graph_memory_bytes > 0 else 0
         self.buffer = buffer
         self.buffers = iter(buffers) if buffers is not None else None
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
         self.graph_memory_limit_bytes = limit
-        self.remaining_graph_memory_bytes = limit
+        self.remaining_graph_memory_bytes = limit if limit > 0 else _MAX_GRAPH_MEMORY_BYTES
         self.depth = 0
 
     def reset(self):
@@ -571,6 +556,8 @@ class ReadContext:
             raise ValueError("Estimated graph memory is negative")
         if num_bytes > _MAX_GRAPH_MEMORY_BYTES:
             raise ValueError("Estimated graph memory overflow")
+        if self.graph_memory_limit_bytes <= 0:
+            return
         remaining = self.remaining_graph_memory_bytes
         if num_bytes > remaining:
             used = self.graph_memory_limit_bytes - remaining
@@ -580,13 +567,6 @@ class ReadContext:
                 "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
             )
         self.remaining_graph_memory_bytes = remaining - num_bytes
-
-    def reserve_counted_graph_memory(self, count, element_bytes):
-        if count < 0 or element_bytes < 0:
-            raise ValueError("Estimated graph memory is negative")
-        if element_bytes and count > _MAX_GRAPH_MEMORY_BYTES // element_bytes:
-            raise ValueError("Estimated graph memory overflow")
-        self.reserve_graph_memory(count * element_bytes)
 
     def add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj

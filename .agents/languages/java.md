@@ -16,9 +16,11 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - `WriteContext`, `ReadContext`, and `CopyContext` must stay explicit. Do not reintroduce `ThreadLocal` or ambient runtime-context patterns.
 - Java root deserialization graph memory budgeting belongs to `ReadContext`
   and is initialized by `Fory` root APIs. Public config is `maxGraphMemoryBytes`
-  with `-1` auto, positive explicit override, known-length auto
-  `inputBytes * 8 + 64 KiB`, and stream/unknown auto `128 MiB`. `ReadContext`
-  may expose only raw byte reservation and generic counted-byte arithmetic;
+  with fixed `128 MiB` default. Positive explicit values override the default;
+  explicit non-positive values intentionally disable graph-memory enforcement.
+  Byte-array, memory-buffer, and stream roots use the same configured/default
+  budget behavior. `ReadContext`
+  may expose only raw byte reservation;
   collection, map, array, struct, and object formulas belong in the concrete
   serializer or generated serializer owner. Java collection, map, and
   object-array owners reserve nonzero shallow self cost plus reference storage;

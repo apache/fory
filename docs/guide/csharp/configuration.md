@@ -35,17 +35,17 @@ ThreadSafeFory threadSafe = Fory.Builder().BuildThreadSafe();
 
 `Fory.Builder().Build()` uses:
 
-| Option                            | Default | Description                                       |
-| --------------------------------- | ------- | ------------------------------------------------- |
-| `TrackRef`                        | `false` | Reference tracking disabled                       |
-| `Compatible`                      | `true`  | Compatible schema-evolution metadata enabled      |
-| `CheckStructVersion`              | `false` | Struct schema hash checks disabled                |
-| `MaxDepth`                        | `20`    | Max dynamic nesting depth                         |
-| `MaxGraphMemoryBytes`             | `-1`    | Auto graph memory budget                          |
-| `MaxTypeFields`                   | `512`   | Max fields in one received struct metadata body   |
-| `MaxTypeMetaBytes`                | `4096`  | Max encoded bytes in one received metadata body   |
-| `MaxSchemaVersionsPerType`        | `10`    | Max remote metadata versions for one logical type |
-| `MaxAverageSchemaVersionsPerType` | `3`     | Average remote metadata versions across types     |
+| Option                            | Default     | Description                                       |
+| --------------------------------- | ----------- | ------------------------------------------------- |
+| `TrackRef`                        | `false`     | Reference tracking disabled                       |
+| `Compatible`                      | `true`      | Compatible schema-evolution metadata enabled      |
+| `CheckStructVersion`              | `false`     | Struct schema hash checks disabled                |
+| `MaxDepth`                        | `20`        | Max dynamic nesting depth                         |
+| `MaxGraphMemoryBytes`             | `134217728` | Graph memory budget                               |
+| `MaxTypeFields`                   | `512`       | Max fields in one received struct metadata body   |
+| `MaxTypeMetaBytes`                | `4096`      | Max encoded bytes in one received metadata body   |
+| `MaxSchemaVersionsPerType`        | `10`        | Max remote metadata versions for one logical type |
+| `MaxAverageSchemaVersionsPerType` | `3`         | Average remote metadata versions across types     |
 
 ## Builder Options
 
@@ -107,9 +107,9 @@ Fory fory = Fory.Builder()
     .Build();
 ```
 
-Use `-1` for the default automatic limit. For current C# inputs, auto uses the root input byte
-length times `8`, plus `64 KiB`. A positive value overrides the automatic limit. `0` and negative
-values other than `-1` are rejected.
+The default limit is a fixed `128 MiB` for all root input forms. A positive value overrides the
+default. Passing an explicit non-positive value disables this budget and can expose deserialization
+DoS risk from compact inputs that materialize large object graphs.
 
 ### `MaxTypeFields(int value)`
 

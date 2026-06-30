@@ -360,7 +360,7 @@ public class ClassResolverTest extends ForyTestBase {
     ReadContext readContext = reader.getReadContext();
     readContext.setMetaReadContext(new MetaReadContext());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
-    readContext.prepare(buffer, null, false, buffer.remaining(), false);
+    readContext.prepare(buffer, null, false);
     buffer.writeVarUInt32(0);
     typeDef.writeTypeDef(buffer);
     buffer.readerIndex(0);
@@ -473,7 +473,7 @@ public class ClassResolverTest extends ForyTestBase {
     ReadContext readContext = fory.getReadContext();
     readContext.setMetaReadContext(new MetaReadContext());
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
-    readContext.prepare(buffer, null, false, buffer.remaining(), false);
+    readContext.prepare(buffer, null, false);
     buffer.writeVarUInt32(0);
     exact.writeTypeDef(buffer);
     buffer.readerIndex(0);
@@ -792,7 +792,7 @@ public class ClassResolverTest extends ForyTestBase {
       } finally {
         fory.getWriteContext().reset();
       }
-      fory.getReadContext().prepare(buffer, null, false, buffer.remaining(), false);
+      fory.getReadContext().prepare(buffer, null, false);
       try {
         Assert.assertSame(classResolver.readTypeInfo(fory.getReadContext()).getType(), getClass());
         Assert.assertSame(classResolver.readTypeInfo(fory.getReadContext()).getType(), getClass());

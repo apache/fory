@@ -51,9 +51,6 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
 public final class ReadContext {
-  private static final long KNOWN_ROOT_BUDGET_MULTIPLIER = 8L;
-  private static final long KNOWN_ROOT_BUDGET_SLACK_BYTES = 64L * 1024;
-  private static final long STREAM_ROOT_BUDGET_BYTES = 128L * 1024 * 1024;
   private final Config config;
   private final Generics generics;
   private final TypeResolver typeResolver;
@@ -117,27 +114,19 @@ public final class ReadContext {
   public void prepare(
       MemoryBuffer buffer,
       Iterable<MemoryBuffer> outOfBandBuffers,
-      boolean peerOutOfBandEnabled,
-      int rootInputBytes,
-      boolean unknownLengthInput) {
+      boolean peerOutOfBandEnabled) {
     this.buffer = buffer;
     this.peerOutOfBandEnabled = peerOutOfBandEnabled;
     this.outOfBandBuffers = outOfBandBuffers == null ? null : outOfBandBuffers.iterator();
-    initGraphMemoryBudget(rootInputBytes, unknownLengthInput);
+    initGraphMemoryBudget();
   }
 
-  private void initGraphMemoryBudget(int rootInputBytes, boolean unknownLengthInput) {
+  private void initGraphMemoryBudget() {
     long limit = maxGraphMemoryBytes;
     if (limit <= 0) {
-      if (unknownLengthInput) {
-        limit = STREAM_ROOT_BUDGET_BYTES;
-      } else {
-        if (rootInputBytes < 0) {
-          throw new IllegalArgumentException(
-              "Root input size must be non-negative: " + rootInputBytes);
-        }
-        limit = rootInputBytes * KNOWN_ROOT_BUDGET_MULTIPLIER + KNOWN_ROOT_BUDGET_SLACK_BYTES;
-      }
+      graphMemoryLimitBytes = 0;
+      remainingGraphMemoryBytes = Long.MAX_VALUE;
+      return;
     }
     graphMemoryLimitBytes = limit;
     remainingGraphMemoryBytes = limit;
@@ -348,6 +337,9 @@ public final class ReadContext {
   public void reserveGraphMemory(long bytes) {
     if (bytes < 0) {
       throwNegativeGraphMemory(bytes);
+    }
+    if (graphMemoryLimitBytes <= 0) {
+      return;
     }
     long remaining = remainingGraphMemoryBytes;
     if (bytes > remaining) {

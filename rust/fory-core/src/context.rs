@@ -31,10 +31,6 @@ use crate::type_id as types;
 use crate::TypeId;
 use std::rc::Rc;
 
-const KNOWN_ROOT_BUDGET_MULTIPLIER: usize = 8;
-const KNOWN_ROOT_BUDGET_SLACK_BYTES: usize = 64 * 1024;
-const MAX_GRAPH_COUNT: usize = u32::MAX as usize;
-
 /// Thread-local context cache with fast path for single Fory instance.
 /// Uses (cached_id, context) for O(1) access when using same Fory instance repeatedly.
 /// Falls back to HashMap for multiple Fory instances per thread.
@@ -454,42 +450,24 @@ impl<'a> ReadContext<'a> {
     }
 
     #[inline(always)]
-    pub(crate) fn init_graph_memory_budget(
-        &mut self,
-        root_input_bytes: usize,
-    ) -> Result<(), Error> {
+    pub(crate) fn init_graph_memory_budget(&mut self) -> Result<(), Error> {
         let limit = if self.max_graph_memory_bytes > 0 {
             usize::try_from(self.max_graph_memory_bytes)
                 .map_err(|_| graph_memory_error("max_graph_memory_bytes does not fit usize"))?
         } else {
-            if root_input_bytes
-                > (usize::MAX - KNOWN_ROOT_BUDGET_SLACK_BYTES) / KNOWN_ROOT_BUDGET_MULTIPLIER
-            {
-                return Err(graph_memory_error(
-                    "root input size overflows automatic graph memory budget",
-                ));
-            }
-            root_input_bytes * KNOWN_ROOT_BUDGET_MULTIPLIER + KNOWN_ROOT_BUDGET_SLACK_BYTES
+            0
         };
         self.graph_memory_limit_bytes = limit;
-        self.remaining_graph_memory_bytes = limit;
+        self.remaining_graph_memory_bytes = if limit > 0 { limit } else { usize::MAX };
         Ok(())
-    }
-
-    #[inline(always)]
-    pub(crate) fn reserve_counted_graph_memory(
-        &mut self,
-        len: u32,
-        elem_bytes: usize,
-    ) -> Result<usize, Error> {
-        let len = len as usize;
-        self.reserve_counted_graph_bytes(len, elem_bytes)?;
-        Ok(len)
     }
 
     #[inline(always)]
     #[doc(hidden)]
     pub fn reserve_graph_memory(&mut self, bytes: usize) -> Result<(), Error> {
+        if self.graph_memory_limit_bytes == 0 {
+            return Ok(());
+        }
         let remaining = self.remaining_graph_memory_bytes;
         if bytes > remaining {
             return Err(graph_memory_exceeded(
@@ -500,31 +478,6 @@ impl<'a> ReadContext<'a> {
         }
         self.remaining_graph_memory_bytes = remaining - bytes;
         Ok(())
-    }
-
-    #[inline(always)]
-    fn reserve_counted_graph_bytes(&mut self, len: usize, elem_bytes: usize) -> Result<(), Error> {
-        if len == 0 {
-            return Ok(());
-        }
-        if elem_bytes <= usize::MAX / MAX_GRAPH_COUNT {
-            return self.reserve_graph_memory(len * elem_bytes);
-        }
-        self.reserve_counted_graph_checked(len, elem_bytes)
-    }
-
-    #[cold]
-    #[inline(never)]
-    fn reserve_counted_graph_checked(
-        &mut self,
-        len: usize,
-        elem_bytes: usize,
-    ) -> Result<(), Error> {
-        let bytes = match len.checked_mul(elem_bytes) {
-            Some(bytes) => bytes,
-            None => return Err(graph_memory_overflow(len, elem_bytes)),
-        };
-        self.reserve_graph_memory(bytes)
     }
 
     #[inline(always)]
@@ -641,15 +594,6 @@ impl<'a> ReadContext<'a> {
 #[inline(never)]
 fn graph_memory_error(message: &'static str) -> Error {
     Error::invalid_data(message)
-}
-
-#[cold]
-#[inline(never)]
-fn graph_memory_overflow(len: usize, elem_bytes: usize) -> Error {
-    Error::invalid_data(format!(
-        "graph memory estimate overflows: length={} elementBytes={}",
-        len, elem_bytes
-    ))
 }
 
 #[cold]

@@ -85,10 +85,11 @@ public sealed class GraphMemoryBudgetTests
     private const long BudgetArrayHolderBytes = ObjectBytes + ReferenceBytes;
     private const long GeneratedGraphHolderBytes = ObjectBytes + ReferenceBytes;
     private const long BudgetValueBytes = 4;
+    private const long DefaultGraphMemoryBytes = 128L * 1024 * 1024;
 
     private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
 
-    private static ForyRuntime NewFory(long maxGraphMemoryBytes = -1)
+    private static ForyRuntime NewFory(long maxGraphMemoryBytes = DefaultGraphMemoryBytes)
     {
         return ForyRuntime.Builder()
             .Compatible(false)
@@ -126,19 +127,24 @@ public sealed class GraphMemoryBudgetTests
     }
 
     [Fact]
-    public void KnownLengthAutoBudgetUsesInputBytes()
+    public void DefaultFixedBudgetAndDisable()
     {
-        const int rootBytes = 17;
-        long expected = rootBytes * 8 + ReadContext.KnownGraphBudgetSlackBytes;
-        ReadContext context = new(new ByteReader([]), new TypeResolver(), NewFory().Config);
+        Assert.Equal(DefaultGraphMemoryBytes, NewFory().Config.MaxGraphMemoryBytes);
+        Assert.Equal(0, NewFory(0).Config.MaxGraphMemoryBytes);
+        Assert.Equal(-2, NewFory(-2).Config.MaxGraphMemoryBytes);
 
-        context.InitGraphBudgetKnown(rootBytes);
-        context.ReserveGraphMemory(expected);
+        ReadContext context = new(new ByteReader([]), new TypeResolver(), NewFory().Config);
+        context.InitGraphBudget();
+        context.ReserveGraphMemory(DefaultGraphMemoryBytes);
         Assert.Throws<InvalidDataException>(() => context.ReserveGraphMemory(ReferenceBytes));
+
+        ReadContext disabled = new(new ByteReader([]), new TypeResolver(), NewFory(0).Config);
+        disabled.InitGraphBudget();
+        disabled.ReserveGraphMemory(long.MaxValue);
     }
 
     [Fact]
-    public void ReadOnlySequenceUsesKnownLengthRoot()
+    public void ReadOnlySequenceUsesSameBudget()
     {
         const int count = 6;
         List<List<string>> value = Enumerable.Range(0, count).Select(_ => new List<string>()).ToList();
@@ -149,7 +155,7 @@ public sealed class GraphMemoryBudgetTests
     }
 
     [Fact]
-    public void ExplicitConfigOverridesAutoBudget()
+    public void ExplicitConfigOverridesDefault()
     {
         List<BudgetItem> value = Enumerable.Range(0, 8).Select(i => new BudgetItem { Id = i }).ToList();
         byte[] bytes = Serialize(value);

@@ -41,7 +41,8 @@ pub struct Config {
     /// and preserved during serialization/deserialization.
     pub track_ref: bool,
     /// Maximum estimated graph memory accepted during one root deserialization.
-    /// `-1` selects the automatic input-shaped limit.
+    /// Defaults to 128 MiB. Positive values are explicit limits; non-positive
+    /// values intentionally disable this protection.
     pub max_graph_memory_bytes: i64,
     /// Maximum accepted field count in one received struct TypeMeta.
     pub max_type_fields: u32,
@@ -64,7 +65,7 @@ impl Default for Config {
             max_dyn_depth: 5,
             check_struct_version: false,
             track_ref: false,
-            max_graph_memory_bytes: -1,
+            max_graph_memory_bytes: 128 * 1024 * 1024,
             max_type_fields: 512,
             max_type_meta_bytes: 4096,
             max_schema_versions_per_type: 10,

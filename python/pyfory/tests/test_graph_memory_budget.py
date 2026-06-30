@@ -31,9 +31,7 @@ except ImportError:
     np = None
 
 
-KNOWN_ROOT_BUDGET_MULTIPLIER = 8
-KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024
-STREAM_ROOT_BUDGET_BYTES = 128 * 1024 * 1024
+DEFAULT_GRAPH_MEMORY_BYTES = 128 * 1024 * 1024
 REFERENCE_BYTES = struct.calcsize("P")
 OWNER_BYTES = 1
 MAX_GRAPH_MEMORY_BYTES = (1 << 63) - 1
@@ -104,7 +102,7 @@ def object_memory(num_fields):
     return OWNER_BYTES + num_fields * REFERENCE_BYTES
 
 
-def new_fory(limit=-1, *, xlang=True):
+def new_fory(limit=DEFAULT_GRAPH_MEMORY_BYTES, *, xlang=True):
     return pyfory.Fory(
         xlang=xlang,
         ref=True,
@@ -128,34 +126,38 @@ def varuint_payload(value):
     return buffer.to_bytes(0, buffer.get_writer_index())
 
 
-def test_known_length_auto_budget():
+def test_fixed_default_budget():
     fory = new_fory(xlang=False)
-    root_input_bytes = 17
     try:
-        fory.read_context.prepare(Buffer(b"x" * root_input_bytes), root_input_bytes=root_input_bytes)
-        expected = root_input_bytes * KNOWN_ROOT_BUDGET_MULTIPLIER + KNOWN_ROOT_BUDGET_SLACK_BYTES
-        assert fory.read_context.graph_memory_limit_bytes == expected
-        fory.read_context.reserve_graph_memory(expected)
+        fory.read_context.prepare(Buffer(b"x" * 17))
+        assert fory.read_context.graph_memory_limit_bytes == DEFAULT_GRAPH_MEMORY_BYTES
+        fory.read_context.reserve_graph_memory(DEFAULT_GRAPH_MEMORY_BYTES)
         with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
             fory.read_context.reserve_graph_memory(1)
     finally:
         fory.reset_read()
 
 
-def test_stream_auto_budget():
+def test_stream_uses_fixed_default_budget():
     fory = new_fory(xlang=False)
     try:
         buffer = Buffer.from_stream(OneByteStream(b"streamed"))
-        fory.read_context.prepare(buffer, root_input_bytes=1)
-        assert fory.read_context.graph_memory_limit_bytes == STREAM_ROOT_BUDGET_BYTES
+        fory.read_context.prepare(buffer)
+        assert fory.read_context.graph_memory_limit_bytes == DEFAULT_GRAPH_MEMORY_BYTES
     finally:
         fory.reset_read()
 
 
-def test_explicit_config_overrides_auto():
+def test_explicit_config_and_disable():
     value = [1]
     budget = collection_memory(1)
     assert expect_budget(value, budget) == value
+    disabled = new_fory(0, xlang=False)
+    try:
+        disabled.read_context.prepare(Buffer(b"x"))
+        disabled.read_context.reserve_graph_memory(MAX_GRAPH_MEMORY_BYTES)
+    finally:
+        disabled.reset_read()
 
 
 def test_nested_empty_containers_use_parent_storage():
@@ -190,7 +192,17 @@ def test_dynamic_object_owner_is_charged():
     value.left = 1
     value.right = "x"
     budget = object_memory(2)
-    restored = expect_budget(value, budget, xlang=False)
+
+    writer = new_fory(xlang=False)
+    writer.register_type(BudgetObject)
+    data = writer.serialize(value)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        reader = new_fory(budget - 1, xlang=False)
+        reader.register_type(BudgetObject)
+        reader.deserialize(data)
+    reader = new_fory(budget, xlang=False)
+    reader.register_type(BudgetObject)
+    restored = reader.deserialize(data)
     assert restored.left == value.left
     assert restored.right == value.right
 
@@ -201,10 +213,8 @@ def test_map_entry_budget_and_overflow():
 
     fory = new_fory(xlang=False)
     try:
-        fory.read_context.prepare(Buffer(b""), root_input_bytes=0)
-        max_map_entries = MAX_GRAPH_MEMORY_BYTES // (2 * REFERENCE_BYTES)
         with pytest.raises(ValueError, match="Estimated graph memory overflow"):
-            fory.read_context.reserve_counted_graph_memory(max_map_entries + 1, 2 * REFERENCE_BYTES)
+            fory.read_context.reserve_graph_memory(MAX_GRAPH_MEMORY_BYTES + 1)
     finally:
         fory.reset_read()
 
@@ -243,7 +253,7 @@ def test_declared_large_list_still_needs_bytes():
     fory = new_fory(10_000_000, xlang=False)
     serializer = ListSerializer(fory.type_resolver, list)
     try:
-        fory.read_context.prepare(Buffer(varuint_payload(1000)), root_input_bytes=1)
+        fory.read_context.prepare(Buffer(varuint_payload(1000)))
         with pytest.raises(Exception) as exc_info:
             serializer.read(fory.read_context)
         assert "Estimated graph memory" not in str(exc_info.value)
@@ -251,7 +261,7 @@ def test_declared_large_list_still_needs_bytes():
         fory.reset_read()
 
 
-@pytest.mark.parametrize("limit", [0, -2, 1 << 63])
+@pytest.mark.parametrize("limit", [1 << 63, -(1 << 63) - 1])
 def test_invalid_config(limit):
     with pytest.raises(ValueError, match="max_graph_memory_bytes"):
         new_fory(limit)

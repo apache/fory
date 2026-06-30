@@ -45,8 +45,6 @@ import 'package:fory/src/types/uint64.dart';
 /// deserialization operation. Application code normally interacts with [Fory]
 /// instead of preparing contexts directly.
 final class ReadContext {
-  static const int _knownRootBudgetMultiplier = 8;
-  static const int _knownRootBudgetSlackBytes = 64 * 1024;
   static const int _maxSafeBudgetBytes = 9007199254740991;
 
   /// Effective runtime configuration for the active operation.
@@ -74,11 +72,7 @@ final class ReadContext {
   void prepare(Buffer buffer) {
     _buffer = buffer;
     final configured = config.maxGraphMemoryBytes;
-    final limit =
-        configured > 0
-            ? configured
-            : buffer.readableBytes * _knownRootBudgetMultiplier +
-                _knownRootBudgetSlackBytes;
+    final limit = configured > 0 ? configured : 0;
     if (limit > _maxSafeBudgetBytes) {
       _throwGraphMemoryOverflow(limit);
     }
@@ -116,6 +110,9 @@ final class ReadContext {
   void reserveGraphMemory(int bytes) {
     if (bytes < 0 || bytes > _maxSafeBudgetBytes) {
       _throwGraphMemoryOverflow(bytes);
+    }
+    if (_effectiveGraphMemoryBytes <= 0) {
+      return;
     }
     final remaining = _remainingGraphMemoryBytes - bytes;
     if (remaining < 0) {

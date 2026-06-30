@@ -20,7 +20,7 @@
 import Fory, { Type } from "../packages/core/index";
 import { describe, expect, test } from "@jest/globals";
 
-const KNOWN_SLACK_BYTES = 64 * 1024;
+const DEFAULT_GRAPH_MEMORY_BYTES = 128 * 1024 * 1024;
 const OBJECT_BYTES = 1;
 const REFERENCE_BYTES = 4;
 
@@ -41,26 +41,19 @@ function deserializeAny(bytes: Uint8Array, maxGraphMemoryBytes: number) {
 }
 
 describe("graph memory budget", () => {
-  test("uses known length auto budget", () => {
-    const inputBytes = 17;
+  test("uses fixed default budget", () => {
     const fory = new Fory({ compatible: false });
-    const budget = inputBytes * 8 + KNOWN_SLACK_BYTES;
 
-    fory.readContext.reset(new Uint8Array(inputBytes));
-    expect(() => fory.readContext.reserveGraphMemory(budget)).not.toThrow();
+    fory.readContext.reset(new Uint8Array(17));
+    expect(() =>
+      fory.readContext.reserveGraphMemory(DEFAULT_GRAPH_MEMORY_BYTES),
+    ).not.toThrow();
     expect(() => fory.readContext.reserveGraphMemory(1)).toThrow(
       /maxGraphMemoryBytes/,
     );
   });
 
-  test("validates explicit config", () => {
-    expect(() => new Fory({ maxGraphMemoryBytes: 0 })).toThrow(
-      /maxGraphMemoryBytes/,
-    );
-    expect(() => new Fory({ maxGraphMemoryBytes: -2 })).toThrow(
-      /maxGraphMemoryBytes/,
-    );
-
+  test("handles explicit config and disable", () => {
     const fory = new Fory({ maxGraphMemoryBytes: 24 });
     fory.readContext.reset(new Uint8Array(1));
     expect(() => fory.readContext.reserveGraphMemory(0)).not.toThrow();
@@ -68,6 +61,13 @@ describe("graph memory budget", () => {
     expect(() => fory.readContext.reserveGraphMemory(1)).toThrow(
       /maxGraphMemoryBytes/,
     );
+
+    const disabled = new Fory({ maxGraphMemoryBytes: 0 });
+    disabled.readContext.reset(new Uint8Array(1));
+    expect(() =>
+      disabled.readContext.reserveGraphMemory(Number.MAX_SAFE_INTEGER),
+    ).not.toThrow();
+    expect(() => new Fory({ maxGraphMemoryBytes: -2 })).not.toThrow();
   });
 
   test("uses parent storage for nested empty containers", () => {

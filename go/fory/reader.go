@@ -49,12 +49,6 @@ type ReadContext struct {
 	remainingGraphMemoryBytes int64
 }
 
-const (
-	knownRootBudgetMultiplier = int64(8)
-	knownRootBudgetSlackBytes = int64(64 * 1024)
-	streamRootBudgetBytes     = int64(128 * 1024 * 1024)
-)
-
 var referenceSlotBytes = int64(unsafe.Sizeof(uintptr(0)))
 var stringElementBytes = graphSizeOf[string]()
 var stringMaxLength = maxGraphCount(stringElementBytes)
@@ -140,9 +134,9 @@ func NewReadContext(trackRef bool) *ReadContext {
 		refReader:                 NewRefReader(trackRef),
 		trackRef:                  trackRef,
 		maxDepth:                  128, // Default maximum nesting depth
-		maxGraphMemoryBytes:       -1,
-		graphMemoryLimitBytes:     MaxInt64,
-		remainingGraphMemoryBytes: MaxInt64,
+		maxGraphMemoryBytes:       128 * 1024 * 1024,
+		graphMemoryLimitBytes:     128 * 1024 * 1024,
+		remainingGraphMemoryBytes: 128 * 1024 * 1024,
 	}
 }
 
@@ -162,59 +156,15 @@ func (c *ReadContext) Reset() {
 	}
 }
 
-func (c *ReadContext) initGraphMemoryBudget(rootInputBytes int, unknownLengthInput bool) {
+func (c *ReadContext) initGraphMemoryBudget() {
 	limit := c.maxGraphMemoryBytes
 	if limit <= 0 {
-		if unknownLengthInput {
-			limit = streamRootBudgetBytes
-		} else {
-			if rootInputBytes < 0 {
-				c.setGraphMemoryError("root input size must be non-negative: %d", rootInputBytes)
-				return
-			}
-			if int64(rootInputBytes) > (MaxInt64-knownRootBudgetSlackBytes)/knownRootBudgetMultiplier {
-				c.setGraphMemoryError("root input size %d overflows automatic graph memory budget", rootInputBytes)
-				return
-			}
-			limit = int64(rootInputBytes)*knownRootBudgetMultiplier + knownRootBudgetSlackBytes
-		}
+		c.graphMemoryLimitBytes = 0
+		c.remainingGraphMemoryBytes = MaxInt64
+		return
 	}
 	c.graphMemoryLimitBytes = limit
 	c.remainingGraphMemoryBytes = limit
-}
-
-// ReserveCountedGraphMemory reserves length * elementBytes estimated graph bytes.
-func (c *ReadContext) ReserveCountedGraphMemory(length int, elemBytes int64) bool {
-	if length < 0 {
-		c.setGraphMemoryError("negative graph element count: %d", length)
-		return false
-	}
-	if elemBytes < 0 {
-		c.setGraphMemoryError("negative graph element size: %d", elemBytes)
-		return false
-	}
-	if length == 0 {
-		return true
-	}
-	return c.reserveCountedGraphMemory(length, elemBytes, maxGraphCount(elemBytes))
-}
-
-func (c *ReadContext) reserveCountedGraphMemory(length int, elemBytes int64, maxLength int64) bool {
-	if length == 0 {
-		return true
-	}
-	if int64(length) > maxLength {
-		c.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", length, elemBytes)
-		return false
-	}
-	bytes := int64(length) * elemBytes
-	remaining := c.remainingGraphMemoryBytes
-	if bytes > remaining {
-		c.setGraphMemoryExceeded(bytes, remaining)
-		return false
-	}
-	c.remainingGraphMemoryBytes = remaining - bytes
-	return true
 }
 
 // ReserveGraphMemory reserves raw estimated graph-owner bytes.
@@ -222,6 +172,9 @@ func (c *ReadContext) ReserveGraphMemory(bytes int64) bool {
 	if bytes < 0 {
 		c.setGraphMemoryError("estimated graph memory must be non-negative, got %d bytes", bytes)
 		return false
+	}
+	if c.graphMemoryLimitBytes <= 0 {
+		return true
 	}
 	remaining := c.remainingGraphMemoryBytes
 	if bytes > remaining {
@@ -715,7 +668,15 @@ func (c *ReadContext) readStringSliceData() []string {
 	if c.HasError() {
 		return nil
 	}
-	if !c.reserveCountedGraphMemory(length, stringElementBytes, stringMaxLength) {
+	if length < 0 {
+		c.setGraphMemoryError("negative graph element count: %d", length)
+		return nil
+	}
+	if int64(length) > stringMaxLength {
+		c.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", length, stringElementBytes)
+		return nil
+	}
+	if !c.ReserveGraphMemory(int64(length) * stringElementBytes) {
 		return nil
 	}
 	if length == 0 {
@@ -924,15 +885,16 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		c.SetError(DeserializationError("invalid reflect.Value"))
 		return
 	}
+	valueType := value.Type()
 
 	// Handle array targets (arrays are serialized as slices)
-	if value.Type().Kind() == reflect.Array {
+	if valueType.Kind() == reflect.Array {
 		c.ReadArrayValue(value, refMode, readType)
 		return
 	}
 
 	// For any types, we need to read the actual type from the buffer first
-	if value.Type().Kind() == reflect.Interface {
+	if valueType.Kind() == reflect.Interface {
 		// Handle ref tracking based on refMode
 		var refID int32 = int32(NotNullValueFlag)
 		if refMode == RefModeTracking {
@@ -1041,14 +1003,13 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		return
 	}
 
-	if typeInfo := c.getTypeInfoByType(value.Type()); typeInfo != nil && typeInfo.Serializer != nil {
+	if typeInfo := c.getTypeInfoByType(valueType); typeInfo != nil && typeInfo.Serializer != nil {
 		typeInfo.Serializer.Read(c, refMode, readType, false, value)
 		return
 	}
 
 	// For struct types, use optimized ReadStruct path when using full ref tracking and type info.
 	// Unions use a custom serializer and must bypass ReadStruct.
-	valueType := value.Type()
 	if refMode == RefModeTracking && readType && !c.typeResolver.IsUnionType(valueType) {
 		if valueType.Kind() == reflect.Struct {
 			c.ReadStruct(value)

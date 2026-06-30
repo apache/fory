@@ -44,37 +44,37 @@ func graphOwnerSizeOf[T any]() int64 {
 }
 
 func TestGraphMemoryBudgetConfig(t *testing.T) {
-	require.Equal(t, int64(-1), New().config.MaxGraphMemoryBytes)
+	require.Equal(t, int64(128*1024*1024), New().config.MaxGraphMemoryBytes)
 	require.Equal(t, int64(123), New(WithMaxGraphMemoryBytes(123)).config.MaxGraphMemoryBytes)
-	require.Panics(t, func() { New(WithMaxGraphMemoryBytes(0)) })
-	require.Panics(t, func() { New(WithMaxGraphMemoryBytes(-2)) })
+	require.Equal(t, int64(0), New(WithMaxGraphMemoryBytes(0)).config.MaxGraphMemoryBytes)
+	require.Equal(t, int64(-2), New(WithMaxGraphMemoryBytes(-2)).config.MaxGraphMemoryBytes)
 }
 
-func TestGraphMemoryBudgetAutoLimits(t *testing.T) {
+func TestGraphMemoryBudgetFixedDefaultAndDisable(t *testing.T) {
 	ctx := NewReadContext(false)
-	ctx.initGraphMemoryBudget(10, false)
+	ctx.initGraphMemoryBudget()
 	require.False(t, ctx.HasError())
-	require.Equal(t, int64(10)*knownRootBudgetMultiplier+knownRootBudgetSlackBytes, ctx.graphMemoryLimitBytes)
+	require.Equal(t, int64(128*1024*1024), ctx.graphMemoryLimitBytes)
 	require.True(t, ctx.ReserveGraphMemory(ctx.graphMemoryLimitBytes))
 	require.False(t, ctx.ReserveGraphMemory(1))
 	require.Contains(t, ctx.CheckError().Error(), "maxGraphMemoryBytes")
 
 	ctx = NewReadContext(false)
-	ctx.initGraphMemoryBudget(10, true)
+	ctx.maxGraphMemoryBytes = 0
+	ctx.initGraphMemoryBudget()
 	require.False(t, ctx.HasError())
-	require.Equal(t, streamRootBudgetBytes, ctx.graphMemoryLimitBytes)
-	require.True(t, ctx.ReserveGraphMemory(streamRootBudgetBytes))
-	require.False(t, ctx.ReserveGraphMemory(1))
-	require.Contains(t, ctx.CheckError().Error(), "maxGraphMemoryBytes")
+	require.Equal(t, int64(0), ctx.graphMemoryLimitBytes)
+	require.True(t, ctx.ReserveGraphMemory(MaxInt64))
+	require.False(t, ctx.HasError())
 
 	ctx = NewReadContext(false)
 	ctx.maxGraphMemoryBytes = 77
-	ctx.initGraphMemoryBudget(10, true)
+	ctx.initGraphMemoryBudget()
 	require.False(t, ctx.HasError())
 	require.Equal(t, int64(77), ctx.graphMemoryLimitBytes)
 }
 
-func TestGraphMemoryBudgetKnownVsStreamRoot(t *testing.T) {
+func TestGraphMemoryBudgetRootKindsShareDefault(t *testing.T) {
 	writer := New(WithCompatible(false))
 	values := make([]any, 12000)
 	for i := range values {
@@ -85,8 +85,8 @@ func TestGraphMemoryBudgetKnownVsStreamRoot(t *testing.T) {
 
 	var fromBytes []any
 	err = New(WithCompatible(false)).Deserialize(data, &fromBytes)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
+	require.NoError(t, err)
+	require.Len(t, fromBytes, len(values))
 
 	var fromStream []any
 	err = New(WithCompatible(false)).DeserializeFromReader(bytes.NewReader(data), &fromStream)
@@ -163,9 +163,9 @@ func TestGraphMemoryBudgetMapAndOverflow(t *testing.T) {
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
 
 	ctx := NewReadContext(false)
-	ctx.initGraphMemoryBudget(0, true)
-	require.False(t, ctx.ReserveCountedGraphMemory(MaxInt, MaxInt64))
-	require.Contains(t, ctx.CheckError().Error(), "overflows")
+	ctx.initGraphMemoryBudget()
+	require.False(t, ctx.ReserveGraphMemory(-1))
+	require.Contains(t, ctx.CheckError().Error(), "non-negative")
 }
 
 func TestGraphMemoryBudgetSlicesAndInlineValues(t *testing.T) {

@@ -401,17 +401,17 @@ real owner invariant.
 Materializing readers should also reserve a root-operation estimated graph
 memory budget before allocation or size hinting. The budget belongs to
 `ReadContext` or the equivalent root read state, not to serializers and not to
-ambient thread-local state. Positive `maxGraphMemoryBytes` configuration wins;
-auto configuration uses `inputBytes * 8 + 64 KiB` for known-length root input
-and fixed `128 MiB` for true stream or unknown-length root input. Do not add
-dynamic stream bytes-read accounting for this budget.
+ambient thread-local state. `maxGraphMemoryBytes` defaults to a fixed `128 MiB`;
+positive configuration overrides the default; explicit non-positive
+configuration disables graph-memory enforcement. Do not derive this budget from
+root input size, and do not add dynamic stream bytes-read accounting for this
+budget.
 
-Read context or equivalent read state owns only raw byte accounting and generic
-counted-byte arithmetic, such as reserving `bytes` or `count * elementBytes`
-with overflow checks. It must not expose collection, map, array, struct, or
+Read context or equivalent read state owns only raw byte reservation. It must
+not expose counted arithmetic helpers or collection, map, array, struct, or
 object semantic reservation APIs. Concrete serializers and generated serializer
 owners compute the storage constants and formulas for the owner path they
-allocate.
+allocate, including counted-byte overflow checks.
 
 The budget estimates lower-bound shallow memory for materialized graph owners,
 not exact heap bytes. Reserve self storage exactly once at the owner that stores

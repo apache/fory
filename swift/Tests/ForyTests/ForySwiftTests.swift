@@ -382,7 +382,7 @@ func namedInitializerBuildsConfig() {
   #expect(defaultConfig.config.compatible == true)
   #expect(defaultConfig.config.checkClassVersion == false)
   #expect(defaultConfig.config.maxDepth == 5)
-  #expect(defaultConfig.config.maxGraphMemoryBytes == -1)
+  #expect(defaultConfig.config.maxGraphMemoryBytes == 128 * 1024 * 1024)
   #expect(defaultConfig.config.maxTypeFields == 512)
   #expect(defaultConfig.config.maxTypeMetaBytes == 4096)
   #expect(defaultConfig.config.maxSchemaVersionsPerType == 10)

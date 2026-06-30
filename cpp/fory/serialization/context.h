@@ -505,28 +505,11 @@ public:
     }
   }
 
-  FORY_ALWAYS_INLINE bool init_graph_budget_known(size_t root_bytes) {
-    const int64_t configured = config_->max_graph_memory_bytes;
-    if (FORY_PREDICT_FALSE(configured > 0)) {
-      return init_explicit_graph_budget(configured);
-    }
-    if constexpr (sizeof(size_t) <= sizeof(uint32_t)) {
-      constexpr size_t max_root_bytes =
-          (std::numeric_limits<size_t>::max() - kKnownGraphBudgetSlackBytes) /
-          kKnownGraphBudgetMultiplier;
-      if (FORY_PREDICT_FALSE(root_bytes > max_root_bytes)) {
-        return set_graph_memory_error(
-            "root input size overflows automatic graph memory budget");
-      }
-    }
-    remaining_graph_memory_bytes_ =
-        root_bytes * kKnownGraphBudgetMultiplier + kKnownGraphBudgetSlackBytes;
-    graph_budget_state_ = kGraphBudgetReady;
-    return true;
+  FORY_ALWAYS_INLINE bool init_graph_budget() {
+    return init_graph_budget(0);
   }
 
-  FORY_ALWAYS_INLINE bool init_graph_budget_known(size_t root_bytes,
-                                                  size_t reserve_bytes) {
+  FORY_ALWAYS_INLINE bool init_graph_budget(size_t reserve_bytes) {
     const int64_t configured = config_->max_graph_memory_bytes;
     if (FORY_PREDICT_FALSE(configured > 0)) {
       if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
@@ -540,61 +523,14 @@ public:
       return init_graph_budget_limit(static_cast<size_t>(configured),
                                      reserve_bytes);
     }
-    if constexpr (sizeof(size_t) <= sizeof(uint32_t)) {
-      constexpr size_t max_root_bytes =
-          (std::numeric_limits<size_t>::max() - kKnownGraphBudgetSlackBytes) /
-          kKnownGraphBudgetMultiplier;
-      if (FORY_PREDICT_FALSE(root_bytes > max_root_bytes)) {
-        return set_graph_memory_error(
-            "root input size overflows automatic graph memory budget");
-      }
-    }
-    return init_graph_budget_limit(root_bytes * kKnownGraphBudgetMultiplier +
-                                       kKnownGraphBudgetSlackBytes,
-                                   reserve_bytes);
-  }
-
-  FORY_ALWAYS_INLINE bool init_graph_budget_unknown() {
-    const int64_t configured = config_->max_graph_memory_bytes;
-    if (FORY_PREDICT_FALSE(configured > 0)) {
-      return init_explicit_graph_budget(configured);
-    }
-    remaining_graph_memory_bytes_ = kUnknownGraphBudgetBytes;
-    graph_budget_state_ = kGraphBudgetReady;
+    graph_budget_enabled_ = false;
+    remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
     return true;
-  }
-
-  FORY_ALWAYS_INLINE bool init_graph_budget_unknown(size_t reserve_bytes) {
-    const int64_t configured = config_->max_graph_memory_bytes;
-    if (FORY_PREDICT_FALSE(configured > 0)) {
-      if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
-        if (FORY_PREDICT_FALSE(
-                static_cast<uint64_t>(configured) >
-                static_cast<uint64_t>(std::numeric_limits<size_t>::max()))) {
-          return set_graph_memory_error(
-              "max_graph_memory_bytes does not fit size_t");
-        }
-      }
-      return init_graph_budget_limit(static_cast<size_t>(configured),
-                                     reserve_bytes);
-    }
-    return init_graph_budget_limit(kUnknownGraphBudgetBytes, reserve_bytes);
-  }
-
-  FORY_ALWAYS_INLINE void defer_graph_budget_known(size_t root_bytes) {
-    pending_graph_root_bytes_ = root_bytes;
-    graph_budget_state_ = kGraphBudgetPendingKnown;
-  }
-
-  FORY_ALWAYS_INLINE void defer_graph_budget_unknown() {
-    graph_budget_state_ = kGraphBudgetPendingUnknown;
   }
 
   FORY_ALWAYS_INLINE bool reserve_graph_memory(size_t bytes) {
-    if (FORY_PREDICT_FALSE(graph_budget_state_ != kGraphBudgetReady)) {
-      if (FORY_PREDICT_FALSE(!materialize_graph_budget())) {
-        return false;
-      }
+    if (FORY_PREDICT_FALSE(!graph_budget_enabled_)) {
+      return true;
     }
     const size_t remaining = remaining_graph_memory_bytes_;
     if (FORY_PREDICT_FALSE(bytes > remaining)) {
@@ -606,24 +542,12 @@ public:
 
   FORY_ALWAYS_INLINE bool init_graph_budget_limit(size_t limit,
                                                   size_t reserve_bytes) {
-    graph_budget_state_ = kGraphBudgetReady;
+    graph_budget_enabled_ = true;
     if (FORY_PREDICT_FALSE(reserve_bytes > limit)) {
       return set_graph_memory_exceeded(reserve_bytes, limit);
     }
     remaining_graph_memory_bytes_ = limit - reserve_bytes;
     return true;
-  }
-
-  template <size_t elem_bytes>
-  FORY_ALWAYS_INLINE bool reserve_counted_graph_memory(uint32_t length) {
-    constexpr size_t kMaxLength =
-        static_cast<size_t>(std::numeric_limits<uint32_t>::max());
-    if constexpr (elem_bytes <=
-                  std::numeric_limits<size_t>::max() / kMaxLength) {
-      return reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
-    } else {
-      return reserve_counted_graph_checked(length, elem_bytes);
-    }
   }
 
   // ===========================================================================
@@ -781,23 +705,10 @@ public:
   inline const Config &config() const { return *config_; }
 
 private:
-  static constexpr size_t kKnownGraphBudgetMultiplier = 8;
-  static constexpr size_t kKnownGraphBudgetSlackBytes = 64 * 1024;
-  static constexpr size_t kUnknownGraphBudgetBytes = 128ULL * 1024ULL * 1024ULL;
-  static constexpr uint8_t kGraphBudgetReady = 0;
-  static constexpr uint8_t kGraphBudgetPendingKnown = 1;
-  static constexpr uint8_t kGraphBudgetPendingUnknown = 2;
-
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
-  FORY_NOINLINE bool reserve_counted_graph_checked(uint32_t length,
-                                                   size_t elem_bytes);
-  FORY_NOINLINE bool init_explicit_graph_budget(int64_t configured);
-  FORY_NOINLINE bool materialize_graph_budget();
   FORY_NOINLINE bool set_graph_memory_error(const std::string &message);
-  FORY_NOINLINE bool set_graph_memory_overflow(uint32_t length,
-                                               size_t elem_bytes);
   FORY_NOINLINE bool set_graph_memory_exceeded(size_t bytes, size_t remaining);
 
   // Error state - accumulated during deserialization, checked at the end
@@ -808,8 +719,7 @@ private:
   std::unique_ptr<TypeResolver> type_resolver_;
   RefReader ref_reader_;
   uint32_t current_dyn_depth_;
-  uint8_t graph_budget_state_ = kGraphBudgetReady;
-  size_t pending_graph_root_bytes_ = 0;
+  bool graph_budget_enabled_ = false;
   size_t remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
 
   // Meta sharing state (for compatible mode)

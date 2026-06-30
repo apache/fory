@@ -143,7 +143,7 @@ public class ChildContainerSerializersTest extends ForyTestBase {
 
     payload.readerIndex(0);
     ReadContext readContext = fory.getReadContext();
-    readContext.prepare(payload, null, false, payload.remaining(), false);
+    readContext.prepare(payload, null, false);
     Serializer<ChildArrayList> serializer =
         (Serializer<ChildArrayList>) fory.getTypeResolver().getSerializer(ChildArrayList.class);
 

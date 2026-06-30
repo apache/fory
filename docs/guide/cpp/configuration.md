@@ -107,10 +107,10 @@ auto fory = Fory::builder()
     .build();
 ```
 
-Use `-1` for the automatic limit. For byte-array and `Buffer` roots, the
-automatic limit is the root input size multiplied by `8`, plus `64 KiB`. For
-stream roots, the automatic limit is `128 MiB` because the full root size is not
-known up front. Positive values always override the automatic limit.
+The default limit is a fixed `128 MiB` for byte-array, `Buffer`, and stream
+roots. Positive values override the default. Explicit non-positive values
+disable this budget and can expose deserialization DoS risk from compact inputs
+that materialize large object graphs.
 
 This budget is a portable lower-bound estimate for shallow materialized graph
 owners such as dynamic collection backing storage, map key/value storage,
@@ -227,18 +227,18 @@ auto fory = Fory::builder().build_thread_safe();  // Returns ThreadSafeFory
 
 ## Configuration Summary
 
-| Option                                           | Description                                       | Default |
-| ------------------------------------------------ | ------------------------------------------------- | ------- |
-| `xlang(bool)`                                    | Use xlang mode                                    | `true`  |
-| `compatible(bool)`                               | Enable schema evolution                           | `true`  |
-| `track_ref(bool)`                                | Enable reference tracking                         | `true`  |
-| `max_graph_memory_bytes(int64_t)`                | Max estimated graph memory per root read          | `-1`    |
-| `max_dyn_depth(uint32_t)`                        | Maximum nesting depth for dynamic types           | `5`     |
-| `max_type_fields(uint32_t)`                      | Max fields in one received struct metadata body   | `512`   |
-| `max_type_meta_bytes(uint32_t)`                  | Max encoded bytes in one received metadata body   | `4096`  |
-| `max_schema_versions_per_type(uint32_t)`         | Max remote metadata versions for one logical type | `10`    |
-| `max_average_schema_versions_per_type(uint32_t)` | Average remote metadata versions across types     | `3`     |
-| `check_struct_version(bool)`                     | Enable struct version checking                    | `false` |
+| Option                                           | Description                                       | Default   |
+| ------------------------------------------------ | ------------------------------------------------- | --------- |
+| `xlang(bool)`                                    | Use xlang mode                                    | `true`    |
+| `compatible(bool)`                               | Enable schema evolution                           | `true`    |
+| `track_ref(bool)`                                | Enable reference tracking                         | `true`    |
+| `max_graph_memory_bytes(int64_t)`                | Max estimated graph memory per root read          | `128 MiB` |
+| `max_dyn_depth(uint32_t)`                        | Maximum nesting depth for dynamic types           | `5`       |
+| `max_type_fields(uint32_t)`                      | Max fields in one received struct metadata body   | `512`     |
+| `max_type_meta_bytes(uint32_t)`                  | Max encoded bytes in one received metadata body   | `4096`    |
+| `max_schema_versions_per_type(uint32_t)`         | Max remote metadata versions for one logical type | `10`      |
+| `max_average_schema_versions_per_type(uint32_t)` | Average remote metadata versions across types     | `3`       |
+| `check_struct_version(bool)`                     | Enable struct version checking                    | `false`   |
 
 ## Security
 

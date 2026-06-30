@@ -53,6 +53,20 @@ const DECL_VALUE_TYPE: u8 = 0b100000;
 const MAX_CHUNK_SIZE: u8 = 255;
 
 #[inline(always)]
+fn reserve_graph_storage(
+    context: &mut ReadContext,
+    len: u32,
+    elem_bytes: usize,
+) -> Result<usize, Error> {
+    let len = len as usize;
+    let bytes = len
+        .checked_mul(elem_bytes)
+        .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
+    context.reserve_graph_memory(bytes)?;
+    Ok(len)
+}
+
+#[inline(always)]
 pub fn field_ref_mode(field_type: &FieldType) -> RefMode {
     if field_type.track_ref {
         RefMode::Tracking
@@ -1710,7 +1724,7 @@ where
 
     fn read_data(context: &mut ReadContext) -> Result<Vec<T>, Error> {
         let len = context.reader.read_var_u32()?;
-        context.reserve_counted_graph_memory(len, C::graph_storage_size())?;
+        reserve_graph_storage(context, len, C::graph_storage_size())?;
         if len == 0 {
             return Ok(Vec::new());
         }
@@ -1739,7 +1753,7 @@ where
         remote_field_type: &FieldType,
     ) -> Result<Vec<T>, Error> {
         let len = context.reader.read_var_u32()?;
-        context.reserve_counted_graph_memory(len, C::graph_storage_size())?;
+        reserve_graph_storage(context, len, C::graph_storage_size())?;
         if len == 0 {
             return Ok(Vec::new());
         }
@@ -2285,7 +2299,7 @@ where
         let elem_bytes = KC::graph_storage_size()
             .checked_add(VC::graph_storage_size())
             .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
-        context.reserve_counted_graph_memory(len, elem_bytes)?;
+        reserve_graph_storage(context, len, elem_bytes)?;
         if len == 0 {
             return Ok(HashMap::new());
         }
@@ -2308,7 +2322,7 @@ where
         let elem_bytes = KC::graph_storage_size()
             .checked_add(VC::graph_storage_size())
             .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
-        let capacity = context.reserve_counted_graph_memory(len, elem_bytes)?;
+        let capacity = reserve_graph_storage(context, len, elem_bytes)?;
         if len == 0 {
             return Ok(HashMap::new());
         }

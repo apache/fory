@@ -20,15 +20,20 @@ import Foundation
 private let anyReferenceBytes = 4
 private let anyArrayOwnerBytes = max(1, MemoryLayout<[Any]>.stride)
 
+@inline(never)
+private func throwAnyGraphMemoryOverflow() throws -> Never {
+  throw ForyError.invalidData("graph memory estimate overflows")
+}
+
 @inline(__always)
 private func reserveAnyReferenceArrayMemory(_ context: ReadContext, count: Int) throws {
   let (slotBytes, overflow) = count.multipliedReportingOverflow(by: anyReferenceBytes)
   if overflow {
-    try context.reserveGraphMemory(-1)
+    try throwAnyGraphMemoryOverflow()
   }
   let (bytes, addOverflow) = anyArrayOwnerBytes.addingReportingOverflow(slotBytes)
   if addOverflow {
-    try context.reserveGraphMemory(-1)
+    try throwAnyGraphMemoryOverflow()
   }
   try context.reserveGraphMemory(bytes)
 }
@@ -39,12 +44,12 @@ private func reserveAnyReferenceMapMemory<Map>(_ context: ReadContext, _ type: M
 {
   let (slotBytes, overflow) = count.multipliedReportingOverflow(by: 2 * anyReferenceBytes)
   if overflow {
-    try context.reserveGraphMemory(-1)
+    try throwAnyGraphMemoryOverflow()
   }
   let ownerBytes = max(1, MemoryLayout<Map>.stride)
   let (bytes, addOverflow) = ownerBytes.addingReportingOverflow(slotBytes)
   if addOverflow {
-    try context.reserveGraphMemory(-1)
+    try throwAnyGraphMemoryOverflow()
   }
   try context.reserveGraphMemory(bytes)
 }

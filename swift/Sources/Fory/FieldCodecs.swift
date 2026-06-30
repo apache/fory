@@ -30,12 +30,28 @@ private func serializerElementBytes<Element: Serializer>(_ type: Element.Type) -
 }
 
 @inline(__always)
+private func reserveFieldStorage(
+  _ context: ReadContext,
+  count: Int,
+  elementBytes: Int
+) throws {
+  if count < 0 || elementBytes < 0 {
+    throw ForyError.invalidData("graph memory estimate overflows")
+  }
+  let (bytes, overflow) = count.multipliedReportingOverflow(by: elementBytes)
+  if overflow {
+    throw ForyError.invalidData("graph memory estimate overflows")
+  }
+  try context.reserveGraphMemory(bytes)
+}
+
+@inline(__always)
 private func reserveFieldArrayStorage<ElementCodec: FieldCodec>(
   _ context: ReadContext,
   _ codec: ElementCodec.Type,
   count: Int
 ) throws {
-  try context.reserveCountedGraphMemory(count: count, elementBytes: fieldElementBytes(codec))
+  try reserveFieldStorage(context, count: count, elementBytes: fieldElementBytes(codec))
 }
 
 @inline(__always)
@@ -44,7 +60,7 @@ private func reserveSerializerArrayMemory<Element: Serializer>(
   _ type: Element.Type,
   count: Int
 ) throws {
-  try context.reserveCountedGraphMemory(count: count, elementBytes: serializerElementBytes(type))
+  try reserveFieldStorage(context, count: count, elementBytes: serializerElementBytes(type))
 }
 
 @inline(__always)
@@ -58,9 +74,9 @@ private func reserveFieldMapStorage<KeyCodec: FieldCodec, ValueCodec: FieldCodec
   let valueBytes = fieldElementBytes(value)
   let (elementBytes, overflow) = keyBytes.addingReportingOverflow(valueBytes)
   if overflow {
-    try context.reserveGraphMemory(-1)
+    throw ForyError.invalidData("graph memory estimate overflows")
   }
-  try context.reserveCountedGraphMemory(count: count, elementBytes: elementBytes)
+  try reserveFieldStorage(context, count: count, elementBytes: elementBytes)
 }
 
 public protocol FieldCodec {

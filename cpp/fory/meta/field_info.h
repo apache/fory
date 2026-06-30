@@ -740,8 +740,8 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
     static inline constexpr size_t Size = 0;                                   \
     static inline constexpr std::string_view Name = #type;                     \
     static inline constexpr std::array<std::string_view, Size> Names = {};     \
-    static constexpr bool has_config = false;                                  \
-    static inline constexpr auto entries = std::tuple{};                       \
+    [[maybe_unused]] static constexpr bool has_config = false;                 \
+    [[maybe_unused]] static inline constexpr auto entries = std::tuple{};      \
     [[maybe_unused]] static constexpr size_t field_count = 0;                  \
     using PtrsType = decltype(std::tuple{});                                   \
     static constexpr PtrsType ptrs() { return {}; }                            \

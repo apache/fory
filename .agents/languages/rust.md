@@ -19,9 +19,11 @@ Load this file when changing `rust/` or Rust xlang behavior.
 - For panic-safety in hot paths, preserve TLS context reuse. Add scoped guards or owned fallbacks rather than per-call context allocation, and reset reused contexts at entry and successful exit.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Keep recursive matched-field shape classification owned by `fory-core/src/meta/type_meta.rs`; collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
 - Root deserialization graph memory budget state belongs to `ReadContext` and is initialized by the
-  root `Fory` read methods before the header is consumed. Rust roots are byte-slice/`Reader` backed,
-  so auto budget uses `inputBytes * 8 + 64 KiB`; do not add dynamic bytes-read accounting.
-  `ReadContext` may expose only raw byte reservation and generic counted-byte arithmetic; `Vec`,
+  root `Fory` read methods before the header is consumed. Use the fixed `128 MiB` default unless a
+  positive explicit value overrides it or an explicit non-positive value intentionally disables
+  graph-memory enforcement; do not derive the budget from root input size or add dynamic bytes-read
+  accounting.
+  `ReadContext` may expose only raw byte reservation; `Vec`,
   collection, map, array, struct, object, and derive codec formulas belong in their serializer
   owners.
 - Rust `Vec<T>` stores inline element storage, so general LIST paths reserve

@@ -45,7 +45,9 @@ private struct BudgetDenseHolder: Equatable {
   var dense: [Int32] = []
 }
 
-private func makeBudgetFory(maxGraphMemoryBytes: Int64 = -1) -> Fory {
+private let defaultGraphMemoryBytes: Int64 = 128 * 1024 * 1024
+
+private func makeBudgetFory(maxGraphMemoryBytes: Int64 = defaultGraphMemoryBytes) -> Fory {
   let fory = Fory(
     config: .init(
       trackRef: false,
@@ -108,8 +110,7 @@ private func expectInvalidData(_ body: () throws -> Void) {
 }
 
 @Test
-func knownLengthAutoBudgetUsesInputBytes() throws {
-  let expected = 17 * 8 + ReadContext.knownGraphBudgetSlackBytes
+func fixedDefaultBudgetAndDisable() throws {
   let config = Config(trackRef: false, compatible: false)
   let context = ReadContext(
     buffer: ByteBuffer(),
@@ -117,15 +118,24 @@ func knownLengthAutoBudgetUsesInputBytes() throws {
     config: config
   )
 
-  try context.initGraphMemoryBudgetKnown(rootBytes: 17)
-  try context.reserveGraphMemory(expected)
+  try context.initGraphMemoryBudget()
+  try context.reserveGraphMemory(Int(defaultGraphMemoryBytes))
   expectInvalidData {
     try context.reserveGraphMemory(testReferenceBytes)
   }
+
+  let disabledConfig = Config(trackRef: false, compatible: false, maxGraphMemoryBytes: 0)
+  let disabled = ReadContext(
+    buffer: ByteBuffer(),
+    typeResolver: TypeResolver(config: disabledConfig),
+    config: disabledConfig
+  )
+  try disabled.initGraphMemoryBudget()
+  try disabled.reserveGraphMemory(Int(defaultGraphMemoryBytes) + 1)
 }
 
 @Test
-func byteBufferRootUsesKnownLengthAutoBudget() throws {
+func byteBufferRootUsesFixedDefaultBudget() throws {
   let count = 6
   let value = Array(repeating: [String](), count: count)
   let bytes = try makeBudgetFory().serialize(value)
@@ -136,7 +146,7 @@ func byteBufferRootUsesKnownLengthAutoBudget() throws {
 }
 
 @Test
-func explicitConfigOverridesAutoBudget() throws {
+func explicitConfigOverridesDefault() throws {
   let values = (0..<16).map { "value-\($0)" }
   let bytes = try makeBudgetFory().serialize(values)
   let required = rootArrayBudget(String.self, count: values.count)

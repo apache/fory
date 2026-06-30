@@ -20,10 +20,6 @@ import Foundation
 private let typeMetaSizeMask = 0xFF
 
 public final class ReadContext {
-  static let knownGraphBudgetSlackBytes = 64 * 1024
-  static let unknownGraphBudgetBytes = 128 * 1024 * 1024
-  private static let maxKnownGraphRootBytes = (Int.max - knownGraphBudgetSlackBytes) / 8
-
   public let buffer: ByteBuffer
   let typeResolver: TypeResolver
   public let trackRef: Bool
@@ -59,15 +55,8 @@ public final class ReadContext {
   }
 
   @inline(__always)
-  func initGraphMemoryBudgetKnown(rootBytes: Int) throws {
-    var limit = maxGraphMemoryBytes
-    if limit < 0 {
-      if rootBytes > Self.maxKnownGraphRootBytes {
-        try throwGraphMemoryOverflow()
-      }
-      limit = rootBytes * 8 + Self.knownGraphBudgetSlackBytes
-    }
-    remainingGraphMemoryBytes = limit
+  func initGraphMemoryBudget() throws {
+    remainingGraphMemoryBytes = maxGraphMemoryBytes > 0 ? maxGraphMemoryBytes : Int.max
   }
 
   @inline(__always)
@@ -75,24 +64,13 @@ public final class ReadContext {
     if bytes < 0 {
       try throwGraphMemoryOverflow()
     }
+    if maxGraphMemoryBytes <= 0 {
+      return
+    }
     if bytes > remainingGraphMemoryBytes {
       try throwGraphMemoryExceeded(bytes: bytes)
     }
     remainingGraphMemoryBytes -= bytes
-  }
-
-  @inline(__always)
-  func reserveCountedGraphMemory(
-    count: Int,
-    elementBytes: Int
-  ) throws {
-    if count < 0 || elementBytes < 0 {
-      try throwGraphMemoryOverflow()
-    }
-    if elementBytes != 0 && count > Int.max / elementBytes {
-      try throwGraphMemoryOverflow()
-    }
-    try reserveGraphMemory(count * elementBytes)
   }
 
   @inline(never)

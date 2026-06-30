@@ -144,7 +144,7 @@ public class CompatibleSerializerTest extends ForyTestBase {
     MemoryBuffer buffer = MemoryUtils.buffer(0);
     Fory fory = builder().build();
     ReadContext readContext = fory.getReadContext();
-    readContext.prepare(buffer, null, false, buffer.remaining(), false);
+    readContext.prepare(buffer, null, false);
     try {
       InvocationTargetException exception =
           Assert.expectThrows(

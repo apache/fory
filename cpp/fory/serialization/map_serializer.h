@@ -82,6 +82,28 @@ struct MapReserver<MapType,
   static void reserve(MapType &map, uint32_t size) { map.reserve(size); }
 };
 
+template <size_t elem_bytes>
+inline bool reserve_map_storage(ReadContext &ctx, uint32_t length) {
+  constexpr size_t kMaxLength =
+      static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+  if constexpr (elem_bytes <=
+                std::numeric_limits<size_t>::max() / kMaxLength) {
+    return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
+  } else {
+    if (FORY_PREDICT_FALSE(
+            elem_bytes != 0 &&
+            static_cast<size_t>(length) >
+                std::numeric_limits<size_t>::max() / elem_bytes)) {
+      ctx.set_error(Error::invalid_data(
+          "graph memory estimate overflows: length=" +
+          std::to_string(length) + " elementBytes=" +
+          std::to_string(elem_bytes)));
+      return false;
+    }
+    return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
+  }
+}
+
 template <typename MapType>
 inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
   // Lazy error propagation may continue into later readers; do not let that
@@ -97,8 +119,7 @@ inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
                     std::numeric_limits<size_t>::max() - sizeof(Value),
                 "map entry memory estimate overflows");
   constexpr size_t elem_bytes = sizeof(Key) + sizeof(Value);
-  if (FORY_PREDICT_FALSE(
-          (!ctx.template reserve_counted_graph_memory<elem_bytes>(length)))) {
+  if (FORY_PREDICT_FALSE((!reserve_map_storage<elem_bytes>(ctx, length)))) {
     return false;
   }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {

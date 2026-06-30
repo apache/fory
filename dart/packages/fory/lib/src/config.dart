@@ -28,7 +28,7 @@ final class Config {
   static const int defaultMaxTypeMetaBytes = 4096;
   static const int defaultMaxSchemaVersionsPerType = 10;
   static const int defaultMaxAverageSchemaVersionsPerType = 3;
-  static const int defaultMaxGraphMemoryBytes = -1;
+  static const int defaultMaxGraphMemoryBytes = 128 * 1024 * 1024;
 
   /// Enables compatible struct encoding and decoding.
   ///
@@ -59,7 +59,7 @@ final class Config {
 
   /// Maximum estimated graph memory per root deserialization.
   ///
-  /// `-1` means auto. Positive values are explicit byte limits.
+  /// Positive values are explicit byte limits. Non-positive values disable enforcement.
   final int maxGraphMemoryBytes;
 
   /// Creates an immutable configuration object.
@@ -87,9 +87,5 @@ final class Config {
        assert(
          maxAverageSchemaVersionsPerType > 0,
          'maxAverageSchemaVersionsPerType must be positive',
-       ),
-       assert(
-         maxGraphMemoryBytes == -1 || maxGraphMemoryBytes > 0,
-         'maxGraphMemoryBytes must be -1 or positive',
        );
 }

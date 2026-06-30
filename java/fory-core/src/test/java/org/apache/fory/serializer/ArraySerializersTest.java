@@ -373,15 +373,11 @@ public class ArraySerializersTest extends ForyTestBase {
       MemoryBuffer control = MemoryBuffer.newHeapBuffer(1);
       control.writeBoolean(false);
       readContext.prepare(
-          control,
-          Collections.singletonList(MemoryUtils.wrap(new byte[byteSize])),
-          true,
-          control.remaining(),
-          false);
+          control, Collections.singletonList(MemoryUtils.wrap(new byte[byteSize])), true);
     } else {
       MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
       buffer.writeVarUInt32Small7(byteSize);
-      readContext.prepare(buffer, null, false, buffer.remaining(), false);
+      readContext.prepare(buffer, null, false);
     }
     return fory.getSerializer(arrayType).read(readContext);
   }
@@ -392,7 +388,7 @@ public class ArraySerializersTest extends ForyTestBase {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     buffer.writeVarUInt32Small7(byteSize);
     MemoryBuffer truncated = MemoryBuffer.fromByteArray(buffer.getBytes(0, buffer.writerIndex()));
-    readContext.prepare(truncated, null, false, truncated.remaining(), false);
+    readContext.prepare(truncated, null, false);
     return fory.getSerializer(arrayType).read(readContext);
   }
 
@@ -400,7 +396,7 @@ public class ArraySerializersTest extends ForyTestBase {
     ReadContext readContext = fory.getReadContext();
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     writeNegativeDecodedVarUInt32(buffer);
-    readContext.prepare(buffer, null, false, buffer.remaining(), false);
+    readContext.prepare(buffer, null, false);
     return fory.getSerializer(arrayType).read(readContext);
   }
 
@@ -408,7 +404,7 @@ public class ArraySerializersTest extends ForyTestBase {
     ReadContext readContext = fory.getReadContext();
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     buffer.writeVarUInt32Small7(numElements);
-    readContext.prepare(buffer, null, false, buffer.remaining(), false);
+    readContext.prepare(buffer, null, false);
     return fory.getSerializer(arrayType).read(readContext);
   }
 

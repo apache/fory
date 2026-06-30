@@ -319,8 +319,18 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		}
 		return
 	}
-	if !isArrayType && !ctx.reserveCountedGraphMemory(length, s.elemBytes, s.maxLength) {
-		return
+	if !isArrayType {
+		if length < 0 {
+			ctx.setGraphMemoryError("negative graph element count: %d", length)
+			return
+		}
+		if int64(length) > s.maxLength {
+			ctx.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes)
+			return
+		}
+		if !ctx.ReserveGraphMemory(int64(length) * s.elemBytes) {
+			return
+		}
 	}
 
 	// ReadData collection flags

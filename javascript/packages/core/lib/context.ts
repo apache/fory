@@ -531,8 +531,6 @@ export class WriteContext {
 
 export class ReadContext {
   private static readonly MIN_REMOTE_TYPE_META_LIMIT = 8192;
-  private static readonly KNOWN_ROOT_BUDGET_MULTIPLIER = 8;
-  private static readonly KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024;
 
   readonly reader: BinaryReader;
   readonly refReader: RefReader;
@@ -574,16 +572,16 @@ export class ReadContext {
     this.typeMeta = [];
     this._depth = 0;
     this.effectiveGraphMemoryBytes =
-      this.maxGraphMemoryBytes > 0
-        ? this.maxGraphMemoryBytes
-        : bytes.byteLength * ReadContext.KNOWN_ROOT_BUDGET_MULTIPLIER +
-          ReadContext.KNOWN_ROOT_BUDGET_SLACK_BYTES;
+      this.maxGraphMemoryBytes > 0 ? this.maxGraphMemoryBytes : 0;
     this.remainingGraphMemoryBytes = this.effectiveGraphMemoryBytes;
   }
 
   reserveGraphMemory(bytes: number) {
     if (!Number.isSafeInteger(bytes) || bytes < 0) {
       this.throwGraphMemoryOverflow(bytes);
+    }
+    if (this.effectiveGraphMemoryBytes <= 0) {
+      return;
     }
     const remaining = this.remainingGraphMemoryBytes - bytes;
     if (remaining < 0) {

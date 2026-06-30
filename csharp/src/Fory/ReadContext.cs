@@ -22,7 +22,6 @@ namespace Apache.Fory;
 public sealed class ReadContext
 {
     private const int MinRemoteTypeMetaLimit = 8192;
-    internal const long KnownGraphBudgetSlackBytes = 64 * 1024;
 
     private readonly ReusableArray<TypeMeta> _typeMetaRefs = new();
     private readonly UInt64Map<TypeMeta> _typeMetasByHeader = new();
@@ -76,19 +75,20 @@ public sealed class ReadContext
     internal RefReader RefReader { get; }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void InitGraphBudgetKnown(int rootBytes)
+    internal void InitGraphBudget()
     {
         long limit = _config.MaxGraphMemoryBytes;
-        if (limit < 0)
+        if (limit <= 0)
         {
-            limit = (long)rootBytes * 8 + KnownGraphBudgetSlackBytes;
+            _graphMemoryLimitBytes = 0;
+            _remainingGraphMemoryBytes = long.MaxValue;
+            return;
         }
 
         _graphMemoryLimitBytes = limit;
         _remainingGraphMemoryBytes = limit;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     /// <summary>
     /// Reserves estimated graph memory for the current root deserialization.
     /// </summary>
@@ -96,40 +96,24 @@ public sealed class ReadContext
     /// Serializer owners compute owner-specific formulas and pass raw bytes here. This
     /// accounting does not replace byte-availability checks before backing allocation.
     /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReserveGraphMemory(long bytes)
     {
+        if (bytes < 0)
+        {
+            ThrowGraphBudgetOverflow();
+        }
+        if (_graphMemoryLimitBytes <= 0)
+        {
+            return;
+        }
         long remaining = _remainingGraphMemoryBytes;
-        if ((ulong)bytes > (ulong)remaining)
+        if (bytes > remaining)
         {
             ThrowGraphBudgetExceeded(bytes, remaining, _graphMemoryLimitBytes);
         }
 
         _remainingGraphMemoryBytes = remaining - bytes;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    /// <summary>
-    /// Reserves <paramref name="count"/> multiplied by <paramref name="elementBytes"/> estimated
-    /// graph-owner bytes for the current root deserialization.
-    /// </summary>
-    /// <remarks>
-    /// This helper owns only overflow-safe arithmetic; concrete serializers and generated
-    /// serializers still own the collection, array, and map storage formulas.
-    /// </remarks>
-    public void ReserveCountedGraphMemory(int count, long elementBytes)
-    {
-        if (count < 0 || elementBytes < 0)
-        {
-            ThrowGraphBudgetOverflow();
-        }
-
-        uint length = (uint)count;
-        if (elementBytes != 0 && length > long.MaxValue / elementBytes)
-        {
-            ThrowGraphBudgetOverflow();
-        }
-
-        ReserveGraphMemory((long)length * elementBytes);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

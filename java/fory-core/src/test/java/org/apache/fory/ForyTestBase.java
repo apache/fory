@@ -344,7 +344,7 @@ public abstract class ForyTestBase {
   public static <T> T withReadContext(
       Fory fory, MemoryBuffer buffer, Function<ReadContext, T> action) {
     ReadContext context = (ReadContext) ReflectionUtils.getObjectFieldValue(fory, "readContext");
-    context.prepare(buffer, null, false, buffer.remaining(), false);
+    context.prepare(buffer, null, false);
     try {
       return action.apply(context);
     } finally {

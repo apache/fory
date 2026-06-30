@@ -94,9 +94,9 @@ let fory = Fory(compatible: false, checkClassVersion: true)
 `maxDepth` bounds decoded payload nesting depth.
 
 `maxGraphMemoryBytes` bounds estimated shallow graph memory accepted during one root
-deserialization. Swift roots are currently `Data` or `ByteBuffer`, so auto uses the root input byte
-length times `8`, plus `64 KiB`. Use `-1` for the default automatic limit; a positive value
-overrides it. `0` and negative values other than `-1` are rejected.
+deserialization. The default limit is a fixed `128 MiB` for all root input forms. A positive value
+overrides the default. Passing an explicit non-positive value disables this budget and can expose
+deserialization DoS risk from compact inputs that materialize large object graphs.
 
 Compatible-mode remote metadata is also limited:
 
@@ -111,7 +111,7 @@ Compatible-mode remote metadata is also limited:
 ```swift
 let fory = Fory(
   maxDepth: 5,
-  maxGraphMemoryBytes: -1,
+  maxGraphMemoryBytes: 128 * 1024 * 1024,
   maxTypeFields: 512,
   maxTypeMetaBytes: 4096,
   maxSchemaVersionsPerType: 10,

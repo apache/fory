@@ -38,12 +38,6 @@ public sealed class Config
         {
             throw new ArgumentOutOfRangeException(nameof(maxDepth), "MaxDepth must be greater than 0.");
         }
-        if (maxGraphMemoryBytes != -1 && maxGraphMemoryBytes <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(maxGraphMemoryBytes),
-                "MaxGraphMemoryBytes must be positive or -1 for auto.");
-        }
         if (maxTypeFields <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(maxTypeFields), "MaxTypeFields must be greater than 0.");
@@ -127,7 +121,7 @@ public sealed class ForyBuilder
     private bool? _compatible;
     private bool _checkStructVersion;
     private int _maxDepth = 20;
-    private long _maxGraphMemoryBytes = -1;
+    private long _maxGraphMemoryBytes = 128L * 1024 * 1024;
     private int _maxTypeFields = 512;
     private int _maxTypeMetaBytes = 4096;
     private int _maxSchemaVersionsPerType = 10;
@@ -185,17 +179,10 @@ public sealed class ForyBuilder
 
     /// <summary>
     /// Sets the maximum estimated graph memory accepted during one root deserialization.
-    /// Use <c>-1</c> for the automatic root-size-based limit, or a positive byte limit.
+    /// Positive values are byte limits. Explicit non-positive values disable this budget.
     /// </summary>
     public ForyBuilder MaxGraphMemoryBytes(long value)
     {
-        if (value != -1 && value <= 0)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(value),
-                "MaxGraphMemoryBytes must be positive or -1 for auto.");
-        }
-
         _maxGraphMemoryBytes = value;
         return this;
     }

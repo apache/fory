@@ -739,51 +739,8 @@ const TypeInfo *ReadContext::read_any_type_info(Error &error) {
   return result.value();
 }
 
-bool ReadContext::reserve_counted_graph_checked(uint32_t length,
-                                                size_t elem_bytes) {
-  if (FORY_PREDICT_FALSE(elem_bytes != 0 &&
-                         static_cast<size_t>(length) >
-                             std::numeric_limits<size_t>::max() / elem_bytes)) {
-    return set_graph_memory_overflow(length, elem_bytes);
-  }
-  return reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
-}
-
-bool ReadContext::init_explicit_graph_budget(int64_t configured) {
-  const uint64_t limit = static_cast<uint64_t>(configured);
-  if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
-    if (FORY_PREDICT_FALSE(limit > static_cast<uint64_t>(
-                                       std::numeric_limits<size_t>::max()))) {
-      return set_graph_memory_error(
-          "max_graph_memory_bytes does not fit size_t");
-    }
-  }
-  remaining_graph_memory_bytes_ = static_cast<size_t>(limit);
-  graph_budget_state_ = kGraphBudgetReady;
-  return true;
-}
-
-bool ReadContext::materialize_graph_budget() {
-  switch (graph_budget_state_) {
-  case kGraphBudgetPendingKnown:
-    return init_graph_budget_known(pending_graph_root_bytes_);
-  case kGraphBudgetPendingUnknown:
-    return init_graph_budget_unknown();
-  default:
-    return true;
-  }
-}
-
 bool ReadContext::set_graph_memory_error(const std::string &message) {
   set_error(Error::invalid_data(message));
-  return false;
-}
-
-bool ReadContext::set_graph_memory_overflow(uint32_t length,
-                                            size_t elem_bytes) {
-  set_error(Error::invalid_data(
-      "graph memory estimate overflows: length=" + std::to_string(length) +
-      " elementBytes=" + std::to_string(elem_bytes)));
   return false;
 }
 
@@ -803,9 +760,8 @@ void ReadContext::reset() {
   }
   reading_type_infos_.clear();
   current_dyn_depth_ = 0;
-  // Root deserialization initializes the graph budget before reading the
-  // header; direct ReadContext users start with the unlimited sentinel fields.
-  // Leave those fields untouched here so root guard cleanup stays store-light.
+  graph_budget_enabled_ = false;
+  remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
   if (meta_string_table_active_) {
     meta_string_table_.reset();
     meta_string_table_active_ = false;

@@ -211,17 +211,18 @@ Runtimes should enforce a root-deserialization budget for estimated shallow memo
 materialized graph. This is cumulative accounting for graph owners created by one root read; it is
 not exact heap measurement and it is not a raw element-slot limit.
 
-The public configuration is `maxGraphMemoryBytes`. `-1` means automatic input-shaped budgeting.
-Positive user configuration always wins. For known-length root input, the automatic budget is
-`inputBytes * 8 + 64 KiB`. For true stream or otherwise unknown-length root input, the automatic
-budget is fixed at `128 MiB`. Stream budgeting should not depend on dynamic bytes-read accounting.
+The public configuration is `maxGraphMemoryBytes`. The default is a fixed `128 MiB` for all root
+input forms; positive user configuration overrides the default. Explicit non-positive configuration
+disables this budget and can expose deserialization DoS risk from compact inputs that materialize
+large object graphs. The budget is not derived from root input size, and stream budgeting should not
+depend on dynamic bytes-read accounting.
 
 Graph budget accounting should:
 
 - happen in root-operation read state, with cleanup owned by the root deserialization `finally`;
-- keep read context/read state limited to raw byte reservation and generic counted-byte arithmetic;
-  collection, map, array, struct, and object storage formulas belong in the concrete serializer or
-  generated serializer owner;
+- keep read context/read state limited to raw byte reservation; counted arithmetic and collection,
+  map, array, struct, and object storage formulas belong in the concrete serializer or generated
+  serializer owner;
 - reject arithmetic overflow before comparing budget or allocating;
 - estimate lower-bound shallow owner storage: independently materialized collections, maps, sets,
   and reference arrays reserve nonzero shallow self cost plus backing/reference/inline storage, and

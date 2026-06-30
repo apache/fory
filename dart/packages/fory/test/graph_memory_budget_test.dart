@@ -30,6 +30,7 @@ import 'package:test/test.dart';
 part 'graph_memory_budget_test.fory.dart';
 
 const Matcher _throwsGraphBudget = ThrowsGraphBudget();
+const int _defaultGraphMemoryBytes = 128 * 1024 * 1024;
 const int _objectBytes = 1;
 const int _referenceBytes = 4;
 
@@ -113,7 +114,10 @@ void _registerCompatibleArray(Fory fory) {
   );
 }
 
-ReadContext _readContext(Buffer buffer, {int maxGraphMemoryBytes = -1}) {
+ReadContext _readContext(
+  Buffer buffer, {
+  int maxGraphMemoryBytes = _defaultGraphMemoryBytes,
+}) {
   final config = Config(maxGraphMemoryBytes: maxGraphMemoryBytes);
   final resolver = TypeResolver(config);
   return ReadContext(config, resolver, RefReader(), MetaStringReader(resolver))
@@ -130,27 +134,36 @@ Object? _readWithBudget(Object? value, int budget) {
 
 void main() {
   group('graph memory budget', () {
-    test('known length auto derives from input bytes', () {
+    test('fixed default applies to roots', () {
       final buffer = Buffer.wrap(Uint8List(17));
       final context = _readContext(buffer);
 
-      expect(context.effectiveGraphMemoryBytes, equals(17 * 8 + 64 * 1024));
       expect(
-        () => context.reserveGraphMemory(17 * 8 + 64 * 1024),
+        context.effectiveGraphMemoryBytes,
+        equals(_defaultGraphMemoryBytes),
+      );
+      expect(
+        () => context.reserveGraphMemory(_defaultGraphMemoryBytes),
         returnsNormally,
       );
       expect(() => context.reserveGraphMemory(1), _throwsGraphBudget);
     });
 
-    test('explicit config overrides auto', () {
+    test('explicit config overrides default and non-positive disables', () {
       final buffer = Buffer.wrap(Uint8List(4096));
       final context = _readContext(buffer, maxGraphMemoryBytes: 31);
 
       expect(context.effectiveGraphMemoryBytes, equals(31));
       expect(() => context.reserveGraphMemory(31), returnsNormally);
       expect(() => context.reserveGraphMemory(1), _throwsGraphBudget);
-      expect(() => Fory(maxGraphMemoryBytes: 0), throwsArgumentError);
-      expect(() => Fory(maxGraphMemoryBytes: -2), throwsArgumentError);
+
+      final disabled = _readContext(buffer, maxGraphMemoryBytes: 0);
+      expect(disabled.effectiveGraphMemoryBytes, equals(0));
+      expect(
+        () => disabled.reserveGraphMemory(_defaultGraphMemoryBytes + 1),
+        returnsNormally,
+      );
+      expect(() => Fory(maxGraphMemoryBytes: -2), returnsNormally);
     });
 
     test('uses parent storage for nested empty containers', () {

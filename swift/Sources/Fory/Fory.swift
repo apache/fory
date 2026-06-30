@@ -33,15 +33,12 @@ public struct Config {
     compatible: Bool? = nil,
     checkClassVersion: Bool? = nil,
     maxDepth: Int = 5,
-    maxGraphMemoryBytes: Int64 = -1,
+    maxGraphMemoryBytes: Int64 = 128 * 1024 * 1024,
     maxTypeFields: Int = 512,
     maxTypeMetaBytes: Int = 4096,
     maxSchemaVersionsPerType: Int = 10,
     maxAverageSchemaVersionsPerType: Int = 3
   ) {
-    precondition(
-      maxGraphMemoryBytes == -1 || maxGraphMemoryBytes > 0,
-      "maxGraphMemoryBytes must be positive or -1 for auto")
     precondition(maxTypeFields > 0, "maxTypeFields must be positive")
     precondition(maxTypeMetaBytes > 0, "maxTypeMetaBytes must be positive")
     precondition(maxSchemaVersionsPerType > 0, "maxSchemaVersionsPerType must be positive")
@@ -78,7 +75,7 @@ public final class Fory {
     compatible: Bool? = nil,
     checkClassVersion: Bool? = nil,
     maxDepth: Int = 5,
-    maxGraphMemoryBytes: Int64 = -1,
+    maxGraphMemoryBytes: Int64 = 128 * 1024 * 1024,
     maxTypeFields: Int = 512,
     maxTypeMetaBytes: Int = 4096,
     maxSchemaVersionsPerType: Int = 10,
@@ -497,7 +494,7 @@ public final class Fory {
     _ body: (ReadContext) throws -> R
   ) throws -> R {
     readContext.buffer.replace(with: data)
-    try readContext.initGraphMemoryBudgetKnown(rootBytes: data.count)
+    try readContext.initGraphMemoryBudget()
     defer {
       readContext.reset()
     }
@@ -559,7 +556,7 @@ public final class Fory {
   ) throws -> R {
     try typeResolver.finishRegistration()
     readContext.buffer.swapState(with: buffer)
-    try readContext.initGraphMemoryBudgetKnown(rootBytes: readContext.buffer.remaining)
+    try readContext.initGraphMemoryBudget()
     defer {
       readContext.buffer.swapState(with: buffer)
       readContext.reset()

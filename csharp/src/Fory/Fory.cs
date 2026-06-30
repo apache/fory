@@ -190,7 +190,7 @@ public sealed class Fory
     {
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
-        _readContext.InitGraphBudgetKnown(payload.Length);
+        _readContext.InitGraphBudget();
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -211,7 +211,7 @@ public sealed class Fory
     {
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
-        _readContext.InitGraphBudgetKnown(payload.Length);
+        _readContext.InitGraphBudget();
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -232,7 +232,7 @@ public sealed class Fory
         byte[] bytes = payload.ToArray();
         ByteReader reader = _readContext.Reader;
         reader.Reset(bytes);
-        _readContext.InitGraphBudgetKnown(bytes.Length);
+        _readContext.InitGraphBudget();
         T value = DeserializeFromReader<T>(reader);
         payload = payload.Slice(reader.Cursor);
         return value;

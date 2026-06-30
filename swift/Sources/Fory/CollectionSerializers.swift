@@ -42,15 +42,28 @@ private func storedElementBytes<Element: Serializer>(_ type: Element.Type) -> In
 }
 
 @inline(__always)
+private func reserveGraphStorage(
+  _ context: ReadContext,
+  count: Int,
+  elementBytes: Int
+) throws {
+  if count < 0 || elementBytes < 0 {
+    throw ForyError.invalidData("graph memory estimate overflows")
+  }
+  let (bytes, overflow) = count.multipliedReportingOverflow(by: elementBytes)
+  if overflow {
+    throw ForyError.invalidData("graph memory estimate overflows")
+  }
+  try context.reserveGraphMemory(bytes)
+}
+
+@inline(__always)
 private func reserveGraphArrayMemory<Element: Serializer>(
   _ context: ReadContext,
   _ type: Element.Type,
   count: Int
 ) throws {
-  try context.reserveCountedGraphMemory(
-    count: count,
-    elementBytes: storedElementBytes(type)
-  )
+  try reserveGraphStorage(context, count: count, elementBytes: storedElementBytes(type))
 }
 
 @inline(__always)
@@ -64,9 +77,9 @@ private func reserveGraphMapMemory<Key: Serializer, Value: Serializer>(
   let valueBytes = storedElementBytes(value)
   let (elementBytes, overflow) = keyBytes.addingReportingOverflow(valueBytes)
   if overflow {
-    try context.reserveGraphMemory(-1)
+    throw ForyError.invalidData("graph memory estimate overflows")
   }
-  try context.reserveCountedGraphMemory(count: count, elementBytes: elementBytes)
+  try reserveGraphStorage(context, count: count, elementBytes: elementBytes)
 }
 
 private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> TypeId? {

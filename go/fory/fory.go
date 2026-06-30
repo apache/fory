@@ -83,7 +83,7 @@ func defaultConfig() Config {
 		MaxDepth:                        20,
 		IsXlang:                         true,
 		MaxTypeFields:                   512,
-		MaxGraphMemoryBytes:             -1,
+		MaxGraphMemoryBytes:             128 * 1024 * 1024,
 		MaxTypeMetaBytes:                4096,
 		MaxSchemaVersionsPerType:        10,
 		MaxAverageSchemaVersionsPerType: 3,
@@ -113,11 +113,8 @@ func WithMaxDepth(depth int) Option {
 }
 
 // WithMaxGraphMemoryBytes sets the maximum estimated graph memory accepted during one root deserialization.
-// Use -1 for the automatic input-shaped limit.
+// Non-positive values disable graph-memory enforcement.
 func WithMaxGraphMemoryBytes(size int64) Option {
-	if size != -1 && size <= 0 {
-		panic("MaxGraphMemoryBytes must be positive or -1 for auto")
-	}
 	return func(f *Fory) {
 		f.config.MaxGraphMemoryBytes = size
 	}
@@ -576,7 +573,7 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
 	f.readCtx.SetData(data)
 	target := reflect.ValueOf(v).Elem()
-	if err := f.initRootGraphBudget(target, len(data), false); err != nil {
+	if err := f.initRootGraphBudget(target); err != nil {
 		return err
 	}
 
@@ -586,7 +583,7 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readRootValue(target)
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -671,7 +668,7 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = buf
 	target := reflect.ValueOf(v).Elem()
-	if err := f.initRootGraphBudget(target, buf.readableBytes(), false); err != nil {
+	if err := f.initRootGraphBudget(target); err != nil {
 		f.readCtx.buffer = origBuffer
 		return err
 	}
@@ -683,7 +680,7 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readRootValue(target)
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		f.readCtx.buffer = origBuffer
 		return f.readCtx.TakeError()
@@ -787,7 +784,7 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	target := rv.Elem()
-	if err := f.initRootGraphBudget(target, buffer.readableBytes(), false); err != nil {
+	if err := f.initRootGraphBudget(target); err != nil {
 		return err
 	}
 
@@ -798,7 +795,7 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readRootValue(target)
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -1054,7 +1051,7 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 		*[]byte, *[]int8, *[]int16, *[]int32, *[]int64, *[]int, *[]float32, *[]float64, *[]bool:
 	default:
 		targetVal = reflect.ValueOf(target).Elem()
-		if err := f.initRootGraphBudget(targetVal, len(data), false); err != nil {
+		if err := f.initRootGraphBudget(targetVal); err != nil {
 			return err
 		}
 	}
@@ -1213,36 +1210,33 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	}
 }
 
-func (f *Fory) initRootGraphBudget(target reflect.Value, rootInputBytes int, unknownLengthInput bool) error {
-	if target.IsValid() && target.Type() == f.rootGraphSkipType {
+func (f *Fory) initRootGraphBudget(target reflect.Value) error {
+	if !target.IsValid() {
+		f.readCtx.initGraphMemoryBudget()
+		if f.readCtx.HasError() {
+			return f.readCtx.TakeError()
+		}
 		return nil
 	}
-	return f.initRootGraphBudgetSlow(target, rootInputBytes, unknownLengthInput)
-}
-
-func (f *Fory) readRootValue(target reflect.Value) {
-	if target.IsValid() {
-		targetType := target.Type()
-		if targetType.Kind() == reflect.Struct && !f.typeResolver.IsUnionType(targetType) {
-			f.readCtx.ReadStruct(target)
-			return
-		}
+	targetType := target.Type()
+	if targetType == f.rootGraphSkipType {
+		return nil
 	}
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	return f.initRootGraphBudgetSlow(targetType)
 }
 
 //go:noinline
-func (f *Fory) initRootGraphBudgetSlow(target reflect.Value, rootInputBytes int, unknownLengthInput bool) error {
-	bytes, hasChildren, isStruct := f.rootGraphInfo(target)
+func (f *Fory) initRootGraphBudgetSlow(targetType reflect.Type) error {
+	bytes, hasChildren, isStruct := f.rootGraphInfo(targetType)
 	if !isStruct {
-		f.readCtx.initGraphMemoryBudget(rootInputBytes, unknownLengthInput)
+		f.readCtx.initGraphMemoryBudget()
 		if f.readCtx.HasError() {
 			return f.readCtx.TakeError()
 		}
 		return nil
 	}
 	if hasChildren {
-		f.readCtx.initGraphMemoryBudget(rootInputBytes, unknownLengthInput)
+		f.readCtx.initGraphMemoryBudget()
 		if f.readCtx.HasError() {
 			return f.readCtx.TakeError()
 		}
@@ -1251,18 +1245,17 @@ func (f *Fory) initRootGraphBudgetSlow(target reflect.Value, rootInputBytes int,
 		}
 		return nil
 	}
-	if f.config.MaxGraphMemoryBytes <= 0 && bytes <= knownRootBudgetSlackBytes {
-		f.rootGraphSkipType = target.Type()
+	if f.config.MaxGraphMemoryBytes <= 0 || bytes <= f.config.MaxGraphMemoryBytes {
+		f.rootGraphSkipType = targetType
 		return nil
 	}
-	return f.checkRootGraphSelf(bytes, rootInputBytes, unknownLengthInput)
+	return f.checkRootGraphSelf(bytes)
 }
 
-func (f *Fory) rootGraphInfo(target reflect.Value) (int64, bool, bool) {
-	if !target.IsValid() || target.Kind() != reflect.Struct {
+func (f *Fory) rootGraphInfo(targetType reflect.Type) (int64, bool, bool) {
+	if targetType == nil || targetType.Kind() != reflect.Struct {
 		return 0, false, false
 	}
-	targetType := target.Type()
 	if targetType == dateReflectType || targetType == timeReflectType {
 		return 0, false, true
 	}
@@ -1277,26 +1270,13 @@ func (f *Fory) rootGraphInfo(target reflect.Value) (int64, bool, bool) {
 	return bytes, hasChildren, true
 }
 
-func (f *Fory) checkRootGraphSelf(bytes int64, rootInputBytes int, unknownLengthInput bool) error {
+func (f *Fory) checkRootGraphSelf(bytes int64) error {
 	if bytes <= 0 {
 		return nil
 	}
 	limit := f.config.MaxGraphMemoryBytes
 	if limit <= 0 {
-		if unknownLengthInput {
-			limit = streamRootBudgetBytes
-		} else {
-			if rootInputBytes < 0 {
-				return DeserializationErrorf("root input size must be non-negative: %d", rootInputBytes)
-			}
-			if int64(rootInputBytes) > (MaxInt64-knownRootBudgetSlackBytes)/knownRootBudgetMultiplier {
-				return DeserializationErrorf("root input size %d overflows automatic graph memory budget", rootInputBytes)
-			}
-			if bytes <= knownRootBudgetSlackBytes {
-				return nil
-			}
-			limit = int64(rootInputBytes)*knownRootBudgetMultiplier + knownRootBudgetSlackBytes
-		}
+		return nil
 	}
 	if bytes > limit {
 		return DeserializationErrorf(

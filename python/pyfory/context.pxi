@@ -30,9 +30,6 @@ STRING_TYPE_ID = TypeId.STRING
 SMALL_STRING_THRESHOLD = 16
 cdef int32_t MAX_CACHED_META_STRINGS = 8192
 cdef int32_t MAX_CACHED_META_STRING_LENGTH = 2048
-cdef int64_t _KNOWN_ROOT_BUDGET_MULTIPLIER = 8
-cdef int64_t _KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024
-cdef int64_t _STREAM_ROOT_BUDGET_BYTES = 128 * 1024 * 1024
 cdef int64_t _MAX_GRAPH_MEMORY_BYTES = 9223372036854775807
 
 
@@ -793,26 +790,16 @@ cdef class ReadContext:
         buffers=None,
         unsupported_objects=None,
         bint peer_out_of_band_enabled=False,
-        int64_t root_input_bytes=-1,
     ):
         cdef int64_t limit
-        if self.max_graph_memory_bytes > 0:
-            limit = self.max_graph_memory_bytes
-        elif buffer.has_input_stream():
-            limit = _STREAM_ROOT_BUDGET_BYTES
-        else:
-            if root_input_bytes < 0:
-                root_input_bytes = <int64_t>buffer.size() - buffer.get_reader_index()
-            if root_input_bytes > (_MAX_GRAPH_MEMORY_BYTES - _KNOWN_ROOT_BUDGET_SLACK_BYTES) // _KNOWN_ROOT_BUDGET_MULTIPLIER:
-                raise ValueError("max_graph_memory_bytes auto budget overflow")
-            limit = root_input_bytes * _KNOWN_ROOT_BUDGET_MULTIPLIER + _KNOWN_ROOT_BUDGET_SLACK_BYTES
+        limit = self.max_graph_memory_bytes if self.max_graph_memory_bytes > 0 else 0
         self.buffer = buffer
         self.c_buffer = buffer.c_buffer
         self.buffers = iter(buffers) if buffers is not None else None
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
         self.graph_memory_limit_bytes = limit
-        self.remaining_graph_memory_bytes = limit
+        self.remaining_graph_memory_bytes = limit if limit > 0 else _MAX_GRAPH_MEMORY_BYTES
         self.depth = 0
 
     cpdef inline reset(self):
@@ -837,6 +824,8 @@ cdef class ReadContext:
             raise ValueError("Estimated graph memory is negative")
         if num_bytes > _MAX_GRAPH_MEMORY_BYTES:
             raise ValueError("Estimated graph memory overflow")
+        if self.graph_memory_limit_bytes <= 0:
+            return
         if num_bytes > self.remaining_graph_memory_bytes:
             used = self.graph_memory_limit_bytes - self.remaining_graph_memory_bytes
             raise ValueError(
@@ -848,6 +837,8 @@ cdef class ReadContext:
 
     cdef inline void reserve_graph_memory_fast(self, int64_t num_bytes):
         cdef int64_t used
+        if self.graph_memory_limit_bytes <= 0:
+            return
         if num_bytes > self.remaining_graph_memory_bytes:
             used = self.graph_memory_limit_bytes - self.remaining_graph_memory_bytes
             raise ValueError(
@@ -857,22 +848,12 @@ cdef class ReadContext:
             )
         self.remaining_graph_memory_bytes -= num_bytes
 
-    cpdef inline reserve_graph_memory(self, int64_t num_bytes):
-        self.reserve_graph_memory_c(num_bytes)
-
-    cdef inline void reserve_counted_graph_memory_c(
-        self,
-        int64_t count,
-        int64_t element_bytes,
-    ):
-        if count < 0 or element_bytes < 0:
+    cpdef inline reserve_graph_memory(self, num_bytes):
+        if num_bytes < 0:
             raise ValueError("Estimated graph memory is negative")
-        if element_bytes != 0 and count > _MAX_GRAPH_MEMORY_BYTES // element_bytes:
+        if num_bytes > _MAX_GRAPH_MEMORY_BYTES:
             raise ValueError("Estimated graph memory overflow")
-        self.reserve_graph_memory_c(count * element_bytes)
-
-    cpdef inline reserve_counted_graph_memory(self, int64_t count, int64_t element_bytes):
-        self.reserve_counted_graph_memory_c(count, element_bytes)
+        self.reserve_graph_memory_c(<int64_t>num_bytes)
 
     cpdef inline add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj

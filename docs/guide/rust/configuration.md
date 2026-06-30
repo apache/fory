@@ -114,26 +114,18 @@ let fory = Fory::builder()
 
 `max_graph_memory_bytes(...)` limits estimated shallow graph memory accepted during one root read.
 The budget covers `Vec`/collection element storage, map key/value storage, and materialized struct
-or object field storage; it is not an exact process heap limit. The default is `-1`, which selects
-an automatic limit based on the input size:
-
-```rust
-let fory = Fory::builder().max_graph_memory_bytes(-1).build();
-```
-
-For byte-slice and `Reader` roots, the automatic limit is:
-
-```text
-input bytes * 8 + 64 KiB
-```
-
-Set a positive byte value when trusted payloads need a larger or smaller limit:
+or object field storage; it is not an exact process heap limit. The default is a fixed `128 MiB` for
+all root input forms. Set a positive byte value when trusted payloads need a larger or smaller
+limit:
 
 ```rust
 let fory = Fory::builder()
     .max_graph_memory_bytes(256 * 1024 * 1024)
     .build();
 ```
+
+Passing an explicit non-positive value disables this budget and can expose deserialization DoS risk
+from compact inputs that materialize large object graphs.
 
 ### Explicit Xlang Examples
 
@@ -174,16 +166,16 @@ let fory = Fory::builder()
 
 ## Configuration Summary
 
-| Option                                        | Description                                       | Default |
-| --------------------------------------------- | ------------------------------------------------- | ------- |
-| `compatible(bool)`                            | Enable schema evolution                           | `true`  |
-| `xlang(bool)`                                 | Use xlang mode                                    | `true`  |
-| `max_dyn_depth(u32)`                          | Maximum nesting depth for dynamic types           | `5`     |
-| `max_graph_memory_bytes(i64)`                 | Estimated graph memory per root read              | `-1`    |
-| `max_type_fields(usize)`                      | Max fields in one received struct metadata body   | `512`   |
-| `max_type_meta_bytes(usize)`                  | Max encoded bytes in one received metadata body   | `4096`  |
-| `max_schema_versions_per_type(usize)`         | Max remote metadata versions for one logical type | `10`    |
-| `max_average_schema_versions_per_type(usize)` | Average remote metadata versions across types     | `3`     |
+| Option                                        | Description                                       | Default   |
+| --------------------------------------------- | ------------------------------------------------- | --------- |
+| `compatible(bool)`                            | Enable schema evolution                           | `true`    |
+| `xlang(bool)`                                 | Use xlang mode                                    | `true`    |
+| `max_dyn_depth(u32)`                          | Maximum nesting depth for dynamic types           | `5`       |
+| `max_graph_memory_bytes(i64)`                 | Estimated graph memory per root read              | `128 MiB` |
+| `max_type_fields(usize)`                      | Max fields in one received struct metadata body   | `512`     |
+| `max_type_meta_bytes(usize)`                  | Max encoded bytes in one received metadata body   | `4096`    |
+| `max_schema_versions_per_type(usize)`         | Max remote metadata versions for one logical type | `10`      |
+| `max_average_schema_versions_per_type(usize)` | Average remote metadata versions across types     | `3`       |
 
 ## Compatible Mode
 
