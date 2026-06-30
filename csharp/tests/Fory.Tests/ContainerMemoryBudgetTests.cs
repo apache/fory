@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
 
@@ -43,6 +44,10 @@ public sealed class BudgetArrayHolder
 
 public sealed class ContainerMemoryBudgetTests
 {
+    private const int ReferenceBytes = 4;
+
+    private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+
     private static ForyRuntime NewFory(long maxContainerMemoryBytes = -1)
     {
         return ForyRuntime.Builder()
@@ -62,51 +67,40 @@ public sealed class ContainerMemoryBudgetTests
 
     private static long ListBudget<T>(int count)
     {
-        return count == 0
-            ? ReadContext.ContainerFixedBytes
-            : ReadContext.ContainerFixedBytes + ReadContext.ArrayHeaderBytes +
-              (long)count * ReadContext.ElementBytes<T>();
+        return (long)count * ElementBytes<T>();
     }
 
     private static long ArrayBudget<T>(int count)
     {
-        return ReadContext.ArrayHeaderBytes + (long)count * ReadContext.ElementBytes<T>();
+        return (long)count * ElementBytes<T>();
     }
 
     private static long MapBudget<TKey, TValue>(int count)
     {
-        return count == 0
-            ? ReadContext.ContainerFixedBytes
-            : ReadContext.ContainerFixedBytes + ReadContext.ArrayHeaderBytes * 2 +
-              (long)count * (ReadContext.ElementBytes<TKey>() + ReadContext.ElementBytes<TValue>() +
-                             ReadContext.MapEntryOverheadBytes + ReadContext.ReferenceBytes);
+        return (long)count * (ElementBytes<TKey>() + ElementBytes<TValue>());
     }
 
     [Fact]
-    public void KnownLengthAutoBudgetRejectsLargeNestedEmpties()
+    public void KnownLengthAutoBudgetUsesInputBytes()
     {
-        const int count = 3000;
-        List<List<string>> value = Enumerable.Range(0, count).Select(_ => new List<string>()).ToList();
-        byte[] bytes = Serialize(value);
-        long autoLimit = bytes.LongLength * 8 + ReadContext.KnownContainerBudgetSlackBytes;
-        long required = ListBudget<List<string>>(count) + count * ListBudget<string>(0);
-        Assert.True(required > autoLimit);
+        const int rootBytes = 17;
+        long expected = rootBytes * 8 + ReadContext.KnownContainerBudgetSlackBytes;
+        ReadContext context = new(new ByteReader([]), new TypeResolver(), NewFory().Config);
 
-        Assert.Throws<InvalidDataException>(() => NewFory().Deserialize<List<List<string>>>(bytes));
-
-        List<List<string>> result = NewFory(required).Deserialize<List<List<string>>>(bytes);
-        Assert.Equal(count, result.Count);
+        context.InitContainerBudgetKnown(rootBytes);
+        context.ReserveContainerMemory(expected);
+        Assert.Throws<InvalidDataException>(() => context.ReserveContainerMemory(ReferenceBytes));
     }
 
     [Fact]
-    public void ReadOnlySequenceUsesKnownLengthAutoBudget()
+    public void ReadOnlySequenceUsesKnownLengthRoot()
     {
-        const int count = 3000;
+        const int count = 6;
         List<List<string>> value = Enumerable.Range(0, count).Select(_ => new List<string>()).ToList();
         byte[] bytes = Serialize(value);
         ReadOnlySequence<byte> sequence = new(bytes);
 
-        Assert.Throws<InvalidDataException>(() => NewFory().Deserialize<List<List<string>>>(ref sequence));
+        Assert.Equal(count, NewFory().Deserialize<List<List<string>>>(ref sequence).Count);
     }
 
     [Fact]

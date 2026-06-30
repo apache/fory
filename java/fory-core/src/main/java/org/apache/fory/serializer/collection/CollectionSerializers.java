@@ -74,6 +74,8 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class CollectionSerializers {
+  private static final int REFERENCE_BYTES = MemoryBuffer.objectArrayIndexScale();
+
   private static final Comparator NATURAL_ORDER_COMPARATOR = Comparator.naturalOrder();
 
   private static void requireXlangNaturalOrdering(Class<?> type, Comparator<?> comparator) {
@@ -927,7 +929,7 @@ public class CollectionSerializers {
       setNumElements(numElements);
       int capacity = buffer.readVarUInt32Small7();
       checkBoundedQueueCapacity(numElements, capacity);
-      readContext.reserveCollectionCapacity(numElements, capacity);
+      readContext.reserveContainerMemory((long) (capacity - numElements) * REFERENCE_BYTES);
       buffer.checkReadableBytes(capacity);
       ArrayBlockingQueue queue = new ArrayBlockingQueue<>(capacity);
       readContext.reference(queue);

@@ -17,8 +17,6 @@
 
 from __future__ import annotations
 
-import struct
-
 from pyfory.serialization import Config
 from pyfory.lib import mmh3
 from pyfory.meta.metastring import Encoding
@@ -42,10 +40,6 @@ STRING_TYPE_ID = TypeId.STRING
 _KNOWN_ROOT_BUDGET_MULTIPLIER = 8
 _KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024
 _STREAM_ROOT_BUDGET_BYTES = 128 * 1024 * 1024
-_COLLECTION_OBJECT_BYTES = 56
-_MAP_OBJECT_BYTES = 64
-_MAP_ENTRY_BYTES = 32
-_REFERENCE_BYTES = struct.calcsize("P")
 _MAX_CONTAINER_MEMORY_BYTES = (1 << 63) - 1
 
 
@@ -587,20 +581,12 @@ class ReadContext:
             )
         self.remaining_container_memory_bytes = remaining - num_bytes
 
-    def reserve_collection_memory(self, num_elements):
-        if num_elements < 0:
-            raise ValueError("Container element count is negative")
-        if num_elements > (_MAX_CONTAINER_MEMORY_BYTES - _COLLECTION_OBJECT_BYTES) // _REFERENCE_BYTES:
+    def reserve_counted_container_memory(self, count, element_bytes):
+        if count < 0 or element_bytes < 0:
+            raise ValueError("Estimated container memory is negative")
+        if element_bytes and count > _MAX_CONTAINER_MEMORY_BYTES // element_bytes:
             raise ValueError("Estimated container memory overflow")
-        self.reserve_container_memory(_COLLECTION_OBJECT_BYTES + num_elements * _REFERENCE_BYTES)
-
-    def reserve_map_memory(self, num_elements):
-        if num_elements < 0:
-            raise ValueError("Map entry count is negative")
-        bytes_per_entry = _MAP_ENTRY_BYTES + 5 * _REFERENCE_BYTES
-        if num_elements > (_MAX_CONTAINER_MEMORY_BYTES - _MAP_OBJECT_BYTES) // bytes_per_entry:
-            raise ValueError("Estimated container memory overflow")
-        self.reserve_container_memory(_MAP_OBJECT_BYTES + num_elements * bytes_per_entry)
+        self.reserve_container_memory(count * element_bytes)
 
     def add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj

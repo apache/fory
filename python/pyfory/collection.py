@@ -23,6 +23,8 @@ are imported through `pyfory.serialization`. This module is the pure-Python
 fallback only.
 """
 
+import struct
+
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory._serializer import Serializer, StringSerializer
 from pyfory.resolver import NOT_NULL_VALUE_FLAG, NULL_FLAG
@@ -33,6 +35,7 @@ COLL_TRACKING_REF = 0b1
 COLL_HAS_NULL = 0b10
 COLL_IS_DECL_ELEMENT_TYPE = 0b100
 COLL_IS_SAME_TYPE = 0b1000
+_REFERENCE_BYTES = struct.calcsize("P")
 
 
 def _needs_element_type_info(type_id):
@@ -176,7 +179,7 @@ class CollectionSerializer(Serializer):
 
     def read(self, read_context):
         length = read_context.read_var_uint32()
-        read_context.reserve_collection_memory(length)
+        read_context.reserve_container_memory(length * _REFERENCE_BYTES)
         if length != 0:
             read_context.check_readable_bytes(length)
         collection_ = self.new_instance(read_context, self.type_)
@@ -458,7 +461,7 @@ class MapSerializer(Serializer):
 
     def read(self, read_context):
         size = read_context.read_var_uint32()
-        read_context.reserve_map_memory(size)
+        read_context.reserve_container_memory(size * 2 * _REFERENCE_BYTES)
         if size != 0:
             read_context.check_readable_bytes(size)
         map_ = {}

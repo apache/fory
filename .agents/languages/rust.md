@@ -21,13 +21,16 @@ Load this file when changing `rust/` or Rust xlang behavior.
 - Root deserialization container memory budget state belongs to `ReadContext` and is initialized by
   the root `Fory` read methods before the header is consumed. Rust roots are byte-slice/`Reader`
   backed, so auto budget uses `inputBytes * 8 + 64 KiB`; do not add dynamic bytes-read accounting.
-- Rust `Vec<T>` stores inline element storage, so general LIST paths charge fixed `Vec` cost plus
-  `len * size_of::<T>()`, including `Vec<String>` and `Vec<struct>`. Dedicated primitive dense
-  ARRAY `Vec<T>` readers, strings, binary, and primitive fixed-array owners stay skipped and keep
-  their byte checks.
+  `ReadContext` may expose only raw byte reservation and generic counted-byte arithmetic; `Vec`,
+  collection, map, and derive codec formulas belong in their serializer owners.
+- Rust `Vec<T>` stores inline element storage, so general LIST paths charge
+  `len * size_of::<T>()`, including `Vec<String>` and `Vec<struct>`. Maps charge
+  `len * (size_of::<K>() + size_of::<V>())`. Dedicated primitive dense ARRAY `Vec<T>` readers,
+  strings, binary, and primitive fixed-array owners stay skipped and keep their byte checks.
 - Direct `Serializer` collection/map paths and derive `Codec` collection/map paths are separate
   allocation owners. Keep reservations in both before `Vec::with_capacity`,
-  `HashMap::with_capacity`, or collection materialization; charge zero-size containers.
+  `HashMap::with_capacity`, or collection materialization. Empty containers with no dynamic backing
+  normally charge zero.
 
 ## Key Paths
 

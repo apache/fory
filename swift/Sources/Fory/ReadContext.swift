@@ -22,11 +22,6 @@ private let typeMetaSizeMask = 0xFF
 public final class ReadContext {
   static let knownContainerBudgetSlackBytes = 64 * 1024
   static let unknownContainerBudgetBytes = 128 * 1024 * 1024
-  static let containerFixedBytes = 32
-  static let arrayHeaderBytes = 24
-  static let referenceBytes = 4
-  static let collectionEntryOverheadBytes = 16
-  static let mapEntryOverheadBytes = 24
   private static let maxKnownContainerRootBytes = (Int.max - knownContainerBudgetSlackBytes) / 8
 
   public let buffer: ByteBuffer
@@ -76,108 +71,10 @@ public final class ReadContext {
   }
 
   @inline(__always)
-  func reserveArrayMemory<Element: Serializer>(_ type: Element.Type, count: Int) throws {
-    try reserveArrayMemory(count: count, elementBytes: containerElementBytes(type))
-  }
-
-  @inline(__always)
-  func reserveFieldArrayMemory<ElementCodec: FieldCodec>(
-    _ codec: ElementCodec.Type,
-    count: Int
-  ) throws {
-    try reserveArrayMemory(count: count, elementBytes: fieldElementBytes(codec))
-  }
-
-  @inline(__always)
-  func reserveReferenceArrayMemory(count: Int) throws {
-    try reserveArrayMemory(count: count, elementBytes: Self.referenceBytes)
-  }
-
-  @inline(__always)
-  func reserveSetMemory<Element: Serializer>(_ type: Element.Type, count: Int) throws {
-    try reserveSetMemory(count: count, elementBytes: containerElementBytes(type))
-  }
-
-  @inline(__always)
-  func reserveFieldSetMemory<ElementCodec: FieldCodec>(
-    _ codec: ElementCodec.Type,
-    count: Int
-  ) throws {
-    try reserveSetMemory(count: count, elementBytes: fieldElementBytes(codec))
-  }
-
-  @inline(__always)
-  func reserveMapMemory<Key: Serializer, Value: Serializer>(
-    key _: Key.Type,
-    value _: Value.Type,
-    count: Int
-  ) throws {
-    try reserveMapMemory(
-      count: count,
-      keyBytes: containerElementBytes(Key.self),
-      valueBytes: containerElementBytes(Value.self)
-    )
-  }
-
-  @inline(__always)
-  func reserveFieldMapMemory<KeyCodec: FieldCodec, ValueCodec: FieldCodec>(
-    key _: KeyCodec.Type,
-    value _: ValueCodec.Type,
-    count: Int
-  ) throws {
-    try reserveMapMemory(
-      count: count,
-      keyBytes: fieldElementBytes(KeyCodec.self),
-      valueBytes: fieldElementBytes(ValueCodec.self)
-    )
-  }
-
-  @inline(__always)
-  func reserveReferenceMapMemory(count: Int) throws {
-    try reserveMapMemory(count: count, keyBytes: Self.referenceBytes, valueBytes: Self.referenceBytes)
-  }
-
-  @inline(__always)
-  private func reserveArrayMemory(count: Int, elementBytes: Int) throws {
-    if count == 0 {
-      try reserveContainerMemory(Self.containerFixedBytes)
-      return
+  func reserveContainerMemory(_ bytes: Int) throws {
+    if bytes < 0 {
+      try throwContainerMemoryOverflow()
     }
-    try reserveCountedContainerMemory(
-      count: count,
-      fixedBytes: Self.containerFixedBytes + Self.arrayHeaderBytes,
-      elementBytes: elementBytes
-    )
-  }
-
-  @inline(__always)
-  private func reserveSetMemory(count: Int, elementBytes: Int) throws {
-    if count == 0 {
-      try reserveContainerMemory(Self.containerFixedBytes)
-      return
-    }
-    try reserveCountedContainerMemory(
-      count: count,
-      fixedBytes: Self.containerFixedBytes + Self.arrayHeaderBytes,
-      elementBytes: elementBytes + Self.collectionEntryOverheadBytes + Self.referenceBytes * 2
-    )
-  }
-
-  @inline(__always)
-  private func reserveMapMemory(count: Int, keyBytes: Int, valueBytes: Int) throws {
-    if count == 0 {
-      try reserveContainerMemory(Self.containerFixedBytes)
-      return
-    }
-    try reserveCountedContainerMemory(
-      count: count,
-      fixedBytes: Self.containerFixedBytes + Self.arrayHeaderBytes * 2,
-      elementBytes: keyBytes + valueBytes + Self.mapEntryOverheadBytes + Self.referenceBytes
-    )
-  }
-
-  @inline(__always)
-  private func reserveContainerMemory(_ bytes: Int) throws {
     if bytes > remainingContainerMemoryBytes {
       try throwContainerMemoryExceeded(bytes: bytes)
     }
@@ -185,25 +82,17 @@ public final class ReadContext {
   }
 
   @inline(__always)
-  private func reserveCountedContainerMemory(
+  func reserveCountedContainerMemory(
     count: Int,
-    fixedBytes: Int,
     elementBytes: Int
   ) throws {
-    if count > (Int.max - fixedBytes) / elementBytes {
+    if count < 0 || elementBytes < 0 {
       try throwContainerMemoryOverflow()
     }
-    try reserveContainerMemory(count * elementBytes + fixedBytes)
-  }
-
-  @inline(__always)
-  private func containerElementBytes<Element: Serializer>(_ type: Element.Type) -> Int {
-    type.isRefType ? Self.referenceBytes : max(1, MemoryLayout<Element>.stride)
-  }
-
-  @inline(__always)
-  private func fieldElementBytes<ElementCodec: FieldCodec>(_ codec: ElementCodec.Type) -> Int {
-    codec.isRefType ? Self.referenceBytes : max(1, MemoryLayout<ElementCodec.Value>.stride)
+    if elementBytes != 0 && count > Int.max / elementBytes {
+      try throwContainerMemoryOverflow()
+    }
+    try reserveContainerMemory(count * elementBytes)
   }
 
   @inline(never)

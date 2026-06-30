@@ -53,36 +53,22 @@ const (
 	knownRootBudgetMultiplier = int64(8)
 	knownRootBudgetSlackBytes = int64(64 * 1024)
 	streamRootBudgetBytes     = int64(128 * 1024 * 1024)
-	sliceObjectBytes          = int64(unsafe.Sizeof([]byte(nil)))
-	mapObjectBytes            = int64(48)
-	mapEntryOverheadBytes     = int64(16)
 )
 
 var referenceSlotBytes = int64(unsafe.Sizeof(uintptr(0)))
 var stringElementBytes = containerSizeOf[string]()
-var stringSliceMaxLength = maxSliceLength(stringElementBytes)
+var stringMaxLength = maxContainerCount(stringElementBytes)
 
 func containerSizeOf[T any]() int64 {
 	var v T
 	return int64(unsafe.Sizeof(v))
 }
 
-func maxSliceLength(elemBytes int64) int64 {
+func maxContainerCount(elemBytes int64) int64 {
 	if elemBytes == 0 {
 		return MaxInt64
 	}
-	return (MaxInt64 - sliceObjectBytes) / elemBytes
-}
-
-func mapElementMemory(keyBytes int64, valueBytes int64) int64 {
-	return keyBytes + valueBytes + mapEntryOverheadBytes + referenceSlotBytes + 2*referenceSlotBytes
-}
-
-func maxMapLength(elemBytes int64) int64 {
-	if elemBytes == 0 {
-		return MaxInt64
-	}
-	return (MaxInt64 - mapObjectBytes) / elemBytes
+	return MaxInt64 / elemBytes
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -138,25 +124,31 @@ func (c *ReadContext) initContainerMemoryBudget(rootInputBytes int, unknownLengt
 	c.remainingContainerMemoryBytes = limit
 }
 
-// ReserveSliceMemory reserves estimated memory for a Go slice backing array before allocation.
-func (c *ReadContext) ReserveSliceMemory(length int, elemBytes int64) bool {
+// ReserveCountedContainerMemory reserves length * elementBytes estimated container bytes.
+func (c *ReadContext) ReserveCountedContainerMemory(length int, elemBytes int64) bool {
+	if length < 0 {
+		c.setContainerMemoryError("negative container length: %d", length)
+		return false
+	}
 	if elemBytes < 0 {
 		c.setContainerMemoryError("negative container element size: %d", elemBytes)
 		return false
 	}
-	return c.reserveSliceMemory(length, elemBytes, maxSliceLength(elemBytes))
+	if length == 0 {
+		return true
+	}
+	return c.reserveCountedContainerMemory(length, elemBytes, maxContainerCount(elemBytes))
 }
 
-func (c *ReadContext) reserveSliceMemory(length int, elemBytes int64, maxLength int64) bool {
-	if length < 0 {
-		c.setContainerMemoryError("negative container length: %d", length)
-		return false
+func (c *ReadContext) reserveCountedContainerMemory(length int, elemBytes int64, maxLength int64) bool {
+	if length == 0 {
+		return true
 	}
 	if int64(length) > maxLength {
 		c.setContainerMemoryError("container memory estimate overflows: length=%d elementBytes=%d", length, elemBytes)
 		return false
 	}
-	bytes := sliceObjectBytes + int64(length)*elemBytes
+	bytes := int64(length) * elemBytes
 	remaining := c.remainingContainerMemoryBytes
 	if bytes > remaining {
 		c.setContainerMemoryExceeded(bytes, remaining)
@@ -164,81 +156,6 @@ func (c *ReadContext) reserveSliceMemory(length int, elemBytes int64, maxLength 
 	}
 	c.remainingContainerMemoryBytes = remaining - bytes
 	return true
-}
-
-func (c *ReadContext) reserveSliceTypeMemory(length int, elemType reflect.Type) bool {
-	elemBytes := referenceSlotBytes
-	if elemType != nil {
-		elemBytes = int64(elemType.Size())
-	}
-	return c.ReserveSliceMemory(length, elemBytes)
-}
-
-// ReserveMapMemory reserves estimated memory for a Go map before allocation or size hinting.
-func (c *ReadContext) ReserveMapMemory(length int, keyBytes int64, valueBytes int64) bool {
-	if keyBytes < 0 || valueBytes < 0 {
-		c.setContainerMemoryError("negative map element size: key=%d value=%d", keyBytes, valueBytes)
-		return false
-	}
-	perEntry := keyBytes + valueBytes
-	if perEntry < keyBytes || perEntry > MaxInt64-mapEntryOverheadBytes-referenceSlotBytes {
-		c.setContainerMemoryError("map element size overflows: key=%d value=%d", keyBytes, valueBytes)
-		return false
-	}
-	perEntry += mapEntryOverheadBytes + referenceSlotBytes
-	if perEntry > MaxInt64-2*referenceSlotBytes {
-		c.setContainerMemoryError("map entry size overflows: key=%d value=%d", keyBytes, valueBytes)
-		return false
-	}
-	elemBytes := perEntry + 2*referenceSlotBytes
-	return c.reserveMapMemory(length, elemBytes, maxMapLength(elemBytes))
-}
-
-func (c *ReadContext) reserveMapTypeMemory(length int, keyType reflect.Type, valueType reflect.Type) bool {
-	keyBytes := referenceSlotBytes
-	valueBytes := referenceSlotBytes
-	if keyType != nil {
-		keyBytes = int64(keyType.Size())
-	}
-	if valueType != nil {
-		valueBytes = int64(valueType.Size())
-	}
-	return c.ReserveMapMemory(length, keyBytes, valueBytes)
-}
-
-func (c *ReadContext) reserveMapMemory(length int, elemBytes int64, maxLength int64) bool {
-	if length < 0 {
-		c.setContainerMemoryError("negative container length: %d", length)
-		return false
-	}
-	if int64(length) > maxLength {
-		c.setContainerMemoryError("container memory estimate overflows: length=%d elementBytes=%d", length, elemBytes)
-		return false
-	}
-	bytes := mapObjectBytes + int64(length)*elemBytes
-	remaining := c.remainingContainerMemoryBytes
-	if bytes > remaining {
-		c.setContainerMemoryExceeded(bytes, remaining)
-		return false
-	}
-	c.remainingContainerMemoryBytes = remaining - bytes
-	return true
-}
-
-func (c *ReadContext) reserveCountedMemory(length int, fixedBytes int64, elemBytes int64) bool {
-	if length < 0 {
-		c.setContainerMemoryError("negative container length: %d", length)
-		return false
-	}
-	if fixedBytes < 0 || elemBytes < 0 {
-		c.setContainerMemoryError("negative container memory estimate: fixed=%d elem=%d", fixedBytes, elemBytes)
-		return false
-	}
-	if elemBytes != 0 && int64(length) > (MaxInt64-fixedBytes)/elemBytes {
-		c.setContainerMemoryError("container memory estimate overflows: length=%d elementBytes=%d", length, elemBytes)
-		return false
-	}
-	return c.ReserveContainerMemory(fixedBytes + int64(length)*elemBytes)
 }
 
 // ReserveContainerMemory reserves raw estimated container-owned bytes.
@@ -739,7 +656,7 @@ func (c *ReadContext) readStringSliceData() []string {
 	if c.HasError() {
 		return nil
 	}
-	if !c.reserveSliceMemory(length, containerSizeOf[string](), stringSliceMaxLength) {
+	if !c.reserveCountedContainerMemory(length, stringElementBytes, stringMaxLength) {
 		return nil
 	}
 	if length == 0 {

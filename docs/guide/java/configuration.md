@@ -99,9 +99,10 @@ Security-related options:
 
 - `requireClassRegistration(true)` restricts deserialization to registered classes.
 - `withMaxDepth(...)` rejects unexpectedly deep object graphs.
-- `withMaxContainerMemoryBytes(...)` bounds estimated container-owned memory during one root
-  deserialization. Keep `-1` for the automatic input-shaped default, or set a positive byte limit
-  when trusted payloads need a larger or smaller limit.
+- `withMaxContainerMemoryBytes(...)` bounds estimated lower-bound container-owned storage during
+  one root deserialization. Empty containers without backing storage normally do not consume the
+  budget. Keep `-1` for the automatic input-shaped default, or set a positive byte limit when
+  trusted payloads need a larger or smaller limit.
 - `withMaxTypeFields(...)` and `withMaxTypeMetaBytes(...)` bound the field count
   and encoded body size of one received remote metadata body.
 - `withMaxSchemaVersionsPerType(...)` and

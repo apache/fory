@@ -18,11 +18,15 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   and is initialized by `Fory` root APIs. Public config is
   `maxContainerMemoryBytes` with `-1` auto, positive explicit override,
   known-length auto `inputBytes * 8 + 64 KiB`, and stream/unknown auto
-  `128 MiB`. Collection/map/object-array serializers should charge estimated
-  container-owned memory before allocation while preserving existing
-  `checkReadableBytes` guards before backing allocation or capacity
-  reservation. Do not add nested serializer-path `try/finally`, per-element
-  work, or dynamic stream bytes-read accounting for this budget.
+  `128 MiB`. `ReadContext` may expose only raw byte reservation and generic
+  counted-byte arithmetic; collection/map/object-array formulas belong in the
+  concrete serializer owner. Java collection/object-array paths charge reference slots only, and
+  maps charge two reference slots per entry. Fixed/header, map table, and map
+  entry overhead are not charged unless a future owner documents a conservative
+  independent lower-bound signal. Preserve existing `checkReadableBytes` guards
+  before backing allocation or capacity reservation. Do not add nested
+  serializer-path `try/finally`, per-element work, or dynamic stream bytes-read
+  accounting for this budget.
 - Generated serializers must not retain runtime context fields. `Fory` should stay a root-operation facade rather than accumulating serializer or convenience state.
 - When the serializer class and constructor shape are known at the call site, prefer direct constructor lambdas or direct instantiation over reflective `Serializers.newSerializer(...)`.
 - For GraalVM, use `fory codegen` to generate serializers when building native images. Do not add reflection configuration except for JDK `proxy`.

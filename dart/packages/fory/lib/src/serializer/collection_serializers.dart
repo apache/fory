@@ -38,6 +38,8 @@ import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/uint64.dart';
 
+const int _referenceBytes = 4;
+
 @pragma('vm:prefer-inline')
 void _writeDirectTypeInfoValue(
   WriteContext context,
@@ -270,10 +272,10 @@ final class ListSerializer extends Serializer<List> {
     }
     final declaredTypeInfo =
         elementFieldType == null ||
-            elementFieldType.isDynamic ||
-            elementFieldType.typeId == TypeIds.unknown
-        ? null
-        : context.typeResolver.resolveFieldType(elementFieldType);
+                elementFieldType.isDynamic ||
+                elementFieldType.typeId == TypeIds.unknown
+            ? null
+            : context.typeResolver.resolveFieldType(elementFieldType);
     final usesDeclaredType =
         declaredTypeInfo != null &&
         usesDeclaredTypeInfo(
@@ -296,9 +298,8 @@ final class ListSerializer extends Serializer<List> {
       sameType: analysis.sameType,
     );
     context.buffer.writeUint8(header);
-    final sameTypeInfo = !usesDeclaredType && analysis.sameType
-        ? analysis.sameTypeInfo
-        : null;
+    final sameTypeInfo =
+        !usesDeclaredType && analysis.sameType ? analysis.sameTypeInfo : null;
     if (!usesDeclaredType &&
         sameTypeInfo != null &&
         analysis.firstNonNull != null) {
@@ -384,7 +385,7 @@ final class SetSerializer extends Serializer<Set> {
       elementFieldType,
       hasPreservedRef: hasPreservedRef,
     );
-    context.reserveCollectionMemory(values.length);
+    context.reserveContainerMemory(values.length * _referenceBytes);
     return Set<Object?>.of(values);
   }
 }
@@ -402,9 +403,8 @@ Object? readCompatibleMatchedCollectionArrayField(
   final remoteType = remoteField.fieldType;
   if (isCompatibleArrayType(localType.typeId) &&
       remoteType.typeId == TypeIds.list) {
-    final elementType = remoteType.arguments.isEmpty
-        ? null
-        : remoteType.arguments.single;
+    final elementType =
+        remoteType.arguments.isEmpty ? null : remoteType.arguments.single;
     if (elementType == null ||
         _arrayElementTypeId(localType.typeId) !=
             _compatibleArrayElementTypeId(elementType.typeId)) {
@@ -421,9 +421,8 @@ Object? readCompatibleMatchedCollectionArrayField(
   }
   if (localType.typeId == TypeIds.list &&
       isCompatibleArrayType(remoteType.typeId)) {
-    final localElementType = localType.arguments.isEmpty
-        ? null
-        : localType.arguments.single;
+    final localElementType =
+        localType.arguments.isEmpty ? null : localType.arguments.single;
     if (localElementType == null ||
         _arrayElementTypeId(remoteType.typeId) !=
             _compatibleArrayElementTypeId(localElementType.typeId)) {
@@ -493,9 +492,8 @@ bool _listElementMatchesArray(
   int arrayTypeId, {
   required bool requireUnframedElement,
 }) {
-  final elementType = listType.arguments.isEmpty
-      ? null
-      : listType.arguments.single;
+  final elementType =
+      listType.arguments.isEmpty ? null : listType.arguments.single;
   // Nullable element schema is allowed for list<T?> -> array<T>; actual
   // null payload elements fail in the dense-array reader. Ref-tracked
   // element framing is rejected here because this path stays primitive-only.
@@ -512,7 +510,7 @@ Object _readCompatibleListAsArrayField(
   String fieldName,
 ) {
   final size = context.buffer.readVarUint32();
-  context.reserveTypedArrayMemory(size, _arrayElementBytes(arrayTypeId));
+  context.reserveContainerMemory(size * _arrayElementBytes(arrayTypeId));
   if (size == 0) {
     return _newArrayValue(arrayTypeId, 0);
   }
@@ -584,9 +582,8 @@ int _arrayElementBytes(int arrayTypeId) {
     TypeIds.bfloat16Array => 2,
     TypeIds.int32Array || TypeIds.uint32Array || TypeIds.float32Array => 4,
     TypeIds.int64Array || TypeIds.uint64Array || TypeIds.float64Array => 8,
-    _ => throw StateError(
-      'Unsupported compatible array field type $arrayTypeId.',
-    ),
+    _ =>
+      throw StateError('Unsupported compatible array field type $arrayTypeId.'),
   };
 }
 
@@ -605,9 +602,8 @@ Object _newArrayValue(int arrayTypeId, int length) {
     TypeIds.bfloat16Array => Bfloat16List(length),
     TypeIds.float32Array => Float32List(length),
     TypeIds.float64Array => Float64List(length),
-    _ => throw StateError(
-      'Unsupported compatible array field type $arrayTypeId.',
-    ),
+    _ =>
+      throw StateError('Unsupported compatible array field type $arrayTypeId.'),
   };
 }
 
@@ -622,9 +618,8 @@ void _setArrayValue(Object target, int arrayTypeId, int index, Object? value) {
     case TypeIds.int32Array:
       (target as Int32List)[index] = value as int;
     case TypeIds.int64Array:
-      (target as Int64List)[index] = value is int
-          ? Int64(value)
-          : value as Int64;
+      (target as Int64List)[index] =
+          value is int ? Int64(value) : value as Int64;
     case TypeIds.uint8Array:
       (target as Uint8List)[index] = value as int;
     case TypeIds.uint16Array:
@@ -632,9 +627,8 @@ void _setArrayValue(Object target, int arrayTypeId, int index, Object? value) {
     case TypeIds.uint32Array:
       (target as Uint32List)[index] = value as int;
     case TypeIds.uint64Array:
-      (target as Uint64List)[index] = value is int
-          ? Uint64(value)
-          : value as Uint64;
+      (target as Uint64List)[index] =
+          value is int ? Uint64(value) : value as Uint64;
     case TypeIds.float16Array:
       (target as Float16List)[index] = value as double;
     case TypeIds.bfloat16Array:
@@ -650,11 +644,11 @@ void _setArrayValue(Object target, int arrayTypeId, int index, Object? value) {
 
 Object _arrayToListValue(ReadContext context, Object? raw) {
   if (raw is BoolList) {
-    context.reserveCollectionMemory(raw.length);
+    context.reserveContainerMemory(raw.length * _referenceBytes);
     return raw.toList();
   }
   if (raw is Iterable) {
-    context.reserveCollectionMemory(raw.length);
+    context.reserveContainerMemory(raw.length * _referenceBytes);
     return raw.toList();
   }
   throw StateError('Expected compatible array payload.');
@@ -675,29 +669,29 @@ List<T> readTypedListPayload<T>(
   }
   final directTypeInfo = state.declaredTypeInfo ?? state.sameTypeInfo;
   if (directTypeInfo != null && !state.trackRef && !state.hasNull) {
-    final directFieldType = state.declaredTypeInfo != null
-        ? state.elementFieldType
-        : null;
+    final directFieldType =
+        state.declaredTypeInfo != null ? state.elementFieldType : null;
     if (directTypeInfo.type == T &&
         directTypeInfo.kind == RegistrationKind.struct) {
       final structSerializer = directTypeInfo.structSerializer!;
       context.buffer.checkReadableBytes(state.size);
-      final result = directTypeInfo.remoteTypeDef == null
-          ? List<T>.generate(
-              state.size,
-              (_) => structSerializer.readValue(context, directTypeInfo) as T,
-              growable: false,
-            )
-          : List<T>.generate(
-              state.size,
-              (_) =>
-                  structSerializer.readGeneratedCompatibleValue(
-                        context,
-                        directTypeInfo,
-                      )
-                      as T,
-              growable: false,
-            );
+      final result =
+          directTypeInfo.remoteTypeDef == null
+              ? List<T>.generate(
+                state.size,
+                (_) => structSerializer.readValue(context, directTypeInfo) as T,
+                growable: false,
+              )
+              : List<T>.generate(
+                state.size,
+                (_) =>
+                    structSerializer.readGeneratedCompatibleValue(
+                          context,
+                          directTypeInfo,
+                        )
+                        as T,
+                growable: false,
+              );
       if (state.tracksDepth) {
         context.decreaseDepth();
       }
@@ -745,7 +739,7 @@ Set<T> readTypedSetPayload<T>(
   T Function(Object? value) convert,
 ) {
   final values = readTypedListPayload(context, elementFieldType, convert);
-  context.reserveCollectionMemory(values.length);
+  context.reserveContainerMemory(values.length * _referenceBytes);
   return Set<T>.of(values);
 }
 
@@ -937,7 +931,7 @@ _PreparedListRead _prepareListRead(
   FieldType? elementFieldType,
 ) {
   final size = context.buffer.readVarUint32();
-  context.reserveCollectionMemory(size);
+  context.reserveContainerMemory(size * _referenceBytes);
   if (size == 0) {
     return _PreparedListRead(
       size: 0,
@@ -964,13 +958,15 @@ _PreparedListRead _prepareListRead(
       elementFieldType != null &&
       (usesDeclaredType ||
           (sameType && TypeIds.isUserType(elementFieldType.typeId)));
-  final expectedElementTypeInfo = needsExpectedElementType
-      ? context.typeResolver.tryResolveFieldType(elementFieldType)
-      : null;
+  final expectedElementTypeInfo =
+      needsExpectedElementType
+          ? context.typeResolver.tryResolveFieldType(elementFieldType)
+          : null;
   final declaredTypeInfo = usesDeclaredType ? expectedElementTypeInfo : null;
-  final sameTypeInfo = (!usesDeclaredType && sameType)
-      ? context.readTypeMetaValue(expectedElementTypeInfo)
-      : null;
+  final sameTypeInfo =
+      (!usesDeclaredType && sameType)
+          ? context.readTypeMetaValue(expectedElementTypeInfo)
+          : null;
   final tracksDepth =
       (declaredTypeInfo != null &&
           tracksNestedPayloadDepth(declaredTypeInfo)) ||

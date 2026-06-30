@@ -26,6 +26,8 @@ import { Scope } from "./scope";
 import { AnyHelper } from "./any";
 import { ReadContext, WriteContext } from "../context";
 
+const REFERENCE_BYTES = 4;
+
 const MapFlags = {
   /** Whether track elements ref. */
   TRACKING_REF: 0b1,
@@ -272,7 +274,7 @@ class MapAnySerializer {
 
   read(fromRef: boolean): any {
     let count = this.readContext.reader.readVarUint32Small7();
-    this.readContext.reserveMapMemory(count);
+    this.readContext.reserveContainerMemory(count * 2 * REFERENCE_BYTES);
     const result = new Map();
     if (fromRef) {
       this.readContext.reference(result);
@@ -492,7 +494,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
 
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
-      ${readContextName}.reserveMapMemory(${count});
+      ${readContextName}.reserveContainerMemory(${count} * 2 * ${REFERENCE_BYTES});
       const ${result} = new Map();
       if (${refState}) {
         ${this.builder.referenceResolver.reference(result)}

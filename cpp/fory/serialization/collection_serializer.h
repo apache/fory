@@ -398,10 +398,10 @@ inline bool reserve_collection(Container &result, ReadContext &ctx,
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
-  constexpr size_t fixed_bytes = sizeof(Container);
   constexpr size_t elem_bytes = collection_element_memory_bytes<Container>();
-  if (FORY_PREDICT_FALSE((!ctx.template reserve_counted_container_memory<
-                           fixed_bytes, elem_bytes>(length)))) {
+  if (FORY_PREDICT_FALSE(
+          (!ctx.template reserve_counted_container_memory<elem_bytes>(
+              length)))) {
     return false;
   }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
@@ -419,18 +419,9 @@ inline bool reserve_collection(std::vector<bool, Alloc> &result,
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
-  constexpr size_t fixed_bytes = sizeof(std::vector<bool, Alloc>);
-  constexpr size_t max_packed_bytes =
-      (static_cast<size_t>(std::numeric_limits<uint32_t>::max()) + CHAR_BIT -
-       1) /
-      CHAR_BIT;
-  static_assert(fixed_bytes <=
-                    std::numeric_limits<size_t>::max() - max_packed_bytes,
-                "vector<bool> memory estimate overflows");
   const size_t packed_bytes =
       (static_cast<size_t>(length) + CHAR_BIT - 1) / CHAR_BIT;
-  if (FORY_PREDICT_FALSE(
-          !ctx.reserve_container_memory(fixed_bytes + packed_bytes))) {
+  if (FORY_PREDICT_FALSE(!ctx.reserve_container_memory(packed_bytes))) {
     return false;
   }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
@@ -445,7 +436,7 @@ inline bool reserve_empty_collection(ReadContext &ctx) {
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
-  return ctx.reserve_container_memory(sizeof(Container));
+  return ctx.reserve_container_memory(0);
 }
 
 // Helper to insert element into container (vector or set)

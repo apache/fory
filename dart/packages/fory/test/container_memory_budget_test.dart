@@ -41,10 +41,7 @@ class BudgetGeneratedEnvelope {
   @SetField(element: StringType())
   Set<String> tags = <String>{};
 
-  @MapField(
-    key: StringType(),
-    value: Int32Type(encoding: Encoding.fixed),
-  )
+  @MapField(key: StringType(), value: Int32Type(encoding: Encoding.fixed))
   Map<String, int> counts = <String, int>{};
 }
 
@@ -150,25 +147,25 @@ void main() {
       expect(() => Fory(maxContainerMemoryBytes: -2), throwsArgumentError);
     });
 
-    test('charges nested empty containers', () {
+    test('uses parent storage for nested empty containers', () {
       final value = <Object?>[<Object?>[]];
 
-      expect(() => _readWithBudget(value, 51), _throwsContainerBudget);
-      expect(_readWithBudget(value, 52), equals(value));
+      expect(() => _readWithBudget(value, 3), _throwsContainerBudget);
+      expect(_readWithBudget(value, 4), equals(value));
     });
 
     test('charges sibling containers cumulatively', () {
       final value = <Object?>[<Object?>[], <Object?>[], <Object?>[]];
 
-      expect(() => _readWithBudget(value, 107), _throwsContainerBudget);
-      expect(_readWithBudget(value, 108), equals(value));
+      expect(() => _readWithBudget(value, 11), _throwsContainerBudget);
+      expect(_readWithBudget(value, 12), equals(value));
     });
 
-    test('charges map table and entries', () {
+    test('charges map entries', () {
       final value = <Object?, Object?>{'a': 1};
 
-      expect(() => _readWithBudget(value, 99), _throwsContainerBudget);
-      expect(_readWithBudget(value, 100), equals(value));
+      expect(() => _readWithBudget(value, 7), _throwsContainerBudget);
+      expect(_readWithBudget(value, 8), equals(value));
     });
 
     test('charges generated list set and map reads', () {
@@ -181,14 +178,14 @@ void main() {
           ..counts = <String, int>{'one': 1},
       );
 
-      final failingReader = Fory(maxContainerMemoryBytes: 183);
+      final failingReader = Fory(maxContainerMemoryBytes: 19);
       _registerGenerated(failingReader);
       expect(
         () => failingReader.deserialize<BudgetGeneratedEnvelope>(bytes),
         _throwsContainerBudget,
       );
 
-      final passingReader = Fory(maxContainerMemoryBytes: 184);
+      final passingReader = Fory(maxContainerMemoryBytes: 20);
       _registerGenerated(passingReader);
       final roundTrip = passingReader.deserialize<BudgetGeneratedEnvelope>(
         bytes,
@@ -205,14 +202,14 @@ void main() {
         BudgetCompatibleListEnvelope()..values = <int>[1, 2, 3],
       );
 
-      final arrayFail = Fory(maxContainerMemoryBytes: 27);
+      final arrayFail = Fory(maxContainerMemoryBytes: 11);
       _registerCompatibleArray(arrayFail);
       expect(
         () => arrayFail.deserialize<BudgetCompatibleArrayEnvelope>(listBytes),
         _throwsContainerBudget,
       );
 
-      final arrayPass = Fory(maxContainerMemoryBytes: 28);
+      final arrayPass = Fory(maxContainerMemoryBytes: 12);
       _registerCompatibleArray(arrayPass);
       expect(
         arrayPass
@@ -229,14 +226,14 @@ void main() {
           ..values = Int32List.fromList(<int>[1, 2, 3]),
       );
 
-      final listFail = Fory(maxContainerMemoryBytes: 35);
+      final listFail = Fory(maxContainerMemoryBytes: 11);
       _registerCompatibleList(listFail);
       expect(
         () => listFail.deserialize<BudgetCompatibleListEnvelope>(arrayBytes),
         _throwsContainerBudget,
       );
 
-      final listPass = Fory(maxContainerMemoryBytes: 36);
+      final listPass = Fory(maxContainerMemoryBytes: 12);
       _registerCompatibleList(listPass);
       expect(
         listPass.deserialize<BudgetCompatibleListEnvelope>(arrayBytes).values,
@@ -260,9 +257,10 @@ void main() {
     });
 
     test('keeps byte availability checks before allocation', () {
-      final listBuffer = Buffer()
-        ..writeVarUint32(64)
-        ..writeUint8(0);
+      final listBuffer =
+          Buffer()
+            ..writeVarUint32(64)
+            ..writeUint8(0);
       final listContext = _readContext(listBuffer);
       expect(
         () => ListSerializer.readPayload(listContext, null),

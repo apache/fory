@@ -96,10 +96,13 @@ generated from Fory schema IDL. See [Schema Evolution](schema-evolution.md).
 
 ## Container Memory Budget
 
-`maxContainerMemoryBytes` limits estimated memory committed by arrays, sets,
-maps, and container backing storage during one root deserialization. The default
-`-1` derives an automatic limit from the input bytes. JavaScript deserializes
-from `Uint8Array` roots, so the automatic limit is `inputBytes * 8 + 64 KiB`.
+`maxContainerMemoryBytes` limits estimated lower-bound container-owned storage
+accepted during one root deserialization. The budget covers array, set, object
+array, and map reference slots; it is not an exact JavaScript heap limit. Empty
+containers without backing storage normally do not consume the budget. The
+default `-1` derives an automatic limit from the input bytes. JavaScript
+deserializes from `Uint8Array` roots, so the automatic limit is
+`inputBytes * 8 + 64 KiB`.
 
 Use a positive byte value to set an explicit lower or higher limit:
 

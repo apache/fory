@@ -26,24 +26,24 @@ import (
 // ============================================================================
 
 var (
-	stringStringMapElemBytes  = mapElementMemory(stringElementBytes, stringElementBytes)
-	stringStringMapMaxLength  = maxMapLength(stringStringMapElemBytes)
-	stringInt64MapElemBytes   = mapElementMemory(stringElementBytes, containerSizeOf[int64]())
-	stringInt64MapMaxLength   = maxMapLength(stringInt64MapElemBytes)
-	stringInt32MapElemBytes   = mapElementMemory(stringElementBytes, containerSizeOf[int32]())
-	stringInt32MapMaxLength   = maxMapLength(stringInt32MapElemBytes)
-	stringIntMapElemBytes     = mapElementMemory(stringElementBytes, containerSizeOf[int]())
-	stringIntMapMaxLength     = maxMapLength(stringIntMapElemBytes)
-	stringFloat64MapElemBytes = mapElementMemory(stringElementBytes, containerSizeOf[float64]())
-	stringFloat64MapMaxLength = maxMapLength(stringFloat64MapElemBytes)
-	stringBoolMapElemBytes    = mapElementMemory(stringElementBytes, containerSizeOf[bool]())
-	stringBoolMapMaxLength    = maxMapLength(stringBoolMapElemBytes)
-	int32Int32MapElemBytes    = mapElementMemory(containerSizeOf[int32](), containerSizeOf[int32]())
-	int32Int32MapMaxLength    = maxMapLength(int32Int32MapElemBytes)
-	int64Int64MapElemBytes    = mapElementMemory(containerSizeOf[int64](), containerSizeOf[int64]())
-	int64Int64MapMaxLength    = maxMapLength(int64Int64MapElemBytes)
-	intIntMapElemBytes        = mapElementMemory(containerSizeOf[int](), containerSizeOf[int]())
-	intIntMapMaxLength        = maxMapLength(intIntMapElemBytes)
+	stringStringMapElemBytes  = stringElementBytes + stringElementBytes
+	stringStringMapMaxLength  = maxContainerCount(stringStringMapElemBytes)
+	stringInt64MapElemBytes   = stringElementBytes + containerSizeOf[int64]()
+	stringInt64MapMaxLength   = maxContainerCount(stringInt64MapElemBytes)
+	stringInt32MapElemBytes   = stringElementBytes + containerSizeOf[int32]()
+	stringInt32MapMaxLength   = maxContainerCount(stringInt32MapElemBytes)
+	stringIntMapElemBytes     = stringElementBytes + containerSizeOf[int]()
+	stringIntMapMaxLength     = maxContainerCount(stringIntMapElemBytes)
+	stringFloat64MapElemBytes = stringElementBytes + containerSizeOf[float64]()
+	stringFloat64MapMaxLength = maxContainerCount(stringFloat64MapElemBytes)
+	stringBoolMapElemBytes    = stringElementBytes + containerSizeOf[bool]()
+	stringBoolMapMaxLength    = maxContainerCount(stringBoolMapElemBytes)
+	int32Int32MapElemBytes    = containerSizeOf[int32]() + containerSizeOf[int32]()
+	int32Int32MapMaxLength    = maxContainerCount(int32Int32MapElemBytes)
+	int64Int64MapElemBytes    = containerSizeOf[int64]() + containerSizeOf[int64]()
+	int64Int64MapMaxLength    = maxContainerCount(int64Int64MapElemBytes)
+	intIntMapElemBytes        = containerSizeOf[int]() + containerSizeOf[int]()
+	intIntMapMaxLength        = maxContainerCount(intIntMapElemBytes)
 )
 
 // writeMapStringString writes map[string]string using chunk protocol
@@ -94,7 +94,7 @@ func readTypedMapSize(ctx *ReadContext, elemBytes int64, maxLength int64) (int, 
 	if ctx.HasError() {
 		return 0, false
 	}
-	if !ctx.reserveMapMemory(size, elemBytes, maxLength) {
+	if !ctx.reserveCountedContainerMemory(size, elemBytes, maxLength) {
 		return 0, false
 	}
 	if size == 0 {

@@ -26,6 +26,7 @@
 #include <forward_list>
 #include <list>
 #include <map>
+#include <memory>
 #include <set>
 #include <sstream>
 #include <string>
@@ -95,8 +96,7 @@ template <typename T> std::vector<uint8_t> serialize_value(const T &value) {
 
 size_t nested_empty_budget(size_t count) {
   using Inner = std::vector<std::string>;
-  using Outer = std::vector<Inner>;
-  return sizeof(Outer) + count * sizeof(Inner) + count * sizeof(Inner);
+  return count * sizeof(Inner);
 }
 
 template <typename T>
@@ -118,32 +118,16 @@ void expect_budget_boundary(const T &value, size_t required) {
 }
 
 TEST(ContainerMemoryBudgetTest, KnownLengthAutoBudget) {
-  constexpr size_t count = 3000;
-  std::vector<std::vector<std::string>> value(count);
-  auto bytes = serialize_value(value);
-  const size_t auto_limit = bytes.size() * 8 + kKnownBudgetSlack;
-  const size_t required = nested_empty_budget(count);
-  ASSERT_GT(required, auto_limit);
+  Config config;
+  config.max_container_memory_bytes = -1;
+  ReadContext context(config, std::make_unique<TypeResolver>());
+  constexpr size_t root_bytes = 17;
+  const size_t expected = root_bytes * 8 + kKnownBudgetSlack;
 
-  auto default_result = with_fory(-1, [&](Fory &fory) {
-    return fory.deserialize<std::vector<std::vector<std::string>>>(bytes);
-  });
-  ASSERT_FALSE(default_result.ok());
-  EXPECT_EQ(default_result.error().code(), ErrorCode::InvalidData);
-
-  auto explicit_auto_result =
-      with_fory(static_cast<int64_t>(auto_limit), [&](Fory &fory) {
-        return fory.deserialize<std::vector<std::vector<std::string>>>(bytes);
-      });
-  ASSERT_FALSE(explicit_auto_result.ok());
-  EXPECT_EQ(explicit_auto_result.error().code(), ErrorCode::InvalidData);
-
-  auto explicit_result =
-      with_fory(static_cast<int64_t>(required), [&](Fory &fory) {
-        return fory.deserialize<std::vector<std::vector<std::string>>>(bytes);
-      });
-  ASSERT_TRUE(explicit_result.ok()) << explicit_result.error().to_string();
-  EXPECT_EQ(explicit_result.value(), value);
+  ASSERT_TRUE(context.init_container_budget_known(root_bytes));
+  ASSERT_TRUE(context.reserve_container_memory(expected));
+  ASSERT_FALSE(context.reserve_container_memory(1));
+  EXPECT_EQ(context.take_error().code(), ErrorCode::InvalidData);
 }
 
 TEST(ContainerMemoryBudgetTest, StreamAutoBudget) {
@@ -172,8 +156,7 @@ TEST(ContainerMemoryBudgetTest, StreamAutoBudget) {
 TEST(ContainerMemoryBudgetTest, ExplicitOverride) {
   std::vector<BudgetItem> value(8);
   auto bytes = serialize_value(value);
-  const size_t required =
-      sizeof(std::vector<BudgetItem>) + value.size() * sizeof(BudgetItem);
+  const size_t required = value.size() * sizeof(BudgetItem);
 
   auto small_result =
       with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
@@ -190,10 +173,10 @@ TEST(ContainerMemoryBudgetTest, ExplicitOverride) {
   EXPECT_EQ(exact_result.value(), value);
 }
 
-TEST(ContainerMemoryBudgetTest, EmptyContainersChargeFixedCost) {
+TEST(ContainerMemoryBudgetTest, NestedEmptyContainersUseParentStorage) {
   std::vector<std::vector<std::string>> value(1);
   auto bytes = serialize_value(value);
-  const size_t required = nested_empty_budget(1);
+  const size_t required = sizeof(std::vector<std::string>);
 
   auto small_result =
       with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
@@ -215,8 +198,7 @@ TEST(ContainerMemoryBudgetTest, SiblingCumulativeBudget) {
   value.left.resize(16);
   value.right.resize(16);
   auto bytes = serialize_value(value);
-  const size_t one_vector =
-      sizeof(std::vector<BudgetItem>) + value.left.size() * sizeof(BudgetItem);
+  const size_t one_vector = value.left.size() * sizeof(BudgetItem);
 
   auto small_result =
       with_fory(static_cast<int64_t>(one_vector), [&](Fory &fory) {
@@ -236,24 +218,20 @@ TEST(ContainerMemoryBudgetTest, SiblingCumulativeBudget) {
 TEST(ContainerMemoryBudgetTest, MapBudget) {
   std::map<std::string, int32_t> value{{"a", 1}, {"b", 2}, {"c", 3}};
   const size_t entry_bytes = sizeof(std::string) + sizeof(int32_t);
-  const size_t required = sizeof(value) + value.size() * entry_bytes;
+  const size_t required = value.size() * entry_bytes;
 
   expect_budget_boundary(value, required);
 }
 
 TEST(ContainerMemoryBudgetTest, CollectionLowerBounds) {
   std::deque<BudgetItem> deque_value(4);
-  expect_budget_boundary(deque_value,
-                         sizeof(deque_value) +
-                             deque_value.size() * sizeof(BudgetItem));
+  expect_budget_boundary(deque_value, deque_value.size() * sizeof(BudgetItem));
 
   std::list<BudgetItem> list_value(4);
-  expect_budget_boundary(
-      list_value, sizeof(list_value) + list_value.size() * sizeof(BudgetItem));
+  expect_budget_boundary(list_value, list_value.size() * sizeof(BudgetItem));
 
   std::forward_list<BudgetItem> forward_value(4);
-  expect_budget_boundary(forward_value, sizeof(forward_value) +
-                                            size_t{4} * sizeof(BudgetItem));
+  expect_budget_boundary(forward_value, size_t{4} * sizeof(BudgetItem));
 }
 
 TEST(ContainerMemoryBudgetTest, VectorBoolUsesPackedStorage) {
@@ -261,32 +239,28 @@ TEST(ContainerMemoryBudgetTest, VectorBoolUsesPackedStorage) {
   value[0] = true;
   value[32] = true;
   const size_t packed_bytes = (value.size() + CHAR_BIT - 1) / CHAR_BIT;
-  const size_t required = sizeof(value) + packed_bytes;
-  ASSERT_LT(required, sizeof(value) + value.size());
+  const size_t required = packed_bytes;
+  ASSERT_LT(required, value.size());
 
   expect_budget_boundary(value, required);
 }
 
 TEST(ContainerMemoryBudgetTest, OrderedSetAndMapLowerBounds) {
   std::set<int32_t> set_value{1, 2, 3, 4};
-  expect_budget_boundary(set_value, sizeof(set_value) +
-                                        set_value.size() * sizeof(int32_t));
+  expect_budget_boundary(set_value, set_value.size() * sizeof(int32_t));
 
   std::map<std::string, int32_t> map_value{{"a", 1}, {"b", 2}};
   expect_budget_boundary(
-      map_value, sizeof(map_value) + map_value.size() * (sizeof(std::string) +
-                                                         sizeof(int32_t)));
+      map_value, map_value.size() * (sizeof(std::string) + sizeof(int32_t)));
 }
 
 TEST(ContainerMemoryBudgetTest, UnorderedContainersLowerBounds) {
   std::unordered_set<int32_t> set_value{1, 2, 3, 4};
-  expect_budget_boundary(set_value, sizeof(set_value) +
-                                        set_value.size() * sizeof(int32_t));
+  expect_budget_boundary(set_value, set_value.size() * sizeof(int32_t));
 
   std::unordered_map<std::string, int32_t> map_value{{"a", 1}, {"b", 2}};
   expect_budget_boundary(
-      map_value, sizeof(map_value) + map_value.size() * (sizeof(std::string) +
-                                                         sizeof(int32_t)));
+      map_value, map_value.size() * (sizeof(std::string) + sizeof(int32_t)));
 }
 
 TEST(ContainerMemoryBudgetTest, ArrayHasNoStandaloneReservation) {
@@ -303,8 +277,7 @@ TEST(ContainerMemoryBudgetTest, FixedInlineOwnerChargesNestedVector) {
   BudgetFixedArrayOwner value;
   value.prefix = {{1, 2, 3, 4}};
   value.items.resize(3);
-  const size_t required =
-      sizeof(value.items) + value.items.size() * sizeof(BudgetItem);
+  const size_t required = value.items.size() * sizeof(BudgetItem);
 
   expect_budget_boundary(value, required);
 }

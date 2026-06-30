@@ -112,9 +112,10 @@ let fory = Fory::builder()
 
 ### Container Memory Budget
 
-`max_container_memory_bytes(...)` limits the estimated memory that deserialization may allocate for
-containers such as lists, sets, and maps during one root read. The default is `-1`, which selects an
-automatic limit based on the input size:
+`max_container_memory_bytes(...)` limits the estimated lower-bound container-owned storage accepted
+during one root read. The budget covers `Vec`/collection element storage and map key/value storage;
+it is not an exact process heap limit. Empty containers without backing storage normally do not
+consume the budget. The default is `-1`, which selects an automatic limit based on the input size:
 
 ```rust
 let fory = Fory::builder().max_container_memory_bytes(-1).build();

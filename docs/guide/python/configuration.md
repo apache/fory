@@ -225,8 +225,9 @@ Received remote metadata is also limited:
 - `max_type_meta_bytes` limits the encoded body bytes accepted for one received TypeDef body.
 - `max_schema_versions_per_type` limits accepted remote metadata versions for one logical type.
 - `max_average_schema_versions_per_type` limits the average across accepted remote types.
-- `max_container_memory_bytes` limits estimated list, tuple, set, dict, and object-array storage
-  created during one root deserialization. The default `-1` uses `input_bytes * 8 + 64 KiB` for
+- `max_container_memory_bytes` limits estimated lower-bound list, tuple, set, dict, and
+  object-array storage created during one root deserialization. Empty containers without backing
+  storage normally do not consume the budget. The default `-1` uses `input_bytes * 8 + 64 KiB` for
   known-length inputs and `128 MiB` for stream inputs. Set a positive byte value for trusted
   payloads that legitimately contain larger container graphs.
 

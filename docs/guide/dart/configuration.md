@@ -110,10 +110,11 @@ final fory = Fory(
 
 ### `maxContainerMemoryBytes`
 
-Limits estimated container-owned memory for one root deserialization. The budget covers Dart lists,
-sets, maps, object/reference arrays, and compatible list/array materialization. It does not count
-strings, binary values, or dense typed-array payloads, which are protected by byte-availability
-checks.
+Limits estimated lower-bound container-owned storage for one root deserialization. The budget
+covers Dart list/set/object-reference slots, map key/value slots, and compatible list/array
+materialization. Empty containers without backing storage normally do not consume the budget. It
+does not count strings, binary values, or dense typed-array payloads, which are protected by
+byte-availability checks.
 
 The default is `-1`, which means auto. Dart root inputs are memory-backed, so auto derives from the
 root input size:

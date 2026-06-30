@@ -56,16 +56,14 @@ private func makeBudgetFory(maxContainerMemoryBytes: Int64 = -1) -> Fory {
     return fory
 }
 
+private let testReferenceBytes = 4
+
 private func elementBytes<Element: Serializer>(_ type: Element.Type) -> Int {
-    type.isRefType ? ReadContext.referenceBytes : max(1, MemoryLayout<Element>.stride)
+    type.isRefType ? testReferenceBytes : max(1, MemoryLayout<Element>.stride)
 }
 
 private func arrayBudget<Element: Serializer>(_ type: Element.Type, count: Int) -> Int {
-    if count == 0 {
-        return ReadContext.containerFixedBytes
-    }
-    return ReadContext.containerFixedBytes + ReadContext.arrayHeaderBytes +
-        count * elementBytes(type)
+    count * elementBytes(type)
 }
 
 private func mapBudget<Key: Serializer, Value: Serializer>(
@@ -73,14 +71,7 @@ private func mapBudget<Key: Serializer, Value: Serializer>(
     value: Value.Type,
     count: Int
 ) -> Int {
-    if count == 0 {
-        return ReadContext.containerFixedBytes
-    }
-    return ReadContext.containerFixedBytes + ReadContext.arrayHeaderBytes * 2 +
-        count * (
-            elementBytes(key) + elementBytes(value) +
-                ReadContext.mapEntryOverheadBytes + ReadContext.referenceBytes
-        )
+    count * (elementBytes(key) + elementBytes(value))
 }
 
 private func expectInvalidData(_ body: () throws -> Void) {
@@ -94,33 +85,31 @@ private func expectInvalidData(_ body: () throws -> Void) {
 }
 
 @Test
-func knownLengthAutoBudgetRejectsNestedEmptyArrays() throws {
-    let count = 6_000
-    let value = Array(repeating: [String](), count: count)
-    let bytes = try makeBudgetFory().serialize(value)
-    let autoLimit = bytes.count * 8 + ReadContext.knownContainerBudgetSlackBytes
-    let required = arrayBudget([String].self, count: count) +
-        count * arrayBudget(String.self, count: 0)
-    #expect(required > autoLimit)
+func knownLengthAutoBudgetUsesInputBytes() throws {
+    let expected = 17 * 8 + ReadContext.knownContainerBudgetSlackBytes
+    let config = Config(trackRef: false, compatible: false)
+    let context = ReadContext(
+        buffer: ByteBuffer(),
+        typeResolver: TypeResolver(config: config),
+        config: config
+    )
 
+    try context.initContainerMemoryBudgetKnown(rootBytes: 17)
+    try context.reserveContainerMemory(expected)
     expectInvalidData {
-        let _: [[String]] = try makeBudgetFory().deserialize(bytes)
+        try context.reserveContainerMemory(testReferenceBytes)
     }
-
-    let decoded: [[String]] = try makeBudgetFory(maxContainerMemoryBytes: Int64(required)).deserialize(bytes)
-    #expect(decoded.count == count)
 }
 
 @Test
 func byteBufferRootUsesKnownLengthAutoBudget() throws {
-    let count = 6_000
+    let count = 6
     let value = Array(repeating: [String](), count: count)
     let bytes = try makeBudgetFory().serialize(value)
     let buffer = ByteBuffer(data: bytes)
 
-    expectInvalidData {
-        let _: [[String]] = try makeBudgetFory().deserialize(from: buffer)
-    }
+    let decoded: [[String]] = try makeBudgetFory().deserialize(from: buffer)
+    #expect(decoded.count == count)
 }
 
 @Test
@@ -200,16 +189,11 @@ func stringBinaryAndPrimitiveDenseArrayOwnersAreSkipped() throws {
 }
 
 @Test
-func dynamicAnyEmptyMapChargesFixedCost() throws {
+func dynamicAnyEmptyMapHasNoDynamicStorage() throws {
     let value = [:] as [AnyHashable: Any]
     let bytes = try makeBudgetFory().serialize(value as Any)
-    let required = ReadContext.containerFixedBytes * 3
 
-    expectInvalidData {
-        let _: Any = try makeBudgetFory(maxContainerMemoryBytes: Int64(required - 1))
-            .deserialize(bytes)
-    }
-    let decoded: Any = try makeBudgetFory(maxContainerMemoryBytes: Int64(required))
+    let decoded: Any = try makeBudgetFory(maxContainerMemoryBytes: 1)
         .deserialize(bytes)
     #expect((decoded as? [String: Any])?.isEmpty == true)
 }

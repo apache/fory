@@ -34,6 +34,41 @@ enum MapHeader {
     static let declaredValueType: UInt8 = 0b0010_0000
 }
 
+private let containerReferenceBytes = 4
+
+@inline(__always)
+private func containerElementBytes<Element: Serializer>(_ type: Element.Type) -> Int {
+    type.isRefType ? containerReferenceBytes : max(1, MemoryLayout<Element>.stride)
+}
+
+@inline(__always)
+private func reserveContainerArrayMemory<Element: Serializer>(
+    _ context: ReadContext,
+    _ type: Element.Type,
+    count: Int
+) throws {
+    try context.reserveCountedContainerMemory(
+        count: count,
+        elementBytes: containerElementBytes(type)
+    )
+}
+
+@inline(__always)
+private func reserveContainerMapMemory<Key: Serializer, Value: Serializer>(
+    _ context: ReadContext,
+    key: Key.Type,
+    value: Value.Type,
+    count: Int
+) throws {
+    let keyBytes = containerElementBytes(key)
+    let valueBytes = containerElementBytes(value)
+    let (elementBytes, overflow) = keyBytes.addingReportingOverflow(valueBytes)
+    if overflow {
+        try context.reserveContainerMemory(-1)
+    }
+    try context.reserveCountedContainerMemory(count: count, elementBytes: elementBytes)
+}
+
 private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> TypeId? {
     if Element.self == UInt8.self { return .uint8Array }
     if Element.self == Bool.self { return .boolArray }
@@ -244,7 +279,7 @@ private func preparePrimitiveArray<Element: Serializer>(
 ) throws {
     try context.ensureCollectionLength(count, label: label)
     if chargeContainerMemory {
-        try context.reserveArrayMemory(type, count: count)
+        try reserveContainerArrayMemory(context, type, count: count)
     }
 }
 
@@ -549,7 +584,7 @@ extension Array: Serializer where Element: Serializer {
         let length = Int(try buffer.readVarUInt32())
         try context.ensureCollectionLength(length, label: "array")
         if length == 0 {
-            try context.reserveArrayMemory(Element.self, count: length)
+            try reserveContainerArrayMemory(context, Element.self, count: length)
             return []
         }
 
@@ -559,7 +594,7 @@ extension Array: Serializer where Element: Serializer {
         let declared = (header & CollectionHeader.declaredElementType) != 0
         let sameType = (header & CollectionHeader.sameType) != 0
         if !sameType {
-            try context.reserveArrayMemory(Element.self, count: length)
+            try reserveContainerArrayMemory(context, Element.self, count: length)
             try context.ensureRemainingBytes(length, label: "array")
             if trackRef {
                 return try readArrayUninitialized(count: length) { destination in
@@ -598,7 +633,7 @@ extension Array: Serializer where Element: Serializer {
         }
 
         let elementTypeInfo = declared ? nil : try Element.foryReadTypeInfo(context)
-        try context.reserveArrayMemory(Element.self, count: length)
+        try reserveContainerArrayMemory(context, Element.self, count: length)
         try context.ensureRemainingBytes(length, label: "array")
         return try context.withTypeInfo(elementTypeInfo, for: Element.self) {
             if trackRef {
@@ -658,7 +693,7 @@ extension Set: Serializer where Element: Serializer & Hashable {
 
     public static func foryReadData(_ context: ReadContext) throws -> Set<Element> {
         let values = try [Element].foryReadData(context)
-        try context.reserveSetMemory(Element.self, count: values.count)
+        try reserveContainerArrayMemory(context, Element.self, count: values.count)
         return Set(values)
     }
 }
@@ -886,11 +921,11 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
         let totalLength = Int(try context.buffer.readVarUInt32())
         try context.ensureCollectionLength(totalLength, label: "map")
         if totalLength == 0 {
-            try context.reserveMapMemory(key: Key.self, value: Value.self, count: totalLength)
+            try reserveContainerMapMemory(context, key: Key.self, value: Value.self, count: totalLength)
             return [:]
         }
 
-        try context.reserveMapMemory(key: Key.self, value: Value.self, count: totalLength)
+        try reserveContainerMapMemory(context, key: Key.self, value: Value.self, count: totalLength)
         try context.ensureRemainingBytes(totalLength, label: "map")
         var map: [Key: Value] = [:]
         map.reserveCapacity(totalLength)

@@ -15,10 +15,13 @@ Load this file when changing `python/`, Cython serialization, or Python xlang be
 - Keep Python and Cython context/ref-tracking branch conditions and stack mutations semantically aligned unless a documented intentional difference exists.
 - Root deserialization container memory budgets are owned by pure-Python and Cython `ReadContext`.
   Keep `max_container_memory_bytes` public on `pyfory.Fory`/`Config`; `-1` uses known-length
-  `inputBytes * 8 + 64 KiB` or fixed `128 MiB` for stream roots. Reserve fixed container cost plus
-  reference slots for list/tuple/set, map object/table/entry estimates for dict, and object-dtype
-  ndarray item storage. Keep string, bytes, `array.array`, primitive dense array, and primitive
-  ndarray owners skipped, and preserve byte-availability checks after budget reservation.
+  `inputBytes * 8 + 64 KiB` or fixed `128 MiB` for stream roots. `ReadContext` may expose only raw
+  byte reservation and generic counted-byte arithmetic; collection and dict formulas belong in the
+  pure-Python or Cython serializer owner. Lists, tuples, sets, and
+  object-dtype ndarray item storage charge `count * PyObject*`; dicts charge
+  `entryCount * 2 * PyObject*`. Fixed/header cost defaults to zero unless a path documents an
+  independent lower-bound owner. Keep string, bytes, `array.array`, primitive dense array, and
+  primitive ndarray owners skipped, and preserve byte-availability checks after budget reservation.
 - Public value constructors should accept normal Python values. Raw-bit, raw-buffer, and memoryview entry points should be explicit low-level APIs, and packed carriers should expose the buffer protocol from the actual storage owner when appropriate.
 - When debugging runtime or benchmark behavior, install the local package into the exact interpreter under test instead of relying on mixed `PYTHONPATH` state.
 - For wheel or extension pipeline changes, derive extension-module paths from current build targets, packaging config, or wheel payload discovery rather than historical module names.

@@ -24,6 +24,7 @@ import inspect
 import marshal
 import os
 import pickle
+import struct
 import types
 from typing import Tuple
 
@@ -42,6 +43,7 @@ from pyfory._fory import (
 )
 
 _WINDOWS = os.name == "nt"
+_REFERENCE_BYTES = struct.calcsize("P")
 
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory.types import TypeId
@@ -933,7 +935,7 @@ class PythonNDArraySerializer(NDArraySerializer):
         if dtype.kind == "O":
             length = read_context.read_varint32()
             _check_non_negative_size(length, "ndarray object")
-            read_context.reserve_collection_memory(length)
+            read_context.reserve_container_memory(length * _REFERENCE_BYTES)
             read_context.check_readable_bytes(length)
             items = [read_context.read_ref() for _ in range(length)]
             return np.array(items, dtype=object)

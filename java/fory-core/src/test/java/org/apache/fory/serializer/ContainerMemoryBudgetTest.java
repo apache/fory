@@ -23,7 +23,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
-import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -34,7 +33,6 @@ import org.apache.fory.collection.Int32List;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.InsecureException;
-import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.memory.MemoryBuffer;
 import org.testng.annotations.Test;
 
@@ -42,10 +40,6 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
   private static final long KNOWN_ROOT_MULTIPLIER = 8L;
   private static final long KNOWN_ROOT_SLACK_BYTES = 64L * 1024;
   private static final long STREAM_ROOT_BYTES = 128L * 1024 * 1024;
-  private static final long COLLECTION_OBJECT_BYTES = 24L;
-  private static final long MAP_OBJECT_BYTES = 48L;
-  private static final long ARRAY_HEADER_BYTES = 16L;
-  private static final long MAP_ENTRY_BYTES = 32L;
   private static final int REFERENCE_BYTES = MemoryBuffer.objectArrayIndexScale();
 
   @Test
@@ -79,12 +73,6 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     } finally {
       readContext.reset();
     }
-
-    StreamPayload payload = findStreamPayload();
-    assertThrows(InsecureException.class, () -> newFory(-1).deserialize(payload.bytes));
-    Object copy =
-        newFory(-1).deserialize(new ForyInputStream(new ByteArrayInputStream(payload.bytes), 1));
-    assertEquals(copy, payload.value);
   }
 
   @Test
@@ -100,12 +88,13 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
   }
 
   @Test
-  public void testNestedEmptyFixedCost() {
+  public void testNestedEmptyContainersUseParentStorage() {
     List<Object> value = emptyLists(1);
     byte[] bytes = newFory(-1).serialize(value);
+    long required = collectionBytes(1);
 
-    assertThrows(InsecureException.class, () -> newFory(collectionBytes(1)).deserialize(bytes));
-    assertEquals(newFory(collectionBytes(1) + collectionBytes(0)).deserialize(bytes), value);
+    assertThrows(InsecureException.class, () -> newFory(required - 1).deserialize(bytes));
+    assertEquals(newFory(required).deserialize(bytes), value);
   }
 
   @Test
@@ -123,7 +112,7 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     Fory fory = newFory(mapBytes(1) - 1);
     ReadContext readContext = prepareContext(fory, 8, false);
     try {
-      assertThrows(InsecureException.class, () -> readContext.reserveMapMemory(1));
+      assertThrows(InsecureException.class, () -> readContext.reserveContainerMemory(mapBytes(1)));
     } finally {
       readContext.reset();
     }
@@ -131,7 +120,7 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     Fory exactFory = newFory(mapBytes(1));
     ReadContext exactContext = prepareContext(exactFory, 8, false);
     try {
-      exactContext.reserveMapMemory(1);
+      exactContext.reserveContainerMemory(mapBytes(1));
       assertThrows(InsecureException.class, () -> exactContext.reserveContainerMemory(1));
     } finally {
       exactContext.reset();
@@ -154,18 +143,7 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
 
   @Test
   public void testObjectArrayBudget() {
-    Fory lowFory = newFory(objectArrayBytes(0) - 1);
-    ReadContext lowContext = lowFory.getReadContext();
-    MemoryBuffer lowBuffer = objectArraySizeBuffer(0);
-    lowContext.prepare(lowBuffer, null, false, lowBuffer.remaining(), false);
-    try {
-      assertThrows(
-          InsecureException.class, () -> lowFory.getSerializer(Object[].class).read(lowContext));
-    } finally {
-      lowContext.reset();
-    }
-
-    Fory exactFory = newFory(objectArrayBytes(0));
+    Fory exactFory = newFory(1);
     ReadContext exactContext = exactFory.getReadContext();
     MemoryBuffer exactBuffer = objectArraySizeBuffer(0);
     exactContext.prepare(exactBuffer, null, false, exactBuffer.remaining(), false);
@@ -235,18 +213,15 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
   }
 
   private static long collectionBytes(int numElements) {
-    return COLLECTION_OBJECT_BYTES + (long) numElements * REFERENCE_BYTES;
+    return (long) numElements * REFERENCE_BYTES;
   }
 
   private static long mapBytes(int numElements) {
-    long entries = numElements;
-    return MAP_OBJECT_BYTES
-        + entries * 2 * REFERENCE_BYTES
-        + entries * (MAP_ENTRY_BYTES + 3L * REFERENCE_BYTES);
+    return (long) numElements * 2 * REFERENCE_BYTES;
   }
 
   private static long objectArrayBytes(int numElements) {
-    return ARRAY_HEADER_BYTES + (long) numElements * REFERENCE_BYTES;
+    return (long) numElements * REFERENCE_BYTES;
   }
 
   private static long knownAutoBytes(int inputBytes) {
@@ -273,14 +248,6 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     return root;
   }
 
-  private static List<Object> emptyMaps(int numElements) {
-    List<Object> root = new ArrayList<>(numElements);
-    for (int i = 0; i < numElements; i++) {
-      root.add(new HashMap<>());
-    }
-    return root;
-  }
-
   private static MemoryBuffer objectArraySizeBuffer(int numElements) {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
     buffer.writeVarUInt32Small7(numElements);
@@ -291,28 +258,4 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     return MemoryBuffer.fromByteArray(buffer.getBytes(0, buffer.writerIndex()));
   }
 
-  private static StreamPayload findStreamPayload() {
-    Fory writer = newFory(-1);
-    int numElements = 128;
-    while (numElements <= 1 << 20) {
-      List<Object> value = emptyMaps(numElements);
-      byte[] bytes = writer.serialize(value);
-      long estimatedMemory = collectionBytes(numElements) + (long) numElements * mapBytes(0);
-      if (estimatedMemory > knownAutoBytes(bytes.length) && estimatedMemory < STREAM_ROOT_BYTES) {
-        return new StreamPayload(value, bytes);
-      }
-      numElements <<= 1;
-    }
-    throw new AssertionError("Unable to build compact stream-budget payload");
-  }
-
-  private static final class StreamPayload {
-    final List<Object> value;
-    final byte[] bytes;
-
-    StreamPayload(List<Object> value, byte[] bytes) {
-      this.value = value;
-      this.bytes = bytes;
-    }
-  }
 }

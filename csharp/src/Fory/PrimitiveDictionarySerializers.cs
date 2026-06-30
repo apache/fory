@@ -17,6 +17,7 @@
 
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
@@ -663,6 +664,19 @@ internal static class PrimitiveDictionaryCodecWriter
 
 internal static class PrimitiveDictionaryCodecReader
 {
+    private const int ReferenceBytes = 4;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReserveMapStorage<TKey, TValue>(ReadContext context, int count)
+    {
+        context.ReserveCountedContainerMemory(
+            count,
+            (long)ElementBytes<TKey>() + ElementBytes<TValue>());
+    }
+
     public static TMap ReadMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps>(ReadContext context)
         where TKey : notnull
         where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
@@ -672,11 +686,11 @@ internal static class PrimitiveDictionaryCodecReader
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
-            context.ReserveMapMemory<TKey, TValue>(totalLength);
+            ReserveMapStorage<TKey, TValue>(context, totalLength);
             return TMapOps.Create(0);
         }
 
-        context.ReserveNonEmptyMapMemory<TKey, TValue>(totalLength);
+        ReserveMapStorage<TKey, TValue>(context, totalLength);
         context.Reader.CheckBound(totalLength);
         TMap map = TMapOps.Create(totalLength);
         TypeId keyTypeId = TKeyCodec.WireTypeId;

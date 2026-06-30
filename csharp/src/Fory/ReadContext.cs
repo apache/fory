@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
@@ -25,11 +24,6 @@ public sealed class ReadContext
     private const int MinRemoteTypeMetaLimit = 8192;
     internal const long KnownContainerBudgetSlackBytes = 64 * 1024;
     internal const long UnknownContainerBudgetBytes = 128L * 1024 * 1024;
-    internal const int ContainerFixedBytes = 32;
-    internal const int ArrayHeaderBytes = 24;
-    internal const int ReferenceBytes = 4;
-    internal const int CollectionEntryOverheadBytes = 16;
-    internal const int MapEntryOverheadBytes = 24;
 
     private readonly ReusableArray<TypeMeta> _typeMetaRefs = new();
     private readonly UInt64Map<TypeMeta> _typeMetasByHeader = new();
@@ -83,90 +77,6 @@ public sealed class ReadContext
     internal RefReader RefReader { get; }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static int ElementBytes<T>() => ContainerElementBytes<T>.Value;
-
-    private static class ContainerElementBytes<T>
-    {
-        internal static readonly int Value = typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
-    }
-
-    private static class MapElementBytes<TKey, TValue>
-    {
-        internal static readonly int Value =
-            ElementBytes<TKey>() + ElementBytes<TValue>() + MapEntryOverheadBytes + ReferenceBytes;
-    }
-
-    /// <summary>
-    /// Reserves estimated list-owned memory for generated serializer code.
-    /// Configure <see cref="Config.MaxContainerMemoryBytes"/> instead of calling this directly.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void ReserveListMemory<T>(int length)
-    {
-        if (length == 0)
-        {
-            ReserveContainerMemory(ContainerFixedBytes);
-            return;
-        }
-
-        ReserveNonEmptyListMemory<T>(length);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void ReserveNonEmptyListMemory<T>(int length)
-    {
-        ReserveContainerMemory((long)(uint)length * ElementBytes<T>() + ContainerFixedBytes + ArrayHeaderBytes);
-    }
-
-    /// <summary>
-    /// Reserves estimated array-owned memory for generated serializer code.
-    /// Configure <see cref="Config.MaxContainerMemoryBytes"/> instead of calling this directly.
-    /// </summary>
-    [EditorBrowsable(EditorBrowsableState.Never)]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void ReserveArrayMemory<T>(int length)
-    {
-        ReserveCountedContainerMemory(
-            length,
-            ArrayHeaderBytes,
-            ElementBytes<T>());
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void ReserveLinkedCollectionMemory<T>(int length)
-    {
-        if (length == 0)
-        {
-            ReserveContainerMemory(ContainerFixedBytes);
-            return;
-        }
-
-        ReserveContainerMemory(
-            (long)(uint)length * (ElementBytes<T>() + CollectionEntryOverheadBytes + ReferenceBytes * 2) +
-            ContainerFixedBytes);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void ReserveMapMemory<TKey, TValue>(int length)
-    {
-        if (length == 0)
-        {
-            ReserveContainerMemory(ContainerFixedBytes);
-            return;
-        }
-
-        ReserveNonEmptyMapMemory<TKey, TValue>(length);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void ReserveNonEmptyMapMemory<TKey, TValue>(int length)
-    {
-        ReserveContainerMemory(
-            (long)(uint)length * MapElementBytes<TKey, TValue>.Value + ContainerFixedBytes + ArrayHeaderBytes * 2);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void InitContainerBudgetKnown(int rootBytes)
     {
         long limit = _config.MaxContainerMemoryBytes;
@@ -192,9 +102,20 @@ public sealed class ReadContext
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void ReserveCountedContainerMemory(int count, int fixedBytes, int elementBytes)
+    internal void ReserveCountedContainerMemory(int count, long elementBytes)
     {
-        ReserveContainerMemory((long)(uint)count * elementBytes + fixedBytes);
+        if (count < 0 || elementBytes < 0)
+        {
+            ThrowContainerBudgetOverflow();
+        }
+
+        uint length = (uint)count;
+        if (elementBytes != 0 && length > long.MaxValue / elementBytes)
+        {
+            ThrowContainerBudgetOverflow();
+        }
+
+        ReserveContainerMemory((long)length * elementBytes);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

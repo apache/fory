@@ -46,6 +46,8 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
+  private static final int REFERENCE_BYTES = MemoryBuffer.objectArrayIndexScale();
+
   private MethodHandle constructor;
   private int numElements;
   protected final Config config;
@@ -564,7 +566,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     MemoryBuffer buffer = readContext.getBuffer();
     int numElements = buffer.readVarUInt32Small7();
     checkCollectionSize(numElements);
-    readContext.reserveCollectionMemory(numElements);
+    readContext.reserveContainerMemory((long) numElements * REFERENCE_BYTES);
     buffer.checkReadableBytes(numElements);
     return numElements;
   }

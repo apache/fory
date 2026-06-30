@@ -223,11 +223,18 @@ Container budget accounting should:
 
 - happen in root-operation read state, with cleanup owned by the root
   deserialization `finally`;
+- keep read context/read state limited to raw byte reservation and generic
+  counted-byte arithmetic; collection/map/array storage formulas belong in the
+  concrete serializer or generated serializer owner;
 - reject arithmetic overflow before comparing budget or allocating;
-- charge fixed container object cost, backing capacity, map table and entry
-  overhead where the runtime has cheap reliable signals, reference arrays, and
-  inline or value storage where a runtime stores elements inline;
-- charge fixed cost even for zero-size containers;
+- estimate lower-bound owner storage: reference-backed containers and
+  object/reference arrays charge reference slots, inline/value containers charge
+  element storage, reference-backed maps charge two references per entry, and
+  inline/value maps charge key plus value storage;
+- treat fixed/header cost as zero by default, charging it only when the owner
+  path creates an independently allocated container/control entity that is not
+  already covered by parent inline/value storage and the charged size is a
+  documented conservative lower bound;
 - preserve existing byte-availability checks before backing allocation or
   capacity reservation;
 - skip dedicated string, binary, primitive array, and primitive dense-array
@@ -241,9 +248,12 @@ the inline element storage instead of treating those elements as references.
 General inline-value containers must not be skipped just because dedicated
 primitive dense arrays are skipped.
 
-Native runtimes may use conservative lower-bound estimates when exact container
-layout is not portable. For example, C++ STL node, allocator, and debug-mode
-overheads should not be guessed when only value storage is reliably known.
+Runtimes should not guess object headers, array headers, allocator headers,
+debug-mode fields, hash buckets, tree links, hash-chain links, node headers,
+map-entry objects, spare blocks, or runtime table layouts unless the owner path
+has a cheap, stable, explicit lower-bound storage signal and documents the
+formula. C++ STL node, allocator, and debug-mode overheads should not be guessed
+when only value storage is reliably known.
 
 ## Skip Semantics
 

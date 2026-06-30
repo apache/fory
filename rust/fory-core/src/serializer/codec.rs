@@ -1700,7 +1700,7 @@ where
 
     fn read_data(context: &mut ReadContext) -> Result<Vec<T>, Error> {
         let len = context.reader.read_var_u32()?;
-        context.reserve_vec_memory::<T>(len)?;
+        context.reserve_counted_container_memory(len, std::mem::size_of::<T>())?;
         if len == 0 {
             return Ok(Vec::new());
         }
@@ -1729,7 +1729,7 @@ where
         remote_field_type: &FieldType,
     ) -> Result<Vec<T>, Error> {
         let len = context.reader.read_var_u32()?;
-        context.reserve_vec_memory::<T>(len)?;
+        context.reserve_counted_container_memory(len, std::mem::size_of::<T>())?;
         if len == 0 {
             return Ok(Vec::new());
         }
@@ -2272,7 +2272,10 @@ where
 
     fn read_data(context: &mut ReadContext) -> Result<HashMap<K, V>, Error> {
         let len = context.reader.read_var_u32()?;
-        context.reserve_map_memory::<HashMap<K, V>, K, V>(len)?;
+        let elem_bytes = std::mem::size_of::<K>()
+            .checked_add(std::mem::size_of::<V>())
+            .ok_or_else(|| Error::invalid_data("container memory estimate overflows"))?;
+        context.reserve_counted_container_memory(len, elem_bytes)?;
         if len == 0 {
             return Ok(HashMap::new());
         }
@@ -2292,7 +2295,10 @@ where
         remote_field_type: &FieldType,
     ) -> Result<HashMap<K, V>, Error> {
         let len = context.reader.read_var_u32()?;
-        let capacity = context.reserve_map_memory::<HashMap<K, V>, K, V>(len)?;
+        let elem_bytes = std::mem::size_of::<K>()
+            .checked_add(std::mem::size_of::<V>())
+            .ok_or_else(|| Error::invalid_data("container memory estimate overflows"))?;
+        let capacity = context.reserve_counted_container_memory(len, elem_bytes)?;
         if len == 0 {
             return Ok(HashMap::new());
         }

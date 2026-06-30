@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Collections;
+using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
@@ -390,6 +391,18 @@ public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TVal
 
 public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<NullableKeyDictionary<TKey, TValue>>
 {
+    private const int ReferenceBytes = 4;
+    private static readonly long MapElementBytes = (long)ElementBytes<TKey>() + ElementBytes<TValue>();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReserveMapStorage(ReadContext context, int count)
+    {
+        context.ReserveCountedContainerMemory(count, MapElementBytes);
+    }
+
     public override NullableKeyDictionary<TKey, TValue> DefaultValue => null!;
 
     public override void WriteData(WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
@@ -537,11 +550,11 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
-            context.ReserveMapMemory<TKey, TValue>(totalLength);
+            ReserveMapStorage(context, totalLength);
             return new NullableKeyDictionary<TKey, TValue>();
         }
 
-        context.ReserveNonEmptyMapMemory<TKey, TValue>(totalLength);
+        ReserveMapStorage(context, totalLength);
         context.Reader.CheckBound(totalLength);
         NullableKeyDictionary<TKey, TValue> map = new(totalLength);
         bool keyDynamicType = keyTypeInfo.IsDynamicType;

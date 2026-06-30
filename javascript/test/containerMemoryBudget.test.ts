@@ -57,13 +57,14 @@ describe('container memory budget', () => {
 
     const fory = new Fory({ maxContainerMemoryBytes: 24 });
     fory.readContext.reset(new Uint8Array(1));
-    expect(() => fory.readContext.reserveCollectionMemory(0)).not.toThrow();
+    expect(() => fory.readContext.reserveContainerMemory(0)).not.toThrow();
+    expect(() => fory.readContext.reserveContainerMemory(24)).not.toThrow();
     expect(() => fory.readContext.reserveContainerMemory(1)).toThrow(
       /maxContainerMemoryBytes/,
     );
   });
 
-  test('charges nested empty containers', () => {
+  test('uses parent storage for nested empty containers', () => {
     const typeInfo = Type.struct('budget.nested.empty', {
       values: Type.list(Type.list(Type.int32({ encoding: 'fixed' }))).setId(1),
     });
@@ -72,12 +73,12 @@ describe('container memory budget', () => {
     const passingReader = new Fory({
       compatible: false,
       ref: true,
-      maxContainerMemoryBytes: 52,
+      maxContainerMemoryBytes: 4,
     }).register(typeInfo);
     const failingReader = new Fory({
       compatible: false,
       ref: true,
-      maxContainerMemoryBytes: 51,
+      maxContainerMemoryBytes: 3,
     }).register(typeInfo);
 
     expect(() => failingReader.deserialize(bytes)).toThrow(
@@ -97,12 +98,12 @@ describe('container memory budget', () => {
     const passingReader = new Fory({
       compatible: false,
       ref: true,
-      maxContainerMemoryBytes: 108,
+      maxContainerMemoryBytes: 12,
     }).register(typeInfo);
     const failingReader = new Fory({
       compatible: false,
       ref: true,
-      maxContainerMemoryBytes: 107,
+      maxContainerMemoryBytes: 11,
     }).register(typeInfo);
 
     expect(() => failingReader.deserialize(bytes)).toThrow(
@@ -116,8 +117,8 @@ describe('container memory budget', () => {
   test('charges map entries', () => {
     const bytes = serializeAny(new Map([[1, 2]]));
 
-    expect(() => deserializeAny(bytes, 99)).toThrow(/maxContainerMemoryBytes/);
-    expect(deserializeAny(bytes, 100)).toEqual(new Map([[1, 2]]));
+    expect(() => deserializeAny(bytes, 7)).toThrow(/maxContainerMemoryBytes/);
+    expect(deserializeAny(bytes, 8)).toEqual(new Map([[1, 2]]));
   });
 
   test('charges generated containers', () => {
@@ -135,12 +136,12 @@ describe('container memory budget', () => {
     const passingReader = new Fory({
       compatible: false,
       ref: true,
-      maxContainerMemoryBytes: 156,
+      maxContainerMemoryBytes: 16,
     }).register(typeInfo);
     const failingReader = new Fory({
       compatible: false,
       ref: true,
-      maxContainerMemoryBytes: 155,
+      maxContainerMemoryBytes: 15,
     }).register(typeInfo);
 
     expect(() => failingReader.deserialize(bytes)).toThrow(
@@ -164,11 +165,11 @@ describe('container memory budget', () => {
     const bytes = writer.register(writerType).serialize({ values: [1, 2, 3] });
     const passingReader = new Fory({
       compatible: true,
-      maxContainerMemoryBytes: 28,
+      maxContainerMemoryBytes: 12,
     }).register(readerType);
     const failingReader = new Fory({
       compatible: true,
-      maxContainerMemoryBytes: 27,
+      maxContainerMemoryBytes: 11,
     }).register(readerType);
 
     expect(() => failingReader.deserialize(bytes)).toThrow(

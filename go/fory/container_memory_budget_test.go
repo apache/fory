@@ -122,37 +122,39 @@ func TestContainerMemoryBudgetEmptyAndCumulative(t *testing.T) {
 	data, err := New(WithCompatible(false)).Serialize([]any{})
 	require.NoError(t, err)
 	var empty []any
-	err = New(WithCompatible(false), WithMaxContainerMemoryBytes(sliceObjectBytes-1)).Deserialize(data, &empty)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "maxContainerMemoryBytes")
+	err = New(WithCompatible(false), WithMaxContainerMemoryBytes(1)).Deserialize(data, &empty)
+	require.NoError(t, err)
+	require.Empty(t, empty)
 
 	writer := New(WithCompatible(false))
 	require.NoError(t, writer.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
-	data, err = writer.Serialize(&budgetSiblings{A: []string{}, B: []string{}})
+	data, err = writer.Serialize(&budgetSiblings{A: []string{"a"}, B: []string{"b"}})
 	require.NoError(t, err)
-	reader := New(WithCompatible(false), WithMaxContainerMemoryBytes(sliceObjectBytes))
+	reader := New(WithCompatible(false), WithMaxContainerMemoryBytes(stringElementBytes))
 	require.NoError(t, reader.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	var out budgetSiblings
 	err = reader.Deserialize(data, &out)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxContainerMemoryBytes")
+	reader = New(WithCompatible(false), WithMaxContainerMemoryBytes(2*stringElementBytes))
+	require.NoError(t, reader.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
+	require.NoError(t, reader.Deserialize(data, &out))
+	require.Equal(t, []string{"a"}, out.A)
+	require.Equal(t, []string{"b"}, out.B)
 }
 
 func TestContainerMemoryBudgetMapAndOverflow(t *testing.T) {
 	data, err := New().Serialize(map[string]string{"k": "v"})
 	require.NoError(t, err)
 	var out map[string]string
-	oneEntryBudget := mapObjectBytes +
-		2*referenceSlotBytes +
-		mapEntryOverheadBytes + referenceSlotBytes +
-		containerSizeOf[string]() + containerSizeOf[string]()
+	oneEntryBudget := containerSizeOf[string]() + containerSizeOf[string]()
 	err = New(WithMaxContainerMemoryBytes(oneEntryBudget-1)).Deserialize(data, &out)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxContainerMemoryBytes")
 
 	ctx := NewReadContext(false)
 	ctx.initContainerMemoryBudget(0, true)
-	require.False(t, ctx.ReserveMapMemory(MaxInt, MaxInt64, 1))
+	require.False(t, ctx.ReserveCountedContainerMemory(MaxInt, MaxInt64))
 	require.Contains(t, ctx.CheckError().Error(), "overflows")
 }
 
@@ -160,7 +162,7 @@ func TestContainerMemoryBudgetSlicesAndInlineValues(t *testing.T) {
 	data, err := New().Serialize([]string{"a"})
 	require.NoError(t, err)
 	var stringsOut []string
-	err = New(WithMaxContainerMemoryBytes(sliceObjectBytes+containerSizeOf[string]()-1)).Deserialize(data, &stringsOut)
+	err = New(WithMaxContainerMemoryBytes(containerSizeOf[string]()-1)).Deserialize(data, &stringsOut)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxContainerMemoryBytes")
 
@@ -168,7 +170,7 @@ func TestContainerMemoryBudgetSlicesAndInlineValues(t *testing.T) {
 	require.NoError(t, writer.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	data, err = writer.Serialize([]budgetItem{{A: 1}})
 	require.NoError(t, err)
-	reader := New(WithMaxContainerMemoryBytes(sliceObjectBytes + containerSizeOf[budgetItem]() - 1))
+	reader := New(WithMaxContainerMemoryBytes(containerSizeOf[budgetItem]() - 1))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	var items []budgetItem
 	err = reader.Deserialize(data, &items)

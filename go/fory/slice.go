@@ -152,7 +152,7 @@ func newSliceSerializer(type_ reflect.Type, elemSerializer Serializer, xlang boo
 		elemSerializer: elemSerializer,
 		referencable:   isRefType(elem, xlang),
 		elemBytes:      elemBytes,
-		maxLength:      maxSliceLength(elemBytes),
+		maxLength:      maxContainerCount(elemBytes),
 	}, nil
 }
 
@@ -313,13 +313,13 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 	isArrayType := value.Type().Kind() == reflect.Array
 
-	if !isArrayType && !ctx.reserveSliceMemory(length, s.elemBytes, s.maxLength) {
-		return
-	}
 	if length == 0 {
 		if !isArrayType {
 			value.Set(reflect.MakeSlice(value.Type(), 0, 0))
 		}
+		return
+	}
+	if !isArrayType && !ctx.reserveCountedContainerMemory(length, s.elemBytes, s.maxLength) {
 		return
 	}
 

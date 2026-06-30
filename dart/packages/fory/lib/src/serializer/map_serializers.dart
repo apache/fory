@@ -26,6 +26,8 @@ import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/collection_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
+const int _referenceBytes = 4;
+
 abstract final class MapFlags {
   static const int trackingKeyRef = 0x01;
   static const int keyHasNull = 0x02;
@@ -56,13 +58,14 @@ final class MapSerializer extends Serializer<Map> {
     required bool trackRef,
   }) {
     context.buffer.writeVarUint32(values.length);
-    final declaredKeyTypeInfo = keyFieldType == null || keyFieldType.isDynamic
-        ? null
-        : context.typeResolver.resolveFieldType(keyFieldType);
+    final declaredKeyTypeInfo =
+        keyFieldType == null || keyFieldType.isDynamic
+            ? null
+            : context.typeResolver.resolveFieldType(keyFieldType);
     final declaredValueTypeInfo =
         valueFieldType == null || valueFieldType.isDynamic
-        ? null
-        : context.typeResolver.resolveFieldType(valueFieldType);
+            ? null
+            : context.typeResolver.resolveFieldType(valueFieldType);
     final keyDeclared =
         declaredKeyTypeInfo != null &&
         usesDeclaredTypeInfo(
@@ -105,17 +108,17 @@ final class MapSerializer extends Serializer<Map> {
             (keyDeclared
                 ? declaredKeyTypeInfo.supportsRef
                 : (key == null ||
-                      context.typeResolver
-                          .resolveValue(key as Object)
-                          .supportsRef));
+                    context.typeResolver
+                        .resolveValue(key as Object)
+                        .supportsRef));
         final valueTrackRef =
             valueRequestedRef &&
             (valueDeclared
                 ? declaredValueTypeInfo.supportsRef
                 : (value == null ||
-                      context.typeResolver
-                          .resolveValue(value as Object)
-                          .supportsRef));
+                    context.typeResolver
+                        .resolveValue(value as Object)
+                        .supportsRef));
         _writeNullChunk(
           context,
           key,
@@ -131,12 +134,14 @@ final class MapSerializer extends Serializer<Map> {
         );
         continue;
       }
-      final chunkKeyTypeInfo = keyDeclared
-          ? declaredKeyTypeInfo
-          : context.typeResolver.resolveValue(key as Object);
-      final chunkValueTypeInfo = valueDeclared
-          ? declaredValueTypeInfo
-          : context.typeResolver.resolveValue(value as Object);
+      final chunkKeyTypeInfo =
+          keyDeclared
+              ? declaredKeyTypeInfo
+              : context.typeResolver.resolveValue(key as Object);
+      final chunkValueTypeInfo =
+          valueDeclared
+              ? declaredValueTypeInfo
+              : context.typeResolver.resolveValue(value as Object);
       final chunkKeyTrackRef = keyRequestedRef && chunkKeyTypeInfo.supportsRef;
       final chunkValueTrackRef =
           valueRequestedRef && chunkValueTypeInfo.supportsRef;
@@ -186,12 +191,14 @@ final class MapSerializer extends Serializer<Map> {
           pendingEntry = nextEntry;
           break;
         }
-        final nextKeyTypeInfo = keyDeclared
-            ? declaredKeyTypeInfo
-            : context.typeResolver.resolveValue(nextKey as Object);
-        final nextValueTypeInfo = valueDeclared
-            ? declaredValueTypeInfo
-            : context.typeResolver.resolveValue(nextValue as Object);
+        final nextKeyTypeInfo =
+            keyDeclared
+                ? declaredKeyTypeInfo
+                : context.typeResolver.resolveValue(nextKey as Object);
+        final nextValueTypeInfo =
+            valueDeclared
+                ? declaredValueTypeInfo
+                : context.typeResolver.resolveValue(nextValue as Object);
         final nextKeyTrackRef = keyRequestedRef && nextKeyTypeInfo.supportsRef;
         final nextValueTrackRef =
             valueRequestedRef && nextValueTypeInfo.supportsRef;
@@ -252,15 +259,16 @@ Map<K, V> readTypedMapPayload<K, V>(
   bool hasPreservedRef = false,
 }) {
   var remaining = context.buffer.readVarUint32();
-  context.reserveMapMemory(remaining);
+  context.reserveContainerMemory(remaining * 2 * _referenceBytes);
   context.buffer.checkReadableBytes(remaining);
-  final declaredKeyTypeInfo = keyFieldType == null || keyFieldType.isDynamic
-      ? null
-      : context.typeResolver.resolveFieldType(keyFieldType);
+  final declaredKeyTypeInfo =
+      keyFieldType == null || keyFieldType.isDynamic
+          ? null
+          : context.typeResolver.resolveFieldType(keyFieldType);
   final declaredValueTypeInfo =
       valueFieldType == null || valueFieldType.isDynamic
-      ? null
-      : context.typeResolver.resolveFieldType(valueFieldType);
+          ? null
+          : context.typeResolver.resolveFieldType(valueFieldType);
   final result = <K, V>{};
   if (hasPreservedRef) {
     context.reference(result);
@@ -308,32 +316,34 @@ Map<K, V> readTypedMapPayload<K, V>(
       context.increaseDepth();
     }
     for (var index = 0; index < chunkSize; index += 1) {
-      final key = keyDeclared
-          ? _readDeclaredMapValue(
-              context,
-              keyFieldType!,
-              declaredKeyTypeInfo!,
-              trackRef: keyTrackRef,
-            )
-          : _readResolvedMapValue(
-              context,
-              keyTypeInfo!,
-              null,
-              trackRef: keyTrackRef,
-            );
-      final value = valueDeclared
-          ? _readDeclaredMapValue(
-              context,
-              valueFieldType!,
-              declaredValueTypeInfo!,
-              trackRef: valueTrackRef,
-            )
-          : _readResolvedMapValue(
-              context,
-              valueTypeInfo!,
-              null,
-              trackRef: valueTrackRef,
-            );
+      final key =
+          keyDeclared
+              ? _readDeclaredMapValue(
+                context,
+                keyFieldType!,
+                declaredKeyTypeInfo!,
+                trackRef: keyTrackRef,
+              )
+              : _readResolvedMapValue(
+                context,
+                keyTypeInfo!,
+                null,
+                trackRef: keyTrackRef,
+              );
+      final value =
+          valueDeclared
+              ? _readDeclaredMapValue(
+                context,
+                valueFieldType!,
+                declaredValueTypeInfo!,
+                trackRef: valueTrackRef,
+              )
+              : _readResolvedMapValue(
+                context,
+                valueTypeInfo!,
+                null,
+                trackRef: valueTrackRef,
+              );
       result[convertKey(key)] = convertValue(value);
     }
     if (tracksDepth) {

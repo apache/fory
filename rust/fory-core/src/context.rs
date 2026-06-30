@@ -33,9 +33,6 @@ use std::rc::Rc;
 
 const KNOWN_ROOT_BUDGET_MULTIPLIER: usize = 8;
 const KNOWN_ROOT_BUDGET_SLACK_BYTES: usize = 64 * 1024;
-const VEC_OBJECT_BYTES: usize = mem::size_of::<Vec<u8>>();
-const MAP_ENTRY_OVERHEAD_BYTES: usize = 16;
-const REFERENCE_SLOT_BYTES: usize = mem::size_of::<usize>();
 const MAX_CONTAINER_LEN: usize = u32::MAX as usize;
 
 /// Thread-local context cache with fast path for single Fory instance.
@@ -481,35 +478,13 @@ impl<'a> ReadContext<'a> {
     }
 
     #[inline(always)]
-    pub(crate) fn reserve_vec_memory<T>(&mut self, len: u32) -> Result<usize, Error> {
+    pub(crate) fn reserve_counted_container_memory(
+        &mut self,
+        len: u32,
+        elem_bytes: usize,
+    ) -> Result<usize, Error> {
         let len = len as usize;
-        self.reserve_counted_memory(len, VEC_OBJECT_BYTES, mem::size_of::<T>())?;
-        Ok(len)
-    }
-
-    #[inline(always)]
-    pub(crate) fn reserve_collection_memory<C, T>(&mut self, len: u32) -> Result<usize, Error> {
-        let len = len as usize;
-        let elem_size = mem::size_of::<T>();
-        if elem_size > usize::MAX - REFERENCE_SLOT_BYTES {
-            return Err(container_memory_overflow(len, elem_size));
-        }
-        let elem_bytes = elem_size + REFERENCE_SLOT_BYTES;
-        self.reserve_counted_memory(len, mem::size_of::<C>(), elem_bytes)?;
-        Ok(len)
-    }
-
-    #[inline(always)]
-    pub(crate) fn reserve_map_memory<M, K, V>(&mut self, len: u32) -> Result<usize, Error> {
-        let len = len as usize;
-        let key_size = mem::size_of::<K>();
-        let value_size = mem::size_of::<V>();
-        let overhead = MAP_ENTRY_OVERHEAD_BYTES + REFERENCE_SLOT_BYTES * 3;
-        if key_size > usize::MAX - value_size || key_size + value_size > usize::MAX - overhead {
-            return Err(container_memory_overflow(len, key_size));
-        }
-        let elem_bytes = key_size + value_size + overhead;
-        self.reserve_counted_memory(len, mem::size_of::<M>(), elem_bytes)?;
+        self.reserve_counted_memory(len, elem_bytes)?;
         Ok(len)
     }
 
@@ -528,19 +503,14 @@ impl<'a> ReadContext<'a> {
     }
 
     #[inline(always)]
-    fn reserve_counted_memory(
-        &mut self,
-        len: usize,
-        fixed_bytes: usize,
-        elem_bytes: usize,
-    ) -> Result<(), Error> {
+    fn reserve_counted_memory(&mut self, len: usize, elem_bytes: usize) -> Result<(), Error> {
         if len == 0 {
-            return self.reserve_container_bytes(fixed_bytes);
+            return Ok(());
         }
-        if elem_bytes <= (usize::MAX - fixed_bytes) / MAX_CONTAINER_LEN {
-            return self.reserve_container_bytes(len * elem_bytes + fixed_bytes);
+        if elem_bytes <= usize::MAX / MAX_CONTAINER_LEN {
+            return self.reserve_container_bytes(len * elem_bytes);
         }
-        self.reserve_counted_memory_checked(len, fixed_bytes, elem_bytes)
+        self.reserve_counted_memory_checked(len, elem_bytes)
     }
 
     #[cold]
@@ -548,14 +518,9 @@ impl<'a> ReadContext<'a> {
     fn reserve_counted_memory_checked(
         &mut self,
         len: usize,
-        fixed_bytes: usize,
         elem_bytes: usize,
     ) -> Result<(), Error> {
-        let elem_total = match len.checked_mul(elem_bytes) {
-            Some(bytes) => bytes,
-            None => return Err(container_memory_overflow(len, elem_bytes)),
-        };
-        let bytes = match elem_total.checked_add(fixed_bytes) {
+        let bytes = match len.checked_mul(elem_bytes) {
             Some(bytes) => bytes,
             None => return Err(container_memory_overflow(len, elem_bytes)),
         };

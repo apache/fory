@@ -566,34 +566,15 @@ public:
     return true;
   }
 
-  FORY_ALWAYS_INLINE bool reserve_counted_container_memory(uint32_t length,
-                                                           size_t fixed_bytes,
-                                                           size_t elem_bytes) {
-    if (length == 0) {
-      return reserve_container_memory(fixed_bytes);
-    }
-    constexpr size_t kMaxLength =
-        static_cast<size_t>(std::numeric_limits<uint32_t>::max());
-    if (FORY_PREDICT_TRUE(elem_bytes <=
-                          (std::numeric_limits<size_t>::max() - fixed_bytes) /
-                              kMaxLength)) {
-      return reserve_container_memory(static_cast<size_t>(length) * elem_bytes +
-                                      fixed_bytes);
-    }
-    return reserve_counted_container_checked(length, fixed_bytes, elem_bytes);
-  }
-
-  template <size_t fixed_bytes, size_t elem_bytes>
+  template <size_t elem_bytes>
   FORY_ALWAYS_INLINE bool reserve_counted_container_memory(uint32_t length) {
     constexpr size_t kMaxLength =
         static_cast<size_t>(std::numeric_limits<uint32_t>::max());
     if constexpr (elem_bytes <=
-                  (std::numeric_limits<size_t>::max() - fixed_bytes) /
-                      kMaxLength) {
-      return reserve_container_memory(static_cast<size_t>(length) * elem_bytes +
-                                      fixed_bytes);
+                  std::numeric_limits<size_t>::max() / kMaxLength) {
+      return reserve_container_memory(static_cast<size_t>(length) * elem_bytes);
     } else {
-      return reserve_counted_container_checked(length, fixed_bytes, elem_bytes);
+      return reserve_counted_container_checked(length, elem_bytes);
     }
   }
 
@@ -761,7 +742,6 @@ private:
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
   FORY_NOINLINE bool reserve_counted_container_checked(uint32_t length,
-                                                       size_t fixed_bytes,
                                                        size_t elem_bytes);
   FORY_NOINLINE bool set_container_memory_error(const std::string &message);
   FORY_NOINLINE bool set_container_memory_overflow(uint32_t length,

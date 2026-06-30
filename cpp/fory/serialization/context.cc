@@ -740,17 +740,13 @@ const TypeInfo *ReadContext::read_any_type_info(Error &error) {
 }
 
 bool ReadContext::reserve_counted_container_checked(uint32_t length,
-                                                    size_t fixed_bytes,
                                                     size_t elem_bytes) {
-  if (FORY_PREDICT_FALSE(
-          elem_bytes != 0 &&
-          static_cast<size_t>(length) >
-              (std::numeric_limits<size_t>::max() - fixed_bytes) /
-                  elem_bytes)) {
+  if (FORY_PREDICT_FALSE(elem_bytes != 0 &&
+                         static_cast<size_t>(length) >
+                             std::numeric_limits<size_t>::max() / elem_bytes)) {
     return set_container_memory_overflow(length, elem_bytes);
   }
-  return reserve_container_memory(static_cast<size_t>(length) * elem_bytes +
-                                  fixed_bytes);
+  return reserve_container_memory(static_cast<size_t>(length) * elem_bytes);
 }
 
 bool ReadContext::set_container_memory_error(const std::string &message) {

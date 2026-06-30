@@ -47,11 +47,6 @@ import 'package:fory/src/types/uint64.dart';
 final class ReadContext {
   static const int _knownRootBudgetMultiplier = 8;
   static const int _knownRootBudgetSlackBytes = 64 * 1024;
-  static const int _collectionObjectBytes = 24;
-  static const int _mapObjectBytes = 48;
-  static const int _arrayHeaderBytes = 16;
-  static const int _mapEntryBytes = 32;
-  static const int _referenceBytes = 4;
   static const int _maxSafeBudgetBytes = 9007199254740991;
 
   /// Effective runtime configuration for the active operation.
@@ -118,41 +113,6 @@ final class ReadContext {
 
   @internal
   @pragma('vm:prefer-inline')
-  void reserveCollectionMemory(int numElements) {
-    final bytes = _collectionObjectBytes + numElements * _referenceBytes;
-    final remaining = _remainingContainerMemoryBytes - bytes;
-    if (remaining < 0) {
-      _throwContainerMemoryExceeded(bytes);
-    }
-    _remainingContainerMemoryBytes = remaining;
-  }
-
-  @internal
-  @pragma('vm:prefer-inline')
-  void reserveMapMemory(int numElements) {
-    final bytes =
-        _mapObjectBytes +
-        numElements *
-            (_referenceBytes * 2 + _mapEntryBytes + _referenceBytes * 3);
-    final remaining = _remainingContainerMemoryBytes - bytes;
-    if (remaining < 0) {
-      _throwContainerMemoryExceeded(bytes);
-    }
-    _remainingContainerMemoryBytes = remaining;
-  }
-
-  @internal
-  @pragma('vm:prefer-inline')
-  void reserveTypedArrayMemory(int numElements, int elementBytes) {
-    final bytes = _arrayHeaderBytes + numElements * elementBytes;
-    final remaining = _remainingContainerMemoryBytes - bytes;
-    if (remaining < 0) {
-      _throwContainerMemoryExceeded(bytes);
-    }
-    _remainingContainerMemoryBytes = remaining;
-  }
-
-  @internal
   void reserveContainerMemory(int bytes) {
     if (bytes < 0 || bytes > _maxSafeBudgetBytes) {
       _throwContainerMemoryOverflow(bytes);

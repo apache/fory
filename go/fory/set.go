@@ -318,7 +318,14 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		return
 	}
 	if length == 0 {
-		if !ctx.reserveMapTypeMemory(length, type_.Key(), type_.Elem()) {
+		keyBytes := int64(type_.Key().Size())
+		valueBytes := int64(type_.Elem().Size())
+		elemBytes := keyBytes + valueBytes
+		if elemBytes < keyBytes {
+			ctx.setContainerMemoryError("map entry size overflows: key=%d value=%d", keyBytes, valueBytes)
+			return
+		}
+		if !ctx.ReserveCountedContainerMemory(length, elemBytes) {
 			return
 		}
 		// Initialize empty set if length is 0
@@ -359,7 +366,14 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	if !buf.CheckReadable(length, err) {
 		return
 	}
-	if !ctx.reserveMapTypeMemory(length, type_.Key(), type_.Elem()) {
+	keyBytes := int64(type_.Key().Size())
+	valueBytes := int64(type_.Elem().Size())
+	elemBytes := keyBytes + valueBytes
+	if elemBytes < keyBytes {
+		ctx.setContainerMemoryError("map entry size overflows: key=%d value=%d", keyBytes, valueBytes)
+		return
+	}
+	if !ctx.ReserveCountedContainerMemory(length, elemBytes) {
 		return
 	}
 

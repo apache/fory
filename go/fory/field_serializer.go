@@ -74,7 +74,7 @@ func newDeclaredSliceSerializer(type_ reflect.Type, elemSerializer Serializer, r
 		elemSerializer: elemSerializer,
 		referencable:   referencable,
 		elemBytes:      elemBytes,
-		maxLength:      maxSliceLength(elemBytes),
+		maxLength:      maxContainerCount(elemBytes),
 	}, nil
 }
 

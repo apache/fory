@@ -239,7 +239,7 @@ where
     C: FromIterator<T>,
 {
     let len = context.reader.read_var_u32()?;
-    let len_usize = context.reserve_collection_memory::<C, T>(len)?;
+    let len_usize = context.reserve_counted_container_memory(len, std::mem::size_of::<T>())?;
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
@@ -282,7 +282,7 @@ where
     T: Serializer + ForyDefault,
 {
     let len = context.reader.read_var_u32()?;
-    let len_usize = context.reserve_vec_memory::<T>(len)?;
+    let len_usize = context.reserve_counted_container_memory(len, std::mem::size_of::<T>())?;
     if len == 0 {
         return Ok(Vec::new());
     }
@@ -729,7 +729,7 @@ where
 {
     let element_type = generic_field_type(remote_field_type, 0, "list")?;
     let len = context.reader.read_var_u32()?;
-    let len_usize = context.reserve_vec_memory::<T>(len)?;
+    let len_usize = context.reserve_counted_container_memory(len, std::mem::size_of::<T>())?;
     if len == 0 {
         return Ok(Vec::new());
     }

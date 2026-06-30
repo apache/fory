@@ -144,8 +144,10 @@ inputBytes * 8 + 64 KiB
 ```
 
 `DeserializeFromReader` and `DeserializeFromStream` use `128 MiB` because the
-full root length is unknown. The budget covers Go slices, maps, sets, and
-generated container reads. Strings, binary blobs, and primitive dense array
+full root length is unknown. The budget covers lower-bound slice backing
+storage, map key/value storage, sets, and generated container reads. Empty
+containers without backing storage normally do not consume the budget. Strings,
+binary blobs, and primitive dense array
 owners keep their byte-availability checks and are not charged to this budget.
 Set a positive value when a service needs a stricter or larger limit for trusted
 data.

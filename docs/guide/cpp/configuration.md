@@ -112,13 +112,14 @@ automatic limit is the root input size multiplied by `8`, plus `64 KiB`. For
 stream roots, the automatic limit is `128 MiB` because the full root size is not
 known up front. Positive values always override the automatic limit.
 
-This budget is a portable lower-bound estimate for container-owned memory such
-as collection objects, backing storage, map value storage, and object/reference
-arrays. It is not an exact process heap limit and does not include STL
-implementation details such as debug nodes or allocator headers. Dedicated
-string, binary, and primitive dense-array payloads continue to rely on their
-byte-availability checks instead. `std::vector<bool>` is counted as packed
-standard-container storage.
+This budget is a portable lower-bound estimate for container-owned storage such
+as dynamic collection backing storage, map key/value storage, and
+object/reference array slots. It is not an exact process heap limit and does
+not include STL implementation details such as debug nodes, table buckets, or
+allocator headers. Empty containers with no dynamic backing normally do not
+consume the budget. Dedicated string, binary, and primitive dense-array payloads
+continue to rely on their byte-availability checks instead. `std::vector<bool>`
+is counted as packed standard-container storage.
 
 **Default:** `-1`
 

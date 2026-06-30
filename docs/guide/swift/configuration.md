@@ -93,10 +93,11 @@ let fory = Fory(compatible: false, checkClassVersion: true)
 
 `maxDepth` bounds decoded payload nesting depth.
 
-`maxContainerMemoryBytes` bounds the estimated container-owned memory accepted during one root
-deserialization. Use `-1` for the default automatic limit. Swift roots are currently `Data` or
-`ByteBuffer`, so auto uses the root input byte length times `8`, plus `64 KiB`. A positive value
-overrides the automatic limit. `0` and negative values other than `-1` are rejected.
+`maxContainerMemoryBytes` bounds the estimated lower-bound container-owned storage accepted during
+one root deserialization. Swift roots are currently `Data` or `ByteBuffer`, so auto uses the root
+input byte length times `8`, plus `64 KiB`. Empty containers without backing storage normally do
+not consume the budget. Use `-1` for the default automatic limit; a positive value overrides it.
+`0` and negative values other than `-1` are rejected.
 
 Compatible-mode remote metadata is also limited:
 
@@ -148,7 +149,7 @@ Security-related configuration:
 - Register only the expected generated models before deserializing untrusted payloads.
 - Use `checkClassVersion` with `compatible: false` for intentional same-schema payloads.
 - Set `maxDepth` for the largest nesting depth your service accepts.
-- Set `maxContainerMemoryBytes` to cap estimated list, set, array, and map memory during one root
-  deserialization.
+- Set `maxContainerMemoryBytes` to cap estimated lower-bound list, set, array, and map storage
+  during one root deserialization.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.

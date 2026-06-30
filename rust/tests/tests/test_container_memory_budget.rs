@@ -93,7 +93,7 @@ fn config_validation() {
 
 #[test]
 fn known_auto_budget() {
-    let value = compact_empty_lists(3000);
+    let value = compact_empty_lists(12000);
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
     let auto_limit = bytes.len() * 8 + 64 * 1024;
@@ -110,7 +110,7 @@ fn known_auto_budget() {
 
 #[test]
 fn reader_known_auto_budget() {
-    let value = compact_empty_lists(3000);
+    let value = compact_empty_lists(12000);
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
     let auto_limit = bytes.len() * 8 + 64 * 1024;
@@ -124,52 +124,60 @@ fn reader_known_auto_budget() {
 
 #[test]
 fn explicit_override() {
-    let value = compact_empty_lists(3000);
+    let value = compact_empty_lists(12000);
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
     assert!(writer.deserialize::<Vec<Vec<String>>>(&bytes).is_err());
 
     let vec_bytes = std::mem::size_of::<Vec<String>>();
-    let estimate = std::mem::size_of::<Vec<Vec<String>>>() + value.len() * vec_bytes * 2;
+    let estimate = value.len() * vec_bytes;
     let explicit = fory_with_budget(estimate as i64);
     let decoded: Vec<Vec<String>> = explicit.deserialize(&bytes).unwrap();
     assert_eq!(decoded, value);
 }
 
 #[test]
-fn empty_container_cost() {
+fn empty_container_has_no_dynamic_storage() {
     let value: Vec<String> = Vec::new();
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
-    let fixed = std::mem::size_of::<Vec<String>>() as i64;
 
-    let limited = fory_with_budget(fixed - 1);
-    assert!(limited.deserialize::<Vec<String>>(&bytes).is_err());
+    let limited = fory_with_budget(1);
+    let decoded: Vec<String> = limited.deserialize(&bytes).unwrap();
+    assert!(decoded.is_empty());
 }
 
 #[test]
 fn sibling_cumulative_budget() {
     let value = BudgetSiblings {
-        first: Vec::new(),
-        second: Vec::new(),
+        first: vec!["a".to_string()],
+        second: vec!["b".to_string()],
     };
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
-    let one_vec = std::mem::size_of::<Vec<String>>() as i64;
+    let one_vec = std::mem::size_of::<String>() as i64;
 
     let limited = fory_with_budget(one_vec);
     assert!(limited.deserialize::<BudgetSiblings>(&bytes).is_err());
+    let enough = fory_with_budget(one_vec * 2);
+    assert_eq!(enough.deserialize::<BudgetSiblings>(&bytes).unwrap(), value);
 }
 
 #[test]
 fn map_budget() {
-    let value: HashMap<String, i32> = HashMap::new();
+    let value: HashMap<String, i32> = HashMap::from([("a".to_string(), 1)]);
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
-    let fixed = std::mem::size_of::<HashMap<String, i32>>() as i64;
+    let required = (std::mem::size_of::<String>() + std::mem::size_of::<i32>()) as i64;
 
-    let limited = fory_with_budget(fixed - 1);
+    let limited = fory_with_budget(required - 1);
     assert!(limited.deserialize::<HashMap<String, i32>>(&bytes).is_err());
+    assert_eq!(
+        fory_with_budget(required)
+            .deserialize::<HashMap<String, i32>>(&bytes)
+            .unwrap(),
+        value
+    );
 }
 
 #[test]
@@ -182,8 +190,7 @@ fn inline_value_vec_budget() {
         .collect::<Vec<_>>();
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
-    let under_inline =
-        std::mem::size_of::<Vec<BudgetItem>>() + value.len() * std::mem::size_of::<u64>();
+    let under_inline = value.len() * std::mem::size_of::<u64>();
 
     let limited = fory_with_budget(under_inline as i64);
     assert!(limited.deserialize::<Vec<BudgetItem>>(&bytes).is_err());
@@ -197,7 +204,7 @@ fn compatible_list_array_budget() {
     let writer = compatible_fory::<ListWireInts>(-1);
     let bytes = writer.serialize(&value).unwrap();
 
-    let limited = compatible_fory::<DenseWireInts>(std::mem::size_of::<Vec<i32>>() as i64);
+    let limited = compatible_fory::<DenseWireInts>((64 * std::mem::size_of::<i32>() - 1) as i64);
     assert!(limited.deserialize::<DenseWireInts>(&bytes).is_err());
 
     let enough = compatible_fory::<DenseWireInts>(i64::MAX);

@@ -553,7 +553,10 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_var_u32()?;
-        let capacity = context.reserve_map_memory::<HashMap<K, V>, K, V>(len)?;
+        let elem_bytes = std::mem::size_of::<K>()
+            .checked_add(std::mem::size_of::<V>())
+            .ok_or_else(|| Error::invalid_data("container memory estimate overflows"))?;
+        let capacity = context.reserve_counted_container_memory(len, elem_bytes)?;
         if len == 0 {
             return Ok(HashMap::new());
         }
@@ -706,7 +709,10 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_var_u32()?;
-        let len_usize = context.reserve_map_memory::<BTreeMap<K, V>, K, V>(len)?;
+        let elem_bytes = std::mem::size_of::<K>()
+            .checked_add(std::mem::size_of::<V>())
+            .ok_or_else(|| Error::invalid_data("container memory estimate overflows"))?;
+        let len_usize = context.reserve_counted_container_memory(len, elem_bytes)?;
         if len == 0 {
             return Ok(BTreeMap::new());
         }

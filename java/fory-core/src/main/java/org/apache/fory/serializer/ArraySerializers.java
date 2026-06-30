@@ -45,6 +45,8 @@ import org.apache.fory.util.Preconditions;
  * object-array paths avoid adapter allocation.
  */
 public final class ArraySerializers {
+  private static final int REFERENCE_BYTES = MemoryBuffer.objectArrayIndexScale();
+
   private ArraySerializers() {}
 
   private static void throwInvalidObjectArraySize(int size) {
@@ -59,7 +61,7 @@ public final class ArraySerializers {
     if (numElements < 0) {
       throwInvalidObjectArraySize(numElements);
     }
-    readContext.reserveObjectArrayMemory(numElements);
+    readContext.reserveContainerMemory((long) numElements * REFERENCE_BYTES);
     buffer.checkReadableBytes(numElements);
     return numElements;
   }

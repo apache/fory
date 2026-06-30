@@ -1161,14 +1161,16 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine($"{indent}}}");
         string elementTypeName = codec.CarrierKind == CarrierKind.Array ? ElementTypeName(codec.TypeName) : PackedArrayElementTypeName(codec.TypeId);
         uint elementTypeId = PackedArrayElementTypeId(codec.TypeId);
+        string elementBytesExpr =
+            $"(typeof({elementTypeName}).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<{elementTypeName}>() : 4)";
         if (codec.CarrierKind == CarrierKind.Array)
         {
-            sb.AppendLine($"{indent}context.ReserveArrayMemory<{elementTypeName}>({lengthVar});");
+            sb.AppendLine($"{indent}context.ReserveCountedContainerMemory({lengthVar}, {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new {ElementTypeName(codec.TypeName)}[{lengthVar}];");
         }
         else
         {
-            sb.AppendLine($"{indent}context.ReserveListMemory<{elementTypeName}>({lengthVar});");
+            sb.AppendLine($"{indent}context.ReserveCountedContainerMemory({lengthVar}, {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({lengthVar});");
         }
 

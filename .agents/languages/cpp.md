@@ -21,17 +21,19 @@ Load this file when changing `cpp/`, Cython build plumbing, or C++ xlang behavio
   `Fory::deserialize` overload. Keep `max_container_memory_bytes` as `-1 / auto` or a positive
   explicit limit; known byte roots use `inputBytes * 8 + 64 KiB`, while stream roots use fixed
   `128 MiB`. Reserve estimated container-owned memory before allocation but preserve existing
-  byte-availability checks and their non-empty metadata ordering. Skip only dedicated string,
+  byte-availability checks and their non-empty metadata ordering. `ReadContext` may expose only raw
+  byte reservation and generic counted-byte arithmetic; collection/map formulas belong in serializer
+  owners. Empty containers with no dynamic
+  backing storage normally charge zero. Skip only dedicated string,
   binary, primitive vector, and primitive dense-array owners; `std::vector<bool>` is the C++
   standard-container exception and should charge rounded packed-bit storage. General
   `std::vector<T>` for non-primitive `T` is inline container storage and must be charged.
 - C++ container budget formulas must be portable lower-bound estimates, not STL heap-layout
   accounting. Generic collection-like containers charge `count_or_capacity * sizeof(value_type)`,
   map-like containers charge `count * (sizeof(key_type) + sizeof(mapped_type))`, and set-like
-  containers charge `count * sizeof(key_type)`. Do not add guessed node/header/debug-STL overhead,
-  red-black-tree fields, allocator probing, object-layout inspection, or generic per-entry pointer
-  overhead. Charge unordered bucket tables only if the owner path has a cheap pre-allocation bucket
-  count; otherwise leave them uncharged.
+  containers charge `count * sizeof(key_type)`. Do not charge standalone `sizeof(Container)` and do
+  not add guessed node/header/debug-STL overhead, red-black-tree fields, allocator probing,
+  object-layout inspection, generic per-entry pointer overhead, or unordered bucket-table guesses.
 
 ## Key Paths
 

@@ -45,7 +45,7 @@ func newSliceDynSerializer(elemType reflect.Type) (*sliceDynSerializer, error) {
 		return &sliceDynSerializer{
 			isInterfaceElem: true,
 			elemBytes:       elemBytes,
-			maxLength:       maxSliceLength(elemBytes),
+			maxLength:       maxContainerCount(elemBytes),
 		}, nil
 	}
 	// Validate element type is interface or pointer to interface
@@ -61,7 +61,7 @@ func newSliceDynSerializer(elemType reflect.Type) (*sliceDynSerializer, error) {
 		isInterfaceElem: isInterface,
 		isPointerElem:   isPointerToInterface,
 		elemBytes:       elemBytes,
-		maxLength:       maxSliceLength(elemBytes),
+		maxLength:       maxContainerCount(elemBytes),
 	}, nil
 }
 
@@ -283,11 +283,11 @@ func (s *sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, exp
 		return
 	}
 	allocatedByCaller := expectedLength >= 0
-	if !allocatedByCaller && !ctx.reserveSliceMemory(length, s.elemBytes, s.maxLength) {
-		return
-	}
 	if length == 0 {
 		value.Set(reflect.MakeSlice(sliceType, 0, 0))
+		return
+	}
+	if !allocatedByCaller && !ctx.reserveCountedContainerMemory(length, s.elemBytes, s.maxLength) {
 		return
 	}
 

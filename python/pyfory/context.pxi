@@ -33,10 +33,6 @@ cdef int32_t MAX_CACHED_META_STRING_LENGTH = 2048
 cdef int64_t _KNOWN_ROOT_BUDGET_MULTIPLIER = 8
 cdef int64_t _KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024
 cdef int64_t _STREAM_ROOT_BUDGET_BYTES = 128 * 1024 * 1024
-cdef int64_t _COLLECTION_OBJECT_BYTES = 56
-cdef int64_t _MAP_OBJECT_BYTES = 64
-cdef int64_t _MAP_ENTRY_BYTES = 32
-cdef int64_t _REFERENCE_BYTES = sizeof(PyObject*)
 cdef int64_t _MAX_CONTAINER_MEMORY_BYTES = 9223372036854775807
 
 
@@ -864,27 +860,19 @@ cdef class ReadContext:
     cpdef inline reserve_container_memory(self, int64_t num_bytes):
         self.reserve_container_memory_c(num_bytes)
 
-    cdef inline void reserve_collection_memory_c(self, int64_t num_elements):
-        if num_elements < 0:
-            raise ValueError("Container element count is negative")
-        if num_elements > (_MAX_CONTAINER_MEMORY_BYTES - _COLLECTION_OBJECT_BYTES) // _REFERENCE_BYTES:
+    cdef inline void reserve_counted_container_memory_c(
+        self,
+        int64_t count,
+        int64_t element_bytes,
+    ):
+        if count < 0 or element_bytes < 0:
+            raise ValueError("Estimated container memory is negative")
+        if element_bytes != 0 and count > _MAX_CONTAINER_MEMORY_BYTES // element_bytes:
             raise ValueError("Estimated container memory overflow")
-        self.reserve_container_memory_c(_COLLECTION_OBJECT_BYTES + num_elements * _REFERENCE_BYTES)
+        self.reserve_container_memory_c(count * element_bytes)
 
-    cpdef inline reserve_collection_memory(self, int64_t num_elements):
-        self.reserve_collection_memory_c(num_elements)
-
-    cdef inline void reserve_map_memory_c(self, int64_t num_elements):
-        cdef int64_t bytes_per_entry
-        if num_elements < 0:
-            raise ValueError("Map entry count is negative")
-        bytes_per_entry = _MAP_ENTRY_BYTES + 5 * _REFERENCE_BYTES
-        if num_elements > (_MAX_CONTAINER_MEMORY_BYTES - _MAP_OBJECT_BYTES) // bytes_per_entry:
-            raise ValueError("Estimated container memory overflow")
-        self.reserve_container_memory_c(_MAP_OBJECT_BYTES + num_elements * bytes_per_entry)
-
-    cpdef inline reserve_map_memory(self, int64_t num_elements):
-        self.reserve_map_memory_c(num_elements)
+    cpdef inline reserve_counted_container_memory(self, int64_t count, int64_t element_bytes):
+        self.reserve_counted_container_memory_c(count, element_bytes)
 
     cpdef inline add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj

@@ -33,9 +33,6 @@ except ImportError:
 KNOWN_ROOT_BUDGET_MULTIPLIER = 8
 KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024
 STREAM_ROOT_BUDGET_BYTES = 128 * 1024 * 1024
-COLLECTION_OBJECT_BYTES = 56
-MAP_OBJECT_BYTES = 64
-MAP_ENTRY_BYTES = 32
 REFERENCE_BYTES = struct.calcsize("P")
 MAX_CONTAINER_MEMORY_BYTES = (1 << 63) - 1
 
@@ -85,11 +82,11 @@ class OneByteStream:
 
 
 def collection_memory(num_elements):
-    return COLLECTION_OBJECT_BYTES + num_elements * REFERENCE_BYTES
+    return num_elements * REFERENCE_BYTES
 
 
 def map_memory(num_entries):
-    return MAP_OBJECT_BYTES + num_entries * (MAP_ENTRY_BYTES + 5 * REFERENCE_BYTES)
+    return num_entries * 2 * REFERENCE_BYTES
 
 
 def new_fory(limit=-1, *, xlang=True):
@@ -146,15 +143,15 @@ def test_explicit_config_overrides_auto():
     assert expect_budget(value, budget) == value
 
 
-def test_nested_empty_containers_charge_fixed_cost():
+def test_nested_empty_containers_use_parent_storage():
     value = [[]]
-    budget = collection_memory(1) + collection_memory(0)
+    budget = collection_memory(1)
     assert expect_budget(value, budget) == value
 
 
 def test_sibling_nested_containers_are_cumulative():
     value = [[], [], []]
-    budget = collection_memory(3) + 3 * collection_memory(0)
+    budget = collection_memory(3)
     assert expect_budget(value, budget) == value
 
 
@@ -165,9 +162,9 @@ def test_map_entry_budget_and_overflow():
     fory = new_fory(xlang=False)
     try:
         fory.read_context.prepare(Buffer(b""), root_input_bytes=0)
-        max_map_entries = (MAX_CONTAINER_MEMORY_BYTES - MAP_OBJECT_BYTES) // (MAP_ENTRY_BYTES + 5 * REFERENCE_BYTES)
+        max_map_entries = MAX_CONTAINER_MEMORY_BYTES // (2 * REFERENCE_BYTES)
         with pytest.raises(ValueError, match="Estimated container memory overflow"):
-            fory.read_context.reserve_map_memory(max_map_entries + 1)
+            fory.read_context.reserve_counted_container_memory(max_map_entries + 1, 2 * REFERENCE_BYTES)
     finally:
         fory.reset_read()
 
