@@ -1515,7 +1515,13 @@ public class TypeRef<T> {
 
       LocalClass<String> localClassInstance = new LocalClass<String>() {};
       Class<?> subclass = localClassInstance.getClass();
-      ParameterizedType parameterizedType = (ParameterizedType) subclass.getGenericSuperclass();
+      Type genericSuperclass = subclass.getGenericSuperclass();
+      if (!(genericSuperclass instanceof ParameterizedType)) {
+        // Android release minification can strip this probe's Signature attribute while leaving
+        // user generic metadata intact. The probe must not make TypeRef unusable in that case.
+        return LOCAL_CLASS_HAS_NO_OWNER;
+      }
+      ParameterizedType parameterizedType = (ParameterizedType) genericSuperclass;
       for (ClassOwnership behavior : ClassOwnership.values()) {
         if (behavior.getOwnerType(LocalClass.class) == parameterizedType.getOwnerType()) {
           return behavior;
