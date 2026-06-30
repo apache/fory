@@ -19,6 +19,7 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
+using S = Apache.Fory.Schema.Types;
 
 namespace Apache.Fory.Tests;
 
@@ -42,6 +43,27 @@ public sealed class BudgetArrayHolder
     public BudgetItem[] Values { get; set; } = [];
 }
 
+[ForyStruct]
+public sealed class GeneratedSchemaListBudget
+{
+    [ForyField(Type = typeof(S.List<S.Int32>))]
+    public List<int> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class GeneratedPackedListBudget
+{
+    [ForyField(Type = typeof(S.Array<S.Int32>))]
+    public List<int> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class GeneratedSchemaMapBudget
+{
+    [ForyField(Type = typeof(S.Map<S.Int32, S.Int32>))]
+    public Dictionary<int, int> Values { get; set; } = [];
+}
+
 public sealed class ContainerMemoryBudgetTests
 {
     private const int ReferenceBytes = 4;
@@ -57,7 +79,10 @@ public sealed class ContainerMemoryBudgetTests
             .Build()
             .Register<BudgetItem>(1001)
             .Register<BudgetSiblings>(1002)
-            .Register<BudgetArrayHolder>(1003);
+            .Register<BudgetArrayHolder>(1003)
+            .Register<GeneratedSchemaListBudget>(1004)
+            .Register<GeneratedPackedListBudget>(1005)
+            .Register<GeneratedSchemaMapBudget>(1006);
     }
 
     private static byte[] Serialize<T>(T value)
@@ -161,6 +186,31 @@ public sealed class ContainerMemoryBudgetTests
         long listRequired = ListBudget<int>(ints.Count);
         Assert.Throws<InvalidDataException>(() => NewFory(listRequired - 1).Deserialize<List<int>>(intBytes));
         Assert.Equal(ints, NewFory(listRequired).Deserialize<List<int>>(intBytes));
+    }
+
+    [Fact]
+    public void GeneratedSchemaContainersAreCharged()
+    {
+        GeneratedSchemaListBudget list = new() { Values = [1, 2, 3, 4, 5, 6] };
+        byte[] listBytes = Serialize(list);
+        long listRequired = ListBudget<int>(list.Values.Count);
+        Assert.Throws<InvalidDataException>(() => NewFory(listRequired - 1).Deserialize<GeneratedSchemaListBudget>(listBytes));
+        Assert.Equal(list.Values, NewFory(listRequired).Deserialize<GeneratedSchemaListBudget>(listBytes).Values);
+
+        GeneratedPackedListBudget packed = new() { Values = [1, 2, 3, 4, 5, 6] };
+        byte[] packedBytes = Serialize(packed);
+        long packedRequired = ListBudget<int>(packed.Values.Count);
+        Assert.Throws<InvalidDataException>(() => NewFory(packedRequired - 1).Deserialize<GeneratedPackedListBudget>(packedBytes));
+        Assert.Equal(packed.Values, NewFory(packedRequired).Deserialize<GeneratedPackedListBudget>(packedBytes).Values);
+
+        GeneratedSchemaMapBudget map = new()
+        {
+            Values = new Dictionary<int, int> { [1] = 1, [2] = 2, [3] = 3 },
+        };
+        byte[] mapBytes = Serialize(map);
+        long mapRequired = MapBudget<int, int>(map.Values.Count);
+        Assert.Throws<InvalidDataException>(() => NewFory(mapRequired - 1).Deserialize<GeneratedSchemaMapBudget>(mapBytes));
+        Assert.Equal(map.Values, NewFory(mapRequired).Deserialize<GeneratedSchemaMapBudget>(mapBytes).Values);
     }
 
     [Fact]

@@ -1517,6 +1517,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
         else
         {
+            string elementBytesExpr = ContainerElementBytesExpr(PackedArrayElementTypeName(codec.TypeId));
+            sb.AppendLine($"{indent}context.ReserveCountedContainerMemory({countVar}, {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({countVar});");
         }
 
@@ -1556,6 +1558,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         string sameTypeVar = $"__forySameType{id++}";
         string declaredVar = $"__foryDeclared{id++}";
         sb.AppendLine($"{indent}int {lengthVar} = checked((int)context.Reader.ReadVarUInt32());");
+        sb.AppendLine($"{indent}context.ReserveCountedContainerMemory({lengthVar}, {ContainerElementBytesExpr(element)});");
         sb.AppendLine($"{indent}if ({lengthVar} != 0)");
         sb.AppendLine($"{indent}{{");
         sb.AppendLine($"{indent}    context.Reader.CheckBound({lengthVar});");
@@ -1661,6 +1664,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         FieldCodecModel value = codec.Generics[1];
         string totalVar = $"__foryTotal{id++}";
         sb.AppendLine($"{indent}int {totalVar} = checked((int)context.Reader.ReadVarUInt32());");
+        sb.AppendLine($"{indent}context.ReserveCountedContainerMemory({totalVar}, {ContainerMapElementBytesExpr(key, value)});");
         sb.AppendLine($"{indent}if ({totalVar} != 0)");
         sb.AppendLine($"{indent}{{");
         sb.AppendLine($"{indent}    context.Reader.CheckBound({totalVar});");
@@ -1817,6 +1821,24 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         return arrayTypeName.EndsWith("[]", StringComparison.Ordinal)
             ? arrayTypeName.Substring(0, arrayTypeName.Length - 2)
             : "object";
+    }
+
+    private static string ContainerElementBytesExpr(FieldCodecModel codec)
+    {
+        return ContainerElementBytesExpr(
+            codec.Nullable && !codec.NullableValueType
+                ? StripNullableForTypeOf(codec.TypeName)
+                : codec.TypeName);
+    }
+
+    private static string ContainerElementBytesExpr(string typeName)
+    {
+        return $"(typeof({typeName}).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<{typeName}>() : 4)";
+    }
+
+    private static string ContainerMapElementBytesExpr(FieldCodecModel key, FieldCodecModel value)
+    {
+        return $"((long){ContainerElementBytesExpr(key)} + {ContainerElementBytesExpr(value)})";
     }
 
     private static string PackedArrayElementTypeName(uint typeId)

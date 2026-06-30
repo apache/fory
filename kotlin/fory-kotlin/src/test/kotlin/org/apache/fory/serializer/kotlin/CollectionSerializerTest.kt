@@ -46,7 +46,7 @@ class CollectionSerializerTest {
         .build()
 
     try {
-      reader.deserialize(writer.serialize(ArrayDeque<Int>()))
+      reader.deserialize(writer.serialize(ArrayDeque(listOf(1, 2, 3, 4, 5, 6))))
       fail("Expected container memory budget failure")
     } catch (ignored: InsecureException) {}
   }

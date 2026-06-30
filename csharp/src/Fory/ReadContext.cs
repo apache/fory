@@ -23,7 +23,6 @@ public sealed class ReadContext
 {
     private const int MinRemoteTypeMetaLimit = 8192;
     internal const long KnownContainerBudgetSlackBytes = 64 * 1024;
-    internal const long UnknownContainerBudgetBytes = 128L * 1024 * 1024;
 
     private readonly ReusableArray<TypeMeta> _typeMetaRefs = new();
     private readonly UInt64Map<TypeMeta> _typeMetasByHeader = new();

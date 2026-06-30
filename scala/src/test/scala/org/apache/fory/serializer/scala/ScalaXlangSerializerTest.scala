@@ -134,10 +134,10 @@ class ScalaXlangSerializerTest extends AnyWordSpec with Matchers {
         .build()
 
       intercept[InsecureException] {
-        reader.deserialize(writer.serialize(List.empty[String]))
+        reader.deserialize(writer.serialize(List.fill(6)("v")))
       }
       intercept[InsecureException] {
-        reader.deserialize(writer.serialize(Map("k" -> 1)))
+        reader.deserialize(writer.serialize(Map("a" -> 1, "b" -> 2, "c" -> 3)))
       }
     }
   }

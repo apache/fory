@@ -105,19 +105,19 @@ class CollectionSerializerTest extends AnyWordSpec with Matchers {
       builder.build()
     }
 
-    "charge scala collection fixed cost" in {
+    "charge scala collection storage" in {
       val writer = runtime()
       val reader = runtime(maxContainerMemoryBytes = 23)
       intercept[InsecureException] {
-        reader.deserialize(writer.serialize(List.empty[String]))
+        reader.deserialize(writer.serialize(List.fill(6)("v")))
       }
     }
 
-    "charge scala map fixed cost" in {
+    "charge scala map storage" in {
       val writer = runtime()
-      val reader = runtime(maxContainerMemoryBytes = 47)
+      val reader = runtime(maxContainerMemoryBytes = 23)
       intercept[InsecureException] {
-        reader.deserialize(writer.serialize(Map("k" -> "v")))
+        reader.deserialize(writer.serialize(Map("a" -> 1, "b" -> 2, "c" -> 3)))
       }
     }
   }
