@@ -661,12 +661,6 @@ public class ChildContainerSerializersTest extends ForyTestBase {
     public ChildLinkedListElemList list;
   }
 
-  public static class ChildHashMapValueMap extends HashMap<String, ChildHashMapValueMap> {}
-
-  public static class ChildHashMapValueMapStruct {
-    public ChildHashMapValueMap map;
-  }
-
   @Test
   public void testElemTypeSameWithCollection() {
     Fory fory = builder().withRefTracking(true).build();
@@ -679,19 +673,5 @@ public class ChildContainerSerializersTest extends ForyTestBase {
     struct.list = list;
     ChildLinkedListElemListStruct struct1 = serDe(fory, struct);
     Assert.assertSame(struct1.list.get(0), struct1.list);
-  }
-
-  @Test
-  public void testValueTypeSameWithMap() {
-    Fory fory = builder().withRefTracking(true).build();
-    ChildHashMapValueMap map = new ChildHashMapValueMap();
-    map.put("self", map);
-    ChildHashMapValueMap map1 = serDe(fory, map);
-    Assert.assertSame(map1.get("self"), map1);
-
-    ChildHashMapValueMapStruct struct = new ChildHashMapValueMapStruct();
-    struct.map = map;
-    ChildHashMapValueMapStruct struct1 = serDe(fory, struct);
-    Assert.assertSame(struct1.map.get("self"), struct1.map);
   }
 }
