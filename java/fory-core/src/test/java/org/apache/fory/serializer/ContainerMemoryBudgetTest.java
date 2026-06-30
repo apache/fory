@@ -257,5 +257,4 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
   private static MemoryBuffer trimBuffer(MemoryBuffer buffer) {
     return MemoryBuffer.fromByteArray(buffer.getBytes(0, buffer.writerIndex()));
   }
-
 }

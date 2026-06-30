@@ -59,7 +59,9 @@ import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 
 final class CompatibleCollectionArrayReader {
-  private static final int REFERENCE_BYTES = MemoryBuffer.objectArrayIndexScale();
+  // This compatible reader may be reached during native-image analysis. Use the settled
+  // reference-slot fallback instead of touching MemoryBuffer from class initialization.
+  private static final int REFERENCE_BYTES = 4;
 
   static final int READ_LIST_TO_ARRAY = 1;
   static final int READ_ARRAY_TO_LIST = 2;
