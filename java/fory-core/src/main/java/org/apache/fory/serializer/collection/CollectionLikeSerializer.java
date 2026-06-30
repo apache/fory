@@ -19,9 +19,6 @@
 
 package org.apache.fory.serializer.collection;
 
-import static org.apache.fory.type.TypeUtils.COLLECTION_TYPE;
-import static org.apache.fory.type.TypeUtils.OBJECT_TYPE;
-
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
 import java.util.Collection;
@@ -103,19 +100,33 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     if (genericType == null) {
       return null;
     }
+    Class<?> cls = genericType.getCls();
+    int typeParamsCount = genericType.getTypeParametersCount();
+    // Most declared collection types are JDK collections whose type parameter is the element.
+    // Keep that path allocation-free; custom subclasses may use their type params for non-elements.
+    if (isJdkCollection(cls)) {
+      return typeParamsCount == 1 ? genericType.getTypeParameter0() : null;
+    }
+    if (!Collection.class.isAssignableFrom(cls)) {
+      return typeParamsCount == 0 ? null : typeResolver.getObjectGenericType();
+    }
     TypeRef<?> typeRef = genericType.getTypeRef();
-    TypeRef<?> elementTypeRef =
-        COLLECTION_TYPE.isSupertypeOf(typeRef) ? TypeUtils.getElementType(typeRef) : OBJECT_TYPE;
+    TypeRef<?> elementTypeRef = TypeUtils.getElementType(typeRef);
     // Recursive collection element types, such as SelfList extends ArrayList<SelfList>, must
     // fall back to Object; otherwise interpreter mode keeps resolving the collection as its own
     // element type.
-    if (genericType.getCls() == elementTypeRef.getRawType()) {
-      elementTypeRef = OBJECT_TYPE;
+    Class<?> elementCls = elementTypeRef.getRawType();
+    if (cls == elementCls) {
+      return typeParamsCount == 0 ? null : typeResolver.getObjectGenericType();
     }
-    if (elementTypeRef.equals(OBJECT_TYPE) && !genericType.hasGenericParameters()) {
+    if (elementCls == Object.class && typeParamsCount == 0) {
       return null;
     }
     return typeResolver.buildGenericType(elementTypeRef);
+  }
+
+  private static boolean isJdkCollection(Class<?> cls) {
+    return cls.getClassLoader() == null && Collection.class.isAssignableFrom(cls);
   }
 
   /**
