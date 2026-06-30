@@ -130,6 +130,9 @@ public class GenericType {
 
   public static GenericType build(TypeRef<?> typeRef, Predicate<Type> finalPredicate) {
     Type type = typeRef.getType();
+    if (TypeUtils.isCollection(getRawType(typeRef))) {
+      return buildCollection(typeRef, finalPredicate);
+    }
     if (typeRef.hasExplicitTypeArguments()) {
       List<TypeRef<?>> explicitTypeArguments = typeRef.getTypeArguments();
       List<GenericType> list = new ArrayList<>(explicitTypeArguments.size());
@@ -179,6 +182,32 @@ public class GenericType {
       // Class type: String, Integer
       return new GenericType(typeRef, finalPredicate.test(type));
     }
+  }
+
+  private static GenericType buildCollection(TypeRef<?> typeRef, Predicate<Type> finalPredicate) {
+    TypeRef<?> elementTypeRef = TypeUtils.getElementType(typeRef);
+    // Recursive collection declarations such as SelfList extends ArrayList<SelfList> must not
+    // push themselves as their own element generic type, or interpreter mode recurses forever.
+    if (getRawType(typeRef) == elementTypeRef.getRawType()) {
+      elementTypeRef = TypeUtils.OBJECT_TYPE;
+    }
+    if (elementTypeRef.equals(TypeUtils.OBJECT_TYPE) && !hasTypeArguments(typeRef)) {
+      return new GenericType(typeRef, finalPredicate.test(typeRef.getType()));
+    }
+    // Collection serializers consume type parameter 0 as the element type. Custom collection
+    // subclasses may declare unrelated parameters, so collection GenericType stores only the
+    // resolved element view.
+    return new GenericType(
+        typeRef, finalPredicate.test(typeRef.getType()), build(elementTypeRef, finalPredicate));
+  }
+
+  private static boolean hasTypeArguments(TypeRef<?> typeRef) {
+    if (typeRef.hasExplicitTypeArguments()) {
+      return !typeRef.getTypeArguments().isEmpty();
+    }
+    Type type = typeRef.getType();
+    return type instanceof ParameterizedType
+        && ((ParameterizedType) type).getActualTypeArguments().length > 0;
   }
 
   public TypeRef<?> getTypeRef() {

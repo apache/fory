@@ -32,7 +32,6 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.TypeInfo;
@@ -40,7 +39,6 @@ import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.GenericType;
-import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.Preconditions;
 
 /**
@@ -100,33 +98,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     if (genericType == null) {
       return null;
     }
-    Class<?> cls = genericType.getCls();
-    int typeParamsCount = genericType.getTypeParametersCount();
-    // Most declared collection types are JDK collections whose type parameter is the element.
-    // Keep that path allocation-free; custom subclasses may use their type params for non-elements.
-    if (isJdkCollection(cls)) {
-      return typeParamsCount == 1 ? genericType.getTypeParameter0() : null;
-    }
-    if (!Collection.class.isAssignableFrom(cls)) {
-      return typeParamsCount == 0 ? null : typeResolver.getObjectGenericType();
-    }
-    TypeRef<?> typeRef = genericType.getTypeRef();
-    TypeRef<?> elementTypeRef = TypeUtils.getElementType(typeRef);
-    // Recursive collection element types, such as SelfList extends ArrayList<SelfList>, must
-    // fall back to Object; otherwise interpreter mode keeps resolving the collection as its own
-    // element type.
-    Class<?> elementCls = elementTypeRef.getRawType();
-    if (cls == elementCls) {
-      return typeParamsCount == 0 ? null : typeResolver.getObjectGenericType();
-    }
-    if (elementCls == Object.class && typeParamsCount == 0) {
-      return null;
-    }
-    return typeResolver.buildGenericType(elementTypeRef);
-  }
-
-  private static boolean isJdkCollection(Class<?> cls) {
-    return cls.getClassLoader() == null && Collection.class.isAssignableFrom(cls);
+    return genericType.getTypeParameter0();
   }
 
   /**
