@@ -12,13 +12,19 @@ Load this file when changing `csharp/` or C# xlang behavior.
 - Generated C# gRPC service companions are compiler-owned files that depend on application-provided gRPC packages, not `csharp/src/Fory`. Keep gRPC package references out of the Fory runtime package.
 - C# generated schema modules are source-file owners. Service companions must use that module's `ThreadSafeFory` and must not introduce namespace-owned aliases or duplicate serializer registration paths.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Recursive matched-field comparison for collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
-- Root deserialization container memory budget state belongs to `ReadContext`. C# public roots are memory-backed today, so auto uses known input length. `ReadContext` may expose only raw byte reservation and generic counted-byte arithmetic; concrete serializers and generated serializers must compute list/array/map byte formulas before calling it.
-- For C# container budget formulas, distinguish inline value storage from reference storage: use
-  cheap value-type size for `List<T>`/`T[]` value paths and the 4-byte reference fallback for
-  reference paths. Maps charge key plus value storage, linked/hash/tree conversions must not add
-  guessed node or entry overhead, and empty containers with no backing storage normally charge zero.
-  Dedicated string, binary, and primitive dense-array serializers stay skipped and rely on byte
-  availability checks.
+- Root deserialization graph memory budget state belongs to `ReadContext`. C# public roots are
+  memory-backed today, so auto uses known input length. `ReadContext` may expose only raw byte
+  reservation and generic counted-byte arithmetic; concrete serializers and generated serializers
+  must compute list, array, map, struct, and object byte formulas before calling it.
+- For C# graph budget formulas, distinguish inline value storage from reference storage: use cheap
+  value-type size for `List<T>`/`T[]` value paths and the 4-byte reference fallback for reference
+  paths. Class/reference serializers reserve their own shallow self cost plus field storage when
+  materialized; struct/value serializers do not unconditionally charge self storage because root,
+  field, list, array, map, set, or box owners reserve the inline storage they own. Maps reserve key
+  plus value storage, linked/hash/tree conversions must not add guessed node or entry overhead, and
+  independently materialized collection/map/array owners reserve nonzero shallow self cost.
+  Dedicated string, binary, primitive scalar, and primitive dense-array serializers stay skipped and
+  rely on byte availability checks.
 - When extending C# tests from Java references, prioritize xlang spec behavior and the public C# contract before adding complex Java-specific parity cases.
 
 ## Commands

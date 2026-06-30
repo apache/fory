@@ -25,6 +25,9 @@ import { CodegenRegistry } from "./router";
 import { BaseSerializerGenerator } from "./serializer";
 import { TypeMeta } from "../meta/TypeMeta";
 
+const OBJECT_BYTES = 1;
+const REFERENCE_BYTES = 4;
+
 class ExtSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
   typeMeta: TypeMeta;
@@ -41,6 +44,13 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     this.ownTypeInfoExpr = `${this.serializerExpr}.getTypeInfo()`;
   }
 
+  private objectGraphBytes(): number {
+    return (
+      OBJECT_BYTES +
+      Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES
+    );
+  }
+
   write(accessor: string): string {
     return `
       ${this.builder.getOptions("customSerializer")}.write(${this.builder.getWriteContextName()}, ${accessor})
@@ -50,6 +60,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
     return `
+      ${this.builder.getReadContextName()}.reserveGraphMemory(${this.objectGraphBytes()});
       ${
         this.typeInfo.options!.withConstructor
           ? `
@@ -165,7 +176,9 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     let writeUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.EXT:
-        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
+        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(
+          this.typeInfo.userTypeId,
+        );
         break;
       case TypeId.NAMED_EXT:
         if (!this.builder.resolver.isCompatible()) {
@@ -191,7 +204,10 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
             "typeInfoBytes",
             `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`,
           );
-          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), bytes);
+          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(
+            this.builder.getTypeInfo(),
+            bytes,
+          );
         }
         break;
       default:

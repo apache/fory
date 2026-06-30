@@ -190,7 +190,7 @@ public sealed class Fory
     {
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
-        _readContext.InitContainerBudgetKnown(payload.Length);
+        _readContext.InitGraphBudgetKnown(payload.Length);
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -211,7 +211,7 @@ public sealed class Fory
     {
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
-        _readContext.InitContainerBudgetKnown(payload.Length);
+        _readContext.InitGraphBudgetKnown(payload.Length);
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -232,7 +232,7 @@ public sealed class Fory
         byte[] bytes = payload.ToArray();
         ByteReader reader = _readContext.Reader;
         reader.Reset(bytes);
-        _readContext.InitContainerBudgetKnown(bytes.Length);
+        _readContext.InitGraphBudgetKnown(bytes.Length);
         T value = DeserializeFromReader<T>(reader);
         payload = payload.Slice(reader.Cursor);
         return value;
@@ -282,6 +282,7 @@ public sealed class Fory
         Serializer<T> serializer = _typeResolver.GetSerializer<T>();
         ReadContext readContext = _readContext;
         readContext.ResetFor(reader);
+        GraphMemory.ReserveRootValue<T>(readContext);
         RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
         T value = serializer.Read(readContext, refMode, true);
         readContext.RefReader.Reset();

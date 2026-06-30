@@ -62,6 +62,7 @@ public final class ExceptionSerializers {
     private final TypeResolver typeResolver;
     private final ObjectInstantiator<T> objectInstantiator;
     private final Constructor<T> messageConstructor;
+    private final long graphMemoryBytes;
     private volatile Serializer[] slotsSerializers;
     private volatile boolean rebuildSlotsSerializersAtRuntime;
 
@@ -74,6 +75,7 @@ public final class ExceptionSerializers {
           messageConstructor == null && MemoryUtils.JDK_LANG_FIELD_ACCESS
               ? createThrowableObjectInstantiator(typeResolver, type)
               : null;
+      graphMemoryBytes = AbstractObjectSerializer.computeObjectGraphMemoryBytes(type);
       slotsSerializers = buildSlotsSerializers(typeResolver, type);
       if (!MemoryUtils.JDK_LANG_FIELD_ACCESS
           && isJdkThrowable(type)
@@ -117,6 +119,7 @@ public final class ExceptionSerializers {
         return readAndroidThrowableWithoutDetailMessageField(
             readContext, stackTrace, slotsSerializers);
       }
+      readContext.reserveGraphMemory(graphMemoryBytes);
       T obj = newThrowableForRead();
       readContext.reference(obj);
       Throwable cause = (Throwable) readContext.readRef();
@@ -157,6 +160,7 @@ public final class ExceptionSerializers {
                 + " requires JDK internal field access. "
                 + jdkFieldAccessMessage());
       }
+      readContext.reserveGraphMemory(graphMemoryBytes);
       T obj = newThrowableWithMessage(detailMessage);
       readContext.reference(obj);
       if (stackTrace != null) {

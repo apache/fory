@@ -135,6 +135,7 @@ public abstract class CompatibleLayerSerializerBase<T> extends AbstractObjectSer
   @Override
   public T read(ReadContext readContext) {
     checkLayerSerializerMeta();
+    reserveObjectGraphMemory(readContext);
     T obj = newBean();
     readContext.reference(obj);
     return readAndSetFields(readContext, obj);

@@ -212,6 +212,11 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("    private static bool __ForyRefMetaMatches;");
         sb.AppendLine(
             $"    private const bool __ForyAllFieldsBuiltIn = {BoolLiteral(model.SortedMembers.All(m => m.DynamicAnyKind == DynamicAnyKind.None && m.Classification.IsBuiltIn))};");
+        if (model.Kind == DeclKind.Class)
+        {
+            sb.AppendLine($"    private static readonly long __ForyGraphMemoryBytes = {ModelGraphMemoryExpr(model)};");
+        }
+
         sb.AppendLine(
             "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo>? __ForyNoRefTypeMetaFields;");
         sb.AppendLine(
@@ -448,6 +453,11 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine($"    private {model.TypeName} ReadDataWithoutTypeMeta(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
+        if (model.Kind == DeclKind.Class)
+        {
+            sb.AppendLine("        context.ReserveGraphMemory(__ForyGraphMemoryBytes);");
+        }
+
         sb.AppendLine($"        {model.TypeName} valueNoTypeMeta = new {model.TypeName}();");
         if (model.Kind == DeclKind.Class)
         {
@@ -482,6 +492,11 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("            }");
         sb.AppendLine();
         sb.AppendLine("            global::Apache.Fory.TypeMeta typeMeta = maybeTypeMeta;");
+        if (model.Kind == DeclKind.Class)
+        {
+            sb.AppendLine("            context.ReserveGraphMemory(__ForyGraphMemoryBytes);");
+        }
+
         sb.AppendLine($"            {model.TypeName} value = new {model.TypeName}();");
         if (model.Kind == DeclKind.Class)
         {
@@ -592,6 +607,11 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine();
+        if (model.Kind == DeclKind.Class)
+        {
+            sb.AppendLine("        context.ReserveGraphMemory(__ForyGraphMemoryBytes);");
+        }
+
         sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");
         if (model.Kind == DeclKind.Class)
         {
@@ -1165,12 +1185,12 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             $"(typeof({elementTypeName}).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<{elementTypeName}>() : 4)";
         if (codec.CarrierKind == CarrierKind.Array)
         {
-            sb.AppendLine($"{indent}context.ReserveCountedContainerMemory({lengthVar}, {elementBytesExpr});");
+            sb.AppendLine($"{indent}context.ReserveGraphMemory(1L + (long){lengthVar} * {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new {ElementTypeName(codec.TypeName)}[{lengthVar}];");
         }
         else
         {
-            sb.AppendLine($"{indent}context.ReserveCountedContainerMemory({lengthVar}, {elementBytesExpr});");
+            sb.AppendLine($"{indent}context.ReserveGraphMemory(1L + (long){lengthVar} * {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({lengthVar});");
         }
 
@@ -1517,8 +1537,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
         else
         {
-            string elementBytesExpr = ContainerElementBytesExpr(PackedArrayElementTypeName(codec.TypeId));
-            sb.AppendLine($"{indent}context.ReserveCountedContainerMemory({countVar}, {elementBytesExpr});");
+            string elementBytesExpr = GraphElementBytesExpr(PackedArrayElementTypeName(codec.TypeId));
+            sb.AppendLine($"{indent}context.ReserveGraphMemory(1L + (long){countVar} * {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({countVar});");
         }
 
@@ -1558,7 +1578,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         string sameTypeVar = $"__forySameType{id++}";
         string declaredVar = $"__foryDeclared{id++}";
         sb.AppendLine($"{indent}int {lengthVar} = checked((int)context.Reader.ReadVarUInt32());");
-        sb.AppendLine($"{indent}context.ReserveCountedContainerMemory({lengthVar}, {ContainerElementBytesExpr(element)});");
+        sb.AppendLine($"{indent}context.ReserveGraphMemory(1L + (long){lengthVar} * {GraphElementBytesExpr(element)});");
         sb.AppendLine($"{indent}if ({lengthVar} != 0)");
         sb.AppendLine($"{indent}{{");
         sb.AppendLine($"{indent}    context.Reader.CheckBound({lengthVar});");
@@ -1664,7 +1684,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         FieldCodecModel value = codec.Generics[1];
         string totalVar = $"__foryTotal{id++}";
         sb.AppendLine($"{indent}int {totalVar} = checked((int)context.Reader.ReadVarUInt32());");
-        sb.AppendLine($"{indent}context.ReserveCountedContainerMemory({totalVar}, {ContainerMapElementBytesExpr(key, value)});");
+        sb.AppendLine($"{indent}context.ReserveGraphMemory(1L + (long){totalVar} * {GraphMapElementBytesExpr(key, value)});");
         sb.AppendLine($"{indent}if ({totalVar} != 0)");
         sb.AppendLine($"{indent}{{");
         sb.AppendLine($"{indent}    context.Reader.CheckBound({totalVar});");
@@ -1823,22 +1843,44 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             : "object";
     }
 
-    private static string ContainerElementBytesExpr(FieldCodecModel codec)
+    private static string GraphElementBytesExpr(FieldCodecModel codec)
     {
-        return ContainerElementBytesExpr(
+        return GraphElementBytesExpr(
             codec.Nullable && !codec.NullableValueType
                 ? StripNullableForTypeOf(codec.TypeName)
                 : codec.TypeName);
     }
 
-    private static string ContainerElementBytesExpr(string typeName)
+    private static string GraphElementBytesExpr(string typeName)
     {
         return $"(typeof({typeName}).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<{typeName}>() : 4)";
     }
 
-    private static string ContainerMapElementBytesExpr(FieldCodecModel key, FieldCodecModel value)
+    private static string GraphMapElementBytesExpr(FieldCodecModel key, FieldCodecModel value)
     {
-        return $"((long){ContainerElementBytesExpr(key)} + {ContainerElementBytesExpr(value)})";
+        return $"((long){GraphElementBytesExpr(key)} + {GraphElementBytesExpr(value)})";
+    }
+
+    private static string ModelGraphMemoryExpr(TypeModel model)
+    {
+        System.Collections.Generic.List<string> parts = new() { "1L" };
+        foreach (MemberModel member in model.SortedMembers)
+        {
+            parts.Add(FieldGraphMemoryExpr(member));
+        }
+
+        return string.Join(" + ", parts);
+    }
+
+    private static string FieldGraphMemoryExpr(MemberModel member)
+    {
+        if (member.Classification.IsPrimitive && member.Classification.PrimitiveSize > 0)
+        {
+            return $"{member.Classification.PrimitiveSize}L";
+        }
+
+        string typeName = StripNullableForTypeOf(member.TypeName);
+        return $"(typeof({typeName}).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<{typeName}>() : 4L)";
     }
 
     private static string PackedArrayElementTypeName(uint typeId)

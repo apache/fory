@@ -43,7 +43,7 @@ const fory = new Fory({
   ref: true,
   compatible: true,
   maxDepth: 100,
-  maxContainerMemoryBytes: -1,
+  maxGraphMemoryBytes: -1,
   maxTypeFields: 512,
   maxTypeMetaBytes: 4096,
   maxSchemaVersionsPerType: 10,
@@ -57,7 +57,7 @@ const fory = new Fory({
 | `ref`                             | `false` | Enable reference tracking for shared or circular object graphs                        |
 | `compatible`                      | `true`  | Allow field additions/removals without breaking existing messages                     |
 | `maxDepth`                        | `50`    | Maximum nesting depth. Must be `>= 2`. Increase for deeply nested structures          |
-| `maxContainerMemoryBytes`         | `-1`    | Maximum estimated container-owned memory accepted during one root deserialization     |
+| `maxGraphMemoryBytes`             | `-1`    | Maximum estimated shallow graph memory accepted during one root deserialization       |
 | `maxTypeFields`                   | `512`   | Maximum fields accepted in one received remote struct metadata body                   |
 | `maxTypeMetaBytes`                | `4096`  | Maximum encoded body bytes accepted for one received TypeMeta body                    |
 | `maxSchemaVersionsPerType`        | `10`    | Maximum accepted remote metadata versions for one logical type                        |
@@ -94,28 +94,27 @@ to that struct. For cross-language payloads, set `compatible: false` only after
 verifying that every language uses the same schema, or when native types are
 generated from Fory schema IDL. See [Schema Evolution](schema-evolution.md).
 
-## Container Memory Budget
+## Graph Memory Budget
 
-`maxContainerMemoryBytes` limits estimated lower-bound container-owned storage
-accepted during one root deserialization. The budget covers array, set, object
-array, and map reference slots; it is not an exact JavaScript heap limit. Empty
-containers without backing storage normally do not consume the budget. The
-default `-1` derives an automatic limit from the input bytes. JavaScript
-deserializes from `Uint8Array` roots, so the automatic limit is
-`inputBytes * 8 + 64 KiB`.
+`maxGraphMemoryBytes` limits estimated shallow graph memory accepted during one
+root deserialization. The budget covers materialized arrays, sets, object
+arrays, maps, structs, and objects; it is not an exact JavaScript heap limit.
+The default `-1` derives an automatic limit from the input bytes. JavaScript
+deserializes from `Uint8Array` roots, so the automatic limit is `inputBytes \* 8
+
+- 64 KiB`.
 
 Use a positive byte value to set an explicit lower or higher limit:
 
 ```ts
 const fory = new Fory({
-  maxContainerMemoryBytes: 32 * 1024 * 1024,
+  maxGraphMemoryBytes: 32 * 1024 * 1024,
 });
 ```
 
 String, binary, and dedicated dense primitive array payloads keep their normal
-byte-size checks and do not consume this container budget. Raise the limit only
-for trusted workloads that legitimately contain very compact, container-heavy
-graphs.
+byte-size checks and do not consume this graph budget. Raise the limit only for
+trusted workloads that legitimately contain very compact object graphs.
 
 ## Optional HPS String Path
 
@@ -135,7 +134,7 @@ Security-related configuration:
 
 - Register only the expected schemas before deserializing untrusted payloads.
 - Set `maxDepth` for the maximum nesting depth your service accepts.
-- Set `maxContainerMemoryBytes` for the maximum container memory your service
+- Set `maxGraphMemoryBytes` for the maximum graph memory your service
   accepts from one root payload.
 - Keep `maxTypeFields` and `maxTypeMetaBytes` at their defaults unless the data
   is not malicious and a trusted peer sends larger remote metadata.

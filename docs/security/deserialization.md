@@ -205,55 +205,46 @@ validation can cause a no-progress loop, unbounded resource growth, retained
 state, or success across a Fory policy boundary. Protocol-allowed chunk
 segmentation is normal input and is not a security issue by itself.
 
-## Container Memory Budget
+## Root Graph Memory Budget
 
-Runtimes should enforce a root-deserialization budget for estimated
-container-owned memory. This is cumulative accounting for containers created by
-one root read; it is not exact heap measurement and it is not a raw element-slot
-limit.
+Runtimes should enforce a root-deserialization budget for estimated shallow memory created by one
+materialized graph. This is cumulative accounting for graph owners created by one root read; it is
+not exact heap measurement and it is not a raw element-slot limit.
 
-The public configuration should be named around `maxContainerMemoryBytes`.
-`-1` means automatic input-shaped budgeting. Positive user configuration always
-wins. For known-length root input, the automatic budget is
-`inputBytes * 8 + 64 KiB`. For true stream or otherwise unknown-length root
-input, the automatic budget is fixed at `128 MiB`. Stream budgeting should not
-depend on dynamic bytes-read accounting.
+The public configuration is `maxGraphMemoryBytes`. `-1` means automatic input-shaped budgeting.
+Positive user configuration always wins. For known-length root input, the automatic budget is
+`inputBytes * 8 + 64 KiB`. For true stream or otherwise unknown-length root input, the automatic
+budget is fixed at `128 MiB`. Stream budgeting should not depend on dynamic bytes-read accounting.
 
-Container budget accounting should:
+Graph budget accounting should:
 
-- happen in root-operation read state, with cleanup owned by the root
-  deserialization `finally`;
-- keep read context/read state limited to raw byte reservation and generic
-  counted-byte arithmetic; collection/map/array storage formulas belong in the
-  concrete serializer or generated serializer owner;
+- happen in root-operation read state, with cleanup owned by the root deserialization `finally`;
+- keep read context/read state limited to raw byte reservation and generic counted-byte arithmetic;
+  collection, map, array, struct, and object storage formulas belong in the concrete serializer or
+  generated serializer owner;
 - reject arithmetic overflow before comparing budget or allocating;
-- estimate lower-bound owner storage: reference-backed containers and
-  object/reference arrays charge reference slots, inline/value containers charge
-  element storage, reference-backed maps charge two references per entry, and
-  inline/value maps charge key plus value storage;
-- treat fixed/header cost as zero by default, charging it only when the owner
-  path creates an independently allocated container/control entity that is not
-  already covered by parent inline/value storage and the charged size is a
-  documented conservative lower bound;
-- preserve existing byte-availability checks before backing allocation or
-  capacity reservation;
-- skip dedicated string, binary, primitive array, and primitive dense-array
-  owner paths.
+- estimate lower-bound shallow owner storage: independently materialized collections, maps, sets,
+  and reference arrays reserve nonzero shallow self cost plus backing/reference/inline storage, and
+  struct/record/POJO/tuple, compatible, generated, and dynamic object owners reserve a nonzero
+  shallow self cost plus shallow field storage;
+- use a 4-byte reference slot when the actual reference slot size is not cheap or reliable to query,
+  and use primitive/value field widths for inline storage;
+- preserve existing byte-availability checks before backing allocation or capacity reservation;
+- skip enum/union as separate owners and skip dedicated string, binary, primitive scalar, primitive
+  array, and primitive dense-array leaf owners.
 
-Each runtime must inspect the concrete container path before choosing formulas.
-Reference-backed containers should charge reference storage, using a 4-byte
-reference slot when the actual reference slot size is not cheap or reliable to
-query. Inline/value containers such as a value-type vector or list must charge
-the inline element storage instead of treating those elements as references.
-General inline-value containers must not be skipped just because dedicated
-primitive dense arrays are skipped.
+Each runtime must inspect the concrete owner path before choosing formulas. Reserve self storage
+exactly once at the owner that stores or allocates the value. Reference-backed paths reserve parent
+owner self cost plus reference storage, while each referenced heap owner reserves its own shallow
+self cost when materialized. Inline/value paths reserve inline element, field, or root storage in the
+holder/allocation owner; nested value serializers must not charge their own self storage again.
+Parents must not recursively include child object, collection, map, string, binary, or primitive
+dense-array contents; the child owner reserves its own shallow memory when it is materialized.
 
-Runtimes should not guess object headers, array headers, allocator headers,
-debug-mode fields, hash buckets, tree links, hash-chain links, node headers,
-map-entry objects, spare blocks, or runtime table layouts unless the owner path
-has a cheap, stable, explicit lower-bound storage signal and documents the
-formula. C++ STL node, allocator, and debug-mode overheads should not be guessed
-when only value storage is reliably known.
+Runtimes should not guess object headers, array headers, allocator headers, debug-mode fields, hash
+buckets, tree links, hash-chain links, node headers, map-entry objects, spare blocks, or runtime
+table layouts unless the owner path has a cheap, stable, explicit lower-bound storage signal and
+documents the formula. C++ STL node, allocator, and debug-mode overheads should not be guessed.
 
 ## Skip Semantics
 

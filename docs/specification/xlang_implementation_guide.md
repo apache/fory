@@ -398,36 +398,42 @@ duplicate keys, element value semantics, and protocol strictness remain owned by
 the container/map serializer and should be validated only when they protect a
 real owner invariant.
 
-Container readers should also charge a root-operation estimated container memory
-budget before allocation or size hinting. The budget belongs to `ReadContext` or
-the equivalent root read state, not to serializers and not to ambient
-thread-local state. Positive `maxContainerMemoryBytes` configuration wins; auto
-configuration uses `inputBytes * 8 + 64 KiB` for known-length root input and
-fixed `128 MiB` for true stream or unknown-length root input. Do not add dynamic
-stream bytes-read accounting for this budget.
+Materializing readers should also reserve a root-operation estimated graph
+memory budget before allocation or size hinting. The budget belongs to
+`ReadContext` or the equivalent root read state, not to serializers and not to
+ambient thread-local state. Positive `maxGraphMemoryBytes` configuration wins;
+auto configuration uses `inputBytes * 8 + 64 KiB` for known-length root input
+and fixed `128 MiB` for true stream or unknown-length root input. Do not add
+dynamic stream bytes-read accounting for this budget.
 
 Read context or equivalent read state owns only raw byte accounting and generic
 counted-byte arithmetic, such as reserving `bytes` or `count * elementBytes`
-with overflow checks. It must not expose collection/map/array semantic
-reservation APIs. Concrete serializers and generated serializer owners compute
-the storage constants and formulas for the container path they allocate.
+with overflow checks. It must not expose collection, map, array, struct, or
+object semantic reservation APIs. Concrete serializers and generated serializer
+owners compute the storage constants and formulas for the owner path they
+allocate.
 
-The budget estimates lower-bound container-owned storage, not exact heap bytes.
-Reference-backed containers and object/reference arrays charge reference slots;
-inline/value containers charge element storage; reference-backed maps charge two
-references per entry; and inline/value maps charge key plus value storage.
-Fixed/header cost defaults to zero and is charged only when the owner path
-creates an independently allocated container/control entity, that entity is not
-already covered by parent inline/value storage, and the charged size is a
-documented conservative lower bound. Empty containers with no dynamic backing
-normally charge zero. Skip dedicated string, binary, primitive array, and
-primitive dense-array owners, but do not skip general inline-value containers
-such as vectors or lists of value objects. If reference slot size is not cheap
-or reliable to query, use a 4-byte reference slot. Native runtimes may use
-conservative lower-bound estimates instead of guessing non-portable container,
-allocator, table, node, entry, or debug-layout details. Reject arithmetic
-overflow before budget comparison or allocation, and keep the existing
-`checkReadableBytes` proof before backing allocation or capacity reservation.
+The budget estimates lower-bound shallow memory for materialized graph owners,
+not exact heap bytes. Reserve self storage exactly once at the owner that stores
+or allocates the value. Reference-backed containers, maps, sets, and
+object/reference arrays reserve nonzero owner self cost plus reference slots;
+each referenced heap owner then reserves its own shallow self cost when
+materialized. Inline/value containers reserve element storage; inline/value maps
+reserve key plus value storage; root/product/box owners reserve value self
+storage; and nested value serializers reserve only additional dynamic storage
+they allocate. Struct/record/POJO/tuple, compatible, generated, and dynamic
+object owners reserve a nonzero shallow self cost plus shallow field storage.
+Parents must not recursively include child object, collection, map, string,
+binary, or primitive dense-array contents. Skip enum/union as separate owners and
+skip dedicated string, binary, primitive scalar, primitive array, and primitive
+dense-array leaf owners, but do not skip general inline-value containers such as
+vectors or lists of value objects. If reference slot size is not cheap or
+reliable to query, use a 4-byte reference slot. Native runtimes may use
+conservative lower-bound estimates instead of guessing non-portable object,
+container, allocator, table, node, entry, or debug-layout details. Reject
+arithmetic overflow before budget comparison or allocation, and keep the
+existing `checkReadableBytes` proof before backing
+allocation or capacity reservation.
 
 For TypeDef or TypeMeta bodies, first prove that the encoded metadata body bytes
 are readable through the byte owner. Field-list allocation should happen after

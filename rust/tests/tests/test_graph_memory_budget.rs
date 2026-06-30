@@ -18,6 +18,7 @@
 use fory_core::{Error, Fory, Reader};
 use fory_derive::ForyStruct;
 use std::collections::HashMap;
+use std::mem;
 use std::panic;
 
 #[derive(ForyStruct, Debug, PartialEq)]
@@ -32,6 +33,9 @@ struct BudgetItem {
     right: u64,
 }
 
+#[derive(ForyStruct, Debug, PartialEq)]
+struct BudgetEmpty;
+
 #[derive(ForyStruct, Debug)]
 struct ListWireInts {
     values: Vec<Option<i32>>,
@@ -42,26 +46,27 @@ struct DenseWireInts {
     values: Vec<i32>,
 }
 
-fn fory_with_budget(max_container_memory_bytes: i64) -> Fory {
+fn fory_with_budget(max_graph_memory_bytes: i64) -> Fory {
     let mut fory = Fory::builder()
         .xlang(false)
         .compatible(false)
-        .max_container_memory_bytes(max_container_memory_bytes)
+        .max_graph_memory_bytes(max_graph_memory_bytes)
         .build();
     fory.register_by_name::<BudgetSiblings>("BudgetSiblings")
         .unwrap();
     fory.register_by_name::<BudgetItem>("BudgetItem").unwrap();
+    fory.register_by_name::<BudgetEmpty>("BudgetEmpty").unwrap();
     fory
 }
 
-fn compatible_fory<T>(max_container_memory_bytes: i64) -> Fory
+fn compatible_fory<T>(max_graph_memory_bytes: i64) -> Fory
 where
     T: fory_core::Serializer + fory_core::StructSerializer + fory_core::ForyDefault,
 {
     let mut fory = Fory::builder()
         .xlang(false)
         .compatible(true)
-        .max_container_memory_bytes(max_container_memory_bytes)
+        .max_graph_memory_bytes(max_graph_memory_bytes)
         .build();
     fory.register::<T>(88_001).unwrap();
     fory
@@ -74,7 +79,7 @@ fn compact_empty_lists(count: usize) -> Vec<Vec<String>> {
 fn assert_budget_error(err: Error, effective_limit: usize) {
     let message = err.to_string();
     assert!(
-        message.contains("estimated container memory request"),
+        message.contains("estimated graph memory request"),
         "{message}"
     );
     assert!(
@@ -85,10 +90,10 @@ fn assert_budget_error(err: Error, effective_limit: usize) {
 
 #[test]
 fn config_validation() {
-    assert!(panic::catch_unwind(|| Fory::builder().max_container_memory_bytes(0)).is_err());
-    assert!(panic::catch_unwind(|| Fory::builder().max_container_memory_bytes(-2)).is_err());
-    let _ = Fory::builder().max_container_memory_bytes(-1).build();
-    let _ = Fory::builder().max_container_memory_bytes(1).build();
+    assert!(panic::catch_unwind(|| Fory::builder().max_graph_memory_bytes(0)).is_err());
+    assert!(panic::catch_unwind(|| Fory::builder().max_graph_memory_bytes(-2)).is_err());
+    let _ = Fory::builder().max_graph_memory_bytes(-1).build();
+    let _ = Fory::builder().max_graph_memory_bytes(1).build();
 }
 
 #[test]
@@ -129,22 +134,52 @@ fn explicit_override() {
     let bytes = writer.serialize(&value).unwrap();
     assert!(writer.deserialize::<Vec<Vec<String>>>(&bytes).is_err());
 
-    let vec_bytes = std::mem::size_of::<Vec<String>>();
-    let estimate = value.len() * vec_bytes;
+    let vec_bytes = mem::size_of::<Vec<String>>();
+    let estimate = mem::size_of::<Vec<Vec<String>>>() + value.len() * vec_bytes;
     let explicit = fory_with_budget(estimate as i64);
     let decoded: Vec<Vec<String>> = explicit.deserialize(&bytes).unwrap();
     assert_eq!(decoded, value);
 }
 
 #[test]
-fn empty_container_has_no_dynamic_storage() {
+fn empty_collection_owner_self() {
     let value: Vec<String> = Vec::new();
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
 
-    let limited = fory_with_budget(1);
+    let limited = fory_with_budget((mem::size_of::<Vec<String>>() - 1) as i64);
+    assert!(limited.deserialize::<Vec<String>>(&bytes).is_err());
+
+    let limited = fory_with_budget(mem::size_of::<Vec<String>>() as i64);
     let decoded: Vec<String> = limited.deserialize(&bytes).unwrap();
     assert!(decoded.is_empty());
+}
+
+#[test]
+fn empty_struct_owner_self() {
+    let value = BudgetEmpty;
+    let writer = fory_with_budget(-1);
+    let bytes = writer.serialize(&value).unwrap();
+
+    assert_eq!(
+        fory_with_budget(1)
+            .deserialize::<BudgetEmpty>(&bytes)
+            .unwrap(),
+        value
+    );
+
+    let values = vec![BudgetEmpty, BudgetEmpty, BudgetEmpty];
+    let bytes = writer.serialize(&values).unwrap();
+    let required = mem::size_of::<Vec<BudgetEmpty>>() + values.len();
+    assert!(fory_with_budget((required - 1) as i64)
+        .deserialize::<Vec<BudgetEmpty>>(&bytes)
+        .is_err());
+    assert_eq!(
+        fory_with_budget(required as i64)
+            .deserialize::<Vec<BudgetEmpty>>(&bytes)
+            .unwrap(),
+        values
+    );
 }
 
 #[test]
@@ -155,11 +190,12 @@ fn sibling_cumulative_budget() {
     };
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
-    let one_vec = std::mem::size_of::<String>() as i64;
+    let root = mem::size_of::<BudgetSiblings>() as i64;
+    let one_vec = mem::size_of::<String>() as i64;
 
-    let limited = fory_with_budget(one_vec);
+    let limited = fory_with_budget(root + one_vec);
     assert!(limited.deserialize::<BudgetSiblings>(&bytes).is_err());
-    let enough = fory_with_budget(one_vec * 2);
+    let enough = fory_with_budget(root + one_vec * 2);
     assert_eq!(enough.deserialize::<BudgetSiblings>(&bytes).unwrap(), value);
 }
 
@@ -168,7 +204,9 @@ fn map_budget() {
     let value: HashMap<String, i32> = HashMap::from([("a".to_string(), 1)]);
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
-    let required = (std::mem::size_of::<String>() + std::mem::size_of::<i32>()) as i64;
+    let required = (mem::size_of::<HashMap<String, i32>>()
+        + mem::size_of::<String>()
+        + mem::size_of::<i32>()) as i64;
 
     let limited = fory_with_budget(required - 1);
     assert!(limited.deserialize::<HashMap<String, i32>>(&bytes).is_err());
@@ -190,10 +228,35 @@ fn inline_value_vec_budget() {
         .collect::<Vec<_>>();
     let writer = fory_with_budget(-1);
     let bytes = writer.serialize(&value).unwrap();
-    let under_inline = value.len() * std::mem::size_of::<u64>();
+    let under_inline = mem::size_of::<Vec<BudgetItem>>() + value.len() * mem::size_of::<u64>();
 
     let limited = fory_with_budget(under_inline as i64);
     assert!(limited.deserialize::<Vec<BudgetItem>>(&bytes).is_err());
+}
+
+#[test]
+fn box_vector_owner_self() {
+    let value = Box::new(
+        (0..4)
+            .map(|i| BudgetItem {
+                left: i,
+                right: i + 1,
+            })
+            .collect::<Vec<_>>(),
+    );
+    let writer = fory_with_budget(-1);
+    let bytes = writer.serialize(&value).unwrap();
+    let required = mem::size_of::<Vec<BudgetItem>>() + value.len() * mem::size_of::<BudgetItem>();
+
+    assert!(fory_with_budget((required - 1) as i64)
+        .deserialize::<Box<Vec<BudgetItem>>>(&bytes)
+        .is_err());
+    assert_eq!(
+        fory_with_budget(required as i64)
+            .deserialize::<Box<Vec<BudgetItem>>>(&bytes)
+            .unwrap(),
+        value
+    );
 }
 
 #[test]
@@ -204,10 +267,11 @@ fn compatible_list_array_budget() {
     let writer = compatible_fory::<ListWireInts>(-1);
     let bytes = writer.serialize(&value).unwrap();
 
-    let limited = compatible_fory::<DenseWireInts>((64 * std::mem::size_of::<i32>() - 1) as i64);
+    let required = mem::size_of::<DenseWireInts>() + 64 * mem::size_of::<i32>();
+    let limited = compatible_fory::<DenseWireInts>((required - 1) as i64);
     assert!(limited.deserialize::<DenseWireInts>(&bytes).is_err());
 
-    let enough = compatible_fory::<DenseWireInts>(i64::MAX);
+    let enough = compatible_fory::<DenseWireInts>(required as i64);
     let decoded = enough.deserialize::<DenseWireInts>(&bytes).unwrap();
     assert_eq!(
         decoded,

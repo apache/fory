@@ -50,7 +50,7 @@ abstract class AbstractScalaMapSerializer[K, V, T](typeResolver: TypeResolver, c
   def onMapWrite(writeContext: WriteContext, value: T): util.Map[_, _]
 
   override def newMap(readContext: ReadContext): util.Map[_, _] = {
-    val numElements = readMapSize(readContext)
+    val numElements = readMapSize(readContext, readContext.getBuffer)
     setNumElements(numElements)
     val factory = readContext.readRef().asInstanceOf[Factory[(K, V), T]]
     val builder = factory.newBuilder

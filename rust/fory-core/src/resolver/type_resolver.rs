@@ -949,6 +949,10 @@ impl TypeResolver {
             ref_mode: RefMode,
             read_type_info: bool,
         ) -> Result<Box<dyn Any>, Error> {
+            let graph_self_size = T2::fory_graph_self_size();
+            if graph_self_size != 0 {
+                context.reserve_graph_memory(graph_self_size)?;
+            }
             Ok(Box::new(T2::fory_read(context, ref_mode, read_type_info)?))
         }
 
@@ -971,6 +975,10 @@ impl TypeResolver {
         fn read_data<T2: 'static + Serializer + ForyDefault>(
             context: &mut ReadContext,
         ) -> Result<Box<dyn Any>, Error> {
+            let graph_self_size = T2::fory_graph_self_size();
+            if graph_self_size != 0 {
+                context.reserve_graph_memory(graph_self_size)?;
+            }
             match T2::fory_read_data(context) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),
@@ -1002,6 +1010,10 @@ impl TypeResolver {
             context: &mut ReadContext,
             type_info: Rc<TypeInfo>,
         ) -> Result<Box<dyn Any>, Error> {
+            let graph_self_size = T2::fory_graph_self_size();
+            if graph_self_size != 0 {
+                context.reserve_graph_memory(graph_self_size)?;
+            }
             Ok(Box::new(T2::fory_read_compatible(context, type_info)?))
         }
 
@@ -1192,6 +1204,10 @@ impl TypeResolver {
             ref_mode: RefMode,
             read_type_info: bool,
         ) -> Result<Box<dyn Any>, Error> {
+            let graph_self_size = T2::fory_graph_self_size();
+            if graph_self_size != 0 {
+                context.reserve_graph_memory(graph_self_size)?;
+            }
             Ok(Box::new(T2::fory_read(context, ref_mode, read_type_info)?))
         }
 
@@ -1214,6 +1230,10 @@ impl TypeResolver {
         fn read_data<T2: 'static + Serializer + ForyDefault>(
             context: &mut ReadContext,
         ) -> Result<Box<dyn Any>, Error> {
+            let graph_self_size = T2::fory_graph_self_size();
+            if graph_self_size != 0 {
+                context.reserve_graph_memory(graph_self_size)?;
+            }
             match T2::fory_read_data(context) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),

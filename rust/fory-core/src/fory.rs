@@ -261,15 +261,15 @@ impl ForyBuilder {
         self
     }
 
-    /// Sets the maximum estimated container-owned memory accepted during one root deserialization.
+    /// Sets the maximum estimated graph memory accepted during one root deserialization.
     ///
     /// Use `-1` for the automatic input-shaped limit. Positive values are explicit byte limits.
-    pub fn max_container_memory_bytes(mut self, max_bytes: i64) -> Self {
+    pub fn max_graph_memory_bytes(mut self, max_bytes: i64) -> Self {
         assert!(
             max_bytes == -1 || max_bytes > 0,
-            "max_container_memory_bytes must be positive or -1 for auto"
+            "max_graph_memory_bytes must be positive or -1 for auto"
         );
-        self.config.max_container_memory_bytes = max_bytes;
+        self.config.max_graph_memory_bytes = max_bytes;
         self
     }
 
@@ -1000,7 +1000,7 @@ impl Fory {
         self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
-            let result = match context.init_container_memory_budget(bf.len()) {
+            let result = match context.init_graph_memory_budget(bf.len()) {
                 Ok(()) => self.deserialize_with_context(context),
                 Err(err) => {
                     context.reset();
@@ -1070,7 +1070,7 @@ impl Fory {
             new_reader.set_cursor(reader.cursor);
             let root_input_bytes = reader.bf.len().saturating_sub(reader.cursor);
             context.attach_reader(new_reader);
-            let result = match context.init_container_memory_budget(root_input_bytes) {
+            let result = match context.init_graph_memory_budget(root_input_bytes) {
                 Ok(()) => self.deserialize_with_context(context),
                 Err(err) => {
                     context.reset();
@@ -1135,6 +1135,10 @@ impl Fory {
             RefMode::NullOnly
         };
         // TypeMeta is read inline during deserialization (streaming protocol)
+        let root_graph_self_size = T::fory_graph_self_size();
+        if root_graph_self_size != 0 {
+            context.reserve_graph_memory(root_graph_self_size)?;
+        }
         let result = <T as Serializer>::fory_read(context, ref_mode, true);
         context.ref_reader.resolve_callbacks();
         result

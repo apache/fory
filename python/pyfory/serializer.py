@@ -44,6 +44,7 @@ from pyfory._fory import (
 
 _WINDOWS = os.name == "nt"
 _REFERENCE_BYTES = struct.calcsize("P")
+_OWNER_BYTES = 1
 
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory.types import TypeId
@@ -935,7 +936,7 @@ class PythonNDArraySerializer(NDArraySerializer):
         if dtype.kind == "O":
             length = read_context.read_varint32()
             _check_non_negative_size(length, "ndarray object")
-            read_context.reserve_container_memory(length * _REFERENCE_BYTES)
+            read_context.reserve_graph_memory(_OWNER_BYTES + length * _REFERENCE_BYTES)
             read_context.check_readable_bytes(length)
             items = [read_context.read_ref() for _ in range(length)]
             return np.array(items, dtype=object)
@@ -1716,10 +1717,11 @@ class ObjectSerializer(Serializer):
     def read(self, read_context):
         policy = read_context.policy
         policy.authorize_instantiation(self.type_)
-        obj = self.type_.__new__(self.type_)
-        read_context.reference(obj)
         num_fields = read_context.read_var_uint32()
         _check_non_negative_size(num_fields, "object field")
+        read_context.reserve_graph_memory(_OWNER_BYTES + num_fields * _REFERENCE_BYTES)
+        obj = self.type_.__new__(self.type_)
+        read_context.reference(obj)
         state = {}
         for _ in range(num_fields):
             field_name = read_context.read_string()
@@ -1733,10 +1735,11 @@ class ObjectSerializer(Serializer):
 
 class _DefaultPolicyObjectSerializer(ObjectSerializer):
     def read(self, read_context):
-        obj = self.type_.__new__(self.type_)
-        read_context.reference(obj)
         num_fields = read_context.read_var_uint32()
         _check_non_negative_size(num_fields, "object field")
+        read_context.reserve_graph_memory(_OWNER_BYTES + num_fields * _REFERENCE_BYTES)
+        obj = self.type_.__new__(self.type_)
+        read_context.reference(obj)
         for _ in range(num_fields):
             field_name = read_context.read_string()
             field_value = read_context.read_ref()

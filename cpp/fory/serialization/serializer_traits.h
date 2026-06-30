@@ -24,7 +24,9 @@
 #include "fory/meta/type_index.h"
 #include "fory/meta/type_traits.h"
 #include "fory/type/type.h"
+#include "fory/util/macros.h"
 #include <array>
+#include <cstddef>
 #include <deque>
 #include <forward_list>
 #include <list>
@@ -246,84 +248,104 @@ template <typename T>
 inline constexpr bool is_fory_serializable_v = is_fory_serializable<T>::value;
 
 // ============================================================================
-// Container budget reachability
+// Graph budget reachability
 // ============================================================================
 
 template <typename T, typename = void>
-struct needs_container_budget : std::false_type {};
+struct needs_graph_budget : std::false_type {};
 
-template <> struct needs_container_budget<bool, void> : std::false_type {};
-template <> struct needs_container_budget<int8_t, void> : std::false_type {};
-template <> struct needs_container_budget<int16_t, void> : std::false_type {};
-template <> struct needs_container_budget<int32_t, void> : std::false_type {};
-template <> struct needs_container_budget<int64_t, void> : std::false_type {};
-template <> struct needs_container_budget<uint8_t, void> : std::false_type {};
-template <> struct needs_container_budget<uint16_t, void> : std::false_type {};
-template <> struct needs_container_budget<uint32_t, void> : std::false_type {};
-template <> struct needs_container_budget<uint64_t, void> : std::false_type {};
-template <> struct needs_container_budget<float, void> : std::false_type {};
-template <> struct needs_container_budget<double, void> : std::false_type {};
-template <>
-struct needs_container_budget<std::string, void> : std::false_type {};
+template <> struct needs_graph_budget<bool, void> : std::false_type {};
+template <> struct needs_graph_budget<int8_t, void> : std::false_type {};
+template <> struct needs_graph_budget<int16_t, void> : std::false_type {};
+template <> struct needs_graph_budget<int32_t, void> : std::false_type {};
+template <> struct needs_graph_budget<int64_t, void> : std::false_type {};
+template <> struct needs_graph_budget<uint8_t, void> : std::false_type {};
+template <> struct needs_graph_budget<uint16_t, void> : std::false_type {};
+template <> struct needs_graph_budget<uint32_t, void> : std::false_type {};
+template <> struct needs_graph_budget<uint64_t, void> : std::false_type {};
+template <> struct needs_graph_budget<float, void> : std::false_type {};
+template <> struct needs_graph_budget<double, void> : std::false_type {};
+template <> struct needs_graph_budget<std::string, void> : std::false_type {};
 
 template <typename T>
-struct needs_container_budget<
+struct needs_graph_budget<
     T, std::enable_if_t<is_vector_v<T> || is_list_v<T> || is_deque_v<T> ||
                         is_forward_list_v<T> || is_set_like_v<T> ||
                         is_map_like_v<T>>> : std::true_type {};
 
 template <typename T, size_t N>
-struct needs_container_budget<std::array<T, N>, void>
-    : std::bool_constant<needs_container_budget<
+struct needs_graph_budget<std::array<T, N>, void>
+    : std::bool_constant<needs_graph_budget<
           std::remove_cv_t<std::remove_reference_t<T>>>::value> {};
 
 template <typename T>
-struct needs_container_budget<std::optional<T>, void>
-    : std::bool_constant<needs_container_budget<
+struct needs_graph_budget<std::optional<T>, void>
+    : std::bool_constant<needs_graph_budget<
           std::remove_cv_t<std::remove_reference_t<T>>>::value> {};
 
 template <typename T>
-struct needs_container_budget<std::shared_ptr<T>, void> : std::true_type {};
+struct needs_graph_budget<std::shared_ptr<T>, void> : std::true_type {};
 
 template <typename T, typename D>
-struct needs_container_budget<std::unique_ptr<T, D>, void> : std::true_type {};
+struct needs_graph_budget<std::unique_ptr<T, D>, void> : std::true_type {};
 
 template <typename... Ts>
-struct needs_container_budget<std::tuple<Ts...>, void>
-    : std::bool_constant<(needs_container_budget<std::remove_cv_t<
-                              std::remove_reference_t<Ts>>>::value ||
-                          ...)> {};
+struct needs_graph_budget<std::tuple<Ts...>, void> : std::true_type {};
 
 template <typename... Ts>
-struct needs_container_budget<std::variant<Ts...>, void>
-    : std::bool_constant<(needs_container_budget<std::remove_cv_t<
+struct needs_graph_budget<std::variant<Ts...>, void>
+    : std::bool_constant<(needs_graph_budget<std::remove_cv_t<
                               std::remove_reference_t<Ts>>>::value ||
                           ...)> {};
 
 template <typename StructT, typename Ptrs, size_t... I>
-constexpr bool struct_needs_container_budget_impl(std::index_sequence<I...>) {
+constexpr bool struct_needs_graph_budget_impl(std::index_sequence<I...>) {
   return (
-      needs_container_budget<
+      needs_graph_budget<
           std::remove_cv_t<std::remove_reference_t<::fory::field_value_type_t<
               StructT, std::tuple_element_t<I, Ptrs>>>>>::value ||
       ...);
 }
 
 template <typename T>
-struct needs_container_budget<T, std::enable_if_t<is_fory_serializable_v<T>>> {
-private:
-  using FieldDescriptor =
-      decltype(::fory::meta::fory_field_info(std::declval<const T &>()));
-  using Ptrs = typename FieldDescriptor::PtrsType;
-
-public:
-  static constexpr bool value = struct_needs_container_budget_impl<T, Ptrs>(
-      std::make_index_sequence<FieldDescriptor::Size>{});
-};
+struct needs_graph_budget<T, std::enable_if_t<is_fory_serializable_v<T>>>
+    : std::true_type {};
 
 template <typename T>
-inline constexpr bool needs_container_budget_v =
-    needs_container_budget<std::remove_cv_t<std::remove_reference_t<T>>>::value;
+inline constexpr bool needs_graph_budget_v =
+    needs_graph_budget<std::remove_cv_t<std::remove_reference_t<T>>>::value;
+
+template <typename T> struct is_dense_primitive_vector : std::false_type {};
+
+template <typename T, typename Alloc>
+struct is_dense_primitive_vector<std::vector<T, Alloc>>
+    : std::bool_constant<std::is_arithmetic_v<T>> {};
+
+template <typename T>
+inline constexpr bool is_dense_primitive_vector_v = is_dense_primitive_vector<
+    std::remove_cv_t<std::remove_reference_t<T>>>::value;
+
+template <typename T> constexpr size_t graph_value_owner_self_bytes() {
+  using Value = std::remove_cv_t<std::remove_reference_t<T>>;
+  if constexpr (!needs_graph_budget_v<Value> ||
+                is_dense_primitive_vector_v<Value>) {
+    return size_t{0};
+  } else if constexpr (std::is_empty_v<Value>) {
+    return size_t{1};
+  } else {
+    return sizeof(Value);
+  }
+}
+
+template <typename T, typename Context>
+FORY_ALWAYS_INLINE bool reserve_allocated_value_owner(Context &ctx) {
+  constexpr size_t bytes = graph_value_owner_self_bytes<T>();
+  if constexpr (bytes == 0) {
+    return true;
+  } else {
+    return ctx.reserve_graph_memory(bytes);
+  }
+}
 
 // ============================================================================
 // Generic Type Detection

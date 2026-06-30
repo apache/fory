@@ -400,8 +400,7 @@ inline bool reserve_collection(Container &result, ReadContext &ctx,
   }
   constexpr size_t elem_bytes = collection_element_memory_bytes<Container>();
   if (FORY_PREDICT_FALSE(
-          (!ctx.template reserve_counted_container_memory<elem_bytes>(
-              length)))) {
+          (!ctx.template reserve_counted_graph_memory<elem_bytes>(length)))) {
     return false;
   }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
@@ -419,9 +418,8 @@ inline bool reserve_collection(std::vector<bool, Alloc> &result,
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
-  const size_t packed_bytes =
-      (static_cast<size_t>(length) + CHAR_BIT - 1) / CHAR_BIT;
-  if (FORY_PREDICT_FALSE(!ctx.reserve_container_memory(packed_bytes))) {
+  const size_t packed_bytes = (static_cast<size_t>(length) + 7) / 8;
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(packed_bytes))) {
     return false;
   }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
@@ -436,7 +434,7 @@ inline bool reserve_empty_collection(ReadContext &ctx) {
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
-  return ctx.reserve_container_memory(0);
+  return ctx.reserve_graph_memory(0);
 }
 
 // Helper to insert element into container (vector or set)

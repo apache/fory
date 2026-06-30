@@ -62,13 +62,13 @@ final class Fory {
     int maxSchemaVersionsPerType = Config.defaultMaxSchemaVersionsPerType,
     int maxAverageSchemaVersionsPerType =
         Config.defaultMaxAverageSchemaVersionsPerType,
-    int maxContainerMemoryBytes = Config.defaultMaxContainerMemoryBytes,
+    int maxGraphMemoryBytes = Config.defaultMaxGraphMemoryBytes,
   }) {
-    if (maxContainerMemoryBytes != Config.defaultMaxContainerMemoryBytes &&
-        maxContainerMemoryBytes <= 0) {
+    if (maxGraphMemoryBytes != Config.defaultMaxGraphMemoryBytes &&
+        maxGraphMemoryBytes <= 0) {
       throw ArgumentError.value(
-        maxContainerMemoryBytes,
-        'maxContainerMemoryBytes',
+        maxGraphMemoryBytes,
+        'maxGraphMemoryBytes',
         'must be -1 or positive',
       );
     }
@@ -80,7 +80,7 @@ final class Fory {
       maxTypeMetaBytes: maxTypeMetaBytes,
       maxSchemaVersionsPerType: maxSchemaVersionsPerType,
       maxAverageSchemaVersionsPerType: maxAverageSchemaVersionsPerType,
-      maxContainerMemoryBytes: maxContainerMemoryBytes,
+      maxGraphMemoryBytes: maxGraphMemoryBytes,
     );
     _readBuffer = Buffer();
     _writeBuffer = Buffer();

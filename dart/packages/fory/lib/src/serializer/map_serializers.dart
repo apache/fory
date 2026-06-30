@@ -259,7 +259,7 @@ Map<K, V> readTypedMapPayload<K, V>(
   bool hasPreservedRef = false,
 }) {
   var remaining = context.buffer.readVarUint32();
-  context.reserveContainerMemory(remaining * 2 * _referenceBytes);
+  context.reserveGraphMemory(1 + remaining * 2 * _referenceBytes);
   context.buffer.checkReadableBytes(remaining);
   final declaredKeyTypeInfo =
       keyFieldType == null || keyFieldType.isDynamic

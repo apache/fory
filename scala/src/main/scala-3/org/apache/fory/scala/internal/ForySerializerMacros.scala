@@ -109,6 +109,21 @@ object ForySerializerMacros {
       annotations.foldRight(boxed)((annotation, current) => AnnotatedType(current, annotation))
     }
 
+    def graphFieldBytes(tpe: TypeRepr): Long = {
+      val base = peelAnnotations(tpe.widen)._1.dealias
+      if base =:= TypeRepr.of[Boolean] then 1L
+      else if base =:= TypeRepr.of[Byte] then 1L
+      else if base =:= TypeRepr.of[Char] then 2L
+      else if base =:= TypeRepr.of[Short] then 2L
+      else if base =:= TypeRepr.of[Int] then 4L
+      else if base =:= TypeRepr.of[Float] then 4L
+      else if base =:= TypeRepr.of[Long] then 8L
+      else if base =:= TypeRepr.of[Double] then 8L
+      else 4L
+    }
+
+    val objectGraphMemoryBytes: Long = 1L + fields.map(field => graphFieldBytes(field.sourceType)).sum
+
     def classFor(tpe: TypeRepr): Expr[Class[?]] = {
       val normalized = peelAnnotations(tpe.widen)._1.dealias
       val fullName = normalized.typeSymbol.fullName
@@ -1129,7 +1144,8 @@ object ForySerializerMacros {
       Block(
         localDefs ++ maskDefs,
         Block(
-          readLoop.asTerm :: defaultAssignments.toList,
+          '{ $readContextExpr.reserveGraphMemory(${ Expr(objectGraphMemoryBytes) }) }.asTerm ::
+            readLoop.asTerm :: defaultAssignments.toList,
           constructFromLocals(localFields, instantiatorExpr, fieldAccessorsExpr).asTerm))
         .asExprOf[T]
     }
@@ -1151,6 +1167,7 @@ object ForySerializerMacros {
           if $resolverExpr.checkClassVersion() then {
             $serializerExpr.checkClassVersion(buffer.readInt32(), $classVersionHashExpr)
           }
+          $readContextExpr.reserveGraphMemory(${ Expr(objectGraphMemoryBytes) })
           val obj = $instantiatorExpr.newInstance()
           $readContextExpr.reference(obj)
           var i = 0
@@ -1176,6 +1193,7 @@ object ForySerializerMacros {
           if $resolverExpr.checkClassVersion() then {
             $serializerExpr.checkClassVersion(buffer.readInt32(), $classVersionHashExpr)
           }
+          $readContextExpr.reserveGraphMemory(${ Expr(objectGraphMemoryBytes) })
           val values = new Array[Any]($descriptorsExpr.size())
           var i = 0
           while i < $allFieldsExpr.length do {
@@ -1204,6 +1222,7 @@ object ForySerializerMacros {
           if $sameSchemaCompatibleExpr then {
             $serializerExpr.read($readContextExpr)
           } else {
+            $readContextExpr.reserveGraphMemory(${ Expr(objectGraphMemoryBytes) })
             val obj = $instantiatorExpr.newInstance()
             $readContextExpr.reference(obj)
             val remoteFields = $serializerExpr.getRemoteFields()

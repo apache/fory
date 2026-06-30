@@ -36,18 +36,18 @@ class CollectionSerializerTest {
   }
 
   @Test
-  fun testArrayDequeContainerMemoryBudget() {
+  fun testArrayDequeGraphMemoryBudget() {
     val writer: Fory = ForyKotlin.builder().withXlang(false).requireClassRegistration(true).build()
     val reader: Fory =
       ForyKotlin.builder()
         .withXlang(false)
         .requireClassRegistration(true)
-        .withMaxContainerMemoryBytes(23)
+        .withMaxGraphMemoryBytes(23)
         .build()
 
     try {
       reader.deserialize(writer.serialize(ArrayDeque(listOf(1, 2, 3, 4, 5, 6))))
-      fail("Expected container memory budget failure")
+      fail("Expected graph memory budget failure")
     } catch (ignored: InsecureException) {}
   }
 

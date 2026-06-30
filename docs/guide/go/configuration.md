@@ -39,7 +39,7 @@ Default settings:
 | MaxDepth                        | 20      | Maximum nesting depth                             |
 | IsXlang                         | true    | Xlang mode enabled                                |
 | Compatible                      | true    | Compatible schema-evolution metadata enabled      |
-| MaxContainerMemoryBytes         | -1      | Automatic container memory limit per root read    |
+| MaxGraphMemoryBytes             | -1      | Automatic graph memory limit per root read        |
 | MaxTypeFields                   | 512     | Max fields in one received struct metadata body   |
 | MaxTypeMetaBytes                | 4096    | Max encoded bytes in one received metadata body   |
 | MaxSchemaVersionsPerType        | 10      | Max remote metadata versions for one logical type |
@@ -52,7 +52,7 @@ f := fory.New(
     fory.WithXlang(true),
     fory.WithTrackRef(true),
     fory.WithMaxDepth(10),
-    fory.WithMaxContainerMemoryBytes(-1),
+    fory.WithMaxGraphMemoryBytes(-1),
     fory.WithMaxTypeFields(512),
     fory.WithMaxTypeMetaBytes(4096),
     fory.WithMaxSchemaVersionsPerType(10),
@@ -129,12 +129,12 @@ f := fory.New(fory.WithMaxDepth(30))
 - Protects against deeply nested, recursive structures or malicious data
 - Serialization fails with error when exceeded
 
-### WithMaxContainerMemoryBytes
+### WithMaxGraphMemoryBytes
 
-Limit estimated container-owned memory accepted during one root deserialization:
+Limit estimated shallow graph memory accepted during one root deserialization:
 
 ```go
-f := fory.New(fory.WithMaxContainerMemoryBytes(256 * 1024 * 1024))
+f := fory.New(fory.WithMaxGraphMemoryBytes(256 * 1024 * 1024))
 ```
 
 The default `-1` selects an automatic limit. Byte-slice roots use:
@@ -145,10 +145,9 @@ inputBytes * 8 + 64 KiB
 
 `DeserializeFromReader` and `DeserializeFromStream` use `128 MiB` because the
 full root length is unknown. The budget covers lower-bound slice backing
-storage, map key/value storage, sets, and generated container reads. Empty
-containers without backing storage normally do not consume the budget. Strings,
-binary blobs, and primitive dense array
-owners keep their byte-availability checks and are not charged to this budget.
+storage, map key/value storage, sets, generated object reads, and materialized
+struct field storage. Strings, binary blobs, and primitive dense array owners
+keep their byte-availability checks and are not reserved against this budget.
 Set a positive value when a service needs a stricter or larger limit for trusted
 data.
 

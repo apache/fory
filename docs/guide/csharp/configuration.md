@@ -41,7 +41,7 @@ ThreadSafeFory threadSafe = Fory.Builder().BuildThreadSafe();
 | `Compatible`                      | `true`  | Compatible schema-evolution metadata enabled      |
 | `CheckStructVersion`              | `false` | Struct schema hash checks disabled                |
 | `MaxDepth`                        | `20`    | Max dynamic nesting depth                         |
-| `MaxContainerMemoryBytes`         | `-1`    | Auto container memory budget                      |
+| `MaxGraphMemoryBytes`             | `-1`    | Auto graph memory budget                          |
 | `MaxTypeFields`                   | `512`   | Max fields in one received struct metadata body   |
 | `MaxTypeMetaBytes`                | `4096`  | Max encoded bytes in one received metadata body   |
 | `MaxSchemaVersionsPerType`        | `10`    | Max remote metadata versions for one logical type |
@@ -97,14 +97,13 @@ Fory fory = Fory.Builder()
 
 `value` must be greater than `0`.
 
-### `MaxContainerMemoryBytes(long value)`
+### `MaxGraphMemoryBytes(long value)`
 
-Sets the maximum estimated lower-bound container-owned storage accepted during one root
-deserialization.
+Sets the maximum estimated shallow graph memory accepted during one root deserialization.
 
 ```csharp
 Fory fory = Fory.Builder()
-    .MaxContainerMemoryBytes(64L * 1024 * 1024)
+    .MaxGraphMemoryBytes(64L * 1024 * 1024)
     .Build();
 ```
 
@@ -189,8 +188,8 @@ Security-related configuration:
 - Register only the expected types before deserializing untrusted payloads.
 - Use `CheckStructVersion(true)` with `Compatible(false)` for intentional same-schema payloads.
 - Set `MaxDepth(...)` to reject unexpectedly deep dynamic object graphs.
-- Set `MaxContainerMemoryBytes(...)` to cap estimated lower-bound list, array, set, and map storage
-  during one root deserialization.
+- Set `MaxGraphMemoryBytes(...)` to cap estimated shallow graph memory during one root
+  deserialization.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer generated or registered concrete models over broad dynamic fields for untrusted input.

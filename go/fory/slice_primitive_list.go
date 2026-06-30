@@ -35,7 +35,7 @@ func newPrimitiveList(type_ reflect.Type, elemTypeID TypeId, elemType reflect.Ty
 		type_:      type_,
 		elemTypeID: elemTypeID,
 		elemBytes:  elemBytes,
-		maxLength:  maxContainerCount(elemBytes),
+		maxLength:  maxGraphCount(elemBytes),
 	}
 }
 
@@ -179,7 +179,7 @@ func (s primitiveListSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 	if ctx.HasError() {
 		return
 	}
-	if !ctx.reserveCountedContainerMemory(length, s.elemBytes, s.maxLength) {
+	if !ctx.reserveCountedGraphMemory(length, s.elemBytes, s.maxLength) {
 		return
 	}
 	if length == 0 {
@@ -243,7 +243,7 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 	}
 	if length == 0 {
 		if value.Kind() == reflect.Slice {
-			if !ctx.reserveCountedContainerMemory(length, s.listReader.elemBytes, s.listReader.maxLength) {
+			if !ctx.reserveCountedGraphMemory(length, s.listReader.elemBytes, s.listReader.maxLength) {
 				return
 			}
 			value.Set(reflect.MakeSlice(value.Type(), 0, 0))
@@ -284,7 +284,7 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 		return
 	}
 	if value.Kind() == reflect.Slice {
-		if !ctx.reserveCountedContainerMemory(length, s.listReader.elemBytes, s.listReader.maxLength) {
+		if !ctx.reserveCountedGraphMemory(length, s.listReader.elemBytes, s.listReader.maxLength) {
 			return
 		}
 		temp := reflect.New(value.Type()).Elem()

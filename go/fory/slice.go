@@ -152,7 +152,7 @@ func newSliceSerializer(type_ reflect.Type, elemSerializer Serializer, xlang boo
 		elemSerializer: elemSerializer,
 		referencable:   isRefType(elem, xlang),
 		elemBytes:      elemBytes,
-		maxLength:      maxContainerCount(elemBytes),
+		maxLength:      maxGraphCount(elemBytes),
 	}, nil
 }
 
@@ -319,7 +319,7 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		}
 		return
 	}
-	if !isArrayType && !ctx.reserveCountedContainerMemory(length, s.elemBytes, s.maxLength) {
+	if !isArrayType && !ctx.reserveCountedGraphMemory(length, s.elemBytes, s.maxLength) {
 		return
 	}
 

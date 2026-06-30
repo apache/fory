@@ -33,7 +33,7 @@ use std::rc::Rc;
 
 const KNOWN_ROOT_BUDGET_MULTIPLIER: usize = 8;
 const KNOWN_ROOT_BUDGET_SLACK_BYTES: usize = 64 * 1024;
-const MAX_CONTAINER_LEN: usize = u32::MAX as usize;
+const MAX_GRAPH_COUNT: usize = u32::MAX as usize;
 
 /// Thread-local context cache with fast path for single Fory instance.
 /// Uses (cached_id, context) for O(1) access when using same Fory instance repeatedly.
@@ -363,9 +363,9 @@ pub struct ReadContext<'a> {
     max_dyn_depth: u32,
     check_struct_version: bool,
     check_string_read: bool,
-    max_container_memory_bytes: i64,
-    container_memory_limit_bytes: usize,
-    remaining_container_memory_bytes: usize,
+    max_graph_memory_bytes: i64,
+    graph_memory_limit_bytes: usize,
+    remaining_graph_memory_bytes: usize,
 
     // Context-specific fields
     pub reader: Reader<'a>,
@@ -395,9 +395,9 @@ impl<'a> ReadContext<'a> {
             max_dyn_depth: config.max_dyn_depth,
             check_struct_version: config.check_struct_version,
             check_string_read: config.check_string_read,
-            max_container_memory_bytes: config.max_container_memory_bytes,
-            container_memory_limit_bytes: 0,
-            remaining_container_memory_bytes: 0,
+            max_graph_memory_bytes: config.max_graph_memory_bytes,
+            graph_memory_limit_bytes: 0,
+            remaining_graph_memory_bytes: 0,
             reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
@@ -454,77 +454,77 @@ impl<'a> ReadContext<'a> {
     }
 
     #[inline(always)]
-    pub(crate) fn init_container_memory_budget(
+    pub(crate) fn init_graph_memory_budget(
         &mut self,
         root_input_bytes: usize,
     ) -> Result<(), Error> {
-        let limit = if self.max_container_memory_bytes > 0 {
-            usize::try_from(self.max_container_memory_bytes).map_err(|_| {
-                container_memory_error("max_container_memory_bytes does not fit usize")
-            })?
+        let limit = if self.max_graph_memory_bytes > 0 {
+            usize::try_from(self.max_graph_memory_bytes)
+                .map_err(|_| graph_memory_error("max_graph_memory_bytes does not fit usize"))?
         } else {
             if root_input_bytes
                 > (usize::MAX - KNOWN_ROOT_BUDGET_SLACK_BYTES) / KNOWN_ROOT_BUDGET_MULTIPLIER
             {
-                return Err(container_memory_error(
-                    "root input size overflows automatic container memory budget",
+                return Err(graph_memory_error(
+                    "root input size overflows automatic graph memory budget",
                 ));
             }
             root_input_bytes * KNOWN_ROOT_BUDGET_MULTIPLIER + KNOWN_ROOT_BUDGET_SLACK_BYTES
         };
-        self.container_memory_limit_bytes = limit;
-        self.remaining_container_memory_bytes = limit;
+        self.graph_memory_limit_bytes = limit;
+        self.remaining_graph_memory_bytes = limit;
         Ok(())
     }
 
     #[inline(always)]
-    pub(crate) fn reserve_counted_container_memory(
+    pub(crate) fn reserve_counted_graph_memory(
         &mut self,
         len: u32,
         elem_bytes: usize,
     ) -> Result<usize, Error> {
         let len = len as usize;
-        self.reserve_counted_memory(len, elem_bytes)?;
+        self.reserve_counted_graph_bytes(len, elem_bytes)?;
         Ok(len)
     }
 
     #[inline(always)]
-    pub(crate) fn reserve_container_bytes(&mut self, bytes: usize) -> Result<(), Error> {
-        let remaining = self.remaining_container_memory_bytes;
+    #[doc(hidden)]
+    pub fn reserve_graph_memory(&mut self, bytes: usize) -> Result<(), Error> {
+        let remaining = self.remaining_graph_memory_bytes;
         if bytes > remaining {
-            return Err(container_memory_exceeded(
+            return Err(graph_memory_exceeded(
                 bytes,
                 remaining,
-                self.container_memory_limit_bytes,
+                self.graph_memory_limit_bytes,
             ));
         }
-        self.remaining_container_memory_bytes = remaining - bytes;
+        self.remaining_graph_memory_bytes = remaining - bytes;
         Ok(())
     }
 
     #[inline(always)]
-    fn reserve_counted_memory(&mut self, len: usize, elem_bytes: usize) -> Result<(), Error> {
+    fn reserve_counted_graph_bytes(&mut self, len: usize, elem_bytes: usize) -> Result<(), Error> {
         if len == 0 {
             return Ok(());
         }
-        if elem_bytes <= usize::MAX / MAX_CONTAINER_LEN {
-            return self.reserve_container_bytes(len * elem_bytes);
+        if elem_bytes <= usize::MAX / MAX_GRAPH_COUNT {
+            return self.reserve_graph_memory(len * elem_bytes);
         }
-        self.reserve_counted_memory_checked(len, elem_bytes)
+        self.reserve_counted_graph_checked(len, elem_bytes)
     }
 
     #[cold]
     #[inline(never)]
-    fn reserve_counted_memory_checked(
+    fn reserve_counted_graph_checked(
         &mut self,
         len: usize,
         elem_bytes: usize,
     ) -> Result<(), Error> {
         let bytes = match len.checked_mul(elem_bytes) {
             Some(bytes) => bytes,
-            None => return Err(container_memory_overflow(len, elem_bytes)),
+            None => return Err(graph_memory_overflow(len, elem_bytes)),
         };
-        self.reserve_container_bytes(bytes)
+        self.reserve_graph_memory(bytes)
     }
 
     #[inline(always)]
@@ -639,24 +639,24 @@ impl<'a> ReadContext<'a> {
 
 #[cold]
 #[inline(never)]
-fn container_memory_error(message: &'static str) -> Error {
+fn graph_memory_error(message: &'static str) -> Error {
     Error::invalid_data(message)
 }
 
 #[cold]
 #[inline(never)]
-fn container_memory_overflow(len: usize, elem_bytes: usize) -> Error {
+fn graph_memory_overflow(len: usize, elem_bytes: usize) -> Error {
     Error::invalid_data(format!(
-        "container memory estimate overflows: length={} elementBytes={}",
+        "graph memory estimate overflows: length={} elementBytes={}",
         len, elem_bytes
     ))
 }
 
 #[cold]
 #[inline(never)]
-fn container_memory_exceeded(bytes: usize, remaining: usize, limit: usize) -> Error {
+fn graph_memory_exceeded(bytes: usize, remaining: usize, limit: usize) -> Error {
     Error::invalid_data(format!(
-        "estimated container memory request {} bytes exceeds max_container_memory_bytes remaining budget {} bytes out of effective limit {} bytes",
+        "estimated graph memory request {} bytes exceeds max_graph_memory_bytes remaining budget {} bytes out of effective limit {} bytes",
         bytes, remaining, limit
     ))
 }

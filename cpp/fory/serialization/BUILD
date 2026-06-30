@@ -110,8 +110,8 @@ cc_test(
 )
 
 cc_test(
-    name = "container_memory_budget_test",
-    srcs = ["container_memory_budget_test.cc"],
+    name = "graph_memory_budget_test",
+    srcs = ["graph_memory_budget_test.cc"],
     deps = [
         ":fory_serialization",
         "@googletest//:gtest",

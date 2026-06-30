@@ -270,6 +270,18 @@ impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
     }
 
     #[inline(always)]
+    fn fory_graph_self_size() -> usize
+    where
+        Self: Sized,
+    {
+        if is_primitive_type::<T>() {
+            0
+        } else {
+            mem::size_of::<Self>()
+        }
+    }
+
+    #[inline(always)]
     fn fory_static_type_id() -> TypeId
     where
         Self: Sized,

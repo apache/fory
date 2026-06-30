@@ -29,24 +29,24 @@ import (
 
 // ReadContext holds all state needed during deserialization.
 type ReadContext struct {
-	buffer                        *ByteBuffer
-	refReader                     *RefReader
-	trackRef                      bool // Cached flag to avoid indirection
-	xlang                         bool // Cross-language serialization mode
-	rootHeader                    byte
-	compatible                    bool          // Schema evolution compatibility mode
-	typeResolver                  *TypeResolver // For complex type deserialization
-	refResolver                   *RefResolver  // For reference tracking in native-mode paths
-	outOfBandBuffers              []*ByteBuffer // Out-of-band buffers for deserialization
-	outOfBandIndex                int           // Current index into out-of-band buffers
-	depth                         int           // Current nesting depth for cycle detection
-	maxDepth                      int           // Maximum allowed nesting depth
-	err                           Error         // Accumulated error state for deferred checking
-	lastTypePtr                   uintptr
-	lastTypeInfo                  *TypeInfo
-	maxContainerMemoryBytes       int64
-	containerMemoryLimitBytes     int64
-	remainingContainerMemoryBytes int64
+	buffer                    *ByteBuffer
+	refReader                 *RefReader
+	trackRef                  bool // Cached flag to avoid indirection
+	xlang                     bool // Cross-language serialization mode
+	rootHeader                byte
+	compatible                bool          // Schema evolution compatibility mode
+	typeResolver              *TypeResolver // For complex type deserialization
+	refResolver               *RefResolver  // For reference tracking in native-mode paths
+	outOfBandBuffers          []*ByteBuffer // Out-of-band buffers for deserialization
+	outOfBandIndex            int           // Current index into out-of-band buffers
+	depth                     int           // Current nesting depth for cycle detection
+	maxDepth                  int           // Maximum allowed nesting depth
+	err                       Error         // Accumulated error state for deferred checking
+	lastTypePtr               uintptr
+	lastTypeInfo              *TypeInfo
+	maxGraphMemoryBytes       int64
+	graphMemoryLimitBytes     int64
+	remainingGraphMemoryBytes int64
 }
 
 const (
@@ -56,19 +56,38 @@ const (
 )
 
 var referenceSlotBytes = int64(unsafe.Sizeof(uintptr(0)))
-var stringElementBytes = containerSizeOf[string]()
-var stringMaxLength = maxContainerCount(stringElementBytes)
+var stringElementBytes = graphSizeOf[string]()
+var stringMaxLength = maxGraphCount(stringElementBytes)
 
-func containerSizeOf[T any]() int64 {
+func graphSizeOf[T any]() int64 {
 	var v T
 	return int64(unsafe.Sizeof(v))
 }
 
-func maxContainerCount(elemBytes int64) int64 {
+func maxGraphCount(elemBytes int64) int64 {
 	if elemBytes == 0 {
 		return MaxInt64
 	}
 	return MaxInt64 / elemBytes
+}
+
+func structGraphBytes(type_ reflect.Type) int64 {
+	if type_.Kind() != reflect.Struct {
+		return 0
+	}
+	bytes := int64(type_.Size())
+	if bytes == 0 {
+		return 1
+	}
+	return bytes
+}
+
+func reserveStructGraph(ctx *ReadContext, type_ reflect.Type) bool {
+	bytes := structGraphBytes(type_)
+	if bytes == 0 {
+		return true
+	}
+	return ctx.ReserveGraphMemory(bytes)
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -79,11 +98,13 @@ func (c *ReadContext) IsXlang() bool {
 // NewReadContext creates a new read context
 func NewReadContext(trackRef bool) *ReadContext {
 	return &ReadContext{
-		buffer:                  NewByteBuffer(nil),
-		refReader:               NewRefReader(trackRef),
-		trackRef:                trackRef,
-		maxDepth:                128, // Default maximum nesting depth
-		maxContainerMemoryBytes: -1,
+		buffer:                    NewByteBuffer(nil),
+		refReader:                 NewRefReader(trackRef),
+		trackRef:                  trackRef,
+		maxDepth:                  128, // Default maximum nesting depth
+		maxGraphMemoryBytes:       -1,
+		graphMemoryLimitBytes:     MaxInt64,
+		remainingGraphMemoryBytes: MaxInt64,
 	}
 }
 
@@ -93,7 +114,7 @@ func (c *ReadContext) Reset() {
 	c.outOfBandBuffers = nil
 	c.outOfBandIndex = 0
 	c.err = Error{} // Clear error state
-	// Container budget state is overwritten by each root read before deserialization.
+	// Graph budget state is overwritten by each root read before deserialization.
 	// Avoid extra reset stores on the successful root hot path.
 	if c.refResolver != nil {
 		c.refResolver.resetRead()
@@ -103,86 +124,86 @@ func (c *ReadContext) Reset() {
 	}
 }
 
-func (c *ReadContext) initContainerMemoryBudget(rootInputBytes int, unknownLengthInput bool) {
-	limit := c.maxContainerMemoryBytes
+func (c *ReadContext) initGraphMemoryBudget(rootInputBytes int, unknownLengthInput bool) {
+	limit := c.maxGraphMemoryBytes
 	if limit <= 0 {
 		if unknownLengthInput {
 			limit = streamRootBudgetBytes
 		} else {
 			if rootInputBytes < 0 {
-				c.setContainerMemoryError("root input size must be non-negative: %d", rootInputBytes)
+				c.setGraphMemoryError("root input size must be non-negative: %d", rootInputBytes)
 				return
 			}
 			if int64(rootInputBytes) > (MaxInt64-knownRootBudgetSlackBytes)/knownRootBudgetMultiplier {
-				c.setContainerMemoryError("root input size %d overflows automatic container memory budget", rootInputBytes)
+				c.setGraphMemoryError("root input size %d overflows automatic graph memory budget", rootInputBytes)
 				return
 			}
 			limit = int64(rootInputBytes)*knownRootBudgetMultiplier + knownRootBudgetSlackBytes
 		}
 	}
-	c.containerMemoryLimitBytes = limit
-	c.remainingContainerMemoryBytes = limit
+	c.graphMemoryLimitBytes = limit
+	c.remainingGraphMemoryBytes = limit
 }
 
-// ReserveCountedContainerMemory reserves length * elementBytes estimated container bytes.
-func (c *ReadContext) ReserveCountedContainerMemory(length int, elemBytes int64) bool {
+// ReserveCountedGraphMemory reserves length * elementBytes estimated graph bytes.
+func (c *ReadContext) ReserveCountedGraphMemory(length int, elemBytes int64) bool {
 	if length < 0 {
-		c.setContainerMemoryError("negative container length: %d", length)
+		c.setGraphMemoryError("negative graph element count: %d", length)
 		return false
 	}
 	if elemBytes < 0 {
-		c.setContainerMemoryError("negative container element size: %d", elemBytes)
+		c.setGraphMemoryError("negative graph element size: %d", elemBytes)
 		return false
 	}
 	if length == 0 {
 		return true
 	}
-	return c.reserveCountedContainerMemory(length, elemBytes, maxContainerCount(elemBytes))
+	return c.reserveCountedGraphMemory(length, elemBytes, maxGraphCount(elemBytes))
 }
 
-func (c *ReadContext) reserveCountedContainerMemory(length int, elemBytes int64, maxLength int64) bool {
+func (c *ReadContext) reserveCountedGraphMemory(length int, elemBytes int64, maxLength int64) bool {
 	if length == 0 {
 		return true
 	}
 	if int64(length) > maxLength {
-		c.setContainerMemoryError("container memory estimate overflows: length=%d elementBytes=%d", length, elemBytes)
+		c.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", length, elemBytes)
 		return false
 	}
 	bytes := int64(length) * elemBytes
-	remaining := c.remainingContainerMemoryBytes
+	remaining := c.remainingGraphMemoryBytes
 	if bytes > remaining {
-		c.setContainerMemoryExceeded(bytes, remaining)
+		c.setGraphMemoryExceeded(bytes, remaining)
 		return false
 	}
-	c.remainingContainerMemoryBytes = remaining - bytes
+	c.remainingGraphMemoryBytes = remaining - bytes
 	return true
 }
 
-// ReserveContainerMemory reserves raw estimated container-owned bytes.
-func (c *ReadContext) ReserveContainerMemory(bytes int64) bool {
+// ReserveGraphMemory reserves raw estimated graph-owner bytes.
+func (c *ReadContext) ReserveGraphMemory(bytes int64) bool {
 	if bytes < 0 {
-		c.setContainerMemoryError("estimated container memory must be non-negative, got %d bytes", bytes)
+		c.setGraphMemoryError("estimated graph memory must be non-negative, got %d bytes", bytes)
 		return false
 	}
-	remaining := c.remainingContainerMemoryBytes
+	remaining := c.remainingGraphMemoryBytes
 	if bytes > remaining {
-		c.setContainerMemoryExceeded(bytes, remaining)
+		c.setGraphMemoryExceeded(bytes, remaining)
 		return false
 	}
-	c.remainingContainerMemoryBytes = remaining - bytes
+	c.remainingGraphMemoryBytes = remaining - bytes
 	return true
 }
 
 //go:noinline
-func (c *ReadContext) setContainerMemoryError(format string, args ...any) {
+func (c *ReadContext) setGraphMemoryError(format string, args ...any) {
 	c.SetError(DeserializationErrorf(format, args...))
 }
 
 //go:noinline
-func (c *ReadContext) setContainerMemoryExceeded(bytes int64, remaining int64) {
+func (c *ReadContext) setGraphMemoryExceeded(bytes int64, remaining int64) {
 	c.SetError(DeserializationErrorf(
-		"estimated container memory request %d bytes exceeds maxContainerMemoryBytes remaining budget %d bytes out of effective limit %d bytes",
-		bytes, remaining, c.containerMemoryLimitBytes))
+		"estimated graph memory request %d bytes exceeds maxGraphMemoryBytes remaining budget %d bytes out of effective limit %d bytes",
+		bytes, remaining, c.graphMemoryLimitBytes))
 }
 
 // SetData sets new input data (for buffer reuse)
@@ -656,7 +677,7 @@ func (c *ReadContext) readStringSliceData() []string {
 	if c.HasError() {
 		return nil
 	}
-	if !c.reserveCountedContainerMemory(length, stringElementBytes, stringMaxLength) {
+	if !c.reserveCountedGraphMemory(length, stringElementBytes, stringMaxLength) {
 		return nil
 	}
 	if length == 0 {
@@ -940,9 +961,15 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		} else if isNamedStruct {
 			// For named struct types, create a pointer to support circular references
 			// Create *A instead of A
+			if !reserveStructGraph(c, actualType) {
+				return
+			}
 			newValue = reflect.New(actualType)
 			valueToSet = newValue
 		} else {
+			if !reserveStructGraph(c, actualType) {
+				return
+			}
 			newValue = reflect.New(actualType).Elem()
 			valueToSet = newValue
 		}
@@ -1075,6 +1102,9 @@ func (c *ReadContext) ReadStruct(value reflect.Value) {
 	var readTarget reflect.Value
 	if isPtr {
 		if value.IsNil() {
+			if !reserveStructGraph(c, structType) {
+				return
+			}
 			value.Set(reflect.New(structType))
 		}
 		readTarget = value.Elem()

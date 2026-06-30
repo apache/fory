@@ -930,7 +930,7 @@ public class CollectionSerializers {
       setNumElements(numElements);
       int capacity = buffer.readVarUInt32Small7();
       checkBoundedQueueCapacity(numElements, capacity);
-      readContext.reserveContainerMemory((long) (capacity - numElements) * REFERENCE_BYTES);
+      readContext.reserveGraphMemory((long) (capacity - numElements) * REFERENCE_BYTES);
       buffer.checkReadableBytes(capacity);
       ArrayBlockingQueue queue = new ArrayBlockingQueue<>(capacity);
       readContext.reference(queue);

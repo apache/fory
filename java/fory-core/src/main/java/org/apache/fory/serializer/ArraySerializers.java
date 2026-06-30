@@ -46,6 +46,7 @@ import org.apache.fory.util.Preconditions;
  */
 public final class ArraySerializers {
   private static final int REFERENCE_BYTES = 4;
+  private static final int OBJECT_ARRAY_BYTES = 1;
 
   private ArraySerializers() {}
 
@@ -61,7 +62,7 @@ public final class ArraySerializers {
     if (numElements < 0) {
       throwInvalidObjectArraySize(numElements);
     }
-    readContext.reserveContainerMemory((long) numElements * REFERENCE_BYTES);
+    readContext.reserveGraphMemory(OBJECT_ARRAY_BYTES + (long) numElements * REFERENCE_BYTES);
     buffer.checkReadableBytes(numElements);
     return numElements;
   }

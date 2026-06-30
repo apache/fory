@@ -41,11 +41,11 @@ type sliceDynSerializer struct {
 func newSliceDynSerializer(elemType reflect.Type) (*sliceDynSerializer, error) {
 	// Nil element type is allowed for fully dynamic slices (e.g., []any)
 	if elemType == nil {
-		elemBytes := containerSizeOf[any]()
+		elemBytes := graphSizeOf[any]()
 		return &sliceDynSerializer{
 			isInterfaceElem: true,
 			elemBytes:       elemBytes,
-			maxLength:       maxContainerCount(elemBytes),
+			maxLength:       maxGraphCount(elemBytes),
 		}, nil
 	}
 	// Validate element type is interface or pointer to interface
@@ -61,7 +61,7 @@ func newSliceDynSerializer(elemType reflect.Type) (*sliceDynSerializer, error) {
 		isInterfaceElem: isInterface,
 		isPointerElem:   isPointerToInterface,
 		elemBytes:       elemBytes,
-		maxLength:       maxContainerCount(elemBytes),
+		maxLength:       maxGraphCount(elemBytes),
 	}, nil
 }
 
@@ -287,7 +287,7 @@ func (s *sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, exp
 		value.Set(reflect.MakeSlice(sliceType, 0, 0))
 		return
 	}
-	if !allocatedByCaller && !ctx.reserveCountedContainerMemory(length, s.elemBytes, s.maxLength) {
+	if !allocatedByCaller && !ctx.reserveCountedGraphMemory(length, s.elemBytes, s.maxLength) {
 		return
 	}
 

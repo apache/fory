@@ -58,8 +58,8 @@ final class ReadContext {
   late Buffer _buffer;
   final List<TypeInfo> _sharedTypes = <TypeInfo>[];
   int _depth = 0;
-  int _effectiveContainerMemoryBytes = 0;
-  int _remainingContainerMemoryBytes = 0;
+  int _effectiveGraphMemoryBytes = 0;
+  int _remainingGraphMemoryBytes = 0;
 
   @internal
   ReadContext(
@@ -73,17 +73,17 @@ final class ReadContext {
   @pragma('vm:prefer-inline')
   void prepare(Buffer buffer) {
     _buffer = buffer;
-    final configured = config.maxContainerMemoryBytes;
+    final configured = config.maxGraphMemoryBytes;
     final limit =
         configured > 0
             ? configured
             : buffer.readableBytes * _knownRootBudgetMultiplier +
                 _knownRootBudgetSlackBytes;
     if (limit > _maxSafeBudgetBytes) {
-      _throwContainerMemoryOverflow(limit);
+      _throwGraphMemoryOverflow(limit);
     }
-    _effectiveContainerMemoryBytes = limit;
-    _remainingContainerMemoryBytes = limit;
+    _effectiveGraphMemoryBytes = limit;
+    _remainingGraphMemoryBytes = limit;
   }
 
   @internal
@@ -92,8 +92,8 @@ final class ReadContext {
     _refReader.reset();
     _metaStringReader.reset();
     _depth = 0;
-    _effectiveContainerMemoryBytes = 0;
-    _remainingContainerMemoryBytes = 0;
+    _effectiveGraphMemoryBytes = 0;
+    _remainingGraphMemoryBytes = 0;
   }
 
   /// The active input buffer for the current operation.
@@ -106,37 +106,37 @@ final class ReadContext {
   RefReader get refReader => _refReader;
 
   @internal
-  int get effectiveContainerMemoryBytes => _effectiveContainerMemoryBytes;
+  int get effectiveGraphMemoryBytes => _effectiveGraphMemoryBytes;
 
   @internal
-  int get remainingContainerMemoryBytes => _remainingContainerMemoryBytes;
+  int get remainingGraphMemoryBytes => _remainingGraphMemoryBytes;
 
   @internal
   @pragma('vm:prefer-inline')
-  void reserveContainerMemory(int bytes) {
+  void reserveGraphMemory(int bytes) {
     if (bytes < 0 || bytes > _maxSafeBudgetBytes) {
-      _throwContainerMemoryOverflow(bytes);
+      _throwGraphMemoryOverflow(bytes);
     }
-    final remaining = _remainingContainerMemoryBytes - bytes;
+    final remaining = _remainingGraphMemoryBytes - bytes;
     if (remaining < 0) {
-      _throwContainerMemoryExceeded(bytes);
+      _throwGraphMemoryExceeded(bytes);
     }
-    _remainingContainerMemoryBytes = remaining;
+    _remainingGraphMemoryBytes = remaining;
   }
 
   @pragma('vm:never-inline')
-  Never _throwContainerMemoryOverflow(int bytes) {
+  Never _throwGraphMemoryOverflow(int bytes) {
     throw StateError(
-      'maxContainerMemoryBytes overflow: requested $bytes estimated container bytes.',
+      'maxGraphMemoryBytes overflow: requested $bytes estimated graph bytes.',
     );
   }
 
   @pragma('vm:never-inline')
-  Never _throwContainerMemoryExceeded(int bytes) {
+  Never _throwGraphMemoryExceeded(int bytes) {
     throw StateError(
-      'maxContainerMemoryBytes exceeded: requested $bytes estimated container bytes, '
-      '$_remainingContainerMemoryBytes remaining, effective limit '
-      '$_effectiveContainerMemoryBytes.',
+      'maxGraphMemoryBytes exceeded: requested $bytes estimated graph bytes, '
+      '$_remainingGraphMemoryBytes remaining, effective limit '
+      '$_effectiveGraphMemoryBytes.',
     );
   }
 

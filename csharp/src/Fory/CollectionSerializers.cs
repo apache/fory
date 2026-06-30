@@ -32,6 +32,7 @@ internal static class CollectionBits
 
 internal static class CollectionCodec
 {
+    private const int CollectionBytes = 1;
     private const int ReferenceBytes = 4;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -40,7 +41,7 @@ internal static class CollectionCodec
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void ReserveElementStorage<T>(ReadContext context, int count)
     {
-        context.ReserveCountedContainerMemory(count, ElementBytes<T>());
+        context.ReserveGraphMemory(CollectionBytes + (long)count * ElementBytes<T>());
     }
 
     private static bool NeedsCompatibleElementTypeMeta(TypeInfo typeInfo, WriteContext context)
@@ -536,7 +537,6 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
     public override T[] ReadData(ReadContext context)
     {
         List<T> values = CollectionCodec.ReadCollectionData<T>(context.TypeResolver.GetSerializer<T>(), context);
-        CollectionCodec.ReserveElementStorage<T>(context, values.Count);
         return values.ToArray();
     }
 }

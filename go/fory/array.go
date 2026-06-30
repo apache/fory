@@ -318,7 +318,7 @@ func (s arrayDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType 
 func (s arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Create a temp slice to read into, then copy back to array
 	sliceType := reflect.SliceOf(value.Type().Elem())
-	if !ctx.ReserveCountedContainerMemory(value.Len(), int64(value.Type().Elem().Size())) {
+	if !ctx.ReserveCountedGraphMemory(value.Len(), int64(value.Type().Elem().Size())) {
 		return
 	}
 	tempSlice := reflect.MakeSlice(sliceType, value.Len(), value.Len())

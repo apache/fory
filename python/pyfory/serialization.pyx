@@ -113,7 +113,7 @@ cdef class Config:
         max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
         max_schema_versions_per_type: Maximum accepted remote metadata versions for one logical type.
         max_average_schema_versions_per_type: Average remote schema versions allowed across accepted remote types.
-        max_container_memory_bytes: Maximum estimated container-owned memory per root
+        max_graph_memory_bytes: Maximum estimated graph memory per root
             deserialization. -1 means auto; positive values are explicit byte limits.
         field_nullable: Treats struct/dataclass fields as nullable by default.
         policy: Deserialization policy used for security-sensitive checks.
@@ -131,7 +131,7 @@ cdef class Config:
     cdef public int32_t max_type_meta_bytes
     cdef public int32_t max_schema_versions_per_type
     cdef public int32_t max_average_schema_versions_per_type
-    cdef public int64_t max_container_memory_bytes
+    cdef public int64_t max_graph_memory_bytes
     cdef public bint field_nullable
     cdef public object policy
     cdef public object meta_compressor
@@ -150,7 +150,7 @@ cdef class Config:
         max_type_meta_bytes,
         max_schema_versions_per_type,
         max_average_schema_versions_per_type,
-        max_container_memory_bytes,
+        max_graph_memory_bytes,
         field_nullable,
         policy,
         meta_compressor,
@@ -170,7 +170,7 @@ cdef class Config:
             max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
             max_schema_versions_per_type: Maximum accepted remote metadata versions for one logical type.
             max_average_schema_versions_per_type: Average remote schema versions allowed across accepted remote types.
-            max_container_memory_bytes: Maximum estimated container-owned memory per root
+            max_graph_memory_bytes: Maximum estimated graph memory per root
                 deserialization. -1 means auto; positive values are explicit byte limits.
             field_nullable: Treat all struct fields as nullable by default.
             policy: Deserialization policy implementation.
@@ -192,16 +192,16 @@ cdef class Config:
         if max_average_schema_versions_per_type <= 0:
             raise ValueError("max_average_schema_versions_per_type must be a positive integer")
         if (
-            not isinstance(max_container_memory_bytes, int)
-            or (max_container_memory_bytes != -1 and max_container_memory_bytes <= 0)
-            or max_container_memory_bytes > 9223372036854775807
+            not isinstance(max_graph_memory_bytes, int)
+            or (max_graph_memory_bytes != -1 and max_graph_memory_bytes <= 0)
+            or max_graph_memory_bytes > 9223372036854775807
         ):
-            raise ValueError("max_container_memory_bytes must be -1 or a positive 63-bit integer")
+            raise ValueError("max_graph_memory_bytes must be -1 or a positive 63-bit integer")
         self.max_type_fields = max_type_fields
         self.max_type_meta_bytes = max_type_meta_bytes
         self.max_schema_versions_per_type = max_schema_versions_per_type
         self.max_average_schema_versions_per_type = max_average_schema_versions_per_type
-        self.max_container_memory_bytes = max_container_memory_bytes
+        self.max_graph_memory_bytes = max_graph_memory_bytes
         self.field_nullable = field_nullable
         self.policy = policy
         self.meta_compressor = meta_compressor
@@ -842,7 +842,7 @@ cdef class Fory:
     cdef public bint compatible
     cdef public bint field_nullable
     cdef public int32_t max_depth
-    cdef public int64_t max_container_memory_bytes
+    cdef public int64_t max_graph_memory_bytes
     cdef public object policy
     cdef public Config config
     cdef public TypeResolver type_resolver
@@ -861,7 +861,7 @@ cdef class Fory:
         max_type_meta_bytes=4096,
         max_schema_versions_per_type=10,
         max_average_schema_versions_per_type=3,
-        max_container_memory_bytes=-1,
+        max_graph_memory_bytes=-1,
         policy=None,
         field_nullable=False,
         meta_compressor=None,
@@ -880,7 +880,7 @@ cdef class Fory:
             max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
             max_schema_versions_per_type: Maximum accepted remote metadata versions for one logical type.
             max_average_schema_versions_per_type: Average remote schema versions allowed across accepted remote types.
-            max_container_memory_bytes: Maximum estimated container-owned memory per root
+            max_graph_memory_bytes: Maximum estimated graph memory per root
                 deserialization. -1 means auto; positive values are explicit byte limits.
             policy: Optional deserialization policy implementation.
             field_nullable: Treat struct fields as nullable by default.
@@ -900,12 +900,12 @@ cdef class Fory:
         self.field_nullable = field_nullable
         self.max_depth = max_depth
         if (
-            not isinstance(max_container_memory_bytes, int)
-            or (max_container_memory_bytes != -1 and max_container_memory_bytes <= 0)
-            or max_container_memory_bytes > 9223372036854775807
+            not isinstance(max_graph_memory_bytes, int)
+            or (max_graph_memory_bytes != -1 and max_graph_memory_bytes <= 0)
+            or max_graph_memory_bytes > 9223372036854775807
         ):
-            raise ValueError("max_container_memory_bytes must be -1 or a positive 63-bit integer")
-        self.max_container_memory_bytes = max_container_memory_bytes
+            raise ValueError("max_graph_memory_bytes must be -1 or a positive 63-bit integer")
+        self.max_graph_memory_bytes = max_graph_memory_bytes
         self.config = Config(
             xlang=xlang,
             track_ref=ref,
@@ -918,7 +918,7 @@ cdef class Fory:
             max_type_meta_bytes=max_type_meta_bytes,
             max_schema_versions_per_type=max_schema_versions_per_type,
             max_average_schema_versions_per_type=max_average_schema_versions_per_type,
-            max_container_memory_bytes=max_container_memory_bytes,
+            max_graph_memory_bytes=max_graph_memory_bytes,
             field_nullable=field_nullable,
             policy=self.policy,
             meta_compressor=meta_compressor,
@@ -1077,7 +1077,7 @@ cdef class Fory:
         cdef uint8_t bitmap
         cdef bint peer_out_of_band_enabled
         cdef int64_t root_input_bytes
-        cdef int64_t container_memory_limit
+        cdef int64_t graph_memory_limit
         if isinstance(buffer, bytes):
             buffer = Buffer(buffer)
         read_buffer = buffer
@@ -1093,13 +1093,13 @@ cdef class Fory:
             raise ValueError("Out-of-band buffers are required by the root header")
         if not peer_out_of_band_enabled and buffers is not None:
             raise ValueError("Out-of-band buffers were provided for an in-band root payload")
-        if self.max_container_memory_bytes > 0:
-            container_memory_limit = self.max_container_memory_bytes
+        if self.max_graph_memory_bytes > 0:
+            graph_memory_limit = self.max_graph_memory_bytes
         elif read_buffer.has_input_stream():
-            container_memory_limit = _STREAM_ROOT_BUDGET_BYTES
+            graph_memory_limit = _STREAM_ROOT_BUDGET_BYTES
         else:
             root_input_bytes = <int64_t>read_buffer.size() - reader_index
-            container_memory_limit = root_input_bytes * _KNOWN_ROOT_BUDGET_MULTIPLIER + _KNOWN_ROOT_BUDGET_SLACK_BYTES
+            graph_memory_limit = root_input_bytes * _KNOWN_ROOT_BUDGET_MULTIPLIER + _KNOWN_ROOT_BUDGET_SLACK_BYTES
         # Keep the root context setup inline. Top-level deserialize is a hot path,
         # so it should not pay an extra method call just to bind the active buffer.
         read_context.buffer = read_buffer
@@ -1109,8 +1109,8 @@ cdef class Fory:
             iter(unsupported_objects) if unsupported_objects is not None else None
         )
         read_context.peer_out_of_band_enabled = peer_out_of_band_enabled
-        read_context.container_memory_limit_bytes = container_memory_limit
-        read_context.remaining_container_memory_bytes = container_memory_limit
+        read_context.graph_memory_limit_bytes = graph_memory_limit
+        read_context.remaining_graph_memory_bytes = graph_memory_limit
         read_context.depth = 0
         return read_context.read_ref()
 

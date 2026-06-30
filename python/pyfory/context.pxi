@@ -33,7 +33,7 @@ cdef int32_t MAX_CACHED_META_STRING_LENGTH = 2048
 cdef int64_t _KNOWN_ROOT_BUDGET_MULTIPLIER = 8
 cdef int64_t _KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024
 cdef int64_t _STREAM_ROOT_BUDGET_BYTES = 128 * 1024 * 1024
-cdef int64_t _MAX_CONTAINER_MEMORY_BYTES = 9223372036854775807
+cdef int64_t _MAX_GRAPH_MEMORY_BYTES = 9223372036854775807
 
 
 cdef inline uint64_t _mix64(uint64_t x):
@@ -750,9 +750,9 @@ cdef class ReadContext:
     cdef readonly bint field_nullable
     cdef readonly object policy
     cdef readonly int32_t max_depth
-    cdef public int64_t max_container_memory_bytes
-    cdef public int64_t container_memory_limit_bytes
-    cdef public int64_t remaining_container_memory_bytes
+    cdef public int64_t max_graph_memory_bytes
+    cdef public int64_t graph_memory_limit_bytes
+    cdef public int64_t remaining_graph_memory_bytes
     cdef readonly RefReader ref_reader
     cdef readonly MetaStringReader meta_string_reader
     cdef readonly MetaShareReadContext meta_share_context
@@ -773,9 +773,9 @@ cdef class ReadContext:
         self.field_nullable = config.field_nullable
         self.policy = config.policy
         self.max_depth = config.max_depth
-        self.max_container_memory_bytes = config.max_container_memory_bytes
-        self.container_memory_limit_bytes = 0
-        self.remaining_container_memory_bytes = 0
+        self.max_graph_memory_bytes = config.max_graph_memory_bytes
+        self.graph_memory_limit_bytes = 0
+        self.remaining_graph_memory_bytes = 0
         self.ref_reader = RefReader(self.track_ref)
         self.meta_string_reader = MetaStringReader(self.type_resolver.shared_registry)
         self.meta_share_context = MetaShareReadContext() if config.scoped_meta_share_enabled else None
@@ -796,23 +796,23 @@ cdef class ReadContext:
         int64_t root_input_bytes=-1,
     ):
         cdef int64_t limit
-        if self.max_container_memory_bytes > 0:
-            limit = self.max_container_memory_bytes
+        if self.max_graph_memory_bytes > 0:
+            limit = self.max_graph_memory_bytes
         elif buffer.has_input_stream():
             limit = _STREAM_ROOT_BUDGET_BYTES
         else:
             if root_input_bytes < 0:
                 root_input_bytes = <int64_t>buffer.size() - buffer.get_reader_index()
-            if root_input_bytes > (_MAX_CONTAINER_MEMORY_BYTES - _KNOWN_ROOT_BUDGET_SLACK_BYTES) // _KNOWN_ROOT_BUDGET_MULTIPLIER:
-                raise ValueError("max_container_memory_bytes auto budget overflow")
+            if root_input_bytes > (_MAX_GRAPH_MEMORY_BYTES - _KNOWN_ROOT_BUDGET_SLACK_BYTES) // _KNOWN_ROOT_BUDGET_MULTIPLIER:
+                raise ValueError("max_graph_memory_bytes auto budget overflow")
             limit = root_input_bytes * _KNOWN_ROOT_BUDGET_MULTIPLIER + _KNOWN_ROOT_BUDGET_SLACK_BYTES
         self.buffer = buffer
         self.c_buffer = buffer.c_buffer
         self.buffers = iter(buffers) if buffers is not None else None
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
-        self.container_memory_limit_bytes = limit
-        self.remaining_container_memory_bytes = limit
+        self.graph_memory_limit_bytes = limit
+        self.remaining_graph_memory_bytes = limit
         self.depth = 0
 
     cpdef inline reset(self):
@@ -827,52 +827,52 @@ cdef class ReadContext:
         self.buffers = None
         self.unsupported_objects = None
         self.peer_out_of_band_enabled = False
-        self.container_memory_limit_bytes = 0
-        self.remaining_container_memory_bytes = 0
+        self.graph_memory_limit_bytes = 0
+        self.remaining_graph_memory_bytes = 0
         self.depth = 0
 
-    cdef inline void reserve_container_memory_c(self, int64_t num_bytes):
+    cdef inline void reserve_graph_memory_c(self, int64_t num_bytes):
         cdef int64_t used
         if num_bytes < 0:
-            raise ValueError("Estimated container memory is negative")
-        if num_bytes > _MAX_CONTAINER_MEMORY_BYTES:
-            raise ValueError("Estimated container memory overflow")
-        if num_bytes > self.remaining_container_memory_bytes:
-            used = self.container_memory_limit_bytes - self.remaining_container_memory_bytes
+            raise ValueError("Estimated graph memory is negative")
+        if num_bytes > _MAX_GRAPH_MEMORY_BYTES:
+            raise ValueError("Estimated graph memory overflow")
+        if num_bytes > self.remaining_graph_memory_bytes:
+            used = self.graph_memory_limit_bytes - self.remaining_graph_memory_bytes
             raise ValueError(
-                f"Estimated container memory budget exceeded: requested {num_bytes} bytes, "
-                f"used {used} bytes, limit {self.container_memory_limit_bytes} bytes. "
-                "Increase Fory(..., max_container_memory_bytes=...) for trusted larger payloads."
+                f"Estimated graph memory budget exceeded: requested {num_bytes} bytes, "
+                f"used {used} bytes, limit {self.graph_memory_limit_bytes} bytes. "
+                "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
             )
-        self.remaining_container_memory_bytes -= num_bytes
+        self.remaining_graph_memory_bytes -= num_bytes
 
-    cdef inline void reserve_container_memory_fast(self, int64_t num_bytes):
+    cdef inline void reserve_graph_memory_fast(self, int64_t num_bytes):
         cdef int64_t used
-        if num_bytes > self.remaining_container_memory_bytes:
-            used = self.container_memory_limit_bytes - self.remaining_container_memory_bytes
+        if num_bytes > self.remaining_graph_memory_bytes:
+            used = self.graph_memory_limit_bytes - self.remaining_graph_memory_bytes
             raise ValueError(
-                f"Estimated container memory budget exceeded: requested {num_bytes} bytes, "
-                f"used {used} bytes, limit {self.container_memory_limit_bytes} bytes. "
-                "Increase Fory(..., max_container_memory_bytes=...) for trusted larger payloads."
+                f"Estimated graph memory budget exceeded: requested {num_bytes} bytes, "
+                f"used {used} bytes, limit {self.graph_memory_limit_bytes} bytes. "
+                "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
             )
-        self.remaining_container_memory_bytes -= num_bytes
+        self.remaining_graph_memory_bytes -= num_bytes
 
-    cpdef inline reserve_container_memory(self, int64_t num_bytes):
-        self.reserve_container_memory_c(num_bytes)
+    cpdef inline reserve_graph_memory(self, int64_t num_bytes):
+        self.reserve_graph_memory_c(num_bytes)
 
-    cdef inline void reserve_counted_container_memory_c(
+    cdef inline void reserve_counted_graph_memory_c(
         self,
         int64_t count,
         int64_t element_bytes,
     ):
         if count < 0 or element_bytes < 0:
-            raise ValueError("Estimated container memory is negative")
-        if element_bytes != 0 and count > _MAX_CONTAINER_MEMORY_BYTES // element_bytes:
-            raise ValueError("Estimated container memory overflow")
-        self.reserve_container_memory_c(count * element_bytes)
+            raise ValueError("Estimated graph memory is negative")
+        if element_bytes != 0 and count > _MAX_GRAPH_MEMORY_BYTES // element_bytes:
+            raise ValueError("Estimated graph memory overflow")
+        self.reserve_graph_memory_c(count * element_bytes)
 
-    cpdef inline reserve_counted_container_memory(self, int64_t count, int64_t element_bytes):
-        self.reserve_counted_container_memory_c(count, element_bytes)
+    cpdef inline reserve_counted_graph_memory(self, int64_t count, int64_t element_bytes):
+        self.reserve_counted_graph_memory_c(count, element_bytes)
 
     cpdef inline add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj

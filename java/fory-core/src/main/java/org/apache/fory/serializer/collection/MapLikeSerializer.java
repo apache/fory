@@ -58,6 +58,7 @@ import org.apache.fory.util.Preconditions;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public abstract class MapLikeSerializer<T> extends Serializer<T> {
   public static final int MAX_CHUNK_SIZE = 255;
+  private static final int MAP_BYTES = 1;
   private static final int REFERENCE_BYTES = 4;
 
   static final class MapTypeCache {
@@ -971,7 +972,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     if (numElements > Integer.MAX_VALUE / 2) {
       throwInvalidMapBodySize(numElements);
     }
-    readContext.reserveContainerMemory((long) numElements * 2 * REFERENCE_BYTES);
+    readContext.reserveGraphMemory(MAP_BYTES + (long) numElements * 2 * REFERENCE_BYTES);
     buffer.checkReadableBytes(numElements << 1);
     return numElements;
   }

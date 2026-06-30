@@ -42,6 +42,7 @@ cdef int8_t NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF = KEY_HAS_NULL | VALUE_DECL_TY
 cdef int8_t NULL_VALUE_KEY_DECL_TYPE = VALUE_HAS_NULL | KEY_DECL_TYPE
 cdef int8_t NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF = VALUE_HAS_NULL | KEY_DECL_TYPE | TRACKING_KEY_REF
 cdef int64_t _REFERENCE_BYTES = sizeof(PyObject*)
+cdef int64_t _OWNER_BYTES = 1
 ctypedef PyObject *PyObjectPtr
 
 cdef class ListSerializer
@@ -467,22 +468,21 @@ cdef class ListSerializer(CollectionSerializer):
         cdef int8_t head_flag
         cdef int32_t ref_id
         cdef int64_t i
-        cdef int64_t container_bytes
-        cdef int64_t remaining_container_memory_bytes
+        cdef int64_t graph_bytes
+        cdef int64_t remaining_graph_memory_bytes
+        if len_ < 0:
+            raise ValueError("Container element count is negative")
+        graph_bytes = _OWNER_BYTES + <int64_t>len_ * _REFERENCE_BYTES
+        remaining_graph_memory_bytes = read_context.remaining_graph_memory_bytes
+        if graph_bytes > remaining_graph_memory_bytes:
+            read_context.reserve_graph_memory_fast(graph_bytes)
+        else:
+            read_context.remaining_graph_memory_bytes = (
+                remaining_graph_memory_bytes - graph_bytes
+            )
         if len_ == 0:
             list_ = PyList_New(0)
             return list_
-        if len_ < 0:
-            raise ValueError("Container element count is negative")
-        else:
-            container_bytes = <int64_t>len_ * sizeof(PyObject*)
-            remaining_container_memory_bytes = read_context.remaining_container_memory_bytes
-            if container_bytes > remaining_container_memory_bytes:
-                read_context.reserve_container_memory_fast(container_bytes)
-            else:
-                read_context.remaining_container_memory_bytes = (
-                    remaining_container_memory_bytes - container_bytes
-                )
 
         read_context.check_readable_bytes(len_)
         collect_flag = buffer.read_int8()
@@ -596,22 +596,21 @@ cdef class TupleSerializer(CollectionSerializer):
         cdef bint has_null
         cdef int8_t head_flag
         cdef int64_t i
-        cdef int64_t container_bytes
-        cdef int64_t remaining_container_memory_bytes
+        cdef int64_t graph_bytes
+        cdef int64_t remaining_graph_memory_bytes
+        if len_ < 0:
+            raise ValueError("Container element count is negative")
+        graph_bytes = _OWNER_BYTES + <int64_t>len_ * _REFERENCE_BYTES
+        remaining_graph_memory_bytes = read_context.remaining_graph_memory_bytes
+        if graph_bytes > remaining_graph_memory_bytes:
+            read_context.reserve_graph_memory_fast(graph_bytes)
+        else:
+            read_context.remaining_graph_memory_bytes = (
+                remaining_graph_memory_bytes - graph_bytes
+            )
         if len_ == 0:
             tuple_ = PyTuple_New(0)
             return tuple_
-        if len_ < 0:
-            raise ValueError("Container element count is negative")
-        else:
-            container_bytes = <int64_t>len_ * sizeof(PyObject*)
-            remaining_container_memory_bytes = read_context.remaining_container_memory_bytes
-            if container_bytes > remaining_container_memory_bytes:
-                read_context.reserve_container_memory_fast(container_bytes)
-            else:
-                read_context.remaining_container_memory_bytes = (
-                    remaining_container_memory_bytes - container_bytes
-                )
 
         read_context.check_readable_bytes(len_)
         collect_flag = buffer.read_int8()
@@ -726,25 +725,24 @@ cdef class SetSerializer(CollectionSerializer):
         cdef int8_t head_flag
         cdef int32_t ref_id
         cdef int64_t i
-        cdef int64_t container_bytes
-        cdef int64_t remaining_container_memory_bytes
+        cdef int64_t graph_bytes
+        cdef int64_t remaining_graph_memory_bytes
 
         len_ = buffer.read_var_uint32()
+        if len_ < 0:
+            raise ValueError("Container element count is negative")
+        graph_bytes = _OWNER_BYTES + <int64_t>len_ * _REFERENCE_BYTES
+        remaining_graph_memory_bytes = read_context.remaining_graph_memory_bytes
+        if graph_bytes > remaining_graph_memory_bytes:
+            read_context.reserve_graph_memory_fast(graph_bytes)
+        else:
+            read_context.remaining_graph_memory_bytes = (
+                remaining_graph_memory_bytes - graph_bytes
+            )
         if len_ == 0:
             instance = set()
             read_context.reference(instance)
             return instance
-        if len_ < 0:
-            raise ValueError("Container element count is negative")
-        else:
-            container_bytes = <int64_t>len_ * sizeof(PyObject*)
-            remaining_container_memory_bytes = read_context.remaining_container_memory_bytes
-            if container_bytes > remaining_container_memory_bytes:
-                read_context.reserve_container_memory_fast(container_bytes)
-            else:
-                read_context.remaining_container_memory_bytes = (
-                    remaining_container_memory_bytes - container_bytes
-                )
         read_context.check_readable_bytes(len_)
         instance = set()
         read_context.reference(instance)
@@ -1090,21 +1088,21 @@ cdef class MapSerializer(Serializer):
         cdef int32_t ref_id
         cdef dict map_
         cdef int8_t chunk_header = 0
-        cdef int64_t container_bytes
-        cdef int64_t remaining_container_memory_bytes
+        cdef int64_t graph_bytes
+        cdef int64_t remaining_graph_memory_bytes
+        if size < 0:
+            raise ValueError("Map entry count is negative")
+        graph_bytes = _OWNER_BYTES + <int64_t>size * (2 * _REFERENCE_BYTES)
+        remaining_graph_memory_bytes = read_context.remaining_graph_memory_bytes
+        if graph_bytes > remaining_graph_memory_bytes:
+            read_context.reserve_graph_memory_fast(graph_bytes)
+        else:
+            read_context.remaining_graph_memory_bytes = (
+                remaining_graph_memory_bytes - graph_bytes
+            )
         if size == 0:
             map_ = {}
-        elif size < 0:
-            raise ValueError("Map entry count is negative")
         else:
-            container_bytes = <int64_t>size * (2 * sizeof(PyObject*))
-            remaining_container_memory_bytes = read_context.remaining_container_memory_bytes
-            if container_bytes > remaining_container_memory_bytes:
-                read_context.reserve_container_memory_fast(container_bytes)
-            else:
-                read_context.remaining_container_memory_bytes = (
-                    remaining_container_memory_bytes - container_bytes
-                )
             read_context.check_readable_bytes(size)
             chunk_header = read_context.read_uint8()
             map_ = _PyDict_NewPresized(size)

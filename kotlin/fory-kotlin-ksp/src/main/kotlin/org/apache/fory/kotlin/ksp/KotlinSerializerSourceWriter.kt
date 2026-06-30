@@ -391,6 +391,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       .append("  private fun readSchemaConstructor(readContext: ReadContext): ")
       .append(struct.typeName)
       .append(" {\n")
+    builder.append("    reserveObjectGraphMemory(readContext)\n")
     builder.append("    val fieldValues = arrayOfNulls<Any?>(DESCRIPTORS.size)\n")
     builder.append("    val bufferedFields = newFieldBits(DESCRIPTORS.size)\n")
     builder.append("    beginConstructorRef(readContext)\n")
@@ -654,6 +655,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
   }
 
   private fun writeMutableReadBody() {
+    builder.append("    reserveObjectGraphMemory(readContext)\n")
     builder.append("    val value = ").append(struct.typeName).append("()\n")
     builder.append("    if (readContext.hasPreservedRefId()) {\n")
     builder.append("      readContext.reference(value)\n")
@@ -700,6 +702,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       builder.append("  }\n\n")
       return
     }
+    builder.append("    reserveObjectGraphMemory(readContext)\n")
     writeCompatibleValueReadBody("    ", constructorRefs = false)
     builder.append("  }\n\n")
   }
@@ -709,6 +712,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       .append("  private fun readCompatibleConstructor(readContext: ReadContext): ")
       .append(struct.typeName)
       .append(" {\n")
+    builder.append("    reserveObjectGraphMemory(readContext)\n")
     builder.append("    beginConstructorRef(readContext)\n")
     builder.append("    try {\n")
     writeCompatibleValueReadBody("      ", constructorRefs = true)
@@ -829,6 +833,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
 
   private fun writeMutableCompatibleReadBody() {
     writePresenceVars()
+    builder.append("    reserveObjectGraphMemory(readContext)\n")
     builder.append("    val value = ").append(struct.typeName).append("()\n")
     builder.append("    if (readContext.hasPreservedRefId()) {\n")
     builder.append("      readContext.reference(value)\n")

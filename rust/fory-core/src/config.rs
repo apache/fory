@@ -40,9 +40,9 @@ pub struct Config {
     /// When enabled, shared references and circular references are tracked
     /// and preserved during serialization/deserialization.
     pub track_ref: bool,
-    /// Maximum estimated container-owned memory accepted during one root deserialization.
+    /// Maximum estimated graph memory accepted during one root deserialization.
     /// `-1` selects the automatic input-shaped limit.
-    pub max_container_memory_bytes: i64,
+    pub max_graph_memory_bytes: i64,
     /// Maximum accepted field count in one received struct TypeMeta.
     pub max_type_fields: u32,
     /// Maximum accepted body size in one received TypeMeta.
@@ -64,7 +64,7 @@ impl Default for Config {
             max_dyn_depth: 5,
             check_struct_version: false,
             track_ref: false,
-            max_container_memory_bytes: -1,
+            max_graph_memory_bytes: -1,
             max_type_fields: 512,
             max_type_meta_bytes: 4096,
             max_schema_versions_per_type: 10,
@@ -127,10 +127,10 @@ impl Config {
         self.track_ref
     }
 
-    /// Get maximum estimated container-owned memory per root deserialization.
+    /// Get maximum estimated graph memory per root deserialization.
     #[inline(always)]
-    pub fn max_container_memory_bytes(&self) -> i64 {
-        self.max_container_memory_bytes
+    pub fn max_graph_memory_bytes(&self) -> i64 {
+        self.max_graph_memory_bytes
     }
 
     /// Get maximum accepted field count in one received struct TypeMeta.

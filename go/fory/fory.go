@@ -69,7 +69,7 @@ type Config struct {
 	MaxDepth                        int
 	IsXlang                         bool
 	Compatible                      bool // Schema evolution compatibility mode
-	MaxContainerMemoryBytes         int64
+	MaxGraphMemoryBytes             int64
 	MaxTypeFields                   int
 	MaxTypeMetaBytes                int
 	MaxSchemaVersionsPerType        int
@@ -83,7 +83,7 @@ func defaultConfig() Config {
 		MaxDepth:                        20,
 		IsXlang:                         true,
 		MaxTypeFields:                   512,
-		MaxContainerMemoryBytes:         -1,
+		MaxGraphMemoryBytes:             -1,
 		MaxTypeMetaBytes:                4096,
 		MaxSchemaVersionsPerType:        10,
 		MaxAverageSchemaVersionsPerType: 3,
@@ -112,14 +112,14 @@ func WithMaxDepth(depth int) Option {
 	}
 }
 
-// WithMaxContainerMemoryBytes sets the maximum estimated container-owned memory accepted during one root deserialization.
+// WithMaxGraphMemoryBytes sets the maximum estimated graph memory accepted during one root deserialization.
 // Use -1 for the automatic input-shaped limit.
-func WithMaxContainerMemoryBytes(size int64) Option {
+func WithMaxGraphMemoryBytes(size int64) Option {
 	if size != -1 && size <= 0 {
-		panic("MaxContainerMemoryBytes must be positive or -1 for auto")
+		panic("MaxGraphMemoryBytes must be positive or -1 for auto")
 	}
 	return func(f *Fory) {
-		f.config.MaxContainerMemoryBytes = size
+		f.config.MaxGraphMemoryBytes = size
 	}
 }
 
@@ -231,7 +231,7 @@ func New(opts ...Option) *Fory {
 	f.writeCtx.xlang = f.config.IsXlang
 
 	f.readCtx = NewReadContext(f.config.TrackRef)
-	f.readCtx.maxContainerMemoryBytes = f.config.MaxContainerMemoryBytes
+	f.readCtx.maxGraphMemoryBytes = f.config.MaxGraphMemoryBytes
 	f.readCtx.typeResolver = f.typeResolver
 	f.readCtx.refResolver = f.refResolver
 	f.readCtx.compatible = f.config.Compatible
@@ -570,7 +570,7 @@ func (f *Fory) Serialize(value any) ([]byte, error) {
 func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
 	f.readCtx.SetData(data)
-	f.readCtx.initContainerMemoryBudget(len(data), false)
+	f.readCtx.initGraphMemoryBudget(len(data), false)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -582,6 +582,9 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
 	target := reflect.ValueOf(v).Elem()
+	if err := f.reserveRootGraphOwner(target); err != nil {
+		return err
+	}
 	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
@@ -666,7 +669,7 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	// Temporarily swap buffer
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = buf
-	f.readCtx.initContainerMemoryBudget(buf.readableBytes(), false)
+	f.readCtx.initGraphMemoryBudget(buf.readableBytes(), false)
 	if f.readCtx.HasError() {
 		f.readCtx.buffer = origBuffer
 		return f.readCtx.TakeError()
@@ -680,6 +683,10 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
 	target := reflect.ValueOf(v).Elem()
+	if err := f.reserveRootGraphOwner(target); err != nil {
+		f.readCtx.buffer = origBuffer
+		return err
+	}
 	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		f.readCtx.buffer = origBuffer
@@ -766,7 +773,7 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 		f.readCtx.buffer = nil
 		f.readCtx.outOfBandBuffers = nil
 	}()
-	f.readCtx.initContainerMemoryBudget(buffer.readableBytes(), false)
+	f.readCtx.initGraphMemoryBudget(buffer.readableBytes(), false)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -794,7 +801,11 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readCtx.ReadValue(rv.Elem(), RefModeTracking, true)
+	target := rv.Elem()
+	if err := f.reserveRootGraphOwner(target); err != nil {
+		return err
+	}
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -1043,7 +1054,7 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	// Reuse context, reset and set new data
 	f.readCtx.Reset()
 	f.readCtx.SetData(data)
-	f.readCtx.initContainerMemoryBudget(len(data), false)
+	f.readCtx.initGraphMemoryBudget(len(data), false)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -1187,6 +1198,9 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 		// Slow path: use serializer-based deserialization
 		targetVal := reflect.ValueOf(target).Elem()
 		targetType := targetVal.Type()
+		if err := f.reserveRootGraphOwner(targetVal); err != nil {
+			return err
+		}
 
 		// Get serializer for the target type
 		serializer, err := f.typeResolver.getSerializerByType(targetType, false)
@@ -1198,4 +1212,18 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 		serializer.Read(f.readCtx, RefModeTracking, true, false, targetVal)
 		return f.readCtx.CheckError()
 	}
+}
+
+func (f *Fory) reserveRootGraphOwner(target reflect.Value) error {
+	if !target.IsValid() || target.Kind() != reflect.Struct {
+		return nil
+	}
+	targetType := target.Type()
+	if targetType == dateReflectType || targetType == timeReflectType {
+		return nil
+	}
+	if !reserveStructGraph(f.readCtx, targetType) {
+		return f.readCtx.TakeError()
+	}
+	return nil
 }

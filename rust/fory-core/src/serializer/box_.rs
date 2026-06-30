@@ -29,6 +29,10 @@ impl<T: Serializer + ForyDefault> Serializer for Box<T> {
     where
         Self: Sized + ForyDefault,
     {
+        let graph_self_size = T::fory_graph_self_size();
+        if graph_self_size != 0 {
+            context.reserve_graph_memory(graph_self_size)?;
+        }
         Ok(Box::new(T::fory_read_data(context)?))
     }
 

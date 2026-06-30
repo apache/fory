@@ -24,6 +24,7 @@ import enum
 import inspect
 import logging
 import os
+import struct
 import sys
 import typing
 from typing import List, Dict
@@ -79,6 +80,9 @@ from pyfory import (
 )
 
 logger = logging.getLogger(__name__)
+
+_REFERENCE_BYTES = struct.calcsize("P")
+_OWNER_BYTES = 1
 
 _MISSING_DEFAULT_INT_TYPES = {
     int,
@@ -651,6 +655,7 @@ class DataClassSerializer(Serializer):
                 raise TypeNotCompatibleError(
                     f"Hash {hash_} is not consistent with {self._hash} for type {self.type_}",
                 )
+        read_context.reserve_graph_memory(_OWNER_BYTES + len(self._field_names) * _REFERENCE_BYTES)
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         obj_dict = obj.__dict__ if not self._has_slots else None

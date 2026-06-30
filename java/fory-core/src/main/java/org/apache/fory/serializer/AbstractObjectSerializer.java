@@ -69,6 +69,8 @@ import org.apache.fory.util.record.RecordUtils;
 public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   private static final Logger LOG = LoggerFactory.getLogger(AbstractObjectSerializer.class);
   private static final Object SELF_REFERENCE = new Object();
+  private static final int OBJECT_SELF_BYTES = 1;
+  private static final int REFERENCE_BYTES = 4;
   // Constructor-bound objects reserve a ref id before constructor arguments are read, but the
   // object cannot be referenced semantically until the constructor returns. Generated constructor
   // serializers call the tracker before reading ref-tracking constructor-phase fields so nested
@@ -79,6 +81,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   protected final TypeResolver typeResolver;
   protected final boolean isRecord;
   protected final ObjectInstantiator<T> objectInstantiator;
+  private final long objectGraphMemoryBytes;
   private SerializationFieldInfo[] fieldInfos;
   private RecordInfo copyRecordInfo;
 
@@ -88,6 +91,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     this.typeResolver = null;
     this.isRecord = false;
     this.objectInstantiator = null;
+    this.objectGraphMemoryBytes = 0;
   }
 
   public AbstractObjectSerializer(TypeResolver typeResolver, Class<T> type) {
@@ -101,6 +105,41 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     this.typeResolver = typeResolver;
     this.isRecord = RecordUtils.isRecord(type);
     this.objectInstantiator = objectInstantiator;
+    this.objectGraphMemoryBytes = computeObjectGraphMemoryBytes(type);
+  }
+
+  protected final void reserveObjectGraphMemory(ReadContext readContext) {
+    readContext.reserveGraphMemory(objectGraphMemoryBytes);
+  }
+
+  static long computeObjectGraphMemoryBytes(Class<?> type) {
+    // One byte is a stable nonzero self cost, not an attempt to model JVM object headers.
+    long bytes = OBJECT_SELF_BYTES;
+    for (Field field : ReflectionUtils.getFields(type, true)) {
+      if (!Modifier.isStatic(field.getModifiers())) {
+        bytes += fieldGraphMemoryBytes(field.getType());
+      }
+    }
+    return bytes;
+  }
+
+  private static int fieldGraphMemoryBytes(Class<?> fieldType) {
+    if (!fieldType.isPrimitive()) {
+      return REFERENCE_BYTES;
+    }
+    if (fieldType == boolean.class || fieldType == byte.class) {
+      return 1;
+    }
+    if (fieldType == char.class || fieldType == short.class) {
+      return 2;
+    }
+    if (fieldType == int.class || fieldType == float.class) {
+      return 4;
+    }
+    if (fieldType == long.class || fieldType == double.class) {
+      return 8;
+    }
+    return 0;
   }
 
   static void writeField(

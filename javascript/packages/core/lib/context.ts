@@ -550,11 +550,11 @@ export class ReadContext {
 
   private _depth = 0;
   private _maxDepth: number;
-  private readonly maxContainerMemoryBytes: number;
-  private effectiveContainerMemoryBytes = 0;
-  private remainingContainerMemoryBytes = 0;
-  private remoteSchemaVersionsByType: Map<string | number, number> | undefined
-    = undefined;
+  private readonly maxGraphMemoryBytes: number;
+  private effectiveGraphMemoryBytes = 0;
+  private remainingGraphMemoryBytes = 0;
+  private remoteSchemaVersionsByType: Map<string | number, number> | undefined =
+    undefined;
 
   constructor(
     readonly typeResolver: TypeResolverLike,
@@ -564,7 +564,7 @@ export class ReadContext {
     this.refReader = new RefReader(this.reader);
     this.metaStringReader = new MetaStringReader();
     this._maxDepth = config.maxDepth ?? 50;
-    this.maxContainerMemoryBytes = config.maxContainerMemoryBytes;
+    this.maxGraphMemoryBytes = config.maxGraphMemoryBytes;
   }
 
   reset(bytes: Uint8Array) {
@@ -573,35 +573,36 @@ export class ReadContext {
     this.metaStringReader.reset();
     this.typeMeta = [];
     this._depth = 0;
-    this.effectiveContainerMemoryBytes = this.maxContainerMemoryBytes > 0
-      ? this.maxContainerMemoryBytes
-      : bytes.byteLength * ReadContext.KNOWN_ROOT_BUDGET_MULTIPLIER
-      + ReadContext.KNOWN_ROOT_BUDGET_SLACK_BYTES;
-    this.remainingContainerMemoryBytes = this.effectiveContainerMemoryBytes;
+    this.effectiveGraphMemoryBytes =
+      this.maxGraphMemoryBytes > 0
+        ? this.maxGraphMemoryBytes
+        : bytes.byteLength * ReadContext.KNOWN_ROOT_BUDGET_MULTIPLIER +
+          ReadContext.KNOWN_ROOT_BUDGET_SLACK_BYTES;
+    this.remainingGraphMemoryBytes = this.effectiveGraphMemoryBytes;
   }
 
-  reserveContainerMemory(bytes: number) {
+  reserveGraphMemory(bytes: number) {
     if (!Number.isSafeInteger(bytes) || bytes < 0) {
-      this.throwContainerMemoryOverflow(bytes);
+      this.throwGraphMemoryOverflow(bytes);
     }
-    const remaining = this.remainingContainerMemoryBytes - bytes;
+    const remaining = this.remainingGraphMemoryBytes - bytes;
     if (remaining < 0) {
-      this.throwContainerBudgetExceeded(bytes);
+      this.throwGraphBudgetExceeded(bytes);
     }
-    this.remainingContainerMemoryBytes = remaining;
+    this.remainingGraphMemoryBytes = remaining;
   }
 
-  private throwContainerMemoryOverflow(bytes: number): never {
+  private throwGraphMemoryOverflow(bytes: number): never {
     throw new Error(
-      `maxContainerMemoryBytes overflow: requested ${bytes} estimated container bytes`,
+      `maxGraphMemoryBytes overflow: requested ${bytes} estimated graph bytes`,
     );
   }
 
-  private throwContainerBudgetExceeded(bytes: number): never {
+  private throwGraphBudgetExceeded(bytes: number): never {
     throw new Error(
-      `maxContainerMemoryBytes exceeded: requested ${bytes} estimated container bytes, `
-      + `${this.remainingContainerMemoryBytes} remaining, effective limit `
-      + `${this.effectiveContainerMemoryBytes}`,
+      `maxGraphMemoryBytes exceeded: requested ${bytes} estimated graph bytes, ` +
+        `${this.remainingGraphMemoryBytes} remaining, effective limit ` +
+        `${this.effectiveGraphMemoryBytes}`,
     );
   }
 
@@ -613,8 +614,8 @@ export class ReadContext {
     this._depth++;
     if (this._depth > this._maxDepth) {
       throw new Error(
-        `Deserialization depth limit exceeded: ${this._depth} > ${this._maxDepth}. `
-        + "The data may be malicious, or increase maxDepth if needed.",
+        `Deserialization depth limit exceeded: ${this._depth} > ${this._maxDepth}. ` +
+          "The data may be malicious, or increase maxDepth if needed.",
       );
     }
   }
@@ -801,14 +802,14 @@ export class ReadContext {
     expectedTypeName: string,
   ) {
     if (
-      typeMeta.getTypeId() !== expectedTypeId
-      || typeMeta.getNs() !== expectedNamespace
-      || typeMeta.getTypeName() !== expectedTypeName
+      typeMeta.getTypeId() !== expectedTypeId ||
+      typeMeta.getNs() !== expectedNamespace ||
+      typeMeta.getTypeName() !== expectedTypeName
     ) {
       throw new Error(
-        `TypeMeta mismatch: expected ${expectedNamespace}$${expectedTypeName} `
-        + `type ${expectedTypeId}, got ${typeMeta.getNs()}$${typeMeta.getTypeName()} `
-        + `type ${typeMeta.getTypeId()}`,
+        `TypeMeta mismatch: expected ${expectedNamespace}$${expectedTypeName} ` +
+          `type ${expectedTypeId}, got ${typeMeta.getNs()}$${typeMeta.getTypeName()} ` +
+          `type ${typeMeta.getTypeId()}`,
       );
     }
   }
@@ -856,8 +857,8 @@ export class ReadContext {
       } else {
         const localSerializer = original ?? this.serializerByTypeMeta(typeMeta);
         if (
-          localSerializer === undefined
-          && !TypeId.structType(typeMeta.getTypeId())
+          localSerializer === undefined &&
+          !TypeId.structType(typeMeta.getTypeId())
         ) {
           throw new Error(
             `can't find serializer for TypeMeta ${typeMeta.getNs()}$${typeMeta.getTypeName()}`,
@@ -865,8 +866,8 @@ export class ReadContext {
         }
         const typeKey = this.checkRemoteTypeMetaLimit(typeMeta);
         if (
-          localSerializer !== undefined
-          && TypeId.structType(typeMeta.getTypeId())
+          localSerializer !== undefined &&
+          TypeId.structType(typeMeta.getTypeId())
         ) {
           const expectedHash = localHash ?? localSerializer.getHash();
           if (expectedHash !== typeMeta.getHash()) {
@@ -878,8 +879,8 @@ export class ReadContext {
             );
           }
         } else if (
-          localHash !== undefined
-          && localHash !== typeMeta.getHash()
+          localHash !== undefined &&
+          localHash !== typeMeta.getHash()
         ) {
           this.ensureCompatibleReadSerializer(
             typeMeta,
@@ -919,33 +920,33 @@ export class ReadContext {
       : typeMeta.getUserTypeId();
     const versionsByType = this.remoteSchemaVersionsByType;
     const versionsForType = versionsByType?.get(typeKey) ?? 0;
-    const maxSchemaVersionsPerType
-      = this.typeResolver.config.maxSchemaVersionsPerType;
+    const maxSchemaVersionsPerType =
+      this.typeResolver.config.maxSchemaVersionsPerType;
     if (versionsForType >= maxSchemaVersionsPerType) {
       throw new Error(
-        `Remote schema version limit exceeded for type ${String(typeKey)}: `
-        + `${versionsForType} >= ${maxSchemaVersionsPerType}. The data may `
-        + "be malicious. If the data is not malicious, please increase "
-        + "maxSchemaVersionsPerType.",
+        `Remote schema version limit exceeded for type ${String(typeKey)}: ` +
+          `${versionsForType} >= ${maxSchemaVersionsPerType}. The data may ` +
+          "be malicious. If the data is not malicious, please increase " +
+          "maxSchemaVersionsPerType.",
       );
     }
-    const acceptedTypeCount
-      = versionsForType === 0
+    const acceptedTypeCount =
+      versionsForType === 0
         ? (versionsByType?.size ?? 0) + 1
         : versionsByType!.size;
-    const maxAverageSchemaVersionsPerType
-      = this.typeResolver.config.maxAverageSchemaVersionsPerType;
+    const maxAverageSchemaVersionsPerType =
+      this.typeResolver.config.maxAverageSchemaVersionsPerType;
     const globalLimit = Math.max(
       ReadContext.MIN_REMOTE_TYPE_META_LIMIT,
       acceptedTypeCount * maxAverageSchemaVersionsPerType,
     );
     if (this.totalAcceptedSchemaVersions >= globalLimit) {
       throw new Error(
-        `Remote schema version limit exceeded: ${this.totalAcceptedSchemaVersions} `
-        + `metadata versions for ${acceptedTypeCount} accepted remote types `
-        + `exceeds the average limit ${maxAverageSchemaVersionsPerType}. `
-        + "The data may be malicious. If the data is not malicious, please "
-        + "increase maxAverageSchemaVersionsPerType.",
+        `Remote schema version limit exceeded: ${this.totalAcceptedSchemaVersions} ` +
+          `metadata versions for ${acceptedTypeCount} accepted remote types ` +
+          `exceeds the average limit ${maxAverageSchemaVersionsPerType}. ` +
+          "The data may be malicious. If the data is not malicious, please " +
+          "increase maxAverageSchemaVersionsPerType.",
       );
     }
     return typeKey;
@@ -1044,16 +1045,16 @@ export class ReadContext {
       return false;
     }
     if (
-      (remote.trackingRef === true) !== (local.trackingRef === true)
-      || (remote.nullable === true) !== (local.nullable === true)
+      (remote.trackingRef === true) !== (local.trackingRef === true) ||
+      (remote.nullable === true) !== (local.nullable === true)
     ) {
       return false;
     }
     switch (remote.typeId) {
       case TypeId.MAP:
         return (
-          this.fieldSchemasEqual(remote.options?.key, local.options?.key)
-          && this.fieldSchemasEqual(remote.options?.value, local.options?.value)
+          this.fieldSchemasEqual(remote.options?.key, local.options?.key) &&
+          this.fieldSchemasEqual(remote.options?.value, local.options?.value)
         );
       case TypeId.LIST:
         return this.fieldSchemasEqual(
@@ -1084,24 +1085,24 @@ export class ReadContext {
         return compatible;
       }
       if (
-        isCompatibleScalarType(fieldInfo.typeId)
-        && isCompatibleScalarType(fallbackTypeInfo.typeId)
-        && ((fieldInfo.trackingRef === true)
-        !== (fallbackTypeInfo.trackingRef === true)
-        || ((fieldInfo.trackingRef === true
-        || fallbackTypeInfo.trackingRef === true)
-        && (fieldInfo.typeId !== fallbackTypeInfo.typeId
-        || fieldInfo.nullable !== fallbackTypeInfo.nullable)))
+        isCompatibleScalarType(fieldInfo.typeId) &&
+        isCompatibleScalarType(fallbackTypeInfo.typeId) &&
+        ((fieldInfo.trackingRef === true) !==
+          (fallbackTypeInfo.trackingRef === true) ||
+          ((fieldInfo.trackingRef === true ||
+            fallbackTypeInfo.trackingRef === true) &&
+            (fieldInfo.typeId !== fallbackTypeInfo.typeId ||
+              fieldInfo.nullable !== fallbackTypeInfo.nullable)))
       ) {
         throw new Error(
           "unsupported compatible scalar tracking-ref schema mismatch",
         );
       }
       if (
-        isCompatibleScalarPair(fieldInfo.typeId, fallbackTypeInfo.typeId)
-        && fieldInfo.typeId !== fallbackTypeInfo.typeId
-        && (fieldInfo.trackingRef === true
-        || fallbackTypeInfo.trackingRef === true)
+        isCompatibleScalarPair(fieldInfo.typeId, fallbackTypeInfo.typeId) &&
+        fieldInfo.typeId !== fallbackTypeInfo.typeId &&
+        (fieldInfo.trackingRef === true ||
+          fallbackTypeInfo.trackingRef === true)
       ) {
         throw new Error(
           "unsupported compatible scalar tracking-ref schema mismatch",
@@ -1117,10 +1118,10 @@ export class ReadContext {
         throw new Error("unsupported compatible list/array schema mismatch");
       }
       if (
-        fieldInfo.typeId !== TypeId.UNKNOWN
-        && this.canonicalFieldTypeId(fallbackTypeInfo) !== TypeId.UNKNOWN
-        && this.canonicalTypeId(fieldInfo.typeId)
-        !== this.canonicalFieldTypeId(fallbackTypeInfo)
+        fieldInfo.typeId !== TypeId.UNKNOWN &&
+        this.canonicalFieldTypeId(fallbackTypeInfo) !== TypeId.UNKNOWN &&
+        this.canonicalTypeId(fieldInfo.typeId) !==
+          this.canonicalFieldTypeId(fallbackTypeInfo)
       ) {
         throw new Error("unsupported compatible field schema mismatch");
       }
@@ -1210,31 +1211,31 @@ export class ReadContext {
       return false;
     }
     if (
-      this.schemaMatchTypeId(remote.typeId)
-      !== this.schemaMatchTypeId(this.typeResolver.computeTypeId(local))
+      this.schemaMatchTypeId(remote.typeId) !==
+      this.schemaMatchTypeId(this.typeResolver.computeTypeId(local))
     ) {
       return true;
     }
     const remoteTracksRef = remote.trackingRef === true;
     const localTracksRef = local.trackingRef === true;
     if (
-      remoteTracksRef !== localTracksRef
-      || ((remoteTracksRef || localTracksRef)
-      && (remote.nullable === true) !== (local.nullable === true))
+      remoteTracksRef !== localTracksRef ||
+      ((remoteTracksRef || localTracksRef) &&
+        (remote.nullable === true) !== (local.nullable === true))
     ) {
       return true;
     }
     switch (remote.typeId) {
       case TypeId.MAP:
         return (
-          local.options?.key === undefined
-          || local.options?.value === undefined
-          || this.hasNestedSchemaMismatch(
+          local.options?.key === undefined ||
+          local.options?.value === undefined ||
+          this.hasNestedSchemaMismatch(
             remote.options!.key!,
             local.options.key,
             false,
-          )
-          || this.hasNestedSchemaMismatch(
+          ) ||
+          this.hasNestedSchemaMismatch(
             remote.options!.value!,
             local.options.value,
             false,
@@ -1242,8 +1243,8 @@ export class ReadContext {
         );
       case TypeId.LIST:
         return (
-          local.options?.inner === undefined
-          || this.hasNestedSchemaMismatch(
+          local.options?.inner === undefined ||
+          this.hasNestedSchemaMismatch(
             remote.options!.inner!,
             local.options.inner,
             false,
@@ -1251,8 +1252,8 @@ export class ReadContext {
         );
       case TypeId.SET:
         return (
-          local.options?.key === undefined
-          || this.hasNestedSchemaMismatch(
+          local.options?.key === undefined ||
+          this.hasNestedSchemaMismatch(
             remote.options!.key!,
             local.options.key,
             false,
@@ -1273,19 +1274,19 @@ export class ReadContext {
   ): TypeInfo | undefined {
     if (this.isByteSequenceRootPair(remote, local)) {
       if (
-        (remote.nullable === true) !== (local.nullable === true)
-        || (remote.trackingRef === true) !== (local.trackingRef === true)
+        (remote.nullable === true) !== (local.nullable === true) ||
+        (remote.trackingRef === true) !== (local.trackingRef === true)
       ) {
         return undefined;
       }
       return local.clone();
     }
     if (
-      this.isListArrayRootPair(remote, local)
-      && (remote.nullable === true
-      || local.nullable === true
-      || remote.trackingRef === true
-      || local.trackingRef === true)
+      this.isListArrayRootPair(remote, local) &&
+      (remote.nullable === true ||
+        local.nullable === true ||
+        remote.trackingRef === true ||
+        local.trackingRef === true)
     ) {
       return undefined;
     }
@@ -1305,22 +1306,22 @@ export class ReadContext {
     }
     const remoteArrayElement = denseArrayElementTypeId(remote.typeId);
     if (
-      remoteArrayElement !== undefined
-      && local.typeId === TypeId.LIST
-      && local.options?.inner
-      && compatibleArrayElementTypeId(local.options.inner.typeId)
-      === remoteArrayElement
+      remoteArrayElement !== undefined &&
+      local.typeId === TypeId.LIST &&
+      local.options?.inner &&
+      compatibleArrayElementTypeId(local.options.inner.typeId) ===
+        remoteArrayElement
     ) {
       return compatibleArrayToListTypeInfo(remoteArrayElement);
     }
     if (
-      remote.trackingRef !== true
-      && local.trackingRef !== true
-      && !(
-        remote.typeId === local.typeId
-        && (remote.nullable === true) === (local.nullable === true)
-      )
-      && isCompatibleScalarPair(remote.typeId, local.typeId)
+      remote.trackingRef !== true &&
+      local.trackingRef !== true &&
+      !(
+        remote.typeId === local.typeId &&
+        (remote.nullable === true) === (local.nullable === true)
+      ) &&
+      isCompatibleScalarPair(remote.typeId, local.typeId)
     ) {
       return markCompatibleScalarRead(local.clone(), {
         remoteTypeId: remote.typeId,
@@ -1352,8 +1353,8 @@ export class ReadContext {
             remote.options!.key!,
             local.options?.key,
             false,
-          )
-          || this.hasUnsupportedListArrayMismatch(
+          ) ||
+          this.hasUnsupportedListArrayMismatch(
             remote.options!.value!,
             local.options?.value,
             false,
@@ -1381,10 +1382,10 @@ export class ReadContext {
     local: TypeInfo,
   ): boolean {
     return (
-      (remote.typeId === TypeId.LIST
-      && denseArrayElementTypeId(local.typeId) !== undefined)
-      || (denseArrayElementTypeId(remote.typeId) !== undefined
-      && local.typeId === TypeId.LIST)
+      (remote.typeId === TypeId.LIST &&
+        denseArrayElementTypeId(local.typeId) !== undefined) ||
+      (denseArrayElementTypeId(remote.typeId) !== undefined &&
+        local.typeId === TypeId.LIST)
     );
   }
 
@@ -1393,9 +1394,9 @@ export class ReadContext {
     local: TypeInfo,
   ): boolean {
     return (
-      (remote.typeId === TypeId.BINARY
-      && local.typeId === TypeId.UINT8_ARRAY)
-      || (remote.typeId === TypeId.UINT8_ARRAY && local.typeId === TypeId.BINARY)
+      (remote.typeId === TypeId.BINARY &&
+        local.typeId === TypeId.UINT8_ARRAY) ||
+      (remote.typeId === TypeId.UINT8_ARRAY && local.typeId === TypeId.BINARY)
     );
   }
 

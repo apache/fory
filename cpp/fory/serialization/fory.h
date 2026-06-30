@@ -109,13 +109,13 @@ public:
     return *this;
   }
 
-  /// Set maximum estimated container-owned memory for one root deserialization.
+  /// Set maximum estimated graph memory for one root deserialization.
   ///
   /// Use `-1` for automatic limits. Positive values are explicit byte limits.
-  ForyBuilder &max_container_memory_bytes(int64_t max_bytes) {
+  ForyBuilder &max_graph_memory_bytes(int64_t max_bytes) {
     FORY_CHECK(max_bytes == -1 || max_bytes > 0)
-        << "max_container_memory_bytes must be positive or -1 for auto";
-    config_.max_container_memory_bytes = max_bytes;
+        << "max_graph_memory_bytes must be positive or -1 for auto";
+    config_.max_graph_memory_bytes = max_bytes;
     return *this;
   }
 
@@ -889,11 +889,18 @@ private:
     }
 
     read_ctx_->attach(buffer);
-    if constexpr (needs_container_budget_v<T>) {
+    if constexpr (needs_graph_budget_v<T>) {
       if constexpr (unknown_root) {
-        read_ctx_->defer_container_budget_unknown();
+        read_ctx_->defer_graph_budget_unknown();
       } else {
-        read_ctx_->defer_container_budget_known(root_bytes);
+        read_ctx_->defer_graph_budget_known(root_bytes);
+      }
+      constexpr size_t root_owner_bytes = graph_value_owner_self_bytes<T>();
+      if constexpr (root_owner_bytes != 0) {
+        if (FORY_PREDICT_FALSE(
+                !read_ctx_->reserve_graph_memory(root_owner_bytes))) {
+          return Unexpected(read_ctx_->take_error());
+        }
       }
     }
     ReadContextGuard guard(*read_ctx_);

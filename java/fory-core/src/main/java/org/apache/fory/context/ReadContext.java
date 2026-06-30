@@ -66,7 +66,7 @@ public final class ReadContext {
   private final boolean compressInt;
   private final Int64Encoding longEncoding;
   private final int maxDepth;
-  private final long maxContainerMemoryBytes;
+  private final long maxGraphMemoryBytes;
   private final boolean scopedMetaShareEnabled;
   private final boolean forVirtualThread;
   private final IdentityHashMap<Object, Object> contextObjects = new IdentityHashMap<>();
@@ -75,8 +75,8 @@ public final class ReadContext {
   private MetaReadContext metaReadContext;
   private boolean peerOutOfBandEnabled;
   private int depth;
-  private long containerMemoryLimitBytes;
-  private long remainingContainerMemoryBytes;
+  private long graphMemoryLimitBytes;
+  private long remainingGraphMemoryBytes;
 
   /**
    * Creates read-side runtime state for one {@code Fory} instance.
@@ -102,7 +102,7 @@ public final class ReadContext {
     compressInt = config.compressInt();
     longEncoding = config.longEncoding();
     maxDepth = config.maxDepth();
-    maxContainerMemoryBytes = config.maxContainerMemoryBytes();
+    maxGraphMemoryBytes = config.maxGraphMemoryBytes();
     forVirtualThread = config.forVirtualThread();
     scopedMetaShareEnabled = config.isScopedMetaShareEnabled();
     if (scopedMetaShareEnabled) {
@@ -123,11 +123,11 @@ public final class ReadContext {
     this.buffer = buffer;
     this.peerOutOfBandEnabled = peerOutOfBandEnabled;
     this.outOfBandBuffers = outOfBandBuffers == null ? null : outOfBandBuffers.iterator();
-    initContainerMemoryBudget(rootInputBytes, unknownLengthInput);
+    initGraphMemoryBudget(rootInputBytes, unknownLengthInput);
   }
 
-  private void initContainerMemoryBudget(int rootInputBytes, boolean unknownLengthInput) {
-    long limit = maxContainerMemoryBytes;
+  private void initGraphMemoryBudget(int rootInputBytes, boolean unknownLengthInput) {
+    long limit = maxGraphMemoryBytes;
     if (limit <= 0) {
       if (unknownLengthInput) {
         limit = STREAM_ROOT_BUDGET_BYTES;
@@ -139,8 +139,8 @@ public final class ReadContext {
         limit = rootInputBytes * KNOWN_ROOT_BUDGET_MULTIPLIER + KNOWN_ROOT_BUDGET_SLACK_BYTES;
       }
     }
-    containerMemoryLimitBytes = limit;
-    remainingContainerMemoryBytes = limit;
+    graphMemoryLimitBytes = limit;
+    remainingGraphMemoryBytes = limit;
   }
 
   /**
@@ -336,8 +336,8 @@ public final class ReadContext {
     outOfBandBuffers = null;
     peerOutOfBandEnabled = false;
     depth = 0;
-    containerMemoryLimitBytes = 0;
-    remainingContainerMemoryBytes = 0;
+    graphMemoryLimitBytes = 0;
+    remainingGraphMemoryBytes = 0;
   }
 
   /** Returns the immutable runtime configuration for this context. */
@@ -345,31 +345,31 @@ public final class ReadContext {
     return config;
   }
 
-  public void reserveContainerMemory(long bytes) {
+  public void reserveGraphMemory(long bytes) {
     if (bytes < 0) {
-      throwNegativeContainerMemory(bytes);
+      throwNegativeGraphMemory(bytes);
     }
-    long remaining = remainingContainerMemoryBytes;
+    long remaining = remainingGraphMemoryBytes;
     if (bytes > remaining) {
-      throwContainerMemoryExceeded(bytes, remaining);
+      throwGraphMemoryExceeded(bytes, remaining);
     }
-    remainingContainerMemoryBytes = remaining - bytes;
+    remainingGraphMemoryBytes = remaining - bytes;
   }
 
-  private void throwNegativeContainerMemory(long bytes) {
+  private void throwNegativeGraphMemory(long bytes) {
     throw new InsecureException(
-        "Estimated container memory must be non-negative, but got " + bytes + " bytes.");
+        "Estimated graph memory must be non-negative, but got " + bytes + " bytes.");
   }
 
-  private void throwContainerMemoryExceeded(long bytes, long remaining) {
+  private void throwGraphMemoryExceeded(long bytes, long remaining) {
     throw new InsecureException(
-        "Estimated container memory request "
+        "Estimated graph memory request "
             + bytes
-            + " bytes exceeds maxContainerMemoryBytes remaining budget "
+            + " bytes exceeds maxGraphMemoryBytes remaining budget "
             + remaining
             + " bytes out of effective limit "
-            + containerMemoryLimitBytes
-            + " bytes. If the data is trusted, increase ForyBuilder#withMaxContainerMemoryBytes.");
+            + graphMemoryLimitBytes
+            + " bytes. If the data is trusted, increase ForyBuilder#withMaxGraphMemoryBytes.");
   }
 
   /** Returns the generics stack shared by the owning runtime. */

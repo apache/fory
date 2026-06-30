@@ -61,6 +61,7 @@ import org.apache.fory.type.Types;
 final class CompatibleCollectionArrayReader {
   // This compatible reader may be reached during native-image analysis. Use the settled
   // reference-slot fallback instead of touching MemoryBuffer from class initialization.
+  private static final int COLLECTION_BYTES = 1;
   private static final int REFERENCE_BYTES = 4;
 
   static final int READ_LIST_TO_ARRAY = 1;
@@ -983,7 +984,7 @@ final class CompatibleCollectionArrayReader {
       ReadContext readContext, int numElements, int arrayTypeId, int elementTypeId) {
     MemoryBuffer buffer = readContext.getBuffer();
     int bodyBytes = minReadablePrimitiveListBytes(numElements, elementTypeId, true);
-    readContext.reserveContainerMemory((long) numElements * REFERENCE_BYTES);
+    readContext.reserveGraphMemory(COLLECTION_BYTES + (long) numElements * REFERENCE_BYTES);
     buffer.checkReadableBytes(bodyBytes);
     ArrayList<Object> values = new ArrayList<>(numElements);
     for (int i = 0; i < numElements; i++) {
@@ -1183,7 +1184,7 @@ final class CompatibleCollectionArrayReader {
   private static List<Object> materializeBoxedList(
       ReadContext readContext, Object array, int arrayTypeId) {
     int size = java.lang.reflect.Array.getLength(array);
-    readContext.reserveContainerMemory((long) size * REFERENCE_BYTES);
+    readContext.reserveGraphMemory(COLLECTION_BYTES + (long) size * REFERENCE_BYTES);
     ArrayList<Object> list = new ArrayList<>(size);
     switch (arrayTypeId) {
       case Types.BOOL_ARRAY:

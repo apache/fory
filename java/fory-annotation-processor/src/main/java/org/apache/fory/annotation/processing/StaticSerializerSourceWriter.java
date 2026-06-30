@@ -247,6 +247,7 @@ final class StaticSerializerSourceWriter {
         .append(struct.typeName)
         .append(" readSchemaConsistent(ReadContext readContext) {\n");
     builder.append("    MemoryBuffer buffer = readContext.getBuffer();\n");
+    builder.append("    reserveObjectGraphMemory(readContext);\n");
     builder.append("    if (typeResolver.checkClassVersion()) {\n");
     builder.append("      checkClassVersion(buffer.readInt32(), classVersionHash);\n");
     builder.append("    }\n");
@@ -803,6 +804,7 @@ final class StaticSerializerSourceWriter {
     builder.append("    if (sameSchemaCompatible) {\n");
     builder.append("      return readSchemaConsistent(readContext);\n");
     builder.append("    }\n");
+    builder.append("    reserveObjectGraphMemory(readContext);\n");
     if (struct.record) {
       for (SourceField field : struct.fields) {
         builder

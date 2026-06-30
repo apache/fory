@@ -239,7 +239,7 @@ where
     C: FromIterator<T>,
 {
     let len = context.reader.read_var_u32()?;
-    let len_usize = context.reserve_counted_container_memory(len, std::mem::size_of::<T>())?;
+    let len_usize = context.reserve_counted_graph_memory(len, T::fory_graph_storage_size())?;
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
@@ -258,7 +258,9 @@ where
         (header & IS_SAME_TYPE) != 0,
         Error::type_error("Type inconsistent, target type is not polymorphic")
     );
-    context.reader.check_bound(len_usize)?;
+    if std::mem::size_of::<T>() != 0 {
+        context.reader.check_bound(len_usize)?;
+    }
     if !has_null {
         (0..len)
             .map(|_| T::fory_read_data(context))
@@ -282,7 +284,7 @@ where
     T: Serializer + ForyDefault,
 {
     let len = context.reader.read_var_u32()?;
-    let len_usize = context.reserve_counted_container_memory(len, std::mem::size_of::<T>())?;
+    let len_usize = context.reserve_counted_graph_memory(len, T::fory_graph_storage_size())?;
     if len == 0 {
         return Ok(Vec::new());
     }
@@ -299,7 +301,9 @@ where
         (header & IS_SAME_TYPE) != 0,
         Error::type_error("Type inconsistent, target type is not polymorphic")
     );
-    context.reader.check_bound(len_usize)?;
+    if std::mem::size_of::<T>() != 0 {
+        context.reader.check_bound(len_usize)?;
+    }
     let mut vec = Vec::with_capacity(len_usize);
     if !has_null {
         for _ in 0..len {
@@ -729,7 +733,7 @@ where
 {
     let element_type = generic_field_type(remote_field_type, 0, "list")?;
     let len = context.reader.read_var_u32()?;
-    let len_usize = context.reserve_counted_container_memory(len, std::mem::size_of::<T>())?;
+    let len_usize = context.reserve_counted_graph_memory(len, T::fory_graph_storage_size())?;
     if len == 0 {
         return Ok(Vec::new());
     }

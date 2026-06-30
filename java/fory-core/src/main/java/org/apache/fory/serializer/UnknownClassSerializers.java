@@ -58,6 +58,11 @@ public final class UnknownClassSerializers {
   }
 
   public static final class UnknownStructSerializer extends Serializer {
+    private static final int UNKNOWN_STRUCT_SELF_BYTES = 1;
+    private static final int UNKNOWN_STRUCT_REFERENCE_BYTES = 4;
+    private static final int UNKNOWN_STRUCT_ENTRY_BYTES =
+        UNKNOWN_STRUCT_SELF_BYTES + 2 * UNKNOWN_STRUCT_REFERENCE_BYTES;
+
     private static final int NONEXISTENT_META_SHARED_ID_SIZE =
         computeVarUInt32Size(ClassResolver.NONEXISTENT_META_SHARED_ID);
     private final Config config;
@@ -246,11 +251,15 @@ public final class UnknownClassSerializers {
     @Override
     public Object read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
+      ClassFieldsInfo allFieldsInfo = getClassFieldsInfo(typeDef);
+      readContext.reserveGraphMemory(
+          UNKNOWN_STRUCT_SELF_BYTES
+              + 2L * UNKNOWN_STRUCT_REFERENCE_BYTES
+              + (long) allFieldsInfo.allFields.length * UNKNOWN_STRUCT_ENTRY_BYTES);
       UnknownClass.UnknownStruct obj = new UnknownClass.UnknownStruct(typeDef);
       readContext.reference(obj);
       List<MapEntry> entries = new ArrayList<>();
       // Protocol order: primitive, nullable primitive, then all non-primitives by field identifier.
-      ClassFieldsInfo allFieldsInfo = getClassFieldsInfo(typeDef);
       Generics generics = readContext.getGenerics();
       for (SerializationFieldInfo fieldInfo : allFieldsInfo.allFields) {
         Object fieldValue = readFieldByCodecCategory(readContext, generics, fieldInfo, buffer);

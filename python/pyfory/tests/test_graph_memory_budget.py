@@ -16,6 +16,7 @@
 # under the License.
 
 import array
+import dataclasses
 import struct
 
 import pytest
@@ -34,7 +35,8 @@ KNOWN_ROOT_BUDGET_MULTIPLIER = 8
 KNOWN_ROOT_BUDGET_SLACK_BYTES = 64 * 1024
 STREAM_ROOT_BUDGET_BYTES = 128 * 1024 * 1024
 REFERENCE_BYTES = struct.calcsize("P")
-MAX_CONTAINER_MEMORY_BYTES = (1 << 63) - 1
+OWNER_BYTES = 1
+MAX_GRAPH_MEMORY_BYTES = (1 << 63) - 1
 
 
 class OneByteStream:
@@ -81,12 +83,25 @@ class OneByteStream:
         return read_size
 
 
+@dataclasses.dataclass
+class BudgetItem:
+    value: int
+
+
+class BudgetObject:
+    pass
+
+
 def collection_memory(num_elements):
-    return num_elements * REFERENCE_BYTES
+    return OWNER_BYTES + num_elements * REFERENCE_BYTES
 
 
 def map_memory(num_entries):
-    return num_entries * 2 * REFERENCE_BYTES
+    return OWNER_BYTES + num_entries * 2 * REFERENCE_BYTES
+
+
+def object_memory(num_fields):
+    return OWNER_BYTES + num_fields * REFERENCE_BYTES
 
 
 def new_fory(limit=-1, *, xlang=True):
@@ -95,14 +110,14 @@ def new_fory(limit=-1, *, xlang=True):
         ref=True,
         strict=False,
         compatible=xlang,
-        max_container_memory_bytes=limit,
+        max_graph_memory_bytes=limit,
     )
 
 
 def expect_budget(value, budget, *, xlang=True):
     writer = new_fory(xlang=xlang)
     data = writer.serialize(value)
-    with pytest.raises(ValueError, match="Estimated container memory budget exceeded"):
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
         new_fory(budget - 1, xlang=xlang).deserialize(data)
     return new_fory(budget, xlang=xlang).deserialize(data)
 
@@ -119,10 +134,10 @@ def test_known_length_auto_budget():
     try:
         fory.read_context.prepare(Buffer(b"x" * root_input_bytes), root_input_bytes=root_input_bytes)
         expected = root_input_bytes * KNOWN_ROOT_BUDGET_MULTIPLIER + KNOWN_ROOT_BUDGET_SLACK_BYTES
-        assert fory.read_context.container_memory_limit_bytes == expected
-        fory.read_context.reserve_container_memory(expected)
-        with pytest.raises(ValueError, match="Estimated container memory budget exceeded"):
-            fory.read_context.reserve_container_memory(1)
+        assert fory.read_context.graph_memory_limit_bytes == expected
+        fory.read_context.reserve_graph_memory(expected)
+        with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+            fory.read_context.reserve_graph_memory(1)
     finally:
         fory.reset_read()
 
@@ -132,7 +147,7 @@ def test_stream_auto_budget():
     try:
         buffer = Buffer.from_stream(OneByteStream(b"streamed"))
         fory.read_context.prepare(buffer, root_input_bytes=1)
-        assert fory.read_context.container_memory_limit_bytes == STREAM_ROOT_BUDGET_BYTES
+        assert fory.read_context.graph_memory_limit_bytes == STREAM_ROOT_BUDGET_BYTES
     finally:
         fory.reset_read()
 
@@ -145,14 +160,39 @@ def test_explicit_config_overrides_auto():
 
 def test_nested_empty_containers_use_parent_storage():
     value = [[]]
-    budget = collection_memory(1)
+    budget = collection_memory(1) + collection_memory(0)
     assert expect_budget(value, budget) == value
 
 
 def test_sibling_nested_containers_are_cumulative():
     value = [[], [], []]
-    budget = collection_memory(3)
+    budget = collection_memory(3) + 3 * collection_memory(0)
     assert expect_budget(value, budget) == value
+
+
+def test_empty_object_owner_is_charged():
+    fory = new_fory(xlang=False)
+    fory.register_type(BudgetItem)
+    value = BudgetItem(1)
+    budget = object_memory(1)
+    data = fory.serialize(value)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        reader = new_fory(budget - 1, xlang=False)
+        reader.register_type(BudgetItem)
+        reader.deserialize(data)
+    reader = new_fory(budget, xlang=False)
+    reader.register_type(BudgetItem)
+    assert reader.deserialize(data) == value
+
+
+def test_dynamic_object_owner_is_charged():
+    value = BudgetObject()
+    value.left = 1
+    value.right = "x"
+    budget = object_memory(2)
+    restored = expect_budget(value, budget, xlang=False)
+    assert restored.left == value.left
+    assert restored.right == value.right
 
 
 def test_map_entry_budget_and_overflow():
@@ -162,9 +202,9 @@ def test_map_entry_budget_and_overflow():
     fory = new_fory(xlang=False)
     try:
         fory.read_context.prepare(Buffer(b""), root_input_bytes=0)
-        max_map_entries = MAX_CONTAINER_MEMORY_BYTES // (2 * REFERENCE_BYTES)
-        with pytest.raises(ValueError, match="Estimated container memory overflow"):
-            fory.read_context.reserve_counted_container_memory(max_map_entries + 1, 2 * REFERENCE_BYTES)
+        max_map_entries = MAX_GRAPH_MEMORY_BYTES // (2 * REFERENCE_BYTES)
+        with pytest.raises(ValueError, match="Estimated graph memory overflow"):
+            fory.read_context.reserve_counted_graph_memory(max_map_entries + 1, 2 * REFERENCE_BYTES)
     finally:
         fory.reset_read()
 
@@ -206,12 +246,12 @@ def test_declared_large_list_still_needs_bytes():
         fory.read_context.prepare(Buffer(varuint_payload(1000)), root_input_bytes=1)
         with pytest.raises(Exception) as exc_info:
             serializer.read(fory.read_context)
-        assert "Estimated container memory" not in str(exc_info.value)
+        assert "Estimated graph memory" not in str(exc_info.value)
     finally:
         fory.reset_read()
 
 
 @pytest.mark.parametrize("limit", [0, -2, 1 << 63])
 def test_invalid_config(limit):
-    with pytest.raises(ValueError, match="max_container_memory_bytes"):
+    with pytest.raises(ValueError, match="max_graph_memory_bytes"):
         new_fory(limit)

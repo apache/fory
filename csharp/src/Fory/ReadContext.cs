@@ -22,7 +22,7 @@ namespace Apache.Fory;
 public sealed class ReadContext
 {
     private const int MinRemoteTypeMetaLimit = 8192;
-    internal const long KnownContainerBudgetSlackBytes = 64 * 1024;
+    internal const long KnownGraphBudgetSlackBytes = 64 * 1024;
 
     private readonly ReusableArray<TypeMeta> _typeMetaRefs = new();
     private readonly UInt64Map<TypeMeta> _typeMetasByHeader = new();
@@ -43,8 +43,8 @@ public sealed class ReadContext
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
     private int _totalAcceptedSchemaVersions;
-    private long _containerMemoryLimitBytes = long.MaxValue;
-    private long _remainingContainerMemoryBytes = long.MaxValue;
+    private long _graphMemoryLimitBytes = long.MaxValue;
+    private long _remainingGraphMemoryBytes = long.MaxValue;
 
     public ReadContext(
         ByteReader reader,
@@ -76,73 +76,73 @@ public sealed class ReadContext
     internal RefReader RefReader { get; }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void InitContainerBudgetKnown(int rootBytes)
+    internal void InitGraphBudgetKnown(int rootBytes)
     {
-        long limit = _config.MaxContainerMemoryBytes;
+        long limit = _config.MaxGraphMemoryBytes;
         if (limit < 0)
         {
-            limit = (long)rootBytes * 8 + KnownContainerBudgetSlackBytes;
+            limit = (long)rootBytes * 8 + KnownGraphBudgetSlackBytes;
         }
 
-        _containerMemoryLimitBytes = limit;
-        _remainingContainerMemoryBytes = limit;
+        _graphMemoryLimitBytes = limit;
+        _remainingGraphMemoryBytes = limit;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     /// <summary>
-    /// Reserves estimated container-owned memory for the current root deserialization.
+    /// Reserves estimated graph memory for the current root deserialization.
     /// </summary>
     /// <remarks>
-    /// Serializer owners compute container-specific formulas and pass raw bytes here. This
+    /// Serializer owners compute owner-specific formulas and pass raw bytes here. This
     /// accounting does not replace byte-availability checks before backing allocation.
     /// </remarks>
-    public void ReserveContainerMemory(long bytes)
+    public void ReserveGraphMemory(long bytes)
     {
-        long remaining = _remainingContainerMemoryBytes;
+        long remaining = _remainingGraphMemoryBytes;
         if ((ulong)bytes > (ulong)remaining)
         {
-            ThrowContainerBudgetExceeded(bytes, remaining, _containerMemoryLimitBytes);
+            ThrowGraphBudgetExceeded(bytes, remaining, _graphMemoryLimitBytes);
         }
 
-        _remainingContainerMemoryBytes = remaining - bytes;
+        _remainingGraphMemoryBytes = remaining - bytes;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     /// <summary>
     /// Reserves <paramref name="count"/> multiplied by <paramref name="elementBytes"/> estimated
-    /// container-owned bytes for the current root deserialization.
+    /// graph-owner bytes for the current root deserialization.
     /// </summary>
     /// <remarks>
     /// This helper owns only overflow-safe arithmetic; concrete serializers and generated
     /// serializers still own the collection, array, and map storage formulas.
     /// </remarks>
-    public void ReserveCountedContainerMemory(int count, long elementBytes)
+    public void ReserveCountedGraphMemory(int count, long elementBytes)
     {
         if (count < 0 || elementBytes < 0)
         {
-            ThrowContainerBudgetOverflow();
+            ThrowGraphBudgetOverflow();
         }
 
         uint length = (uint)count;
         if (elementBytes != 0 && length > long.MaxValue / elementBytes)
         {
-            ThrowContainerBudgetOverflow();
+            ThrowGraphBudgetOverflow();
         }
 
-        ReserveContainerMemory((long)length * elementBytes);
+        ReserveGraphMemory((long)length * elementBytes);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ThrowContainerBudgetOverflow()
+    private static void ThrowGraphBudgetOverflow()
     {
-        throw new InvalidDataException("container memory estimate overflows");
+        throw new InvalidDataException("graph memory estimate overflows");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ThrowContainerBudgetExceeded(long bytes, long remaining, long limit)
+    private static void ThrowGraphBudgetExceeded(long bytes, long remaining, long limit)
     {
         throw new InvalidDataException(
-            $"estimated container memory request {bytes} bytes exceeds MaxContainerMemoryBytes remaining budget {remaining} bytes out of effective limit {limit} bytes");
+            $"estimated graph memory request {bytes} bytes exceeds MaxGraphMemoryBytes remaining budget {remaining} bytes out of effective limit {limit} bytes");
     }
 
     internal void ResetFor(ByteReader reader)

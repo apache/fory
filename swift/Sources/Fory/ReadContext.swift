@@ -18,12 +18,11 @@
 import Foundation
 
 private let typeMetaSizeMask = 0xFF
-private let materializedAnyReferenceBytes = 4
 
 public final class ReadContext {
-  static let knownContainerBudgetSlackBytes = 64 * 1024
-  static let unknownContainerBudgetBytes = 128 * 1024 * 1024
-  private static let maxKnownContainerRootBytes = (Int.max - knownContainerBudgetSlackBytes) / 8
+  static let knownGraphBudgetSlackBytes = 64 * 1024
+  static let unknownGraphBudgetBytes = 128 * 1024 * 1024
+  private static let maxKnownGraphRootBytes = (Int.max - knownGraphBudgetSlackBytes) / 8
 
   public let buffer: ByteBuffer
   let typeResolver: TypeResolver
@@ -40,8 +39,8 @@ public final class ReadContext {
   private var typeInfoScopeStack: [(typeKey: UInt64, previousTypeInfo: TypeInfo?)] = []
   private var lastTypeInfo = TypeInfo.uncached
   private let config: Config
-  private let maxContainerMemoryBytes: Int
-  private var remainingContainerMemoryBytes = Int.max
+  private let maxGraphMemoryBytes: Int
+  private var remainingGraphMemoryBytes = Int.max
 
   init(
     buffer: ByteBuffer,
@@ -55,57 +54,57 @@ public final class ReadContext {
     self.checkClassVersion = config.checkClassVersion
     self.maxDepth = config.maxDepth
     self.config = config
-    self.maxContainerMemoryBytes = Int(config.maxContainerMemoryBytes)
+    self.maxGraphMemoryBytes = Int(config.maxGraphMemoryBytes)
     self.refReader = RefReader()
   }
 
   @inline(__always)
-  func initContainerMemoryBudgetKnown(rootBytes: Int) throws {
-    var limit = maxContainerMemoryBytes
+  func initGraphMemoryBudgetKnown(rootBytes: Int) throws {
+    var limit = maxGraphMemoryBytes
     if limit < 0 {
-      if rootBytes > Self.maxKnownContainerRootBytes {
-        try throwContainerMemoryOverflow()
+      if rootBytes > Self.maxKnownGraphRootBytes {
+        try throwGraphMemoryOverflow()
       }
-      limit = rootBytes * 8 + Self.knownContainerBudgetSlackBytes
+      limit = rootBytes * 8 + Self.knownGraphBudgetSlackBytes
     }
-    remainingContainerMemoryBytes = limit
+    remainingGraphMemoryBytes = limit
   }
 
   @inline(__always)
-  func reserveContainerMemory(_ bytes: Int) throws {
+  public func reserveGraphMemory(_ bytes: Int) throws {
     if bytes < 0 {
-      try throwContainerMemoryOverflow()
+      try throwGraphMemoryOverflow()
     }
-    if bytes > remainingContainerMemoryBytes {
-      try throwContainerMemoryExceeded(bytes: bytes)
+    if bytes > remainingGraphMemoryBytes {
+      try throwGraphMemoryExceeded(bytes: bytes)
     }
-    remainingContainerMemoryBytes -= bytes
+    remainingGraphMemoryBytes -= bytes
   }
 
   @inline(__always)
-  func reserveCountedContainerMemory(
+  func reserveCountedGraphMemory(
     count: Int,
     elementBytes: Int
   ) throws {
     if count < 0 || elementBytes < 0 {
-      try throwContainerMemoryOverflow()
+      try throwGraphMemoryOverflow()
     }
     if elementBytes != 0 && count > Int.max / elementBytes {
-      try throwContainerMemoryOverflow()
+      try throwGraphMemoryOverflow()
     }
-    try reserveContainerMemory(count * elementBytes)
+    try reserveGraphMemory(count * elementBytes)
   }
 
   @inline(never)
-  private func throwContainerMemoryOverflow() throws -> Never {
-    throw ForyError.invalidData("container memory estimate overflows")
+  private func throwGraphMemoryOverflow() throws -> Never {
+    throw ForyError.invalidData("graph memory estimate overflows")
   }
 
   @inline(never)
-  private func throwContainerMemoryExceeded(bytes: Int) throws -> Never {
+  private func throwGraphMemoryExceeded(bytes: Int) throws -> Never {
     let message =
-      "estimated container memory request \(bytes) bytes exceeds maxContainerMemoryBytes " +
-      "remaining budget \(remainingContainerMemoryBytes) bytes"
+      "estimated graph memory request \(bytes) bytes exceeds maxGraphMemoryBytes "
+      + "remaining budget \(remainingGraphMemoryBytes) bytes"
     throw ForyError.invalidData(message)
   }
 
@@ -258,7 +257,8 @@ public final class ReadContext {
             "received name-registered type info for id-registered local type")
         }
         if namespace.value != localTypeInfo.namespace.value
-          || typeName.value != localTypeInfo.typeName.value {
+          || typeName.value != localTypeInfo.typeName.value
+        {
           let expectedTypeName = "\(localTypeInfo.namespace.value)::\(localTypeInfo.typeName.value)"
           let actualTypeName = "\(namespace.value)::\(typeName.value)"
           throw ForyError.invalidData(
@@ -290,7 +290,8 @@ public final class ReadContext {
     if !checkClassVersion,
       compatibleTypeDefTypeInfos.isEmpty,
       !localTypeInfo.typeDefHasUserTypeFields,
-      let localTypeDefHeader = localTypeInfo.typeDefHeader {
+      let localTypeDefHeader = localTypeInfo.typeDefHeader
+    {
       let indexMarker = try buffer.readVarUInt32()
       if indexMarker == 0 {
         let headerStart = buffer.getCursor()
@@ -413,7 +414,8 @@ public final class ReadContext {
       for: localTypeInfo,
       wireTypeID: wireTypeID)
     compatibleTypeDefTypeInfos.push(cachedTypeInfo)
-    return try validateCompatibleTypeInfo(cachedTypeInfo, for: localTypeInfo, wireTypeID: wireTypeID)
+    return try validateCompatibleTypeInfo(
+      cachedTypeInfo, for: localTypeInfo, wireTypeID: wireTypeID)
   }
 
   @inline(__always)
@@ -424,7 +426,8 @@ public final class ReadContext {
     let buffer = self.buffer
     let compatibleTypeDefTypeInfos = self.compatibleTypeDefTypeInfos
     if compatibleTypeDefTypeInfos.isEmpty,
-      let localTypeDefHeader = localTypeInfo.typeDefHeader {
+      let localTypeDefHeader = localTypeInfo.typeDefHeader
+    {
       let indexMarker = try buffer.readVarUInt32()
       if indexMarker != 0 {
         return try readCompatibleTypeInfo(
@@ -536,7 +539,8 @@ public final class ReadContext {
       return false
     }
     guard let localTypeDefBytes = localTypeInfo.typeDefBytes,
-      end - start == localTypeDefBytes.count else {
+      end - start == localTypeDefBytes.count
+    else {
       return false
     }
     return buffer.matchesBytes(start: start, bytes: localTypeDefBytes)
@@ -561,7 +565,8 @@ public final class ReadContext {
     wireTypeID: TypeId
   ) throws {
     if let localTypeMeta = localTypeInfo.typeMeta,
-      remoteTypeMeta === localTypeMeta {
+      remoteTypeMeta === localTypeMeta
+    {
       return
     }
     if remoteTypeMeta.registerByName {
@@ -603,7 +608,8 @@ public final class ReadContext {
         registerByName: localTypeInfo.registerByName,
         compatible: compatible,
         evolving: localTypeInfo.evolving
-      ) {
+      )
+    {
       throw ForyError.typeMismatch(expected: wireTypeID.rawValue, actual: remoteTypeID)
     }
   }
@@ -691,7 +697,7 @@ public final class ReadContext {
     case .float64Array:
       value = try readPrimitiveArray(self) as [Double]
     case .array, .list:
-      value = try readListOfAny(refMode: .none) ?? []
+      value = try readListOfAny(context: self, refMode: .none) ?? []
     case .set:
       value = try Set<AnyHashable>.foryRead(self, refMode: .none, readTypeInfo: false)
     case .map:
@@ -763,105 +769,5 @@ public final class ReadContext {
     }
     compatibleTypeDefTypeInfos.reset()
     metaStrings.reset()
-  }
-}
-
-extension ReadContext {
-  public func readAny(
-    refMode: RefMode,
-    readTypeInfo: Bool = true
-  ) throws -> Any? {
-    try SerializableAny.foryRead(self, refMode: refMode, readTypeInfo: readTypeInfo).anyValue()
-  }
-
-  public func readListOfAny(
-    refMode: RefMode,
-    readTypeInfo: Bool = false
-  ) throws -> [Any]? {
-    let wrapped: [SerializableAny]? = try [SerializableAny]?.foryRead(
-      self,
-      refMode: refMode,
-      readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-      return nil
-    }
-    try reserveCountedContainerMemory(
-      count: wrapped.count,
-      elementBytes: materializedAnyReferenceBytes
-    )
-    return wrapped.map { $0.anyValueForCollection() }
-  }
-
-  public func readMapStringToAny(
-    refMode: RefMode,
-    readTypeInfo: Bool = false
-  ) throws -> [String: Any]? {
-    let wrapped: [String: SerializableAny]? = try [String: SerializableAny]?.foryRead(
-      self,
-      refMode: refMode,
-      readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-      return nil
-    }
-    try reserveCountedContainerMemory(
-      count: wrapped.count,
-      elementBytes: 2 * materializedAnyReferenceBytes
-    )
-    var map: [String: Any] = [:]
-    map.reserveCapacity(wrapped.count)
-    for pair in wrapped {
-      map[pair.key] = pair.value.anyValueForCollection()
-    }
-    return map
-  }
-
-  public func readMapInt32ToAny(
-    refMode: RefMode,
-    readTypeInfo: Bool = false
-  ) throws -> [Int32: Any]? {
-    let wrapped: [Int32: SerializableAny]? = try [Int32: SerializableAny]?.foryRead(
-      self,
-      refMode: refMode,
-      readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-      return nil
-    }
-    try reserveCountedContainerMemory(
-      count: wrapped.count,
-      elementBytes: 2 * materializedAnyReferenceBytes
-    )
-    var map: [Int32: Any] = [:]
-    map.reserveCapacity(wrapped.count)
-    for pair in wrapped {
-      map[pair.key] = pair.value.anyValueForCollection()
-    }
-    return map
-  }
-
-  public func readMapAnyHashableToAny(
-    refMode: RefMode,
-    readTypeInfo: Bool = false
-  ) throws -> [AnyHashable: Any]? {
-    let wrapped: [AnyHashable: SerializableAny]? = try [AnyHashable: SerializableAny]?.foryRead(
-      self,
-      refMode: refMode,
-      readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-      return nil
-    }
-    try reserveCountedContainerMemory(
-      count: wrapped.count,
-      elementBytes: 2 * materializedAnyReferenceBytes
-    )
-    var map: [AnyHashable: Any] = [:]
-    map.reserveCapacity(wrapped.count)
-    for pair in wrapped {
-      map[pair.key] = pair.value.anyValueForCollection()
-    }
-    return map
   }
 }

@@ -14,19 +14,21 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   values; use qualified names only when a real name conflict requires it.
 - If you run temporary tests with `java -cp`, run `mvn -T16 install -DskipTests` first so local Fory jars are current.
 - `WriteContext`, `ReadContext`, and `CopyContext` must stay explicit. Do not reintroduce `ThreadLocal` or ambient runtime-context patterns.
-- Java root deserialization container memory budgeting belongs to `ReadContext`
-  and is initialized by `Fory` root APIs. Public config is
-  `maxContainerMemoryBytes` with `-1` auto, positive explicit override,
-  known-length auto `inputBytes * 8 + 64 KiB`, and stream/unknown auto
-  `128 MiB`. `ReadContext` may expose only raw byte reservation and generic
-  counted-byte arithmetic; collection/map/object-array formulas belong in the
-  concrete serializer owner. Java collection/object-array paths charge reference slots only, and
-  maps charge two reference slots per entry. Fixed/header, map table, and map
-  entry overhead are not charged unless a future owner documents a conservative
-  independent lower-bound signal. Preserve existing `checkReadableBytes` guards
-  before backing allocation or capacity reservation. Do not add nested
-  serializer-path `try/finally`, per-element work, or dynamic stream bytes-read
-  accounting for this budget.
+- Java root deserialization graph memory budgeting belongs to `ReadContext`
+  and is initialized by `Fory` root APIs. Public config is `maxGraphMemoryBytes`
+  with `-1` auto, positive explicit override, known-length auto
+  `inputBytes * 8 + 64 KiB`, and stream/unknown auto `128 MiB`. `ReadContext`
+  may expose only raw byte reservation and generic counted-byte arithmetic;
+  collection, map, array, struct, and object formulas belong in the concrete
+  serializer or generated serializer owner. Java collection, map, and
+  object-array owners reserve nonzero shallow self cost plus reference storage;
+  referenced object serializers reserve their own nonzero shallow self memory
+  plus shallow field storage when materialized.
+  Reference fields use the 4-byte fallback when the JVM reference size is not
+  queried cheaply; primitive fields use their encoded storage width. Preserve
+  existing `checkReadableBytes` guards before backing allocation or capacity
+  reservation. Do not add nested serializer-path `try/finally`, per-element
+  work, dynamic stream bytes-read accounting, or stale narrower-scope formulas.
 - Generated serializers must not retain runtime context fields. `Fory` should stay a root-operation facade rather than accumulating serializer or convenience state.
 - When the serializer class and constructor shape are known at the call site, prefer direct constructor lambdas or direct instantiation over reflective `Serializers.newSerializer(...)`.
 - For GraalVM, use `fory codegen` to generate serializers when building native images. Do not add reflection configuration except for JDK `proxy`.

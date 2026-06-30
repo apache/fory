@@ -307,10 +307,10 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	valueBytes := int64(mapType.Elem().Size())
 	elemBytes := keyBytes + valueBytes
 	if elemBytes < keyBytes {
-		ctx.setContainerMemoryError("map entry size overflows: key=%d value=%d", keyBytes, valueBytes)
+		ctx.setGraphMemoryError("map entry size overflows: key=%d value=%d", keyBytes, valueBytes)
 		return
 	}
-	if !ctx.ReserveCountedContainerMemory(size, elemBytes) {
+	if !ctx.ReserveCountedGraphMemory(size, elemBytes) {
 		return
 	}
 	if size == 0 {

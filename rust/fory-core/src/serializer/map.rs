@@ -553,10 +553,10 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_var_u32()?;
-        let elem_bytes = std::mem::size_of::<K>()
-            .checked_add(std::mem::size_of::<V>())
-            .ok_or_else(|| Error::invalid_data("container memory estimate overflows"))?;
-        let capacity = context.reserve_counted_container_memory(len, elem_bytes)?;
+        let elem_bytes = K::fory_graph_storage_size()
+            .checked_add(V::fory_graph_storage_size())
+            .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
+        let capacity = context.reserve_counted_graph_memory(len, elem_bytes)?;
         if len == 0 {
             return Ok(HashMap::new());
         }
@@ -657,6 +657,10 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
         size_of::<i32>()
     }
 
+    fn fory_graph_self_size() -> usize {
+        size_of::<Self>()
+    }
+
     fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         Ok(TypeId::MAP)
     }
@@ -709,10 +713,10 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_var_u32()?;
-        let elem_bytes = std::mem::size_of::<K>()
-            .checked_add(std::mem::size_of::<V>())
-            .ok_or_else(|| Error::invalid_data("container memory estimate overflows"))?;
-        let len_usize = context.reserve_counted_container_memory(len, elem_bytes)?;
+        let elem_bytes = K::fory_graph_storage_size()
+            .checked_add(V::fory_graph_storage_size())
+            .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
+        let len_usize = context.reserve_counted_graph_memory(len, elem_bytes)?;
         if len == 0 {
             return Ok(BTreeMap::new());
         }
@@ -810,6 +814,10 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
 
     fn fory_reserved_space() -> usize {
         size_of::<i32>()
+    }
+
+    fn fory_graph_self_size() -> usize {
+        size_of::<Self>()
     }
 
     fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {

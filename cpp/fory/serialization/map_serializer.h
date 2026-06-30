@@ -98,8 +98,7 @@ inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
                 "map entry memory estimate overflows");
   constexpr size_t elem_bytes = sizeof(Key) + sizeof(Value);
   if (FORY_PREDICT_FALSE(
-          (!ctx.template reserve_counted_container_memory<elem_bytes>(
-              length)))) {
+          (!ctx.template reserve_counted_graph_memory<elem_bytes>(length)))) {
     return false;
   }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
@@ -113,7 +112,7 @@ template <typename MapType> inline bool reserve_empty_map(ReadContext &ctx) {
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
-  return ctx.reserve_container_memory(0);
+  return ctx.reserve_graph_memory(0);
 }
 
 /// write chunk size at header offset

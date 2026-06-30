@@ -391,6 +391,7 @@ public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TVal
 
 public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<NullableKeyDictionary<TKey, TValue>>
 {
+    private const int MapBytes = 1;
     private const int ReferenceBytes = 4;
     private static readonly long MapElementBytes = (long)ElementBytes<TKey>() + ElementBytes<TValue>();
 
@@ -400,7 +401,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ReserveMapStorage(ReadContext context, int count)
     {
-        context.ReserveCountedContainerMemory(count, MapElementBytes);
+        context.ReserveGraphMemory(MapBytes + count * MapElementBytes);
     }
 
     public override NullableKeyDictionary<TKey, TValue> DefaultValue => null!;

@@ -326,7 +326,7 @@ func floatingSpecialsRoundTrip() throws {
     -.infinity,
     .leastNonzeroMagnitude,
     .greatestFiniteMagnitude,
-    Float(bitPattern: 0x7FC0_1234)
+    Float(bitPattern: 0x7FC0_1234),
   ]
   for value in floatValues {
     let decoded: Float = try fory.deserialize(try fory.serialize(value))
@@ -340,7 +340,7 @@ func floatingSpecialsRoundTrip() throws {
     -.infinity,
     .leastNonzeroMagnitude,
     .greatestFiniteMagnitude,
-    Double(bitPattern: 0x7FF8_0000_0000_1234)
+    Double(bitPattern: 0x7FF8_0000_0000_1234),
   ]
   for value in doubleValues {
     let decoded: Double = try fory.deserialize(try fory.serialize(value))
@@ -354,7 +354,7 @@ func floatingSpecialsRoundTrip() throws {
     .init(bitPattern: 0xFC00),
     .init(bitPattern: 0x0001),
     .init(bitPattern: 0x7BFF),
-    .init(bitPattern: 0x7E11)
+    .init(bitPattern: 0x7E11),
   ]
   for value in float16Values {
     let decoded: Float16 = try fory.deserialize(try fory.serialize(value))
@@ -367,7 +367,7 @@ func floatingSpecialsRoundTrip() throws {
     .init(rawValue: 0x7F80),
     .init(rawValue: 0xFF80),
     .init(rawValue: 0x0001),
-    .init(rawValue: 0x7FC1)
+    .init(rawValue: 0x7FC1),
   ]
   for value in bfloat16Values {
     let decoded: BFloat16 = try fory.deserialize(try fory.serialize(value))
@@ -382,7 +382,7 @@ func namedInitializerBuildsConfig() {
   #expect(defaultConfig.config.compatible == true)
   #expect(defaultConfig.config.checkClassVersion == false)
   #expect(defaultConfig.config.maxDepth == 5)
-  #expect(defaultConfig.config.maxContainerMemoryBytes == -1)
+  #expect(defaultConfig.config.maxGraphMemoryBytes == -1)
   #expect(defaultConfig.config.maxTypeFields == 512)
   #expect(defaultConfig.config.maxTypeMetaBytes == 4096)
   #expect(defaultConfig.config.maxSchemaVersionsPerType == 10)
@@ -392,7 +392,7 @@ func namedInitializerBuildsConfig() {
     ref: true,
     compatible: true,
     maxDepth: 7,
-    maxContainerMemoryBytes: 65_536,
+    maxGraphMemoryBytes: 65_536,
     maxTypeFields: 31,
     maxTypeMetaBytes: 1234,
     maxSchemaVersionsPerType: 12,
@@ -402,7 +402,7 @@ func namedInitializerBuildsConfig() {
   #expect(explicitConfig.config.compatible == true)
   #expect(explicitConfig.config.checkClassVersion == false)
   #expect(explicitConfig.config.maxDepth == 7)
-  #expect(explicitConfig.config.maxContainerMemoryBytes == 65_536)
+  #expect(explicitConfig.config.maxGraphMemoryBytes == 65_536)
   #expect(explicitConfig.config.maxTypeFields == 31)
   #expect(explicitConfig.config.maxTypeMetaBytes == 1234)
   #expect(explicitConfig.config.maxSchemaVersionsPerType == 12)
@@ -413,7 +413,7 @@ func namedInitializerBuildsConfig() {
       trackRef: false,
       compatible: true,
       maxDepth: 9,
-      maxContainerMemoryBytes: 131_072,
+      maxGraphMemoryBytes: 131_072,
       maxTypeFields: 41,
       maxTypeMetaBytes: 2048,
       maxSchemaVersionsPerType: 14,
@@ -423,7 +423,7 @@ func namedInitializerBuildsConfig() {
   #expect(configInit.config.compatible == true)
   #expect(configInit.config.checkClassVersion == false)
   #expect(configInit.config.maxDepth == 9)
-  #expect(configInit.config.maxContainerMemoryBytes == 131_072)
+  #expect(configInit.config.maxGraphMemoryBytes == 131_072)
   #expect(configInit.config.maxTypeFields == 41)
   #expect(configInit.config.maxTypeMetaBytes == 2048)
   #expect(configInit.config.maxSchemaVersionsPerType == 14)
@@ -544,7 +544,7 @@ func typeMetaFieldLimitRejectsLargeStruct() throws {
     registerByName: false,
     fields: [
       TypeMeta.FieldInfo(fieldID: nil, fieldName: "first", fieldType: fieldType),
-      TypeMeta.FieldInfo(fieldID: nil, fieldName: "second", fieldType: fieldType)
+      TypeMeta.FieldInfo(fieldID: nil, fieldName: "second", fieldType: fieldType),
     ]
   )
   let encoded = try meta.encode()
@@ -772,22 +772,24 @@ func failedSchemaDoesNotConsumeLimit() throws {
   }
 
   #expect(throws: (any Error).self) {
-    try cache(remoteTypeMeta(
-      fieldName: "id",
-      fieldType: TypeMeta.FieldType(
-        typeID: TypeId.map.rawValue,
-        nullable: false,
-        generics: [
-          TypeMeta.FieldType(typeID: TypeId.string.rawValue, nullable: false),
-          TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
-        ]
-      )
-    ))
+    try cache(
+      remoteTypeMeta(
+        fieldName: "id",
+        fieldType: TypeMeta.FieldType(
+          typeID: TypeId.map.rawValue,
+          nullable: false,
+          generics: [
+            TypeMeta.FieldType(typeID: TypeId.string.rawValue, nullable: false),
+            TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false),
+          ]
+        )
+      ))
   }
-  try cache(remoteTypeMeta(
-    fieldName: "remoteA",
-    fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
-  ))
+  try cache(
+    remoteTypeMeta(
+      fieldName: "remoteA",
+      fieldType: TypeMeta.FieldType(typeID: TypeId.int32.rawValue, nullable: false)
+    ))
 }
 
 @Test
@@ -1148,7 +1150,7 @@ func macroDynamicAnyObjectAndAnySerializerFieldsRoundTrip() throws {
     items: [Int32(11), Address(street: "Nested", zip: 10002)],
     map: [
       "age": Int64(19),
-      "address": Address(street: "Mapped", zip: 10003)
+      "address": Address(street: "Mapped", zip: 10003),
     ]
   )
   let serializerData = try fory.serialize(serializerHolder)
@@ -1201,13 +1203,13 @@ func macroAnyFieldsRoundTrip() throws {
       "count": Int64(3),
       "name": "map",
       "address": Address(street: "AnyMap", zip: 11003),
-      "empty": NSNull()
+      "empty": NSNull(),
     ],
     int32Map: [
       1: Int32(-9),
       2: "v2",
       3: Address(street: "AnyIntMap", zip: 11004),
-      4: NSNull()
+      4: NSNull(),
     ]
   )
   let data = try fory.serialize(value)
@@ -1288,7 +1290,8 @@ func macroFieldOrderFollowsForyRules() throws {
   let second = try buffer.readVarInt64()
   let third = try buffer.readVarInt32()
 
-  let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, config: fory.config)
+  let tailContext = ReadContext(
+    buffer: buffer, typeResolver: fory.typeResolver, config: fory.config)
   let fourth = try String.foryReadData(tailContext)
 
   #expect(first == value.shortValue)
@@ -1316,7 +1319,8 @@ func macroTaggedFieldsKeepGroupedPayloadOrder() throws {
   _ = try buffer.readInt32()
 
   #expect(try buffer.readVarInt32() == value.intValue)
-  let tailContext = ReadContext(buffer: buffer, typeResolver: fory.typeResolver, config: fory.config)
+  let tailContext = ReadContext(
+    buffer: buffer, typeResolver: fory.typeResolver, config: fory.config)
   #expect(try String.foryReadData(tailContext) == value.textTail)
 }
 
@@ -1326,7 +1330,7 @@ func macroNonPrimitiveFieldsSortByFieldIdentifier() throws {
 
   #expect(
     fields.map(\.fieldName) == [
-      "intValue", "mapValue", "stringValue", "addressValue", "binaryValue"
+      "intValue", "mapValue", "stringValue", "addressValue", "binaryValue",
     ])
   #expect(fields.map(\.fieldID) == [nil, 10, 20, nil, nil])
 }
@@ -1393,7 +1397,7 @@ func macroReducedPrecisionFieldsUseXlangTypeIDs() {
       TypeId.float16.rawValue,
       TypeId.bfloat16.rawValue,
       TypeId.bfloat16Array.rawValue,
-      TypeId.float16Array.rawValue
+      TypeId.float16Array.rawValue,
     ])
 }
 
@@ -1468,7 +1472,7 @@ func compatibleNestedStructArrayRoundTrip() throws {
   let value = CompatibleNestedArrayHolder(
     items: [
       CompatibleNestedItem(id: 1, name: "alpha"),
-      CompatibleNestedItem(id: 2, name: "beta")
+      CompatibleNestedItem(id: 2, name: "beta"),
     ]
   )
   let bytes = try writer.serialize(value)
@@ -1490,7 +1494,7 @@ func compatibleNestedStructOptionalArrayRoundTrip() throws {
     items: [
       CompatibleNestedItem(id: 1, name: "alpha"),
       nil,
-      CompatibleNestedItem(id: 2, name: "beta")
+      CompatibleNestedItem(id: 2, name: "beta"),
     ]
   )
   let bytes = try writer.serialize(value)
@@ -1511,7 +1515,7 @@ func compatibleNestedStructMapRoundTrip() throws {
   let value = CompatibleNestedMapHolder(
     items: [
       1: CompatibleNestedItem(id: 10, name: "first"),
-      2: CompatibleNestedItem(id: 20, name: "second")
+      2: CompatibleNestedItem(id: 20, name: "second"),
     ]
   )
   let bytes = try writer.serialize(value)
@@ -1541,7 +1545,7 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
     72_057_594_037_927_935,
     72_057_594_037_927_936,
     UInt64(Int64.max),
-    UInt64.max
+    UInt64.max,
   ]
   let intValues: [Int64] = [
     Int64.min,
@@ -1558,7 +1562,7 @@ func pvlVarInt64AndVarUInt64Extremes() throws {
     1_000_000,
     1_000_000_000_000,
     Int64.max - 1,
-    Int64.max
+    Int64.max,
   ]
 
   let writeBuffer = ByteBuffer()
@@ -1644,7 +1648,7 @@ func typeMetaRoundTripByName() throws {
         nullable: true,
         generics: [
           .init(typeID: TypeId.string.rawValue, nullable: false),
-          .init(typeID: TypeId.varint32.rawValue, nullable: true)
+          .init(typeID: TypeId.varint32.rawValue, nullable: true),
         ]
       )
     ),
@@ -1652,7 +1656,7 @@ func typeMetaRoundTripByName() throws {
       fieldID: 7,
       fieldName: "ignored_for_tag_mode",
       fieldType: .init(typeID: TypeId.varint32.rawValue, nullable: false)
-    )
+    ),
   ]
 
   let meta = try TypeMeta(

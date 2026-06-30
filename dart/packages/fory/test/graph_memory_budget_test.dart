@@ -27,9 +27,15 @@ import 'package:fory/src/serializer/collection_serializers.dart';
 import 'package:fory/src/serializer/map_serializers.dart';
 import 'package:test/test.dart';
 
-part 'container_memory_budget_test.fory.dart';
+part 'graph_memory_budget_test.fory.dart';
 
-const Matcher _throwsContainerBudget = ThrowsContainerBudget();
+const Matcher _throwsGraphBudget = ThrowsGraphBudget();
+const int _objectBytes = 1;
+const int _referenceBytes = 4;
+
+int _objectGraphBytes(int fields) => _objectBytes + fields * _referenceBytes;
+int _listGraphBytes(int count) => _objectBytes + count * _referenceBytes;
+int _mapGraphBytes(int count) => _objectBytes + count * 2 * _referenceBytes;
 
 @ForyStruct()
 class BudgetGeneratedEnvelope {
@@ -61,12 +67,12 @@ class BudgetCompatibleArrayEnvelope {
   Int32List values = Int32List(0);
 }
 
-final class ThrowsContainerBudget extends Matcher {
-  const ThrowsContainerBudget();
+final class ThrowsGraphBudget extends Matcher {
+  const ThrowsGraphBudget();
 
   @override
   Description describe(Description description) {
-    return description.add('throws a maxContainerMemoryBytes StateError');
+    return description.add('throws a maxGraphMemoryBytes StateError');
   }
 
   @override
@@ -77,14 +83,14 @@ final class ThrowsContainerBudget extends Matcher {
     try {
       item();
     } on StateError catch (error) {
-      return error.message.contains('maxContainerMemoryBytes');
+      return error.message.contains('maxGraphMemoryBytes');
     }
     return false;
   }
 }
 
 void _registerGenerated(Fory fory) {
-  ContainerMemoryBudgetTestForyModule.register(
+  GraphMemoryBudgetTestForyModule.register(
     fory,
     BudgetGeneratedEnvelope,
     name: 'test.BudgetGeneratedEnvelope',
@@ -92,7 +98,7 @@ void _registerGenerated(Fory fory) {
 }
 
 void _registerCompatibleList(Fory fory) {
-  ContainerMemoryBudgetTestForyModule.register(
+  GraphMemoryBudgetTestForyModule.register(
     fory,
     BudgetCompatibleListEnvelope,
     name: 'test.BudgetCompatibleEnvelope',
@@ -100,15 +106,15 @@ void _registerCompatibleList(Fory fory) {
 }
 
 void _registerCompatibleArray(Fory fory) {
-  ContainerMemoryBudgetTestForyModule.register(
+  GraphMemoryBudgetTestForyModule.register(
     fory,
     BudgetCompatibleArrayEnvelope,
     name: 'test.BudgetCompatibleEnvelope',
   );
 }
 
-ReadContext _readContext(Buffer buffer, {int maxContainerMemoryBytes = -1}) {
-  final config = Config(maxContainerMemoryBytes: maxContainerMemoryBytes);
+ReadContext _readContext(Buffer buffer, {int maxGraphMemoryBytes = -1}) {
+  final config = Config(maxGraphMemoryBytes: maxGraphMemoryBytes);
   final resolver = TypeResolver(config);
   return ReadContext(config, resolver, RefReader(), MetaStringReader(resolver))
     ..prepare(buffer);
@@ -118,54 +124,73 @@ Uint8List _serialize(Object? value) => Fory().serialize(value);
 
 Object? _readWithBudget(Object? value, int budget) {
   return Fory(
-    maxContainerMemoryBytes: budget,
+    maxGraphMemoryBytes: budget,
   ).deserialize<Object?>(_serialize(value));
 }
 
 void main() {
-  group('container memory budget', () {
+  group('graph memory budget', () {
     test('known length auto derives from input bytes', () {
       final buffer = Buffer.wrap(Uint8List(17));
       final context = _readContext(buffer);
 
-      expect(context.effectiveContainerMemoryBytes, equals(17 * 8 + 64 * 1024));
+      expect(context.effectiveGraphMemoryBytes, equals(17 * 8 + 64 * 1024));
       expect(
-        () => context.reserveContainerMemory(17 * 8 + 64 * 1024),
+        () => context.reserveGraphMemory(17 * 8 + 64 * 1024),
         returnsNormally,
       );
-      expect(() => context.reserveContainerMemory(1), _throwsContainerBudget);
+      expect(() => context.reserveGraphMemory(1), _throwsGraphBudget);
     });
 
     test('explicit config overrides auto', () {
       final buffer = Buffer.wrap(Uint8List(4096));
-      final context = _readContext(buffer, maxContainerMemoryBytes: 31);
+      final context = _readContext(buffer, maxGraphMemoryBytes: 31);
 
-      expect(context.effectiveContainerMemoryBytes, equals(31));
-      expect(() => context.reserveContainerMemory(31), returnsNormally);
-      expect(() => context.reserveContainerMemory(1), _throwsContainerBudget);
-      expect(() => Fory(maxContainerMemoryBytes: 0), throwsArgumentError);
-      expect(() => Fory(maxContainerMemoryBytes: -2), throwsArgumentError);
+      expect(context.effectiveGraphMemoryBytes, equals(31));
+      expect(() => context.reserveGraphMemory(31), returnsNormally);
+      expect(() => context.reserveGraphMemory(1), _throwsGraphBudget);
+      expect(() => Fory(maxGraphMemoryBytes: 0), throwsArgumentError);
+      expect(() => Fory(maxGraphMemoryBytes: -2), throwsArgumentError);
     });
 
     test('uses parent storage for nested empty containers', () {
       final value = <Object?>[<Object?>[]];
 
-      expect(() => _readWithBudget(value, 3), _throwsContainerBudget);
-      expect(_readWithBudget(value, 4), equals(value));
+      expect(
+        () =>
+            _readWithBudget(value, _listGraphBytes(1) + _listGraphBytes(0) - 1),
+        _throwsGraphBudget,
+      );
+      expect(
+        _readWithBudget(value, _listGraphBytes(1) + _listGraphBytes(0)),
+        equals(value),
+      );
     });
 
     test('reserves sibling containers cumulatively', () {
       final value = <Object?>[<Object?>[], <Object?>[], <Object?>[]];
 
-      expect(() => _readWithBudget(value, 11), _throwsContainerBudget);
-      expect(_readWithBudget(value, 12), equals(value));
+      expect(
+        () => _readWithBudget(
+          value,
+          _listGraphBytes(3) + 3 * _listGraphBytes(0) - 1,
+        ),
+        _throwsGraphBudget,
+      );
+      expect(
+        _readWithBudget(value, _listGraphBytes(3) + 3 * _listGraphBytes(0)),
+        equals(value),
+      );
     });
 
     test('reserves map entries', () {
       final value = <Object?, Object?>{'a': 1};
 
-      expect(() => _readWithBudget(value, 7), _throwsContainerBudget);
-      expect(_readWithBudget(value, 8), equals(value));
+      expect(
+        () => _readWithBudget(value, _mapGraphBytes(1) - 1),
+        _throwsGraphBudget,
+      );
+      expect(_readWithBudget(value, _mapGraphBytes(1)), equals(value));
     });
 
     test('reserves generated list set and map reads', () {
@@ -178,14 +203,19 @@ void main() {
           ..counts = <String, int>{'one': 1},
       );
 
-      final failingReader = Fory(maxContainerMemoryBytes: 19);
+      final required =
+          _objectGraphBytes(3) +
+          _listGraphBytes(1) +
+          _listGraphBytes(1) +
+          _mapGraphBytes(1);
+      final failingReader = Fory(maxGraphMemoryBytes: required - 1);
       _registerGenerated(failingReader);
       expect(
         () => failingReader.deserialize<BudgetGeneratedEnvelope>(bytes),
-        _throwsContainerBudget,
+        _throwsGraphBudget,
       );
 
-      final passingReader = Fory(maxContainerMemoryBytes: 20);
+      final passingReader = Fory(maxGraphMemoryBytes: required);
       _registerGenerated(passingReader);
       final roundTrip = passingReader.deserialize<BudgetGeneratedEnvelope>(
         bytes,
@@ -202,14 +232,15 @@ void main() {
         BudgetCompatibleListEnvelope()..values = <int>[1, 2, 3],
       );
 
-      final arrayFail = Fory(maxContainerMemoryBytes: 11);
+      final required = _objectGraphBytes(1) + _objectBytes + 3 * 4;
+      final arrayFail = Fory(maxGraphMemoryBytes: required - 1);
       _registerCompatibleArray(arrayFail);
       expect(
         () => arrayFail.deserialize<BudgetCompatibleArrayEnvelope>(listBytes),
-        _throwsContainerBudget,
+        _throwsGraphBudget,
       );
 
-      final arrayPass = Fory(maxContainerMemoryBytes: 12);
+      final arrayPass = Fory(maxGraphMemoryBytes: required);
       _registerCompatibleArray(arrayPass);
       expect(
         arrayPass
@@ -226,14 +257,14 @@ void main() {
           ..values = Int32List.fromList(<int>[1, 2, 3]),
       );
 
-      final listFail = Fory(maxContainerMemoryBytes: 11);
+      final listFail = Fory(maxGraphMemoryBytes: required - 1);
       _registerCompatibleList(listFail);
       expect(
         () => listFail.deserialize<BudgetCompatibleListEnvelope>(arrayBytes),
-        _throwsContainerBudget,
+        _throwsGraphBudget,
       );
 
-      final listPass = Fory(maxContainerMemoryBytes: 12);
+      final listPass = Fory(maxGraphMemoryBytes: required);
       _registerCompatibleList(listPass);
       expect(
         listPass.deserialize<BudgetCompatibleListEnvelope>(arrayBytes).values,
@@ -242,7 +273,7 @@ void main() {
     });
 
     test('skips strings binary and dense typed arrays', () {
-      final fory = Fory(maxContainerMemoryBytes: 1);
+      final fory = Fory(maxGraphMemoryBytes: 1);
       final text = List<String>.filled(128, 'x').join();
 
       expect(fory.deserialize<String>(Fory().serialize(text)), hasLength(128));

@@ -122,7 +122,7 @@ class ScalaXlangSerializerTest extends AnyWordSpec with Matchers {
       copiedCyclic(0) shouldBe theSameInstanceAs(copiedCyclic)
     }
 
-    "enforce container memory budget" in {
+    "enforce graph memory budget" in {
       val writer = fory
       val reader = ForyScala.builder()
         .withXlang(true)
@@ -130,7 +130,7 @@ class ScalaXlangSerializerTest extends AnyWordSpec with Matchers {
         .withRefCopy(true)
         .requireClassRegistration(false)
         .suppressClassRegistrationWarnings(false)
-        .withMaxContainerMemoryBytes(23)
+        .withMaxGraphMemoryBytes(23)
         .build()
 
       intercept[InsecureException] {

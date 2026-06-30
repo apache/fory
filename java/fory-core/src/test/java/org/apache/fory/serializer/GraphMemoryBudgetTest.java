@@ -36,18 +36,19 @@ import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.testng.annotations.Test;
 
-public class ContainerMemoryBudgetTest extends ForyTestBase {
+public class GraphMemoryBudgetTest extends ForyTestBase {
   private static final long KNOWN_ROOT_MULTIPLIER = 8L;
   private static final long KNOWN_ROOT_SLACK_BYTES = 64L * 1024;
   private static final long STREAM_ROOT_BYTES = 128L * 1024 * 1024;
   private static final int REFERENCE_BYTES = 4;
+  private static final int OBJECT_SELF_BYTES = 1;
 
   @Test
   public void testConfigValidation() {
-    assertEquals(newFory(-1).getConfig().maxContainerMemoryBytes(), -1);
-    assertEquals(newFory(123).getConfig().maxContainerMemoryBytes(), 123);
-    assertThrows(IllegalArgumentException.class, () -> builder().withMaxContainerMemoryBytes(0));
-    assertThrows(IllegalArgumentException.class, () -> builder().withMaxContainerMemoryBytes(-2));
+    assertEquals(newFory(-1).getConfig().maxGraphMemoryBytes(), -1);
+    assertEquals(newFory(123).getConfig().maxGraphMemoryBytes(), 123);
+    assertThrows(IllegalArgumentException.class, () -> builder().withMaxGraphMemoryBytes(0));
+    assertThrows(IllegalArgumentException.class, () -> builder().withMaxGraphMemoryBytes(-2));
   }
 
   @Test
@@ -56,8 +57,8 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     ReadContext readContext = prepareContext(fory, 17, false);
     try {
       long budget = knownAutoBytes(17);
-      readContext.reserveContainerMemory(budget);
-      assertThrows(InsecureException.class, () -> readContext.reserveContainerMemory(1));
+      readContext.reserveGraphMemory(budget);
+      assertThrows(InsecureException.class, () -> readContext.reserveGraphMemory(1));
     } finally {
       readContext.reset();
     }
@@ -68,8 +69,8 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     Fory fory = newFory(-1);
     ReadContext readContext = prepareContext(fory, 17, true);
     try {
-      readContext.reserveContainerMemory(STREAM_ROOT_BYTES);
-      assertThrows(InsecureException.class, () -> readContext.reserveContainerMemory(1));
+      readContext.reserveGraphMemory(STREAM_ROOT_BYTES);
+      assertThrows(InsecureException.class, () -> readContext.reserveGraphMemory(1));
     } finally {
       readContext.reset();
     }
@@ -80,8 +81,8 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     Fory fory = newFory(7);
     ReadContext readContext = prepareContext(fory, 1024 * 1024, false);
     try {
-      readContext.reserveContainerMemory(7);
-      assertThrows(InsecureException.class, () -> readContext.reserveContainerMemory(1));
+      readContext.reserveGraphMemory(7);
+      assertThrows(InsecureException.class, () -> readContext.reserveGraphMemory(1));
     } finally {
       readContext.reset();
     }
@@ -91,7 +92,7 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
   public void testNestedEmptyContainersUseParentStorage() {
     List<Object> value = emptyLists(1);
     byte[] bytes = newFory(-1).serialize(value);
-    long required = collectionBytes(1);
+    long required = collectionBytes(1) + collectionBytes(0);
 
     assertThrows(InsecureException.class, () -> newFory(required - 1).deserialize(bytes));
     assertEquals(newFory(required).deserialize(bytes), value);
@@ -104,7 +105,7 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     long firstChildOnly = collectionBytes(2) + collectionBytes(64);
 
     assertThrows(InsecureException.class, () -> newFory(firstChildOnly).deserialize(bytes));
-    assertEquals(newFory(firstChildOnly + collectionBytes(64)).deserialize(bytes), value);
+    assertEquals(newFory(collectionBytes(2) + 2L * collectionBytes(64)).deserialize(bytes), value);
   }
 
   @Test
@@ -112,7 +113,7 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     Fory fory = newFory(mapBytes(1) - 1);
     ReadContext readContext = prepareContext(fory, 8, false);
     try {
-      assertThrows(InsecureException.class, () -> readContext.reserveContainerMemory(mapBytes(1)));
+      assertThrows(InsecureException.class, () -> readContext.reserveGraphMemory(mapBytes(1)));
     } finally {
       readContext.reset();
     }
@@ -120,8 +121,8 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     Fory exactFory = newFory(mapBytes(1));
     ReadContext exactContext = prepareContext(exactFory, 8, false);
     try {
-      exactContext.reserveContainerMemory(mapBytes(1));
-      assertThrows(InsecureException.class, () -> exactContext.reserveContainerMemory(1));
+      exactContext.reserveGraphMemory(mapBytes(1));
+      assertThrows(InsecureException.class, () -> exactContext.reserveGraphMemory(1));
     } finally {
       exactContext.reset();
     }
@@ -167,9 +168,37 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
   }
 
   @Test
+  public void testPojoGraphBudget() {
+    Pojo value = new Pojo(7, 9L, "child string is skipped as a leaf");
+    byte[] bytes = newFory(-1).serialize(value);
+    long required = pojoBytes();
+
+    assertThrows(InsecureException.class, () -> newFory(required - 1, false).deserialize(bytes));
+    assertEquals(newFory(required, false).deserialize(bytes), value);
+
+    assertThrows(InsecureException.class, () -> newFory(required - 1, true).deserialize(bytes));
+    assertEquals(newFory(required, true).deserialize(bytes), value);
+  }
+
+  @Test
+  public void testNestedEmptyPojoGraphBudget() {
+    ArrayList<Object> value = new ArrayList<>();
+    value.add(new EmptyPojo());
+    value.add(new EmptyPojo());
+    byte[] bytes = newFory(-1).serialize(value);
+    long required = collectionBytes(2) + 2L * emptyPojoBytes();
+
+    assertThrows(InsecureException.class, () -> newFory(required - 1).deserialize(bytes));
+    List<?> decoded = (List<?>) newFory(required).deserialize(bytes);
+    assertEquals(decoded.size(), 2);
+    assertTrue(decoded.get(0) instanceof EmptyPojo);
+    assertTrue(decoded.get(1) instanceof EmptyPojo);
+  }
+
+  @Test
   public void testScalarOwnersSkipBudget() {
     Fory fory = newFory(1);
-    assertEquals(fory.deserialize(fory.serialize("container budget")), "container budget");
+    assertEquals(fory.deserialize(fory.serialize("graph budget")), "graph budget");
 
     byte[] bytes = new byte[] {1, 2, 3};
     assertTrue(Arrays.equals((byte[]) fory.deserialize(fory.serialize(bytes)), bytes));
@@ -200,8 +229,12 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
     }
   }
 
-  private static Fory newFory(long maxContainerMemoryBytes) {
-    return builder().withMaxContainerMemoryBytes(maxContainerMemoryBytes).build();
+  private static Fory newFory(long maxGraphMemoryBytes) {
+    return newFory(maxGraphMemoryBytes, true);
+  }
+
+  private static Fory newFory(long maxGraphMemoryBytes, boolean codegen) {
+    return builder().withMaxGraphMemoryBytes(maxGraphMemoryBytes).withCodegen(codegen).build();
   }
 
   private static ReadContext prepareContext(
@@ -213,15 +246,23 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
   }
 
   private static long collectionBytes(int numElements) {
-    return (long) numElements * REFERENCE_BYTES;
+    return OBJECT_SELF_BYTES + (long) numElements * REFERENCE_BYTES;
   }
 
   private static long mapBytes(int numElements) {
-    return (long) numElements * 2 * REFERENCE_BYTES;
+    return OBJECT_SELF_BYTES + (long) numElements * 2 * REFERENCE_BYTES;
   }
 
   private static long objectArrayBytes(int numElements) {
-    return (long) numElements * REFERENCE_BYTES;
+    return OBJECT_SELF_BYTES + (long) numElements * REFERENCE_BYTES;
+  }
+
+  private static long emptyPojoBytes() {
+    return OBJECT_SELF_BYTES;
+  }
+
+  private static long pojoBytes() {
+    return OBJECT_SELF_BYTES + 4 + 8 + REFERENCE_BYTES;
   }
 
   private static long knownAutoBytes(int inputBytes) {
@@ -256,5 +297,37 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
 
   private static MemoryBuffer trimBuffer(MemoryBuffer buffer) {
     return MemoryBuffer.fromByteArray(buffer.getBytes(0, buffer.writerIndex()));
+  }
+
+  public static final class EmptyPojo {}
+
+  public static final class Pojo {
+    public int intValue;
+    public long longValue;
+    public String name;
+
+    public Pojo() {}
+
+    Pojo(int intValue, long longValue, String name) {
+      this.intValue = intValue;
+      this.longValue = longValue;
+      this.name = name;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (!(obj instanceof Pojo)) {
+        return false;
+      }
+      Pojo other = (Pojo) obj;
+      return intValue == other.intValue
+          && longValue == other.longValue
+          && java.util.Objects.equals(name, other.name);
+    }
+
+    @Override
+    public int hashCode() {
+      return java.util.Objects.hash(intValue, longValue, name);
+    }
   }
 }

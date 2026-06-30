@@ -27,23 +27,23 @@ import (
 
 var (
 	stringStringMapElemBytes  = stringElementBytes + stringElementBytes
-	stringStringMapMaxLength  = maxContainerCount(stringStringMapElemBytes)
-	stringInt64MapElemBytes   = stringElementBytes + containerSizeOf[int64]()
-	stringInt64MapMaxLength   = maxContainerCount(stringInt64MapElemBytes)
-	stringInt32MapElemBytes   = stringElementBytes + containerSizeOf[int32]()
-	stringInt32MapMaxLength   = maxContainerCount(stringInt32MapElemBytes)
-	stringIntMapElemBytes     = stringElementBytes + containerSizeOf[int]()
-	stringIntMapMaxLength     = maxContainerCount(stringIntMapElemBytes)
-	stringFloat64MapElemBytes = stringElementBytes + containerSizeOf[float64]()
-	stringFloat64MapMaxLength = maxContainerCount(stringFloat64MapElemBytes)
-	stringBoolMapElemBytes    = stringElementBytes + containerSizeOf[bool]()
-	stringBoolMapMaxLength    = maxContainerCount(stringBoolMapElemBytes)
-	int32Int32MapElemBytes    = containerSizeOf[int32]() + containerSizeOf[int32]()
-	int32Int32MapMaxLength    = maxContainerCount(int32Int32MapElemBytes)
-	int64Int64MapElemBytes    = containerSizeOf[int64]() + containerSizeOf[int64]()
-	int64Int64MapMaxLength    = maxContainerCount(int64Int64MapElemBytes)
-	intIntMapElemBytes        = containerSizeOf[int]() + containerSizeOf[int]()
-	intIntMapMaxLength        = maxContainerCount(intIntMapElemBytes)
+	stringStringMapMaxLength  = maxGraphCount(stringStringMapElemBytes)
+	stringInt64MapElemBytes   = stringElementBytes + graphSizeOf[int64]()
+	stringInt64MapMaxLength   = maxGraphCount(stringInt64MapElemBytes)
+	stringInt32MapElemBytes   = stringElementBytes + graphSizeOf[int32]()
+	stringInt32MapMaxLength   = maxGraphCount(stringInt32MapElemBytes)
+	stringIntMapElemBytes     = stringElementBytes + graphSizeOf[int]()
+	stringIntMapMaxLength     = maxGraphCount(stringIntMapElemBytes)
+	stringFloat64MapElemBytes = stringElementBytes + graphSizeOf[float64]()
+	stringFloat64MapMaxLength = maxGraphCount(stringFloat64MapElemBytes)
+	stringBoolMapElemBytes    = stringElementBytes + graphSizeOf[bool]()
+	stringBoolMapMaxLength    = maxGraphCount(stringBoolMapElemBytes)
+	int32Int32MapElemBytes    = graphSizeOf[int32]() + graphSizeOf[int32]()
+	int32Int32MapMaxLength    = maxGraphCount(int32Int32MapElemBytes)
+	int64Int64MapElemBytes    = graphSizeOf[int64]() + graphSizeOf[int64]()
+	int64Int64MapMaxLength    = maxGraphCount(int64Int64MapElemBytes)
+	intIntMapElemBytes        = graphSizeOf[int]() + graphSizeOf[int]()
+	intIntMapMaxLength        = maxGraphCount(intIntMapElemBytes)
 )
 
 // writeMapStringString writes map[string]string using chunk protocol
@@ -94,7 +94,7 @@ func readTypedMapSize(ctx *ReadContext, elemBytes int64, maxLength int64) (int, 
 	if ctx.HasError() {
 		return 0, false
 	}
-	if !ctx.reserveCountedContainerMemory(size, elemBytes, maxLength) {
+	if !ctx.reserveCountedGraphMemory(size, elemBytes, maxLength) {
 		return 0, false
 	}
 	if size == 0 {

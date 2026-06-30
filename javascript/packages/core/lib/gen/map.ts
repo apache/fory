@@ -27,6 +27,7 @@ import { AnyHelper } from "./any";
 import { ReadContext, WriteContext } from "../context";
 
 const REFERENCE_BYTES = 4;
+const MAP_BYTES = 1;
 
 const MapFlags = {
   /** Whether track elements ref. */
@@ -96,7 +97,11 @@ class MapChunkWriter {
     return flag;
   }
 
-  private writeHead(keyInfo: ElementInfo, valueInfo: ElementInfo, withOutSize = false) {
+  private writeHead(
+    keyInfo: ElementInfo,
+    valueInfo: ElementInfo,
+    withOutSize = false,
+  ) {
     // KV header
     const header = this.getHead(keyInfo, valueInfo);
     // chunkSize default 0 | KV header
@@ -144,7 +149,10 @@ class MapChunkWriter {
 
   endChunk() {
     if (this.chunkOffset > 0) {
-      this.writeContext.writer.setUint8Position(this.chunkOffset, this.chunkSize);
+      this.writeContext.writer.setUint8Position(
+        this.chunkOffset,
+        this.chunkSize,
+      );
       this.chunkSize = 0;
     }
   }
@@ -201,7 +209,11 @@ class MapAnySerializer {
           : this.writeContext.typeResolver.getSerializerByData(v);
 
       const header = mapChunkWriter.next(
-        new ElementInfo(keySerializer || null, k == null, keySerializer?.needToWriteRef() || false),
+        new ElementInfo(
+          keySerializer || null,
+          k == null,
+          keySerializer?.needToWriteRef() || false,
+        ),
         new ElementInfo(
           valueSerializer || null,
           v == null,
@@ -211,7 +223,10 @@ class MapAnySerializer {
       const keyHeader = header & 0b111;
       const valueHeader = header >> 3;
       if (mapChunkWriter.isFirst()) {
-        if (!(keyHeader & MapFlags.HAS_NULL) && !(valueHeader & MapFlags.HAS_NULL)) {
+        if (
+          !(keyHeader & MapFlags.HAS_NULL) &&
+          !(valueHeader & MapFlags.HAS_NULL)
+        ) {
           if (!(keyHeader & MapFlags.DECL_ELEMENT_TYPE)) {
             keySerializer?.writeTypeInfo(null);
           }
@@ -221,7 +236,8 @@ class MapAnySerializer {
         }
       }
 
-      const includeNone = keyHeader & MapFlags.HAS_NULL || valueHeader & MapFlags.HAS_NULL;
+      const includeNone =
+        keyHeader & MapFlags.HAS_NULL || valueHeader & MapFlags.HAS_NULL;
       if (!this.writeFlag(keyHeader, k)) {
         if (!includeNone) {
           keySerializer!.write(k);
@@ -253,28 +269,41 @@ class MapAnySerializer {
       return null;
     }
     if (!trackingRef) {
-      serializer = serializer == null ? AnyHelper.detectSerializer(this.readContext) : serializer;
+      serializer =
+        serializer == null
+          ? AnyHelper.detectSerializer(this.readContext)
+          : serializer;
       return this.readSerializerWithDepth(serializer!, false);
     }
 
     const flag = this.readContext.reader.readInt8();
     switch (flag) {
       case RefFlags.RefValueFlag:
-        serializer = serializer == null ? AnyHelper.detectSerializer(this.readContext) : serializer;
+        serializer =
+          serializer == null
+            ? AnyHelper.detectSerializer(this.readContext)
+            : serializer;
         return this.readSerializerWithDepth(serializer!, true);
       case RefFlags.RefFlag:
-        return this.readContext.getReadRef(this.readContext.reader.readVarUInt32());
+        return this.readContext.getReadRef(
+          this.readContext.reader.readVarUInt32(),
+        );
       case RefFlags.NullFlag:
         return null;
       case RefFlags.NotNullValueFlag:
-        serializer = serializer == null ? AnyHelper.detectSerializer(this.readContext) : serializer;
+        serializer =
+          serializer == null
+            ? AnyHelper.detectSerializer(this.readContext)
+            : serializer;
         return this.readSerializerWithDepth(serializer!, false);
     }
   }
 
   read(fromRef: boolean): any {
     let count = this.readContext.reader.readVarUint32Small7();
-    this.readContext.reserveContainerMemory(count * 2 * REFERENCE_BYTES);
+    this.readContext.reserveGraphMemory(
+      MAP_BYTES + count * 2 * REFERENCE_BYTES,
+    );
     const result = new Map();
     if (fromRef) {
       this.readContext.reference(result);
@@ -292,7 +321,10 @@ class MapAnySerializer {
       let keySerializer = this.keySerializer;
       let valueSerializer = this.valueSerializer;
 
-      if (!(keyHeader & MapFlags.HAS_NULL) && !(valueHeader & MapFlags.HAS_NULL)) {
+      if (
+        !(keyHeader & MapFlags.HAS_NULL) &&
+        !(valueHeader & MapFlags.HAS_NULL)
+      ) {
         if (!(keyHeader & MapFlags.DECL_ELEMENT_TYPE)) {
           keySerializer = AnyHelper.detectSerializer(this.readContext);
         }
@@ -347,9 +379,13 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
   private writeSpecificType(accessor: string) {
     const k = this.scope.uniqueName("k");
     const v = this.scope.uniqueName("v");
-    let keyHeader = this.keyGenerator.needToWriteRef() ? MapFlags.TRACKING_REF : 0;
+    let keyHeader = this.keyGenerator.needToWriteRef()
+      ? MapFlags.TRACKING_REF
+      : 0;
     keyHeader |= MapFlags.DECL_ELEMENT_TYPE;
-    let valueHeader = this.valueGenerator.needToWriteRef() ? MapFlags.TRACKING_REF : 0;
+    let valueHeader = this.valueGenerator.needToWriteRef()
+      ? MapFlags.TRACKING_REF
+      : 0;
     valueHeader |= MapFlags.DECL_ELEMENT_TYPE;
     const lastKeyIsNull = this.scope.uniqueName("lastKeyIsNull");
     const lastValueIsNull = this.scope.uniqueName("lastValueIsNull");
@@ -460,7 +496,10 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
     }).write(${accessor})`;
   }
 
-  private readSpecificType(accessor: (expr: string) => string, refState: string) {
+  private readSpecificType(
+    accessor: (expr: string) => string,
+    refState: string,
+  ) {
     const count = this.scope.uniqueName("count");
     const result = this.scope.uniqueName("result");
     // Skip depth tracking for leaf key/value types.
@@ -494,7 +533,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
 
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
-      ${readContextName}.reserveContainerMemory(${count} * 2 * ${REFERENCE_BYTES});
+      ${readContextName}.reserveGraphMemory(${MAP_BYTES} + ${count} * 2 * ${REFERENCE_BYTES});
       const ${result} = new Map();
       if (${refState}) {
         ${this.builder.referenceResolver.reference(result)}

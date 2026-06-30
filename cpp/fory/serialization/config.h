@@ -52,9 +52,9 @@ struct Config {
   /// When enabled, avoids duplicating shared objects and handles cycles.
   bool track_ref = true;
 
-  /// Maximum estimated container-owned memory accepted during one root
+  /// Maximum estimated graph memory accepted during one root
   /// deserialization. `-1` selects the automatic input-shaped limit.
-  int64_t max_container_memory_bytes = -1;
+  int64_t max_graph_memory_bytes = -1;
 
   /// Maximum accepted field count in one received struct TypeMeta.
   uint32_t max_type_fields = 512;

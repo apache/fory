@@ -34,6 +34,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
     where TDictionary : class, IDictionary<TKey, TValue>
     where TKey : notnull
 {
+    private const int MapBytes = 1;
     private const int ReferenceBytes = 4;
     private static readonly long MapElementBytes = (long)ElementBytes<TKey>() + ElementBytes<TValue>();
 
@@ -43,7 +44,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ReserveMapStorage(ReadContext context, int count)
     {
-        context.ReserveCountedContainerMemory(count, MapElementBytes);
+        context.ReserveGraphMemory(MapBytes + count * MapElementBytes);
     }
 
     public override TDictionary DefaultValue => null!;

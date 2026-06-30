@@ -155,6 +155,15 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
     }
 
     #[inline(always)]
+    fn fory_graph_self_size() -> usize {
+        if is_primitive_type::<T>() {
+            0
+        } else {
+            mem::size_of::<Self>()
+        }
+    }
+
+    #[inline(always)]
     fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
@@ -236,6 +245,11 @@ impl<T: Serializer + ForyDefault> Serializer for VecDeque<T> {
     }
 
     #[inline(always)]
+    fn fory_graph_self_size() -> usize {
+        mem::size_of::<Self>()
+    }
+
+    #[inline(always)]
     fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         Ok(TypeId::LIST)
     }
@@ -296,6 +310,11 @@ impl<T: Serializer + ForyDefault> Serializer for LinkedList<T> {
     #[inline(always)]
     fn fory_reserved_space() -> usize {
         mem::size_of::<u32>()
+    }
+
+    #[inline(always)]
+    fn fory_graph_self_size() -> usize {
+        mem::size_of::<Self>()
     }
 
     #[inline(always)]

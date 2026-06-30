@@ -102,6 +102,7 @@ public sealed class TypeInfo
         bool evolving = ResolveStructEvolving(type, userTypeKind);
         bool isNullableType = !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
         bool isRefType = type != typeof(string) && !type.IsValueType;
+        long boxedValueBytes = GraphMemory.ValueOwnerBytes<T>();
         return new TypeInfo(
             type,
             serializer,
@@ -118,10 +119,10 @@ public sealed class TypeInfo
             namespaceName: null,
             typeName: null,
             (context, value, hasGenerics) => WriteDataObject(serializer, context, value, hasGenerics),
-            context => serializer.ReadData(context),
+            context => ReadDataObject(serializer, context, boxedValueBytes),
             (context, value, refMode, writeTypeInfo, hasGenerics) =>
                 WriteObject(serializer, context, value, refMode, writeTypeInfo, hasGenerics),
-            (context, refMode, readTypeInfo) => serializer.Read(context, refMode, readTypeInfo),
+            (context, refMode, readTypeInfo) => ReadObject(serializer, context, refMode, readTypeInfo, boxedValueBytes),
             typeMetaFields,
             builtInTypeId,
             null);
@@ -178,6 +179,16 @@ public sealed class TypeInfo
         serializer.WriteData(context, CoerceRuntimeValue(serializer, value), hasGenerics);
     }
 
+    private static object? ReadDataObject<T>(Serializer<T> serializer, ReadContext context, long boxedValueBytes)
+    {
+        if (boxedValueBytes != 0)
+        {
+            context.ReserveGraphMemory(boxedValueBytes);
+        }
+
+        return serializer.ReadData(context);
+    }
+
     private static void WriteObject<T>(
         Serializer<T> serializer,
         WriteContext context,
@@ -187,6 +198,21 @@ public sealed class TypeInfo
         bool hasGenerics)
     {
         serializer.Write(context, CoerceRuntimeValue(serializer, value), refMode, writeTypeInfo, hasGenerics);
+    }
+
+    private static object? ReadObject<T>(
+        Serializer<T> serializer,
+        ReadContext context,
+        RefMode refMode,
+        bool readTypeInfo,
+        long boxedValueBytes)
+    {
+        if (boxedValueBytes != 0)
+        {
+            context.ReserveGraphMemory(boxedValueBytes);
+        }
+
+        return serializer.Read(context, refMode, readTypeInfo);
     }
 
     private static T CoerceRuntimeValue<T>(Serializer<T> serializer, object? value)

@@ -68,7 +68,7 @@ public class Config implements Serializable {
   private final int maxTypeMetaBytes;
   private final int maxSchemaVersionsPerType;
   private final int maxAverageSchemaVersionsPerType;
-  private final long maxContainerMemoryBytes;
+  private final long maxGraphMemoryBytes;
   private final float mapRefLoadFactor;
   private final boolean forVirtualThread;
 
@@ -115,7 +115,7 @@ public class Config implements Serializable {
     maxTypeMetaBytes = builder.maxTypeMetaBytes;
     maxSchemaVersionsPerType = builder.maxSchemaVersionsPerType;
     maxAverageSchemaVersionsPerType = builder.maxAverageSchemaVersionsPerType;
-    maxContainerMemoryBytes = builder.maxContainerMemoryBytes;
+    maxGraphMemoryBytes = builder.maxGraphMemoryBytes;
     mapRefLoadFactor = builder.mapRefLoadFactor;
     forVirtualThread = builder.forVirtualThread;
   }
@@ -322,9 +322,9 @@ public class Config implements Serializable {
     return maxAverageSchemaVersionsPerType;
   }
 
-  /** Returns the root-operation estimated container memory limit in bytes, or -1 for auto. */
-  public long maxContainerMemoryBytes() {
-    return maxContainerMemoryBytes;
+  /** Returns the root-operation estimated graph memory limit in bytes, or -1 for auto. */
+  public long maxGraphMemoryBytes() {
+    return maxGraphMemoryBytes;
   }
 
   /** Returns loadFactor of MacRef's writtenObjects. */
@@ -375,7 +375,7 @@ public class Config implements Serializable {
         && maxTypeMetaBytes == config.maxTypeMetaBytes
         && maxSchemaVersionsPerType == config.maxSchemaVersionsPerType
         && maxAverageSchemaVersionsPerType == config.maxAverageSchemaVersionsPerType
-        && maxContainerMemoryBytes == config.maxContainerMemoryBytes
+        && maxGraphMemoryBytes == config.maxGraphMemoryBytes
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
         && longEncoding == config.longEncoding
         && forVirtualThread == config.forVirtualThread;
@@ -411,7 +411,7 @@ public class Config implements Serializable {
         maxTypeMetaBytes,
         maxSchemaVersionsPerType,
         maxAverageSchemaVersionsPerType,
-        maxContainerMemoryBytes,
+        maxGraphMemoryBytes,
         metaShareEnabled,
         scopedMetaShareEnabled,
         metaCompressor,

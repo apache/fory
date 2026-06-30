@@ -40,7 +40,7 @@ class Fory:
         max_type_meta_bytes: int = 4096,
         max_schema_versions_per_type: int = 10,
         max_average_schema_versions_per_type: int = 3,
-        max_container_memory_bytes: int = -1,
+        max_graph_memory_bytes: int = -1,
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
@@ -71,7 +71,7 @@ class ThreadSafeFory:
 | `max_type_meta_bytes`                  | `int`                           | `4096`  | Maximum encoded body bytes accepted for one received TypeDef body, excluding the 8-byte header and any extended-size varint.                             |
 | `max_schema_versions_per_type`         | `int`                           | `10`    | Maximum accepted remote metadata versions for one logical type.                                                                                          |
 | `max_average_schema_versions_per_type` | `int`                           | `3`     | Average accepted remote metadata versions across accepted remote types. The effective global floor is `8192` schemas.                                    |
-| `max_container_memory_bytes`           | `int`                           | `-1`    | Maximum estimated container-owned memory for one root deserialization. `-1` selects the automatic limit.                                                 |
+| `max_graph_memory_bytes`               | `int`                           | `-1`    | Maximum estimated shallow graph memory for one root deserialization. `-1` selects the automatic limit.                                                   |
 | `policy`                               | `DeserializationPolicy \| None` | `None`  | Deserialization policy used for security checks. Strongly recommended when `strict=False`.                                                               |
 | `field_nullable`                       | `bool`                          | `False` | Treat dataclass fields as nullable by default.                                                                                                           |
 | `meta_compressor`                      | `Any`                           | `None`  | Optional metadata compressor used for compatible-mode metadata encoding.                                                                                 |
@@ -199,7 +199,7 @@ fory = pyfory.Fory(
     max_type_meta_bytes=4096,
     max_schema_versions_per_type=10,
     max_average_schema_versions_per_type=3,
-    max_container_memory_bytes=-1,
+    max_graph_memory_bytes=-1,
 )
 
 fory.register(UserModel, name="example.User")
@@ -225,11 +225,11 @@ Received remote metadata is also limited:
 - `max_type_meta_bytes` limits the encoded body bytes accepted for one received TypeDef body.
 - `max_schema_versions_per_type` limits accepted remote metadata versions for one logical type.
 - `max_average_schema_versions_per_type` limits the average across accepted remote types.
-- `max_container_memory_bytes` limits estimated lower-bound list, tuple, set, dict, and
-  object-array storage created during one root deserialization. Empty containers without backing
-  storage normally do not consume the budget. The default `-1` uses `input_bytes * 8 + 64 KiB` for
-  known-length inputs and `128 MiB` for stream inputs. Set a positive byte value for trusted
-  payloads that legitimately contain larger container graphs.
+- `max_graph_memory_bytes` limits estimated shallow graph memory created during one root
+  deserialization, including materialized lists, tuples, sets, dicts, object arrays, structs, and
+  Python objects. The default `-1` uses `input_bytes * 8 + 64 KiB` for known-length inputs and
+  `128 MiB` for stream inputs. Set a positive byte value for trusted payloads that legitimately
+  contain larger object graphs.
 
 These limits do not change `strict`, `policy`, dynamic loading, unknown-class handling, or
 schema-evolution semantics.
@@ -286,7 +286,7 @@ unchanged.
 - Register all expected application types before deserialization.
 - Use `DeserializationPolicy` when `strict=False` is necessary.
 - Keep `max_depth` low enough to reject unexpectedly deep payloads.
-- Keep `max_container_memory_bytes=-1` unless a trusted workload needs a higher explicit limit.
+- Keep `max_graph_memory_bytes=-1` unless a trusted workload needs a higher explicit limit.
 - Do not treat xlang/native mode choice as a security control.
 
 ## Related Topics
