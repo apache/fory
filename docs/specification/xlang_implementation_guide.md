@@ -407,15 +407,17 @@ fixed `128 MiB` for true stream or unknown-length root input. Do not add dynamic
 stream bytes-read accounting for this budget.
 
 The budget estimates container-owned memory, not exact heap bytes. Charge fixed
-container object cost, backing capacity, map table and entry overhead,
-reference arrays, and inline/value element storage where the runtime stores
-container elements inline. Charge zero-size containers for their fixed cost.
-Skip dedicated string, binary, primitive array, and primitive dense-array owners,
-but do not skip general inline-value containers such as vectors or lists of
-value objects. If reference slot size is not cheap or reliable to query, use a
-4-byte reference slot. Reject arithmetic overflow before budget comparison or
-allocation, and keep the existing `checkReadableBytes` proof before backing
-allocation or capacity reservation.
+container object cost, backing capacity, map table and entry overhead where the
+runtime has cheap reliable signals, reference arrays, and inline/value element
+storage where the runtime stores container elements inline. Charge zero-size
+containers for their fixed cost. Skip dedicated string, binary, primitive
+array, and primitive dense-array owners, but do not skip general inline-value
+containers such as vectors or lists of value objects. If reference slot size is
+not cheap or reliable to query, use a 4-byte reference slot. Native runtimes may
+use conservative lower-bound estimates instead of guessing non-portable
+container, allocator, or debug-layout details. Reject arithmetic overflow before
+budget comparison or allocation, and keep the existing `checkReadableBytes`
+proof before backing allocation or capacity reservation.
 
 For TypeDef or TypeMeta bodies, first prove that the encoded metadata body bytes
 are readable through the byte owner. Field-list allocation should happen after

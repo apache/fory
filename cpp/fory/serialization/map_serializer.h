@@ -82,9 +82,6 @@ struct MapReserver<MapType,
   static void reserve(MapType &map, uint32_t size) { map.reserve(size); }
 };
 
-constexpr size_t kMapEntryBudgetBytes = 16;
-constexpr size_t kMapReferenceBudgetBytes = sizeof(void *);
-
 template <typename MapType>
 inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
   // Lazy error propagation may continue into later readers; do not let that
@@ -94,14 +91,13 @@ inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
   }
   using Key = typename MapType::key_type;
   using Value = typename MapType::mapped_type;
-  static_assert(sizeof(Key) <= std::numeric_limits<size_t>::max() -
-                                   sizeof(Value) - kMapEntryBudgetBytes -
-                                   kMapReferenceBudgetBytes * 3,
+  // Portable lower-bound estimate only: ordered and unordered map node layouts
+  // vary across STL implementations, allocators, and debug modes.
+  static_assert(sizeof(Key) <=
+                    std::numeric_limits<size_t>::max() - sizeof(Value),
                 "map entry memory estimate overflows");
   constexpr size_t fixed_bytes = sizeof(MapType);
-  constexpr size_t elem_bytes = sizeof(Key) + sizeof(Value) +
-                                kMapEntryBudgetBytes +
-                                kMapReferenceBudgetBytes * 3;
+  constexpr size_t elem_bytes = sizeof(Key) + sizeof(Value);
   if (FORY_PREDICT_FALSE((!ctx.template reserve_counted_container_memory<
                            fixed_bytes, elem_bytes>(length)))) {
     return false;

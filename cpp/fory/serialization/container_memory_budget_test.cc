@@ -19,10 +19,18 @@
 
 #include "fory/serialization/fory.h"
 #include "gtest/gtest.h"
+#include <array>
+#include <climits>
 #include <cstdint>
+#include <deque>
+#include <forward_list>
+#include <list>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -54,6 +62,17 @@ struct BudgetSiblings {
   FORY_STRUCT(BudgetSiblings, left, right);
 };
 
+struct BudgetFixedArrayOwner {
+  std::array<int32_t, 4> prefix{};
+  std::vector<BudgetItem> items;
+
+  bool operator==(const BudgetFixedArrayOwner &other) const {
+    return prefix == other.prefix && items == other.items;
+  }
+
+  FORY_STRUCT(BudgetFixedArrayOwner, prefix, items);
+};
+
 template <typename Fn>
 auto with_fory(int64_t max_container_memory_bytes, Fn &&fn) {
   auto fory = Fory::builder()
@@ -64,6 +83,7 @@ auto with_fory(int64_t max_container_memory_bytes, Fn &&fn) {
                   .build();
   fory.register_struct<BudgetItem>(1);
   fory.register_struct<BudgetSiblings>(2);
+  fory.register_struct<BudgetFixedArrayOwner>(3);
   return std::forward<Fn>(fn)(fory);
 }
 
@@ -77,6 +97,24 @@ size_t nested_empty_budget(size_t count) {
   using Inner = std::vector<std::string>;
   using Outer = std::vector<Inner>;
   return sizeof(Outer) + count * sizeof(Inner) + count * sizeof(Inner);
+}
+
+template <typename T>
+void expect_budget_boundary(const T &value, size_t required) {
+  ASSERT_GT(required, 0u);
+  auto bytes = serialize_value(value);
+
+  auto small_result =
+      with_fory(static_cast<int64_t>(required - 1),
+                [&](Fory &fory) { return fory.deserialize<T>(bytes); });
+  ASSERT_FALSE(small_result.ok());
+  EXPECT_EQ(small_result.error().code(), ErrorCode::InvalidData);
+
+  auto exact_result =
+      with_fory(static_cast<int64_t>(required),
+                [&](Fory &fory) { return fory.deserialize<T>(bytes); });
+  ASSERT_TRUE(exact_result.ok()) << exact_result.error().to_string();
+  EXPECT_EQ(exact_result.value(), value);
 }
 
 TEST(ContainerMemoryBudgetTest, KnownLengthAutoBudget) {
@@ -197,24 +235,78 @@ TEST(ContainerMemoryBudgetTest, SiblingCumulativeBudget) {
 
 TEST(ContainerMemoryBudgetTest, MapBudget) {
   std::map<std::string, int32_t> value{{"a", 1}, {"b", 2}, {"c", 3}};
-  auto bytes = serialize_value(value);
-  const size_t entry_bytes =
-      sizeof(std::string) + sizeof(int32_t) + 16 + sizeof(void *) * 3;
+  const size_t entry_bytes = sizeof(std::string) + sizeof(int32_t);
   const size_t required = sizeof(value) + value.size() * entry_bytes;
 
-  auto small_result =
-      with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
-        return fory.deserialize<std::map<std::string, int32_t>>(bytes);
-      });
-  ASSERT_FALSE(small_result.ok());
-  EXPECT_EQ(small_result.error().code(), ErrorCode::InvalidData);
+  expect_budget_boundary(value, required);
+}
 
-  auto exact_result =
-      with_fory(static_cast<int64_t>(required), [&](Fory &fory) {
-        return fory.deserialize<std::map<std::string, int32_t>>(bytes);
-      });
-  ASSERT_TRUE(exact_result.ok()) << exact_result.error().to_string();
-  EXPECT_EQ(exact_result.value(), value);
+TEST(ContainerMemoryBudgetTest, CollectionLowerBounds) {
+  std::deque<BudgetItem> deque_value(4);
+  expect_budget_boundary(deque_value,
+                         sizeof(deque_value) +
+                             deque_value.size() * sizeof(BudgetItem));
+
+  std::list<BudgetItem> list_value(4);
+  expect_budget_boundary(
+      list_value, sizeof(list_value) + list_value.size() * sizeof(BudgetItem));
+
+  std::forward_list<BudgetItem> forward_value(4);
+  expect_budget_boundary(forward_value, sizeof(forward_value) +
+                                            size_t{4} * sizeof(BudgetItem));
+}
+
+TEST(ContainerMemoryBudgetTest, VectorBoolUsesPackedStorage) {
+  std::vector<bool> value(33);
+  value[0] = true;
+  value[32] = true;
+  const size_t packed_bytes = (value.size() + CHAR_BIT - 1) / CHAR_BIT;
+  const size_t required = sizeof(value) + packed_bytes;
+  ASSERT_LT(required, sizeof(value) + value.size());
+
+  expect_budget_boundary(value, required);
+}
+
+TEST(ContainerMemoryBudgetTest, OrderedSetAndMapLowerBounds) {
+  std::set<int32_t> set_value{1, 2, 3, 4};
+  expect_budget_boundary(set_value, sizeof(set_value) +
+                                        set_value.size() * sizeof(int32_t));
+
+  std::map<std::string, int32_t> map_value{{"a", 1}, {"b", 2}};
+  expect_budget_boundary(
+      map_value, sizeof(map_value) + map_value.size() * (sizeof(std::string) +
+                                                         sizeof(int32_t)));
+}
+
+TEST(ContainerMemoryBudgetTest, UnorderedContainersLowerBounds) {
+  std::unordered_set<int32_t> set_value{1, 2, 3, 4};
+  expect_budget_boundary(set_value, sizeof(set_value) +
+                                        set_value.size() * sizeof(int32_t));
+
+  std::unordered_map<std::string, int32_t> map_value{{"a", 1}, {"b", 2}};
+  expect_budget_boundary(
+      map_value, sizeof(map_value) + map_value.size() * (sizeof(std::string) +
+                                                         sizeof(int32_t)));
+}
+
+TEST(ContainerMemoryBudgetTest, ArrayHasNoStandaloneReservation) {
+  std::array<int32_t, 4> value{{1, 2, 3, 4}};
+  auto bytes = serialize_value(value);
+  auto result = with_fory(1, [&](Fory &fory) {
+    return fory.deserialize<std::array<int32_t, 4>>(bytes);
+  });
+  ASSERT_TRUE(result.ok()) << result.error().to_string();
+  EXPECT_EQ(result.value(), value);
+}
+
+TEST(ContainerMemoryBudgetTest, FixedInlineOwnerChargesNestedVector) {
+  BudgetFixedArrayOwner value;
+  value.prefix = {{1, 2, 3, 4}};
+  value.items.resize(3);
+  const size_t required =
+      sizeof(value.items) + value.items.size() * sizeof(BudgetItem);
+
+  expect_budget_boundary(value, required);
 }
 
 TEST(ContainerMemoryBudgetTest, DensePathsSkipped) {

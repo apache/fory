@@ -22,6 +22,7 @@
 #include "fory/serialization/array_serializer.h"
 #include "fory/serialization/serializer.h"
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -29,6 +30,7 @@
 #include <limits>
 #include <list>
 #include <set>
+#include <type_traits>
 #include <typeindex>
 #include <unordered_set>
 #include <vector>
@@ -380,32 +382,12 @@ struct has_reserve<Container,
 template <typename Container>
 inline constexpr bool has_reserve_v = has_reserve<Container>::value;
 
-constexpr size_t kContainerEntryOverheadBytes = 16;
-constexpr size_t kContainerReferenceBytes = sizeof(void *);
-
-template <typename Container>
-struct is_std_vector_container : std::false_type {};
-
-template <typename T, typename Alloc>
-struct is_std_vector_container<std::vector<T, Alloc>> : std::true_type {};
-
-template <typename Container>
-inline constexpr bool is_std_vector_container_v =
-    is_std_vector_container<Container>::value;
-
 template <typename Container>
 constexpr size_t collection_element_memory_bytes() {
   using Elem = typename Container::value_type;
-  if constexpr (is_std_vector_container_v<Container>) {
-    return sizeof(Elem);
-  } else {
-    static_assert(sizeof(Elem) <= std::numeric_limits<size_t>::max() -
-                                      kContainerEntryOverheadBytes -
-                                      kContainerReferenceBytes * 2,
-                  "container element memory estimate overflows");
-    return sizeof(Elem) + kContainerEntryOverheadBytes +
-           kContainerReferenceBytes * 2;
-  }
+  // Portable lower-bound estimate only: STL node/header/debug-layout details
+  // differ across implementations, so generic collections charge value storage.
+  return sizeof(Elem);
 }
 
 template <typename Container>
@@ -428,6 +410,33 @@ inline bool reserve_collection(Container &result, ReadContext &ctx,
   if constexpr (has_reserve_v<Container>) {
     result.reserve(length);
   }
+  return true;
+}
+
+template <typename Alloc>
+inline bool reserve_collection(std::vector<bool, Alloc> &result,
+                               ReadContext &ctx, uint32_t length) {
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return false;
+  }
+  constexpr size_t fixed_bytes = sizeof(std::vector<bool, Alloc>);
+  constexpr size_t max_packed_bytes =
+      (static_cast<size_t>(std::numeric_limits<uint32_t>::max()) + CHAR_BIT -
+       1) /
+      CHAR_BIT;
+  static_assert(fixed_bytes <=
+                    std::numeric_limits<size_t>::max() - max_packed_bytes,
+                "vector<bool> memory estimate overflows");
+  const size_t packed_bytes =
+      (static_cast<size_t>(length) + CHAR_BIT - 1) / CHAR_BIT;
+  if (FORY_PREDICT_FALSE(
+          !ctx.reserve_container_memory(fixed_bytes + packed_bytes))) {
+    return false;
+  }
+  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
+    return false;
+  }
+  result.reserve(length);
   return true;
 }
 
@@ -572,6 +581,126 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
         auto elem = Serializer<T>::read(
             ctx, track_ref ? RefMode::Tracking : RefMode::None, true);
         collection_insert(result, std::move(elem));
+      }
+    }
+  }
+
+  return result;
+}
+
+/// Read forward_list data without a temporary vector so budget accounting only
+/// covers the destination container's portable lower-bound storage.
+template <typename T, typename Alloc>
+inline std::forward_list<T, Alloc>
+read_forward_list_data_slow(ReadContext &ctx, uint32_t length) {
+  std::forward_list<T, Alloc> result;
+  if (length == 0) {
+    if (FORY_PREDICT_FALSE(
+            (!reserve_empty_collection<std::forward_list<T, Alloc>>(ctx)))) {
+      return result;
+    }
+    return result;
+  }
+
+  constexpr bool elem_is_polymorphic = is_polymorphic_v<T>;
+
+  uint8_t bitmap = ctx.read_uint8(ctx.error());
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return result;
+  }
+
+  bool track_ref = (bitmap & COLL_TRACKING_REF) != 0;
+  bool has_null = (bitmap & COLL_HAS_NULL) != 0;
+  bool is_decl_type = (bitmap & COLL_DECL_ELEMENT_TYPE) != 0;
+  bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
+
+  const TypeInfo *elem_type_info = nullptr;
+  if (is_same_type && !is_decl_type) {
+    elem_type_info = ctx.read_any_type_info(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return result;
+    }
+  }
+
+  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+    return result;
+  }
+
+  auto tail = result.before_begin();
+  auto append = [&](T &&elem) {
+    tail = result.insert_after(tail, std::move(elem));
+  };
+  auto append_default = [&]() { tail = result.emplace_after(tail); };
+
+  if (is_same_type) {
+    if (track_ref) {
+      for (uint32_t i = 0; i < length; ++i) {
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return result;
+        }
+        if constexpr (elem_is_polymorphic) {
+          auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::Tracking,
+                                                         *elem_type_info);
+          append(std::move(elem));
+        } else {
+          auto elem = Serializer<T>::read(ctx, RefMode::Tracking, false);
+          append(std::move(elem));
+        }
+      }
+    } else if (!has_null) {
+      for (uint32_t i = 0; i < length; ++i) {
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return result;
+        }
+        if constexpr (elem_is_polymorphic) {
+          auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::None,
+                                                         *elem_type_info);
+          append(std::move(elem));
+        } else {
+          auto elem = Serializer<T>::read(ctx, RefMode::None, false);
+          append(std::move(elem));
+        }
+      }
+    } else {
+      for (uint32_t i = 0; i < length; ++i) {
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return result;
+        }
+        bool has_value = read_null_only_flag(ctx, RefMode::NullOnly);
+        if (!has_value) {
+          append_default();
+        } else if constexpr (elem_is_polymorphic) {
+          auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::None,
+                                                         *elem_type_info);
+          append(std::move(elem));
+        } else {
+          auto elem = Serializer<T>::read(ctx, RefMode::None, false);
+          append(std::move(elem));
+        }
+      }
+    }
+  } else {
+    if (has_null && !track_ref) {
+      for (uint32_t i = 0; i < length; ++i) {
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return result;
+        }
+        bool has_value = read_null_only_flag(ctx, RefMode::NullOnly);
+        if (!has_value) {
+          append_default();
+        } else {
+          auto elem = Serializer<T>::read(ctx, RefMode::None, true);
+          append(std::move(elem));
+        }
+      }
+    } else {
+      for (uint32_t i = 0; i < length; ++i) {
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return result;
+        }
+        auto elem = Serializer<T>::read(
+            ctx, track_ref ? RefMode::Tracking : RefMode::None, true);
+        append(std::move(elem));
       }
     }
   }
@@ -1204,11 +1333,11 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
       return std::vector<bool, Alloc>();
     }
 
-    if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(size, ctx.error()))) {
-      return std::vector<bool, Alloc>();
+    std::vector<bool, Alloc> result;
+    if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
+      return result;
     }
-
-    std::vector<bool, Alloc> result(size);
+    result.resize(size);
     Buffer &buffer = ctx.buffer();
     if (size > 0) {
       const uint8_t *src = buffer.data() + buffer.reader_index();
@@ -1698,13 +1827,11 @@ struct Serializer<std::forward_list<T, Alloc>> {
     }
 
     // Dispatch to slow path for polymorphic/shared-ref elements
-    // Read elements into a temporary vector then build forward_list
-    // (forward_list doesn't have push_back, only push_front)
-    std::vector<T> temp;
     constexpr bool is_slow_path = is_polymorphic_v<T> || is_shared_ref_v<T>;
     if constexpr (is_slow_path) {
-      temp = read_collection_data_slow<T, std::vector<T>>(ctx, length);
+      return read_forward_list_data_slow<T, Alloc>(ctx, length);
     } else {
+      auto tail = result.before_begin();
       // Fast path for non-polymorphic, non-shared-ref elements
 
       // Elements header bitmap (CollectionFlags)
@@ -1737,53 +1864,44 @@ struct Serializer<std::forward_list<T, Alloc>> {
       if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
         return result;
       }
-
-      if (FORY_PREDICT_FALSE(!reserve_collection(temp, ctx, length))) {
-        return result;
-      }
       // Fast path: no tracking, no nulls, elements have declared type
       if (!track_ref && !has_null && is_same_type) {
         for (uint32_t i = 0; i < length; ++i) {
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
-            break;
+            return result;
           }
           auto elem = Serializer<T>::read(ctx, RefMode::None, false);
-          temp.push_back(std::move(elem));
+          tail = result.insert_after(tail, std::move(elem));
         }
       } else {
         // General path: handle HAS_NULL and/or TRACKING_REF
         for (uint32_t i = 0; i < length; ++i) {
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
-            break;
+            return result;
           }
           if (track_ref) {
             auto elem = Serializer<T>::read(ctx, RefMode::Tracking, false);
-            temp.push_back(std::move(elem));
+            tail = result.insert_after(tail, std::move(elem));
           } else if (has_null) {
             bool has_value_elem = read_null_only_flag(ctx, RefMode::NullOnly);
             if (!has_value_elem) {
-              temp.emplace_back();
+              tail = result.emplace_after(tail);
             } else {
               if constexpr (is_nullable_v<T>) {
                 using Inner = nullable_element_t<T>;
                 auto inner = Serializer<Inner>::read(ctx, RefMode::None, false);
-                temp.emplace_back(std::move(inner));
+                tail = result.emplace_after(tail, std::move(inner));
               } else {
                 auto elem = Serializer<T>::read(ctx, RefMode::None, false);
-                temp.push_back(std::move(elem));
+                tail = result.insert_after(tail, std::move(elem));
               }
             }
           } else {
             auto elem = Serializer<T>::read(ctx, RefMode::None, false);
-            temp.push_back(std::move(elem));
+            tail = result.insert_after(tail, std::move(elem));
           }
         }
       }
-    }
-
-    // Build forward_list in reverse order using push_front
-    for (auto it = temp.rbegin(); it != temp.rend(); ++it) {
-      result.push_front(std::move(*it));
     }
     return result;
   }
@@ -2072,20 +2190,13 @@ struct Serializer<std::forward_list<T, Alloc>> {
     if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
       return result;
     }
-    std::vector<T> temp;
-    if (FORY_PREDICT_FALSE(!reserve_collection(temp, ctx, size))) {
-      return result;
-    }
+    auto tail = result.before_begin();
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        break;
+        return result;
       }
       auto elem = Serializer<T>::read_data(ctx);
-      temp.push_back(std::move(elem));
-    }
-    // Build forward_list in reverse order
-    for (auto it = temp.rbegin(); it != temp.rend(); ++it) {
-      result.push_front(std::move(*it));
+      tail = result.insert_after(tail, std::move(elem));
     }
     return result;
   }

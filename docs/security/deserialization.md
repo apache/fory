@@ -225,8 +225,8 @@ Container budget accounting should:
   deserialization `finally`;
 - reject arithmetic overflow before comparing budget or allocating;
 - charge fixed container object cost, backing capacity, map table and entry
-  overhead, reference arrays, and inline or value storage where a runtime stores
-  elements inline;
+  overhead where the runtime has cheap reliable signals, reference arrays, and
+  inline or value storage where a runtime stores elements inline;
 - charge fixed cost even for zero-size containers;
 - preserve existing byte-availability checks before backing allocation or
   capacity reservation;
@@ -240,6 +240,10 @@ query. Inline/value containers such as a value-type vector or list must charge
 the inline element storage instead of treating those elements as references.
 General inline-value containers must not be skipped just because dedicated
 primitive dense arrays are skipped.
+
+Native runtimes may use conservative lower-bound estimates when exact container
+layout is not portable. For example, C++ STL node, allocator, and debug-mode
+overheads should not be guessed when only value storage is reliably known.
 
 ## Skip Semantics
 
