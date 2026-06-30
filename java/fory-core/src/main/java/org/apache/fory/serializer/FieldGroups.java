@@ -21,8 +21,6 @@ package org.apache.fory.serializer;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -161,20 +159,8 @@ public class FieldGroups {
     return fieldInfo;
   }
 
-  private static boolean hasOnlyObjectParams(TypeRef<?> typeRef, GenericType genericType) {
-    if (!TypeUtils.isCollection(typeRef.getRawType())) {
-      return Arrays.stream(genericType.getTypeParameters())
-          .allMatch(p -> p.getCls() == Object.class);
-    }
-    if (typeRef.hasExplicitTypeArguments()) {
-      return typeRef.getTypeArguments().stream().allMatch(t -> t.getRawType() == Object.class);
-    }
-    if (typeRef.getType() instanceof ParameterizedType) {
-      Type[] args = ((ParameterizedType) typeRef.getType()).getActualTypeArguments();
-      return Arrays.stream(args).allMatch(t -> TypeUtils.getRawType(t) == Object.class);
-    }
-    return genericType.getTypeParametersCount() > 0
-        && Arrays.stream(genericType.getTypeParameters()).allMatch(p -> p.getCls() == Object.class);
+  private static boolean hasOnlyObjectParams(GenericType genericType) {
+    return Arrays.stream(genericType.getTypeParameters()).allMatch(p -> p.getCls() == Object.class);
   }
 
   public enum FieldCodecCategory {
@@ -282,16 +268,13 @@ public class FieldGroups {
       }
       Class<?> cls = t.getCls();
       if (t.getTypeParametersCount() > 0) {
-        if (hasOnlyObjectParams(typeRef, t)) {
+        if (hasOnlyObjectParams(t)) {
           t = new GenericType(t.getTypeRef(), t.isMonomorphic());
         }
       }
       genericType = t;
       Field field = descriptor.getField();
-      // Collection GenericType is built with element-only parameters. Replaying the field's
-      // declared type-argument indexes would attach non-element annotations to the element for
-      // custom collections such as MyList<A, E>.
-      if (field != null && !resolver.isCollectionDescriptor(d)) {
+      if (field != null) {
         TypeUtils.applyFieldRefTrackingOverride(t, field, resolver.trackingRef());
       }
       if (needsClassInfoHolder(resolver, cls)) {

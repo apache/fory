@@ -86,19 +86,12 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
 
   private GenericType getElementGenericType(ReadContext readContext, int depth) {
     GenericType genericType = readContext.getGenerics().nextGenericType(depth);
-    return getElementGenericType(genericType);
+    return genericType == null ? null : genericType.getTypeParameter0();
   }
 
   private GenericType getElementGenericType(WriteContext writeContext, int depth) {
     GenericType genericType = writeContext.getGenerics().nextGenericType(depth);
-    return getElementGenericType(genericType);
-  }
-
-  private GenericType getElementGenericType(GenericType genericType) {
-    if (genericType == null) {
-      return null;
-    }
-    return genericType.getTypeParameter0();
+    return genericType == null ? null : genericType.getTypeParameter0();
   }
 
   /**

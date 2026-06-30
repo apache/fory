@@ -21,7 +21,6 @@ package org.apache.fory.meta;
 
 import static org.apache.fory.type.TypeUtils.COLLECTION_TYPE;
 import static org.apache.fory.type.TypeUtils.MAP_TYPE;
-import static org.apache.fory.type.TypeUtils.OBJECT_TYPE;
 import static org.apache.fory.type.TypeUtils.collectionOf;
 import static org.apache.fory.type.TypeUtils.getArrayComponentInfo;
 import static org.apache.fory.type.TypeUtils.getArrayDimensions;
@@ -272,14 +271,6 @@ public class FieldTypes {
 
     if (COLLECTION_TYPE.isSupertypeOf(genericType.getTypeRef())
         || (isXlang && (resolver.isCollection(rawType) || resolver.isSet(rawType)))) {
-
-      TypeRef<?> elementTypeRef = TypeUtils.getElementType(genericType.getTypeRef());
-      // Recursive collection element types, such as SelfList extends ArrayList<SelfList>, must
-      // keep the collection wrapper but stop descending into their own metadata.
-      if (genericType.getCls() == elementTypeRef.getRawType()) {
-        elementTypeRef = OBJECT_TYPE;
-      }
-
       return new CollectionFieldType(
           typeId,
           nullable,
@@ -287,10 +278,9 @@ public class FieldTypes {
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              resolver.buildGenericType(elementTypeRef)));
+              getTypeParameter(genericType, 0)));
     } else if (MAP_TYPE.isSupertypeOf(genericType.getTypeRef())
         || (isXlang && resolver.isMap(rawType))) {
-      Tuple2<TypeRef<?>, TypeRef<?>> mapKeyValueType = getMapKeyValueType(genericType);
       return new MapFieldType(
           typeId,
           nullable,
@@ -298,15 +288,11 @@ public class FieldTypes {
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              mapKeyValueType.f0 == null
-                  ? GenericType.build(Object.class)
-                  : resolver.buildGenericType(mapKeyValueType.f0)),
+              getTypeParameter(genericType, 0)),
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              mapKeyValueType.f1 == null
-                  ? GenericType.build(Object.class)
-                  : resolver.buildGenericType(mapKeyValueType.f1)));
+              getTypeParameter(genericType, 1)));
     } else if (isUnionType || Union.class.isAssignableFrom(rawType)) {
       return new UnionFieldType(nullable, trackingRef);
     } else if (Types.isEnumType(typeId)) {
@@ -353,16 +339,11 @@ public class FieldTypes {
     }
   }
 
-  private static Tuple2<TypeRef<?>, TypeRef<?>> getMapKeyValueType(GenericType genericType) {
-    if (genericType.getTypeParametersCount() >= 2) {
-      return Tuple2.of(
-          genericType.getTypeParameter0().getTypeRef(),
-          genericType.getTypeParameter1().getTypeRef());
+  private static GenericType getTypeParameter(GenericType genericType, int index) {
+    if (genericType.getTypeParametersCount() <= index) {
+      return GenericType.build(Object.class);
     }
-    if (!MAP_TYPE.isSupertypeOf(genericType.getTypeRef())) {
-      return Tuple2.of(TypeRef.of(Object.class), TypeRef.of(Object.class));
-    }
-    return TypeUtils.getMapKeyValueType(genericType.getTypeRef());
+    return genericType.getTypeParameters()[index];
   }
 
   private static TypeExtMeta primitiveListInlineMeta(TypeRef<?> typeRef) {
@@ -929,12 +910,8 @@ public class FieldTypes {
           return declared;
         }
         TypeExtMeta extMeta = typeExtMeta(typeId, nullable, trackingRef, declared);
-        if (!java.util.Collection.class.isAssignableFrom(declaredClass)
-            && resolver.isCollection(declaredClass)) {
-          return TypeRef.of(
-              declaredClass, extMeta, java.util.Collections.singletonList(elementType), null);
-        }
-        return collectionOf(declaredClass, elementType, extMeta);
+        return TypeRef.of(
+            declaredClass, extMeta, java.util.Collections.singletonList(elementType), null);
       }
       // Build array type from element type
       // elementType could be base type (int) or intermediate array (int[])
@@ -1036,12 +1013,8 @@ public class FieldTypes {
         TypeRef<?> keyTypeRef = keyType.toTypeToken(classResolver, keyDecl);
         TypeRef<?> valueTypeRef = valueType.toTypeToken(classResolver, valueDecl);
         Class<?> declaredClass = declared.getRawType();
-        if (!java.util.Map.class.isAssignableFrom(declaredClass)
-            && classResolver.isMap(declaredClass)) {
-          return TypeRef.of(
-              declaredClass, extMeta, java.util.Arrays.asList(keyTypeRef, valueTypeRef), null);
-        }
-        return mapOf(declaredClass, keyTypeRef, valueTypeRef, extMeta);
+        return TypeRef.of(
+            declaredClass, extMeta, java.util.Arrays.asList(keyTypeRef, valueTypeRef), null);
       }
       return mapOf(
           keyType.toTypeToken(classResolver, keyDecl),

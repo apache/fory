@@ -70,11 +70,17 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.Ref;
+import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.config.Int64Encoding;
+import org.apache.fory.config.Language;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.FieldTypes;
+import org.apache.fory.meta.FieldTypes.CollectionFieldType;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
@@ -252,6 +258,195 @@ public class CollectionSerializersTest extends ForyTestBase {
     fory.getWriteContext().getGenerics().popGenericType(fory.getWriteContext().getDepth());
     fory.getReadContext().getGenerics().popGenericType(fory.getReadContext().getDepth());
     assertThrowsCause(RuntimeException.class, () -> fory.deserialize(bytes2));
+  }
+
+  public static class MultiParamList<A, E> extends ArrayList<E> {
+    private A metadata;
+
+    public MultiParamList() {}
+
+    public MultiParamList(A metadata) {
+      this.metadata = metadata;
+    }
+
+    public A getMetadata() {
+      return metadata;
+    }
+
+    public void setMetadata(A metadata) {
+      this.metadata = metadata;
+    }
+  }
+
+  public static class MultiParamListHolder {
+    private String name;
+    private MultiParamList<String, Integer> numbers;
+
+    public MultiParamListHolder() {}
+
+    public MultiParamListHolder(String name, MultiParamList<String, Integer> numbers) {
+      this.name = name;
+      this.numbers = numbers;
+    }
+
+    public String getName() {
+      return name;
+    }
+
+    public MultiParamList<String, Integer> getNumbers() {
+      return numbers;
+    }
+  }
+
+  public static class CollectionRefItem {
+    public int id;
+  }
+
+  public static class MultiParamListRefHolder {
+    private MultiParamList<String, @Ref(enable = false) CollectionRefItem> noRefItems;
+    private MultiParamList<String, @Ref(enable = true) CollectionRefItem> refItems;
+
+    public MultiParamListRefHolder() {}
+  }
+
+  public static class FixedElementList<A> extends ArrayList<CollectionRefItem> {
+    private A metadata;
+
+    public FixedElementList() {}
+
+    public FixedElementList(A metadata) {
+      this.metadata = metadata;
+    }
+  }
+
+  public static class FixedElementListHolder {
+    private FixedElementList<@Ref(enable = false) CollectionRefItem> items;
+
+    public FixedElementListHolder() {}
+  }
+
+  public static class SelfList extends ArrayList<SelfList> {}
+
+  public static class SelfListHolder {
+    private SelfList values;
+
+    public SelfListHolder() {}
+
+    public SelfListHolder(SelfList values) {
+      this.values = values;
+    }
+
+    public SelfList getValues() {
+      return values;
+    }
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testMultiParamCollectionRoundTrip(boolean enableCodegen) {
+    MultiParamList<String, Integer> list = new MultiParamList<>("my-metadata");
+    list.add(1);
+    list.add(2);
+    list.add(3);
+
+    MultiParamListHolder holder = new MultiParamListHolder("test-container", list);
+    MultiParamListHolder cloned =
+        (MultiParamListHolder)
+            collectionGenericFory(enableCodegen)
+                .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
+
+    Assert.assertEquals(cloned.getName(), "test-container");
+    Assert.assertNotNull(cloned.getNumbers());
+    Assert.assertEquals(cloned.getNumbers().getMetadata(), "my-metadata");
+    Assert.assertEquals(cloned.getNumbers().size(), 3);
+    Assert.assertEquals(cloned.getNumbers().get(0), Integer.valueOf(1));
+    Assert.assertEquals(cloned.getNumbers().get(1), Integer.valueOf(2));
+    Assert.assertEquals(cloned.getNumbers().get(2), Integer.valueOf(3));
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testMultiParamCollectionRefOverride(boolean enableCodegen) {
+    CollectionRefItem noRefItem = new CollectionRefItem();
+    noRefItem.id = 1;
+    CollectionRefItem refItem = new CollectionRefItem();
+    refItem.id = 2;
+
+    MultiParamListRefHolder holder = new MultiParamListRefHolder();
+    holder.noRefItems = new MultiParamList<>("no-ref");
+    holder.noRefItems.add(noRefItem);
+    holder.noRefItems.add(noRefItem);
+    holder.refItems = new MultiParamList<>("ref");
+    holder.refItems.add(refItem);
+    holder.refItems.add(refItem);
+
+    MultiParamListRefHolder cloned =
+        (MultiParamListRefHolder)
+            collectionGenericFory(enableCodegen)
+                .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
+    Assert.assertNotSame(cloned.noRefItems.get(0), cloned.noRefItems.get(1));
+    Assert.assertSame(cloned.refItems.get(0), cloned.refItems.get(1));
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testFixedElementCollectionIgnoresMetadataRef(boolean enableCodegen) {
+    CollectionRefItem element = new CollectionRefItem();
+    element.id = 1;
+    CollectionRefItem metadata = new CollectionRefItem();
+    metadata.id = 2;
+
+    FixedElementListHolder holder = new FixedElementListHolder();
+    holder.items = new FixedElementList<>(metadata);
+    holder.items.add(element);
+    holder.items.add(element);
+
+    FixedElementListHolder cloned =
+        (FixedElementListHolder)
+            collectionGenericFory(enableCodegen)
+                .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
+    Assert.assertSame(cloned.items.get(0), cloned.items.get(1));
+  }
+
+  @Test
+  public void testSelfCollectionFieldType() throws NoSuchFieldException {
+    Fory fory = collectionGenericFory(true);
+    TypeResolver resolver = fory.getTypeResolver();
+    Field field = SelfListHolder.class.getDeclaredField("values");
+    FieldTypes.FieldType fieldType = FieldTypes.buildFieldType(resolver, field);
+    Assert.assertTrue(fieldType instanceof CollectionFieldType, fieldType.toString());
+
+    FieldTypes.FieldType elementType = ((CollectionFieldType) fieldType).getElementType();
+    Assert.assertFalse(elementType instanceof CollectionFieldType, elementType.toString());
+    Assert.assertEquals(elementType.getTypeId(), resolver.getTypeInfo(Object.class).getTypeId());
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testSelfCollectionRoundTrip(boolean enableCodegen) {
+    SelfList values = new SelfList();
+    values.add(values);
+    SelfListHolder holder = new SelfListHolder(values);
+
+    SelfListHolder cloned =
+        (SelfListHolder)
+            collectionGenericFory(enableCodegen)
+                .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
+
+    Assert.assertNotNull(cloned.getValues());
+    Assert.assertEquals(cloned.getValues().size(), 1);
+    Assert.assertSame(cloned.getValues().get(0), cloned.getValues());
+  }
+
+  private static Fory collectionGenericFory(boolean enableCodegen) {
+    return Fory.builder()
+        .withLanguage(Language.JAVA)
+        .requireClassRegistration(false)
+        .withRefTracking(true)
+        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withAsyncCompilation(false)
+        .withIntCompressed(true)
+        .withCodegen(enableCodegen)
+        .withLongCompressed(Int64Encoding.VARINT)
+        .withIntArrayCompressed(true)
+        .withLongArrayCompressed(true)
+        .build();
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
