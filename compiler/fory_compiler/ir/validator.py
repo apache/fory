@@ -38,6 +38,7 @@ from fory_compiler.ir.types import ARRAY_ELEMENT_KINDS, PrimitiveKind
 from fory_compiler.ir.type_id import compute_registered_type_id
 
 INVALID_MAP_KEY_KINDS = {
+    PrimitiveKind.ANY,
     PrimitiveKind.BYTES,
     PrimitiveKind.FLOAT16,
     PrimitiveKind.BFLOAT16,
@@ -45,9 +46,7 @@ INVALID_MAP_KEY_KINDS = {
     PrimitiveKind.FLOAT64,
     PrimitiveKind.DECIMAL,
 }
-INVALID_MAP_KEY_MESSAGE = (
-    "map keys do not support binary, float, decimal, list, map, or array types"
-)
+INVALID_MAP_KEY_MESSAGE = "map keys do not support any, binary, float, decimal, message, union, list, map, or array types"
 
 
 @dataclass
@@ -547,12 +546,30 @@ class SchemaValidator:
                 check_field(f, None)
 
     def _check_collection_type_rules(self) -> None:
-        def invalid_map_key(field_type: FieldType) -> bool:
+        def invalid_map_key(
+            field_type: FieldType,
+            enclosing_messages: Optional[List[Message]],
+        ) -> bool:
             if isinstance(field_type, PrimitiveType):
                 return field_type.kind in INVALID_MAP_KEY_KINDS
+            if isinstance(field_type, NamedType):
+                if enclosing_messages is not None:
+                    resolved = self._resolve_named_type(
+                        field_type.name, enclosing_messages
+                    )
+                else:
+                    resolved = self._find_top_level_type(field_type.name)
+                return isinstance(
+                    resolved, (Message, Union)
+                )  # message and union cannot be used as map key types.
             return isinstance(field_type, (ListType, ArrayType, MapType))
 
-        def check_type(field_type: FieldType, field: Field, in_map_key: bool = False):
+        def check_type(
+            field_type: FieldType,
+            field: Field,
+            enclosing_messages: Optional[List[Message]] = None,
+            in_map_key: bool = False,
+        ):
             if isinstance(field_type, ArrayType):
                 if in_map_key:
                     self._error(INVALID_MAP_KEY_MESSAGE, field.location)
@@ -580,26 +597,30 @@ class SchemaValidator:
                 if in_map_key:
                     self._error(INVALID_MAP_KEY_MESSAGE, field.location)
                     return
-                check_type(field_type.element_type, field)
+                check_type(field_type.element_type, field, enclosing_messages)
             elif isinstance(field_type, MapType):
                 if in_map_key:
                     self._error(INVALID_MAP_KEY_MESSAGE, field.location)
                     return
                 key_type = field_type.key_type
-                if invalid_map_key(key_type):
+                if invalid_map_key(key_type, enclosing_messages):
                     self._error(INVALID_MAP_KEY_MESSAGE, field.location)
                 else:
-                    check_type(key_type, field, in_map_key=True)
-                check_type(field_type.value_type, field)
+                    check_type(key_type, field, enclosing_messages, in_map_key=True)
+                check_type(field_type.value_type, field, enclosing_messages)
 
-        def check_message_fields(message: Message) -> None:
+        def check_message_fields(
+            message: Message,
+            enclosing_messages: Optional[List[Message]] = None,
+        ) -> None:
+            lineage = (enclosing_messages or []) + [message]
             for f in message.fields:
-                check_type(f.field_type, f)
+                check_type(f.field_type, f, lineage)
             for nested_msg in message.nested_messages:
-                check_message_fields(nested_msg)
+                check_message_fields(nested_msg, lineage)
             for nested_union in message.nested_unions:
                 for f in nested_union.fields:
-                    check_type(f.field_type, f)
+                    check_type(f.field_type, f, lineage)
 
         for message in self.schema.messages:
             check_message_fields(message)

@@ -1497,9 +1497,9 @@ message Config {
 - Temporal scalar types (`date`, `timestamp`, `duration`)
 - Enums
 
-Map keys do not support binary `bytes`, floating-point types, `decimal`, `list<T>`, `array<T>`,
-or nested `map<K, V>` types. Put those types in map values or wrap them in a message with a
-portable scalar or enum key.
+Map keys do not support `any`, binary `bytes`, floating-point types, `decimal`, message types,
+union types, `list<T>`, `array<T>`, or nested `map<K, V>` types. Put those types in map values or
+wrap them in a message with a portable scalar or enum key.
 
 ### Type Compatibility Matrix
 

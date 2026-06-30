@@ -135,7 +135,7 @@ def test_list_and_map_ref_options_preserve_explicit_opt_out():
     message Holder {
         list<ref Foo> foos = 1;
         list<ref(weak=true, thread_safe=false) Bar> bars = 2;
-        map<Foo, ref(weak=true, thread_safe=false) Bar> bar_map = 3;
+        map<string, ref(weak=true, thread_safe=false) Bar> bar_map = 3;
     }
     """
     schema = parse_schema(source)
