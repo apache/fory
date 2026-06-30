@@ -154,21 +154,21 @@ void main() {
       expect(_readWithBudget(value, 4), equals(value));
     });
 
-    test('charges sibling containers cumulatively', () {
+    test('reserves sibling containers cumulatively', () {
       final value = <Object?>[<Object?>[], <Object?>[], <Object?>[]];
 
       expect(() => _readWithBudget(value, 11), _throwsContainerBudget);
       expect(_readWithBudget(value, 12), equals(value));
     });
 
-    test('charges map entries', () {
+    test('reserves map entries', () {
       final value = <Object?, Object?>{'a': 1};
 
       expect(() => _readWithBudget(value, 7), _throwsContainerBudget);
       expect(_readWithBudget(value, 8), equals(value));
     });
 
-    test('charges generated list set and map reads', () {
+    test('reserves generated list set and map reads', () {
       final writer = Fory();
       _registerGenerated(writer);
       final bytes = writer.serialize(
@@ -195,7 +195,7 @@ void main() {
       expect(roundTrip.counts, equals(<String, int>{'one': 1}));
     });
 
-    test('charges compatible list array materialization', () {
+    test('reserves compatible list array materialization', () {
       final listWriter = Fory();
       _registerCompatibleList(listWriter);
       final listBytes = listWriter.serialize(

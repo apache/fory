@@ -105,7 +105,7 @@ class CollectionSerializerTest extends AnyWordSpec with Matchers {
       builder.build()
     }
 
-    "charge scala collection storage" in {
+    "reserve scala collection storage" in {
       val writer = runtime()
       val reader = runtime(maxContainerMemoryBytes = 23)
       intercept[InsecureException] {
@@ -113,7 +113,7 @@ class CollectionSerializerTest extends AnyWordSpec with Matchers {
       }
     }
 
-    "charge scala map storage" in {
+    "reserve scala map storage" in {
       val writer = runtime()
       val reader = runtime(maxContainerMemoryBytes = 23)
       intercept[InsecureException] {

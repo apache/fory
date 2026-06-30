@@ -87,7 +87,7 @@ describe('container memory budget', () => {
     expect(passingReader.deserialize(bytes)).toEqual({ values: [[]] });
   });
 
-  test('charges sibling containers cumulatively', () => {
+  test('reserves sibling containers cumulatively', () => {
     const typeInfo = Type.struct('budget.sibling.empty', {
       values: Type.list(Type.list(Type.int32({ encoding: 'fixed' }))).setId(1),
     });
@@ -114,14 +114,14 @@ describe('container memory budget', () => {
     });
   });
 
-  test('charges map entries', () => {
+  test('reserves map entries', () => {
     const bytes = serializeAny(new Map([[1, 2]]));
 
     expect(() => deserializeAny(bytes, 7)).toThrow(/maxContainerMemoryBytes/);
     expect(deserializeAny(bytes, 8)).toEqual(new Map([[1, 2]]));
   });
 
-  test('charges generated containers', () => {
+  test('reserves generated containers', () => {
     const typeInfo = Type.struct('budget.generated', {
       list: Type.list(Type.int32({ encoding: 'fixed' })).setId(1),
       set: Type.set(Type.string()).setId(2),
@@ -154,7 +154,7 @@ describe('container memory budget', () => {
     });
   });
 
-  test('charges compatible typed arrays', () => {
+  test('reserves compatible typed arrays', () => {
     const writerType = Type.struct(9010, {
       values: Type.list(Type.int32({ encoding: 'fixed' })).setId(1),
     });

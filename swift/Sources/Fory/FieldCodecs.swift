@@ -30,7 +30,7 @@ private func serializerElementBytes<Element: Serializer>(_ type: Element.Type) -
 }
 
 @inline(__always)
-private func chargeFieldArrayStorage<ElementCodec: FieldCodec>(
+private func reserveFieldArrayStorage<ElementCodec: FieldCodec>(
     _ context: ReadContext,
     _ codec: ElementCodec.Type,
     count: Int
@@ -48,7 +48,7 @@ private func reserveSerializerArrayMemory<Element: Serializer>(
 }
 
 @inline(__always)
-private func chargeFieldMapStorage<KeyCodec: FieldCodec, ValueCodec: FieldCodec>(
+private func reserveFieldMapStorage<KeyCodec: FieldCodec, ValueCodec: FieldCodec>(
     _ context: ReadContext,
     key: KeyCodec.Type,
     value: ValueCodec.Type,
@@ -888,7 +888,7 @@ public enum SetFieldCodec<ElementCodec: FieldCodec>: FieldCodec where ElementCod
 
     public static func readPayload(_ context: ReadContext) throws -> Value {
         let values = try readCollectionPayload(context, elementCodec: ElementCodec.self)
-        try chargeFieldArrayStorage(context, ElementCodec.self, count: values.count)
+        try reserveFieldArrayStorage(context, ElementCodec.self, count: values.count)
         return Set(values)
     }
 }
@@ -1008,11 +1008,11 @@ where KeyCodec.Value: Hashable {
         let totalLength = Int(try context.buffer.readVarUInt32())
         try context.ensureCollectionLength(totalLength, label: "map")
         if totalLength == 0 {
-            try chargeFieldMapStorage(context, key: KeyCodec.self, value: ValueCodec.self, count: totalLength)
+            try reserveFieldMapStorage(context, key: KeyCodec.self, value: ValueCodec.self, count: totalLength)
             return [:]
         }
 
-        try chargeFieldMapStorage(context, key: KeyCodec.self, value: ValueCodec.self, count: totalLength)
+        try reserveFieldMapStorage(context, key: KeyCodec.self, value: ValueCodec.self, count: totalLength)
         try context.ensureRemainingBytes(totalLength, label: "map")
         var map: Value = [:]
         map.reserveCapacity(totalLength)
@@ -1374,9 +1374,9 @@ private func writeUIntArrayPayload(_ value: [UInt], _ context: WriteContext) {
     }
 }
 
-private func readIntArrayPayload(_ context: ReadContext, chargeContainerMemory: Bool = false) throws -> [Int] {
+private func readIntArrayPayload(_ context: ReadContext, reserveContainerStorage: Bool = false) throws -> [Int] {
     let count = try readPackedArrayElementCount(context, width: 8, label: "int64_array")
-    if chargeContainerMemory {
+    if reserveContainerStorage {
         try reserveSerializerArrayMemory(context, Int.self, count: count)
     }
     var values: [Int] = []
@@ -1387,9 +1387,9 @@ private func readIntArrayPayload(_ context: ReadContext, chargeContainerMemory: 
     return values
 }
 
-private func readUIntArrayPayload(_ context: ReadContext, chargeContainerMemory: Bool = false) throws -> [UInt] {
+private func readUIntArrayPayload(_ context: ReadContext, reserveContainerStorage: Bool = false) throws -> [UInt] {
     let count = try readPackedArrayElementCount(context, width: 8, label: "uint64_array")
-    if chargeContainerMemory {
+    if reserveContainerStorage {
         try reserveSerializerArrayMemory(context, UInt.self, count: count)
     }
     var values: [UInt] = []
@@ -1435,49 +1435,49 @@ private func readCompatiblePackedArrayPayload<ElementCodec: FieldCodec>(
     elementCodec _: ElementCodec.Type
 ) throws -> [ElementCodec.Value] {
     if ElementCodec.self == BoolCodec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [Bool], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [Bool], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == Int8Codec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [Int8], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [Int8], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == Int16Codec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [Int16], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [Int16], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == Int32FixedCodec.self || ElementCodec.self == Int32VarintCodec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [Int32], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [Int32], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == Int64FixedCodec.self || ElementCodec.self == Int64VarintCodec.self || ElementCodec.self == Int64TaggedCodec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [Int64], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [Int64], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == IntFixedCodec.self || ElementCodec.self == IntVarintCodec.self || ElementCodec.self == IntTaggedCodec.self {
-        return uncheckedPackedArrayCast(try readIntArrayPayload(context, chargeContainerMemory: true), to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readIntArrayPayload(context, reserveContainerStorage: true), to: ElementCodec.Value.self)
     }
     if ElementCodec.self == UInt8Codec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [UInt8], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [UInt8], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == UInt16Codec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [UInt16], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [UInt16], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == UInt32FixedCodec.self || ElementCodec.self == UInt32VarintCodec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [UInt32], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [UInt32], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == UInt64FixedCodec.self || ElementCodec.self == UInt64VarintCodec.self || ElementCodec.self == UInt64TaggedCodec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [UInt64], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [UInt64], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == UIntFixedCodec.self || ElementCodec.self == UIntVarintCodec.self || ElementCodec.self == UIntTaggedCodec.self {
-        return uncheckedPackedArrayCast(try readUIntArrayPayload(context, chargeContainerMemory: true), to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readUIntArrayPayload(context, reserveContainerStorage: true), to: ElementCodec.Value.self)
     }
     if ElementCodec.self == Float16Codec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [Float16], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [Float16], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == BFloat16Codec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [BFloat16], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [BFloat16], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == FloatCodec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [Float], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [Float], to: ElementCodec.Value.self)
     }
     if ElementCodec.self == DoubleCodec.self {
-        return uncheckedPackedArrayCast(try readPrimitiveArray(context, chargeContainerMemory: true) as [Double], to: ElementCodec.Value.self)
+        return uncheckedPackedArrayCast(try readPrimitiveArray(context, reserveContainerStorage: true) as [Double], to: ElementCodec.Value.self)
     }
     throw ForyError.invalidData("unsupported compatible array-to-list field element codec \(ElementCodec.self)")
 }
@@ -1648,7 +1648,7 @@ private func readCollectionPayload<ElementCodec: FieldCodec>(
     let length = Int(try buffer.readVarUInt32())
     try context.ensureCollectionLength(length, label: "array")
     if length == 0 {
-        try chargeFieldArrayStorage(context, ElementCodec.self, count: length)
+        try reserveFieldArrayStorage(context, ElementCodec.self, count: length)
         return []
     }
 
@@ -1663,7 +1663,7 @@ private func readCollectionPayload<ElementCodec: FieldCodec>(
     let sameType = (header & CollectionHeader.sameType) != 0
 
     var result: [ElementCodec.Value] = []
-    try chargeFieldArrayStorage(context, ElementCodec.self, count: length)
+    try reserveFieldArrayStorage(context, ElementCodec.self, count: length)
     try context.ensureRemainingBytes(length, label: "array")
     result.reserveCapacity(length)
 
@@ -1749,7 +1749,7 @@ private func readListPayloadAsArrayPayload<ElementCodec: FieldCodec>(
     let length = Int(try buffer.readVarUInt32())
     try context.ensureCollectionLength(length, label: "array")
     if length == 0 {
-        try chargeFieldArrayStorage(context, ElementCodec.self, count: length)
+        try reserveFieldArrayStorage(context, ElementCodec.self, count: length)
         return []
     }
 
@@ -1777,7 +1777,7 @@ private func readListPayloadAsArrayPayload<ElementCodec: FieldCodec>(
     }
     try context.ensureRemainingBytes(length, label: "array")
     var result: [ElementCodec.Value] = []
-    try chargeFieldArrayStorage(context, ElementCodec.self, count: length)
+    try reserveFieldArrayStorage(context, ElementCodec.self, count: length)
     result.reserveCapacity(length)
     return try ElementCodec.withTypeInfo(elementTypeInfo, context) {
         for _ in 0..<length {
