@@ -1,4 +1,3 @@
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -18,7 +17,6 @@
  * under the License.
  */
 
-
 package org.apache.fory.collection;
 
 import java.io.ByteArrayInputStream;
@@ -32,7 +30,6 @@ import org.apache.fory.config.Language;
 import org.apache.fory.io.ForyInputStream;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
 
 public class MultiParamCollectionTest {
 

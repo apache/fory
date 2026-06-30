@@ -1,4 +1,3 @@
-
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
@@ -289,7 +288,7 @@ public class SelfSingletonListTest {
                   .withLongCompressed(Int64Encoding.VARINT)
                   .withIntArrayCompressed(true)
                   .withLongArrayCompressed(true)
-                  .withSerializerFactory(new SelfRefCollectionSerializerFactory());
+                  .withSerializerFactory(new SelfCollectionSerializerFactory());
 
           return b.build();
         });

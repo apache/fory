@@ -23,8 +23,7 @@ import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
 
-
-public class SelfRefCollectionSerializerFactory implements SerializerFactory {
+public class SelfCollectionSerializerFactory implements SerializerFactory {
 
   @Override
   @SuppressWarnings({"rawtypes", "unchecked"})
