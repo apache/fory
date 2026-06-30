@@ -18,6 +18,7 @@
 import Foundation
 
 private let typeMetaSizeMask = 0xFF
+private let materializedAnyReferenceBytes = 4
 
 public final class ReadContext {
   static let knownContainerBudgetSlackBytes = 64 * 1024
@@ -782,7 +783,14 @@ extension ReadContext {
       refMode: refMode,
       readTypeInfo: readTypeInfo
     )
-    return wrapped?.map { $0.anyValueForCollection() }
+    guard let wrapped else {
+      return nil
+    }
+    try reserveCountedContainerMemory(
+      count: wrapped.count,
+      elementBytes: materializedAnyReferenceBytes
+    )
+    return wrapped.map { $0.anyValueForCollection() }
   }
 
   public func readMapStringToAny(
@@ -797,6 +805,10 @@ extension ReadContext {
     guard let wrapped else {
       return nil
     }
+    try reserveCountedContainerMemory(
+      count: wrapped.count,
+      elementBytes: 2 * materializedAnyReferenceBytes
+    )
     var map: [String: Any] = [:]
     map.reserveCapacity(wrapped.count)
     for pair in wrapped {
@@ -817,6 +829,10 @@ extension ReadContext {
     guard let wrapped else {
       return nil
     }
+    try reserveCountedContainerMemory(
+      count: wrapped.count,
+      elementBytes: 2 * materializedAnyReferenceBytes
+    )
     var map: [Int32: Any] = [:]
     map.reserveCapacity(wrapped.count)
     for pair in wrapped {
@@ -837,6 +853,10 @@ extension ReadContext {
     guard let wrapped else {
       return nil
     }
+    try reserveCountedContainerMemory(
+      count: wrapped.count,
+      elementBytes: 2 * materializedAnyReferenceBytes
+    )
     var map: [AnyHashable: Any] = [:]
     map.reserveCapacity(wrapped.count)
     for pair in wrapped {

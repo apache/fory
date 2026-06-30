@@ -199,6 +199,97 @@ func dynamicAnyEmptyMapHasNoDynamicStorage() throws {
 }
 
 @Test
+func publicAnyArrayBudget() throws {
+    let value: [Any] = [Int32(1), Int32(2), Int32(3)]
+    let bytes = try makeBudgetFory().serialize(value)
+    let wrappedBudget = arrayBudget(SerializableAny.self, count: value.count)
+    let finalBudget = value.count * testReferenceBytes
+
+    expectInvalidData {
+        let _: [Any] = try makeBudgetFory(maxContainerMemoryBytes: Int64(wrappedBudget))
+            .deserialize(bytes, as: [Any].self)
+    }
+    let decoded = try makeBudgetFory(maxContainerMemoryBytes: Int64(wrappedBudget + finalBudget))
+        .deserialize(bytes, as: [Any].self)
+    #expect(decoded.count == value.count)
+}
+
+@Test
+func publicAnyMapBudget() throws {
+    let stringMap: [String: Any] = ["a": Int32(1), "b": Int32(2), "c": Int32(3)]
+    let stringBytes = try makeBudgetFory().serialize(stringMap)
+    let stringWrapped = mapBudget(
+        key: String.self,
+        value: SerializableAny.self,
+        count: stringMap.count
+    )
+    let stringFinal = stringMap.count * 2 * testReferenceBytes
+    expectInvalidData {
+        let _: [String: Any] = try makeBudgetFory(maxContainerMemoryBytes: Int64(stringWrapped))
+            .deserialize(stringBytes, as: [String: Any].self)
+    }
+    let decodedString = try makeBudgetFory(maxContainerMemoryBytes: Int64(stringWrapped + stringFinal))
+        .deserialize(stringBytes, as: [String: Any].self)
+    #expect(decodedString.count == stringMap.count)
+
+    let intMap: [Int32: Any] = [1: Int32(10), 2: Int32(20), 3: Int32(30)]
+    let intBytes = try makeBudgetFory().serialize(intMap)
+    let intWrapped = mapBudget(
+        key: Int32.self,
+        value: SerializableAny.self,
+        count: intMap.count
+    )
+    let intFinal = intMap.count * 2 * testReferenceBytes
+    expectInvalidData {
+        let _: [Int32: Any] = try makeBudgetFory(maxContainerMemoryBytes: Int64(intWrapped))
+            .deserialize(intBytes, as: [Int32: Any].self)
+    }
+    let decodedInt = try makeBudgetFory(maxContainerMemoryBytes: Int64(intWrapped + intFinal))
+        .deserialize(intBytes, as: [Int32: Any].self)
+    #expect(decodedInt.count == intMap.count)
+
+    let anyHashableMap: [AnyHashable: Any] = [
+        AnyHashable("a"): Int32(1),
+        AnyHashable(Int32(2)): Int32(2),
+        AnyHashable(true): Int32(3)
+    ]
+    let anyHashableBytes = try makeBudgetFory().serialize(anyHashableMap)
+    let anyHashableWrapped = mapBudget(
+        key: AnyHashable.self,
+        value: SerializableAny.self,
+        count: anyHashableMap.count
+    )
+    let anyHashableFinal = anyHashableMap.count * 2 * testReferenceBytes
+    expectInvalidData {
+        let _: [AnyHashable: Any] = try makeBudgetFory(
+            maxContainerMemoryBytes: Int64(anyHashableWrapped)
+        ).deserialize(anyHashableBytes, as: [AnyHashable: Any].self)
+    }
+    let decodedAnyHashable = try makeBudgetFory(
+        maxContainerMemoryBytes: Int64(anyHashableWrapped + anyHashableFinal)
+    ).deserialize(anyHashableBytes, as: [AnyHashable: Any].self)
+    #expect(decodedAnyHashable.count == anyHashableMap.count)
+}
+
+@Test
+func dynamicAnyArrayBudget() throws {
+    let list: [Any] = [Int32(1), "two", Int32(3)]
+    let value: Any = list
+    let bytes = try makeBudgetFory().serialize(value)
+    let count = list.count
+    let wrappedBudget = arrayBudget(SerializableAny.self, count: count)
+    let finalBudget = count * testReferenceBytes
+
+    expectInvalidData {
+        let _: Any = try makeBudgetFory(maxContainerMemoryBytes: Int64(wrappedBudget))
+            .deserialize(bytes, as: Any.self)
+    }
+    let decoded = try makeBudgetFory(maxContainerMemoryBytes: Int64(wrappedBudget + finalBudget))
+        .deserialize(bytes, as: Any.self)
+    #expect((decoded as? [Any])?.count == count)
+}
+
+@Test
 func byteAvailabilityCheckStillRejectsLargeLength() throws {
     let buffer = ByteBuffer()
     buffer.writeVarUInt32(64)
