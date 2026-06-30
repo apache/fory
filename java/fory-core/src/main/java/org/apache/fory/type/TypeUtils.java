@@ -724,6 +724,12 @@ public class TypeUtils {
       }
       return TypeRef.of(type, null, resolvedArgs, null);
     }
+    if (type instanceof GenericArrayType) {
+      TypeRef<?> componentType =
+          resolveTypeVariables(((GenericArrayType) type).getGenericComponentType(), typeVarRefs);
+      Class<?> arrayClass = Array.newInstance(getRawType(componentType), 0).getClass();
+      return TypeRef.of(arrayClass, null, null, componentType);
+    }
     return TypeRef.of(type);
   }
 

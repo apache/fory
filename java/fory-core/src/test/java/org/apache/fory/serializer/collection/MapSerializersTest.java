@@ -1183,6 +1183,28 @@ public class MapSerializersTest extends ForyTestBase {
     public FixedValueMap<Integer, @Ref(enable = false) MapRefItem> map;
   }
 
+  public static class BoundedMap<K extends Number, V extends Number> extends HashMap<K, V> {}
+
+  public static class BoundedArrayMap<K extends Number, V extends Number> extends HashMap<K, V[]> {}
+
+  public static class WildcardBoundedMap<K extends Number, V extends Number>
+      extends HashMap<List<? extends K>, List<? extends V>> {}
+
+  @Data
+  public static class RawBoundedMapHolder {
+    public BoundedMap map;
+  }
+
+  @Data
+  public static class RawBoundedArrayMapHolder {
+    public BoundedArrayMap map;
+  }
+
+  @Data
+  public static class RawWildcardBoundedMapHolder {
+    public WildcardBoundedMap map;
+  }
+
   @Test(dataProvider = "enableCodegen")
   public void testMultiParamMapGeneric(boolean enableCodegen) {
     GenericType genericType =
@@ -1261,6 +1283,57 @@ public class MapSerializersTest extends ForyTestBase {
 
     FixedValueMapRefHolder cloned = serDe(fory, holder);
     Assert.assertSame(cloned.map.get(1), cloned.map.get(2));
+  }
+
+  @Test
+  public void testRawBoundedMapCodegen() {
+    Fory fory =
+        builder()
+            .withXlang(false)
+            .withCodegen(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
+    RawBoundedMapHolder holder = new RawBoundedMapHolder();
+    holder.map = new BoundedMap<>();
+    holder.map.put("raw-key", "raw-value");
+
+    RawBoundedMapHolder cloned = serDe(fory, holder);
+    Assert.assertEquals(cloned.map.get("raw-key"), "raw-value");
+  }
+
+  @Test
+  public void testRawBoundedArrayMapCodegen() {
+    Fory fory =
+        builder()
+            .withXlang(false)
+            .withCodegen(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
+    RawBoundedArrayMapHolder holder = new RawBoundedArrayMapHolder();
+    holder.map = new BoundedArrayMap<>();
+    holder.map.put("raw-key", "raw-value");
+
+    RawBoundedArrayMapHolder cloned = serDe(fory, holder);
+    Assert.assertEquals(cloned.map.get("raw-key"), "raw-value");
+  }
+
+  @Test
+  public void testRawWildcardMapCodegen() {
+    Fory fory =
+        builder()
+            .withXlang(false)
+            .withCodegen(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
+    RawWildcardBoundedMapHolder holder = new RawWildcardBoundedMapHolder();
+    holder.map = new WildcardBoundedMap<>();
+    holder.map.put("raw-key", "raw-value");
+
+    RawWildcardBoundedMapHolder cloned = serDe(fory, holder);
+    Assert.assertEquals(cloned.map.get("raw-key"), "raw-value");
   }
 
   public static class StringKeyMap<T> extends HashMap<String, T> {}

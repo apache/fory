@@ -195,7 +195,9 @@ public class GenericType {
     if (elementTypeRef.getType() instanceof WildcardType) {
       elementTypeRef = elementTypeRef.resolveAllWildcards();
     }
-    if (elementTypeRef.getType() instanceof TypeVariable && !hasTypeArguments(collectionTypeRef)) {
+    // Raw custom collections have no actual argument for E; E and shapes containing E must stay
+    // Object, because using E's bound would reject unchecked raw contents.
+    if (!hasTypeArguments(collectionTypeRef) && hasUnresolvedTypeVariable(elementTypeRef)) {
       elementTypeRef = TypeUtils.OBJECT_TYPE;
     }
     // Recursive collection declarations such as SelfList extends ArrayList<SelfList> must not
@@ -224,11 +226,13 @@ public class GenericType {
     if (valueTypeRef.getType() instanceof WildcardType) {
       valueTypeRef = valueTypeRef.resolveAllWildcards();
     }
+    // Raw custom maps have no actual K/V arguments; K/V and shapes containing them must stay
+    // Object, because using their bounds would reject unchecked raw contents.
     if (!hasTypeArguments(mapTypeRef)) {
-      if (keyTypeRef.getType() instanceof TypeVariable) {
+      if (hasUnresolvedTypeVariable(keyTypeRef)) {
         keyTypeRef = TypeUtils.OBJECT_TYPE;
       }
-      if (valueTypeRef.getType() instanceof TypeVariable) {
+      if (hasUnresolvedTypeVariable(valueTypeRef)) {
         valueTypeRef = TypeUtils.OBJECT_TYPE;
       }
     }
@@ -303,6 +307,36 @@ public class GenericType {
     Type type = typeRef.getType();
     return type instanceof ParameterizedType
         && ((ParameterizedType) type).getActualTypeArguments().length > 0;
+  }
+
+  private static boolean hasUnresolvedTypeVariable(TypeRef<?> typeRef) {
+    Type type = typeRef.getType();
+    if (type instanceof TypeVariable) {
+      return true;
+    }
+    if (type instanceof WildcardType) {
+      WildcardType wildcardType = (WildcardType) type;
+      for (Type lowerBound : wildcardType.getLowerBounds()) {
+        if (hasUnresolvedTypeVariable(TypeRef.of(lowerBound))) {
+          return true;
+        }
+      }
+      for (Type upperBound : wildcardType.getUpperBounds()) {
+        if (hasUnresolvedTypeVariable(TypeRef.of(upperBound))) {
+          return true;
+        }
+      }
+      return false;
+    }
+    if (typeRef.isArray()) {
+      return hasUnresolvedTypeVariable(typeRef.getComponentType());
+    }
+    for (TypeRef<?> typeArgument : typeRef.getTypeArguments()) {
+      if (hasUnresolvedTypeVariable(typeArgument)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   public TypeRef<?> getTypeRef() {
