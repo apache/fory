@@ -19,16 +19,14 @@
 
 package org.apache.fory.collection;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
-import org.apache.fory.ThreadLocalFory;
+import org.apache.fory.Fory;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.config.Language;
-import org.apache.fory.io.ForyInputStream;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 public class MultiParamCollectionTest {
@@ -89,16 +87,21 @@ public class MultiParamCollectionTest {
 
   // ==================== tests ====================
 
-  @Test
-  public void testMultiParamCollectionRoundTrip() {
+  @DataProvider
+  public static Object[][] codegen() {
+    return new Object[][] {{true}, {false}};
+  }
+
+  @Test(dataProvider = "codegen")
+  public void testMultiParamCollectionRoundTrip(boolean codegen) {
     MyList<String, Integer> list = new MyList<>("my-metadata");
     list.add(1);
     list.add(2);
     list.add(3);
 
     Container container = new Container("test-container", list);
-    byte[] bytes = serialize(createFory(), container);
-    Container cloned = deserialize(createFory(), bytes);
+    byte[] bytes = createFory(codegen).serialize(container);
+    Container cloned = (Container) createFory(codegen).deserialize(bytes);
 
     Assert.assertEquals(cloned.getName(), "test-container");
     Assert.assertNotNull(cloned.getNumbers());
@@ -111,34 +114,19 @@ public class MultiParamCollectionTest {
 
   // ==================== helpers ====================
 
-  private ThreadLocalFory createFory() {
-    return new ThreadLocalFory(
-        builder -> {
-          ForyBuilder b =
-              builder
-                  .withLanguage(Language.JAVA)
-                  .requireClassRegistration(false)
-                  .withRefTracking(true)
-                  .withCompatibleMode(CompatibleMode.COMPATIBLE)
-                  .withAsyncCompilation(false)
-                  .withIntCompressed(true)
-                  .withCodegen(true)
-                  .withLongCompressed(Int64Encoding.VARINT)
-                  .withIntArrayCompressed(true)
-                  .withLongArrayCompressed(true);
-
-          return b.build();
-        });
-  }
-
-  private <T> byte[] serialize(ThreadLocalFory fory, T object) {
-    ByteArrayOutputStream out = new ByteArrayOutputStream();
-    fory.serialize(out, object);
-    return out.toByteArray();
-  }
-
-  @SuppressWarnings("unchecked")
-  private <T> T deserialize(ThreadLocalFory fory, byte[] bytes) {
-    return (T) fory.deserialize(new ForyInputStream(new ByteArrayInputStream(bytes)));
+  private Fory createFory(boolean codegen) {
+    ForyBuilder builder =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withRefTracking(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withAsyncCompilation(false)
+            .withIntCompressed(true)
+            .withCodegen(codegen)
+            .withLongCompressed(Int64Encoding.VARINT)
+            .withIntArrayCompressed(true)
+            .withLongArrayCompressed(true);
+    return builder.build();
   }
 }

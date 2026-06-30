@@ -1316,7 +1316,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
 
   private TypeRef<?> getElementType(TypeRef<?> typeRef) {
     TypeRef<?> elementType = TypeUtils.getElementType(typeRef);
-    if (elementType.equals(typeRef)) {
+    if (elementType.equals(typeRef) || elementType.getRawType() == typeRef.getRawType()) {
       elementType = OBJECT_TYPE;
     }
     return elementType;

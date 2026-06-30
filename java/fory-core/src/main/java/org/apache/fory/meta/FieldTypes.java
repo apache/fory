@@ -21,6 +21,7 @@ package org.apache.fory.meta;
 
 import static org.apache.fory.type.TypeUtils.COLLECTION_TYPE;
 import static org.apache.fory.type.TypeUtils.MAP_TYPE;
+import static org.apache.fory.type.TypeUtils.OBJECT_TYPE;
 import static org.apache.fory.type.TypeUtils.collectionOf;
 import static org.apache.fory.type.TypeUtils.getArrayComponentInfo;
 import static org.apache.fory.type.TypeUtils.getArrayDimensions;
@@ -273,11 +274,11 @@ public class FieldTypes {
         || (isXlang && (resolver.isCollection(rawType) || resolver.isSet(rawType)))) {
 
       TypeRef<?> elementTypeRef = TypeUtils.getElementType(genericType.getTypeRef());
-      if (genericType.getTypeRef().equals(elementTypeRef)) {
-        if (resolver.isRegisteredById(rawType)) {
-          return new RegisteredFieldType(nullable, trackingRef, typeId, -1);
-        }
-        return new ObjectFieldType(typeId, nullable, trackingRef);
+      // Recursive collection element types must keep the collection wrapper but stop descending
+      // into their own metadata. TypeRef equality can miss the same raw type through a supertype.
+      if (genericType.getTypeRef().equals(elementTypeRef)
+          || genericType.getCls() == elementTypeRef.getRawType()) {
+        elementTypeRef = OBJECT_TYPE;
       }
 
       return new CollectionFieldType(
@@ -287,7 +288,7 @@ public class FieldTypes {
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              GenericType.build(elementTypeRef)));
+              resolver.buildGenericType(elementTypeRef)));
     } else if (MAP_TYPE.isSupertypeOf(genericType.getTypeRef())
         || (isXlang && resolver.isMap(rawType))) {
       Tuple2<TypeRef<?>, TypeRef<?>> mapKeyValueType = getMapKeyValueType(genericType);
