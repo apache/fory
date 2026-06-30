@@ -30,7 +30,6 @@ import static org.apache.fory.serializer.collection.MapFlags.TRACKING_KEY_REF;
 import static org.apache.fory.serializer.collection.MapFlags.TRACKING_VALUE_REF;
 import static org.apache.fory.serializer.collection.MapFlags.VALUE_DECL_TYPE;
 import static org.apache.fory.serializer.collection.MapFlags.VALUE_HAS_NULL;
-import static org.apache.fory.type.TypeUtils.MAP_TYPE;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
@@ -38,7 +37,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import org.apache.fory.annotation.CodegenInvoke;
-import org.apache.fory.collection.Tuple2;
 import org.apache.fory.config.Config;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
@@ -47,7 +45,6 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
@@ -55,7 +52,6 @@ import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.Generics;
-import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.Preconditions;
 
 /** Serializer for all map-like objects. */
@@ -68,10 +64,6 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     final TypeInfoHolder keyTypeInfoReadCache;
     final TypeInfoHolder valueTypeInfoWriteCache;
     final TypeInfoHolder valueTypeInfoReadCache;
-    GenericType partialGenericKVTypeKey0;
-    GenericType partialGenericKVTypeValue0;
-    GenericType partialGenericKVTypeKey1;
-    GenericType partialGenericKVTypeValue1;
 
     private MapTypeCache(TypeResolver typeResolver) {
       keyTypeInfoWriteCache = typeResolver.nilTypeInfoHolder();
@@ -138,15 +130,12 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     Generics generics = writeContext.getGenerics();
     while (entry != null) {
       GenericType genericType = generics.nextGenericType(writeContext.getDepth());
-      if (genericType == null) {
+      if (genericType == null || genericType.getTypeParametersCount() < 2) {
         entry = writeJavaNullChunk(writeContext, entry, iterator, null, null);
         if (entry != null) {
           entry = writeJavaChunk(writeContext, classResolver, entry, iterator, null, null);
         }
       } else {
-        if (genericType.getTypeParametersCount() < 2) {
-          genericType = getKVGenericType(genericType);
-        }
         GenericType keyGenericType = genericType.getTypeParameter0();
         GenericType valueGenericType = genericType.getTypeParameter1();
         entry =
@@ -445,12 +434,6 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       Entry<Object, Object> entry,
       Iterator<Entry<Object, Object>> iterator) {
     MemoryBuffer buffer = writeContext.getBuffer();
-    // type parameters count for `Map field` will be 0;
-    // type parameters count for `SubMap<V> field` which SubMap is
-    // `SubMap<V> implements Map<String, V>` will be 1;
-    if (genericType.getTypeParametersCount() < 2) {
-      genericType = getKVGenericType(genericType);
-    }
     GenericType keyGenericType = genericType.getTypeParameter0();
     GenericType valueGenericType = genericType.getTypeParameter1();
     if (keyGenericType == objType && valueGenericType == objType) {
@@ -538,43 +521,6 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     return entry;
   }
 
-  private GenericType getKVGenericType(GenericType genericType) {
-    GenericType mapGenericType = getCachedMapGenericType(genericType);
-    if (mapGenericType == null) {
-      TypeRef<?> typeRef = genericType.getTypeRef();
-      if (!MAP_TYPE.isSupertypeOf(typeRef)) {
-        mapGenericType = GenericType.build(TypeUtils.mapOf(Object.class, Object.class));
-      } else {
-        Tuple2<TypeRef<?>, TypeRef<?>> mapKeyValueType = TypeUtils.getMapKeyValueType(typeRef);
-        mapGenericType = GenericType.build(TypeUtils.mapOf(mapKeyValueType.f0, mapKeyValueType.f1));
-      }
-      cacheMapGenericType(genericType, mapGenericType);
-    }
-    return mapGenericType;
-  }
-
-  private GenericType getCachedMapGenericType(GenericType genericType) {
-    MapTypeCache state = mapTypeCache;
-    if (state == null) {
-      return null;
-    }
-    if (genericType == state.partialGenericKVTypeKey0) {
-      return state.partialGenericKVTypeValue0;
-    }
-    if (genericType == state.partialGenericKVTypeKey1) {
-      return state.partialGenericKVTypeValue1;
-    }
-    return null;
-  }
-
-  private void cacheMapGenericType(GenericType genericType, GenericType mapGenericType) {
-    MapTypeCache state = mapTypeCache();
-    state.partialGenericKVTypeKey1 = state.partialGenericKVTypeKey0;
-    state.partialGenericKVTypeValue1 = state.partialGenericKVTypeValue0;
-    state.partialGenericKVTypeKey0 = genericType;
-    state.partialGenericKVTypeValue0 = mapGenericType;
-  }
-
   protected <K, V> void copyEntry(CopyContext copyContext, Map<K, V> originMap, Map<K, V> newMap) {
     TypeResolver classResolver = typeResolver;
     MapTypeCache state = mapTypeCache();
@@ -650,7 +596,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
         break;
       }
       GenericType genericType = generics.nextGenericType(readContext.getDepth());
-      if (genericType == null) {
+      if (genericType == null || genericType.getTypeParametersCount() < 2) {
         sizeAndHeader = readJavaChunk(readContext, map, size, chunkHeader, null, null);
       } else {
         sizeAndHeader =
@@ -755,9 +701,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       ReadContext readContext, boolean trackRef, boolean isKey) {
     Generics generics = readContext.getGenerics();
     GenericType genericType = generics.nextGenericType(readContext.getDepth());
-    if (genericType.getTypeParametersCount() < 2) {
-      genericType = getKVGenericType(genericType);
-    }
+    Preconditions.checkState(genericType != null && genericType.getTypeParametersCount() >= 2);
     GenericType type = isKey ? genericType.getTypeParameter0() : genericType.getTypeParameter1();
     generics.pushGenericType(type, readContext.getDepth());
     Serializer<?> serializer = type.getSerializer(typeResolver);
@@ -858,12 +802,6 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
       int chunkHeader) {
     MemoryBuffer buffer = readContext.getBuffer();
     MapTypeCache state = mapTypeCache();
-    // type parameters count for `Map field` will be 0;
-    // type parameters count for `SubMap<V> field` which SubMap is
-    // `SubMap<V> implements Map<String, V>` will be 1;
-    if (genericType.getTypeParametersCount() < 2) {
-      genericType = getKVGenericType(genericType);
-    }
     GenericType keyGenericType = genericType.getTypeParameter0();
     GenericType valueGenericType = genericType.getTypeParameter1();
     // noinspection Duplicates

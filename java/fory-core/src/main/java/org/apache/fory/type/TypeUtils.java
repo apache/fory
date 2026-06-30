@@ -659,8 +659,12 @@ public class TypeUtils {
     Object[] typeUseArgs = TypeUseMetadata.typeUseArguments(typeUse);
     if (typeUseArgs != null) {
       GenericType[] typeParameters = genericType.getTypeParameters();
-      int len = Math.min(typeUseArgs.length, typeParameters.length);
-      for (int i = 0; i < len; i++) {
+      // Collection and map GenericType trees may be trimmed to the serializer-consumed shape.
+      // Replay child type-use metadata only when source indexes still match GenericType indexes.
+      if (typeUseArgs.length != typeParameters.length) {
+        return;
+      }
+      for (int i = 0; i < typeParameters.length; i++) {
         applyRefTrackingOverride(typeParameters[i], typeUseArgs[i], globalTrackingRef);
       }
     }

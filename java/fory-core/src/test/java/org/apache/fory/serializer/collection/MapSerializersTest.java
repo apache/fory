@@ -1160,6 +1160,34 @@ public class MapSerializersTest extends ForyTestBase {
             new HashMap<>(mapOf(new HashMap<>(mapOf(1, list)), list))));
   }
 
+  public static class MultiParamMap<A, K, V> extends HashMap<K, V> {}
+
+  @Data
+  public static class MultiParamMapHolder {
+    public MultiParamMap<String, Integer, Long> map;
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testMultiParamMapGeneric(boolean enableCodegen) {
+    GenericType genericType =
+        GenericType.build(new TypeRef<MultiParamMap<String, Integer, Long>>() {});
+    Assert.assertEquals(genericType.getTypeParametersCount(), 2);
+    Assert.assertEquals(genericType.getTypeParameter0().getCls(), Integer.class);
+    Assert.assertEquals(genericType.getTypeParameter1().getCls(), Long.class);
+
+    Fory fory =
+        builder()
+            .withXlang(false)
+            .withCodegen(enableCodegen)
+            .requireClassRegistration(false)
+            .build();
+    MultiParamMapHolder holder = new MultiParamMapHolder();
+    holder.map = new MultiParamMap<>();
+    holder.map.put(1, 2L);
+    holder.map.put(3, 4L);
+    serDeCheck(fory, holder);
+  }
+
   public static class StringKeyMap<T> extends HashMap<String, T> {}
 
   @Test

@@ -29,6 +29,7 @@ import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
+import org.apache.fory.collection.Tuple2;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
@@ -130,7 +131,11 @@ public class GenericType {
 
   public static GenericType build(TypeRef<?> typeRef, Predicate<Type> finalPredicate) {
     Type type = typeRef.getType();
-    if (TypeUtils.isCollection(getRawType(typeRef))) {
+    Class<?> rawType = getRawType(typeRef);
+    if (TypeUtils.isMap(rawType)) {
+      return buildMap(typeRef, finalPredicate);
+    }
+    if (TypeUtils.isCollection(rawType)) {
       return buildCollection(typeRef, finalPredicate);
     }
     if (typeRef.hasExplicitTypeArguments()) {
@@ -199,6 +204,31 @@ public class GenericType {
     // resolved element view.
     return new GenericType(
         typeRef, finalPredicate.test(typeRef.getType()), build(elementTypeRef, finalPredicate));
+  }
+
+  private static GenericType buildMap(TypeRef<?> typeRef, Predicate<Type> finalPredicate) {
+    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(typeRef);
+    TypeRef<?> keyTypeRef = normalizeMapTypeArg(typeRef, keyValueType.f0);
+    TypeRef<?> valueTypeRef = normalizeMapTypeArg(typeRef, keyValueType.f1);
+    if (keyTypeRef.equals(TypeUtils.OBJECT_TYPE)
+        && valueTypeRef.equals(TypeUtils.OBJECT_TYPE)
+        && !hasTypeArguments(typeRef)) {
+      return new GenericType(typeRef, finalPredicate.test(typeRef.getType()));
+    }
+    // Map serializers consume type parameter 0 as key type and 1 as value type. Custom map
+    // subclasses may declare unrelated parameters, so map GenericType stores only the resolved
+    // key/value view.
+    return new GenericType(
+        typeRef,
+        finalPredicate.test(typeRef.getType()),
+        build(keyTypeRef, finalPredicate),
+        build(valueTypeRef, finalPredicate));
+  }
+
+  private static TypeRef<?> normalizeMapTypeArg(TypeRef<?> ownerTypeRef, TypeRef<?> typeArg) {
+    // Recursive map declarations such as SelfMap extends HashMap<SelfMap, ...> must not build the
+    // same map GenericType as its own key/value parameter, or interpreter mode recurses forever.
+    return getRawType(ownerTypeRef) == typeArg.getRawType() ? TypeUtils.OBJECT_TYPE : typeArg;
   }
 
   private static boolean hasTypeArguments(TypeRef<?> typeRef) {
