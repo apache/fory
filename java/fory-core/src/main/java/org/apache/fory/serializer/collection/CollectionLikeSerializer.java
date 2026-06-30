@@ -86,12 +86,20 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
 
   private GenericType getElementGenericType(ReadContext readContext, int depth) {
     GenericType genericType = readContext.getGenerics().nextGenericType(depth);
-    return genericType == null ? null : genericType.getTypeParameter0();
+    GenericType elemGenericType = null;
+    if (genericType != null) {
+      elemGenericType = genericType.getTypeParameter0();
+    }
+    return elemGenericType;
   }
 
   private GenericType getElementGenericType(WriteContext writeContext, int depth) {
     GenericType genericType = writeContext.getGenerics().nextGenericType(depth);
-    return genericType == null ? null : genericType.getTypeParameter0();
+    GenericType elemGenericType = null;
+    if (genericType != null) {
+      elemGenericType = genericType.getTypeParameter0();
+    }
+    return elemGenericType;
   }
 
   /**
@@ -127,9 +135,9 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
    *
    * @return a bitmap, higher 24 bits are reserved.
    */
-  protected final int writeElementsHeader(
-      WriteContext writeContext, Collection value, GenericType elemGenericType) {
+  protected final int writeElementsHeader(WriteContext writeContext, Collection value) {
     MemoryBuffer buffer = writeContext.getBuffer();
+    GenericType elemGenericType = getElementGenericType(writeContext, writeContext.getDepth());
     if (elemGenericType != null) {
       boolean trackingRef = elemGenericType.trackingRef(typeResolver);
       if (elemGenericType.isMonomorphic()) {
@@ -323,8 +331,8 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   }
 
   protected final void writeElements(WriteContext writeContext, Collection value) {
+    int flags = writeElementsHeader(writeContext, value);
     GenericType elemGenericType = getElementGenericType(writeContext, writeContext.getDepth());
-    int flags = writeElementsHeader(writeContext, value, elemGenericType);
     if (elemGenericType != null) {
       javaWriteWithGenerics(writeContext, value, elemGenericType, flags);
     } else {

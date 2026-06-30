@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.Serializable;
+import java.lang.reflect.ParameterizedType;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -62,6 +63,7 @@ import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.FieldTypes;
 import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.Serializer;
@@ -70,6 +72,7 @@ import org.apache.fory.test.bean.BeanB;
 import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.test.bean.MapFields;
 import org.apache.fory.type.GenericType;
+import org.apache.fory.type.Types;
 import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
@@ -1201,6 +1204,28 @@ public class MapSerializersTest extends ForyTestBase {
     holder.map.put(1, 2L);
     holder.map.put(3, 4L);
     serDeCheck(fory, holder);
+  }
+
+  @Test
+  public void testMapFieldTypeKeepsDeclaredType() {
+    Fory fory = builder().withXlang(false).requireClassRegistration(false).build();
+    TypeRef<?> declared = new TypeRef<Map<String, Integer>>() {};
+    FieldTypes.MapFieldType fieldType =
+        new FieldTypes.MapFieldType(
+            Types.MAP,
+            true,
+            true,
+            new FieldTypes.RegisteredFieldType(true, false, Types.STRING, -1),
+            new FieldTypes.RegisteredFieldType(true, false, Types.INT32, -1));
+
+    TypeRef<?> rebuilt = fieldType.toTypeToken(fory.getTypeResolver(), declared);
+
+    Assert.assertTrue(rebuilt.getType() instanceof ParameterizedType);
+    Assert.assertEquals(rebuilt.getRawType(), Map.class);
+    Assert.assertEquals(rebuilt.getTypeArguments().size(), 2);
+    Assert.assertEquals(rebuilt.getTypeExtMeta().typeId(), Types.MAP);
+    Assert.assertTrue(rebuilt.getTypeExtMeta().nullable());
+    Assert.assertTrue(rebuilt.getTypeExtMeta().trackingRef());
   }
 
   @Test(dataProvider = "enableCodegen")

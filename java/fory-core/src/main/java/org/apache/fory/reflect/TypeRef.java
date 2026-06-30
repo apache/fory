@@ -16,7 +16,6 @@ package org.apache.fory.reflect;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.GenericArrayType;
-import java.lang.reflect.GenericDeclaration;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -66,17 +65,17 @@ public class TypeRef<T> {
   protected TypeRef() {
     this.type = capture();
     this.typeExtMeta = null;
-    this.typeArguments = normalizeTypeArguments(type, null);
+    this.typeArguments = null;
     this.componentType = null;
-    this.hasTypeExtMeta = hasNestedTypeExtMeta(null, typeArguments, null);
+    this.hasTypeExtMeta = false;
   }
 
   protected TypeRef(TypeExtMeta typeExtMeta) {
     this.type = capture();
     this.typeExtMeta = typeExtMeta;
-    this.typeArguments = normalizeTypeArguments(type, null);
+    this.typeArguments = null;
     this.componentType = null;
-    this.hasTypeExtMeta = hasNestedTypeExtMeta(typeExtMeta, typeArguments, null);
+    this.hasTypeExtMeta = typeExtMeta != null;
   }
 
   private TypeRef(Class<T> declaringClass) {
@@ -96,21 +95,12 @@ public class TypeRef<T> {
       TypeExtMeta typeExtMeta,
       List<TypeRef<?>> typeArguments,
       TypeRef<?> componentType) {
-    this(type, typeExtMeta, typeArguments, componentType, true);
-  }
-
-  private TypeRef(
-      Type type,
-      TypeExtMeta typeExtMeta,
-      List<TypeRef<?>> typeArguments,
-      TypeRef<?> componentType,
-      boolean normalizeTypeArguments) {
     this.type = type;
     this.typeExtMeta = typeExtMeta;
     this.typeArguments =
-        normalizeTypeArguments
-            ? normalizeTypeArguments(type, typeArguments)
-            : immutableTypeArguments(typeArguments);
+        typeArguments == null
+            ? null
+            : immutableTypeArguments(normalizeContainerTypeArguments(type, typeArguments));
     this.componentType = componentType;
     this.hasTypeExtMeta = hasNestedTypeExtMeta(typeExtMeta, this.typeArguments, componentType);
   }
@@ -159,23 +149,6 @@ public class TypeRef<T> {
     return TypeUseMetadata.typeRef(typeUse);
   }
 
-  private static List<TypeRef<?>> normalizeTypeArguments(
-      Type type, List<TypeRef<?>> typeArguments) {
-    List<TypeRef<?>> args = typeArguments;
-    if (args == null && type instanceof ParameterizedType) {
-      Type[] actualTypeArguments = ((ParameterizedType) type).getActualTypeArguments();
-      args = new ArrayList<>(actualTypeArguments.length);
-      for (Type actualTypeArgument : actualTypeArguments) {
-        args.add(TypeRef.of(actualTypeArgument));
-      }
-    }
-    if (args == null) {
-      return null;
-    }
-    List<TypeRef<?>> normalizedArgs = normalizeContainerTypeArguments(type, args);
-    return immutableTypeArguments(normalizedArgs);
-  }
-
   private static List<TypeRef<?>> immutableTypeArguments(List<TypeRef<?>> typeArguments) {
     return typeArguments == null
         ? null
@@ -204,7 +177,8 @@ public class TypeRef<T> {
     }
     return Collections.singletonList(
         resolveTypeVariables(
-            rawIterableElementType(rawType), explicitTypeVarRefs(rawType, typeArguments)));
+            rawIterableElementType(rawType).getType(),
+            explicitTypeVarRefs(rawType, typeArguments)));
   }
 
   private static List<TypeRef<?>> normalizeMapTypeArguments(
@@ -215,8 +189,8 @@ public class TypeRef<T> {
     Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = rawMapKeyValueTypes(rawType);
     Map<TypeVariableKey, TypeRef<?>> typeVarRefs = explicitTypeVarRefs(rawType, typeArguments);
     return Arrays.asList(
-        resolveTypeVariables(keyValueType.f0, typeVarRefs),
-        resolveTypeVariables(keyValueType.f1, typeVarRefs));
+        resolveTypeVariables(keyValueType.f0.getType(), typeVarRefs),
+        resolveTypeVariables(keyValueType.f1.getType(), typeVarRefs));
   }
 
   private static boolean hasFullExplicitRawArgs(
@@ -230,8 +204,7 @@ public class TypeRef<T> {
       Class<?> rawType, List<TypeRef<?>> typeArguments) {
     TypeVariable<?>[] variables = rawType.getTypeParameters();
     Map<TypeVariableKey, TypeRef<?>> typeVarRefs = new HashMap<>();
-    int len = Math.min(variables.length, typeArguments.size());
-    for (int i = 0; i < len; i++) {
+    for (int i = 0; i < variables.length; i++) {
       typeVarRefs.put(new TypeVariableKey(variables[i]), typeArguments.get(i));
     }
     return typeVarRefs;
@@ -239,22 +212,17 @@ public class TypeRef<T> {
 
   private static TypeRef<?> rawIterableElementType(Class<?> rawType) {
     if (isScalaIterable(rawType)) {
-      // Keep Scala supertype lookup on the raw path. ScalaTypes.getElementType uses public
-      // TypeRef construction, which re-enters container argument normalization for Scala
-      // collection traits while the normalized argument view is being built.
       @SuppressWarnings({"rawtypes", "unchecked"})
       TypeRef<?> iterableType =
-          ((TypeRef) rawTypeRef(rawType))
-              .getSupertypeNoNormalize((Class) ScalaTypes.getScalaIterableType());
+          ((TypeRef) TypeRef.of(rawType)).getSupertype((Class) ScalaTypes.getScalaIterableType());
       return iterableType
-          .resolveTypeNoNormalize(ScalaTypes.getScalaIteratorReturnType())
-          .resolveTypeNoNormalize(ScalaTypes.getScalaNextReturnType());
+          .resolveType(ScalaTypes.getScalaIteratorReturnType())
+          .resolveType(ScalaTypes.getScalaNextReturnType());
     }
     @SuppressWarnings("unchecked")
     TypeRef<?> iterableType =
-        ((TypeRef<? extends Iterable<?>>) rawTypeRef(rawType))
-            .getSupertypeNoNormalize(Iterable.class);
-    return iterableType.resolveTypeNoNormalize(Iterable.class.getTypeParameters()[0]);
+        ((TypeRef<? extends Iterable<?>>) TypeRef.of(rawType)).getSupertype(Iterable.class);
+    return iterableType.resolveType(Iterable.class.getTypeParameters()[0]);
   }
 
   private static Tuple2<TypeRef<?>, TypeRef<?>> rawMapKeyValueTypes(Class<?> rawType) {
@@ -262,20 +230,14 @@ public class TypeRef<T> {
       TypeRef<?> kvTupleType = rawIterableElementType(rawType);
       ParameterizedType type = (ParameterizedType) kvTupleType.getType();
       Type[] types = type.getActualTypeArguments();
-      return Tuple2.of(rawTypeRef(types[0]), rawTypeRef(types[1]));
+      return Tuple2.of(TypeRef.of(types[0]), TypeRef.of(types[1]));
     }
     @SuppressWarnings("unchecked")
     TypeRef<?> mapType =
-        ((TypeRef<? extends Map<?, ?>>) rawTypeRef(rawType)).getSupertypeNoNormalize(Map.class);
+        ((TypeRef<? extends Map<?, ?>>) TypeRef.of(rawType)).getSupertype(Map.class);
     TypeVariable<?>[] typeParameters = Map.class.getTypeParameters();
     return Tuple2.of(
-        mapType.resolveTypeNoNormalize(typeParameters[0]),
-        mapType.resolveTypeNoNormalize(typeParameters[1]));
-  }
-
-  private static TypeRef<?> resolveTypeVariables(
-      TypeRef<?> typeRef, Map<TypeVariableKey, TypeRef<?>> typeVarRefs) {
-    return resolveTypeVariables(typeRef.getType(), typeVarRefs);
+        mapType.resolveType(typeParameters[0]), mapType.resolveType(typeParameters[1]));
   }
 
   private static TypeRef<?> resolveTypeVariables(
@@ -283,18 +245,6 @@ public class TypeRef<T> {
     if (type instanceof TypeVariable) {
       TypeRef<?> typeRef = typeVarRefs.get(new TypeVariableKey((TypeVariable<?>) type));
       return typeRef == null ? TypeRef.of(type) : typeRef;
-    }
-    if (type instanceof WildcardType) {
-      WildcardType wildcardType = (WildcardType) type;
-      Type[] lowerBounds = wildcardType.getLowerBounds();
-      Type[] upperBounds = wildcardType.getUpperBounds();
-      Type[] resolvedLowerBounds = resolveTypes(lowerBounds, typeVarRefs);
-      Type[] resolvedUpperBounds = resolveTypes(upperBounds, typeVarRefs);
-      if (Arrays.equals(lowerBounds, resolvedLowerBounds)
-          && Arrays.equals(upperBounds, resolvedUpperBounds)) {
-        return TypeRef.of(type);
-      }
-      return TypeRef.of(new WildcardTypeImpl(resolvedLowerBounds, resolvedUpperBounds));
     }
     if (type instanceof ParameterizedType) {
       ParameterizedType parameterizedType = (ParameterizedType) type;
@@ -322,18 +272,6 @@ public class TypeRef<T> {
       return TypeRef.of(newArrayType(componentType.getType()), null, null, componentType);
     }
     return TypeRef.of(type);
-  }
-
-  private static Type[] resolveTypes(Type[] types, Map<TypeVariableKey, TypeRef<?>> typeVarRefs) {
-    Type[] resolvedTypes = new Type[types.length];
-    for (int i = 0; i < types.length; i++) {
-      resolvedTypes[i] = resolveTypeVariables(types[i], typeVarRefs).getType();
-    }
-    return resolvedTypes;
-  }
-
-  private static TypeRef<?> rawTypeRef(Type type) {
-    return new TypeRef<>(type, null, null, null, false);
   }
 
   private static boolean isMapLike(Class<?> rawType) {
@@ -428,7 +366,7 @@ public class TypeRef<T> {
   }
 
   public boolean hasExplicitTypeArguments() {
-    return typeArguments != null;
+    return typeArguments != null || type instanceof ParameterizedType;
   }
 
   public List<TypeRef<?>> getTypeArguments() {
@@ -436,7 +374,12 @@ public class TypeRef<T> {
       return typeArguments;
     }
     if (type instanceof ParameterizedType) {
-      return normalizeTypeArguments(type, null);
+      Type[] actualTypeArguments = ((ParameterizedType) type).getActualTypeArguments();
+      List<TypeRef<?>> args = new ArrayList<>(actualTypeArguments.length);
+      for (Type actualTypeArgument : actualTypeArguments) {
+        args.add(TypeRef.of(actualTypeArgument));
+      }
+      return immutableTypeArguments(normalizeContainerTypeArguments(type, args));
     }
     return new ArrayList<>();
   }
@@ -682,61 +625,32 @@ public class TypeRef<T> {
   }
 
   private TypeRef<?> resolveType0(Type iteratorReturnType, Map<TypeVariableKey, Type> mappings) {
-    return resolveType0(iteratorReturnType, mappings, true);
-  }
-
-  private TypeRef<?> resolveTypeNoNormalize(Type iteratorReturnType) {
-    if (iteratorReturnType instanceof WildcardType) {
-      return rawTypeRef(iteratorReturnType);
-    }
-    Type invariantContext = WildcardCapturer.capture(type);
-    Map<TypeVariableKey, Type> mappings = resolveTypeMappings(invariantContext);
-    return resolveType0(iteratorReturnType, mappings, false);
-  }
-
-  private TypeRef<?> resolveType0(
-      Type iteratorReturnType, Map<TypeVariableKey, Type> mappings, boolean normalize) {
     if (iteratorReturnType instanceof TypeVariable) {
       TypeVariable<?> typeVariable = (TypeVariable<?>) iteratorReturnType;
       Type type = mappings.get(new TypeVariableKey(typeVariable));
       if (type == null) {
-        return normalize ? of(typeVariable) : rawTypeRef(typeVariable);
+        return of(typeVariable);
       }
-      return resolveType0(type, mappings, normalize);
+      return resolveType0(type, mappings);
     } else if (iteratorReturnType instanceof ParameterizedType) {
       ParameterizedType parameterizedType = (ParameterizedType) iteratorReturnType;
       Type owner = parameterizedType.getOwnerType();
-      Type resolvedOwner = owner == null ? null : resolveType0(owner, mappings, normalize).type;
-      Type resolvedRawType = resolveType0(parameterizedType.getRawType(), mappings, normalize).type;
+      Type resolvedOwner = owner == null ? null : resolveType0(owner, mappings).type;
+      Type resolvedRawType = resolveType0(parameterizedType.getRawType(), mappings).type;
 
       Type[] args = parameterizedType.getActualTypeArguments();
       Type[] resolvedArgs = new Type[args.length];
-      List<TypeRef<?>> resolvedTypeArguments = normalize ? null : new ArrayList<>(args.length);
       for (int i = 0; i < args.length; i++) {
-        TypeRef<?> resolvedArg = resolveType0(args[i], mappings, normalize);
-        resolvedArgs[i] = resolvedArg.type;
-        if (!normalize) {
-          resolvedTypeArguments.add(resolvedArg);
-        }
+        resolvedArgs[i] = resolveType0(args[i], mappings).type;
       }
 
-      return new TypeRef<>(
-          new ParameterizedTypeImpl(resolvedOwner, resolvedRawType, resolvedArgs),
-          null,
-          resolvedTypeArguments,
-          null,
-          normalize);
+      return of(new ParameterizedTypeImpl(resolvedOwner, resolvedRawType, resolvedArgs));
     } else if (iteratorReturnType instanceof GenericArrayType) {
       Type componentType = ((GenericArrayType) iteratorReturnType).getGenericComponentType();
-      TypeRef<?> resolvedComponentType = resolveType0(componentType, mappings, normalize);
-      return new TypeRef<>(
-          newArrayType(resolvedComponentType.type),
-          null,
-          null,
-          normalize ? null : resolvedComponentType,
-          normalize);
+      Type resolvedComponentType = resolveType0(componentType, mappings).type;
+      return of(newArrayType(resolvedComponentType));
     }
-    return normalize ? of(iteratorReturnType) : rawTypeRef(iteratorReturnType);
+    return of(iteratorReturnType);
   }
 
   private Map<TypeVariableKey, Type> resolveTypeMappings() {
@@ -859,14 +773,6 @@ public class TypeRef<T> {
     @SuppressWarnings("unchecked") // resolved supertype
     TypeRef<? super T> supertype =
         (TypeRef<? super T>) resolveType0(toGenericType(superclass), mappings);
-    return supertype;
-  }
-
-  private TypeRef<? super T> getSupertypeNoNormalize(Class<? super T> superclass) {
-    Map<TypeVariableKey, Type> mappings = resolveTypeMappings();
-    @SuppressWarnings("unchecked")
-    TypeRef<? super T> supertype =
-        (TypeRef<? super T>) resolveType0(toGenericType(superclass), mappings, false);
     return supertype;
   }
 
@@ -1714,12 +1620,10 @@ public class TypeRef<T> {
 
     @Override
     public int hashCode() {
-      GenericDeclaration declaration = typeVariable.getGenericDeclaration();
-      String name = typeVariable.getName();
-
-      int result = 1;
-      result = 31 * result + (declaration != null ? declaration.hashCode() : 0);
-      result = 31 * result + (name != null ? name.hashCode() : 0);
+      // Match typeVariablesEquals and avoid TypeVariable annotation APIs, which are absent on
+      // Android runtimes used by the instrumented tests.
+      int result = typeVariable.getGenericDeclaration().hashCode();
+      result = 31 * result + typeVariable.getName().hashCode();
       return result;
     }
   }

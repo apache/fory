@@ -106,6 +106,8 @@ public class TypeRefTest extends ForyTestBase {
 
   static class MultiParamMap<A, K, V> extends HashMap<K, V> {}
 
+  static class StringKeyMap<V> extends HashMap<String, V> {}
+
   static class ArrayElementList<A, E> extends ArrayList<E[]> {}
 
   static class ArrayValueMap<A, K, V> extends HashMap<K, V[]> {}
@@ -143,6 +145,16 @@ public class TypeRefTest extends ForyTestBase {
     Assert.assertEquals(mapGenericType.getTypeParametersCount(), 2);
     Assert.assertEquals(mapGenericType.getTypeParameter0().getCls(), Long.class);
     Assert.assertEquals(mapGenericType.getTypeParameter1().getCls(), Integer.class);
+
+    TypeRef<?> fixedKeyMapType = new TypeRef<StringKeyMap<List<Integer>>>() {};
+    Assert.assertEquals(fixedKeyMapType.getTypeArguments().size(), 2);
+    Assert.assertEquals(fixedKeyMapType.getTypeArguments().get(0), TypeRef.of(String.class));
+    Assert.assertEquals(fixedKeyMapType.getTypeArguments().get(1), new TypeRef<List<Integer>>() {});
+
+    GenericType fixedKeyMapGenericType = GenericType.build(fixedKeyMapType);
+    Assert.assertEquals(fixedKeyMapGenericType.getTypeParametersCount(), 2);
+    Assert.assertEquals(fixedKeyMapGenericType.getTypeParameter0().getCls(), String.class);
+    Assert.assertEquals(fixedKeyMapGenericType.getTypeParameter1().getCls(), List.class);
   }
 
   @Test
@@ -238,7 +250,7 @@ public class TypeRefTest extends ForyTestBase {
   }
 
   @Test
-  public void testTypeUseNullableOwnership() throws Exception {
+  public void testTypeUseMetadataKeepsNullableOwnership() throws Exception {
     Field nicknameField = TypeUseMetadataStruct.class.getDeclaredField("nickname");
     TypeRef<?> nicknameType = TypeRef.ofTypeUse(nicknameField.getAnnotatedType());
     TypeExtMeta nicknameMeta = nicknameType.getTypeExtMeta();

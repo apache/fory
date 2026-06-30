@@ -906,12 +906,13 @@ public class FieldTypes {
         return collectionOf(elementType, TypeExtMeta.of(typeId, nullable, trackingRef));
       }
       if (!declaredClass.isArray()) {
-        if (declElementType.equals(elementType)) {
+        TypeExtMeta extMeta = typeExtMeta(typeId, nullable, trackingRef, declared);
+        if (declElementType.equals(elementType)
+            && Objects.equals(declared.getTypeExtMeta(), extMeta)) {
           return declared;
         }
-        TypeExtMeta extMeta = typeExtMeta(typeId, nullable, trackingRef, declared);
         return TypeRef.of(
-            declaredClass, extMeta, java.util.Collections.singletonList(elementType), null);
+            declared.getType(), extMeta, java.util.Collections.singletonList(elementType), null);
       }
       // Build array type from element type
       // elementType could be base type (int) or intermediate array (int[])
@@ -1012,9 +1013,13 @@ public class FieldTypes {
         TypeExtMeta extMeta = typeExtMeta(typeId, nullable, trackingRef, declared);
         TypeRef<?> keyTypeRef = keyType.toTypeToken(classResolver, keyDecl);
         TypeRef<?> valueTypeRef = valueType.toTypeToken(classResolver, valueDecl);
-        Class<?> declaredClass = declared.getRawType();
+        if (keyDecl.equals(keyTypeRef)
+            && valueDecl.equals(valueTypeRef)
+            && Objects.equals(declared.getTypeExtMeta(), extMeta)) {
+          return declared;
+        }
         return TypeRef.of(
-            declaredClass, extMeta, java.util.Arrays.asList(keyTypeRef, valueTypeRef), null);
+            declared.getType(), extMeta, java.util.Arrays.asList(keyTypeRef, valueTypeRef), null);
       }
       return mapOf(
           keyType.toTypeToken(classResolver, keyDecl),

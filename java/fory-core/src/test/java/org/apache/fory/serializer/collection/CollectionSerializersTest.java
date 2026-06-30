@@ -34,6 +34,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.Serializable;
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
 import java.util.AbstractCollection;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -79,6 +80,7 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.FieldTypes;
 import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.TypeRef;
@@ -86,6 +88,7 @@ import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.collection.CollectionSerializers.JDKCompatibleCollectionSerializer;
 import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.type.GenericType;
+import org.apache.fory.type.Types;
 import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
@@ -339,10 +342,8 @@ public class CollectionSerializersTest extends ForyTestBase {
     list.add(3);
 
     MultiParamListHolder holder = new MultiParamListHolder("test-container", list);
-    MultiParamListHolder cloned =
-        (MultiParamListHolder)
-            collectionGenericFory(enableCodegen)
-                .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
+    Fory fory = collectionGenericFory(enableCodegen);
+    MultiParamListHolder cloned = (MultiParamListHolder) fory.deserialize(fory.serialize(holder));
 
     Assert.assertEquals(cloned.getName(), "test-container");
     Assert.assertNotNull(cloned.getNumbers());
@@ -369,10 +370,9 @@ public class CollectionSerializersTest extends ForyTestBase {
     holder.refItems.add(refItem);
     holder.refItems.add(refItem);
 
+    Fory fory = collectionGenericFory(enableCodegen);
     MultiParamListRefHolder cloned =
-        (MultiParamListRefHolder)
-            collectionGenericFory(enableCodegen)
-                .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
+        (MultiParamListRefHolder) fory.deserialize(fory.serialize(holder));
     Assert.assertNotSame(cloned.noRefItems.get(0), cloned.noRefItems.get(1));
     Assert.assertSame(cloned.refItems.get(0), cloned.refItems.get(1));
   }
@@ -390,10 +390,9 @@ public class CollectionSerializersTest extends ForyTestBase {
     inner.add(item);
     holder.nestedItems.add(inner);
 
+    Fory fory = collectionGenericFory(enableCodegen);
     NestedMultiParamListHolder cloned =
-        (NestedMultiParamListHolder)
-            collectionGenericFory(enableCodegen)
-                .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
+        (NestedMultiParamListHolder) fory.deserialize(fory.serialize(holder));
     Assert.assertNotSame(cloned.nestedItems.get(0).get(0), cloned.nestedItems.get(0).get(1));
   }
 
@@ -416,11 +415,31 @@ public class CollectionSerializersTest extends ForyTestBase {
     holder.items.add(element);
     holder.items.add(element);
 
+    Fory fory = collectionGenericFory(enableCodegen);
     FixedElementListHolder cloned =
-        (FixedElementListHolder)
-            collectionGenericFory(enableCodegen)
-                .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
+        (FixedElementListHolder) fory.deserialize(fory.serialize(holder));
     Assert.assertSame(cloned.items.get(0), cloned.items.get(1));
+  }
+
+  @Test
+  public void testCollectionFieldTypeKeepsDeclaredType() {
+    Fory fory = builder().withXlang(false).requireClassRegistration(false).build();
+    TypeRef<?> declared = new TypeRef<List<Integer>>() {};
+    FieldTypes.CollectionFieldType fieldType =
+        new FieldTypes.CollectionFieldType(
+            Types.LIST,
+            true,
+            true,
+            new FieldTypes.RegisteredFieldType(true, false, Types.INT32, -1));
+
+    TypeRef<?> rebuilt = fieldType.toTypeToken(fory.getTypeResolver(), declared);
+
+    Assert.assertTrue(rebuilt.getType() instanceof ParameterizedType);
+    Assert.assertEquals(rebuilt.getRawType(), List.class);
+    Assert.assertEquals(rebuilt.getTypeArguments().size(), 1);
+    Assert.assertEquals(rebuilt.getTypeExtMeta().typeId(), Types.LIST);
+    Assert.assertTrue(rebuilt.getTypeExtMeta().nullable());
+    Assert.assertTrue(rebuilt.getTypeExtMeta().trackingRef());
   }
 
   private static Fory collectionGenericFory(boolean enableCodegen) {
