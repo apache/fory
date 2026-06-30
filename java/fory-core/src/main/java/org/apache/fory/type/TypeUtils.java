@@ -704,6 +704,17 @@ public class TypeUtils {
       if (typeRef != null) {
         return typeRef;
       }
+      Type[] bounds = ((TypeVariable<?>) type).getBounds();
+      if (bounds.length == 0 || bounds[0] == Object.class) {
+        return OBJECT_TYPE;
+      }
+      return TypeRef.of(getRawType(bounds[0]));
+    }
+    if (type instanceof WildcardType) {
+      Type[] upperBounds = ((WildcardType) type).getUpperBounds();
+      return upperBounds.length == 0
+          ? OBJECT_TYPE
+          : resolveTypeVariables(upperBounds[0], typeVarRefs);
     }
     if (type instanceof ParameterizedType) {
       Type[] args = ((ParameterizedType) type).getActualTypeArguments();
@@ -729,9 +740,9 @@ public class TypeUtils {
     if (ref != null) {
       genericType.setTrackingRefOverride(ref.enable() && globalTrackingRef);
     }
-    // Child type-use metadata is already folded into TypeRef explicit arguments. Replaying
-    // AnnotatedType children here is unsafe because collection/map GenericType parameters are
-    // normalized to element or key/value, not necessarily the raw declared type-argument order.
+    // Child type-use metadata is already folded into TypeRef explicit arguments. Replaying JVM
+    // type-use children here is unsafe because collection/map GenericType parameters are normalized
+    // to element or key/value, not necessarily the raw declared type-argument order.
   }
 
   public static TypeRef<?> getFieldTypeRef(Field field) {

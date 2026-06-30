@@ -190,13 +190,20 @@ public class GenericType {
   }
 
   private static GenericType buildCollection(TypeRef<?> typeRef, Predicate<Type> finalPredicate) {
-    TypeRef<?> elementTypeRef = TypeUtils.getElementType(typeRef);
-    // Recursive collection declarations such as SelfList extends ArrayList<SelfList> must not
-    // push themselves as their own element generic type, or interpreter mode recurses forever.
-    if (getRawType(typeRef) == elementTypeRef.getRawType()) {
+    TypeRef<?> collectionTypeRef = typeRef.hasWildcard() ? typeRef.resolveAllWildcards() : typeRef;
+    TypeRef<?> elementTypeRef = TypeUtils.getElementType(collectionTypeRef);
+    if (elementTypeRef.getType() instanceof WildcardType) {
+      elementTypeRef = elementTypeRef.resolveAllWildcards();
+    }
+    if (elementTypeRef.getType() instanceof TypeVariable && !hasTypeArguments(collectionTypeRef)) {
       elementTypeRef = TypeUtils.OBJECT_TYPE;
     }
-    if (elementTypeRef.equals(TypeUtils.OBJECT_TYPE) && !hasTypeArguments(typeRef)) {
+    // Recursive collection declarations such as SelfList extends ArrayList<SelfList> must not
+    // push themselves as their own element generic type, or interpreter mode recurses forever.
+    if (isSelfRecursiveTypeArg(typeRef, elementTypeRef)) {
+      elementTypeRef = TypeUtils.OBJECT_TYPE;
+    }
+    if (elementTypeRef.equals(TypeUtils.OBJECT_TYPE) && !hasTypeArguments(collectionTypeRef)) {
       return new GenericType(typeRef, finalPredicate.test(typeRef.getType()));
     }
     // Collection serializers consume type parameter 0 as the element type. Custom collection
@@ -207,12 +214,27 @@ public class GenericType {
   }
 
   private static GenericType buildMap(TypeRef<?> typeRef, Predicate<Type> finalPredicate) {
-    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(typeRef);
-    TypeRef<?> keyTypeRef = normalizeMapTypeArg(typeRef, keyValueType.f0);
-    TypeRef<?> valueTypeRef = normalizeMapTypeArg(typeRef, keyValueType.f1);
+    TypeRef<?> mapTypeRef = typeRef.hasWildcard() ? typeRef.resolveAllWildcards() : typeRef;
+    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(mapTypeRef);
+    TypeRef<?> keyTypeRef = normalizeMapTypeArg(mapTypeRef, keyValueType.f0);
+    TypeRef<?> valueTypeRef = normalizeMapTypeArg(mapTypeRef, keyValueType.f1);
+    if (keyTypeRef.getType() instanceof WildcardType) {
+      keyTypeRef = keyTypeRef.resolveAllWildcards();
+    }
+    if (valueTypeRef.getType() instanceof WildcardType) {
+      valueTypeRef = valueTypeRef.resolveAllWildcards();
+    }
+    if (!hasTypeArguments(mapTypeRef)) {
+      if (keyTypeRef.getType() instanceof TypeVariable) {
+        keyTypeRef = TypeUtils.OBJECT_TYPE;
+      }
+      if (valueTypeRef.getType() instanceof TypeVariable) {
+        valueTypeRef = TypeUtils.OBJECT_TYPE;
+      }
+    }
     if (keyTypeRef.equals(TypeUtils.OBJECT_TYPE)
         && valueTypeRef.equals(TypeUtils.OBJECT_TYPE)
-        && !hasTypeArguments(typeRef)) {
+        && !hasTypeArguments(mapTypeRef)) {
       return new GenericType(typeRef, finalPredicate.test(typeRef.getType()));
     }
     // Map serializers consume type parameter 0 as key type and 1 as value type. Custom map
@@ -228,7 +250,50 @@ public class GenericType {
   private static TypeRef<?> normalizeMapTypeArg(TypeRef<?> ownerTypeRef, TypeRef<?> typeArg) {
     // Recursive map declarations such as SelfMap extends HashMap<SelfMap, ...> must not build the
     // same map GenericType as its own key/value parameter, or interpreter mode recurses forever.
-    return getRawType(ownerTypeRef) == typeArg.getRawType() ? TypeUtils.OBJECT_TYPE : typeArg;
+    return isSelfRecursiveTypeArg(ownerTypeRef, typeArg) ? TypeUtils.OBJECT_TYPE : typeArg;
+  }
+
+  private static boolean isSelfRecursiveTypeArg(TypeRef<?> ownerTypeRef, TypeRef<?> typeArg) {
+    if (getRawType(ownerTypeRef) != typeArg.getRawType()) {
+      return false;
+    }
+    // Nested containers with the same raw type, such as List<List<String>> or Map<Map<K, V>, V>,
+    // are valid declared arguments. Only normalize true self-recursive custom declarations like
+    // SelfList extends ArrayList<SelfList>, where the child type is not one of the owner's own
+    // actual arguments.
+    for (TypeRef<?> declaredArg : ownerTypeRef.getTypeArguments()) {
+      if (sameTypeView(declaredArg, typeArg)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static boolean sameTypeView(TypeRef<?> left, TypeRef<?> right) {
+    if (left.getType() instanceof WildcardType) {
+      Type[] upperBounds = ((WildcardType) left.getType()).getUpperBounds();
+      return upperBounds.length != 0 && sameTypeView(TypeRef.of(upperBounds[0]), right);
+    }
+    if (right.getType() instanceof WildcardType) {
+      Type[] upperBounds = ((WildcardType) right.getType()).getUpperBounds();
+      return upperBounds.length != 0 && sameTypeView(left, TypeRef.of(upperBounds[0]));
+    }
+    if (!left.getType().equals(right.getType())) {
+      return false;
+    }
+    if (left.hasExplicitTypeArguments() || right.hasExplicitTypeArguments()) {
+      List<TypeRef<?>> leftArgs = left.getTypeArguments();
+      List<TypeRef<?>> rightArgs = right.getTypeArguments();
+      if (leftArgs.size() != rightArgs.size()) {
+        return false;
+      }
+      for (int i = 0; i < leftArgs.size(); i++) {
+        if (!sameTypeView(leftArgs.get(i), rightArgs.get(i))) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   private static boolean hasTypeArguments(TypeRef<?> typeRef) {

@@ -1315,14 +1315,12 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   private TypeRef<?> getElementType(TypeRef<?> typeRef) {
-    TypeRef<?> elementType = TypeUtils.getElementType(typeRef);
-    // Recursive collection element types, such as SelfList extends ArrayList<SelfList>, must
-    // fall back to Object; otherwise generated code keeps resolving the collection as its own
-    // element type.
-    if (elementType.getRawType() == typeRef.getRawType()) {
-      elementType = OBJECT_TYPE;
-    }
-    return elementType;
+    GenericType genericType = typeResolver(r -> r.buildGenericType(typeRef));
+    GenericType elementType = genericType.getTypeParameter0();
+    // Keep codegen aligned with GenericType's normalized container view. Raw TypeUtils element
+    // checks cannot distinguish valid nested containers such as Collection<Collection<Integer>>
+    // from true self-recursive custom collection declarations.
+    return elementType == null ? OBJECT_TYPE : elementType.getTypeRef();
   }
 
   private boolean usesPrimitiveListCollectionProtocol(Descriptor descriptor) {
@@ -1728,15 +1726,11 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   private Tuple2<TypeRef<?>, TypeRef<?>> getMapKeyValueType(TypeRef<?> typeRef) {
-    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(typeRef);
-    TypeRef<?> keyType = keyValueType.f0;
-    TypeRef<?> valueType = keyValueType.f1;
-    if (keyType.equals(typeRef)) {
-      keyType = OBJECT_TYPE;
-    }
-    if (valueType.equals(typeRef)) {
-      valueType = OBJECT_TYPE;
-    }
+    GenericType genericType = typeResolver(r -> r.buildGenericType(typeRef));
+    GenericType keyGenericType = genericType.getTypeParameter0();
+    GenericType valueGenericType = genericType.getTypeParameter1();
+    TypeRef<?> keyType = keyGenericType == null ? OBJECT_TYPE : keyGenericType.getTypeRef();
+    TypeRef<?> valueType = valueGenericType == null ? OBJECT_TYPE : valueGenericType.getTypeRef();
     return Tuple2.of(keyType, valueType);
   }
 
