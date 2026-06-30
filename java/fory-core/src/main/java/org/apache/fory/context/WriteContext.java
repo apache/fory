@@ -556,36 +556,6 @@ public final class WriteContext {
   }
 
   /**
-   * Writes the root object for one serialization operation.
-   *
-   * <p>Root no-ref serialization still owns the null marker and type metadata, but it must not pay
-   * generic {@link RefWriter} dispatch or uncached type-info lookup when reference tracking is
-   * disabled.
-   */
-  public void writeRootRef(Object obj) {
-    if (trackingRef) {
-      writeRef(obj, rootTypeInfoHolder);
-      return;
-    }
-    MemoryBuffer buffer = this.buffer;
-    if (obj == null) {
-      buffer.writeByte(Fory.NULL_FLAG);
-      return;
-    }
-    buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-    TypeResolver resolver = typeResolver;
-    TypeInfo typeInfo = resolver.getTypeInfo(obj.getClass(), rootTypeInfoHolder);
-    if (crossLanguage && typeInfo.getType() == UnknownStruct.class) {
-      depth++;
-      typeInfo.getSerializer().write(this, obj);
-      depth--;
-      return;
-    }
-    resolver.writeTypeInfo(this, typeInfo);
-    writeData(typeInfo, obj);
-  }
-
-  /**
    * Writes a non-null, first-seen object together with its type metadata.
    *
    * <p>If ref tracking is enabled, callers must use this only for the first visit to the object in
