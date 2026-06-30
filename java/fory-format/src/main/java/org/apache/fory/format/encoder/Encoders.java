@@ -103,7 +103,7 @@ public class Encoders {
    *   <li>java.math.BigDecimal, java.math.BigInteger
    *   <li>time related: java.sql.Date, java.sql.Timestamp, java.time.LocalDate, java.time.Instant
    *   <li>Optional and friends: OptionalInt, OptionalLong, OptionalDouble
-   *   <li>collection types: only array and java.util.List currently, map support is in progress
+   *   <li>collection types: array, java.util.List, and java.util.Map
    *   <li>record types
    *   <li>nested java bean
    * </ul>
@@ -235,8 +235,7 @@ public class Encoders {
    * <p>supported types for java bean field: - primitive types: boolean, int, double, etc. - boxed
    * types: Boolean, Integer, Double, etc. - String - java.math.BigDecimal, java.math.BigInteger -
    * time related: java.sql.Date, java.sql.Timestamp, java.time.LocalDate, java.time.Instant -
-   * collection types: only array and java.util.List currently, map support is in progress - nested
-   * java bean.
+   * collection types: array, java.util.List, and java.util.Map - nested java bean.
    */
   public static <T extends Map<K, V>, K, V> MapEncoder<T> mapEncoder(
       TypeRef<T> mapToken, TypeRef<K> keyToken, TypeRef<V> valToken, Fory fory) {

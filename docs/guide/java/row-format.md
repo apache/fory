@@ -289,14 +289,13 @@ map may evolve more than one distinct bean class across its key and value. A top
 its own hash identifying both layouts together; a map nested inside an array, another map, or a
 bean field has its layouts folded into the enclosing payload's hash.
 
-When a versioned bean contains other versioned beans, the reader generates one projection codec
-class per combination of versions across the composition. The count grows as the product of the
-version counts of the distinct nested versioned bean classes, not the number of fields, so
-reusing a class across several fields adds no combinations. A map whose key and value both evolve
-multiplies their version counts the same way. If the product across distinct classes becomes a
-concern, drop entries from each bean's `History` interface once you no longer need to read payloads
-from that range. Retiring a history entry is purely a read-side decision; the writer always uses the
-current schema.
+When a versioned bean contains other versioned beans, the reader can read one projection layout per
+combination of versions across the composition. A reader compiles a combination's codec the first
+time it decodes a payload at that combination, so the cost tracks the historical versions you
+actually receive, not the number you could in principle define. A map whose key and value both
+evolve combines their versions the same way. Retiring an entry from a bean's `History` interface
+once you no longer read payloads from that range stops the reader from accepting those payloads; it
+is purely a read-side decision, and the writer always uses the current schema.
 
 ## Related Topics
 

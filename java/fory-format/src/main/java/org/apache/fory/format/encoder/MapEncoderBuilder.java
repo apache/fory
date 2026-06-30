@@ -56,14 +56,15 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   private final TypeRef<?> mapToken;
 
-  // True while the key-array subtree generates. Map keys are always read at the current schema
-  // (they carry no per-payload version hash), so in a projection codec the key bean must resolve to
-  // its current, unsuffixed codec rather than the value's historical projection. Nested bean codecs
-  // register lazily inside genCode, so the flag toggles during the key subtree's genCode via
-  // KeyPositionScope rather than at expression construction. The value path is left untouched.
-  // A single boolean suffices because genCode is depth-first: the key subtree fully generates
-  // within
-  // its KeyPositionScope before the value subtree begins, so the two positions never interleave.
+  // True while the key-array subtree generates. The key and value positions evolve independently:
+  // the map header's combined hash selects a (key version, value version) combination, so a key
+  // bean must route to its own historical projection codec (keyCodecSuffix / keyNestedSuffixes)
+  // rather than borrow the value position's. The flag steers both nestedBeanSuffix resolution and
+  // beanCodecKey registration to the key position. Nested bean codecs register lazily inside
+  // genCode, so the flag toggles during the key subtree's genCode via KeyPositionScope rather than
+  // at expression construction. A single boolean suffices because genCode is depth-first: the key
+  // subtree fully generates within its KeyPositionScope before the value subtree begins, so the two
+  // positions never interleave.
   private boolean inKeyPosition;
 
   // Projection suffix for the key bean's row codec, parallel to rowCodecSuffixForBeans (the value
