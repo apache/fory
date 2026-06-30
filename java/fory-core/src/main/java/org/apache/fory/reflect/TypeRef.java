@@ -14,7 +14,6 @@
 
 package org.apache.fory.reflect;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Modifier;
@@ -1445,13 +1444,11 @@ public class TypeRef<T> {
 
     @Override
     public int hashCode() {
-      Annotation[] declaredAnnotations = typeVariable.getDeclaredAnnotations();
-      String name = typeVariable.getName();
-
       int result = 1;
-      result =
-          31 * result + (declaredAnnotations != null ? Arrays.hashCode(declaredAnnotations) : 0);
-      result = 31 * result + (name != null ? name.hashCode() : 0);
+      // Keep hashCode aligned with typeVariablesEquals. Android exposes TypeVariable without
+      // TypeVariable#getDeclaredAnnotations at runtime.
+      result = 31 * result + typeVariable.getGenericDeclaration().hashCode();
+      result = 31 * result + typeVariable.getName().hashCode();
       return result;
     }
   }
