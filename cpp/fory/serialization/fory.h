@@ -875,15 +875,7 @@ private:
 
   template <typename T, bool unknown_root>
   FORY_ALWAYS_INLINE Result<T, Error> deserialize_buffer(Buffer &buffer) {
-    const bool budget_ok =
-        unknown_root
-            ? read_ctx_->init_container_budget_unknown()
-            : read_ctx_->init_container_budget_known(buffer.remaining_size());
-    if (FORY_PREDICT_FALSE(!budget_ok)) {
-      Error error = read_ctx_->take_error();
-      read_ctx_->reset();
-      return Unexpected(std::move(error));
-    }
+    const size_t root_bytes = unknown_root ? 0 : buffer.remaining_size();
 
     Error header_error;
     const uint8_t header = buffer.read_uint8(header_error);
@@ -897,6 +889,13 @@ private:
     }
 
     read_ctx_->attach(buffer);
+    if constexpr (needs_container_budget_v<T>) {
+      if constexpr (unknown_root) {
+        read_ctx_->defer_container_budget_unknown();
+      } else {
+        read_ctx_->defer_container_budget_known(root_bytes);
+      }
+    }
     ReadContextGuard guard(*read_ctx_);
     return deserialize_impl<T>(buffer);
   }

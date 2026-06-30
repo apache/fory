@@ -40,7 +40,7 @@ public class ContainerMemoryBudgetTest extends ForyTestBase {
   private static final long KNOWN_ROOT_MULTIPLIER = 8L;
   private static final long KNOWN_ROOT_SLACK_BYTES = 64L * 1024;
   private static final long STREAM_ROOT_BYTES = 128L * 1024 * 1024;
-  private static final int REFERENCE_BYTES = MemoryBuffer.objectArrayIndexScale();
+  private static final int REFERENCE_BYTES = 4;
 
   @Test
   public void testConfigValidation() {

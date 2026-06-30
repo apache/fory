@@ -249,7 +249,7 @@ public class ChildContainerSerializers {
     @Override
     public T newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       int refId = readContext.lastPreservedRefId();
       Comparator comparator = (Comparator) readContext.readRef();
@@ -295,7 +295,7 @@ public class ChildContainerSerializers {
     @Override
     public T newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       int refId = readContext.lastPreservedRefId();
       Comparator comparator = (Comparator) readContext.readRef();
@@ -403,7 +403,7 @@ public class ChildContainerSerializers {
     @Override
     public Map newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(readContext);
+      int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
       int refId = readContext.lastPreservedRefId();
       Comparator comparator = (Comparator) readContext.readRef();

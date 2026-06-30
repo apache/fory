@@ -45,7 +45,7 @@ import org.apache.fory.util.Preconditions;
  * object-array paths avoid adapter allocation.
  */
 public final class ArraySerializers {
-  private static final int REFERENCE_BYTES = MemoryBuffer.objectArrayIndexScale();
+  private static final int REFERENCE_BYTES = 4;
 
   private ArraySerializers() {}
 

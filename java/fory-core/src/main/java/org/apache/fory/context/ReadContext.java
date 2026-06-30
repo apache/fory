@@ -640,7 +640,12 @@ public final class ReadContext {
     return (T) readNonRef(serializer);
   }
 
-  /** Reads the root object for one deserialization operation. */
+  /**
+   * Reads the root object for one deserialization operation.
+   *
+   * <p>Root no-ref deserialization owns the null marker and type metadata directly; using the
+   * generic ref-reader path here makes scalar roots pay reference dispatch they can never use.
+   */
   public Object readRootRef() {
     if (trackingRef) {
       return readRef(rootTypeInfoHolder);

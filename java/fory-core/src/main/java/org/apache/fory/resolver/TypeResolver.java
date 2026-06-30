@@ -773,7 +773,7 @@ public abstract class TypeResolver {
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
-        typeInfo = readSharedClassTypeInfo(readContext, null);
+        typeInfo = readSharedClassTypeInfo(readContext, null, typeInfoCache);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
@@ -782,7 +782,7 @@ public abstract class TypeResolver {
         if (!metaContextShareEnabled) {
           typeInfo = readTypeInfoFromBytes(readContext, typeInfoCache, typeId);
         } else {
-          typeInfo = readSharedClassTypeInfo(readContext, null);
+          typeInfo = readSharedClassTypeInfo(readContext, null, typeInfoCache);
         }
         break;
       case Types.LIST:

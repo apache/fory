@@ -46,7 +46,7 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
-  private static final int REFERENCE_BYTES = MemoryBuffer.objectArrayIndexScale();
+  private static final int REFERENCE_BYTES = 4;
 
   private MethodHandle constructor;
   private int numElements;
@@ -463,7 +463,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
    */
   public Collection newCollection(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    numElements = readCollectionSize(readContext);
+    numElements = readCollectionSize(readContext, buffer);
     if (AndroidSupport.IS_ANDROID) {
       try {
         Constructor<?> constructor = type.getDeclaredConstructor();
@@ -563,7 +563,10 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   }
 
   protected final int readCollectionSize(ReadContext readContext) {
-    MemoryBuffer buffer = readContext.getBuffer();
+    return readCollectionSize(readContext, readContext.getBuffer());
+  }
+
+  protected final int readCollectionSize(ReadContext readContext, MemoryBuffer buffer) {
     int numElements = buffer.readVarUInt32Small7();
     checkCollectionSize(numElements);
     readContext.reserveContainerMemory((long) numElements * REFERENCE_BYTES);

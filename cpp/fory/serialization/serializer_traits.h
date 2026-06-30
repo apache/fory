@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "fory/meta/field.h"
 #include "fory/meta/field_info.h"
 #include "fory/meta/type_index.h"
 #include "fory/meta/type_traits.h"
@@ -243,6 +244,86 @@ struct is_fory_serializable<
 
 template <typename T>
 inline constexpr bool is_fory_serializable_v = is_fory_serializable<T>::value;
+
+// ============================================================================
+// Container budget reachability
+// ============================================================================
+
+template <typename T, typename = void>
+struct needs_container_budget : std::false_type {};
+
+template <> struct needs_container_budget<bool, void> : std::false_type {};
+template <> struct needs_container_budget<int8_t, void> : std::false_type {};
+template <> struct needs_container_budget<int16_t, void> : std::false_type {};
+template <> struct needs_container_budget<int32_t, void> : std::false_type {};
+template <> struct needs_container_budget<int64_t, void> : std::false_type {};
+template <> struct needs_container_budget<uint8_t, void> : std::false_type {};
+template <> struct needs_container_budget<uint16_t, void> : std::false_type {};
+template <> struct needs_container_budget<uint32_t, void> : std::false_type {};
+template <> struct needs_container_budget<uint64_t, void> : std::false_type {};
+template <> struct needs_container_budget<float, void> : std::false_type {};
+template <> struct needs_container_budget<double, void> : std::false_type {};
+template <>
+struct needs_container_budget<std::string, void> : std::false_type {};
+
+template <typename T>
+struct needs_container_budget<
+    T, std::enable_if_t<is_vector_v<T> || is_list_v<T> || is_deque_v<T> ||
+                        is_forward_list_v<T> || is_set_like_v<T> ||
+                        is_map_like_v<T>>> : std::true_type {};
+
+template <typename T, size_t N>
+struct needs_container_budget<std::array<T, N>, void>
+    : std::bool_constant<needs_container_budget<
+          std::remove_cv_t<std::remove_reference_t<T>>>::value> {};
+
+template <typename T>
+struct needs_container_budget<std::optional<T>, void>
+    : std::bool_constant<needs_container_budget<
+          std::remove_cv_t<std::remove_reference_t<T>>>::value> {};
+
+template <typename T>
+struct needs_container_budget<std::shared_ptr<T>, void> : std::true_type {};
+
+template <typename T, typename D>
+struct needs_container_budget<std::unique_ptr<T, D>, void> : std::true_type {};
+
+template <typename... Ts>
+struct needs_container_budget<std::tuple<Ts...>, void>
+    : std::bool_constant<(needs_container_budget<std::remove_cv_t<
+                              std::remove_reference_t<Ts>>>::value ||
+                          ...)> {};
+
+template <typename... Ts>
+struct needs_container_budget<std::variant<Ts...>, void>
+    : std::bool_constant<(needs_container_budget<std::remove_cv_t<
+                              std::remove_reference_t<Ts>>>::value ||
+                          ...)> {};
+
+template <typename StructT, typename Ptrs, size_t... I>
+constexpr bool struct_needs_container_budget_impl(std::index_sequence<I...>) {
+  return (
+      needs_container_budget<
+          std::remove_cv_t<std::remove_reference_t<::fory::field_value_type_t<
+              StructT, std::tuple_element_t<I, Ptrs>>>>>::value ||
+      ...);
+}
+
+template <typename T>
+struct needs_container_budget<T, std::enable_if_t<is_fory_serializable_v<T>>> {
+private:
+  using FieldDescriptor =
+      decltype(::fory::meta::fory_field_info(std::declval<const T &>()));
+  using Ptrs = typename FieldDescriptor::PtrsType;
+
+public:
+  static constexpr bool value = struct_needs_container_budget_impl<T, Ptrs>(
+      std::make_index_sequence<FieldDescriptor::Size>{});
+};
+
+template <typename T>
+inline constexpr bool needs_container_budget_v =
+    needs_container_budget<std::remove_cv_t<std::remove_reference_t<T>>>::value;
 
 // ============================================================================
 // Generic Type Detection

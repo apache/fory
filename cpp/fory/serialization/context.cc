@@ -749,6 +749,31 @@ bool ReadContext::reserve_counted_container_checked(uint32_t length,
   return reserve_container_memory(static_cast<size_t>(length) * elem_bytes);
 }
 
+bool ReadContext::init_explicit_container_budget(int64_t configured) {
+  const uint64_t limit = static_cast<uint64_t>(configured);
+  if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
+    if (FORY_PREDICT_FALSE(limit > static_cast<uint64_t>(
+                                       std::numeric_limits<size_t>::max()))) {
+      return set_container_memory_error(
+          "max_container_memory_bytes does not fit size_t");
+    }
+  }
+  remaining_container_memory_bytes_ = static_cast<size_t>(limit);
+  container_budget_state_ = kContainerBudgetReady;
+  return true;
+}
+
+bool ReadContext::materialize_container_budget() {
+  switch (container_budget_state_) {
+  case kContainerBudgetPendingKnown:
+    return init_container_budget_known(pending_container_root_bytes_);
+  case kContainerBudgetPendingUnknown:
+    return init_container_budget_unknown();
+  default:
+    return true;
+  }
+}
+
 bool ReadContext::set_container_memory_error(const std::string &message) {
   set_error(Error::invalid_data(message));
   return false;
@@ -767,8 +792,7 @@ bool ReadContext::set_container_memory_exceeded(size_t bytes,
   set_error(Error::invalid_data(
       "estimated container memory request " + std::to_string(bytes) +
       " bytes exceeds max_container_memory_bytes remaining budget " +
-      std::to_string(remaining) + " bytes out of effective limit " +
-      std::to_string(container_memory_limit_bytes_) + " bytes"));
+      std::to_string(remaining) + " bytes"));
   return false;
 }
 

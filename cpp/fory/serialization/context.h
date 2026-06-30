@@ -506,20 +506,11 @@ public:
   }
 
   FORY_ALWAYS_INLINE bool init_container_budget_known(size_t root_bytes) {
-    size_t limit = 0;
-    if (config_->max_container_memory_bytes > 0) {
-      const uint64_t configured =
-          static_cast<uint64_t>(config_->max_container_memory_bytes);
-      if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
-        if (FORY_PREDICT_FALSE(
-                configured >
-                static_cast<uint64_t>(std::numeric_limits<size_t>::max()))) {
-          return set_container_memory_error(
-              "max_container_memory_bytes does not fit size_t");
-        }
-      }
-      limit = static_cast<size_t>(configured);
-    } else {
+    const int64_t configured = config_->max_container_memory_bytes;
+    if (FORY_PREDICT_FALSE(configured > 0)) {
+      return init_explicit_container_budget(configured);
+    }
+    if constexpr (sizeof(size_t) <= sizeof(uint32_t)) {
       constexpr size_t max_root_bytes = (std::numeric_limits<size_t>::max() -
                                          kKnownContainerBudgetSlackBytes) /
                                         kKnownContainerBudgetMultiplier;
@@ -527,37 +518,39 @@ public:
         return set_container_memory_error(
             "root input size overflows automatic container memory budget");
       }
-      limit = root_bytes * kKnownContainerBudgetMultiplier +
-              kKnownContainerBudgetSlackBytes;
     }
-    container_memory_limit_bytes_ = limit;
-    remaining_container_memory_bytes_ = limit;
+    remaining_container_memory_bytes_ =
+        root_bytes * kKnownContainerBudgetMultiplier +
+        kKnownContainerBudgetSlackBytes;
+    container_budget_state_ = kContainerBudgetReady;
     return true;
   }
 
   FORY_ALWAYS_INLINE bool init_container_budget_unknown() {
-    size_t limit = 0;
-    if (config_->max_container_memory_bytes > 0) {
-      const uint64_t configured =
-          static_cast<uint64_t>(config_->max_container_memory_bytes);
-      if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
-        if (FORY_PREDICT_FALSE(
-                configured >
-                static_cast<uint64_t>(std::numeric_limits<size_t>::max()))) {
-          return set_container_memory_error(
-              "max_container_memory_bytes does not fit size_t");
-        }
-      }
-      limit = static_cast<size_t>(configured);
-    } else {
-      limit = kUnknownContainerBudgetBytes;
+    const int64_t configured = config_->max_container_memory_bytes;
+    if (FORY_PREDICT_FALSE(configured > 0)) {
+      return init_explicit_container_budget(configured);
     }
-    container_memory_limit_bytes_ = limit;
-    remaining_container_memory_bytes_ = limit;
+    remaining_container_memory_bytes_ = kUnknownContainerBudgetBytes;
+    container_budget_state_ = kContainerBudgetReady;
     return true;
   }
 
+  FORY_ALWAYS_INLINE void defer_container_budget_known(size_t root_bytes) {
+    pending_container_root_bytes_ = root_bytes;
+    container_budget_state_ = kContainerBudgetPendingKnown;
+  }
+
+  FORY_ALWAYS_INLINE void defer_container_budget_unknown() {
+    container_budget_state_ = kContainerBudgetPendingUnknown;
+  }
+
   FORY_ALWAYS_INLINE bool reserve_container_memory(size_t bytes) {
+    if (FORY_PREDICT_FALSE(container_budget_state_ != kContainerBudgetReady)) {
+      if (FORY_PREDICT_FALSE(!materialize_container_budget())) {
+        return false;
+      }
+    }
     const size_t remaining = remaining_container_memory_bytes_;
     if (FORY_PREDICT_FALSE(bytes > remaining)) {
       return set_container_memory_exceeded(bytes, remaining);
@@ -737,12 +730,17 @@ private:
   static constexpr size_t kKnownContainerBudgetSlackBytes = 64 * 1024;
   static constexpr size_t kUnknownContainerBudgetBytes =
       128ULL * 1024ULL * 1024ULL;
+  static constexpr uint8_t kContainerBudgetReady = 0;
+  static constexpr uint8_t kContainerBudgetPendingKnown = 1;
+  static constexpr uint8_t kContainerBudgetPendingUnknown = 2;
 
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
   FORY_NOINLINE bool reserve_counted_container_checked(uint32_t length,
                                                        size_t elem_bytes);
+  FORY_NOINLINE bool init_explicit_container_budget(int64_t configured);
+  FORY_NOINLINE bool materialize_container_budget();
   FORY_NOINLINE bool set_container_memory_error(const std::string &message);
   FORY_NOINLINE bool set_container_memory_overflow(uint32_t length,
                                                    size_t elem_bytes);
@@ -757,7 +755,8 @@ private:
   std::unique_ptr<TypeResolver> type_resolver_;
   RefReader ref_reader_;
   uint32_t current_dyn_depth_;
-  size_t container_memory_limit_bytes_ = std::numeric_limits<size_t>::max();
+  uint8_t container_budget_state_ = kContainerBudgetReady;
+  size_t pending_container_root_bytes_ = 0;
   size_t remaining_container_memory_bytes_ = std::numeric_limits<size_t>::max();
 
   // Meta sharing state (for compatible mode)
