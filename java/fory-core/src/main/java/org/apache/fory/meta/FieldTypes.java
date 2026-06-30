@@ -274,9 +274,8 @@ public class FieldTypes {
         || (isXlang && (resolver.isCollection(rawType) || resolver.isSet(rawType)))) {
 
       TypeRef<?> elementTypeRef = TypeUtils.getElementType(genericType.getTypeRef());
-      // Recursive collection element types must keep the collection wrapper but stop descending
-      // into their own metadata. Compare raw types because supertype resolution may rebuild
-      // TypeRef.
+      // Recursive collection element types, such as SelfList extends ArrayList<SelfList>, must
+      // keep the collection wrapper but stop descending into their own metadata.
       if (genericType.getCls() == elementTypeRef.getRawType()) {
         elementTypeRef = OBJECT_TYPE;
       }

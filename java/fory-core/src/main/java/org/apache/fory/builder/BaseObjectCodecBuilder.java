@@ -1316,6 +1316,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
 
   private TypeRef<?> getElementType(TypeRef<?> typeRef) {
     TypeRef<?> elementType = TypeUtils.getElementType(typeRef);
+    // Recursive collection element types, such as SelfList extends ArrayList<SelfList>, must
+    // fall back to Object; otherwise generated code keeps resolving the collection as its own
+    // element type.
     if (elementType.getRawType() == typeRef.getRawType()) {
       elementType = OBJECT_TYPE;
     }

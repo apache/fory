@@ -106,6 +106,9 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     TypeRef<?> typeRef = genericType.getTypeRef();
     TypeRef<?> elementTypeRef =
         COLLECTION_TYPE.isSupertypeOf(typeRef) ? TypeUtils.getElementType(typeRef) : OBJECT_TYPE;
+    // Recursive collection element types, such as SelfList extends ArrayList<SelfList>, must
+    // fall back to Object; otherwise interpreter mode keeps resolving the collection as its own
+    // element type.
     if (genericType.getCls() == elementTypeRef.getRawType()) {
       elementTypeRef = OBJECT_TYPE;
     }
