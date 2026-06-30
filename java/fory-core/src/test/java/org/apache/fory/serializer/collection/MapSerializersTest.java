@@ -62,6 +62,7 @@ import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.collection.CollectionSerializersTest.TestEnum;
@@ -70,6 +71,7 @@ import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.test.bean.MapFields;
 import org.apache.fory.type.GenericType;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class MapSerializersTest extends ForyTestBase {
@@ -1204,6 +1206,7 @@ public class MapSerializersTest extends ForyTestBase {
 
   @Test(dataProvider = "enableCodegen")
   public void testMultiParamMapRefOverride(boolean enableCodegen) {
+    skipMemberGenericTypeUseOnJdk11();
     Fory fory =
         builder()
             .withXlang(false)
@@ -1229,6 +1232,13 @@ public class MapSerializersTest extends ForyTestBase {
     MultiParamMapRefHolder cloned = serDe(fory, holder);
     Assert.assertNotSame(cloned.noRefMap.get(1), cloned.noRefMap.get(2));
     Assert.assertSame(cloned.refMap.get(1), cloned.refMap.get(2));
+  }
+
+  private static void skipMemberGenericTypeUseOnJdk11() {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
   }
 
   @Test(dataProvider = "enableCodegen")

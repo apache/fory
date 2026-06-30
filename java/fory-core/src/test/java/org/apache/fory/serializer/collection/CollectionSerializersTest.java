@@ -81,6 +81,7 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.meta.FieldTypes;
 import org.apache.fory.meta.FieldTypes.CollectionFieldType;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
@@ -88,6 +89,7 @@ import org.apache.fory.serializer.collection.CollectionSerializers.JDKCompatible
 import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.type.GenericType;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 import org.testng.collections.Maps;
 
@@ -365,6 +367,7 @@ public class CollectionSerializersTest extends ForyTestBase {
 
   @Test(dataProvider = "enableCodegen")
   public void testMultiParamCollectionRefOverride(boolean enableCodegen) {
+    skipMemberGenericTypeUseOnJdk11();
     CollectionRefItem noRefItem = new CollectionRefItem();
     noRefItem.id = 1;
     CollectionRefItem refItem = new CollectionRefItem();
@@ -384,6 +387,13 @@ public class CollectionSerializersTest extends ForyTestBase {
                 .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
     Assert.assertNotSame(cloned.noRefItems.get(0), cloned.noRefItems.get(1));
     Assert.assertSame(cloned.refItems.get(0), cloned.refItems.get(1));
+  }
+
+  private static void skipMemberGenericTypeUseOnJdk11() {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
   }
 
   @Test(dataProvider = "enableCodegen")
