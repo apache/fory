@@ -271,6 +271,15 @@ public class FieldTypes {
 
     if (COLLECTION_TYPE.isSupertypeOf(genericType.getTypeRef())
         || (isXlang && (resolver.isCollection(rawType) || resolver.isSet(rawType)))) {
+
+      TypeRef<?> elementTypeRef = TypeUtils.getElementType(genericType.getTypeRef());
+      if (genericType.getTypeRef().equals(elementTypeRef)) {
+        if (resolver.isRegisteredById(rawType)) {
+          return new RegisteredFieldType(nullable, trackingRef, typeId, -1);
+        }
+        return new ObjectFieldType(typeId, nullable, trackingRef);
+      }
+
       return new CollectionFieldType(
           typeId,
           nullable,
@@ -278,9 +287,7 @@ public class FieldTypes {
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              genericType.getTypeParameter0() == null
-                  ? GenericType.build(Object.class)
-                  : genericType.getTypeParameter0()));
+              GenericType.build(elementTypeRef)));
     } else if (MAP_TYPE.isSupertypeOf(genericType.getTypeRef())
         || (isXlang && resolver.isMap(rawType))) {
       Tuple2<TypeRef<?>, TypeRef<?>> mapKeyValueType = getMapKeyValueType(genericType);
