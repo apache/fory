@@ -298,15 +298,6 @@ struct needs_graph_budget<std::variant<Ts...>, void>
                               std::remove_reference_t<Ts>>>::value ||
                           ...)> {};
 
-template <typename StructT, typename Ptrs, size_t... I>
-constexpr bool struct_needs_graph_budget_impl(std::index_sequence<I...>) {
-  return (
-      needs_graph_budget<
-          std::remove_cv_t<std::remove_reference_t<::fory::field_value_type_t<
-              StructT, std::tuple_element_t<I, Ptrs>>>>>::value ||
-      ...);
-}
-
 template <typename T>
 struct needs_graph_budget<T, std::enable_if_t<is_fory_serializable_v<T>>>
     : std::true_type {};
@@ -336,6 +327,85 @@ template <typename T> constexpr size_t graph_value_owner_self_bytes() {
     return sizeof(Value);
   }
 }
+
+template <typename T, typename = void>
+struct has_graph_budget_children : std::false_type {};
+
+template <typename T, typename Alloc>
+struct has_graph_budget_children<std::vector<T, Alloc>, void>
+    : std::bool_constant<!is_dense_primitive_vector_v<std::vector<T, Alloc>>> {
+};
+
+template <typename Alloc>
+struct has_graph_budget_children<std::vector<bool, Alloc>, void>
+    : std::true_type {};
+
+template <typename T>
+struct has_graph_budget_children<
+    T, std::enable_if_t<is_list_v<T> || is_deque_v<T> || is_forward_list_v<T> ||
+                        is_set_like_v<T> || is_map_like_v<T>>>
+    : std::true_type {};
+
+template <typename T, size_t N>
+struct has_graph_budget_children<std::array<T, N>, void>
+    : has_graph_budget_children<std::remove_cv_t<std::remove_reference_t<T>>> {
+};
+
+template <typename T>
+struct has_graph_budget_children<std::optional<T>, void>
+    : has_graph_budget_children<std::remove_cv_t<std::remove_reference_t<T>>> {
+};
+
+template <typename T>
+struct has_graph_budget_children<std::shared_ptr<T>, void>
+    : std::bool_constant<(graph_value_owner_self_bytes<T>() != 0) ||
+                         has_graph_budget_children<std::remove_cv_t<
+                             std::remove_reference_t<T>>>::value> {};
+
+template <typename T, typename D>
+struct has_graph_budget_children<std::unique_ptr<T, D>, void>
+    : std::bool_constant<(graph_value_owner_self_bytes<T>() != 0) ||
+                         has_graph_budget_children<std::remove_cv_t<
+                             std::remove_reference_t<T>>>::value> {};
+
+template <typename... Ts>
+struct has_graph_budget_children<std::tuple<Ts...>, void>
+    : std::bool_constant<(has_graph_budget_children<std::remove_cv_t<
+                              std::remove_reference_t<Ts>>>::value ||
+                          ...)> {};
+
+template <typename... Ts>
+struct has_graph_budget_children<std::variant<Ts...>, void>
+    : std::bool_constant<(has_graph_budget_children<std::remove_cv_t<
+                              std::remove_reference_t<Ts>>>::value ||
+                          ...)> {};
+
+template <typename StructT, typename Ptrs, size_t... I>
+constexpr bool struct_has_graph_children_impl(std::index_sequence<I...>) {
+  return (
+      has_graph_budget_children<
+          std::remove_cv_t<std::remove_reference_t<::fory::field_value_type_t<
+              StructT, std::tuple_element_t<I, Ptrs>>>>>::value ||
+      ...);
+}
+
+template <typename T>
+struct has_graph_budget_children<T,
+                                 std::enable_if_t<is_fory_serializable_v<T>>> {
+private:
+  using Value = std::remove_cv_t<std::remove_reference_t<T>>;
+  using FieldInfo =
+      decltype(::fory::meta::fory_field_info(std::declval<Value>()));
+  using Ptrs = typename FieldInfo::PtrsType;
+
+public:
+  static constexpr bool value = struct_has_graph_children_impl<Value, Ptrs>(
+      std::make_index_sequence<std::tuple_size_v<Ptrs>>{});
+};
+
+template <typename T>
+inline constexpr bool has_graph_budget_children_v = has_graph_budget_children<
+    std::remove_cv_t<std::remove_reference_t<T>>>::value;
 
 template <typename T, typename Context>
 FORY_ALWAYS_INLINE bool reserve_allocated_value_owner(Context &ctx) {

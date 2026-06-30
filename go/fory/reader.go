@@ -90,6 +90,44 @@ func reserveStructGraph(ctx *ReadContext, type_ reflect.Type) bool {
 	return ctx.ReserveGraphMemory(bytes)
 }
 
+func typeHasGraphChildren(type_ reflect.Type) bool {
+	for type_.Kind() == reflect.Ptr {
+		elem := type_.Elem()
+		if structGraphBytes(elem) != 0 {
+			return true
+		}
+		type_ = elem
+	}
+	switch type_.Kind() {
+	case reflect.Struct:
+		if type_ == dateReflectType || type_ == timeReflectType {
+			return false
+		}
+		for i := 0; i < type_.NumField(); i++ {
+			if typeHasGraphChildren(type_.Field(i).Type) {
+				return true
+			}
+		}
+		return false
+	case reflect.Slice:
+		elem := type_.Elem()
+		switch elem.Kind() {
+		case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.Float32, reflect.Float64:
+			return false
+		default:
+			return true
+		}
+	case reflect.Array:
+		return typeHasGraphChildren(type_.Elem())
+	case reflect.Map, reflect.Interface:
+		return true
+	default:
+		return false
+	}
+}
+
 // IsXlang returns whether cross-language serialization mode is enabled
 func (c *ReadContext) IsXlang() bool {
 	return c.xlang

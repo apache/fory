@@ -40,6 +40,7 @@
 #include "fory/util/result.h"
 #include "fory/util/stream.h"
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <ostream>
@@ -513,7 +514,19 @@ protected:
   /// Protected constructor - only derived classes can instantiate.
   explicit BaseFory(const Config &config,
                     std::shared_ptr<TypeResolver> resolver)
-      : config_(config), type_resolver_(std::move(resolver)) {}
+      : config_(config), type_resolver_(std::move(resolver)) {
+    auto_graph_memory_budget_ = config_.max_graph_memory_bytes <= 0;
+    explicit_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
+    if (config_.max_graph_memory_bytes > 0) {
+      if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
+        graph_budget_limit_fits_size_t_ =
+            static_cast<uint64_t>(config_.max_graph_memory_bytes) <=
+            static_cast<uint64_t>(std::numeric_limits<size_t>::max());
+      }
+      explicit_graph_memory_bytes_ =
+          static_cast<size_t>(config_.max_graph_memory_bytes);
+    }
+  }
 
   // Non-copyable
   BaseFory(const BaseFory &) = delete;
@@ -525,6 +538,9 @@ protected:
 
   Config config_;
   std::shared_ptr<TypeResolver> type_resolver_;
+  size_t explicit_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
+  bool auto_graph_memory_budget_ = true;
+  bool graph_budget_limit_fits_size_t_ = true;
   mutable std::mutex registration_mutex_;
   mutable bool registration_locked_{false};
 };
@@ -824,6 +840,92 @@ private:
         ", local xlang=" + std::string(config_.xlang ? "true" : "false"));
   }
 
+  FORY_NOINLINE Error root_graph_config_too_large() const {
+    return Error::invalid_data("max_graph_memory_bytes does not fit size_t");
+  }
+
+  FORY_NOINLINE Error root_graph_budget_overflow() const {
+    return Error::invalid_data(
+        "root input size overflows automatic graph memory budget");
+  }
+
+  FORY_NOINLINE Error root_graph_budget_exceeded(size_t bytes,
+                                                 size_t limit) const {
+    return Error::invalid_data(
+        "estimated graph memory request " + std::to_string(bytes) +
+        " bytes exceeds max_graph_memory_bytes remaining budget " +
+        std::to_string(limit) + " bytes");
+  }
+
+  template <size_t root_owner_bytes, bool unknown_root>
+  FORY_ALWAYS_INLINE bool reserve_root_graph_self(size_t root_bytes) {
+    if constexpr (unknown_root) {
+      if constexpr (root_owner_bytes <= ReadContext::kUnknownGraphBudgetBytes) {
+        if (FORY_PREDICT_TRUE(auto_graph_memory_budget_)) {
+          return true;
+        }
+      }
+    } else if constexpr (root_owner_bytes <=
+                         ReadContext::kKnownGraphBudgetSlackBytes) {
+      if (FORY_PREDICT_TRUE(auto_graph_memory_budget_)) {
+        return true;
+      }
+    }
+    if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
+      if (FORY_PREDICT_FALSE(!graph_budget_limit_fits_size_t_)) {
+        read_ctx_->set_error(root_graph_config_too_large());
+        return false;
+      }
+    }
+    if (FORY_PREDICT_FALSE(root_owner_bytes > explicit_graph_memory_bytes_)) {
+      if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
+        if (FORY_PREDICT_FALSE(!graph_budget_limit_fits_size_t_)) {
+          read_ctx_->set_error(root_graph_config_too_large());
+          return false;
+        }
+      }
+      if (FORY_PREDICT_FALSE(config_.max_graph_memory_bytes > 0)) {
+        read_ctx_->set_error(root_graph_budget_exceeded(
+            root_owner_bytes, explicit_graph_memory_bytes_));
+        return false;
+      }
+    }
+    if constexpr (unknown_root) {
+      if constexpr (root_owner_bytes > ReadContext::kUnknownGraphBudgetBytes) {
+        if (FORY_PREDICT_FALSE(config_.max_graph_memory_bytes > 0)) {
+          return true;
+        }
+        read_ctx_->set_error(root_graph_budget_exceeded(
+            root_owner_bytes, ReadContext::kUnknownGraphBudgetBytes));
+        return false;
+      }
+    } else if constexpr (root_owner_bytes >
+                         ReadContext::kKnownGraphBudgetSlackBytes) {
+      if (FORY_PREDICT_FALSE(config_.max_graph_memory_bytes > 0)) {
+        return true;
+      }
+      if constexpr (sizeof(size_t) <= sizeof(uint32_t)) {
+        constexpr size_t max_root_bytes =
+            (std::numeric_limits<size_t>::max() -
+             ReadContext::kKnownGraphBudgetSlackBytes) /
+            ReadContext::kKnownGraphBudgetMultiplier;
+        if (FORY_PREDICT_FALSE(root_bytes > max_root_bytes)) {
+          read_ctx_->set_error(root_graph_budget_overflow());
+          return false;
+        }
+      }
+      const size_t limit =
+          root_bytes * ReadContext::kKnownGraphBudgetMultiplier +
+          ReadContext::kKnownGraphBudgetSlackBytes;
+      if (FORY_PREDICT_FALSE(root_owner_bytes > limit)) {
+        read_ctx_->set_error(
+            root_graph_budget_exceeded(root_owner_bytes, limit));
+        return false;
+      }
+    }
+    return true;
+  }
+
   /// Core serialization implementation.
   /// TypeMeta is written inline using streaming protocol (no deferred writing).
   template <typename T>
@@ -890,16 +992,33 @@ private:
 
     read_ctx_->attach(buffer);
     if constexpr (needs_graph_budget_v<T>) {
-      if constexpr (unknown_root) {
-        read_ctx_->defer_graph_budget_unknown();
-      } else {
-        read_ctx_->defer_graph_budget_known(root_bytes);
-      }
       constexpr size_t root_owner_bytes = graph_value_owner_self_bytes<T>();
+      constexpr bool has_child_budget = has_graph_budget_children_v<T>;
       if constexpr (root_owner_bytes != 0) {
-        if (FORY_PREDICT_FALSE(
-                !read_ctx_->reserve_graph_memory(root_owner_bytes))) {
-          return Unexpected(read_ctx_->take_error());
+        if constexpr (has_child_budget) {
+          if constexpr (unknown_root) {
+            if (FORY_PREDICT_FALSE(
+                    !read_ctx_->init_graph_budget_unknown(root_owner_bytes))) {
+              return Unexpected(read_ctx_->take_error());
+            }
+          } else {
+            if (FORY_PREDICT_FALSE(!read_ctx_->init_graph_budget_known(
+                    root_bytes, root_owner_bytes))) {
+              return Unexpected(read_ctx_->take_error());
+            }
+          }
+        } else {
+          if (FORY_PREDICT_FALSE(
+                  (!reserve_root_graph_self<root_owner_bytes, unknown_root>(
+                      root_bytes)))) {
+            return Unexpected(read_ctx_->take_error());
+          }
+        }
+      } else if constexpr (has_child_budget) {
+        if constexpr (unknown_root) {
+          read_ctx_->defer_graph_budget_unknown();
+        } else {
+          read_ctx_->defer_graph_budget_known(root_bytes);
         }
       }
     }

@@ -525,6 +525,35 @@ public:
     return true;
   }
 
+  FORY_ALWAYS_INLINE bool init_graph_budget_known(size_t root_bytes,
+                                                  size_t reserve_bytes) {
+    const int64_t configured = config_->max_graph_memory_bytes;
+    if (FORY_PREDICT_FALSE(configured > 0)) {
+      if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
+        if (FORY_PREDICT_FALSE(
+                static_cast<uint64_t>(configured) >
+                static_cast<uint64_t>(std::numeric_limits<size_t>::max()))) {
+          return set_graph_memory_error(
+              "max_graph_memory_bytes does not fit size_t");
+        }
+      }
+      return init_graph_budget_limit(static_cast<size_t>(configured),
+                                     reserve_bytes);
+    }
+    if constexpr (sizeof(size_t) <= sizeof(uint32_t)) {
+      constexpr size_t max_root_bytes =
+          (std::numeric_limits<size_t>::max() - kKnownGraphBudgetSlackBytes) /
+          kKnownGraphBudgetMultiplier;
+      if (FORY_PREDICT_FALSE(root_bytes > max_root_bytes)) {
+        return set_graph_memory_error(
+            "root input size overflows automatic graph memory budget");
+      }
+    }
+    return init_graph_budget_limit(root_bytes * kKnownGraphBudgetMultiplier +
+                                       kKnownGraphBudgetSlackBytes,
+                                   reserve_bytes);
+  }
+
   FORY_ALWAYS_INLINE bool init_graph_budget_unknown() {
     const int64_t configured = config_->max_graph_memory_bytes;
     if (FORY_PREDICT_FALSE(configured > 0)) {
@@ -533,6 +562,23 @@ public:
     remaining_graph_memory_bytes_ = kUnknownGraphBudgetBytes;
     graph_budget_state_ = kGraphBudgetReady;
     return true;
+  }
+
+  FORY_ALWAYS_INLINE bool init_graph_budget_unknown(size_t reserve_bytes) {
+    const int64_t configured = config_->max_graph_memory_bytes;
+    if (FORY_PREDICT_FALSE(configured > 0)) {
+      if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
+        if (FORY_PREDICT_FALSE(
+                static_cast<uint64_t>(configured) >
+                static_cast<uint64_t>(std::numeric_limits<size_t>::max()))) {
+          return set_graph_memory_error(
+              "max_graph_memory_bytes does not fit size_t");
+        }
+      }
+      return init_graph_budget_limit(static_cast<size_t>(configured),
+                                     reserve_bytes);
+    }
+    return init_graph_budget_limit(kUnknownGraphBudgetBytes, reserve_bytes);
   }
 
   FORY_ALWAYS_INLINE void defer_graph_budget_known(size_t root_bytes) {
@@ -555,6 +601,16 @@ public:
       return set_graph_memory_exceeded(bytes, remaining);
     }
     remaining_graph_memory_bytes_ = remaining - bytes;
+    return true;
+  }
+
+  FORY_ALWAYS_INLINE bool init_graph_budget_limit(size_t limit,
+                                                  size_t reserve_bytes) {
+    graph_budget_state_ = kGraphBudgetReady;
+    if (FORY_PREDICT_FALSE(reserve_bytes > limit)) {
+      return set_graph_memory_exceeded(reserve_bytes, limit);
+    }
+    remaining_graph_memory_bytes_ = limit - reserve_bytes;
     return true;
   }
 
@@ -773,6 +829,8 @@ private:
   meta::MetaStringTable meta_string_table_;
   fory::flat_hash_map<std::string, uint32_t> remote_schema_versions_by_type_;
   size_t total_accepted_schema_versions_ = 0;
+
+  friend class Fory;
 };
 
 /// Implementation of DynDepthGuard destructor

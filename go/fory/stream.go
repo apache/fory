@@ -96,9 +96,8 @@ func (is *InputStream) Shrink() {
 func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = is.buffer
-	f.readCtx.initGraphMemoryBudget(0, true)
-	if f.readCtx.HasError() {
-		err := f.readCtx.TakeError()
+	target := reflect.ValueOf(v).Elem()
+	if err := f.initRootGraphBudget(target, 0, true); err != nil {
 		f.readCtx.buffer = origBuffer
 		f.resetReadState()
 		return err
@@ -113,11 +112,7 @@ func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	target := reflect.ValueOf(v).Elem()
-	if err := f.reserveRootGraphOwner(target); err != nil {
-		return err
-	}
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	f.readRootValue(target)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -133,9 +128,9 @@ func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
 	defer f.resetReadState()
 	// Always reset to enforce stateless semantics.
 	f.readCtx.buffer.ResetWithReader(r, 0)
-	f.readCtx.initGraphMemoryBudget(0, true)
-	if f.readCtx.HasError() {
-		return f.readCtx.TakeError()
+	target := reflect.ValueOf(v).Elem()
+	if err := f.initRootGraphBudget(target, 0, true); err != nil {
+		return err
 	}
 
 	readHeader(f.readCtx)
@@ -143,11 +138,7 @@ func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	target := reflect.ValueOf(v).Elem()
-	if err := f.reserveRootGraphOwner(target); err != nil {
-		return err
-	}
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	f.readRootValue(target)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}

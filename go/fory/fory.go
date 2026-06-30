@@ -196,6 +196,11 @@ type Fory struct {
 	// Resolvers shared between contexts
 	typeResolver *TypeResolver
 	refResolver  *RefResolver
+
+	rootGraphType        reflect.Type
+	rootGraphBytes       int64
+	rootGraphHasChildren bool
+	rootGraphSkipType    reflect.Type
 }
 
 // New creates a new Fory instance with the given options
@@ -570,9 +575,9 @@ func (f *Fory) Serialize(value any) ([]byte, error) {
 func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
 	f.readCtx.SetData(data)
-	f.readCtx.initGraphMemoryBudget(len(data), false)
-	if f.readCtx.HasError() {
-		return f.readCtx.TakeError()
+	target := reflect.ValueOf(v).Elem()
+	if err := f.initRootGraphBudget(target, len(data), false); err != nil {
+		return err
 	}
 
 	readHeader(f.readCtx)
@@ -581,11 +586,7 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	target := reflect.ValueOf(v).Elem()
-	if err := f.reserveRootGraphOwner(target); err != nil {
-		return err
-	}
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	f.readRootValue(target)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -669,10 +670,10 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	// Temporarily swap buffer
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = buf
-	f.readCtx.initGraphMemoryBudget(buf.readableBytes(), false)
-	if f.readCtx.HasError() {
+	target := reflect.ValueOf(v).Elem()
+	if err := f.initRootGraphBudget(target, buf.readableBytes(), false); err != nil {
 		f.readCtx.buffer = origBuffer
-		return f.readCtx.TakeError()
+		return err
 	}
 
 	readHeader(f.readCtx)
@@ -682,12 +683,7 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	target := reflect.ValueOf(v).Elem()
-	if err := f.reserveRootGraphOwner(target); err != nil {
-		f.readCtx.buffer = origBuffer
-		return err
-	}
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	f.readRootValue(target)
 	if f.readCtx.HasError() {
 		f.readCtx.buffer = origBuffer
 		return f.readCtx.TakeError()
@@ -773,19 +769,9 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 		f.readCtx.buffer = nil
 		f.readCtx.outOfBandBuffers = nil
 	}()
-	f.readCtx.initGraphMemoryBudget(buffer.readableBytes(), false)
-	if f.readCtx.HasError() {
-		return f.readCtx.TakeError()
-	}
 	// Set up out-of-band buffers if provided
 	if buffers != nil {
 		f.readCtx.outOfBandBuffers = buffers
-	}
-
-	// ReadData and validate header
-	readHeader(f.readCtx)
-	if f.readCtx.HasError() {
-		return f.readCtx.TakeError()
 	}
 
 	// v must be a pointer so we can deserialize into it
@@ -800,12 +786,19 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 		return fmt.Errorf("v must be a non-nil pointer")
 	}
 
-	// Deserialize the value - TypeMeta is read inline using streaming protocol
 	target := rv.Elem()
-	if err := f.reserveRootGraphOwner(target); err != nil {
+	if err := f.initRootGraphBudget(target, buffer.readableBytes(), false); err != nil {
 		return err
 	}
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+
+	// ReadData and validate header
+	readHeader(f.readCtx)
+	if f.readCtx.HasError() {
+		return f.readCtx.TakeError()
+	}
+
+	// Deserialize the value - TypeMeta is read inline using streaming protocol
+	f.readRootValue(target)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -1054,9 +1047,16 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	// Reuse context, reset and set new data
 	f.readCtx.Reset()
 	f.readCtx.SetData(data)
-	f.readCtx.initGraphMemoryBudget(len(data), false)
-	if f.readCtx.HasError() {
-		return f.readCtx.TakeError()
+
+	var targetVal reflect.Value
+	switch any(target).(type) {
+	case *bool, *int8, *int16, *int32, *int64, *int, *float32, *float64, *string,
+		*[]byte, *[]int8, *[]int16, *[]int32, *[]int64, *[]int, *[]float32, *[]float64, *[]bool:
+	default:
+		targetVal = reflect.ValueOf(target).Elem()
+		if err := f.initRootGraphBudget(targetVal, len(data), false); err != nil {
+			return err
+		}
 	}
 
 	// ReadData and validate header
@@ -1196,11 +1196,10 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 		return f.readCtx.CheckError()
 	default:
 		// Slow path: use serializer-based deserialization
-		targetVal := reflect.ValueOf(target).Elem()
-		targetType := targetVal.Type()
-		if err := f.reserveRootGraphOwner(targetVal); err != nil {
-			return err
+		if !targetVal.IsValid() {
+			targetVal = reflect.ValueOf(target).Elem()
 		}
+		targetType := targetVal.Type()
 
 		// Get serializer for the target type
 		serializer, err := f.typeResolver.getSerializerByType(targetType, false)
@@ -1214,16 +1213,95 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	}
 }
 
-func (f *Fory) reserveRootGraphOwner(target reflect.Value) error {
-	if !target.IsValid() || target.Kind() != reflect.Struct {
+func (f *Fory) initRootGraphBudget(target reflect.Value, rootInputBytes int, unknownLengthInput bool) error {
+	if target.IsValid() && target.Type() == f.rootGraphSkipType {
 		return nil
+	}
+	return f.initRootGraphBudgetSlow(target, rootInputBytes, unknownLengthInput)
+}
+
+func (f *Fory) readRootValue(target reflect.Value) {
+	if target.IsValid() {
+		targetType := target.Type()
+		if targetType.Kind() == reflect.Struct && !f.typeResolver.IsUnionType(targetType) {
+			f.readCtx.ReadStruct(target)
+			return
+		}
+	}
+	f.readCtx.ReadValue(target, RefModeTracking, true)
+}
+
+//go:noinline
+func (f *Fory) initRootGraphBudgetSlow(target reflect.Value, rootInputBytes int, unknownLengthInput bool) error {
+	bytes, hasChildren, isStruct := f.rootGraphInfo(target)
+	if !isStruct {
+		f.readCtx.initGraphMemoryBudget(rootInputBytes, unknownLengthInput)
+		if f.readCtx.HasError() {
+			return f.readCtx.TakeError()
+		}
+		return nil
+	}
+	if hasChildren {
+		f.readCtx.initGraphMemoryBudget(rootInputBytes, unknownLengthInput)
+		if f.readCtx.HasError() {
+			return f.readCtx.TakeError()
+		}
+		if bytes != 0 && !f.readCtx.ReserveGraphMemory(bytes) {
+			return f.readCtx.TakeError()
+		}
+		return nil
+	}
+	if f.config.MaxGraphMemoryBytes <= 0 && bytes <= knownRootBudgetSlackBytes {
+		f.rootGraphSkipType = target.Type()
+		return nil
+	}
+	return f.checkRootGraphSelf(bytes, rootInputBytes, unknownLengthInput)
+}
+
+func (f *Fory) rootGraphInfo(target reflect.Value) (int64, bool, bool) {
+	if !target.IsValid() || target.Kind() != reflect.Struct {
+		return 0, false, false
 	}
 	targetType := target.Type()
 	if targetType == dateReflectType || targetType == timeReflectType {
+		return 0, false, true
+	}
+	if targetType == f.rootGraphType {
+		return f.rootGraphBytes, f.rootGraphHasChildren, true
+	}
+	bytes := structGraphBytes(targetType)
+	hasChildren := typeHasGraphChildren(targetType)
+	f.rootGraphType = targetType
+	f.rootGraphBytes = bytes
+	f.rootGraphHasChildren = hasChildren
+	return bytes, hasChildren, true
+}
+
+func (f *Fory) checkRootGraphSelf(bytes int64, rootInputBytes int, unknownLengthInput bool) error {
+	if bytes <= 0 {
 		return nil
 	}
-	if !reserveStructGraph(f.readCtx, targetType) {
-		return f.readCtx.TakeError()
+	limit := f.config.MaxGraphMemoryBytes
+	if limit <= 0 {
+		if unknownLengthInput {
+			limit = streamRootBudgetBytes
+		} else {
+			if rootInputBytes < 0 {
+				return DeserializationErrorf("root input size must be non-negative: %d", rootInputBytes)
+			}
+			if int64(rootInputBytes) > (MaxInt64-knownRootBudgetSlackBytes)/knownRootBudgetMultiplier {
+				return DeserializationErrorf("root input size %d overflows automatic graph memory budget", rootInputBytes)
+			}
+			if bytes <= knownRootBudgetSlackBytes {
+				return nil
+			}
+			limit = int64(rootInputBytes)*knownRootBudgetMultiplier + knownRootBudgetSlackBytes
+		}
+	}
+	if bytes > limit {
+		return DeserializationErrorf(
+			"estimated graph memory request %d bytes exceeds maxGraphMemoryBytes remaining budget %d bytes out of effective limit %d bytes",
+			bytes, limit, limit)
 	}
 	return nil
 }
