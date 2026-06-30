@@ -434,7 +434,11 @@ uint32_t WriteContext::get_type_id_for_cache(const std::type_index &type_idx) {
 ReadContext::ReadContext(const Config &config,
                          std::unique_ptr<TypeResolver> type_resolver)
     : buffer_(nullptr), config_(&config),
-      type_resolver_(std::move(type_resolver)), current_dyn_depth_(0) {}
+      type_resolver_(std::move(type_resolver)), current_dyn_depth_(0),
+      graph_memory_limit_bytes_(config.max_graph_memory_bytes > 0
+                                    ? static_cast<size_t>(
+                                          config.max_graph_memory_bytes)
+                                    : size_t{0}) {}
 
 ReadContext::~ReadContext() = default;
 
@@ -760,7 +764,6 @@ void ReadContext::reset() {
   }
   reading_type_infos_.clear();
   current_dyn_depth_ = 0;
-  graph_budget_enabled_ = false;
   remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
   if (meta_string_table_active_) {
     meta_string_table_.reset();

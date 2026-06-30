@@ -892,11 +892,11 @@ private:
       constexpr bool has_child_budget = has_graph_budget_children_v<T>;
       if constexpr (root_owner_bytes != 0) {
         if (FORY_PREDICT_FALSE(
-                !read_ctx_->init_graph_budget(root_owner_bytes))) {
+                !read_ctx_->template init_graph_budget<root_owner_bytes>())) {
           return Unexpected(read_ctx_->take_error());
         }
       } else if constexpr (has_child_budget) {
-        if (FORY_PREDICT_FALSE(!read_ctx_->init_graph_budget())) {
+        if (FORY_PREDICT_FALSE(!read_ctx_->template init_graph_budget<>())) {
           return Unexpected(read_ctx_->take_error());
         }
       }

@@ -505,48 +505,34 @@ public:
     }
   }
 
+  template <size_t ReserveBytes = 0>
   FORY_ALWAYS_INLINE bool init_graph_budget() {
-    return init_graph_budget(0);
-  }
-
-  FORY_ALWAYS_INLINE bool init_graph_budget(size_t reserve_bytes) {
-    const int64_t configured = config_->max_graph_memory_bytes;
-    if (FORY_PREDICT_FALSE(configured > 0)) {
-      if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
-        if (FORY_PREDICT_FALSE(
-                static_cast<uint64_t>(configured) >
-                static_cast<uint64_t>(std::numeric_limits<size_t>::max()))) {
-          return set_graph_memory_error(
-              "max_graph_memory_bytes does not fit size_t");
+    const size_t limit = graph_memory_limit_bytes_;
+    if (FORY_PREDICT_TRUE(limit != 0)) {
+      if constexpr (ReserveBytes != 0) {
+        if (FORY_PREDICT_FALSE(ReserveBytes > limit)) {
+          return set_graph_memory_exceeded(ReserveBytes, limit);
         }
+        remaining_graph_memory_bytes_ = limit - ReserveBytes;
+      } else {
+        remaining_graph_memory_bytes_ = limit;
       }
-      return init_graph_budget_limit(static_cast<size_t>(configured),
-                                     reserve_bytes);
+      return true;
     }
-    graph_budget_enabled_ = false;
     remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
     return true;
   }
 
   FORY_ALWAYS_INLINE bool reserve_graph_memory(size_t bytes) {
-    if (FORY_PREDICT_FALSE(!graph_budget_enabled_)) {
+    const size_t remaining = remaining_graph_memory_bytes_;
+    if (FORY_PREDICT_FALSE(remaining ==
+                           std::numeric_limits<size_t>::max())) {
       return true;
     }
-    const size_t remaining = remaining_graph_memory_bytes_;
     if (FORY_PREDICT_FALSE(bytes > remaining)) {
       return set_graph_memory_exceeded(bytes, remaining);
     }
     remaining_graph_memory_bytes_ = remaining - bytes;
-    return true;
-  }
-
-  FORY_ALWAYS_INLINE bool init_graph_budget_limit(size_t limit,
-                                                  size_t reserve_bytes) {
-    graph_budget_enabled_ = true;
-    if (FORY_PREDICT_FALSE(reserve_bytes > limit)) {
-      return set_graph_memory_exceeded(reserve_bytes, limit);
-    }
-    remaining_graph_memory_bytes_ = limit - reserve_bytes;
     return true;
   }
 
@@ -719,7 +705,7 @@ private:
   std::unique_ptr<TypeResolver> type_resolver_;
   RefReader ref_reader_;
   uint32_t current_dyn_depth_;
-  bool graph_budget_enabled_ = false;
+  size_t graph_memory_limit_bytes_ = 0;
   size_t remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
 
   // Meta sharing state (for compatible mode)
