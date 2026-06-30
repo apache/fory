@@ -21,7 +21,6 @@ package org.apache.fory.format.encoder;
 
 import java.lang.invoke.MethodHandle;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
@@ -135,24 +134,26 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     // evolves, i.e. a non-versioned bean that still needs the hash prefix for flag-mismatch
     // detection).
     SchemaHistory valHistory =
-        valClass == null ? null : elementSchemaHistory(field.name(), valType);
+        valClass == null ? null : buildElementSchemaHistory(field.name(), valType);
     SchemaHistory keyHistory =
-        keyClass == null ? null : elementSchemaHistory(field.name(), keyType);
+        keyClass == null ? null : buildElementSchemaHistory(field.name(), keyType);
     SchemaHistory.VersionedSchema valCurrent = valHistory == null ? null : valHistory.current();
     SchemaHistory.VersionedSchema keyCurrent = keyHistory == null ? null : keyHistory.current();
 
-    // Generate one projection map codec per (key-version, value-version) combination, keyed by the
-    // combined hash. The current/current combination is the hot path and is handled by the
+    // Index one deferred projection source per (key-version, value-version) combination, keyed by
+    // the combined hash. The current/current combination is the hot path and is handled by the
     // unsuffixed current codec, so it is skipped here. A null history means that position does not
-    // evolve and contributes only its current entry.
+    // evolve and contributes only its current entry. Building the index compiles nothing: a
+    // combination's codec classes are generated the first time its hash is decoded. The collision
+    // guards below still run eagerly over the full cross-product, so a hash clash fails fast at
+    // build rather than surfacing on an unlucky decode.
     //
     // The full cross-product is required even when key and value are the same bean family: a writer
     // can pin them to different versions via distinct type arguments (Map<DefaultsV1, DefaultsV2>),
     // so off-diagonal pairs are reachable. See evolveMapSameBeanKeyAndValueCrossCombos.
     List<SchemaHistory.VersionedSchema> valVersions = positionVersions(valHistory);
     List<SchemaHistory.VersionedSchema> keyVersions = positionVersions(keyHistory);
-    warnIfManyProjections("map " + mapType, valVersions.size() * keyVersions.size());
-    Map<Long, ProjectionMapFactory> projectionFactories = new HashMap<>();
+    LongMap<BinaryMapEncoder.ProjectionSource> projectionSources = new LongMap<>();
     for (SchemaHistory.VersionedSchema valVs : valVersions) {
       for (SchemaHistory.VersionedSchema keyVs : keyVersions) {
         if (valVs == valCurrent && keyVs == keyCurrent) {
@@ -162,17 +163,15 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         // one 64-bit map-layout hash that identifies the (key-version, value-version) combination
         // jointly. The collision check below proves these combined hashes are unique at build time.
         long hash = SchemaHistory.combineHashes(positionHash(keyVs), positionHash(valVs));
-        ProjectionMapFactory previous =
-            projectionFactories.put(
-                hash,
-                buildProjectionFactory(valClass, keyClass, valVs, keyVs, valCurrent, keyCurrent));
-        if (previous != null) {
+        if (projectionSources.containsKey(hash)) {
           throw new IllegalStateException(
               "Combined (key, value) schema-hash collision for map "
                   + mapType
                   + ": two distinct version combinations produced the same map-layout hash. "
                   + "Please file an issue with the key and value bean definitions.");
         }
+        projectionSources.put(
+            hash, new ProjectionSource(valClass, keyClass, valVs, keyVs, valCurrent, keyCurrent));
       }
     }
     final var currentFactory = generatedMapEncoder();
@@ -180,7 +179,7 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         SchemaHistory.combineHashes(positionHash(keyCurrent), positionHash(valCurrent));
     // The decode hot path matches currentHash before consulting the projection map, so a projection
     // colliding with it would be shadowed and never dispatched to. Prove that cannot happen.
-    if (projectionFactories.containsKey(currentHash)) {
+    if (projectionSources.containsKey(currentHash)) {
       throw new IllegalStateException(
           "Combined (key, value) schema-hash collision for map "
               + mapType
@@ -193,17 +192,20 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
         BinaryArrayWriter keyWriter = codecFormat.newArrayWriter(keyField);
         BinaryArrayWriter valWriter = codecFormat.newArrayWriter(valField, keyWriter.getBuffer());
         var codec = currentFactory.apply(keyWriter, valWriter);
-        LongMap<BinaryMapEncoder.ProjectionMapCodec> proj =
-            new LongMap<>(projectionFactories.size());
-        for (Map.Entry<Long, ProjectionMapFactory> entry : projectionFactories.entrySet()) {
-          proj.put(entry.getKey(), entry.getValue().instantiate(codecFormat, fory));
-        }
         return new BufferResettingMapEncoder<>(
             initialBufferSize,
             keyWriter,
             valWriter,
             new BinaryMapEncoder<M>(
-                codecFormat, field, valWriter, keyWriter, codec, sizeEmbedded, currentHash, proj));
+                codecFormat,
+                field,
+                valWriter,
+                keyWriter,
+                codec,
+                sizeEmbedded,
+                currentHash,
+                projectionSources,
+                fory));
       }
     };
   }
@@ -214,50 +216,6 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
    * historical schema. A position at its current schema gets an empty suffix and keeps its current
    * field, so a map where only one side evolves pays no codegen for the unchanged side.
    */
-  private ProjectionMapFactory buildProjectionFactory(
-      Class<?> valClass,
-      Class<?> keyClass,
-      SchemaHistory.VersionedSchema valVs,
-      SchemaHistory.VersionedSchema keyVs,
-      SchemaHistory.VersionedSchema valCurrent,
-      SchemaHistory.VersionedSchema keyCurrent) {
-    // Each position's history is forElement over the position type, so its schema's single field is
-    // the position field with every reachable bean projected onto this combination, and
-    // nestedSuffixesFor routes each bean class in the position to its own historical row codec. The
-    // projected field carries only the substituted type; the position's own nullability is taken
-    // from the current map field (map keys are non-nullable, values nullable).
-    Field currentVal = DataTypes.itemFieldForMap(field);
-    Field histVal = currentVal;
-    String valSuffix = "";
-    Map<Class<?>, String> valNested = null;
-    if (valVs != null && valVs != valCurrent) {
-      valSuffix = ProjectionRouting.projectionSuffix(valVs);
-      valNested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat);
-      histVal = projectedPositionField(currentVal, valVs);
-    }
-    Field currentKey = DataTypes.keyFieldForMap(field);
-    Field histKey = currentKey;
-    String keySuffix = "";
-    Map<Class<?>, String> keyNested = null;
-    if (keyVs != null && keyVs != keyCurrent) {
-      keySuffix = ProjectionRouting.projectionSuffix(keyVs);
-      keyNested = ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat);
-      histKey = projectedPositionField(currentKey, keyVs);
-    }
-    Class<?> mapClass =
-        Encoders.loadOrGenProjectionMapCodecClass(
-            mapType,
-            TypeRef.of(valClass != null ? valClass : keyClass),
-            codecFormat,
-            valSuffix,
-            keySuffix,
-            valNested,
-            keyNested);
-    MethodHandle ctor = Encoders.constructorHandleFor(mapClass, GeneratedMapEncoder.class);
-    Field histMapField = DataTypes.mapField(field.name(), histKey, histVal);
-    return new ProjectionMapFactory(histMapField, ctor);
-  }
-
   /**
    * The map position field projected onto {@code positionVs}: the substituted type from the
    * position's historical schema, but the current position field's name and nullability (a map key
@@ -269,16 +227,71 @@ public class MapCodecBuilder<M extends Map<?, ?>> extends BaseCodecBuilder<MapCo
     return DataTypes.field(currentField.name(), projected.type(), currentField.nullable());
   }
 
-  private final class ProjectionMapFactory {
-    private final Field histMapField;
-    private final MethodHandle ctor;
+  /**
+   * Deferred projection codec for one (key-version, value-version) combination. Holds only the
+   * chosen versions; the per-position row codecs and the map codec class are generated on the first
+   * {@link #compile} call (the first decode of this combination's combined hash), not at build
+   * time. The build-time collision guards already proved this combination's hash is unique.
+   */
+  private final class ProjectionSource implements BinaryMapEncoder.ProjectionSource {
+    private final Class<?> valClass;
+    private final Class<?> keyClass;
+    private final SchemaHistory.VersionedSchema valVs;
+    private final SchemaHistory.VersionedSchema keyVs;
+    private final SchemaHistory.VersionedSchema valCurrent;
+    private final SchemaHistory.VersionedSchema keyCurrent;
 
-    ProjectionMapFactory(Field histMapField, MethodHandle ctor) {
-      this.histMapField = histMapField;
-      this.ctor = ctor;
+    ProjectionSource(
+        Class<?> valClass,
+        Class<?> keyClass,
+        SchemaHistory.VersionedSchema valVs,
+        SchemaHistory.VersionedSchema keyVs,
+        SchemaHistory.VersionedSchema valCurrent,
+        SchemaHistory.VersionedSchema keyCurrent) {
+      this.valClass = valClass;
+      this.keyClass = keyClass;
+      this.valVs = valVs;
+      this.keyVs = keyVs;
+      this.valCurrent = valCurrent;
+      this.keyCurrent = keyCurrent;
     }
 
-    BinaryMapEncoder.ProjectionMapCodec instantiate(Encoding format, Fory fory) {
+    @Override
+    public BinaryMapEncoder.ProjectionMapCodec compile(Encoding format, Fory fory) {
+      // Each position's history is forElement over the position type, so its schema's single field
+      // is the position field with every reachable bean projected onto this combination, and
+      // nestedSuffixesFor routes each bean class in the position to its own historical row codec.
+      // The projected field carries only the substituted type; the position's own nullability is
+      // taken from the current map field (map keys are non-nullable, values nullable).
+      Field currentVal = DataTypes.itemFieldForMap(field);
+      Field histVal = currentVal;
+      String valSuffix = "";
+      Map<Class<?>, String> valNested = null;
+      if (valVs != null && valVs != valCurrent) {
+        valSuffix = ProjectionRouting.projectionSuffix(valVs);
+        valNested = ProjectionRouting.nestedSuffixesFor(valVs, codecFormat);
+        histVal = projectedPositionField(currentVal, valVs);
+      }
+      Field currentKey = DataTypes.keyFieldForMap(field);
+      Field histKey = currentKey;
+      String keySuffix = "";
+      Map<Class<?>, String> keyNested = null;
+      if (keyVs != null && keyVs != keyCurrent) {
+        keySuffix = ProjectionRouting.projectionSuffix(keyVs);
+        keyNested = ProjectionRouting.nestedSuffixesFor(keyVs, codecFormat);
+        histKey = projectedPositionField(currentKey, keyVs);
+      }
+      Class<?> mapClass =
+          Encoders.loadOrGenProjectionMapCodecClass(
+              mapType,
+              TypeRef.of(valClass != null ? valClass : keyClass),
+              codecFormat,
+              valSuffix,
+              keySuffix,
+              valNested,
+              keyNested);
+      MethodHandle ctor = Encoders.constructorHandleFor(mapClass, GeneratedMapEncoder.class);
+      Field histMapField = DataTypes.mapField(field.name(), histKey, histVal);
       try {
         Field histKeyField = DataTypes.keyArrayFieldForMap(histMapField);
         Field histValField = DataTypes.itemArrayFieldForMap(histMapField);

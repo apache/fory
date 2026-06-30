@@ -70,6 +70,9 @@ final class ProjectionRouting {
    * class implied by {@code vs}. Empty string means the inner bean uses its current-version codec
    * class. The chosen inner entry is taken directly from {@code vs}, so this resolves the correct
    * combination to arbitrary depth without re-deriving it from a version number.
+   *
+   * <p>Called when an outer combination is first compiled (its hash first decoded), so the inner
+   * classes are generated lazily alongside it rather than at builder time.
    */
   static Map<Class<?>, String> nestedSuffixesFor(
       SchemaHistory.VersionedSchema vs, Encoding codecFormat) {
@@ -82,8 +85,8 @@ final class ProjectionRouting {
       } else {
         String innerSuffix = projectionSuffix(innerVs);
         out.put(innerClass, innerSuffix);
-        // Eagerly generate the inner's projection class so the outer's `new InnerCodec<suffix>`
-        // resolves at class load. Recurses through the inner's own nested combination.
+        // Generate the inner's projection class so the outer's `new InnerCodec<suffix>` resolves at
+        // class load. Recurses through the inner's own nested combination.
         Encoders.loadOrGenProjectionRowCodecClass(
             innerClass,
             codecFormat,
