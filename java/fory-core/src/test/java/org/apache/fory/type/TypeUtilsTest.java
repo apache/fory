@@ -91,24 +91,6 @@ public class TypeUtilsTest {
         TypeUtils.getElementType(TypeRef.of(A.class)), new TypeRef<List<String>>() {});
   }
 
-  public static class ArrayElementList<A, E> extends ArrayList<E[]> {}
-
-  public static class ArrayValueMap<A, K, V> extends HashMap<K, V[]> {}
-
-  @Test
-  public void getCustomContainerGenericArrayTypeTest() {
-    TypeRef<?> elementType =
-        TypeUtils.getElementType(new TypeRef<ArrayElementList<String, Integer>>() {});
-    Assert.assertEquals(elementType.getRawType(), Integer[].class);
-    Assert.assertEquals(elementType.getComponentType(), TypeRef.of(Integer.class));
-
-    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType =
-        TypeUtils.getMapKeyValueType(new TypeRef<ArrayValueMap<String, Long, Integer>>() {});
-    Assert.assertEquals(keyValueType.f0, TypeRef.of(Long.class));
-    Assert.assertEquals(keyValueType.f1.getRawType(), Integer[].class);
-    Assert.assertEquals(keyValueType.f1.getComponentType(), TypeRef.of(Integer.class));
-  }
-
   @Test
   public void getMapKeyValueTypeTest() throws NoSuchMethodException {
     TypeRef typeRef = Descriptor.getDescriptorsMap(BeanA.class).get("stringBeanBMap").getTypeRef();

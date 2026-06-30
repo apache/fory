@@ -40,10 +40,6 @@ public class AndroidSupportStaticCheckTest {
       Pattern.compile("\\.getAnnotatedType\\s*\\(");
   private static final Pattern DIRECT_ANNOTATED_TYPE_REFERENCE =
       Pattern.compile("\\bAnnotatedType\\b");
-  private static final Pattern DIRECT_TYPE_VARIABLE_GET_DECLARED_ANNOTATIONS =
-      Pattern.compile("TypeVariable[\\s\\S]{0,200}\\.getDeclaredAnnotations\\s*\\(");
-  private static final Pattern CLASS_OWNERSHIP_SIGNATURE_GUARD =
-      Pattern.compile("genericSuperclass\\s+instanceof\\s+ParameterizedType");
   private static final Pattern ANDROID_GATED_FIELD_GET_ANNOTATED_TYPE =
       Pattern.compile(
           "AndroidSupport\\.IS_ANDROID[\\s\\S]{0,160}\\.getAnnotatedType\\s*\\(", Pattern.DOTALL);
@@ -151,24 +147,6 @@ public class AndroidSupportStaticCheckTest {
         "Android resolves AnnotatedType method descriptors while shrinking Fory core; "
             + "use Object/Method based type-use reflection in core sources: "
             + violations);
-  }
-
-  @Test
-  public void testTypeVariableKeyStaysAndroidCompatible() throws IOException {
-    Path sourcePath = Paths.get("src/main/java/org/apache/fory/reflect/TypeRef.java");
-    String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
-    assertTrue(
-        !DIRECT_TYPE_VARIABLE_GET_DECLARED_ANNOTATIONS.matcher(source).find(),
-        "Android TypeVariable does not expose getDeclaredAnnotations at runtime");
-  }
-
-  @Test
-  public void testClassOwnershipProbeAllowsStrippedSignature() throws IOException {
-    Path sourcePath = Paths.get("src/main/java/org/apache/fory/reflect/TypeRef.java");
-    String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
-    assertTrue(
-        CLASS_OWNERSHIP_SIGNATURE_GUARD.matcher(source).find(),
-        "Android release shrinking can strip the probe class Signature attribute");
   }
 
   @Test

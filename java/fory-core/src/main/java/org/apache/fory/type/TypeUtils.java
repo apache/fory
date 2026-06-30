@@ -65,7 +65,6 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.WeakHashMap;
-import java.util.stream.Collectors;
 import org.apache.fory.annotation.Ref;
 import org.apache.fory.collection.BFloat16List;
 import org.apache.fory.collection.BoolList;
@@ -573,9 +572,11 @@ public class TypeUtils {
   /** Returns element type of iterable. */
   public static TypeRef<?> getElementType(TypeRef<?> typeRef) {
     if (typeRef.hasExplicitTypeArguments()) {
-      TypeRef<?> elementType = getExplicitElementType(typeRef);
-      if (elementType != null) {
-        return elementType;
+      List<TypeRef<?>> typeArguments = typeRef.getTypeArguments();
+      Class<?> rawType = getRawType(typeRef);
+      if (typeArguments.size() == 1
+          && (Iterable.class.isAssignableFrom(rawType) || isScalaIterableClass(rawType))) {
+        return typeArguments.get(0);
       }
     }
     Type type = typeRef.getType();
@@ -590,8 +591,7 @@ public class TypeUtils {
         }
       }
     }
-    if (ScalaTypes.SCALA_AVAILABLE
-        && typeRef.getType().getTypeName().startsWith("scala.collection")) {
+    if (isScalaIterableClass(typeRef.getRawType())) {
       return ScalaTypes.getElementType(typeRef);
     }
     TypeRef<?> supertype = ((TypeRef<? extends Iterable<?>>) typeRef).getSupertype(Iterable.class);
@@ -607,9 +607,11 @@ public class TypeUtils {
   /** Returns key/value type of map. */
   public static Tuple2<TypeRef<?>, TypeRef<?>> getMapKeyValueType(TypeRef<?> typeRef) {
     if (typeRef.hasExplicitTypeArguments()) {
-      Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = getExplicitMapKeyValueType(typeRef);
-      if (keyValueType != null) {
-        return keyValueType;
+      List<TypeRef<?>> typeArguments = typeRef.getTypeArguments();
+      Class<?> rawType = getRawType(typeRef);
+      if (typeArguments.size() == 2
+          && (Map.class.isAssignableFrom(rawType) || isScalaMapClass(rawType))) {
+        return Tuple2.of(typeArguments.get(0), typeArguments.get(1));
       }
     }
     Type type = typeRef.getType();
@@ -625,8 +627,7 @@ public class TypeUtils {
         }
       }
     }
-    if (ScalaTypes.SCALA_AVAILABLE
-        && typeRef.getType().getTypeName().startsWith("scala.collection")) {
+    if (isScalaMapClass(typeRef.getRawType())) {
       return ScalaTypes.getMapKeyValueType(typeRef);
     }
     @SuppressWarnings("unchecked")
@@ -636,105 +637,16 @@ public class TypeUtils {
     return Tuple2.of(keyType, valueType);
   }
 
-  private static TypeRef<?> getExplicitElementType(TypeRef<?> typeRef) {
-    Class<?> rawType = getRawType(typeRef);
-    if (!Iterable.class.isAssignableFrom(rawType) && !isScalaCollectionClass(rawType)) {
-      return null;
-    }
-    List<TypeRef<?>> typeArguments = typeRef.getTypeArguments();
-    TypeRef<?> rawElementType = getElementType(TypeRef.of(rawType));
-    if (hasFullExplicitRawArgs(typeRef)) {
-      return resolveTypeVariables(rawElementType.getType(), explicitTypeVarRefs(typeRef));
-    }
-    // TypeDef metadata stores collection explicit arguments in serializer-consumed form: element
-    // only, even when the raw custom collection declares other unrelated type parameters.
-    if (typeArguments.size() == 1) {
-      return typeArguments.get(0);
-    }
-    return resolveTypeVariables(rawElementType.getType(), explicitTypeVarRefs(typeRef));
+  private static boolean isScalaMapClass(Class<?> rawType) {
+    return ScalaTypes.SCALA_AVAILABLE
+        && rawType.getName().startsWith("scala.collection")
+        && ScalaTypes.getScalaMapType().isAssignableFrom(rawType);
   }
 
-  private static Tuple2<TypeRef<?>, TypeRef<?>> getExplicitMapKeyValueType(TypeRef<?> typeRef) {
-    Class<?> rawType = getRawType(typeRef);
-    if (!Map.class.isAssignableFrom(rawType) && !isScalaCollectionClass(rawType)) {
-      return null;
-    }
-    List<TypeRef<?>> typeArguments = typeRef.getTypeArguments();
-    Tuple2<TypeRef<?>, TypeRef<?>> rawKeyValueType = getMapKeyValueType(TypeRef.of(rawType));
-    if (hasFullExplicitRawArgs(typeRef)) {
-      Map<TypeVariable<?>, TypeRef<?>> typeVarRefs = explicitTypeVarRefs(typeRef);
-      return Tuple2.of(
-          resolveTypeVariables(rawKeyValueType.f0.getType(), typeVarRefs),
-          resolveTypeVariables(rawKeyValueType.f1.getType(), typeVarRefs));
-    }
-    // TypeDef metadata stores map explicit arguments in serializer-consumed form: key/value only,
-    // even when the raw custom map declares other unrelated type parameters.
-    if (typeArguments.size() == 2) {
-      return Tuple2.of(typeArguments.get(0), typeArguments.get(1));
-    }
-    Map<TypeVariable<?>, TypeRef<?>> typeVarRefs = explicitTypeVarRefs(typeRef);
-    return Tuple2.of(
-        resolveTypeVariables(rawKeyValueType.f0.getType(), typeVarRefs),
-        resolveTypeVariables(rawKeyValueType.f1.getType(), typeVarRefs));
-  }
-
-  private static boolean hasFullExplicitRawArgs(TypeRef<?> typeRef) {
-    Type type = typeRef.getType();
-    return type instanceof ParameterizedType
-        && ((ParameterizedType) type).getActualTypeArguments().length
-            == typeRef.getTypeArguments().size()
-        && getRawType(typeRef).getTypeParameters().length == typeRef.getTypeArguments().size();
-  }
-
-  private static Map<TypeVariable<?>, TypeRef<?>> explicitTypeVarRefs(TypeRef<?> typeRef) {
-    TypeVariable<?>[] variables = getRawType(typeRef).getTypeParameters();
-    List<TypeRef<?>> typeArguments = typeRef.getTypeArguments();
-    Map<TypeVariable<?>, TypeRef<?>> typeVarRefs = new HashMap<>();
-    int len = Math.min(variables.length, typeArguments.size());
-    for (int i = 0; i < len; i++) {
-      typeVarRefs.put(variables[i], typeArguments.get(i));
-    }
-    return typeVarRefs;
-  }
-
-  private static TypeRef<?> resolveTypeVariables(
-      Type type, Map<TypeVariable<?>, TypeRef<?>> typeVarRefs) {
-    if (type instanceof TypeVariable) {
-      TypeRef<?> typeRef = typeVarRefs.get(type);
-      if (typeRef != null) {
-        return typeRef;
-      }
-      Type[] bounds = ((TypeVariable<?>) type).getBounds();
-      if (bounds.length == 0 || bounds[0] == Object.class) {
-        return OBJECT_TYPE;
-      }
-      return TypeRef.of(getRawType(bounds[0]));
-    }
-    if (type instanceof WildcardType) {
-      Type[] upperBounds = ((WildcardType) type).getUpperBounds();
-      return upperBounds.length == 0
-          ? OBJECT_TYPE
-          : resolveTypeVariables(upperBounds[0], typeVarRefs);
-    }
-    if (type instanceof ParameterizedType) {
-      Type[] args = ((ParameterizedType) type).getActualTypeArguments();
-      List<TypeRef<?>> resolvedArgs = new ArrayList<>(args.length);
-      for (Type arg : args) {
-        resolvedArgs.add(resolveTypeVariables(arg, typeVarRefs));
-      }
-      return TypeRef.of(type, null, resolvedArgs, null);
-    }
-    if (type instanceof GenericArrayType) {
-      TypeRef<?> componentType =
-          resolveTypeVariables(((GenericArrayType) type).getGenericComponentType(), typeVarRefs);
-      Class<?> arrayClass = Array.newInstance(getRawType(componentType), 0).getClass();
-      return TypeRef.of(arrayClass, null, null, componentType);
-    }
-    return TypeRef.of(type);
-  }
-
-  private static boolean isScalaCollectionClass(Class<?> rawType) {
-    return ScalaTypes.SCALA_AVAILABLE && rawType.getName().startsWith("scala.collection");
+  private static boolean isScalaIterableClass(Class<?> rawType) {
+    return ScalaTypes.SCALA_AVAILABLE
+        && rawType.getName().startsWith("scala.collection")
+        && ScalaTypes.getScalaIterableType().isAssignableFrom(rawType);
   }
 
   public static void applyRefTrackingOverride(
@@ -1135,17 +1047,7 @@ public class TypeUtils {
 
   /** Returns generic type arguments of <code>typeToken</code>. */
   public static List<TypeRef<?>> getTypeArguments(TypeRef<?> typeRef) {
-    if (typeRef.hasExplicitTypeArguments()) {
-      return typeRef.getTypeArguments();
-    }
-    if (typeRef.getType() instanceof ParameterizedType) {
-      ParameterizedType parameterizedType = (ParameterizedType) typeRef.getType();
-      return Arrays.stream(parameterizedType.getActualTypeArguments())
-          .map(TypeRef::of)
-          .collect(Collectors.toList());
-    } else {
-      return new ArrayList<>();
-    }
+    return typeRef.getTypeArguments();
   }
 
   /**

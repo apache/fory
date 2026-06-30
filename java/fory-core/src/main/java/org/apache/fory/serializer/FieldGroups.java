@@ -22,7 +22,6 @@ package org.apache.fory.serializer;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -159,10 +158,6 @@ public class FieldGroups {
     return fieldInfo;
   }
 
-  private static boolean hasOnlyObjectParams(GenericType genericType) {
-    return Arrays.stream(genericType.getTypeParameters()).allMatch(p -> p.getCls() == Object.class);
-  }
-
   public enum FieldCodecCategory {
     BUILD_IN,
     CONTAINER,
@@ -267,11 +262,6 @@ public class FieldGroups {
         t = resolver.buildGenericType(typeRef);
       }
       Class<?> cls = t.getCls();
-      if (t.getTypeParametersCount() > 0) {
-        if (hasOnlyObjectParams(t)) {
-          t = new GenericType(t.getTypeRef(), t.isMonomorphic());
-        }
-      }
       genericType = t;
       Field field = descriptor.getField();
       if (field != null) {

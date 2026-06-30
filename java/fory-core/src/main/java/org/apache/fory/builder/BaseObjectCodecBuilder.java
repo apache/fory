@@ -81,10 +81,6 @@ import static org.apache.fory.type.TypeUtils.isPrimitive;
 import static org.apache.fory.util.Preconditions.checkArgument;
 
 import java.lang.reflect.Modifier;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
-import java.lang.reflect.WildcardType;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1298,7 +1294,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       serializer = cast(serializer, TypeRef.of(CollectionLikeSerializer.class), "colSerializer");
     }
     TypeRef<?> elementType =
-        elementTypeOverride == null ? getElementType(typeRef) : elementTypeOverride;
+        elementTypeOverride == null ? TypeUtils.getElementType(typeRef) : elementTypeOverride;
     // write collection data.
     Expression ifExpr =
         new If(
@@ -1316,58 +1312,6 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
           ctx, writeCutPoints(buffer, collection, serializer), actions, "writeCollection", false);
     }
     return actions;
-  }
-
-  private TypeRef<?> getElementType(TypeRef<?> typeRef) {
-    TypeRef<?> elementType = TypeUtils.getElementType(typeRef);
-    // Raw custom containers have no actual argument for E; E and shapes containing E must stay
-    // Object, because using E's bound would reject unchecked raw contents.
-    if (!hasTypeArguments(typeRef) && hasUnresolvedTypeVariable(elementType)) {
-      return OBJECT_TYPE;
-    }
-    // Full TypeRef equality catches only true self-recursive declarations such as
-    // SelfList extends ArrayList<SelfList>, without rejecting valid nested containers like
-    // Collection<Collection<Integer>>.
-    return elementType.equals(typeRef) ? OBJECT_TYPE : elementType;
-  }
-
-  private boolean hasTypeArguments(TypeRef<?> typeRef) {
-    if (typeRef.hasExplicitTypeArguments()) {
-      return !typeRef.getTypeArguments().isEmpty();
-    }
-    Type type = typeRef.getType();
-    return type instanceof ParameterizedType
-        && ((ParameterizedType) type).getActualTypeArguments().length > 0;
-  }
-
-  private boolean hasUnresolvedTypeVariable(TypeRef<?> typeRef) {
-    Type type = typeRef.getType();
-    if (type instanceof TypeVariable) {
-      return true;
-    }
-    if (type instanceof WildcardType) {
-      WildcardType wildcardType = (WildcardType) type;
-      for (Type lowerBound : wildcardType.getLowerBounds()) {
-        if (hasUnresolvedTypeVariable(TypeRef.of(lowerBound))) {
-          return true;
-        }
-      }
-      for (Type upperBound : wildcardType.getUpperBounds()) {
-        if (hasUnresolvedTypeVariable(TypeRef.of(upperBound))) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (typeRef.isArray()) {
-      return hasUnresolvedTypeVariable(typeRef.getComponentType());
-    }
-    for (TypeRef<?> typeArgument : typeRef.getTypeArguments()) {
-      if (hasUnresolvedTypeVariable(typeArgument)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   private boolean usesPrimitiveListCollectionProtocol(Descriptor descriptor) {
@@ -1772,32 +1716,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     return write;
   }
 
-  private Tuple2<TypeRef<?>, TypeRef<?>> getMapKeyValueType(TypeRef<?> typeRef) {
-    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(typeRef);
-    TypeRef<?> keyType = keyValueType.f0;
-    TypeRef<?> valueType = keyValueType.f1;
-    // Raw custom maps have no actual K/V arguments; K/V and shapes containing them must stay
-    // Object, because using their bounds would reject unchecked raw contents.
-    if (!hasTypeArguments(typeRef)) {
-      if (hasUnresolvedTypeVariable(keyType)) {
-        keyType = OBJECT_TYPE;
-      }
-      if (hasUnresolvedTypeVariable(valueType)) {
-        valueType = OBJECT_TYPE;
-      }
-    }
-    if (keyType.equals(typeRef)) {
-      keyType = OBJECT_TYPE;
-    }
-    if (valueType.equals(typeRef)) {
-      valueType = OBJECT_TYPE;
-    }
-    return Tuple2.of(keyType, valueType);
-  }
-
   private Expression jitWriteMap(
       Expression buffer, Expression map, Expression serializer, TypeRef<?> typeRef) {
-    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = getMapKeyValueType(typeRef);
+    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(typeRef);
     TypeRef<?> keyType = keyValueType.f0;
     TypeRef<?> valueType = keyValueType.f1;
     map =
@@ -2764,7 +2685,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       InvokeHint invokeHint,
       TypeRef<?> elementTypeOverride) {
     TypeRef<?> elementType =
-        elementTypeOverride == null ? getElementType(typeRef) : elementTypeOverride;
+        elementTypeOverride == null ? TypeUtils.getElementType(typeRef) : elementTypeOverride;
     if (serializer == null) {
       Class<?> cls = getRawType(typeRef);
       if (isMonomorphic(cls)) {
@@ -3018,7 +2939,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
    */
   protected Expression deserializeForMap(
       Expression buffer, TypeRef<?> typeRef, Expression serializer, InvokeHint invokeHint) {
-    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = getMapKeyValueType(typeRef);
+    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(typeRef);
     TypeRef<?> keyType = keyValueType.f0;
     TypeRef<?> valueType = keyValueType.f1;
     if (serializer == null) {

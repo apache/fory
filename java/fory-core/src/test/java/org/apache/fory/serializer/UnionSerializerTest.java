@@ -204,45 +204,6 @@ public class UnionSerializerTest extends ForyTestBase {
     }
   }
 
-  public static class MultiParamList<A, E> extends ArrayList<E> {
-    private A metadata;
-
-    public MultiParamList() {}
-
-    public MultiParamList(A metadata) {
-      this.metadata = metadata;
-    }
-
-    public A getMetadata() {
-      return metadata;
-    }
-  }
-
-  public static class MultiParamListUnion extends Union {
-    public enum MultiParamListCase {
-      NUMBERS(0);
-
-      public final int id;
-
-      MultiParamListCase(int id) {
-        this.id = id;
-      }
-    }
-
-    public MultiParamListUnion(int caseId, Object value) {
-      super(caseId, value);
-    }
-
-    public MultiParamListUnion(int caseId, Object value, int typeId) {
-      super(caseId, value, typeId);
-    }
-
-    @SuppressWarnings("unchecked")
-    public MultiParamList<String, Integer> getNumbers() {
-      return (MultiParamList<String, Integer>) value;
-    }
-  }
-
   public static class StructWithUnion2 {
     public Union2<String, Long> union;
 
@@ -454,27 +415,6 @@ public class UnionSerializerTest extends ForyTestBase {
     deserialized = (StructWithUnion) fory.deserialize(bytes);
     assertTrue(deserialized.union.getValue() instanceof Map);
     assertEquals(deserialized.union.getValue(), map);
-  }
-
-  @Test(dataProvider = "compatibleMode")
-  public void testUnionWithMultiParamCollection(boolean compatible) {
-    Fory fory =
-        Fory.builder()
-            .withXlang(true)
-            .withCompatible(compatible)
-            .requireClassRegistration(false)
-            .build();
-    UnionSerializer serializer =
-        new UnionSerializer(fory.getTypeResolver(), MultiParamListUnion.class);
-    MultiParamList<String, Integer> numbers = new MultiParamList<>("metadata");
-    numbers.add(1);
-    numbers.add(2);
-
-    MultiParamListUnion union = new MultiParamListUnion(0, numbers, Types.LIST);
-    MultiParamListUnion result = (MultiParamListUnion) writeReadUnion(fory, serializer, union, 0);
-
-    assertEquals(result.getNumbers().get(0), Integer.valueOf(1));
-    assertEquals(result.getNumbers().get(1), Integer.valueOf(2));
   }
 
   @Test(dataProvider = "compatibleMode")

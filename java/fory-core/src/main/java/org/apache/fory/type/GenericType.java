@@ -29,7 +29,6 @@ import java.lang.reflect.WildcardType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
-import org.apache.fory.collection.Tuple2;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
@@ -131,13 +130,6 @@ public class GenericType {
 
   public static GenericType build(TypeRef<?> typeRef, Predicate<Type> finalPredicate) {
     Type type = typeRef.getType();
-    Class<?> rawType = getRawType(typeRef);
-    if (TypeUtils.isMap(rawType)) {
-      return buildMap(typeRef, finalPredicate);
-    }
-    if (TypeUtils.isCollection(rawType)) {
-      return buildCollection(typeRef, finalPredicate);
-    }
     if (typeRef.hasExplicitTypeArguments()) {
       List<TypeRef<?>> explicitTypeArguments = typeRef.getTypeArguments();
       List<GenericType> list = new ArrayList<>(explicitTypeArguments.size());
@@ -187,156 +179,6 @@ public class GenericType {
       // Class type: String, Integer
       return new GenericType(typeRef, finalPredicate.test(type));
     }
-  }
-
-  private static GenericType buildCollection(TypeRef<?> typeRef, Predicate<Type> finalPredicate) {
-    TypeRef<?> collectionTypeRef = typeRef.hasWildcard() ? typeRef.resolveAllWildcards() : typeRef;
-    TypeRef<?> elementTypeRef = TypeUtils.getElementType(collectionTypeRef);
-    if (elementTypeRef.getType() instanceof WildcardType) {
-      elementTypeRef = elementTypeRef.resolveAllWildcards();
-    }
-    // Raw custom collections have no actual argument for E; E and shapes containing E must stay
-    // Object, because using E's bound would reject unchecked raw contents.
-    if (!hasTypeArguments(collectionTypeRef) && hasUnresolvedTypeVariable(elementTypeRef)) {
-      elementTypeRef = TypeUtils.OBJECT_TYPE;
-    }
-    // Recursive collection declarations such as SelfList extends ArrayList<SelfList> must not
-    // push themselves as their own element generic type, or interpreter mode recurses forever.
-    if (isSelfRecursiveTypeArg(typeRef, elementTypeRef)) {
-      elementTypeRef = TypeUtils.OBJECT_TYPE;
-    }
-    if (elementTypeRef.equals(TypeUtils.OBJECT_TYPE) && !hasTypeArguments(collectionTypeRef)) {
-      return new GenericType(typeRef, finalPredicate.test(typeRef.getType()));
-    }
-    // Collection serializers consume type parameter 0 as the element type. Custom collection
-    // subclasses may declare unrelated parameters, so collection GenericType stores only the
-    // resolved element view.
-    return new GenericType(
-        typeRef, finalPredicate.test(typeRef.getType()), build(elementTypeRef, finalPredicate));
-  }
-
-  private static GenericType buildMap(TypeRef<?> typeRef, Predicate<Type> finalPredicate) {
-    TypeRef<?> mapTypeRef = typeRef.hasWildcard() ? typeRef.resolveAllWildcards() : typeRef;
-    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(mapTypeRef);
-    TypeRef<?> keyTypeRef = normalizeMapTypeArg(mapTypeRef, keyValueType.f0);
-    TypeRef<?> valueTypeRef = normalizeMapTypeArg(mapTypeRef, keyValueType.f1);
-    if (keyTypeRef.getType() instanceof WildcardType) {
-      keyTypeRef = keyTypeRef.resolveAllWildcards();
-    }
-    if (valueTypeRef.getType() instanceof WildcardType) {
-      valueTypeRef = valueTypeRef.resolveAllWildcards();
-    }
-    // Raw custom maps have no actual K/V arguments; K/V and shapes containing them must stay
-    // Object, because using their bounds would reject unchecked raw contents.
-    if (!hasTypeArguments(mapTypeRef)) {
-      if (hasUnresolvedTypeVariable(keyTypeRef)) {
-        keyTypeRef = TypeUtils.OBJECT_TYPE;
-      }
-      if (hasUnresolvedTypeVariable(valueTypeRef)) {
-        valueTypeRef = TypeUtils.OBJECT_TYPE;
-      }
-    }
-    if (keyTypeRef.equals(TypeUtils.OBJECT_TYPE)
-        && valueTypeRef.equals(TypeUtils.OBJECT_TYPE)
-        && !hasTypeArguments(mapTypeRef)) {
-      return new GenericType(typeRef, finalPredicate.test(typeRef.getType()));
-    }
-    // Map serializers consume type parameter 0 as key type and 1 as value type. Custom map
-    // subclasses may declare unrelated parameters, so map GenericType stores only the resolved
-    // key/value view.
-    return new GenericType(
-        typeRef,
-        finalPredicate.test(typeRef.getType()),
-        build(keyTypeRef, finalPredicate),
-        build(valueTypeRef, finalPredicate));
-  }
-
-  private static TypeRef<?> normalizeMapTypeArg(TypeRef<?> ownerTypeRef, TypeRef<?> typeArg) {
-    // Recursive map declarations such as SelfMap extends HashMap<SelfMap, ...> must not build the
-    // same map GenericType as its own key/value parameter, or interpreter mode recurses forever.
-    return isSelfRecursiveTypeArg(ownerTypeRef, typeArg) ? TypeUtils.OBJECT_TYPE : typeArg;
-  }
-
-  private static boolean isSelfRecursiveTypeArg(TypeRef<?> ownerTypeRef, TypeRef<?> typeArg) {
-    if (getRawType(ownerTypeRef) != typeArg.getRawType()) {
-      return false;
-    }
-    // Nested containers with the same raw type, such as List<List<String>> or Map<Map<K, V>, V>,
-    // are valid declared arguments. Only normalize true self-recursive custom declarations like
-    // SelfList extends ArrayList<SelfList>, where the child type is not one of the owner's own
-    // actual arguments.
-    for (TypeRef<?> declaredArg : ownerTypeRef.getTypeArguments()) {
-      if (sameTypeView(declaredArg, typeArg)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private static boolean sameTypeView(TypeRef<?> left, TypeRef<?> right) {
-    if (left.getType() instanceof WildcardType) {
-      Type[] upperBounds = ((WildcardType) left.getType()).getUpperBounds();
-      return upperBounds.length != 0 && sameTypeView(TypeRef.of(upperBounds[0]), right);
-    }
-    if (right.getType() instanceof WildcardType) {
-      Type[] upperBounds = ((WildcardType) right.getType()).getUpperBounds();
-      return upperBounds.length != 0 && sameTypeView(left, TypeRef.of(upperBounds[0]));
-    }
-    if (!left.getType().equals(right.getType())) {
-      return false;
-    }
-    if (left.hasExplicitTypeArguments() || right.hasExplicitTypeArguments()) {
-      List<TypeRef<?>> leftArgs = left.getTypeArguments();
-      List<TypeRef<?>> rightArgs = right.getTypeArguments();
-      if (leftArgs.size() != rightArgs.size()) {
-        return false;
-      }
-      for (int i = 0; i < leftArgs.size(); i++) {
-        if (!sameTypeView(leftArgs.get(i), rightArgs.get(i))) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
-  private static boolean hasTypeArguments(TypeRef<?> typeRef) {
-    if (typeRef.hasExplicitTypeArguments()) {
-      return !typeRef.getTypeArguments().isEmpty();
-    }
-    Type type = typeRef.getType();
-    return type instanceof ParameterizedType
-        && ((ParameterizedType) type).getActualTypeArguments().length > 0;
-  }
-
-  private static boolean hasUnresolvedTypeVariable(TypeRef<?> typeRef) {
-    Type type = typeRef.getType();
-    if (type instanceof TypeVariable) {
-      return true;
-    }
-    if (type instanceof WildcardType) {
-      WildcardType wildcardType = (WildcardType) type;
-      for (Type lowerBound : wildcardType.getLowerBounds()) {
-        if (hasUnresolvedTypeVariable(TypeRef.of(lowerBound))) {
-          return true;
-        }
-      }
-      for (Type upperBound : wildcardType.getUpperBounds()) {
-        if (hasUnresolvedTypeVariable(TypeRef.of(upperBound))) {
-          return true;
-        }
-      }
-      return false;
-    }
-    if (typeRef.isArray()) {
-      return hasUnresolvedTypeVariable(typeRef.getComponentType());
-    }
-    for (TypeRef<?> typeArgument : typeRef.getTypeArguments()) {
-      if (hasUnresolvedTypeVariable(typeArgument)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   public TypeRef<?> getTypeRef() {

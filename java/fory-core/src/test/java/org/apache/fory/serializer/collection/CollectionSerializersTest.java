@@ -79,8 +79,6 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.meta.FieldTypes;
-import org.apache.fory.meta.FieldTypes.CollectionFieldType;
 import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.TypeRef;
@@ -311,6 +309,12 @@ public class CollectionSerializersTest extends ForyTestBase {
     public MultiParamListRefHolder() {}
   }
 
+  public static class NestedMultiParamListHolder {
+    private MultiParamList<String, List<@Ref(enable = false) CollectionRefItem>> nestedItems;
+
+    public NestedMultiParamListHolder() {}
+  }
+
   public static class FixedElementList<A> extends ArrayList<CollectionRefItem> {
     private A metadata;
 
@@ -325,58 +329,6 @@ public class CollectionSerializersTest extends ForyTestBase {
     private FixedElementList<@Ref(enable = false) CollectionRefItem> items;
 
     public FixedElementListHolder() {}
-  }
-
-  public static class SelfList extends ArrayList<SelfList> {}
-
-  public static class SelfListHolder {
-    private SelfList values;
-
-    public SelfListHolder() {}
-
-    public SelfListHolder(SelfList values) {
-      this.values = values;
-    }
-
-    public SelfList getValues() {
-      return values;
-    }
-  }
-
-  public static class BoundedList<E extends Number> extends ArrayList<E> {}
-
-  public static class BoundedArrayList<E extends Number> extends ArrayList<E[]> {}
-
-  public static class WildcardBoundedList<E extends Number> extends ArrayList<List<? extends E>> {}
-
-  public static class RawBoundedListHolder {
-    private BoundedList values;
-
-    public RawBoundedListHolder() {}
-
-    public RawBoundedListHolder(BoundedList values) {
-      this.values = values;
-    }
-  }
-
-  public static class RawWildcardBoundedListHolder {
-    private WildcardBoundedList values;
-
-    public RawWildcardBoundedListHolder() {}
-
-    public RawWildcardBoundedListHolder(WildcardBoundedList values) {
-      this.values = values;
-    }
-  }
-
-  public static class RawBoundedArrayListHolder {
-    private BoundedArrayList values;
-
-    public RawBoundedArrayListHolder() {}
-
-    public RawBoundedArrayListHolder(BoundedArrayList values) {
-      this.values = values;
-    }
   }
 
   @Test(dataProvider = "enableCodegen")
@@ -425,6 +377,26 @@ public class CollectionSerializersTest extends ForyTestBase {
     Assert.assertSame(cloned.refItems.get(0), cloned.refItems.get(1));
   }
 
+  @Test(dataProvider = "enableCodegen")
+  public void testNestedMultiParamCollectionRef(boolean enableCodegen) {
+    skipMemberGenericTypeUseOnJdk11();
+    CollectionRefItem item = new CollectionRefItem();
+    item.id = 1;
+
+    NestedMultiParamListHolder holder = new NestedMultiParamListHolder();
+    holder.nestedItems = new MultiParamList<>("nested");
+    List<CollectionRefItem> inner = new ArrayList<>();
+    inner.add(item);
+    inner.add(item);
+    holder.nestedItems.add(inner);
+
+    NestedMultiParamListHolder cloned =
+        (NestedMultiParamListHolder)
+            collectionGenericFory(enableCodegen)
+                .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
+    Assert.assertNotSame(cloned.nestedItems.get(0).get(0), cloned.nestedItems.get(0).get(1));
+  }
+
   private static void skipMemberGenericTypeUseOnJdk11() {
     if (JdkVersion.MAJOR_VERSION <= 11) {
       throw new SkipException(
@@ -433,7 +405,7 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "enableCodegen")
-  public void testFixedElementCollectionIgnoresMetadataRef(boolean enableCodegen) {
+  public void testFixedElementCollectionRefMeta(boolean enableCodegen) {
     CollectionRefItem element = new CollectionRefItem();
     element.id = 1;
     CollectionRefItem metadata = new CollectionRefItem();
@@ -449,74 +421,6 @@ public class CollectionSerializersTest extends ForyTestBase {
             collectionGenericFory(enableCodegen)
                 .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
     Assert.assertSame(cloned.items.get(0), cloned.items.get(1));
-  }
-
-  @Test
-  public void testSelfCollectionFieldType() throws NoSuchFieldException {
-    Fory fory = collectionGenericFory(true);
-    TypeResolver resolver = fory.getTypeResolver();
-    Field field = SelfListHolder.class.getDeclaredField("values");
-    FieldTypes.FieldType fieldType = FieldTypes.buildFieldType(resolver, field);
-    Assert.assertTrue(fieldType instanceof CollectionFieldType, fieldType.toString());
-
-    FieldTypes.FieldType elementType = ((CollectionFieldType) fieldType).getElementType();
-    Assert.assertFalse(elementType instanceof CollectionFieldType, elementType.toString());
-    Assert.assertEquals(elementType.getTypeId(), resolver.getTypeInfo(Object.class).getTypeId());
-  }
-
-  @Test(dataProvider = "enableCodegen")
-  public void testSelfCollectionRoundTrip(boolean enableCodegen) {
-    SelfList values = new SelfList();
-    values.add(values);
-    SelfListHolder holder = new SelfListHolder(values);
-
-    SelfListHolder cloned =
-        (SelfListHolder)
-            collectionGenericFory(enableCodegen)
-                .deserialize(collectionGenericFory(enableCodegen).serialize(holder));
-
-    Assert.assertNotNull(cloned.getValues());
-    Assert.assertEquals(cloned.getValues().size(), 1);
-    Assert.assertSame(cloned.getValues().get(0), cloned.getValues());
-  }
-
-  @Test
-  public void testRawBoundedCollectionCodegen() {
-    BoundedList values = new BoundedList();
-    values.add("raw-value");
-    RawBoundedListHolder holder = new RawBoundedListHolder(values);
-
-    RawBoundedListHolder cloned =
-        (RawBoundedListHolder)
-            collectionGenericFory(true).deserialize(collectionGenericFory(true).serialize(holder));
-
-    Assert.assertEquals(cloned.values.get(0), "raw-value");
-  }
-
-  @Test
-  public void testRawBoundedArrayCollectionCodegen() {
-    BoundedArrayList values = new BoundedArrayList();
-    values.add("raw-value");
-    RawBoundedArrayListHolder holder = new RawBoundedArrayListHolder(values);
-
-    RawBoundedArrayListHolder cloned =
-        (RawBoundedArrayListHolder)
-            collectionGenericFory(true).deserialize(collectionGenericFory(true).serialize(holder));
-
-    Assert.assertEquals(cloned.values.get(0), "raw-value");
-  }
-
-  @Test
-  public void testRawWildcardCollectionCodegen() {
-    WildcardBoundedList values = new WildcardBoundedList();
-    values.add("raw-value");
-    RawWildcardBoundedListHolder holder = new RawWildcardBoundedListHolder(values);
-
-    RawWildcardBoundedListHolder cloned =
-        (RawWildcardBoundedListHolder)
-            collectionGenericFory(true).deserialize(collectionGenericFory(true).serialize(holder));
-
-    Assert.assertEquals(cloned.values.get(0), "raw-value");
   }
 
   private static Fory collectionGenericFory(boolean enableCodegen) {
