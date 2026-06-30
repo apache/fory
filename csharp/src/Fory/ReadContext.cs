@@ -89,7 +89,14 @@ public sealed class ReadContext
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void ReserveContainerMemory(long bytes)
+    /// <summary>
+    /// Reserves estimated container-owned memory for the current root deserialization.
+    /// </summary>
+    /// <remarks>
+    /// Serializer owners compute container-specific formulas and pass raw bytes here. This
+    /// accounting does not replace byte-availability checks before backing allocation.
+    /// </remarks>
+    public void ReserveContainerMemory(long bytes)
     {
         long remaining = _remainingContainerMemoryBytes;
         if ((ulong)bytes > (ulong)remaining)
@@ -101,7 +108,15 @@ public sealed class ReadContext
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void ReserveCountedContainerMemory(int count, long elementBytes)
+    /// <summary>
+    /// Reserves <paramref name="count"/> multiplied by <paramref name="elementBytes"/> estimated
+    /// container-owned bytes for the current root deserialization.
+    /// </summary>
+    /// <remarks>
+    /// This helper owns only overflow-safe arithmetic; concrete serializers and generated
+    /// serializers still own the collection, array, and map storage formulas.
+    /// </remarks>
+    public void ReserveCountedContainerMemory(int count, long elementBytes)
     {
         if (count < 0 || elementBytes < 0)
         {
