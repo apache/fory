@@ -79,10 +79,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import org.apache.fory.collection.LazyMap;
+import org.apache.fory.config.Language;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
+import org.apache.fory.exception.SerializationException;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.EnumSerializerTest;
 import org.apache.fory.serializer.EnumSerializerTest.EnumFoo;
@@ -454,4 +456,36 @@ public class ForyCopyTest extends ForyTestBase {
       assertEquals(fory.copy(collectionFields).toCanEqual(), collectionFields.toCanEqual());
     }
   }
+
+  @Test
+  public void testCopyNonSerializableJdkClass(){
+
+    Fory fory = Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .build();
+    Package pkg = String.class.getPackage();
+    Package copy = fory.copy(pkg);
+    Assert.assertNotNull(copy);
+    Assert.assertEquals(copy.getName(), pkg.getName());
+  }
+
+
+  @Test
+  public void testSerializeNonSerializableJdkClassStillThrows() {
+      // Serializing anon-serializable JDK class must still throw, just deferred to write time.
+
+      Fory fory = Fory.builder()
+              .withLanguage(Language.JAVA)
+              .requireClassRegistration(false)
+              .build();
+      try {
+          fory.serialize(String.class.getPackage());
+          Assert.fail("Expected serialization of java.lang.Package to fail");
+      } catch (SerializationException e) {
+          Assert.assertTrue(e.getCause() instanceof UnsupportedOperationException);
+          Assert.assertTrue(e.getMessage().contains("doesn't support serialization"));
+      }
+  }
+
 }
