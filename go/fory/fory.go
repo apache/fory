@@ -48,6 +48,11 @@ func splitRegisteredName(name string) (string, string, error) {
 	return namespace, typeName, nil
 }
 
+type ifaceWords struct {
+	typ  unsafe.Pointer
+	data unsafe.Pointer
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -198,6 +203,9 @@ type Fory struct {
 	rootGraphBytes       int64
 	rootGraphHasChildren bool
 	rootGraphSkipType    reflect.Type
+	rootGraphSkipTypeID  unsafe.Pointer
+	rootReadTypeID       unsafe.Pointer
+	rootReadSerializer   Serializer
 }
 
 // New creates a new Fory instance with the given options
@@ -572,9 +580,17 @@ func (f *Fory) Serialize(value any) ([]byte, error) {
 func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
 	f.readCtx.SetData(data)
-	target := reflect.ValueOf(v).Elem()
-	if err := f.initRootGraphBudget(target); err != nil {
-		return err
+	typeID := (*ifaceWords)(unsafe.Pointer(&v)).typ
+	var target reflect.Value
+	if typeID != f.rootGraphSkipTypeID {
+		target = reflect.ValueOf(v).Elem()
+		targetType := target.Type()
+		if err := f.initRootGraphBudgetType(targetType); err != nil {
+			return err
+		}
+		if targetType == f.rootGraphSkipType {
+			f.rootGraphSkipTypeID = typeID
+		}
 	}
 
 	readHeader(f.readCtx)
@@ -583,7 +599,10 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	if !target.IsValid() {
+		target = reflect.ValueOf(v).Elem()
+	}
+	f.readRootValue(target, typeID)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -668,7 +687,8 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = buf
 	target := reflect.ValueOf(v).Elem()
-	if err := f.initRootGraphBudget(target); err != nil {
+	targetType := target.Type()
+	if err := f.initRootGraphBudgetType(targetType); err != nil {
 		f.readCtx.buffer = origBuffer
 		return err
 	}
@@ -784,7 +804,8 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	target := rv.Elem()
-	if err := f.initRootGraphBudget(target); err != nil {
+	targetType := target.Type()
+	if err := f.initRootGraphBudgetType(targetType); err != nil {
 		return err
 	}
 
@@ -1046,12 +1067,14 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	f.readCtx.SetData(data)
 
 	var targetVal reflect.Value
+	var targetType reflect.Type
 	switch any(target).(type) {
 	case *bool, *int8, *int16, *int32, *int64, *int, *float32, *float64, *string,
 		*[]byte, *[]int8, *[]int16, *[]int32, *[]int64, *[]int, *[]float32, *[]float64, *[]bool:
 	default:
 		targetVal = reflect.ValueOf(target).Elem()
-		if err := f.initRootGraphBudget(targetVal); err != nil {
+		targetType = targetVal.Type()
+		if err := f.initRootGraphBudgetType(targetType); err != nil {
 			return err
 		}
 	}
@@ -1195,8 +1218,8 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 		// Slow path: use serializer-based deserialization
 		if !targetVal.IsValid() {
 			targetVal = reflect.ValueOf(target).Elem()
+			targetType = targetVal.Type()
 		}
-		targetType := targetVal.Type()
 
 		// Get serializer for the target type
 		serializer, err := f.typeResolver.getSerializerByType(targetType, false)
@@ -1212,15 +1235,24 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 
 func (f *Fory) initRootGraphBudget(target reflect.Value) error {
 	if !target.IsValid() {
+		return f.initRootGraphBudgetType(nil)
+	}
+	return f.initRootGraphBudgetType(target.Type())
+}
+
+func (f *Fory) initRootGraphBudgetType(targetType reflect.Type) error {
+	if targetType == nil {
 		f.readCtx.initGraphMemoryBudget()
 		if f.readCtx.HasError() {
 			return f.readCtx.TakeError()
 		}
 		return nil
 	}
-	targetType := target.Type()
 	if targetType == f.rootGraphSkipType {
 		return nil
+	}
+	if targetType == f.rootGraphType && f.rootGraphHasChildren {
+		return f.initRootGraphBudgetWithSelf(f.rootGraphBytes)
 	}
 	return f.initRootGraphBudgetSlow(targetType)
 }
@@ -1236,20 +1268,30 @@ func (f *Fory) initRootGraphBudgetSlow(targetType reflect.Type) error {
 		return nil
 	}
 	if hasChildren {
-		f.readCtx.initGraphMemoryBudget()
-		if f.readCtx.HasError() {
-			return f.readCtx.TakeError()
-		}
-		if bytes != 0 && !f.readCtx.ReserveGraphMemory(bytes) {
-			return f.readCtx.TakeError()
-		}
-		return nil
+		return f.initRootGraphBudgetWithSelf(bytes)
 	}
 	if f.config.MaxGraphMemoryBytes <= 0 || bytes <= f.config.MaxGraphMemoryBytes {
 		f.rootGraphSkipType = targetType
 		return nil
 	}
 	return f.checkRootGraphSelf(bytes)
+}
+
+func (f *Fory) initRootGraphBudgetWithSelf(bytes int64) error {
+	limit := f.config.MaxGraphMemoryBytes
+	if limit <= 0 {
+		f.readCtx.graphMemoryLimitBytes = 0
+		f.readCtx.remainingGraphMemoryBytes = MaxInt64
+		return nil
+	}
+	if bytes > limit {
+		return DeserializationErrorf(
+			"estimated graph memory request %d bytes exceeds maxGraphMemoryBytes remaining budget %d bytes out of effective limit %d bytes",
+			bytes, limit, limit)
+	}
+	f.readCtx.graphMemoryLimitBytes = limit
+	f.readCtx.remainingGraphMemoryBytes = limit - bytes
+	return nil
 }
 
 func (f *Fory) rootGraphInfo(targetType reflect.Type) (int64, bool, bool) {
@@ -1284,4 +1326,22 @@ func (f *Fory) checkRootGraphSelf(bytes int64) error {
 			bytes, limit, limit)
 	}
 	return nil
+}
+
+func (f *Fory) readRootValue(target reflect.Value, typeID unsafe.Pointer) {
+	serializer := f.rootReadSerializer
+	if typeID == f.rootReadTypeID && serializer != nil {
+		serializer.Read(f.readCtx, RefModeTracking, true, false, target)
+		return
+	}
+	targetType := target.Type()
+	if targetType.Kind() == reflect.Struct {
+		if typeInfo := f.readCtx.getTypeInfoByType(targetType); typeInfo != nil && typeInfo.Serializer != nil {
+			f.rootReadTypeID = typeID
+			f.rootReadSerializer = typeInfo.Serializer
+			typeInfo.Serializer.Read(f.readCtx, RefModeTracking, true, false, target)
+			return
+		}
+	}
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 }
