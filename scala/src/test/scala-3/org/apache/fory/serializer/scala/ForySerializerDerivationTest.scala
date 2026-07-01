@@ -571,7 +571,7 @@ import org.apache.fory.scala.ForyScala
       buffer.readVarUInt32() shouldBe 0
       buffer.readerIndex(0)
       val readContext = fory.getReadContext
-      readContext.prepare(buffer, null, false, buffer.remaining(), false)
+      readContext.prepare(buffer, null, false)
       try serializer.read(readContext) shouldBe value
       finally readContext.reset()
     }

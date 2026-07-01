@@ -335,8 +335,13 @@ final class ListSerializer extends Serializer<List> {
     ReadContext context,
     FieldType? elementFieldType, {
     bool hasPreservedRef = false,
+    bool reserveOwner = true,
   }) {
-    final state = _prepareListRead(context, elementFieldType);
+    final state = _prepareListRead(
+      context,
+      elementFieldType,
+      reserveOwner: reserveOwner,
+    );
     context.buffer.checkReadableBytes(state.size);
     final result = List<Object?>.filled(state.size, null, growable: false);
     if (hasPreservedRef) {
@@ -384,10 +389,15 @@ final class SetSerializer extends Serializer<Set> {
     final values = ListSerializer.readPayload(
       context,
       elementFieldType,
-      hasPreservedRef: hasPreservedRef,
+      hasPreservedRef: false,
+      reserveOwner: false,
     );
     context.reserveGraphMemory(_ownerBytes + values.length * _referenceBytes);
-    return Set<Object?>.of(values);
+    final result = Set<Object?>.of(values);
+    if (hasPreservedRef) {
+      context.reference(result);
+    }
+    return result;
   }
 }
 
@@ -511,9 +521,6 @@ Object _readCompatibleListAsArrayField(
   String fieldName,
 ) {
   final size = context.buffer.readVarUint32();
-  context.reserveGraphMemory(
-    _ownerBytes + size * _arrayElementBytes(arrayTypeId),
-  );
   if (size == 0) {
     return _newArrayValue(arrayTypeId, 0);
   }
@@ -573,20 +580,6 @@ int _compatibleArrayElementTypeId(int typeId) {
     TypeIds.varUint32 => TypeIds.uint32,
     TypeIds.varUint64 || TypeIds.taggedUint64 => TypeIds.uint64,
     _ => typeId,
-  };
-}
-
-int _arrayElementBytes(int arrayTypeId) {
-  return switch (arrayTypeId) {
-    TypeIds.boolArray || TypeIds.int8Array || TypeIds.uint8Array => 1,
-    TypeIds.int16Array ||
-    TypeIds.uint16Array ||
-    TypeIds.float16Array ||
-    TypeIds.bfloat16Array => 2,
-    TypeIds.int32Array || TypeIds.uint32Array || TypeIds.float32Array => 4,
-    TypeIds.int64Array || TypeIds.uint64Array || TypeIds.float64Array => 8,
-    _ =>
-      throw StateError('Unsupported compatible array field type $arrayTypeId.'),
   };
 }
 

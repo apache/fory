@@ -223,6 +223,21 @@ func referenceAndInlineValueArraysAreCharged() throws {
 }
 
 @Test
+func setConversionOwnerChargedOnce() throws {
+  let values: Set<Int32> = [1, 2, 3]
+  let bytes = try makeBudgetFory().serialize(values)
+  let required = ownerBytes(Set<Int32>.self) + arrayBudget(Int32.self, count: values.count)
+
+  expectInvalidData {
+    let _: Set<Int32> = try makeBudgetFory(maxGraphMemoryBytes: Int64(required - 1))
+      .deserialize(bytes)
+  }
+  let decoded: Set<Int32> = try makeBudgetFory(maxGraphMemoryBytes: Int64(required))
+    .deserialize(bytes)
+  #expect(decoded == values)
+}
+
+@Test
 func stringBinaryAndPrimitiveDenseArrayOwnersAreSkipped() throws {
   let value = BudgetDenseHolder(
     text: "budget",

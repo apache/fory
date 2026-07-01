@@ -238,7 +238,7 @@ describe("graph memory budget", () => {
     });
   });
 
-  test("reserves compatible typed arrays", () => {
+  test("skips compatible list to typed array leaf", () => {
     const writerType = Type.struct(9010, {
       values: Type.list(Type.int32({ encoding: "fixed" })).setId(1),
     });
@@ -249,11 +249,11 @@ describe("graph memory budget", () => {
     const bytes = writer.register(writerType).serialize({ values: [1, 2, 3] });
     const passingReader = new Fory({
       compatible: true,
-      maxGraphMemoryBytes: objectBytes(1) + OBJECT_BYTES + 12,
+      maxGraphMemoryBytes: objectBytes(1),
     }).register(readerType);
     const failingReader = new Fory({
       compatible: true,
-      maxGraphMemoryBytes: objectBytes(1) + OBJECT_BYTES + 12 - 1,
+      maxGraphMemoryBytes: objectBytes(1) - 1,
     }).register(readerType);
 
     expect(() => failingReader.deserialize(bytes)).toThrow(

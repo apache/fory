@@ -206,6 +206,14 @@ void main() {
       expect(_readWithBudget(value, _mapGraphBytes(1)), equals(value));
     });
 
+    test('reserves generic set owner once', () {
+      final value = <Object?>{'x', 7};
+      final required = _listGraphBytes(value.length);
+
+      expect(() => _readWithBudget(value, required - 1), _throwsGraphBudget);
+      expect(_readWithBudget(value, required), equals(value));
+    });
+
     test('reserves generated list set and map reads', () {
       final writer = Fory();
       _registerGenerated(writer);
@@ -238,22 +246,22 @@ void main() {
       expect(roundTrip.counts, equals(<String, int>{'one': 1}));
     });
 
-    test('reserves compatible list array materialization', () {
+    test('skips compatible list to typed array leaf', () {
       final listWriter = Fory();
       _registerCompatibleList(listWriter);
       final listBytes = listWriter.serialize(
         BudgetCompatibleListEnvelope()..values = <int>[1, 2, 3],
       );
 
-      final required = _objectGraphBytes(1) + _objectBytes + 3 * 4;
-      final arrayFail = Fory(maxGraphMemoryBytes: required - 1);
+      final arrayRequired = _objectGraphBytes(1);
+      final arrayFail = Fory(maxGraphMemoryBytes: arrayRequired - 1);
       _registerCompatibleArray(arrayFail);
       expect(
         () => arrayFail.deserialize<BudgetCompatibleArrayEnvelope>(listBytes),
         _throwsGraphBudget,
       );
 
-      final arrayPass = Fory(maxGraphMemoryBytes: required);
+      final arrayPass = Fory(maxGraphMemoryBytes: arrayRequired);
       _registerCompatibleArray(arrayPass);
       expect(
         arrayPass
@@ -270,14 +278,15 @@ void main() {
           ..values = Int32List.fromList(<int>[1, 2, 3]),
       );
 
-      final listFail = Fory(maxGraphMemoryBytes: required - 1);
+      final listRequired = _objectGraphBytes(1) + _listGraphBytes(3);
+      final listFail = Fory(maxGraphMemoryBytes: listRequired - 1);
       _registerCompatibleList(listFail);
       expect(
         () => listFail.deserialize<BudgetCompatibleListEnvelope>(arrayBytes),
         _throwsGraphBudget,
       );
 
-      final listPass = Fory(maxGraphMemoryBytes: required);
+      final listPass = Fory(maxGraphMemoryBytes: listRequired);
       _registerCompatibleList(listPass);
       expect(
         listPass.deserialize<BudgetCompatibleListEnvelope>(arrayBytes).values,

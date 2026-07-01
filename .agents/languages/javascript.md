@@ -22,8 +22,9 @@ Load this file when changing `javascript/`.
   list/set/map/array/struct/object readers must reserve before allocation while preserving existing
   byte checks. Lists/sets/object arrays reserve nonzero owner self cost plus 4-byte reference slots,
   maps reserve nonzero owner self cost plus key/value reference storage, object/struct readers
-  reserve nonzero shallow self memory plus shallow field storage, and compatible
-  list-to-typed-array reads reserve typed inline storage. Keep dedicated string, binary, primitive
+  reserve nonzero shallow self memory plus shallow field storage, compatible array-to-list reads
+  reserve target list materialization, and compatible list-to-typed-array reads skip the dense
+  primitive-array leaf owner while preserving byte checks. Keep dedicated string, binary, primitive
   scalar, and dense typed-array leaf owners out of this budget.
 - Regenerated compatible read serializers are remote-schema-specific. After classification marks a field as direct, compatible scalar, or skip, generated JavaScript should emit straight-line remote-field-order code. Do not add an outer matched-id switch unless the current regenerated shape cannot preserve those semantics.
 - Compatible scalar codegen must decide the exact remote/local scalar pair before emitting source. Generate the concrete `reader.readXxx()` call plus inline trivial conversions such as boolean-to-string or numeric widening, and keep helpers only for semantic validation such as range checks, exactness checks, decimal parsing/formatting, and string-to-bool. Do not call a generic hot-path converter that redispatches on `remoteTypeId`, `localTypeId`, field descriptors, or field names.

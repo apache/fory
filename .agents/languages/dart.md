@@ -21,8 +21,9 @@ Load this file when changing `dart/`.
   map, array, struct, and object formulas
   belong in serializer owners. Reserve Dart list/set/object-array reference
   slots plus nonzero owner self cost, map key/value slots plus nonzero owner
-  self cost, compatible list-to-array inline storage, compatible array-to-list
-  materialization, and generated object reads before allocation. Object/struct
+  self cost, compatible array-to-list materialization, and generated object reads before
+  allocation. Compatible list-to-typed-array reads skip the dense primitive-array leaf owner while
+  preserving byte checks. Object/struct
   owners reserve nonzero shallow self memory plus shallow field storage. Skip
   only dedicated string, binary, primitive scalar, `BoolList`, and typed-array
   dense owner paths with byte checks. Do not add stream bytes-read accounting,

@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Buffers;
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using Apache.Fory;
 using ForyRuntime = Apache.Fory.Fory;
@@ -265,6 +266,36 @@ public sealed class GraphMemoryBudgetTests
         long mapRequired = GeneratedGraphHolderBytes + MapBudget<int, int>(map.Values.Count);
         Assert.Throws<InvalidDataException>(() => NewFory(mapRequired - 1).Deserialize<GeneratedSchemaMapBudget>(mapBytes));
         Assert.Equal(map.Values, NewFory(mapRequired).Deserialize<GeneratedSchemaMapBudget>(mapBytes).Values);
+    }
+
+    [Fact]
+    public void ConversionCollectionsAreChargedOnce()
+    {
+        long required = ListBudget<int>(3);
+
+        Check(new HashSet<int> { 1, 2, 3 }, v => v.SetEquals([1, 2, 3]));
+        Check(new SortedSet<int> { 1, 2, 3 }, v => v.SetEquals([1, 2, 3]));
+        Check(ImmutableHashSet.Create(1, 2, 3), v => v.SetEquals([1, 2, 3]));
+        Check(new LinkedList<int>([1, 2, 3]), v => v.SequenceEqual([1, 2, 3]));
+
+        Queue<int> queue = new();
+        queue.Enqueue(1);
+        queue.Enqueue(2);
+        queue.Enqueue(3);
+        Check(queue, v => v.SequenceEqual([1, 2, 3]));
+
+        Stack<int> stack = new();
+        stack.Push(1);
+        stack.Push(2);
+        stack.Push(3);
+        Check(stack, v => v.SequenceEqual([3, 2, 1]));
+
+        void Check<T>(T value, Func<T, bool> assertValue)
+        {
+            byte[] bytes = Serialize(value);
+            Assert.Throws<InvalidDataException>(() => NewFory(required - 1).Deserialize<T>(bytes));
+            Assert.True(assertValue(NewFory(required).Deserialize<T>(bytes)));
+        }
     }
 
     [Fact]

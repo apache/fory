@@ -623,11 +623,20 @@ extension Array: Serializer where Element: Serializer {
   }
 
   public static func foryReadData(_ context: ReadContext) throws -> [Element] {
+    try readData(context, reserveGraphStorage: true)
+  }
+
+  fileprivate static func readData(
+    _ context: ReadContext,
+    reserveGraphStorage: Bool
+  ) throws -> [Element] {
     let buffer = context.buffer
     let length = Int(try buffer.readVarUInt32())
     try context.ensureCollectionLength(length, label: "array")
     if length == 0 {
-      try reserveGraphArrayMemory(context, Element.self, count: length)
+      if reserveGraphStorage {
+        try reserveGraphArrayMemory(context, Element.self, count: length)
+      }
       return []
     }
 
@@ -637,7 +646,9 @@ extension Array: Serializer where Element: Serializer {
     let declared = (header & CollectionHeader.declaredElementType) != 0
     let sameType = (header & CollectionHeader.sameType) != 0
     if !sameType {
-      try reserveGraphArrayMemory(context, Element.self, count: length)
+      if reserveGraphStorage {
+        try reserveGraphArrayMemory(context, Element.self, count: length)
+      }
       try context.ensureRemainingBytes(length, label: "array")
       if trackRef {
         return try readArrayUninitialized(count: length) { destination in
@@ -676,7 +687,9 @@ extension Array: Serializer where Element: Serializer {
     }
 
     let elementTypeInfo = declared ? nil : try Element.foryReadTypeInfo(context)
-    try reserveGraphArrayMemory(context, Element.self, count: length)
+    if reserveGraphStorage {
+      try reserveGraphArrayMemory(context, Element.self, count: length)
+    }
     try context.ensureRemainingBytes(length, label: "array")
     return try context.withTypeInfo(elementTypeInfo, for: Element.self) {
       if trackRef {
@@ -735,7 +748,7 @@ extension Set: Serializer where Element: Serializer & Hashable {
   }
 
   public static func foryReadData(_ context: ReadContext) throws -> Set<Element> {
-    let values = try [Element].foryReadData(context)
+    let values = try [Element].readData(context, reserveGraphStorage: false)
     try reserveGraphArrayMemory(context, Element.self, count: values.count)
     return Set(values)
   }

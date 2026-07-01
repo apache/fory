@@ -122,8 +122,6 @@ object ForySerializerMacros {
       else 4L
     }
 
-    val objectGraphMemoryBytes: Long = 1L + fields.map(field => graphFieldBytes(field.sourceType)).sum
-
     def classFor(tpe: TypeRepr): Expr[Class[?]] = {
       val normalized = peelAnnotations(tpe.widen)._1.dealias
       val fullName = normalized.typeSymbol.fullName
@@ -222,6 +220,7 @@ object ForySerializerMacros {
         !privateField,
         constructorOwned || (field.flags.is(Flags.Mutable) && !privateField))
     }
+    val objectGraphMemoryBytes: Long = 1L + fields.map(field => graphFieldBytes(field.sourceType)).sum
     val hasNestedCompatibleStructFields =
       fields.exists(field => hasNestedCompatibleStruct(field.sourceType))
 
