@@ -793,6 +793,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   public Expression buildDecodeExpression() {
     Reference buffer = new Reference(BUFFER_NAME, bufferTypeRef, false);
     ListExpression expressions = new ListExpression();
+    expressions.add(new Expression.Block("reserveObjectGraphMemory(" + READ_CONTEXT_NAME + ");"));
     if (typeResolver.checkClassVersion()) {
       expressions.add(checkClassVersion(buffer));
     }

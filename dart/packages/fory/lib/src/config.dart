@@ -28,6 +28,7 @@ final class Config {
   static const int defaultMaxTypeMetaBytes = 4096;
   static const int defaultMaxSchemaVersionsPerType = 10;
   static const int defaultMaxAverageSchemaVersionsPerType = 3;
+  static const int defaultMaxGraphMemoryBytes = 128 * 1024 * 1024;
 
   /// Enables compatible struct encoding and decoding.
   ///
@@ -56,6 +57,11 @@ final class Config {
   /// types.
   final int maxAverageSchemaVersionsPerType;
 
+  /// Maximum estimated graph memory per root deserialization.
+  ///
+  /// Positive values are explicit byte limits. Non-positive values disable enforcement.
+  final int maxGraphMemoryBytes;
+
   /// Creates an immutable configuration object.
   ///
   /// Invalid numeric limits fail fast. When [compatible] is `true`,
@@ -69,6 +75,7 @@ final class Config {
     this.maxSchemaVersionsPerType = defaultMaxSchemaVersionsPerType,
     this.maxAverageSchemaVersionsPerType =
         defaultMaxAverageSchemaVersionsPerType,
+    this.maxGraphMemoryBytes = defaultMaxGraphMemoryBytes,
   }) : checkStructVersion = compatible ? false : checkStructVersion,
        assert(maxDepth > 0, 'maxDepth must be positive'),
        assert(maxTypeFields > 0, 'maxTypeFields must be positive'),

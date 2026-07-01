@@ -31,6 +31,7 @@ public struct Config {
   public let compatible: Bool
   public let checkClassVersion: Bool
   public let maxDepth: Int
+  public let maxGraphMemoryBytes: Int64
   public let maxTypeFields: Int
   public let maxTypeMetaBytes: Int
   public let maxSchemaVersionsPerType: Int
@@ -90,8 +91,14 @@ let fory = Fory(compatible: false, checkClassVersion: true)
 
 ### Size and Depth Limits
 
-`maxDepth` bounds decoded payload nesting depth. Compatible-mode remote metadata
-is also limited:
+`maxDepth` bounds decoded payload nesting depth.
+
+`maxGraphMemoryBytes` bounds estimated shallow graph memory accepted during one root
+deserialization. The default limit is a fixed `128 MiB` for all root input forms. A positive value
+overrides the default. Passing an explicit non-positive value disables this budget and can expose
+deserialization DoS risk from compact inputs that materialize large object graphs.
+
+Compatible-mode remote metadata is also limited:
 
 - `maxTypeFields` defaults to `512` and limits fields in one received struct metadata body.
 - `maxTypeMetaBytes` defaults to `4096` and limits encoded body bytes in one received TypeMeta body,
@@ -104,6 +111,7 @@ is also limited:
 ```swift
 let fory = Fory(
   maxDepth: 5,
+  maxGraphMemoryBytes: 128 * 1024 * 1024,
   maxTypeFields: 512,
   maxTypeMetaBytes: 4096,
   maxSchemaVersionsPerType: 10,
@@ -140,5 +148,6 @@ Security-related configuration:
 - Register only the expected generated models before deserializing untrusted payloads.
 - Use `checkClassVersion` with `compatible: false` for intentional same-schema payloads.
 - Set `maxDepth` for the largest nesting depth your service accepts.
+- Set `maxGraphMemoryBytes` to cap estimated shallow graph memory during one root deserialization.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.

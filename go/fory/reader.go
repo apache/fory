@@ -29,21 +29,97 @@ import (
 
 // ReadContext holds all state needed during deserialization.
 type ReadContext struct {
-	buffer           *ByteBuffer
-	refReader        *RefReader
-	trackRef         bool // Cached flag to avoid indirection
-	xlang            bool // Cross-language serialization mode
-	rootHeader       byte
-	compatible       bool          // Schema evolution compatibility mode
-	typeResolver     *TypeResolver // For complex type deserialization
-	refResolver      *RefResolver  // For reference tracking in native-mode paths
-	outOfBandBuffers []*ByteBuffer // Out-of-band buffers for deserialization
-	outOfBandIndex   int           // Current index into out-of-band buffers
-	depth            int           // Current nesting depth for cycle detection
-	maxDepth         int           // Maximum allowed nesting depth
-	err              Error         // Accumulated error state for deferred checking
-	lastTypePtr      uintptr
-	lastTypeInfo     *TypeInfo
+	buffer                    *ByteBuffer
+	refReader                 *RefReader
+	trackRef                  bool // Cached flag to avoid indirection
+	xlang                     bool // Cross-language serialization mode
+	rootHeader                byte
+	compatible                bool          // Schema evolution compatibility mode
+	typeResolver              *TypeResolver // For complex type deserialization
+	refResolver               *RefResolver  // For reference tracking in native-mode paths
+	outOfBandBuffers          []*ByteBuffer // Out-of-band buffers for deserialization
+	outOfBandIndex            int           // Current index into out-of-band buffers
+	depth                     int           // Current nesting depth for cycle detection
+	maxDepth                  int           // Maximum allowed nesting depth
+	err                       Error         // Accumulated error state for deferred checking
+	lastTypePtr               uintptr
+	lastTypeInfo              *TypeInfo
+	maxGraphMemoryBytes       int64
+	graphMemoryLimitBytes     int64
+	remainingGraphMemoryBytes int64
+}
+
+var referenceSlotBytes = int64(unsafe.Sizeof(uintptr(0)))
+var stringElementBytes = graphSizeOf[string]()
+var stringMaxLength = maxGraphCount(stringElementBytes)
+
+func graphSizeOf[T any]() int64 {
+	var v T
+	return int64(unsafe.Sizeof(v))
+}
+
+func maxGraphCount(elemBytes int64) int64 {
+	if elemBytes == 0 {
+		return MaxInt64
+	}
+	return MaxInt64 / elemBytes
+}
+
+func structGraphBytes(type_ reflect.Type) int64 {
+	if type_.Kind() != reflect.Struct {
+		return 0
+	}
+	bytes := int64(type_.Size())
+	if bytes == 0 {
+		return 1
+	}
+	return bytes
+}
+
+func reserveStructGraph(ctx *ReadContext, type_ reflect.Type) bool {
+	bytes := structGraphBytes(type_)
+	if bytes == 0 {
+		return true
+	}
+	return ctx.ReserveGraphMemory(bytes)
+}
+
+func typeHasGraphChildren(type_ reflect.Type) bool {
+	for type_.Kind() == reflect.Ptr {
+		elem := type_.Elem()
+		if structGraphBytes(elem) != 0 {
+			return true
+		}
+		type_ = elem
+	}
+	switch type_.Kind() {
+	case reflect.Struct:
+		if type_ == dateReflectType || type_ == timeReflectType {
+			return false
+		}
+		for i := 0; i < type_.NumField(); i++ {
+			if typeHasGraphChildren(type_.Field(i).Type) {
+				return true
+			}
+		}
+		return false
+	case reflect.Slice:
+		elem := type_.Elem()
+		switch elem.Kind() {
+		case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+			reflect.Float32, reflect.Float64:
+			return false
+		default:
+			return true
+		}
+	case reflect.Array:
+		return typeHasGraphChildren(type_.Elem())
+	case reflect.Map, reflect.Interface:
+		return true
+	default:
+		return false
+	}
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -54,10 +130,13 @@ func (c *ReadContext) IsXlang() bool {
 // NewReadContext creates a new read context
 func NewReadContext(trackRef bool) *ReadContext {
 	return &ReadContext{
-		buffer:    NewByteBuffer(nil),
-		refReader: NewRefReader(trackRef),
-		trackRef:  trackRef,
-		maxDepth:  128, // Default maximum nesting depth
+		buffer:                    NewByteBuffer(nil),
+		refReader:                 NewRefReader(trackRef),
+		trackRef:                  trackRef,
+		maxDepth:                  128, // Default maximum nesting depth
+		maxGraphMemoryBytes:       128 * 1024 * 1024,
+		graphMemoryLimitBytes:     128 * 1024 * 1024,
+		remainingGraphMemoryBytes: 128 * 1024 * 1024,
 	}
 }
 
@@ -67,12 +146,60 @@ func (c *ReadContext) Reset() {
 	c.outOfBandBuffers = nil
 	c.outOfBandIndex = 0
 	c.err = Error{} // Clear error state
+	// Graph budget state is overwritten by each root read before deserialization.
+	// Avoid extra reset stores on the successful root hot path.
 	if c.refResolver != nil {
 		c.refResolver.resetRead()
 	}
 	if c.typeResolver != nil {
 		c.typeResolver.resetRead()
 	}
+}
+
+func (c *ReadContext) initGraphMemoryBudget() {
+	limit := c.maxGraphMemoryBytes
+	if limit <= 0 {
+		c.graphMemoryLimitBytes = 0
+		c.remainingGraphMemoryBytes = MaxInt64
+		return
+	}
+	c.graphMemoryLimitBytes = limit
+	c.remainingGraphMemoryBytes = limit
+}
+
+// ReserveGraphMemory reserves raw estimated graph-owner bytes.
+func (c *ReadContext) ReserveGraphMemory(bytes int64) bool {
+	if bytes >= 0 {
+		if c.graphMemoryLimitBytes <= 0 {
+			return true
+		}
+		remaining := c.remainingGraphMemoryBytes
+		if bytes <= remaining {
+			c.remainingGraphMemoryBytes = remaining - bytes
+			return true
+		}
+		return c.rejectGraphMemoryExceeded(bytes, remaining)
+	}
+	return c.rejectGraphMemoryBytes(bytes)
+}
+
+//go:noinline
+func (c *ReadContext) rejectGraphMemoryBytes(bytes int64) bool {
+	c.setGraphMemoryError("estimated graph memory must be non-negative, got %d bytes", bytes)
+	return false
+}
+
+//go:noinline
+func (c *ReadContext) setGraphMemoryError(format string, args ...any) {
+	c.SetError(DeserializationErrorf(format, args...))
+}
+
+//go:noinline
+func (c *ReadContext) rejectGraphMemoryExceeded(bytes int64, remaining int64) bool {
+	c.SetError(DeserializationErrorf(
+		"estimated graph memory request %d bytes exceeds maxGraphMemoryBytes remaining budget %d bytes out of effective limit %d bytes",
+		bytes, remaining, c.graphMemoryLimitBytes))
+	return false
 }
 
 // SetData sets new input data (for buffer reuse)
@@ -536,7 +663,50 @@ func (c *ReadContext) ReadStringSlice(refMode RefMode, readType bool) []string {
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return ReadStringSlice(c.buffer, err)
+	return c.readStringSliceData()
+}
+
+func (c *ReadContext) readStringSliceData() []string {
+	buf := c.buffer
+	err := c.Err()
+	length := buf.ReadLength(err)
+	if c.HasError() {
+		return nil
+	}
+	if length < 0 {
+		c.setGraphMemoryError("negative graph element count: %d", length)
+		return nil
+	}
+	if int64(length) > stringMaxLength {
+		c.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", length, stringElementBytes)
+		return nil
+	}
+	if !c.ReserveGraphMemory(int64(length) * stringElementBytes) {
+		return nil
+	}
+	if length == 0 {
+		return make([]string, 0)
+	}
+	collectFlag := buf.ReadInt8(err)
+	if (collectFlag&CollectionIsSameType) != 0 && (collectFlag&CollectionIsDeclElementType) == 0 {
+		_ = buf.ReadUint8(err)
+	}
+	if c.HasError() || !buf.CheckReadable(length, err) {
+		return nil
+	}
+	result := make([]string, length)
+	trackRefs := (collectFlag & CollectionTrackingRef) != 0
+	hasNull := (collectFlag & CollectionHasNull) != 0
+	for i := 0; i < length; i++ {
+		if trackRefs || hasNull {
+			rf := buf.ReadInt8(err)
+			if rf == NullFlag {
+				continue
+			}
+		}
+		result[i] = readString(buf, err)
+	}
+	return result
 }
 
 // ReadStringStringMap reads map[string]string with optional ref/type info
@@ -720,15 +890,15 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		c.SetError(DeserializationError("invalid reflect.Value"))
 		return
 	}
-
+	valueType := value.Type()
 	// Handle array targets (arrays are serialized as slices)
-	if value.Type().Kind() == reflect.Array {
+	if valueType.Kind() == reflect.Array {
 		c.ReadArrayValue(value, refMode, readType)
 		return
 	}
 
 	// For any types, we need to read the actual type from the buffer first
-	if value.Type().Kind() == reflect.Interface {
+	if valueType.Kind() == reflect.Interface {
 		// Handle ref tracking based on refMode
 		var refID int32 = int32(NotNullValueFlag)
 		if refMode == RefModeTracking {
@@ -795,9 +965,15 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		} else if isNamedStruct {
 			// For named struct types, create a pointer to support circular references
 			// Create *A instead of A
+			if !reserveStructGraph(c, actualType) {
+				return
+			}
 			newValue = reflect.New(actualType)
 			valueToSet = newValue
 		} else {
+			if !reserveStructGraph(c, actualType) {
+				return
+			}
 			newValue = reflect.New(actualType).Elem()
 			valueToSet = newValue
 		}
@@ -831,14 +1007,13 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		return
 	}
 
-	if typeInfo := c.getTypeInfoByType(value.Type()); typeInfo != nil && typeInfo.Serializer != nil {
+	if typeInfo := c.getTypeInfoByType(valueType); typeInfo != nil && typeInfo.Serializer != nil {
 		typeInfo.Serializer.Read(c, refMode, readType, false, value)
 		return
 	}
 
 	// For struct types, use optimized ReadStruct path when using full ref tracking and type info.
 	// Unions use a custom serializer and must bypass ReadStruct.
-	valueType := value.Type()
 	if refMode == RefModeTracking && readType && !c.typeResolver.IsUnionType(valueType) {
 		if valueType.Kind() == reflect.Struct {
 			c.ReadStruct(value)
@@ -930,6 +1105,9 @@ func (c *ReadContext) ReadStruct(value reflect.Value) {
 	var readTarget reflect.Value
 	if isPtr {
 		if value.IsNil() {
+			if !reserveStructGraph(c, structType) {
+				return
+			}
 			value.Set(reflect.New(structType))
 		}
 		readTarget = value.Elem()

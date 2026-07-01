@@ -14,6 +14,21 @@ Load this file when changing `dart/`.
 - Keep root numeric wrapper defaults separate from generated field metadata. Root wrapper resolution belongs in the builtin resolver, while annotations and generated metadata choose fixed, tagged, or declared-field encodings.
 - Dart 64-bit carriers are optimized for each platform. Do not replace native extension-type wrappers with allocation-heavy classes or route web/native hot paths through `BigInt` unless the user approves a representation change.
 - In `Buffer`, cursor, serializer, and generated-code hot paths, prefer direct byte/local integer operations and conditional import/export files over callbacks, records, holder objects, wrapper round-trips, or runtime platform branches.
+- Root deserialization graph memory budgets are owned by `ReadContext`;
+  `maxGraphMemoryBytes` defaults to fixed `128 MiB`, positive explicit values override it, and
+  explicit non-positive values intentionally disable graph-memory enforcement. Do not derive the
+  budget from `buffer.readableBytes`. `ReadContext` may expose only raw byte reservation; list, set,
+  map, array, struct, and object formulas
+  belong in serializer owners. Reserve Dart list/set/object-array reference
+  slots plus nonzero owner self cost, map key/value slots plus nonzero owner
+  self cost, compatible array-to-list materialization, and generated object reads before
+  allocation. Compatible list-to-typed-array reads skip the dense primitive-array leaf owner while
+  preserving byte checks. Object/struct
+  owners reserve nonzero shallow self memory plus shallow field storage. Skip
+  only dedicated string, binary, primitive scalar, `BoolList`, and typed-array
+  dense owner paths with byte checks. Do not add stream bytes-read accounting,
+  per-element accounting, extra hot-path allocations, or stale narrower-scope
+  formulas.
 - Do not add parallel header-low/header-high slot caches or multi-slot recent caches in TypeMeta hot paths to chase benchmark gaps. Header-cache hits must use the concrete checked cache owner directly; if a hit hint is needed, cache one TypeInfo/TypeMeta object and compare the validated header identity on that object, not separate low/high header fields or benchmark-pattern state.
 - If Dart TypeMeta cache ownership changes, keep the invariant in a source comment near the hit path: a checked metadata-cache hit skips the body and must not grow low-bit sentinels, accepted-header fields, parallel header slots, or benchmark-pattern state.
 - Dart expected-type TypeDef reads should compare the expected `TypeInfo` object's cached local TypeDef header before consulting the parsed-metadata map. A match is a direct local-schema hit: skip the remote body, add the expected type to the per-read shared type table, and do not publish to `ParsedTypeMetaCache`, record a remote schema version, or parse/hash the body.

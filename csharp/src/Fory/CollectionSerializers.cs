@@ -17,6 +17,7 @@
 
 using System.Collections;
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
@@ -31,6 +32,18 @@ internal static class CollectionBits
 
 internal static class CollectionCodec
 {
+    private const int CollectionBytes = 1;
+    private const int ReferenceBytes = 4;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ReserveElementStorage<T>(ReadContext context, int count)
+    {
+        context.ReserveGraphMemory(CollectionBytes + (long)count * ElementBytes<T>());
+    }
+
     private static bool NeedsCompatibleElementTypeMeta(TypeInfo typeInfo, WriteContext context)
     {
         return context.Compatible &&
@@ -195,12 +208,20 @@ internal static class CollectionCodec
         }
     }
 
-    public static List<T> ReadCollectionData<T>(Serializer<T> elementSerializer, ReadContext context)
+    public static List<T> ReadCollectionData<T>(
+        Serializer<T> elementSerializer,
+        ReadContext context,
+        bool reserveOwner = true)
     {
         TypeInfo elementTypeInfo = context.TypeResolver.GetTypeInfo<T>();
         int length = checked((int)context.Reader.ReadVarUInt32());
         if (length == 0)
         {
+            if (reserveOwner)
+            {
+                ReserveElementStorage<T>(context, length);
+            }
+
             return [];
         }
 
@@ -213,6 +234,11 @@ internal static class CollectionCodec
         bool hasNull = (header & CollectionBits.HasNull) != 0;
         bool declared = (header & CollectionBits.DeclaredElementType) != 0;
         bool sameType = (header & CollectionBits.SameType) != 0;
+        if (reserveOwner)
+        {
+            ReserveElementStorage<T>(context, length);
+        }
+
         context.Reader.CheckBound(length);
         List<T> values = new(length);
         if (!sameType)
@@ -554,7 +580,12 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
 
     public override HashSet<T> ReadData(ReadContext context)
     {
-        return [.. CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context)];
+        List<T> values = CollectionCodec.ReadCollectionData(
+            context.TypeResolver.GetSerializer<T>(),
+            context,
+            reserveOwner: false);
+        CollectionCodec.ReserveElementStorage<T>(context, values.Count);
+        return [.. values];
     }
 }
 
@@ -570,7 +601,12 @@ public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : 
 
     public override SortedSet<T> ReadData(ReadContext context)
     {
-        return [.. CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context)];
+        List<T> values = CollectionCodec.ReadCollectionData(
+            context.TypeResolver.GetSerializer<T>(),
+            context,
+            reserveOwner: false);
+        CollectionCodec.ReserveElementStorage<T>(context, values.Count);
+        return [.. values];
     }
 }
 
@@ -586,7 +622,12 @@ public sealed class ImmutableHashSetSerializer<T> : Serializer<ImmutableHashSet<
 
     public override ImmutableHashSet<T> ReadData(ReadContext context)
     {
-        return ImmutableHashSet.CreateRange(CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context));
+        List<T> values = CollectionCodec.ReadCollectionData(
+            context.TypeResolver.GetSerializer<T>(),
+            context,
+            reserveOwner: false);
+        CollectionCodec.ReserveElementStorage<T>(context, values.Count);
+        return ImmutableHashSet.CreateRange(values);
     }
 }
 
@@ -602,7 +643,12 @@ public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
 
     public override LinkedList<T> ReadData(ReadContext context)
     {
-        return new LinkedList<T>(CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context));
+        List<T> values = CollectionCodec.ReadCollectionData(
+            context.TypeResolver.GetSerializer<T>(),
+            context,
+            reserveOwner: false);
+        CollectionCodec.ReserveElementStorage<T>(context, values.Count);
+        return new LinkedList<T>(values);
     }
 }
 
@@ -618,7 +664,11 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
 
     public override Queue<T> ReadData(ReadContext context)
     {
-        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
+        List<T> values = CollectionCodec.ReadCollectionData(
+            context.TypeResolver.GetSerializer<T>(),
+            context,
+            reserveOwner: false);
+        CollectionCodec.ReserveElementStorage<T>(context, values.Count);
         Queue<T> queue = new(values.Count);
         for (int i = 0; i < values.Count; i++)
         {
@@ -654,7 +704,11 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
 
     public override Stack<T> ReadData(ReadContext context)
     {
-        List<T> values = CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
+        List<T> values = CollectionCodec.ReadCollectionData(
+            context.TypeResolver.GetSerializer<T>(),
+            context,
+            reserveOwner: false);
+        CollectionCodec.ReserveElementStorage<T>(context, values.Count);
         Stack<T> stack = new(values.Count);
         for (int i = 0; i < values.Count; i++)
         {

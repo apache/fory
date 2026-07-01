@@ -444,6 +444,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
                 "Cannot use monomorphic deserialization for abstract type"));
             return nullptr;
           } else {
+            if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+              return nullptr;
+            }
             T value = Serializer<T>::read(ctx, RefMode::None, false);
             if (ctx.has_error()) {
               return nullptr;
@@ -454,6 +457,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       } else {
         // T is guaranteed to be a value type (not pointer or nullable wrapper)
         // by static_assert, so no inner ref metadata needed.
+        if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+          return nullptr;
+        }
         T value = Serializer<T>::read(ctx, RefMode::None, read_type);
         if (ctx.has_error()) {
           return nullptr;
@@ -546,6 +552,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         } else {
           // For circular references: pre-allocate and store BEFORE reading
           if (is_first_occurrence) {
+            if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+              return nullptr;
+            }
             auto result = std::make_shared<T>();
             ctx.ref_reader().store_shared_ref_at(reserved_ref_id, result);
             T value = Serializer<T>::read(ctx, RefMode::None, false);
@@ -555,6 +564,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
             *result = std::move(value);
             return result;
           } else {
+            if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+              return nullptr;
+            }
             T value = Serializer<T>::read(ctx, RefMode::None, false);
             if (ctx.has_error()) {
               return nullptr;
@@ -572,6 +584,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       // references (like self_ref pointing back to the parent) to resolve.
       if (is_first_occurrence) {
         // Pre-allocate with default construction and store immediately
+        if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+          return nullptr;
+        }
         auto result = std::make_shared<T>();
         ctx.ref_reader().store_shared_ref_at(reserved_ref_id, result);
         // Read struct data - forward refs can now find this object
@@ -584,6 +599,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         return result;
       } else {
         // Not first occurrence, just read and wrap
+        if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+          return nullptr;
+        }
         T value = Serializer<T>::read(ctx, RefMode::None, read_type);
         if (ctx.has_error()) {
           return nullptr;
@@ -610,6 +628,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         return std::shared_ptr<T>(obj_ptr);
       } else {
         // T is guaranteed to be a value type by static_assert.
+        if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+          return nullptr;
+        }
         T value =
             Serializer<T>::read_with_type_info(ctx, RefMode::None, type_info);
         if (ctx.has_error()) {
@@ -689,6 +710,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       // For circular references: pre-allocate and store BEFORE reading
       const bool is_first_occurrence = flag == REF_VALUE_FLAG;
       if (is_first_occurrence) {
+        if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+          return nullptr;
+        }
         auto result = std::make_shared<T>();
         ctx.ref_reader().store_shared_ref_at(reserved_ref_id, result);
         T value =
@@ -699,6 +723,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
         *result = std::move(value);
         return result;
       } else {
+        if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+          return nullptr;
+        }
         T value =
             Serializer<T>::read_with_type_info(ctx, RefMode::None, type_info);
         if (ctx.has_error()) {
@@ -710,6 +737,9 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
   }
 
   static inline std::shared_ptr<T> read_data(ReadContext &ctx) {
+    if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+      return nullptr;
+    }
     T value = Serializer<T>::read_data(ctx);
     if (ctx.has_error()) {
       return nullptr;
@@ -894,6 +924,9 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
                 "Cannot use monomorphic deserialization for abstract type"));
             return nullptr;
           } else {
+            if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+              return nullptr;
+            }
             T value = Serializer<T>::read(ctx, RefMode::None, false);
             if (ctx.has_error()) {
               return nullptr;
@@ -903,6 +936,9 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
         }
       } else {
         // T is guaranteed to be a value type by static_assert.
+        if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+          return nullptr;
+        }
         T value = Serializer<T>::read(ctx, RefMode::None, read_type);
         if (ctx.has_error()) {
           return nullptr;
@@ -960,6 +996,9 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
               "Cannot use monomorphic deserialization for abstract type"));
           return nullptr;
         } else {
+          if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+            return nullptr;
+          }
           T value = Serializer<T>::read(ctx, RefMode::None, false);
           if (ctx.has_error()) {
             return nullptr;
@@ -969,6 +1008,9 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
       }
     } else {
       // T is guaranteed to be a value type by static_assert.
+      if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+        return nullptr;
+      }
       T value = Serializer<T>::read(ctx, RefMode::None, read_type);
       if (ctx.has_error()) {
         return nullptr;
@@ -994,6 +1036,9 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
         return std::unique_ptr<T>(obj_ptr);
       } else {
         // T is guaranteed to be a value type by static_assert.
+        if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+          return nullptr;
+        }
         T value =
             Serializer<T>::read_with_type_info(ctx, RefMode::None, type_info);
         if (ctx.has_error()) {
@@ -1037,6 +1082,9 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
       return std::unique_ptr<T>(obj_ptr);
     } else {
       // T is guaranteed to be a value type by static_assert.
+      if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+        return nullptr;
+      }
       T value =
           Serializer<T>::read_with_type_info(ctx, RefMode::None, type_info);
       if (ctx.has_error()) {
@@ -1047,6 +1095,9 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
   }
 
   static inline std::unique_ptr<T> read_data(ReadContext &ctx) {
+    if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+      return nullptr;
+    }
     T value = Serializer<T>::read_data(ctx);
     if (ctx.has_error()) {
       return nullptr;

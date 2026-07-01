@@ -96,6 +96,33 @@ When enabled, avoids duplicating shared objects and handles cycles.
 
 **Default:** `true`
 
+### max_graph_memory_bytes(int64_t)
+
+Set the maximum estimated shallow graph memory accepted during one root
+deserialization.
+
+```cpp
+auto fory = Fory::builder()
+    .max_graph_memory_bytes(64 * 1024 * 1024)
+    .build();
+```
+
+The default limit is a fixed `128 MiB` for byte-array, `Buffer`, and stream
+roots. Positive values override the default. Explicit non-positive values
+disable this budget and can expose deserialization DoS risk from compact inputs
+that materialize large object graphs.
+
+This budget is a portable lower-bound estimate for shallow materialized graph
+owners such as dynamic collection backing storage, map key/value storage,
+object/reference array slots, and struct or object field storage. It is not an
+exact process heap limit and does not include STL implementation details such as
+debug nodes, table buckets, or allocator headers. Dedicated string, binary, and
+primitive dense-array payloads
+continue to rely on their byte-availability checks instead. `std::vector<bool>`
+is counted as packed standard-container storage.
+
+**Default:** `-1`
+
 ### max_dyn_depth(uint32_t)
 
 Set maximum allowed nesting depth for dynamically-typed objects.
@@ -200,17 +227,18 @@ auto fory = Fory::builder().build_thread_safe();  // Returns ThreadSafeFory
 
 ## Configuration Summary
 
-| Option                                           | Description                                       | Default |
-| ------------------------------------------------ | ------------------------------------------------- | ------- |
-| `xlang(bool)`                                    | Use xlang mode                                    | `true`  |
-| `compatible(bool)`                               | Enable schema evolution                           | `true`  |
-| `track_ref(bool)`                                | Enable reference tracking                         | `true`  |
-| `max_dyn_depth(uint32_t)`                        | Maximum nesting depth for dynamic types           | `5`     |
-| `max_type_fields(uint32_t)`                      | Max fields in one received struct metadata body   | `512`   |
-| `max_type_meta_bytes(uint32_t)`                  | Max encoded bytes in one received metadata body   | `4096`  |
-| `max_schema_versions_per_type(uint32_t)`         | Max remote metadata versions for one logical type | `10`    |
-| `max_average_schema_versions_per_type(uint32_t)` | Average remote metadata versions across types     | `3`     |
-| `check_struct_version(bool)`                     | Enable struct version checking                    | `false` |
+| Option                                           | Description                                       | Default   |
+| ------------------------------------------------ | ------------------------------------------------- | --------- |
+| `xlang(bool)`                                    | Use xlang mode                                    | `true`    |
+| `compatible(bool)`                               | Enable schema evolution                           | `true`    |
+| `track_ref(bool)`                                | Enable reference tracking                         | `true`    |
+| `max_graph_memory_bytes(int64_t)`                | Max estimated graph memory per root read          | `128 MiB` |
+| `max_dyn_depth(uint32_t)`                        | Maximum nesting depth for dynamic types           | `5`       |
+| `max_type_fields(uint32_t)`                      | Max fields in one received struct metadata body   | `512`     |
+| `max_type_meta_bytes(uint32_t)`                  | Max encoded bytes in one received metadata body   | `4096`    |
+| `max_schema_versions_per_type(uint32_t)`         | Max remote metadata versions for one logical type | `10`      |
+| `max_average_schema_versions_per_type(uint32_t)` | Average remote metadata versions across types     | `3`       |
+| `check_struct_version(bool)`                     | Enable struct version checking                    | `false`   |
 
 ## Security
 
@@ -218,6 +246,9 @@ Security-related configuration:
 
 - Register all structs and polymorphic implementations before deserializing untrusted payloads.
 - Use `check_struct_version(true)` with `compatible(false)` for intentional same-schema payloads.
+- Keep `max_graph_memory_bytes(...)` at the fixed `128 MiB` default for most inputs, or set a
+  positive value for a trusted workload that needs a different envelope. Avoid explicit
+  non-positive values for untrusted data because they disable graph-memory enforcement.
 - Keep `max_dyn_depth(...)` as low as your model permits to reject unexpectedly deep polymorphic
   graphs.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a

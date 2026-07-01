@@ -14,6 +14,23 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   values; use qualified names only when a real name conflict requires it.
 - If you run temporary tests with `java -cp`, run `mvn -T16 install -DskipTests` first so local Fory jars are current.
 - `WriteContext`, `ReadContext`, and `CopyContext` must stay explicit. Do not reintroduce `ThreadLocal` or ambient runtime-context patterns.
+- Java root deserialization graph memory budgeting belongs to `ReadContext`
+  and is initialized by `Fory` root APIs. Public config is `maxGraphMemoryBytes`
+  with fixed `128 MiB` default. Positive explicit values override the default;
+  explicit non-positive values intentionally disable graph-memory enforcement.
+  Byte-array, memory-buffer, and stream roots use the same configured/default
+  budget behavior. `ReadContext`
+  may expose only raw byte reservation;
+  collection, map, array, struct, and object formulas belong in the concrete
+  serializer or generated serializer owner. Java collection, map, and
+  object-array owners reserve nonzero shallow self cost plus reference storage;
+  referenced object serializers reserve their own nonzero shallow self memory
+  plus shallow field storage when materialized.
+  Reference fields use the 4-byte fallback when the JVM reference size is not
+  queried cheaply; primitive fields use their encoded storage width. Preserve
+  existing `checkReadableBytes` guards before backing allocation or capacity
+  reservation. Do not add nested serializer-path `try/finally`, per-element
+  work, dynamic stream bytes-read accounting, or stale narrower-scope formulas.
 - Generated serializers must not retain runtime context fields. `Fory` should stay a root-operation facade rather than accumulating serializer or convenience state.
 - When the serializer class and constructor shape are known at the call site, prefer direct constructor lambdas or direct instantiation over reflective `Serializers.newSerializer(...)`.
 - For GraalVM, use `fory codegen` to generate serializers when building native images. Do not add reflection configuration except for JDK `proxy`.

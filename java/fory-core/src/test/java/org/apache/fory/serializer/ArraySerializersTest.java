@@ -387,8 +387,8 @@ public class ArraySerializersTest extends ForyTestBase {
     ReadContext readContext = fory.getReadContext();
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(5);
     buffer.writeVarUInt32Small7(byteSize);
-    readContext.prepare(
-        MemoryBuffer.fromByteArray(buffer.getBytes(0, buffer.writerIndex())), null, false);
+    MemoryBuffer truncated = MemoryBuffer.fromByteArray(buffer.getBytes(0, buffer.writerIndex()));
+    readContext.prepare(truncated, null, false);
     return fory.getSerializer(arrayType).read(readContext);
   }
 

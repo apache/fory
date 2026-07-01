@@ -434,7 +434,11 @@ uint32_t WriteContext::get_type_id_for_cache(const std::type_index &type_idx) {
 ReadContext::ReadContext(const Config &config,
                          std::unique_ptr<TypeResolver> type_resolver)
     : buffer_(nullptr), config_(&config),
-      type_resolver_(std::move(type_resolver)), current_dyn_depth_(0) {}
+      type_resolver_(std::move(type_resolver)), current_dyn_depth_(0),
+      graph_memory_limit_bytes_(config.max_graph_memory_bytes > 0
+                                    ? static_cast<size_t>(
+                                          config.max_graph_memory_bytes)
+                                    : size_t{0}) {}
 
 ReadContext::~ReadContext() = default;
 
@@ -739,6 +743,19 @@ const TypeInfo *ReadContext::read_any_type_info(Error &error) {
   return result.value();
 }
 
+bool ReadContext::set_graph_memory_error(const std::string &message) {
+  set_error(Error::invalid_data(message));
+  return false;
+}
+
+bool ReadContext::set_graph_memory_exceeded(size_t bytes, size_t remaining) {
+  set_error(Error::invalid_data(
+      "estimated graph memory request " + std::to_string(bytes) +
+      " bytes exceeds max_graph_memory_bytes remaining budget " +
+      std::to_string(remaining) + " bytes"));
+  return false;
+}
+
 void ReadContext::reset() {
   // Clear error state first
   error_ = Error();
@@ -747,6 +764,7 @@ void ReadContext::reset() {
   }
   reading_type_infos_.clear();
   current_dyn_depth_ = 0;
+  remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
   if (meta_string_table_active_) {
     meta_string_table_.reset();
     meta_string_table_active_ = false;

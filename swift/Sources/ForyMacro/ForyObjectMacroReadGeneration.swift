@@ -47,6 +47,28 @@ func buildReadCompatibleDataDecl(
     fields: fields, sortedFields: sortedFields, accessPrefix: accessPrefix)
 }
 
+private func graphFieldBytesExpr(_ field: ParsedField) -> String {
+  if field.primitiveSize > 0 {
+    return "\(field.primitiveSize)"
+  }
+  return "(\(field.typeText).isRefType ? 4 : max(1, MemoryLayout<\(field.typeText)>.stride))"
+}
+
+private func classGraphOwnerBytesExpr(_ fields: [ParsedField]) -> String {
+  if fields.isEmpty {
+    return "1"
+  }
+  return "max(1, 1 + " + fields.map(graphFieldBytesExpr).joined(separator: " + ") + ")"
+}
+
+private func reserveClassGraphOwnerLine(fields: [ParsedField], indent: String) -> String {
+  "\(indent)try context.reserveGraphMemory(\(classGraphOwnerBytesExpr(fields)))"
+}
+
+private func reserveValueGraphOwnerLine(indent: String) -> String {
+  "\(indent)try context.reserveGraphMemory(max(1, MemoryLayout<Self>.stride))"
+}
+
 func buildClassReadWrapperDecl(accessPrefix: String) -> String {
   """
   @inline(__always)
@@ -109,6 +131,7 @@ private func buildClassReadDataDecl(
     private static func __foryReadDataImpl(_ context: ReadContext, reservedRefID: UInt32?) throws -> Self {
         let __buffer = context.buffer
         \(schemaHashCheckExpr())
+        \(reserveClassGraphOwnerLine(fields: sortedFields, indent: "        "))
         let value = Self.init()
         if let reservedRefID {
             context.refReader.storeRef(value, at: reservedRefID)
@@ -130,6 +153,7 @@ private func buildEmptyStructReadDataDecl(accessPrefix: String) -> String {
   \(accessPrefix)static func foryReadData(_ context: ReadContext) throws -> Self {
       let __buffer = context.buffer
       \(schemaHashCheckExpr())
+      \(reserveValueGraphOwnerLine(indent: "      "))
       return Self()
   }
   """
@@ -153,6 +177,7 @@ private func buildStructReadDataDecl(
     \(accessPrefix)static func foryReadData(_ context: ReadContext) throws -> Self {
         let __buffer = context.buffer
         \(schemaHashCheckExpr())
+        \(reserveValueGraphOwnerLine(indent: "        "))
         \(schemaReadBody)
         return Self(
             \(ctorArgs)
@@ -183,7 +208,8 @@ private func buildClassReadCompatibleDataDecl(
       || compatibleCases.contains("__buffer")) ? "let __buffer = context.buffer\n        " : ""
   let localFieldsBinding =
     compatibleCases.contains("__foryLocalFields")
-    ? "let __foryLocalFields = remoteTypeInfo.typeMeta?.fields ?? Self.foryFieldsInfo(trackRef: context.trackRef)\n        " : ""
+    ? "let __foryLocalFields = remoteTypeInfo.typeMeta?.fields ?? Self.foryFieldsInfo(trackRef: context.trackRef)\n        "
+    : ""
 
   return """
     @inline(never)
@@ -195,6 +221,7 @@ private func buildClassReadCompatibleDataDecl(
         \(bufferBinding)guard let typeMeta = remoteTypeInfo.compatibleTypeMeta else {
             throw ForyError.invalidData("compatible type metadata is required")
         }
+        \(reserveClassGraphOwnerLine(fields: sortedFields, indent: "        "))
         let value = Self.init()
         if let reservedRefID {
             context.refReader.storeRef(value, at: reservedRefID)
@@ -236,6 +263,7 @@ private func buildEmptyStructReadCompatibleDataDecl(accessPrefix: String) -> Str
       guard let typeMeta = remoteTypeInfo.compatibleTypeMeta else {
           throw ForyError.invalidData("compatible type metadata is required")
       }
+      \(reserveValueGraphOwnerLine(indent: "      "))
       if let localTypeMeta = remoteTypeInfo.typeMeta,
          let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
          typeMeta.headerHash == localHeaderHash,
@@ -290,6 +318,7 @@ private func buildStructReadCompatibleDataDecl(
         \(bufferBinding)guard let typeMeta = remoteTypeInfo.compatibleTypeMeta else {
             throw ForyError.invalidData("compatible type metadata is required")
         }
+        \(reserveValueGraphOwnerLine(indent: "        "))
         if let localTypeMeta = remoteTypeInfo.typeMeta,
            let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
            typeMeta.headerHash == localHeaderHash,
@@ -351,7 +380,8 @@ private func buildClassAssignBody(
   primitiveFastFields: [ParsedField],
   compatibleAligned: Bool
 ) -> String {
-  let remainingAssignLines = sortedFields.dropFirst(primitiveFastFields.count).map { field -> String in
+  let remainingAssignLines = sortedFields.dropFirst(primitiveFastFields.count).map {
+    field -> String in
     let valueExpr: String
     if compatibleAligned {
       valueExpr = compatibleSchemaReadFieldExpr(field)
@@ -383,7 +413,8 @@ private func buildStructReadBody(
   primitiveFastFields: [ParsedField],
   compatibleAligned: Bool
 ) -> String {
-  let remainingReadLines = sortedFields.dropFirst(primitiveFastFields.count).map { field -> String in
+  let remainingReadLines = sortedFields.dropFirst(primitiveFastFields.count).map {
+    field -> String in
     let valueExpr =
       compatibleAligned ? compatibleSchemaReadFieldExpr(field) : schemaReadFieldExpr(field)
     return "let __\(field.name) = \(valueExpr)"
@@ -449,7 +480,7 @@ private func buildCompatibleReadCases(
     )
     return [
       assignCase(sortedIndex * 2, field, directValueExpr),
-      assignCase(sortedIndex * 2 + 1, field, compatibleCaseExpr)
+      assignCase(sortedIndex * 2 + 1, field, compatibleCaseExpr),
     ].joined(separator: "\n\(indent)")
   }.joined(separator: "\n\(indent)")
 }
@@ -655,7 +686,7 @@ private func dynamicAnyReadExpr(
     ? ", readTypeInfo: true"
     : ""
   return
-    "try castAnyDynamicValue(context.\(method)(refMode: \(refModeExpr)\(readTypeInfoExpr)), to: \(metatypeExpr))"
+    "try castAnyDynamicValue(\(method)(context: context, refMode: \(refModeExpr)\(readTypeInfoExpr)), to: \(metatypeExpr))"
 }
 
 private func compatibleDefaultDecl(_ field: ParsedField) -> String {

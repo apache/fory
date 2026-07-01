@@ -40,6 +40,7 @@
 #include "fory/util/result.h"
 #include "fory/util/stream.h"
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <ostream>
@@ -106,6 +107,15 @@ public:
   /// Enable/disable reference tracking for shared/circular references.
   ForyBuilder &track_ref(bool enable) {
     config_.track_ref = enable;
+    return *this;
+  }
+
+  /// Set maximum estimated graph memory for one root deserialization.
+  ///
+  /// Defaults to 128 MiB. Positive values are explicit byte limits; non-positive
+  /// values intentionally disable this protection.
+  ForyBuilder &max_graph_memory_bytes(int64_t max_bytes) {
+    config_.max_graph_memory_bytes = max_bytes;
     return *this;
   }
 
@@ -673,19 +683,7 @@ public:
 
     Buffer buffer(const_cast<uint8_t *>(data), static_cast<uint32_t>(size),
                   false);
-
-    Error header_error;
-    const uint8_t header = buffer.read_uint8(header_error);
-    if (FORY_PREDICT_FALSE(!header_error.ok())) {
-      return Unexpected(std::move(header_error));
-    }
-    if (FORY_PREDICT_FALSE(header != precomputed_header_)) {
-      return Unexpected(invalid_root_header(header));
-    }
-
-    read_ctx_->attach(buffer);
-    ReadContextGuard guard(*read_ctx_);
-    return deserialize_impl<T>(buffer);
+    return deserialize_buffer<T>(buffer);
   }
 
   /// Deserialize an object from a byte vector.
@@ -711,18 +709,7 @@ public:
     if (FORY_PREDICT_FALSE(!finalized_)) {
       ensure_finalized();
     }
-    Error header_error;
-    const uint8_t header = buffer.read_uint8(header_error);
-    if (FORY_PREDICT_FALSE(!header_error.ok())) {
-      return Unexpected(std::move(header_error));
-    }
-    if (FORY_PREDICT_FALSE(header != precomputed_header_)) {
-      return Unexpected(invalid_root_header(header));
-    }
-
-    read_ctx_->attach(buffer);
-    ReadContextGuard guard(*read_ctx_);
-    return deserialize_impl<T>(buffer);
+    return deserialize_buffer<T>(buffer);
   }
 
   /// Deserialize an object from an input stream.
@@ -745,7 +732,10 @@ public:
     };
     StreamShrinkGuard shrink_guard{&input_stream};
     Buffer &buffer = input_stream.get_buffer();
-    return deserialize<T>(buffer);
+    if (FORY_PREDICT_FALSE(!finalized_)) {
+      ensure_finalized();
+    }
+    return deserialize_buffer<T>(buffer);
   }
 
   /// Deserialize an object from StdInputStream.
@@ -881,6 +871,38 @@ private:
 
     read_ctx_->ref_reader().resolve_callbacks();
     return result;
+  }
+
+  template <typename T>
+  FORY_ALWAYS_INLINE Result<T, Error> deserialize_buffer(Buffer &buffer) {
+    Error header_error;
+    const uint8_t header = buffer.read_uint8(header_error);
+    if (FORY_PREDICT_FALSE(!header_error.ok())) {
+      read_ctx_->reset();
+      return Unexpected(std::move(header_error));
+    }
+    if (FORY_PREDICT_FALSE(header != precomputed_header_)) {
+      read_ctx_->reset();
+      return Unexpected(invalid_root_header(header));
+    }
+
+    read_ctx_->attach(buffer);
+    if constexpr (needs_graph_budget_v<T>) {
+      constexpr size_t root_owner_bytes = graph_value_owner_self_bytes<T>();
+      constexpr bool has_child_budget = has_graph_budget_children_v<T>;
+      if constexpr (root_owner_bytes != 0) {
+        if (FORY_PREDICT_FALSE(
+                !read_ctx_->template init_graph_budget<root_owner_bytes>())) {
+          return Unexpected(read_ctx_->take_error());
+        }
+      } else if constexpr (has_child_budget) {
+        if (FORY_PREDICT_FALSE(!read_ctx_->template init_graph_budget<>())) {
+          return Unexpected(read_ctx_->take_error());
+        }
+      }
+    }
+    ReadContextGuard guard(*read_ctx_);
+    return deserialize_impl<T>(buffer);
   }
 
   template <typename T>

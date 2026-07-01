@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Runtime.CompilerServices;
+
 namespace Apache.Fory;
 
 public sealed class ReadContext
@@ -40,6 +42,8 @@ public sealed class ReadContext
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
     private int _totalAcceptedSchemaVersions;
+    private long _graphMemoryLimitBytes = long.MaxValue;
+    private long _remainingGraphMemoryBytes = long.MaxValue;
 
     public ReadContext(
         ByteReader reader,
@@ -69,6 +73,61 @@ public sealed class ReadContext
     public bool CheckStructVersion { get; }
 
     internal RefReader RefReader { get; }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void InitGraphBudget()
+    {
+        long limit = _config.MaxGraphMemoryBytes;
+        if (limit <= 0)
+        {
+            _graphMemoryLimitBytes = 0;
+            _remainingGraphMemoryBytes = long.MaxValue;
+            return;
+        }
+
+        _graphMemoryLimitBytes = limit;
+        _remainingGraphMemoryBytes = limit;
+    }
+
+    /// <summary>
+    /// Reserves estimated graph memory for the current root deserialization.
+    /// </summary>
+    /// <remarks>
+    /// Serializer owners compute owner-specific formulas and pass raw bytes here. This
+    /// accounting does not replace byte-availability checks before backing allocation.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(long bytes)
+    {
+        if (bytes < 0)
+        {
+            ThrowGraphBudgetOverflow();
+        }
+        if (_graphMemoryLimitBytes <= 0)
+        {
+            return;
+        }
+        long remaining = _remainingGraphMemoryBytes;
+        if (bytes > remaining)
+        {
+            ThrowGraphBudgetExceeded(bytes, remaining, _graphMemoryLimitBytes);
+        }
+
+        _remainingGraphMemoryBytes = remaining - bytes;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowGraphBudgetOverflow()
+    {
+        throw new InvalidDataException("graph memory estimate overflows");
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void ThrowGraphBudgetExceeded(long bytes, long remaining, long limit)
+    {
+        throw new InvalidDataException(
+            $"estimated graph memory request {bytes} bytes exceeds MaxGraphMemoryBytes remaining budget {remaining} bytes out of effective limit {limit} bytes");
+    }
 
     internal void ResetFor(ByteReader reader)
     {

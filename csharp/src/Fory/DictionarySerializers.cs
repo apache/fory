@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
@@ -33,6 +34,19 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
     where TDictionary : class, IDictionary<TKey, TValue>
     where TKey : notnull
 {
+    private const int MapBytes = 1;
+    private const int ReferenceBytes = 4;
+    private static readonly long MapElementBytes = (long)ElementBytes<TKey>() + ElementBytes<TValue>();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReserveMapStorage(ReadContext context, int count)
+    {
+        context.ReserveGraphMemory(MapBytes + count * MapElementBytes);
+    }
+
     public override TDictionary DefaultValue => null!;
 
     protected abstract TDictionary CreateMap(int capacity);
@@ -214,9 +228,11 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
+            ReserveMapStorage(context, totalLength);
             return CreateMap(0);
         }
 
+        ReserveMapStorage(context, totalLength);
         context.Reader.CheckBound(totalLength);
         TDictionary map = CreateMap(totalLength);
         bool keyDynamicType = keyTypeInfo.IsDynamicType;

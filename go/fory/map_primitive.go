@@ -25,6 +25,27 @@ import (
 // Optimized map serializers for common types
 // ============================================================================
 
+var (
+	stringStringMapElemBytes  = stringElementBytes + stringElementBytes
+	stringStringMapMaxLength  = maxGraphCount(stringStringMapElemBytes)
+	stringInt64MapElemBytes   = stringElementBytes + graphSizeOf[int64]()
+	stringInt64MapMaxLength   = maxGraphCount(stringInt64MapElemBytes)
+	stringInt32MapElemBytes   = stringElementBytes + graphSizeOf[int32]()
+	stringInt32MapMaxLength   = maxGraphCount(stringInt32MapElemBytes)
+	stringIntMapElemBytes     = stringElementBytes + graphSizeOf[int]()
+	stringIntMapMaxLength     = maxGraphCount(stringIntMapElemBytes)
+	stringFloat64MapElemBytes = stringElementBytes + graphSizeOf[float64]()
+	stringFloat64MapMaxLength = maxGraphCount(stringFloat64MapElemBytes)
+	stringBoolMapElemBytes    = stringElementBytes + graphSizeOf[bool]()
+	stringBoolMapMaxLength    = maxGraphCount(stringBoolMapElemBytes)
+	int32Int32MapElemBytes    = graphSizeOf[int32]() + graphSizeOf[int32]()
+	int32Int32MapMaxLength    = maxGraphCount(int32Int32MapElemBytes)
+	int64Int64MapElemBytes    = graphSizeOf[int64]() + graphSizeOf[int64]()
+	int64Int64MapMaxLength    = maxGraphCount(int64Int64MapElemBytes)
+	intIntMapElemBytes        = graphSizeOf[int]() + graphSizeOf[int]()
+	intIntMapMaxLength        = maxGraphCount(intIntMapElemBytes)
+)
+
 // writeMapStringString writes map[string]string using chunk protocol
 // When hasGenerics=true, element types are known so we set DECL_TYPE flags and skip type info
 func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool) {
@@ -68,10 +89,24 @@ func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool
 	}
 }
 
-func readTypedMapSize(ctx *ReadContext) (int, bool) {
+func readTypedMapSize(ctx *ReadContext, elemBytes int64, maxLength int64) (int, bool) {
 	size := ctx.ReadCollectionLength()
-	if size == 0 || ctx.HasError() {
-		return size, false
+	if ctx.HasError() {
+		return 0, false
+	}
+	if size < 0 {
+		ctx.setGraphMemoryError("negative graph element count: %d", size)
+		return 0, false
+	}
+	if int64(size) > maxLength {
+		ctx.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", size, elemBytes)
+		return 0, false
+	}
+	if !ctx.ReserveGraphMemory(int64(size) * elemBytes) {
+		return 0, false
+	}
+	if size == 0 {
+		return size, true
 	}
 	if !ctx.Buffer().CheckReadable(size, ctx.Err()) {
 		return 0, false
@@ -83,12 +118,11 @@ func readTypedMapSize(ctx *ReadContext) (int, bool) {
 func readMapStringString(ctx *ReadContext) map[string]string {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size, ok := readTypedMapSize(ctx)
-	result := make(map[string]string)
+	size, ok := readTypedMapSize(ctx, stringStringMapElemBytes, stringStringMapMaxLength)
 	if !ok {
-		return result
+		return nil
 	}
-	result = make(map[string]string, size)
+	result := make(map[string]string, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -171,12 +205,11 @@ func writeMapStringInt64(buf *ByteBuffer, m map[string]int64, hasGenerics bool) 
 func readMapStringInt64(ctx *ReadContext) map[string]int64 {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size, ok := readTypedMapSize(ctx)
-	result := make(map[string]int64)
+	size, ok := readTypedMapSize(ctx, stringInt64MapElemBytes, stringInt64MapMaxLength)
 	if !ok {
-		return result
+		return nil
 	}
-	result = make(map[string]int64, size)
+	result := make(map[string]int64, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -256,12 +289,11 @@ func writeMapStringInt32(buf *ByteBuffer, m map[string]int32, hasGenerics bool) 
 func readMapStringInt32(ctx *ReadContext) map[string]int32 {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size, ok := readTypedMapSize(ctx)
-	result := make(map[string]int32)
+	size, ok := readTypedMapSize(ctx, stringInt32MapElemBytes, stringInt32MapMaxLength)
 	if !ok {
-		return result
+		return nil
 	}
-	result = make(map[string]int32, size)
+	result := make(map[string]int32, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -341,12 +373,11 @@ func writeMapStringInt(buf *ByteBuffer, m map[string]int, hasGenerics bool) {
 func readMapStringInt(ctx *ReadContext) map[string]int {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size, ok := readTypedMapSize(ctx)
-	result := make(map[string]int)
+	size, ok := readTypedMapSize(ctx, stringIntMapElemBytes, stringIntMapMaxLength)
 	if !ok {
-		return result
+		return nil
 	}
-	result = make(map[string]int, size)
+	result := make(map[string]int, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -426,12 +457,11 @@ func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64, hasGenerics bo
 func readMapStringFloat64(ctx *ReadContext) map[string]float64 {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size, ok := readTypedMapSize(ctx)
-	result := make(map[string]float64)
+	size, ok := readTypedMapSize(ctx, stringFloat64MapElemBytes, stringFloat64MapMaxLength)
 	if !ok {
-		return result
+		return nil
 	}
-	result = make(map[string]float64, size)
+	result := make(map[string]float64, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -511,12 +541,11 @@ func writeMapStringBool(buf *ByteBuffer, m map[string]bool, hasGenerics bool) {
 func readMapStringBool(ctx *ReadContext) map[string]bool {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size, ok := readTypedMapSize(ctx)
-	result := make(map[string]bool)
+	size, ok := readTypedMapSize(ctx, stringBoolMapElemBytes, stringBoolMapMaxLength)
 	if !ok {
-		return result
+		return nil
 	}
-	result = make(map[string]bool, size)
+	result := make(map[string]bool, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -600,12 +629,11 @@ func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32, hasGenerics bool) {
 func readMapInt32Int32(ctx *ReadContext) map[int32]int32 {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size, ok := readTypedMapSize(ctx)
-	result := make(map[int32]int32)
+	size, ok := readTypedMapSize(ctx, int32Int32MapElemBytes, int32Int32MapMaxLength)
 	if !ok {
-		return result
+		return nil
 	}
-	result = make(map[int32]int32, size)
+	result := make(map[int32]int32, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -685,12 +713,11 @@ func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64, hasGenerics bool) {
 func readMapInt64Int64(ctx *ReadContext) map[int64]int64 {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size, ok := readTypedMapSize(ctx)
-	result := make(map[int64]int64)
+	size, ok := readTypedMapSize(ctx, int64Int64MapElemBytes, int64Int64MapMaxLength)
 	if !ok {
-		return result
+		return nil
 	}
-	result = make(map[int64]int64, size)
+	result := make(map[int64]int64, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -770,12 +797,11 @@ func writeMapIntInt(buf *ByteBuffer, m map[int]int, hasGenerics bool) {
 func readMapIntInt(ctx *ReadContext) map[int]int {
 	err := ctx.Err()
 	buf := ctx.Buffer()
-	size, ok := readTypedMapSize(ctx)
-	result := make(map[int]int)
+	size, ok := readTypedMapSize(ctx, intIntMapElemBytes, intIntMapMaxLength)
 	if !ok {
-		return result
+		return nil
 	}
-	result = make(map[int]int, size)
+	result := make(map[int]int, size)
 
 	for size > 0 {
 		chunkHeader := buf.ReadUint8(err)
@@ -831,12 +857,12 @@ func (s stringStringMapSerializer) Write(ctx *WriteContext, refMode RefMode, wri
 }
 
 func (s stringStringMapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	if value.IsNil() {
-		value.Set(reflect.MakeMap(value.Type()))
-	}
-	ctx.RefResolver().Reference(value)
 	result := readMapStringString(ctx)
+	if ctx.HasError() {
+		return
+	}
 	value.Set(reflect.ValueOf(result))
+	ctx.RefResolver().Reference(value)
 }
 
 func (s stringStringMapSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
@@ -866,12 +892,12 @@ func (s stringInt64MapSerializer) Write(ctx *WriteContext, refMode RefMode, writ
 }
 
 func (s stringInt64MapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	if value.IsNil() {
-		value.Set(reflect.MakeMap(value.Type()))
-	}
-	ctx.RefResolver().Reference(value)
 	result := readMapStringInt64(ctx)
+	if ctx.HasError() {
+		return
+	}
 	value.Set(reflect.ValueOf(result))
+	ctx.RefResolver().Reference(value)
 }
 
 func (s stringInt64MapSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
@@ -901,12 +927,12 @@ func (s stringIntMapSerializer) Write(ctx *WriteContext, refMode RefMode, writeT
 }
 
 func (s stringIntMapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	if value.IsNil() {
-		value.Set(reflect.MakeMap(value.Type()))
-	}
-	ctx.RefResolver().Reference(value)
 	result := readMapStringInt(ctx)
+	if ctx.HasError() {
+		return
+	}
 	value.Set(reflect.ValueOf(result))
+	ctx.RefResolver().Reference(value)
 }
 
 func (s stringIntMapSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
@@ -936,12 +962,12 @@ func (s stringFloat64MapSerializer) Write(ctx *WriteContext, refMode RefMode, wr
 }
 
 func (s stringFloat64MapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	if value.IsNil() {
-		value.Set(reflect.MakeMap(value.Type()))
-	}
-	ctx.RefResolver().Reference(value)
 	result := readMapStringFloat64(ctx)
+	if ctx.HasError() {
+		return
+	}
 	value.Set(reflect.ValueOf(result))
+	ctx.RefResolver().Reference(value)
 }
 
 func (s stringFloat64MapSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
@@ -971,12 +997,12 @@ func (s stringBoolMapSerializer) Write(ctx *WriteContext, refMode RefMode, write
 }
 
 func (s stringBoolMapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	if value.IsNil() {
-		value.Set(reflect.MakeMap(value.Type()))
-	}
-	ctx.RefResolver().Reference(value)
 	result := readMapStringBool(ctx)
+	if ctx.HasError() {
+		return
+	}
 	value.Set(reflect.ValueOf(result))
+	ctx.RefResolver().Reference(value)
 }
 
 func (s stringBoolMapSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
@@ -1006,12 +1032,12 @@ func (s int32Int32MapSerializer) Write(ctx *WriteContext, refMode RefMode, write
 }
 
 func (s int32Int32MapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	if value.IsNil() {
-		value.Set(reflect.MakeMap(value.Type()))
-	}
-	ctx.RefResolver().Reference(value)
 	result := readMapInt32Int32(ctx)
+	if ctx.HasError() {
+		return
+	}
 	value.Set(reflect.ValueOf(result))
+	ctx.RefResolver().Reference(value)
 }
 
 func (s int32Int32MapSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
@@ -1041,12 +1067,12 @@ func (s int64Int64MapSerializer) Write(ctx *WriteContext, refMode RefMode, write
 }
 
 func (s int64Int64MapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	if value.IsNil() {
-		value.Set(reflect.MakeMap(value.Type()))
-	}
-	ctx.RefResolver().Reference(value)
 	result := readMapInt64Int64(ctx)
+	if ctx.HasError() {
+		return
+	}
 	value.Set(reflect.ValueOf(result))
+	ctx.RefResolver().Reference(value)
 }
 
 func (s int64Int64MapSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
@@ -1076,12 +1102,12 @@ func (s intIntMapSerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 }
 
 func (s intIntMapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
-	if value.IsNil() {
-		value.Set(reflect.MakeMap(value.Type()))
-	}
-	ctx.RefResolver().Reference(value)
 	result := readMapIntInt(ctx)
+	if ctx.HasError() {
+		return
+	}
 	value.Set(reflect.ValueOf(result))
+	ctx.RefResolver().Reference(value)
 }
 
 func (s intIntMapSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {

@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
+	"go/types"
 	"io/ioutil"
 	"log"
 	"os"
@@ -32,6 +33,16 @@ import (
 )
 
 var logger = log.New(os.Stdout, "", 0)
+
+func typeNeedsGraphReservation(t types.Type) bool {
+	if _, ok := t.(*types.Slice); ok {
+		return true
+	}
+	if _, ok := t.(*types.Map); ok {
+		return true
+	}
+	return false
+}
 
 // GeneratorOptions contains configuration for the code generator
 type GeneratorOptions struct {
@@ -284,8 +295,9 @@ func generateCodeForFile(pkg *packages.Package, structs []*StructInfo, sourceFil
 
 	// Determine which imports are needed
 	needsTime := false
-	needsReflect := false
+	needsReflect := len(structs) > 0
 	needsOptional := false
+	needsUnsafe := len(structs) > 0
 
 	for _, s := range structs {
 		for _, field := range s.Fields {
@@ -295,9 +307,13 @@ func generateCodeForFile(pkg *packages.Package, structs []*StructInfo, sourceFil
 			}
 			if field.IsOptional {
 				needsOptional = true
+				if field.OptionalElem != nil && typeNeedsGraphReservation(field.OptionalElem) {
+					needsUnsafe = true
+				}
 			}
-			// We need reflect for the interface compatibility methods
-			needsReflect = true
+			if typeNeedsGraphReservation(field.Type) {
+				needsUnsafe = true
+			}
 		}
 	}
 
@@ -309,6 +325,9 @@ func generateCodeForFile(pkg *packages.Package, structs []*StructInfo, sourceFil
 	}
 	if needsTime {
 		fmt.Fprintf(&buf, "\t\"time\"\n")
+	}
+	if needsUnsafe {
+		fmt.Fprintf(&buf, "\t\"unsafe\"\n")
 	}
 	fmt.Fprintf(&buf, "\t\"github.com/apache/fory/go/fory\"\n")
 	if needsOptional {
@@ -549,8 +568,9 @@ func generateCode(pkg *packages.Package, structs []*StructInfo) error {
 
 	// Determine which imports are needed
 	needsTime := false
-	needsReflect := false
+	needsReflect := len(structs) > 0
 	needsOptional := false
+	needsUnsafe := len(structs) > 0
 
 	for _, s := range structs {
 		for _, field := range s.Fields {
@@ -560,9 +580,13 @@ func generateCode(pkg *packages.Package, structs []*StructInfo) error {
 			}
 			if field.IsOptional {
 				needsOptional = true
+				if field.OptionalElem != nil && typeNeedsGraphReservation(field.OptionalElem) {
+					needsUnsafe = true
+				}
 			}
-			// We need reflect for the interface compatibility methods
-			needsReflect = true
+			if typeNeedsGraphReservation(field.Type) {
+				needsUnsafe = true
+			}
 		}
 	}
 
@@ -574,6 +598,9 @@ func generateCode(pkg *packages.Package, structs []*StructInfo) error {
 	}
 	if needsTime {
 		fmt.Fprintf(&buf, "\t\"time\"\n")
+	}
+	if needsUnsafe {
+		fmt.Fprintf(&buf, "\t\"unsafe\"\n")
 	}
 	fmt.Fprintf(&buf, "\t\"github.com/apache/fory/go/fory\"\n")
 	if needsOptional {

@@ -22,6 +22,7 @@ public struct Config {
   public let compatible: Bool
   public let checkClassVersion: Bool
   public let maxDepth: Int
+  public let maxGraphMemoryBytes: Int64
   public let maxTypeFields: Int
   public let maxTypeMetaBytes: Int
   public let maxSchemaVersionsPerType: Int
@@ -32,6 +33,7 @@ public struct Config {
     compatible: Bool? = nil,
     checkClassVersion: Bool? = nil,
     maxDepth: Int = 5,
+    maxGraphMemoryBytes: Int64 = 128 * 1024 * 1024,
     maxTypeFields: Int = 512,
     maxTypeMetaBytes: Int = 4096,
     maxSchemaVersionsPerType: Int = 10,
@@ -49,6 +51,7 @@ public struct Config {
     self.compatible = effectiveCompatible
     self.checkClassVersion = effectiveCheckClassVersion
     self.maxDepth = maxDepth
+    self.maxGraphMemoryBytes = maxGraphMemoryBytes
     self.maxTypeFields = maxTypeFields
     self.maxTypeMetaBytes = maxTypeMetaBytes
     self.maxSchemaVersionsPerType = maxSchemaVersionsPerType
@@ -72,6 +75,7 @@ public final class Fory {
     compatible: Bool? = nil,
     checkClassVersion: Bool? = nil,
     maxDepth: Int = 5,
+    maxGraphMemoryBytes: Int64 = 128 * 1024 * 1024,
     maxTypeFields: Int = 512,
     maxTypeMetaBytes: Int = 4096,
     maxSchemaVersionsPerType: Int = 10,
@@ -83,6 +87,7 @@ public final class Fory {
         compatible: compatible,
         checkClassVersion: checkClassVersion,
         maxDepth: maxDepth,
+        maxGraphMemoryBytes: maxGraphMemoryBytes,
         maxTypeFields: maxTypeFields,
         maxTypeMetaBytes: maxTypeMetaBytes,
         maxSchemaVersionsPerType: maxSchemaVersionsPerType,
@@ -138,7 +143,8 @@ public final class Fory {
     }
   }
 
-  public func deserialize<T: Serializer>(from buffer: ByteBuffer, as _: T.Type = T.self) throws -> T {
+  public func deserialize<T: Serializer>(from buffer: ByteBuffer, as _: T.Type = T.self) throws -> T
+  {
     try deserializeRoot(
       from: buffer
     ) { context in
@@ -159,7 +165,7 @@ public final class Fory {
       data: data
     ) { context in
       try castAnyDynamicValue(
-        context.readAny(refMode: refMode, readTypeInfo: true),
+        readAny(context: context, refMode: refMode, readTypeInfo: true),
         to: Any.self
       )
     }
@@ -178,7 +184,7 @@ public final class Fory {
       data: data
     ) { context in
       try castAnyDynamicValue(
-        context.readAny(refMode: refMode, readTypeInfo: true),
+        readAny(context: context, refMode: refMode, readTypeInfo: true),
         to: AnyObject.self
       )
     }
@@ -193,12 +199,13 @@ public final class Fory {
 
   @_disfavoredOverload
   public func deserialize(_ data: Data, as _: (any Serializer).Type = (any Serializer).self) throws
-    -> any Serializer {
+    -> any Serializer
+  {
     try deserializeRoot(
       data: data
     ) { context in
       try castAnyDynamicValue(
-        context.readAny(refMode: refMode, readTypeInfo: true),
+        readAny(context: context, refMode: refMode, readTypeInfo: true),
         to: (any Serializer).self
       )
     }
@@ -216,7 +223,7 @@ public final class Fory {
     try deserializeRoot(
       data: data
     ) { context in
-      try context.readListOfAny(refMode: refMode, readTypeInfo: true) ?? []
+      try readListOfAny(context: context, refMode: refMode, readTypeInfo: true) ?? []
     }
   }
 
@@ -230,11 +237,12 @@ public final class Fory {
 
   @_disfavoredOverload
   public func deserialize(_ data: Data, as _: [String: Any].Type = [String: Any].self) throws
-    -> [String: Any] {
+    -> [String: Any]
+  {
     try deserializeRoot(
       data: data
     ) { context in
-      try context.readMapStringToAny(refMode: refMode, readTypeInfo: true) ?? [:]
+      try readMapStringToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
     }
   }
 
@@ -248,11 +256,12 @@ public final class Fory {
 
   @_disfavoredOverload
   public func deserialize(_ data: Data, as _: [Int32: Any].Type = [Int32: Any].self) throws
-    -> [Int32: Any] {
+    -> [Int32: Any]
+  {
     try deserializeRoot(
       data: data
     ) { context in
-      try context.readMapInt32ToAny(refMode: refMode, readTypeInfo: true) ?? [:]
+      try readMapInt32ToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
     }
   }
 
@@ -266,11 +275,12 @@ public final class Fory {
 
   @_disfavoredOverload
   public func deserialize(_ data: Data, as _: [AnyHashable: Any].Type = [AnyHashable: Any].self)
-    throws -> [AnyHashable: Any] {
+    throws -> [AnyHashable: Any]
+  {
     try deserializeRoot(
       data: data
     ) { context in
-      try context.readMapAnyHashableToAny(refMode: refMode, readTypeInfo: true) ?? [:]
+      try readMapAnyHashableToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
     }
   }
 
@@ -294,7 +304,7 @@ public final class Fory {
       from: buffer
     ) { context in
       try castAnyDynamicValue(
-        context.readAny(refMode: refMode, readTypeInfo: true),
+        readAny(context: context, refMode: refMode, readTypeInfo: true),
         to: Any.self
       )
     }
@@ -309,12 +319,13 @@ public final class Fory {
 
   @_disfavoredOverload
   public func deserialize(from buffer: ByteBuffer, as _: AnyObject.Type = AnyObject.self) throws
-    -> AnyObject {
+    -> AnyObject
+  {
     try deserializeRoot(
       from: buffer
     ) { context in
       try castAnyDynamicValue(
-        context.readAny(refMode: refMode, readTypeInfo: true),
+        readAny(context: context, refMode: refMode, readTypeInfo: true),
         to: AnyObject.self
       )
     }
@@ -336,7 +347,7 @@ public final class Fory {
       from: buffer
     ) { context in
       try castAnyDynamicValue(
-        context.readAny(refMode: refMode, readTypeInfo: true),
+        readAny(context: context, refMode: refMode, readTypeInfo: true),
         to: (any Serializer).self
       )
     }
@@ -347,7 +358,7 @@ public final class Fory {
     try deserializeRoot(
       from: buffer
     ) { context in
-      try context.readListOfAny(refMode: refMode, readTypeInfo: true) ?? []
+      try readListOfAny(context: context, refMode: refMode, readTypeInfo: true) ?? []
     }
   }
 
@@ -361,11 +372,12 @@ public final class Fory {
 
   @_disfavoredOverload
   public func deserialize(from buffer: ByteBuffer, as _: [String: Any].Type = [String: Any].self)
-    throws -> [String: Any] {
+    throws -> [String: Any]
+  {
     try deserializeRoot(
       from: buffer
     ) { context in
-      try context.readMapStringToAny(refMode: refMode, readTypeInfo: true) ?? [:]
+      try readMapStringToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
     }
   }
 
@@ -387,11 +399,12 @@ public final class Fory {
 
   @_disfavoredOverload
   public func deserialize(from buffer: ByteBuffer, as _: [Int32: Any].Type = [Int32: Any].self)
-    throws -> [Int32: Any] {
+    throws -> [Int32: Any]
+  {
     try deserializeRoot(
       from: buffer
     ) { context in
-      try context.readMapInt32ToAny(refMode: refMode, readTypeInfo: true) ?? [:]
+      try readMapInt32ToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
     }
   }
 
@@ -402,7 +415,7 @@ public final class Fory {
     try deserializeRoot(
       from: buffer
     ) { context in
-      try context.readMapAnyHashableToAny(refMode: refMode, readTypeInfo: true) ?? [:]
+      try readMapAnyHashableToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
     }
   }
 
@@ -454,6 +467,7 @@ public final class Fory {
   private func readRootTypedValue<T: Serializer>(
     context: ReadContext
   ) throws -> T {
+    try reserveRootGraphOwner(T.self, context: context)
     return try T.foryRead(
       context,
       refMode: refMode,
@@ -462,11 +476,25 @@ public final class Fory {
   }
 
   @inline(__always)
+  private func reserveRootGraphOwner<T: Serializer>(
+    _: T.Type,
+    context: ReadContext
+  ) throws {
+    switch T.staticTypeId {
+    case .list, .set, .map:
+      try context.reserveGraphMemory(max(1, MemoryLayout<T>.stride))
+    default:
+      break
+    }
+  }
+
+  @inline(__always)
   func withReusableReadContext<R>(
     data: Data,
     _ body: (ReadContext) throws -> R
-  ) rethrows -> R {
+  ) throws -> R {
     readContext.buffer.replace(with: data)
+    try readContext.initGraphMemoryBudget()
     defer {
       readContext.reset()
     }
@@ -528,6 +556,7 @@ public final class Fory {
   ) throws -> R {
     try typeResolver.finishRegistration()
     readContext.buffer.swapState(with: buffer)
+    try readContext.initGraphMemoryBudget()
     defer {
       readContext.buffer.swapState(with: buffer)
       readContext.reset()

@@ -1573,6 +1573,9 @@ template <typename T> inline std::any any_read_adapter(ReadContext &ctx) {
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return std::any();
   }
+  if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+    return std::any();
+  }
   if constexpr (std::is_copy_constructible<T>::value) {
     return std::any(std::move(value));
   }
@@ -2127,6 +2130,9 @@ void *TypeResolver::harness_read_adapter(ReadContext &ctx, RefMode ref_mode,
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;
   }
+  if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+    return nullptr;
+  }
   return new T(std::move(value));
 }
 
@@ -2151,6 +2157,9 @@ void *TypeResolver::harness_read_data_adapter(ReadContext &ctx) {
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;
   }
+  if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+    return nullptr;
+  }
   return new T(std::move(value));
 }
 
@@ -2171,6 +2180,9 @@ void *TypeResolver::harness_read_compatible_adapter(ReadContext &ctx,
                                                     const TypeInfo *ti) {
   T value = Serializer<T>::read_compatible(ctx, ti);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return nullptr;
+  }
+  if (FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
     return nullptr;
   }
   return new T(std::move(value));

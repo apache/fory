@@ -38,6 +38,9 @@ import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/uint64.dart';
 
+const int _referenceBytes = 4;
+const int _ownerBytes = 1;
+
 @pragma('vm:prefer-inline')
 void _writeDirectTypeInfoValue(
   WriteContext context,
@@ -332,8 +335,13 @@ final class ListSerializer extends Serializer<List> {
     ReadContext context,
     FieldType? elementFieldType, {
     bool hasPreservedRef = false,
+    bool reserveOwner = true,
   }) {
-    final state = _prepareListRead(context, elementFieldType);
+    final state = _prepareListRead(
+      context,
+      elementFieldType,
+      reserveOwner: reserveOwner,
+    );
     context.buffer.checkReadableBytes(state.size);
     final result = List<Object?>.filled(state.size, null, growable: false);
     if (hasPreservedRef) {
@@ -378,13 +386,18 @@ final class SetSerializer extends Serializer<Set> {
     FieldType? elementFieldType, {
     bool hasPreservedRef = false,
   }) {
-    return Set<Object?>.of(
-      ListSerializer.readPayload(
-        context,
-        elementFieldType,
-        hasPreservedRef: hasPreservedRef,
-      ),
+    final values = ListSerializer.readPayload(
+      context,
+      elementFieldType,
+      hasPreservedRef: false,
+      reserveOwner: false,
     );
+    context.reserveGraphMemory(_ownerBytes + values.length * _referenceBytes);
+    final result = Set<Object?>.of(values);
+    if (hasPreservedRef) {
+      context.reference(result);
+    }
+    return result;
   }
 }
 
@@ -429,7 +442,7 @@ Object? readCompatibleMatchedCollectionArrayField(
       );
     }
     final raw = readCompatibleField(context, remoteField);
-    return _arrayToListValue(raw);
+    return _arrayToListValue(context, raw);
   }
   return readFieldValue<Object?>(context, localField);
 }
@@ -625,11 +638,13 @@ void _setArrayValue(Object target, int arrayTypeId, int index, Object? value) {
   }
 }
 
-Object _arrayToListValue(Object? raw) {
+Object _arrayToListValue(ReadContext context, Object? raw) {
   if (raw is BoolList) {
+    context.reserveGraphMemory(_ownerBytes + raw.length * _referenceBytes);
     return raw.toList();
   }
   if (raw is Iterable) {
+    context.reserveGraphMemory(_ownerBytes + raw.length * _referenceBytes);
     return raw.toList();
   }
   throw StateError('Expected compatible array payload.');
@@ -639,9 +654,14 @@ Object _arrayToListValue(Object? raw) {
 List<T> readTypedListPayload<T>(
   ReadContext context,
   FieldType? elementFieldType,
-  T Function(Object? value) convert,
-) {
-  final state = _prepareListRead(context, elementFieldType);
+  T Function(Object? value) convert, {
+  bool reserveOwner = true,
+}) {
+  final state = _prepareListRead(
+    context,
+    elementFieldType,
+    reserveOwner: reserveOwner,
+  );
   if (state.size == 0) {
     return List<T>.empty(growable: false);
   }
@@ -719,7 +739,14 @@ Set<T> readTypedSetPayload<T>(
   FieldType? elementFieldType,
   T Function(Object? value) convert,
 ) {
-  return Set<T>.of(readTypedListPayload(context, elementFieldType, convert));
+  final values = readTypedListPayload(
+    context,
+    elementFieldType,
+    convert,
+    reserveOwner: false,
+  );
+  context.reserveGraphMemory(_ownerBytes + values.length * _referenceBytes);
+  return Set<T>.of(values);
 }
 
 void writeTypedListPayload<T>(
@@ -907,9 +934,13 @@ final class _PreparedListRead {
 @pragma('vm:prefer-inline')
 _PreparedListRead _prepareListRead(
   ReadContext context,
-  FieldType? elementFieldType,
-) {
+  FieldType? elementFieldType, {
+  bool reserveOwner = true,
+}) {
   final size = context.buffer.readVarUint32();
+  if (reserveOwner) {
+    context.reserveGraphMemory(_ownerBytes + size * _referenceBytes);
+  }
   if (size == 0) {
     return _PreparedListRead(
       size: 0,

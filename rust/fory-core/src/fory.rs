@@ -261,6 +261,15 @@ impl ForyBuilder {
         self
     }
 
+    /// Sets the maximum estimated graph memory accepted during one root deserialization.
+    ///
+    /// Defaults to 128 MiB. Positive values are explicit byte limits; non-positive
+    /// values intentionally disable this protection.
+    pub fn max_graph_memory_bytes(mut self, max_bytes: i64) -> Self {
+        self.config.max_graph_memory_bytes = max_bytes;
+        self
+    }
+
     /// Sets the maximum depth for nested dynamic object serialization.
     ///
     /// # Arguments
@@ -988,7 +997,13 @@ impl Fory {
         self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
-            let result = self.deserialize_with_context(context);
+            let result = match context.init_graph_memory_budget() {
+                Ok(()) => self.deserialize_with_context(context),
+                Err(err) => {
+                    context.reset();
+                    Err(err)
+                }
+            };
             context.detach_reader();
             result
         })
@@ -1051,7 +1066,13 @@ impl Fory {
             let mut new_reader = Reader::new(outlive_buffer);
             new_reader.set_cursor(reader.cursor);
             context.attach_reader(new_reader);
-            let result = self.deserialize_with_context(context);
+            let result = match context.init_graph_memory_budget() {
+                Ok(()) => self.deserialize_with_context(context),
+                Err(err) => {
+                    context.reset();
+                    Err(err)
+                }
+            };
             let end = context.detach_reader().get_cursor();
             reader.set_cursor(end);
             result
@@ -1110,6 +1131,10 @@ impl Fory {
             RefMode::NullOnly
         };
         // TypeMeta is read inline during deserialization (streaming protocol)
+        let root_graph_self_size = T::fory_graph_self_size();
+        if root_graph_self_size != 0 {
+            context.reserve_graph_memory(root_graph_self_size)?;
+        }
         let result = <T as Serializer>::fory_read(context, ref_mode, true);
         context.ref_reader.resolve_callbacks();
         result

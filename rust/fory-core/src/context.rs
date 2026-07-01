@@ -359,6 +359,9 @@ pub struct ReadContext<'a> {
     max_dyn_depth: u32,
     check_struct_version: bool,
     check_string_read: bool,
+    max_graph_memory_bytes: i64,
+    graph_memory_limit_bytes: usize,
+    remaining_graph_memory_bytes: usize,
 
     // Context-specific fields
     pub reader: Reader<'a>,
@@ -388,6 +391,9 @@ impl<'a> ReadContext<'a> {
             max_dyn_depth: config.max_dyn_depth,
             check_struct_version: config.check_struct_version,
             check_string_read: config.check_string_read,
+            max_graph_memory_bytes: config.max_graph_memory_bytes,
+            graph_memory_limit_bytes: 0,
+            remaining_graph_memory_bytes: 0,
             reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
@@ -441,6 +447,37 @@ impl<'a> ReadContext<'a> {
     #[inline(always)]
     pub fn attach_reader(&mut self, reader: Reader<'a>) {
         self.reader = reader;
+    }
+
+    #[inline(always)]
+    pub(crate) fn init_graph_memory_budget(&mut self) -> Result<(), Error> {
+        let limit = if self.max_graph_memory_bytes > 0 {
+            usize::try_from(self.max_graph_memory_bytes)
+                .map_err(|_| graph_memory_error("max_graph_memory_bytes does not fit usize"))?
+        } else {
+            0
+        };
+        self.graph_memory_limit_bytes = limit;
+        self.remaining_graph_memory_bytes = if limit > 0 { limit } else { usize::MAX };
+        Ok(())
+    }
+
+    #[inline(always)]
+    #[doc(hidden)]
+    pub fn reserve_graph_memory(&mut self, bytes: usize) -> Result<(), Error> {
+        if self.graph_memory_limit_bytes == 0 {
+            return Ok(());
+        }
+        let remaining = self.remaining_graph_memory_bytes;
+        if bytes > remaining {
+            return Err(graph_memory_exceeded(
+                bytes,
+                remaining,
+                self.graph_memory_limit_bytes,
+            ));
+        }
+        self.remaining_graph_memory_bytes = remaining - bytes;
+        Ok(())
     }
 
     #[inline(always)]
@@ -551,4 +588,19 @@ impl<'a> ReadContext<'a> {
         self.ref_reader.reset();
         self.current_depth = 0;
     }
+}
+
+#[cold]
+#[inline(never)]
+fn graph_memory_error(message: &'static str) -> Error {
+    Error::invalid_data(message)
+}
+
+#[cold]
+#[inline(never)]
+fn graph_memory_exceeded(bytes: usize, remaining: usize, limit: usize) -> Error {
+    Error::invalid_data(format!(
+        "estimated graph memory request {} bytes exceeds max_graph_memory_bytes remaining budget {} bytes out of effective limit {} bytes",
+        bytes, remaining, limit
+    ))
 }

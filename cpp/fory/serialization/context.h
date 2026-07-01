@@ -32,6 +32,7 @@
 #include "fory/util/result.h"
 
 #include <cassert>
+#include <limits>
 #include <string>
 #include <typeindex>
 
@@ -504,6 +505,37 @@ public:
     }
   }
 
+  template <size_t ReserveBytes = 0>
+  FORY_ALWAYS_INLINE bool init_graph_budget() {
+    const size_t limit = graph_memory_limit_bytes_;
+    if (FORY_PREDICT_TRUE(limit != 0)) {
+      if constexpr (ReserveBytes != 0) {
+        if (FORY_PREDICT_FALSE(ReserveBytes > limit)) {
+          return set_graph_memory_exceeded(ReserveBytes, limit);
+        }
+        remaining_graph_memory_bytes_ = limit - ReserveBytes;
+      } else {
+        remaining_graph_memory_bytes_ = limit;
+      }
+      return true;
+    }
+    remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
+    return true;
+  }
+
+  FORY_ALWAYS_INLINE bool reserve_graph_memory(size_t bytes) {
+    const size_t remaining = remaining_graph_memory_bytes_;
+    if (FORY_PREDICT_FALSE(remaining ==
+                           std::numeric_limits<size_t>::max())) {
+      return true;
+    }
+    if (FORY_PREDICT_FALSE(bytes > remaining)) {
+      return set_graph_memory_exceeded(bytes, remaining);
+    }
+    remaining_graph_memory_bytes_ = remaining - bytes;
+    return true;
+  }
+
   // ===========================================================================
   // Read methods with Error& parameter
   // All methods accept Error& as parameter for reduced overhead.
@@ -662,6 +694,8 @@ private:
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
+  FORY_NOINLINE bool set_graph_memory_error(const std::string &message);
+  FORY_NOINLINE bool set_graph_memory_exceeded(size_t bytes, size_t remaining);
 
   // Error state - accumulated during deserialization, checked at the end
   Error error_;
@@ -671,6 +705,8 @@ private:
   std::unique_ptr<TypeResolver> type_resolver_;
   RefReader ref_reader_;
   uint32_t current_dyn_depth_;
+  size_t graph_memory_limit_bytes_ = 0;
+  size_t remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
 
   // Meta sharing state (for compatible mode)
   // Persistent cache storage for TypeInfo objects keyed by meta header.
@@ -689,6 +725,8 @@ private:
   meta::MetaStringTable meta_string_table_;
   fory::flat_hash_map<std::string, uint32_t> remote_schema_versions_by_type_;
   size_t total_accepted_schema_versions_ = 0;
+
+  friend class Fory;
 };
 
 /// Implementation of DynDepthGuard destructor

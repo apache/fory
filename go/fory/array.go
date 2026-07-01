@@ -290,7 +290,7 @@ func (s *arrayConcreteValueSerializer) ReadWithTypeInfo(ctx *ReadContext, refMod
 // arrayDynSerializer wraps sliceDynSerializer for arrays with interface element types.
 // It converts arrays to slices and delegates to sliceDynSerializer.
 type arrayDynSerializer struct {
-	sliceSerializer sliceDynSerializer
+	sliceSerializer *sliceDynSerializer
 }
 
 func newArrayDynSerializer(elemType reflect.Type) (arrayDynSerializer, error) {
@@ -318,6 +318,14 @@ func (s arrayDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType 
 func (s arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Create a temp slice to read into, then copy back to array
 	sliceType := reflect.SliceOf(value.Type().Elem())
+	elemBytes := int64(value.Type().Elem().Size())
+	if int64(value.Len()) > maxGraphCount(elemBytes) {
+		ctx.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", value.Len(), elemBytes)
+		return
+	}
+	if !ctx.ReserveGraphMemory(int64(value.Len()) * elemBytes) {
+		return
+	}
 	tempSlice := reflect.MakeSlice(sliceType, value.Len(), value.Len())
 	s.sliceSerializer.readData(ctx, tempSlice, value.Len())
 	if ctx.HasError() {

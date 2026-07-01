@@ -37,6 +37,7 @@ INT64_TYPE_ID = TypeId.VARINT64
 FLOAT64_TYPE_ID = TypeId.FLOAT64
 BOOL_TYPE_ID = TypeId.BOOL
 STRING_TYPE_ID = TypeId.STRING
+_MAX_GRAPH_MEMORY_BYTES = (1 << 63) - 1
 
 
 def _mix64(x: int) -> int:
@@ -470,6 +471,9 @@ class ReadContext:
         "field_nullable",
         "policy",
         "max_depth",
+        "max_graph_memory_bytes",
+        "graph_memory_limit_bytes",
+        "remaining_graph_memory_bytes",
         "ref_reader",
         "meta_string_reader",
         "meta_share_context",
@@ -490,6 +494,9 @@ class ReadContext:
         self.field_nullable = config.field_nullable
         self.policy = config.policy
         self.max_depth = config.max_depth
+        self.max_graph_memory_bytes = config.max_graph_memory_bytes
+        self.graph_memory_limit_bytes = 0
+        self.remaining_graph_memory_bytes = 0
         self.ref_reader = MapRefReader() if self.track_ref else NoRefReader()
         self.meta_string_reader = MetaStringReader(type_resolver.shared_registry)
         self.meta_share_context = MetaShareReadContext() if config.scoped_meta_share_enabled else None
@@ -511,8 +518,7 @@ class ReadContext:
             raise ValueError(f"Readable byte count {length} is negative")
         if length == 0:
             return
-        reader_index = self.buffer.get_reader_index()
-        self.buffer.check_bound(reader_index, length)
+        self.buffer.ensure_readable(length)
 
     def prepare(
         self,
@@ -521,10 +527,13 @@ class ReadContext:
         unsupported_objects=None,
         peer_out_of_band_enabled=False,
     ):
+        limit = self.max_graph_memory_bytes if self.max_graph_memory_bytes > 0 else 0
         self.buffer = buffer
         self.buffers = iter(buffers) if buffers is not None else None
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
+        self.graph_memory_limit_bytes = limit
+        self.remaining_graph_memory_bytes = limit if limit > 0 else _MAX_GRAPH_MEMORY_BYTES
         self.depth = 0
 
     def reset(self):
@@ -538,7 +547,26 @@ class ReadContext:
         self.buffers = None
         self.unsupported_objects = None
         self.peer_out_of_band_enabled = False
+        self.graph_memory_limit_bytes = 0
+        self.remaining_graph_memory_bytes = 0
         self.depth = 0
+
+    def reserve_graph_memory(self, num_bytes):
+        if num_bytes < 0:
+            raise ValueError("Estimated graph memory is negative")
+        if num_bytes > _MAX_GRAPH_MEMORY_BYTES:
+            raise ValueError("Estimated graph memory overflow")
+        if self.graph_memory_limit_bytes <= 0:
+            return
+        remaining = self.remaining_graph_memory_bytes
+        if num_bytes > remaining:
+            used = self.graph_memory_limit_bytes - remaining
+            raise ValueError(
+                f"Estimated graph memory budget exceeded: requested {num_bytes} bytes, "
+                f"used {used} bytes, limit {self.graph_memory_limit_bytes} bytes. "
+                "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
+            )
+        self.remaining_graph_memory_bytes = remaining - num_bytes
 
     def add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj

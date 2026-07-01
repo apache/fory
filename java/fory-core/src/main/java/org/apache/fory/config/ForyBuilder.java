@@ -103,6 +103,7 @@ public final class ForyBuilder {
   int maxTypeMetaBytes = 4096;
   int maxSchemaVersionsPerType = 10;
   int maxAverageSchemaVersionsPerType = 3;
+  long maxGraphMemoryBytes = 128L * 1024 * 1024;
   float mapRefLoadFactor = 0.51f;
   boolean forVirtualThread = false;
   TypeChecker typeChecker;
@@ -568,6 +569,18 @@ public final class ForyBuilder {
         maxAverageSchemaVersionsPerType);
     this.maxAverageSchemaVersionsPerType = maxAverageSchemaVersionsPerType;
     recordAction(b -> b.withMaxAverageSchemaVersionsPerType(maxAverageSchemaVersionsPerType));
+    return this;
+  }
+
+  /**
+   * Sets the maximum estimated graph memory accepted during one root deserialization.
+   *
+   * <p>The default is a fixed 128 MiB. Positive values are explicit byte limits. Explicit
+   * non-positive values disable this budget.
+   */
+  public ForyBuilder withMaxGraphMemoryBytes(long maxGraphMemoryBytes) {
+    this.maxGraphMemoryBytes = maxGraphMemoryBytes;
+    recordAction(b -> b.withMaxGraphMemoryBytes(maxGraphMemoryBytes));
     return this;
   }
 

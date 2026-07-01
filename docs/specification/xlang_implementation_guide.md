@@ -388,15 +388,52 @@ chunk, nullability, reference, and type-dispatch semantics. It is still the
 right allocation proof for count-based preallocation: after validating a
 non-empty count and reading any serializer-owned header or type metadata that
 precedes allocation, call `checkReadableBytes(logicalCount)` before allocating,
-reserving, or size-hinting from that count. The byte owner handles buffer versus
-stream readiness; the container serializer then allocates with the declared
-count and reads elements through its normal owner path.
+reserving backing capacity, or size-hinting from that count. The byte owner
+handles buffer versus stream readiness; the container serializer then allocates
+with the declared count and reads elements through its normal owner path.
 
 This check is not a full container-body validation. It only prevents a small or
 truncated input from causing a large count-based preallocation. Chunk sizes,
 duplicate keys, element value semantics, and protocol strictness remain owned by
 the container/map serializer and should be validated only when they protect a
 real owner invariant.
+
+Materializing readers should also reserve a root-operation estimated graph
+memory budget before allocation or size hinting. The budget belongs to
+`ReadContext` or the equivalent root read state, not to serializers and not to
+ambient thread-local state. `maxGraphMemoryBytes` defaults to a fixed `128 MiB`;
+positive configuration overrides the default; explicit non-positive
+configuration disables graph-memory enforcement. Do not derive this budget from
+root input size, and do not add dynamic stream bytes-read accounting for this
+budget.
+
+Read context or equivalent read state owns only raw byte reservation. It must
+not expose counted arithmetic helpers or collection, map, array, struct, or
+object semantic reservation APIs. Concrete serializers and generated serializer
+owners compute the storage constants and formulas for the owner path they
+allocate, including counted-byte overflow checks.
+
+The budget estimates lower-bound shallow memory for materialized graph owners,
+not exact heap bytes. Reserve self storage exactly once at the owner that stores
+or allocates the value. Reference-backed containers, maps, sets, and
+object/reference arrays reserve nonzero owner self cost plus reference slots;
+each referenced heap owner then reserves its own shallow self cost when
+materialized. Inline/value containers reserve element storage; inline/value maps
+reserve key plus value storage; root/product/box owners reserve value self
+storage; and nested value serializers reserve only additional dynamic storage
+they allocate. Struct/record/POJO/tuple, compatible, generated, and dynamic
+object owners reserve a nonzero shallow self cost plus shallow field storage.
+Parents must not recursively include child object, collection, map, string,
+binary, or primitive dense-array contents. Skip enum/union as separate owners and
+skip dedicated string, binary, primitive scalar, primitive array, and primitive
+dense-array leaf owners, but do not skip general inline-value containers such as
+vectors or lists of value objects. If reference slot size is not cheap or
+reliable to query, use a 4-byte reference slot. Native runtimes may use
+conservative lower-bound estimates instead of guessing non-portable object,
+container, allocator, table, node, entry, or debug-layout details. Reject
+arithmetic overflow before budget comparison or allocation, and keep the
+existing `checkReadableBytes` proof before backing
+allocation or capacity reservation.
 
 For TypeDef or TypeMeta bodies, first prove that the encoded metadata body bytes
 are readable through the byte owner. Field-list allocation should happen after

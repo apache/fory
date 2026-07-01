@@ -205,6 +205,10 @@ fn read_rc_inner<T: Serializer + ForyDefault + 'static>(
 ) -> Result<T, Error> {
     // Read type info if needed, then read data directly
     // No recursive ref handling needed since Rc<T> only wraps allowed types
+    let graph_self_size = T::fory_graph_self_size();
+    if graph_self_size != 0 {
+        context.reserve_graph_memory(graph_self_size)?;
+    }
     if let Some(typeinfo) = typeinfo {
         return T::fory_read_with_type_info(context, RefMode::None, typeinfo);
     }

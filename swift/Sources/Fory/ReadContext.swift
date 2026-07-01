@@ -35,6 +35,8 @@ public final class ReadContext {
   private var typeInfoScopeStack: [(typeKey: UInt64, previousTypeInfo: TypeInfo?)] = []
   private var lastTypeInfo = TypeInfo.uncached
   private let config: Config
+  private let maxGraphMemoryBytes: Int
+  private var remainingGraphMemoryBytes = Int.max
 
   init(
     buffer: ByteBuffer,
@@ -48,7 +50,40 @@ public final class ReadContext {
     self.checkClassVersion = config.checkClassVersion
     self.maxDepth = config.maxDepth
     self.config = config
+    self.maxGraphMemoryBytes = Int(config.maxGraphMemoryBytes)
     self.refReader = RefReader()
+  }
+
+  @inline(__always)
+  func initGraphMemoryBudget() throws {
+    remainingGraphMemoryBytes = maxGraphMemoryBytes > 0 ? maxGraphMemoryBytes : Int.max
+  }
+
+  @inline(__always)
+  public func reserveGraphMemory(_ bytes: Int) throws {
+    if bytes < 0 {
+      try throwGraphMemoryOverflow()
+    }
+    if maxGraphMemoryBytes <= 0 {
+      return
+    }
+    if bytes > remainingGraphMemoryBytes {
+      try throwGraphMemoryExceeded(bytes: bytes)
+    }
+    remainingGraphMemoryBytes -= bytes
+  }
+
+  @inline(never)
+  private func throwGraphMemoryOverflow() throws -> Never {
+    throw ForyError.invalidData("graph memory estimate overflows")
+  }
+
+  @inline(never)
+  private func throwGraphMemoryExceeded(bytes: Int) throws -> Never {
+    let message =
+      "estimated graph memory request \(bytes) bytes exceeds maxGraphMemoryBytes "
+      + "remaining budget \(remainingGraphMemoryBytes) bytes"
+    throw ForyError.invalidData(message)
   }
 
   @inline(__always)
@@ -200,7 +235,8 @@ public final class ReadContext {
             "received name-registered type info for id-registered local type")
         }
         if namespace.value != localTypeInfo.namespace.value
-          || typeName.value != localTypeInfo.typeName.value {
+          || typeName.value != localTypeInfo.typeName.value
+        {
           let expectedTypeName = "\(localTypeInfo.namespace.value)::\(localTypeInfo.typeName.value)"
           let actualTypeName = "\(namespace.value)::\(typeName.value)"
           throw ForyError.invalidData(
@@ -232,7 +268,8 @@ public final class ReadContext {
     if !checkClassVersion,
       compatibleTypeDefTypeInfos.isEmpty,
       !localTypeInfo.typeDefHasUserTypeFields,
-      let localTypeDefHeader = localTypeInfo.typeDefHeader {
+      let localTypeDefHeader = localTypeInfo.typeDefHeader
+    {
       let indexMarker = try buffer.readVarUInt32()
       if indexMarker == 0 {
         let headerStart = buffer.getCursor()
@@ -355,7 +392,8 @@ public final class ReadContext {
       for: localTypeInfo,
       wireTypeID: wireTypeID)
     compatibleTypeDefTypeInfos.push(cachedTypeInfo)
-    return try validateCompatibleTypeInfo(cachedTypeInfo, for: localTypeInfo, wireTypeID: wireTypeID)
+    return try validateCompatibleTypeInfo(
+      cachedTypeInfo, for: localTypeInfo, wireTypeID: wireTypeID)
   }
 
   @inline(__always)
@@ -366,7 +404,8 @@ public final class ReadContext {
     let buffer = self.buffer
     let compatibleTypeDefTypeInfos = self.compatibleTypeDefTypeInfos
     if compatibleTypeDefTypeInfos.isEmpty,
-      let localTypeDefHeader = localTypeInfo.typeDefHeader {
+      let localTypeDefHeader = localTypeInfo.typeDefHeader
+    {
       let indexMarker = try buffer.readVarUInt32()
       if indexMarker != 0 {
         return try readCompatibleTypeInfo(
@@ -478,7 +517,8 @@ public final class ReadContext {
       return false
     }
     guard let localTypeDefBytes = localTypeInfo.typeDefBytes,
-      end - start == localTypeDefBytes.count else {
+      end - start == localTypeDefBytes.count
+    else {
       return false
     }
     return buffer.matchesBytes(start: start, bytes: localTypeDefBytes)
@@ -503,7 +543,8 @@ public final class ReadContext {
     wireTypeID: TypeId
   ) throws {
     if let localTypeMeta = localTypeInfo.typeMeta,
-      remoteTypeMeta === localTypeMeta {
+      remoteTypeMeta === localTypeMeta
+    {
       return
     }
     if remoteTypeMeta.registerByName {
@@ -545,7 +586,8 @@ public final class ReadContext {
         registerByName: localTypeInfo.registerByName,
         compatible: compatible,
         evolving: localTypeInfo.evolving
-      ) {
+      )
+    {
       throw ForyError.typeMismatch(expected: wireTypeID.rawValue, actual: remoteTypeID)
     }
   }
@@ -633,7 +675,7 @@ public final class ReadContext {
     case .float64Array:
       value = try readPrimitiveArray(self) as [Double]
     case .array, .list:
-      value = try readListOfAny(refMode: .none) ?? []
+      value = try readListOfAny(context: self, refMode: .none) ?? []
     case .set:
       value = try Set<AnyHashable>.foryRead(self, refMode: .none, readTypeInfo: false)
     case .map:
@@ -705,86 +747,5 @@ public final class ReadContext {
     }
     compatibleTypeDefTypeInfos.reset()
     metaStrings.reset()
-  }
-}
-
-extension ReadContext {
-  public func readAny(
-    refMode: RefMode,
-    readTypeInfo: Bool = true
-  ) throws -> Any? {
-    try SerializableAny.foryRead(self, refMode: refMode, readTypeInfo: readTypeInfo).anyValue()
-  }
-
-  public func readListOfAny(
-    refMode: RefMode,
-    readTypeInfo: Bool = false
-  ) throws -> [Any]? {
-    let wrapped: [SerializableAny]? = try [SerializableAny]?.foryRead(
-      self,
-      refMode: refMode,
-      readTypeInfo: readTypeInfo
-    )
-    return wrapped?.map { $0.anyValueForCollection() }
-  }
-
-  public func readMapStringToAny(
-    refMode: RefMode,
-    readTypeInfo: Bool = false
-  ) throws -> [String: Any]? {
-    let wrapped: [String: SerializableAny]? = try [String: SerializableAny]?.foryRead(
-      self,
-      refMode: refMode,
-      readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-      return nil
-    }
-    var map: [String: Any] = [:]
-    map.reserveCapacity(wrapped.count)
-    for pair in wrapped {
-      map[pair.key] = pair.value.anyValueForCollection()
-    }
-    return map
-  }
-
-  public func readMapInt32ToAny(
-    refMode: RefMode,
-    readTypeInfo: Bool = false
-  ) throws -> [Int32: Any]? {
-    let wrapped: [Int32: SerializableAny]? = try [Int32: SerializableAny]?.foryRead(
-      self,
-      refMode: refMode,
-      readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-      return nil
-    }
-    var map: [Int32: Any] = [:]
-    map.reserveCapacity(wrapped.count)
-    for pair in wrapped {
-      map[pair.key] = pair.value.anyValueForCollection()
-    }
-    return map
-  }
-
-  public func readMapAnyHashableToAny(
-    refMode: RefMode,
-    readTypeInfo: Bool = false
-  ) throws -> [AnyHashable: Any]? {
-    let wrapped: [AnyHashable: SerializableAny]? = try [AnyHashable: SerializableAny]?.foryRead(
-      self,
-      refMode: refMode,
-      readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-      return nil
-    }
-    var map: [AnyHashable: Any] = [:]
-    map.reserveCapacity(wrapped.count)
-    for pair in wrapped {
-      map[pair.key] = pair.value.anyValueForCollection()
-    }
-    return map
   }
 }

@@ -43,6 +43,7 @@ const fory = new Fory({
   ref: true,
   compatible: true,
   maxDepth: 100,
+  maxGraphMemoryBytes: 128 * 1024 * 1024,
   maxTypeFields: 512,
   maxTypeMetaBytes: 4096,
   maxSchemaVersionsPerType: 10,
@@ -51,18 +52,19 @@ const fory = new Fory({
 });
 ```
 
-| Option                            | Default | Description                                                                           |
-| --------------------------------- | ------- | ------------------------------------------------------------------------------------- |
-| `ref`                             | `false` | Enable reference tracking for shared or circular object graphs                        |
-| `compatible`                      | `true`  | Allow field additions/removals without breaking existing messages                     |
-| `maxDepth`                        | `50`    | Maximum nesting depth. Must be `>= 2`. Increase for deeply nested structures          |
-| `maxTypeFields`                   | `512`   | Maximum fields accepted in one received remote struct metadata body                   |
-| `maxTypeMetaBytes`                | `4096`  | Maximum encoded body bytes accepted for one received TypeMeta body                    |
-| `maxSchemaVersionsPerType`        | `10`    | Maximum accepted remote metadata versions for one logical type                        |
-| `maxAverageSchemaVersionsPerType` | `3`     | Average accepted remote metadata versions across accepted remote types                |
-| `useSliceString`                  | `false` | Optional string-reading optimization for Node.js. Leave at default unless benchmarked |
-| `hps`                             | unset   | Optional fast string helper from `@apache-fory/hps` (Node.js 20+)                     |
-| `hooks.afterCodeGenerated`        | unset   | Callback to inspect the generated serializer code, useful for debugging               |
+| Option                            | Default   | Description                                                                           |
+| --------------------------------- | --------- | ------------------------------------------------------------------------------------- |
+| `ref`                             | `false`   | Enable reference tracking for shared or circular object graphs                        |
+| `compatible`                      | `true`    | Allow field additions/removals without breaking existing messages                     |
+| `maxDepth`                        | `50`      | Maximum nesting depth. Must be `>= 2`. Increase for deeply nested structures          |
+| `maxGraphMemoryBytes`             | `128 MiB` | Maximum estimated shallow graph memory accepted during one root deserialization       |
+| `maxTypeFields`                   | `512`     | Maximum fields accepted in one received remote struct metadata body                   |
+| `maxTypeMetaBytes`                | `4096`    | Maximum encoded body bytes accepted for one received TypeMeta body                    |
+| `maxSchemaVersionsPerType`        | `10`      | Maximum accepted remote metadata versions for one logical type                        |
+| `maxAverageSchemaVersionsPerType` | `3`       | Average accepted remote metadata versions across accepted remote types                |
+| `useSliceString`                  | `false`   | Optional string-reading optimization for Node.js. Leave at default unless benchmarked |
+| `hps`                             | unset     | Optional fast string helper from `@apache-fory/hps` (Node.js 20+)                     |
+| `hooks.afterCodeGenerated`        | unset     | Callback to inspect the generated serializer code, useful for debugging               |
 
 ## Reference Tracking
 
@@ -92,6 +94,29 @@ to that struct. For cross-language payloads, set `compatible: false` only after
 verifying that every language uses the same schema, or when native types are
 generated from Fory schema IDL. See [Schema Evolution](schema-evolution.md).
 
+## Graph Memory Budget
+
+`maxGraphMemoryBytes` limits estimated shallow graph memory accepted during one
+root deserialization. The budget covers materialized arrays, sets, object
+arrays, maps, structs, and objects; it is not an exact JavaScript heap limit.
+The default is a fixed `128 MiB` and is not derived from input size.
+
+Use a positive byte value to set an explicit lower or higher limit:
+
+```ts
+const fory = new Fory({
+  maxGraphMemoryBytes: 32 * 1024 * 1024,
+});
+```
+
+Passing an explicit non-positive value disables this budget and can expose
+deserialization DoS risk from compact inputs that materialize large object
+graphs.
+
+String, binary, and dedicated dense primitive array payloads keep their normal
+byte-size checks and do not consume this graph budget. Raise the limit only for
+trusted workloads that legitimately contain very compact object graphs.
+
 ## Optional HPS String Path
 
 `@apache-fory/hps` provides an optional Node.js string fast path:
@@ -110,6 +135,8 @@ Security-related configuration:
 
 - Register only the expected schemas before deserializing untrusted payloads.
 - Set `maxDepth` for the maximum nesting depth your service accepts.
+- Set `maxGraphMemoryBytes` for the maximum graph memory your service
+  accepts from one root payload.
 - Keep `maxTypeFields` and `maxTypeMetaBytes` at their defaults unless the data
   is not malicious and a trusted peer sends larger remote metadata.
 - Keep `maxSchemaVersionsPerType` and

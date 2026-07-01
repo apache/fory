@@ -303,6 +303,24 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		iface := reflect.TypeOf((*any)(nil)).Elem()
 		mapType = reflect.MapOf(iface, iface)
 	}
+	keyBytes := int64(mapType.Key().Size())
+	valueBytes := int64(mapType.Elem().Size())
+	elemBytes := keyBytes + valueBytes
+	if elemBytes < keyBytes {
+		ctx.setGraphMemoryError("map entry size overflows: key=%d value=%d", keyBytes, valueBytes)
+		return
+	}
+	if size < 0 {
+		ctx.setGraphMemoryError("negative graph element count: %d", size)
+		return
+	}
+	if int64(size) > maxGraphCount(elemBytes) {
+		ctx.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", size, elemBytes)
+		return
+	}
+	if !ctx.ReserveGraphMemory(int64(size) * elemBytes) {
+		return
+	}
 	if size == 0 {
 		if value.IsNil() {
 			value.Set(reflect.MakeMap(mapType))

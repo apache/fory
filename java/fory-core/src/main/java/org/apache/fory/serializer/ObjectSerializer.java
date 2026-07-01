@@ -208,6 +208,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
 
   @Override
   public T read(ReadContext readContext) {
+    reserveObjectGraphMemory(readContext);
     MemoryBuffer buffer = readContext.getBuffer();
     if (isRecord) {
       Object[] fields = readFields(readContext);

@@ -58,6 +58,8 @@ import org.apache.fory.util.Preconditions;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public abstract class MapLikeSerializer<T> extends Serializer<T> {
   public static final int MAX_CHUNK_SIZE = 255;
+  private static final int MAP_BYTES = 1;
+  private static final int REFERENCE_BYTES = 4;
 
   static final class MapTypeCache {
     final TypeInfoHolder keyTypeInfoWriteCache;
@@ -895,7 +897,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
    */
   public Map newMap(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    numElements = readMapSize(buffer);
+    numElements = readMapSize(readContext, buffer);
     if (AndroidSupport.IS_ANDROID) {
       try {
         Constructor<?> constructor = type.getDeclaredConstructor();
@@ -964,12 +966,13 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     this.numElements = numElements;
   }
 
-  protected final int readMapSize(MemoryBuffer buffer) {
+  protected final int readMapSize(ReadContext readContext, MemoryBuffer buffer) {
     int numElements = buffer.readVarUInt32Small7();
     checkMapSize(numElements);
     if (numElements > Integer.MAX_VALUE / 2) {
       throwInvalidMapBodySize(numElements);
     }
+    readContext.reserveGraphMemory(MAP_BYTES + (long) numElements * 2 * REFERENCE_BYTES);
     buffer.checkReadableBytes(numElements << 1);
     return numElements;
   }

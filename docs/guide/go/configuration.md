@@ -33,16 +33,17 @@ f := fory.New(fory.WithXlang(true))
 
 Default settings:
 
-| Option                          | Default | Description                                       |
-| ------------------------------- | ------- | ------------------------------------------------- |
-| TrackRef                        | false   | Reference tracking disabled                       |
-| MaxDepth                        | 20      | Maximum nesting depth                             |
-| IsXlang                         | true    | Xlang mode enabled                                |
-| Compatible                      | true    | Compatible schema-evolution metadata enabled      |
-| MaxTypeFields                   | 512     | Max fields in one received struct metadata body   |
-| MaxTypeMetaBytes                | 4096    | Max encoded bytes in one received metadata body   |
-| MaxSchemaVersionsPerType        | 10      | Max remote metadata versions for one logical type |
-| MaxAverageSchemaVersionsPerType | 3       | Average remote metadata versions across types     |
+| Option                          | Default   | Description                                       |
+| ------------------------------- | --------- | ------------------------------------------------- |
+| TrackRef                        | false     | Reference tracking disabled                       |
+| MaxDepth                        | 20        | Maximum nesting depth                             |
+| IsXlang                         | true      | Xlang mode enabled                                |
+| Compatible                      | true      | Compatible schema-evolution metadata enabled      |
+| MaxGraphMemoryBytes             | 134217728 | Graph memory limit per root read                  |
+| MaxTypeFields                   | 512       | Max fields in one received struct metadata body   |
+| MaxTypeMetaBytes                | 4096      | Max encoded bytes in one received metadata body   |
+| MaxSchemaVersionsPerType        | 10        | Max remote metadata versions for one logical type |
+| MaxAverageSchemaVersionsPerType | 3         | Average remote metadata versions across types     |
 
 ### With Options
 
@@ -51,6 +52,7 @@ f := fory.New(
     fory.WithXlang(true),
     fory.WithTrackRef(true),
     fory.WithMaxDepth(10),
+    fory.WithMaxGraphMemoryBytes(128 * 1024 * 1024),
     fory.WithMaxTypeFields(512),
     fory.WithMaxTypeMetaBytes(4096),
     fory.WithMaxSchemaVersionsPerType(10),
@@ -126,6 +128,23 @@ f := fory.New(fory.WithMaxDepth(30))
 - Default: 20
 - Protects against deeply nested, recursive structures or malicious data
 - Serialization fails with error when exceeded
+
+### WithMaxGraphMemoryBytes
+
+Limit estimated shallow graph memory accepted during one root deserialization:
+
+```go
+f := fory.New(fory.WithMaxGraphMemoryBytes(256 * 1024 * 1024))
+```
+
+The default limit is a fixed `128 MiB` for byte-slice and stream roots. A
+positive value overrides the default. Passing an explicit non-positive value
+disables this budget and can expose deserialization DoS risk from compact inputs
+that materialize large object graphs. The budget covers lower-bound slice
+backing storage, map key/value storage, sets, generated object reads, and
+materialized struct field storage. Strings, binary blobs, and primitive dense
+array owners keep their byte-availability checks and are not reserved against
+this budget.
 
 ### WithMaxTypeFields
 

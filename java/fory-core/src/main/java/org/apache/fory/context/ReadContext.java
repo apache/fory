@@ -63,6 +63,7 @@ public final class ReadContext {
   private final boolean compressInt;
   private final Int64Encoding longEncoding;
   private final int maxDepth;
+  private final long maxGraphMemoryBytes;
   private final boolean scopedMetaShareEnabled;
   private final boolean forVirtualThread;
   private final IdentityHashMap<Object, Object> contextObjects = new IdentityHashMap<>();
@@ -71,6 +72,8 @@ public final class ReadContext {
   private MetaReadContext metaReadContext;
   private boolean peerOutOfBandEnabled;
   private int depth;
+  private long graphMemoryLimitBytes;
+  private long remainingGraphMemoryBytes;
 
   /**
    * Creates read-side runtime state for one {@code Fory} instance.
@@ -96,6 +99,7 @@ public final class ReadContext {
     compressInt = config.compressInt();
     longEncoding = config.longEncoding();
     maxDepth = config.maxDepth();
+    maxGraphMemoryBytes = config.maxGraphMemoryBytes();
     forVirtualThread = config.forVirtualThread();
     scopedMetaShareEnabled = config.isScopedMetaShareEnabled();
     if (scopedMetaShareEnabled) {
@@ -108,10 +112,24 @@ public final class ReadContext {
    * flag for one operation.
    */
   public void prepare(
-      MemoryBuffer buffer, Iterable<MemoryBuffer> outOfBandBuffers, boolean peerOutOfBandEnabled) {
+      MemoryBuffer buffer,
+      Iterable<MemoryBuffer> outOfBandBuffers,
+      boolean peerOutOfBandEnabled) {
     this.buffer = buffer;
     this.peerOutOfBandEnabled = peerOutOfBandEnabled;
     this.outOfBandBuffers = outOfBandBuffers == null ? null : outOfBandBuffers.iterator();
+    initGraphMemoryBudget();
+  }
+
+  private void initGraphMemoryBudget() {
+    long limit = maxGraphMemoryBytes;
+    if (limit <= 0) {
+      graphMemoryLimitBytes = 0;
+      remainingGraphMemoryBytes = Long.MAX_VALUE;
+      return;
+    }
+    graphMemoryLimitBytes = limit;
+    remainingGraphMemoryBytes = limit;
   }
 
   /**
@@ -307,11 +325,43 @@ public final class ReadContext {
     outOfBandBuffers = null;
     peerOutOfBandEnabled = false;
     depth = 0;
+    graphMemoryLimitBytes = 0;
+    remainingGraphMemoryBytes = 0;
   }
 
   /** Returns the immutable runtime configuration for this context. */
   public Config getConfig() {
     return config;
+  }
+
+  public void reserveGraphMemory(long bytes) {
+    if (bytes < 0) {
+      throwNegativeGraphMemory(bytes);
+    }
+    if (graphMemoryLimitBytes <= 0) {
+      return;
+    }
+    long remaining = remainingGraphMemoryBytes;
+    if (bytes > remaining) {
+      throwGraphMemoryExceeded(bytes, remaining);
+    }
+    remainingGraphMemoryBytes = remaining - bytes;
+  }
+
+  private void throwNegativeGraphMemory(long bytes) {
+    throw new InsecureException(
+        "Estimated graph memory must be non-negative, but got " + bytes + " bytes.");
+  }
+
+  private void throwGraphMemoryExceeded(long bytes, long remaining) {
+    throw new InsecureException(
+        "Estimated graph memory request "
+            + bytes
+            + " bytes exceeds maxGraphMemoryBytes remaining budget "
+            + remaining
+            + " bytes out of effective limit "
+            + graphMemoryLimitBytes
+            + " bytes. If the data is trusted, increase ForyBuilder#withMaxGraphMemoryBytes.");
   }
 
   /** Returns the generics stack shared by the owning runtime. */
@@ -582,7 +632,12 @@ public final class ReadContext {
     return (T) readNonRef(serializer);
   }
 
-  /** Reads the root object for one deserialization operation. */
+  /**
+   * Reads the root object for one deserialization operation.
+   *
+   * <p>Root no-ref deserialization owns the null marker and type metadata directly; using the
+   * generic ref-reader path here makes scalar roots pay reference dispatch they can never use.
+   */
   public Object readRootRef() {
     if (trackingRef) {
       return readRef(rootTypeInfoHolder);

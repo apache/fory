@@ -74,6 +74,8 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class CollectionSerializers {
+  private static final int REFERENCE_BYTES = 4;
+
   private static final Comparator NATURAL_ORDER_COMPARATOR = Comparator.naturalOrder();
 
   private static void requireXlangNaturalOrdering(Class<?> type, Comparator<?> comparator) {
@@ -127,7 +129,7 @@ public class CollectionSerializers {
     @Override
     public ArrayList newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       ArrayList arrayList = new ArrayList(numElements);
       readContext.reference(arrayList);
@@ -189,7 +191,7 @@ public class CollectionSerializers {
     @Override
     public ArrayList newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       ArrayList arrayList = new ArrayList(numElements);
       readContext.reference(arrayList);
@@ -205,7 +207,7 @@ public class CollectionSerializers {
     @Override
     public HashSet newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       HashSet hashSet = new HashSet(numElements);
       readContext.reference(hashSet);
@@ -221,7 +223,7 @@ public class CollectionSerializers {
     @Override
     public LinkedHashSet newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       LinkedHashSet hashSet = new LinkedHashSet(numElements);
       readContext.reference(hashSet);
@@ -270,7 +272,7 @@ public class CollectionSerializers {
     @Override
     public T newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       T collection;
       Comparator comparator = config.isXlang() ? null : (Comparator) readContext.readRef();
@@ -335,7 +337,8 @@ public class CollectionSerializers {
     @Override
     public List<?> read(ReadContext readContext) {
       if (config.isXlang()) {
-        int numElements = readCollectionSize(readContext.getBuffer());
+        MemoryBuffer buffer = readContext.getBuffer();
+        int numElements = readCollectionSize(readContext, buffer);
         if (numElements != 0) {
           throw new DeserializationException(
               "Empty list body must have zero elements but got " + numElements);
@@ -356,7 +359,7 @@ public class CollectionSerializers {
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       return new CollectionContainer<>(numElements);
     }
@@ -390,7 +393,7 @@ public class CollectionSerializers {
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       return new CollectionContainer<>(numElements);
     }
@@ -542,7 +545,7 @@ public class CollectionSerializers {
     @Override
     public ConcurrentSkipListSet newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       if (config.isXlang()) {
         ConcurrentSkipListSet skipListSet = new ConcurrentSkipListSet();
@@ -726,7 +729,7 @@ public class CollectionSerializers {
     @Override
     public Vector newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       Vector<Object> vector = new Vector<>(numElements);
       readContext.reference(vector);
@@ -743,7 +746,7 @@ public class CollectionSerializers {
     @Override
     public ArrayDeque newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       ArrayDeque deque = new ArrayDeque(numElements);
       readContext.reference(deque);
@@ -786,9 +789,9 @@ public class CollectionSerializers {
     public EnumSet read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
       Class elemClass = typeResolver.readTypeInfo(readContext).getType();
+      int length = readCollectionSize(readContext, buffer);
       EnumSet object = EnumSet.noneOf(elemClass);
       Serializer elemSerializer = typeResolver.getSerializer(elemClass);
-      int length = readCollectionSize(buffer);
       for (int i = 0; i < length; i++) {
         object.add(elemSerializer.read(readContext));
       }
@@ -863,7 +866,7 @@ public class CollectionSerializers {
     public PriorityQueue newCollection(ReadContext readContext) {
       assert !config.isXlang();
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       Comparator comparator = (Comparator) readContext.readRef();
       PriorityQueue queue = new PriorityQueue(comparator);
@@ -923,10 +926,11 @@ public class CollectionSerializers {
     @Override
     public ArrayBlockingQueue newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       int capacity = buffer.readVarUInt32Small7();
       checkBoundedQueueCapacity(numElements, capacity);
+      readContext.reserveGraphMemory((long) (capacity - numElements) * REFERENCE_BYTES);
       buffer.checkReadableBytes(capacity);
       ArrayBlockingQueue queue = new ArrayBlockingQueue<>(capacity);
       readContext.reference(queue);
@@ -990,10 +994,12 @@ public class CollectionSerializers {
     @Override
     public LinkedBlockingQueue newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       int capacity = buffer.readVarUInt32Small7();
       checkBoundedQueueCapacity(numElements, capacity);
+      // LinkedBlockingQueue capacity is a logical bound, not preallocated backing storage. The
+      // current node storage is already reserved by readCollectionSize(numElements).
       LinkedBlockingQueue queue = new LinkedBlockingQueue<>(capacity);
       readContext.reference(queue);
       return queue;
@@ -1130,7 +1136,7 @@ public class CollectionSerializers {
     @Override
     public List newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       ArrayList list = new ArrayList(numElements);
       readContext.reference(list);
@@ -1146,7 +1152,7 @@ public class CollectionSerializers {
     @Override
     public Set newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       HashSet set = new HashSet(numElements);
       readContext.reference(set);

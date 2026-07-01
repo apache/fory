@@ -25,6 +25,9 @@ import { CodegenRegistry } from "./router";
 import { BaseSerializerGenerator } from "./serializer";
 import { TypeMeta } from "../meta/TypeMeta";
 
+const OBJECT_BYTES = 1;
+const REFERENCE_BYTES = 4;
+
 class ExtSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
   typeMeta: TypeMeta;
@@ -41,6 +44,13 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     this.ownTypeInfoExpr = `${this.serializerExpr}.getTypeInfo()`;
   }
 
+  private objectGraphBytes(): number {
+    return (
+      OBJECT_BYTES +
+      Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES
+    );
+  }
+
   write(accessor: string): string {
     return `
       ${this.builder.getOptions("customSerializer")}.write(${this.builder.getWriteContextName()}, ${accessor})
@@ -50,19 +60,19 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
     return `
-      ${this.typeInfo.options!.withConstructor
-        ? `
+      ${this.builder.getReadContextName()}.reserveGraphMemory(${this.objectGraphBytes()});
+      ${
+        this.typeInfo.options!.withConstructor
+          ? `
           const ${result} = new ${this.builder.getOptions("creator")}();
         `
-        : `
+          : `
           const ${result} = {};
         `
       }
       ${this.maybeReference(result, refState)}
       ${this.builder.getOptions("customSerializer")}.read(${this.builder.getReadContextName()}, ${result})
-      ${
-        accessor(result)
-      }
+      ${accessor(result)}
     `;
   }
 
@@ -72,7 +82,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
       ${this.readTypeInfo()}
       ${this.builder.getReadContextName()}.incReadDepth();
       let ${result};
-      ${this.read(v => `${result} = ${v}`, refState)};
+      ${this.read((v) => `${result} = ${v}`, refState)};
       ${this.builder.getReadContextName()}.decReadDepth();
       ${assignStmt(result)};
     `;
@@ -90,12 +100,8 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
       case TypeId.NAMED_EXT:
         if (!this.builder.resolver.isCompatible()) {
           namesStmt = `
-            ${
-              this.builder.metaStringResolver.readNamespace()
-            };
-            ${
-              this.builder.metaStringResolver.readTypeName()
-            };
+            ${this.builder.metaStringResolver.readNamespace()};
+            ${this.builder.metaStringResolver.readTypeName()};
           `;
         } else {
           typeMetaStmt = `
@@ -109,49 +115,59 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
         break;
     }
     return `
-      ${
-        this.builder.reader.readUint8()
-      };
+      ${this.builder.reader.readUint8()};
       ${readUserTypeIdStmt}
-      ${
-        namesStmt
-      }
-      ${
-        typeMetaStmt
-      }
+      ${namesStmt}
+      ${typeMetaStmt}
     `;
   }
 
   readEmbed() {
-    return new Proxy({}, {
-      get: (target, prop: string) => {
-        return (accessor: (expr: string) => string, ...args: string[]) => {
-          const name = this.scope.declare(
-            "ext_ser",
-            TypeId.isNamedType(this.typeInfo.typeId)
-              ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
-              : this.builder.typeResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
-          );
-          return accessor(`${name}.${prop}(${args.join(",")})`);
-        };
+    return new Proxy(
+      {},
+      {
+        get: (target, prop: string) => {
+          return (accessor: (expr: string) => string, ...args: string[]) => {
+            const name = this.scope.declare(
+              "ext_ser",
+              TypeId.isNamedType(this.typeInfo.typeId)
+                ? this.builder.typeResolver.getSerializerByName(
+                    CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
+                  )
+                : this.builder.typeResolver.getSerializerById(
+                    this.typeInfo.typeId,
+                    this.typeInfo.userTypeId,
+                  ),
+            );
+            return accessor(`${name}.${prop}(${args.join(",")})`);
+          };
+        },
       },
-    });
+    );
   }
 
   writeEmbed() {
-    return new Proxy({}, {
-      get: (target, prop: string) => {
-        return (accessor: string) => {
-          const name = this.scope.declare(
-            "ext_ser",
-            TypeId.isNamedType(this.typeInfo.typeId)
-              ? this.builder.typeResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
-              : this.builder.typeResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
-          );
-          return `${name}.${prop}(${accessor})`;
-        };
+    return new Proxy(
+      {},
+      {
+        get: (target, prop: string) => {
+          return (accessor: string) => {
+            const name = this.scope.declare(
+              "ext_ser",
+              TypeId.isNamedType(this.typeInfo.typeId)
+                ? this.builder.typeResolver.getSerializerByName(
+                    CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
+                  )
+                : this.builder.typeResolver.getSerializerById(
+                    this.typeInfo.typeId,
+                    this.typeInfo.userTypeId,
+                  ),
+            );
+            return `${name}.${prop}(${accessor})`;
+          };
+        },
       },
-    });
+    );
   }
 
   writeTypeInfo(): string {
@@ -160,20 +176,38 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     let writeUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.EXT:
-        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
+        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(
+          this.typeInfo.userTypeId,
+        );
         break;
       case TypeId.NAMED_EXT:
         if (!this.builder.resolver.isCompatible()) {
           const typeInfo = this.typeInfo;
-          const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
-          const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
+          const nsBytes = this.scope.declare(
+            "nsBytes",
+            this.builder.metaStringResolver.encodeNamespace(
+              CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace),
+            ),
+          );
+          const typeNameBytes = this.scope.declare(
+            "typeNameBytes",
+            this.builder.metaStringResolver.encodeTypeName(
+              CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName),
+            ),
+          );
           typeMeta = `
             ${this.builder.metaStringResolver.writeBytes(nsBytes)}
             ${this.builder.metaStringResolver.writeBytes(typeNameBytes)}
           `;
         } else {
-          const bytes = this.scope.declare("typeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`);
-          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), bytes);
+          const bytes = this.scope.declare(
+            "typeInfoBytes",
+            `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`,
+          );
+          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(
+            this.builder.getTypeInfo(),
+            bytes,
+          );
         }
         break;
       default:

@@ -1048,6 +1048,31 @@ pub trait Serializer: 'static {
         Self::fory_is_shared_ref()
     }
 
+    /// Shallow value-owner self storage for root and box/shared-reference allocation sites.
+    ///
+    /// Value serializers must not reserve this unconditionally because parent structs,
+    /// arrays, maps, and collections may already own the inline storage.
+    #[inline(always)]
+    fn fory_graph_self_size() -> usize
+    where
+        Self: Sized,
+    {
+        0
+    }
+
+    #[inline(always)]
+    fn fory_graph_storage_size() -> usize
+    where
+        Self: Sized,
+    {
+        let inline_size = std::mem::size_of::<Self>();
+        if inline_size == 0 {
+            Self::fory_graph_self_size()
+        } else {
+            inline_size
+        }
+    }
+
     /// Get the static Fory type ID for this type.
     ///
     /// Type IDs are Fory's internal type identification system, separate from

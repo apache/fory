@@ -22,6 +22,8 @@ from cpython.unicode cimport PyUnicode_InternFromString
 
 
 cdef uint8_t _BASIC_FIELD_NOT_INLINE = 0xFF
+cdef int64_t _STRUCT_OWNER_BYTES = 1
+cdef int64_t _STRUCT_REFERENCE_BYTES = sizeof(PyObject*)
 
 
 cdef struct FieldRuntimeInfo:
@@ -422,6 +424,9 @@ cdef class DataClassSerializer(Serializer):
                     f"Hash {read_hash} is not consistent with {self._hash} for type {self.type_}"
                 )
 
+        read_context.reserve_graph_memory_fast(
+            _STRUCT_OWNER_BYTES + <int64_t>self._field_runtime_infos.size() * _STRUCT_REFERENCE_BYTES
+        )
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         if self._has_slots:

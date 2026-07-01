@@ -174,12 +174,12 @@ export const TypeId = {
   },
   userDefinedType(id: number) {
     return (
-      this.structType(id)
-      || this.extType(id)
-      || this.enumType(id)
-      || id == TypeId.UNION
-      || id == TypeId.TYPED_UNION
-      || id == TypeId.NAMED_UNION
+      this.structType(id) ||
+      this.extType(id) ||
+      this.enumType(id) ||
+      id == TypeId.UNION ||
+      id == TypeId.TYPED_UNION ||
+      id == TypeId.NAMED_UNION
     );
   },
   isBuiltin(id: number) {
@@ -292,6 +292,7 @@ export interface Config {
   ref: boolean;
   useSliceString: boolean;
   maxDepth?: number;
+  maxGraphMemoryBytes: number;
   maxTypeFields: number;
   maxTypeMetaBytes: number;
   maxSchemaVersionsPerType: number;

@@ -25,6 +25,28 @@ import (
 	"github.com/apache/fory/go/fory"
 )
 
+func writeGraphReservation(buf *bytes.Buffer, indent, countExpr, elemBytesExpr string) {
+	fmt.Fprintf(buf, "%s{\n", indent)
+	fmt.Fprintf(buf, "%s\tgraphCount := %s\n", indent, countExpr)
+	fmt.Fprintf(buf, "%s\tgraphElemBytes := int64(%s)\n", indent, elemBytesExpr)
+	fmt.Fprintf(buf, "%s\tif graphCount < 0 {\n", indent)
+	fmt.Fprintf(buf, "%s\t\tctx.SetError(fory.DeserializationErrorf(\"negative graph element count: %%d\", graphCount))\n", indent)
+	fmt.Fprintf(buf, "%s\t\treturn ctx.TakeError()\n", indent)
+	fmt.Fprintf(buf, "%s\t}\n", indent)
+	fmt.Fprintf(buf, "%s\tif graphElemBytes < 0 {\n", indent)
+	fmt.Fprintf(buf, "%s\t\tctx.SetError(fory.DeserializationErrorf(\"negative graph element size: %%d\", graphElemBytes))\n", indent)
+	fmt.Fprintf(buf, "%s\t\treturn ctx.TakeError()\n", indent)
+	fmt.Fprintf(buf, "%s\t}\n", indent)
+	fmt.Fprintf(buf, "%s\tif graphCount != 0 && graphElemBytes != 0 && int64(graphCount) > fory.MaxInt64/graphElemBytes {\n", indent)
+	fmt.Fprintf(buf, "%s\t\tctx.SetError(fory.DeserializationErrorf(\"graph memory estimate overflows: length=%%d elementBytes=%%d\", graphCount, graphElemBytes))\n", indent)
+	fmt.Fprintf(buf, "%s\t\treturn ctx.TakeError()\n", indent)
+	fmt.Fprintf(buf, "%s\t}\n", indent)
+	fmt.Fprintf(buf, "%s\tif !ctx.ReserveGraphMemory(int64(graphCount) * graphElemBytes) {\n", indent)
+	fmt.Fprintf(buf, "%s\t\treturn ctx.TakeError()\n", indent)
+	fmt.Fprintf(buf, "%s\t}\n", indent)
+	fmt.Fprintf(buf, "%s}\n", indent)
+}
+
 // generateReadTyped generates the strongly-typed ReadData method
 func generateReadTyped(buf *bytes.Buffer, s *StructInfo) error {
 	fmt.Fprintf(buf, "// ReadTyped provides strongly-typed deserialization with no reflection overhead\n")
@@ -69,7 +91,13 @@ func generateReadInterface(buf *bytes.Buffer, s *StructInfo) error {
 	fmt.Fprintf(buf, "\tvar v *%s\n", s.Name)
 	fmt.Fprintf(buf, "\tif value.Kind() == reflect.Ptr {\n")
 	fmt.Fprintf(buf, "\t\tif value.IsNil() {\n")
-	fmt.Fprintf(buf, "\t\t\t// For pointer types, allocate using value.Type().Elem()\n")
+	fmt.Fprintf(buf, "\t\t\tgraphBytes := int64(unsafe.Sizeof(%s{}))\n", s.Name)
+	fmt.Fprintf(buf, "\t\t\tif graphBytes == 0 {\n")
+	fmt.Fprintf(buf, "\t\t\t\tgraphBytes = 1\n")
+	fmt.Fprintf(buf, "\t\t\t}\n")
+	fmt.Fprintf(buf, "\t\t\tif !ctx.ReserveGraphMemory(graphBytes) {\n")
+	fmt.Fprintf(buf, "\t\t\t\treturn\n")
+	fmt.Fprintf(buf, "\t\t\t}\n")
 	fmt.Fprintf(buf, "\t\t\tvalue.Set(reflect.New(value.Type().Elem()))\n")
 	fmt.Fprintf(buf, "\t\t}\n")
 	fmt.Fprintf(buf, "\t\tv = value.Interface().(*%s)\n", s.Name)
@@ -172,6 +200,7 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\t\t\tif ctx.HasError() {\n")
 			fmt.Fprintf(buf, "\t\t\t\treturn ctx.TakeError()\n")
 			fmt.Fprintf(buf, "\t\t\t}\n")
+			writeGraphReservation(buf, "\t\t\t", "sliceLen", unsafeSizeExpr(elemType))
 			fmt.Fprintf(buf, "\t\t\tif sliceLen == 0 {\n")
 			fmt.Fprintf(buf, "\t\t\t\t%s = make([]any, 0)\n", fieldAccess)
 			fmt.Fprintf(buf, "\t\t\t} else {\n")
@@ -200,6 +229,7 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\t\t\t\tif ctx.HasError() {\n")
 			fmt.Fprintf(buf, "\t\t\t\t\treturn ctx.TakeError()\n")
 			fmt.Fprintf(buf, "\t\t\t\t}\n")
+			writeGraphReservation(buf, "\t\t\t\t", "sliceLen", unsafeSizeExpr(elemType))
 			fmt.Fprintf(buf, "\t\t\t\tif sliceLen == 0 {\n")
 			fmt.Fprintf(buf, "\t\t\t\t\t%s = make([]any, 0)\n", fieldAccess)
 			fmt.Fprintf(buf, "\t\t\t\t} else {\n")
@@ -501,6 +531,10 @@ func generateSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAcc
 	fmt.Fprintf(buf, "\t\tif isXlang {\n")
 	fmt.Fprintf(buf, "\t\t\t// xlang mode: slices are not nullable, read directly without null flag\n")
 	fmt.Fprintf(buf, "\t\t\tsliceLen := ctx.ReadCollectionLength()\n")
+	fmt.Fprintf(buf, "\t\t\tif ctx.HasError() {\n")
+	fmt.Fprintf(buf, "\t\t\t\treturn ctx.TakeError()\n")
+	fmt.Fprintf(buf, "\t\t\t}\n")
+	writeGraphReservation(buf, "\t\t\t", "sliceLen", unsafeSizeExpr(elemType))
 	fmt.Fprintf(buf, "\t\t\tif sliceLen == 0 {\n")
 	fmt.Fprintf(buf, "\t\t\t\t%s = make(%s, 0)\n", fieldAccess, sliceType.String())
 	fmt.Fprintf(buf, "\t\t\t} else {\n")
@@ -519,6 +553,7 @@ func generateSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAcc
 	fmt.Fprintf(buf, "\t\t\t\tif ctx.HasError() {\n")
 	fmt.Fprintf(buf, "\t\t\t\t\treturn ctx.TakeError()\n")
 	fmt.Fprintf(buf, "\t\t\t\t}\n")
+	writeGraphReservation(buf, "\t\t\t\t", "sliceLen", unsafeSizeExpr(elemType))
 	fmt.Fprintf(buf, "\t\t\t\tif sliceLen == 0 {\n")
 	fmt.Fprintf(buf, "\t\t\t\t\t%s = make(%s, 0)\n", fieldAccess, sliceType.String())
 	fmt.Fprintf(buf, "\t\t\t\t} else {\n")
@@ -545,6 +580,7 @@ func generateSliceReadInlineNoNull(buf *bytes.Buffer, sliceType *types.Slice, fi
 		fmt.Fprintf(buf, "%sif ctx.HasError() {\n", indent)
 		fmt.Fprintf(buf, "%s\treturn ctx.TakeError()\n", indent)
 		fmt.Fprintf(buf, "%s}\n", indent)
+		writeGraphReservation(buf, indent, "sliceLen", unsafeSizeExpr(elemType))
 		fmt.Fprintf(buf, "%sif sliceLen == 0 {\n", indent)
 		fmt.Fprintf(buf, "%s\t%s = make([]any, 0)\n", indent, fieldAccess)
 		fmt.Fprintf(buf, "%s} else {\n", indent)
@@ -568,6 +604,7 @@ func generateSliceReadInlineNoNull(buf *bytes.Buffer, sliceType *types.Slice, fi
 	fmt.Fprintf(buf, "%sif ctx.HasError() {\n", indent)
 	fmt.Fprintf(buf, "%s\treturn ctx.TakeError()\n", indent)
 	fmt.Fprintf(buf, "%s}\n", indent)
+	writeGraphReservation(buf, indent, "sliceLen", unsafeSizeExpr(elemType))
 	fmt.Fprintf(buf, "%sif sliceLen == 0 {\n", indent)
 	fmt.Fprintf(buf, "%s\t%s = make(%s, 0)\n", indent, fieldAccess, sliceType.String())
 	fmt.Fprintf(buf, "%s} else {\n", indent)
@@ -831,6 +868,10 @@ func generateMapReadInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess st
 	fmt.Fprintf(buf, "\t\tif isXlang {\n")
 	fmt.Fprintf(buf, "\t\t\t// xlang mode: maps are not nullable, read directly without null flag\n")
 	fmt.Fprintf(buf, "\t\t\tmapLen := ctx.ReadCollectionLength()\n")
+	fmt.Fprintf(buf, "\t\t\tif ctx.HasError() {\n")
+	fmt.Fprintf(buf, "\t\t\t\treturn ctx.TakeError()\n")
+	fmt.Fprintf(buf, "\t\t\t}\n")
+	writeGraphReservation(buf, "\t\t\t", "mapLen", unsafeSizeExpr(keyType)+" + "+unsafeSizeExpr(valueType))
 	fmt.Fprintf(buf, "\t\t\tif mapLen == 0 {\n")
 	fmt.Fprintf(buf, "\t\t\t\t%s = make(%s)\n", fieldAccess, mapType.String())
 	fmt.Fprintf(buf, "\t\t\t} else {\n")
@@ -849,6 +890,7 @@ func generateMapReadInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess st
 	fmt.Fprintf(buf, "\t\t\t\tif ctx.HasError() {\n")
 	fmt.Fprintf(buf, "\t\t\t\t\treturn ctx.TakeError()\n")
 	fmt.Fprintf(buf, "\t\t\t\t}\n")
+	writeGraphReservation(buf, "\t\t\t\t", "mapLen", unsafeSizeExpr(keyType)+" + "+unsafeSizeExpr(valueType))
 	fmt.Fprintf(buf, "\t\t\t\tif mapLen == 0 {\n")
 	fmt.Fprintf(buf, "\t\t\t\t\t%s = make(%s)\n", fieldAccess, mapType.String())
 	fmt.Fprintf(buf, "\t\t\t\t} else {\n")
@@ -884,6 +926,7 @@ func generateMapReadInlineNoNull(buf *bytes.Buffer, mapType *types.Map, fieldAcc
 	fmt.Fprintf(buf, "%sif ctx.HasError() {\n", indent)
 	fmt.Fprintf(buf, "%s\treturn ctx.TakeError()\n", indent)
 	fmt.Fprintf(buf, "%s}\n", indent)
+	writeGraphReservation(buf, indent, "mapLen", unsafeSizeExpr(keyType)+" + "+unsafeSizeExpr(valueType))
 	fmt.Fprintf(buf, "%sif mapLen == 0 {\n", indent)
 	fmt.Fprintf(buf, "%s\t%s = make(%s)\n", indent, fieldAccess, mapType.String())
 	fmt.Fprintf(buf, "%s} else {\n", indent)
@@ -976,6 +1019,10 @@ func getGoTypeString(t types.Type) string {
 		}
 	}
 	return t.String()
+}
+
+func unsafeSizeExpr(t types.Type) string {
+	return fmt.Sprintf("int64(unsafe.Sizeof(*new(%s)))", getGoTypeString(t))
 }
 
 // generateMapKeyRead generates code to read a map key

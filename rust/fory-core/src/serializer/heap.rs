@@ -58,6 +58,10 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BinaryHeap<T> {
         mem::size_of::<i32>()
     }
 
+    fn fory_graph_self_size() -> usize {
+        mem::size_of::<Self>()
+    }
+
     fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         Ok(TypeId::SET)
     }

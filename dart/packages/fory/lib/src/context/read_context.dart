@@ -45,6 +45,8 @@ import 'package:fory/src/types/uint64.dart';
 /// deserialization operation. Application code normally interacts with [Fory]
 /// instead of preparing contexts directly.
 final class ReadContext {
+  static const int _maxSafeBudgetBytes = 9007199254740991;
+
   /// Effective runtime configuration for the active operation.
   final Config config;
   final TypeResolver _typeResolver;
@@ -54,6 +56,8 @@ final class ReadContext {
   late Buffer _buffer;
   final List<TypeInfo> _sharedTypes = <TypeInfo>[];
   int _depth = 0;
+  int _effectiveGraphMemoryBytes = 0;
+  int _remainingGraphMemoryBytes = 0;
 
   @internal
   ReadContext(
@@ -64,8 +68,16 @@ final class ReadContext {
   );
 
   @internal
+  @pragma('vm:prefer-inline')
   void prepare(Buffer buffer) {
     _buffer = buffer;
+    final configured = config.maxGraphMemoryBytes;
+    final limit = configured > 0 ? configured : 0;
+    if (limit > _maxSafeBudgetBytes) {
+      _throwGraphMemoryOverflow(limit);
+    }
+    _effectiveGraphMemoryBytes = limit;
+    _remainingGraphMemoryBytes = limit;
   }
 
   @internal
@@ -74,6 +86,8 @@ final class ReadContext {
     _refReader.reset();
     _metaStringReader.reset();
     _depth = 0;
+    _effectiveGraphMemoryBytes = 0;
+    _remainingGraphMemoryBytes = 0;
   }
 
   /// The active input buffer for the current operation.
@@ -84,6 +98,44 @@ final class ReadContext {
 
   @internal
   RefReader get refReader => _refReader;
+
+  @internal
+  int get effectiveGraphMemoryBytes => _effectiveGraphMemoryBytes;
+
+  @internal
+  int get remainingGraphMemoryBytes => _remainingGraphMemoryBytes;
+
+  @internal
+  @pragma('vm:prefer-inline')
+  void reserveGraphMemory(int bytes) {
+    if (bytes < 0 || bytes > _maxSafeBudgetBytes) {
+      _throwGraphMemoryOverflow(bytes);
+    }
+    if (_effectiveGraphMemoryBytes <= 0) {
+      return;
+    }
+    final remaining = _remainingGraphMemoryBytes - bytes;
+    if (remaining < 0) {
+      _throwGraphMemoryExceeded(bytes);
+    }
+    _remainingGraphMemoryBytes = remaining;
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwGraphMemoryOverflow(int bytes) {
+    throw StateError(
+      'maxGraphMemoryBytes overflow: requested $bytes estimated graph bytes.',
+    );
+  }
+
+  @pragma('vm:never-inline')
+  Never _throwGraphMemoryExceeded(int bytes) {
+    throw StateError(
+      'maxGraphMemoryBytes exceeded: requested $bytes estimated graph bytes, '
+      '$_remainingGraphMemoryBytes remaining, effective limit '
+      '$_effectiveGraphMemoryBytes.',
+    );
+  }
 
   @internal
   @pragma('vm:prefer-inline')

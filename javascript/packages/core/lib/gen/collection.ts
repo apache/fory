@@ -26,6 +26,9 @@ import { Scope } from "./scope";
 import { AnyHelper } from "./any";
 import type { ReadContext, WriteContext } from "../context";
 
+const REFERENCE_BYTES = 4;
+const COLLECTION_BYTES = 1;
+
 export type CompatibleCollectionArrayReadAction = {
   target: "array" | "list";
   elementTypeId: number;
@@ -245,10 +248,14 @@ class CollectionAnySerializer {
   ): any {
     void fromRef;
     const len = this.readContext.reader.readVarUint32Small7();
+    this.readContext.reserveGraphMemory(
+      COLLECTION_BYTES + len * REFERENCE_BYTES,
+    );
     if (len === 0) {
       return createCollection(len);
     }
     const flags = this.readContext.reader.readUint8();
+    this.readContext.reader.checkReadableBytes(len);
     const result = createCollection(len);
     // IMPORTANT: collection readers must obey the ref/null bits written on the
     // wire, not local TypeScript metadata that may imply a different ref
@@ -456,6 +463,9 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     const newCollection = compatibleListToArray
       ? compatibleArrayCollectionExpr(compatibleReadAction!.elementTypeId, len)
       : this.newCollection(len);
+    const reserveMemory = compatibleListToArray
+      ? ""
+      : `${readContextName}.reserveGraphMemory(${COLLECTION_BYTES} + ${len} * ${REFERENCE_BYTES});`;
     const putAccessor = (item: string, index: string) =>
       compatibleListToArray
         ? compatibleArrayPutAccessor(
@@ -495,6 +505,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
       : `${elemSerializer} = ${anyHelper}.detectSerializer(${readContextName});`;
     return `
             const ${len} = ${this.builder.reader.readVarUint32Small7()};
+            ${reserveMemory}
             let ${flags} = 0;
             if (${len} > 0) {
                 ${flags} = ${this.builder.reader.readUint8()};

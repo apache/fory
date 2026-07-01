@@ -89,7 +89,7 @@ public class CompatibleDifferentSchemaExample {
     MemoryBuffer buffer = MemoryUtils.wrap(bytes);
     buffer.readByte();
     ReadContext readContext = fory.getReadContext();
-    readContext.prepare(buffer, null, false);
+    readContext.prepare(buffer, null, false, buffer.remaining(), false);
     try {
       readContext.getRefReader().tryPreserveRefId(buffer);
       TypeInfo typeInfo = fory.getTypeResolver().readTypeInfo(readContext, targetClass);

@@ -26,6 +26,8 @@ import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/collection_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
+const int _referenceBytes = 4;
+
 abstract final class MapFlags {
   static const int trackingKeyRef = 0x01;
   static const int keyHasNull = 0x02;
@@ -257,6 +259,8 @@ Map<K, V> readTypedMapPayload<K, V>(
   bool hasPreservedRef = false,
 }) {
   var remaining = context.buffer.readVarUint32();
+  context.reserveGraphMemory(1 + remaining * 2 * _referenceBytes);
+  context.buffer.checkReadableBytes(remaining);
   final declaredKeyTypeInfo =
       keyFieldType == null || keyFieldType.isDynamic
           ? null

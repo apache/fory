@@ -21,6 +21,7 @@
 
 #include "fory/serialization/serializer.h"
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -81,6 +82,28 @@ struct MapReserver<MapType,
   static void reserve(MapType &map, uint32_t size) { map.reserve(size); }
 };
 
+template <size_t elem_bytes>
+inline bool reserve_map_storage(ReadContext &ctx, uint32_t length) {
+  constexpr size_t kMaxLength =
+      static_cast<size_t>(std::numeric_limits<uint32_t>::max());
+  if constexpr (elem_bytes <=
+                std::numeric_limits<size_t>::max() / kMaxLength) {
+    return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
+  } else {
+    if (FORY_PREDICT_FALSE(
+            elem_bytes != 0 &&
+            static_cast<size_t>(length) >
+                std::numeric_limits<size_t>::max() / elem_bytes)) {
+      ctx.set_error(Error::invalid_data(
+          "graph memory estimate overflows: length=" +
+          std::to_string(length) + " elementBytes=" +
+          std::to_string(elem_bytes)));
+      return false;
+    }
+    return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
+  }
+}
+
 template <typename MapType>
 inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
   // Lazy error propagation may continue into later readers; do not let that
@@ -88,11 +111,29 @@ inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
+  using Key = typename MapType::key_type;
+  using Value = typename MapType::mapped_type;
+  // Portable lower-bound estimate only: ordered and unordered map node layouts
+  // vary across STL implementations, allocators, and debug modes.
+  static_assert(sizeof(Key) <=
+                    std::numeric_limits<size_t>::max() - sizeof(Value),
+                "map entry memory estimate overflows");
+  constexpr size_t elem_bytes = sizeof(Key) + sizeof(Value);
+  if (FORY_PREDICT_FALSE((!reserve_map_storage<elem_bytes>(ctx, length)))) {
+    return false;
+  }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
     return false;
   }
   MapReserver<MapType>::reserve(map, length);
   return true;
+}
+
+template <typename MapType> inline bool reserve_empty_map(ReadContext &ctx) {
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return false;
+  }
+  return ctx.reserve_graph_memory(0);
 }
 
 /// write chunk size at header offset
@@ -567,6 +608,9 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
 
   MapType result;
   if (length == 0) {
+    if (FORY_PREDICT_FALSE(!reserve_empty_map<MapType>(ctx))) {
+      return result;
+    }
     return result;
   }
   if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
@@ -699,6 +743,9 @@ template <typename K, typename V, typename MapType>
 inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
   MapType result;
   if (length == 0) {
+    if (FORY_PREDICT_FALSE(!reserve_empty_map<MapType>(ctx))) {
+      return result;
+    }
     return result;
   }
   if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {

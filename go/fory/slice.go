@@ -124,6 +124,8 @@ type sliceSerializer struct {
 	type_          reflect.Type
 	elemSerializer Serializer
 	referencable   bool
+	elemBytes      int64
+	maxLength      int64
 }
 
 // newSliceSerializer creates a sliceSerializer for slices with concrete element types.
@@ -144,10 +146,13 @@ func newSliceSerializer(type_ reflect.Type, elemSerializer Serializer, xlang boo
 		reflect.Uint8, reflect.Float32, reflect.Float64:
 		return nil, fmt.Errorf("sliceSerializer does not support primitive element type %v: use dedicated primitive slice serializer", type_)
 	}
+	elemBytes := int64(elem.Size())
 	return &sliceSerializer{
 		type_:          type_,
 		elemSerializer: elemSerializer,
 		referencable:   isRefType(elem, xlang),
+		elemBytes:      elemBytes,
+		maxLength:      maxGraphCount(elemBytes),
 	}, nil
 }
 
@@ -313,6 +318,19 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 			value.Set(reflect.MakeSlice(value.Type(), 0, 0))
 		}
 		return
+	}
+	if !isArrayType {
+		if length < 0 {
+			ctx.setGraphMemoryError("negative graph element count: %d", length)
+			return
+		}
+		if int64(length) > s.maxLength {
+			ctx.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes)
+			return
+		}
+		if !ctx.ReserveGraphMemory(int64(length) * s.elemBytes) {
+			return
+		}
 	}
 
 	// ReadData collection flags
