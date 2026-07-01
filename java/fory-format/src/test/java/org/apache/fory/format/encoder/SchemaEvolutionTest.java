@@ -1,0 +1,1214 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.format.encoder;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import lombok.Data;
+import org.apache.fory.exception.ClassNotCompatibleException;
+import org.apache.fory.format.annotation.ForySchema;
+import org.apache.fory.format.annotation.ForyVersion;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.TypeRef;
+import org.testng.Assert;
+import org.testng.annotations.Test;
+
+public class SchemaEvolutionTest {
+
+  /** Original v1 bean: just a name and an age. */
+  @Data
+  public static class PersonV1 {
+    private String name;
+    private int age;
+  }
+
+  /**
+   * v2: added an email. The codec built against this class must still be able to read v1 payloads
+   * (email will default to null).
+   */
+  @Data
+  public static class PersonV2 {
+    private String name;
+    private int age;
+
+    @ForyVersion(since = 2)
+    private String email;
+  }
+
+  /**
+   * v3: same as v2 with the age field removed. The codec built against this class must read v1
+   * payloads (with age) and v2 payloads (with age + email).
+   */
+  @Data
+  @ForySchema(removedFields = PersonV3.History.class)
+  public static class PersonV3 {
+    private String name;
+
+    @ForyVersion(since = 2)
+    private String email;
+
+    interface History {
+      @ForyVersion(until = 3)
+      int age();
+    }
+  }
+
+  /** Round-trip at the current version: writing PersonV2, reading PersonV2 with evolution on. */
+  @Test
+  public void currentVersionRoundTrip() {
+    RowEncoder<PersonV2> codec = evolvingCodec(PersonV2.class);
+    PersonV2 in = new PersonV2();
+    in.setName("alice");
+    in.setAge(30);
+    in.setEmail("alice@example.com");
+    byte[] bytes = codec.encode(in);
+    PersonV2 out = codec.decode(bytes);
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertEquals(out.getAge(), 30);
+    Assert.assertEquals(out.getEmail(), "alice@example.com");
+  }
+
+  /**
+   * The crux: a payload produced by PersonV1 (literally a different Java class with the v1-shaped
+   * schema) decoded by PersonV2's evolution-enabled codec. We use PersonV1 as a stand-in for "what
+   * older code wrote." Both classes are encoded with schema evolution on so they share the
+   * strict-hash format; PersonV1's history is a single entry, and PersonV2's history contains both
+   * v1 (without email) and v2 (with email) entries that match PersonV1's single entry by hash.
+   */
+  @Test
+  public void olderPayloadReadByNewerCodec() {
+    RowEncoder<PersonV1> oldWriter = evolvingCodec(PersonV1.class);
+    RowEncoder<PersonV2> newReader = evolvingCodec(PersonV2.class);
+
+    PersonV1 in = new PersonV1();
+    in.setName("alice");
+    in.setAge(30);
+    byte[] bytes = oldWriter.encode(in);
+
+    PersonV2 out = newReader.decode(bytes);
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertEquals(out.getAge(), 30);
+    Assert.assertNull(out.getEmail());
+  }
+
+  // --- Compact row format ---
+
+  @Test
+  public void compactRowOlderPayloadReadByNewerCodec() {
+    RowEncoder<PersonV1> oldWriter =
+        Encoders.buildBeanCodec(PersonV1.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    RowEncoder<PersonV2> newReader =
+        Encoders.buildBeanCodec(PersonV2.class)
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    PersonV1 in = new PersonV1();
+    in.setName("bob");
+    in.setAge(42);
+    byte[] bytes = oldWriter.encode(in);
+    PersonV2 out = newReader.decode(bytes);
+    Assert.assertEquals(out.getName(), "bob");
+    Assert.assertEquals(out.getAge(), 42);
+    Assert.assertNull(out.getEmail());
+  }
+
+  /**
+   * The byte[] overloads use bytes.length for the body size; the MemoryBuffer overloads write and
+   * read an embedded int32 size prefix ahead of the 8-byte hash. That framing is a distinct code
+   * path, so exercise a projection hit (older payload, newer reader) through it. Two records are
+   * written into one buffer and read back in order to confirm the reader advances past each
+   * record's embedded size.
+   */
+  @Test
+  public void streamingOlderPayloadReadByNewerCodec() {
+    RowEncoder<PersonV1> oldWriter = evolvingCodec(PersonV1.class);
+    RowEncoder<PersonV2> newReader = evolvingCodec(PersonV2.class);
+
+    PersonV1 alice = new PersonV1();
+    alice.setName("alice");
+    alice.setAge(30);
+    PersonV1 bob = new PersonV1();
+    bob.setName("bob");
+    bob.setAge(42);
+
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    oldWriter.encode(buffer, alice);
+    oldWriter.encode(buffer, bob);
+
+    PersonV2 outAlice = newReader.decode(buffer);
+    PersonV2 outBob = newReader.decode(buffer);
+    Assert.assertEquals(outAlice.getName(), "alice");
+    Assert.assertEquals(outAlice.getAge(), 30);
+    Assert.assertNull(outAlice.getEmail());
+    Assert.assertEquals(outBob.getName(), "bob");
+    Assert.assertEquals(outBob.getAge(), 42);
+    Assert.assertNull(outBob.getEmail());
+  }
+
+  // --- Array of versioned beans ---
+
+  @Test
+  public void arrayStandardOlderPayloadReadByNewerCodec() {
+    ArrayEncoder<List<PersonV1>> oldWriter =
+        Encoders.buildArrayCodec(new TypeRef<List<PersonV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<PersonV2>> newReader =
+        Encoders.buildArrayCodec(new TypeRef<List<PersonV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    PersonV1 a = new PersonV1();
+    a.setName("alice");
+    a.setAge(30);
+    PersonV1 b = new PersonV1();
+    b.setName("bob");
+    b.setAge(42);
+    byte[] bytes = oldWriter.encode(Arrays.asList(a, b));
+    List<PersonV2> out = newReader.decode(bytes);
+    Assert.assertEquals(out.size(), 2);
+    Assert.assertEquals(out.get(0).getName(), "alice");
+    Assert.assertEquals(out.get(0).getAge(), 30);
+    Assert.assertNull(out.get(0).getEmail());
+    Assert.assertEquals(out.get(1).getName(), "bob");
+  }
+
+  @Test
+  public void arrayCompactOlderPayloadReadByNewerCodec() {
+    ArrayEncoder<List<PersonV1>> oldWriter =
+        Encoders.buildArrayCodec(new TypeRef<List<PersonV1>>() {})
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<PersonV2>> newReader =
+        Encoders.buildArrayCodec(new TypeRef<List<PersonV2>>() {})
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    PersonV1 p = new PersonV1();
+    p.setName("carol");
+    p.setAge(25);
+    byte[] bytes = oldWriter.encode(Arrays.asList(p));
+    List<PersonV2> out = newReader.decode(bytes);
+    Assert.assertEquals(out.size(), 1);
+    Assert.assertEquals(out.get(0).getName(), "carol");
+    Assert.assertEquals(out.get(0).getAge(), 25);
+    Assert.assertNull(out.get(0).getEmail());
+  }
+
+  // --- Map with versioned bean values ---
+
+  @Test
+  public void mapStandardOlderPayloadReadByNewerCodec() {
+    MapEncoder<Map<String, PersonV1>> oldWriter =
+        Encoders.buildMapCodec(new TypeRef<Map<String, PersonV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, PersonV2>> newReader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, PersonV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Map<String, PersonV1> in = new HashMap<>();
+    PersonV1 p = new PersonV1();
+    p.setName("dave");
+    p.setAge(40);
+    in.put("k1", p);
+    byte[] bytes = oldWriter.encode(in);
+    Map<String, PersonV2> out = newReader.decode(bytes);
+    Assert.assertEquals(out.size(), 1);
+    Assert.assertEquals(out.get("k1").getName(), "dave");
+    Assert.assertEquals(out.get("k1").getAge(), 40);
+    Assert.assertNull(out.get("k1").getEmail());
+  }
+
+  @Test
+  public void mapCompactOlderPayloadReadByNewerCodec() {
+    MapEncoder<Map<String, PersonV1>> oldWriter =
+        Encoders.buildMapCodec(new TypeRef<Map<String, PersonV1>>() {})
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, PersonV2>> newReader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, PersonV2>>() {})
+            .compactEncoding()
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Map<String, PersonV1> in = new HashMap<>();
+    PersonV1 p = new PersonV1();
+    p.setName("eve");
+    p.setAge(28);
+    in.put("k1", p);
+    byte[] bytes = oldWriter.encode(in);
+    Map<String, PersonV2> out = newReader.decode(bytes);
+    Assert.assertEquals(out.get("k1").getName(), "eve");
+    Assert.assertEquals(out.get("k1").getAge(), 28);
+    Assert.assertNull(out.get("k1").getEmail());
+  }
+
+  // An evolution-on array/map prepends the 8-byte schema hash even when the collection is empty, so
+  // the framed payload is exactly the prefix with a zero-length body (size == 8, bodySize == 0).
+  // The reader must dispatch on the hash and return an empty collection rather than tripping the
+  // size guard or reading past the prefix.
+  @Test
+  public void emptyArrayRoundTrip() {
+    ArrayEncoder<List<PersonV1>> oldWriter =
+        Encoders.buildArrayCodec(new TypeRef<List<PersonV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<PersonV2>> newReader =
+        Encoders.buildArrayCodec(new TypeRef<List<PersonV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    byte[] bytes = oldWriter.encode(Arrays.<PersonV1>asList());
+    List<PersonV2> out = newReader.decode(bytes);
+    Assert.assertTrue(out.isEmpty());
+  }
+
+  @Test
+  public void emptyMapRoundTrip() {
+    MapEncoder<Map<String, PersonV1>> oldWriter =
+        Encoders.buildMapCodec(new TypeRef<Map<String, PersonV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, PersonV2>> newReader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, PersonV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    byte[] bytes = oldWriter.encode(new HashMap<>());
+    Map<String, PersonV2> out = newReader.decode(bytes);
+    Assert.assertTrue(out.isEmpty());
+  }
+
+  /**
+   * Streaming counterpart of {@link #arrayStandardOlderPayloadReadByNewerCodec}: the
+   * encode(MemoryBuffer) overload frames each record with an embedded int32 size. Two older-schema
+   * lists in one buffer confirm the reader advances past each record's size on a projection hit.
+   */
+  @Test
+  public void arrayStreamingOlderPayloadReadByNewerCodec() {
+    ArrayEncoder<List<PersonV1>> oldWriter =
+        Encoders.buildArrayCodec(new TypeRef<List<PersonV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<PersonV2>> newReader =
+        Encoders.buildArrayCodec(new TypeRef<List<PersonV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    PersonV1 a = new PersonV1();
+    a.setName("alice");
+    a.setAge(30);
+    PersonV1 b = new PersonV1();
+    b.setName("bob");
+    b.setAge(42);
+
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    oldWriter.encode(buffer, Arrays.asList(a));
+    oldWriter.encode(buffer, Arrays.asList(b));
+
+    List<PersonV2> outA = newReader.decode(buffer);
+    List<PersonV2> outB = newReader.decode(buffer);
+    Assert.assertEquals(outA.size(), 1);
+    Assert.assertEquals(outA.get(0).getName(), "alice");
+    Assert.assertEquals(outA.get(0).getAge(), 30);
+    Assert.assertNull(outA.get(0).getEmail());
+    Assert.assertEquals(outB.get(0).getName(), "bob");
+    Assert.assertEquals(outB.get(0).getAge(), 42);
+  }
+
+  /**
+   * Streaming counterpart of {@link #mapStandardOlderPayloadReadByNewerCodec}. The map
+   * encode(MemoryBuffer) path restores both the key and value writer buffers in a finally block;
+   * two records in one buffer exercise that restore across records.
+   */
+  @Test
+  public void mapStreamingOlderPayloadReadByNewerCodec() {
+    MapEncoder<Map<String, PersonV1>> oldWriter =
+        Encoders.buildMapCodec(new TypeRef<Map<String, PersonV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, PersonV2>> newReader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, PersonV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Map<String, PersonV1> first = new HashMap<>();
+    PersonV1 dave = new PersonV1();
+    dave.setName("dave");
+    dave.setAge(40);
+    first.put("k1", dave);
+    Map<String, PersonV1> second = new HashMap<>();
+    PersonV1 erin = new PersonV1();
+    erin.setName("erin");
+    erin.setAge(35);
+    second.put("k2", erin);
+
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    oldWriter.encode(buffer, first);
+    oldWriter.encode(buffer, second);
+
+    Map<String, PersonV2> outFirst = newReader.decode(buffer);
+    Map<String, PersonV2> outSecond = newReader.decode(buffer);
+    Assert.assertEquals(outFirst.get("k1").getName(), "dave");
+    Assert.assertEquals(outFirst.get("k1").getAge(), 40);
+    Assert.assertNull(outFirst.get("k1").getEmail());
+    Assert.assertEquals(outSecond.get("k2").getName(), "erin");
+    Assert.assertEquals(outSecond.get("k2").getAge(), 35);
+  }
+
+  // --- Unversioned element bean still carries the strict-hash prefix ---
+  //
+  // A top-level array/map built with withSchemaEvolution() must emit the 8-byte prefix even when
+  // its element/value bean has no @ForyVersion fields, so two independently-built evolution-on
+  // codecs stay wire-compatible (see SchemaHistory#evolutionBean). Each test compares the evolving
+  // payload against a non-evolving one: the lengths must differ by exactly the prefix, which a
+  // regression skipping the evolution path for an unversioned element would not produce.
+
+  @Test
+  public void arrayOfUnversionedBeanCarriesHashPrefix() {
+    ArrayEncoder<List<Item>> evolving =
+        Encoders.buildArrayCodec(new TypeRef<List<Item>>() {}).withSchemaEvolution().build().get();
+    ArrayEncoder<List<Item>> plain =
+        Encoders.buildArrayCodec(new TypeRef<List<Item>>() {}).build().get();
+    Item item = new Item();
+    item.setName("widget");
+    item.setQuantity(7);
+    List<Item> in = Arrays.asList(item);
+
+    byte[] evolvingBytes = evolving.encode(in);
+    byte[] plainBytes = plain.encode(in);
+    Assert.assertEquals(evolvingBytes.length, plainBytes.length + 8);
+
+    // A separately-built evolution-on codec reads the prefixed payload back.
+    ArrayEncoder<List<Item>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<Item>>() {}).withSchemaEvolution().build().get();
+    List<Item> out = reader.decode(evolvingBytes);
+    Assert.assertEquals(out.size(), 1);
+    Assert.assertEquals(out.get(0).getName(), "widget");
+    Assert.assertEquals(out.get(0).getQuantity(), 7);
+  }
+
+  @Test
+  public void mapOfUnversionedBeanCarriesHashPrefix() {
+    MapEncoder<Map<String, Item>> evolving =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Item>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, Item>> plain =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Item>>() {}).build().get();
+    Item item = new Item();
+    item.setName("gadget");
+    item.setQuantity(3);
+    Map<String, Item> in = new HashMap<>();
+    in.put("k1", item);
+
+    byte[] evolvingBytes = evolving.encode(in);
+    byte[] plainBytes = plain.encode(in);
+    Assert.assertEquals(evolvingBytes.length, plainBytes.length + 8);
+
+    MapEncoder<Map<String, Item>> reader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Item>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Map<String, Item> out = reader.decode(evolvingBytes);
+    Assert.assertEquals(out.size(), 1);
+    Assert.assertEquals(out.get("k1").getName(), "gadget");
+    Assert.assertEquals(out.get("k1").getQuantity(), 3);
+  }
+
+  // --- Interface-typed beans ---
+  //
+  // The wire field name is derived from each interface's accessor method name (via
+  // lowerCamelToLowerUnderscore), so two interfaces that share the same accessor names produce
+  // the same wire layout. Use accessor-style getters consistently across versions.
+
+  /** v1 interface: just name and age. */
+  public interface PersonIfaceV1 {
+    String getName();
+
+    int getAge();
+  }
+
+  /** v2 interface: adds email. Same accessor naming so the wire field names match. */
+  public interface PersonIfaceV2 {
+    String getName();
+
+    int getAge();
+
+    @ForyVersion(since = 2)
+    String getEmail();
+  }
+
+  @Test
+  public void interfaceOlderPayloadReadByNewerCodec() {
+    RowEncoder<PersonIfaceV1> oldWriter = evolvingCodec(PersonIfaceV1.class);
+    RowEncoder<PersonIfaceV2> newReader = evolvingCodec(PersonIfaceV2.class);
+    PersonIfaceV1 in =
+        new PersonIfaceV1() {
+          public String getName() {
+            return "alice";
+          }
+
+          public int getAge() {
+            return 30;
+          }
+        };
+    byte[] bytes = oldWriter.encode(in);
+    PersonIfaceV2 out = newReader.decode(bytes);
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertEquals(out.getAge(), 30);
+    // email was added in v2; v1 payload has none. The interface proxy returns the default.
+    Assert.assertNull(out.getEmail());
+  }
+
+  /**
+   * v3 interface: name and email; age removed (only present in v1 and v2). The history interface
+   * declares the removed field's original signature; its method name follows the same JavaBeans
+   * accessor convention as the live interface, so {@code getAge()} maps to wire name {@code age}.
+   */
+  @ForySchema(removedFields = PersonIfaceV3.History.class)
+  public interface PersonIfaceV3 {
+    String getName();
+
+    @ForyVersion(since = 2)
+    String getEmail();
+
+    interface History {
+      @ForyVersion(until = 3)
+      int getAge();
+    }
+  }
+
+  @Test
+  public void interfaceRemovedFieldReadByNewerCodec() {
+    RowEncoder<PersonIfaceV2> v2Writer = evolvingCodec(PersonIfaceV2.class);
+    RowEncoder<PersonIfaceV3> v3Reader = evolvingCodec(PersonIfaceV3.class);
+    PersonIfaceV2 in =
+        new PersonIfaceV2() {
+          public String getName() {
+            return "alice";
+          }
+
+          public int getAge() {
+            return 30;
+          }
+
+          public String getEmail() {
+            return "alice@example.com";
+          }
+        };
+    byte[] bytes = v2Writer.encode(in);
+    PersonIfaceV3 out = v3Reader.decode(bytes);
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertEquals(out.getEmail(), "alice@example.com");
+  }
+
+  /**
+   * v1 writer interface: just a name. Used to produce a payload that the reader below projects to
+   * its v1 schema, where {@code score} is absent.
+   */
+  public interface ScoredV1 {
+    String getName();
+  }
+
+  /**
+   * Current reader interface. {@code getScore()} is a live {@code since=2} accessor, so when a v1
+   * payload is projected it is absent and gets a default-value body. {@code getScore(int)} is a
+   * parameterized overload sharing that name and return type. It is not an accessor — accessors
+   * take no arguments — so the projection proxy must throw for it rather than silence it into a
+   * default. Without the {@code parameterCount() != 0} guard in {@code isAccessorOfAbsentField}, it
+   * would match the absent {@code score} descriptor by name and return type and return {@code 0}.
+   */
+  public interface ScoredV2 {
+    String getName();
+
+    @ForyVersion(since = 2)
+    int getScore();
+
+    int getScore(int seed);
+  }
+
+  @Test
+  public void projectionNonAccessorOverloadStillThrows() {
+    RowEncoder<ScoredV1> v1Writer = evolvingCodec(ScoredV1.class);
+    RowEncoder<ScoredV2> reader = evolvingCodec(ScoredV2.class);
+    ScoredV1 in = () -> "alice";
+    ScoredV2 out = reader.decode(v1Writer.encode(in));
+    Assert.assertEquals(out.getName(), "alice");
+    // score was added in v2; the v1 payload has none, so the no-arg accessor defaults to 0.
+    Assert.assertEquals(out.getScore(), 0);
+    try {
+      out.getScore(7);
+      Assert.fail(
+          "parameterized getScore is not an accessor and must not be silenced to a default");
+    } catch (UnsupportedOperationException expected) {
+      // The projection proxy does not implement non-accessor methods.
+    }
+  }
+
+  /** Removed-field test: v3 codec reads v2 payload, dropping the no-longer-present 'age'. */
+  @Test
+  public void removedFieldReadByNewerCodec() {
+    RowEncoder<PersonV2> v2Writer = evolvingCodec(PersonV2.class);
+    RowEncoder<PersonV3> v3Reader = evolvingCodec(PersonV3.class);
+
+    PersonV2 in = new PersonV2();
+    in.setName("alice");
+    in.setAge(30);
+    in.setEmail("alice@example.com");
+    byte[] bytes = v2Writer.encode(in);
+
+    PersonV3 out = v3Reader.decode(bytes);
+    Assert.assertEquals(out.getName(), "alice");
+    Assert.assertEquals(out.getEmail(), "alice@example.com");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Compositional test
+  //
+  // Outer mutable bean evolves v1 -> v2 (adds displayName, removes legacyName).
+  // The bean carries diverse nested data shapes that themselves do not evolve:
+  // a concrete struct, an interface-typed struct (lazy proxy), an inline list
+  // of structs, and an inline map<string, struct>. The test exercises one
+  // dispatch boundary (the outer codec, or the outer list codec) and verifies
+  // that the projected outer correctly carries every nested shape through.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class Profile {
+    private String bio;
+    private int rating;
+  }
+
+  /** Address is interface-typed; the row codec generates a lazy proxy for reads. */
+  public interface Address {
+    String getStreet();
+
+    String getCity();
+  }
+
+  @Data
+  public static class Item {
+    private String name;
+    private long quantity;
+  }
+
+  @Data
+  public static class OuterV1 {
+    private long id;
+    private String legacyName;
+    private Profile profile;
+    private Address address;
+    private List<Item> items;
+    private Map<String, Item> properties;
+  }
+
+  /**
+   * OuterV2 adds {@code displayName} at version 2 and removes {@code legacyName} at version 2.
+   * Everything else carries forward unchanged. The compositional test writes an OuterV1 and reads
+   * as OuterV2.
+   */
+  @Data
+  @ForySchema(removedFields = OuterV2.History.class)
+  public static class OuterV2 {
+    private long id;
+
+    @ForyVersion(since = 2)
+    private String displayName;
+
+    private Profile profile;
+    private Address address;
+    private List<Item> items;
+    private Map<String, Item> properties;
+
+    interface History {
+      @ForyVersion(until = 2)
+      String legacyName();
+    }
+  }
+
+  private static OuterV1 sampleV1() {
+    OuterV1 in = new OuterV1();
+    in.setId(7);
+    in.setLegacyName("retired");
+    Profile p = new Profile();
+    p.setBio("hello");
+    p.setRating(5);
+    in.setProfile(p);
+    in.setAddress(
+        new Address() {
+          public String getStreet() {
+            return "1 Main";
+          }
+
+          public String getCity() {
+            return "Springfield";
+          }
+        });
+    Item a = new Item();
+    a.setName("a");
+    a.setQuantity(1);
+    Item b = new Item();
+    b.setName("b");
+    b.setQuantity(2);
+    in.setItems(Arrays.asList(a, b));
+    Map<String, Item> props = new HashMap<>();
+    props.put("k1", a);
+    props.put("k2", b);
+    in.setProperties(props);
+    return in;
+  }
+
+  private static void assertProjectedToV2(OuterV2 out) {
+    Assert.assertEquals(out.getId(), 7);
+    Assert.assertNull(out.getDisplayName()); // added in v2, absent in v1 wire
+    Assert.assertEquals(out.getProfile().getBio(), "hello");
+    Assert.assertEquals(out.getProfile().getRating(), 5);
+    Assert.assertEquals(out.getAddress().getStreet(), "1 Main");
+    Assert.assertEquals(out.getAddress().getCity(), "Springfield");
+    Assert.assertEquals(out.getItems().size(), 2);
+    Assert.assertEquals(out.getItems().get(0).getName(), "a");
+    Assert.assertEquals(out.getItems().get(1).getQuantity(), 2);
+    Assert.assertEquals(out.getProperties().get("k1").getName(), "a");
+    Assert.assertEquals(out.getProperties().get("k2").getQuantity(), 2);
+  }
+
+  @Test
+  public void compositionalRowEvolution() {
+    RowEncoder<OuterV1> writer = evolvingCodec(OuterV1.class);
+    RowEncoder<OuterV2> reader = evolvingCodec(OuterV2.class);
+    byte[] bytes = writer.encode(sampleV1());
+    assertProjectedToV2(reader.decode(bytes));
+  }
+
+  @Test
+  public void compositionalArrayEvolution() {
+    ArrayEncoder<List<OuterV1>> writer =
+        Encoders.buildArrayCodec(new TypeRef<List<OuterV1>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<OuterV2>> reader =
+        Encoders.buildArrayCodec(new TypeRef<List<OuterV2>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    byte[] bytes = writer.encode(Arrays.asList(sampleV1(), sampleV1()));
+    List<OuterV2> out = reader.decode(bytes);
+    Assert.assertEquals(out.size(), 2);
+    assertProjectedToV2(out.get(0));
+    assertProjectedToV2(out.get(1));
+  }
+
+  // ---------------------------------------------------------------------------
+  // A versioned bean nested inside a collection field of the outer bean. The
+  // outer's SchemaHistory must look through the list/map wrapper to discover the
+  // inner bean and enumerate its versions, so an older payload (inner at v1) is
+  // projected into the newer reader (inner at v2). Without that, the outer has no
+  // projection matching the older inner layout and decode throws.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class TagV1 {
+    private String key;
+  }
+
+  @Data
+  public static class TagV2 {
+    private String key;
+
+    @ForyVersion(since = 2)
+    private long weight;
+  }
+
+  @Data
+  public static class CatalogV1 {
+    private String id;
+    private List<TagV1> tags;
+    private Map<String, TagV1> labels;
+  }
+
+  @Data
+  public static class CatalogV2 {
+    private String id;
+    private List<TagV2> tags;
+    private Map<String, TagV2> labels;
+  }
+
+  private static CatalogV1 sampleCatalog() {
+    CatalogV1 in = new CatalogV1();
+    in.setId("c1");
+    TagV1 a = new TagV1();
+    a.setKey("alpha");
+    TagV1 b = new TagV1();
+    b.setKey("beta");
+    in.setTags(Arrays.asList(a, b));
+    Map<String, TagV1> labels = new HashMap<>();
+    labels.put("k1", a);
+    in.setLabels(labels);
+    return in;
+  }
+
+  @Test
+  public void evolvingBeanInCollectionField() {
+    RowEncoder<CatalogV1> writer = evolvingCodec(CatalogV1.class);
+    RowEncoder<CatalogV2> reader = evolvingCodec(CatalogV2.class);
+    CatalogV2 out = reader.decode(writer.encode(sampleCatalog()));
+    Assert.assertEquals(out.getId(), "c1");
+    Assert.assertEquals(out.getTags().size(), 2);
+    Assert.assertEquals(out.getTags().get(0).getKey(), "alpha");
+    Assert.assertEquals(out.getTags().get(1).getKey(), "beta");
+    // weight was added at v2; the v1 payload has no source for it.
+    Assert.assertEquals(out.getTags().get(0).getWeight(), 0L);
+    Assert.assertEquals(out.getLabels().get("k1").getKey(), "alpha");
+  }
+
+  // ---------------------------------------------------------------------------
+  // A versioned *interface* bean nested inside an evolving outer bean. Interface
+  // beans are valid versioned row beans at the top level (see PersonIfaceV1/V2),
+  // so they must also be discovered when nested as a field type, a list element,
+  // or a map value. SchemaHistory.findVersionedBean has to recognize an interface
+  // the same way the top-level container path does (synthesizing the interface as
+  // a bean); otherwise the outer's cross-product never enumerates the inner's
+  // older versions, an older inner payload has no matching projection, and decode
+  // fails with a schema-hash mismatch (ClassNotCompatibleException).
+  // ---------------------------------------------------------------------------
+
+  /** v1 interface bean: a single key accessor. */
+  public interface SlugV1 {
+    String getKey();
+  }
+
+  /** v2 interface bean: adds a weight at version 2. Same accessor naming as v1. */
+  public interface SlugV2 {
+    String getKey();
+
+    @ForyVersion(since = 2)
+    long getWeight();
+  }
+
+  @Data
+  public static class BoxV1 {
+    private String id;
+    private SlugV1 slug;
+    private List<SlugV1> slugs;
+    private Map<String, SlugV1> labels;
+  }
+
+  @Data
+  public static class BoxV2 {
+    private String id;
+    private SlugV2 slug;
+    private List<SlugV2> slugs;
+    private Map<String, SlugV2> labels;
+  }
+
+  private static SlugV1 slugV1(String key) {
+    return () -> key;
+  }
+
+  @Test
+  public void evolvingInterfaceBeanNestedInOuterBean() {
+    RowEncoder<BoxV1> writer = evolvingCodec(BoxV1.class);
+    RowEncoder<BoxV2> reader = evolvingCodec(BoxV2.class);
+
+    BoxV1 in = new BoxV1();
+    in.setId("b1");
+    in.setSlug(slugV1("direct"));
+    in.setSlugs(Arrays.asList(slugV1("alpha"), slugV1("beta")));
+    Map<String, SlugV1> labels = new HashMap<>();
+    labels.put("k1", slugV1("gamma"));
+    in.setLabels(labels);
+
+    BoxV2 out = reader.decode(writer.encode(in));
+
+    Assert.assertEquals(out.getId(), "b1");
+    Assert.assertEquals(out.getSlug().getKey(), "direct");
+    Assert.assertEquals(out.getSlugs().size(), 2);
+    Assert.assertEquals(out.getSlugs().get(0).getKey(), "alpha");
+    Assert.assertEquals(out.getSlugs().get(1).getKey(), "beta");
+    Assert.assertEquals(out.getLabels().get("k1").getKey(), "gamma");
+    // weight was added at v2; the v1 payload has no source, so it defaults.
+    Assert.assertEquals(out.getSlug().getWeight(), 0L);
+    Assert.assertEquals(out.getSlugs().get(0).getWeight(), 0L);
+    Assert.assertEquals(out.getLabels().get("k1").getWeight(), 0L);
+  }
+
+  // --- Versioned bean nested inside a top-level container's element/value ---
+  //
+  // A top-level array or map whose element/value is itself a collection of a versioned bean
+  // (List<Person>, Map<.., Person>) must still evolve. The versioned bean is reachable through
+  // the container element/value the same way SchemaHistory.findVersionedBean descends, so an
+  // older payload must decode under the newer codec rather than being read at a stale layout.
+
+  @Test
+  public void mapOfListValueOlderPayloadReadByNewerCodec() {
+    MapEncoder<Map<String, List<PersonV1>>> oldWriter =
+        Encoders.buildMapCodec(new TypeRef<Map<String, List<PersonV1>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, List<PersonV2>>> newReader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, List<PersonV2>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    Map<String, List<PersonV1>> in = new HashMap<>();
+    PersonV1 p = new PersonV1();
+    p.setName("dave");
+    p.setAge(40);
+    in.put("k1", Arrays.asList(p));
+    byte[] bytes = oldWriter.encode(in);
+    Map<String, List<PersonV2>> out = newReader.decode(bytes);
+    Assert.assertEquals(out.size(), 1);
+    PersonV2 read = out.get("k1").get(0);
+    Assert.assertEquals(read.getName(), "dave");
+    Assert.assertEquals(read.getAge(), 40);
+    Assert.assertNull(read.getEmail());
+  }
+
+  @Test
+  public void arrayOfListElementOlderPayloadReadByNewerCodec() {
+    ArrayEncoder<List<List<PersonV1>>> oldWriter =
+        Encoders.buildArrayCodec(new TypeRef<List<List<PersonV1>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    ArrayEncoder<List<List<PersonV2>>> newReader =
+        Encoders.buildArrayCodec(new TypeRef<List<List<PersonV2>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    PersonV1 p = new PersonV1();
+    p.setName("dave");
+    p.setAge(40);
+    byte[] bytes = oldWriter.encode(Arrays.asList(Arrays.asList(p)));
+    List<List<PersonV2>> out = newReader.decode(bytes);
+    Assert.assertEquals(out.size(), 1);
+    PersonV2 read = out.get(0).get(0);
+    Assert.assertEquals(read.getName(), "dave");
+    Assert.assertEquals(read.getAge(), 40);
+    Assert.assertNull(read.getEmail());
+  }
+
+  /** Map value is itself a map of the versioned bean, exercising the map-wrapper projection. */
+  @Test
+  public void mapOfMapValueOlderPayloadReadByNewerCodec() {
+    MapEncoder<Map<String, Map<String, PersonV1>>> oldWriter =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Map<String, PersonV1>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    MapEncoder<Map<String, Map<String, PersonV2>>> newReader =
+        Encoders.buildMapCodec(new TypeRef<Map<String, Map<String, PersonV2>>>() {})
+            .withSchemaEvolution()
+            .build()
+            .get();
+    PersonV1 p = new PersonV1();
+    p.setName("dave");
+    p.setAge(40);
+    Map<String, PersonV1> inner = new HashMap<>();
+    inner.put("inner", p);
+    Map<String, Map<String, PersonV1>> in = new HashMap<>();
+    in.put("k1", inner);
+    Map<String, Map<String, PersonV2>> out = newReader.decode(oldWriter.encode(in));
+    PersonV2 read = out.get("k1").get("inner");
+    Assert.assertEquals(read.getName(), "dave");
+    Assert.assertEquals(read.getAge(), 40);
+    Assert.assertNull(read.getEmail());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Added reference-typed fields. Every other added-field test defaults a scalar
+  // (String/int/...); defaulting an added struct or collection slot is a distinct
+  // projection path. v2 adds a nested struct and a list of structs that are absent
+  // from the v1 wire, so both must read back as null.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class HolderV1 {
+    private long id;
+  }
+
+  @Data
+  public static class HolderV2 {
+    private long id;
+
+    @ForyVersion(since = 2)
+    private Profile profile;
+
+    @ForyVersion(since = 2)
+    private List<Item> items;
+  }
+
+  @Test
+  public void addedReferenceFieldsDefaultToNull() {
+    RowEncoder<HolderV1> writer = evolvingCodec(HolderV1.class);
+    RowEncoder<HolderV2> reader = evolvingCodec(HolderV2.class);
+
+    HolderV1 in = new HolderV1();
+    in.setId(7);
+    HolderV2 out = reader.decode(writer.encode(in));
+
+    Assert.assertEquals(out.getId(), 7);
+    Assert.assertNull(out.getProfile());
+    Assert.assertNull(out.getItems());
+  }
+
+  // ---------------------------------------------------------------------------
+  // A versioned bean reached only through an Optional field. TypeInference.inferField
+  // unwraps Optional<T> to a nullable T and encodes the inner bean as a struct, so the
+  // evolution walk must look through Optional the same way. Without that, the outer's
+  // cross-product never enumerates the inner's older versions and an older payload
+  // (inner at v1) has no matching projection under the newer reader.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class OptionalHolderV1 {
+    private String id;
+    private Optional<TagV1> tag;
+  }
+
+  @Data
+  public static class OptionalHolderV2 {
+    private String id;
+    private Optional<TagV2> tag;
+  }
+
+  @Test
+  public void evolvingBeanInOptionalField() {
+    RowEncoder<OptionalHolderV1> writer = evolvingCodec(OptionalHolderV1.class);
+    RowEncoder<OptionalHolderV2> reader = evolvingCodec(OptionalHolderV2.class);
+
+    OptionalHolderV1 in = new OptionalHolderV1();
+    in.setId("o1");
+    TagV1 tag = new TagV1();
+    tag.setKey("alpha");
+    in.setTag(Optional.of(tag));
+
+    OptionalHolderV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), "o1");
+    Assert.assertEquals(out.getTag().get().getKey(), "alpha");
+    // weight was added at v2; the v1 payload has no source for it.
+    Assert.assertEquals(out.getTag().get().getWeight(), 0L);
+  }
+
+  // ---------------------------------------------------------------------------
+  // A versioned bean reached through a bare Iterable field. TypeInference encodes
+  // any Iterable (ITERABLE_TYPE.isSupertypeOf), not just Collection, as an array,
+  // so the evolution walk must descend an Iterable element too. A field typed
+  // Iterable<Bean> (not Collection<Bean>) otherwise slips past the collection
+  // branch and its element bean is never enumerated.
+  // ---------------------------------------------------------------------------
+
+  @Data
+  public static class IterableHolderV1 {
+    private String id;
+    private Iterable<TagV1> tags;
+  }
+
+  @Data
+  public static class IterableHolderV2 {
+    private String id;
+    private Iterable<TagV2> tags;
+  }
+
+  @Test
+  public void evolvingBeanInIterableField() {
+    RowEncoder<IterableHolderV1> writer = evolvingCodec(IterableHolderV1.class);
+    RowEncoder<IterableHolderV2> reader = evolvingCodec(IterableHolderV2.class);
+
+    IterableHolderV1 in = new IterableHolderV1();
+    in.setId("i1");
+    TagV1 a = new TagV1();
+    a.setKey("alpha");
+    TagV1 b = new TagV1();
+    b.setKey("beta");
+    in.setTags(Arrays.asList(a, b));
+
+    IterableHolderV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), "i1");
+    List<TagV2> tags = new ArrayList<>();
+    out.getTags().forEach(tags::add);
+    Assert.assertEquals(tags.size(), 2);
+    Assert.assertEquals(tags.get(0).getKey(), "alpha");
+    Assert.assertEquals(tags.get(1).getKey(), "beta");
+    Assert.assertEquals(tags.get(0).getWeight(), 0L);
+  }
+
+  // ---------------------------------------------------------------------------
+  // A versioned bean reached only through a custom codec's encodedType(). inferField
+  // resolves the codec and recurses into encodedType(), encoding the versioned struct,
+  // so the evolution walk must resolve the codec the same way. The declared field type
+  // (Money) is not itself a bean, so without codec resolution the inner versioned bean
+  // is never enumerated and an older payload decodes at the current layout, reading a
+  // field that does not exist in the older row.
+  // ---------------------------------------------------------------------------
+
+  /** A domain type encoded through a custom codec into a versioned struct. */
+  public static final class Money {
+    final long cents;
+
+    Money(long cents) {
+      this.cents = cents;
+    }
+  }
+
+  @Data
+  public static class AmountV1 {
+    private long cents;
+  }
+
+  @Data
+  public static class AmountV2 {
+    private long cents;
+
+    @ForyVersion(since = 2)
+    private String currency;
+  }
+
+  static final class MoneyCodecV1 implements CustomCodec<Money, AmountV1> {
+    @Override
+    public Field getForyField(String fieldName) {
+      return null; // default inference: recurse into encodedType()
+    }
+
+    @Override
+    public AmountV1 encode(Money value) {
+      AmountV1 a = new AmountV1();
+      a.setCents(value.cents);
+      return a;
+    }
+
+    @Override
+    public Money decode(AmountV1 a) {
+      return new Money(a.getCents());
+    }
+
+    @Override
+    public TypeRef<AmountV1> encodedType() {
+      return TypeRef.of(AmountV1.class);
+    }
+  }
+
+  static final class MoneyCodecV2 implements CustomCodec<Money, AmountV2> {
+    @Override
+    public Field getForyField(String fieldName) {
+      return null;
+    }
+
+    @Override
+    public AmountV2 encode(Money value) {
+      AmountV2 a = new AmountV2();
+      a.setCents(value.cents);
+      return a;
+    }
+
+    @Override
+    public Money decode(AmountV2 a) {
+      return new Money(a.getCents());
+    }
+
+    @Override
+    public TypeRef<AmountV2> encodedType() {
+      return TypeRef.of(AmountV2.class);
+    }
+  }
+
+  @Data
+  public static class WalletV1 {
+    private String id;
+    private Money balance;
+  }
+
+  @Data
+  public static class WalletV2 {
+    private String id;
+    private Money balance;
+  }
+
+  @Test
+  public void evolvingBeanThroughCustomCodec() {
+    Encoders.registerCustomCodec(WalletV1.class, Money.class, new MoneyCodecV1());
+    Encoders.registerCustomCodec(WalletV2.class, Money.class, new MoneyCodecV2());
+
+    RowEncoder<WalletV1> writer = evolvingCodec(WalletV1.class);
+    RowEncoder<WalletV2> reader = evolvingCodec(WalletV2.class);
+
+    WalletV1 in = new WalletV1();
+    in.setId("w1");
+    in.setBalance(new Money(500));
+
+    WalletV2 out = reader.decode(writer.encode(in));
+    Assert.assertEquals(out.getId(), "w1");
+    // The v1 payload encoded balance as AmountV1 (cents only); the v2 codec projects it.
+    Assert.assertEquals(out.getBalance().cents, 500L);
+  }
+
+  /**
+   * Forward reads are intentionally unsupported: a reader built against an older class cannot
+   * decode a payload written at a newer schema it has never seen. PersonV2 writes a v2 payload
+   * (with the since=2 email field); a PersonV1-built reader knows only v1's strict hash, so the v2
+   * hash matches neither its current schema nor any historical projection, and decode fails loud
+   * rather than silently dropping the newer field. This pins the asymmetry of the
+   * old-writer/new-reader contract.
+   */
+  @Test(expectedExceptions = ClassNotCompatibleException.class)
+  public void newerPayloadRejectedByOlderCodec() {
+    RowEncoder<PersonV2> newWriter = evolvingCodec(PersonV2.class);
+    RowEncoder<PersonV1> oldReader = evolvingCodec(PersonV1.class);
+
+    PersonV2 in = new PersonV2();
+    in.setName("alice");
+    in.setAge(30);
+    in.setEmail("alice@example.com");
+
+    oldReader.decode(newWriter.encode(in));
+  }
+
+  private static <T> RowEncoder<T> evolvingCodec(Class<T> beanClass) {
+    return Encoders.buildBeanCodec(beanClass).withSchemaEvolution().build().get();
+  }
+}

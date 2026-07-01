@@ -187,6 +187,116 @@ std::string str = bar10->get_string(0);
 | Memory usage         | Full object graph in memory   | Only accessed fields            |
 | Suitable for         | Small objects, full access    | Large objects, selective access |
 
+## Schema evolution
+
+Enable `.withSchemaEvolution()` on a row, array, or map codec builder to read payloads written
+by older versions of the same bean. Writing always uses the current version; reading detects
+the payload's version from a strict hash at the head of the payload. Java only.
+
+Annotate fields added after v1 with `@ForyVersion(since = N)`:
+
+```java
+@Data
+public class Person {
+  String name;
+  int age;
+
+  @ForyVersion(since = 2)
+  String email;
+}
+```
+
+A v1 payload (with `name` and `age` only) decodes to a `Person` whose `email` is `null`.
+Primitive fields added later default to `0`, `0.0`, or `false`. Unannotated fields are treated
+as present from the first version, so a class can adopt versioning by annotating only the fields
+added after v1.
+
+For a record, the absent component's default is passed to the canonical constructor, so a
+constructor that rejects `null` for a reference component added in a later version throws when
+decoding an older payload. Let the constructor tolerate the missing value, for example by
+normalizing `null` to a default:
+
+```java
+public record Person(String name, @ForyVersion(since = 2) String email) {
+  public Person {
+    if (email == null) {
+      email = "";
+    }
+  }
+}
+```
+
+Remove a field by deleting the Java member and declaring it on a nested history interface as a
+method with a `@ForyVersion(until = N)`. The method's return type carries any parameterized
+type information from the original field.
+
+```java
+@Data
+@ForySchema(removedFields = Person.History.class)
+public class Person {
+  String name;
+
+  @ForyVersion(since = 2)
+  String email;
+
+  interface History {
+    @ForyVersion(until = 3)
+    int age();
+
+    @ForyVersion(until = 5)
+    List<String> tags();
+  }
+}
+```
+
+The history method name matches the original live descriptor name. For field-backed beans
+(Lombok `@Data`, records, or plain classes with a backing field) that is the field name
+(`age`, `tags`). For interface beans, where the live member is a getter with no backing field,
+it is the method name (`getAge`).
+
+### Wire format and limitations
+
+Producers and consumers must agree on the `withSchemaEvolution()` flag — they are not
+wire-compatible otherwise. Row payloads always carry an 8-byte hash slot; under evolution its
+value is the strict hash (which includes field name and nullability), so a flag-mismatched
+peer fails loudly with `ClassNotCompatibleException`. Arrays and maps of bean elements prepend
+an 8-byte strict-hash prefix under evolution and no prefix otherwise; an evolution-on consumer
+reading evolution-off bytes also fails with `ClassNotCompatibleException`, but the reverse
+direction (evolution-off consumer, evolution-on bytes) is undefined.
+
+To adopt the flag on an existing deployment, enable `withSchemaEvolution()` on both sides in a
+release that changes no schema, then start evolving schemas only once every peer is on the
+evolution-enabled build. Turning the flag on and changing a schema in the same release strands
+any peer that has not yet upgraded.
+
+Cross-language consumers (Python, C++) cannot read evolution-enabled payloads.
+
+A reader selects the matching layout from the 8-byte strict hash on the payload. The hash includes
+field names and nullability and is checked for collisions across a bean's own versions when the
+codec is built, but it is still a 64-bit value: a payload whose hash coincides with one of the
+reader's historical layouts is decoded against that layout. This is the same hash-based dispatch
+the row format has always used, so feeding a codec bytes it was not built for has undefined results
+whether or not evolution is enabled. Only hand a codec payloads produced for the same bean.
+
+Nested evolution works to arbitrary depth and places no restriction on shape: a versioned bean
+may contain versioned beans that themselves contain versioned beans, the same versioned bean
+class may back more than one field, and fields typed as a non-evolving bean, a list, or a map are
+unrestricted. Each nesting level is routed to the correct historical layout. A versioned bean may
+be used as a map key as well as a map value, and the key and value evolve independently. This
+holds wherever the map appears: as the codec's top-level type, nested inside a bean field, or
+reached through a top-level array or map (such as `List<Map<KeyBean, ValueBean>>`), and a single
+map may evolve more than one distinct bean class across its key and value. A top-level map carries
+its own hash identifying both layouts together; a map nested inside an array, another map, or a
+bean field has its layouts folded into the enclosing payload's hash.
+
+When a versioned bean contains other versioned beans, the reader can read one projection layout per
+combination of versions across the composition. A reader compiles a combination's codec the first
+time it decodes a payload at that combination, so the cost tracks the historical versions you
+actually receive, not the number you could in principle define. A map whose key and value both
+evolve combines their versions the same way. Retiring an entry from a bean's `History` interface
+once you no longer read payloads from that range stops the reader from accepting those payloads; it
+is purely a read-side decision, and the writer always uses the current schema.
+
 ## Related Topics
 
 - [Xlang Serialization](xlang-serialization.md) - xlang mode
