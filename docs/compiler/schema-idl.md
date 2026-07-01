@@ -993,9 +993,12 @@ list_type    := 'list' '<' { 'optional' | 'ref' | scalar_encoding } field_type '
 array_type   := 'array' '<' array_element_type '>'
 ```
 
-`optional` before `list` applies to the collection field. `ref` is only valid
-for named message/union fields; for collection contents, use `list<ref T>` or
-`map<K, ref V>`. `repeated` is accepted as an alias for `list`.
+`optional` before `list` applies to the collection field. `optional` is not
+supported when it is applied directly to `any`; use `any`, `list<any>`, or
+`map<K, any>` instead of `optional any`, `list<optional any>`, or
+`map<K, optional any>`. `ref` is only valid for named message/union fields; for
+collection contents, use `list<ref T>` or `map<K, ref V>`. `repeated` is
+accepted as an alias for `list`.
 
 ### Field Modifiers
 
@@ -1009,6 +1012,10 @@ message User {
     optional string email = 2; // Nullable
 }
 ```
+
+Do not use `optional` or `[nullable = true]` directly on `any`. The compiler
+rejects `optional any`, `any [nullable = true]`, `list<optional any>`, and
+`map<K, optional any>`; use `any`, `list<any>`, or `map<K, any>` instead.
 
 **Generated Code:**
 
@@ -1389,6 +1396,9 @@ message Envelope [id=122] {
 **Notes:**
 
 - `any` always writes a null flag (same as `nullable`) because values may be empty.
+- `optional` and `[nullable = true]` are not supported directly on `any`; use
+  `any`, `list<any>`, or `map<K, any>` instead of `optional any`,
+  `list<optional any>`, or `map<K, optional any>`.
 - Allowed dynamic values are limited to `bool`, `string`, `enum`, `message`, and `union`.
   Other primitives (numeric, bytes, date/time) and list/map are not supported; wrap them in a
   message or use explicit fields instead.

@@ -24,7 +24,11 @@ from fory_compiler.frontend.proto import ProtoFrontend
 from fory_compiler.ir.ast import ArrayType, ListType, MapType, PrimitiveType
 from fory_compiler.ir.emitter import FDLEmitter
 from fory_compiler.ir.types import PrimitiveKind
-from fory_compiler.ir.validator import SchemaValidator
+from fory_compiler.ir.validator import (
+    INVALID_MAP_KEY_MESSAGE,
+    OPTIONAL_ANY_MESSAGE,
+    SchemaValidator,
+)
 
 
 def parse_schema(source: str):
@@ -188,11 +192,7 @@ def test_map_rejects_non_portable_key_types(key_type):
     )
 
     assert not ok
-    assert any(
-        "map keys do not support any, binary, float, decimal, message, union, list, map, or array types"
-        in err.message
-        for err in validator.errors
-    )
+    assert any(INVALID_MAP_KEY_MESSAGE in err.message for err in validator.errors)
 
 
 @pytest.mark.parametrize(
@@ -271,11 +271,7 @@ def test_map_rejects_message_and_union_key_types(source):
     _schema, validator, ok = validate_schema(source)
 
     assert not ok
-    assert any(
-        "map keys do not support any, binary, float, decimal, message, union, list, map, or array types"
-        in err.message
-        for err in validator.errors
-    )
+    assert any(INVALID_MAP_KEY_MESSAGE in err.message for err in validator.errors)
 
 
 @pytest.mark.parametrize(
@@ -316,6 +312,59 @@ def test_map_rejects_message_and_union_key_types(source):
     ],
 )
 def test_map_accepts_enum_key_types(source):
+    _schema, validator, ok = validate_schema(source)
+
+    assert ok, validator.errors
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        message Invalid {
+            optional any value = 1;
+        }
+        """,
+        """
+        message Invalid {
+            any value = 1 [nullable = true];
+        }
+        """,
+        """
+        message Invalid {
+            list<optional any> values = 1;
+        }
+        """,
+        """
+        message Invalid {
+            map<string, optional any> values = 1;
+        }
+        """,
+    ],
+)
+def test_optional_any_is_rejected(source):
+    _schema, validator, ok = validate_schema(source)
+
+    assert not ok
+    assert any(OPTIONAL_ANY_MESSAGE in err.message for err in validator.errors)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        message Valid {
+            any value = 1;
+        }
+        """,
+        """
+        message Valid {
+            optional list<any> values = 1;
+        }
+        """,
+    ],
+)
+def test_non_direct_optional_any_is_accepted(source):
     _schema, validator, ok = validate_schema(source)
 
     assert ok, validator.errors
