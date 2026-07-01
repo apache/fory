@@ -52,7 +52,7 @@ f := fory.New(
     fory.WithXlang(true),
     fory.WithTrackRef(true),
     fory.WithMaxDepth(10),
-    fory.WithMaxGraphMemoryBytes(-1),
+    fory.WithMaxGraphMemoryBytes(128 * 1024 * 1024),
     fory.WithMaxTypeFields(512),
     fory.WithMaxTypeMetaBytes(4096),
     fory.WithMaxSchemaVersionsPerType(10),

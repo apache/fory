@@ -91,7 +91,7 @@ Keep class registration enabled for production and any untrusted payload source:
 Fory fory = Fory.builder()
     .requireClassRegistration(true)
     .withMaxDepth(50)
-    .withMaxGraphMemoryBytes(-1)
+    .withMaxGraphMemoryBytes(128L * 1024 * 1024)
     .build();
 ```
 

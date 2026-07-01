@@ -246,8 +246,9 @@ Security-related configuration:
 
 - Register all structs and polymorphic implementations before deserializing untrusted payloads.
 - Use `check_struct_version(true)` with `compatible(false)` for intentional same-schema payloads.
-- Leave `max_graph_memory_bytes(-1)` enabled for automatic root-size-based graph limits, or set a
-  positive value for a stricter trusted-workload envelope.
+- Keep `max_graph_memory_bytes(...)` at the fixed `128 MiB` default for most inputs, or set a
+  positive value for a trusted workload that needs a different envelope. Avoid explicit
+  non-positive values for untrusted data because they disable graph-memory enforcement.
 - Keep `max_dyn_depth(...)` as low as your model permits to reject unexpectedly deep polymorphic
   graphs.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a

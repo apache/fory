@@ -6,6 +6,8 @@ Load this file when changing `swift/` or Swift xlang behavior.
 
 - Run Swift commands from within `swift/`.
 - Changes under `swift/` must pass lint and tests.
+- SwiftLint is mandatory but not sufficient for readability; manually clean touched Swift source
+  formatting before committing because this repo does not run a Swift formatter in CI.
 - Swift code must compile without compiler warnings. Treat warnings as blockers, including warnings in generated Swift code.
 - Swift lint uses `swift/.swiftlint.yml`.
 - Swift formatting uses `swift/.swift-format`; do not rely on SwiftLint for indentation or source
@@ -16,10 +18,10 @@ Load this file when changing `swift/` or Swift xlang behavior.
 - When temporal or public-type refactors touch generated Swift code, sweep message fields, union payloads, macros, xlang harnesses, and integration fixtures together.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Recursive matched-field comparison for collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
 - Root deserialization graph memory budget state belongs to `ReadContext`. Swift public roots are
-  `Data` and `ByteBuffer`, so auto uses known root bytes; do not add stream bytes-read accounting or
-  serializer-local budget state. `ReadContext` may expose only raw byte reservation and generic
-  counted-byte arithmetic; array, set, map, struct, and object formulas belong in serializer and
-  field-codec owners.
+  `Data` and `ByteBuffer`, and both use the same fixed default graph budget; do not add stream
+  bytes-read accounting or serializer-local budget state. `ReadContext` may expose only raw byte
+  reservation; array, set, map, struct, and object formulas belong in serializer and field-codec
+  owners.
 - For Swift graph budget formulas, distinguish inline/value storage from reference storage: use
   `MemoryLayout<T>.stride` for value arrays/lists/sets/maps and the 4-byte reference fallback for
   `Serializer.isRefType` / `FieldCodec.isRefType` paths. Class/reference paths reserve their own

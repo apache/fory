@@ -192,8 +192,9 @@ Security-related configuration:
 - Register application structs and trait-object implementations before deserializing untrusted
   payloads.
 - Use `max_dyn_depth(...)` to reject unexpectedly deep dynamic object graphs.
-- Keep `max_graph_memory_bytes(-1)` for the default input-shaped graph budget, or set a positive
-  byte limit for trusted workloads with larger legitimate object graphs.
+- Keep `max_graph_memory_bytes(...)` at the fixed `128 MiB` default for most inputs, or set a
+  positive byte limit for trusted workloads with different legitimate object-graph sizes. Avoid
+  explicit non-positive values for untrusted data because they disable graph-memory enforcement.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer concrete typed fields over `dyn Any` or broad trait-object fields for untrusted input.

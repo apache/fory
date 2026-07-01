@@ -13,9 +13,9 @@ Load this file when changing `csharp/` or C# xlang behavior.
 - C# generated schema modules are source-file owners. Service companions must use that module's `ThreadSafeFory` and must not introduce namespace-owned aliases or duplicate serializer registration paths.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Recursive matched-field comparison for collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
 - Root deserialization graph memory budget state belongs to `ReadContext`. C# public roots are
-  memory-backed today, so auto uses known input length. `ReadContext` may expose only raw byte
-  reservation and generic counted-byte arithmetic; concrete serializers and generated serializers
-  must compute list, array, map, struct, and object byte formulas before calling it.
+  memory-backed today, but the graph budget uses the same fixed default for every root shape.
+  `ReadContext` may expose only raw byte reservation; concrete serializers and generated
+  serializers must compute list, array, map, struct, and object byte formulas before calling it.
 - For C# graph budget formulas, distinguish inline value storage from reference storage: use cheap
   value-type size for `List<T>`/`T[]` value paths and the 4-byte reference fallback for reference
   paths. Class/reference serializers reserve their own shallow self cost plus field storage when

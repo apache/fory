@@ -40,7 +40,7 @@ class Fory:
         max_type_meta_bytes: int = 4096,
         max_schema_versions_per_type: int = 10,
         max_average_schema_versions_per_type: int = 3,
-        max_graph_memory_bytes: int = -1,
+        max_graph_memory_bytes: int = 128 * 1024 * 1024,
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         meta_compressor=None,
@@ -199,7 +199,7 @@ fory = pyfory.Fory(
     max_type_meta_bytes=4096,
     max_schema_versions_per_type=10,
     max_average_schema_versions_per_type=3,
-    max_graph_memory_bytes=-1,
+    max_graph_memory_bytes=128 * 1024 * 1024,
 )
 
 fory.register(UserModel, name="example.User")
@@ -287,7 +287,9 @@ unchanged.
 - Register all expected application types before deserialization.
 - Use `DeserializationPolicy` when `strict=False` is necessary.
 - Keep `max_depth` low enough to reject unexpectedly deep payloads.
-- Keep `max_graph_memory_bytes=-1` unless a trusted workload needs a higher explicit limit.
+- Keep `max_graph_memory_bytes` at the fixed `128 MiB` default for most inputs, or set a positive
+  explicit limit for trusted workloads with different legitimate object-graph sizes. Avoid
+  explicit non-positive values for untrusted data because they disable graph-memory enforcement.
 - Do not treat xlang/native mode choice as a security control.
 
 ## Related Topics
