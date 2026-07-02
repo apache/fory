@@ -45,12 +45,8 @@ describe("graph memory budget", () => {
     const fory = new Fory({ compatible: false });
 
     fory.readContext.reset(new Uint8Array(17));
-    expect(() =>
-      fory.readContext.reserveGraphMemory(DEFAULT_GRAPH_MEMORY_BYTES),
-    ).not.toThrow();
-    expect(() => fory.readContext.reserveGraphMemory(1)).toThrow(
-      /maxGraphMemoryBytes/,
-    );
+    expect(() => fory.readContext.reserveGraphMemory(DEFAULT_GRAPH_MEMORY_BYTES)).not.toThrow();
+    expect(() => fory.readContext.reserveGraphMemory(1)).toThrow(/maxGraphMemoryBytes/);
   });
 
   test("handles explicit config and disable", () => {
@@ -58,15 +54,11 @@ describe("graph memory budget", () => {
     fory.readContext.reset(new Uint8Array(1));
     expect(() => fory.readContext.reserveGraphMemory(0)).not.toThrow();
     expect(() => fory.readContext.reserveGraphMemory(24)).not.toThrow();
-    expect(() => fory.readContext.reserveGraphMemory(1)).toThrow(
-      /maxGraphMemoryBytes/,
-    );
+    expect(() => fory.readContext.reserveGraphMemory(1)).toThrow(/maxGraphMemoryBytes/);
 
     const disabled = new Fory({ maxGraphMemoryBytes: 0 });
     disabled.readContext.reset(new Uint8Array(1));
-    expect(() =>
-      disabled.readContext.reserveGraphMemory(Number.MAX_SAFE_INTEGER),
-    ).not.toThrow();
+    expect(() => disabled.readContext.reserveGraphMemory(Number.MAX_SAFE_INTEGER)).not.toThrow();
     expect(() => new Fory({ maxGraphMemoryBytes: -2 })).not.toThrow();
   });
 
@@ -87,9 +79,7 @@ describe("graph memory budget", () => {
       maxGraphMemoryBytes: objectBytes(1) + listBytes(1) + listBytes(0) - 1,
     }).register(typeInfo);
 
-    expect(() => failingReader.deserialize(bytes)).toThrow(
-      /maxGraphMemoryBytes/,
-    );
+    expect(() => failingReader.deserialize(bytes)).toThrow(/maxGraphMemoryBytes/);
     expect(passingReader.deserialize(bytes)).toEqual({ values: [[]] });
   });
 
@@ -112,9 +102,7 @@ describe("graph memory budget", () => {
       maxGraphMemoryBytes: objectBytes(1) + listBytes(3) + 3 * listBytes(0) - 1,
     }).register(typeInfo);
 
-    expect(() => failingReader.deserialize(bytes)).toThrow(
-      /maxGraphMemoryBytes/,
-    );
+    expect(() => failingReader.deserialize(bytes)).toThrow(/maxGraphMemoryBytes/);
     expect(passingReader.deserialize(bytes)).toEqual({
       values: [[], [], []],
     });
@@ -148,9 +136,7 @@ describe("graph memory budget", () => {
     failingReader.register(childType);
     failingReader.register(typeInfo);
 
-    expect(() => failingReader.deserialize(bytes)).toThrow(
-      /maxGraphMemoryBytes/,
-    );
+    expect(() => failingReader.deserialize(bytes)).toThrow(/maxGraphMemoryBytes/);
     expect(passingReader.deserialize(bytes)).toEqual({
       first: {},
       second: {},
@@ -186,9 +172,7 @@ describe("graph memory budget", () => {
     failingReader.register(EmptyChild);
     failingReader.register(EmptyParent);
 
-    expect(() => failingReader.deserialize(bytes)).toThrow(
-      /maxGraphMemoryBytes/,
-    );
+    expect(() => failingReader.deserialize(bytes)).toThrow(/maxGraphMemoryBytes/);
     const decoded = passingReader.deserialize(bytes);
     expect(decoded).toBeInstanceOf(EmptyParent);
     expect(decoded.child).toBeInstanceOf(EmptyChild);
@@ -197,9 +181,7 @@ describe("graph memory budget", () => {
   test("reserves map entries", () => {
     const bytes = serializeAny(new Map([[1, 2]]));
 
-    expect(() => deserializeAny(bytes, mapBytes(1) - 1)).toThrow(
-      /maxGraphMemoryBytes/,
-    );
+    expect(() => deserializeAny(bytes, mapBytes(1) - 1)).toThrow(/maxGraphMemoryBytes/);
     expect(deserializeAny(bytes, mapBytes(1))).toEqual(new Map([[1, 2]]));
   });
 
@@ -218,19 +200,15 @@ describe("graph memory budget", () => {
     const passingReader = new Fory({
       compatible: false,
       ref: true,
-      maxGraphMemoryBytes:
-        objectBytes(3) + listBytes(1) + listBytes(1) + mapBytes(1),
+      maxGraphMemoryBytes: objectBytes(3) + listBytes(1) + listBytes(1) + mapBytes(1),
     }).register(typeInfo);
     const failingReader = new Fory({
       compatible: false,
       ref: true,
-      maxGraphMemoryBytes:
-        objectBytes(3) + listBytes(1) + listBytes(1) + mapBytes(1) - 1,
+      maxGraphMemoryBytes: objectBytes(3) + listBytes(1) + listBytes(1) + mapBytes(1) - 1,
     }).register(typeInfo);
 
-    expect(() => failingReader.deserialize(bytes)).toThrow(
-      /maxGraphMemoryBytes/,
-    );
+    expect(() => failingReader.deserialize(bytes)).toThrow(/maxGraphMemoryBytes/);
     expect(passingReader.deserialize(bytes)).toEqual({
       list: [1],
       set: new Set(["a"]),
@@ -256,12 +234,8 @@ describe("graph memory budget", () => {
       maxGraphMemoryBytes: objectBytes(1) - 1,
     }).register(readerType);
 
-    expect(() => failingReader.deserialize(bytes)).toThrow(
-      /maxGraphMemoryBytes/,
-    );
-    expect(Array.from(passingReader.deserialize(bytes).values)).toEqual([
-      1, 2, 3,
-    ]);
+    expect(() => failingReader.deserialize(bytes)).toThrow(/maxGraphMemoryBytes/);
+    expect(Array.from(passingReader.deserialize(bytes).values)).toEqual([1, 2, 3]);
   });
 
   test("skips scalar dense owners", () => {
@@ -303,8 +277,6 @@ describe("graph memory budget", () => {
       maxGraphMemoryBytes: 1024 * 1024,
     }).register(typeInfo);
 
-    expect(() =>
-      reader.deserialize(bytes.slice(0, bytes.length - 1)),
-    ).toThrow();
+    expect(() => reader.deserialize(bytes.slice(0, bytes.length - 1))).toThrow();
   });
 });

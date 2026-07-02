@@ -45,10 +45,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
   }
 
   private objectGraphBytes(): number {
-    return (
-      OBJECT_BYTES
-      + Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES
-    );
+    return OBJECT_BYTES + Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES;
   }
 
   write(accessor: string): string {
@@ -82,7 +79,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
       ${this.readTypeInfo()}
       ${this.builder.getReadContextName()}.incReadDepth();
       let ${result};
-      ${this.read(v => `${result} = ${v}`, refState)};
+      ${this.read((v) => `${result} = ${v}`, refState)};
       ${this.builder.getReadContextName()}.decReadDepth();
       ${assignStmt(result)};
     `;
@@ -132,12 +129,12 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
               "ext_ser",
               TypeId.isNamedType(this.typeInfo.typeId)
                 ? this.builder.typeResolver.getSerializerByName(
-                  CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
-                )
+                    CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
+                  )
                 : this.builder.typeResolver.getSerializerById(
-                  this.typeInfo.typeId,
-                  this.typeInfo.userTypeId,
-                ),
+                    this.typeInfo.typeId,
+                    this.typeInfo.userTypeId,
+                  ),
             );
             return accessor(`${name}.${prop}(${args.join(",")})`);
           };
@@ -156,12 +153,12 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
               "ext_ser",
               TypeId.isNamedType(this.typeInfo.typeId)
                 ? this.builder.typeResolver.getSerializerByName(
-                  CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
-                )
+                    CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
+                  )
                 : this.builder.typeResolver.getSerializerById(
-                  this.typeInfo.typeId,
-                  this.typeInfo.userTypeId,
-                ),
+                    this.typeInfo.typeId,
+                    this.typeInfo.userTypeId,
+                  ),
             );
             return `${name}.${prop}(${accessor})`;
           };
@@ -176,9 +173,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     let writeUserTypeIdStmt = "";
     switch (internalTypeId) {
       case TypeId.EXT:
-        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(
-          this.typeInfo.userTypeId,
-        );
+        writeUserTypeIdStmt = this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId);
         break;
       case TypeId.NAMED_EXT:
         if (!this.builder.resolver.isCompatible()) {
@@ -204,10 +199,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
             "typeInfoBytes",
             `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`,
           );
-          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(
-            this.builder.getTypeInfo(),
-            bytes,
-          );
+          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), bytes);
         }
         break;
       default:
