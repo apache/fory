@@ -578,13 +578,7 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	// Root writes include type metadata, so keep the root ReadValue path.
-	// Calling a cached serializer directly would read that metadata byte as payload.
-	if target.Kind() == reflect.Struct && target.Type() != dateReflectType && target.Type() != timeReflectType && target.Type() != decimalType {
-		f.readCtx.ReadStruct(target)
-	} else {
-		f.readCtx.ReadValue(target, RefModeTracking, true)
-	}
+	f.readRootValue(target)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -680,11 +674,7 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	if target.Kind() == reflect.Struct && target.Type() != dateReflectType && target.Type() != timeReflectType && target.Type() != decimalType {
-		f.readCtx.ReadStruct(target)
-	} else {
-		f.readCtx.ReadValue(target, RefModeTracking, true)
-	}
+	f.readRootValue(target)
 	if f.readCtx.HasError() {
 		f.readCtx.buffer = origBuffer
 		return f.readCtx.TakeError()
@@ -799,11 +789,7 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	if target.Kind() == reflect.Struct && target.Type() != dateReflectType && target.Type() != timeReflectType && target.Type() != decimalType {
-		f.readCtx.ReadStruct(target)
-	} else {
-		f.readCtx.ReadValue(target, RefModeTracking, true)
-	}
+	f.readRootValue(target)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -1207,19 +1193,36 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 			targetVal = reflect.ValueOf(target).Elem()
 			targetType = targetVal.Type()
 		}
-		if targetType.Kind() == reflect.Struct && targetType != dateReflectType && targetType != timeReflectType && targetType != decimalType {
-			f.readCtx.ReadStruct(targetVal)
-			return f.readCtx.CheckError()
-		}
-
 		// Get serializer for the target type
-		serializer, err := f.typeResolver.getSerializerByType(targetType, false)
-		if err != nil {
-			return fmt.Errorf("failed to get serializer for type %v: %w", targetType, err)
-		}
+		if f.rootUsesReadStruct(targetType) {
+			f.readCtx.ReadStruct(targetVal)
+		} else {
+			serializer, err := f.typeResolver.getSerializerByType(targetType, false)
+			if err != nil {
+				return fmt.Errorf("failed to get serializer for type %v: %w", targetType, err)
+			}
 
-		// Use Read to deserialize directly into target
-		serializer.Read(f.readCtx, RefModeTracking, true, false, targetVal)
+			// Use Read to deserialize directly into target
+			serializer.Read(f.readCtx, RefModeTracking, true, false, targetVal)
+		}
 		return f.readCtx.CheckError()
 	}
+}
+
+func (f *Fory) readRootValue(target reflect.Value) {
+	if f.rootUsesReadStruct(target.Type()) {
+		f.readCtx.ReadStruct(target)
+		return
+	}
+	// Root writes include type metadata, so generic roots must keep ReadValue.
+	// Calling a cached serializer directly would read that metadata byte as payload.
+	f.readCtx.ReadValue(target, RefModeTracking, true)
+}
+
+func (f *Fory) rootUsesReadStruct(targetType reflect.Type) bool {
+	return targetType.Kind() == reflect.Struct &&
+		targetType != dateReflectType &&
+		targetType != timeReflectType &&
+		targetType != decimalType &&
+		!f.typeResolver.IsUnionType(targetType)
 }

@@ -110,11 +110,7 @@ func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	if target.Kind() == reflect.Struct && target.Type() != dateReflectType && target.Type() != timeReflectType && target.Type() != decimalType {
-		f.readCtx.ReadStruct(target)
-	} else {
-		f.readCtx.ReadValue(target, RefModeTracking, true)
-	}
+	f.readRootValue(target)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -140,11 +136,7 @@ func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	if target.Kind() == reflect.Struct && target.Type() != dateReflectType && target.Type() != timeReflectType && target.Type() != decimalType {
-		f.readCtx.ReadStruct(target)
-	} else {
-		f.readCtx.ReadValue(target, RefModeTracking, true)
-	}
+	f.readRootValue(target)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
