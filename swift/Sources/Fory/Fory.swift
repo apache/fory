@@ -493,7 +493,8 @@ public final class Fory {
         _ body: (ReadContext) throws -> R
     ) throws -> R {
         readContext.buffer.replace(with: data)
-        try readContext.initGraphMemoryBudget()
+        readContext.remainingGraphMemoryBytes =
+            readContext.maxGraphMemoryBytes > 0 ? readContext.maxGraphMemoryBytes : Int.max
         defer {
             readContext.reset()
         }
@@ -555,7 +556,8 @@ public final class Fory {
     ) throws -> R {
         try typeResolver.finishRegistration()
         readContext.buffer.swapState(with: buffer)
-        try readContext.initGraphMemoryBudget()
+        readContext.remainingGraphMemoryBytes =
+            readContext.maxGraphMemoryBytes > 0 ? readContext.maxGraphMemoryBytes : Int.max
         defer {
             readContext.buffer.swapState(with: buffer)
             readContext.reset()

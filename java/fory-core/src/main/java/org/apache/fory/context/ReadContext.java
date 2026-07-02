@@ -116,10 +116,6 @@ public final class ReadContext {
     this.buffer = buffer;
     this.peerOutOfBandEnabled = peerOutOfBandEnabled;
     this.outOfBandBuffers = outOfBandBuffers == null ? null : outOfBandBuffers.iterator();
-    initGraphMemoryBudget();
-  }
-
-  private void initGraphMemoryBudget() {
     long limit = maxGraphMemoryBytes;
     if (limit <= 0) {
       graphMemoryLimitBytes = 0;

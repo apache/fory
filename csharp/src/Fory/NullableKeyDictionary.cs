@@ -548,16 +548,12 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
         TypeInfo keyTypeInfo = context.TypeResolver.GetTypeInfo<TKey>();
         TypeInfo valueTypeInfo = context.TypeResolver.GetTypeInfo<TValue>();
-        bool storeRef = context.ShouldStoreRef;
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
             ReserveMapStorage(context, totalLength);
             NullableKeyDictionary<TKey, TValue> empty = new();
-            if (storeRef)
-            {
-                context.StoreRef(empty);
-            }
+            context.StoreRef(empty);
 
             return empty;
         }
@@ -565,10 +561,7 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         ReserveMapStorage(context, totalLength);
         context.Reader.CheckBound(totalLength);
         NullableKeyDictionary<TKey, TValue> map = new(totalLength);
-        if (storeRef)
-        {
-            context.StoreRef(map);
-        }
+        context.StoreRef(map);
 
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;

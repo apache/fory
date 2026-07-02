@@ -154,7 +154,7 @@ func fixedDefaultBudgetAndDisable() throws {
         config: config
     )
 
-    try context.initGraphMemoryBudget()
+    context.remainingGraphMemoryBytes = context.maxGraphMemoryBytes
     try context.reserveGraphMemory(Int(defaultGraphMemoryBytes))
     expectInvalidData {
         try context.reserveGraphMemory(testReferenceBytes)
@@ -166,7 +166,7 @@ func fixedDefaultBudgetAndDisable() throws {
         typeResolver: TypeResolver(config: disabledConfig),
         config: disabledConfig
     )
-    try disabled.initGraphMemoryBudget()
+    disabled.remainingGraphMemoryBytes = Int.max
     try disabled.reserveGraphMemory(Int(defaultGraphMemoryBytes) + 1)
 }
 

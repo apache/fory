@@ -230,10 +230,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         {
             ReserveMapStorage(context, totalLength);
             TDictionary empty = CreateMap(0);
-            if (context.ShouldStoreRef)
-            {
-                context.StoreRef(empty);
-            }
+            context.StoreRef(empty);
 
             return empty;
         }
@@ -241,10 +238,7 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         ReserveMapStorage(context, totalLength);
         context.Reader.CheckBound(totalLength);
         TDictionary map = CreateMap(totalLength);
-        if (context.ShouldStoreRef)
-        {
-            context.StoreRef(map);
-        }
+        context.StoreRef(map);
 
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;

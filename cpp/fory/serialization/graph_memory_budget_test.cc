@@ -128,20 +128,20 @@ void expect_budget_boundary(const T &value, size_t required) {
 
 TEST(GraphMemoryBudgetTest, FixedDefaultBudgetAndDisable) {
   Config config;
-  ReadContext context(config, std::make_unique<TypeResolver>());
-
-  ASSERT_TRUE(context.init_graph_budget());
-  ASSERT_TRUE(context.reserve_graph_memory(
-      static_cast<size_t>(kDefaultGraphMemoryBytes)));
-  ASSERT_FALSE(context.reserve_graph_memory(1));
-  EXPECT_EQ(context.take_error().code(), ErrorCode::InvalidData);
+  EXPECT_EQ(config.max_graph_memory_bytes, kDefaultGraphMemoryBytes);
 
   Config disabled_config;
   disabled_config.max_graph_memory_bytes = 0;
-  ReadContext disabled(disabled_config, std::make_unique<TypeResolver>());
-  ASSERT_TRUE(disabled.init_graph_budget());
-  ASSERT_TRUE(
-      disabled.reserve_graph_memory(std::numeric_limits<size_t>::max()));
+  EXPECT_EQ(disabled_config.max_graph_memory_bytes, 0);
+
+  constexpr size_t count = 3;
+  std::vector<std::vector<std::string>> value(count);
+  auto bytes = serialize_value(value);
+  auto disabled_result = with_fory(0, [&](Fory &fory) {
+    return fory.deserialize<std::vector<std::vector<std::string>>>(bytes);
+  });
+  ASSERT_TRUE(disabled_result.ok()) << disabled_result.error().to_string();
+  EXPECT_EQ(disabled_result.value(), value);
 }
 
 TEST(GraphMemoryBudgetTest, RootKindsShareConfiguredBudget) {

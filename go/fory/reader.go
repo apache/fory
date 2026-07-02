@@ -44,7 +44,6 @@ type ReadContext struct {
 	err                       Error         // Accumulated error state for deferred checking
 	lastTypePtr               uintptr
 	lastTypeInfo              *TypeInfo
-	maxGraphMemoryBytes       int64
 	graphMemoryLimitBytes     int64
 	remainingGraphMemoryBytes int64
 }
@@ -84,44 +83,6 @@ func reserveStructGraph(ctx *ReadContext, type_ reflect.Type) bool {
 	return ctx.ReserveGraphMemory(bytes)
 }
 
-func typeHasGraphChildren(type_ reflect.Type) bool {
-	for type_.Kind() == reflect.Ptr {
-		elem := type_.Elem()
-		if structGraphBytes(elem) != 0 {
-			return true
-		}
-		type_ = elem
-	}
-	switch type_.Kind() {
-	case reflect.Struct:
-		if type_ == dateReflectType || type_ == timeReflectType {
-			return false
-		}
-		for i := 0; i < type_.NumField(); i++ {
-			if typeHasGraphChildren(type_.Field(i).Type) {
-				return true
-			}
-		}
-		return false
-	case reflect.Slice:
-		elem := type_.Elem()
-		switch elem.Kind() {
-		case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-			reflect.Float32, reflect.Float64:
-			return false
-		default:
-			return true
-		}
-	case reflect.Array:
-		return typeHasGraphChildren(type_.Elem())
-	case reflect.Map, reflect.Interface:
-		return true
-	default:
-		return false
-	}
-}
-
 // IsXlang returns whether cross-language serialization mode is enabled
 func (c *ReadContext) IsXlang() bool {
 	return c.xlang
@@ -134,7 +95,6 @@ func NewReadContext(trackRef bool) *ReadContext {
 		refReader:                 NewRefReader(trackRef),
 		trackRef:                  trackRef,
 		maxDepth:                  128, // Default maximum nesting depth
-		maxGraphMemoryBytes:       128 * 1024 * 1024,
 		graphMemoryLimitBytes:     128 * 1024 * 1024,
 		remainingGraphMemoryBytes: 128 * 1024 * 1024,
 	}
@@ -154,17 +114,6 @@ func (c *ReadContext) Reset() {
 	if c.typeResolver != nil {
 		c.typeResolver.resetRead()
 	}
-}
-
-func (c *ReadContext) initGraphMemoryBudget() {
-	limit := c.maxGraphMemoryBytes
-	if limit <= 0 {
-		c.graphMemoryLimitBytes = 0
-		c.remainingGraphMemoryBytes = MaxInt64
-		return
-	}
-	c.graphMemoryLimitBytes = limit
-	c.remainingGraphMemoryBytes = limit
 }
 
 // ReserveGraphMemory reserves raw estimated graph-owner bytes.
@@ -663,12 +612,7 @@ func (c *ReadContext) ReadStringSlice(refMode RefMode, readType bool) []string {
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return c.readStringSliceData()
-}
-
-func (c *ReadContext) readStringSliceData() []string {
 	buf := c.buffer
-	err := c.Err()
 	length := buf.ReadLength(err)
 	if c.HasError() {
 		return nil

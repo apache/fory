@@ -412,6 +412,10 @@ not expose counted arithmetic helpers or collection, map, array, struct, or
 object semantic reservation APIs. Concrete serializers and generated serializer
 owners compute the storage constants and formulas for the owner path they
 allocate, including counted-byte overflow checks.
+Read state must not grow non-memory-budget APIs for this feature, including
+ref-publication controls, temporary-owner controls, serializer-owner controls,
+conversion helpers, or APIs that encode the kind of value being materialized.
+Concrete serializers and generated serializers own those decisions.
 
 The budget estimates lower-bound shallow memory for materialized graph owners,
 not exact heap bytes. Reserve self storage exactly once at the owner that stores

@@ -45,8 +45,8 @@ public sealed class ReadContext
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
     private int _totalAcceptedSchemaVersions;
-    private long _graphMemoryLimitBytes = long.MaxValue;
-    private long _remainingGraphMemoryBytes = long.MaxValue;
+    internal long _graphMemoryLimitBytes = long.MaxValue;
+    internal long _remainingGraphMemoryBytes = long.MaxValue;
 
     public ReadContext(
         ByteReader reader,
@@ -75,32 +75,7 @@ public sealed class ReadContext
 
     public bool CheckStructVersion { get; }
 
-    public bool ShouldStoreRef
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get
-        {
-            int index = _reservedRefIds.Count - 1;
-            return index >= 0 && _reservedRefIds[index] != NoReservedRefId;
-        }
-    }
-
     internal RefReader RefReader { get; }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void InitGraphBudget()
-    {
-        long limit = _config.MaxGraphMemoryBytes;
-        if (limit <= 0)
-        {
-            _graphMemoryLimitBytes = 0;
-            _remainingGraphMemoryBytes = long.MaxValue;
-            return;
-        }
-
-        _graphMemoryLimitBytes = limit;
-        _remainingGraphMemoryBytes = limit;
-    }
 
     /// <summary>
     /// Reserves estimated graph memory for the current root deserialization.

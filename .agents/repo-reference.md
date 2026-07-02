@@ -80,6 +80,15 @@ Apache Fory is a multi-language serialization framework with multiple wire forma
   copy/decompression and before field-list allocation, and never add cache-hit or generated-reader
   hot-path work for them.
 
+## Root Graph Memory Budget Ownership
+
+Root graph memory budgeting is a read-state accounting feature only. Read context or equivalent
+read state may expose raw byte reservation and, when a runtime cannot reasonably avoid it,
+root-operation budget setup/reset. It must not grow semantic APIs for collection, map, array,
+struct, object, temporary-owner, serializer-owner, conversion, counted-allocation, or
+ref-publication control. Concrete serializers and generated serializers own allocation formulas,
+overflow checks, and reference publication timing.
+
 ## Runtime Map
 
 ### Java

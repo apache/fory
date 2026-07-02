@@ -220,10 +220,7 @@ internal static class CollectionCodec
         {
             ReserveElementStorage<T>(context, length);
             List<T> empty = [];
-            if (context.ShouldStoreRef)
-            {
-                context.StoreRef(empty);
-            }
+            context.StoreRef(empty);
 
             return empty;
         }
@@ -240,10 +237,7 @@ internal static class CollectionCodec
         ReserveElementStorage<T>(context, length);
         context.Reader.CheckBound(length);
         List<T> values = new(length);
-        if (context.ShouldStoreRef)
-        {
-            context.StoreRef(values);
-        }
+        context.StoreRef(values);
 
         if (!sameType)
         {
@@ -409,15 +403,15 @@ internal static class CollectionCodec
     {
         int length = checked((int)context.Reader.ReadVarUInt32());
         ReserveElementStorage<T>(context, length);
-        TCollection values = builder.Create(length);
-        if (builder.StoresOwnerRef && context.ShouldStoreRef)
-        {
-            context.StoreRef(values);
-        }
-
         if (length == 0)
         {
-            return values;
+            TCollection empty = builder.Create(length);
+            if (builder.StoresOwnerRef)
+            {
+                context.StoreRef(empty);
+            }
+
+            return empty;
         }
 
         byte header = context.Reader.ReadUInt8();
@@ -425,7 +419,15 @@ internal static class CollectionCodec
         bool hasNull = (header & CollectionBits.HasNull) != 0;
         bool declared = (header & CollectionBits.DeclaredElementType) != 0;
         bool sameType = (header & CollectionBits.SameType) != 0;
+        // Some builders allocate backing capacity from length, so prove proportional payload bytes
+        // before materializing non-empty owners.
         context.Reader.CheckBound(length);
+        TCollection values = builder.Create(length);
+        if (builder.StoresOwnerRef)
+        {
+            context.StoreRef(values);
+        }
+
         if (!sameType)
         {
             if (trackRef)
@@ -581,10 +583,7 @@ internal static class CollectionCodec
         {
             ReserveElementStorage<T>(context, length);
             T[] empty = [];
-            if (context.ShouldStoreRef)
-            {
-                context.StoreRef(empty);
-            }
+            context.StoreRef(empty);
 
             return empty;
         }
@@ -597,10 +596,7 @@ internal static class CollectionCodec
         ReserveElementStorage<T>(context, length);
         context.Reader.CheckBound(length);
         T[] values = new T[length];
-        if (context.ShouldStoreRef)
-        {
-            context.StoreRef(values);
-        }
+        context.StoreRef(values);
 
         if (!sameType)
         {
@@ -779,7 +775,7 @@ internal static class DynamicContainerCodec
     {
         Serializer<NullableKeyDictionary<object, object?>> serializer =
             context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>();
-        bool storeRef = context.ShouldStoreRef;
+        bool storeRef = context._reservedRefIds.Count != 0;
         NullableKeyDictionary<object, object?> map = serializer.ReadData(context);
         if (storeRef)
         {

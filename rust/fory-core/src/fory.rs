@@ -997,8 +997,18 @@ impl Fory {
         self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
-            let result = match context.init_graph_memory_budget() {
-                Ok(()) => self.deserialize_with_context(context),
+            let result = match if context.max_graph_memory_bytes > 0 {
+                usize::try_from(context.max_graph_memory_bytes)
+                    .map_err(|_| Error::invalid_data("max_graph_memory_bytes does not fit usize"))
+            } else {
+                Ok(0)
+            } {
+                Ok(limit) => {
+                    context.graph_memory_limit_bytes = limit;
+                    context.remaining_graph_memory_bytes =
+                        if limit > 0 { limit } else { usize::MAX };
+                    self.deserialize_with_context(context)
+                }
                 Err(err) => {
                     context.reset();
                     Err(err)
@@ -1066,8 +1076,18 @@ impl Fory {
             let mut new_reader = Reader::new(outlive_buffer);
             new_reader.set_cursor(reader.cursor);
             context.attach_reader(new_reader);
-            let result = match context.init_graph_memory_budget() {
-                Ok(()) => self.deserialize_with_context(context),
+            let result = match if context.max_graph_memory_bytes > 0 {
+                usize::try_from(context.max_graph_memory_bytes)
+                    .map_err(|_| Error::invalid_data("max_graph_memory_bytes does not fit usize"))
+            } else {
+                Ok(0)
+            } {
+                Ok(limit) => {
+                    context.graph_memory_limit_bytes = limit;
+                    context.remaining_graph_memory_bytes =
+                        if limit > 0 { limit } else { usize::MAX };
+                    self.deserialize_with_context(context)
+                }
                 Err(err) => {
                     context.reset();
                     Err(err)

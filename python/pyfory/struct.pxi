@@ -424,7 +424,7 @@ cdef class DataClassSerializer(Serializer):
                     f"Hash {read_hash} is not consistent with {self._hash} for type {self.type_}"
                 )
 
-        read_context.reserve_graph_memory_fast(
+        read_context.reserve_graph_memory_c(
             _STRUCT_OWNER_BYTES + <int64_t>self._field_runtime_infos.size() * _STRUCT_REFERENCE_BYTES
         )
         obj = self.type_.__new__(self.type_)

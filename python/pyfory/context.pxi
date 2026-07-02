@@ -835,19 +835,6 @@ cdef class ReadContext:
             )
         self.remaining_graph_memory_bytes -= num_bytes
 
-    cdef inline void reserve_graph_memory_fast(self, int64_t num_bytes):
-        cdef int64_t used
-        if self.graph_memory_limit_bytes <= 0:
-            return
-        if num_bytes > self.remaining_graph_memory_bytes:
-            used = self.graph_memory_limit_bytes - self.remaining_graph_memory_bytes
-            raise ValueError(
-                f"Estimated graph memory budget exceeded: requested {num_bytes} bytes, "
-                f"used {used} bytes, limit {self.graph_memory_limit_bytes} bytes. "
-                "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
-            )
-        self.remaining_graph_memory_bytes -= num_bytes
-
     cpdef inline reserve_graph_memory(self, num_bytes):
         if num_bytes < 0:
             raise ValueError("Estimated graph memory is negative")

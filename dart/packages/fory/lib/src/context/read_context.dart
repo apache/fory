@@ -100,12 +100,6 @@ final class ReadContext {
   RefReader get refReader => _refReader;
 
   @internal
-  int get effectiveGraphMemoryBytes => _effectiveGraphMemoryBytes;
-
-  @internal
-  int get remainingGraphMemoryBytes => _remainingGraphMemoryBytes;
-
-  @internal
   @pragma('vm:prefer-inline')
   void reserveGraphMemory(int bytes) {
     if (bytes < 0 || bytes > _maxSafeBudgetBytes) {

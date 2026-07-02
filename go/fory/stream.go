@@ -97,10 +97,21 @@ func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = is.buffer
 	target := reflect.ValueOf(v).Elem()
-	if err := f.initRootGraphBudget(target); err != nil {
-		f.readCtx.buffer = origBuffer
-		f.resetReadState()
-		return err
+	limit := f.config.MaxGraphMemoryBytes
+	if limit <= 0 {
+		f.readCtx.graphMemoryLimitBytes = 0
+		f.readCtx.remainingGraphMemoryBytes = MaxInt64
+	} else {
+		f.readCtx.graphMemoryLimitBytes = limit
+		f.readCtx.remainingGraphMemoryBytes = limit
+	}
+	if bytes, ok := f.rootGraphBytesFor(target.Type()); ok && bytes > 0 {
+		if !f.readCtx.ReserveGraphMemory(bytes) {
+			err := f.readCtx.TakeError()
+			f.readCtx.buffer = origBuffer
+			f.resetReadState()
+			return err
+		}
 	}
 	defer func() {
 		f.readCtx.buffer = origBuffer
@@ -129,8 +140,18 @@ func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
 	// Always reset to enforce stateless semantics.
 	f.readCtx.buffer.ResetWithReader(r, 0)
 	target := reflect.ValueOf(v).Elem()
-	if err := f.initRootGraphBudget(target); err != nil {
-		return err
+	limit := f.config.MaxGraphMemoryBytes
+	if limit <= 0 {
+		f.readCtx.graphMemoryLimitBytes = 0
+		f.readCtx.remainingGraphMemoryBytes = MaxInt64
+	} else {
+		f.readCtx.graphMemoryLimitBytes = limit
+		f.readCtx.remainingGraphMemoryBytes = limit
+	}
+	if bytes, ok := f.rootGraphBytesFor(target.Type()); ok && bytes > 0 {
+		if !f.readCtx.ReserveGraphMemory(bytes) {
+			return f.readCtx.TakeError()
+		}
 	}
 
 	readHeader(f.readCtx)

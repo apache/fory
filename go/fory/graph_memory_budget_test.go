@@ -52,25 +52,23 @@ func TestGraphMemoryBudgetConfig(t *testing.T) {
 
 func TestGraphMemoryBudgetFixedDefaultAndDisable(t *testing.T) {
 	ctx := NewReadContext(false)
-	ctx.initGraphMemoryBudget()
-	require.False(t, ctx.HasError())
+	ctx.graphMemoryLimitBytes = 128 * 1024 * 1024
+	ctx.remainingGraphMemoryBytes = 128 * 1024 * 1024
 	require.Equal(t, int64(128*1024*1024), ctx.graphMemoryLimitBytes)
 	require.True(t, ctx.ReserveGraphMemory(ctx.graphMemoryLimitBytes))
 	require.False(t, ctx.ReserveGraphMemory(1))
 	require.Contains(t, ctx.CheckError().Error(), "maxGraphMemoryBytes")
 
 	ctx = NewReadContext(false)
-	ctx.maxGraphMemoryBytes = 0
-	ctx.initGraphMemoryBudget()
-	require.False(t, ctx.HasError())
+	ctx.graphMemoryLimitBytes = 0
+	ctx.remainingGraphMemoryBytes = MaxInt64
 	require.Equal(t, int64(0), ctx.graphMemoryLimitBytes)
 	require.True(t, ctx.ReserveGraphMemory(MaxInt64))
 	require.False(t, ctx.HasError())
 
 	ctx = NewReadContext(false)
-	ctx.maxGraphMemoryBytes = 77
-	ctx.initGraphMemoryBudget()
-	require.False(t, ctx.HasError())
+	ctx.graphMemoryLimitBytes = 77
+	ctx.remainingGraphMemoryBytes = 77
 	require.Equal(t, int64(77), ctx.graphMemoryLimitBytes)
 }
 
@@ -163,7 +161,6 @@ func TestGraphMemoryBudgetMapAndOverflow(t *testing.T) {
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
 
 	ctx := NewReadContext(false)
-	ctx.initGraphMemoryBudget()
 	require.False(t, ctx.ReserveGraphMemory(-1))
 	require.Contains(t, ctx.CheckError().Error(), "non-negative")
 }

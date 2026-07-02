@@ -192,7 +192,9 @@ public sealed class Fory
     {
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
-        _readContext.InitGraphBudget();
+        long graphLimit = Config.MaxGraphMemoryBytes;
+        _readContext._graphMemoryLimitBytes = graphLimit > 0 ? graphLimit : 0;
+        _readContext._remainingGraphMemoryBytes = graphLimit > 0 ? graphLimit : long.MaxValue;
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -213,7 +215,9 @@ public sealed class Fory
     {
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
-        _readContext.InitGraphBudget();
+        long graphLimit = Config.MaxGraphMemoryBytes;
+        _readContext._graphMemoryLimitBytes = graphLimit > 0 ? graphLimit : 0;
+        _readContext._remainingGraphMemoryBytes = graphLimit > 0 ? graphLimit : long.MaxValue;
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -234,7 +238,9 @@ public sealed class Fory
         byte[] bytes = payload.ToArray();
         ByteReader reader = _readContext.Reader;
         reader.Reset(bytes);
-        _readContext.InitGraphBudget();
+        long graphLimit = Config.MaxGraphMemoryBytes;
+        _readContext._graphMemoryLimitBytes = graphLimit > 0 ? graphLimit : 0;
+        _readContext._remainingGraphMemoryBytes = graphLimit > 0 ? graphLimit : long.MaxValue;
         T value = DeserializeFromReader<T>(reader);
         payload = payload.Slice(reader.Cursor);
         return value;

@@ -505,24 +505,6 @@ public:
     }
   }
 
-  template <size_t ReserveBytes = 0>
-  FORY_ALWAYS_INLINE bool init_graph_budget() {
-    const size_t limit = graph_memory_limit_bytes_;
-    if (FORY_PREDICT_TRUE(limit != 0)) {
-      if constexpr (ReserveBytes != 0) {
-        if (FORY_PREDICT_FALSE(ReserveBytes > limit)) {
-          return set_graph_memory_exceeded(ReserveBytes, limit);
-        }
-        remaining_graph_memory_bytes_ = limit - ReserveBytes;
-      } else {
-        remaining_graph_memory_bytes_ = limit;
-      }
-      return true;
-    }
-    remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
-    return true;
-  }
-
   FORY_ALWAYS_INLINE bool reserve_graph_memory(size_t bytes) {
     const size_t remaining = remaining_graph_memory_bytes_;
     if (FORY_PREDICT_FALSE(remaining == std::numeric_limits<size_t>::max())) {
@@ -690,6 +672,8 @@ public:
   inline const Config &config() const { return *config_; }
 
 private:
+  friend class Fory;
+
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
@@ -724,8 +708,6 @@ private:
   meta::MetaStringTable meta_string_table_;
   fory::flat_hash_map<std::string, uint32_t> remote_schema_versions_by_type_;
   size_t total_accepted_schema_versions_ = 0;
-
-  friend class Fory;
 };
 
 /// Implementation of DynDepthGuard destructor

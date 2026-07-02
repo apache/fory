@@ -460,8 +460,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
 
         sb.AppendLine("    }");
         sb.AppendLine();
-        EmitReadDataWithoutTypeMeta(sb, model, "ReadDataWithoutTypeMeta", "context.ShouldStoreRef");
-        EmitReadDataMethod(sb, model, "ReadData", "ReadDataWithoutTypeMeta", "context.ShouldStoreRef", "public");
+        EmitReadDataWithoutTypeMeta(sb, model, "ReadDataWithoutTypeMeta");
+        EmitReadDataMethod(sb, model, "ReadData", "ReadDataWithoutTypeMeta", "public");
 
         sb.AppendLine("}");
     }
@@ -469,8 +469,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
     private static void EmitReadDataWithoutTypeMeta(
         StringBuilder sb,
         TypeModel model,
-        string methodName,
-        string? storeRefCondition)
+        string methodName)
     {
         sb.AppendLine($"    private {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
@@ -480,7 +479,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine($"        {model.TypeName} valueNoTypeMeta = new {model.TypeName}();");
-        EmitStoreRef(sb, model, storeRefCondition, "valueNoTypeMeta", 2);
+        EmitStoreRef(sb, model, "valueNoTypeMeta", 2);
 
         foreach (MemberModel member in model.SortedMembers)
         {
@@ -505,7 +504,6 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         TypeModel model,
         string methodName,
         string noTypeMetaMethodName,
-        string? storeRefCondition,
         string accessibility)
     {
         sb.AppendLine($"    {accessibility} override {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context)");
@@ -526,7 +524,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine($"            {model.TypeName} value = new {model.TypeName}();");
-        EmitStoreRef(sb, model, storeRefCondition, "value", 3);
+        EmitStoreRef(sb, model, "value", 3);
 
         sb.AppendLine("            bool __ForyExactTypeMeta = __ForyMatchesCachedTypeMeta(typeMeta, context.TrackRef, context.TypeResolver);");
         sb.AppendLine("            if (__ForyAllFieldsBuiltIn && __ForyExactTypeMeta)");
@@ -638,7 +636,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");
-        EmitStoreRef(sb, model, storeRefCondition, "valueSchema", 2);
+        EmitStoreRef(sb, model, "valueSchema", 2);
 
         foreach (MemberModel member in model.SortedMembers)
         {
@@ -653,26 +651,16 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
     private static void EmitStoreRef(
         StringBuilder sb,
         TypeModel model,
-        string? condition,
         string valueName,
         int indentLevel)
     {
-        if (model.Kind != DeclKind.Class || condition is null)
+        if (model.Kind != DeclKind.Class)
         {
             return;
         }
 
         string indent = new(' ', indentLevel * 4);
-        if (condition == "true")
-        {
-            sb.AppendLine($"{indent}context.StoreRef({valueName});");
-            return;
-        }
-
-        sb.AppendLine($"{indent}if ({condition})");
-        sb.AppendLine($"{indent}{{");
-        sb.AppendLine($"{indent}    context.StoreRef({valueName});");
-        sb.AppendLine($"{indent}}}");
+        sb.AppendLine($"{indent}context.StoreRef({valueName});");
     }
 
     private static void EmitUnionSerializer(StringBuilder sb, TypeModel model)
