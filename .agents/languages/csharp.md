@@ -16,6 +16,9 @@ Load this file when changing `csharp/` or C# xlang behavior.
   memory-backed today, but the graph budget uses the same fixed default for every root shape.
   `ReadContext` may expose only raw byte reservation; concrete serializers and generated
   serializers must compute list, array, map, struct, and object byte formulas before calling it.
+- `ReadContext` must not expose ref-publication pause/resume APIs. Keep nested reference
+  publication stack-aware inside read-state internals so immutable, generated, and conversion
+  serializers do not publish temporary owners.
 - For C# graph budget formulas, distinguish inline value storage from reference storage: use cheap
   value-type size for `List<T>`/`T[]` value paths and the 4-byte reference fallback for reference
   paths. Class/reference serializers reserve their own shallow self cost plus field storage when

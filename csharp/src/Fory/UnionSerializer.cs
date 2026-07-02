@@ -50,7 +50,6 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
 
     public override TUnion ReadData(ReadContext context)
     {
-        uint refId = context.PauseRefPublication();
         uint rawCaseId = context.Reader.ReadVarUInt32();
         if (rawCaseId > int.MaxValue)
         {
@@ -69,7 +68,6 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
         }
 
         TUnion value = Factory(caseId, caseValue);
-        context.ResumeRefPublication(refId);
         return value;
     }
 

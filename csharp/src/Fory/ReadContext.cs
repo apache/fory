@@ -32,6 +32,8 @@ public sealed class ReadContext
     private readonly List<MetaString> _readMetaStrings = [];
 
     internal readonly UInt64Map<TypeInfo> _readTypeInfoByType = new();
+    // Consumed slots stay on the stack until their matching reader scope clears them. That lets
+    // nested child reads restore an outer owner that has not been materialized yet.
     internal readonly List<uint> _reservedRefIds = [];
     private readonly int _maxDynamicReadDepth;
     internal Type? _typeMetaType;
@@ -40,7 +42,6 @@ public sealed class ReadContext
     internal Type? _cachedTypeMetaType;
     internal TypeMeta? _cachedTypeMeta;
     internal int _currentDynamicReadDepth;
-    private bool _hasReservedRefId;
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
     private int _totalAcceptedSchemaVersions;
@@ -77,7 +78,11 @@ public sealed class ReadContext
     public bool ShouldStoreRef
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => _hasReservedRefId;
+        get
+        {
+            int index = _reservedRefIds.Count - 1;
+            return index >= 0 && _reservedRefIds[index] != NoReservedRefId;
+        }
     }
 
     internal RefReader RefReader { get; }
@@ -471,69 +476,25 @@ public sealed class ReadContext
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void StoreRef(object? value)
     {
-        if (!_hasReservedRefId)
+        int index = _reservedRefIds.Count - 1;
+        if (index < 0)
         {
             return;
         }
 
-        int index = _reservedRefIds.Count - 1;
-        if (index < 0)
-        {
-            _hasReservedRefId = false;
-            return;
-        }
-
-        RefReader.StoreRefAt(_reservedRefIds[index], value);
-        _hasReservedRefId = false;
-    }
-
-    internal void SetReservedRefId(uint refId)
-    {
-        _reservedRefIds.Add(refId);
-        _hasReservedRefId = true;
-    }
-
-    /// <summary>
-    /// Hides the current publishable ref id while a serializer reads a child or temporary owner.
-    /// </summary>
-    /// <remarks>
-    /// The reserved slot stays on the stack so the outer owner can publish it after materialization.
-    /// This prevents immutable wrappers and conversion serializers from letting children consume the
-    /// parent ref id before the parent object exists.
-    /// </remarks>
-    public uint PauseRefPublication()
-    {
-        if (!_hasReservedRefId)
-        {
-            return NoReservedRefId;
-        }
-
-        int index = _reservedRefIds.Count - 1;
-        if (index < 0)
-        {
-            _hasReservedRefId = false;
-            return NoReservedRefId;
-        }
-
-        _hasReservedRefId = false;
-        return _reservedRefIds[index];
-    }
-
-    /// <summary>Restores a ref id hidden by <see cref="PauseRefPublication"/>.</summary>
-    public void ResumeRefPublication(uint refId)
-    {
+        uint refId = _reservedRefIds[index];
         if (refId == NoReservedRefId)
         {
             return;
         }
 
-        int index = _reservedRefIds.Count - 1;
-        if (index < 0)
-        {
-            throw new RefException($"cannot resume ref publication for ref id {refId}");
-        }
+        RefReader.StoreRefAt(refId, value);
+        _reservedRefIds[index] = NoReservedRefId;
+    }
 
-        _hasReservedRefId = true;
+    internal void SetReservedRefId(uint refId)
+    {
+        _reservedRefIds.Add(refId);
     }
 
     internal void ClearReservedRefId()
@@ -543,8 +504,6 @@ public sealed class ReadContext
         {
             _reservedRefIds.RemoveAt(count - 1);
         }
-
-        _hasReservedRefId = false;
     }
 
     internal void IncreaseReadDepth()
@@ -573,7 +532,6 @@ public sealed class ReadContext
         _typeMetaByType?.ClearKeys();
         _readTypeInfoByType.ClearKeys();
         _reservedRefIds.Clear();
-        _hasReservedRefId = false;
         _cachedTypeMetaType = null;
         _cachedTypeMeta = null;
         _currentDynamicReadDepth = 0;

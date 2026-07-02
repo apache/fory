@@ -335,13 +335,8 @@ final class ListSerializer extends Serializer<List> {
     ReadContext context,
     FieldType? elementFieldType, {
     bool hasPreservedRef = false,
-    bool reserveOwner = true,
   }) {
-    final state = _prepareListRead(
-      context,
-      elementFieldType,
-      reserveOwner: reserveOwner,
-    );
+    final state = _prepareListRead(context, elementFieldType);
     context.buffer.checkReadableBytes(state.size);
     final result = List<Object?>.filled(state.size, null, growable: false);
     if (hasPreservedRef) {
@@ -386,16 +381,23 @@ final class SetSerializer extends Serializer<Set> {
     FieldType? elementFieldType, {
     bool hasPreservedRef = false,
   }) {
-    final values = ListSerializer.readPayload(
-      context,
-      elementFieldType,
-      hasPreservedRef: false,
-      reserveOwner: false,
-    );
-    context.reserveGraphMemory(_ownerBytes + values.length * _referenceBytes);
-    final result = Set<Object?>.of(values);
+    final state = _prepareListRead(context, elementFieldType);
+    context.buffer.checkReadableBytes(state.size);
+    final result = <Object?>{};
     if (hasPreservedRef) {
       context.reference(result);
+    }
+    if (state.size == 0) {
+      return result;
+    }
+    if (state.tracksDepth) {
+      context.increaseDepth();
+    }
+    for (var index = 0; index < state.size; index += 1) {
+      result.add(_readPreparedListItem(context, state));
+    }
+    if (state.tracksDepth) {
+      context.decreaseDepth();
     }
     return result;
   }
@@ -654,14 +656,9 @@ Object _arrayToListValue(ReadContext context, Object? raw) {
 List<T> readTypedListPayload<T>(
   ReadContext context,
   FieldType? elementFieldType,
-  T Function(Object? value) convert, {
-  bool reserveOwner = true,
-}) {
-  final state = _prepareListRead(
-    context,
-    elementFieldType,
-    reserveOwner: reserveOwner,
-  );
+  T Function(Object? value) convert,
+) {
+  final state = _prepareListRead(context, elementFieldType);
   if (state.size == 0) {
     return List<T>.empty(growable: false);
   }
@@ -739,14 +736,7 @@ Set<T> readTypedSetPayload<T>(
   FieldType? elementFieldType,
   T Function(Object? value) convert,
 ) {
-  final values = readTypedListPayload(
-    context,
-    elementFieldType,
-    convert,
-    reserveOwner: false,
-  );
-  context.reserveGraphMemory(_ownerBytes + values.length * _referenceBytes);
-  return Set<T>.of(values);
+  return Set<T>.of(readTypedListPayload(context, elementFieldType, convert));
 }
 
 void writeTypedListPayload<T>(
@@ -934,13 +924,10 @@ final class _PreparedListRead {
 @pragma('vm:prefer-inline')
 _PreparedListRead _prepareListRead(
   ReadContext context,
-  FieldType? elementFieldType, {
-  bool reserveOwner = true,
-}) {
+  FieldType? elementFieldType,
+) {
   final size = context.buffer.readVarUint32();
-  if (reserveOwner) {
-    context.reserveGraphMemory(_ownerBytes + size * _referenceBytes);
-  }
+  context.reserveGraphMemory(_ownerBytes + size * _referenceBytes);
   if (size == 0) {
     return _PreparedListRead(
       size: 0,

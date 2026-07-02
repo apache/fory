@@ -744,7 +744,6 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine($"    public override {model.TypeName} ReadData(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
-        sb.AppendLine("        uint __foryPausedRef = context.PauseRefPublication();");
         sb.AppendLine("        uint rawCaseId = context.Reader.ReadVarUInt32();");
         sb.AppendLine("        if (rawCaseId > int.MaxValue)");
         sb.AppendLine("        {");
@@ -762,7 +761,6 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             sb.AppendLine("            {");
             EmitReadUnionCasePayload(sb, unionCase, valueVar, 4);
             sb.AppendLine($"                {model.TypeName} __foryUnion = new {unionCase.TypeName}({valueVar});");
-            sb.AppendLine("                context.ResumeRefPublication(__foryPausedRef);");
             sb.AppendLine("                return __foryUnion;");
             sb.AppendLine("            }");
         }
@@ -776,7 +774,6 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         else
         {
             sb.AppendLine($"                {model.TypeName} __foryUnion = new {unknownCase.TypeName}(global::Apache.Fory.UnknownCaseSerializer.ReadPayload(context, caseId));");
-            sb.AppendLine("                context.ResumeRefPublication(__foryPausedRef);");
             sb.AppendLine("                return __foryUnion;");
         }
 
