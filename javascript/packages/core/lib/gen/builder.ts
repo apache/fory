@@ -21,8 +21,7 @@ import { Scope } from "./scope";
 import TypeResolver from "../typeResolver";
 
 export class BinaryReaderBuilder {
-  constructor(private holder: string) {
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -154,8 +153,7 @@ export class BinaryReaderBuilder {
 }
 
 class BinaryWriterBuilder {
-  constructor(private holder: string) {
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -307,8 +305,10 @@ class BinaryWriterBuilder {
 }
 
 class ReferenceResolverBuilder {
-  constructor(private readHolder: string, private writeHolder: string) {
-  }
+  constructor(
+    private readHolder: string,
+    private writeHolder: string,
+  ) {}
 
   ownReadName() {
     return this.readHolder;
@@ -340,8 +340,7 @@ class ReferenceResolverBuilder {
 }
 
 class TypeResolverBuilder {
-  constructor(private holder: string) {
-  }
+  constructor(private holder: string) {}
 
   ownName() {
     return this.holder;
@@ -364,8 +363,10 @@ class TypeResolverBuilder {
 }
 
 class TypeMetaContextBuilder {
-  constructor(private writeHolder: string, private readHolder: string) {
-  }
+  constructor(
+    private writeHolder: string,
+    private readHolder: string,
+  ) {}
 
   writeTypeMeta(typeInfo: string, bytes: string) {
     return `${this.writeHolder}.writeTypeMeta(${typeInfo}, ${bytes})`;
@@ -401,8 +402,7 @@ class MetaStringContextBuilder {
     private writeContextHolder: string,
     private readContextHolder: string,
     private writeHelperHolder: string,
-  ) {
-  }
+  ) {}
 
   writeBytes(bytes: string) {
     return `${this.writeContextHolder}.writeMetaStringBytes(${bytes})`;
@@ -433,7 +433,10 @@ export class CodecBuilder {
   readonly typeMetaResolver: TypeMetaContextBuilder;
   readonly metaStringResolver: MetaStringContextBuilder;
 
-  constructor(scope: Scope, readonly resolver: TypeResolver) {
+  constructor(
+    scope: Scope,
+    readonly resolver: TypeResolver,
+  ) {
     const writeContext = scope.declareByName("writeContext", "typeResolver.writeContext");
     const readContext = scope.declareByName("readContext", "typeResolver.readContext");
     const br = scope.declareByName("br", "readContext.reader");
@@ -452,7 +455,9 @@ export class CodecBuilder {
   }
 
   static isReserved(key: string) {
-    return /^(?:do|if|in|for|let|new|try|var|case|else|enum|eval|false|null|this|true|void|with|break|catch|class|const|super|throw|while|yield|delete|export|import|public|return|static|switch|typeof|default|extends|finally|package|private|continue|debugger|function|arguments|interface|protected|implements|instanceof)$/.test(key);
+    return /^(?:do|if|in|for|let|new|try|var|case|else|enum|eval|false|null|this|true|void|with|break|catch|class|const|super|throw|while|yield|delete|export|import|public|return|static|switch|typeof|default|extends|finally|package|private|continue|debugger|function|arguments|interface|protected|implements|instanceof)$/.test(
+      key,
+    );
   }
 
   static isDotPropAccessor(prop: string) {
@@ -460,7 +465,7 @@ export class CodecBuilder {
   }
 
   static replaceBackslashAndQuote(v: string) {
-    return v.replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+    return v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   }
 
   static safeString(target: string) {

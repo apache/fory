@@ -17,7 +17,15 @@
  * under the License.
  */
 
-import { ForyTypeInfoSymbol, WithForyClsInfo, Serializer, TypeId, MaxInt32, MinInt32, Config } from "./type";
+import {
+  ForyTypeInfoSymbol,
+  WithForyClsInfo,
+  Serializer,
+  TypeId,
+  MaxInt32,
+  MinInt32,
+  Config,
+} from "./type";
 import { Gen } from "./gen";
 import { Dynamic, Type, TypeInfo } from "./typeInfo";
 import { ReadContext, WriteContext } from "./context";
@@ -154,7 +162,11 @@ export default class TypeResolver {
         if (TypeId.enumType(typeInfo.typeId)) {
           return true;
         }
-        if (typeInfo.typeId === TypeId.UNION || typeInfo.typeId === TypeId.TYPED_UNION || typeInfo.typeId === TypeId.NAMED_UNION) {
+        if (
+          typeInfo.typeId === TypeId.UNION ||
+          typeInfo.typeId === TypeId.TYPED_UNION ||
+          typeInfo.typeId === TypeId.NAMED_UNION
+        ) {
           return true;
         }
         if (this.isCompatible()) {
@@ -260,7 +272,7 @@ export default class TypeResolver {
         }
         return this.customSerializer.get(key);
       }
-      if (typeId <= 0xFF) {
+      if (typeId <= 0xff) {
         if (this.internalSerializer[typeId]) {
           Object.assign(this.internalSerializer[typeId], serializer);
         } else {

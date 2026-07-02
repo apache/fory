@@ -23,7 +23,6 @@ import { BoolArray } from "./types/boolArray";
 import { Float16Array } from "./types/float16";
 import { Decimal } from "./types/decimal";
 
-
 const targetFields = new WeakMap<new () => any, { [key: string]: TypeInfo }>();
 
 const addField = (target: new () => any, key: string, des: TypeInfo) => {
@@ -117,25 +116,25 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       target.prototype = {};
     }
     if (!this.options) {
-      this.options = {}
+      this.options = {};
     }
     this.options!.withConstructor = true;
     this.options!.creator = target;
     if (!this.options!.props) {
       this.options!.props = {};
     }
-    Object.assign(this.options!.props, targetFields.get(target) || {})
+    Object.assign(this.options!.props, targetFields.get(target) || {});
     const that = this;
     Object.defineProperties(target.prototype, {
       [ForyTypeInfoSymbol]: {
         get() {
           return {
-            structTypeInfo: that
+            structTypeInfo: that,
           };
         },
         enumerable: false,
         set(_) {
-          throw new Error("fory type info is readonly")
+          throw new Error("fory type info is readonly");
         },
       },
     });
@@ -143,14 +142,14 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
 
   public freeze() {
     Object.defineProperties(this, {
-      'named': { writable: false, configurable: false },
-      'namespace': { writable: false, configurable: false },
-      'typeName': { writable: false, configurable: false },
-      'userTypeId': { writable: false, configurable: false },
-      'evolving': { writable: false, configurable: false },
-      'options': { writable: false, configurable: false },
-      '_typeId': { writable: false, configurable: false },
-      'nullable': { writable: false, configurable: false },
+      named: { writable: false, configurable: false },
+      namespace: { writable: false, configurable: false },
+      typeName: { writable: false, configurable: false },
+      userTypeId: { writable: false, configurable: false },
+      evolving: { writable: false, configurable: false },
+      options: { writable: false, configurable: false },
+      _typeId: { writable: false, configurable: false },
+      nullable: { writable: false, configurable: false },
     });
     Object.freeze(this.options);
     if (this.options?.props) {
@@ -176,7 +175,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     // eslint-disable-next-line
     const that = this;
     if (userTypeId !== -1) {
-      if (!Number.isInteger(userTypeId) || userTypeId < 0 || userTypeId > 0xFFFFFFFE) {
+      if (!Number.isInteger(userTypeId) || userTypeId < 0 || userTypeId > 0xfffffffe) {
         throw new Error("userTypeId must be in range [0, 0xfffffffe]");
       }
     }
@@ -199,7 +198,6 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     return result;
   }
 
-
   get typeId() {
     return this._typeId;
   }
@@ -214,15 +212,21 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     }>(typeId);
   }
 
-  static fromExt<T = any>(nameInfo: {
-    typeId?: number;
-    namespace?: string;
-    typeName?: string;
-  } | string | number, {
-    withConstructor = false,
-  }: {
-    withConstructor?: boolean;
-  } = {}) {
+  static fromExt<T = any>(
+    nameInfo:
+      | {
+          typeId?: number;
+          namespace?: string;
+          typeName?: string;
+        }
+      | string
+      | number,
+    {
+      withConstructor = false,
+    }: {
+      withConstructor?: boolean;
+    } = {},
+  ) {
     let typeId: number | undefined;
     let namespace: string | undefined;
     let typeName: string | undefined;
@@ -256,7 +260,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     } else {
       finalTypeId = TypeId.NAMED_EXT;
     }
-    const typeInfo = new TypeInfo<T>(finalTypeId, userTypeId)
+    const typeInfo = new TypeInfo<T>(finalTypeId, userTypeId);
     typeInfo.options = {
       withConstructor,
     };
@@ -266,16 +270,23 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     return typeInfo as TypeInfo<T>;
   }
 
-  static fromStruct<T = any>(nameInfo: {
-    typeId?: number;
-    namespace?: string;
-    typeName?: string;
-    evolving?: boolean;
-  } | string | number, props?: Record<string, TypeInfo>, {
-    withConstructor = false,
-  }: {
-    withConstructor?: boolean;
-  } = {}) {
+  static fromStruct<T = any>(
+    nameInfo:
+      | {
+          typeId?: number;
+          namespace?: string;
+          typeName?: string;
+          evolving?: boolean;
+        }
+      | string
+      | number,
+    props?: Record<string, TypeInfo>,
+    {
+      withConstructor = false,
+    }: {
+      withConstructor?: boolean;
+    } = {},
+  ) {
     let typeId: number | undefined;
     let namespace: string | undefined;
     let typeName: string | undefined;
@@ -332,11 +343,17 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     return typeInfo;
   }
 
-  static fromEnum<T>(nameInfo: {
-    typeId?: number;
-    namespace?: string;
-    typeName?: string;
-  } | string | number, props?: { [key: string]: any }) {
+  static fromEnum<T>(
+    nameInfo:
+      | {
+          typeId?: number;
+          namespace?: string;
+          typeName?: string;
+        }
+      | string
+      | number,
+    props?: { [key: string]: any },
+  ) {
     let typeId: number | undefined;
     let namespace: string | undefined;
     let typeName: string | undefined;
@@ -378,7 +395,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
 export enum Dynamic {
   TRUE = "TRUE",
   FALSE = "FALSE",
-  AUTO = "AUTO"
+  AUTO = "AUTO",
 }
 
 type ScalarEncoding = "fixed" | "varint" | "tagged";
@@ -387,10 +404,7 @@ type IntegerEncodingOptions = {
   encoding?: ScalarEncoding;
 };
 
-const scalarTypeInfo = <T extends number>(
-  typeId: T,
-  scalarEncoding?: ScalarEncoding,
-) => {
+const scalarTypeInfo = <T extends number>(typeId: T, scalarEncoding?: ScalarEncoding) => {
   const typeInfo = TypeInfo.fromNonParam<T>(typeId);
   if (scalarEncoding !== undefined) {
     typeInfo.options = { scalarEncoding };
@@ -446,9 +460,8 @@ const typeIdForUInt64Encoding = (options?: IntegerEncodingOptions) => {
   }
 };
 
-const isDenseArrayTypeId = (typeId: number) => (
-  typeId >= TypeId.BOOL_ARRAY && typeId <= TypeId.FLOAT64_ARRAY
-);
+const isDenseArrayTypeId = (typeId: number) =>
+  typeId >= TypeId.BOOL_ARRAY && typeId <= TypeId.FLOAT64_ARRAY;
 
 const denseArrayTypeInfo = <T extends number>(typeId: T) => TypeInfo.fromNonParam<T>(typeId);
 
@@ -458,8 +471,8 @@ type Props<T> = T extends {
   };
 }
   ? {
-    [P in keyof T2]?: (InputType<T2[P]> | null);
-  }
+      [P in keyof T2]?: InputType<T2[P]> | null;
+    }
   : unknown;
 
 type InnerProps<T> = T extends {
@@ -479,7 +492,6 @@ type MapProps<T> = T extends {
   ? Map<InputType<T2>, InputType<T3> | null>
   : unknown;
 
-
 type Value<T> = T extends { [s: string]: infer T2 } ? T2 : unknown;
 
 type EnumProps<T> = T extends {
@@ -495,266 +507,269 @@ type SetProps<T> = T extends {
     key: infer T2 extends TypeInfo;
   };
 }
-  ? Set<(InputType<T2> | null)>
+  ? Set<InputType<T2> | null>
   : unknown;
 
 export type InputType<T> = T extends TypeInfo<infer M> ? HintInput<M> : unknown;
-
 
 export type HintInput<T> = T extends {
   type: typeof TypeId.STRUCT;
 }
   ? Props<T>
   : T extends {
-    type: typeof TypeId.STRING;
-  }
-  ? string
-  : T extends {
-    type:
-    | typeof TypeId["INT8"]
-    | typeof TypeId.INT16
-    | typeof TypeId.INT32
-    | typeof TypeId.VARINT32
-    | typeof TypeId.UINT8
-    | typeof TypeId.UINT16
-    | typeof TypeId.UINT32
-    | typeof TypeId.UINT64
-    | typeof TypeId.VAR_UINT64
-    | typeof TypeId.VAR_UINT32
-    | typeof TypeId.FLOAT8
-    | typeof TypeId.FLOAT16
-    | typeof TypeId.BFLOAT16
-    | typeof TypeId.FLOAT32
-    | typeof TypeId.FLOAT64;
-  }
-  ? number
-
-  : T extends {
-    type: typeof TypeId.VARINT64
-    | typeof TypeId.TAGGED_INT64
-    | typeof TypeId.INT64
-    | typeof TypeId.UINT64
-    | typeof TypeId.VAR_UINT64
-    | typeof TypeId.TAGGED_UINT64;
-  }
-  ? bigint
-  : T extends {
-    type: typeof TypeId.MAP;
-  }
-  ? MapProps<T>
-  : T extends {
-    type: typeof TypeId.SET;
-  }
-  ? SetProps<T>
-  : T extends {
-    type: typeof TypeId.LIST;
-  }
-  ? InnerProps<T>
-  : T extends {
-    type: typeof TypeId.BOOL;
-  }
-  ? boolean
-  : T extends {
-    type: typeof TypeId.DURATION;
-  }
-  ? Date
-  : T extends {
-    type: typeof TypeId.DECIMAL;
-  }
-  ? Decimal
-  : T extends {
-    type: typeof TypeId.TIMESTAMP;
-  }
-  ? number
-  : T extends {
-    type: typeof TypeId.BINARY;
-  }
-  ? Uint8Array
-  : T extends {
-    type: typeof TypeId.BOOL_ARRAY;
-  }
-  ? BoolArray | boolean[]
-  : T extends {
-    type: typeof TypeId.INT8_ARRAY;
-  }
-  ? Int8Array
-  : T extends {
-    type: typeof TypeId.INT16_ARRAY;
-  }
-  ? Int16Array
-  : T extends {
-    type: typeof TypeId.INT32_ARRAY;
-  }
-  ? Int32Array
-  : T extends {
-    type: typeof TypeId.INT64_ARRAY;
-  }
-  ? BigInt64Array
-  : T extends {
-    type: typeof TypeId.UINT8_ARRAY;
-  }
-  ? Uint8Array
-  : T extends {
-    type: typeof TypeId.UINT16_ARRAY;
-  }
-  ? Uint16Array
-  : T extends {
-    type: typeof TypeId.UINT32_ARRAY;
-  }
-  ? Uint32Array
-  : T extends {
-    type: typeof TypeId.UINT64_ARRAY;
-  }
-  ? BigUint64Array
-  : T extends {
-    type: typeof TypeId.FLOAT16_ARRAY;
-  }
-  ? Float16Array | number[]
-  : T extends {
-    type: typeof TypeId.BFLOAT16_ARRAY;
-  }
-  ? BFloat16Array | number[]
-  : T extends {
-    type: typeof TypeId.FLOAT32_ARRAY;
-  }
-  ? Float32Array
-  : T extends {
-    type: typeof TypeId.FLOAT64_ARRAY;
-  }
-  ? Float64Array
-  : T extends {
-    type: typeof TypeId.ENUM;
-  }
-  ? EnumProps<T> : any;
+        type: typeof TypeId.STRING;
+      }
+    ? string
+    : T extends {
+          type:
+            | (typeof TypeId)["INT8"]
+            | typeof TypeId.INT16
+            | typeof TypeId.INT32
+            | typeof TypeId.VARINT32
+            | typeof TypeId.UINT8
+            | typeof TypeId.UINT16
+            | typeof TypeId.UINT32
+            | typeof TypeId.UINT64
+            | typeof TypeId.VAR_UINT64
+            | typeof TypeId.VAR_UINT32
+            | typeof TypeId.FLOAT8
+            | typeof TypeId.FLOAT16
+            | typeof TypeId.BFLOAT16
+            | typeof TypeId.FLOAT32
+            | typeof TypeId.FLOAT64;
+        }
+      ? number
+      : T extends {
+            type:
+              | typeof TypeId.VARINT64
+              | typeof TypeId.TAGGED_INT64
+              | typeof TypeId.INT64
+              | typeof TypeId.UINT64
+              | typeof TypeId.VAR_UINT64
+              | typeof TypeId.TAGGED_UINT64;
+          }
+        ? bigint
+        : T extends {
+              type: typeof TypeId.MAP;
+            }
+          ? MapProps<T>
+          : T extends {
+                type: typeof TypeId.SET;
+              }
+            ? SetProps<T>
+            : T extends {
+                  type: typeof TypeId.LIST;
+                }
+              ? InnerProps<T>
+              : T extends {
+                    type: typeof TypeId.BOOL;
+                  }
+                ? boolean
+                : T extends {
+                      type: typeof TypeId.DURATION;
+                    }
+                  ? Date
+                  : T extends {
+                        type: typeof TypeId.DECIMAL;
+                      }
+                    ? Decimal
+                    : T extends {
+                          type: typeof TypeId.TIMESTAMP;
+                        }
+                      ? number
+                      : T extends {
+                            type: typeof TypeId.BINARY;
+                          }
+                        ? Uint8Array
+                        : T extends {
+                              type: typeof TypeId.BOOL_ARRAY;
+                            }
+                          ? BoolArray | boolean[]
+                          : T extends {
+                                type: typeof TypeId.INT8_ARRAY;
+                              }
+                            ? Int8Array
+                            : T extends {
+                                  type: typeof TypeId.INT16_ARRAY;
+                                }
+                              ? Int16Array
+                              : T extends {
+                                    type: typeof TypeId.INT32_ARRAY;
+                                  }
+                                ? Int32Array
+                                : T extends {
+                                      type: typeof TypeId.INT64_ARRAY;
+                                    }
+                                  ? BigInt64Array
+                                  : T extends {
+                                        type: typeof TypeId.UINT8_ARRAY;
+                                      }
+                                    ? Uint8Array
+                                    : T extends {
+                                          type: typeof TypeId.UINT16_ARRAY;
+                                        }
+                                      ? Uint16Array
+                                      : T extends {
+                                            type: typeof TypeId.UINT32_ARRAY;
+                                          }
+                                        ? Uint32Array
+                                        : T extends {
+                                              type: typeof TypeId.UINT64_ARRAY;
+                                            }
+                                          ? BigUint64Array
+                                          : T extends {
+                                                type: typeof TypeId.FLOAT16_ARRAY;
+                                              }
+                                            ? Float16Array | number[]
+                                            : T extends {
+                                                  type: typeof TypeId.BFLOAT16_ARRAY;
+                                                }
+                                              ? BFloat16Array | number[]
+                                              : T extends {
+                                                    type: typeof TypeId.FLOAT32_ARRAY;
+                                                  }
+                                                ? Float32Array
+                                                : T extends {
+                                                      type: typeof TypeId.FLOAT64_ARRAY;
+                                                    }
+                                                  ? Float64Array
+                                                  : T extends {
+                                                        type: typeof TypeId.ENUM;
+                                                      }
+                                                    ? EnumProps<T>
+                                                    : any;
 
 export type ResultType<T> = T extends TypeInfo<infer M> ? HintResult<M> : HintResult<T>;
 
-export type HintResult<T> = T extends never ? any : T extends {
-  type: typeof TypeId.STRUCT;
-}
-  ? Props<T>
+export type HintResult<T> = T extends never
+  ? any
   : T extends {
-    type: typeof TypeId.STRING;
-  }
-  ? string
-  : T extends {
-    type:
-    | typeof TypeId.INT8
-    | typeof TypeId.INT16
-    | typeof TypeId.INT32
-    | typeof TypeId.VARINT32
-    | typeof TypeId.UINT8
-    | typeof TypeId.UINT16
-    | typeof TypeId.UINT32
-    | typeof TypeId.VAR_UINT32
-    | typeof TypeId.FLOAT8
-    | typeof TypeId.FLOAT16
-    | typeof TypeId.BFLOAT16
-    | typeof TypeId.FLOAT32
-    | typeof TypeId.FLOAT64;
-  }
-  ? number
-
-  : T extends {
-    type: typeof TypeId.TAGGED_INT64
-    | typeof TypeId.INT64
-    | typeof TypeId.UINT64
-    | typeof TypeId.VAR_UINT64
-    | typeof TypeId.TAGGED_UINT64;
-  }
-  ? bigint
-  : T extends {
-    type: typeof TypeId.MAP;
-  }
-  ? MapProps<T>
-  : T extends {
-    type: typeof TypeId.SET;
-  }
-  ? SetProps<T>
-  : T extends {
-    type: typeof TypeId.LIST;
-  }
-  ? InnerProps<T>
-  : T extends {
-    type: typeof TypeId.BOOL;
-  }
-  ? boolean
-  : T extends {
-    type: typeof TypeId.DURATION;
-  }
-  ? number
-  : T extends {
-    type: typeof TypeId.DECIMAL;
-  }
-  ? Decimal
-  : T extends {
-    type: typeof TypeId.DATE;
-  }
-  ? (Date | number)
-  : T extends {
-    type: typeof TypeId.TIMESTAMP;
-  }
-  ? number
-  : T extends {
-    type: typeof TypeId.BINARY;
-  }
-  ? Uint8Array
-  : T extends {
-    type: typeof TypeId.BOOL_ARRAY;
-  }
-  ? BoolArray
-  : T extends {
-    type: typeof TypeId.INT8_ARRAY;
-  }
-  ? Int8Array
-  : T extends {
-    type: typeof TypeId.INT16_ARRAY;
-  }
-  ? Int16Array
-  : T extends {
-    type: typeof TypeId.INT32_ARRAY;
-  }
-  ? Int32Array
-  : T extends {
-    type: typeof TypeId.INT64_ARRAY;
-  }
-  ? BigInt64Array
-  : T extends {
-    type: typeof TypeId.UINT8_ARRAY;
-  }
-  ? Uint8Array
-  : T extends {
-    type: typeof TypeId.UINT16_ARRAY;
-  }
-  ? Uint16Array
-  : T extends {
-    type: typeof TypeId.UINT32_ARRAY;
-  }
-  ? Uint32Array
-  : T extends {
-    type: typeof TypeId.UINT64_ARRAY;
-  }
-  ? BigUint64Array
-  : T extends {
-    type: typeof TypeId.FLOAT16_ARRAY;
-  }
-  ? Float16Array
-  : T extends {
-    type: typeof TypeId.BFLOAT16_ARRAY;
-  }
-  ? BFloat16Array
-  : T extends {
-    type: typeof TypeId.FLOAT32_ARRAY;
-  }
-  ? Float32Array
-  : T extends {
-    type: typeof TypeId.FLOAT64_ARRAY;
-  }
-  ? Float64Array
-  : T extends {
-    type: typeof TypeId.ENUM;
-  }
-  ? EnumProps<T> : unknown;
+        type: typeof TypeId.STRUCT;
+      }
+    ? Props<T>
+    : T extends {
+          type: typeof TypeId.STRING;
+        }
+      ? string
+      : T extends {
+            type:
+              | typeof TypeId.INT8
+              | typeof TypeId.INT16
+              | typeof TypeId.INT32
+              | typeof TypeId.VARINT32
+              | typeof TypeId.UINT8
+              | typeof TypeId.UINT16
+              | typeof TypeId.UINT32
+              | typeof TypeId.VAR_UINT32
+              | typeof TypeId.FLOAT8
+              | typeof TypeId.FLOAT16
+              | typeof TypeId.BFLOAT16
+              | typeof TypeId.FLOAT32
+              | typeof TypeId.FLOAT64;
+          }
+        ? number
+        : T extends {
+              type:
+                | typeof TypeId.TAGGED_INT64
+                | typeof TypeId.INT64
+                | typeof TypeId.UINT64
+                | typeof TypeId.VAR_UINT64
+                | typeof TypeId.TAGGED_UINT64;
+            }
+          ? bigint
+          : T extends {
+                type: typeof TypeId.MAP;
+              }
+            ? MapProps<T>
+            : T extends {
+                  type: typeof TypeId.SET;
+                }
+              ? SetProps<T>
+              : T extends {
+                    type: typeof TypeId.LIST;
+                  }
+                ? InnerProps<T>
+                : T extends {
+                      type: typeof TypeId.BOOL;
+                    }
+                  ? boolean
+                  : T extends {
+                        type: typeof TypeId.DURATION;
+                      }
+                    ? number
+                    : T extends {
+                          type: typeof TypeId.DECIMAL;
+                        }
+                      ? Decimal
+                      : T extends {
+                            type: typeof TypeId.DATE;
+                          }
+                        ? Date | number
+                        : T extends {
+                              type: typeof TypeId.TIMESTAMP;
+                            }
+                          ? number
+                          : T extends {
+                                type: typeof TypeId.BINARY;
+                              }
+                            ? Uint8Array
+                            : T extends {
+                                  type: typeof TypeId.BOOL_ARRAY;
+                                }
+                              ? BoolArray
+                              : T extends {
+                                    type: typeof TypeId.INT8_ARRAY;
+                                  }
+                                ? Int8Array
+                                : T extends {
+                                      type: typeof TypeId.INT16_ARRAY;
+                                    }
+                                  ? Int16Array
+                                  : T extends {
+                                        type: typeof TypeId.INT32_ARRAY;
+                                      }
+                                    ? Int32Array
+                                    : T extends {
+                                          type: typeof TypeId.INT64_ARRAY;
+                                        }
+                                      ? BigInt64Array
+                                      : T extends {
+                                            type: typeof TypeId.UINT8_ARRAY;
+                                          }
+                                        ? Uint8Array
+                                        : T extends {
+                                              type: typeof TypeId.UINT16_ARRAY;
+                                            }
+                                          ? Uint16Array
+                                          : T extends {
+                                                type: typeof TypeId.UINT32_ARRAY;
+                                              }
+                                            ? Uint32Array
+                                            : T extends {
+                                                  type: typeof TypeId.UINT64_ARRAY;
+                                                }
+                                              ? BigUint64Array
+                                              : T extends {
+                                                    type: typeof TypeId.FLOAT16_ARRAY;
+                                                  }
+                                                ? Float16Array
+                                                : T extends {
+                                                      type: typeof TypeId.BFLOAT16_ARRAY;
+                                                    }
+                                                  ? BFloat16Array
+                                                  : T extends {
+                                                        type: typeof TypeId.FLOAT32_ARRAY;
+                                                      }
+                                                    ? Float32Array
+                                                    : T extends {
+                                                          type: typeof TypeId.FLOAT64_ARRAY;
+                                                        }
+                                                      ? Float64Array
+                                                      : T extends {
+                                                            type: typeof TypeId.ENUM;
+                                                          }
+                                                        ? EnumProps<T>
+                                                        : unknown;
 
 export const Type = {
   any() {
@@ -765,33 +780,42 @@ export const Type = {
       inner,
     });
   },
-  map<T1 extends TypeInfo, T2 extends TypeInfo>(
-    key: T1,
-    value: T2
-  ) {
+  map<T1 extends TypeInfo, T2 extends TypeInfo>(key: T1, value: T2) {
     if (isDenseArrayTypeId(key.typeId)) {
       throw new Error("Dense array schema is not valid as a map key type");
     }
-    return TypeInfo.fromWithOptions<typeof TypeId.MAP, {
-      key: T1,
-      value: T2
-    }>(TypeId.MAP, {
+    return TypeInfo.fromWithOptions<
+      typeof TypeId.MAP,
+      {
+        key: T1;
+        value: T2;
+      }
+    >(TypeId.MAP, {
       key,
       value,
     });
   },
   set<T extends TypeInfo>(key: T) {
-    return TypeInfo.fromWithOptions<typeof TypeId.SET, {
-      key: T
-    }>(TypeId.SET, {
+    return TypeInfo.fromWithOptions<
+      typeof TypeId.SET,
+      {
+        key: T;
+      }
+    >(TypeId.SET, {
       key,
     });
   },
-  enum<T1 extends { [key: string]: any }>(nameInfo: {
-    typeId?: number;
-    namespace?: string;
-    typeName?: string;
-  } | string | number, t1?: T1) {
+  enum<T1 extends { [key: string]: any }>(
+    nameInfo:
+      | {
+          typeId?: number;
+          namespace?: string;
+          typeName?: string;
+        }
+      | string
+      | number,
+    t1?: T1,
+  ) {
     return TypeInfo.fromEnum<{
       type: typeof TypeId.ENUM;
       options: {
@@ -799,15 +823,21 @@ export const Type = {
       };
     }>(nameInfo, t1);
   },
-  ext<T extends { [key: string]: TypeInfo }>(nameInfo: {
-    typeId?: number;
-    namespace?: string;
-    typeName?: string;
-  } | string | number, {
-    withConstructor = false,
-  }: {
-    withConstructor?: boolean;
-  } = {}) {
+  ext<T extends { [key: string]: TypeInfo }>(
+    nameInfo:
+      | {
+          typeId?: number;
+          namespace?: string;
+          typeName?: string;
+        }
+      | string
+      | number,
+    {
+      withConstructor = false,
+    }: {
+      withConstructor?: boolean;
+    } = {},
+  ) {
     return TypeInfo.fromExt<{
       type: typeof TypeId.EXT;
       options: {
@@ -817,16 +847,23 @@ export const Type = {
       withConstructor,
     });
   },
-  struct<T extends { [key: string]: TypeInfo }>(nameInfo: {
-    typeId?: number;
-    namespace?: string;
-    typeName?: string;
-    evolving?: boolean;
-  } | string | number, props?: T, {
-    withConstructor = false,
-  }: {
-    withConstructor?: boolean;
-  } = {}) {
+  struct<T extends { [key: string]: TypeInfo }>(
+    nameInfo:
+      | {
+          typeId?: number;
+          namespace?: string;
+          typeName?: string;
+          evolving?: boolean;
+        }
+      | string
+      | number,
+    props?: T,
+    {
+      withConstructor = false,
+    }: {
+      withConstructor?: boolean;
+    } = {},
+  ) {
     return TypeInfo.fromStruct<{
       type: typeof TypeId.STRUCT;
       options: {
@@ -836,7 +873,14 @@ export const Type = {
       withConstructor,
     });
   },
-  union(idOrCases?: number | string | { namespace?: string; typeName?: string } | { [caseIndex: number]: TypeInfo }, cases?: { [caseIndex: number]: TypeInfo }) {
+  union(
+    idOrCases?:
+      | number
+      | string
+      | { namespace?: string; typeName?: string }
+      | { [caseIndex: number]: TypeInfo },
+    cases?: { [caseIndex: number]: TypeInfo },
+  ) {
     let typeInfo: TypeInfo;
     if (typeof idOrCases === "number") {
       typeInfo = new TypeInfo<typeof TypeId.TYPED_UNION>(TypeId.TYPED_UNION);
@@ -875,25 +919,16 @@ export const Type = {
     return typeInfo;
   },
   string() {
-    return TypeInfo.fromNonParam<typeof TypeId.STRING>(
-      (TypeId.STRING),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.STRING>(TypeId.STRING);
   },
   bool() {
-    return TypeInfo.fromNonParam<typeof TypeId.BOOL>(
-      (TypeId.BOOL),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.BOOL>(TypeId.BOOL);
   },
   int8() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT8>(
-      (TypeId.INT8),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.INT8>(TypeId.INT8);
   },
   int16() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT16>(
-      (TypeId.INT16),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.INT16>(TypeId.INT16);
   },
   int32(options?: IntegerEncodingOptions) {
     return scalarTypeInfo(typeIdForInt32Encoding(options), options?.encoding);
@@ -902,38 +937,22 @@ export const Type = {
     return scalarTypeInfo(typeIdForInt64Encoding(options), options?.encoding);
   },
   float16() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT16>(
-      (TypeId.FLOAT16),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT16>(TypeId.FLOAT16);
   },
   bfloat16() {
-    return TypeInfo.fromNonParam<typeof TypeId.BFLOAT16>(
-      (TypeId.BFLOAT16),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.BFLOAT16>(TypeId.BFLOAT16);
   },
   float32() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT32>(
-      (TypeId.FLOAT32),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT32>(TypeId.FLOAT32);
   },
   float64() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT64>(
-      (TypeId.FLOAT64),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT64>(TypeId.FLOAT64);
   },
   uint8() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT8>(
-      (TypeId.UINT8),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.UINT8>(TypeId.UINT8);
   },
   uint16() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT16>(
-      (TypeId.UINT16),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.UINT16>(TypeId.UINT16);
   },
   uint32(options?: IntegerEncodingOptions) {
     return scalarTypeInfo(typeIdForUInt32Encoding(options), options?.encoding);
@@ -942,30 +961,19 @@ export const Type = {
     return scalarTypeInfo(typeIdForUInt64Encoding(options), options?.encoding);
   },
   binary() {
-    return TypeInfo.fromNonParam<typeof TypeId.BINARY>(
-      (TypeId.BINARY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.BINARY>(TypeId.BINARY);
   },
   duration() {
-    return TypeInfo.fromNonParam<typeof TypeId.DURATION>(
-      (TypeId.DURATION),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.DURATION>(TypeId.DURATION);
   },
   date() {
-    return TypeInfo.fromNonParam<typeof TypeId.DATE>(
-      (TypeId.DATE),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.DATE>(TypeId.DATE);
   },
   timestamp() {
-    return TypeInfo.fromNonParam<typeof TypeId.TIMESTAMP>(
-      (TypeId.TIMESTAMP),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.TIMESTAMP>(TypeId.TIMESTAMP);
   },
   decimal() {
-    return TypeInfo.fromNonParam<typeof TypeId.DECIMAL>(
-      (TypeId.DECIMAL),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.DECIMAL>(TypeId.DECIMAL);
   },
   boolArray() {
     return denseArrayTypeInfo<typeof TypeId.BOOL_ARRAY>(TypeId.BOOL_ARRAY);

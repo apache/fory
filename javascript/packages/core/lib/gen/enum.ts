@@ -70,21 +70,23 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     const enumEntries = this.getEnumEntries();
     const useExplicitNumericWireValues = this.useExplicitNumericWireValues(enumEntries);
     return `
-        ${enumEntries.map(([, value], index) => {
-      if (typeof value !== "string" && typeof value !== "number") {
-        throw new Error("Enum value must be string or number");
-      }
-      if (typeof value === "number") {
-        if (value > MaxUInt32 || value < 0) {
-          throw new Error("Enum value must be a valid uint32");
-        }
-      }
-      const safeValue = typeof value === "string" ? `"${value}"` : value;
-      const wireValue = useExplicitNumericWireValues ? safeValue : index;
-      return ` if (${accessor} === ${safeValue}) {
+        ${enumEntries
+          .map(([, value], index) => {
+            if (typeof value !== "string" && typeof value !== "number") {
+              throw new Error("Enum value must be string or number");
+            }
+            if (typeof value === "number") {
+              if (value > MaxUInt32 || value < 0) {
+                throw new Error("Enum value must be a valid uint32");
+              }
+            }
+            const safeValue = typeof value === "string" ? `"${value}"` : value;
+            const wireValue = useExplicitNumericWireValues ? safeValue : index;
+            return ` if (${accessor} === ${safeValue}) {
                     ${this.builder.writer.writeVarUInt32(wireValue)}
                 }`;
-    }).join(" else ")}
+          })
+          .join(" else ")}
         else {
             throw new Error("Enum received an unexpected value: " + ${accessor});
         }
@@ -116,8 +118,8 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
             }
 
             ${
-            // skip the type name
-            this.builder.metaStringResolver.readTypeName()
+              // skip the type name
+              this.builder.metaStringResolver.readTypeName()
             }
           `;
         }
@@ -127,8 +129,8 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     }
     return `
       ${
-      // skip the typeId
-      this.builder.reader.readUint8()
+        // skip the typeId
+        this.builder.reader.readUint8()
       }
       ${readUserTypeIdStmt}
       ${namesStmt}
@@ -145,12 +147,25 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
         break;
       case TypeId.NAMED_ENUM:
         if (this.builder.resolver.isCompatible()) {
-          const bytes = this.scope.declare("enumTypeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`);
+          const bytes = this.scope.declare(
+            "enumTypeInfoBytes",
+            `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo, this.builder.resolver).toBytes().join(",")}])`,
+          );
           typeMeta = this.builder.typeMetaResolver.writeTypeMeta(this.builder.getTypeInfo(), bytes);
         } else {
           const typeInfo = this.typeInfo;
-          const nsBytes = this.scope.declare("nsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace)));
-          const typeNameBytes = this.scope.declare("typeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName)));
+          const nsBytes = this.scope.declare(
+            "nsBytes",
+            this.builder.metaStringResolver.encodeNamespace(
+              CodecBuilder.replaceBackslashAndQuote(typeInfo.namespace),
+            ),
+          );
+          const typeNameBytes = this.scope.declare(
+            "typeNameBytes",
+            this.builder.metaStringResolver.encodeTypeName(
+              CodecBuilder.replaceBackslashAndQuote(typeInfo.typeName),
+            ),
+          );
           typeMeta = `
               ${this.builder.metaStringResolver.writeBytes(nsBytes)}
               ${this.builder.metaStringResolver.writeBytes(typeNameBytes)}
@@ -177,23 +192,25 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
     return `
         const ${enumValue} = ${this.builder.reader.readVarUInt32()};
         switch(${enumValue}) {
-            ${enumEntries.map(([, value], index) => {
-      if (typeof value !== "string" && typeof value !== "number") {
-        throw new Error("Enum value must be string or number");
-      }
-      if (typeof value === "number") {
-        if (value > MaxUInt32 || value < 0) {
-          throw new Error("Enum value must be a valid uint32");
-        }
-      }
-      const safeValue = typeof value === "string" ? `"${value}"` : `${value}`;
-      const wireValue = useExplicitNumericWireValues ? safeValue : `${index}`;
-      return `
+            ${enumEntries
+              .map(([, value], index) => {
+                if (typeof value !== "string" && typeof value !== "number") {
+                  throw new Error("Enum value must be string or number");
+                }
+                if (typeof value === "number") {
+                  if (value > MaxUInt32 || value < 0) {
+                    throw new Error("Enum value must be a valid uint32");
+                  }
+                }
+                const safeValue = typeof value === "string" ? `"${value}"` : `${value}`;
+                const wireValue = useExplicitNumericWireValues ? safeValue : `${index}`;
+                return `
                 case ${wireValue}:
                     ${accessor(safeValue)}
                     break;
                 `;
-    }).join("\n")}
+              })
+              .join("\n")}
             default:
                 throw new Error("Enum received an unexpected value: " + ${enumValue});
         }

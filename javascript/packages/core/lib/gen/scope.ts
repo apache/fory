@@ -63,8 +63,12 @@ export class Scope {
 
   generate() {
     return `
-      ${Array.from(this.declares.entries()).map(x => `const ${x[1]} = ${x[0]};`).join("\n")}
-      ${Array.from(this.varDeclares.entries()).map(x => `let ${x[0]} = ${x[1]};`).join("\n")}
+      ${Array.from(this.declares.entries())
+        .map((x) => `const ${x[1]} = ${x[0]};`)
+        .join("\n")}
+      ${Array.from(this.varDeclares.entries())
+        .map((x) => `let ${x[0]} = ${x[1]};`)
+        .join("\n")}
     `;
   }
 }

@@ -173,22 +173,25 @@ export class ForyFloat16Array {
 }
 
 type NativeFloat16ArrayConstructor = {
-  new(length: number): ArrayLike<number>;
-  new(source: ArrayLike<number>): ArrayLike<number>;
+  new (length: number): ArrayLike<number>;
+  new (source: ArrayLike<number>): ArrayLike<number>;
   readonly BYTES_PER_ELEMENT: number;
 };
 
-const NativeFloat16Array = (globalThis as unknown as { Float16Array?: NativeFloat16ArrayConstructor }).Float16Array;
+const NativeFloat16Array = (
+  globalThis as unknown as { Float16Array?: NativeFloat16ArrayConstructor }
+).Float16Array;
 
 export type Float16Array = ForyFloat16Array | ArrayLike<number>;
 
-export const Float16Array = (
-  NativeFloat16Array ?? ForyFloat16Array
-) as NativeFloat16ArrayConstructor | typeof ForyFloat16Array;
+export const Float16Array = (NativeFloat16Array ?? ForyFloat16Array) as
+  NativeFloat16ArrayConstructor | typeof ForyFloat16Array;
 
 export function isFloat16Array(value: unknown): boolean {
-  return value instanceof ForyFloat16Array
-    || (NativeFloat16Array !== undefined && value instanceof NativeFloat16Array);
+  return (
+    value instanceof ForyFloat16Array ||
+    (NativeFloat16Array !== undefined && value instanceof NativeFloat16Array)
+  );
 }
 
 export function getFloat16Raw(value: unknown): Uint16Array | null {

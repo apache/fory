@@ -77,10 +77,8 @@ export const isPrimitiveTypeId = (typeId: number): boolean => {
 
 export const refTrackingUnableTypeId = (typeId: number): boolean => {
   return (
-    PRIMITIVE_TYPE_IDS.includes(typeId as any)
-    || [TypeId.DURATION, TypeId.DATE, TypeId.TIMESTAMP, TypeId.STRING].includes(
-      typeId as any,
-    )
+    PRIMITIVE_TYPE_IDS.includes(typeId as any) ||
+    [TypeId.DURATION, TypeId.DATE, TypeId.TIMESTAMP, TypeId.STRING].includes(typeId as any)
   );
 };
 
@@ -175,11 +173,7 @@ export class FieldInfo {
     return this.fieldId;
   }
 
-  static writeTypeId(
-    writer: BinaryWriter,
-    typeInfo: InnerFieldInfo,
-    writeFlags = false,
-  ) {
+  static writeTypeId(writer: BinaryWriter, typeInfo: InnerFieldInfo, writeFlags = false) {
     let { typeId } = typeInfo;
     if (typeId === TypeId.NAMED_ENUM) {
       typeId = TypeId.ENUM;
@@ -332,9 +326,7 @@ export class TypeMeta {
         this.computeFieldTypeFingerprint(field, true, true),
       ]);
     }
-    fieldInfos = fieldInfos.sort((a, b) =>
-      TypeMeta.compareFieldSortKey(a[0], b[0]),
-    );
+    fieldInfos = fieldInfos.sort((a, b) => TypeMeta.compareFieldSortKey(a[0], b[0]));
     let result = "";
     for (const fieldInfo of fieldInfos) {
       result += `${fieldInfo[1]},${fieldInfo[2]};`;
@@ -362,10 +354,10 @@ export class TypeMeta {
 
   private fingerprintTypeId(typeId: number) {
     if (
-      TypeId.userDefinedType(typeId)
-      || typeId === TypeId.UNION
-      || typeId === TypeId.TYPED_UNION
-      || typeId === TypeId.NAMED_UNION
+      TypeId.userDefinedType(typeId) ||
+      typeId === TypeId.UNION ||
+      typeId === TypeId.TYPED_UNION ||
+      typeId === TypeId.NAMED_UNION
     ) {
       return TypeId.UNKNOWN;
     }
@@ -386,48 +378,39 @@ export class TypeMeta {
     if (TypeId.structType(typeInfo.typeId)) {
       const structTypeInfo = typeInfo;
       const usedFieldIds = new Set<number>();
-      fieldInfo = Object.entries(structTypeInfo.options!.props!).map(
-        ([fieldName, typeInfo]) => {
-          let fieldTypeId = typeResolver
-            ? typeResolver.computeTypeId(typeInfo)
-            : typeInfo.typeId;
-          if (fieldTypeId === TypeId.NAMED_ENUM) {
-            fieldTypeId = TypeId.ENUM;
-          } else if (
-            fieldTypeId === TypeId.NAMED_UNION
-            || fieldTypeId === TypeId.TYPED_UNION
-          ) {
-            fieldTypeId = TypeId.UNION;
+      fieldInfo = Object.entries(structTypeInfo.options!.props!).map(([fieldName, typeInfo]) => {
+        let fieldTypeId = typeResolver ? typeResolver.computeTypeId(typeInfo) : typeInfo.typeId;
+        if (fieldTypeId === TypeId.NAMED_ENUM) {
+          fieldTypeId = TypeId.ENUM;
+        } else if (fieldTypeId === TypeId.NAMED_UNION || fieldTypeId === TypeId.TYPED_UNION) {
+          fieldTypeId = TypeId.UNION;
+        }
+        const { trackingRef, nullable, id, userTypeId, options } = typeInfo;
+        if (typeof id === "number" && id < 0) {
+          throw new Error(`Field id for ${fieldName} must be non-negative`);
+        }
+        const fieldId = typeof id === "number" ? id : undefined;
+        if (fieldId !== undefined) {
+          if (usedFieldIds.has(fieldId)) {
+            throw new Error(`Duplicate field id ${fieldId}`);
           }
-          const { trackingRef, nullable, id, userTypeId, options } = typeInfo;
-          if (typeof id === "number" && id < 0) {
-            throw new Error(`Field id for ${fieldName} must be non-negative`);
-          }
-          const fieldId = typeof id === "number" ? id : undefined;
-          if (fieldId !== undefined) {
-            if (usedFieldIds.has(fieldId)) {
-              throw new Error(`Duplicate field id ${fieldId}`);
-            }
-            usedFieldIds.add(fieldId);
-          }
-          return new FieldInfo(
-            fieldName,
-            fieldTypeId,
-            userTypeId,
-            trackingRef,
-            nullable,
-            options!,
-            fieldId,
-          );
-        },
-      );
+          usedFieldIds.add(fieldId);
+        }
+        return new FieldInfo(
+          fieldName,
+          fieldTypeId,
+          userTypeId,
+          trackingRef,
+          nullable,
+          options!,
+          fieldId,
+        );
+      });
     }
     fieldInfo = TypeMeta.groupFieldsByType(fieldInfo);
 
     return new TypeMeta(fieldInfo, {
-      typeId: typeResolver
-        ? typeResolver.computeTypeId(typeInfo)
-        : typeInfo.typeId,
+      typeId: typeResolver ? typeResolver.computeTypeId(typeInfo) : typeInfo.typeId,
       namespace: typeInfo.namespace,
       typeName: typeInfo.typeName,
       userTypeId: typeInfo.userTypeId ?? -1,
@@ -499,9 +482,7 @@ export class TypeMeta {
       registerByName = (classHeader & REGISTER_BY_NAME_FLAG) !== 0;
       const compatible = (classHeader & COMPATIBLE_TYPEDEF_FLAG) !== 0;
       if (registerByName) {
-        typeId = compatible
-          ? TypeId.NAMED_COMPATIBLE_STRUCT
-          : TypeId.NAMED_STRUCT;
+        typeId = compatible ? TypeId.NAMED_COMPATIBLE_STRUCT : TypeId.NAMED_STRUCT;
       } else {
         typeId = compatible ? TypeId.COMPATIBLE_STRUCT : TypeId.STRUCT;
       }
@@ -548,14 +529,9 @@ export class TypeMeta {
 
     const consumed = reader.readGetCursor() - bodyStart;
     if (consumed !== metaSize) {
-      throw new Error(
-        `unexpected TypeMeta body size: expected ${metaSize}, consumed ${consumed}`,
-      );
+      throw new Error(`unexpected TypeMeta body size: expected ${metaSize}, consumed ${consumed}`);
     }
-    TypeMeta.validateParsedBodyHash(
-      header,
-      reader.bufferRefAt(bodyStart, metaSize),
-    );
+    TypeMeta.validateParsedBodyHash(header, reader.bufferRefAt(bodyStart, metaSize));
 
     return new TypeMeta(fields, typeInfo, headerHash, compressed);
   }
@@ -570,16 +546,10 @@ export class TypeMeta {
   }
 
   private static readMetaSize(reader: BinaryReader, header: bigint): number {
-    return TypeMeta.readMetaSizeFromLow(
-      reader,
-      Number(header & BigInt(META_SIZE_MASKS)),
-    );
+    return TypeMeta.readMetaSizeFromLow(reader, Number(header & BigInt(META_SIZE_MASKS)));
   }
 
-  private static readMetaSizeFromLow(
-    reader: BinaryReader,
-    headerLow: number,
-  ): number {
+  private static readMetaSizeFromLow(reader: BinaryReader, headerLow: number): number {
     let metaSize = headerLow & META_SIZE_MASKS;
     if (metaSize === META_SIZE_MASKS) {
       metaSize += reader.readVarUInt32();
@@ -587,14 +557,11 @@ export class TypeMeta {
     return metaSize;
   }
 
-  private static checkTypeMetaBytes(
-    metaSize: number,
-    maxTypeMetaBytes: number,
-  ) {
+  private static checkTypeMetaBytes(metaSize: number, maxTypeMetaBytes: number) {
     if (metaSize > maxTypeMetaBytes) {
       throw new Error(
-        `Type metadata body size ${metaSize} exceeds maxTypeMetaBytes ${maxTypeMetaBytes}. `
-        + "The data may be malicious. If the data is not malicious, please increase maxTypeMetaBytes.",
+        `Type metadata body size ${metaSize} exceeds maxTypeMetaBytes ${maxTypeMetaBytes}. ` +
+          "The data may be malicious. If the data is not malicious, please increase maxTypeMetaBytes.",
       );
     }
   }
@@ -602,17 +569,14 @@ export class TypeMeta {
   private static checkTypeFields(numFields: number, maxTypeFields: number) {
     if (numFields > maxTypeFields) {
       throw new Error(
-        `Type metadata field count ${numFields} exceeds maxTypeFields ${maxTypeFields}. `
-        + "The data may be malicious. If the data is not malicious, please increase maxTypeFields.",
+        `Type metadata field count ${numFields} exceeds maxTypeFields ${maxTypeFields}. ` +
+          "The data may be malicious. If the data is not malicious, please increase maxTypeFields.",
       );
     }
   }
 
   private static validateParsedBodyHash(header: bigint, body: Uint8Array) {
-    const expectedHeaderHash = TypeMeta.headerHashBits(
-      body,
-      header & ~HEADER_HASH_MASK,
-    );
+    const expectedHeaderHash = TypeMeta.headerHashBits(body, header & ~HEADER_HASH_MASK);
     const actualHeaderHash = header & HEADER_HASH_MASK;
     if (expectedHeaderHash !== actualHeaderHash) {
       throw new Error("TypeMeta metadata hash mismatch");
@@ -642,34 +606,16 @@ export class TypeMeta {
       // Read field name
       const encoding = FieldInfo.u8ToEncoding(encodingFlags);
 
-      fieldName = fieldDecoder.decode(
-        reader,
-        size + 1,
-        encoding || Encoding.UTF_8,
-      );
+      fieldName = fieldDecoder.decode(reader, size + 1, encoding || Encoding.UTF_8);
       fieldName = TypeMeta.lowerUnderscoreToLowerCamelCase(fieldName);
     }
 
-    return new FieldInfo(
-      fieldName,
-      typeId,
-      userTypeId,
-      trackingRef,
-      nullable,
-      options,
-      fieldId,
-    );
+    return new FieldInfo(fieldName, typeId, userTypeId, trackingRef, nullable, options, fieldId);
   }
 
-  private static readTypeId(
-    reader: BinaryReader,
-    readFlag = false,
-    depth = 0,
-  ): InnerFieldInfo {
+  private static readTypeId(reader: BinaryReader, readFlag = false, depth = 0): InnerFieldInfo {
     if (depth > MAX_TYPE_META_NESTING) {
-      throw new Error(
-        `TypeMeta nesting depth limit exceeded: ${depth} > ${MAX_TYPE_META_NESTING}`,
-      );
+      throw new Error(`TypeMeta nesting depth limit exceeded: ${depth} > ${MAX_TYPE_META_NESTING}`);
     }
     const options: InnerFieldInfoOptions = {};
     let nullable = false;
@@ -681,10 +627,7 @@ export class TypeMeta {
       typeId = typeId >> 2;
       if (typeId === TypeId.NAMED_ENUM) {
         typeId = TypeId.ENUM;
-      } else if (
-        typeId === TypeId.NAMED_UNION
-        || typeId === TypeId.TYPED_UNION
-      ) {
+      } else if (typeId === TypeId.NAMED_UNION || typeId === TypeId.TYPED_UNION) {
         typeId = TypeId.UNION;
       }
       this.readNestedTypeInfo(reader, typeId, options, depth);
@@ -767,9 +710,7 @@ export class TypeMeta {
     return this.fields;
   }
 
-  remapFieldNames(
-    localProps: Record<string, TypeInfo> | undefined,
-  ): FieldInfo[] {
+  remapFieldNames(localProps: Record<string, TypeInfo> | undefined): FieldInfo[] {
     if (!localProps) {
       return this.fields;
     }
@@ -832,19 +773,16 @@ export class TypeMeta {
     writer.writeUint8(-1); // placeholder for header, update later
     const isStruct = TypeId.structType(this.type.typeId);
     if (!isStruct && this.fields.length !== 0) {
-      throw new Error(
-        `non-struct TypeMeta ${this.type.typeId} cannot carry field metadata`,
-      );
+      throw new Error(`non-struct TypeMeta ${this.type.typeId} cannot carry field metadata`);
     }
 
     let currentClassHeader: number;
     if (isStruct) {
-      currentClassHeader
-        = STRUCT_TYPEDEF_FLAG
-        | Math.min(this.fields.length, SMALL_NUM_FIELDS_THRESHOLD);
+      currentClassHeader =
+        STRUCT_TYPEDEF_FLAG | Math.min(this.fields.length, SMALL_NUM_FIELDS_THRESHOLD);
       if (
-        this.type.typeId === TypeId.COMPATIBLE_STRUCT
-        || this.type.typeId === TypeId.NAMED_COMPATIBLE_STRUCT
+        this.type.typeId === TypeId.COMPATIBLE_STRUCT ||
+        this.type.typeId === TypeId.NAMED_COMPATIBLE_STRUCT
       ) {
         currentClassHeader |= COMPATIBLE_TYPEDEF_FLAG;
       }
@@ -892,10 +830,7 @@ export class TypeMeta {
   }
 
   writeTypeName(writer: BinaryWriter, typeName: string) {
-    const metaString = typeNameEncoder.encodeByEncodings(
-      typeName,
-      typeNameEncoding,
-    );
+    const metaString = typeNameEncoder.encodeByEncodings(typeName, typeNameEncoding);
     const encoded = metaString.getBytes();
     const encoding = metaString.getEncoding();
     this.writeName(writer, encoded, typeNameEncoding.indexOf(encoding));
@@ -936,13 +871,8 @@ export class TypeMeta {
         encodingFlags = 3; // TAG_ID encoding
       } else {
         // Convert camelCase to snake_case for xlang compatibility
-        const fieldName = TypeMeta.lowerCamelToLowerUnderscore(
-          fieldInfo.getFieldName(),
-        );
-        const metaString = fieldEncoder.encodeByEncodings(
-          fieldName,
-          fieldNameEncoding,
-        );
+        const fieldName = TypeMeta.lowerCamelToLowerUnderscore(fieldInfo.getFieldName());
+        const metaString = fieldEncoder.encodeByEncodings(fieldName, fieldNameEncoding);
         encodingFlags = fieldNameEncoding.indexOf(metaString.getEncoding());
         encoded = metaString.getBytes();
         size = encoded.length - 1;
@@ -1032,8 +962,7 @@ export class TypeMeta {
     if (isCompressed) {
       headerLowBits |= COMPRESS_META_FLAG;
     }
-    const header
-      = TypeMeta.headerHashBits(buffer, headerLowBits) | headerLowBits;
+    const header = TypeMeta.headerHashBits(buffer, headerLowBits) | headerLowBits;
     return {
       header: BigInt.asUintN(64, header),
       headerHash: Number(header >> HASH_SHIFT_BITS),
@@ -1055,10 +984,7 @@ export class TypeMeta {
     // is set -- unsigned BigInt can't go negative, so its sign-check
     // is always false and the abs is a no-op. Signed int64 here
     // matches the canonical behaviour of the other xlang bindings.
-    let header = BigInt.asIntN(
-      64,
-      hash.getBigInt64(0, false) << HASH_SHIFT_BITS,
-    );
+    let header = BigInt.asIntN(64, hash.getBigInt64(0, false) << HASH_SHIFT_BITS);
     if (header < 0n) {
       header = -header;
     }
@@ -1090,9 +1016,8 @@ export class TypeMeta {
       if (c >= "A" && c <= "Z") {
         if (i > 0) {
           const prevUpper = chars[i - 1] >= "A" && chars[i - 1] <= "Z";
-          const nextUpperOrEnd
-            = i + 1 >= chars.length
-            || (chars[i + 1] >= "A" && chars[i + 1] <= "Z");
+          const nextUpperOrEnd =
+            i + 1 >= chars.length || (chars[i + 1] >= "A" && chars[i + 1] <= "Z");
 
           if (!prevUpper || !nextUpperOrEnd) {
             result.push("_");
@@ -1125,12 +1050,12 @@ export class TypeMeta {
     b: { fieldName: string; fieldId?: number },
   ) {
     if (
-      a.fieldId !== undefined
-      && a.fieldId !== null
-      && a.fieldId >= 0
-      && b.fieldId !== undefined
-      && b.fieldId !== null
-      && b.fieldId >= 0
+      a.fieldId !== undefined &&
+      a.fieldId !== null &&
+      a.fieldId >= 0 &&
+      b.fieldId !== undefined &&
+      b.fieldId !== null &&
+      b.fieldId >= 0
     ) {
       return a.fieldId - b.fieldId;
     }
@@ -1140,10 +1065,7 @@ export class TypeMeta {
     if (b.fieldId !== undefined && b.fieldId !== null && b.fieldId >= 0) {
       return 1;
     }
-    return TypeMeta.compareOrdinal(
-      TypeMeta.getFieldSortKey(a),
-      TypeMeta.getFieldSortKey(b),
-    );
+    return TypeMeta.compareOrdinal(TypeMeta.getFieldSortKey(a), TypeMeta.getFieldSortKey(b));
   }
 
   static groupFieldsByType<
@@ -1210,10 +1132,6 @@ export class TypeMeta {
     nullablePrimitiveFields.sort(primitiveComparator);
     nonPrimitiveFields.sort(nameSorter);
 
-    return [
-      primitiveFields,
-      nullablePrimitiveFields,
-      nonPrimitiveFields,
-    ].flat();
+    return [primitiveFields, nullablePrimitiveFields, nonPrimitiveFields].flat();
   }
 }
