@@ -112,9 +112,7 @@ public final class ReadContext {
    * flag for one operation.
    */
   public void prepare(
-      MemoryBuffer buffer,
-      Iterable<MemoryBuffer> outOfBandBuffers,
-      boolean peerOutOfBandEnabled) {
+      MemoryBuffer buffer, Iterable<MemoryBuffer> outOfBandBuffers, boolean peerOutOfBandEnabled) {
     this.buffer = buffer;
     this.peerOutOfBandEnabled = peerOutOfBandEnabled;
     this.outOfBandBuffers = outOfBandBuffers == null ? null : outOfBandBuffers.iterator();

@@ -394,9 +394,9 @@ struct has_graph_budget_children<T,
                                  std::enable_if_t<is_fory_serializable_v<T>>> {
 private:
   using Value = std::remove_cv_t<std::remove_reference_t<T>>;
-  using FieldInfo =
-      decltype(::fory::meta::fory_field_info(std::declval<Value>()));
-  using Ptrs = typename FieldInfo::PtrsType;
+  using Ptrs =
+      decltype(::fory::meta::fory_field_info(std::declval<const Value &>())
+                   .ptrs());
 
 public:
   static constexpr bool value = struct_has_graph_children_impl<Value, Ptrs>(

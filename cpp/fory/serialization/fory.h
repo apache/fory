@@ -112,8 +112,8 @@ public:
 
   /// Set maximum estimated graph memory for one root deserialization.
   ///
-  /// Defaults to 128 MiB. Positive values are explicit byte limits; non-positive
-  /// values intentionally disable this protection.
+  /// Defaults to 128 MiB. Positive values are explicit byte limits;
+  /// non-positive values intentionally disable this protection.
   ForyBuilder &max_graph_memory_bytes(int64_t max_bytes) {
     config_.max_graph_memory_bytes = max_bytes;
     return *this;

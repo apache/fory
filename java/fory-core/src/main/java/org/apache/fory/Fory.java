@@ -428,30 +428,6 @@ public final class Fory implements BaseFory {
     return deserializeRoot(buffer, type);
   }
 
-  private <T> T deserializeRoot(MemoryBuffer buffer, Class<T> type) {
-    ensureRegistrationFinished();
-    byte bitmap = buffer.readByte();
-    if (bitmap != headerBitmap) {
-      checkHeaderBitmapWithoutOutOfBand(bitmap);
-    }
-    readContext.prepare(buffer, null, false);
-    try {
-      try {
-        jitContext.lock();
-        if (readContext.getDepth() > 0) {
-          throwDepthDeserializationException();
-        }
-        return deserializeByType(buffer, type);
-      } finally {
-        jitContext.unlock();
-      }
-    } catch (Throwable t) {
-      throw ExceptionUtils.handleReadFailed(this, t);
-    } finally {
-      readContext.reset();
-    }
-  }
-
   @Override
   public <T> T deserialize(ForyInputStream inputStream, Class<T> type) {
     try {
@@ -494,6 +470,56 @@ public final class Fory implements BaseFory {
     return deserializeRoot(buffer, outOfBandBuffers);
   }
 
+  @Override
+  public Object deserialize(ForyInputStream inputStream) {
+    return deserialize(inputStream, (Iterable<MemoryBuffer>) null);
+  }
+
+  @Override
+  public Object deserialize(ForyInputStream inputStream, Iterable<MemoryBuffer> outOfBandBuffers) {
+    try {
+      MemoryBuffer buf = inputStream.getBuffer();
+      return deserializeRoot(buf, outOfBandBuffers);
+    } finally {
+      inputStream.shrinkBuffer();
+    }
+  }
+
+  @Override
+  public Object deserialize(ForyReadableChannel channel) {
+    return deserialize(channel, (Iterable<MemoryBuffer>) null);
+  }
+
+  @Override
+  public Object deserialize(ForyReadableChannel channel, Iterable<MemoryBuffer> outOfBandBuffers) {
+    MemoryBuffer buf = channel.getBuffer();
+    return deserializeRoot(buf, outOfBandBuffers);
+  }
+
+  private <T> T deserializeRoot(MemoryBuffer buffer, Class<T> type) {
+    ensureRegistrationFinished();
+    byte bitmap = buffer.readByte();
+    if (bitmap != headerBitmap) {
+      checkHeaderBitmapWithoutOutOfBand(bitmap);
+    }
+    readContext.prepare(buffer, null, false);
+    try {
+      try {
+        jitContext.lock();
+        if (readContext.getDepth() > 0) {
+          throwDepthDeserializationException();
+        }
+        return deserializeByType(buffer, type);
+      } finally {
+        jitContext.unlock();
+      }
+    } catch (Throwable t) {
+      throw ExceptionUtils.handleReadFailed(this, t);
+    } finally {
+      readContext.reset();
+    }
+  }
+
   private Object deserializeRoot(MemoryBuffer buffer, Iterable<MemoryBuffer> outOfBandBuffers) {
     ensureRegistrationFinished();
     byte bitmap = buffer.readByte();
@@ -529,32 +555,6 @@ public final class Fory implements BaseFory {
     } finally {
       readContext.reset();
     }
-  }
-
-  @Override
-  public Object deserialize(ForyInputStream inputStream) {
-    return deserialize(inputStream, (Iterable<MemoryBuffer>) null);
-  }
-
-  @Override
-  public Object deserialize(ForyInputStream inputStream, Iterable<MemoryBuffer> outOfBandBuffers) {
-    try {
-      MemoryBuffer buf = inputStream.getBuffer();
-      return deserializeRoot(buf, outOfBandBuffers);
-    } finally {
-      inputStream.shrinkBuffer();
-    }
-  }
-
-  @Override
-  public Object deserialize(ForyReadableChannel channel) {
-    return deserialize(channel, (Iterable<MemoryBuffer>) null);
-  }
-
-  @Override
-  public Object deserialize(ForyReadableChannel channel, Iterable<MemoryBuffer> outOfBandBuffers) {
-    MemoryBuffer buf = channel.getBuffer();
-    return deserializeRoot(buf, outOfBandBuffers);
   }
 
   @SuppressWarnings("unchecked")
