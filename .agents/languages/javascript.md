@@ -27,6 +27,9 @@ npm install
 # Run tests
 node ./node_modules/.bin/jest --ci --reporters=default --reporters=jest-junit
 
-# Lint TypeScript
-git ls-files -- '*.ts' | xargs -P 5 node ./node_modules/.bin/eslint
+# Check TypeScript formatting and lint rules
+npm run format-check
+
+# Format TypeScript, then apply ESLint fixes
+npm run format
 ```

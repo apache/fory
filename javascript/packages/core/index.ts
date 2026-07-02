@@ -17,11 +17,7 @@
  * under the License.
  */
 
-import {
-  TypeInfo,
-  Type,
-  Dynamic,
-} from "./lib/typeInfo";
+import { TypeInfo, Type, Dynamic } from "./lib/typeInfo";
 import { Serializer, Mode } from "./lib/type";
 import Fory from "./lib/fory";
 import { BinaryReader } from "./lib/reader";

@@ -348,7 +348,9 @@ case $1 in
       echo "Executing fory javascript tests"
       cd "$ROOT/javascript"
       npm install
-      node ./node_modules/.bin/jest --ci --reporters=default --reporters=jest-junit
+      npm run format-check \
+        && npm run build \
+        && node ./node_modules/.bin/jest --ci --reporters=default --reporters=jest-junit
       testcode=$?
       if [[ $testcode -ne 0 ]]; then
         echo "Executing fory javascript tests failed"
