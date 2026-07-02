@@ -164,13 +164,18 @@ For stream-backed input:
 - A stream-backed buffer may hold the full requested encoded body after that
   body has been read from the stream. It must not reserve the attacker-declared
   length before input bytes prove that length exists.
-- Stream-backed fill buffers should grow from the current proven buffer size,
-  such as by doubling current capacity, and cap only to the immediate target
-  when the next bounded growth step reaches it. A byte owner may use an
-  owner-local availability signal as a one-shot growth hint when the stream
-  implementation itself is caller-owned trusted code; if that hint is absent or
-  insufficient, the reader must fall back to bounded growth from already
-  buffered bytes. Serializers should not add their own availability branches.
+- Stream-backed fill buffers should grow geometrically from the current proven
+  buffer size, such as by doubling current capacity. Growth must not be capped
+  to the immediate fill target: for small fills the target is barely above the
+  current capacity, so cap-to-target degenerates into constant-size growth
+  steps that copy the whole buffer on every small read and make stream
+  deserialization O(n^2) overall. A byte owner may use an owner-local
+  availability signal as a one-shot growth hint when the stream implementation
+  itself is caller-owned trusted code, and may then reserve the full immediate
+  target at once while keeping at least the geometric growth step; if that hint
+  is absent or insufficient, the reader must fall back to bounded geometric
+  growth from already buffered bytes. Serializers should not add their own
+  availability branches.
 - A truncated stream should fail before allocating the final deserialized value
   and should allocate only for bytes actually read plus bounded spare capacity.
 

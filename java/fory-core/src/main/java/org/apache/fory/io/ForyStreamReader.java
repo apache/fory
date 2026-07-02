@@ -34,6 +34,23 @@ import org.apache.fory.memory.MemoryBuffer;
 public interface ForyStreamReader {
 
   /**
+   * Maximum buffer size to use when growing stream-backed buffers: the largest array size commonly
+   * supported by JVM implementations.
+   */
+  int MAX_BUFFER_SIZE = Integer.MAX_VALUE - 8;
+
+  /**
+   * Returns the next geometric growth step for a stream-backed buffer of the given capacity,
+   * bounded by {@link #MAX_BUFFER_SIZE}. Growth must not be capped to the immediate fill target:
+   * for small fills that degenerates into constant-size growth steps which copy the whole buffer on
+   * every small read and make stream deserialization O(n^2) overall.
+   */
+  static int nextBufferSize(int currentCapacity) {
+    long grown = currentCapacity == 0 ? 1L : (long) currentCapacity << 1;
+    return (int) Math.min(grown, MAX_BUFFER_SIZE);
+  }
+
+  /**
    * Read stream and fill the data to underlying {@link MemoryBuffer}, which is also the buffer
    * returned by {@link #getBuffer}.
    */

@@ -372,6 +372,51 @@ public class StreamTest extends ForyTestBase {
   }
 
   @Test
+  public void testStreamBufferGrowthIsGeometric() throws IOException {
+    // Reading many small values from a stream must not reallocate the internal buffer
+    // on every read: exact-fit growth copies the whole buffer per small fill and makes
+    // stream deserialization O(n^2), which looks like a hang for multi-MB payloads.
+    byte[] data = new byte[1 << 16];
+    ForyInputStream input = new ForyInputStream(new ByteArrayInputStream(data), 64);
+    assertGeometricGrowth(input.getBuffer(), data.length, "stream");
+
+    Path tempFile = Files.createTempFile("geometric_growth", "data");
+    Files.write(tempFile, data);
+    try {
+      try (ForyReadableChannel heapChannel =
+          new ForyReadableChannel(Files.newByteChannel(tempFile), ByteBuffer.allocate(64))) {
+        assertGeometricGrowth(heapChannel.getBuffer(), data.length, "heap channel");
+      }
+      try (ForyReadableChannel directChannel =
+          new ForyReadableChannel(Files.newByteChannel(tempFile), ByteBuffer.allocateDirect(64))) {
+        assertGeometricGrowth(directChannel.getBuffer(), data.length, "direct channel");
+      }
+    } finally {
+      Files.delete(tempFile);
+    }
+  }
+
+  private static void assertGeometricGrowth(MemoryBuffer buffer, int numBytes, String label) {
+    int growCount = 0;
+    Object lastBacking = backingBuffer(buffer);
+    for (int i = 0; i < numBytes; i++) {
+      buffer.readByte();
+      if (backingBuffer(buffer) != lastBacking) {
+        lastBacking = backingBuffer(buffer);
+        growCount++;
+        assertTrue(
+            growCount <= 20,
+            label + " buffer must grow geometrically, but already grew " + growCount + " times");
+      }
+    }
+  }
+
+  private static Object backingBuffer(MemoryBuffer buffer) {
+    byte[] heapMemory = buffer.getHeapMemory();
+    return heapMemory != null ? heapMemory : buffer.getOffHeapBuffer();
+  }
+
+  @Test
   public void testScopedMetaShare() throws IOException {
     Fory fory =
         Fory.builder()
