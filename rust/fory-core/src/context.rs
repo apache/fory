@@ -452,9 +452,6 @@ impl<'a> ReadContext<'a> {
     #[inline(always)]
     #[doc(hidden)]
     pub fn reserve_graph_memory(&mut self, bytes: usize) -> Result<(), Error> {
-        if self.graph_memory_limit_bytes == 0 {
-            return Ok(());
-        }
         let remaining = self.remaining_graph_memory_bytes;
         if bytes > remaining {
             return Err(graph_memory_exceeded(

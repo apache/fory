@@ -46,11 +46,11 @@ func graphOwnerSizeOf[T any]() int64 {
 func TestGraphMemoryBudgetConfig(t *testing.T) {
 	require.Equal(t, int64(128*1024*1024), New().config.MaxGraphMemoryBytes)
 	require.Equal(t, int64(123), New(WithMaxGraphMemoryBytes(123)).config.MaxGraphMemoryBytes)
-	require.Equal(t, int64(0), New(WithMaxGraphMemoryBytes(0)).config.MaxGraphMemoryBytes)
-	require.Equal(t, int64(-2), New(WithMaxGraphMemoryBytes(-2)).config.MaxGraphMemoryBytes)
+	require.Panics(t, func() { WithMaxGraphMemoryBytes(0) })
+	require.Panics(t, func() { WithMaxGraphMemoryBytes(-2) })
 }
 
-func TestGraphMemoryBudgetFixedDefaultAndDisable(t *testing.T) {
+func TestGraphMemoryBudgetFixedDefault(t *testing.T) {
 	ctx := NewReadContext(false)
 	ctx.graphMemoryLimitBytes = 128 * 1024 * 1024
 	ctx.remainingGraphMemoryBytes = 128 * 1024 * 1024
@@ -58,13 +58,6 @@ func TestGraphMemoryBudgetFixedDefaultAndDisable(t *testing.T) {
 	require.True(t, ctx.ReserveGraphMemory(ctx.graphMemoryLimitBytes))
 	require.False(t, ctx.ReserveGraphMemory(1))
 	require.Contains(t, ctx.CheckError().Error(), "maxGraphMemoryBytes")
-
-	ctx = NewReadContext(false)
-	ctx.graphMemoryLimitBytes = 0
-	ctx.remainingGraphMemoryBytes = MaxInt64
-	require.Equal(t, int64(0), ctx.graphMemoryLimitBytes)
-	require.True(t, ctx.ReserveGraphMemory(MaxInt64))
-	require.False(t, ctx.HasError())
 
 	ctx = NewReadContext(false)
 	ctx.graphMemoryLimitBytes = 77

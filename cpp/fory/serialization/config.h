@@ -53,7 +53,7 @@ struct Config {
   bool track_ref = true;
 
   /// Maximum estimated graph memory accepted during one root deserialization.
-  /// Positive values are byte limits; non-positive values disable enforcement.
+  /// Value must be a positive byte limit.
   int64_t max_graph_memory_bytes = 128LL * 1024LL * 1024LL;
 
   /// Maximum accepted field count in one received struct TypeMeta.

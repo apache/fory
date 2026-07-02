@@ -263,9 +263,13 @@ impl ForyBuilder {
 
     /// Sets the maximum estimated graph memory accepted during one root deserialization.
     ///
-    /// Defaults to 128 MiB. Positive values are explicit byte limits; non-positive
-    /// values intentionally disable this protection.
+    /// Defaults to 128 MiB. Values must be positive byte limits.
     pub fn max_graph_memory_bytes(mut self, max_bytes: i64) -> Self {
+        assert!(max_bytes > 0, "max_graph_memory_bytes must be positive");
+        assert!(
+            usize::try_from(max_bytes).is_ok(),
+            "max_graph_memory_bytes does not fit usize"
+        );
         self.config.max_graph_memory_bytes = max_bytes;
         self
     }
@@ -997,16 +1001,12 @@ impl Fory {
         self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
-            let result = match if context.max_graph_memory_bytes > 0 {
-                usize::try_from(context.max_graph_memory_bytes)
-                    .map_err(|_| Error::invalid_data("max_graph_memory_bytes does not fit usize"))
-            } else {
-                Ok(0)
-            } {
+            let result = match usize::try_from(context.max_graph_memory_bytes)
+                .map_err(|_| Error::invalid_data("max_graph_memory_bytes does not fit usize"))
+            {
                 Ok(limit) => {
                     context.graph_memory_limit_bytes = limit;
-                    context.remaining_graph_memory_bytes =
-                        if limit > 0 { limit } else { usize::MAX };
+                    context.remaining_graph_memory_bytes = limit;
                     self.deserialize_with_context(context)
                 }
                 Err(err) => {
@@ -1076,16 +1076,12 @@ impl Fory {
             let mut new_reader = Reader::new(outlive_buffer);
             new_reader.set_cursor(reader.cursor);
             context.attach_reader(new_reader);
-            let result = match if context.max_graph_memory_bytes > 0 {
-                usize::try_from(context.max_graph_memory_bytes)
-                    .map_err(|_| Error::invalid_data("max_graph_memory_bytes does not fit usize"))
-            } else {
-                Ok(0)
-            } {
+            let result = match usize::try_from(context.max_graph_memory_bytes)
+                .map_err(|_| Error::invalid_data("max_graph_memory_bytes does not fit usize"))
+            {
                 Ok(limit) => {
                     context.graph_memory_limit_bytes = limit;
-                    context.remaining_graph_memory_bytes =
-                        if limit > 0 { limit } else { usize::MAX };
+                    context.remaining_graph_memory_bytes = limit;
                     self.deserialize_with_context(context)
                 }
                 Err(err) => {

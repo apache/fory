@@ -79,7 +79,8 @@ Canonical runtime-specific rules now live under `../../../languages/*.md` and `.
 
 - Build: `sbt compile`
 - Tests: `sbt test`
-- Format: `sbt scalafmt`
+- Format: run the repo formatter from the repository root with `ci/format.sh`; the Scala module
+  does not currently wire a `scalafmt` sbt command.
 
 ## Cross-Language Xlang Verification
 

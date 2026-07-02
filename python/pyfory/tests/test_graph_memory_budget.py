@@ -148,16 +148,10 @@ def test_stream_uses_fixed_default_budget():
         fory.reset_read()
 
 
-def test_explicit_config_and_disable():
+def test_explicit_config_overrides_default():
     value = [1]
     budget = collection_memory(1)
     assert expect_budget(value, budget) == value
-    disabled = new_fory(0, xlang=False)
-    try:
-        disabled.read_context.prepare(Buffer(b"x"))
-        disabled.read_context.reserve_graph_memory(MAX_GRAPH_MEMORY_BYTES)
-    finally:
-        disabled.reset_read()
 
 
 def test_nested_empty_containers_use_parent_storage():
@@ -261,7 +255,7 @@ def test_declared_large_list_still_needs_bytes():
         fory.reset_read()
 
 
-@pytest.mark.parametrize("limit", [1 << 63, -(1 << 63) - 1])
+@pytest.mark.parametrize("limit", [0, -2, 1 << 63])
 def test_invalid_config(limit):
     with pytest.raises(ValueError, match="max_graph_memory_bytes"):
         new_fory(limit)

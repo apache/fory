@@ -45,8 +45,8 @@ public sealed class ReadContext
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
     private int _totalAcceptedSchemaVersions;
-    internal long _graphMemoryLimitBytes = long.MaxValue;
-    internal long _remainingGraphMemoryBytes = long.MaxValue;
+    internal long _graphMemoryLimitBytes;
+    internal long _remainingGraphMemoryBytes;
 
     public ReadContext(
         ByteReader reader,
@@ -63,6 +63,8 @@ public sealed class ReadContext
         RefReader = new RefReader();
         _maxDynamicReadDepth = config.MaxDepth;
         _config = config;
+        _graphMemoryLimitBytes = config.MaxGraphMemoryBytes;
+        _remainingGraphMemoryBytes = config.MaxGraphMemoryBytes;
     }
 
     public ByteReader Reader { get; private set; }
@@ -103,11 +105,6 @@ public sealed class ReadContext
         if (bytes < 0)
         {
             throw new InvalidDataException("graph memory estimate overflows");
-        }
-
-        if (_graphMemoryLimitBytes <= 0)
-        {
-            return;
         }
 
         throw new InvalidDataException(

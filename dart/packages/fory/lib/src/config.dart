@@ -59,7 +59,7 @@ final class Config {
 
   /// Maximum estimated graph memory per root deserialization.
   ///
-  /// Positive values are explicit byte limits. Non-positive values disable enforcement.
+  /// Value must be a positive byte limit.
   final int maxGraphMemoryBytes;
 
   /// Creates an immutable configuration object.
@@ -87,5 +87,9 @@ final class Config {
        assert(
          maxAverageSchemaVersionsPerType > 0,
          'maxAverageSchemaVersionsPerType must be positive',
+       ),
+       assert(
+         maxGraphMemoryBytes > 0 && maxGraphMemoryBytes <= 9007199254740991,
+         'maxGraphMemoryBytes must be a positive safe integer',
        );
 }

@@ -124,8 +124,7 @@ payloads:
 final fory = Fory(maxGraphMemoryBytes: 256 * 1024 * 1024);
 ```
 
-Passing an explicit non-positive value disables this budget and can expose deserialization DoS risk
-from compact inputs that materialize large object graphs.
+Explicit non-positive values are rejected when the runtime is created.
 
 ## Defaults
 
@@ -156,7 +155,7 @@ Security-related configuration:
 - Use `checkStructVersion: true` with `compatible: false` for intentional same-schema payloads.
 - Set `maxDepth` to reject unexpectedly deep payload shapes.
 - Keep `maxGraphMemoryBytes` at the default for most inputs, or set an explicit positive byte limit
-  for known trusted graph-heavy payloads. Avoid disabling it for untrusted data.
+  for known trusted graph-heavy payloads.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer generated schemas and explicit field metadata over broad dynamic fields for untrusted input.

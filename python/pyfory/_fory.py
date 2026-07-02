@@ -186,8 +186,7 @@ class Fory:
                 across accepted remote types.
 
             max_graph_memory_bytes: Maximum estimated graph memory per root
-                deserialization. Defaults to 128 MiB; positive values are explicit byte limits,
-                and non-positive values intentionally disable this protection.
+                deserialization. Defaults to 128 MiB and must be a positive byte limit.
 
             policy: Custom deserialization policy for security checks. When provided,
                 it controls which types can be deserialized, overriding the default policy.
@@ -219,8 +218,8 @@ class Fory:
             raise ValueError("max_schema_versions_per_type must be a positive integer")
         if not isinstance(max_average_schema_versions_per_type, int) or max_average_schema_versions_per_type <= 0:
             raise ValueError("max_average_schema_versions_per_type must be a positive integer")
-        if not isinstance(max_graph_memory_bytes, int) or max_graph_memory_bytes > (1 << 63) - 1 or max_graph_memory_bytes < -(1 << 63):
-            raise ValueError("max_graph_memory_bytes must be a 63-bit integer")
+        if not isinstance(max_graph_memory_bytes, int) or max_graph_memory_bytes <= 0 or max_graph_memory_bytes > (1 << 63) - 1:
+            raise ValueError("max_graph_memory_bytes must be a positive 63-bit integer")
         self.max_graph_memory_bytes = max_graph_memory_bytes
         self.config = Config(
             xlang=xlang,

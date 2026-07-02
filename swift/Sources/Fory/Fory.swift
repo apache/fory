@@ -45,6 +45,9 @@ public struct Config {
         precondition(
             maxAverageSchemaVersionsPerType > 0,
             "maxAverageSchemaVersionsPerType must be positive")
+        precondition(
+            maxGraphMemoryBytes > 0 && maxGraphMemoryBytes <= Int64(Int.max),
+            "maxGraphMemoryBytes must be a positive byte limit")
         let effectiveCompatible = compatible ?? true
         let effectiveCheckClassVersion = checkClassVersion ?? !effectiveCompatible
         self.trackRef = trackRef
@@ -493,8 +496,7 @@ public final class Fory {
         _ body: (ReadContext) throws -> R
     ) throws -> R {
         readContext.buffer.replace(with: data)
-        readContext.remainingGraphMemoryBytes =
-            readContext.maxGraphMemoryBytes > 0 ? readContext.maxGraphMemoryBytes : Int.max
+        readContext.remainingGraphMemoryBytes = readContext.maxGraphMemoryBytes
         defer {
             readContext.reset()
         }
@@ -556,8 +558,7 @@ public final class Fory {
     ) throws -> R {
         try typeResolver.finishRegistration()
         readContext.buffer.swapState(with: buffer)
-        readContext.remainingGraphMemoryBytes =
-            readContext.maxGraphMemoryBytes > 0 ? readContext.maxGraphMemoryBytes : Int.max
+        readContext.remainingGraphMemoryBytes = readContext.maxGraphMemoryBytes
         defer {
             readContext.buffer.swapState(with: buffer)
             readContext.reset()

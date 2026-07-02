@@ -145,19 +145,21 @@ void main() {
       expect(() => context.reserveGraphMemory(1), _throwsGraphBudget);
     });
 
-    test('explicit config overrides default and non-positive disables', () {
+    test('explicit config overrides default and invalid config fails', () {
       final buffer = Buffer.wrap(Uint8List(4096));
       final context = _readContext(buffer, maxGraphMemoryBytes: 31);
 
       expect(() => context.reserveGraphMemory(31), returnsNormally);
       expect(() => context.reserveGraphMemory(1), _throwsGraphBudget);
 
-      final disabled = _readContext(buffer, maxGraphMemoryBytes: 0);
       expect(
-        () => disabled.reserveGraphMemory(_defaultGraphMemoryBytes + 1),
-        returnsNormally,
+        () => Fory(maxGraphMemoryBytes: 0),
+        throwsA(isA<AssertionError>()),
       );
-      expect(() => Fory(maxGraphMemoryBytes: -2), returnsNormally);
+      expect(
+        () => Fory(maxGraphMemoryBytes: -2),
+        throwsA(isA<AssertionError>()),
+      );
     });
 
     test('uses parent storage for nested empty containers', () {

@@ -92,22 +92,20 @@ class CollectionSerializerTest extends AnyWordSpec with Matchers {
   }
 
   "fory scala graph memory budget" should {
-    def runtime(maxGraphMemoryBytes: Long = -1): Fory = {
+    def runtime(maxGraphMemoryBytes: Option[Long] = None): Fory = {
       val builder = ForyScala.builder()
         .withXlang(false)
         .withRefTracking(true)
         .requireClassRegistration(false)
         .suppressClassRegistrationWarnings(false)
         .withSerializerFactory(new ScalaSerializerFactory())
-      if (maxGraphMemoryBytes > 0) {
-        builder.withMaxGraphMemoryBytes(maxGraphMemoryBytes)
-      }
+      maxGraphMemoryBytes.foreach(builder.withMaxGraphMemoryBytes)
       builder.build()
     }
 
     "reserve scala collection storage" in {
       val writer = runtime()
-      val reader = runtime(maxGraphMemoryBytes = 23)
+      val reader = runtime(maxGraphMemoryBytes = Some(23))
       intercept[InsecureException] {
         reader.deserialize(writer.serialize(List.fill(6)("v")))
       }
@@ -115,7 +113,7 @@ class CollectionSerializerTest extends AnyWordSpec with Matchers {
 
     "reserve scala map storage" in {
       val writer = runtime()
-      val reader = runtime(maxGraphMemoryBytes = 23)
+      val reader = runtime(maxGraphMemoryBytes = Some(23))
       intercept[InsecureException] {
         reader.deserialize(writer.serialize(Map("a" -> 1, "b" -> 2, "c" -> 3)))
       }

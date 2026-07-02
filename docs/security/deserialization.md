@@ -213,9 +213,8 @@ not exact heap measurement and it is not a raw element-slot limit.
 
 The public configuration is `maxGraphMemoryBytes`. The default is a fixed `128 MiB` for all root
 input forms; positive user configuration overrides the default. Explicit non-positive configuration
-disables this budget and can expose deserialization DoS risk from compact inputs that materialize
-large object graphs. The budget is not derived from root input size, and stream budgeting should not
-depend on dynamic bytes-read accounting.
+is invalid and should be rejected when the runtime is created. The budget is not derived from root
+input size, and stream budgeting should not depend on dynamic bytes-read accounting.
 
 Graph budget accounting should:
 

@@ -44,11 +44,11 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   private static final int OBJECT_SELF_BYTES = 1;
 
   @Test
-  public void testConfigDefaultsAndDisable() {
+  public void testConfigDefaultsAndValidation() {
     assertEquals(builder().build().getConfig().maxGraphMemoryBytes(), DEFAULT_GRAPH_MEMORY_BYTES);
     assertEquals(newFory(123).getConfig().maxGraphMemoryBytes(), 123);
-    assertEquals(newFory(0).getConfig().maxGraphMemoryBytes(), 0);
-    assertEquals(newFory(-2).getConfig().maxGraphMemoryBytes(), -2);
+    assertThrows(IllegalArgumentException.class, () -> newFory(0));
+    assertThrows(IllegalArgumentException.class, () -> newFory(-2));
   }
 
   @Test
@@ -57,17 +57,6 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     try {
       readContext.reserveGraphMemory(DEFAULT_GRAPH_MEMORY_BYTES);
       assertThrows(InsecureException.class, () -> readContext.reserveGraphMemory(1));
-    } finally {
-      readContext.reset();
-    }
-  }
-
-  @Test
-  public void testDisabledBudget() {
-    ReadContext readContext = prepareContext(newFory(0));
-    try {
-      readContext.reserveGraphMemory(DEFAULT_GRAPH_MEMORY_BYTES + 1);
-      readContext.reserveGraphMemory(Long.MAX_VALUE);
     } finally {
       readContext.reset();
     }

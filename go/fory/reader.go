@@ -119,9 +119,6 @@ func (c *ReadContext) Reset() {
 // ReserveGraphMemory reserves raw estimated graph-owner bytes.
 func (c *ReadContext) ReserveGraphMemory(bytes int64) bool {
 	if bytes >= 0 {
-		if c.graphMemoryLimitBytes <= 0 {
-			return true
-		}
 		remaining := c.remainingGraphMemoryBytes
 		if bytes <= remaining {
 			c.remainingGraphMemoryBytes = remaining - bytes

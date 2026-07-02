@@ -17,7 +17,7 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - Java root deserialization graph memory budgeting belongs to `ReadContext`
   and is initialized by `Fory` root APIs. Public config is `maxGraphMemoryBytes`
   with fixed `128 MiB` default. Positive explicit values override the default;
-  explicit non-positive values intentionally disable graph-memory enforcement.
+  explicit non-positive values are invalid and must be rejected at config creation.
   Byte-array, memory-buffer, and stream roots use the same configured/default
   budget behavior. `ReadContext`
   may expose only raw byte reservation;

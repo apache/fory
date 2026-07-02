@@ -20,9 +20,8 @@ Load this file when changing `rust/` or Rust xlang behavior.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Keep recursive matched-field shape classification owned by `fory-core/src/meta/type_meta.rs`; collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
 - Root deserialization graph memory budget state belongs to `ReadContext` and is initialized by the
   root `Fory` read methods before the header is consumed. Use the fixed `128 MiB` default unless a
-  positive explicit value overrides it or an explicit non-positive value intentionally disables
-  graph-memory enforcement; do not derive the budget from root input size or add dynamic bytes-read
-  accounting.
+  positive explicit value overrides it; explicit non-positive values are invalid at config
+  creation. Do not derive the budget from root input size or add dynamic bytes-read accounting.
   `ReadContext` may expose only raw byte reservation; `Vec`,
   collection, map, array, struct, object, and derive codec formulas belong in their serializer
   owners.

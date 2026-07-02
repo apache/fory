@@ -109,9 +109,7 @@ const fory = new Fory({
 });
 ```
 
-Passing an explicit non-positive value disables this budget and can expose
-deserialization DoS risk from compact inputs that materialize large object
-graphs.
+Explicit non-positive values are rejected when the runtime is created.
 
 String, binary, and dedicated dense primitive array payloads keep their normal
 byte-size checks and do not consume this graph budget. Raise the limit only for

@@ -56,7 +56,6 @@ final class ReadContext {
   late Buffer _buffer;
   final List<TypeInfo> _sharedTypes = <TypeInfo>[];
   int _depth = 0;
-  int _effectiveGraphMemoryBytes = 0;
   int _remainingGraphMemoryBytes = 0;
 
   @internal
@@ -71,12 +70,10 @@ final class ReadContext {
   @pragma('vm:prefer-inline')
   void prepare(Buffer buffer) {
     _buffer = buffer;
-    final configured = config.maxGraphMemoryBytes;
-    final limit = configured > 0 ? configured : 0;
+    final limit = config.maxGraphMemoryBytes;
     if (limit > _maxSafeBudgetBytes) {
       _throwGraphMemoryOverflow(limit);
     }
-    _effectiveGraphMemoryBytes = limit;
     _remainingGraphMemoryBytes = limit;
   }
 
@@ -86,7 +83,6 @@ final class ReadContext {
     _refReader.reset();
     _metaStringReader.reset();
     _depth = 0;
-    _effectiveGraphMemoryBytes = 0;
     _remainingGraphMemoryBytes = 0;
   }
 
@@ -104,9 +100,6 @@ final class ReadContext {
   void reserveGraphMemory(int bytes) {
     if (bytes < 0 || bytes > _maxSafeBudgetBytes) {
       _throwGraphMemoryOverflow(bytes);
-    }
-    if (_effectiveGraphMemoryBytes <= 0) {
-      return;
     }
     final remaining = _remainingGraphMemoryBytes - bytes;
     if (remaining < 0) {
@@ -127,7 +120,7 @@ final class ReadContext {
     throw StateError(
       'maxGraphMemoryBytes exceeded: requested $bytes estimated graph bytes, '
       '$_remainingGraphMemoryBytes remaining, effective limit '
-      '$_effectiveGraphMemoryBytes.',
+      '${config.maxGraphMemoryBytes}.',
     );
   }
 

@@ -71,7 +71,7 @@ class ThreadSafeFory:
 | `max_type_meta_bytes`                  | `int`                           | `4096`      | Maximum encoded body bytes accepted for one received TypeDef body, excluding the 8-byte header and any extended-size varint.                             |
 | `max_schema_versions_per_type`         | `int`                           | `10`        | Maximum accepted remote metadata versions for one logical type.                                                                                          |
 | `max_average_schema_versions_per_type` | `int`                           | `3`         | Average accepted remote metadata versions across accepted remote types. The effective global floor is `8192` schemas.                                    |
-| `max_graph_memory_bytes`               | `int`                           | `134217728` | Maximum estimated shallow graph memory for one root deserialization. Explicit non-positive values disable this budget.                                   |
+| `max_graph_memory_bytes`               | `int`                           | `134217728` | Maximum estimated shallow graph memory for one root deserialization. Explicit non-positive values are rejected.                                          |
 | `policy`                               | `DeserializationPolicy \| None` | `None`      | Deserialization policy used for security checks. Strongly recommended when `strict=False`.                                                               |
 | `field_nullable`                       | `bool`                          | `False`     | Treat dataclass fields as nullable by default.                                                                                                           |
 | `meta_compressor`                      | `Any`                           | `None`      | Optional metadata compressor used for compatible-mode metadata encoding.                                                                                 |
@@ -228,9 +228,8 @@ Received remote metadata is also limited:
 - `max_graph_memory_bytes` limits estimated shallow graph memory created during one root
   deserialization, including materialized lists, tuples, sets, dicts, object arrays, structs, and
   Python objects. The default is a fixed `128 MiB` for all root input forms. Set a positive byte
-  value for trusted payloads that legitimately contain larger or smaller object graphs. Passing an
-  explicit non-positive value disables this budget and can expose deserialization DoS risk from
-  compact inputs that materialize large object graphs.
+  value for trusted payloads that legitimately contain larger or smaller object graphs. Explicit
+  non-positive values are rejected when the runtime is created.
 
 These limits do not change `strict`, `policy`, dynamic loading, unknown-class handling, or
 schema-evolution semantics.
@@ -288,8 +287,7 @@ unchanged.
 - Use `DeserializationPolicy` when `strict=False` is necessary.
 - Keep `max_depth` low enough to reject unexpectedly deep payloads.
 - Keep `max_graph_memory_bytes` at the fixed `128 MiB` default for most inputs, or set a positive
-  explicit limit for trusted workloads with different legitimate object-graph sizes. Avoid
-  explicit non-positive values for untrusted data because they disable graph-memory enforcement.
+  explicit limit for trusted workloads with different legitimate object-graph sizes.
 - Do not treat xlang/native mode choice as a security control.
 
 ## Related Topics

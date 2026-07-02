@@ -41,8 +41,7 @@ pub struct Config {
     /// and preserved during serialization/deserialization.
     pub track_ref: bool,
     /// Maximum estimated graph memory accepted during one root deserialization.
-    /// Defaults to 128 MiB. Positive values are explicit limits; non-positive
-    /// values intentionally disable this protection.
+    /// Defaults to 128 MiB. Value must be a positive byte limit.
     pub max_graph_memory_bytes: i64,
     /// Maximum accepted field count in one received struct TypeMeta.
     pub max_type_fields: u32,

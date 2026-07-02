@@ -108,9 +108,8 @@ auto fory = Fory::builder()
 ```
 
 The default limit is a fixed `128 MiB` for byte-array, `Buffer`, and stream
-roots. Positive values override the default. Explicit non-positive values
-disable this budget and can expose deserialization DoS risk from compact inputs
-that materialize large object graphs.
+roots. Positive values override the default. Explicit non-positive values are
+rejected when the runtime is created.
 
 This budget is a portable lower-bound estimate for shallow materialized graph
 owners such as dynamic collection backing storage, map key/value storage,
@@ -247,8 +246,7 @@ Security-related configuration:
 - Register all structs and polymorphic implementations before deserializing untrusted payloads.
 - Use `check_struct_version(true)` with `compatible(false)` for intentional same-schema payloads.
 - Keep `max_graph_memory_bytes(...)` at the fixed `128 MiB` default for most inputs, or set a
-  positive value for a trusted workload that needs a different envelope. Avoid explicit
-  non-positive values for untrusted data because they disable graph-memory enforcement.
+  positive value for a trusted workload that needs a different envelope.
 - Keep `max_dyn_depth(...)` as low as your model permits to reject unexpectedly deep polymorphic
   graphs.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a

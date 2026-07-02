@@ -16,9 +16,9 @@ Load this file when changing `dart/`.
 - In `Buffer`, cursor, serializer, and generated-code hot paths, prefer direct byte/local integer operations and conditional import/export files over callbacks, records, holder objects, wrapper round-trips, or runtime platform branches.
 - Root deserialization graph memory budgets are owned by `ReadContext`;
   `maxGraphMemoryBytes` defaults to fixed `128 MiB`, positive explicit values override it, and
-  explicit non-positive values intentionally disable graph-memory enforcement. Do not derive the
-  budget from `buffer.readableBytes`. `ReadContext` may expose only raw byte reservation; list, set,
-  map, array, struct, and object formulas
+  explicit non-positive values are invalid at config creation. Do not derive the budget from
+  `buffer.readableBytes`. `ReadContext` may expose only raw byte reservation; list, set, map, array,
+  struct, and object formulas
   belong in serializer owners. Reserve Dart list/set/object-array reference
   slots plus nonzero owner self cost, map key/value slots plus nonzero owner
   self cost, compatible array-to-list materialization, and generated object reads before

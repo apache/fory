@@ -15,8 +15,8 @@ Load this file when changing `python/`, Cython serialization, or Python xlang be
 - Keep Python and Cython context/ref-tracking branch conditions and stack mutations semantically aligned unless a documented intentional difference exists.
 - Root deserialization graph memory budgets are owned by pure-Python and Cython `ReadContext`.
   Keep `max_graph_memory_bytes` public on `pyfory.Fory`/`Config`; the default effective limit is
-  fixed `128 MiB`, positive explicit values override it, and explicit non-positive values
-  intentionally disable graph-memory enforcement. Byte and stream roots use the same
+  fixed `128 MiB`, positive explicit values override it, and explicit non-positive values are
+  invalid at config creation. Byte and stream roots use the same
   configured/default budget behavior. `ReadContext` may expose only raw
   byte reservation; collection, dict, array, struct, and object
   formulas belong in the pure-Python or Cython serializer owner. Lists, tuples, sets, and

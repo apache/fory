@@ -49,17 +49,15 @@ describe("graph memory budget", () => {
     expect(() => fory.readContext.reserveGraphMemory(1)).toThrow(/maxGraphMemoryBytes/);
   });
 
-  test("handles explicit config and disable", () => {
+  test("handles explicit config and validation", () => {
     const fory = new Fory({ maxGraphMemoryBytes: 24 });
     fory.readContext.reset(new Uint8Array(1));
     expect(() => fory.readContext.reserveGraphMemory(0)).not.toThrow();
     expect(() => fory.readContext.reserveGraphMemory(24)).not.toThrow();
     expect(() => fory.readContext.reserveGraphMemory(1)).toThrow(/maxGraphMemoryBytes/);
 
-    const disabled = new Fory({ maxGraphMemoryBytes: 0 });
-    disabled.readContext.reset(new Uint8Array(1));
-    expect(() => disabled.readContext.reserveGraphMemory(Number.MAX_SAFE_INTEGER)).not.toThrow();
-    expect(() => new Fory({ maxGraphMemoryBytes: -2 })).not.toThrow();
+    expect(() => new Fory({ maxGraphMemoryBytes: 0 })).toThrow(/maxGraphMemoryBytes/);
+    expect(() => new Fory({ maxGraphMemoryBytes: -2 })).toThrow(/maxGraphMemoryBytes/);
   });
 
   test("uses parent storage for nested empty containers", () => {

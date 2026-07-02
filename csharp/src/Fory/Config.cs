@@ -54,6 +54,10 @@ public sealed class Config
         {
             throw new ArgumentOutOfRangeException(nameof(maxAverageSchemaVersionsPerType), "MaxAverageSchemaVersionsPerType must be greater than 0.");
         }
+        if (maxGraphMemoryBytes <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxGraphMemoryBytes), "MaxGraphMemoryBytes must be greater than 0.");
+        }
 
         TrackRef = trackRef;
         Compatible = compatible;
@@ -179,10 +183,14 @@ public sealed class ForyBuilder
 
     /// <summary>
     /// Sets the maximum estimated graph memory accepted during one root deserialization.
-    /// Positive values are byte limits. Explicit non-positive values disable this budget.
     /// </summary>
     public ForyBuilder MaxGraphMemoryBytes(long value)
     {
+        if (value <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "MaxGraphMemoryBytes must be greater than 0.");
+        }
+
         _maxGraphMemoryBytes = value;
         return this;
     }

@@ -540,7 +540,6 @@ export class ReadContext {
   private _depth = 0;
   private _maxDepth: number;
   private readonly maxGraphMemoryBytes: number;
-  private effectiveGraphMemoryBytes = 0;
   private remainingGraphMemoryBytes = 0;
   private remoteSchemaVersionsByType: Map<string | number, number> | undefined = undefined;
 
@@ -561,16 +560,12 @@ export class ReadContext {
     this.metaStringReader.reset();
     this.typeMeta = [];
     this._depth = 0;
-    this.effectiveGraphMemoryBytes = this.maxGraphMemoryBytes > 0 ? this.maxGraphMemoryBytes : 0;
-    this.remainingGraphMemoryBytes = this.effectiveGraphMemoryBytes;
+    this.remainingGraphMemoryBytes = this.maxGraphMemoryBytes;
   }
 
   reserveGraphMemory(bytes: number) {
     if (!Number.isSafeInteger(bytes) || bytes < 0) {
       this.throwGraphMemoryOverflow(bytes);
-    }
-    if (this.effectiveGraphMemoryBytes <= 0) {
-      return;
     }
     const remaining = this.remainingGraphMemoryBytes - bytes;
     if (remaining < 0) {
@@ -587,7 +582,7 @@ export class ReadContext {
     throw new Error(
       `maxGraphMemoryBytes exceeded: requested ${bytes} estimated graph bytes, ` +
         `${this.remainingGraphMemoryBytes} remaining, effective limit ` +
-        `${this.effectiveGraphMemoryBytes}`,
+        `${this.maxGraphMemoryBytes}`,
     );
   }
 

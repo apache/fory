@@ -142,23 +142,17 @@ public sealed class GraphMemoryBudgetTests
     }
 
     [Fact]
-    public void DefaultFixedBudgetAndDisable()
+    public void DefaultFixedBudgetAndValidation()
     {
         Assert.Equal(DefaultGraphMemoryBytes, NewFory().Config.MaxGraphMemoryBytes);
-        Assert.Equal(0, NewFory(0).Config.MaxGraphMemoryBytes);
-        Assert.Equal(-2, NewFory(-2).Config.MaxGraphMemoryBytes);
+        Assert.Throws<ArgumentOutOfRangeException>(() => NewFory(0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => NewFory(-2));
 
         ReadContext context = new(new ByteReader([]), new TypeResolver(), NewFory().Config);
         context._graphMemoryLimitBytes = DefaultGraphMemoryBytes;
         context._remainingGraphMemoryBytes = DefaultGraphMemoryBytes;
         context.ReserveGraphMemory(DefaultGraphMemoryBytes);
         Assert.Throws<InvalidDataException>(() => context.ReserveGraphMemory(ReferenceBytes));
-
-        ReadContext disabled = new(new ByteReader([]), new TypeResolver(), NewFory(0).Config);
-        disabled._graphMemoryLimitBytes = 0;
-        disabled._remainingGraphMemoryBytes = long.MaxValue;
-        disabled.ReserveGraphMemory(long.MaxValue);
-        Assert.Throws<InvalidDataException>(() => disabled.ReserveGraphMemory(-1));
     }
 
     [Fact]

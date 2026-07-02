@@ -575,10 +575,10 @@ public final class ForyBuilder {
   /**
    * Sets the maximum estimated graph memory accepted during one root deserialization.
    *
-   * <p>The default is a fixed 128 MiB. Positive values are explicit byte limits. Explicit
-   * non-positive values disable this budget.
+   * <p>The default is a fixed 128 MiB. Values must be positive byte limits.
    */
   public ForyBuilder withMaxGraphMemoryBytes(long maxGraphMemoryBytes) {
+    Preconditions.checkArgument(maxGraphMemoryBytes > 0, "maxGraphMemoryBytes must be positive");
     this.maxGraphMemoryBytes = maxGraphMemoryBytes;
     recordAction(b -> b.withMaxGraphMemoryBytes(maxGraphMemoryBytes));
     return this;

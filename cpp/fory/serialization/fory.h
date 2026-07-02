@@ -112,9 +112,9 @@ public:
 
   /// Set maximum estimated graph memory for one root deserialization.
   ///
-  /// Defaults to 128 MiB. Positive values are explicit byte limits;
-  /// non-positive values intentionally disable this protection.
+  /// Defaults to 128 MiB. Values must be positive byte limits.
   ForyBuilder &max_graph_memory_bytes(int64_t max_bytes) {
+    FORY_CHECK(max_bytes > 0) << "max_graph_memory_bytes must be positive";
     config_.max_graph_memory_bytes = max_bytes;
     return *this;
   }
@@ -888,9 +888,7 @@ private:
 
     read_ctx_->attach(buffer);
     read_ctx_->remaining_graph_memory_bytes_ =
-        read_ctx_->graph_memory_limit_bytes_ != 0
-            ? read_ctx_->graph_memory_limit_bytes_
-            : std::numeric_limits<size_t>::max();
+        read_ctx_->graph_memory_limit_bytes_;
     if constexpr (needs_graph_budget_v<T>) {
       constexpr size_t root_owner_bytes = graph_value_owner_self_bytes<T>();
       if constexpr (root_owner_bytes != 0) {

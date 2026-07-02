@@ -124,8 +124,7 @@ let fory = Fory::builder()
     .build();
 ```
 
-Passing an explicit non-positive value disables this budget and can expose deserialization DoS risk
-from compact inputs that materialize large object graphs.
+Explicit non-positive values are rejected when the runtime is created.
 
 ### Explicit Xlang Examples
 
@@ -193,8 +192,7 @@ Security-related configuration:
   payloads.
 - Use `max_dyn_depth(...)` to reject unexpectedly deep dynamic object graphs.
 - Keep `max_graph_memory_bytes(...)` at the fixed `128 MiB` default for most inputs, or set a
-  positive byte limit for trusted workloads with different legitimate object-graph sizes. Avoid
-  explicit non-positive values for untrusted data because they disable graph-memory enforcement.
+  positive byte limit for trusted workloads with different legitimate object-graph sizes.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer concrete typed fields over `dyn Any` or broad trait-object fields for untrusted input.

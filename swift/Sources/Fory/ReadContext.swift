@@ -36,7 +36,7 @@ public final class ReadContext {
     private var lastTypeInfo = TypeInfo.uncached
     private let config: Config
     let maxGraphMemoryBytes: Int
-    var remainingGraphMemoryBytes = Int.max
+    var remainingGraphMemoryBytes = 0
 
     init(
         buffer: ByteBuffer,
@@ -58,9 +58,6 @@ public final class ReadContext {
     public func reserveGraphMemory(_ bytes: Int) throws {
         if bytes < 0 {
             try throwGraphMemoryOverflow()
-        }
-        if maxGraphMemoryBytes <= 0 {
-            return
         }
         if bytes > remainingGraphMemoryBytes {
             try throwGraphMemoryExceeded(bytes: bytes)

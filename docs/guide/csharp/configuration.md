@@ -108,8 +108,7 @@ Fory fory = Fory.Builder()
 ```
 
 The default limit is a fixed `128 MiB` for all root input forms. A positive value overrides the
-default. Passing an explicit non-positive value disables this budget and can expose deserialization
-DoS risk from compact inputs that materialize large object graphs.
+default. Explicit non-positive values are rejected when the runtime is created.
 
 ### `MaxTypeFields(int value)`
 

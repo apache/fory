@@ -188,8 +188,11 @@ sbt test
 ## Code Format
 
 ```bash
-sbt scalafmt
+cd ..
+ci/format.sh
 ```
+
+The Scala module does not currently wire a `scalafmt` sbt command.
 
 ## Additional Notes
 

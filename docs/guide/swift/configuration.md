@@ -95,8 +95,7 @@ let fory = Fory(compatible: false, checkClassVersion: true)
 
 `maxGraphMemoryBytes` bounds estimated shallow graph memory accepted during one root
 deserialization. The default limit is a fixed `128 MiB` for all root input forms. A positive value
-overrides the default. Passing an explicit non-positive value disables this budget and can expose
-deserialization DoS risk from compact inputs that materialize large object graphs.
+overrides the default. Explicit non-positive values are rejected when the runtime is created.
 
 Compatible-mode remote metadata is also limited:
 

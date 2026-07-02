@@ -146,7 +146,7 @@ private func expectInvalidData(_ body: () throws -> Void) {
 }
 
 @Test
-func fixedDefaultBudgetAndDisable() throws {
+func fixedDefaultBudget() throws {
     let config = Config(trackRef: false, compatible: false)
     let context = ReadContext(
         buffer: ByteBuffer(),
@@ -159,15 +159,6 @@ func fixedDefaultBudgetAndDisable() throws {
     expectInvalidData {
         try context.reserveGraphMemory(testReferenceBytes)
     }
-
-    let disabledConfig = Config(trackRef: false, compatible: false, maxGraphMemoryBytes: 0)
-    let disabled = ReadContext(
-        buffer: ByteBuffer(),
-        typeResolver: TypeResolver(config: disabledConfig),
-        config: disabledConfig
-    )
-    disabled.remainingGraphMemoryBytes = Int.max
-    try disabled.reserveGraphMemory(Int(defaultGraphMemoryBytes) + 1)
 }
 
 @Test

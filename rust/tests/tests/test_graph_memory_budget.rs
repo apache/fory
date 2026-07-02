@@ -83,37 +83,13 @@ fn config_validation() {
         Fory::builder().build().config().max_graph_memory_bytes,
         DEFAULT_GRAPH_MEMORY_BYTES
     );
-    assert_eq!(
-        Fory::builder()
-            .max_graph_memory_bytes(0)
-            .build()
-            .config()
-            .max_graph_memory_bytes,
-        0
+    assert!(
+        std::panic::catch_unwind(|| Fory::builder().max_graph_memory_bytes(0).build()).is_err()
     );
-    assert_eq!(
-        Fory::builder()
-            .max_graph_memory_bytes(-2)
-            .build()
-            .config()
-            .max_graph_memory_bytes,
-        -2
+    assert!(
+        std::panic::catch_unwind(|| Fory::builder().max_graph_memory_bytes(-2).build()).is_err()
     );
     let _ = Fory::builder().max_graph_memory_bytes(1).build();
-}
-
-#[test]
-fn non_positive_budget_disables_enforcement() {
-    let value: Vec<String> = Vec::new();
-    let writer = fory_with_budget(DEFAULT_GRAPH_MEMORY_BYTES);
-    let bytes = writer.serialize(&value).unwrap();
-
-    assert!(fory_with_budget(1)
-        .deserialize::<Vec<String>>(&bytes)
-        .is_err());
-    assert!(fory_with_budget(0)
-        .deserialize::<Vec<String>>(&bytes)
-        .is_ok());
 }
 
 #[test]

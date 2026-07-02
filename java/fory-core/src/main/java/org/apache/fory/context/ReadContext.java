@@ -116,14 +116,8 @@ public final class ReadContext {
     this.buffer = buffer;
     this.peerOutOfBandEnabled = peerOutOfBandEnabled;
     this.outOfBandBuffers = outOfBandBuffers == null ? null : outOfBandBuffers.iterator();
-    long limit = maxGraphMemoryBytes;
-    if (limit <= 0) {
-      graphMemoryLimitBytes = 0;
-      remainingGraphMemoryBytes = Long.MAX_VALUE;
-      return;
-    }
-    graphMemoryLimitBytes = limit;
-    remainingGraphMemoryBytes = limit;
+    graphMemoryLimitBytes = maxGraphMemoryBytes;
+    remainingGraphMemoryBytes = maxGraphMemoryBytes;
   }
 
   /**
@@ -331,9 +325,6 @@ public final class ReadContext {
   public void reserveGraphMemory(long bytes) {
     if (bytes < 0) {
       throwNegativeGraphMemory(bytes);
-    }
-    if (graphMemoryLimitBytes <= 0) {
-      return;
     }
     long remaining = remainingGraphMemoryBytes;
     if (bytes > remaining) {

@@ -95,13 +95,14 @@ f := fory.New(fory.WithMaxDepth(20))
 
 // Set maximum estimated graph memory for one root read
 f := fory.New(fory.WithMaxGraphMemoryBytes(256 * 1024 * 1024))
+// The value must be positive.
 
 // Combine multiple options
 f := fory.New(
     fory.WithXlang(true),
     fory.WithTrackRef(true),
     fory.WithMaxDepth(20),
-    fory.WithMaxGraphMemoryBytes(-1),
+    fory.WithMaxGraphMemoryBytes(256 * 1024 * 1024),
 )
 ```
 

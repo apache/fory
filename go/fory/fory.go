@@ -118,8 +118,10 @@ func WithMaxDepth(depth int) Option {
 }
 
 // WithMaxGraphMemoryBytes sets the maximum estimated graph memory accepted during one root deserialization.
-// Non-positive values disable graph-memory enforcement.
 func WithMaxGraphMemoryBytes(size int64) Option {
+	if size <= 0 {
+		panic("MaxGraphMemoryBytes must be positive")
+	}
 	return func(f *Fory) {
 		f.config.MaxGraphMemoryBytes = size
 	}
@@ -580,13 +582,8 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 	target := reflect.ValueOf(v).Elem()
 	targetType := target.Type()
 	limit := f.config.MaxGraphMemoryBytes
-	if limit <= 0 {
-		f.readCtx.graphMemoryLimitBytes = 0
-		f.readCtx.remainingGraphMemoryBytes = MaxInt64
-	} else {
-		f.readCtx.graphMemoryLimitBytes = limit
-		f.readCtx.remainingGraphMemoryBytes = limit
-	}
+	f.readCtx.graphMemoryLimitBytes = limit
+	f.readCtx.remainingGraphMemoryBytes = limit
 	if bytes, ok := f.rootGraphBytesFor(targetType); ok && bytes > 0 {
 		if !f.readCtx.ReserveGraphMemory(bytes) {
 			return f.readCtx.TakeError()
@@ -686,13 +683,8 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	target := reflect.ValueOf(v).Elem()
 	targetType := target.Type()
 	limit := f.config.MaxGraphMemoryBytes
-	if limit <= 0 {
-		f.readCtx.graphMemoryLimitBytes = 0
-		f.readCtx.remainingGraphMemoryBytes = MaxInt64
-	} else {
-		f.readCtx.graphMemoryLimitBytes = limit
-		f.readCtx.remainingGraphMemoryBytes = limit
-	}
+	f.readCtx.graphMemoryLimitBytes = limit
+	f.readCtx.remainingGraphMemoryBytes = limit
 	if bytes, ok := f.rootGraphBytesFor(targetType); ok && bytes > 0 {
 		if !f.readCtx.ReserveGraphMemory(bytes) {
 			f.readCtx.buffer = origBuffer
@@ -813,13 +805,8 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	target := rv.Elem()
 	targetType := target.Type()
 	limit := f.config.MaxGraphMemoryBytes
-	if limit <= 0 {
-		f.readCtx.graphMemoryLimitBytes = 0
-		f.readCtx.remainingGraphMemoryBytes = MaxInt64
-	} else {
-		f.readCtx.graphMemoryLimitBytes = limit
-		f.readCtx.remainingGraphMemoryBytes = limit
-	}
+	f.readCtx.graphMemoryLimitBytes = limit
+	f.readCtx.remainingGraphMemoryBytes = limit
 	if bytes, ok := f.rootGraphBytesFor(targetType); ok && bytes > 0 {
 		if !f.readCtx.ReserveGraphMemory(bytes) {
 			return f.readCtx.TakeError()
@@ -1083,13 +1070,8 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	f.readCtx.Reset()
 	f.readCtx.SetData(data)
 	limit := f.config.MaxGraphMemoryBytes
-	if limit <= 0 {
-		f.readCtx.graphMemoryLimitBytes = 0
-		f.readCtx.remainingGraphMemoryBytes = MaxInt64
-	} else {
-		f.readCtx.graphMemoryLimitBytes = limit
-		f.readCtx.remainingGraphMemoryBytes = limit
-	}
+	f.readCtx.graphMemoryLimitBytes = limit
+	f.readCtx.remainingGraphMemoryBytes = limit
 
 	var targetVal reflect.Value
 	var targetType reflect.Type

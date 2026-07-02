@@ -403,9 +403,9 @@ memory budget before allocation or size hinting. The budget belongs to
 `ReadContext` or the equivalent root read state, not to serializers and not to
 ambient thread-local state. `maxGraphMemoryBytes` defaults to a fixed `128 MiB`;
 positive configuration overrides the default; explicit non-positive
-configuration disables graph-memory enforcement. Do not derive this budget from
-root input size, and do not add dynamic stream bytes-read accounting for this
-budget.
+configuration is invalid and must be rejected when the runtime is created. Do
+not derive this budget from root input size, and do not add dynamic stream
+bytes-read accounting for this budget.
 
 Read context or equivalent read state owns only raw byte reservation. It must
 not expose counted arithmetic helpers or collection, map, array, struct, or

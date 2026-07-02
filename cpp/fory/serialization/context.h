@@ -507,9 +507,6 @@ public:
 
   FORY_ALWAYS_INLINE bool reserve_graph_memory(size_t bytes) {
     const size_t remaining = remaining_graph_memory_bytes_;
-    if (FORY_PREDICT_FALSE(remaining == std::numeric_limits<size_t>::max())) {
-      return true;
-    }
     if (FORY_PREDICT_FALSE(bytes > remaining)) {
       return set_graph_memory_exceeded(bytes, remaining);
     }
@@ -689,7 +686,7 @@ private:
   RefReader ref_reader_;
   uint32_t current_dyn_depth_;
   size_t graph_memory_limit_bytes_ = 0;
-  size_t remaining_graph_memory_bytes_ = std::numeric_limits<size_t>::max();
+  size_t remaining_graph_memory_bytes_ = 0;
 
   // Meta sharing state (for compatible mode)
   // Persistent cache storage for TypeInfo objects keyed by meta header.

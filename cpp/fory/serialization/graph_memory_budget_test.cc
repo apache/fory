@@ -126,22 +126,12 @@ void expect_budget_boundary(const T &value, size_t required) {
   EXPECT_EQ(exact_result.value(), value);
 }
 
-TEST(GraphMemoryBudgetTest, FixedDefaultBudgetAndDisable) {
+TEST(GraphMemoryBudgetTest, FixedDefaultBudgetAndValidation) {
   Config config;
   EXPECT_EQ(config.max_graph_memory_bytes, kDefaultGraphMemoryBytes);
 
-  Config disabled_config;
-  disabled_config.max_graph_memory_bytes = 0;
-  EXPECT_EQ(disabled_config.max_graph_memory_bytes, 0);
-
-  constexpr size_t count = 3;
-  std::vector<std::vector<std::string>> value(count);
-  auto bytes = serialize_value(value);
-  auto disabled_result = with_fory(0, [&](Fory &fory) {
-    return fory.deserialize<std::vector<std::vector<std::string>>>(bytes);
-  });
-  ASSERT_TRUE(disabled_result.ok()) << disabled_result.error().to_string();
-  EXPECT_EQ(disabled_result.value(), value);
+  EXPECT_DEATH((void)Fory::builder().max_graph_memory_bytes(0),
+               "max_graph_memory_bytes");
 }
 
 TEST(GraphMemoryBudgetTest, RootKindsShareConfiguredBudget) {

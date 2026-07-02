@@ -90,8 +90,10 @@ export default class Fory {
       );
     }
     const maxGraphMemoryBytes = config?.maxGraphMemoryBytes ?? DEFAULT_MAX_GRAPH_MEMORY_BYTES;
-    if (!Number.isSafeInteger(maxGraphMemoryBytes)) {
-      throw new Error(`maxGraphMemoryBytes must be a safe integer but got ${maxGraphMemoryBytes}`);
+    if (!Number.isSafeInteger(maxGraphMemoryBytes) || maxGraphMemoryBytes <= 0) {
+      throw new Error(
+        `maxGraphMemoryBytes must be a positive safe integer but got ${maxGraphMemoryBytes}`,
+      );
     }
     return {
       ref: Boolean(config?.ref),
