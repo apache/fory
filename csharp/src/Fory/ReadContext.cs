@@ -117,32 +117,6 @@ public sealed class ReadContext
         _remainingGraphMemoryBytes = remaining - bytes;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void ReserveGraphMemory(int bytes)
-    {
-        long remaining = _remainingGraphMemoryBytes;
-        if (bytes < 0 || bytes > remaining)
-        {
-            ReserveGraphMemorySlow(bytes, remaining);
-            return;
-        }
-
-        _remainingGraphMemoryBytes = remaining - bytes;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void ReserveGraphMemory(uint bytes)
-    {
-        long remaining = _remainingGraphMemoryBytes - bytes;
-        if (remaining < 0)
-        {
-            ReserveGraphMemorySlow(bytes, _remainingGraphMemoryBytes);
-            return;
-        }
-
-        _remainingGraphMemoryBytes = remaining;
-    }
-
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void ReserveGraphMemorySlow(long bytes, long remaining)
     {

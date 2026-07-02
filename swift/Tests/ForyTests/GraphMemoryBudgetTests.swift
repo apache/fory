@@ -45,6 +45,17 @@ private struct BudgetDenseHolder: Equatable {
     var dense: [Int32] = []
 }
 
+@ForyStruct
+private struct BudgetListDenseWriter {
+    var dense: [Int32] = []
+}
+
+@ForyStruct
+private struct BudgetListDenseReader: Equatable {
+    @ArrayField(element: .int32())
+    var dense: [Int32] = []
+}
+
 private let defaultGraphMemoryBytes: Int64 = 128 * 1024 * 1024
 
 private func makeBudgetFory(maxGraphMemoryBytes: Int64 = defaultGraphMemoryBytes) -> Fory {
@@ -58,6 +69,15 @@ private func makeBudgetFory(maxGraphMemoryBytes: Int64 = defaultGraphMemoryBytes
     fory.register(BudgetSiblings.self, id: 9802)
     fory.register(BudgetDenseHolder.self, id: 9803)
     return fory
+}
+
+private func makeCompatibleBudgetFory(maxGraphMemoryBytes: Int64 = defaultGraphMemoryBytes) -> Fory {
+    Fory(
+        config: .init(
+            trackRef: false,
+            compatible: true,
+            maxGraphMemoryBytes: maxGraphMemoryBytes
+        ))
 }
 
 private let testReferenceBytes = 4
@@ -75,12 +95,20 @@ private func arrayBudget<Element: Serializer>(_ type: Element.Type, count: Int) 
     count * elementBytes(type)
 }
 
-private func rootArrayBudget<Element: Serializer>(
+private func listBudget<Element: Serializer>(
     _ type: Element.Type,
     count: Int,
     elementOwnerBytes: Int = 0
 ) -> Int {
     ownerBytes([Element].self) + arrayBudget(type, count: count) + count * elementOwnerBytes
+}
+
+private func rootArrayBudget<Element: Serializer>(
+    _ type: Element.Type,
+    count: Int,
+    elementOwnerBytes: Int = 0
+) -> Int {
+    listBudget(type, count: count, elementOwnerBytes: elementOwnerBytes)
 }
 
 private func mapBudget<Key: Serializer, Value: Serializer>(
@@ -91,12 +119,20 @@ private func mapBudget<Key: Serializer, Value: Serializer>(
     count * (elementBytes(key) + elementBytes(value))
 }
 
-private func rootMapBudget<Key: Serializer & Hashable, Value: Serializer>(
+private func dictionaryBudget<Key: Serializer & Hashable, Value: Serializer>(
     key: Key.Type,
     value: Value.Type,
     count: Int
 ) -> Int {
     ownerBytes(Dictionary<Key, Value>.self) + mapBudget(key: key, value: value, count: count)
+}
+
+private func rootMapBudget<Key: Serializer & Hashable, Value: Serializer>(
+    key: Key.Type,
+    value: Value.Type,
+    count: Int
+) -> Int {
+    dictionaryBudget(key: key, value: value, count: count)
 }
 
 private func expectInvalidData(_ body: () throws -> Void) {
@@ -167,7 +203,7 @@ func siblingContainersShareOneBudget() throws {
         right: (16..<32).map { BudgetNode(id: Int32($0)) }
     )
     let bytes = try makeBudgetFory().serialize(value)
-    let oneList = arrayBudget(BudgetNode.self, count: 16) + 16 * budgetNodeGraphBytes
+    let oneList = listBudget(BudgetNode.self, count: 16, elementOwnerBytes: budgetNodeGraphBytes)
     let required = ownerBytes(BudgetSiblings.self) + oneList * 2
 
     expectInvalidData {
@@ -181,8 +217,39 @@ func siblingContainersShareOneBudget() throws {
 }
 
 @Test
+func nestedEmptyArraysChargeOwner() throws {
+    let count = 3
+    let value = Array(repeating: [String](), count: count)
+    let bytes = try makeBudgetFory().serialize(value)
+    let required = listBudget([String].self, count: count) + count * ownerBytes([String].self)
+
+    expectInvalidData {
+        let _: [[String]] = try makeBudgetFory(maxGraphMemoryBytes: Int64(required - 1))
+            .deserialize(bytes)
+    }
+    let decoded: [[String]] = try makeBudgetFory(maxGraphMemoryBytes: Int64(required))
+        .deserialize(bytes)
+    #expect(decoded == value)
+}
+
+@Test
 func mapBudgetIsCharged() throws {
     let value: [String: Int32] = ["a": 1, "b": 2, "c": 3]
+    let bytes = try makeBudgetFory().serialize(value)
+    let required = rootMapBudget(key: String.self, value: Int32.self, count: value.count)
+
+    expectInvalidData {
+        let _: [String: Int32] = try makeBudgetFory(maxGraphMemoryBytes: Int64(required - 1))
+            .deserialize(bytes)
+    }
+    let decoded: [String: Int32] = try makeBudgetFory(maxGraphMemoryBytes: Int64(required))
+        .deserialize(bytes)
+    #expect(decoded == value)
+}
+
+@Test
+func emptyTypedMapOwnerIsCharged() throws {
+    let value: [String: Int32] = [:]
     let bytes = try makeBudgetFory().serialize(value)
     let required = rootMapBudget(key: String.self, value: Int32.self, count: value.count)
 
@@ -261,7 +328,8 @@ func dynamicAnyEmptyMapOwnerSelf() throws {
     let value = [:] as [AnyHashable: Any]
     let bytes = try makeBudgetFory().serialize(value as Any)
     let required =
-        ownerBytes(Dictionary<AnyHashable, Any>.self)
+        dictionaryBudget(key: AnyHashable.self, value: SerializableAny.self, count: value.count)
+        + ownerBytes(Dictionary<AnyHashable, Any>.self)
         + ownerBytes(Dictionary<String, Any>.self)
 
     expectInvalidData {
@@ -277,7 +345,7 @@ func dynamicAnyEmptyMapOwnerSelf() throws {
 func publicAnyArrayBudget() throws {
     let value: [Any] = [Int32(1), Int32(2), Int32(3)]
     let bytes = try makeBudgetFory().serialize(value)
-    let wrappedBudget = arrayBudget(SerializableAny.self, count: value.count)
+    let wrappedBudget = listBudget(SerializableAny.self, count: value.count)
     let finalBudget = ownerBytes([Any].self) + value.count * testReferenceBytes
 
     expectInvalidData {
@@ -293,7 +361,7 @@ func publicAnyArrayBudget() throws {
 func publicAnyMapBudget() throws {
     let stringMap: [String: Any] = ["a": Int32(1), "b": Int32(2), "c": Int32(3)]
     let stringBytes = try makeBudgetFory().serialize(stringMap)
-    let stringWrapped = mapBudget(
+    let stringWrapped = dictionaryBudget(
         key: String.self,
         value: SerializableAny.self,
         count: stringMap.count
@@ -310,7 +378,7 @@ func publicAnyMapBudget() throws {
 
     let intMap: [Int32: Any] = [1: Int32(10), 2: Int32(20), 3: Int32(30)]
     let intBytes = try makeBudgetFory().serialize(intMap)
-    let intWrapped = mapBudget(
+    let intWrapped = dictionaryBudget(
         key: Int32.self,
         value: SerializableAny.self,
         count: intMap.count
@@ -330,7 +398,7 @@ func publicAnyMapBudget() throws {
         AnyHashable(true): Int32(3)
     ]
     let anyHashableBytes = try makeBudgetFory().serialize(anyHashableMap)
-    let anyHashableWrapped = mapBudget(
+    let anyHashableWrapped = dictionaryBudget(
         key: AnyHashable.self,
         value: SerializableAny.self,
         count: anyHashableMap.count
@@ -354,7 +422,7 @@ func dynamicAnyArrayBudget() throws {
     let value: Any = list
     let bytes = try makeBudgetFory().serialize(value)
     let count = list.count
-    let wrappedBudget = arrayBudget(SerializableAny.self, count: count)
+    let wrappedBudget = listBudget(SerializableAny.self, count: count)
     let finalBudget = ownerBytes([Any].self) + count * testReferenceBytes
 
     expectInvalidData {
@@ -364,6 +432,27 @@ func dynamicAnyArrayBudget() throws {
     let decoded = try makeBudgetFory(maxGraphMemoryBytes: Int64(wrappedBudget + finalBudget))
         .deserialize(bytes, as: Any.self)
     #expect((decoded as? [Any])?.count == count)
+}
+
+@Test
+func compatibleListToDenseArraySkipsLeafOwner() throws {
+    let writer = makeCompatibleBudgetFory()
+    writer.register(BudgetListDenseWriter.self, id: 9804)
+    let reader = makeCompatibleBudgetFory(
+        maxGraphMemoryBytes: Int64(ownerBytes(BudgetListDenseReader.self))
+    )
+    reader.register(BudgetListDenseReader.self, id: 9804)
+    let bytes = try writer.serialize(BudgetListDenseWriter(dense: [1, 2, 3]))
+
+    expectInvalidData {
+        let failingReader = makeCompatibleBudgetFory(
+            maxGraphMemoryBytes: Int64(ownerBytes(BudgetListDenseReader.self) - 1)
+        )
+        failingReader.register(BudgetListDenseReader.self, id: 9804)
+        let _: BudgetListDenseReader = try failingReader.deserialize(bytes)
+    }
+    let decoded: BudgetListDenseReader = try reader.deserialize(bytes)
+    #expect(decoded.dense == [1, 2, 3])
 }
 
 @Test

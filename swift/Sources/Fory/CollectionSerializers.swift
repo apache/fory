@@ -42,16 +42,26 @@ private func storedElementBytes<Element: Serializer>(_ type: Element.Type) -> In
 }
 
 @inline(__always)
-private func reserveGraphStorage(
+private func storedOwnerBytes<T>(_ type: T.Type) -> Int {
+    max(1, MemoryLayout<T>.stride)
+}
+
+@inline(__always)
+private func reserveGraphElements(
     _ context: ReadContext,
+    ownerBytes: Int,
     count: Int,
     elementBytes: Int
 ) throws {
-    if count < 0 || elementBytes < 0 {
+    if ownerBytes < 0 || count < 0 || elementBytes < 0 {
         throw ForyError.invalidData("graph memory estimate overflows")
     }
-    let (bytes, overflow) = count.multipliedReportingOverflow(by: elementBytes)
+    let (storageBytes, overflow) = count.multipliedReportingOverflow(by: elementBytes)
     if overflow {
+        throw ForyError.invalidData("graph memory estimate overflows")
+    }
+    let (bytes, addOverflow) = ownerBytes.addingReportingOverflow(storageBytes)
+    if addOverflow {
         throw ForyError.invalidData("graph memory estimate overflows")
     }
     try context.reserveGraphMemory(bytes)
@@ -61,9 +71,11 @@ private func reserveGraphStorage(
 private func reserveGraphArrayMemory<Element: Serializer>(
     _ context: ReadContext,
     _ type: Element.Type,
+    ownerBytes: Int,
     count: Int
 ) throws {
-    try reserveGraphStorage(context, count: count, elementBytes: storedElementBytes(type))
+    try reserveGraphElements(
+        context, ownerBytes: ownerBytes, count: count, elementBytes: storedElementBytes(type))
 }
 
 @inline(__always)
@@ -71,6 +83,7 @@ private func reserveGraphMapMemory<Key: Serializer, Value: Serializer>(
     _ context: ReadContext,
     key: Key.Type,
     value: Value.Type,
+    ownerBytes: Int,
     count: Int
 ) throws {
     let keyBytes = storedElementBytes(key)
@@ -79,24 +92,7 @@ private func reserveGraphMapMemory<Key: Serializer, Value: Serializer>(
     if overflow {
         throw ForyError.invalidData("graph memory estimate overflows")
     }
-    try reserveGraphStorage(context, count: count, elementBytes: elementBytes)
-}
-
-private func primitiveArrayTypeID<Element: Serializer>(for _: Element.Type) -> TypeId? {
-    if Element.self == UInt8.self { return .uint8Array }
-    if Element.self == Bool.self { return .boolArray }
-    if Element.self == Int8.self { return .int8Array }
-    if Element.self == Int16.self { return .int16Array }
-    if Element.self == Int32.self { return .int32Array }
-    if Element.self == Int64.self { return .int64Array }
-    if Element.self == UInt16.self { return .uint16Array }
-    if Element.self == UInt32.self { return .uint32Array }
-    if Element.self == UInt64.self { return .uint64Array }
-    if Element.self == Float16.self { return .float16Array }
-    if Element.self == BFloat16.self { return .bfloat16Array }
-    if Element.self == Float.self { return .float32Array }
-    if Element.self == Double.self { return .float64Array }
-    return nil
+    try reserveGraphElements(context, ownerBytes: ownerBytes, count: count, elementBytes: elementBytes)
 }
 
 private let hostIsLittleEndian = Int(littleEndian: 1) == 1
@@ -292,7 +288,8 @@ private func preparePrimitiveArray<Element: Serializer>(
 ) throws {
     try context.ensureCollectionLength(count, label: label)
     if reserveGraphStorage {
-        try reserveGraphArrayMemory(context, type, count: count)
+        try reserveGraphArrayMemory(
+            context, type, ownerBytes: storedOwnerBytes([Element].self), count: count)
     }
 }
 
@@ -633,9 +630,11 @@ extension Array: Serializer where Element: Serializer {
         let buffer = context.buffer
         let length = Int(try buffer.readVarUInt32())
         try context.ensureCollectionLength(length, label: "array")
+        let ownerBytes = reserveGraphStorage ? storedOwnerBytes([Element].self) : 0
         if length == 0 {
             if reserveGraphStorage {
-                try reserveGraphArrayMemory(context, Element.self, count: length)
+                try reserveGraphArrayMemory(
+                    context, Element.self, ownerBytes: ownerBytes, count: length)
             }
             return []
         }
@@ -647,7 +646,8 @@ extension Array: Serializer where Element: Serializer {
         let sameType = (header & CollectionHeader.sameType) != 0
         if !sameType {
             if reserveGraphStorage {
-                try reserveGraphArrayMemory(context, Element.self, count: length)
+                try reserveGraphArrayMemory(
+                    context, Element.self, ownerBytes: ownerBytes, count: length)
             }
             try context.ensureRemainingBytes(length, label: "array")
             if trackRef {
@@ -688,7 +688,7 @@ extension Array: Serializer where Element: Serializer {
 
         let elementTypeInfo = declared ? nil : try Element.foryReadTypeInfo(context)
         if reserveGraphStorage {
-            try reserveGraphArrayMemory(context, Element.self, count: length)
+            try reserveGraphArrayMemory(context, Element.self, ownerBytes: ownerBytes, count: length)
         }
         try context.ensureRemainingBytes(length, label: "array")
         return try context.withTypeInfo(elementTypeInfo, for: Element.self) {
@@ -749,7 +749,8 @@ extension Set: Serializer where Element: Serializer & Hashable {
 
     public static func foryReadData(_ context: ReadContext) throws -> Set<Element> {
         let values = try [Element].readData(context, reserveGraphStorage: false)
-        try reserveGraphArrayMemory(context, Element.self, count: values.count)
+        try reserveGraphArrayMemory(
+            context, Element.self, ownerBytes: storedOwnerBytes(Set<Element>.self), count: values.count)
         return Set(values)
     }
 }
@@ -980,12 +981,15 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
     public static func foryReadData(_ context: ReadContext) throws -> [Key: Value] {
         let totalLength = Int(try context.buffer.readVarUInt32())
         try context.ensureCollectionLength(totalLength, label: "map")
+        let ownerBytes = storedOwnerBytes(Dictionary<Key, Value>.self)
         if totalLength == 0 {
-            try reserveGraphMapMemory(context, key: Key.self, value: Value.self, count: totalLength)
+            try reserveGraphMapMemory(
+                context, key: Key.self, value: Value.self, ownerBytes: ownerBytes, count: totalLength)
             return [:]
         }
 
-        try reserveGraphMapMemory(context, key: Key.self, value: Value.self, count: totalLength)
+        try reserveGraphMapMemory(
+            context, key: Key.self, value: Value.self, ownerBytes: ownerBytes, count: totalLength)
         try context.ensureRemainingBytes(totalLength, label: "map")
         var map: [Key: Value] = [:]
         map.reserveCapacity(totalLength)

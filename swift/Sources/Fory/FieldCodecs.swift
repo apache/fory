@@ -30,16 +30,26 @@ private func serializerElementBytes<Element: Serializer>(_ type: Element.Type) -
 }
 
 @inline(__always)
+private func fieldOwnerBytes<T>(_ type: T.Type) -> Int {
+    max(1, MemoryLayout<T>.stride)
+}
+
+@inline(__always)
 private func reserveFieldStorage(
     _ context: ReadContext,
+    ownerBytes: Int,
     count: Int,
     elementBytes: Int
 ) throws {
-    if count < 0 || elementBytes < 0 {
+    if ownerBytes < 0 || count < 0 || elementBytes < 0 {
         throw ForyError.invalidData("graph memory estimate overflows")
     }
-    let (bytes, overflow) = count.multipliedReportingOverflow(by: elementBytes)
+    let (storageBytes, overflow) = count.multipliedReportingOverflow(by: elementBytes)
     if overflow {
+        throw ForyError.invalidData("graph memory estimate overflows")
+    }
+    let (bytes, addOverflow) = ownerBytes.addingReportingOverflow(storageBytes)
+    if addOverflow {
         throw ForyError.invalidData("graph memory estimate overflows")
     }
     try context.reserveGraphMemory(bytes)
@@ -49,18 +59,22 @@ private func reserveFieldStorage(
 private func reserveFieldArrayStorage<ElementCodec: FieldCodec>(
     _ context: ReadContext,
     _ codec: ElementCodec.Type,
+    ownerBytes: Int,
     count: Int
 ) throws {
-    try reserveFieldStorage(context, count: count, elementBytes: fieldElementBytes(codec))
+    try reserveFieldStorage(
+        context, ownerBytes: ownerBytes, count: count, elementBytes: fieldElementBytes(codec))
 }
 
 @inline(__always)
 private func reserveSerializerArrayMemory<Element: Serializer>(
     _ context: ReadContext,
     _ type: Element.Type,
+    ownerBytes: Int,
     count: Int
 ) throws {
-    try reserveFieldStorage(context, count: count, elementBytes: serializerElementBytes(type))
+    try reserveFieldStorage(
+        context, ownerBytes: ownerBytes, count: count, elementBytes: serializerElementBytes(type))
 }
 
 @inline(__always)
@@ -68,6 +82,7 @@ private func reserveFieldMapStorage<KeyCodec: FieldCodec, ValueCodec: FieldCodec
     _ context: ReadContext,
     key: KeyCodec.Type,
     value: ValueCodec.Type,
+    ownerBytes: Int,
     count: Int
 ) throws {
     let keyBytes = fieldElementBytes(key)
@@ -76,7 +91,7 @@ private func reserveFieldMapStorage<KeyCodec: FieldCodec, ValueCodec: FieldCodec
     if overflow {
         throw ForyError.invalidData("graph memory estimate overflows")
     }
-    try reserveFieldStorage(context, count: count, elementBytes: elementBytes)
+    try reserveFieldStorage(context, ownerBytes: ownerBytes, count: count, elementBytes: elementBytes)
 }
 
 public protocol FieldCodec {
@@ -724,7 +739,11 @@ public enum ListFieldCodec<ElementCodec: FieldCodec>: FieldCodec {
     }
 
     public static func readPayload(_ context: ReadContext) throws -> Value {
-        return try readCollectionPayload(context, elementCodec: ElementCodec.self)
+        return try readCollectionPayload(
+            context,
+            elementCodec: ElementCodec.self,
+            ownerBytes: fieldOwnerBytes([ElementCodec.Value].self)
+        )
     }
 
     public static func readCompatibleField(
@@ -910,8 +929,17 @@ public enum SetFieldCodec<ElementCodec: FieldCodec>: FieldCodec where ElementCod
     }
 
     public static func readPayload(_ context: ReadContext) throws -> Value {
-        let values = try readCollectionPayload(context, elementCodec: ElementCodec.self)
-        try reserveFieldArrayStorage(context, ElementCodec.self, count: values.count)
+        let values = try readCollectionPayload(
+            context,
+            elementCodec: ElementCodec.self,
+            ownerBytes: 0
+        )
+        try reserveFieldArrayStorage(
+            context,
+            ElementCodec.self,
+            ownerBytes: fieldOwnerBytes(Set<ElementCodec.Value>.self),
+            count: values.count
+        )
         return Set(values)
     }
 }
@@ -1030,14 +1058,17 @@ where KeyCodec.Value: Hashable {
     public static func readPayload(_ context: ReadContext) throws -> Value {
         let totalLength = Int(try context.buffer.readVarUInt32())
         try context.ensureCollectionLength(totalLength, label: "map")
+        let ownerBytes = fieldOwnerBytes(Dictionary<KeyCodec.Value, ValueCodec.Value>.self)
         if totalLength == 0 {
             try reserveFieldMapStorage(
-                context, key: KeyCodec.self, value: ValueCodec.self, count: totalLength)
+                context, key: KeyCodec.self, value: ValueCodec.self, ownerBytes: ownerBytes,
+                count: totalLength)
             return [:]
         }
 
         try reserveFieldMapStorage(
-            context, key: KeyCodec.self, value: ValueCodec.self, count: totalLength)
+            context, key: KeyCodec.self, value: ValueCodec.self, ownerBytes: ownerBytes,
+            count: totalLength)
         try context.ensureRemainingBytes(totalLength, label: "map")
         var map: Value = [:]
         map.reserveCapacity(totalLength)
@@ -1419,7 +1450,8 @@ private func readIntArrayPayload(
 {
     let count = try readPackedArrayElementCount(context, width: 8, label: "int64_array")
     if reserveGraphStorage {
-        try reserveSerializerArrayMemory(context, Int.self, count: count)
+        try reserveSerializerArrayMemory(
+            context, Int.self, ownerBytes: fieldOwnerBytes([Int].self), count: count)
     }
     var values: [Int] = []
     values.reserveCapacity(count)
@@ -1436,7 +1468,8 @@ private func readUIntArrayPayload(
 {
     let count = try readPackedArrayElementCount(context, width: 8, label: "uint64_array")
     if reserveGraphStorage {
-        try reserveSerializerArrayMemory(context, UInt.self, count: count)
+        try reserveSerializerArrayMemory(
+            context, UInt.self, ownerBytes: fieldOwnerBytes([UInt].self), count: count)
     }
     var values: [UInt] = []
     values.reserveCapacity(count)
@@ -1747,13 +1780,15 @@ private func writeCollectionPayload<ElementCodec: FieldCodec>(
 
 private func readCollectionPayload<ElementCodec: FieldCodec>(
     _ context: ReadContext,
-    elementCodec _: ElementCodec.Type
+    elementCodec _: ElementCodec.Type,
+    ownerBytes: Int
 ) throws -> [ElementCodec.Value] {
     let buffer = context.buffer
     let length = Int(try buffer.readVarUInt32())
     try context.ensureCollectionLength(length, label: "array")
     if length == 0 {
-        try reserveFieldArrayStorage(context, ElementCodec.self, count: length)
+        try reserveFieldArrayStorage(
+            context, ElementCodec.self, ownerBytes: ownerBytes, count: length)
         return []
     }
 
@@ -1768,7 +1803,7 @@ private func readCollectionPayload<ElementCodec: FieldCodec>(
     let sameType = (header & CollectionHeader.sameType) != 0
 
     var result: [ElementCodec.Value] = []
-    try reserveFieldArrayStorage(context, ElementCodec.self, count: length)
+    try reserveFieldArrayStorage(context, ElementCodec.self, ownerBytes: ownerBytes, count: length)
     try context.ensureRemainingBytes(length, label: "array")
     result.reserveCapacity(length)
 
@@ -1854,7 +1889,6 @@ private func readListPayloadAsArrayPayload<ElementCodec: FieldCodec>(
     let length = Int(try buffer.readVarUInt32())
     try context.ensureCollectionLength(length, label: "array")
     if length == 0 {
-        try reserveFieldArrayStorage(context, ElementCodec.self, count: length)
         return []
     }
 
@@ -1882,7 +1916,6 @@ private func readListPayloadAsArrayPayload<ElementCodec: FieldCodec>(
     }
     try context.ensureRemainingBytes(length, label: "array")
     var result: [ElementCodec.Value] = []
-    try reserveFieldArrayStorage(context, ElementCodec.self, count: length)
     result.reserveCapacity(length)
     return try ElementCodec.withTypeInfo(elementTypeInfo, context) {
         for _ in 0..<length {

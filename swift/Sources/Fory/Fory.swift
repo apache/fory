@@ -480,25 +480,11 @@ public final class Fory {
     private func readRootTypedValue<T: Serializer>(
         context: ReadContext
     ) throws -> T {
-        try reserveRootGraphOwner(T.self, context: context)
         return try T.foryRead(
             context,
             refMode: refMode,
             readTypeInfo: true
         )
-    }
-
-    @inline(__always)
-    private func reserveRootGraphOwner<T: Serializer>(
-        _: T.Type,
-        context: ReadContext
-    ) throws {
-        switch T.staticTypeId {
-        case .list, .set, .map:
-            try context.reserveGraphMemory(max(1, MemoryLayout<T>.stride))
-        default:
-            break
-        }
     }
 
     @inline(__always)
