@@ -21,7 +21,6 @@ use crate::meta::{
     MetaString, TypeMeta, NAMESPACE_ENCODER, NAMESPACE_ENCODINGS, TYPE_NAME_ENCODER,
     TYPE_NAME_ENCODINGS,
 };
-use crate::resolver::RefMode;
 use crate::serializer::{ForyDefault, Serializer, StructSerializer};
 use crate::type_id::{get_ext_actual_type_id, is_enum_type_id};
 use crate::types::{Date, Duration, Timestamp};
@@ -49,16 +48,6 @@ fn supports_type_def(type_id: u32) -> bool {
             || x == TypeId::NAMED_UNION as u32
     )
 }
-
-type WriteFn = fn(
-    &dyn Any,
-    &mut WriteContext,
-    ref_mode: RefMode,
-    write_type_info: bool,
-    has_enerics: bool,
-) -> Result<(), Error>;
-type ReadFn =
-    fn(&mut ReadContext, ref_mode: RefMode, read_type_info: bool) -> Result<Box<dyn Any>, Error>;
 
 type WriteDataFn = fn(&dyn Any, &mut WriteContext, has_generics: bool) -> Result<(), Error>;
 type ReadDataFn = fn(&mut ReadContext) -> Result<Box<dyn Any>, Error>;
@@ -94,8 +83,6 @@ fn split_named_registration<'a>(name: &'a str, api: &str) -> Result<(&'a str, &'
 
 #[derive(Clone, Debug)]
 pub struct Harness {
-    write_fn: WriteFn,
-    read_fn: ReadFn,
     write_data_fn: WriteDataFn,
     read_data_fn: ReadDataFn,
     read_data_as_send_sync_any_fn: ReadDataAsSendSyncAnyFn,
@@ -108,8 +95,6 @@ pub struct Harness {
 impl Harness {
     pub fn stub() -> Harness {
         Harness {
-            write_fn: stub_write_fn,
-            read_fn: stub_read_fn,
             write_data_fn: stub_write_data_fn,
             read_data_fn: stub_read_data_fn,
             read_data_as_send_sync_any_fn: stub_read_data_as_send_sync_any_fn,
@@ -118,16 +103,6 @@ impl Harness {
             to_serializer: stub_to_serializer_fn,
             build_type_infos: stub_build_type_infos,
         }
-    }
-
-    #[inline(always)]
-    pub fn get_write_fn(&self) -> WriteFn {
-        self.write_fn
-    }
-
-    #[inline(always)]
-    pub fn get_read_fn(&self) -> ReadFn {
-        self.read_fn
     }
 
     #[inline(always)]
@@ -338,8 +313,6 @@ impl TypeInfo {
         } else {
             // Create a stub harness that returns errors when called
             Harness {
-                write_fn: stub_write_fn,
-                read_fn: stub_read_fn,
                 write_data_fn: stub_write_data_fn,
                 read_data_fn: stub_read_data_fn,
                 read_data_as_send_sync_any_fn: stub_read_data_as_send_sync_any_fn,
@@ -365,24 +338,6 @@ impl TypeInfo {
 }
 
 // Stub functions for when a type doesn't exist locally
-fn stub_write_fn(
-    _: &dyn Any,
-    _: &mut WriteContext,
-    _: RefMode,
-    _: bool,
-    _: bool,
-) -> Result<(), Error> {
-    Err(Error::type_error(
-        "Cannot serialize unknown remote type - type not registered locally",
-    ))
-}
-
-fn stub_read_fn(_: &mut ReadContext, _: RefMode, _: bool) -> Result<Box<dyn Any>, Error> {
-    Err(Error::type_error(
-        "Cannot deserialize unknown remote type - type not registered locally",
-    ))
-}
-
 fn stub_write_data_fn(_: &dyn Any, _: &mut WriteContext, _: bool) -> Result<(), Error> {
     Err(Error::type_error(
         "Cannot serialize unknown remote type - type not registered locally",
@@ -926,36 +881,6 @@ impl TypeResolver {
                 || x == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         );
 
-        fn write<T2: 'static + Serializer>(
-            this: &dyn Any,
-            context: &mut WriteContext,
-            ref_mode: RefMode,
-            write_type_info: bool,
-            has_generics: bool,
-        ) -> Result<(), Error> {
-            let this = this.downcast_ref::<T2>();
-            match this {
-                Some(v) => T2::fory_write(v, context, ref_mode, write_type_info, has_generics),
-                None => Err(Error::type_error(format!(
-                    "Cast type to {:?} error when writing: {:?}",
-                    std::any::type_name::<T2>(),
-                    T2::fory_static_type_id()
-                ))),
-            }
-        }
-
-        fn read<T2: 'static + Serializer + ForyDefault>(
-            context: &mut ReadContext,
-            ref_mode: RefMode,
-            read_type_info: bool,
-        ) -> Result<Box<dyn Any>, Error> {
-            let graph_self_size = T2::fory_graph_self_size();
-            if graph_self_size != 0 {
-                context.reserve_graph_memory(graph_self_size)?;
-            }
-            Ok(Box::new(T2::fory_read(context, ref_mode, read_type_info)?))
-        }
-
         fn write_data<T2: 'static + Serializer>(
             this: &dyn Any,
             context: &mut WriteContext,
@@ -1025,8 +950,6 @@ impl TypeResolver {
         }
 
         let harness = Harness {
-            write_fn: write::<T>,
-            read_fn: read::<T>,
             write_data_fn: write_data::<T>,
             read_data_fn: read_data::<T>,
             read_data_as_send_sync_any_fn: read_data_as_send_sync_any::<T>,
@@ -1181,36 +1104,6 @@ impl TypeResolver {
             )));
         }
 
-        fn write<T2: 'static + Serializer>(
-            this: &dyn Any,
-            context: &mut WriteContext,
-            ref_mode: RefMode,
-            write_type_info: bool,
-            has_generics: bool,
-        ) -> Result<(), Error> {
-            let this = this.downcast_ref::<T2>();
-            match this {
-                Some(v) => v.fory_write(context, ref_mode, write_type_info, has_generics),
-                None => Err(Error::type_error(format!(
-                    "Cast type to {:?} error when writing: {:?}",
-                    std::any::type_name::<T2>(),
-                    T2::fory_static_type_id()
-                ))),
-            }
-        }
-
-        fn read<T2: 'static + Serializer + ForyDefault>(
-            context: &mut ReadContext,
-            ref_mode: RefMode,
-            read_type_info: bool,
-        ) -> Result<Box<dyn Any>, Error> {
-            let graph_self_size = T2::fory_graph_self_size();
-            if graph_self_size != 0 {
-                context.reserve_graph_memory(graph_self_size)?;
-            }
-            Ok(Box::new(T2::fory_read(context, ref_mode, read_type_info)?))
-        }
-
         fn write_data<T2: 'static + Serializer>(
             this: &dyn Any,
             context: &mut WriteContext,
@@ -1272,8 +1165,6 @@ impl TypeResolver {
 
         // EXT types don't support fory_read_compatible
         let harness = Harness {
-            write_fn: write::<T>,
-            read_fn: read::<T>,
             write_data_fn: write_data::<T>,
             read_data_fn: read_data::<T>,
             read_data_as_send_sync_any_fn: read_data_as_send_sync_any::<T>,
