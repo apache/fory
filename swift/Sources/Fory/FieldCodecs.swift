@@ -712,9 +712,10 @@ public enum ArrayFieldCodec<ElementCodec: FieldCodec>: FieldCodec {
         refMode: RefMode
     ) throws -> Value {
         if remoteFieldType.typeID == TypeId.list.rawValue,
-           let element = remoteFieldType.generics.first,
-           let localArrayTypeID = packedArrayTypeID(for: ElementCodec.self),
-           TypeId.listElementTypeID(element.typeID, matchesDenseArrayTypeID: localArrayTypeID.rawValue) {
+            let element = remoteFieldType.generics.first,
+            let localArrayTypeID = packedArrayTypeID(for: ElementCodec.self),
+            TypeId.listElementTypeID(element.typeID, matchesDenseArrayTypeID: localArrayTypeID.rawValue)
+        {
             return try readListPayloadAsArray(
                 context,
                 refMode: refMode,
@@ -1361,7 +1362,8 @@ private func readCompatiblePackedArrayField<ElementCodec: FieldCodec>(
             let refID = try context.buffer.readVarUInt32()
             return try context.refReader.readRef(refID, as: [ElementCodec.Value].self)
         }
-        let reservedRefID = (rawFlag == RefFlag.refValue.rawValue && context.trackRef)
+        let reservedRefID =
+            (rawFlag == RefFlag.refValue.rawValue && context.trackRef)
             ? context.refReader.reserveRefID()
             : nil
         let value = try readCompatiblePackedArrayPayload(context, elementCodec: ElementCodec.self)
@@ -1430,8 +1432,8 @@ private func readCompatibleElementPayload<ElementCodec: FieldCodec>(
     remoteElementTypeID: UInt32?
 ) throws -> ElementCodec.Value {
     guard let remoteElementTypeID,
-          remoteElementTypeID != ElementCodec.typeId.rawValue,
-          let remoteTypeID = TypeId(rawValue: remoteElementTypeID)
+        remoteElementTypeID != ElementCodec.typeId.rawValue,
+        let remoteTypeID = TypeId(rawValue: remoteElementTypeID)
     else {
         return try ElementCodec.readPayload(context)
     }
@@ -1664,7 +1666,8 @@ private func readListPayloadAsArray<ElementCodec: FieldCodec>(
             let refID = try context.buffer.readVarUInt32()
             return try context.refReader.readRef(refID, as: [ElementCodec.Value].self)
         }
-        let reservedRefID = (rawFlag == RefFlag.refValue.rawValue && context.trackRef)
+        let reservedRefID =
+            (rawFlag == RefFlag.refValue.rawValue && context.trackRef)
             ? context.refReader.reserveRefID()
             : nil
         let value = try readListPayloadAsArrayPayload(
@@ -1718,11 +1721,12 @@ private func readListPayloadAsArrayPayload<ElementCodec: FieldCodec>(
     result.reserveCapacity(length)
     return try ElementCodec.withTypeInfo(elementTypeInfo, context) {
         for _ in 0..<length {
-            result.append(try readCompatibleElementPayload(
-                context,
-                elementCodec: ElementCodec.self,
-                remoteElementTypeID: remoteElementTypeID
-            ))
+            result.append(
+                try readCompatibleElementPayload(
+                    context,
+                    elementCodec: ElementCodec.self,
+                    remoteElementTypeID: remoteElementTypeID
+                ))
         }
         return result
     }

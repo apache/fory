@@ -56,15 +56,17 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
         let sortedFields = sortFields(parsed.fields)
 
         let staticTypeIDDecl: DeclSyntax = """
-        \(raw: accessPrefix)static var staticTypeId: TypeId { .structType }
-        """
+            \(raw: accessPrefix)static var staticTypeId: TypeId { .structType }
+            """
         let evolvingDecl: DeclSyntax = """
-        \(raw: accessPrefix)static var foryEvolving: Bool { \(raw: objectConfig.evolving ? "true" : "false") }
-        """
+            \(raw: accessPrefix)static var foryEvolving: Bool { \(raw: objectConfig.evolving ? "true" : "false") }
+            """
 
-        let referenceTrackDecl: DeclSyntax? = parsed.isClass ? """
-        \(raw: accessPrefix)static var isRefType: Bool { true }
-        """ : nil
+        let referenceTrackDecl: DeclSyntax? =
+            parsed.isClass
+            ? """
+            \(raw: accessPrefix)static var isRefType: Bool { true }
+            """ : nil
 
         let schemaHashDecl: DeclSyntax = DeclSyntax(stringLiteral: try buildSchemaHashDecl(fields: parsed.fields))
         let compatibleTypeMetaDecl: DeclSyntax = DeclSyntax(
@@ -74,7 +76,8 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
             stringLiteral: buildDefaultDecl(isClass: parsed.isClass, fields: parsed.fields, accessPrefix: accessPrefix)
         )
         let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl(accessPrefix: accessPrefix))
-        let readWrapperDecl: DeclSyntax? = parsed.isClass
+        let readWrapperDecl: DeclSyntax? =
+            parsed.isClass
             ? DeclSyntax(stringLiteral: buildClassReadWrapperDecl(accessPrefix: accessPrefix))
             : nil
         let writeDecl: DeclSyntax = DeclSyntax(
@@ -488,9 +491,9 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: Stri
     let writeSwitchCases = cases.enumerated().map { index, enumCase in
         let wireValue = enumCase.wireValue ?? UInt32(index)
         return """
-        case .\(enumCase.name):
-            context.buffer.writeVarUInt32(\(wireValue))
-        """
+            case .\(enumCase.name):
+                context.buffer.writeVarUInt32(\(wireValue))
+            """
     }.joined(separator: "\n        ")
     let readSwitchCases = cases.enumerated().map { index, enumCase in
         let wireValue = enumCase.wireValue ?? UInt32(index)
@@ -500,41 +503,41 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: Stri
 
     let defaultDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
-        \(accessPrefix)static func foryDefault() -> Self {
-            .\(defaultCase)
-        }
-        """
+            \(accessPrefix)static func foryDefault() -> Self {
+                .\(defaultCase)
+            }
+            """
     )
 
     let staticTypeIDDecl: DeclSyntax = """
-    \(raw: accessPrefix)static var staticTypeId: TypeId { .enumType }
-    """
+        \(raw: accessPrefix)static var staticTypeId: TypeId { .enumType }
+        """
     let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl(accessPrefix: accessPrefix))
 
     let writeDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
-        @inline(__always)
-        \(accessPrefix)func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-            _ = hasGenerics
-            switch self {
-            \(writeSwitchCases)
+            @inline(__always)
+            \(accessPrefix)func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+                _ = hasGenerics
+                switch self {
+                \(writeSwitchCases)
+                }
             }
-        }
-        """
+            """
     )
 
     let readDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
-        @inline(__always)
-        \(accessPrefix)static func foryReadData(_ context: ReadContext) throws -> Self {
-            let ordinal = try context.buffer.readVarUInt32()
-            switch ordinal {
-            \(readSwitchCases)
-            default:
-                throw ForyError.invalidData("unknown \(errorLabel) \\(ordinal)")
+            @inline(__always)
+            \(accessPrefix)static func foryReadData(_ context: ReadContext) throws -> Self {
+                let ordinal = try context.buffer.readVarUInt32()
+                switch ordinal {
+                \(readSwitchCases)
+                default:
+                    throw ForyError.invalidData("unknown \(errorLabel) \\(ordinal)")
+                }
             }
-        }
-        """
+            """
     )
 
     return [defaultDecl, staticTypeIDDecl, writeWrapperDecl, writeDecl, readDecl]
@@ -563,7 +566,7 @@ private func enumDeclUsesExplicitIntegerRawValues(_ enumDecl: EnumDeclSyntax) ->
 
 private func parseEnumCaseWireValue(_ element: EnumCaseElementSyntax) -> UInt32? {
     guard let rawValue = element.rawValue?.value.trimmedDescription,
-          let parsed = UInt32(rawValue)
+        let parsed = UInt32(rawValue)
     else {
         return nil
     }
@@ -607,10 +610,10 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
     let writeSwitchCases = cases.map { enumCase in
         if enumCase.name == unknownCase.name {
             return """
-            case .unknown(let value):
-                context.buffer.writeVarUInt32(value.caseId)
-                try UnknownCaseSerializer.writePayload(value, context)
-            """
+                case .unknown(let value):
+                    context.buffer.writeVarUInt32(value.caseId)
+                    try UnknownCaseSerializer.writePayload(value, context)
+                """
         }
 
         let caseID = knownCaseIDs[enumCase.name]!
@@ -642,9 +645,9 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
         let caseID = knownCaseIDs[enumCase.name]!
         if enumCase.payload.isEmpty {
             return """
-            case \(caseID):
-                return .\(enumCase.name)
-            """
+                case \(caseID):
+                    return .\(enumCase.name)
+                """
         }
 
         var lines: [String] = ["case \(caseID):"]
@@ -676,54 +679,48 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
 
     let defaultDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
-        \(accessPrefix)static func foryDefault() -> Self {
-            \(defaultExpr)
-        }
-        """
+            \(accessPrefix)static func foryDefault() -> Self {
+                \(defaultExpr)
+            }
+            """
     )
 
     let staticTypeIDDecl: DeclSyntax = """
-    \(raw: accessPrefix)static var staticTypeId: TypeId { .typedUnion }
-    """
+        \(raw: accessPrefix)static var staticTypeId: TypeId { .typedUnion }
+        """
     let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl(accessPrefix: accessPrefix))
 
     let writeDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
-        @inline(__always)
-        \(accessPrefix)func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-            _ = hasGenerics
-            switch self {
-            \(writeSwitchCases)
+            @inline(__always)
+            \(accessPrefix)func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+                _ = hasGenerics
+                switch self {
+                \(writeSwitchCases)
+                }
             }
-        }
-        """
+            """
     )
 
     let readDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
-        @inline(__always)
-        \(accessPrefix)static func foryReadData(_ context: ReadContext) throws -> Self {
-            let caseID = try context.buffer.readVarUInt32()
-            switch caseID {
-            \(readSwitchCases)
-            \(unknownDefault)
+            @inline(__always)
+            \(accessPrefix)static func foryReadData(_ context: ReadContext) throws -> Self {
+                let caseID = try context.buffer.readVarUInt32()
+                switch caseID {
+                \(readSwitchCases)
+                \(unknownDefault)
+                }
             }
-        }
-        """
+            """
     )
 
     return [defaultDecl, staticTypeIDDecl, writeWrapperDecl, writeDecl, readDecl]
 }
 
 private func isRuntimeUnknownCase(_ enumCase: ParsedEnumCase) -> Bool {
-    enumCase.unknownCase &&
-        enumCase.name == "unknown" &&
-        enumCase.caseID == nil &&
-        enumCase.payload.count == 1 &&
-        (
-            enumCase.payload[0].typeText == "UnknownCase" ||
-                enumCase.payload[0].typeText == "Fory.UnknownCase"
-        )
+    enumCase.unknownCase && enumCase.name == "unknown" && enumCase.caseID == nil && enumCase.payload.count == 1
+        && (enumCase.payload[0].typeText == "UnknownCase" || enumCase.payload[0].typeText == "Fory.UnknownCase")
 }
 
 private func enumCasePattern(_ enumCase: ParsedEnumCase) -> String {
@@ -743,7 +740,8 @@ private func enumCaseDefaultExpr(_ enumCase: ParsedEnumCase) -> String {
         if payloadField.isOptional {
             defaultValue = "nil"
         } else {
-            defaultValue = payloadField.customCodecType.map { "\($0).defaultValue" }
+            defaultValue =
+                payloadField.customCodecType.map { "\($0).defaultValue" }
                 ?? "\(payloadField.typeText).foryDefault()"
         }
         if let label = payloadField.label {
@@ -1210,8 +1208,8 @@ private func parseFieldTypeHintExpression(_ expr: ExprSyntax) throws -> FieldTyp
 private func parseFieldTypeHintMember(_ name: String) throws -> FieldTypeHint {
     switch name {
     case "bool", "int8", "int16", "uint8", "uint16", "float16", "bfloat16",
-         "float32", "float64", "string", "date", "timestamp", "duration",
-         "decimal", "binary":
+        "float32", "float64", "string", "date", "timestamp", "duration",
+        "decimal", "binary":
         return .scalar(name: name, nullable: nil, encoding: nil)
     default:
         throw MacroExpansionErrorMessage("unsupported Fory field type hint '.\(name)'")
@@ -1438,7 +1436,8 @@ private func classification(for typeText: String, hint: FieldTypeHint) throws ->
     case .array(let elementHint):
         let elementType = parseArrayElement(trimType(typeText)) ?? hintedValueTypeName(elementHint)
         guard let elementType,
-              let packedTypeID = packedArrayTypeID(typeText: elementType, hint: elementHint) else {
+            let packedTypeID = packedArrayTypeID(typeText: elementType, hint: elementHint)
+        else {
             throw MacroExpansionErrorMessage("array field hint requires a non-null numeric or bool Array element type")
         }
         return .init(
@@ -1987,8 +1986,9 @@ private func hintedValueTypeName(_ hint: FieldTypeHint) -> String? {
         return "Set<\(elementType)>"
     case .map(let key, let value):
         guard let key, let value,
-              let keyType = hintedValueTypeName(key),
-              let valueType = hintedValueTypeName(value) else {
+            let keyType = hintedValueTypeName(key),
+            let valueType = hintedValueTypeName(value)
+        else {
             return nil
         }
         return "[\(keyType): \(valueType)]"
@@ -2022,7 +2022,8 @@ private func resolveDynamicAnyCodec(rawType: String) throws -> DynamicAnyCodecKi
     }
 
     if let (keyType, valueType) = parseDictionary(concreteType),
-       containsDynamicAny(typeText: keyType) || containsDynamicAny(typeText: valueType) {
+        containsDynamicAny(typeText: keyType) || containsDynamicAny(typeText: valueType)
+    {
         let normalizedKeyType = trimType(unwrapOptional(keyType).type)
         if normalizedKeyType == "String" {
             return .stringAnyMap
@@ -2138,22 +2139,22 @@ private func buildSchemaHashDecl(fields: [ParsedField]) throws -> String {
     let fingerprintTrackRefDisabled = try buildSchemaFingerprint(fields: fields, trackRefExpression: "false")
     let fingerprintTrackRefEnabled = try buildSchemaFingerprint(fields: fields, trackRefExpression: "true")
     return """
-    private static func __foryNormalizeSchemaFingerprintTypeID(_ typeID: UInt32) -> UInt32 {
-        switch typeID {
-        case 0, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35:
-            return 0
-        default:
-            return typeID
+        private static func __foryNormalizeSchemaFingerprintTypeID(_ typeID: UInt32) -> UInt32 {
+            switch typeID {
+            case 0, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35:
+                return 0
+            default:
+                return typeID
+            }
         }
-    }
 
-    private static let __forySchemaHashTrackRefDisabled: UInt32 = SchemaHash.structHash32(\(fingerprintTrackRefDisabled))
-    private static let __forySchemaHashTrackRefEnabled: UInt32 = SchemaHash.structHash32(\(fingerprintTrackRefEnabled))
+        private static let __forySchemaHashTrackRefDisabled: UInt32 = SchemaHash.structHash32(\(fingerprintTrackRefDisabled))
+        private static let __forySchemaHashTrackRefEnabled: UInt32 = SchemaHash.structHash32(\(fingerprintTrackRefEnabled))
 
-    private static func __forySchemaHash(_ trackRef: Bool) -> UInt32 {
-        trackRef ? __forySchemaHashTrackRefEnabled : __forySchemaHashTrackRefDisabled
-    }
-    """
+        private static func __forySchemaHash(_ trackRef: Bool) -> UInt32 {
+            trackRef ? __forySchemaHashTrackRefEnabled : __forySchemaHashTrackRefDisabled
+        }
+        """
 }
 
 private func buildCompatibleTypeMetaFieldsDecl(sortedFields: [ParsedField], accessPrefix: String) -> String {
@@ -2161,20 +2162,20 @@ private func buildCompatibleTypeMetaFieldsDecl(sortedFields: [ParsedField], acce
     let enabledExpr = compatibleTypeMetaFieldsExpr(sortedFields: sortedFields, trackRefExpression: "true")
     let resolvedBody = resolvedTypeMetaFieldsBody(sortedFields: sortedFields)
     return """
-    private static let __foryFieldsInfoTrackRefDisabled: [TypeMeta.FieldInfo] = \(disabledExpr)
-    private static let __foryFieldsInfoTrackRefEnabled: [TypeMeta.FieldInfo] = \(enabledExpr)
+        private static let __foryFieldsInfoTrackRefDisabled: [TypeMeta.FieldInfo] = \(disabledExpr)
+        private static let __foryFieldsInfoTrackRefEnabled: [TypeMeta.FieldInfo] = \(enabledExpr)
 
-    \(accessPrefix)static func foryFieldsInfo(trackRef: Bool) -> [TypeMeta.FieldInfo] {
-        trackRef ? __foryFieldsInfoTrackRefEnabled : __foryFieldsInfoTrackRefDisabled
-    }
+        \(accessPrefix)static func foryFieldsInfo(trackRef: Bool) -> [TypeMeta.FieldInfo] {
+            trackRef ? __foryFieldsInfoTrackRefEnabled : __foryFieldsInfoTrackRefDisabled
+        }
 
-    \(accessPrefix)static func foryFieldsInfo(
-        trackRef: Bool,
-        resolveFieldTypeID: (Any.Type) throws -> TypeId
-    ) throws -> [TypeMeta.FieldInfo] {
-        \(resolvedBody)
-    }
-    """
+        \(accessPrefix)static func foryFieldsInfo(
+            trackRef: Bool,
+            resolveFieldTypeID: (Any.Type) throws -> TypeId
+        ) throws -> [TypeMeta.FieldInfo] {
+            \(resolvedBody)
+        }
+        """
 }
 
 private func compatibleTypeMetaFieldsExpr(
@@ -2210,7 +2211,8 @@ private func compatibleFieldIDExpr(_ field: ParsedField) -> String {
 }
 
 private func buildSchemaFingerprint(fields: [ParsedField], trackRefExpression: String) throws -> String {
-    let sortedFields = fields
+    let sortedFields =
+        fields
         .sorted { lhs, rhs in
             if let taggedOrder = compareTaggedFieldIdentifier(lhs, rhs) {
                 return taggedOrder
@@ -2412,21 +2414,22 @@ private func buildSchemaTypeFingerprint(
 private func buildDefaultDecl(isClass: Bool, fields: [ParsedField], accessPrefix: String) -> String {
     if isClass {
         return """
-        \(accessPrefix)static func foryDefault() -> Self {
-            Self.init()
-        }
-        """
+            \(accessPrefix)static func foryDefault() -> Self {
+                Self.init()
+            }
+            """
     }
 
     if fields.isEmpty {
         return """
-        \(accessPrefix)static func foryDefault() -> Self {
-            Self()
-        }
-        """
+            \(accessPrefix)static func foryDefault() -> Self {
+                Self()
+            }
+            """
     }
 
-    let args = fields
+    let args =
+        fields
         .sorted(by: { $0.originalIndex < $1.originalIndex })
         .map { field in
             "\(field.name): \(fieldDefaultExpr(field))"
@@ -2434,12 +2437,12 @@ private func buildDefaultDecl(isClass: Bool, fields: [ParsedField], accessPrefix
         .joined(separator: ",\n            ")
 
     return """
-    \(accessPrefix)static func foryDefault() -> Self {
-        Self(
-            \(args)
-        )
-    }
-    """
+        \(accessPrefix)static func foryDefault() -> Self {
+            Self(
+                \(args)
+            )
+        }
+        """
 }
 
 private func buildWriteWrapperDecl(accessPrefix: String) -> String {
@@ -2506,15 +2509,15 @@ private func buildWriteDataDecl(sortedFields: [ParsedField], accessPrefix: Strin
     }
 
     return """
-    @inline(__always)
-    \(accessPrefix)func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        let __buffer = context.buffer
-        if !context.compatible {
-            \(schemaHeader)
+        @inline(__always)
+        \(accessPrefix)func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+            let __buffer = context.buffer
+            if !context.compatible {
+                \(schemaHeader)
+            }
+            \(fieldBody)
         }
-        \(fieldBody)
-    }
-    """
+        """
 }
 
 private func schemaPrimitiveReserveBytes(_ fields: [ParsedField]) -> Int {
@@ -2577,6 +2580,15 @@ private func writeLine(for field: ParsedField) -> String {
         let fieldCodec = field.isOptional ? "OptionalFieldCodec<\(codecType)>" : codecType
         if field.isOptional {
             return """
+                try \(fieldCodec).write(
+                    self.\(field.name),
+                    context,
+                    refMode: \(refMode),
+                    writeTypeInfo: false
+                )
+                """
+        }
+        return """
             try \(fieldCodec).write(
                 self.\(field.name),
                 context,
@@ -2584,15 +2596,6 @@ private func writeLine(for field: ParsedField) -> String {
                 writeTypeInfo: false
             )
             """
-        }
-        return """
-        try \(fieldCodec).write(
-            self.\(field.name),
-            context,
-            refMode: \(refMode),
-            writeTypeInfo: false
-        )
-        """
     }
     if !field.isOptional, !compatibleFieldNeedsTypeInfo(field) {
         if let primitiveLine = primitiveSchemaWriteLine(field) {
@@ -2603,13 +2606,13 @@ private func writeLine(for field: ParsedField) -> String {
     let refMode = fieldRefModeExpression(field)
     let writeTypeInfoExpr = "context.compatible ? TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId) : false"
     return """
-    try self.\(field.name).foryWrite(
-        context,
-        refMode: \(refMode),
-        writeTypeInfo: \(writeTypeInfoExpr),
-        hasGenerics: \(hasGenerics)
-    )
-    """
+        try self.\(field.name).foryWrite(
+            context,
+            refMode: \(refMode),
+            writeTypeInfo: \(writeTypeInfoExpr),
+            hasGenerics: \(hasGenerics)
+        )
+        """
 }
 
 private enum MacroTypeId {
@@ -2625,12 +2628,12 @@ private enum MacroTypeId {
 func compatibleFieldNeedsTypeInfo(_ field: ParsedField) -> Bool {
     switch field.typeID {
     case MacroTypeId.unknown,
-         MacroTypeId.compatibleStruct,
-         MacroTypeId.namedStruct,
-         MacroTypeId.namedCompatibleStruct,
-         MacroTypeId.enumType,
-         MacroTypeId.namedEnum,
-         MacroTypeId.ext:
+        MacroTypeId.compatibleStruct,
+        MacroTypeId.namedStruct,
+        MacroTypeId.namedCompatibleStruct,
+        MacroTypeId.enumType,
+        MacroTypeId.namedEnum,
+        MacroTypeId.ext:
         return true
     default:
         return false
@@ -2712,11 +2715,11 @@ private func compatibleTypeMetaFieldExpression(
 
     if let customCodecType = field.customCodecType {
         return """
-\(customCodecType).fieldType(
-    nullable: \(field.isOptional ? "true" : "false"),
-    trackRef: \(fieldTrackRefExpression)
-)
-"""
+            \(customCodecType).fieldType(
+                nullable: \(field.isOptional ? "true" : "false"),
+                trackRef: \(fieldTrackRefExpression)
+            )
+            """
     }
 
     return buildCompatibleFieldTypeExpression(
@@ -2739,11 +2742,11 @@ private func resolvedTypeMetaFieldExpr(_ field: ParsedField) -> String {
 
     if let customCodecType = field.customCodecType {
         return """
-\(customCodecType).fieldType(
-    nullable: \(field.isOptional ? "true" : "false"),
-    trackRef: \(fieldTrackRefExpression)
-)
-"""
+            \(customCodecType).fieldType(
+                nullable: \(field.isOptional ? "true" : "false"),
+                trackRef: \(fieldTrackRefExpression)
+            )
+            """
     }
 
     return resolvedFieldTypeExpr(
@@ -2835,13 +2838,13 @@ private func buildCompatibleFieldTypeExpression(
             trackRefExpression: "false"
         )
         return """
-TypeMeta.FieldType(
-    typeID: TypeId.list.rawValue,
-    nullable: \(nullableExpression),
-    trackRef: \(trackRefExpression),
-    generics: [\(elementExpr)]
-)
-"""
+            TypeMeta.FieldType(
+                typeID: TypeId.list.rawValue,
+                nullable: \(nullableExpression),
+                trackRef: \(trackRefExpression),
+                generics: [\(elementExpr)]
+            )
+            """
     }
 
     if outerClassification.typeID == 23, let elementType = parseSetElement(concreteType) {
@@ -2852,13 +2855,13 @@ TypeMeta.FieldType(
             trackRefExpression: "false"
         )
         return """
-TypeMeta.FieldType(
-    typeID: TypeId.set.rawValue,
-    nullable: \(nullableExpression),
-    trackRef: \(trackRefExpression),
-    generics: [\(elementExpr)]
-)
-"""
+            TypeMeta.FieldType(
+                typeID: TypeId.set.rawValue,
+                nullable: \(nullableExpression),
+                trackRef: \(trackRefExpression),
+                generics: [\(elementExpr)]
+            )
+            """
     }
 
     if outerClassification.typeID == 24, let (keyType, valueType) = parseDictionary(concreteType) {
@@ -2875,13 +2878,13 @@ TypeMeta.FieldType(
             trackRefExpression: "false"
         )
         return """
-TypeMeta.FieldType(
-    typeID: TypeId.map.rawValue,
-    nullable: \(nullableExpression),
-    trackRef: \(trackRefExpression),
-    generics: [\(keyExpr), \(valueExpr)]
-)
-"""
+            TypeMeta.FieldType(
+                typeID: TypeId.map.rawValue,
+                nullable: \(nullableExpression),
+                trackRef: \(trackRefExpression),
+                generics: [\(keyExpr), \(valueExpr)]
+            )
+            """
     }
 
     let typeIDExpr: String
@@ -2894,12 +2897,12 @@ TypeMeta.FieldType(
     }
 
     return """
-TypeMeta.FieldType(
-    typeID: \(typeIDExpr),
-    nullable: \(nullableExpression),
-    trackRef: \(trackRefExpression)
-)
-"""
+        TypeMeta.FieldType(
+            typeID: \(typeIDExpr),
+            nullable: \(nullableExpression),
+            trackRef: \(trackRefExpression)
+        )
+        """
 }
 
 private func resolvedFieldTypeExpr(
@@ -2920,13 +2923,13 @@ private func resolvedFieldTypeExpr(
             trackRefExpression: "false"
         )
         return """
-TypeMeta.FieldType(
-    typeID: TypeId.list.rawValue,
-    nullable: \(nullableExpression),
-    trackRef: \(trackRefExpression),
-    generics: [\(elementExpr)]
-)
-"""
+            TypeMeta.FieldType(
+                typeID: TypeId.list.rawValue,
+                nullable: \(nullableExpression),
+                trackRef: \(trackRefExpression),
+                generics: [\(elementExpr)]
+            )
+            """
     }
 
     if outerClassification.typeID == 23, let elementType = parseSetElement(concreteType) {
@@ -2937,13 +2940,13 @@ TypeMeta.FieldType(
             trackRefExpression: "false"
         )
         return """
-TypeMeta.FieldType(
-    typeID: TypeId.set.rawValue,
-    nullable: \(nullableExpression),
-    trackRef: \(trackRefExpression),
-    generics: [\(elementExpr)]
-)
-"""
+            TypeMeta.FieldType(
+                typeID: TypeId.set.rawValue,
+                nullable: \(nullableExpression),
+                trackRef: \(trackRefExpression),
+                generics: [\(elementExpr)]
+            )
+            """
     }
 
     if outerClassification.typeID == 24, let (keyType, valueType) = parseDictionary(concreteType) {
@@ -2960,26 +2963,27 @@ TypeMeta.FieldType(
             trackRefExpression: "false"
         )
         return """
-TypeMeta.FieldType(
-    typeID: TypeId.map.rawValue,
-    nullable: \(nullableExpression),
-    trackRef: \(trackRefExpression),
-    generics: [\(keyExpr), \(valueExpr)]
-)
-"""
+            TypeMeta.FieldType(
+                typeID: TypeId.map.rawValue,
+                nullable: \(nullableExpression),
+                trackRef: \(trackRefExpression),
+                generics: [\(keyExpr), \(valueExpr)]
+            )
+            """
     }
 
-    let typeIDExpr = isDynamicAnyConcreteType(concreteType)
+    let typeIDExpr =
+        isDynamicAnyConcreteType(concreteType)
         ? "TypeId.unknown.rawValue"
         : "try resolveFieldTypeID(\(concreteType).self).rawValue"
 
     return """
-TypeMeta.FieldType(
-    typeID: \(typeIDExpr),
-    nullable: \(nullableExpression),
-    trackRef: \(trackRefExpression)
-)
-"""
+        TypeMeta.FieldType(
+            typeID: \(typeIDExpr),
+            nullable: \(nullableExpression),
+            trackRef: \(trackRefExpression)
+        )
+        """
 }
 
 private func compatibleFieldTypeIDExpression(_ typeText: String) -> String {

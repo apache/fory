@@ -9,6 +9,8 @@ Canonical runtime-specific rules now live under `../../../languages/*.md` and `.
 - Build: `swift build`
 - Tests: `swift test`
 - Lint: `swiftlint lint --config .swiftlint.yml`
+- Format check:
+  `swift-format lint --configuration .swift-format --recursive --strict Sources Tests Package.swift`
 - Benchmark: `cd benchmarks/swift && swift build -c release && ./.build/release/swift-benchmark --duration <N>`
 - Profile (macOS sample): run benchmark with long duration, then `sample <pid> 10 1 -mayDie -file /tmp/<name>.sample.txt`
 

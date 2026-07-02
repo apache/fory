@@ -118,7 +118,9 @@ implementation, CI-fix, or verification task, or when the user explicitly asks f
 - C++: from `cpp/`, `bazel build //cpp/...` and `bazel test $(bazel query //cpp/...)`; only add `--config=x86_64` on `x86_64` or `amd64`
 - Python: from `python/`, `ruff format .`, `ruff check .`, `ENABLE_FORY_CYTHON_SERIALIZATION=0 pytest -v -s .`, and `ENABLE_FORY_CYTHON_SERIALIZATION=1 pytest -v -s .`
 - Rust: from `rust/`, `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --features tests`
-- Swift: from `swift/`, `swiftlint lint --config .swiftlint.yml`, `swift build`, and `swift test`
+- Swift: from `swift/`, `swiftlint lint --config .swiftlint.yml`,
+  `swift-format lint --configuration .swift-format --recursive --strict Sources Tests Package.swift`,
+  `swift build`, and `swift test`
 - Go: from `go/fory/`, `go fmt ./...` and `go test -v ./...`
 - Xlang matrix triggers: for xlang behavior, type mapping, protocol bytes, compatible mode, `TypeMeta`, or cross-language container semantics, require `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.CSharpXlangTest`, `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and `org.apache.fory.xlang.PythonXlangTest`; include `org.apache.fory.xlang.SwiftXlangTest` when Swift xlang behavior changes.
 
