@@ -435,6 +435,13 @@ jobs:
           fi
           cd swift
           swiftlint lint --config .swiftlint.yml
+      - name: Run Swift format check
+        run: |
+          if ! command -v swift-format >/dev/null; then
+            brew install swift-format
+          fi
+          cd swift
+          swift-format lint --configuration .swift-format --recursive --strict Sources Tests Package.swift
 
   swift_xlang:
     name: Swift Xlang Test

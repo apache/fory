@@ -72,8 +72,8 @@ private struct AnnotatedFieldCodecHolder: Equatable {
     @ArrayField(element: .int32())
     var denseValues: [Int32] = []
 
-  @ForyField(type: .array(element: .uint64()))
-  var denseUInt64Values: [UInt64] = []
+    @ForyField(type: .array(element: .uint64()))
+    var denseUInt64Values: [UInt64] = []
 
     @SetField(element: .encoding(.fixed))
     var fixedSet: Set<Int32?> = []
@@ -102,10 +102,11 @@ private typealias MapAlias = [String: [Int32?]]
 
 @ForyStruct
 private struct AliasAnnotatedFieldCodecHolder: Equatable {
-    @ForyField(type: .map(
-        key: .string,
-        value: .list(element: .int32(nullable: true, encoding: .fixed))
-    ))
+    @ForyField(
+        type: .map(
+            key: .string,
+            value: .list(element: .int32(nullable: true, encoding: .fixed))
+        ))
     var data: MapAlias = [:]
 }
 
@@ -312,37 +313,30 @@ func annotatedNestedFieldCodecsEmitRecursiveMetadata() {
     )
     #expect(fields["id"] == UInt32FixedCodec.fieldType(nullable: false, trackRef: false))
     #expect(
-        fields["values"] ==
-            ListFieldCodec<OptionalFieldCodec<Int32FixedCodec>>.fieldType(nullable: false, trackRef: false)
+        fields["values"] == ListFieldCodec<OptionalFieldCodec<Int32FixedCodec>>.fieldType(nullable: false, trackRef: false)
     )
     #expect(
-        fields["packedValues"] ==
-            ListFieldCodec<Int32FixedCodec>.fieldType(nullable: false, trackRef: false)
+        fields["packedValues"] == ListFieldCodec<Int32FixedCodec>.fieldType(nullable: false, trackRef: false)
     )
     #expect(
-        fields["packedUInt64Values"] ==
-            ListFieldCodec<UInt64FixedCodec>.fieldType(nullable: false, trackRef: false)
+        fields["packedUInt64Values"] == ListFieldCodec<UInt64FixedCodec>.fieldType(nullable: false, trackRef: false)
     )
     #expect(
-        fields["denseValues"] ==
-            TypeMeta.FieldType(typeID: TypeId.int32Array.rawValue, nullable: false, trackRef: false)
+        fields["denseValues"] == TypeMeta.FieldType(typeID: TypeId.int32Array.rawValue, nullable: false, trackRef: false)
     )
     #expect(
-        fields["denseUInt64Values"] ==
-            TypeMeta.FieldType(typeID: TypeId.uint64Array.rawValue, nullable: false, trackRef: false)
+        fields["denseUInt64Values"] == TypeMeta.FieldType(typeID: TypeId.uint64Array.rawValue, nullable: false, trackRef: false)
     )
     #expect(
-        fields["fixedSet"] ==
-            SetFieldCodec<OptionalFieldCodec<Int32FixedCodec>>.fieldType(nullable: false, trackRef: false)
+        fields["fixedSet"] == SetFieldCodec<OptionalFieldCodec<Int32FixedCodec>>.fieldType(nullable: false, trackRef: false)
     )
     #expect(
-        fields["fixedNonNullSet"] ==
-            SetFieldCodec<Int32FixedCodec>.fieldType(nullable: false, trackRef: false)
+        fields["fixedNonNullSet"] == SetFieldCodec<Int32FixedCodec>.fieldType(nullable: false, trackRef: false)
     )
     #expect(fields["fixedNonNullSet"]?.typeID == TypeId.set.rawValue)
     #expect(
-        fields["data"] ==
-            MapFieldCodec<
+        fields["data"]
+            == MapFieldCodec<
                 OptionalFieldCodec<Int32FixedCodec>,
                 OptionalFieldCodec<Int32FixedCodec>
             >.fieldType(nullable: false, trackRef: false)
@@ -354,8 +348,8 @@ func annotatedNestedFieldCodecsEmitRecursiveMetadata() {
         }
     )
     #expect(
-        deepFields["data"] ==
-            MapFieldCodec<
+        deepFields["data"]
+            == MapFieldCodec<
                 StringCodec,
                 ListFieldCodec<
                     MapFieldCodec<
@@ -372,8 +366,8 @@ func annotatedNestedFieldCodecsEmitRecursiveMetadata() {
         }
     )
     #expect(
-        aliasFields["data"] ==
-            MapFieldCodec<
+        aliasFields["data"]
+            == MapFieldCodec<
                 StringCodec,
                 ListFieldCodec<OptionalFieldCodec<Int32FixedCodec>>
             >.fieldType(nullable: false, trackRef: false)

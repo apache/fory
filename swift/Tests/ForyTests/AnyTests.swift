@@ -296,10 +296,11 @@ func macroAnyHashableValueFieldRoundTrip() throws {
 func dynamicAnyMapNormalizationForAnyHashableKeys() throws {
     let fory = Fory()
 
-    let heterogeneous: Any = [
-        AnyHashable("k"): Int32(1),
-        AnyHashable(Int32(2)): "v2"
-    ] as [AnyHashable: Any]
+    let heterogeneous: Any =
+        [
+            AnyHashable("k"): Int32(1),
+            AnyHashable(Int32(2)): "v2"
+        ] as [AnyHashable: Any]
     let heteroData = try fory.serialize(heterogeneous)
     let heteroDecoded: Any = try fory.deserialize(heteroData)
     let heteroMap = heteroDecoded as? [AnyHashable: Any]
@@ -307,10 +308,11 @@ func dynamicAnyMapNormalizationForAnyHashableKeys() throws {
     #expect(heteroMap?[AnyHashable("k")] as? Int32 == 1)
     #expect(heteroMap?[AnyHashable(Int32(2))] as? String == "v2")
 
-    let homogeneous: Any = [
-        AnyHashable("a"): Int32(10),
-        AnyHashable("b"): Int32(20)
-    ] as [AnyHashable: Any]
+    let homogeneous: Any =
+        [
+            AnyHashable("a"): Int32(10),
+            AnyHashable("b"): Int32(20)
+        ] as [AnyHashable: Any]
     let homogeneousData = try fory.serialize(homogeneous)
     let homogeneousDecoded: Any = try fory.deserialize(homogeneousData)
     let homogeneousMap = homogeneousDecoded as? [String: Any]

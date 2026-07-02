@@ -57,25 +57,23 @@ public final class MetaString: Equatable, Hashable, @unchecked Sendable {
     }
 
     public static func empty(specialChar1: Character, specialChar2: Character) -> MetaString {
-        guard let emptyMetaString = try? MetaString(
-            value: "",
-            encoding: .utf8,
-            specialChar1: specialChar1,
-            specialChar2: specialChar2,
-            bytes: []
-        ) else {
+        guard
+            let emptyMetaString = try? MetaString(
+                value: "",
+                encoding: .utf8,
+                specialChar1: specialChar1,
+                specialChar2: specialChar2,
+                bytes: []
+            )
+        else {
             preconditionFailure("failed to create empty MetaString")
         }
         return emptyMetaString
     }
 
     public static func == (lhs: MetaString, rhs: MetaString) -> Bool {
-        lhs.value == rhs.value &&
-            lhs.encoding == rhs.encoding &&
-            lhs.specialChar1 == rhs.specialChar1 &&
-            lhs.specialChar2 == rhs.specialChar2 &&
-            lhs.bytes == rhs.bytes &&
-            lhs.stripLastChar == rhs.stripLastChar
+        lhs.value == rhs.value && lhs.encoding == rhs.encoding && lhs.specialChar1 == rhs.specialChar1 && lhs.specialChar2 == rhs.specialChar2
+            && lhs.bytes == rhs.bytes && lhs.stripLastChar == rhs.stripLastChar
     }
 
     public func hash(into hasher: inout Hasher) {
@@ -200,8 +198,7 @@ public struct MetaStringEncoder: Sendable {
             let character = Character(scalar)
             if canLowerSpecial {
                 let isValid =
-                    (scalar.value >= 97 && scalar.value <= 122) ||
-                    character == "." || character == "_" || character == "$" || character == "|"
+                    (scalar.value >= 97 && scalar.value <= 122) || character == "." || character == "_" || character == "$" || character == "|"
                 if !isValid {
                     canLowerSpecial = false
                 }
@@ -231,8 +228,9 @@ public struct MetaStringEncoder: Sendable {
                 return .lowerUpperDigitSpecial
             }
             if upperCount == 1,
-               input.first?.isUppercase == true,
-               allow(.firstToLowerSpecial) {
+                input.first?.isUppercase == true,
+                allow(.firstToLowerSpecial)
+            {
                 return .firstToLowerSpecial
             }
             if ((input.count + upperCount) * 5) < (input.count * 6), allow(.allToLowerSpecial) {
@@ -403,7 +401,8 @@ public struct MetaStringDecoder: Sendable {
         result.reserveCapacity(bytes.count)
 
         while bitIndex + bitsPerChar <= totalBits,
-              !(stripLast && (bitIndex + 2 * bitsPerChar > totalBits)) {
+            !(stripLast && (bitIndex + 2 * bitsPerChar > totalBits))
+        {
             var value: UInt8 = 0
             for _ in 0..<bitsPerChar {
                 let byteIndex = bitIndex / 8
@@ -419,7 +418,7 @@ public struct MetaStringDecoder: Sendable {
 
     private func unmapLowerSpecial(_ value: UInt8) throws -> Character {
         switch value {
-        case 0 ... 25:
+        case 0...25:
             return Character(UnicodeScalar(UInt32(97 + value))!)
         case 26:
             return "."
@@ -436,11 +435,11 @@ public struct MetaStringDecoder: Sendable {
 
     private func unmapLowerUpperDigitSpecial(_ value: UInt8) throws -> Character {
         switch value {
-        case 0 ... 25:
+        case 0...25:
             return Character(UnicodeScalar(UInt32(97 + value))!)
-        case 26 ... 51:
+        case 26...51:
             return Character(UnicodeScalar(UInt32(65 + value - 26))!)
-        case 52 ... 61:
+        case 52...61:
             return Character(UnicodeScalar(UInt32(48 + value - 52))!)
         case 62:
             return specialChar1
