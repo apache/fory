@@ -322,7 +322,7 @@ public class Config implements Serializable {
     return maxAverageSchemaVersionsPerType;
   }
 
-  /** Returns the root-operation estimated graph memory limit in bytes. Non-positive disables it. */
+  /** Returns the root-operation estimated graph memory limit in bytes. */
   public long maxGraphMemoryBytes() {
     return maxGraphMemoryBytes;
   }

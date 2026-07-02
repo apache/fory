@@ -180,11 +180,11 @@ func (s primitiveListSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 		return
 	}
 	if length < 0 {
-		ctx.setGraphMemoryLimitError("negative graph element count: %d", length)
+		ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
 		return
 	}
 	if int64(length) > s.maxLength {
-		ctx.setGraphMemoryLimitError("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes)
+		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes))
 		return
 	}
 	if !ctx.ReserveGraphMemory(int64(length) * s.elemBytes) {
@@ -251,9 +251,6 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 	}
 	if length == 0 {
 		if value.Kind() == reflect.Slice {
-			if !ctx.ReserveGraphMemory(0) {
-				return
-			}
 			value.Set(reflect.MakeSlice(value.Type(), 0, 0))
 		} else if value.Len() != 0 {
 			ctx.SetError(DeserializationErrorf("array-compatible list length %d does not match array length %d", length, value.Len()))
@@ -293,11 +290,11 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 	}
 	if value.Kind() == reflect.Slice {
 		if length < 0 {
-			ctx.setGraphMemoryLimitError("negative graph element count: %d", length)
+			ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
 			return
 		}
 		if int64(length) > s.listReader.maxLength {
-			ctx.setGraphMemoryLimitError("graph memory estimate overflows: length=%d elementBytes=%d", length, s.listReader.elemBytes)
+			ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.listReader.elemBytes))
 			return
 		}
 		if !ctx.ReserveGraphMemory(int64(length) * s.listReader.elemBytes) {

@@ -897,9 +897,6 @@ Container read_configured_list_data(ReadContext &ctx) {
   uint32_t length = ctx.read_var_uint32(ctx.error());
   Container result;
   if (length == 0) {
-    if (FORY_PREDICT_FALSE(!reserve_empty_collection<Container>(ctx))) {
-      return result;
-    }
     return result;
   }
   uint8_t bitmap = ctx.read_uint8(ctx.error());
@@ -946,9 +943,6 @@ FORY_NOINLINE Container read_configured_list_data_as_array_field(
     return result;
   }
   if (length == 0) {
-    if (FORY_PREDICT_FALSE(!reserve_empty_collection<Container>(ctx))) {
-      return result;
-    }
     return result;
   }
   uint8_t bitmap = ctx.read_uint8(ctx.error());
@@ -1060,9 +1054,6 @@ MapType read_configured_map_data(ReadContext &ctx) {
   uint32_t length = ctx.read_var_uint32(ctx.error());
   MapType result;
   if (length == 0) {
-    if (FORY_PREDICT_FALSE(!reserve_empty_map<MapType>(ctx))) {
-      return result;
-    }
     return result;
   }
   if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {

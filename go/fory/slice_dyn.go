@@ -289,11 +289,11 @@ func (s *sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, exp
 	}
 	if !allocatedByCaller {
 		if length < 0 {
-			ctx.setGraphMemoryLimitError("negative graph element count: %d", length)
+			ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
 			return
 		}
 		if int64(length) > s.maxLength {
-			ctx.setGraphMemoryLimitError("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes)
+			ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes))
 			return
 		}
 		if !ctx.ReserveGraphMemory(int64(length) * s.elemBytes) {

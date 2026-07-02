@@ -322,10 +322,7 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		valueBytes := int64(type_.Elem().Size())
 		elemBytes := keyBytes + valueBytes
 		if elemBytes < keyBytes {
-			ctx.setGraphMemoryLimitError("map entry size overflows: key=%d value=%d", keyBytes, valueBytes)
-			return
-		}
-		if !ctx.ReserveGraphMemory(0) {
+			ctx.SetError(DeserializationErrorf("map entry size overflows: key=%d value=%d", keyBytes, valueBytes))
 			return
 		}
 		// Initialize empty set if length is 0
@@ -370,15 +367,15 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	valueBytes := int64(type_.Elem().Size())
 	elemBytes := keyBytes + valueBytes
 	if elemBytes < keyBytes {
-		ctx.setGraphMemoryLimitError("map entry size overflows: key=%d value=%d", keyBytes, valueBytes)
+		ctx.SetError(DeserializationErrorf("map entry size overflows: key=%d value=%d", keyBytes, valueBytes))
 		return
 	}
 	if length < 0 {
-		ctx.setGraphMemoryLimitError("negative graph element count: %d", length)
+		ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
 		return
 	}
 	if int64(length) > maxGraphCount(elemBytes) {
-		ctx.setGraphMemoryLimitError("graph memory estimate overflows: length=%d elementBytes=%d", length, elemBytes)
+		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, elemBytes))
 		return
 	}
 	if !ctx.ReserveGraphMemory(int64(length) * elemBytes) {

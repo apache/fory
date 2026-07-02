@@ -127,13 +127,6 @@ inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
   return true;
 }
 
-template <typename MapType> inline bool reserve_empty_map(ReadContext &ctx) {
-  if (FORY_PREDICT_FALSE(ctx.has_error())) {
-    return false;
-  }
-  return ctx.reserve_graph_memory(0);
-}
-
 /// write chunk size at header offset
 inline void write_chunk_size(WriteContext &ctx, size_t header_offset,
                              uint8_t size) {
@@ -606,9 +599,6 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
 
   MapType result;
   if (length == 0) {
-    if (FORY_PREDICT_FALSE(!reserve_empty_map<MapType>(ctx))) {
-      return result;
-    }
     return result;
   }
   if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {
@@ -741,9 +731,6 @@ template <typename K, typename V, typename MapType>
 inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
   MapType result;
   if (length == 0) {
-    if (FORY_PREDICT_FALSE(!reserve_empty_map<MapType>(ctx))) {
-      return result;
-    }
     return result;
   }
   if (FORY_PREDICT_FALSE(!reserve_map(result, ctx, length))) {

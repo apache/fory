@@ -307,15 +307,15 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	valueBytes := int64(mapType.Elem().Size())
 	elemBytes := keyBytes + valueBytes
 	if elemBytes < keyBytes {
-		ctx.setGraphMemoryLimitError("map entry size overflows: key=%d value=%d", keyBytes, valueBytes)
+		ctx.SetError(DeserializationErrorf("map entry size overflows: key=%d value=%d", keyBytes, valueBytes))
 		return
 	}
 	if size < 0 {
-		ctx.setGraphMemoryLimitError("negative graph element count: %d", size)
+		ctx.SetError(DeserializationErrorf("negative graph element count: %d", size))
 		return
 	}
 	if int64(size) > maxGraphCount(elemBytes) {
-		ctx.setGraphMemoryLimitError("graph memory estimate overflows: length=%d elementBytes=%d", size, elemBytes)
+		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", size, elemBytes))
 		return
 	}
 	if !ctx.ReserveGraphMemory(int64(size) * elemBytes) {

@@ -457,14 +457,6 @@ inline bool reserve_collection(std::vector<bool, Alloc> &result,
   return true;
 }
 
-template <typename Container>
-inline bool reserve_empty_collection(ReadContext &ctx) {
-  if (FORY_PREDICT_FALSE(ctx.has_error())) {
-    return false;
-  }
-  return ctx.reserve_graph_memory(0);
-}
-
 // Helper to insert element into container (vector or set)
 template <typename Container, typename T>
 inline void collection_insert(Container &result, T &&elem) {
@@ -480,9 +472,6 @@ template <typename T, typename Container>
 inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
   Container result;
   if (length == 0) {
-    if (FORY_PREDICT_FALSE(!reserve_empty_collection<Container>(ctx))) {
-      return result;
-    }
     return result;
   }
 
@@ -612,10 +601,6 @@ inline std::forward_list<T, Alloc>
 read_forward_list_data_slow(ReadContext &ctx, uint32_t length) {
   std::forward_list<T, Alloc> result;
   if (length == 0) {
-    if (FORY_PREDICT_FALSE(
-            (!reserve_empty_collection<std::forward_list<T, Alloc>>(ctx)))) {
-      return result;
-    }
     return result;
   }
 
@@ -1122,10 +1107,6 @@ struct Serializer<
       std::vector<T, Alloc> result;
       // Per xlang spec: header and type_info are omitted when length is 0
       if (length == 0) {
-        if (FORY_PREDICT_FALSE(
-                (!reserve_empty_collection<std::vector<T, Alloc>>(ctx)))) {
-          return result;
-        }
         return result;
       }
       // Fast path for non-polymorphic, non-shared-ref elements
@@ -1253,10 +1234,6 @@ struct Serializer<
 
     std::vector<T, Alloc> result;
     if (size == 0) {
-      if (FORY_PREDICT_FALSE(
-              (!reserve_empty_collection<std::vector<T, Alloc>>(ctx)))) {
-        return result;
-      }
       return result;
     }
     if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
@@ -1424,10 +1401,6 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
       std::list<T, Alloc> result;
       // Per xlang spec: header and type_info are omitted when length is 0
       if (length == 0) {
-        if (FORY_PREDICT_FALSE(
-                (!reserve_empty_collection<std::list<T, Alloc>>(ctx)))) {
-          return result;
-        }
         return result;
       }
       // Fast path for non-polymorphic, non-shared-ref elements
@@ -1555,10 +1528,6 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
 
     std::list<T, Alloc> result;
     if (size == 0) {
-      if (FORY_PREDICT_FALSE(
-              (!reserve_empty_collection<std::list<T, Alloc>>(ctx)))) {
-        return result;
-      }
       return result;
     }
     if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
@@ -1632,10 +1601,6 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
       std::deque<T, Alloc> result;
       // Per xlang spec: header and type_info are omitted when length is 0
       if (length == 0) {
-        if (FORY_PREDICT_FALSE(
-                (!reserve_empty_collection<std::deque<T, Alloc>>(ctx)))) {
-          return result;
-        }
         return result;
       }
       // Fast path for non-polymorphic, non-shared-ref elements
@@ -1763,10 +1728,6 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
 
     std::deque<T, Alloc> result;
     if (size == 0) {
-      if (FORY_PREDICT_FALSE(
-              (!reserve_empty_collection<std::deque<T, Alloc>>(ctx)))) {
-        return result;
-      }
       return result;
     }
     if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
@@ -1836,10 +1797,6 @@ struct Serializer<std::forward_list<T, Alloc>> {
     std::forward_list<T, Alloc> result;
     // Per xlang spec: header and type_info are omitted when length is 0
     if (length == 0) {
-      if (FORY_PREDICT_FALSE(
-              (!reserve_empty_collection<std::forward_list<T, Alloc>>(ctx)))) {
-        return result;
-      }
       return result;
     }
 
@@ -2198,10 +2155,6 @@ struct Serializer<std::forward_list<T, Alloc>> {
 
     std::forward_list<T, Alloc> result;
     if (size == 0) {
-      if (FORY_PREDICT_FALSE(
-              (!reserve_empty_collection<std::forward_list<T, Alloc>>(ctx)))) {
-        return result;
-      }
       return result;
     }
     if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
@@ -2308,10 +2261,6 @@ struct Serializer<std::set<T, Args...>> {
       std::set<T, Args...> result;
       // Per xlang spec: header and type_info are omitted when length is 0
       if (size == 0) {
-        if (FORY_PREDICT_FALSE(
-                (!reserve_empty_collection<std::set<T, Args...>>(ctx)))) {
-          return result;
-        }
         return result;
       }
       // Fast path for non-polymorphic, non-shared-ref elements
@@ -2390,10 +2339,6 @@ struct Serializer<std::set<T, Args...>> {
 
     std::set<T, Args...> result;
     if (size == 0) {
-      if (FORY_PREDICT_FALSE(
-              (!reserve_empty_collection<std::set<T, Args...>>(ctx)))) {
-        return result;
-      }
       return result;
     }
     if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
@@ -2501,11 +2446,6 @@ struct Serializer<std::unordered_set<T, Args...>> {
       std::unordered_set<T, Args...> result;
       // Per xlang spec: header and type_info are omitted when length is 0
       if (size == 0) {
-        if (FORY_PREDICT_FALSE(
-                (!reserve_empty_collection<std::unordered_set<T, Args...>>(
-                    ctx)))) {
-          return result;
-        }
         return result;
       }
       // Fast path for non-polymorphic, non-shared-ref elements
@@ -2584,11 +2524,6 @@ struct Serializer<std::unordered_set<T, Args...>> {
 
     std::unordered_set<T, Args...> result;
     if (size == 0) {
-      if (FORY_PREDICT_FALSE(
-              (!reserve_empty_collection<std::unordered_set<T, Args...>>(
-                  ctx)))) {
-        return result;
-      }
       return result;
     }
     if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
