@@ -220,7 +220,7 @@ public sealed class GraphMemoryBudgetTests
     }
 
     [Fact]
-    public void ReferenceArrayAndInlineValueListAreCharged()
+    public void ArrayAndInlineListBudget()
     {
         BudgetArrayHolder holder = new()
         {
@@ -310,7 +310,7 @@ public sealed class GraphMemoryBudgetTests
     }
 
     [Fact]
-    public void DenseStringBinaryAndPrimitiveArraysAreSkipped()
+    public void DenseLeafOwnersAreSkipped()
     {
         Assert.Equal("budget", NewFory(1).Deserialize<string>(Serialize("budget")));
         Assert.Equal(new byte[] { 1, 2, 3 }, NewFory(1).Deserialize<byte[]>(Serialize(new byte[] { 1, 2, 3 })));
@@ -335,7 +335,7 @@ public sealed class GraphMemoryBudgetTests
     }
 
     [Fact]
-    public void ByteAvailabilityCheckStillRejectsLargeLength()
+    public void ByteChecksRejectLargeLength()
     {
         byte[] bytes = [64, 0];
         ReadContext context = new(new ByteReader(bytes), new TypeResolver(), NewFory().Config);

@@ -265,7 +265,7 @@ TEST(GraphMemoryBudgetTest, EmptyStructRootChargesOwner) {
   expect_budget_boundary(value, sizeof(BudgetEmpty));
 }
 
-TEST(GraphMemoryBudgetTest, NestedEmptyContainersUseParentStorage) {
+TEST(GraphMemoryBudgetTest, NestedEmptyContainers) {
   std::vector<std::vector<std::string>> value(1);
   auto bytes = serialize_value(value);
   const size_t required = sizeof(std::vector<std::vector<std::string>>) +

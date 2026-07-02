@@ -162,7 +162,7 @@ func fixedDefaultBudget() throws {
 }
 
 @Test
-func byteBufferRootUsesFixedDefaultBudget() throws {
+func byteBufferRootDefaultBudget() throws {
     let count = 6
     let value = Array(repeating: [String](), count: count)
     let bytes = try makeBudgetFory().serialize(value)
@@ -254,7 +254,7 @@ func emptyTypedMapOwnerIsCharged() throws {
 }
 
 @Test
-func referenceAndInlineValueArraysAreCharged() throws {
+func arrayInlineValueBudget() throws {
     let nodes = (0..<4).map { BudgetNode(id: Int32($0)) }
     let nodeBytes = try makeBudgetFory().serialize(nodes)
     let nodeBudget = rootArrayBudget(
@@ -296,7 +296,7 @@ func setConversionOwnerChargedOnce() throws {
 }
 
 @Test
-func stringBinaryAndPrimitiveDenseArrayOwnersAreSkipped() throws {
+func denseLeafOwnersSkipped() throws {
     let value = BudgetDenseHolder(
         text: "budget",
         data: Data([1, 2, 3]),
@@ -426,7 +426,7 @@ func dynamicAnyArrayBudget() throws {
 }
 
 @Test
-func compatibleListToDenseArraySkipsLeafOwner() throws {
+func compatibleDenseArraySkip() throws {
     let writer = makeCompatibleBudgetFory()
     writer.register(BudgetListDenseWriter.self, id: 9804)
     let reader = makeCompatibleBudgetFory(
@@ -447,7 +447,7 @@ func compatibleListToDenseArraySkipsLeafOwner() throws {
 }
 
 @Test
-func byteAvailabilityCheckStillRejectsLargeLength() throws {
+func byteCheckRejectsLargeLength() throws {
     let buffer = ByteBuffer()
     buffer.writeVarUInt32(64)
     buffer.writeUInt8(CollectionHeader.sameType | CollectionHeader.declaredElementType)

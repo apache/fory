@@ -75,7 +75,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   }
 
   @Test
-  public void testNestedEmptyContainersUseParentStorage() {
+  public void testNestedEmptyContainers() {
     List<Object> value = emptyLists(1);
     byte[] bytes = builder().build().serialize(value);
     long required = collectionBytes(1) + collectionBytes(0);

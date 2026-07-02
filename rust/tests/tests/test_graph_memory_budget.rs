@@ -102,7 +102,7 @@ fn byte_root_uses_fixed_default_budget() {
 }
 
 #[test]
-fn reader_root_uses_fixed_default_budget() {
+fn reader_root_default_budget() {
     let value = compact_empty_lists(12000);
     let writer = fory_with_budget(DEFAULT_GRAPH_MEMORY_BYTES);
     let bytes = writer.serialize(&value).unwrap();

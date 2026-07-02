@@ -65,7 +65,7 @@ func TestGraphMemoryBudgetFixedDefault(t *testing.T) {
 	require.Equal(t, int64(77), ctx.graphMemoryLimitBytes)
 }
 
-func TestGraphMemoryBudgetRootKindsShareDefault(t *testing.T) {
+func TestGraphBudgetRootKinds(t *testing.T) {
 	writer := New(WithCompatible(false))
 	values := make([]any, 12000)
 	for i := range values {
@@ -103,7 +103,7 @@ func TestGraphMemoryBudgetBufferRoots(t *testing.T) {
 	require.Equal(t, value, fromBuffer)
 }
 
-func TestGraphMemoryBudgetExplicitOverride(t *testing.T) {
+func TestGraphBudgetOverride(t *testing.T) {
 	writer := New(WithCompatible(false))
 	values := make([]any, 12000)
 	for i := range values {
@@ -118,7 +118,7 @@ func TestGraphMemoryBudgetExplicitOverride(t *testing.T) {
 	require.Len(t, out, len(values))
 }
 
-func TestGraphMemoryBudgetEmptyAndCumulative(t *testing.T) {
+func TestGraphBudgetCumulative(t *testing.T) {
 	data, err := New(WithCompatible(false)).Serialize([]any{})
 	require.NoError(t, err)
 	var empty []any
@@ -158,7 +158,7 @@ func TestGraphMemoryBudgetMapAndOverflow(t *testing.T) {
 	require.Contains(t, ctx.CheckError().Error(), "non-negative")
 }
 
-func TestGraphMemoryBudgetSlicesAndInlineValues(t *testing.T) {
+func TestGraphBudgetSlices(t *testing.T) {
 	data, err := New().Serialize([]string{"a"})
 	require.NoError(t, err)
 	var stringsOut []string
@@ -236,7 +236,7 @@ func TestGraphMemoryBudgetStructOwners(t *testing.T) {
 	require.Equal(t, int32(7), outValue.A)
 }
 
-func TestGraphMemoryBudgetSkipsDenseOwners(t *testing.T) {
+func TestGraphBudgetSkipsDense(t *testing.T) {
 	f := New(WithMaxGraphMemoryBytes(1))
 
 	stringData, err := New().Serialize(strings.Repeat("x", 128))
@@ -258,7 +258,7 @@ func TestGraphMemoryBudgetSkipsDenseOwners(t *testing.T) {
 	require.Equal(t, []int32{1, 2, 3, 4}, ints)
 }
 
-func TestGraphMemoryBudgetPreservesByteChecks(t *testing.T) {
+func TestGraphBudgetByteChecks(t *testing.T) {
 	buf := NewByteBuffer(nil)
 	buf.WriteByte_(XLangFlag)
 	buf.WriteInt8(NotNullValueFlag)

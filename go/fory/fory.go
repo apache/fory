@@ -48,11 +48,6 @@ func splitRegisteredName(name string) (string, string, error) {
 	return namespace, typeName, nil
 }
 
-type ifaceWords struct {
-	typ  unsafe.Pointer
-	data unsafe.Pointer
-}
-
 // ============================================================================
 // Constants
 // ============================================================================
@@ -201,10 +196,8 @@ type Fory struct {
 	typeResolver *TypeResolver
 	refResolver  *RefResolver
 
-	rootGraphType      reflect.Type
-	rootGraphBytes     int64
-	rootReadTypeID     unsafe.Pointer
-	rootReadSerializer Serializer
+	rootGraphType  reflect.Type
+	rootGraphBytes int64
 }
 
 // New creates a new Fory instance with the given options
@@ -578,7 +571,6 @@ func (f *Fory) Serialize(value any) ([]byte, error) {
 func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
 	f.readCtx.SetData(data)
-	typeID := (*ifaceWords)(unsafe.Pointer(&v)).typ
 	target := reflect.ValueOf(v).Elem()
 	targetType := target.Type()
 	limit := f.config.MaxGraphMemoryBytes
@@ -595,8 +587,9 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readRootValue(target, typeID)
+	// Root writes include type metadata, so keep the root ReadValue path.
+	// Calling a cached serializer directly would read that metadata byte as payload.
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -1256,22 +1249,4 @@ func (f *Fory) rootGraphBytesFor(targetType reflect.Type) (int64, bool) {
 	f.rootGraphType = targetType
 	f.rootGraphBytes = bytes
 	return bytes, true
-}
-
-func (f *Fory) readRootValue(target reflect.Value, typeID unsafe.Pointer) {
-	serializer := f.rootReadSerializer
-	if typeID == f.rootReadTypeID && serializer != nil {
-		serializer.Read(f.readCtx, RefModeTracking, true, false, target)
-		return
-	}
-	targetType := target.Type()
-	if targetType.Kind() == reflect.Struct {
-		if typeInfo := f.readCtx.getTypeInfoByType(targetType); typeInfo != nil && typeInfo.Serializer != nil {
-			f.rootReadTypeID = typeID
-			f.rootReadSerializer = typeInfo.Serializer
-			typeInfo.Serializer.Read(f.readCtx, RefModeTracking, true, false, target)
-			return
-		}
-	}
-	f.readCtx.ReadValue(target, RefModeTracking, true)
 }

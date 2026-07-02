@@ -138,7 +138,7 @@ def test_fixed_default_budget():
         fory.reset_read()
 
 
-def test_stream_uses_fixed_default_budget():
+def test_stream_default_budget():
     fory = new_fory(xlang=False)
     try:
         buffer = Buffer.from_stream(OneByteStream(b"streamed"))
@@ -148,19 +148,19 @@ def test_stream_uses_fixed_default_budget():
         fory.reset_read()
 
 
-def test_explicit_config_overrides_default():
+def test_explicit_budget():
     value = [1]
     budget = collection_memory(1)
     assert expect_budget(value, budget) == value
 
 
-def test_nested_empty_containers_use_parent_storage():
+def test_nested_empty_containers():
     value = [[]]
     budget = collection_memory(1) + collection_memory(0)
     assert expect_budget(value, budget) == value
 
 
-def test_sibling_nested_containers_are_cumulative():
+def test_sibling_cumulative_budget():
     value = [[], [], []]
     budget = collection_memory(3) + 3 * collection_memory(0)
     assert expect_budget(value, budget) == value
@@ -181,7 +181,7 @@ def test_empty_object_owner_is_charged():
     assert reader.deserialize(data) == value
 
 
-def test_dynamic_object_owner_is_charged():
+def test_dynamic_object_budget():
     value = BudgetObject()
     value.left = 1
     value.right = "x"
@@ -226,7 +226,7 @@ def test_object_ndarray_budget():
     np.testing.assert_array_equal(restored, value)
 
 
-def test_string_binary_and_dense_arrays_skip_budget():
+def test_dense_leaf_owners_skipped():
     values = [
         "x" * 256,
         b"x" * 256,
@@ -243,7 +243,7 @@ def test_string_binary_and_dense_arrays_skip_budget():
             assert restored == value
 
 
-def test_declared_large_list_still_needs_bytes():
+def test_large_list_needs_bytes():
     fory = new_fory(10_000_000, xlang=False)
     serializer = ListSerializer(fory.type_resolver, list)
     try:

@@ -66,30 +66,45 @@ final class Config {
   ///
   /// Invalid numeric limits fail fast. When [compatible] is `true`,
   /// [checkStructVersion] is normalized to `false`.
-  const Config({
+  Config({
     this.compatible = true,
     bool checkStructVersion = true,
-    this.maxDepth = defaultMaxDepth,
-    this.maxTypeFields = defaultMaxTypeFields,
-    this.maxTypeMetaBytes = defaultMaxTypeMetaBytes,
-    this.maxSchemaVersionsPerType = defaultMaxSchemaVersionsPerType,
-    this.maxAverageSchemaVersionsPerType =
+    int maxDepth = defaultMaxDepth,
+    int maxTypeFields = defaultMaxTypeFields,
+    int maxTypeMetaBytes = defaultMaxTypeMetaBytes,
+    int maxSchemaVersionsPerType = defaultMaxSchemaVersionsPerType,
+    int maxAverageSchemaVersionsPerType =
         defaultMaxAverageSchemaVersionsPerType,
-    this.maxGraphMemoryBytes = defaultMaxGraphMemoryBytes,
+    int maxGraphMemoryBytes = defaultMaxGraphMemoryBytes,
   }) : checkStructVersion = compatible ? false : checkStructVersion,
-       assert(maxDepth > 0, 'maxDepth must be positive'),
-       assert(maxTypeFields > 0, 'maxTypeFields must be positive'),
-       assert(maxTypeMetaBytes > 0, 'maxTypeMetaBytes must be positive'),
-       assert(
-         maxSchemaVersionsPerType > 0,
-         'maxSchemaVersionsPerType must be positive',
+       maxDepth = _positive(maxDepth, 'maxDepth'),
+       maxTypeFields = _positive(maxTypeFields, 'maxTypeFields'),
+       maxTypeMetaBytes = _positive(maxTypeMetaBytes, 'maxTypeMetaBytes'),
+       maxSchemaVersionsPerType = _positive(
+         maxSchemaVersionsPerType,
+         'maxSchemaVersionsPerType',
        ),
-       assert(
-         maxAverageSchemaVersionsPerType > 0,
-         'maxAverageSchemaVersionsPerType must be positive',
+       maxAverageSchemaVersionsPerType = _positive(
+         maxAverageSchemaVersionsPerType,
+         'maxAverageSchemaVersionsPerType',
        ),
-       assert(
-         maxGraphMemoryBytes > 0 && maxGraphMemoryBytes <= 9007199254740991,
-         'maxGraphMemoryBytes must be a positive safe integer',
+       maxGraphMemoryBytes = _positiveSafeInteger(
+         maxGraphMemoryBytes,
+         'maxGraphMemoryBytes',
        );
+
+  static int _positive(int value, String name) {
+    if (value <= 0) {
+      throw ArgumentError.value(value, name, 'must be positive');
+    }
+    return value;
+  }
+
+  static int _positiveSafeInteger(int value, String name) {
+    const maxSafeInteger = 9007199254740991;
+    if (value <= 0 || value > maxSafeInteger) {
+      throw ArgumentError.value(value, name, 'must be a positive safe integer');
+    }
+    return value;
+  }
 }

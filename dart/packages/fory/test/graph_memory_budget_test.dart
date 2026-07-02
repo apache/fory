@@ -152,13 +152,10 @@ void main() {
       expect(() => context.reserveGraphMemory(31), returnsNormally);
       expect(() => context.reserveGraphMemory(1), _throwsGraphBudget);
 
-      expect(
-        () => Fory(maxGraphMemoryBytes: 0),
-        throwsA(isA<AssertionError>()),
-      );
+      expect(() => Fory(maxGraphMemoryBytes: 0), throwsA(isA<ArgumentError>()));
       expect(
         () => Fory(maxGraphMemoryBytes: -2),
-        throwsA(isA<AssertionError>()),
+        throwsA(isA<ArgumentError>()),
       );
     });
 
