@@ -653,11 +653,11 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 	ptr := (*[]string)(value.Addr().UnsafePointer())
 	if length < 0 {
-		ctx.setGraphMemoryError("negative graph element count: %d", length)
+		ctx.setGraphMemoryLimitError("negative graph element count: %d", length)
 		return
 	}
 	if int64(length) > stringMaxLength {
-		ctx.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", length, stringElementBytes)
+		ctx.setGraphMemoryLimitError("graph memory estimate overflows: length=%d elementBytes=%d", length, stringElementBytes)
 		return
 	}
 	if !ctx.ReserveGraphMemory(int64(length) * stringElementBytes) {

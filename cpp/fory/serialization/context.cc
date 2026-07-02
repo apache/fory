@@ -743,7 +743,7 @@ const TypeInfo *ReadContext::read_any_type_info(Error &error) {
   return result.value();
 }
 
-bool ReadContext::set_graph_memory_error(const std::string &message) {
+bool ReadContext::set_graph_memory_limit_error(const std::string &message) {
   set_error(Error::invalid_data(message));
   return false;
 }

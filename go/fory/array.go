@@ -320,7 +320,7 @@ func (s arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	sliceType := reflect.SliceOf(value.Type().Elem())
 	elemBytes := int64(value.Type().Elem().Size())
 	if int64(value.Len()) > maxGraphCount(elemBytes) {
-		ctx.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", value.Len(), elemBytes)
+		ctx.setGraphMemoryLimitError("graph memory estimate overflows: length=%d elementBytes=%d", value.Len(), elemBytes)
 		return
 	}
 	if !ctx.ReserveGraphMemory(int64(value.Len()) * elemBytes) {

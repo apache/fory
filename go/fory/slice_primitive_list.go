@@ -180,11 +180,11 @@ func (s primitiveListSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 		return
 	}
 	if length < 0 {
-		ctx.setGraphMemoryError("negative graph element count: %d", length)
+		ctx.setGraphMemoryLimitError("negative graph element count: %d", length)
 		return
 	}
 	if int64(length) > s.maxLength {
-		ctx.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes)
+		ctx.setGraphMemoryLimitError("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes)
 		return
 	}
 	if !ctx.ReserveGraphMemory(int64(length) * s.elemBytes) {
@@ -293,11 +293,11 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 	}
 	if value.Kind() == reflect.Slice {
 		if length < 0 {
-			ctx.setGraphMemoryError("negative graph element count: %d", length)
+			ctx.setGraphMemoryLimitError("negative graph element count: %d", length)
 			return
 		}
 		if int64(length) > s.listReader.maxLength {
-			ctx.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", length, s.listReader.elemBytes)
+			ctx.setGraphMemoryLimitError("graph memory estimate overflows: length=%d elementBytes=%d", length, s.listReader.elemBytes)
 			return
 		}
 		if !ctx.ReserveGraphMemory(int64(length) * s.listReader.elemBytes) {

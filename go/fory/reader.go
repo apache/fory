@@ -185,12 +185,12 @@ func (c *ReadContext) ReserveGraphMemory(bytes int64) bool {
 
 //go:noinline
 func (c *ReadContext) rejectGraphMemoryBytes(bytes int64) bool {
-	c.setGraphMemoryError("estimated graph memory must be non-negative, got %d bytes", bytes)
+	c.setGraphMemoryLimitError("estimated graph memory must be non-negative, got %d bytes", bytes)
 	return false
 }
 
 //go:noinline
-func (c *ReadContext) setGraphMemoryError(format string, args ...any) {
+func (c *ReadContext) setGraphMemoryLimitError(format string, args ...any) {
 	c.SetError(DeserializationErrorf(format, args...))
 }
 
@@ -674,11 +674,11 @@ func (c *ReadContext) readStringSliceData() []string {
 		return nil
 	}
 	if length < 0 {
-		c.setGraphMemoryError("negative graph element count: %d", length)
+		c.setGraphMemoryLimitError("negative graph element count: %d", length)
 		return nil
 	}
 	if int64(length) > stringMaxLength {
-		c.setGraphMemoryError("graph memory estimate overflows: length=%d elementBytes=%d", length, stringElementBytes)
+		c.setGraphMemoryLimitError("graph memory estimate overflows: length=%d elementBytes=%d", length, stringElementBytes)
 		return nil
 	}
 	if !c.ReserveGraphMemory(int64(length) * stringElementBytes) {

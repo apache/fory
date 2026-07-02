@@ -693,7 +693,7 @@ private:
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
-  FORY_NOINLINE bool set_graph_memory_error(const std::string &message);
+  FORY_NOINLINE bool set_graph_memory_limit_error(const std::string &message);
   FORY_NOINLINE bool set_graph_memory_exceeded(size_t bytes, size_t remaining);
 
   // Error state - accumulated during deserialization, checked at the end
