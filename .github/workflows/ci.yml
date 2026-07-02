@@ -460,20 +460,36 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Compute Swift package cache key
+        id: swift-package-cache
+        run: |
+          {
+            swift --version
+            xcodebuild -version
+          } > "$RUNNER_TEMP/swift-toolchain.txt"
+          cat "$RUNNER_TEMP/swift-toolchain.txt"
+          echo "toolchain=$(shasum -a 256 "$RUNNER_TEMP/swift-toolchain.txt" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - name: Cache Swift package dependencies and build artifacts
+        id: swift-build-cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.swiftpm
             ~/Library/Caches/org.swift.swiftpm
             swift/.build
-          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-xlang-release-${{ steps.swift-package-cache.outputs.toolchain }}-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swiftpm-
+            ${{ runner.os }}-${{ runner.arch }}-swiftpm-xlang-release-${{ steps.swift-package-cache.outputs.toolchain }}-
       - name: Prebuild Swift xlang peer for cache reuse
         run: |
           cd swift
+          if [[ "${{ steps.swift-build-cache.outputs.cache-hit }}" == "true" && -x .build/release/ForyXlangTests ]]; then
+            echo "Using cached Swift xlang peer at swift/.build/release/ForyXlangTests"
+            echo "FORY_SWIFT_PEER_PREBUILT=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
           swift build -c release --disable-automatic-resolution --product ForyXlangTests
+          echo "FORY_SWIFT_PEER_PREBUILT=1" >> "$GITHUB_ENV"
       - name: Run Swift Xlang Test
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
@@ -507,19 +523,36 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Generate Swift IDL test code
         run: python ./integration_tests/idl_tests/generate_idl.py --lang swift
+      - name: Compute Swift IDL package cache key
+        id: swift-idl-package-cache
+        run: |
+          {
+            swift --version
+            xcodebuild -version
+          } > "$RUNNER_TEMP/swift-toolchain.txt"
+          cat "$RUNNER_TEMP/swift-toolchain.txt"
+          echo "toolchain=$(shasum -a 256 "$RUNNER_TEMP/swift-toolchain.txt" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - name: Cache Swift IDL package build artifacts
+        id: swift-idl-build-cache
         uses: actions/cache@v4
         with:
           path: |
             integration_tests/idl_tests/swift/idl_package/.build
             integration_tests/idl_tests/swift/idl_package/.swiftpm
-          key: ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-${{ hashFiles('integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Package.resolved', 'swift/Package.swift', 'swift/Package.resolved', 'swift/Sources/ForyMacro/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-idl-debug-${{ steps.swift-idl-package-cache.outputs.toolchain }}-${{ hashFiles('integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Package.resolved', 'integration_tests/idl_tests/swift/idl_package/Sources/**', 'integration_tests/idl_tests/swift/idl_package/Tests/**', 'swift/Package.swift', 'swift/Package.resolved', 'swift/Sources/**') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-
+            ${{ runner.os }}-${{ runner.arch }}-swiftpm-idl-debug-${{ steps.swift-idl-package-cache.outputs.toolchain }}-
       - name: Prebuild Swift IDL package
         run: |
           cd integration_tests/idl_tests/swift/idl_package
+          if [[ "${{ steps.swift-idl-build-cache.outputs.cache-hit }}" == "true" && -f .build/fory-swift-idl-prebuilt ]]; then
+            echo "Using cached Swift IDL package build artifacts"
+            echo "FORY_SWIFT_IDL_PREBUILT=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
           swift build --disable-automatic-resolution --build-tests
+          touch .build/fory-swift-idl-prebuilt
+          echo "FORY_SWIFT_IDL_PREBUILT=1" >> "$GITHUB_ENV"
       - name: Run Swift IDL package tests
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"

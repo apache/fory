@@ -117,6 +117,7 @@ import tree.TreeForyModule;
 import tree.TreeNode;
 
 public class IdlRoundTripTest {
+  private static final String SWIFT_IDL_PREBUILT_ENV = "FORY_SWIFT_IDL_PREBUILT";
 
   @Test
   public void testAddressBookRoundTripCompatible() throws Exception {
@@ -813,7 +814,13 @@ public class IdlRoundTripTest {
             compatible
                 ? "IdlRoundTripTests/testAddressBookRoundTripCompatible"
                 : "IdlRoundTripTests/testAddressBookRoundTripSchemaConsistent";
-        command = Arrays.asList("swift", "test", "--filter", swiftTest);
+        command = new ArrayList<>(Arrays.asList("swift", "test"));
+        if ("1".equals(System.getenv(SWIFT_IDL_PREBUILT_ENV))) {
+          // CI cache keys include generated Swift IDL sources, package inputs, and toolchain
+          // identity. Trust that explicit signal instead of letting SwiftPM rebuild after checkout.
+          command.add("--skip-build");
+        }
+        command.addAll(Arrays.asList("--filter", swiftTest));
         peerCommand.environment.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
         break;
       case "javascript":
