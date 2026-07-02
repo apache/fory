@@ -889,13 +889,12 @@ private:
     read_ctx_->attach(buffer);
     if constexpr (needs_graph_budget_v<T>) {
       constexpr size_t root_owner_bytes = graph_value_owner_self_bytes<T>();
-      constexpr bool has_child_budget = has_graph_budget_children_v<T>;
       if constexpr (root_owner_bytes != 0) {
         if (FORY_PREDICT_FALSE(
                 !read_ctx_->template init_graph_budget<root_owner_bytes>())) {
           return Unexpected(read_ctx_->take_error());
         }
-      } else if constexpr (has_child_budget) {
+      } else if constexpr (has_graph_budget_children_v<T>) {
         if (FORY_PREDICT_FALSE(!read_ctx_->template init_graph_budget<>())) {
           return Unexpected(read_ctx_->take_error());
         }
