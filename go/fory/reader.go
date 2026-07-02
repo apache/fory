@@ -75,14 +75,6 @@ func structGraphBytes(type_ reflect.Type) int64 {
 	return bytes
 }
 
-func reserveStructGraph(ctx *ReadContext, type_ reflect.Type) bool {
-	bytes := structGraphBytes(type_)
-	if bytes == 0 {
-		return true
-	}
-	return ctx.ReserveGraphMemory(bytes)
-}
-
 // IsXlang returns whether cross-language serialization mode is enabled
 func (c *ReadContext) IsXlang() bool {
 	return c.xlang
@@ -901,13 +893,13 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		} else if isNamedStruct {
 			// For named struct types, create a pointer to support circular references
 			// Create *A instead of A
-			if !reserveStructGraph(c, actualType) {
+			if !c.ReserveGraphMemory(structGraphBytes(actualType)) {
 				return
 			}
 			newValue = reflect.New(actualType)
 			valueToSet = newValue
 		} else {
-			if !reserveStructGraph(c, actualType) {
+			if !c.ReserveGraphMemory(structGraphBytes(actualType)) {
 				return
 			}
 			newValue = reflect.New(actualType).Elem()
@@ -1041,7 +1033,7 @@ func (c *ReadContext) ReadStruct(value reflect.Value) {
 	var readTarget reflect.Value
 	if isPtr {
 		if value.IsNil() {
-			if !reserveStructGraph(c, structType) {
+			if !c.ReserveGraphMemory(structGraphBytes(structType)) {
 				return
 			}
 			value.Set(reflect.New(structType))
@@ -1050,6 +1042,9 @@ func (c *ReadContext) ReadStruct(value reflect.Value) {
 		// Register reference before reading (for circular references)
 		refResolver.SetReadObject(refID, value)
 	} else {
+		if !c.ReserveGraphMemory(structGraphBytes(structType)) {
+			return
+		}
 		readTarget = value
 		// For non-pointer structs, register a pointer to enable circular ref resolution
 		if value.CanAddr() {

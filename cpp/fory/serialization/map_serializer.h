@@ -84,22 +84,15 @@ struct MapReserver<MapType,
 
 template <size_t elem_bytes>
 inline bool reserve_map_storage(ReadContext &ctx, uint32_t length) {
-  constexpr size_t kMaxLength =
-      static_cast<size_t>(std::numeric_limits<uint32_t>::max());
-  if constexpr (elem_bytes <= std::numeric_limits<size_t>::max() / kMaxLength) {
-    return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
-  } else {
-    if (FORY_PREDICT_FALSE(elem_bytes != 0 &&
-                           static_cast<size_t>(length) >
-                               std::numeric_limits<size_t>::max() /
-                                   elem_bytes)) {
-      ctx.set_error(Error::invalid_data(
-          "graph memory estimate overflows: length=" + std::to_string(length) +
-          " elementBytes=" + std::to_string(elem_bytes)));
-      return false;
-    }
-    return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
+  if (FORY_PREDICT_FALSE(elem_bytes != 0 &&
+                         static_cast<size_t>(length) >
+                             std::numeric_limits<size_t>::max() / elem_bytes)) {
+    ctx.set_error(Error::invalid_data(
+        "graph memory estimate overflows: length=" + std::to_string(length) +
+        " elementBytes=" + std::to_string(elem_bytes)));
+    return false;
   }
+  return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
 }
 
 template <typename MapType>
@@ -1051,6 +1044,10 @@ struct Serializer<std::map<K, V, Args...>> {
     if (!has_value) {
       return MapType{};
     }
+    if (ref_mode != RefMode::None &&
+        FORY_PREDICT_FALSE(!reserve_allocated_value_owner<MapType>(ctx))) {
+      return MapType{};
+    }
 
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -1157,6 +1154,10 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
       return MapType{};
     }
     if (!has_value) {
+      return MapType{};
+    }
+    if (ref_mode != RefMode::None &&
+        FORY_PREDICT_FALSE(!reserve_allocated_value_owner<MapType>(ctx))) {
       return MapType{};
     }
 

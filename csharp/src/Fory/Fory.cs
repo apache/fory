@@ -290,11 +290,6 @@ public sealed class Fory
         Serializer<T> serializer = _typeResolver.GetSerializer<T>();
         ReadContext readContext = _readContext;
         readContext.ResetFor(reader);
-        if (typeof(T).IsValueType)
-        {
-            GraphMemory.ReserveRootValue<T>(readContext);
-        }
-
         T value = _trackRef
             ? serializer.Read(readContext, RefMode.Tracking, true)
             : ReadRootNoRef(serializer, readContext);
@@ -322,8 +317,7 @@ public sealed class Fory
         RefFlag flag = (RefFlag)context.Reader.ReadInt8();
         if (flag == RefFlag.NotNullValue)
         {
-            context.TypeResolver.ReadTypeInfo(serializer, context);
-            return serializer.ReadData(context);
+            return serializer.Read(context, RefMode.None, true);
         }
 
         if (flag == RefFlag.Null)

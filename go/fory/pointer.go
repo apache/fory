@@ -140,7 +140,7 @@ func (s *ptrToValueSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	var newVal reflect.Value
 	if value.IsNil() {
 		// Allocate new value
-		if !reserveStructGraph(ctx, value.Type().Elem()) {
+		if !ctx.ReserveGraphMemory(structGraphBytes(value.Type().Elem())) {
 			return
 		}
 		newVal = reflect.New(value.Type().Elem())
@@ -198,7 +198,7 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
 				// Allocate the pointer value if needed
 				if value.IsNil() {
-					if !reserveStructGraph(ctx, value.Type().Elem()) {
+					if !ctx.ReserveGraphMemory(structGraphBytes(value.Type().Elem())) {
 						return
 					}
 					value.Set(reflect.New(value.Type().Elem()))

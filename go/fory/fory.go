@@ -195,9 +195,6 @@ type Fory struct {
 	// Resolvers shared between contexts
 	typeResolver *TypeResolver
 	refResolver  *RefResolver
-
-	rootGraphType  reflect.Type
-	rootGraphBytes int64
 }
 
 // New creates a new Fory instance with the given options
@@ -572,15 +569,9 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
 	f.readCtx.SetData(data)
 	target := reflect.ValueOf(v).Elem()
-	targetType := target.Type()
 	limit := f.config.MaxGraphMemoryBytes
 	f.readCtx.graphMemoryLimitBytes = limit
 	f.readCtx.remainingGraphMemoryBytes = limit
-	if bytes, ok := f.rootGraphBytesFor(targetType); ok && bytes > 0 {
-		if !f.readCtx.ReserveGraphMemory(bytes) {
-			return f.readCtx.TakeError()
-		}
-	}
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
@@ -589,7 +580,11 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 
 	// Root writes include type metadata, so keep the root ReadValue path.
 	// Calling a cached serializer directly would read that metadata byte as payload.
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	if target.Kind() == reflect.Struct && target.Type() != dateReflectType && target.Type() != timeReflectType && target.Type() != decimalType {
+		f.readCtx.ReadStruct(target)
+	} else {
+		f.readCtx.ReadValue(target, RefModeTracking, true)
+	}
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -674,16 +669,9 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = buf
 	target := reflect.ValueOf(v).Elem()
-	targetType := target.Type()
 	limit := f.config.MaxGraphMemoryBytes
 	f.readCtx.graphMemoryLimitBytes = limit
 	f.readCtx.remainingGraphMemoryBytes = limit
-	if bytes, ok := f.rootGraphBytesFor(targetType); ok && bytes > 0 {
-		if !f.readCtx.ReserveGraphMemory(bytes) {
-			f.readCtx.buffer = origBuffer
-			return f.readCtx.TakeError()
-		}
-	}
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
@@ -692,7 +680,11 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	if target.Kind() == reflect.Struct && target.Type() != dateReflectType && target.Type() != timeReflectType && target.Type() != decimalType {
+		f.readCtx.ReadStruct(target)
+	} else {
+		f.readCtx.ReadValue(target, RefModeTracking, true)
+	}
 	if f.readCtx.HasError() {
 		f.readCtx.buffer = origBuffer
 		return f.readCtx.TakeError()
@@ -796,15 +788,9 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	target := rv.Elem()
-	targetType := target.Type()
 	limit := f.config.MaxGraphMemoryBytes
 	f.readCtx.graphMemoryLimitBytes = limit
 	f.readCtx.remainingGraphMemoryBytes = limit
-	if bytes, ok := f.rootGraphBytesFor(targetType); ok && bytes > 0 {
-		if !f.readCtx.ReserveGraphMemory(bytes) {
-			return f.readCtx.TakeError()
-		}
-	}
 
 	// ReadData and validate header
 	readHeader(f.readCtx)
@@ -813,7 +799,11 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	if target.Kind() == reflect.Struct && target.Type() != dateReflectType && target.Type() != timeReflectType && target.Type() != decimalType {
+		f.readCtx.ReadStruct(target)
+	} else {
+		f.readCtx.ReadValue(target, RefModeTracking, true)
+	}
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -1074,11 +1064,6 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	default:
 		targetVal = reflect.ValueOf(target).Elem()
 		targetType = targetVal.Type()
-		if bytes, ok := f.rootGraphBytesFor(targetType); ok && bytes > 0 {
-			if !f.readCtx.ReserveGraphMemory(bytes) {
-				return f.readCtx.TakeError()
-			}
-		}
 	}
 
 	// ReadData and validate header
@@ -1222,6 +1207,10 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 			targetVal = reflect.ValueOf(target).Elem()
 			targetType = targetVal.Type()
 		}
+		if targetType.Kind() == reflect.Struct && targetType != dateReflectType && targetType != timeReflectType && targetType != decimalType {
+			f.readCtx.ReadStruct(targetVal)
+			return f.readCtx.CheckError()
+		}
 
 		// Get serializer for the target type
 		serializer, err := f.typeResolver.getSerializerByType(targetType, false)
@@ -1233,20 +1222,4 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 		serializer.Read(f.readCtx, RefModeTracking, true, false, targetVal)
 		return f.readCtx.CheckError()
 	}
-}
-
-func (f *Fory) rootGraphBytesFor(targetType reflect.Type) (int64, bool) {
-	if targetType == nil || targetType.Kind() != reflect.Struct {
-		return 0, false
-	}
-	if targetType == dateReflectType || targetType == timeReflectType {
-		return 0, true
-	}
-	if targetType == f.rootGraphType {
-		return f.rootGraphBytes, true
-	}
-	bytes := structGraphBytes(targetType)
-	f.rootGraphType = targetType
-	f.rootGraphBytes = bytes
-	return bytes, true
 }

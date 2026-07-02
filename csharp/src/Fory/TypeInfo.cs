@@ -122,7 +122,7 @@ public sealed class TypeInfo
             context => ReadDataObject(serializer, context, boxedValueBytes),
             (context, value, refMode, writeTypeInfo, hasGenerics) =>
                 WriteObject(serializer, context, value, refMode, writeTypeInfo, hasGenerics),
-            (context, refMode, readTypeInfo) => ReadObject(serializer, context, refMode, readTypeInfo, boxedValueBytes),
+            (context, refMode, readTypeInfo) => ReadObject(serializer, context, refMode, readTypeInfo),
             typeMetaFields,
             builtInTypeId,
             null);
@@ -204,14 +204,8 @@ public sealed class TypeInfo
         Serializer<T> serializer,
         ReadContext context,
         RefMode refMode,
-        bool readTypeInfo,
-        long boxedValueBytes)
+        bool readTypeInfo)
     {
-        if (boxedValueBytes != 0)
-        {
-            context.ReserveGraphMemory(boxedValueBytes);
-        }
-
         return serializer.Read(context, refMode, readTypeInfo);
     }
 

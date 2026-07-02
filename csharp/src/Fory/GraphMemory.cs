@@ -24,16 +24,6 @@ internal static class GraphMemory
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static long ValueOwnerBytes<T>() => ValueOwner<T>.Bytes;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void ReserveRootValue<T>(ReadContext context)
-    {
-        long bytes = ValueOwner<T>.Bytes;
-        if (bytes != 0)
-        {
-            context.ReserveGraphMemory(bytes);
-        }
-    }
-
     private static class ValueOwner<T>
     {
         internal static readonly long Bytes = Compute();

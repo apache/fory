@@ -585,6 +585,10 @@ pub trait Serializer: 'static {
         if read_type_info {
             Self::fory_read_type_info(context)?;
         }
+        let graph_self_size = Self::fory_graph_self_size();
+        if graph_self_size != 0 {
+            context.reserve_graph_memory(graph_self_size)?;
+        }
         Self::fory_read_data(context)
     }
 

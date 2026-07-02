@@ -195,6 +195,10 @@ pub fn gen_read(_struct_ident: &Ident) -> TokenStream {
             if ref_flag == (fory_core::RefFlag::RefValue as i8) && ref_mode == fory_core::RefMode::Tracking {
                 context.ref_reader.reserve_ref_id();
             }
+            let graph_self_size = <Self as fory_core::Serializer>::fory_graph_self_size();
+            if graph_self_size != 0 {
+                context.reserve_graph_memory(graph_self_size)?;
+            }
             if context.is_compatible() {
                 let type_info = if read_type_info {
                     context.read_any_type_info()?

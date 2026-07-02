@@ -392,22 +392,15 @@ constexpr size_t collection_element_memory_bytes() {
 
 template <size_t elem_bytes>
 inline bool reserve_collection_storage(ReadContext &ctx, uint32_t length) {
-  constexpr size_t kMaxLength =
-      static_cast<size_t>(std::numeric_limits<uint32_t>::max());
-  if constexpr (elem_bytes <= std::numeric_limits<size_t>::max() / kMaxLength) {
-    return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
-  } else {
-    if (FORY_PREDICT_FALSE(elem_bytes != 0 &&
-                           static_cast<size_t>(length) >
-                               std::numeric_limits<size_t>::max() /
-                                   elem_bytes)) {
-      ctx.set_error(Error::invalid_data(
-          "graph memory estimate overflows: length=" + std::to_string(length) +
-          " elementBytes=" + std::to_string(elem_bytes)));
-      return false;
-    }
-    return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
+  if (FORY_PREDICT_FALSE(elem_bytes != 0 &&
+                         static_cast<size_t>(length) >
+                             std::numeric_limits<size_t>::max() / elem_bytes)) {
+    ctx.set_error(Error::invalid_data(
+        "graph memory estimate overflows: length=" + std::to_string(length) +
+        " elementBytes=" + std::to_string(elem_bytes)));
+    return false;
   }
+  return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
 }
 
 template <typename Container>
@@ -1079,6 +1072,11 @@ struct Serializer<
     if (ctx.has_error() || !has_value) {
       return std::vector<T, Alloc>();
     }
+    if (ref_mode != RefMode::None &&
+        FORY_PREDICT_FALSE(
+            (!reserve_allocated_value_owner<std::vector<T, Alloc>>(ctx)))) {
+      return std::vector<T, Alloc>();
+    }
 
     // Optional type info for polymorphic containers
     if (read_type) {
@@ -1373,6 +1371,11 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
     if (ctx.has_error() || !has_value) {
       return std::list<T, Alloc>();
     }
+    if (ref_mode != RefMode::None &&
+        FORY_PREDICT_FALSE(
+            (!reserve_allocated_value_owner<std::list<T, Alloc>>(ctx)))) {
+      return std::list<T, Alloc>();
+    }
 
     // Optional type info for polymorphic containers
     if (read_type) {
@@ -1571,6 +1574,11 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
     // Deque-level reference flag
     bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
+      return std::deque<T, Alloc>();
+    }
+    if (ref_mode != RefMode::None &&
+        FORY_PREDICT_FALSE(
+            (!reserve_allocated_value_owner<std::deque<T, Alloc>>(ctx)))) {
       return std::deque<T, Alloc>();
     }
 
@@ -1772,6 +1780,12 @@ struct Serializer<std::forward_list<T, Alloc>> {
     // List-level reference flag
     bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
+      return std::forward_list<T, Alloc>();
+    }
+    if (ref_mode != RefMode::None &&
+        FORY_PREDICT_FALSE(
+            (!reserve_allocated_value_owner<std::forward_list<T, Alloc>>(
+                ctx)))) {
       return std::forward_list<T, Alloc>();
     }
 
@@ -2233,6 +2247,11 @@ struct Serializer<std::set<T, Args...>> {
     if (ctx.has_error() || !has_value) {
       return std::set<T, Args...>();
     }
+    if (ref_mode != RefMode::None &&
+        FORY_PREDICT_FALSE(
+            (!reserve_allocated_value_owner<std::set<T, Args...>>(ctx)))) {
+      return std::set<T, Args...>();
+    }
 
     // Read type info
     if (read_type) {
@@ -2415,6 +2434,12 @@ struct Serializer<std::unordered_set<T, Args...>> {
   read(ReadContext &ctx, RefMode ref_mode, bool read_type) {
     bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
+      return std::unordered_set<T, Args...>();
+    }
+    if (ref_mode != RefMode::None &&
+        FORY_PREDICT_FALSE(
+            (!reserve_allocated_value_owner<std::unordered_set<T, Args...>>(
+                ctx)))) {
       return std::unordered_set<T, Args...>();
     }
 

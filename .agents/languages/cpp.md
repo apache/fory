@@ -21,7 +21,8 @@ Load this file when changing `cpp/`, Cython build plumbing, or C++ xlang behavio
   `Fory::deserialize` overload. Keep `max_graph_memory_bytes` as a fixed-default graph limit:
   unset/default is `128 MiB`, positive explicit values override it, and explicit non-positive
   values are invalid at config creation. Byte and stream roots use the same
-  configured/default budget behavior.
+  configured/default budget behavior. Root `Fory` overloads reset the budget only; they must not
+  pre-reserve root type or root self bytes.
   Reserve estimated shallow graph-owner memory before allocation while preserving existing
   byte-availability checks and their non-empty metadata ordering. `ReadContext` may expose only raw
   byte reservation; collection, map, array, struct, and object

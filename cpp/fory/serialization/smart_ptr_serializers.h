@@ -511,6 +511,10 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       }
       reserved_ref_id = ctx.ref_reader().reserve_ref_id();
     }
+    if (FORY_PREDICT_FALSE(
+            !ctx.reserve_graph_memory(sizeof(std::shared_ptr<T>)))) {
+      return nullptr;
+    }
 
     // For polymorphic types, read type info AFTER handling ref flags
     if constexpr (is_polymorphic) {
@@ -959,6 +963,10 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
       ctx.set_error(
           Error::invalid_ref("Unexpected reference flag for unique_ptr: " +
                              std::to_string(static_cast<int>(flag))));
+      return nullptr;
+    }
+    if (FORY_PREDICT_FALSE(
+            !ctx.reserve_graph_memory(sizeof(std::unique_ptr<T>)))) {
       return nullptr;
     }
 

@@ -21,7 +21,9 @@ Load this file when changing `rust/` or Rust xlang behavior.
 - Root deserialization graph memory budget state belongs to `ReadContext` and is initialized by the
   root `Fory` read methods before the header is consumed. Use the fixed `128 MiB` default unless a
   positive explicit value overrides it; explicit non-positive values are invalid at config
-  creation. Do not derive the budget from root input size or add dynamic bytes-read accounting.
+  creation. Root `Fory` read methods reset the budget only; they must not pre-reserve root type or
+  root self bytes. Do not derive the budget from root input size or add dynamic bytes-read
+  accounting.
   `ReadContext` may expose only raw byte reservation; `Vec`,
   collection, map, array, struct, object, and derive codec formulas belong in their serializer
   owners.

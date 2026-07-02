@@ -889,15 +889,6 @@ private:
     read_ctx_->attach(buffer);
     read_ctx_->remaining_graph_memory_bytes_ =
         read_ctx_->graph_memory_limit_bytes_;
-    if constexpr (needs_graph_budget_v<T>) {
-      constexpr size_t root_owner_bytes = graph_value_owner_self_bytes<T>();
-      if constexpr (root_owner_bytes != 0) {
-        if (FORY_PREDICT_FALSE(
-                !read_ctx_->reserve_graph_memory(root_owner_bytes))) {
-          return Unexpected(read_ctx_->take_error());
-        }
-      }
-    }
     ReadContextGuard guard(*read_ctx_);
     return deserialize_impl<T>(buffer);
   }

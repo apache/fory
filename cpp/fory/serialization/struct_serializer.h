@@ -4584,6 +4584,10 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
       if (ctx.track_ref() && ref_flag == ref_value_flag) {
         ctx.ref_reader().reserve_ref_id();
       }
+      if (ref_mode != RefMode::None &&
+          FORY_PREDICT_FALSE(!reserve_allocated_value_owner<T>(ctx))) {
+        return T{};
+      }
       // In compatible mode: use meta sharing (matches Rust behavior)
       if (ctx.is_compatible()) {
         // In compatible mode: always use remote TypeMeta for schema evolution

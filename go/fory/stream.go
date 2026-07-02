@@ -100,14 +100,6 @@ func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 	limit := f.config.MaxGraphMemoryBytes
 	f.readCtx.graphMemoryLimitBytes = limit
 	f.readCtx.remainingGraphMemoryBytes = limit
-	if bytes, ok := f.rootGraphBytesFor(target.Type()); ok && bytes > 0 {
-		if !f.readCtx.ReserveGraphMemory(bytes) {
-			err := f.readCtx.TakeError()
-			f.readCtx.buffer = origBuffer
-			f.resetReadState()
-			return err
-		}
-	}
 	defer func() {
 		f.readCtx.buffer = origBuffer
 		f.resetReadState()
@@ -118,7 +110,11 @@ func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	if target.Kind() == reflect.Struct && target.Type() != dateReflectType && target.Type() != timeReflectType && target.Type() != decimalType {
+		f.readCtx.ReadStruct(target)
+	} else {
+		f.readCtx.ReadValue(target, RefModeTracking, true)
+	}
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -138,18 +134,17 @@ func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
 	limit := f.config.MaxGraphMemoryBytes
 	f.readCtx.graphMemoryLimitBytes = limit
 	f.readCtx.remainingGraphMemoryBytes = limit
-	if bytes, ok := f.rootGraphBytesFor(target.Type()); ok && bytes > 0 {
-		if !f.readCtx.ReserveGraphMemory(bytes) {
-			return f.readCtx.TakeError()
-		}
-	}
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
 
-	f.readCtx.ReadValue(target, RefModeTracking, true)
+	if target.Kind() == reflect.Struct && target.Type() != dateReflectType && target.Type() != timeReflectType && target.Type() != decimalType {
+		f.readCtx.ReadStruct(target)
+	} else {
+		f.readCtx.ReadValue(target, RefModeTracking, true)
+	}
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}

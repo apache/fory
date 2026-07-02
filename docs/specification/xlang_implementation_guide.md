@@ -399,13 +399,14 @@ the container/map serializer and should be validated only when they protect a
 real owner invariant.
 
 Materializing readers should also reserve a root-operation estimated graph
-memory budget before allocation or size hinting. The budget belongs to
-`ReadContext` or the equivalent root read state, not to serializers and not to
-ambient thread-local state. `maxGraphMemoryBytes` defaults to a fixed `128 MiB`;
-positive configuration overrides the default; explicit non-positive
-configuration is invalid and must be rejected when the runtime is created. Do
-not derive this budget from root input size, and do not add dynamic stream
-bytes-read accounting for this budget.
+memory budget before allocation or size hinting. The budget state belongs to
+`ReadContext` or the equivalent root read state, not to ambient thread-local
+state. Root facades set or reset the per-operation budget only; they must not
+pre-reserve root type or root self bytes. `maxGraphMemoryBytes` defaults to a
+fixed `128 MiB`; positive configuration overrides the default; explicit
+non-positive configuration is invalid and must be rejected when the runtime is
+created. Do not derive this budget from root input size, and do not add dynamic
+stream bytes-read accounting for this budget.
 
 Read context or equivalent read state owns only raw byte reservation. It must
 not expose counted arithmetic helpers or collection, map, array, struct, or
@@ -423,9 +424,9 @@ or allocates the value. Reference-backed containers, maps, sets, and
 object/reference arrays reserve nonzero owner self cost plus reference slots;
 each referenced heap owner then reserves its own shallow self cost when
 materialized. Inline/value containers reserve element storage; inline/value maps
-reserve key plus value storage; root/product/box owners reserve value self
-storage; and nested value serializers reserve only additional dynamic storage
-they allocate. Struct/record/POJO/tuple, compatible, generated, and dynamic
+reserve key plus value storage; root materialization, product, and box owners
+reserve value self storage; and nested value serializers reserve only additional
+dynamic storage they allocate. Struct/record/POJO/tuple, compatible, generated, and dynamic
 object owners reserve a nonzero shallow self cost plus shallow field storage.
 Parents must not recursively include child object, collection, map, string,
 binary, or primitive dense-array contents. Skip enum/union as separate owners and

@@ -19,16 +19,17 @@ Load this file when changing `swift/` or Swift xlang behavior.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Recursive matched-field comparison for collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
 - Root deserialization graph memory budget state belongs to `ReadContext`. Swift public roots are
   `Data` and `ByteBuffer`, and both use the same fixed default graph budget; do not add stream
-  bytes-read accounting or serializer-local budget state. `ReadContext` may expose only raw byte
-  reservation; array, set, map, struct, and object formulas belong in serializer and field-codec
-  owners.
+  bytes-read accounting or serializer-local budget state. Root APIs reset the budget only; they must
+  not pre-reserve root type or root self bytes. `ReadContext` may expose only raw byte reservation;
+  array, set, map, struct, and object formulas belong in serializer and field-codec owners.
 - For Swift graph budget formulas, distinguish inline/value storage from reference storage: use
   `MemoryLayout<T>.stride` for value arrays/lists/sets/maps and the 4-byte reference fallback for
   `Serializer.isRefType` / `FieldCodec.isRefType` paths. Class/reference paths reserve their own
-  shallow self cost plus field storage when materialized; value serializers do not unconditionally
-  charge self storage because root, field, array, set, map, box, or generated owners reserve inline
-  storage exactly once. Independently materialized collection/map/array owners reserve nonzero
-  shallow self cost plus backing/reference/inline storage. Dedicated `String`, `Data`/binary,
+  shallow self cost plus field storage when materialized; value serializers reserve self storage
+  only on standalone serializer, generated, or root materialization entries because field, array,
+  set, map, and box holders reserve inline storage exactly once. Independently materialized
+  collection/map/array owners reserve nonzero shallow self cost plus backing/reference/inline
+  storage. Dedicated `String`, `Data`/binary,
   primitive scalar, and primitive packed-array owners stay skipped, except compatible
   packed-array-to-list reads must reserve the target list materialization before allocation.
 

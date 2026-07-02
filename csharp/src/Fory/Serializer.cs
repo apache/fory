@@ -136,6 +136,12 @@ public abstract class Serializer<T>
             context.TypeResolver.ReadTypeInfo(this, context);
         }
 
+        long graphBytes = GraphMemory.ValueOwnerBytes<T>();
+        if (graphBytes != 0)
+        {
+            context.ReserveGraphMemory(graphBytes);
+        }
+
         return ReadData(context);
     }
 }

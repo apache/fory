@@ -1146,11 +1146,6 @@ impl Fory {
         } else {
             RefMode::NullOnly
         };
-        // TypeMeta is read inline during deserialization (streaming protocol)
-        let root_graph_self_size = T::fory_graph_self_size();
-        if root_graph_self_size != 0 {
-            context.reserve_graph_memory(root_graph_self_size)?;
-        }
         let result = <T as Serializer>::fory_read(context, ref_mode, true);
         context.ref_reader.resolve_callbacks();
         result
