@@ -982,10 +982,7 @@ public sealed class TypeResolver
         return actualWireType == expected;
     }
 
-    private object? ReadRegisteredValue(
-        TypeInfo typeInfo,
-        ReadContext context,
-        TypeMeta? typeMeta)
+    private object? ReadRegisteredValue(TypeInfo typeInfo, ReadContext context, TypeMeta? typeMeta)
     {
         if (typeMeta is not null)
         {

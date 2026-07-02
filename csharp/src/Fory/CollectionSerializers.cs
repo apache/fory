@@ -36,7 +36,7 @@ internal static class CollectionCodec
     private const int ReferenceBytes = 4;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+    internal static int ElementBytes<T>() => ElementStorage<T>.Bytes;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void ReserveElementStorage<T>(ReadContext context, int count)
@@ -208,13 +208,53 @@ internal static class CollectionCodec
         }
     }
 
+    private static class ElementStorage<T>
+    {
+        internal static readonly int Bytes = typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+    }
+
+    internal readonly struct CollectionFrame
+    {
+        internal CollectionFrame(bool trackRef, bool hasNull, bool declared, bool sameType)
+        {
+            TrackRef = trackRef;
+            HasNull = hasNull;
+            Declared = declared;
+            SameType = sameType;
+        }
+
+        internal bool TrackRef { get; }
+        internal bool HasNull { get; }
+        internal bool Declared { get; }
+        internal bool SameType { get; }
+    }
+
+    internal static int ReadLengthAndReserve<T>(ReadContext context)
+    {
+        int length = checked((int)context.Reader.ReadVarUInt32());
+        ReserveElementStorage<T>(context, length);
+        return length;
+    }
+
+    internal static CollectionFrame ReadFrame(ReadContext context, int length)
+    {
+        byte header = context.Reader.ReadUInt8();
+        context.Reader.CheckBound(length);
+        return new CollectionFrame(
+            (header & CollectionBits.TrackingRef) != 0,
+            (header & CollectionBits.HasNull) != 0,
+            (header & CollectionBits.DeclaredElementType) != 0,
+            (header & CollectionBits.SameType) != 0);
+    }
+
     public static List<T> ReadCollectionData<T>(
         Serializer<T> elementSerializer,
         ReadContext context,
-        bool reserveOwner = true)
+        bool reserveOwner = true,
+        bool storeOwnerRef = true)
     {
-        TypeInfo elementTypeInfo = context.TypeResolver.GetTypeInfo<T>();
         int length = checked((int)context.Reader.ReadVarUInt32());
+        bool storeRef = storeOwnerRef && context.ShouldStoreRef;
         if (length == 0)
         {
             if (reserveOwner)
@@ -222,7 +262,13 @@ internal static class CollectionCodec
                 ReserveElementStorage<T>(context, length);
             }
 
-            return [];
+            List<T> empty = [];
+            if (storeRef)
+            {
+                context.StoreRef(empty);
+            }
+
+            return empty;
         }
 
         byte header = context.Reader.ReadUInt8();
@@ -241,6 +287,11 @@ internal static class CollectionCodec
 
         context.Reader.CheckBound(length);
         List<T> values = new(length);
+        if (storeRef)
+        {
+            context.StoreRef(values);
+        }
+
         if (!sameType)
         {
             if (trackRef)
@@ -323,6 +374,127 @@ internal static class CollectionCodec
             for (int i = 0; i < length; i++)
             {
                 values.Add(elementSerializer.ReadData(context));
+            }
+        }
+
+        if (!declared)
+        {
+            context.ClearReadTypeInfo(typeof(T));
+        }
+
+        return values;
+    }
+
+    public static T[] ReadArrayData<T>(Serializer<T> elementSerializer, ReadContext context)
+    {
+        int length = checked((int)context.Reader.ReadVarUInt32());
+        if (length == 0)
+        {
+            ReserveElementStorage<T>(context, length);
+            T[] empty = [];
+            if (context.ShouldStoreRef)
+            {
+                context.StoreRef(empty);
+            }
+
+            return empty;
+        }
+
+        byte header = context.Reader.ReadUInt8();
+        bool trackRef = (header & CollectionBits.TrackingRef) != 0;
+        bool hasNull = (header & CollectionBits.HasNull) != 0;
+        bool declared = (header & CollectionBits.DeclaredElementType) != 0;
+        bool sameType = (header & CollectionBits.SameType) != 0;
+        ReserveElementStorage<T>(context, length);
+        context.Reader.CheckBound(length);
+        T[] values = new T[length];
+        if (context.ShouldStoreRef)
+        {
+            context.StoreRef(values);
+        }
+
+        if (!sameType)
+        {
+            if (trackRef)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values[i] = elementSerializer.Read(context, RefMode.Tracking, true);
+                }
+
+                return values;
+            }
+
+            if (hasNull)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    sbyte refFlag = context.Reader.ReadInt8();
+                    if (refFlag == (sbyte)RefFlag.Null)
+                    {
+                        values[i] = (T)elementSerializer.DefaultObject!;
+                    }
+                    else if (refFlag == (sbyte)RefFlag.NotNullValue)
+                    {
+                        values[i] = elementSerializer.Read(context, RefMode.None, true);
+                    }
+                    else
+                    {
+                        throw new RefException($"invalid nullability flag {refFlag}");
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values[i] = elementSerializer.Read(context, RefMode.None, true);
+                }
+            }
+
+            return values;
+        }
+
+        if (!declared)
+        {
+            context.TypeResolver.ReadTypeInfo(elementSerializer, context);
+        }
+
+        if (trackRef)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values[i] = elementSerializer.Read(context, RefMode.Tracking, false);
+            }
+
+            if (!declared)
+            {
+                context.ClearReadTypeInfo(typeof(T));
+            }
+
+            return values;
+        }
+
+        if (hasNull)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                sbyte refFlag = context.Reader.ReadInt8();
+                if (refFlag == (sbyte)RefFlag.Null)
+                {
+                    values[i] = (T)elementSerializer.DefaultObject!;
+                }
+                else
+                {
+                    values[i] = elementSerializer.ReadData(context);
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values[i] = elementSerializer.ReadData(context);
             }
         }
 
@@ -416,7 +588,17 @@ internal static class DynamicContainerCodec
 
     public static object ReadMapPayload(ReadContext context)
     {
-        NullableKeyDictionary<object, object?> map = context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>().ReadData(context);
+        Serializer<NullableKeyDictionary<object, object?>> serializer =
+            context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>();
+        bool storeRef = context.ShouldStoreRef;
+        NullableKeyDictionary<object, object?> map = serializer.ReadData(context);
+        if (storeRef)
+        {
+            // Dynamic tracked maps publish the nullable-key owner itself so
+            // nested references resolve to the same returned object.
+            return map;
+        }
+
         if (map.HasNullKey)
         {
             return map;
@@ -547,8 +729,7 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
 
     public override T[] ReadData(ReadContext context)
     {
-        List<T> values = CollectionCodec.ReadCollectionData<T>(context.TypeResolver.GetSerializer<T>(), context);
-        return values.ToArray();
+        return CollectionCodec.ReadArrayData<T>(context.TypeResolver.GetSerializer<T>(), context);
     }
 }
 
@@ -580,12 +761,129 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
 
     public override HashSet<T> ReadData(ReadContext context)
     {
+        if (context.ShouldStoreRef)
+        {
+            return ReadStoredSetData(context);
+        }
+
         List<T> values = CollectionCodec.ReadCollectionData(
             context.TypeResolver.GetSerializer<T>(),
             context,
-            reserveOwner: false);
+            reserveOwner: false,
+            storeOwnerRef: false);
         CollectionCodec.ReserveElementStorage<T>(context, values.Count);
         return [.. values];
+    }
+
+    private static HashSet<T> ReadStoredSetData(ReadContext context)
+    {
+        Serializer<T> elementSerializer = context.TypeResolver.GetSerializer<T>();
+        int length = checked((int)context.Reader.ReadVarUInt32());
+        CollectionCodec.ReserveElementStorage<T>(context, length);
+        HashSet<T> values = new(length);
+        context.StoreRef(values);
+        if (length == 0)
+        {
+            return values;
+        }
+
+        byte header = context.Reader.ReadUInt8();
+        bool trackRef = (header & CollectionBits.TrackingRef) != 0;
+        bool hasNull = (header & CollectionBits.HasNull) != 0;
+        bool declared = (header & CollectionBits.DeclaredElementType) != 0;
+        bool sameType = (header & CollectionBits.SameType) != 0;
+        context.Reader.CheckBound(length);
+        if (!sameType)
+        {
+            if (trackRef)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.Add(elementSerializer.Read(context, RefMode.Tracking, true));
+                }
+
+                return values;
+            }
+
+            if (hasNull)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    sbyte refFlag = context.Reader.ReadInt8();
+                    if (refFlag == (sbyte)RefFlag.Null)
+                    {
+                        values.Add((T)elementSerializer.DefaultObject!);
+                    }
+                    else if (refFlag == (sbyte)RefFlag.NotNullValue)
+                    {
+                        values.Add(elementSerializer.Read(context, RefMode.None, true));
+                    }
+                    else
+                    {
+                        throw new RefException($"invalid nullability flag {refFlag}");
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.Add(elementSerializer.Read(context, RefMode.None, true));
+                }
+            }
+
+            return values;
+        }
+
+        if (!declared)
+        {
+            context.TypeResolver.ReadTypeInfo(elementSerializer, context);
+        }
+
+        if (trackRef)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.Add(elementSerializer.Read(context, RefMode.Tracking, false));
+            }
+
+            if (!declared)
+            {
+                context.ClearReadTypeInfo(typeof(T));
+            }
+
+            return values;
+        }
+
+        if (hasNull)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                sbyte refFlag = context.Reader.ReadInt8();
+                if (refFlag == (sbyte)RefFlag.Null)
+                {
+                    values.Add((T)elementSerializer.DefaultObject!);
+                }
+                else
+                {
+                    values.Add(elementSerializer.ReadData(context));
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.Add(elementSerializer.ReadData(context));
+            }
+        }
+
+        if (!declared)
+        {
+            context.ClearReadTypeInfo(typeof(T));
+        }
+
+        return values;
     }
 }
 
@@ -601,12 +899,125 @@ public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : 
 
     public override SortedSet<T> ReadData(ReadContext context)
     {
+        if (context.ShouldStoreRef)
+        {
+            return ReadStoredSortedSetData(context);
+        }
+
+        uint refId = context.PauseRefPublication();
         List<T> values = CollectionCodec.ReadCollectionData(
             context.TypeResolver.GetSerializer<T>(),
             context,
-            reserveOwner: false);
+            reserveOwner: false,
+            storeOwnerRef: false);
+        context.ResumeRefPublication(refId);
         CollectionCodec.ReserveElementStorage<T>(context, values.Count);
         return [.. values];
+    }
+
+    private static SortedSet<T> ReadStoredSortedSetData(ReadContext context)
+    {
+        Serializer<T> elementSerializer = context.TypeResolver.GetSerializer<T>();
+        int length = CollectionCodec.ReadLengthAndReserve<T>(context);
+        SortedSet<T> values = new();
+        context.StoreRef(values);
+        if (length == 0)
+        {
+            return values;
+        }
+
+        CollectionCodec.CollectionFrame frame = CollectionCodec.ReadFrame(context, length);
+        if (!frame.SameType)
+        {
+            if (frame.TrackRef)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.Add(elementSerializer.Read(context, RefMode.Tracking, true));
+                }
+
+                return values;
+            }
+
+            if (frame.HasNull)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    sbyte refFlag = context.Reader.ReadInt8();
+                    if (refFlag == (sbyte)RefFlag.Null)
+                    {
+                        values.Add((T)elementSerializer.DefaultObject!);
+                    }
+                    else if (refFlag == (sbyte)RefFlag.NotNullValue)
+                    {
+                        values.Add(elementSerializer.Read(context, RefMode.None, true));
+                    }
+                    else
+                    {
+                        throw new RefException($"invalid nullability flag {refFlag}");
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.Add(elementSerializer.Read(context, RefMode.None, true));
+                }
+            }
+
+            return values;
+        }
+
+        if (!frame.Declared)
+        {
+            context.TypeResolver.ReadTypeInfo(elementSerializer, context);
+        }
+
+        if (frame.TrackRef)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.Add(elementSerializer.Read(context, RefMode.Tracking, false));
+            }
+
+            if (!frame.Declared)
+            {
+                context.ClearReadTypeInfo(typeof(T));
+            }
+
+            return values;
+        }
+
+        if (frame.HasNull)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                sbyte refFlag = context.Reader.ReadInt8();
+                if (refFlag == (sbyte)RefFlag.Null)
+                {
+                    values.Add((T)elementSerializer.DefaultObject!);
+                }
+                else
+                {
+                    values.Add(elementSerializer.ReadData(context));
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.Add(elementSerializer.ReadData(context));
+            }
+        }
+
+        if (!frame.Declared)
+        {
+            context.ClearReadTypeInfo(typeof(T));
+        }
+
+        return values;
     }
 }
 
@@ -622,10 +1033,13 @@ public sealed class ImmutableHashSetSerializer<T> : Serializer<ImmutableHashSet<
 
     public override ImmutableHashSet<T> ReadData(ReadContext context)
     {
+        uint refId = context.PauseRefPublication();
         List<T> values = CollectionCodec.ReadCollectionData(
             context.TypeResolver.GetSerializer<T>(),
             context,
-            reserveOwner: false);
+            reserveOwner: false,
+            storeOwnerRef: false);
+        context.ResumeRefPublication(refId);
         CollectionCodec.ReserveElementStorage<T>(context, values.Count);
         return ImmutableHashSet.CreateRange(values);
     }
@@ -643,12 +1057,125 @@ public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
 
     public override LinkedList<T> ReadData(ReadContext context)
     {
+        if (context.ShouldStoreRef)
+        {
+            return ReadStoredLinkedListData(context);
+        }
+
+        uint refId = context.PauseRefPublication();
         List<T> values = CollectionCodec.ReadCollectionData(
             context.TypeResolver.GetSerializer<T>(),
             context,
-            reserveOwner: false);
+            reserveOwner: false,
+            storeOwnerRef: false);
+        context.ResumeRefPublication(refId);
         CollectionCodec.ReserveElementStorage<T>(context, values.Count);
         return new LinkedList<T>(values);
+    }
+
+    private static LinkedList<T> ReadStoredLinkedListData(ReadContext context)
+    {
+        Serializer<T> elementSerializer = context.TypeResolver.GetSerializer<T>();
+        int length = CollectionCodec.ReadLengthAndReserve<T>(context);
+        LinkedList<T> values = new();
+        context.StoreRef(values);
+        if (length == 0)
+        {
+            return values;
+        }
+
+        CollectionCodec.CollectionFrame frame = CollectionCodec.ReadFrame(context, length);
+        if (!frame.SameType)
+        {
+            if (frame.TrackRef)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.AddLast(elementSerializer.Read(context, RefMode.Tracking, true));
+                }
+
+                return values;
+            }
+
+            if (frame.HasNull)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    sbyte refFlag = context.Reader.ReadInt8();
+                    if (refFlag == (sbyte)RefFlag.Null)
+                    {
+                        values.AddLast((T)elementSerializer.DefaultObject!);
+                    }
+                    else if (refFlag == (sbyte)RefFlag.NotNullValue)
+                    {
+                        values.AddLast(elementSerializer.Read(context, RefMode.None, true));
+                    }
+                    else
+                    {
+                        throw new RefException($"invalid nullability flag {refFlag}");
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.AddLast(elementSerializer.Read(context, RefMode.None, true));
+                }
+            }
+
+            return values;
+        }
+
+        if (!frame.Declared)
+        {
+            context.TypeResolver.ReadTypeInfo(elementSerializer, context);
+        }
+
+        if (frame.TrackRef)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.AddLast(elementSerializer.Read(context, RefMode.Tracking, false));
+            }
+
+            if (!frame.Declared)
+            {
+                context.ClearReadTypeInfo(typeof(T));
+            }
+
+            return values;
+        }
+
+        if (frame.HasNull)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                sbyte refFlag = context.Reader.ReadInt8();
+                if (refFlag == (sbyte)RefFlag.Null)
+                {
+                    values.AddLast((T)elementSerializer.DefaultObject!);
+                }
+                else
+                {
+                    values.AddLast(elementSerializer.ReadData(context));
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.AddLast(elementSerializer.ReadData(context));
+            }
+        }
+
+        if (!frame.Declared)
+        {
+            context.ClearReadTypeInfo(typeof(T));
+        }
+
+        return values;
     }
 }
 
@@ -664,10 +1191,18 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
 
     public override Queue<T> ReadData(ReadContext context)
     {
+        if (context.ShouldStoreRef)
+        {
+            return ReadStoredQueueData(context);
+        }
+
+        uint refId = context.PauseRefPublication();
         List<T> values = CollectionCodec.ReadCollectionData(
             context.TypeResolver.GetSerializer<T>(),
             context,
-            reserveOwner: false);
+            reserveOwner: false,
+            storeOwnerRef: false);
+        context.ResumeRefPublication(refId);
         CollectionCodec.ReserveElementStorage<T>(context, values.Count);
         Queue<T> queue = new(values.Count);
         for (int i = 0; i < values.Count; i++)
@@ -676,6 +1211,111 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
         }
 
         return queue;
+    }
+
+    private static Queue<T> ReadStoredQueueData(ReadContext context)
+    {
+        Serializer<T> elementSerializer = context.TypeResolver.GetSerializer<T>();
+        int length = CollectionCodec.ReadLengthAndReserve<T>(context);
+        Queue<T> values = new(length);
+        context.StoreRef(values);
+        if (length == 0)
+        {
+            return values;
+        }
+
+        CollectionCodec.CollectionFrame frame = CollectionCodec.ReadFrame(context, length);
+        if (!frame.SameType)
+        {
+            if (frame.TrackRef)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.Enqueue(elementSerializer.Read(context, RefMode.Tracking, true));
+                }
+
+                return values;
+            }
+
+            if (frame.HasNull)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    sbyte refFlag = context.Reader.ReadInt8();
+                    if (refFlag == (sbyte)RefFlag.Null)
+                    {
+                        values.Enqueue((T)elementSerializer.DefaultObject!);
+                    }
+                    else if (refFlag == (sbyte)RefFlag.NotNullValue)
+                    {
+                        values.Enqueue(elementSerializer.Read(context, RefMode.None, true));
+                    }
+                    else
+                    {
+                        throw new RefException($"invalid nullability flag {refFlag}");
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.Enqueue(elementSerializer.Read(context, RefMode.None, true));
+                }
+            }
+
+            return values;
+        }
+
+        if (!frame.Declared)
+        {
+            context.TypeResolver.ReadTypeInfo(elementSerializer, context);
+        }
+
+        if (frame.TrackRef)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.Enqueue(elementSerializer.Read(context, RefMode.Tracking, false));
+            }
+
+            if (!frame.Declared)
+            {
+                context.ClearReadTypeInfo(typeof(T));
+            }
+
+            return values;
+        }
+
+        if (frame.HasNull)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                sbyte refFlag = context.Reader.ReadInt8();
+                if (refFlag == (sbyte)RefFlag.Null)
+                {
+                    values.Enqueue((T)elementSerializer.DefaultObject!);
+                }
+                else
+                {
+                    values.Enqueue(elementSerializer.ReadData(context));
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.Enqueue(elementSerializer.ReadData(context));
+            }
+        }
+
+        if (!frame.Declared)
+        {
+            context.ClearReadTypeInfo(typeof(T));
+        }
+
+        return values;
     }
 }
 
@@ -704,10 +1344,18 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
 
     public override Stack<T> ReadData(ReadContext context)
     {
+        if (context.ShouldStoreRef)
+        {
+            return ReadStoredStackData(context);
+        }
+
+        uint refId = context.PauseRefPublication();
         List<T> values = CollectionCodec.ReadCollectionData(
             context.TypeResolver.GetSerializer<T>(),
             context,
-            reserveOwner: false);
+            reserveOwner: false,
+            storeOwnerRef: false);
+        context.ResumeRefPublication(refId);
         CollectionCodec.ReserveElementStorage<T>(context, values.Count);
         Stack<T> stack = new(values.Count);
         for (int i = 0; i < values.Count; i++)
@@ -716,5 +1364,110 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
         }
 
         return stack;
+    }
+
+    private static Stack<T> ReadStoredStackData(ReadContext context)
+    {
+        Serializer<T> elementSerializer = context.TypeResolver.GetSerializer<T>();
+        int length = CollectionCodec.ReadLengthAndReserve<T>(context);
+        Stack<T> values = new(length);
+        context.StoreRef(values);
+        if (length == 0)
+        {
+            return values;
+        }
+
+        CollectionCodec.CollectionFrame frame = CollectionCodec.ReadFrame(context, length);
+        if (!frame.SameType)
+        {
+            if (frame.TrackRef)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.Push(elementSerializer.Read(context, RefMode.Tracking, true));
+                }
+
+                return values;
+            }
+
+            if (frame.HasNull)
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    sbyte refFlag = context.Reader.ReadInt8();
+                    if (refFlag == (sbyte)RefFlag.Null)
+                    {
+                        values.Push((T)elementSerializer.DefaultObject!);
+                    }
+                    else if (refFlag == (sbyte)RefFlag.NotNullValue)
+                    {
+                        values.Push(elementSerializer.Read(context, RefMode.None, true));
+                    }
+                    else
+                    {
+                        throw new RefException($"invalid nullability flag {refFlag}");
+                    }
+                }
+            }
+            else
+            {
+                for (int i = 0; i < length; i++)
+                {
+                    values.Push(elementSerializer.Read(context, RefMode.None, true));
+                }
+            }
+
+            return values;
+        }
+
+        if (!frame.Declared)
+        {
+            context.TypeResolver.ReadTypeInfo(elementSerializer, context);
+        }
+
+        if (frame.TrackRef)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.Push(elementSerializer.Read(context, RefMode.Tracking, false));
+            }
+
+            if (!frame.Declared)
+            {
+                context.ClearReadTypeInfo(typeof(T));
+            }
+
+            return values;
+        }
+
+        if (frame.HasNull)
+        {
+            for (int i = 0; i < length; i++)
+            {
+                sbyte refFlag = context.Reader.ReadInt8();
+                if (refFlag == (sbyte)RefFlag.Null)
+                {
+                    values.Push((T)elementSerializer.DefaultObject!);
+                }
+                else
+                {
+                    values.Push(elementSerializer.ReadData(context));
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < length; i++)
+            {
+                values.Push(elementSerializer.ReadData(context));
+            }
+        }
+
+        if (!frame.Declared)
+        {
+            context.ClearReadTypeInfo(typeof(T));
+        }
+
+        return values;
     }
 }

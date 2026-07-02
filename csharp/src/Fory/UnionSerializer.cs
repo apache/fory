@@ -50,6 +50,7 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
 
     public override TUnion ReadData(ReadContext context)
     {
+        uint refId = context.PauseRefPublication();
         uint rawCaseId = context.Reader.ReadVarUInt32();
         if (rawCaseId > int.MaxValue)
         {
@@ -67,7 +68,9 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
             caseValue = DynamicAnyCodec.ReadAny(context, RefMode.Tracking, true);
         }
 
-        return Factory(caseId, caseValue);
+        TUnion value = Factory(caseId, caseValue);
+        context.ResumeRefPublication(refId);
+        return value;
     }
 
     private static void CheckWireCaseId(int caseId)

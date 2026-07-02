@@ -114,21 +114,15 @@ public abstract class Serializer<T>
                     {
                         uint reservedRefId = context.RefReader.ReserveRefId();
                         context.SetReservedRefId(reservedRefId);
-                        try
+                        if (readTypeInfo)
                         {
-                            if (readTypeInfo)
-                            {
-                                context.TypeResolver.ReadTypeInfo(this, context);
-                            }
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
 
-                            T value = ReadData(context);
-                            context.StoreRef(value);
-                            return value;
-                        }
-                        finally
-                        {
-                            context.ClearReservedRefId();
-                        }
+                        T value = ReadData(context);
+                        context.StoreRef(value);
+                        context.ClearReservedRefId();
+                        return value;
                     }
                 case RefFlag.NotNullValue:
                     break;

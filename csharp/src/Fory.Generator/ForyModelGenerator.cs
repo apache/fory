@@ -214,7 +214,16 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             $"    private const bool __ForyAllFieldsBuiltIn = {BoolLiteral(model.SortedMembers.All(m => m.DynamicAnyKind == DynamicAnyKind.None && m.Classification.IsBuiltIn))};");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine($"    private static readonly long __ForyGraphMemoryBytes = {ModelGraphMemoryExpr(model)};");
+            string graphMemoryExpr = ModelGraphMemoryExpr(model);
+            bool constGraphMemory = IsConstGraphMemoryExpr(graphMemoryExpr);
+            string graphMemoryStorage = constGraphMemory ? "const" : "static readonly";
+            string graphMemoryType = constGraphMemory ? "int" : "long";
+            if (constGraphMemory)
+            {
+                graphMemoryExpr = graphMemoryExpr.Replace("L", string.Empty);
+            }
+
+            sb.AppendLine($"    private {graphMemoryStorage} {graphMemoryType} __ForyGraphMemoryBytes = {graphMemoryExpr};");
         }
 
         sb.AppendLine(
@@ -451,7 +460,19 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
 
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine($"    private {model.TypeName} ReadDataWithoutTypeMeta(global::Apache.Fory.ReadContext context)");
+        EmitReadDataWithoutTypeMeta(sb, model, "ReadDataWithoutTypeMeta", "context.ShouldStoreRef");
+        EmitReadDataMethod(sb, model, "ReadData", "ReadDataWithoutTypeMeta", "context.ShouldStoreRef", "public");
+
+        sb.AppendLine("}");
+    }
+
+    private static void EmitReadDataWithoutTypeMeta(
+        StringBuilder sb,
+        TypeModel model,
+        string methodName,
+        string? storeRefCondition)
+    {
+        sb.AppendLine($"    private {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
         if (model.Kind == DeclKind.Class)
         {
@@ -459,10 +480,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine($"        {model.TypeName} valueNoTypeMeta = new {model.TypeName}();");
-        if (model.Kind == DeclKind.Class)
-        {
-            sb.AppendLine("        context.StoreRef(valueNoTypeMeta);");
-        }
+        EmitStoreRef(sb, model, storeRefCondition, "valueNoTypeMeta", 2);
 
         foreach (MemberModel member in model.SortedMembers)
         {
@@ -480,7 +498,17 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("        return valueNoTypeMeta;");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine($"    public override {model.TypeName} ReadData(global::Apache.Fory.ReadContext context)");
+    }
+
+    private static void EmitReadDataMethod(
+        StringBuilder sb,
+        TypeModel model,
+        string methodName,
+        string noTypeMetaMethodName,
+        string? storeRefCondition,
+        string accessibility)
+    {
+        sb.AppendLine($"    {accessibility} override {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
         sb.AppendLine("        if (context.Compatible)");
         sb.AppendLine("        {");
@@ -488,7 +516,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             $"            global::Apache.Fory.TypeMeta? maybeTypeMeta = context.GetTypeMeta<{model.TypeName}>();");
         sb.AppendLine("            if (maybeTypeMeta is null)");
         sb.AppendLine("            {");
-        sb.AppendLine("                return ReadDataWithoutTypeMeta(context);");
+        sb.AppendLine($"                return {noTypeMetaMethodName}(context);");
         sb.AppendLine("            }");
         sb.AppendLine();
         sb.AppendLine("            global::Apache.Fory.TypeMeta typeMeta = maybeTypeMeta;");
@@ -498,10 +526,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine($"            {model.TypeName} value = new {model.TypeName}();");
-        if (model.Kind == DeclKind.Class)
-        {
-            sb.AppendLine("            context.StoreRef(value);");
-        }
+        EmitStoreRef(sb, model, storeRefCondition, "value", 3);
 
         sb.AppendLine("            bool __ForyExactTypeMeta = __ForyMatchesCachedTypeMeta(typeMeta, context.TrackRef, context.TypeResolver);");
         sb.AppendLine("            if (__ForyAllFieldsBuiltIn && __ForyExactTypeMeta)");
@@ -613,10 +638,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");
-        if (model.Kind == DeclKind.Class)
-        {
-            sb.AppendLine("        context.StoreRef(valueSchema);");
-        }
+        EmitStoreRef(sb, model, storeRefCondition, "valueSchema", 2);
 
         foreach (MemberModel member in model.SortedMembers)
         {
@@ -625,7 +647,32 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
 
         sb.AppendLine("        return valueSchema;");
         sb.AppendLine("    }");
-        sb.AppendLine("}");
+        sb.AppendLine();
+    }
+
+    private static void EmitStoreRef(
+        StringBuilder sb,
+        TypeModel model,
+        string? condition,
+        string valueName,
+        int indentLevel)
+    {
+        if (model.Kind != DeclKind.Class || condition is null)
+        {
+            return;
+        }
+
+        string indent = new(' ', indentLevel * 4);
+        if (condition == "true")
+        {
+            sb.AppendLine($"{indent}context.StoreRef({valueName});");
+            return;
+        }
+
+        sb.AppendLine($"{indent}if ({condition})");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    context.StoreRef({valueName});");
+        sb.AppendLine($"{indent}}}");
     }
 
     private static void EmitUnionSerializer(StringBuilder sb, TypeModel model)
@@ -697,6 +744,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine($"    public override {model.TypeName} ReadData(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
+        sb.AppendLine("        uint __foryPausedRef = context.PauseRefPublication();");
         sb.AppendLine("        uint rawCaseId = context.Reader.ReadVarUInt32();");
         sb.AppendLine("        if (rawCaseId > int.MaxValue)");
         sb.AppendLine("        {");
@@ -713,7 +761,9 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             sb.AppendLine($"            case {caseId}:");
             sb.AppendLine("            {");
             EmitReadUnionCasePayload(sb, unionCase, valueVar, 4);
-            sb.AppendLine($"                return new {unionCase.TypeName}({valueVar});");
+            sb.AppendLine($"                {model.TypeName} __foryUnion = new {unionCase.TypeName}({valueVar});");
+            sb.AppendLine("                context.ResumeRefPublication(__foryPausedRef);");
+            sb.AppendLine("                return __foryUnion;");
             sb.AppendLine("            }");
         }
 
@@ -725,7 +775,9 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
         else
         {
-            sb.AppendLine($"                return new {unknownCase.TypeName}(global::Apache.Fory.UnknownCaseSerializer.ReadPayload(context, caseId));");
+            sb.AppendLine($"                {model.TypeName} __foryUnion = new {unknownCase.TypeName}(global::Apache.Fory.UnknownCaseSerializer.ReadPayload(context, caseId));");
+            sb.AppendLine("                context.ResumeRefPublication(__foryPausedRef);");
+            sb.AppendLine("                return __foryUnion;");
         }
 
         sb.AppendLine("            }");
@@ -1185,7 +1237,6 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             $"(typeof({elementTypeName}).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<{elementTypeName}>() : 4)";
         if (codec.CarrierKind == CarrierKind.Array)
         {
-            sb.AppendLine($"{indent}context.ReserveGraphMemory(1L + (long){lengthVar} * {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new {ElementTypeName(codec.TypeName)}[{lengthVar}];");
         }
         else
@@ -1824,6 +1875,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             member.Group,
             member.IsCollection,
             member.UseDictionaryTypeInfoCache,
+            member.UsesReferenceStorage,
+            member.FixedValueBytes,
             member.IsRefType,
             member.NeedsFieldTypeInfo,
             member.DynamicAnyKind,
@@ -1879,8 +1932,24 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             return $"{member.Classification.PrimitiveSize}L";
         }
 
+        if (member.UsesReferenceStorage)
+        {
+            return "4L";
+        }
+
+        if (member.FixedValueBytes > 0)
+        {
+            return $"{member.FixedValueBytes}L";
+        }
+
         string typeName = StripNullableForTypeOf(member.TypeName);
-        return $"(typeof({typeName}).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<{typeName}>() : 4L)";
+        return $"global::System.Runtime.CompilerServices.Unsafe.SizeOf<{typeName}>()";
+    }
+
+    private static bool IsConstGraphMemoryExpr(string expression)
+    {
+        return expression.IndexOf("typeof(", StringComparison.Ordinal) < 0 &&
+               expression.IndexOf("Unsafe.", StringComparison.Ordinal) < 0;
     }
 
     private static string PackedArrayElementTypeName(uint typeId)
@@ -3123,6 +3192,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         TypeClassification classification = resolution.Classification;
+        int fixedValueBytes = FixedGraphValueBytes(unwrappedType, classification);
         int group = classification.IsPrimitive
             ? (isOptional ? 2 : 1)
             : 3;
@@ -3157,12 +3227,50 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             group,
             classification.IsCollection || classification.IsMap,
             classification.IsMap && !IsTypeSealed(unwrappedType),
+            !unwrappedType.IsValueType,
+            fixedValueBytes,
             !unwrappedType.IsValueType && classification.TypeId != 21,
             FieldNeedsTypeInfo(classification, dynamicAnyKind, unwrappedType),
             dynamicAnyKind == DynamicAnyKind.None ? DynamicAnyKind.None : dynamicAnyKind,
             typeMeta,
             fieldCodec,
             schemaType is not null);
+    }
+
+    private static int FixedGraphValueBytes(ITypeSymbol type, TypeClassification classification)
+    {
+        if (classification.IsPrimitive && classification.PrimitiveSize > 0)
+        {
+            return classification.PrimitiveSize;
+        }
+
+        if (type.TypeKind == TypeKind.Enum &&
+            type is INamedTypeSymbol enumType &&
+            enumType.EnumUnderlyingType is not null)
+        {
+            return SpecialTypeBytes(enumType.EnumUnderlyingType.SpecialType);
+        }
+
+        return type.SpecialType == SpecialType.System_Decimal ? 16 : 0;
+    }
+
+    private static int SpecialTypeBytes(SpecialType specialType)
+    {
+        return specialType switch
+        {
+            SpecialType.System_Boolean or
+            SpecialType.System_SByte or
+            SpecialType.System_Byte => 1,
+            SpecialType.System_Int16 or
+            SpecialType.System_UInt16 => 2,
+            SpecialType.System_Int32 or
+            SpecialType.System_UInt32 or
+            SpecialType.System_Single => 4,
+            SpecialType.System_Int64 or
+            SpecialType.System_UInt64 or
+            SpecialType.System_Double => 8,
+            _ => 0,
+        };
     }
 
     private static TypeMetaFieldTypeModel BuildTypeMetaFieldTypeModel(
@@ -4431,6 +4539,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             int group,
             bool isCollection,
             bool useDictionaryTypeInfoCache,
+            bool usesReferenceStorage,
+            int fixedValueBytes,
             bool isRefType,
             bool needsFieldTypeInfo,
             DynamicAnyKind dynamicAnyKind,
@@ -4450,6 +4560,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             Group = group;
             IsCollection = isCollection;
             UseDictionaryTypeInfoCache = useDictionaryTypeInfoCache;
+            UsesReferenceStorage = usesReferenceStorage;
+            FixedValueBytes = fixedValueBytes;
             IsRefType = isRefType;
             NeedsFieldTypeInfo = needsFieldTypeInfo;
             DynamicAnyKind = dynamicAnyKind;
@@ -4470,6 +4582,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         public int Group { get; }
         public bool IsCollection { get; }
         public bool UseDictionaryTypeInfoCache { get; }
+        public bool UsesReferenceStorage { get; }
+        public int FixedValueBytes { get; }
         public bool IsRefType { get; }
         public bool NeedsFieldTypeInfo { get; }
         public DynamicAnyKind DynamicAnyKind { get; }

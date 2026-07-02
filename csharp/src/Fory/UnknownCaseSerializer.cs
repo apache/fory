@@ -51,16 +51,10 @@ public static class UnknownCaseSerializer
                 {
                     uint reservedRefId = context.RefReader.ReserveRefId();
                     context.SetReservedRefId(reservedRefId);
-                    try
-                    {
-                        (uint typeId, object? value) = ReadNonNullPayload(context);
-                        context.StoreRef(value);
-                        return UnknownCase.FromRuntime(caseId, typeId, value);
-                    }
-                    finally
-                    {
-                        context.ClearReservedRefId();
-                    }
+                    (uint typeId, object? value) = ReadNonNullPayload(context);
+                    context.StoreRef(value);
+                    context.ClearReservedRefId();
+                    return UnknownCase.FromRuntime(caseId, typeId, value);
                 }
             case RefFlag.NotNullValue:
                 {

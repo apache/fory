@@ -22,6 +22,7 @@ namespace Apache.Fory;
 public sealed class ReadContext
 {
     private const int MinRemoteTypeMetaLimit = 8192;
+    private const uint NoReservedRefId = uint.MaxValue;
 
     private readonly ReusableArray<TypeMeta> _typeMetaRefs = new();
     private readonly UInt64Map<TypeMeta> _typeMetasByHeader = new();
@@ -39,6 +40,7 @@ public sealed class ReadContext
     internal Type? _cachedTypeMetaType;
     internal TypeMeta? _cachedTypeMeta;
     internal int _currentDynamicReadDepth;
+    private bool _hasReservedRefId;
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
     private int _totalAcceptedSchemaVersions;
@@ -72,6 +74,12 @@ public sealed class ReadContext
 
     public bool CheckStructVersion { get; }
 
+    public bool ShouldStoreRef
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => _hasReservedRefId;
+    }
+
     internal RefReader RefReader { get; }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -99,34 +107,57 @@ public sealed class ReadContext
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReserveGraphMemory(long bytes)
     {
-        if (bytes < 0)
-        {
-            ThrowGraphBudgetOverflow();
-        }
-        if (_graphMemoryLimitBytes <= 0)
-        {
-            return;
-        }
         long remaining = _remainingGraphMemoryBytes;
-        if (bytes > remaining)
+        if ((ulong)bytes > (ulong)remaining)
         {
-            ThrowGraphBudgetExceeded(bytes, remaining, _graphMemoryLimitBytes);
+            ReserveGraphMemorySlow(bytes, remaining);
+            return;
         }
 
         _remainingGraphMemoryBytes = remaining - bytes;
     }
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ThrowGraphBudgetOverflow()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(int bytes)
     {
-        throw new InvalidDataException("graph memory estimate overflows");
+        long remaining = _remainingGraphMemoryBytes;
+        if (bytes < 0 || bytes > remaining)
+        {
+            ReserveGraphMemorySlow(bytes, remaining);
+            return;
+        }
+
+        _remainingGraphMemoryBytes = remaining - bytes;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(uint bytes)
+    {
+        long remaining = _remainingGraphMemoryBytes - bytes;
+        if (remaining < 0)
+        {
+            ReserveGraphMemorySlow(bytes, _remainingGraphMemoryBytes);
+            return;
+        }
+
+        _remainingGraphMemoryBytes = remaining;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void ThrowGraphBudgetExceeded(long bytes, long remaining, long limit)
+    private void ReserveGraphMemorySlow(long bytes, long remaining)
     {
+        if (bytes < 0)
+        {
+            throw new InvalidDataException("graph memory estimate overflows");
+        }
+
+        if (_graphMemoryLimitBytes <= 0)
+        {
+            return;
+        }
+
         throw new InvalidDataException(
-            $"estimated graph memory request {bytes} bytes exceeds MaxGraphMemoryBytes remaining budget {remaining} bytes out of effective limit {limit} bytes");
+            $"estimated graph memory request {bytes} bytes exceeds MaxGraphMemoryBytes remaining budget {remaining} bytes out of effective limit {_graphMemoryLimitBytes} bytes");
     }
 
     internal void ResetFor(ByteReader reader)
@@ -463,27 +494,83 @@ public sealed class ReadContext
         _readTypeInfoByType.Remove(TypeMapKey.Get(type));
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void StoreRef(object? value)
     {
-        if (_reservedRefIds.Count == 0)
+        if (!_hasReservedRefId)
         {
             return;
         }
 
-        RefReader.StoreRefAt(_reservedRefIds[^1], value);
+        int index = _reservedRefIds.Count - 1;
+        if (index < 0)
+        {
+            _hasReservedRefId = false;
+            return;
+        }
+
+        RefReader.StoreRefAt(_reservedRefIds[index], value);
+        _hasReservedRefId = false;
     }
 
     internal void SetReservedRefId(uint refId)
     {
         _reservedRefIds.Add(refId);
+        _hasReservedRefId = true;
+    }
+
+    /// <summary>
+    /// Hides the current publishable ref id while a serializer reads a child or temporary owner.
+    /// </summary>
+    /// <remarks>
+    /// The reserved slot stays on the stack so the outer owner can publish it after materialization.
+    /// This prevents immutable wrappers and conversion serializers from letting children consume the
+    /// parent ref id before the parent object exists.
+    /// </remarks>
+    public uint PauseRefPublication()
+    {
+        if (!_hasReservedRefId)
+        {
+            return NoReservedRefId;
+        }
+
+        int index = _reservedRefIds.Count - 1;
+        if (index < 0)
+        {
+            _hasReservedRefId = false;
+            return NoReservedRefId;
+        }
+
+        _hasReservedRefId = false;
+        return _reservedRefIds[index];
+    }
+
+    /// <summary>Restores a ref id hidden by <see cref="PauseRefPublication"/>.</summary>
+    public void ResumeRefPublication(uint refId)
+    {
+        if (refId == NoReservedRefId)
+        {
+            return;
+        }
+
+        int index = _reservedRefIds.Count - 1;
+        if (index < 0)
+        {
+            throw new RefException($"cannot resume ref publication for ref id {refId}");
+        }
+
+        _hasReservedRefId = true;
     }
 
     internal void ClearReservedRefId()
     {
-        if (_reservedRefIds.Count > 0)
+        int count = _reservedRefIds.Count;
+        if (count > 0)
         {
-            _reservedRefIds.RemoveAt(_reservedRefIds.Count - 1);
+            _reservedRefIds.RemoveAt(count - 1);
         }
+
+        _hasReservedRefId = false;
     }
 
     internal void IncreaseReadDepth()
@@ -512,6 +599,7 @@ public sealed class ReadContext
         _typeMetaByType?.ClearKeys();
         _readTypeInfoByType.ClearKeys();
         _reservedRefIds.Clear();
+        _hasReservedRefId = false;
         _cachedTypeMetaType = null;
         _cachedTypeMeta = null;
         _currentDynamicReadDepth = 0;

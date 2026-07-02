@@ -60,6 +60,11 @@ public sealed class RefReader
 {
     private readonly List<object?> _refs = [];
 
+    internal bool HasRefs
+    {
+        get => _refs.Count != 0;
+    }
+
     public RefFlag ReadRefFlag(ByteReader reader)
     {
         return (RefFlag)reader.ReadInt8();
@@ -107,11 +112,22 @@ public sealed class RefReader
             throw new RefException($"ref_id out of range: {refId}");
         }
 
-        return _refs[index];
+        object? value = _refs[index];
+        if (value is null)
+        {
+            throw new RefException($"ref_id {refId} has not been published");
+        }
+
+        return value;
     }
 
     public void Reset()
     {
+        if (_refs.Count == 0)
+        {
+            return;
+        }
+
         _refs.Clear();
     }
 }

@@ -76,6 +76,20 @@ public sealed class GeneratedSchemaMapBudget
     public Dictionary<int, int> Values { get; set; } = [];
 }
 
+[ForyStruct]
+public sealed class CompatibleBudgetList
+{
+    [ForyField(Type = typeof(S.List<S.Int32>))]
+    public List<int> Values { get; set; } = [];
+}
+
+[ForyStruct]
+public sealed class CompatibleBudgetArray
+{
+    [ForyField(Type = typeof(S.Array<S.Int32>))]
+    public int[] Values { get; set; } = [];
+}
+
 public sealed class GraphMemoryBudgetTests
 {
     private const int ReferenceBytes = 4;
@@ -142,6 +156,7 @@ public sealed class GraphMemoryBudgetTests
         ReadContext disabled = new(new ByteReader([]), new TypeResolver(), NewFory(0).Config);
         disabled.InitGraphBudget();
         disabled.ReserveGraphMemory(long.MaxValue);
+        Assert.Throws<InvalidDataException>(() => disabled.ReserveGraphMemory(-1));
     }
 
     [Fact]
@@ -304,6 +319,23 @@ public sealed class GraphMemoryBudgetTests
         Assert.Equal("budget", NewFory(1).Deserialize<string>(Serialize("budget")));
         Assert.Equal(new byte[] { 1, 2, 3 }, NewFory(1).Deserialize<byte[]>(Serialize(new byte[] { 1, 2, 3 })));
         Assert.Equal(new[] { 1, 2, 3 }, NewFory(1).Deserialize<int[]>(Serialize(new[] { 1, 2, 3 })));
+    }
+
+    [Fact]
+    public void CompatibleListToDenseArrayIsSkipped()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).TrackRef(false).Build();
+        writer.Register<CompatibleBudgetList>(1010);
+        byte[] bytes = writer.Serialize(new CompatibleBudgetList { Values = [1, 2, 3] });
+
+        ForyRuntime reader = ForyRuntime.Builder()
+            .Compatible(true)
+            .TrackRef(false)
+            .MaxGraphMemoryBytes(GeneratedGraphHolderBytes)
+            .Build();
+        reader.Register<CompatibleBudgetArray>(1010);
+
+        Assert.Equal(new[] { 1, 2, 3 }, reader.Deserialize<CompatibleBudgetArray>(bytes).Values);
     }
 
     [Fact]

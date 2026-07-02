@@ -95,16 +95,10 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                     {
                         uint reservedRefId = context.RefReader.ReserveRefId();
                         context.SetReservedRefId(reservedRefId);
-                        try
-                        {
-                            object? value = ReadNonNullDynamicAny(context, readTypeInfo);
-                            context.StoreRef(value);
-                            return value;
-                        }
-                        finally
-                        {
-                            context.ClearReservedRefId();
-                        }
+                        object? value = ReadNonNullDynamicAny(context, readTypeInfo);
+                        context.StoreRef(value);
+                        context.ClearReservedRefId();
+                        return value;
                     }
                 case RefFlag.NotNullValue:
                     break;

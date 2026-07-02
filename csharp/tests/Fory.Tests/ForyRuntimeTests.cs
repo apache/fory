@@ -63,6 +63,12 @@ public sealed class Node
 }
 
 [ForyStruct]
+public sealed class AnyNode
+{
+    public object? Next { get; set; }
+}
+
+[ForyStruct]
 public sealed class FieldOrder
 {
     public string Z { get; set; } = string.Empty;
@@ -604,6 +610,148 @@ public sealed class ForyRuntimeTests
             Assert.NotNull(decoded.Next);
             Assert.Same(decoded, decoded.Next);
         }
+    }
+
+    [Fact]
+    public void WireTrackingRefsWorkWithNoRefReader()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().TrackRef(true).Build();
+        writer.Register<Node>(953);
+        ForyRuntime reader = ForyRuntime.Builder().TrackRef(false).Build();
+        reader.Register<Node>(953);
+
+        Node source = new() { Value = 7 };
+        source.Next = source;
+
+        Node decoded = reader.Deserialize<Node>(writer.Serialize(source));
+
+        Assert.Equal(7, decoded.Value);
+        Assert.NotNull(decoded.Next);
+        Assert.Same(decoded, decoded.Next);
+    }
+
+    [Fact]
+    public void WireTrackingRefsResetAfterNoRefRoot()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().TrackRef(true).Build();
+        writer.Register<Node>(954);
+        ForyRuntime reader = ForyRuntime.Builder().TrackRef(false).Build();
+        reader.Register<Node>(954);
+
+        Node source = new() { Value = 9 };
+        source.Next = source;
+        _ = reader.Deserialize<Node>(writer.Serialize(source));
+
+        ByteWriter staleRefPayload = new();
+        staleRefPayload.WriteUInt8(ForyHeaderFlag.IsXlang);
+        staleRefPayload.WriteInt8((sbyte)RefFlag.Ref);
+        staleRefPayload.WriteVarUInt32(0);
+
+        Assert.Throws<RefException>(() => reader.Deserialize<Node>(staleRefPayload.ToArray()));
+    }
+
+    [Fact]
+    public void DynamicAnyPublishesTrackedRef()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().TrackRef(true).Build();
+        writer.Register<Node>(955);
+        ForyRuntime reader = ForyRuntime.Builder().TrackRef(false).Build();
+        reader.Register<Node>(955);
+
+        Node source = new() { Value = 11 };
+        source.Next = source;
+
+        object decodedObject = reader.Deserialize<object>(writer.Serialize<object>(source));
+        Node decoded = Assert.IsType<Node>(decodedObject);
+
+        Assert.Equal(11, decoded.Value);
+        Assert.NotNull(decoded.Next);
+        Assert.Same(decoded, decoded.Next);
+    }
+
+    [Fact]
+    public void DynamicContainersPublishTrackedRefs()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().TrackRef(true).Build();
+        ForyRuntime reader = ForyRuntime.Builder().TrackRef(false).Build();
+
+        List<object?> list = [];
+        list.Add(list);
+        object decodedListObject = reader.Deserialize<object>(writer.Serialize<object>(list));
+        List<object?> decodedList = Assert.IsType<List<object?>>(decodedListObject);
+        Assert.Same(decodedList, decodedList[0]);
+
+        HashSet<object?> set = [];
+        set.Add(set);
+        object decodedSetObject = reader.Deserialize<object>(writer.Serialize<object>(set));
+        HashSet<object?> decodedSet = Assert.IsType<HashSet<object?>>(decodedSetObject);
+        Assert.Contains(decodedSet, decodedSet);
+
+        Dictionary<object, object?> map = [];
+        map["self"] = map;
+        object decodedMapObject = reader.Deserialize<object>(writer.Serialize<object>(map));
+        NullableKeyDictionary<object, object?> decodedMap =
+            Assert.IsType<NullableKeyDictionary<object, object?>>(decodedMapObject);
+        Assert.True(decodedMap.TryGetValue("self", out object? self));
+        Assert.Same(decodedMap, self);
+    }
+
+    [Fact]
+    public void ArraysAndMapsPublishRefs()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().TrackRef(true).Build();
+        ForyRuntime reader = ForyRuntime.Builder().TrackRef(false).Build();
+
+        object?[] array = new object?[1];
+        array[0] = array;
+        object?[] decodedArray = reader.Deserialize<object?[]>(writer.Serialize(array));
+        Assert.Same(decodedArray, decodedArray[0]);
+
+        Dictionary<object, object?> map = [];
+        map["self"] = map;
+        Dictionary<object, object?> decodedMap =
+            reader.Deserialize<Dictionary<object, object?>>(writer.Serialize(map));
+        Assert.Same(decodedMap, decodedMap["self"]);
+    }
+
+    [Fact]
+    public void MutableCollectionsPublishRefs()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().TrackRef(true).Build();
+        ForyRuntime reader = ForyRuntime.Builder().TrackRef(false).Build();
+
+        LinkedList<object?> linkedList = [];
+        linkedList.AddLast(linkedList);
+        LinkedList<object?> decodedList =
+            reader.Deserialize<LinkedList<object?>>(writer.Serialize(linkedList));
+        Assert.Same(decodedList, decodedList.First!.Value);
+
+        Queue<object?> queue = [];
+        queue.Enqueue(queue);
+        Queue<object?> decodedQueue = reader.Deserialize<Queue<object?>>(writer.Serialize(queue));
+        Assert.Same(decodedQueue, decodedQueue.Peek());
+
+        Stack<object?> stack = [];
+        stack.Push(stack);
+        Stack<object?> decodedStack = reader.Deserialize<Stack<object?>>(writer.Serialize(stack));
+        Assert.Same(decodedStack, decodedStack.Peek());
+    }
+
+    [Fact]
+    public void UnionCycleRefFailsLoudly()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().TrackRef(true).Build();
+        writer.Register<AnyNode>(956);
+        writer.Register<Union>(957);
+        ForyRuntime reader = ForyRuntime.Builder().TrackRef(false).Build();
+        reader.Register<AnyNode>(956);
+        reader.Register<Union>(957);
+
+        AnyNode node = new();
+        Union union = new(0, node);
+        node.Next = union;
+
+        Assert.Throws<RefException>(() => reader.Deserialize<Union>(writer.Serialize(union)));
     }
 
     [Fact]
@@ -2427,7 +2575,8 @@ public sealed class ForyRuntimeTests
         };
 
         DynamicAnyHolder decoded = fory.Deserialize<DynamicAnyHolder>(fory.Serialize(source));
-        Dictionary<object, object?> dynamicMap = Assert.IsType<Dictionary<object, object?>>(decoded.AnyValue);
+        NullableKeyDictionary<object, object?> dynamicMap =
+            Assert.IsType<NullableKeyDictionary<object, object?>>(decoded.AnyValue);
         Assert.Equal(9, dynamicMap["inner"]);
         Assert.Equal("ten", dynamicMap[10]);
         Assert.Equal(source.AnySet.Count, decoded.AnySet.Count);

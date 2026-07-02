@@ -668,12 +668,17 @@ internal static class PrimitiveDictionaryCodecReader
     private const int ReferenceBytes = 4;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+    private static int ElementBytes<T>() => ElementStorage<T>.Bytes;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ReserveMapStorage<TKey, TValue>(ReadContext context, int count)
     {
         context.ReserveGraphMemory(MapBytes + count * ((long)ElementBytes<TKey>() + ElementBytes<TValue>()));
+    }
+
+    private static class ElementStorage<T>
+    {
+        internal static readonly int Bytes = typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
     }
 
     public static TMap ReadMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps>(ReadContext context)
