@@ -482,17 +482,6 @@ func (b *ByteBuffer) ReaderIndex() int {
 	return b.readerIndex
 }
 
-func (b *ByteBuffer) readableBytes() int {
-	end := b.writerIndex
-	if len(b.data) > end {
-		end = len(b.data)
-	}
-	if b.readerIndex >= end {
-		return 0
-	}
-	return end - b.readerIndex
-}
-
 func (b *ByteBuffer) SetReaderIndex(index int) {
 	b.readerIndex = index
 }

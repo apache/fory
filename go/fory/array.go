@@ -290,7 +290,7 @@ func (s *arrayConcreteValueSerializer) ReadWithTypeInfo(ctx *ReadContext, refMod
 // arrayDynSerializer wraps sliceDynSerializer for arrays with interface element types.
 // It converts arrays to slices and delegates to sliceDynSerializer.
 type arrayDynSerializer struct {
-	sliceSerializer *sliceDynSerializer
+	sliceSerializer sliceDynSerializer
 }
 
 func newArrayDynSerializer(elemType reflect.Type) (arrayDynSerializer, error) {
@@ -298,7 +298,7 @@ func newArrayDynSerializer(elemType reflect.Type) (arrayDynSerializer, error) {
 	if err != nil {
 		return arrayDynSerializer{}, err
 	}
-	return arrayDynSerializer{sliceSerializer: sliceSer}, nil
+	return arrayDynSerializer{sliceSerializer: *sliceSer}, nil
 }
 
 func (s arrayDynSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
