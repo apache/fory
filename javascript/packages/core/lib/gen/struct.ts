@@ -51,10 +51,10 @@ function isDepthFreeField(typeInfo: TypeInfo): boolean {
     const key = typeInfo.options?.key;
     const value = typeInfo.options?.value;
     return (
-      !!key &&
-      !!value &&
-      TypeId.isLeafTypeId(key.typeId) &&
-      TypeId.isLeafTypeId(value.typeId)
+      !!key
+      && !!value
+      && TypeId.isLeafTypeId(key.typeId)
+      && TypeId.isLeafTypeId(value.typeId)
     );
   }
   return false;
@@ -79,8 +79,8 @@ const sortProps = (
   const props = typeInfo.options!.props;
   if (typeInfo.options!.preserveFieldOrder) {
     return (
-      typeInfo.options!.fieldEntries ??
-      Object.entries(props!).map(([key, fieldTypeInfo]) => ({
+      typeInfo.options!.fieldEntries
+      ?? Object.entries(props!).map(([key, fieldTypeInfo]) => ({
         key,
         typeInfo: fieldTypeInfo,
       }))
@@ -128,18 +128,18 @@ function varInt32ObjectReadKind(
   typeResolver: CodecBuilder["resolver"],
 ): "number" | "bigint" | null {
   if (
-    toRefMode(typeInfo.trackingRef, typeInfo.nullable) !== RefMode.NONE ||
-    !typeResolver.isMonomorphic(typeInfo, typeInfo.dynamic)
+    toRefMode(typeInfo.trackingRef, typeInfo.nullable) !== RefMode.NONE
+    || !typeResolver.isMonomorphic(typeInfo, typeInfo.dynamic)
   ) {
     return null;
   }
   const scalarAction = getCompatibleScalarReadAction(typeInfo);
   if (scalarAction !== undefined) {
-    return scalarAction.remoteNullable !== true &&
-      scalarAction.remoteTypeId === TypeId.VARINT32 &&
-      (scalarAction.localTypeId === TypeId.INT64 ||
-        scalarAction.localTypeId === TypeId.VARINT64 ||
-        scalarAction.localTypeId === TypeId.TAGGED_INT64)
+    return scalarAction.remoteNullable !== true
+      && scalarAction.remoteTypeId === TypeId.VARINT32
+      && (scalarAction.localTypeId === TypeId.INT64
+      || scalarAction.localTypeId === TypeId.VARINT64
+      || scalarAction.localTypeId === TypeId.TAGGED_INT64)
       ? "bigint"
       : null;
   }
@@ -151,9 +151,9 @@ function directNumericFieldReadExpr(
   builder: CodecBuilder,
 ): string | null {
   if (
-    toRefMode(typeInfo.trackingRef, typeInfo.nullable) !== RefMode.NONE ||
-    !builder.resolver.isMonomorphic(typeInfo, typeInfo.dynamic) ||
-    getCompatibleScalarReadAction(typeInfo) !== undefined
+    toRefMode(typeInfo.trackingRef, typeInfo.nullable) !== RefMode.NONE
+    || !builder.resolver.isMonomorphic(typeInfo, typeInfo.dynamic)
+    || getCompatibleScalarReadAction(typeInfo) !== undefined
   ) {
     return null;
   }
@@ -468,19 +468,19 @@ function integerRangeFits(remoteTypeId: number, localTypeId: number): boolean {
       return remoteTypeId === TypeId.INT8 || remoteTypeId === TypeId.UINT8;
     case TypeId.INT32:
       return (
-        remoteTypeId === TypeId.INT8 ||
-        remoteTypeId === TypeId.INT16 ||
-        remoteTypeId === TypeId.UINT8 ||
-        remoteTypeId === TypeId.UINT16
+        remoteTypeId === TypeId.INT8
+        || remoteTypeId === TypeId.INT16
+        || remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16
       );
     case TypeId.INT64:
       return (
-        remoteTypeId === TypeId.INT8 ||
-        remoteTypeId === TypeId.INT16 ||
-        remoteTypeId === TypeId.INT32 ||
-        remoteTypeId === TypeId.UINT8 ||
-        remoteTypeId === TypeId.UINT16 ||
-        remoteTypeId === TypeId.UINT32
+        remoteTypeId === TypeId.INT8
+        || remoteTypeId === TypeId.INT16
+        || remoteTypeId === TypeId.INT32
+        || remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16
+        || remoteTypeId === TypeId.UINT32
       );
     case TypeId.UINT16:
       return remoteTypeId === TypeId.UINT8;
@@ -488,9 +488,9 @@ function integerRangeFits(remoteTypeId: number, localTypeId: number): boolean {
       return remoteTypeId === TypeId.UINT8 || remoteTypeId === TypeId.UINT16;
     case TypeId.UINT64:
       return (
-        remoteTypeId === TypeId.UINT8 ||
-        remoteTypeId === TypeId.UINT16 ||
-        remoteTypeId === TypeId.UINT32
+        remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16
+        || remoteTypeId === TypeId.UINT32
       );
     default:
       return false;
@@ -555,19 +555,19 @@ function integerRangeFitsFloat(
       return remoteTypeId === TypeId.INT8 || remoteTypeId === TypeId.UINT8;
     case TypeId.FLOAT32:
       return (
-        remoteTypeId === TypeId.INT8 ||
-        remoteTypeId === TypeId.INT16 ||
-        remoteTypeId === TypeId.UINT8 ||
-        remoteTypeId === TypeId.UINT16
+        remoteTypeId === TypeId.INT8
+        || remoteTypeId === TypeId.INT16
+        || remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16
       );
     case TypeId.FLOAT64:
       return (
-        remoteTypeId === TypeId.INT8 ||
-        remoteTypeId === TypeId.INT16 ||
-        remoteTypeId === TypeId.INT32 ||
-        remoteTypeId === TypeId.UINT8 ||
-        remoteTypeId === TypeId.UINT16 ||
-        remoteTypeId === TypeId.UINT32
+        remoteTypeId === TypeId.INT8
+        || remoteTypeId === TypeId.INT16
+        || remoteTypeId === TypeId.INT32
+        || remoteTypeId === TypeId.UINT8
+        || remoteTypeId === TypeId.UINT16
+        || remoteTypeId === TypeId.UINT32
       );
     default:
       return false;
@@ -601,8 +601,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   private isDepthFreeStruct(): boolean {
     return (
-      this.sortedProps.length > 0 &&
-      this.sortedProps.every(({ typeInfo }) => isDepthFreeField(typeInfo))
+      this.sortedProps.length > 0
+      && this.sortedProps.every(({ typeInfo }) => isDepthFreeField(typeInfo))
     );
   }
 
@@ -704,7 +704,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         const noneedWrite = this.scope.uniqueName("noneedWrite");
         stmt = `
             let ${noneedWrite} = false;
-            ${embedGenerator.writeRefOrNull(fieldAccessor, (expr) => `${noneedWrite} = ${expr}`)}
+            ${embedGenerator.writeRefOrNull(fieldAccessor, expr => `${noneedWrite} = ${expr}`)}
             if (!${noneedWrite}) {
               ${embedGenerator.write(fieldAccessor)}
             }
@@ -754,21 +754,21 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   write(accessor: string): string {
     if (
-      !this.typeInfo.options?.props ||
-      Object.keys(this.typeInfo.options.props).length === 0
+      !this.typeInfo.options?.props
+      || Object.keys(this.typeInfo.options.props).length === 0
     ) {
       const hash = this.typeMeta.computeStructHash();
       return `${!this.builder.resolver.isCompatible() ? this.builder.writer.writeInt32(hash) : ""}`;
     }
     const hash = this.typeMeta.computeStructHash();
     const fieldWrites: string[] = [];
-    for (let i = 0; i < this.sortedProps.length; ) {
+    for (let i = 0; i < this.sortedProps.length;) {
       const current = this.sortedProps[i];
       if (isDirectVarInt32Field(current.typeInfo, this.builder.resolver)) {
         let end = i + 1;
         while (
-          end < this.sortedProps.length &&
-          isDirectVarInt32Field(
+          end < this.sortedProps.length
+          && isDirectVarInt32Field(
             this.sortedProps[end].typeInfo,
             this.builder.resolver,
           )
@@ -880,8 +880,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     const result = this.scope.uniqueName("result");
     const hash = this.typeMeta.computeStructHash();
     if (
-      !this.typeInfo.options?.props ||
-      Object.keys(this.typeInfo.options.props).length === 0
+      !this.typeInfo.options?.props
+      || Object.keys(this.typeInfo.options.props).length === 0
     ) {
       return `
         ${
@@ -966,7 +966,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
             this.scope,
           );
           return `
-          ${this.readField(key, typeInfo, (expr) => `${result}${CodecBuilder.safePropAccessor(key)} = ${expr}`, innerGenerator.readEmbed())}
+          ${this.readField(key, typeInfo, expr => `${result}${CodecBuilder.safePropAccessor(key)} = ${expr}`, innerGenerator.readEmbed())}
         `;
         })
         .join(";\n")}
@@ -986,8 +986,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       return varInt32ObjectRead;
     }
     if (
-      this.typeInfo.options!.withConstructor ||
-      this.sortedProps.length === 0
+      this.typeInfo.options!.withConstructor
+      || this.sortedProps.length === 0
     ) {
       return null;
     }
@@ -997,15 +997,15 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
         return null;
       }
       const scalarAction = getCompatibleScalarReadAction(typeInfo);
-      const expr =
-        scalarAction?.remoteNullable === true
+      const expr
+        = scalarAction?.remoteNullable === true
           ? null
           : scalarAction
             ? compatibleScalarFieldReadExpr(
-                scalarAction.remoteTypeId,
-                scalarAction.localTypeId,
-                this.builder,
-              )
+              scalarAction.remoteTypeId,
+              scalarAction.localTypeId,
+              this.builder,
+            )
             : directNumericFieldReadExpr(typeInfo, this.builder);
       if (expr === null) {
         return null;
@@ -1028,8 +1028,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     refState: string,
   ): string | null {
     if (
-      this.typeInfo.options!.withConstructor ||
-      this.sortedProps.length === 0
+      this.typeInfo.options!.withConstructor
+      || this.sortedProps.length === 0
     ) {
       return null;
     }
@@ -1121,8 +1121,8 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   readWithDepth(assignStmt: (v: string) => string, refState: string): string {
     if (
-      !this.typeInfo.options?.props ||
-      Object.keys(this.typeInfo.options.props).length === 0
+      !this.typeInfo.options?.props
+      || Object.keys(this.typeInfo.options.props).length === 0
     ) {
       const result = this.scope.uniqueName("result");
       return `
@@ -1138,11 +1138,11 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   readNoRef(assignStmt: (v: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
     if (
-      !this.typeInfo.options?.props ||
-      Object.keys(this.typeInfo.options.props).length === 0
+      !this.typeInfo.options?.props
+      || Object.keys(this.typeInfo.options.props).length === 0
     ) {
       return this.readTypeInfoThen(
-        (changedSerializer) => `
+        changedSerializer => `
           ${assignStmt(`${changedSerializer}.read(${refState})`)};
         `,
         () => `
@@ -1156,25 +1156,25 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     }
     if (this.isDepthFreeStruct()) {
       return this.readTypeInfoThen(
-        (changedSerializer) => `
+        changedSerializer => `
           ${assignStmt(`${changedSerializer}.read(${refState})`)};
         `,
         () => `
         let ${result};
-          ${this.read((v) => `${result} = ${v}`, refState)};
+          ${this.read(v => `${result} = ${v}`, refState)};
         ${assignStmt(result)};
       `,
         true,
       );
     }
     return this.readTypeInfoThen(
-      (changedSerializer) => `
+      changedSerializer => `
         ${assignStmt(`${changedSerializer}.read(${refState})`)};
       `,
       () => `
       ${this.builder.getReadContextName()}.incReadDepth();
       let ${result};
-      ${this.read((v) => `${result} = ${v}`, refState)};
+      ${this.read(v => `${result} = ${v}`, refState)};
       ${this.builder.getReadContextName()}.decReadDepth();
       ${assignStmt(result)};
     `,
@@ -1254,13 +1254,13 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     const builder = this.builder;
     const internalTypeId = this.getInternalTypeId();
     const serializer = builder.resolver.getSerializerByTypeInfo(this.typeInfo);
-    const canInlineCompatibleTypeInfo =
-      internalTypeId === TypeId.COMPATIBLE_STRUCT ||
-      internalTypeId === TypeId.NAMED_COMPATIBLE_STRUCT ||
-      (internalTypeId === TypeId.NAMED_STRUCT &&
-        builder.resolver.isCompatible());
-    const canUseHeaderCacheFastPath =
-      canInlineCompatibleTypeInfo && serializer?._initialized;
+    const canInlineCompatibleTypeInfo
+      = internalTypeId === TypeId.COMPATIBLE_STRUCT
+      || internalTypeId === TypeId.NAMED_COMPATIBLE_STRUCT
+      || (internalTypeId === TypeId.NAMED_STRUCT
+      && builder.resolver.isCompatible());
+    const canUseHeaderCacheFastPath
+      = canInlineCompatibleTypeInfo && serializer?._initialized;
     const inlineCompatibleTypeInfo = (
       onMetaChanged: (changedSerializer: string) => string,
       onMetaUnchanged: () => string,
@@ -1297,7 +1297,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
               const result = scope.uniqueName("result");
               return `
               ${inlineCompatibleTypeInfo(
-                (changedSerializer) =>
+                changedSerializer =>
                   `${accessor(`${changedSerializer}.read(${refState})`)};`,
                 () => `
                 ${builder.getReadContextName()}.incReadDepth();
@@ -1322,7 +1322,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
                 ${result} = ${builder.referenceResolver.getReadRef(builder.reader.readVarUInt32())};
               } else {
                 ${inlineCompatibleTypeInfo(
-                  (changedSerializer) =>
+                  changedSerializer =>
                     `${result} = ${changedSerializer}.read(${refFlag} === ${RefFlags.RefValueFlag});`,
                   () => `
                   ${builder.getReadContextName()}.incReadDepth();

@@ -46,8 +46,8 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
 
   private objectGraphBytes(): number {
     return (
-      OBJECT_BYTES +
-      Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES
+      OBJECT_BYTES
+      + Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES
     );
   }
 
@@ -82,7 +82,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
       ${this.readTypeInfo()}
       ${this.builder.getReadContextName()}.incReadDepth();
       let ${result};
-      ${this.read((v) => `${result} = ${v}`, refState)};
+      ${this.read(v => `${result} = ${v}`, refState)};
       ${this.builder.getReadContextName()}.decReadDepth();
       ${assignStmt(result)};
     `;
@@ -132,12 +132,12 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
               "ext_ser",
               TypeId.isNamedType(this.typeInfo.typeId)
                 ? this.builder.typeResolver.getSerializerByName(
-                    CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
-                  )
+                  CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
+                )
                 : this.builder.typeResolver.getSerializerById(
-                    this.typeInfo.typeId,
-                    this.typeInfo.userTypeId,
-                  ),
+                  this.typeInfo.typeId,
+                  this.typeInfo.userTypeId,
+                ),
             );
             return accessor(`${name}.${prop}(${args.join(",")})`);
           };
@@ -156,12 +156,12 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
               "ext_ser",
               TypeId.isNamedType(this.typeInfo.typeId)
                 ? this.builder.typeResolver.getSerializerByName(
-                    CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
-                  )
+                  CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!),
+                )
                 : this.builder.typeResolver.getSerializerById(
-                    this.typeInfo.typeId,
-                    this.typeInfo.userTypeId,
-                  ),
+                  this.typeInfo.typeId,
+                  this.typeInfo.userTypeId,
+                ),
             );
             return `${name}.${prop}(${accessor})`;
           };
