@@ -394,18 +394,16 @@ template <size_t elem_bytes>
 inline bool reserve_collection_storage(ReadContext &ctx, uint32_t length) {
   constexpr size_t kMaxLength =
       static_cast<size_t>(std::numeric_limits<uint32_t>::max());
-  if constexpr (elem_bytes <=
-                std::numeric_limits<size_t>::max() / kMaxLength) {
+  if constexpr (elem_bytes <= std::numeric_limits<size_t>::max() / kMaxLength) {
     return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
   } else {
-    if (FORY_PREDICT_FALSE(
-            elem_bytes != 0 &&
-            static_cast<size_t>(length) >
-                std::numeric_limits<size_t>::max() / elem_bytes)) {
+    if (FORY_PREDICT_FALSE(elem_bytes != 0 &&
+                           static_cast<size_t>(length) >
+                               std::numeric_limits<size_t>::max() /
+                                   elem_bytes)) {
       ctx.set_error(Error::invalid_data(
-          "graph memory estimate overflows: length=" +
-          std::to_string(length) + " elementBytes=" +
-          std::to_string(elem_bytes)));
+          "graph memory estimate overflows: length=" + std::to_string(length) +
+          " elementBytes=" + std::to_string(elem_bytes)));
       return false;
     }
     return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
@@ -444,8 +442,8 @@ inline bool reserve_collection(std::vector<bool, Alloc> &result,
   if (FORY_PREDICT_FALSE(length_bytes >
                          std::numeric_limits<size_t>::max() - 7)) {
     ctx.set_error(Error::invalid_data(
-        "graph memory estimate overflows: length=" +
-        std::to_string(length) + " elementBytes=1"));
+        "graph memory estimate overflows: length=" + std::to_string(length) +
+        " elementBytes=1"));
     return false;
   }
   const size_t packed_bytes = (length_bytes + 7) / 8;

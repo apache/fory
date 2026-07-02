@@ -435,10 +435,10 @@ ReadContext::ReadContext(const Config &config,
                          std::unique_ptr<TypeResolver> type_resolver)
     : buffer_(nullptr), config_(&config),
       type_resolver_(std::move(type_resolver)), current_dyn_depth_(0),
-      graph_memory_limit_bytes_(config.max_graph_memory_bytes > 0
-                                    ? static_cast<size_t>(
-                                          config.max_graph_memory_bytes)
-                                    : size_t{0}) {}
+      graph_memory_limit_bytes_(
+          config.max_graph_memory_bytes > 0
+              ? static_cast<size_t>(config.max_graph_memory_bytes)
+              : size_t{0}) {}
 
 ReadContext::~ReadContext() = default;
 

@@ -525,8 +525,7 @@ public:
 
   FORY_ALWAYS_INLINE bool reserve_graph_memory(size_t bytes) {
     const size_t remaining = remaining_graph_memory_bytes_;
-    if (FORY_PREDICT_FALSE(remaining ==
-                           std::numeric_limits<size_t>::max())) {
+    if (FORY_PREDICT_FALSE(remaining == std::numeric_limits<size_t>::max())) {
       return true;
     }
     if (FORY_PREDICT_FALSE(bytes > remaining)) {

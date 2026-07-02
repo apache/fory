@@ -140,7 +140,8 @@ TEST(GraphMemoryBudgetTest, FixedDefaultBudgetAndDisable) {
   disabled_config.max_graph_memory_bytes = 0;
   ReadContext disabled(disabled_config, std::make_unique<TypeResolver>());
   ASSERT_TRUE(disabled.init_graph_budget());
-  ASSERT_TRUE(disabled.reserve_graph_memory(std::numeric_limits<size_t>::max()));
+  ASSERT_TRUE(
+      disabled.reserve_graph_memory(std::numeric_limits<size_t>::max()));
 }
 
 TEST(GraphMemoryBudgetTest, RootKindsShareConfiguredBudget) {
@@ -149,33 +150,30 @@ TEST(GraphMemoryBudgetTest, RootKindsShareConfiguredBudget) {
   auto bytes = serialize_value(value);
   const size_t required = nested_empty_budget(count);
 
-  auto byte_result = with_fory(static_cast<int64_t>(required - 1),
-                               [&](Fory &fory) {
-                                 return fory.deserialize<
-                                     std::vector<std::vector<std::string>>>(
-                                     bytes);
-                               });
+  auto byte_result =
+      with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
+        return fory.deserialize<std::vector<std::vector<std::string>>>(bytes);
+      });
   ASSERT_FALSE(byte_result.ok());
   EXPECT_EQ(byte_result.error().code(), ErrorCode::InvalidData);
 
   std::string input(reinterpret_cast<const char *>(bytes.data()), bytes.size());
   std::istringstream source(input);
   StdInputStream stream(source, 8);
-  auto stream_result = with_fory(static_cast<int64_t>(required - 1),
-                                 [&](Fory &fory) {
-                                   return fory.deserialize<
-                                       std::vector<std::vector<std::string>>>(
-                                       stream);
-                                 });
+  auto stream_result =
+      with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
+        return fory.deserialize<std::vector<std::vector<std::string>>>(stream);
+      });
   ASSERT_FALSE(stream_result.ok());
   EXPECT_EQ(stream_result.error().code(), ErrorCode::InvalidData);
 
   std::istringstream exact_source(input);
   StdInputStream exact_stream(exact_source, 8);
-  auto exact_result = with_fory(static_cast<int64_t>(required), [&](Fory &fory) {
-    return fory.deserialize<std::vector<std::vector<std::string>>>(
-        exact_stream);
-  });
+  auto exact_result =
+      with_fory(static_cast<int64_t>(required), [&](Fory &fory) {
+        return fory.deserialize<std::vector<std::vector<std::string>>>(
+            exact_stream);
+      });
   ASSERT_TRUE(exact_result.ok()) << exact_result.error().to_string();
   EXPECT_EQ(exact_result.value(), value);
 }
