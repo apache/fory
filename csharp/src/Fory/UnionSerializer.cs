@@ -67,8 +67,7 @@ public sealed class UnionSerializer<TUnion> : Serializer<TUnion>
             caseValue = DynamicAnyCodec.ReadAny(context, RefMode.Tracking, true);
         }
 
-        TUnion value = Factory(caseId, caseValue);
-        return value;
+        return Factory(caseId, caseValue);
     }
 
     private static void CheckWireCaseId(int caseId)
