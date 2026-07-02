@@ -45,8 +45,6 @@ import 'package:fory/src/types/uint64.dart';
 /// deserialization operation. Application code normally interacts with [Fory]
 /// instead of preparing contexts directly.
 final class ReadContext {
-  static const int _maxSafeBudgetBytes = 9007199254740991;
-
   /// Effective runtime configuration for the active operation.
   final Config config;
   final TypeResolver _typeResolver;
@@ -70,11 +68,7 @@ final class ReadContext {
   @pragma('vm:prefer-inline')
   void prepare(Buffer buffer) {
     _buffer = buffer;
-    final limit = config.maxGraphMemoryBytes;
-    if (limit > _maxSafeBudgetBytes) {
-      _throwGraphMemoryOverflow(limit);
-    }
-    _remainingGraphMemoryBytes = limit;
+    _remainingGraphMemoryBytes = config.maxGraphMemoryBytes;
   }
 
   @internal
@@ -98,14 +92,13 @@ final class ReadContext {
   @internal
   @pragma('vm:prefer-inline')
   void reserveGraphMemory(int bytes) {
-    if (bytes < 0 || bytes > _maxSafeBudgetBytes) {
+    if (bytes < 0) {
       _throwGraphMemoryOverflow(bytes);
     }
-    final remaining = _remainingGraphMemoryBytes - bytes;
-    if (remaining < 0) {
+    if (bytes > _remainingGraphMemoryBytes) {
       _throwGraphMemoryExceeded(bytes);
     }
-    _remainingGraphMemoryBytes = remaining;
+    _remainingGraphMemoryBytes -= bytes;
   }
 
   @pragma('vm:never-inline')
