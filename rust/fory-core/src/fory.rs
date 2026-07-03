@@ -1001,7 +1001,7 @@ impl Fory {
         self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
-            let result = match usize::try_from(context.max_graph_memory_bytes)
+            let result = match usize::try_from(self.config.max_graph_memory_bytes)
                 .map_err(|_| Error::invalid_data("max_graph_memory_bytes does not fit usize"))
             {
                 Ok(limit) => {
@@ -1075,7 +1075,7 @@ impl Fory {
             let mut new_reader = Reader::new(outlive_buffer);
             new_reader.set_cursor(reader.cursor);
             context.attach_reader(new_reader);
-            let result = match usize::try_from(context.max_graph_memory_bytes)
+            let result = match usize::try_from(self.config.max_graph_memory_bytes)
                 .map_err(|_| Error::invalid_data("max_graph_memory_bytes does not fit usize"))
             {
                 Ok(limit) => {

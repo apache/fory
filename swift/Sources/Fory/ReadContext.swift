@@ -35,7 +35,6 @@ public final class ReadContext {
     private var typeInfoScopeStack: [(typeKey: UInt64, previousTypeInfo: TypeInfo?)] = []
     private var lastTypeInfo = TypeInfo.uncached
     private let config: Config
-    let maxGraphMemoryBytes: Int
     var remainingGraphMemoryBytes = 0
 
     init(
@@ -50,7 +49,6 @@ public final class ReadContext {
         self.checkClassVersion = config.checkClassVersion
         self.maxDepth = config.maxDepth
         self.config = config
-        self.maxGraphMemoryBytes = Int(config.maxGraphMemoryBytes)
         self.refReader = RefReader()
     }
 

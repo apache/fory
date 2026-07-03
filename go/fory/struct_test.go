@@ -607,13 +607,13 @@ func TestSkipAnyValueReadsSharedTypeMeta(t *testing.T) {
 	readHeader(f.readCtx)
 	SkipAnyValue(f.readCtx, true)
 	require.NoError(t, f.readCtx.CheckError())
+	nextRootIndex := f.readCtx.Buffer().ReaderIndex()
 
-	f.resetReadState()
-	readHeader(f.readCtx)
+	rootBuffer := NewByteBuffer(buf.Bytes())
+	rootBuffer.SetReaderIndex(nextRootIndex)
 
 	var out any
-	f.readCtx.ReadValue(reflect.ValueOf(&out).Elem(), RefModeTracking, true)
-	require.NoError(t, f.readCtx.CheckError())
+	require.NoError(t, f.DeserializeFrom(rootBuffer, &out))
 
 	result, ok := out.(*Second)
 	require.True(t, ok)

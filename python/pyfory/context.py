@@ -471,8 +471,8 @@ class ReadContext:
         "field_nullable",
         "policy",
         "max_depth",
-        "max_graph_memory_bytes",
-        "remaining_graph_memory_bytes",
+        "_max_graph_memory_bytes",
+        "_remaining_graph_memory_bytes",
         "ref_reader",
         "meta_string_reader",
         "meta_share_context",
@@ -493,8 +493,8 @@ class ReadContext:
         self.field_nullable = config.field_nullable
         self.policy = config.policy
         self.max_depth = config.max_depth
-        self.max_graph_memory_bytes = config.max_graph_memory_bytes
-        self.remaining_graph_memory_bytes = 0
+        self._max_graph_memory_bytes = config.max_graph_memory_bytes
+        self._remaining_graph_memory_bytes = 0
         self.ref_reader = MapRefReader() if self.track_ref else NoRefReader()
         self.meta_string_reader = MetaStringReader(type_resolver.shared_registry)
         self.meta_share_context = MetaShareReadContext() if config.scoped_meta_share_enabled else None
@@ -529,7 +529,7 @@ class ReadContext:
         self.buffers = iter(buffers) if buffers is not None else None
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
-        self.remaining_graph_memory_bytes = self.max_graph_memory_bytes
+        self._remaining_graph_memory_bytes = self._max_graph_memory_bytes
         self.depth = 0
 
     def reset(self):
@@ -543,7 +543,7 @@ class ReadContext:
         self.buffers = None
         self.unsupported_objects = None
         self.peer_out_of_band_enabled = False
-        self.remaining_graph_memory_bytes = 0
+        self._remaining_graph_memory_bytes = 0
         self.depth = 0
 
     def reserve_graph_memory(self, num_bytes):
@@ -551,15 +551,15 @@ class ReadContext:
             raise ValueError("Estimated graph memory is negative")
         if num_bytes > _MAX_GRAPH_MEMORY_BYTES:
             raise ValueError("Estimated graph memory overflow")
-        remaining = self.remaining_graph_memory_bytes
+        remaining = self._remaining_graph_memory_bytes
         if num_bytes > remaining:
-            used = self.max_graph_memory_bytes - remaining
+            used = self._max_graph_memory_bytes - remaining
             raise ValueError(
                 f"Estimated graph memory budget exceeded: requested {num_bytes} bytes, "
-                f"used {used} bytes, limit {self.max_graph_memory_bytes} bytes. "
+                f"used {used} bytes, limit {self._max_graph_memory_bytes} bytes. "
                 "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
             )
-        self.remaining_graph_memory_bytes = remaining - num_bytes
+        self._remaining_graph_memory_bytes = remaining - num_bytes
 
     def add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj

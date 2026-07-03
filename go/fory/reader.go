@@ -82,11 +82,10 @@ func (c *ReadContext) IsXlang() bool {
 // NewReadContext creates a new read context
 func NewReadContext(trackRef bool) *ReadContext {
 	return &ReadContext{
-		buffer:                    NewByteBuffer(nil),
-		refReader:                 NewRefReader(trackRef),
-		trackRef:                  trackRef,
-		maxDepth:                  128, // Default maximum nesting depth
-		remainingGraphMemoryBytes: 128 * 1024 * 1024,
+		buffer:    NewByteBuffer(nil),
+		refReader: NewRefReader(trackRef),
+		trackRef:  trackRef,
+		maxDepth:  128, // Default maximum nesting depth
 	}
 }
 

@@ -127,25 +127,17 @@ def varuint_payload(value):
 
 
 def test_fixed_default_budget():
+    assert pyfory.Fory(xlang=False, ref=True).max_graph_memory_bytes == DEFAULT_GRAPH_MEMORY_BYTES
     fory = new_fory(xlang=False)
-    try:
-        fory.read_context.prepare(Buffer(b"x" * 17))
-        assert fory.read_context.remaining_graph_memory_bytes == DEFAULT_GRAPH_MEMORY_BYTES
-        fory.read_context.reserve_graph_memory(DEFAULT_GRAPH_MEMORY_BYTES)
-        with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
-            fory.read_context.reserve_graph_memory(1)
-    finally:
-        fory.reset_read()
+    value = [[], [], []]
+    assert fory.deserialize(fory.serialize(value)) == value
 
 
 def test_stream_default_budget():
     fory = new_fory(xlang=False)
-    try:
-        buffer = Buffer.from_stream(OneByteStream(b"streamed"))
-        fory.read_context.prepare(buffer)
-        assert fory.read_context.remaining_graph_memory_bytes == DEFAULT_GRAPH_MEMORY_BYTES
-    finally:
-        fory.reset_read()
+    value = [[], [], []]
+    data = fory.serialize(value)
+    assert fory.deserialize(Buffer.from_stream(OneByteStream(data))) == value
 
 
 def test_explicit_budget():

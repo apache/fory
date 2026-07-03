@@ -414,17 +414,16 @@ TEST(GraphMemoryBudgetTest, DensePathsSkipped) {
 }
 
 TEST(GraphMemoryBudgetTest, ByteCheckStillRejectsLargeLength) {
-  Config config;
-  auto resolver = std::make_unique<TypeResolver>();
-  ReadContext ctx(config, std::move(resolver));
-  std::vector<uint8_t> bytes{64};
-  Buffer buffer(bytes.data(), static_cast<uint32_t>(bytes.size()), false);
-  ctx.attach(buffer);
+  auto bytes = serialize_value(std::vector<std::string>{});
+  ASSERT_FALSE(bytes.empty());
+  bytes.back() = 64;
+  bytes.push_back(0);
 
-  auto result = Serializer<std::vector<std::string>>::read_data(ctx);
-  EXPECT_TRUE(result.empty());
-  ASSERT_TRUE(ctx.has_error());
-  EXPECT_EQ(ctx.error().code(), ErrorCode::BufferOutOfBound);
+  auto result = with_fory(kDefaultGraphMemoryBytes, [&](Fory &fory) {
+    return fory.deserialize<std::vector<std::string>>(bytes);
+  });
+  ASSERT_FALSE(result.ok());
+  EXPECT_EQ(result.error().code(), ErrorCode::BufferOutOfBound);
 }
 
 } // namespace

@@ -453,7 +453,9 @@ inline bool reserve_collection(std::vector<bool, Alloc> &result,
 // Helper to insert element into container (vector or set)
 template <typename Container, typename T>
 inline void collection_insert(Container &result, T &&elem) {
-  if constexpr (has_push_back_v<Container, T>) {
+  if constexpr (is_forward_list_v<Container>) {
+    result.push_front(std::forward<T>(elem));
+  } else if constexpr (has_push_back_v<Container, T>) {
     result.push_back(std::forward<T>(elem));
   } else {
     result.insert(std::forward<T>(elem));
@@ -536,8 +538,9 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
         }
         bool has_value = read_null_only_flag(ctx, RefMode::NullOnly);
         if (!has_value) {
-          if constexpr (has_push_back_v<Container, T>) {
-            result.push_back(T{});
+          if constexpr (has_push_back_v<Container, T> ||
+                        is_forward_list_v<Container>) {
+            collection_insert(result, T{});
           }
           // For sets, skip null elements
         } else {
@@ -562,8 +565,9 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
         }
         bool has_value = read_null_only_flag(ctx, RefMode::NullOnly);
         if (!has_value) {
-          if constexpr (has_push_back_v<Container, T>) {
-            result.push_back(T{});
+          if constexpr (has_push_back_v<Container, T> ||
+                        is_forward_list_v<Container>) {
+            collection_insert(result, T{});
           }
         } else {
           // Read type info + data without ref flag
@@ -584,122 +588,9 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
     }
   }
 
-  return result;
-}
-
-/// Read forward_list data without a temporary vector so budget accounting only
-/// covers the destination container's portable lower-bound storage.
-template <typename T, typename Alloc>
-inline std::forward_list<T, Alloc>
-read_forward_list_data_slow(ReadContext &ctx, uint32_t length) {
-  std::forward_list<T, Alloc> result;
-  if (length == 0) {
-    return result;
+  if constexpr (is_forward_list_v<Container>) {
+    result.reverse();
   }
-
-  constexpr bool elem_is_polymorphic = is_polymorphic_v<T>;
-
-  uint8_t bitmap = ctx.read_uint8(ctx.error());
-  if (FORY_PREDICT_FALSE(ctx.has_error())) {
-    return result;
-  }
-
-  bool track_ref = (bitmap & COLL_TRACKING_REF) != 0;
-  bool has_null = (bitmap & COLL_HAS_NULL) != 0;
-  bool is_decl_type = (bitmap & COLL_DECL_ELEMENT_TYPE) != 0;
-  bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
-
-  const TypeInfo *elem_type_info = nullptr;
-  if (is_same_type && !is_decl_type) {
-    elem_type_info = ctx.read_any_type_info(ctx.error());
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return result;
-    }
-  }
-
-  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
-    return result;
-  }
-
-  auto tail = result.before_begin();
-  auto append = [&](T &&elem) {
-    tail = result.insert_after(tail, std::move(elem));
-  };
-  auto append_default = [&]() { tail = result.emplace_after(tail); };
-
-  if (is_same_type) {
-    if (track_ref) {
-      for (uint32_t i = 0; i < length; ++i) {
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return result;
-        }
-        if constexpr (elem_is_polymorphic) {
-          auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::Tracking,
-                                                         *elem_type_info);
-          append(std::move(elem));
-        } else {
-          auto elem = Serializer<T>::read(ctx, RefMode::Tracking, false);
-          append(std::move(elem));
-        }
-      }
-    } else if (!has_null) {
-      for (uint32_t i = 0; i < length; ++i) {
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return result;
-        }
-        if constexpr (elem_is_polymorphic) {
-          auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::None,
-                                                         *elem_type_info);
-          append(std::move(elem));
-        } else {
-          auto elem = Serializer<T>::read(ctx, RefMode::None, false);
-          append(std::move(elem));
-        }
-      }
-    } else {
-      for (uint32_t i = 0; i < length; ++i) {
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return result;
-        }
-        bool has_value = read_null_only_flag(ctx, RefMode::NullOnly);
-        if (!has_value) {
-          append_default();
-        } else if constexpr (elem_is_polymorphic) {
-          auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::None,
-                                                         *elem_type_info);
-          append(std::move(elem));
-        } else {
-          auto elem = Serializer<T>::read(ctx, RefMode::None, false);
-          append(std::move(elem));
-        }
-      }
-    }
-  } else {
-    if (has_null && !track_ref) {
-      for (uint32_t i = 0; i < length; ++i) {
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return result;
-        }
-        bool has_value = read_null_only_flag(ctx, RefMode::NullOnly);
-        if (!has_value) {
-          append_default();
-        } else {
-          auto elem = Serializer<T>::read(ctx, RefMode::None, true);
-          append(std::move(elem));
-        }
-      }
-    } else {
-      for (uint32_t i = 0; i < length; ++i) {
-        if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return result;
-        }
-        auto elem = Serializer<T>::read(
-            ctx, track_ref ? RefMode::Tracking : RefMode::None, true);
-        append(std::move(elem));
-      }
-    }
-  }
-
   return result;
 }
 
@@ -1817,7 +1708,8 @@ struct Serializer<std::forward_list<T, Alloc>> {
     // Dispatch to slow path for polymorphic/shared-ref elements
     constexpr bool is_slow_path = is_polymorphic_v<T> || is_shared_ref_v<T>;
     if constexpr (is_slow_path) {
-      return read_forward_list_data_slow<T, Alloc>(ctx, length);
+      return read_collection_data_slow<T, std::forward_list<T, Alloc>>(ctx,
+                                                                       length);
     } else {
       auto tail = result.before_begin();
       // Fast path for non-polymorphic, non-shared-ref elements

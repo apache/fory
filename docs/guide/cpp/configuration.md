@@ -120,7 +120,7 @@ primitive dense-array payloads
 continue to rely on their byte-availability checks instead. `std::vector<bool>`
 is counted as packed standard-container storage.
 
-**Default:** `-1`
+**Default:** `128 MiB`
 
 ### max_dyn_depth(uint32_t)
 

@@ -496,7 +496,7 @@ public final class Fory {
         _ body: (ReadContext) throws -> R
     ) throws -> R {
         readContext.buffer.replace(with: data)
-        readContext.remainingGraphMemoryBytes = readContext.maxGraphMemoryBytes
+        readContext.remainingGraphMemoryBytes = Int(self.config.maxGraphMemoryBytes)
         defer {
             readContext.reset()
         }
@@ -558,7 +558,7 @@ public final class Fory {
     ) throws -> R {
         try typeResolver.finishRegistration()
         readContext.buffer.swapState(with: buffer)
-        readContext.remainingGraphMemoryBytes = readContext.maxGraphMemoryBytes
+        readContext.remainingGraphMemoryBytes = Int(self.config.maxGraphMemoryBytes)
         defer {
             readContext.buffer.swapState(with: buffer)
             readContext.reset()

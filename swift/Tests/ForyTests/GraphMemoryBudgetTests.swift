@@ -147,18 +147,10 @@ private func expectInvalidData(_ body: () throws -> Void) {
 
 @Test
 func fixedDefaultBudget() throws {
-    let config = Config(trackRef: false, compatible: false)
-    let context = ReadContext(
-        buffer: ByteBuffer(),
-        typeResolver: TypeResolver(config: config),
-        config: config
-    )
-
-    context.remainingGraphMemoryBytes = context.maxGraphMemoryBytes
-    try context.reserveGraphMemory(Int(defaultGraphMemoryBytes))
-    expectInvalidData {
-        try context.reserveGraphMemory(testReferenceBytes)
-    }
+    let fory = makeBudgetFory()
+    #expect(fory.config.maxGraphMemoryBytes == defaultGraphMemoryBytes)
+    let value = Array(repeating: [String](), count: 3)
+    #expect(try fory.deserialize(try fory.serialize(value)) == value)
 }
 
 @Test

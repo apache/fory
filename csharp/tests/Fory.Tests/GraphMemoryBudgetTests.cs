@@ -148,10 +148,8 @@ public sealed class GraphMemoryBudgetTests
         Assert.Throws<ArgumentOutOfRangeException>(() => NewFory(0));
         Assert.Throws<ArgumentOutOfRangeException>(() => NewFory(-2));
 
-        ReadContext context = new(new ByteReader([]), new TypeResolver(), NewFory().Config);
-        context._remainingGraphMemoryBytes = DefaultGraphMemoryBytes;
-        context.ReserveGraphMemory(DefaultGraphMemoryBytes);
-        Assert.Throws<InvalidDataException>(() => context.ReserveGraphMemory(ReferenceBytes));
+        List<List<string>> value = Enumerable.Range(0, 3).Select(_ => new List<string>()).ToList();
+        Assert.Equal(value.Count, NewFory().Deserialize<List<List<string>>>(Serialize(value)).Count);
     }
 
     [Fact]
@@ -336,9 +334,10 @@ public sealed class GraphMemoryBudgetTests
     [Fact]
     public void ByteChecksRejectLargeLength()
     {
-        byte[] bytes = [64, 0];
-        ReadContext context = new(new ByteReader(bytes), new TypeResolver(), NewFory().Config);
+        byte[] bytes = Serialize(new List<string>());
+        bytes[^1] = 64;
+        Array.Resize(ref bytes, bytes.Length + 1);
 
-        Assert.Throws<OutOfBoundsException>(() => new ListSerializer<string>().ReadData(context));
+        Assert.Throws<OutOfBoundsException>(() => NewFory().Deserialize<List<string>>(bytes));
     }
 }

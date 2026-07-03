@@ -51,16 +51,15 @@ func TestGraphMemoryBudgetConfig(t *testing.T) {
 }
 
 func TestGraphMemoryBudgetFixedDefault(t *testing.T) {
-	ctx := NewReadContext(false)
-	ctx.remainingGraphMemoryBytes = 128 * 1024 * 1024
-	require.Equal(t, int64(128*1024*1024), ctx.remainingGraphMemoryBytes)
-	require.True(t, ctx.ReserveGraphMemory(ctx.remainingGraphMemoryBytes))
-	require.False(t, ctx.ReserveGraphMemory(1))
-	require.Contains(t, ctx.CheckError().Error(), "maxGraphMemoryBytes")
+	writer := New(WithCompatible(false))
+	value := []any{[]any{}, []any{}, []any{}}
+	data, err := writer.Serialize(value)
+	require.NoError(t, err)
 
-	ctx = NewReadContext(false)
-	ctx.remainingGraphMemoryBytes = 77
-	require.Equal(t, int64(77), ctx.remainingGraphMemoryBytes)
+	var out []any
+	err = New(WithCompatible(false)).Deserialize(data, &out)
+	require.NoError(t, err)
+	require.Len(t, out, len(value))
 }
 
 func TestGraphBudgetRootKinds(t *testing.T) {

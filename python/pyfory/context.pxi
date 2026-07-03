@@ -747,8 +747,8 @@ cdef class ReadContext:
     cdef readonly bint field_nullable
     cdef readonly object policy
     cdef readonly int32_t max_depth
-    cdef public int64_t max_graph_memory_bytes
-    cdef public int64_t remaining_graph_memory_bytes
+    cdef int64_t max_graph_memory_bytes
+    cdef int64_t remaining_graph_memory_bytes
     cdef readonly RefReader ref_reader
     cdef readonly MetaStringReader meta_string_reader
     cdef readonly MetaShareReadContext meta_share_context

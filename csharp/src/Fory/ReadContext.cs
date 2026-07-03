@@ -62,7 +62,6 @@ public sealed class ReadContext
         RefReader = new RefReader();
         _maxDynamicReadDepth = config.MaxDepth;
         _config = config;
-        _remainingGraphMemoryBytes = config.MaxGraphMemoryBytes;
     }
 
     public ByteReader Reader { get; private set; }

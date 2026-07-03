@@ -437,8 +437,6 @@ ReadContext::ReadContext(const Config &config,
       type_resolver_(std::move(type_resolver)), current_dyn_depth_(0) {
   FORY_CHECK(config.max_graph_memory_bytes > 0)
       << "max_graph_memory_bytes must be positive";
-  remaining_graph_memory_bytes_ =
-      static_cast<size_t>(config.max_graph_memory_bytes);
 }
 
 ReadContext::~ReadContext() = default;
