@@ -759,6 +759,7 @@ void ReadContext::reset() {
   reading_type_infos_.clear();
   current_dyn_depth_ = 0;
   remaining_graph_memory_bytes_ = 0;
+  root_graph_owner_pending_ = false;
   if (meta_string_table_active_) {
     meta_string_table_.reset();
     meta_string_table_active_ = false;

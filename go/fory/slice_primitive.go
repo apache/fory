@@ -1435,6 +1435,10 @@ func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 // ReadStringSlice reads []string from buffer using LIST protocol
 func ReadStringSlice(buf *ByteBuffer, err *Error) []string {
 	length := buf.ReadLength(err)
+	return readStringSliceBody(buf, err, length)
+}
+
+func readStringSliceBody(buf *ByteBuffer, err *Error, length int) []string {
 	if length == 0 {
 		return make([]string, 0)
 	}

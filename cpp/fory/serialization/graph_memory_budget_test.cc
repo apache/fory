@@ -260,6 +260,70 @@ TEST(GraphMemoryBudgetTest, SmartPointerVectorOwner) {
   EXPECT_EQ(*exact_result.value(), *value);
 }
 
+TEST(GraphMemoryBudgetTest, NestedSmartPointerHandlesOwnedByVector) {
+  std::vector<std::shared_ptr<BudgetItem>> value;
+  value.reserve(2);
+  value.push_back(std::make_shared<BudgetItem>());
+  value.back()->id = 11;
+  value.back()->name = "left";
+  value.push_back(std::make_shared<BudgetItem>());
+  value.back()->id = 12;
+  value.back()->name = "right";
+
+  auto bytes = serialize_value(value);
+  const size_t required = sizeof(value) + value.size() * sizeof(value[0]) +
+                          value.size() * sizeof(BudgetItem);
+
+  auto small_result =
+      with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
+        return fory.deserialize<std::vector<std::shared_ptr<BudgetItem>>>(
+            bytes);
+      });
+  ASSERT_FALSE(small_result.ok());
+  EXPECT_EQ(small_result.error().code(), ErrorCode::InvalidData);
+
+  auto exact_result =
+      with_fory(static_cast<int64_t>(required), [&](Fory &fory) {
+        return fory.deserialize<std::vector<std::shared_ptr<BudgetItem>>>(
+            bytes);
+      });
+  ASSERT_TRUE(exact_result.ok()) << exact_result.error().to_string();
+  ASSERT_EQ(exact_result.value().size(), value.size());
+  ASSERT_NE(exact_result.value()[0], nullptr);
+  ASSERT_NE(exact_result.value()[1], nullptr);
+  EXPECT_EQ(*exact_result.value()[0], *value[0]);
+  EXPECT_EQ(*exact_result.value()[1], *value[1]);
+}
+
+TEST(GraphMemoryBudgetTest, OptionalSmartPointerRootOwnsInlineStorage) {
+  std::optional<std::shared_ptr<BudgetItem>> value =
+      std::make_shared<BudgetItem>();
+  (*value)->id = 17;
+  (*value)->name = "optional";
+
+  auto bytes = serialize_value(value);
+  constexpr size_t required =
+      sizeof(std::optional<std::shared_ptr<BudgetItem>>) + sizeof(BudgetItem);
+
+  auto small_result =
+      with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
+        return fory.deserialize<std::optional<std::shared_ptr<BudgetItem>>>(
+            bytes);
+      });
+  ASSERT_FALSE(small_result.ok());
+  EXPECT_EQ(small_result.error().code(), ErrorCode::InvalidData);
+
+  auto exact_result =
+      with_fory(static_cast<int64_t>(required), [&](Fory &fory) {
+        return fory.deserialize<std::optional<std::shared_ptr<BudgetItem>>>(
+            bytes);
+      });
+  ASSERT_TRUE(exact_result.ok()) << exact_result.error().to_string();
+  ASSERT_TRUE(exact_result.value().has_value());
+  ASSERT_NE(*exact_result.value(), nullptr);
+  EXPECT_EQ(**exact_result.value(), **value);
+}
+
 TEST(GraphMemoryBudgetTest, EmptyStructRootChargesOwner) {
   BudgetEmpty value;
   expect_budget_boundary(value, sizeof(BudgetEmpty));

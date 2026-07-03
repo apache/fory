@@ -603,29 +603,7 @@ func (c *ReadContext) ReadStringSlice(refMode RefMode, readType bool) []string {
 	if !c.ReserveGraphMemory(int64(length) * stringElementBytes) {
 		return nil
 	}
-	if length == 0 {
-		return make([]string, 0)
-	}
-	collectFlag := buf.ReadInt8(err)
-	if (collectFlag&CollectionIsSameType) != 0 && (collectFlag&CollectionIsDeclElementType) == 0 {
-		_ = buf.ReadUint8(err)
-	}
-	if c.HasError() || !buf.CheckReadable(length, err) {
-		return nil
-	}
-	result := make([]string, length)
-	trackRefs := (collectFlag & CollectionTrackingRef) != 0
-	hasNull := (collectFlag & CollectionHasNull) != 0
-	for i := 0; i < length; i++ {
-		if trackRefs || hasNull {
-			rf := buf.ReadInt8(err)
-			if rf == NullFlag {
-				continue
-			}
-		}
-		result[i] = readString(buf, err)
-	}
-	return result
+	return readStringSliceBody(buf, err, length)
 }
 
 // ReadStringStringMap reads map[string]string with optional ref/type info

@@ -45,6 +45,7 @@
 #include <mutex>
 #include <ostream>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -889,6 +890,11 @@ private:
     read_ctx_->attach(buffer);
     read_ctx_->remaining_graph_memory_bytes_ =
         static_cast<size_t>(read_ctx_->config_->max_graph_memory_bytes);
+    if constexpr (is_optional_v<std::remove_cv_t<T>> ||
+                  is_std_shared_ptr_v<std::remove_cv_t<T>> ||
+                  is_std_unique_ptr_v<std::remove_cv_t<T>>) {
+      read_ctx_->root_graph_owner_pending_ = true;
+    }
     ReadContextGuard guard(*read_ctx_);
     return deserialize_impl<T>(buffer);
   }

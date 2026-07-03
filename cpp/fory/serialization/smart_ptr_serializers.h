@@ -72,6 +72,11 @@ template <typename T> struct Serializer<std::optional<T>> {
   // Use the inner type's type_id
   static constexpr TypeId type_id = Serializer<T>::type_id;
 
+  static inline bool reserve_root_owner(ReadContext &ctx) {
+    constexpr size_t bytes = graph_value_owner_self_bytes<std::optional<T>>();
+    return ctx.reserve_pending_root_graph_owner(bytes);
+  }
+
   static inline void write_type_info(WriteContext &ctx) {
     Serializer<T>::write_type_info(ctx);
   }
@@ -133,6 +138,9 @@ template <typename T> struct Serializer<std::optional<T>> {
                                       bool read_type) {
     constexpr bool inner_is_nullable = is_nullable_v<T>;
     if (ref_mode == RefMode::None) {
+      if (FORY_PREDICT_FALSE(!reserve_root_owner(ctx))) {
+        return std::nullopt;
+      }
       T value = Serializer<T>::read(ctx, RefMode::None, read_type);
       if (ctx.has_error()) {
         return std::nullopt;
@@ -143,6 +151,10 @@ template <typename T> struct Serializer<std::optional<T>> {
     const uint32_t flag_pos = ctx.buffer().reader_index();
     int8_t flag = ctx.read_int8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return std::nullopt;
+    }
+
+    if (FORY_PREDICT_FALSE(!reserve_root_owner(ctx))) {
       return std::nullopt;
     }
 
@@ -181,6 +193,9 @@ template <typename T> struct Serializer<std::optional<T>> {
     constexpr bool inner_is_nullable = is_nullable_v<T>;
 
     if (ref_mode == RefMode::None) {
+      if (FORY_PREDICT_FALSE(!reserve_root_owner(ctx))) {
+        return std::nullopt;
+      }
       T value =
           Serializer<T>::read_with_type_info(ctx, RefMode::None, type_info);
       if (ctx.has_error()) {
@@ -192,6 +207,10 @@ template <typename T> struct Serializer<std::optional<T>> {
     const uint32_t flag_pos = ctx.buffer().reader_index();
     int8_t flag = ctx.read_int8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return std::nullopt;
+    }
+
+    if (FORY_PREDICT_FALSE(!reserve_root_owner(ctx))) {
       return std::nullopt;
     }
 
@@ -225,6 +244,9 @@ template <typename T> struct Serializer<std::optional<T>> {
   }
 
   static inline std::optional<T> read_data(ReadContext &ctx) {
+    if (FORY_PREDICT_FALSE(!reserve_root_owner(ctx))) {
+      return std::nullopt;
+    }
     T value = Serializer<T>::read_data(ctx);
     if (ctx.has_error()) {
       return std::nullopt;
@@ -511,8 +533,8 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       }
       reserved_ref_id = ctx.ref_reader().reserve_ref_id();
     }
-    if (FORY_PREDICT_FALSE(
-            !ctx.reserve_graph_memory(sizeof(std::shared_ptr<T>)))) {
+    if (FORY_PREDICT_FALSE(!ctx.reserve_pending_root_graph_owner(
+            sizeof(std::shared_ptr<T>)))) {
       return nullptr;
     }
 
@@ -965,8 +987,8 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
                              std::to_string(static_cast<int>(flag))));
       return nullptr;
     }
-    if (FORY_PREDICT_FALSE(
-            !ctx.reserve_graph_memory(sizeof(std::unique_ptr<T>)))) {
+    if (FORY_PREDICT_FALSE(!ctx.reserve_pending_root_graph_owner(
+            sizeof(std::unique_ptr<T>)))) {
       return nullptr;
     }
 
