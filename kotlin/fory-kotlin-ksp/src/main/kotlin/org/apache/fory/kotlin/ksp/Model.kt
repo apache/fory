@@ -28,6 +28,7 @@ internal data class KotlinSourceStruct(
   val construction: KotlinStructConstruction = KotlinStructConstruction.CONSTRUCTOR,
   val fields: List<KotlinSourceField>,
   val originatingFiles: List<com.google.devtools.ksp.symbol.KSFile>,
+  val graphMemoryBytes: Int = 1,
 ) {
   val qualifiedSerializerName: String =
     if (packageName.isEmpty()) serializerName else "$packageName.$serializerName"

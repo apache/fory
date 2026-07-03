@@ -62,7 +62,7 @@ public final class ExceptionSerializers {
     private final TypeResolver typeResolver;
     private final ObjectInstantiator<T> objectInstantiator;
     private final Constructor<T> messageConstructor;
-    private final long graphMemoryBytes;
+    private final int graphMemoryBytes;
     private volatile Serializer[] slotsSerializers;
     private volatile boolean rebuildSlotsSerializersAtRuntime;
 

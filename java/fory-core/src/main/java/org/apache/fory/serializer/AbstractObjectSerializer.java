@@ -81,7 +81,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   protected final TypeResolver typeResolver;
   protected final boolean isRecord;
   protected final ObjectInstantiator<T> objectInstantiator;
-  private final long objectGraphMemoryBytes;
+  protected final int objectGraphMemoryBytes;
   private SerializationFieldInfo[] fieldInfos;
   private RecordInfo copyRecordInfo;
 
@@ -108,16 +108,12 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     this.objectGraphMemoryBytes = computeObjectGraphMemoryBytes(type);
   }
 
-  protected final void reserveObjectGraphMemory(ReadContext readContext) {
-    readContext.reserveGraphMemory(objectGraphMemoryBytes);
-  }
-
-  static long computeObjectGraphMemoryBytes(Class<?> type) {
+  static int computeObjectGraphMemoryBytes(Class<?> type) {
     // One byte is a stable nonzero self cost, not an attempt to model JVM object headers.
-    long bytes = OBJECT_SELF_BYTES;
+    int bytes = OBJECT_SELF_BYTES;
     for (Field field : ReflectionUtils.getFields(type, true)) {
       if (!Modifier.isStatic(field.getModifiers())) {
-        bytes += fieldGraphMemoryBytes(field.getType());
+        bytes = Math.addExact(bytes, fieldGraphMemoryBytes(field.getType()));
       }
     }
     return bytes;

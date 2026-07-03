@@ -237,7 +237,7 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
 
   @Override
   public T read(ReadContext readContext) {
-    reserveObjectGraphMemory(readContext);
+    readContext.reserveGraphMemory(objectGraphMemoryBytes);
     if (isRecord) {
       Object[] fieldValues = new Object[allFields.length];
       if (hasCompatibleCollectionArrayRead) {

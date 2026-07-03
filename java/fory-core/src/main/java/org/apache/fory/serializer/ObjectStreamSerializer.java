@@ -269,7 +269,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
   @Override
   public Object read(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
-    reserveObjectGraphMemory(readContext);
+    readContext.reserveGraphMemory(objectGraphMemoryBytes);
     Object obj = objectInstantiator.newInstance();
     readContext.reference(obj);
     int numClasses = buffer.readInt16();

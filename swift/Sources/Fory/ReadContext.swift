@@ -866,39 +866,3 @@ extension ReadContext {
         return map
     }
 }
-
-private func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
-    let map = try context.readMapAnyHashableToAny(refMode: .none) ?? [:]
-    if map.isEmpty {
-        try reserveAnyReferenceMapMemory(context, [String: Any].self, count: 0)
-        return [String: Any]()
-    }
-    try reserveAnyReferenceMapMemory(context, [String: Any].self, count: map.count)
-    var stringMap: [String: Any] = [:]
-    stringMap.reserveCapacity(map.count)
-    for pair in map {
-        guard let key = pair.key.base as? String else {
-            stringMap.removeAll(keepingCapacity: false)
-            break
-        }
-        stringMap[key] = pair.value
-    }
-    if stringMap.count == map.count {
-        return stringMap
-    }
-
-    try reserveAnyReferenceMapMemory(context, [Int32: Any].self, count: map.count)
-    var int32Map: [Int32: Any] = [:]
-    int32Map.reserveCapacity(map.count)
-    for pair in map {
-        guard let key = pair.key.base as? Int32 else {
-            return map
-        }
-        int32Map[key] = pair.value
-    }
-    if int32Map.count == map.count {
-        return int32Map
-    }
-
-    return map
-}

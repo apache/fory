@@ -653,3 +653,63 @@ public func readMapAnyHashableToAny(
 ) throws -> [AnyHashable: Any]? {
     try context.readMapAnyHashableToAny(refMode: refMode, readTypeInfo: readTypeInfo)
 }
+
+private let anyMapReferenceBytes = 4
+
+@inline(never)
+private func throwAnyMapGraphMemoryOverflow() throws -> Never {
+    throw ForyError.invalidData("graph memory estimate overflows")
+}
+
+@inline(__always)
+private func reserveAnyMapMemory<Map>(
+    _ context: ReadContext, _ type: Map.Type, count: Int
+) throws {
+    let (slotBytes, overflow) = count.multipliedReportingOverflow(
+        by: 2 * anyMapReferenceBytes)
+    if overflow {
+        try throwAnyMapGraphMemoryOverflow()
+    }
+    let ownerBytes = max(1, MemoryLayout<Map>.stride)
+    let (bytes, addOverflow) = ownerBytes.addingReportingOverflow(slotBytes)
+    if addOverflow {
+        try throwAnyMapGraphMemoryOverflow()
+    }
+    try context.reserveGraphMemory(bytes)
+}
+
+func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
+    let map = try context.readMapAnyHashableToAny(refMode: .none) ?? [:]
+    if map.isEmpty {
+        try reserveAnyMapMemory(context, [String: Any].self, count: 0)
+        return [String: Any]()
+    }
+    try reserveAnyMapMemory(context, [String: Any].self, count: map.count)
+    var stringMap: [String: Any] = [:]
+    stringMap.reserveCapacity(map.count)
+    for pair in map {
+        guard let key = pair.key.base as? String else {
+            stringMap.removeAll(keepingCapacity: false)
+            break
+        }
+        stringMap[key] = pair.value
+    }
+    if stringMap.count == map.count {
+        return stringMap
+    }
+
+    try reserveAnyMapMemory(context, [Int32: Any].self, count: map.count)
+    var int32Map: [Int32: Any] = [:]
+    int32Map.reserveCapacity(map.count)
+    for pair in map {
+        guard let key = pair.key.base as? Int32 else {
+            return map
+        }
+        int32Map[key] = pair.value
+    }
+    if int32Map.count == map.count {
+        return int32Map
+    }
+
+    return map
+}

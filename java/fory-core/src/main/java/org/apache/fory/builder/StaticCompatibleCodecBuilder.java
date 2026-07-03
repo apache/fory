@@ -160,7 +160,7 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
             ? "((" + ctx.type(beanClass) + ") " + beanCode.value() + ")"
             : beanCode.value().toString();
     StringBuilder code = new StringBuilder();
-    code.append("reserveObjectGraphMemory(").append(READ_CONTEXT_NAME).append(");\n");
+    code.append(graphMemoryReserveCode()).append('\n');
     if (StringUtils.isNotBlank(beanCode.code())) {
       code.append(beanCode.code()).append('\n');
     }
@@ -190,7 +190,7 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
   private String genRecordCompatibleRead() {
     RecordComponent[] components = RecordUtils.getRecordComponents(beanClass);
     StringBuilder code = new StringBuilder();
-    code.append("reserveObjectGraphMemory(").append(READ_CONTEXT_NAME).append(");\n");
+    code.append(graphMemoryReserveCode()).append('\n');
     for (int i = 0; i < components.length; i++) {
       Class<?> componentType = components[i].getType();
       code.append(recordLocalType(componentType))

@@ -249,10 +249,31 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
           KotlinSerializerVisibility.PUBLIC
         },
       construction = parsed.construction,
+      graphMemoryBytes = graphMemoryBytes(fields),
       fields = fields,
       originatingFiles = listOfNotNull(declaration.containingFile),
     )
   }
+
+  private fun graphMemoryBytes(fields: List<KotlinSourceField>): Int {
+    var bytes = 1
+    for (field in fields) {
+      bytes = Math.addExact(bytes, fieldGraphMemoryBytes(field.type))
+    }
+    return bytes
+  }
+
+  private fun fieldGraphMemoryBytes(type: KotlinSourceTypeNode): Int =
+    when (type.typeName) {
+      "boolean",
+      "byte" -> 1
+      "short" -> 2
+      "int",
+      "float" -> 4
+      "long",
+      "double" -> 8
+      else -> 4
+    }
 
   private fun parseStructFields(
     declaration: KSClassDeclaration,

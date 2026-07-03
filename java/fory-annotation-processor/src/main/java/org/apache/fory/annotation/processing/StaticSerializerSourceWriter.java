@@ -247,7 +247,7 @@ final class StaticSerializerSourceWriter {
         .append(struct.typeName)
         .append(" readSchemaConsistent(ReadContext readContext) {\n");
     builder.append("    MemoryBuffer buffer = readContext.getBuffer();\n");
-    builder.append("    reserveObjectGraphMemory(readContext);\n");
+    appendGraphMemoryReserve();
     builder.append("    if (typeResolver.checkClassVersion()) {\n");
     builder.append("      checkClassVersion(buffer.readInt32(), classVersionHash);\n");
     builder.append("    }\n");
@@ -272,7 +272,9 @@ final class StaticSerializerSourceWriter {
           .append(" value = ")
           .append(newGeneratedBeanExpression())
           .append(";\n");
-      builder.append("    readContext.reference(value);\n");
+      builder.append("    if (needToWriteRef) {\n");
+      builder.append("      readContext.reference(value);\n");
+      builder.append("    }\n");
       builder.append("    readFields(readContext, value);\n");
       builder.append("    return value;\n");
     }
@@ -795,6 +797,13 @@ final class StaticSerializerSourceWriter {
     return meta.substring(start + prefix.length(), end);
   }
 
+  private void appendGraphMemoryReserve() {
+    builder
+        .append("    readContext.reserveGraphMemory(")
+        .append(struct.graphMemoryBytes)
+        .append(");\n");
+  }
+
   private void writeCompatibleRead() {
     builder.append("  @Override\n");
     builder
@@ -804,7 +813,7 @@ final class StaticSerializerSourceWriter {
     builder.append("    if (sameSchemaCompatible) {\n");
     builder.append("      return readSchemaConsistent(readContext);\n");
     builder.append("    }\n");
-    builder.append("    reserveObjectGraphMemory(readContext);\n");
+    appendGraphMemoryReserve();
     if (struct.record) {
       for (SourceField field : struct.fields) {
         builder
@@ -835,7 +844,9 @@ final class StaticSerializerSourceWriter {
           .append(" value = ")
           .append(newGeneratedBeanExpression())
           .append(";\n");
-      builder.append("    readContext.reference(value);\n");
+      builder.append("    if (needToWriteRef) {\n");
+      builder.append("      readContext.reference(value);\n");
+      builder.append("    }\n");
       builder.append("    for (int i = 0; i < remoteFields.size(); i++) {\n");
       builder.append("      RemoteFieldInfo remoteField = remoteFields.get(i);\n");
       builder.append("      readCompatibleField(readContext, value, remoteField);\n");

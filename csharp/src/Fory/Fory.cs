@@ -192,7 +192,6 @@ public sealed class Fory
     {
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
-        _readContext._remainingGraphMemoryBytes = Config.MaxGraphMemoryBytes;
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -213,7 +212,6 @@ public sealed class Fory
     {
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
-        _readContext._remainingGraphMemoryBytes = Config.MaxGraphMemoryBytes;
         T value = DeserializeFromReader<T>(reader);
         if (reader.Remaining != 0)
         {
@@ -234,7 +232,6 @@ public sealed class Fory
         byte[] bytes = payload.ToArray();
         ByteReader reader = _readContext.Reader;
         reader.Reset(bytes);
-        _readContext._remainingGraphMemoryBytes = Config.MaxGraphMemoryBytes;
         T value = DeserializeFromReader<T>(reader);
         payload = payload.Slice(reader.Cursor);
         return value;
@@ -280,29 +277,35 @@ public sealed class Fory
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private T DeserializeFromReader<T>(ByteReader reader)
     {
-        ReadHead(reader);
-        Serializer<T> serializer = _typeResolver.GetSerializer<T>();
         ReadContext readContext = _readContext;
         readContext.ResetFor(reader);
-        T value = _trackRef
-            ? serializer.Read(readContext, RefMode.Tracking, true)
-            : ReadRootNoRef(serializer, readContext);
-        if (_trackRef || readContext.RefReader.HasRefs)
+        readContext._remainingGraphMemoryBytes = Config.MaxGraphMemoryBytes;
+        try
         {
-            readContext.RefReader.Reset();
+            ReadHead(reader);
+            Serializer<T> serializer = _typeResolver.GetSerializer<T>();
+            return _trackRef
+                ? serializer.Read(readContext, RefMode.Tracking, true)
+                : ReadRootNoRef(serializer, readContext);
         }
-        if (readContext._reservedRefIds.Count != 0)
+        finally
         {
-            readContext._reservedRefIds.Clear();
+            if (_trackRef || readContext.RefReader.HasRefs)
+            {
+                readContext.RefReader.Reset();
+            }
+            if (readContext._reservedRefIds.Count != 0)
+            {
+                readContext._reservedRefIds.Clear();
+            }
+            readContext._typeMetaType = null;
+            readContext._typeMeta = null;
+            readContext._typeMetaByType?.ClearKeys();
+            readContext._readTypeInfoByType.ClearKeys();
+            readContext._cachedTypeMetaType = null;
+            readContext._cachedTypeMeta = null;
+            readContext._currentDynamicReadDepth = 0;
         }
-        readContext._typeMetaType = null;
-        readContext._typeMeta = null;
-        readContext._typeMetaByType?.ClearKeys();
-        readContext._readTypeInfoByType.ClearKeys();
-        readContext._cachedTypeMetaType = null;
-        readContext._cachedTypeMeta = null;
-        readContext._currentDynamicReadDepth = 0;
-        return value;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -39,6 +39,8 @@ import static org.apache.fory.type.TypeUtils.PRIMITIVE_VOID_TYPE;
 import static org.apache.fory.type.TypeUtils.SHORT_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -65,6 +67,7 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.platform.JdkVersion;
+import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.type.BFloat16;
@@ -94,6 +97,8 @@ import org.apache.fory.util.record.RecordUtils;
  */
 public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   private static final Logger LOG = LoggerFactory.getLogger(ObjectCodecBuilder.class);
+  private static final int OBJECT_SELF_BYTES = 1;
+  private static final int REFERENCE_BYTES = 4;
 
   private final Literal classVersionHash;
   protected ObjectCodecOptimizer objectCodecOptimizer;
@@ -793,7 +798,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   public Expression buildDecodeExpression() {
     Reference buffer = new Reference(BUFFER_NAME, bufferTypeRef, false);
     ListExpression expressions = new ListExpression();
-    expressions.add(new Expression.Block("reserveObjectGraphMemory(" + READ_CONTEXT_NAME + ");"));
+    expressions.add(new Expression.Block(graphMemoryReserveCode()));
     if (typeResolver.checkClassVersion()) {
       expressions.add(checkClassVersion(buffer));
     }
@@ -831,6 +836,39 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     }
     expressions.add(new Expression.Return(bean));
     return expressions;
+  }
+
+  protected String graphMemoryReserveCode() {
+    return READ_CONTEXT_NAME + ".reserveGraphMemory(" + objectGraphMemoryBytes() + ");";
+  }
+
+  private int objectGraphMemoryBytes() {
+    int bytes = OBJECT_SELF_BYTES;
+    for (Field field : ReflectionUtils.getFields(beanClass, true)) {
+      if (!Modifier.isStatic(field.getModifiers())) {
+        bytes = Math.addExact(bytes, fieldGraphMemoryBytes(field.getType()));
+      }
+    }
+    return bytes;
+  }
+
+  private int fieldGraphMemoryBytes(Class<?> fieldType) {
+    if (!fieldType.isPrimitive()) {
+      return REFERENCE_BYTES;
+    }
+    if (fieldType == boolean.class || fieldType == byte.class) {
+      return 1;
+    }
+    if (fieldType == char.class || fieldType == short.class) {
+      return 2;
+    }
+    if (fieldType == int.class || fieldType == float.class) {
+      return 4;
+    }
+    if (fieldType == long.class || fieldType == double.class) {
+      return 8;
+    }
+    return 0;
   }
 
   protected void deserializeReadGroup(

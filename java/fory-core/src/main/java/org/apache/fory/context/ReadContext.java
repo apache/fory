@@ -317,23 +317,29 @@ public final class ReadContext {
     return config;
   }
 
-  public void reserveGraphMemory(long bytes) {
+  // Failure may leave the remaining counter dirty; root cleanup resets read state for the
+  // operation.
+  public final void reserveGraphMemory(long bytes) {
+    long remaining = remainingGraphMemoryBytes - bytes;
+    remainingGraphMemoryBytes = remaining;
+    if ((bytes | remaining) < 0) {
+      throwInvalidGraphMemory(bytes, remaining + bytes);
+    }
+  }
+
+  public final void reserveGraphMemory(int bytes) {
+    long remaining = remainingGraphMemoryBytes - bytes;
+    remainingGraphMemoryBytes = remaining;
+    if ((bytes | remaining) < 0) {
+      throwInvalidGraphMemory(bytes, remaining + bytes);
+    }
+  }
+
+  private void throwInvalidGraphMemory(long bytes, long remaining) {
     if (bytes < 0) {
-      throwNegativeGraphMemory(bytes);
+      throw new InsecureException(
+          "Estimated graph memory must be non-negative, but got " + bytes + " bytes.");
     }
-    long remaining = remainingGraphMemoryBytes;
-    if (bytes > remaining) {
-      throwGraphMemoryExceeded(bytes, remaining);
-    }
-    remainingGraphMemoryBytes = remaining - bytes;
-  }
-
-  private void throwNegativeGraphMemory(long bytes) {
-    throw new InsecureException(
-        "Estimated graph memory must be non-negative, but got " + bytes + " bytes.");
-  }
-
-  private void throwGraphMemoryExceeded(long bytes, long remaining) {
     throw new InsecureException(
         "Estimated graph memory request "
             + bytes
@@ -390,8 +396,10 @@ public final class ReadContext {
   }
 
   /** Binds the most recently preserved read ref id to {@code object}. */
-  public void reference(Object object) {
-    refReader.reference(object);
+  public final void reference(Object object) {
+    if (trackingRef) {
+      refReader.reference(object);
+    }
   }
 
   /** Returns a previously read object by ref id. */
