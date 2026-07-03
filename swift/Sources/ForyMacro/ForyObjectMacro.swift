@@ -2616,7 +2616,7 @@ private func writeLine(for field: ParsedField) -> String {
         """
 }
 
-private enum MacroTypeId {
+enum MacroTypeId {
     static let unknown: UInt32 = 0
     static let compatibleStruct: UInt32 = 27
     static let namedStruct: UInt32 = 28

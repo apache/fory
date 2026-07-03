@@ -457,7 +457,7 @@ private func buildClassAssignBody(
     compatibleAligned: Bool
 ) -> String {
     let remainingAssignLines = sortedFields.dropFirst(primitiveFastFields.count).map { field -> String in
-        if let inlineLines = classInlineValueReadLines(field, compatibleAligned: compatibleAligned) {
+        if let inlineLines = classInlineStructReadLines(field, compatibleAligned: compatibleAligned) {
             return inlineLines
         }
         let valueExpr: String
@@ -492,7 +492,7 @@ private func buildStructReadBody(
     compatibleAligned: Bool
 ) -> String {
     let remainingReadLines = sortedFields.dropFirst(primitiveFastFields.count).map { field -> String in
-        if let inlineLines = structInlineValueReadLines(field, compatibleAligned: compatibleAligned) {
+        if let inlineLines = structInlineStructReadLines(field, compatibleAligned: compatibleAligned) {
             return inlineLines
         }
         let valueExpr =
@@ -513,80 +513,83 @@ private func buildStructReadBody(
     return sections.joined(separator: "\n        ")
 }
 
-private func structInlineValueReadLines(_ field: ParsedField, compatibleAligned: Bool) -> String? {
-    guard fieldCanReadInlineValueData(field) else {
+private func structInlineStructReadLines(_ field: ParsedField, compatibleAligned: Bool) -> String? {
+    guard fieldCanReadInlineStructData(field) else {
         return nil
     }
-    let readTypeInfo = compatibleAligned
-    let readTypeInfoExpr =
-        readTypeInfo ? "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)" : "false"
-    let valueRead: String
-    if readTypeInfo {
-        valueRead = """
-            if let __\(field.name)TypeInfo = try \(field.typeText).foryReadTypeInfo(context) {
-                __\(field.name) = try \(field.typeText).foryReadCompatibleData(
-                    context,
-                    remoteTypeInfo: __\(field.name)TypeInfo
-                )
-            } else {
-                __\(field.name) = try \(field.typeText).foryReadData(context)
-            }
-            """
-    } else {
-        valueRead = "__\(field.name) = try \(field.typeText).foryReadData(context)"
-    }
+    let valueRead = inlineStructReadStatement(
+        field,
+        targetExpr: "__\(field.name)",
+        compatibleAligned: compatibleAligned
+    )
     return """
         let __\(field.name): \(field.typeText)
-        if !\(field.typeText).isRefType {
+        if !context.trackRef && !\(field.typeText).isRefType {
             \(valueRead)
         } else {
             __\(field.name) = try \(field.typeText).foryRead(
                 context,
                 refMode: \(fieldRefModeExpression(field)),
-                readTypeInfo: \(readTypeInfoExpr)
+                readTypeInfo: \(compatibleAligned ? "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)" : "false")
             )
         }
         """
 }
 
-private func classInlineValueReadLines(_ field: ParsedField, compatibleAligned: Bool) -> String? {
-    guard fieldCanReadInlineValueData(field) else {
+private func classInlineStructReadLines(_ field: ParsedField, compatibleAligned: Bool) -> String? {
+    guard fieldCanReadInlineStructData(field) else {
         return nil
     }
-    let readTypeInfo = compatibleAligned
-    let readTypeInfoExpr =
-        readTypeInfo ? "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)" : "false"
-    let valueRead: String
-    if readTypeInfo {
-        valueRead = """
-            if let __\(field.name)TypeInfo = try \(field.typeText).foryReadTypeInfo(context) {
-                value.\(field.name) = try \(field.typeText).foryReadCompatibleData(
-                    context,
-                    remoteTypeInfo: __\(field.name)TypeInfo
-                )
-            } else {
-                value.\(field.name) = try \(field.typeText).foryReadData(context)
-            }
-            """
-    } else {
-        valueRead = "value.\(field.name) = try \(field.typeText).foryReadData(context)"
-    }
+    let valueRead = inlineStructReadStatement(
+        field,
+        targetExpr: "value.\(field.name)",
+        compatibleAligned: compatibleAligned
+    )
     return """
-        if !\(field.typeText).isRefType {
+        if !context.trackRef && !\(field.typeText).isRefType {
             \(valueRead)
         } else {
             value.\(field.name) = try \(field.typeText).foryRead(
                 context,
                 refMode: \(fieldRefModeExpression(field)),
-                readTypeInfo: \(readTypeInfoExpr)
+                readTypeInfo: \(compatibleAligned ? "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)" : "false")
             )
         }
         """
 }
 
-private func fieldCanReadInlineValueData(_ field: ParsedField) -> Bool {
-    field.dynamicAnyCodec == nil && field.customCodecType == nil && !field.isOptional
-        && compatibleFieldNeedsTypeInfo(field)
+private func inlineStructReadStatement(
+    _ field: ParsedField,
+    targetExpr: String,
+    compatibleAligned: Bool
+) -> String {
+    if compatibleAligned {
+        return """
+            if let __\(field.name)TypeInfo = try \(field.typeText).foryReadTypeInfo(context) {
+                \(targetExpr) = try \(field.typeText).foryReadCompatibleData(
+                    context,
+                    remoteTypeInfo: __\(field.name)TypeInfo
+                )
+            } else {
+                \(targetExpr) = try \(field.typeText).foryReadData(context)
+            }
+            """
+    }
+    return "\(targetExpr) = try \(field.typeText).foryReadData(context)"
+}
+
+private func fieldCanReadInlineStructData(_ field: ParsedField) -> Bool {
+    guard field.dynamicAnyCodec == nil, field.customCodecType == nil, !field.isOptional else {
+        return false
+    }
+    switch field.typeID {
+    case MacroTypeId.compatibleStruct,
+        MacroTypeId.namedStruct,
+        MacroTypeId.namedCompatibleStruct:
+        return true
+    default:
+        return false
+    }
 }
 
 private func buildCtorArgs(_ fields: [ParsedField]) -> String {
@@ -622,18 +625,13 @@ private func buildCompatibleReadCases(
 ) -> String {
     sortedFields.enumerated().map { sortedIndex, field -> String in
         let directValueExpr =
-            fieldCanReadInlineValueData(field)
-            ? inlineValueReadExpr(
-                field,
-                refModeExpr: fieldRefModeExpression(field),
-                readTypeInfoExpr: "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)"
-            ) : compatibleSchemaReadFieldExpr(field)
+            fieldCanReadInlineStructData(field)
+            ? inlineStructReadExpr(field, readTypeInfoExpr: "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)")
+            : compatibleSchemaReadFieldExpr(field)
         let compatibleValueExpr =
-            fieldCanReadInlineValueData(field)
-            ? inlineValueReadExpr(
+            fieldCanReadInlineStructData(field)
+            ? inlineStructReadExpr(
                 field,
-                refModeExpr:
-                    "RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef)",
                 readTypeInfoExpr:
                     "TypeId.needsTypeInfoForField(TypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
             )
@@ -656,14 +654,13 @@ private func buildCompatibleReadCases(
     }.joined(separator: "\n\(indent)")
 }
 
-private func inlineValueReadExpr(
+private func inlineStructReadExpr(
     _ field: ParsedField,
-    refModeExpr: String,
     readTypeInfoExpr: String
 ) -> String {
     """
     try {
-        if !\(field.typeText).isRefType {
+        if !context.trackRef && !\(field.typeText).isRefType {
             if \(readTypeInfoExpr),
                let __typeInfo = try \(field.typeText).foryReadTypeInfo(context) {
                 return try \(field.typeText).foryReadCompatibleData(
@@ -675,7 +672,7 @@ private func inlineValueReadExpr(
         }
         return try \(field.typeText).foryRead(
             context,
-            refMode: \(refModeExpr),
+            refMode: \(fieldRefModeExpression(field)),
             readTypeInfo: \(readTypeInfoExpr)
         )
     }()
