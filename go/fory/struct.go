@@ -1373,8 +1373,10 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 func (s *structSerializer) readRoot(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.buffer
 	ctxErr := ctx.Err()
+	refID := int32(NotNullValueFlag)
 	if ctx.refResolver.refTracking {
-		refID, refErr := ctx.refResolver.TryPreserveRefId(buf)
+		var refErr error
+		refID, refErr = ctx.refResolver.TryPreserveRefId(buf)
 		if refErr != nil {
 			ctx.SetError(FromError(refErr))
 			return
@@ -1397,9 +1399,7 @@ func (s *structSerializer) readRoot(ctx *ReadContext, value reflect.Value) {
 			return
 		}
 	}
-	if !ctx.ReserveGraphMemory(s.graphBytes) {
-		return
-	}
+	readStruct := s
 	if s.type_ != nil {
 		serializer := ctx.typeResolver.ReadTypeInfoForType(buf, s.type_, ctxErr)
 		if ctxErr.HasError() {
@@ -1410,11 +1410,16 @@ func (s *structSerializer) readRoot(ctx *ReadContext, value reflect.Value) {
 			return
 		}
 		if structSer, ok := serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
-			structSer.ReadData(ctx, value)
-			return
+			readStruct = structSer
 		}
 	}
-	s.ReadData(ctx, value)
+	if !ctx.ReserveGraphMemory(readStruct.graphBytes) {
+		return
+	}
+	if ctx.refResolver.refTracking && value.CanAddr() {
+		ctx.refResolver.SetReadObject(refID, value.Addr())
+	}
+	readStruct.ReadData(ctx, value)
 }
 
 func (s *structSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
