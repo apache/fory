@@ -76,10 +76,11 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
             stringLiteral: buildDefaultDecl(isClass: parsed.isClass, fields: parsed.fields, accessPrefix: accessPrefix)
         )
         let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl(accessPrefix: accessPrefix))
-        let readWrapperDecl: DeclSyntax? =
-            parsed.isClass
-            ? DeclSyntax(stringLiteral: buildClassReadWrapperDecl(accessPrefix: accessPrefix))
-            : nil
+        let readWrapperDecl: DeclSyntax =
+            DeclSyntax(
+                stringLiteral: parsed.isClass
+                    ? buildClassReadWrapperDecl(accessPrefix: accessPrefix)
+                    : buildStructReadWrapperDecl(accessPrefix: accessPrefix))
         let writeDecl: DeclSyntax = DeclSyntax(
             stringLiteral: buildWriteDataDecl(sortedFields: sortedFields, accessPrefix: accessPrefix)
         )

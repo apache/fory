@@ -56,6 +56,25 @@ public struct BudgetValue
 }
 
 [ForyStruct]
+public sealed class BudgetValueHolder
+{
+    public BudgetValue Value { get; set; }
+}
+
+[ForyStruct]
+public sealed class BudgetValueCompatWriter
+{
+    public BudgetValue Value { get; set; }
+    public int Extra { get; set; }
+}
+
+[ForyStruct]
+public sealed class BudgetValueCompatReader
+{
+    public BudgetValue Value { get; set; }
+}
+
+[ForyStruct]
 public sealed class GeneratedSchemaListBudget
 {
     [ForyField(Type = typeof(S.List<S.Int32>))]
@@ -100,6 +119,7 @@ public sealed class GraphMemoryBudgetTests
     private const long BudgetArrayHolderBytes = ObjectBytes + ReferenceBytes;
     private const long GeneratedGraphHolderBytes = ObjectBytes + ReferenceBytes;
     private const long BudgetValueBytes = 4;
+    private const long BudgetValueHolderBytes = ObjectBytes + BudgetValueBytes;
     private const long DefaultGraphMemoryBytes = 128L * 1024 * 1024;
 
     private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
@@ -118,7 +138,8 @@ public sealed class GraphMemoryBudgetTests
             .Register<BudgetValue>(1005)
             .Register<GeneratedSchemaListBudget>(1006)
             .Register<GeneratedPackedListBudget>(1007)
-            .Register<GeneratedSchemaMapBudget>(1008);
+            .Register<GeneratedSchemaMapBudget>(1008)
+            .Register<BudgetValueHolder>(1009);
     }
 
     private static byte[] Serialize<T>(T value)
@@ -249,6 +270,11 @@ public sealed class GraphMemoryBudgetTests
         long listRequired = ListBudget<BudgetValue>(values.Count);
         Assert.Throws<InvalidDataException>(() => NewFory(listRequired - 1).Deserialize<List<BudgetValue>>(listBytes));
         Assert.Equal(values.Select(v => v.Id), NewFory(listRequired).Deserialize<List<BudgetValue>>(listBytes).Select(v => v.Id));
+
+        BudgetValueHolder holder = new() { Value = new BudgetValue { Id = 11 } };
+        byte[] holderBytes = Serialize(holder);
+        Assert.Throws<InvalidDataException>(() => NewFory(BudgetValueHolderBytes - 1).Deserialize<BudgetValueHolder>(holderBytes));
+        Assert.Equal(holder.Value.Id, NewFory(BudgetValueHolderBytes).Deserialize<BudgetValueHolder>(holderBytes).Value.Id);
     }
 
     [Fact]
@@ -329,6 +355,32 @@ public sealed class GraphMemoryBudgetTests
         reader.Register<CompatibleBudgetArray>(1010);
 
         Assert.Equal(new[] { 1, 2, 3 }, reader.Deserialize<CompatibleBudgetArray>(bytes).Values);
+    }
+
+    [Fact]
+    public void CompatibleInlineValueFieldIsChargedByHolder()
+    {
+        ForyRuntime writer = ForyRuntime.Builder().Compatible(true).TrackRef(false).Build();
+        writer.Register<BudgetValue>(1005).Register<BudgetValueCompatWriter>(1011);
+        byte[] bytes = writer.Serialize(new BudgetValueCompatWriter { Value = new BudgetValue { Id = 9 }, Extra = 1 });
+
+        ForyRuntime reader = ForyRuntime.Builder()
+            .Compatible(true)
+            .TrackRef(false)
+            .MaxGraphMemoryBytes(BudgetValueHolderBytes)
+            .Build();
+        reader.Register<BudgetValue>(1005).Register<BudgetValueCompatReader>(1011);
+
+        ForyRuntime tooSmall = ForyRuntime.Builder()
+            .Compatible(true)
+            .TrackRef(false)
+            .MaxGraphMemoryBytes(BudgetValueHolderBytes - 1)
+            .Build();
+        tooSmall.Register<BudgetValue>(1005).Register<BudgetValueCompatReader>(1011);
+        Assert.Throws<InvalidDataException>(() => tooSmall.Deserialize<BudgetValueCompatReader>(bytes));
+
+        BudgetValueCompatReader result = reader.Deserialize<BudgetValueCompatReader>(bytes);
+        Assert.Equal(9, result.Value.Id);
     }
 
     [Fact]

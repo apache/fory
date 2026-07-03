@@ -35,6 +35,46 @@ struct BudgetItem {
 }
 
 #[derive(ForyStruct, Debug, PartialEq)]
+struct BudgetItemHolder {
+    item: BudgetItem,
+}
+
+#[derive(ForyStruct, Debug)]
+struct BudgetItemCompatWriter {
+    item: BudgetItem,
+    extra: i32,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct BudgetItemCompatReader {
+    item: BudgetItem,
+}
+
+#[derive(ForyStruct, Debug)]
+struct BudgetNestedValueWriter {
+    left: u64,
+    right: u64,
+    extra: i32,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct BudgetNestedValueReader {
+    left: u64,
+    right: u64,
+}
+
+#[derive(ForyStruct, Debug)]
+struct BudgetNestedHolderWriter {
+    item: BudgetNestedValueWriter,
+    extra: i32,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct BudgetNestedHolderReader {
+    item: BudgetNestedValueReader,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
 struct BudgetEmpty;
 
 #[derive(ForyStruct, Debug)]
@@ -56,6 +96,8 @@ fn fory_with_budget(max_graph_memory_bytes: i64) -> Fory {
     fory.register_by_name::<BudgetSiblings>("BudgetSiblings")
         .unwrap();
     fory.register_by_name::<BudgetItem>("BudgetItem").unwrap();
+    fory.register_by_name::<BudgetItemHolder>("BudgetItemHolder")
+        .unwrap();
     fory.register_by_name::<BudgetEmpty>("BudgetEmpty").unwrap();
     fory
 }
@@ -223,6 +265,26 @@ fn inline_value_vec_budget() {
 }
 
 #[test]
+fn inline_value_field_owner_budget() {
+    let value = BudgetItemHolder {
+        item: BudgetItem { left: 1, right: 2 },
+    };
+    let writer = fory_with_budget(DEFAULT_GRAPH_MEMORY_BYTES);
+    let bytes = writer.serialize(&value).unwrap();
+    let required = mem::size_of::<BudgetItemHolder>();
+
+    assert!(fory_with_budget((required - 1) as i64)
+        .deserialize::<BudgetItemHolder>(&bytes)
+        .is_err());
+    assert_eq!(
+        fory_with_budget(required as i64)
+            .deserialize::<BudgetItemHolder>(&bytes)
+            .unwrap(),
+        value
+    );
+}
+
+#[test]
 fn box_vector_owner_self() {
     let value = Box::new(
         (0..4)
@@ -265,6 +327,100 @@ fn compatible_list_array_budget() {
         decoded,
         DenseWireInts {
             values: (0..64).collect()
+        }
+    );
+}
+
+#[test]
+fn compatible_inline_value_field_owner_budget() {
+    let value = BudgetItemCompatWriter {
+        item: BudgetItem { left: 1, right: 2 },
+        extra: 3,
+    };
+    let mut writer = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .max_graph_memory_bytes(DEFAULT_GRAPH_MEMORY_BYTES)
+        .build();
+    writer.register::<BudgetItem>(88_002).unwrap();
+    writer.register::<BudgetItemCompatWriter>(88_003).unwrap();
+    let bytes = writer.serialize(&value).unwrap();
+
+    let required = mem::size_of::<BudgetItemCompatReader>() as i64;
+    let mut limited = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .max_graph_memory_bytes(required - 1)
+        .build();
+    limited.register::<BudgetItem>(88_002).unwrap();
+    limited.register::<BudgetItemCompatReader>(88_003).unwrap();
+    assert!(limited
+        .deserialize::<BudgetItemCompatReader>(&bytes)
+        .is_err());
+
+    let mut enough = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .max_graph_memory_bytes(required)
+        .build();
+    enough.register::<BudgetItem>(88_002).unwrap();
+    enough.register::<BudgetItemCompatReader>(88_003).unwrap();
+    assert_eq!(
+        enough
+            .deserialize::<BudgetItemCompatReader>(&bytes)
+            .unwrap(),
+        BudgetItemCompatReader {
+            item: BudgetItem { left: 1, right: 2 }
+        }
+    );
+}
+
+#[test]
+fn compatible_nested_inline_value_budget() {
+    let value = BudgetNestedHolderWriter {
+        item: BudgetNestedValueWriter {
+            left: 1,
+            right: 2,
+            extra: 3,
+        },
+        extra: 4,
+    };
+    let mut writer = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .max_graph_memory_bytes(DEFAULT_GRAPH_MEMORY_BYTES)
+        .build();
+    writer.register::<BudgetNestedValueWriter>(88_004).unwrap();
+    writer.register::<BudgetNestedHolderWriter>(88_005).unwrap();
+    let bytes = writer.serialize(&value).unwrap();
+
+    let required = mem::size_of::<BudgetNestedHolderReader>() as i64;
+    let mut limited = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .max_graph_memory_bytes(required - 1)
+        .build();
+    limited.register::<BudgetNestedValueReader>(88_004).unwrap();
+    limited
+        .register::<BudgetNestedHolderReader>(88_005)
+        .unwrap();
+    assert!(limited
+        .deserialize::<BudgetNestedHolderReader>(&bytes)
+        .is_err());
+
+    let mut enough = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .max_graph_memory_bytes(required)
+        .build();
+    enough.register::<BudgetNestedValueReader>(88_004).unwrap();
+    enough.register::<BudgetNestedHolderReader>(88_005).unwrap();
+    assert_eq!(
+        enough
+            .deserialize::<BudgetNestedHolderReader>(&bytes)
+            .unwrap(),
+        BudgetNestedHolderReader {
+            item: BudgetNestedValueReader { left: 1, right: 2 }
         }
     );
 }

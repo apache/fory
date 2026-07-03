@@ -2165,6 +2165,12 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             return;
         }
 
+        if (CanReadInlineValueData(member))
+        {
+            EmitInlineValueDataRead(sb, member, assignmentTarget, readTypeInfoExpr, indent);
+            return;
+        }
+
         if (variableSuffix == "Compat")
         {
             sb.AppendLine(
@@ -2176,9 +2182,56 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, {readTypeInfoExpr});");
     }
 
+    private static void EmitInlineValueDataRead(
+        StringBuilder sb,
+        MemberModel member,
+        string assignmentTarget,
+        string readTypeInfoExpr,
+        string indent)
+    {
+        if (readTypeInfoExpr == "false")
+        {
+            sb.AppendLine(
+                $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().ReadData(context);");
+            return;
+        }
+
+        string serializerVar = $"__fory{Sanitize(member.Name)}Serializer";
+        sb.AppendLine(
+            $"{indent}global::Apache.Fory.Serializer<{member.TypeName}> {serializerVar} = context.TypeResolver.GetSerializer<{member.TypeName}>();");
+        if (readTypeInfoExpr == "true")
+        {
+            sb.AppendLine($"{indent}context.TypeResolver.ReadTypeInfo({serializerVar}, context);");
+        }
+        else
+        {
+            sb.AppendLine($"{indent}if ({readTypeInfoExpr})");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}  context.TypeResolver.ReadTypeInfo({serializerVar}, context);");
+            sb.AppendLine($"{indent}}}");
+        }
+
+        sb.AppendLine($"{indent}{assignmentTarget} = {serializerVar}.ReadData(context);");
+    }
+
     private static bool CompatibleCaseNeedsRemoteRefMode(MemberModel member)
     {
         return !IsCompatibleScalarMember(member);
+    }
+
+    private static bool CanReadInlineValueData(MemberModel member)
+    {
+        if (member.IsNullable ||
+            member.DynamicAnyKind != DynamicAnyKind.None ||
+            member.FieldCodec is not null ||
+            member.IsRefType ||
+            member.IsCollection ||
+            member.Classification.IsMap)
+        {
+            return false;
+        }
+
+        return !member.Classification.IsBuiltIn;
     }
 
     private static bool IsCompatibleScalarMember(MemberModel member)

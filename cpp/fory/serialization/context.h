@@ -32,7 +32,6 @@
 #include "fory/util/result.h"
 
 #include <cassert>
-#include <limits>
 #include <string>
 #include <typeindex>
 

@@ -636,7 +636,12 @@ public sealed class TypeResolver
             MetaStringEncoder.TypeName);
     }
 
-    internal void ReadTypeInfo<T>(Serializer<T> serializer, ReadContext context)
+    /// <summary>
+    /// Reads and validates type metadata for the specified serializer without reading the value body.
+    /// </summary>
+    /// <param name="serializer">Serializer that owns the expected type metadata.</param>
+    /// <param name="context">Read context.</param>
+    public void ReadTypeInfo<T>(Serializer<T> serializer, ReadContext context)
     {
         Type type = typeof(T);
         if (type == typeof(object))
