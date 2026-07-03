@@ -26,7 +26,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -120,26 +119,6 @@ func joinRegisteredName(namespace, typeName string) string {
 		return typeName
 	}
 	return namespace + "." + typeName
-}
-
-// Global registry for generated serializer factories
-var generatedSerializerFactories = struct {
-	mu        sync.RWMutex
-	factories map[reflect.Type]func() Serializer
-}{
-	factories: make(map[reflect.Type]func() Serializer),
-}
-
-// RegisterSerializerFactory registers a factory function for a generated serializer
-func RegisterSerializerFactory(type_ any, factory func() Serializer) {
-	reflectType := reflect.TypeOf(type_)
-	if reflectType.Kind() == reflect.Ptr {
-		reflectType = reflectType.Elem()
-	}
-
-	generatedSerializerFactories.mu.Lock()
-	defer generatedSerializerFactories.mu.Unlock()
-	generatedSerializerFactories.factories[reflectType] = factory
 }
 
 type TypeInfo struct {
@@ -289,47 +268,6 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 	}
 	r.initialize()
 
-	// Register generated serializers from factories with complete type information
-	generatedSerializerFactories.mu.RLock()
-	for type_, factory := range generatedSerializerFactories.factories {
-		codegenSerializer := factory()
-		pkgPath := type_.PkgPath()
-		typeName := type_.Name()
-		typeTag := pkgPath + "." + typeName
-
-		// Create ptrToValueSerializer wrapper for pointer type
-		ptrType := reflect.PtrTo(type_)
-		ptrCodegenSer := &ptrToValueSerializer{
-			valueSerializer: codegenSerializer,
-		}
-
-		// 1. Basic type mappings - use the generated serializer directly
-		r.typeToSerializers[type_] = codegenSerializer // Value type -> generated serializer
-		r.typeToSerializers[ptrType] = ptrCodegenSer   // Pointer type -> ptrToValueSerializer wrapper
-
-		// 2. Cross-language critical mapping
-		r.typeTagToSerializers[typeTag] = ptrCodegenSer // "pkg.Type" -> ptrToValueSerializer
-
-		// 3. Register complete type information (critical for proper serialization)
-		// Codegen serializers are for named structs
-		_, err := r.registerType(type_, uint32(NAMED_STRUCT), invalidUserTypeID, pkgPath, typeName, codegenSerializer, false)
-		if err != nil {
-			panic(fmt.Errorf("failed to register codegen type %s: %v", typeTag, err))
-		}
-		// 4. Register pointer type information
-		_, err = r.registerType(ptrType, uint32(NAMED_STRUCT), invalidUserTypeID, pkgPath, typeName, ptrCodegenSer, false)
-		if err != nil {
-			panic(fmt.Errorf("failed to register codegen pointer type %s: %v", typeTag, err))
-		}
-
-		// 5. Type info mappings
-		r.typeToTypeInfo[type_] = "@" + typeTag    // Type -> "@pkg.Type"
-		r.typeToTypeInfo[ptrType] = "*@" + typeTag // *Type -> "*@pkg.Type"
-		r.typeInfoToType["@"+typeTag] = type_      // "@pkg.Type" -> Type
-		r.typeInfoToType["*@"+typeTag] = ptrType   // "*@pkg.Type" -> *Type
-	}
-	generatedSerializerFactories.mu.RUnlock()
-
 	return r
 }
 
@@ -400,7 +338,7 @@ func (r *TypeResolver) IsUnionType(t reflect.Type) bool {
 	return v
 }
 
-// GetTypeInfo returns TypeInfo for the given value. This is exported for generated serializers.
+// GetTypeInfo returns TypeInfo for the given value.
 func (r *TypeResolver) GetTypeInfo(value reflect.Value, create bool) (*TypeInfo, error) {
 	return r.getTypeInfo(value, create)
 }
@@ -1385,7 +1323,6 @@ func (r *TypeResolver) structTypeID(type_ reflect.Type, named bool) TypeId {
 }
 
 // WriteTypeInfo writes type info to buffer.
-// This is exported for use by generated code.
 func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err *Error) {
 	if typeInfo == nil {
 		return
@@ -2194,7 +2131,6 @@ func (r *TypeResolver) resolveTypeInfoByMetaBytes(nsBytes, typeBytes *MetaString
 }
 
 // ReadTypeInfo reads type info from buffer and returns it.
-// This is exported for use by generated code.
 func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 	typeID := uint32(buffer.ReadUint8(err))
 	internalTypeID := TypeId(typeID)

@@ -129,12 +129,6 @@ type User struct {
 }
 ```
 
-3. **Regenerate codegen** (if using):
-
-```bash
-go generate ./...
-```
-
 ### ErrKindMaxDepthExceeded
 
 **Error**: `max depth exceeded`

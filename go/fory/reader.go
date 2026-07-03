@@ -271,7 +271,7 @@ func (c *ReadContext) ReadBinaryLength() int {
 }
 
 // ============================================================================
-// Typed Read Methods - Fastpath for codegen
+// Typed Read Methods
 // For primitive numeric types, use ctx.Buffer().ReadXXX()
 // For strings, use ctx.ReadString()
 // For slices/maps, use these methods which handle ref tracking

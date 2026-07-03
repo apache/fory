@@ -702,7 +702,7 @@ func stringSliceValue(value reflect.Value) []string {
 // ============================================================================
 // Exported helper functions for primitive slice serialization (ARRAY protocol)
 // These functions write: size_bytes + binary_data
-// They are used by struct serializers and generated code
+// They are used by struct serializers.
 // ============================================================================
 
 // WriteByteSlice writes []byte to buffer using ARRAY protocol

@@ -220,7 +220,7 @@ func (c *WriteContext) WriteLength(length int) {
 }
 
 // ============================================================================
-// Typed Write Methods - Fastpath for codegen
+// Typed Write Methods
 // For primitive numeric types, use ctx.Buffer().WriteXXX()
 // For strings, use ctx.WriteString()
 // For slices/maps, use these methods which handle ref tracking

@@ -140,6 +140,5 @@ Topics covered:
 - [References](https://fory.apache.org/docs/guide/go/references) - Circular references and shared objects
 - [Schema Evolution](https://fory.apache.org/docs/guide/go/schema-evolution) - Forward/backward compatibility
 - [Cross-Language](https://fory.apache.org/docs/guide/go/cross-language) - Multi-language serialization
-- [Code Generation](https://fory.apache.org/docs/guide/go/codegen) - Experimental AOT code generation
 - [Thread Safety](https://fory.apache.org/docs/guide/go/thread-safety) - Concurrent usage patterns
 - [Troubleshooting](https://fory.apache.org/docs/guide/go/troubleshooting) - Common issues and solutions

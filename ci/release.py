@@ -622,7 +622,6 @@ def bump_go_version(new_version):
         "integration_tests/idl_tests/go",
     ]:
         _bump_version(p, "go.mod", new_version, _update_go_mod_version)
-    _bump_version("go/fory/cmd/fory", "main.go", new_version, _update_go_cli_version)
 
 
 def bump_dart_version(new_version):
@@ -917,17 +916,6 @@ def _update_go_mod_version(lines, v: str):
             line,
         )
     return lines
-
-
-def _update_go_cli_version(lines, v: str):
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
-    for index, line in enumerate(lines):
-        if line.startswith("const version = "):
-            lines[index] = f'const version = "{v}"\n'
-            return lines
-    raise ValueError("No Go CLI version constant found")
 
 
 def _update_pubspec_version(lines, v: str):
