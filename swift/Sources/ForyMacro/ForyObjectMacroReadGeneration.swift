@@ -96,20 +96,17 @@ func buildClassReadWrapperDecl(accessPrefix: String) -> String {
             __reservedRefID = nil
         }
 
-        return try Self.foryReadPayload(
+        if let remoteTypeInfo = try Self.foryReadPayloadTypeInfo(
             context,
-            readTypeInfo: readTypeInfo,
-            readData: {
-                try Self.__foryReadDataImpl(context, reservedRefID: __reservedRefID)
-            },
-            readCompatibleData: { remoteTypeInfo in
-                try Self.__foryReadCompatibleDataImpl(
-                    context,
-                    remoteTypeInfo: remoteTypeInfo,
-                    reservedRefID: __reservedRefID
-                )
-            }
-        )
+            readTypeInfo: readTypeInfo
+        ) {
+            return try Self.__foryReadCompatibleDataImpl(
+                context,
+                remoteTypeInfo: remoteTypeInfo,
+                reservedRefID: __reservedRefID
+            )
+        }
+        return try Self.__foryReadDataImpl(context, reservedRefID: __reservedRefID)
     }
     """
 }
@@ -177,18 +174,15 @@ func buildStructReadWrapperDecl(accessPrefix: String) -> String {
         _ context: ReadContext,
         readTypeInfo: Bool
     ) throws -> Self {
-        try Self.foryReadPayload(
+        let __ownerBytes = max(1, MemoryLayout<Self>.stride)
+        try context.reserveGraphMemory(__ownerBytes)
+        if let remoteTypeInfo = try Self.foryReadPayloadTypeInfo(
             context,
-            readTypeInfo: readTypeInfo,
-            readData: {
-                try context.reserveGraphMemory(max(1, MemoryLayout<Self>.stride))
-                return try Self.__foryReadDataImpl(context)
-            },
-            readCompatibleData: { remoteTypeInfo in
-                try context.reserveGraphMemory(max(1, MemoryLayout<Self>.stride))
-                return try Self.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
-            }
-        )
+            readTypeInfo: readTypeInfo
+        ) {
+            return try Self.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
+        }
+        return try Self.__foryReadDataImpl(context)
     }
     """
 }

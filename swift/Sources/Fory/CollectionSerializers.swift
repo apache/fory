@@ -620,19 +620,19 @@ extension Array: Serializer where Element: Serializer {
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> [Element] {
-        try readData(context, reserveGraphStorage: true)
+        try readData(context, graphOwnerBytes: storedOwnerBytes([Element].self))
     }
 
     fileprivate static func readData(
         _ context: ReadContext,
-        reserveGraphStorage: Bool
+        graphOwnerBytes: Int?
     ) throws -> [Element] {
         let buffer = context.buffer
         let length = Int(try buffer.readVarUInt32())
         try context.ensureCollectionLength(length, label: "array")
-        let ownerBytes = reserveGraphStorage ? storedOwnerBytes([Element].self) : 0
+        let ownerBytes = graphOwnerBytes ?? 0
         if length == 0 {
-            if reserveGraphStorage {
+            if graphOwnerBytes != nil {
                 try reserveGraphArrayMemory(
                     context, Element.self, ownerBytes: ownerBytes, count: length)
             }
@@ -645,7 +645,7 @@ extension Array: Serializer where Element: Serializer {
         let declared = (header & CollectionHeader.declaredElementType) != 0
         let sameType = (header & CollectionHeader.sameType) != 0
         if !sameType {
-            if reserveGraphStorage {
+            if graphOwnerBytes != nil {
                 try reserveGraphArrayMemory(
                     context, Element.self, ownerBytes: ownerBytes, count: length)
             }
@@ -687,7 +687,7 @@ extension Array: Serializer where Element: Serializer {
         }
 
         let elementTypeInfo = declared ? nil : try Element.foryReadTypeInfo(context)
-        if reserveGraphStorage {
+        if graphOwnerBytes != nil {
             try reserveGraphArrayMemory(context, Element.self, ownerBytes: ownerBytes, count: length)
         }
         try context.ensureRemainingBytes(length, label: "array")
@@ -748,9 +748,7 @@ extension Set: Serializer where Element: Serializer & Hashable {
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Set<Element> {
-        let values = try [Element].readData(context, reserveGraphStorage: false)
-        try reserveGraphArrayMemory(
-            context, Element.self, ownerBytes: storedOwnerBytes(Set<Element>.self), count: values.count)
+        let values = try [Element].readData(context, graphOwnerBytes: storedOwnerBytes(Set<Element>.self))
         return Set(values)
     }
 }
