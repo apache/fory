@@ -1185,36 +1185,34 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 			targetVal = reflect.ValueOf(target).Elem()
 			targetType = targetVal.Type()
 		}
-		// Get serializer for the target type
-		if f.rootUsesReadStruct(targetType) {
-			f.readCtx.ReadStruct(targetVal)
-		} else {
-			serializer, err := f.typeResolver.getSerializerByType(targetType, false)
-			if err != nil {
-				return fmt.Errorf("failed to get serializer for type %v: %w", targetType, err)
+		if targetType.Kind() == reflect.Struct {
+			if typeInfo := f.readCtx.getTypeInfoByType(targetType); typeInfo != nil {
+				if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
+					structSer.readRoot(f.readCtx, targetVal)
+					return f.readCtx.CheckError()
+				}
 			}
-
-			// Use Read to deserialize directly into target
-			serializer.Read(f.readCtx, RefModeTracking, true, false, targetVal)
 		}
+		serializer, err := f.typeResolver.getSerializerByType(targetType, false)
+		if err != nil {
+			return fmt.Errorf("failed to get serializer for type %v: %w", targetType, err)
+		}
+		serializer.Read(f.readCtx, RefModeTracking, true, false, targetVal)
 		return f.readCtx.CheckError()
 	}
 }
 
 func (f *Fory) readRootValue(target reflect.Value) {
-	if f.rootUsesReadStruct(target.Type()) {
-		f.readCtx.ReadStruct(target)
-		return
+	targetType := target.Type()
+	if targetType.Kind() == reflect.Struct {
+		if typeInfo := f.readCtx.getTypeInfoByType(targetType); typeInfo != nil {
+			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
+				structSer.readRoot(f.readCtx, target)
+			} else {
+				typeInfo.Serializer.Read(f.readCtx, RefModeTracking, true, false, target)
+			}
+			return
+		}
 	}
-	// Root writes include type metadata, so generic roots must keep ReadValue.
-	// Calling a cached serializer directly would read that metadata byte as payload.
 	f.readCtx.ReadValue(target, RefModeTracking, true)
-}
-
-func (f *Fory) rootUsesReadStruct(targetType reflect.Type) bool {
-	return targetType.Kind() == reflect.Struct &&
-		targetType != dateReflectType &&
-		targetType != timeReflectType &&
-		targetType != decimalType &&
-		!f.typeResolver.IsUnionType(targetType)
 }

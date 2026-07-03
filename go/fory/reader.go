@@ -107,28 +107,22 @@ func (c *ReadContext) Reset() {
 
 // ReserveGraphMemory reserves raw estimated graph-owner bytes.
 func (c *ReadContext) ReserveGraphMemory(bytes int64) bool {
-	if bytes >= 0 {
-		remaining := c.remainingGraphMemoryBytes
-		if bytes <= remaining {
-			c.remainingGraphMemoryBytes = remaining - bytes
-			return true
-		}
-		return c.rejectGraphMemoryExceeded(bytes, remaining)
+	if uint64(bytes) <= uint64(c.remainingGraphMemoryBytes) {
+		c.remainingGraphMemoryBytes -= bytes
+		return true
 	}
-	return c.rejectGraphMemoryBytes(bytes)
+	return c.rejectGraphMemoryReservation(bytes)
 }
 
 //go:noinline
-func (c *ReadContext) rejectGraphMemoryBytes(bytes int64) bool {
-	c.SetError(DeserializationErrorf("estimated graph memory must be non-negative, got %d bytes", bytes))
-	return false
-}
-
-//go:noinline
-func (c *ReadContext) rejectGraphMemoryExceeded(bytes int64, remaining int64) bool {
+func (c *ReadContext) rejectGraphMemoryReservation(bytes int64) bool {
+	if bytes < 0 {
+		c.SetError(DeserializationErrorf("estimated graph memory must be non-negative, got %d bytes", bytes))
+		return false
+	}
 	c.SetError(DeserializationErrorf(
 		"estimated graph memory request %d bytes exceeds maxGraphMemoryBytes remaining budget %d bytes",
-		bytes, remaining))
+		bytes, c.remainingGraphMemoryBytes))
 	return false
 }
 

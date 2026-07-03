@@ -32,6 +32,7 @@ type structSerializer struct {
 	structHash int32
 	typeID     uint32
 	userTypeID uint32
+	graphBytes int64
 
 	// Pre-sorted and categorized fields (embedded for cache locality)
 	fieldGroup FieldGroup
@@ -62,6 +63,7 @@ func newStructSerializerFromTypeDef(type_ reflect.Type, name string, fieldDefs [
 		type_:      type_,
 		name:       name,
 		userTypeID: invalidUserTypeID,
+		graphBytes: structGraphBytes(type_),
 		fieldDefs:  fieldDefs,
 	}
 }
@@ -77,6 +79,7 @@ func newStructSerializer(type_ reflect.Type, name string) *structSerializer {
 		type_:      type_,
 		name:       name,
 		userTypeID: invalidUserTypeID,
+		graphBytes: structGraphBytes(type_),
 	}
 }
 
@@ -1362,6 +1365,53 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 				structSer.ReadData(ctx, value)
 				return
 			}
+		}
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s *structSerializer) readRoot(ctx *ReadContext, value reflect.Value) {
+	buf := ctx.buffer
+	ctxErr := ctx.Err()
+	if ctx.refResolver.refTracking {
+		refID, refErr := ctx.refResolver.TryPreserveRefId(buf)
+		if refErr != nil {
+			ctx.SetError(FromError(refErr))
+			return
+		}
+		if refID < int32(NotNullValueFlag) {
+			obj := ctx.refResolver.GetReadObject(refID)
+			if obj.IsValid() {
+				value.Set(obj)
+			}
+			return
+		}
+	} else {
+		// No-ref roots only need the marker byte; avoid the tracking helper on this hot path.
+		refFlag := buf.ReadInt8(ctxErr)
+		if refFlag == NullFlag {
+			return
+		}
+		if refFlag == RefFlag {
+			buf.ReadVarUint32(ctxErr)
+			return
+		}
+	}
+	if !ctx.ReserveGraphMemory(s.graphBytes) {
+		return
+	}
+	if s.type_ != nil {
+		serializer := ctx.typeResolver.ReadTypeInfoForType(buf, s.type_, ctxErr)
+		if ctxErr.HasError() {
+			return
+		}
+		if serializer == nil {
+			ctx.SetError(DeserializationError("unexpected type id for struct"))
+			return
+		}
+		if structSer, ok := serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
+			structSer.ReadData(ctx, value)
+			return
 		}
 	}
 	s.ReadData(ctx, value)
