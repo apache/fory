@@ -64,7 +64,7 @@ func main() {
 Fory Go demonstrates excellent performance compared to other go serialization frameworks.
 
 <p align="center">
-<img src="../docs/benchmarks/go/benchmark_combined.png" width="95%">
+<img src="../docs/benchmarks/go/throughput.png" width="95%">
 </p>
 
 For more detailed benchmarks and methodology, see [Go Benchmark](../benchmarks/go).
