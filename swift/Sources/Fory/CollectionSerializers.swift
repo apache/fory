@@ -748,8 +748,78 @@ extension Set: Serializer where Element: Serializer & Hashable {
     }
 
     public static func foryReadData(_ context: ReadContext) throws -> Set<Element> {
-        let values = try [Element].readData(context, graphOwnerBytes: storedOwnerBytes(Set<Element>.self))
-        return Set(values)
+        let buffer = context.buffer
+        let length = Int(try buffer.readVarUInt32())
+        try context.ensureCollectionLength(length, label: "set")
+        if length == 0 {
+            try reserveGraphArrayMemory(
+                context, Element.self, ownerBytes: storedOwnerBytes(Set<Element>.self), count: length)
+            return []
+        }
+
+        let header = try buffer.readUInt8()
+        let trackRef = (header & CollectionHeader.trackingRef) != 0
+        let hasNull = (header & CollectionHeader.hasNull) != 0
+        let declared = (header & CollectionHeader.declaredElementType) != 0
+        let sameType = (header & CollectionHeader.sameType) != 0
+        if !sameType {
+            try reserveGraphArrayMemory(
+                context, Element.self, ownerBytes: storedOwnerBytes(Set<Element>.self), count: length)
+            try context.ensureRemainingBytes(length, label: "set")
+            var values = Set<Element>()
+            values.reserveCapacity(length)
+            if trackRef {
+                for _ in 0..<length {
+                    try values.insert(Element.foryRead(context, refMode: .tracking, readTypeInfo: true))
+                }
+            } else if hasNull {
+                for _ in 0..<length {
+                    let refFlag = try buffer.readInt8()
+                    if refFlag == RefFlag.null.rawValue {
+                        values.insert(Element.foryDefault())
+                    } else if refFlag == RefFlag.notNullValue.rawValue {
+                        try values.insert(Element.foryRead(context, refMode: .none, readTypeInfo: true))
+                    } else {
+                        throw ForyError.refError("invalid nullability flag \(refFlag)")
+                    }
+                }
+            } else {
+                for _ in 0..<length {
+                    try values.insert(Element.foryRead(context, refMode: .none, readTypeInfo: true))
+                }
+            }
+            return values
+        }
+
+        let elementTypeInfo = declared ? nil : try Element.foryReadTypeInfo(context)
+        try reserveGraphArrayMemory(
+            context, Element.self, ownerBytes: storedOwnerBytes(Set<Element>.self), count: length)
+        try context.ensureRemainingBytes(length, label: "set")
+        return try context.withTypeInfo(elementTypeInfo, for: Element.self) {
+            var values = Set<Element>()
+            values.reserveCapacity(length)
+            if trackRef {
+                for _ in 0..<length {
+                    try values.insert(Element.foryRead(context, refMode: .tracking, readTypeInfo: false))
+                }
+            } else if hasNull {
+                for _ in 0..<length {
+                    let refFlag = try buffer.readInt8()
+                    if refFlag == RefFlag.null.rawValue {
+                        values.insert(Element.foryDefault())
+                    } else if refFlag == RefFlag.notNullValue.rawValue {
+                        try values.insert(Element.foryRead(context, refMode: .none, readTypeInfo: false))
+                    } else {
+                        throw ForyError.refError("invalid nullability flag \(refFlag)")
+                    }
+                }
+            } else {
+                for _ in 0..<length {
+                    try values.insert(Element.foryRead(context, refMode: .none, readTypeInfo: false))
+                }
+            }
+            return values
+        }
     }
 }
 

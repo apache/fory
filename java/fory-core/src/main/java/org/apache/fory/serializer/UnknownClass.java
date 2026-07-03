@@ -19,6 +19,8 @@
 
 package org.apache.fory.serializer;
 
+import java.util.List;
+import java.util.Map.Entry;
 import org.apache.fory.collection.LazyMap;
 import org.apache.fory.config.Config;
 import org.apache.fory.meta.TypeDef;
@@ -104,10 +106,11 @@ public interface UnknownClass {
   /** Ensure no fields here to avoid conflicts with peer class fields. */
   class UnknownEmptyStruct implements UnknownClass {}
 
-  class UnknownStruct extends LazyMap implements UnknownClass {
+  class UnknownStruct extends LazyMap<Object, Object> implements UnknownClass {
     final TypeDef typeDef;
 
-    public UnknownStruct(TypeDef typeDef) {
+    public UnknownStruct(TypeDef typeDef, List<Entry<? extends Object, ? extends Object>> entries) {
+      super(entries);
       this.typeDef = typeDef;
     }
   }

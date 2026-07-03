@@ -736,7 +736,64 @@ Set<T> readTypedSetPayload<T>(
   FieldType? elementFieldType,
   T Function(Object? value) convert,
 ) {
-  return Set<T>.of(readTypedListPayload(context, elementFieldType, convert));
+  final state = _prepareListRead(context, elementFieldType);
+  context.buffer.checkReadableBytes(state.size);
+  final result = <T>{};
+  if (state.size == 0) {
+    return result;
+  }
+  if (state.tracksDepth) {
+    context.increaseDepth();
+  }
+  final directTypeInfo = state.declaredTypeInfo ?? state.sameTypeInfo;
+  if (directTypeInfo != null && !state.trackRef && !state.hasNull) {
+    final directFieldType =
+        state.declaredTypeInfo != null ? state.elementFieldType : null;
+    if (directTypeInfo.type == T &&
+        directTypeInfo.kind == RegistrationKind.struct) {
+      final structSerializer = directTypeInfo.structSerializer!;
+      for (var index = 0; index < state.size; index += 1) {
+        result.add(
+          directTypeInfo.remoteTypeDef == null
+              ? structSerializer.readValue(context, directTypeInfo) as T
+              : structSerializer.readGeneratedCompatibleValue(
+                    context,
+                    directTypeInfo,
+                  )
+                  as T,
+        );
+      }
+      if (state.tracksDepth) {
+        context.decreaseDepth();
+      }
+      return result;
+    }
+    if (directTypeInfo.type == T && directTypeInfo.typeId == TypeIds.string) {
+      for (var index = 0; index < state.size; index += 1) {
+        result.add(StringSerializer.readPayload(context) as T);
+      }
+      if (state.tracksDepth) {
+        context.decreaseDepth();
+      }
+      return result;
+    }
+    for (var index = 0; index < state.size; index += 1) {
+      result.add(
+        convert(readTypeInfoValue(context, directTypeInfo, directFieldType)),
+      );
+    }
+    if (state.tracksDepth) {
+      context.decreaseDepth();
+    }
+    return result;
+  }
+  for (var index = 0; index < state.size; index += 1) {
+    result.add(convert(_readPreparedListItem(context, state)));
+  }
+  if (state.tracksDepth) {
+    context.decreaseDepth();
+  }
+  return result;
 }
 
 void writeTypedListPayload<T>(
