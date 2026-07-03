@@ -118,7 +118,6 @@ Apache Fory is a multi-language serialization framework with multiple wire forma
 - `go/fory/fory.go`: entry point
 - `go/fory/resolver.go`: shared and circular reference tracking
 - `go/fory/type.go`: type resolution and dispatch
-- `go/fory/codegen`: code generation support
 
 ### Rust
 
