@@ -524,7 +524,7 @@ private func structInlineStructReadLines(_ field: ParsedField, compatibleAligned
     )
     return """
         let __\(field.name): \(field.typeText)
-        if !context.trackRef && !\(field.typeText).isRefType {
+        if !context.trackRef && !\(field.typeText).isRefType && \(field.typeText).staticTypeId == .structType {
             \(valueRead)
         } else {
             __\(field.name) = try \(field.typeText).foryRead(
@@ -546,7 +546,7 @@ private func classInlineStructReadLines(_ field: ParsedField, compatibleAligned:
         compatibleAligned: compatibleAligned
     )
     return """
-        if !context.trackRef && !\(field.typeText).isRefType {
+        if !context.trackRef && !\(field.typeText).isRefType && \(field.typeText).staticTypeId == .structType {
             \(valueRead)
         } else {
             value.\(field.name) = try \(field.typeText).foryRead(
@@ -565,14 +565,10 @@ private func inlineStructReadStatement(
 ) -> String {
     if compatibleAligned {
         return """
-            if let __\(field.name)TypeInfo = try \(field.typeText).foryReadTypeInfo(context) {
-                \(targetExpr) = try \(field.typeText).foryReadCompatibleData(
-                    context,
-                    remoteTypeInfo: __\(field.name)TypeInfo
-                )
-            } else {
-                \(targetExpr) = try \(field.typeText).foryReadData(context)
-            }
+            \(targetExpr) = try \(field.typeText).foryReadPayload(
+                context,
+                readTypeInfo: TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)
+            )
             """
     }
     return "\(targetExpr) = try \(field.typeText).foryReadData(context)"
@@ -583,7 +579,8 @@ private func fieldCanReadInlineStructData(_ field: ParsedField) -> Bool {
         return false
     }
     switch field.typeID {
-    case MacroTypeId.compatibleStruct,
+    case MacroTypeId.structType,
+        MacroTypeId.compatibleStruct,
         MacroTypeId.namedStruct,
         MacroTypeId.namedCompatibleStruct:
         return true
@@ -626,12 +623,18 @@ private func buildCompatibleReadCases(
     sortedFields.enumerated().map { sortedIndex, field -> String in
         let directValueExpr =
             fieldCanReadInlineStructData(field)
-            ? inlineStructReadExpr(field, readTypeInfoExpr: "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)")
+            ? inlineStructReadExpr(
+                field,
+                refModeExpr: fieldRefModeExpression(field),
+                readTypeInfoExpr: "TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId)"
+            )
             : compatibleSchemaReadFieldExpr(field)
         let compatibleValueExpr =
             fieldCanReadInlineStructData(field)
             ? inlineStructReadExpr(
                 field,
+                refModeExpr:
+                    "RefMode.from(nullable: remoteField.fieldType.nullable, trackRef: remoteField.fieldType.trackRef)",
                 readTypeInfoExpr:
                     "TypeId.needsTypeInfoForField(TypeId(rawValue: remoteField.fieldType.typeID) ?? .unknown)"
             )
@@ -656,23 +659,17 @@ private func buildCompatibleReadCases(
 
 private func inlineStructReadExpr(
     _ field: ParsedField,
+    refModeExpr: String,
     readTypeInfoExpr: String
 ) -> String {
     """
     try {
-        if !context.trackRef && !\(field.typeText).isRefType {
-            if \(readTypeInfoExpr),
-               let __typeInfo = try \(field.typeText).foryReadTypeInfo(context) {
-                return try \(field.typeText).foryReadCompatibleData(
-                    context,
-                    remoteTypeInfo: __typeInfo
-                )
-            }
-            return try \(field.typeText).foryReadData(context)
+        if !context.trackRef && !\(field.typeText).isRefType && \(field.typeText).staticTypeId == .structType {
+            return try \(field.typeText).foryReadPayload(context, readTypeInfo: \(readTypeInfoExpr))
         }
         return try \(field.typeText).foryRead(
             context,
-            refMode: \(fieldRefModeExpression(field)),
+            refMode: \(refModeExpr),
             readTypeInfo: \(readTypeInfoExpr)
         )
     }()
@@ -891,7 +888,7 @@ private func compatibleDefaultDecl(_ field: ParsedField) -> String {
 
 private func fieldNeedsGeneralSchemaRead(_ field: ParsedField) -> Bool {
     field.dynamicAnyCodec != nil || field.customCodecType != nil || field.isOptional
-        || field.typeID == 27
+        || field.typeID == MacroTypeId.structType
 }
 
 private func fieldNeedsGeneralCompatibleRead(_ field: ParsedField) -> Bool {
