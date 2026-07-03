@@ -41,7 +41,7 @@ import org.testng.annotations.Test;
 public class GraphMemoryBudgetTest extends ForyTestBase {
   private static final long DEFAULT_GRAPH_MEMORY_BYTES = 128L * 1024 * 1024;
   private static final int REFERENCE_BYTES = 4;
-  private static final int OBJECT_SELF_BYTES = 1;
+  private static final int OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
 
   @Test
   public void testConfigDefaultsAndValidation() {
@@ -134,7 +134,7 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
 
   @Test
   public void testObjectArrayBudget() {
-    Fory exactFory = newFory(1);
+    Fory exactFory = newFory(objectArrayBytes(0));
     ReadContext exactContext = exactFory.getReadContext();
     MemoryBuffer exactBuffer = objectArraySizeBuffer(0);
     exactContext.prepare(exactBuffer, null, false);
@@ -235,23 +235,23 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   }
 
   private static long collectionBytes(int numElements) {
-    return OBJECT_SELF_BYTES + (long) numElements * REFERENCE_BYTES;
+    return OBJECT_OWNER_BYTES + (long) numElements * REFERENCE_BYTES;
   }
 
   private static long mapBytes(int numElements) {
-    return OBJECT_SELF_BYTES + (long) numElements * 2 * REFERENCE_BYTES;
+    return OBJECT_OWNER_BYTES + (long) numElements * 2 * REFERENCE_BYTES;
   }
 
   private static long objectArrayBytes(int numElements) {
-    return OBJECT_SELF_BYTES + (long) numElements * REFERENCE_BYTES;
+    return OBJECT_OWNER_BYTES + (long) numElements * REFERENCE_BYTES;
   }
 
   private static long emptyPojoBytes() {
-    return OBJECT_SELF_BYTES;
+    return OBJECT_OWNER_BYTES;
   }
 
   private static long pojoBytes() {
-    return OBJECT_SELF_BYTES + 4 + 8 + REFERENCE_BYTES;
+    return OBJECT_OWNER_BYTES + 4 + 8 + REFERENCE_BYTES;
   }
 
   private static List<Object> emptyLists(int numElements) {

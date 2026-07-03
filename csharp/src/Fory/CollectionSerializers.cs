@@ -32,8 +32,8 @@ internal static class CollectionBits
 
 internal static class CollectionCodec
 {
-    private const int CollectionBytes = 1;
     private const int ReferenceBytes = 4;
+    private static readonly int CollectionOwnerBytes = IntPtr.Size * 2;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int ElementBytes<T>() => ElementStorage<T>.Bytes;
@@ -41,7 +41,7 @@ internal static class CollectionCodec
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void ReserveElementStorage<T>(ReadContext context, int count)
     {
-        context.ReserveGraphMemory(CollectionBytes + (long)count * ElementBytes<T>());
+        context.ReserveGraphMemory(CollectionOwnerBytes + (long)count * ElementBytes<T>());
     }
 
     private static bool NeedsCompatibleElementTypeMeta(TypeInfo typeInfo, WriteContext context)
@@ -505,8 +505,8 @@ internal static class CollectionCodec
 
 internal static class DynamicContainerCodec
 {
-    private const int MapBytes = 1;
     private const int ReferenceBytes = 4;
+    private static readonly int MapOwnerBytes = IntPtr.Size * 2;
 
     public static bool TryGetTypeId(object value, out TypeId typeId)
     {
@@ -603,7 +603,7 @@ internal static class DynamicContainerCodec
             return map;
         }
 
-        context.ReserveGraphMemory(MapBytes + (long)map.Count * (ReferenceBytes + ReferenceBytes));
+        context.ReserveGraphMemory(MapOwnerBytes + (long)map.Count * (ReferenceBytes + ReferenceBytes));
         return new Dictionary<object, object?>(map.NonNullEntries);
     }
 

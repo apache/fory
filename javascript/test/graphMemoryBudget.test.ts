@@ -21,12 +21,12 @@ import Fory, { Type } from "../packages/core/index";
 import { describe, expect, test } from "@jest/globals";
 
 const DEFAULT_GRAPH_MEMORY_BYTES = 128 * 1024 * 1024;
-const OBJECT_BYTES = 1;
 const REFERENCE_BYTES = 4;
+const OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
 
-const objectBytes = (fields: number) => OBJECT_BYTES + fields * REFERENCE_BYTES;
-const listBytes = (count: number) => OBJECT_BYTES + count * REFERENCE_BYTES;
-const mapBytes = (count: number) => OBJECT_BYTES + count * 2 * REFERENCE_BYTES;
+const objectBytes = (fields: number) => OBJECT_OWNER_BYTES + fields * REFERENCE_BYTES;
+const listBytes = (count: number) => OBJECT_OWNER_BYTES + count * REFERENCE_BYTES;
+const mapBytes = (count: number) => OBJECT_OWNER_BYTES + count * 2 * REFERENCE_BYTES;
 
 function serializeAny(value: unknown) {
   return new Fory({ compatible: false, ref: true }).serialize(value);
@@ -118,7 +118,7 @@ describe("graph memory budget", () => {
       first: {},
       second: {},
     });
-    const required = objectBytes(2) + 2 * OBJECT_BYTES;
+    const required = objectBytes(2) + 2 * OBJECT_OWNER_BYTES;
     const passingReader = new Fory({
       compatible: false,
       ref: true,
@@ -154,7 +154,7 @@ describe("graph memory budget", () => {
     const writer = new Fory({ compatible: false, ref: true });
     writer.register(EmptyChild);
     const bytes = writer.register(EmptyParent).serialize(new EmptyParent());
-    const required = objectBytes(1) + OBJECT_BYTES;
+    const required = objectBytes(1) + OBJECT_OWNER_BYTES;
     const passingReader = new Fory({
       compatible: false,
       ref: true,

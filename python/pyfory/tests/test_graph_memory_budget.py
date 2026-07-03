@@ -33,7 +33,7 @@ except ImportError:
 
 DEFAULT_GRAPH_MEMORY_BYTES = 128 * 1024 * 1024
 REFERENCE_BYTES = struct.calcsize("P")
-OWNER_BYTES = 1
+REFERENCE_OBJECT_BYTES = 2 * REFERENCE_BYTES
 MAX_GRAPH_MEMORY_BYTES = (1 << 63) - 1
 
 
@@ -91,15 +91,15 @@ class BudgetObject:
 
 
 def collection_memory(num_elements):
-    return OWNER_BYTES + num_elements * REFERENCE_BYTES
+    return REFERENCE_OBJECT_BYTES + num_elements * REFERENCE_BYTES
 
 
 def map_memory(num_entries):
-    return OWNER_BYTES + num_entries * 2 * REFERENCE_BYTES
+    return REFERENCE_OBJECT_BYTES + num_entries * 2 * REFERENCE_BYTES
 
 
 def object_memory(num_fields):
-    return OWNER_BYTES + num_fields * REFERENCE_BYTES
+    return REFERENCE_OBJECT_BYTES + num_fields * REFERENCE_BYTES
 
 
 def new_fory(limit=DEFAULT_GRAPH_MEMORY_BYTES, *, xlang=True):

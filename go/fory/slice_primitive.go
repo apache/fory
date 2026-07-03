@@ -1450,7 +1450,7 @@ func reserveStringSlice(ctx *ReadContext, length int) bool {
 		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, stringElementBytes))
 		return false
 	}
-	return ctx.ReserveGraphMemory(graphContainerBytes + int64(length)*stringElementBytes)
+	return ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(length)*stringElementBytes)
 }
 
 func readStringSliceBody(buf *ByteBuffer, err *Error, length int) []string {

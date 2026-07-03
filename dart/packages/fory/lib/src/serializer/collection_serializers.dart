@@ -39,7 +39,7 @@ import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/uint64.dart';
 
 const int _referenceBytes = 4;
-const int _ownerBytes = 1;
+const int _referenceObjectBytes = 2 * _referenceBytes;
 
 @pragma('vm:prefer-inline')
 void _writeDirectTypeInfoValue(
@@ -642,11 +642,15 @@ void _setArrayValue(Object target, int arrayTypeId, int index, Object? value) {
 
 Object _arrayToListValue(ReadContext context, Object? raw) {
   if (raw is BoolList) {
-    context.reserveGraphMemory(_ownerBytes + raw.length * _referenceBytes);
+    context.reserveGraphMemory(
+      _referenceObjectBytes + raw.length * _referenceBytes,
+    );
     return raw.toList();
   }
   if (raw is Iterable) {
-    context.reserveGraphMemory(_ownerBytes + raw.length * _referenceBytes);
+    context.reserveGraphMemory(
+      _referenceObjectBytes + raw.length * _referenceBytes,
+    );
     return raw.toList();
   }
   throw StateError('Expected compatible array payload.');
@@ -984,7 +988,7 @@ _PreparedListRead _prepareListRead(
   FieldType? elementFieldType,
 ) {
   final size = context.buffer.readVarUint32();
-  context.reserveGraphMemory(_ownerBytes + size * _referenceBytes);
+  context.reserveGraphMemory(_referenceObjectBytes + size * _referenceBytes);
   if (size == 0) {
     return _PreparedListRead(
       size: 0,

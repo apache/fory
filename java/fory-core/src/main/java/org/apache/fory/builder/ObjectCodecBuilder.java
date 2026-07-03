@@ -97,8 +97,8 @@ import org.apache.fory.util.record.RecordUtils;
  */
 public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   private static final Logger LOG = LoggerFactory.getLogger(ObjectCodecBuilder.class);
-  private static final int OBJECT_SELF_BYTES = 1;
   private static final int REFERENCE_BYTES = 4;
+  private static final int OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
 
   private final Literal classVersionHash;
   protected ObjectCodecOptimizer objectCodecOptimizer;
@@ -843,7 +843,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   }
 
   private int objectGraphMemoryBytes() {
-    int bytes = OBJECT_SELF_BYTES;
+    int bytes = OBJECT_OWNER_BYTES;
     for (Field field : ReflectionUtils.getFields(beanClass, true)) {
       if (!Modifier.isStatic(field.getModifiers())) {
         bytes = Math.addExact(bytes, fieldGraphMemoryBytes(field.getType()));

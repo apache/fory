@@ -378,7 +378,7 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, elemBytes))
 		return
 	}
-	if !ctx.ReserveGraphMemory(graphContainerBytes + int64(length)*elemBytes) {
+	if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(length)*elemBytes) {
 		return
 	}
 

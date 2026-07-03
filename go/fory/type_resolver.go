@@ -847,12 +847,6 @@ func (r *TypeResolver) getSerializerByType(type_ reflect.Type, mapInStruct bool)
 	}
 }
 
-// SerializerForType returns the registered or lazily-created serializer for generated code paths
-// that already consumed the wire ref/type metadata and need to read only value data.
-func (r *TypeResolver) SerializerForType(type_ reflect.Type) (Serializer, error) {
-	return r.getSerializerByType(type_, false)
-}
-
 // getTypeIdByType returns the TypeId for a given type, or 0 if not found in typesInfo.
 // This is used to get the type ID without calling Serializer.TypeId().
 func (r *TypeResolver) getTypeIdByType(type_ reflect.Type) TypeId {

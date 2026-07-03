@@ -55,10 +55,11 @@ private func graphFieldBytesExpr(_ field: ParsedField) -> String {
 }
 
 private func classGraphOwnerBytesExpr(_ fields: [ParsedField]) -> String {
+    let ownerBytes = "(2 * 4)"
     if fields.isEmpty {
-        return "1"
+        return ownerBytes
     }
-    return "max(1, 1 + " + fields.map(graphFieldBytesExpr).joined(separator: " + ") + ")"
+    return ownerBytes + " + " + fields.map(graphFieldBytesExpr).joined(separator: " + ")
 }
 
 private func reserveClassGraphOwnerLine(fields: [ParsedField], indent: String) -> String {

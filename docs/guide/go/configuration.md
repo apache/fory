@@ -139,11 +139,11 @@ f := fory.New(fory.WithMaxGraphMemoryBytes(256 * 1024 * 1024))
 
 The default limit is a fixed `128 MiB` for byte-slice and stream roots. A
 positive value overrides the default. Explicit non-positive values are rejected
-when the runtime is created. The budget covers lower-bound slice
-backing storage, map key/value storage, sets, generated object reads, and
-materialized struct field storage. Strings, binary blobs, and primitive dense
-array owners keep their byte-availability checks and are not reserved against
-this budget.
+when the runtime is created. The budget covers lower-bound shallow owners plus
+slice backing storage, map key/value storage, sets, materialized struct reads,
+and struct pointer allocation. Strings, binary blobs, and primitive dense array
+owners keep their byte-availability checks and are not reserved against this
+budget.
 
 ### WithMaxTypeFields
 

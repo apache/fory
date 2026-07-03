@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory Go is a high-performance serialization library for Go. It supports xlang mode for cross-language payloads and native mode for Go-only payloads, with reflection-based object graph serialization, circular references, polymorphism, and schema-aware struct handling.
+Apache Fory Go is a high-performance serialization library for Go. It supports xlang mode for cross-language payloads and native mode for Go-only payloads, with fast object graph serialization, circular references, polymorphism, and schema-aware struct handling.
 
 ## Why Fory Go?
 

@@ -220,7 +220,9 @@ object ForySerializerMacros {
         !privateField,
         constructorOwned || (field.flags.is(Flags.Mutable) && !privateField))
     }
-    val objectGraphMemoryBytes: Long = 1L + fields.map(field => graphFieldBytes(field.sourceType)).sum
+    val objectOwnerBytes: Long = 2L * 4L
+    val objectGraphMemoryBytes: Long =
+      objectOwnerBytes + fields.map(field => graphFieldBytes(field.sourceType)).sum
     val hasNestedCompatibleStructFields =
       fields.exists(field => hasNestedCompatibleStruct(field.sourceType))
 

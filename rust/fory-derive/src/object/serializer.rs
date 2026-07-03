@@ -134,8 +134,7 @@ pub fn derive_serializer(
                 write::gen_reserved_space(&source_fields),
                 quote! { fory_core::TypeId::STRUCT },
                 quote! {
-                    let bytes = ::std::mem::size_of::<Self>();
-                    if bytes == 0 { 1 } else { bytes }
+                    ::std::mem::size_of::<Self>()
                 },
             )
         }

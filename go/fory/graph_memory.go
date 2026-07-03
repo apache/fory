@@ -22,7 +22,8 @@ import (
 	"unsafe"
 )
 
-const graphContainerBytes int64 = 1
+const graphReferenceBytes int64 = 4
+const graphShallowOwnerBytes = 2 * graphReferenceBytes
 
 var stringElementBytes = graphSizeOf[string]()
 var stringMaxLength = maxGraphCount(stringElementBytes)
@@ -34,9 +35,9 @@ func graphSizeOf[T any]() int64 {
 
 func maxGraphCount(elemBytes int64) int64 {
 	if elemBytes == 0 {
-		return MaxInt64 - graphContainerBytes
+		return MaxInt64 - graphShallowOwnerBytes
 	}
-	return (MaxInt64 - graphContainerBytes) / elemBytes
+	return (MaxInt64 - graphShallowOwnerBytes) / elemBytes
 }
 
 func structGraphBytes(type_ reflect.Type) int64 {
@@ -45,7 +46,7 @@ func structGraphBytes(type_ reflect.Type) int64 {
 	}
 	bytes := int64(type_.Size())
 	if bytes == 0 {
-		return graphContainerBytes
+		return graphShallowOwnerBytes
 	}
 	return bytes
 }

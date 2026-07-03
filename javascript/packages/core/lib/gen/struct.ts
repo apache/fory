@@ -28,9 +28,9 @@ import { getCompatibleCollectionArrayReadAction } from "./collection";
 import { CompatibleScalarConverter, getCompatibleScalarReadAction } from "../compatible/scalar";
 import { shouldSkipCompatibleRead } from "../compatible/field";
 
-const OBJECT_BYTES = 1;
-const COLLECTION_BYTES = 1;
 const REFERENCE_BYTES = 4;
+const OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
+const COLLECTION_OWNER_BYTES = 2 * REFERENCE_BYTES;
 
 /**
  * Returns true when a field's read cannot recurse and needs no depth tracking.
@@ -71,7 +71,7 @@ function compatibleReadTargetStmt(
         if (${value} === null || ${value} === undefined) {
           ${assignStmt(value)}
         } else {
-          ${readContextName}.reserveGraphMemory(${COLLECTION_BYTES} + ${value}.length * ${REFERENCE_BYTES});
+          ${readContextName}.reserveGraphMemory(${COLLECTION_OWNER_BYTES} + ${value}.length * ${REFERENCE_BYTES});
           ${assignStmt(`Array.from(${value})`)}
         }
       `;
@@ -582,7 +582,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 
   private objectGraphBytes(): number {
-    return OBJECT_BYTES + this.sortedProps.length * REFERENCE_BYTES;
+    return OBJECT_OWNER_BYTES + this.sortedProps.length * REFERENCE_BYTES;
   }
 
   readField(
@@ -851,7 +851,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       `
             : ""
         }
-        ${this.builder.getReadContextName()}.reserveGraphMemory(${OBJECT_BYTES});
+        ${this.builder.getReadContextName()}.reserveGraphMemory(${OBJECT_OWNER_BYTES});
         ${
           this.typeInfo.options?.withConstructor
             ? `const ${result} = new ${this.builder.getOptions("creator")}();`

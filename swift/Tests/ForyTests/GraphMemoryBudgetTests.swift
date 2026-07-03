@@ -129,7 +129,7 @@ private func makeCompatibleBudgetFory(maxGraphMemoryBytes: Int64 = defaultGraphM
 }
 
 private let testReferenceBytes = 4
-private let budgetNodeGraphBytes = 1 + 4
+private let budgetNodeGraphBytes = (2 * testReferenceBytes) + 4
 
 private func elementBytes<Element: Serializer>(_ type: Element.Type) -> Int {
     type.isRefType ? testReferenceBytes : max(1, MemoryLayout<Element>.stride)

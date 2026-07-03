@@ -36,8 +36,7 @@ internal static class GraphMemory
                 return 0;
             }
 
-            int bytes = Unsafe.SizeOf<T>();
-            return bytes == 0 ? 1 : bytes;
+            return Unsafe.SizeOf<T>();
         }
 
         private static bool ShouldReserve(Type type)

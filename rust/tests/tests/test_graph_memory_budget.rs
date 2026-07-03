@@ -186,7 +186,7 @@ fn empty_collection_owner_self() {
 }
 
 #[test]
-fn empty_struct_owner_self() {
+fn empty_struct_has_no_inline_storage() {
     let value = BudgetEmpty;
     let writer = fory_with_budget(DEFAULT_GRAPH_MEMORY_BYTES);
     let bytes = writer.serialize(&value).unwrap();
@@ -200,7 +200,7 @@ fn empty_struct_owner_self() {
 
     let values = vec![BudgetEmpty, BudgetEmpty, BudgetEmpty];
     let bytes = writer.serialize(&values).unwrap();
-    let required = mem::size_of::<Vec<BudgetEmpty>>() + values.len();
+    let required = mem::size_of::<Vec<BudgetEmpty>>();
     assert!(fory_with_budget((required - 1) as i64)
         .deserialize::<Vec<BudgetEmpty>>(&bytes)
         .is_err());

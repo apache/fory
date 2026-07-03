@@ -1228,7 +1228,7 @@ final class ForyGenerator extends Generator {
   }
 
   int _graphObjectBytes(_GeneratedStructSpec structSpec) =>
-      1 + structSpec.fields.length * 4;
+      2 * 4 + structSpec.fields.length * 4;
 
   bool _isSkipped(FieldElement field) {
     final annotation = _fieldAnnotationOf(field);

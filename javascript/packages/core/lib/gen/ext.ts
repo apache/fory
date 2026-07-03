@@ -25,8 +25,8 @@ import { CodegenRegistry } from "./router";
 import { BaseSerializerGenerator } from "./serializer";
 import { TypeMeta } from "../meta/TypeMeta";
 
-const OBJECT_BYTES = 1;
 const REFERENCE_BYTES = 4;
+const OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
 
 class ExtSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
@@ -45,7 +45,9 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
   }
 
   private objectGraphBytes(): number {
-    return OBJECT_BYTES + Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES;
+    return (
+      OBJECT_OWNER_BYTES + Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES
+    );
   }
 
   write(accessor: string): string {

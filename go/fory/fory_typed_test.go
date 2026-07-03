@@ -171,7 +171,7 @@ func TestDeserializeByteSliceAcceptsUint8ArrayRootType(t *testing.T) {
 }
 
 // TestSerializeGenericComplex tests Serialize[T]/DeserializeWithCallbackBuffers[T] with complex types.
-// Struct wrappers must be registered explicitly before reflection-based serialization.
+// Struct wrappers must be registered explicitly before fast serializer use.
 func TestSerializeGenericComplex(t *testing.T) {
 	f := NewFory(WithXlang(false), WithRefTracking(true), WithCompatible(false))
 
@@ -187,7 +187,7 @@ func TestSerializeGenericComplex(t *testing.T) {
 		data, err := Serialize(f, &original)
 		require.NoError(t, err)
 
-		// Use reflection-based path for deserialization
+		// Use the fast serializer path for deserialization.
 		var result TestStruct
 		err = Deserialize(f, data, &result)
 		require.NoError(t, err)
@@ -245,8 +245,8 @@ func TestSerializeDeserializeRoundTrip(t *testing.T) {
 		require.Equal(t, original, result)
 	})
 
-	t.Run("ReflectionFallbackPath", func(t *testing.T) {
-		// Custom struct falls back to reflection
+	t.Run("FastSerializerFallbackPath", func(t *testing.T) {
+		// Custom struct uses the fast serializer fallback path.
 		type CustomStruct struct {
 			ID   int64
 			Name string

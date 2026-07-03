@@ -57,7 +57,7 @@ abstract class AbstractScalaMapSerializer[K, V, T](typeResolver: TypeResolver, c
     if (numElements > Integer.MAX_VALUE / 2) {
       throw new DeserializationException("Map size is too large to read: " + numElements)
     }
-    readContext.reserveGraphMemory(1L + numElements.toLong * 2L * 4L)
+    readContext.reserveGraphMemory(2L * 4L + numElements.toLong * 2L * 4L)
     setNumElements(numElements)
     val factory = readContext.readRef().asInstanceOf[Factory[(K, V), T]]
     buffer.checkReadableBytes(numElements << 1)

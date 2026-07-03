@@ -863,7 +863,7 @@ func readHeaderSlow(ctx *ReadContext, bitmap byte) {
 
 // Serialize - type T inferred, serializer auto-resolved.
 // The serializer handles its own ref/type info writing internally.
-// Uses reflection-based serializers for supported non-struct types. Structs must
+// Uses fast serializers for supported non-struct types. Structs must
 // be registered explicitly before serialization.
 // Note: For structs, T must be a pointer to struct (*MyStruct), not struct value.
 //
@@ -1010,7 +1010,7 @@ func Serialize[T any](f *Fory, value T) ([]byte, error) {
 		f.writeCtx.WriteTypeId(MAP)
 		writeMapIntInt(f.writeCtx.buffer, val, false)
 	default:
-		// Fall back to reflection-based serialization
+		// Fall back to the fast serializer path.
 		return f.serializeReflectValue(reflect.ValueOf(v))
 	}
 

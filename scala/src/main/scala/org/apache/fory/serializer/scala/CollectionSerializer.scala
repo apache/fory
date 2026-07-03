@@ -56,7 +56,7 @@ abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](
     val buffer = readContext.getBuffer
     val numElements = buffer.readVarUInt32Small7()
     checkCollectionSize(numElements)
-    readContext.reserveGraphMemory(1L + numElements.toLong * 4L)
+    readContext.reserveGraphMemory(2L * 4L + numElements.toLong * 4L)
     setNumElements(numElements)
     val factory = readContext.readRef().asInstanceOf[Factory[A, T]]
     buffer.checkReadableBytes(numElements)

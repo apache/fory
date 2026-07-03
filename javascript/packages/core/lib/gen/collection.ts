@@ -27,7 +27,7 @@ import { AnyHelper } from "./any";
 import type { ReadContext, WriteContext } from "../context";
 
 const REFERENCE_BYTES = 4;
-const COLLECTION_BYTES = 1;
+const COLLECTION_OWNER_BYTES = 2 * REFERENCE_BYTES;
 
 export type CompatibleCollectionArrayReadAction = {
   target: "array" | "list";
@@ -237,7 +237,7 @@ class CollectionAnySerializer {
   ): any {
     void fromRef;
     const len = this.readContext.reader.readVarUint32Small7();
-    this.readContext.reserveGraphMemory(COLLECTION_BYTES + len * REFERENCE_BYTES);
+    this.readContext.reserveGraphMemory(COLLECTION_OWNER_BYTES + len * REFERENCE_BYTES);
     if (len === 0) {
       return createCollection(len);
     }
@@ -425,7 +425,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
       : this.newCollection(len);
     const reserveMemory = compatibleListToArray
       ? ""
-      : `${readContextName}.reserveGraphMemory(${COLLECTION_BYTES} + ${len} * ${REFERENCE_BYTES});`;
+      : `${readContextName}.reserveGraphMemory(${COLLECTION_OWNER_BYTES} + ${len} * ${REFERENCE_BYTES});`;
     const putAccessor = (item: string, index: string) =>
       compatibleListToArray
         ? compatibleArrayPutAccessor(compatibleReadAction!.elementTypeId, result, item, index)

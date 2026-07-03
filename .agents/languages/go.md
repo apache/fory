@@ -6,7 +6,7 @@ Load this file when changing `go/fory/` or Go xlang behavior.
 
 - Run Go commands from within `go/fory/`.
 - Changes under `go/` must pass formatting and tests.
-- The Go implementation focuses on reflection-based serialization.
+- The Go implementation focuses on fast serializers.
 - Root deserialization graph memory budgets are owned by `ReadContext`.
   `WithMaxGraphMemoryBytes` uses a fixed `128 MiB` default; positive explicit
   values override it, and explicit non-positive values are invalid at config creation.
@@ -14,9 +14,9 @@ Load this file when changing `go/fory/` or Go xlang behavior.
   Root APIs reset the budget only; they must not pre-reserve root type or root self bytes. Do not
   mirror the configured max into a second active-limit field; root setup should update only the
   mutable remaining budget. `ReadContext` may expose only raw byte reservation; slice, map, array,
-  struct, and object formulas belong in handwritten serializer owners. Reserve Go slices as
-  `len * elemBytes`, maps as `len * (keyBytes + valueBytes)`, map-backed sets, and LIST-encoded
-  inline/value slices in the owner that allocates that storage. Struct pointer allocations reserve
+  struct, and object formulas belong in handwritten serializer owners. Reserve Go slices, maps,
+  map-backed sets, and LIST-encoded inline/value slices with a real shallow owner byte lower bound
+  plus direct element/key/value storage in the owner that allocates that storage. Struct pointer allocations reserve
   shallow value storage in the pointer materialization path; root struct reads do not reserve root
   object memory in `Fory` or `ReadContext`, and nested inline struct serializers do not charge
   their own self storage again. Fixed arrays are caller-owned unless a read path materializes a

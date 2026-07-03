@@ -112,14 +112,14 @@ public sealed class CompatibleBudgetArray
 public sealed class GraphMemoryBudgetTests
 {
     private const int ReferenceBytes = 4;
-    private const int ObjectBytes = 1;
-    private const long BudgetEmptyBytes = ObjectBytes;
-    private const long BudgetItemBytes = ObjectBytes + 4 + ReferenceBytes;
-    private const long BudgetSiblingsBytes = ObjectBytes + ReferenceBytes + ReferenceBytes;
-    private const long BudgetArrayHolderBytes = ObjectBytes + ReferenceBytes;
-    private const long GeneratedGraphHolderBytes = ObjectBytes + ReferenceBytes;
+    private static readonly int ReferenceObjectBytes = IntPtr.Size * 2;
+    private static readonly long BudgetEmptyBytes = ReferenceObjectBytes;
+    private static readonly long BudgetItemBytes = ReferenceObjectBytes + 4 + ReferenceBytes;
+    private static readonly long BudgetSiblingsBytes = ReferenceObjectBytes + ReferenceBytes + ReferenceBytes;
+    private static readonly long BudgetArrayHolderBytes = ReferenceObjectBytes + ReferenceBytes;
+    private static readonly long GeneratedGraphHolderBytes = ReferenceObjectBytes + ReferenceBytes;
     private const long BudgetValueBytes = 4;
-    private const long BudgetValueHolderBytes = ObjectBytes + BudgetValueBytes;
+    private static readonly long BudgetValueHolderBytes = ReferenceObjectBytes + BudgetValueBytes;
     private const long DefaultGraphMemoryBytes = 128L * 1024 * 1024;
 
     private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
@@ -159,17 +159,17 @@ public sealed class GraphMemoryBudgetTests
 
     private static long ListBudget<T>(int count)
     {
-        return ObjectBytes + (long)count * ElementBytes<T>();
+        return ReferenceObjectBytes + (long)count * ElementBytes<T>();
     }
 
     private static long ArrayBudget<T>(int count)
     {
-        return ObjectBytes + (long)count * ElementBytes<T>();
+        return ReferenceObjectBytes + (long)count * ElementBytes<T>();
     }
 
     private static long MapBudget<TKey, TValue>(int count)
     {
-        return ObjectBytes + (long)count * (ElementBytes<TKey>() + ElementBytes<TValue>());
+        return ReferenceObjectBytes + (long)count * (ElementBytes<TKey>() + ElementBytes<TValue>());
     }
 
     [Fact]

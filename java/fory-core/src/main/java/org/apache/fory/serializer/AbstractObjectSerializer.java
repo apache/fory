@@ -69,8 +69,8 @@ import org.apache.fory.util.record.RecordUtils;
 public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   private static final Logger LOG = LoggerFactory.getLogger(AbstractObjectSerializer.class);
   private static final Object SELF_REFERENCE = new Object();
-  private static final int OBJECT_SELF_BYTES = 1;
   private static final int REFERENCE_BYTES = 4;
+  private static final int OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
   // Constructor-bound objects reserve a ref id before constructor arguments are read, but the
   // object cannot be referenced semantically until the constructor returns. Generated constructor
   // serializers call the tracker before reading ref-tracking constructor-phase fields so nested
@@ -109,8 +109,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   static int computeObjectGraphMemoryBytes(Class<?> type) {
-    // One byte is a stable nonzero self cost, not an attempt to model JVM object headers.
-    int bytes = OBJECT_SELF_BYTES;
+    int bytes = OBJECT_OWNER_BYTES;
     for (Field field : ReflectionUtils.getFields(type, true)) {
       if (!Modifier.isStatic(field.getModifiers())) {
         bytes = Math.addExact(bytes, fieldGraphMemoryBytes(field.getType()));

@@ -36,7 +36,7 @@ COLL_HAS_NULL = 0b10
 COLL_IS_DECL_ELEMENT_TYPE = 0b100
 COLL_IS_SAME_TYPE = 0b1000
 _REFERENCE_BYTES = struct.calcsize("P")
-_OWNER_BYTES = 1
+_REFERENCE_OBJECT_BYTES = 2 * _REFERENCE_BYTES
 
 
 def _needs_element_type_info(type_id):
@@ -180,7 +180,7 @@ class CollectionSerializer(Serializer):
 
     def read(self, read_context):
         length = read_context.read_var_uint32()
-        read_context.reserve_graph_memory(_OWNER_BYTES + length * _REFERENCE_BYTES)
+        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES + length * _REFERENCE_BYTES)
         if length != 0:
             read_context.check_readable_bytes(length)
         collection_ = self.new_instance(read_context, self.type_)
@@ -462,7 +462,7 @@ class MapSerializer(Serializer):
 
     def read(self, read_context):
         size = read_context.read_var_uint32()
-        read_context.reserve_graph_memory(_OWNER_BYTES + size * 2 * _REFERENCE_BYTES)
+        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES + size * 2 * _REFERENCE_BYTES)
         if size != 0:
             read_context.check_readable_bytes(size)
         map_ = {}

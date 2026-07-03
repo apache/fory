@@ -38,7 +38,7 @@ Use native serialization when:
   the writer.
 - You want compatible schema evolution for Go-only rolling deployments without committing to a
   cross-language type mapping.
-- You are using Go reflection-based serializers for structs that never leave Go.
+- You are using Go fast serializers for structs that never leave Go.
 
 ## Create a Native-Mode Fory Instance
 
