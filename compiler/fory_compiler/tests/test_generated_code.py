@@ -1126,6 +1126,94 @@ def test_cpp_generator_supports_decimal_fields_and_unions():
     assert "(amount, fory::serialization::Decimal, fory::F(1))" in cpp_output
 
 
+def test_cpp_omits_equality_for_any_types():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Inner {
+                any value = 1;
+            }
+
+            union AnyChoice {
+                Inner inner = 1;
+                string name = 2;
+            }
+
+            message DirectAny {
+                any value = 1;
+            }
+
+            message AnyList {
+                list<any> values = 1;
+            }
+
+            message AnyMap {
+                map<string, any> values = 1;
+            }
+
+            union DirectChoice {
+                any payload = 1;
+                list<any> values = 2;
+                string name = 3;
+            }
+
+            message DirectOwner {
+                Inner inner = 1;
+            }
+
+            message ListOwner {
+                list<Inner> values = 1;
+            }
+
+            message MapOwner {
+                map<string, Inner> values = 1;
+            }
+
+            message UnionOwner {
+                AnyChoice choice = 1;
+            }
+
+            message DeclaresNestedOnly {
+                message Nested {
+                    any value = 1;
+                }
+
+                string name = 1;
+            }
+
+            message Plain {
+                string name = 1;
+                list<int32> values = 2;
+                map<string, int32> counts = 3;
+            }
+
+            union PlainChoice {
+                string name = 1;
+                int32 code = 2;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert "bool operator==(const Inner& other) const" not in cpp_output
+    assert "bool operator==(const AnyChoice& other) const" not in cpp_output
+    assert "bool operator==(const DirectAny& other) const" not in cpp_output
+    assert "bool operator==(const AnyList& other) const" not in cpp_output
+    assert "bool operator==(const AnyMap& other) const" not in cpp_output
+    assert "bool operator==(const DirectChoice& other) const" not in cpp_output
+    assert "bool operator==(const DirectOwner& other) const" not in cpp_output
+    assert "bool operator==(const ListOwner& other) const" not in cpp_output
+    assert "bool operator==(const MapOwner& other) const" not in cpp_output
+    assert "bool operator==(const UnionOwner& other) const" not in cpp_output
+    assert "bool operator==(const Nested& other) const" not in cpp_output
+    assert "bool operator==(const DeclaresNestedOnly& other) const" in cpp_output
+    assert "bool operator==(const Plain& other) const" in cpp_output
+    assert "bool operator==(const PlainChoice& other) const" in cpp_output
+
+
 def test_cpp_nested_container_ref_uses_correct_pointer_type():
     schema = parse_fdl(
         dedent(
