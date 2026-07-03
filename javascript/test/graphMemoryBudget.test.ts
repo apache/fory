@@ -236,6 +236,31 @@ describe("graph memory budget", () => {
     expect(Array.from(passingReader.deserialize(bytes).values)).toEqual([1, 2, 3]);
   });
 
+  test("charges compatible typed array to list materialization", () => {
+    const writerType = Type.struct(9011, {
+      values: Type.int32Array().setId(1),
+    });
+    const readerType = Type.struct(9011, {
+      values: Type.list(Type.int32({ encoding: "fixed" })).setId(1),
+    });
+    const writer = new Fory({ compatible: true });
+    const bytes = writer.register(writerType).serialize({
+      values: new Int32Array([1, 2, 3]),
+    });
+    const required = objectBytes(1) + listBytes(3);
+    const passingReader = new Fory({
+      compatible: true,
+      maxGraphMemoryBytes: required,
+    }).register(readerType);
+    const failingReader = new Fory({
+      compatible: true,
+      maxGraphMemoryBytes: required - 1,
+    }).register(readerType);
+
+    expect(() => failingReader.deserialize(bytes)).toThrow(/maxGraphMemoryBytes/);
+    expect(passingReader.deserialize(bytes)).toEqual({ values: [1, 2, 3] });
+  });
+
   test("skips scalar dense owners", () => {
     const typeInfo = Type.struct("budget.skipped", {
       text: Type.string().setId(1),

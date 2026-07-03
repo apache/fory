@@ -29,6 +29,7 @@ import { CompatibleScalarConverter, getCompatibleScalarReadAction } from "../com
 import { shouldSkipCompatibleRead } from "../compatible/field";
 
 const OBJECT_BYTES = 1;
+const COLLECTION_BYTES = 1;
 const REFERENCE_BYTES = 4;
 
 /**
@@ -52,15 +53,31 @@ function isDepthFreeField(typeInfo: TypeInfo): boolean {
   return false;
 }
 
-function compatibleReadTargetExpr(typeInfo: TypeInfo, expr: string): string {
+function compatibleReadTargetStmt(
+  typeInfo: TypeInfo,
+  expr: string,
+  readContextName: string,
+  scope: Scope,
+  assignStmt: (expr: string) => string,
+): string {
   const action = getCompatibleCollectionArrayReadAction(typeInfo);
   switch (action?.target) {
     case "array":
-      return expr;
-    case "list":
-      return `Array.from(${expr})`;
+      return assignStmt(expr);
+    case "list": {
+      const value = scope.uniqueName("compatibleValue");
+      return `
+        const ${value} = ${expr};
+        if (${value} === null || ${value} === undefined) {
+          ${assignStmt(value)}
+        } else {
+          ${readContextName}.reserveGraphMemory(${COLLECTION_BYTES} + ${value}.length * ${REFERENCE_BYTES});
+          ${assignStmt(`Array.from(${value})`)}
+        }
+      `;
+    }
     default:
-      return expr;
+      return assignStmt(expr);
   }
 }
 
@@ -577,7 +594,13 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     const { nullable = false, dynamic, trackingRef } = fieldTypeInfo;
     const refMode = toRefMode(trackingRef, nullable);
     const assignCompatible = (expr: string) =>
-      assignStmt(compatibleReadTargetExpr(fieldTypeInfo, expr));
+      compatibleReadTargetStmt(
+        fieldTypeInfo,
+        expr,
+        this.builder.getReadContextName(),
+        this.scope,
+        assignStmt,
+      );
     if (shouldSkipCompatibleRead(fieldTypeInfo)) {
       const discard = (expr: string) => `${expr};`;
       if (this.builder.resolver.isMonomorphic(fieldTypeInfo, dynamic)) {

@@ -99,6 +99,9 @@ public extension StructSerializer {
 }
 
 public extension Serializer {
+    /// Returns the explicit or cached TypeInfo for the payload currently being read.
+    /// Macro-generated object readers use this to choose their data or compatible owner path
+    /// without exposing ReadContext's type-info stack.
     static func foryReadPayloadTypeInfo(
         _ context: ReadContext,
         readTypeInfo: Bool
