@@ -20,7 +20,8 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   explicit non-positive values are invalid and must be rejected at config creation.
   Byte-array, memory-buffer, and stream roots use the same configured/default
   budget behavior. Root APIs reset the budget only; they must not pre-reserve
-  root type or root self bytes. `ReadContext`
+  root type or root self bytes. Do not mirror the configured max into a second
+  active-limit field; use config plus mutable remaining budget. `ReadContext`
   may expose only raw byte reservation;
   collection, map, array, struct, and object formulas belong in the concrete
   serializer or generated serializer owner. Java collection, map, and

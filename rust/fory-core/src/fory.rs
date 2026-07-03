@@ -1005,7 +1005,6 @@ impl Fory {
                 .map_err(|_| Error::invalid_data("max_graph_memory_bytes does not fit usize"))
             {
                 Ok(limit) => {
-                    context.graph_memory_limit_bytes = limit;
                     context.remaining_graph_memory_bytes = limit;
                     self.deserialize_with_context(context)
                 }
@@ -1080,7 +1079,6 @@ impl Fory {
                 .map_err(|_| Error::invalid_data("max_graph_memory_bytes does not fit usize"))
             {
                 Ok(limit) => {
-                    context.graph_memory_limit_bytes = limit;
                     context.remaining_graph_memory_bytes = limit;
                     self.deserialize_with_context(context)
                 }

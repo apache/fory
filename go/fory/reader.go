@@ -44,7 +44,6 @@ type ReadContext struct {
 	err                       Error         // Accumulated error state for deferred checking
 	lastTypePtr               uintptr
 	lastTypeInfo              *TypeInfo
-	graphMemoryLimitBytes     int64
 	remainingGraphMemoryBytes int64
 }
 
@@ -87,7 +86,6 @@ func NewReadContext(trackRef bool) *ReadContext {
 		refReader:                 NewRefReader(trackRef),
 		trackRef:                  trackRef,
 		maxDepth:                  128, // Default maximum nesting depth
-		graphMemoryLimitBytes:     128 * 1024 * 1024,
 		remainingGraphMemoryBytes: 128 * 1024 * 1024,
 	}
 }
@@ -130,8 +128,8 @@ func (c *ReadContext) rejectGraphMemoryBytes(bytes int64) bool {
 //go:noinline
 func (c *ReadContext) rejectGraphMemoryExceeded(bytes int64, remaining int64) bool {
 	c.SetError(DeserializationErrorf(
-		"estimated graph memory request %d bytes exceeds maxGraphMemoryBytes remaining budget %d bytes out of effective limit %d bytes",
-		bytes, remaining, c.graphMemoryLimitBytes))
+		"estimated graph memory request %d bytes exceeds maxGraphMemoryBytes remaining budget %d bytes",
+		bytes, remaining))
 	return false
 }
 

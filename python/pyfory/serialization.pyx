@@ -1100,7 +1100,6 @@ cdef class Fory:
             iter(unsupported_objects) if unsupported_objects is not None else None
         )
         read_context.peer_out_of_band_enabled = peer_out_of_band_enabled
-        read_context.graph_memory_limit_bytes = self.max_graph_memory_bytes
         read_context.remaining_graph_memory_bytes = self.max_graph_memory_bytes
         read_context.depth = 0
         return read_context.read_ref()

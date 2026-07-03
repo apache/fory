@@ -149,7 +149,6 @@ public sealed class GraphMemoryBudgetTests
         Assert.Throws<ArgumentOutOfRangeException>(() => NewFory(-2));
 
         ReadContext context = new(new ByteReader([]), new TypeResolver(), NewFory().Config);
-        context._graphMemoryLimitBytes = DefaultGraphMemoryBytes;
         context._remainingGraphMemoryBytes = DefaultGraphMemoryBytes;
         context.ReserveGraphMemory(DefaultGraphMemoryBytes);
         Assert.Throws<InvalidDataException>(() => context.ReserveGraphMemory(ReferenceBytes));

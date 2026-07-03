@@ -407,6 +407,10 @@ fixed `128 MiB`; positive configuration overrides the default; explicit
 non-positive configuration is invalid and must be rejected when the runtime is
 created. Do not derive this budget from root input size, and do not add dynamic
 stream bytes-read accounting for this budget.
+Because the budget is fixed per root, read state should not mirror the
+configured maximum into a second active-limit field. Use the existing
+configuration, or one configured maximum field when the config is not otherwise
+available, plus the mutable remaining budget.
 
 Read context or equivalent read state owns only raw byte reservation. It must
 not expose counted arithmetic helpers or collection, map, array, struct, or

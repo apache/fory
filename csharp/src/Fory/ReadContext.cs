@@ -45,7 +45,6 @@ public sealed class ReadContext
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
     private int _totalAcceptedSchemaVersions;
-    internal long _graphMemoryLimitBytes;
     internal long _remainingGraphMemoryBytes;
 
     public ReadContext(
@@ -63,7 +62,6 @@ public sealed class ReadContext
         RefReader = new RefReader();
         _maxDynamicReadDepth = config.MaxDepth;
         _config = config;
-        _graphMemoryLimitBytes = config.MaxGraphMemoryBytes;
         _remainingGraphMemoryBytes = config.MaxGraphMemoryBytes;
     }
 
@@ -108,7 +106,7 @@ public sealed class ReadContext
         }
 
         throw new InvalidDataException(
-            $"estimated graph memory request {bytes} bytes exceeds MaxGraphMemoryBytes remaining budget {remaining} bytes out of effective limit {_graphMemoryLimitBytes} bytes");
+            $"estimated graph memory request {bytes} bytes exceeds MaxGraphMemoryBytes remaining budget {remaining} bytes out of effective limit {_config.MaxGraphMemoryBytes} bytes");
     }
 
     internal void ResetFor(ByteReader reader)

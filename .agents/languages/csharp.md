@@ -15,6 +15,8 @@ Load this file when changing `csharp/` or C# xlang behavior.
 - Root deserialization graph memory budget state belongs to `ReadContext`. C# public roots are
   memory-backed today, but the graph budget uses the same fixed default for every root shape.
   Root APIs reset the budget only; they must not pre-reserve root type or root self bytes.
+  Do not mirror the configured max into a second active-limit field; use config plus mutable
+  remaining budget.
   `ReadContext` may expose only raw byte reservation; concrete serializers and generated
   serializers must compute list, array, map, struct, and object byte formulas before calling it.
 - `ReadContext` must not expose ref-publication pause/resume APIs or any non-budget owner

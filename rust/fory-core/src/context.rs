@@ -360,7 +360,6 @@ pub struct ReadContext<'a> {
     check_struct_version: bool,
     check_string_read: bool,
     pub(crate) max_graph_memory_bytes: i64,
-    pub(crate) graph_memory_limit_bytes: usize,
     pub(crate) remaining_graph_memory_bytes: usize,
 
     // Context-specific fields
@@ -392,7 +391,6 @@ impl<'a> ReadContext<'a> {
             check_struct_version: config.check_struct_version,
             check_string_read: config.check_string_read,
             max_graph_memory_bytes: config.max_graph_memory_bytes,
-            graph_memory_limit_bytes: 0,
             remaining_graph_memory_bytes: 0,
             reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
@@ -457,7 +455,7 @@ impl<'a> ReadContext<'a> {
             return Err(graph_memory_exceeded(
                 bytes,
                 remaining,
-                self.graph_memory_limit_bytes,
+                self.max_graph_memory_bytes,
             ));
         }
         self.remaining_graph_memory_bytes = remaining - bytes;
@@ -576,7 +574,7 @@ impl<'a> ReadContext<'a> {
 
 #[cold]
 #[inline(never)]
-fn graph_memory_exceeded(bytes: usize, remaining: usize, limit: usize) -> Error {
+fn graph_memory_exceeded(bytes: usize, remaining: usize, limit: i64) -> Error {
     Error::invalid_data(format!(
         "estimated graph memory request {} bytes exceeds max_graph_memory_bytes remaining budget {} bytes out of effective limit {} bytes",
         bytes, remaining, limit

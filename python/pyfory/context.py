@@ -472,7 +472,6 @@ class ReadContext:
         "policy",
         "max_depth",
         "max_graph_memory_bytes",
-        "graph_memory_limit_bytes",
         "remaining_graph_memory_bytes",
         "ref_reader",
         "meta_string_reader",
@@ -495,7 +494,6 @@ class ReadContext:
         self.policy = config.policy
         self.max_depth = config.max_depth
         self.max_graph_memory_bytes = config.max_graph_memory_bytes
-        self.graph_memory_limit_bytes = 0
         self.remaining_graph_memory_bytes = 0
         self.ref_reader = MapRefReader() if self.track_ref else NoRefReader()
         self.meta_string_reader = MetaStringReader(type_resolver.shared_registry)
@@ -531,7 +529,6 @@ class ReadContext:
         self.buffers = iter(buffers) if buffers is not None else None
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
-        self.graph_memory_limit_bytes = self.max_graph_memory_bytes
         self.remaining_graph_memory_bytes = self.max_graph_memory_bytes
         self.depth = 0
 
@@ -546,7 +543,6 @@ class ReadContext:
         self.buffers = None
         self.unsupported_objects = None
         self.peer_out_of_band_enabled = False
-        self.graph_memory_limit_bytes = 0
         self.remaining_graph_memory_bytes = 0
         self.depth = 0
 
@@ -557,10 +553,10 @@ class ReadContext:
             raise ValueError("Estimated graph memory overflow")
         remaining = self.remaining_graph_memory_bytes
         if num_bytes > remaining:
-            used = self.graph_memory_limit_bytes - remaining
+            used = self.max_graph_memory_bytes - remaining
             raise ValueError(
                 f"Estimated graph memory budget exceeded: requested {num_bytes} bytes, "
-                f"used {used} bytes, limit {self.graph_memory_limit_bytes} bytes. "
+                f"used {used} bytes, limit {self.max_graph_memory_bytes} bytes. "
                 "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
             )
         self.remaining_graph_memory_bytes = remaining - num_bytes

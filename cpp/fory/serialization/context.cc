@@ -437,9 +437,8 @@ ReadContext::ReadContext(const Config &config,
       type_resolver_(std::move(type_resolver)), current_dyn_depth_(0) {
   FORY_CHECK(config.max_graph_memory_bytes > 0)
       << "max_graph_memory_bytes must be positive";
-  graph_memory_limit_bytes_ =
+  remaining_graph_memory_bytes_ =
       static_cast<size_t>(config.max_graph_memory_bytes);
-  remaining_graph_memory_bytes_ = graph_memory_limit_bytes_;
 }
 
 ReadContext::~ReadContext() = default;
@@ -743,11 +742,6 @@ const TypeInfo *ReadContext::read_any_type_info(Error &error) {
     return nullptr;
   }
   return result.value();
-}
-
-bool ReadContext::set_graph_memory_limit_error(const std::string &message) {
-  set_error(Error::invalid_data(message));
-  return false;
 }
 
 bool ReadContext::set_graph_memory_exceeded(size_t bytes, size_t remaining) {

@@ -23,6 +23,8 @@ Load this file when changing `cpp/`, Cython build plumbing, or C++ xlang behavio
   values are invalid at config creation. Byte and stream roots use the same
   configured/default budget behavior. Root `Fory` overloads reset the budget only; they must not
   pre-reserve root type or root self bytes.
+  Do not mirror the configured max into a second active-limit field; use config plus mutable
+  remaining budget.
   Reserve estimated shallow graph-owner memory before allocation while preserving existing
   byte-availability checks and their non-empty metadata ordering. `ReadContext` may expose only raw
   byte reservation; collection, map, array, struct, and object

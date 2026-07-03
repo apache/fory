@@ -674,7 +674,6 @@ private:
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
-  FORY_NOINLINE bool set_graph_memory_limit_error(const std::string &message);
   FORY_NOINLINE bool set_graph_memory_exceeded(size_t bytes, size_t remaining);
 
   // Error state - accumulated during deserialization, checked at the end
@@ -685,7 +684,6 @@ private:
   std::unique_ptr<TypeResolver> type_resolver_;
   RefReader ref_reader_;
   uint32_t current_dyn_depth_;
-  size_t graph_memory_limit_bytes_ = 0;
   size_t remaining_graph_memory_bytes_ = 0;
 
   // Meta sharing state (for compatible mode)

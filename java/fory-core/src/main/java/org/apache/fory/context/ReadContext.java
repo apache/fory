@@ -63,7 +63,6 @@ public final class ReadContext {
   private final boolean compressInt;
   private final Int64Encoding longEncoding;
   private final int maxDepth;
-  private final long maxGraphMemoryBytes;
   private final boolean scopedMetaShareEnabled;
   private final boolean forVirtualThread;
   private final IdentityHashMap<Object, Object> contextObjects = new IdentityHashMap<>();
@@ -72,7 +71,6 @@ public final class ReadContext {
   private MetaReadContext metaReadContext;
   private boolean peerOutOfBandEnabled;
   private int depth;
-  private long graphMemoryLimitBytes;
   private long remainingGraphMemoryBytes;
 
   /**
@@ -99,7 +97,6 @@ public final class ReadContext {
     compressInt = config.compressInt();
     longEncoding = config.longEncoding();
     maxDepth = config.maxDepth();
-    maxGraphMemoryBytes = config.maxGraphMemoryBytes();
     forVirtualThread = config.forVirtualThread();
     scopedMetaShareEnabled = config.isScopedMetaShareEnabled();
     if (scopedMetaShareEnabled) {
@@ -116,8 +113,7 @@ public final class ReadContext {
     this.buffer = buffer;
     this.peerOutOfBandEnabled = peerOutOfBandEnabled;
     this.outOfBandBuffers = outOfBandBuffers == null ? null : outOfBandBuffers.iterator();
-    graphMemoryLimitBytes = maxGraphMemoryBytes;
-    remainingGraphMemoryBytes = maxGraphMemoryBytes;
+    remainingGraphMemoryBytes = config.maxGraphMemoryBytes();
   }
 
   /**
@@ -313,7 +309,6 @@ public final class ReadContext {
     outOfBandBuffers = null;
     peerOutOfBandEnabled = false;
     depth = 0;
-    graphMemoryLimitBytes = 0;
     remainingGraphMemoryBytes = 0;
   }
 
@@ -345,7 +340,7 @@ public final class ReadContext {
             + " bytes exceeds maxGraphMemoryBytes remaining budget "
             + remaining
             + " bytes out of effective limit "
-            + graphMemoryLimitBytes
+            + config.maxGraphMemoryBytes()
             + " bytes. If the data is trusted, increase ForyBuilder#withMaxGraphMemoryBytes.");
   }
 

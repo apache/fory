@@ -888,7 +888,7 @@ private:
 
     read_ctx_->attach(buffer);
     read_ctx_->remaining_graph_memory_bytes_ =
-        read_ctx_->graph_memory_limit_bytes_;
+        static_cast<size_t>(read_ctx_->config_->max_graph_memory_bytes);
     ReadContextGuard guard(*read_ctx_);
     return deserialize_impl<T>(buffer);
   }

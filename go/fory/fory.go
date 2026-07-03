@@ -569,9 +569,7 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
 	f.readCtx.SetData(data)
 	target := reflect.ValueOf(v).Elem()
-	limit := f.config.MaxGraphMemoryBytes
-	f.readCtx.graphMemoryLimitBytes = limit
-	f.readCtx.remainingGraphMemoryBytes = limit
+	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
@@ -663,9 +661,7 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = buf
 	target := reflect.ValueOf(v).Elem()
-	limit := f.config.MaxGraphMemoryBytes
-	f.readCtx.graphMemoryLimitBytes = limit
-	f.readCtx.remainingGraphMemoryBytes = limit
+	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
@@ -778,9 +774,7 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	target := rv.Elem()
-	limit := f.config.MaxGraphMemoryBytes
-	f.readCtx.graphMemoryLimitBytes = limit
-	f.readCtx.remainingGraphMemoryBytes = limit
+	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
 
 	// ReadData and validate header
 	readHeader(f.readCtx)
@@ -1038,9 +1032,7 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	// Reuse context, reset and set new data
 	f.readCtx.Reset()
 	f.readCtx.SetData(data)
-	limit := f.config.MaxGraphMemoryBytes
-	f.readCtx.graphMemoryLimitBytes = limit
-	f.readCtx.remainingGraphMemoryBytes = limit
+	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
 
 	var targetVal reflect.Value
 	var targetType reflect.Type

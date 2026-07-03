@@ -24,6 +24,8 @@ Load this file when changing `rust/` or Rust xlang behavior.
   creation. Root `Fory` read methods reset the budget only; they must not pre-reserve root type or
   root self bytes. Do not derive the budget from root input size or add dynamic bytes-read
   accounting.
+  Do not mirror the configured max into a second active-limit field; keep one configured max plus
+  mutable remaining budget.
   `ReadContext` may expose only raw byte reservation; `Vec`,
   collection, map, array, struct, object, and derive codec formulas belong in their serializer
   owners.

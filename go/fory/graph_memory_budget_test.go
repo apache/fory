@@ -52,17 +52,15 @@ func TestGraphMemoryBudgetConfig(t *testing.T) {
 
 func TestGraphMemoryBudgetFixedDefault(t *testing.T) {
 	ctx := NewReadContext(false)
-	ctx.graphMemoryLimitBytes = 128 * 1024 * 1024
 	ctx.remainingGraphMemoryBytes = 128 * 1024 * 1024
-	require.Equal(t, int64(128*1024*1024), ctx.graphMemoryLimitBytes)
-	require.True(t, ctx.ReserveGraphMemory(ctx.graphMemoryLimitBytes))
+	require.Equal(t, int64(128*1024*1024), ctx.remainingGraphMemoryBytes)
+	require.True(t, ctx.ReserveGraphMemory(ctx.remainingGraphMemoryBytes))
 	require.False(t, ctx.ReserveGraphMemory(1))
 	require.Contains(t, ctx.CheckError().Error(), "maxGraphMemoryBytes")
 
 	ctx = NewReadContext(false)
-	ctx.graphMemoryLimitBytes = 77
 	ctx.remainingGraphMemoryBytes = 77
-	require.Equal(t, int64(77), ctx.graphMemoryLimitBytes)
+	require.Equal(t, int64(77), ctx.remainingGraphMemoryBytes)
 }
 
 func TestGraphBudgetRootKinds(t *testing.T) {

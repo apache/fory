@@ -130,7 +130,7 @@ def test_fixed_default_budget():
     fory = new_fory(xlang=False)
     try:
         fory.read_context.prepare(Buffer(b"x" * 17))
-        assert fory.read_context.graph_memory_limit_bytes == DEFAULT_GRAPH_MEMORY_BYTES
+        assert fory.read_context.remaining_graph_memory_bytes == DEFAULT_GRAPH_MEMORY_BYTES
         fory.read_context.reserve_graph_memory(DEFAULT_GRAPH_MEMORY_BYTES)
         with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
             fory.read_context.reserve_graph_memory(1)
@@ -143,7 +143,7 @@ def test_stream_default_budget():
     try:
         buffer = Buffer.from_stream(OneByteStream(b"streamed"))
         fory.read_context.prepare(buffer)
-        assert fory.read_context.graph_memory_limit_bytes == DEFAULT_GRAPH_MEMORY_BYTES
+        assert fory.read_context.remaining_graph_memory_bytes == DEFAULT_GRAPH_MEMORY_BYTES
     finally:
         fory.reset_read()
 

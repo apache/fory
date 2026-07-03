@@ -17,7 +17,9 @@ Load this file when changing `python/`, Cython serialization, or Python xlang be
   Keep `max_graph_memory_bytes` public on `pyfory.Fory`/`Config`; the default effective limit is
   fixed `128 MiB`, positive explicit values override it, and explicit non-positive values are
   invalid at config creation. Byte and stream roots use the same
-  configured/default budget behavior. `ReadContext` may expose only raw
+  configured/default budget behavior. Do not mirror the configured max into a
+  second active-limit field; keep one configured max plus mutable remaining
+  budget. `ReadContext` may expose only raw
   byte reservation; collection, dict, array, struct, and object
   formulas belong in the pure-Python or Cython serializer owner. Lists, tuples, sets, and
   object-dtype ndarray item storage reserve nonzero owner self cost plus `count * PyObject*`; dicts
