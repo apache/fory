@@ -330,11 +330,6 @@ func (r *TypeResolver) IsUnionType(t reflect.Type) bool {
 	return v
 }
 
-// GetTypeInfo returns TypeInfo for the given value.
-func (r *TypeResolver) GetTypeInfo(value reflect.Value, create bool) (*TypeInfo, error) {
-	return r.getTypeInfo(value, create)
-}
-
 func (r *TypeResolver) initialize() {
 	serializers := []struct {
 		reflect.Type

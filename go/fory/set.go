@@ -419,38 +419,61 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 	}
 	declaredGenericDispatch := declaredGenerics && serializerNeedsGenericDispatch(serializer)
 
-	elemRefMode := RefModeNone
-	if trackRefs {
-		elemRefMode = RefModeTracking
-	}
-
 	for i := 0; i < length; i++ {
-		elem := reflect.New(elemType).Elem()
 		if trackRefs {
-			serializer.Read(ctx, elemRefMode, false, declaredGenericDispatch, elem)
+			refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
+			if refErr != nil {
+				ctx.SetError(FromError(refErr))
+				return
+			}
+			if refID == int32(NullFlag) {
+				continue
+			}
+			if refID < int32(NotNullValueFlag) {
+				elem := ctx.RefResolver().GetReadObject(refID)
+				if elem.IsValid() {
+					setMapKey(value, elem, keyType)
+				}
+				continue
+			}
+			if !reserveDynamicStructGraphMemory(ctx, keyType, elemType, serializer) {
+				return
+			}
+			elem := reflect.New(elemType).Elem()
+			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
 			if ctx.HasError() {
 				return
 			}
 			if isNull(elem) {
 				continue
 			}
+			ctx.RefResolver().SetReadObject(refID, elem)
+			setMapKey(value, elem, keyType)
 		} else if hasNull {
 			refFlag := buf.ReadInt8(ctx.Err())
 			if refFlag == NullFlag {
 				continue
 			}
+			if !reserveDynamicStructGraphMemory(ctx, keyType, elemType, serializer) {
+				return
+			}
+			elem := reflect.New(elemType).Elem()
 			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
 			if ctx.HasError() {
 				return
 			}
+			setMapKey(value, elem, keyType)
 		} else {
+			if !reserveDynamicStructGraphMemory(ctx, keyType, elemType, serializer) {
+				return
+			}
+			elem := reflect.New(elemType).Elem()
 			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
 			if ctx.HasError() {
 				return
 			}
+			setMapKey(value, elem, keyType)
 		}
-		// Add element to set
-		setMapKey(value, elem, keyType)
 	}
 }
 
@@ -485,6 +508,9 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 				return
 			}
 			// Create new element and deserialize from buffer
+			if !reserveDynamicStructGraphMemory(ctx, keyType, typeInfo.Type, typeInfo.Serializer) {
+				return
+			}
 			elem := reflect.New(typeInfo.Type).Elem()
 			typeInfo.Serializer.ReadData(ctx, elem)
 			if ctx.HasError() {
@@ -504,6 +530,9 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 			if ctxErr.HasError() {
 				return
 			}
+			if !reserveDynamicStructGraphMemory(ctx, keyType, typeInfo.Type, typeInfo.Serializer) {
+				return
+			}
 			elem := reflect.New(typeInfo.Type).Elem()
 			typeInfo.Serializer.ReadData(ctx, elem)
 			if ctx.HasError() {
@@ -514,6 +543,9 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 			// No ref tracking and no nulls: typeId + data directly
 			typeInfo := ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
 			if ctxErr.HasError() {
+				return
+			}
+			if !reserveDynamicStructGraphMemory(ctx, keyType, typeInfo.Type, typeInfo.Serializer) {
 				return
 			}
 			elem := reflect.New(typeInfo.Type).Elem()

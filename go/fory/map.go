@@ -440,6 +440,9 @@ func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr
 			valType = staticType
 		}
 		valType, ser = wrapMapSerializerIfNeeded(staticType, valType, ser)
+		if !reserveDynamicStructGraphMemory(ctx, staticType, valType, ser) {
+			return reflect.Value{}
+		}
 		v := reflect.New(valType).Elem()
 		ser.ReadData(ctx, v)
 		if ctx.HasError() {
@@ -473,6 +476,9 @@ func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr
 
 	if valType == nil {
 		valType = staticType
+	}
+	if !reserveDynamicStructGraphMemory(ctx, staticType, valType, ser) {
+		return reflect.Value{}
 	}
 	v := reflect.New(valType).Elem()
 
@@ -559,6 +565,9 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 	}
 
 	for i := 0; i < chunkSize; i++ {
+		if !reserveDynamicStructGraphMemory(ctx, declaredKeyType, keyType, keySer) {
+			return 0
+		}
 		k := reflect.New(keyType).Elem()
 		if keyTypeInfo != nil {
 			keySer.ReadWithTypeInfo(ctx, keyRefMode, keyTypeInfo, k)
@@ -569,6 +578,9 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 			return 0
 		}
 
+		if !reserveDynamicStructGraphMemory(ctx, declaredValueType, valueType, valSer) {
+			return 0
+		}
 		v := reflect.New(valueType).Elem()
 		if valueTypeInfo != nil {
 			valSer.ReadWithTypeInfo(ctx, valRefMode, valueTypeInfo, v)

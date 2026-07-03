@@ -50,3 +50,19 @@ func structGraphBytes(type_ reflect.Type) int64 {
 	}
 	return bytes
 }
+
+func reserveDynamicStructGraphMemory(ctx *ReadContext, ownerType, actualType reflect.Type, serializer Serializer) bool {
+	if ownerType == nil || ownerType.Kind() != reflect.Interface || actualType == nil {
+		return true
+	}
+	if _, ok := serializer.(*ptrToValueSerializer); ok {
+		return true
+	}
+	if actualType.Kind() == reflect.Struct {
+		return ctx.ReserveGraphMemory(structGraphBytes(actualType))
+	}
+	if actualType.Kind() == reflect.Ptr && actualType.Elem().Kind() == reflect.Struct {
+		return ctx.ReserveGraphMemory(structGraphBytes(actualType.Elem()))
+	}
+	return true
+}

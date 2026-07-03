@@ -154,7 +154,7 @@ func (s *UnionSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bo
 		ctx.Buffer().WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		typeInfo, err := ctx.TypeResolver().GetTypeInfo(value, true)
+		typeInfo, err := ctx.TypeResolver().getTypeInfo(value, true)
 		if err != nil {
 			ctx.SetError(SerializationErrorf("failed to get type info for union: %v", err))
 			return

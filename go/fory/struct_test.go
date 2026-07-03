@@ -139,11 +139,11 @@ func TestStructEvolvingOverride(t *testing.T) {
 
 	resolver := f.GetTypeResolver()
 
-	evolvingInfo, err := resolver.GetTypeInfo(reflect.ValueOf(evolvingStruct{}), true)
+	evolvingInfo, err := resolver.getTypeInfo(reflect.ValueOf(evolvingStruct{}), true)
 	require.NoError(t, err)
 	require.Equal(t, uint32(COMPATIBLE_STRUCT), evolvingInfo.TypeID)
 
-	fixedInfo, err := resolver.GetTypeInfo(reflect.ValueOf(fixedStruct{}), true)
+	fixedInfo, err := resolver.getTypeInfo(reflect.ValueOf(fixedStruct{}), true)
 	require.NoError(t, err)
 	require.Equal(t, uint32(STRUCT), fixedInfo.TypeID)
 

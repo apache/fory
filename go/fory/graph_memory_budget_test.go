@@ -35,6 +35,36 @@ type budgetSiblings struct {
 	B []string
 }
 
+func requireBudgetItemValue(t *testing.T, value any, expected int32) {
+	t.Helper()
+	switch item := value.(type) {
+	case budgetItem:
+		require.Equal(t, expected, item.A)
+	case *budgetItem:
+		require.NotNil(t, item)
+		require.Equal(t, expected, item.A)
+	default:
+		require.Failf(t, "unexpected budget item type", "%T", value)
+	}
+}
+
+func requireSetHasBudgetItem(t *testing.T, values Set[any], expected int32) {
+	t.Helper()
+	for value := range values {
+		switch item := value.(type) {
+		case budgetItem:
+			if item.A == expected {
+				return
+			}
+		case *budgetItem:
+			if item != nil && item.A == expected {
+				return
+			}
+		}
+	}
+	require.Fail(t, "set does not contain expected budget item")
+}
+
 func graphOwnerSizeOf[T any]() int64 {
 	bytes := graphSizeOf[T]()
 	if bytes == 0 {
@@ -177,6 +207,58 @@ func TestGraphBudgetSlices(t *testing.T) {
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	require.NoError(t, reader.Deserialize(data, &items))
 	require.Equal(t, []budgetItem{{A: 1}}, items)
+}
+
+func TestGraphBudgetDynamicStructs(t *testing.T) {
+	writer := New(WithCompatible(false))
+	require.NoError(t, writer.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
+	itemBytes := structGraphBytes(reflect.TypeOf(budgetItem{}))
+
+	sliceData, err := writer.Serialize([]any{budgetItem{A: 1}})
+	require.NoError(t, err)
+	sliceBudget := graphShallowOwnerBytes + int64(reflect.TypeOf([]any{}).Elem().Size())
+	reader := New(WithCompatible(false), WithMaxGraphMemoryBytes(sliceBudget))
+	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
+	var sliceOut []any
+	err = reader.Deserialize(sliceData, &sliceOut)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(sliceBudget+itemBytes))
+	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
+	require.NoError(t, reader.Deserialize(sliceData, &sliceOut))
+	requireBudgetItemValue(t, sliceOut[0], 1)
+
+	mapData, err := writer.Serialize(map[string]any{"k": budgetItem{A: 2}})
+	require.NoError(t, err)
+	mapType := reflect.TypeOf(map[string]any{})
+	mapBudget := graphShallowOwnerBytes + int64(mapType.Key().Size()) + int64(mapType.Elem().Size())
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(mapBudget))
+	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
+	var mapOut map[string]any
+	err = reader.Deserialize(mapData, &mapOut)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(mapBudget+itemBytes))
+	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
+	require.NoError(t, reader.Deserialize(mapData, &mapOut))
+	requireBudgetItemValue(t, mapOut["k"], 2)
+
+	set := NewSet[any]()
+	set.Add(budgetItem{A: 3})
+	setData, err := writer.Serialize(set)
+	require.NoError(t, err)
+	setType := reflect.TypeOf(Set[any]{})
+	setBudget := graphShallowOwnerBytes + int64(setType.Key().Size()) + int64(setType.Elem().Size())
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(setBudget))
+	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
+	var setOut Set[any]
+	err = reader.Deserialize(setData, &setOut)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(setBudget+itemBytes))
+	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
+	require.NoError(t, reader.Deserialize(setData, &setOut))
+	requireSetHasBudgetItem(t, setOut, 3)
 }
 
 func TestGraphMemoryBudgetStructOwners(t *testing.T) {

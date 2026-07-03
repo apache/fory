@@ -26,7 +26,7 @@ Apache Fory Go is a high-performance serialization library for Go. It supports x
 - **High Performance**: Fast serialization and optimized binary protocols
 - **Xlang**: Seamless data exchange with Java, Python, C++, Rust,
   JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin
-- **Automatic Serialization**: Serialize Go structs directly with reflection
+- **Automatic Serialization**: Serialize Go structs with fast serializers
 - **Reference Tracking**: Built-in support for circular references and shared objects
 - **Type Safety**: Strong typing with schema-aware serializers
 - **Schema Evolution**: Compatible mode for forward/backward compatibility
