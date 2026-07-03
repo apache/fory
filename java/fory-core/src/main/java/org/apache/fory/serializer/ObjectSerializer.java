@@ -65,6 +65,8 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
   private final RecordInfo recordInfo;
   private final SerializationFieldInfo[] allFields;
   private final int classVersionHash;
+  private final boolean trackingRef;
+  private final boolean checkClassVersion;
 
   public ObjectSerializer(TypeResolver typeResolver, Class<T> cls) {
     this(typeResolver, cls, true);
@@ -80,6 +82,8 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
       boolean resolveParent,
       ObjectInstantiator<T> objectInstantiator) {
     super(typeResolver, cls, objectInstantiator);
+    trackingRef = config.trackingRef();
+    checkClassVersion = typeResolver.checkClassVersion();
     // avoid recursive building serializers.
     // Use `setSerializerIfAbsent` to avoid overwriting existing serializer for class when used
     // as data serializer.
@@ -208,7 +212,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
 
   @Override
   public T read(ReadContext readContext) {
-    readContext.reserveGraphMemory(objectGraphMemoryBytes);
+    readContext.reserveGraphMemory((long) objectGraphMemoryBytes);
     MemoryBuffer buffer = readContext.getBuffer();
     if (isRecord) {
       Object[] fields = readFields(readContext);
@@ -218,14 +222,16 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
       return obj;
     }
     T obj = newBean();
-    readContext.reference(obj);
+    if (trackingRef) {
+      readContext.reference(obj);
+    }
     return readAndSetFields(readContext, obj);
   }
 
   public Object[] readFields(ReadContext readContext) {
     MemoryBuffer buffer = readContext.getBuffer();
     RefReader refReader = readContext.getRefReader();
-    if (typeResolver.checkClassVersion()) {
+    if (checkClassVersion) {
       int hash = buffer.readInt32();
       checkClassVersion(type, hash, classVersionHash);
     }
@@ -242,7 +248,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
   public T readAndSetFields(ReadContext readContext, T obj) {
     MemoryBuffer buffer = readContext.getBuffer();
     RefReader refReader = readContext.getRefReader();
-    if (typeResolver.checkClassVersion()) {
+    if (checkClassVersion) {
       int hash = buffer.readInt32();
       checkClassVersion(type, hash, classVersionHash);
     }

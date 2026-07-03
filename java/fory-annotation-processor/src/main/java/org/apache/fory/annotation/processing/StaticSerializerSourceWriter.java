@@ -272,9 +272,7 @@ final class StaticSerializerSourceWriter {
           .append(" value = ")
           .append(newGeneratedBeanExpression())
           .append(";\n");
-      builder.append("    if (needToWriteRef) {\n");
-      builder.append("      readContext.reference(value);\n");
-      builder.append("    }\n");
+      builder.append("    readContext.reference(value);\n");
       builder.append("    readFields(readContext, value);\n");
       builder.append("    return value;\n");
     }
@@ -844,9 +842,7 @@ final class StaticSerializerSourceWriter {
           .append(" value = ")
           .append(newGeneratedBeanExpression())
           .append(";\n");
-      builder.append("    if (needToWriteRef) {\n");
-      builder.append("      readContext.reference(value);\n");
-      builder.append("    }\n");
+      builder.append("    readContext.reference(value);\n");
       builder.append("    for (int i = 0; i < remoteFields.size(); i++) {\n");
       builder.append("      RemoteFieldInfo remoteField = remoteFields.get(i);\n");
       builder.append("      readCompatibleField(readContext, value, remoteField);\n");
