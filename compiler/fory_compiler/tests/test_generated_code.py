@@ -1126,6 +1126,71 @@ def test_cpp_generator_supports_decimal_fields_and_unions():
     assert "(amount, fory::serialization::Decimal, fory::F(1))" in cpp_output
 
 
+def test_cpp_union_aliases_comma_payload_types():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            union MapChoice {
+                map<string, any> by_name = 1;
+                map<string, int32> counts = 2;
+                list<any> values = 3;
+                string name = 4;
+            }
+
+            union LargeChoice {
+                map<string, int32> counts = 1;
+                bool enabled = 2;
+                int8 i8 = 3;
+                int16 i16 = 4;
+                int32 i32 = 5;
+                int64 i64 = 6;
+                uint8 u8 = 7;
+                uint16 u16 = 8;
+                uint32 u32 = 9;
+                uint64 u64 = 10;
+                float32 f32 = 11;
+                float64 f64 = 12;
+                string name = 13;
+                bytes blob = 14;
+                decimal amount = 15;
+                date day = 16;
+                timestamp ts = 17;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert (
+        "using ForyCaseByNameType = std::unordered_map<std::string, std::any>;"
+        in cpp_output
+    )
+    assert (
+        "using ForyCaseCountsType = std::unordered_map<std::string, int32_t>;"
+        in cpp_output
+    )
+    assert (
+        "(by_name, gen::MapChoice::ForyCaseByNameType, "
+        "fory::F(1).map(fory::T::string(), fory::FieldNodeSpec{}))" in cpp_output
+    )
+    assert (
+        "(counts, gen::MapChoice::ForyCaseCountsType, "
+        "fory::F(2).map(fory::T::string(), fory::T::int32().varint()))" in cpp_output
+    )
+    assert (
+        "(values, std::vector<std::any>, "
+        "fory::F(3).list(fory::FieldNodeSpec{}))" in cpp_output
+    )
+    assert "(name, std::string, fory::F(4))" in cpp_output
+    assert (
+        "FORY_UNION_CASE(gen::LargeChoice, 1, "
+        "gen::LargeChoice::ForyCaseCountsType, gen::LargeChoice::counts, "
+        "fory::F(1).map(fory::T::string(), fory::T::int32().varint()));" in cpp_output
+    )
+
+
 def test_cpp_omits_equality_for_any_types():
     schema = parse_fdl(
         dedent(
