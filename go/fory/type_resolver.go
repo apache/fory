@@ -23,8 +23,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"reflect"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 	"unsafe"
@@ -147,15 +145,12 @@ type nsTypeKey struct {
 }
 
 type TypeResolver struct {
-	typeTagToSerializers map[string]Serializer
-	typeToSerializers    map[reflect.Type]Serializer
-	typeToTypeInfo       map[reflect.Type]string
-	typeToTypeTag        map[reflect.Type]string
-	typeInfoToType       map[string]reflect.Type
-	typeIdToType         map[TypeId]reflect.Type
-	dynamicStringToId    map[string]int16
-	dynamicIdToString    map[int16]string
-	dynamicStringId      int16
+	typeToSerializers map[reflect.Type]Serializer
+	typeToTypeInfo    map[reflect.Type]string
+	typeIdToType      map[TypeId]reflect.Type
+	dynamicStringToId map[string]int16
+	dynamicIdToString map[int16]string
+	dynamicStringId   int16
 
 	fory *Fory
 	//metaStringResolver  MetaStringResolver
@@ -201,14 +196,12 @@ type TypeResolver struct {
 
 func newTypeResolver(fory *Fory) *TypeResolver {
 	r := &TypeResolver{
-		typeTagToSerializers: map[string]Serializer{},
-		typeToSerializers:    map[reflect.Type]Serializer{},
-		typeIdToType:         map[TypeId]reflect.Type{},
-		typeToTypeInfo:       map[reflect.Type]string{},
-		typeInfoToType:       map[string]reflect.Type{},
-		dynamicStringToId:    map[string]int16{},
-		dynamicIdToString:    map[int16]string{},
-		fory:                 fory,
+		typeToSerializers: map[reflect.Type]Serializer{},
+		typeIdToType:      map[TypeId]reflect.Type{},
+		typeToTypeInfo:    map[reflect.Type]string{},
+		dynamicStringToId: map[string]int16{},
+		dynamicIdToString: map[int16]string{},
+		fory:              fory,
 
 		isXlang:             fory.config.IsXlang,
 		metaStringResolver:  NewMetaStringResolver(),
@@ -263,7 +256,6 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		interfaceType,
 		genericSetType,
 	} {
-		r.typeInfoToType[t.String()] = t
 		r.typeToTypeInfo[t] = t.String()
 	}
 	r.initialize()
@@ -516,7 +508,6 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTyp
 		serializer := newStructSerializer(type_, tag)
 		r.typeToSerializers[type_] = serializer
 		r.typeToTypeInfo[type_] = "@" + tag
-		r.typeInfoToType["@"+tag] = type_
 
 		// Create pointer serializer
 		ptrType := reflect.PtrTo(type_)
@@ -527,9 +518,7 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTyp
 			}
 			r.typeToSerializers[ptrType] = ptrSerializer
 		}
-		r.typeTagToSerializers[tag] = ptrSerializer
 		r.typeToTypeInfo[ptrType] = "*@" + tag
-		r.typeInfoToType["*@"+tag] = ptrType
 
 		// Register value type with fullTypeID
 		_, err := r.registerType(type_, uint32(typeID), userTypeID, "", "", serializer, false)
@@ -568,14 +557,11 @@ func (r *TypeResolver) RegisterUnion(type_ reflect.Type, userTypeID uint32, seri
 	tag := type_.Name()
 	r.typeToSerializers[type_] = serializer
 	r.typeToTypeInfo[type_] = "@" + tag
-	r.typeInfoToType["@"+tag] = type_
 
 	ptrType := reflect.PtrTo(type_)
 	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer}
 	r.typeToSerializers[ptrType] = ptrSerializer
-	r.typeTagToSerializers[tag] = ptrSerializer
 	r.typeToTypeInfo[ptrType] = "*@" + tag
-	r.typeInfoToType["*@"+tag] = ptrType
 
 	_, err := r.registerType(type_, uint32(TYPED_UNION), userTypeID, "", "", serializer, false)
 	if err != nil {
@@ -610,7 +596,6 @@ func (r *TypeResolver) RegisterEnum(type_ reflect.Type, userTypeID uint32) error
 
 	r.typeToSerializers[type_] = serializer
 	r.typeToTypeInfo[type_] = "@" + tag
-	r.typeInfoToType["@"+tag] = type_
 
 	// Create TypeInfo with serializer
 	typeInfo := &TypeInfo{
@@ -656,7 +641,6 @@ func (r *TypeResolver) registerEnumByName(type_ reflect.Type, namespace, typeNam
 
 	r.typeToSerializers[type_] = serializer
 	r.typeToTypeInfo[type_] = "@" + tag
-	r.typeInfoToType["@"+tag] = type_
 
 	// Register the type
 	_, err := r.registerType(type_, typeId, invalidUserTypeID, namespace, typeName, serializer, false)
@@ -681,15 +665,12 @@ func (r *TypeResolver) registerStructByName(type_ reflect.Type, namespace, typeN
 	// different types. so we use tag to encode type info.
 	// tagged type encode as `@$tag`/`*@$tag`.
 	r.typeToTypeInfo[type_] = "@" + tag
-	r.typeInfoToType["@"+tag] = type_
 
 	ptrType := reflect.PtrTo(type_)
 	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer}
 	r.typeToSerializers[ptrType] = ptrSerializer
 	// use `ptrToValueSerializer` as default deserializer when deserializing data from other languages.
-	r.typeTagToSerializers[tag] = ptrSerializer
 	r.typeToTypeInfo[ptrType] = "*@" + tag
-	r.typeInfoToType["*@"+tag] = ptrType
 	internalTypeID := r.structTypeID(type_, true)
 	userTypeID := invalidUserTypeID
 	// For structs registered by name, directly register both their value and pointer types.
@@ -725,14 +706,11 @@ func (r *TypeResolver) registerUnionByName(
 	tag := joinRegisteredName(namespace, typeName)
 	r.typeToSerializers[type_] = serializer
 	r.typeToTypeInfo[type_] = "@" + tag
-	r.typeInfoToType["@"+tag] = type_
 
 	ptrType := reflect.PtrTo(type_)
 	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer}
 	r.typeToSerializers[ptrType] = ptrSerializer
-	r.typeTagToSerializers[tag] = ptrSerializer
 	r.typeToTypeInfo[ptrType] = "*@" + tag
-	r.typeInfoToType["*@"+tag] = ptrType
 
 	typeId := uint32(NAMED_UNION)
 	_, err := r.registerType(type_, typeId, invalidUserTypeID, namespace, typeName, serializer, false)
@@ -744,11 +722,6 @@ func (r *TypeResolver) registerUnionByName(
 		return fmt.Errorf("failed to register pointer union by name: %w", err)
 	}
 	return nil
-}
-
-func (r *TypeResolver) RegisterExt(extId int16, type_ reflect.Type) error {
-	// Registering type is necessary, otherwise we may don't have the symbols of corresponding type when deserializing.
-	panic("not supported")
 }
 
 func (r *TypeResolver) registerExtensionByName(
@@ -772,14 +745,11 @@ func (r *TypeResolver) registerExtensionByName(
 	serializer := &extensionSerializerAdapter{type_: type_, typeTag: tag, userSerial: userSerializer}
 	r.typeToSerializers[type_] = serializer
 	r.typeToTypeInfo[type_] = "@" + tag
-	r.typeInfoToType["@"+tag] = type_
 
 	ptrType := reflect.PtrTo(type_)
 	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer}
 	r.typeToSerializers[ptrType] = ptrSerializer
-	r.typeTagToSerializers[tag] = ptrSerializer
 	r.typeToTypeInfo[ptrType] = "*@" + tag
-	r.typeInfoToType["*@"+tag] = ptrType
 
 	// Use NAMED_EXT type ID for extension types
 	typeId := uint32(NAMED_EXT)
@@ -862,14 +832,6 @@ func (r *TypeResolver) getTypeIdByType(type_ reflect.Type) TypeId {
 		}
 	}
 	return 0
-}
-
-func (r *TypeResolver) getSerializerByTypeTag(typeTag string) (Serializer, error) {
-	if serializer, ok := r.typeTagToSerializers[typeTag]; !ok {
-		return nil, fmt.Errorf("type %s not supported", typeTag)
-	} else {
-		return serializer, nil
-	}
 }
 
 // getSerializerByTypeID returns the serializer for a given type ID, or nil if not found.
@@ -1842,11 +1804,11 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 	return nil, fmt.Errorf("type %s not supported", type_.String())
 }
 
-// GetSliceSerializer returns the appropriate serializer for a slice type.
+// getSliceSerializer returns the appropriate serializer for a slice type.
 // For primitive element types, it returns the dedicated primitive slice serializer
 // that uses ARRAY protocol.
 // For non-primitive element types, it returns sliceSerializer (LIST protocol).
-func (r *TypeResolver) GetSliceSerializer(sliceType reflect.Type) (Serializer, error) {
+func (r *TypeResolver) getSliceSerializer(sliceType reflect.Type) (Serializer, error) {
 	if sliceType.Kind() != reflect.Slice {
 		return nil, fmt.Errorf("expected slice type but got %s", sliceType.Kind())
 	}
@@ -1897,19 +1859,10 @@ func (r *TypeResolver) GetSliceSerializer(sliceType reflect.Type) (Serializer, e
 	return newSliceSerializer(sliceType, elemSerializer, r.isXlang)
 }
 
-// GetSetSerializer returns the setSerializer for a Set[T] type.
-// Accepts both fory.Set[T] and anonymous map[T]struct{} types.
-func (r *TypeResolver) GetSetSerializer(setType reflect.Type) (Serializer, error) {
-	if !isSetReflectType(setType) {
-		return nil, fmt.Errorf("expected Set type (map[T]struct{}) but got %s", setType)
-	}
-	return setSerializer{}, nil
-}
-
-// GetArraySerializer returns the appropriate serializer for an array type.
+// getArraySerializer returns the appropriate serializer for an array type.
 // For primitive element types, it returns the dedicated primitive array serializer (ARRAY protocol).
 // For non-primitive element types, it returns sliceSerializer (LIST protocol).
-func (r *TypeResolver) GetArraySerializer(arrayType reflect.Type) (Serializer, error) {
+func (r *TypeResolver) getArraySerializer(arrayType reflect.Type) (Serializer, error) {
 	if arrayType.Kind() != reflect.Array {
 		return nil, fmt.Errorf("expected array type but got %s", arrayType.Kind())
 	}
@@ -1958,144 +1911,6 @@ func (r *TypeResolver) GetArraySerializer(arrayType reflect.Type) (Serializer, e
 func isDynamicType(type_ reflect.Type) bool {
 	return type_.Kind() == reflect.Interface || (type_.Kind() == reflect.Ptr && (type_.Elem().Kind() == reflect.Ptr ||
 		type_.Elem().Kind() == reflect.Interface))
-}
-
-func (r *TypeResolver) writeType(buffer *ByteBuffer, type_ reflect.Type, err *Error) {
-	typeInfo, ok := r.typeToTypeInfo[type_]
-	if !ok {
-		if encodeType, encErr := r.encodeType(type_); encErr != nil {
-			err.SetError(encErr)
-			return
-		} else {
-			typeInfo = encodeType
-			r.typeToTypeInfo[type_] = encodeType
-		}
-	}
-	r.writeMetaString(buffer, typeInfo, err)
-}
-
-func (r *TypeResolver) readType(buffer *ByteBuffer, err *Error) reflect.Type {
-	metaString := r.readMetaString(buffer, err)
-	type_, ok := r.typeInfoToType[metaString]
-	if !ok {
-		var decErr error
-		type_, _, decErr = r.decodeType(metaString)
-		if decErr != nil {
-			err.SetError(decErr)
-			return nil
-		}
-		r.typeInfoToType[metaString] = type_
-	}
-	return type_
-}
-
-func (r *TypeResolver) encodeType(type_ reflect.Type) (string, error) {
-	if info, ok := r.typeToTypeInfo[type_]; ok {
-		return info, nil
-	}
-	switch kind := type_.Kind(); kind {
-	case reflect.Ptr, reflect.Array, reflect.Slice, reflect.Map:
-		if elemTypeStr, err := r.encodeType(type_.Elem()); err != nil {
-			return "", err
-		} else {
-			if kind == reflect.Ptr {
-				return "*" + elemTypeStr, nil
-			} else if kind == reflect.Array {
-				return fmt.Sprintf("[%d]", type_.Len()) + elemTypeStr, nil
-			} else if kind == reflect.Slice {
-				return "[]" + elemTypeStr, nil
-			} else if kind == reflect.Map {
-				if keyTypeStr, err := r.encodeType(type_.Key()); err != nil {
-					return "", err
-				} else {
-					return fmt.Sprintf("map[%s]%s", keyTypeStr, elemTypeStr), nil
-				}
-			}
-		}
-	}
-	return type_.String(), nil
-}
-
-func (r *TypeResolver) decodeType(typeStr string) (reflect.Type, string, error) {
-	if type_, ok := r.typeInfoToType[typeStr]; ok {
-		return type_, typeStr, nil
-	}
-	if strings.HasPrefix(typeStr, "*") { // ptr
-		subStr := typeStr[len("*"):]
-		type_, subStr, err := r.decodeType(subStr)
-		if err != nil {
-			return nil, "", err
-		} else {
-			return reflect.PtrTo(type_), "*" + subStr, nil
-		}
-	} else if strings.HasPrefix(typeStr, "[]") { // slice
-		subStr := typeStr[len("[]"):]
-		type_, subStr, err := r.decodeType(subStr)
-		if err != nil {
-			return nil, "", err
-		} else {
-			return reflect.SliceOf(type_), "[]" + subStr, nil
-		}
-	} else if strings.HasPrefix(typeStr, "[") { // array
-		arrTypeRegex, _ := regexp.Compile(`\[([0-9]+)]`)
-		idx := arrTypeRegex.FindStringSubmatchIndex(typeStr)
-		if idx == nil {
-			return nil, "", fmt.Errorf("unparseable type %s", typeStr)
-		}
-		lenStr := typeStr[idx[2]:idx[3]]
-		if length, err := strconv.Atoi(lenStr); err != nil {
-			return nil, "", err
-		} else {
-			subStr := typeStr[idx[1]:]
-			type_, elemStr, err := r.decodeType(subStr)
-			if err != nil {
-				return nil, "", err
-			} else {
-				return reflect.ArrayOf(length, type_), typeStr[idx[0]:idx[1]] + elemStr, nil
-			}
-		}
-	} else if strings.HasPrefix(typeStr, "map[") {
-		subStr := typeStr[len("map["):]
-		keyType, keyStr, err := r.decodeType(subStr)
-		if err != nil {
-			return nil, "", fmt.Errorf("unparseable map type: %s : %s", typeStr, err)
-		} else {
-			subStr := typeStr[len("map[")+len(keyStr)+len("]"):]
-			valueType, valueStr, err := r.decodeType(subStr)
-			if err != nil {
-				return nil, "", fmt.Errorf("unparseable map value type: %s : %s", subStr, err)
-			} else {
-				return reflect.MapOf(keyType, valueType), "map[" + keyStr + "]" + valueStr, nil
-			}
-		}
-	} else {
-		if idx := strings.Index(typeStr, "]"); idx >= 0 {
-			return r.decodeType(typeStr[:idx])
-		}
-		if t, ok := r.typeInfoToType[typeStr]; !ok {
-			return nil, "", fmt.Errorf("type %s not supported", typeStr)
-		} else {
-			return t, typeStr, nil
-		}
-	}
-}
-
-func (r *TypeResolver) writeTypeTag(buffer *ByteBuffer, typeTag string, err *Error) {
-	r.writeMetaString(buffer, typeTag, err)
-}
-
-func (r *TypeResolver) readTypeByReadTag(buffer *ByteBuffer, err *Error) reflect.Type {
-	metaString := r.readMetaString(buffer, err)
-	ptrSer := r.typeTagToSerializers[metaString]
-	if ptrValueSer, ok := ptrSer.(*ptrToValueSerializer); ok {
-		// Extract the struct type from the pointer serializer
-		// The pointer serializer wraps the value serializer, so we need to get the type from there
-		if structSer, ok := ptrValueSer.valueSerializer.(*structSerializer); ok {
-			return reflect.PtrTo(structSer.type_)
-		}
-	}
-	err.SetError(fmt.Errorf("failed to extract type from serializer for %s", metaString))
-	return nil
 }
 
 func (r *TypeResolver) resolveTypeInfoByMetaBytes(nsBytes, typeBytes *MetaStringBytes,
@@ -2234,13 +2049,13 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 	return nil
 }
 
-// ReadTypeInfoForType reads type info when the expected type is already known.
+// readTypeInfoForType reads type info when the expected type is already known.
 // This is an optimization that avoids expensive type resolution via namespace/typename map lookups.
 // Instead of resolving the type from the buffer, it uses the passed reflect.Type directly.
 //
 // For STRUCT/NAMED_STRUCT: Gets serializer directly by the passed type (skips type resolution)
 // For COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT: Reads type def and creates serializer with passed type
-func (r *TypeResolver) ReadTypeInfoForType(buffer *ByteBuffer, expectedType reflect.Type, err *Error) Serializer {
+func (r *TypeResolver) readTypeInfoForType(buffer *ByteBuffer, expectedType reflect.Type, err *Error) Serializer {
 	typeID := uint32(buffer.ReadUint8(err))
 	internalTypeID := TypeId(typeID)
 	switch internalTypeID {
@@ -2280,30 +2095,12 @@ func (r *TypeResolver) ReadTypeInfoForType(buffer *ByteBuffer, expectedType refl
 	}
 }
 
-func (r *TypeResolver) getTypeById(id TypeId) (reflect.Type, error) {
-	type_, ok := r.typeIdToType[id]
-	if !ok {
-		return nil, fmt.Errorf("type of id %d not supported, supported types: %v", id, r.typeIdToType)
-	}
-	return type_, nil
-}
-
 func (r *TypeResolver) getTypeInfoById(id uint32) (*TypeInfo, error) {
 	if typeInfo, exists := r.typeIDToTypeInfo[id]; exists {
 		return typeInfo, nil
 	} else {
 		return nil, fmt.Errorf("typeInfo of typeID %d not found", id)
 	}
-}
-
-func (r *TypeResolver) getUserTypeInfoById(userTypeID uint32) *TypeInfo {
-	if userTypeID == invalidUserTypeID {
-		return nil
-	}
-	if typeInfo, exists := r.userTypeIdToTypeInfo[userTypeID]; exists {
-		return typeInfo
-	}
-	return nil
 }
 
 func (r *TypeResolver) writeMetaString(buffer *ByteBuffer, str string, err *Error) {

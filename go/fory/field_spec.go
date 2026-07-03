@@ -1825,9 +1825,9 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 		if spec.Element == nil || spec.Element.TypeID == UNKNOWN || goType.Elem().Kind() == reflect.Interface {
 			switch goType.Kind() {
 			case reflect.Slice:
-				return resolver.GetSliceSerializer(goType)
+				return resolver.getSliceSerializer(goType)
 			case reflect.Array:
-				return resolver.GetArraySerializer(goType)
+				return resolver.getArraySerializer(goType)
 			}
 		}
 		elemSerializer, err := serializerForTypeSpec(resolver, goType.Elem(), spec.Element)
@@ -1874,9 +1874,9 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 	if isPrimitiveArrayType(spec.TypeID) || spec.TypeID == BINARY {
 		switch goType.Kind() {
 		case reflect.Slice:
-			return resolver.GetSliceSerializer(goType)
+			return resolver.getSliceSerializer(goType)
 		case reflect.Array:
-			return resolver.GetArraySerializer(goType)
+			return resolver.getArraySerializer(goType)
 		}
 	}
 	return resolver.getSerializerByType(goType, true)

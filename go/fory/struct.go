@@ -1340,7 +1340,7 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 	}
 	if readType {
 		if s.type_ != nil {
-			serializer := ctx.TypeResolver().ReadTypeInfoForType(buf, s.type_, ctxErr)
+			serializer := ctx.TypeResolver().readTypeInfoForType(buf, s.type_, ctxErr)
 			if ctxErr.HasError() {
 				return
 			}
@@ -1401,7 +1401,7 @@ func (s *structSerializer) readRoot(ctx *ReadContext, value reflect.Value) {
 	}
 	readStruct := s
 	if s.type_ != nil {
-		serializer := ctx.typeResolver.ReadTypeInfoForType(buf, s.type_, ctxErr)
+		serializer := ctx.typeResolver.readTypeInfoForType(buf, s.type_, ctxErr)
 		if ctxErr.HasError() {
 			return
 		}
