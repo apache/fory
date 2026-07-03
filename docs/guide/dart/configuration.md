@@ -117,8 +117,8 @@ protected by byte-availability checks.
 
 The default is a fixed `128 MiB` and is not derived from input size.
 
-Set a positive value when a trusted workload legitimately contains compact, container-heavy
-payloads:
+Set a positive value when a trusted workload legitimately contains compact, graph-heavy object or
+collection payloads:
 
 ```dart
 final fory = Fory(maxGraphMemoryBytes: 256 * 1024 * 1024);
