@@ -22,7 +22,6 @@
 #include "fory/serialization/array_serializer.h"
 #include "fory/serialization/serializer.h"
 #include <array>
-#include <climits>
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -383,27 +382,6 @@ template <typename Container>
 inline constexpr bool has_reserve_v = has_reserve<Container>::value;
 
 template <typename Container>
-constexpr size_t collection_element_memory_bytes() {
-  using Elem = typename Container::value_type;
-  // Portable lower-bound estimate only: STL node/header/debug-layout details
-  // differ across implementations, so generic collections charge value storage.
-  return sizeof(Elem);
-}
-
-template <size_t elem_bytes>
-inline bool reserve_collection_storage(ReadContext &ctx, uint32_t length) {
-  if (FORY_PREDICT_FALSE(elem_bytes != 0 &&
-                         static_cast<size_t>(length) >
-                             std::numeric_limits<size_t>::max() / elem_bytes)) {
-    ctx.set_error(Error::invalid_data(
-        "graph memory estimate overflows: length=" + std::to_string(length) +
-        " elementBytes=" + std::to_string(elem_bytes)));
-    return false;
-  }
-  return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
-}
-
-template <typename Container>
 inline bool reserve_collection(Container &result, ReadContext &ctx,
                                uint32_t length) {
   // Lazy error propagation may continue into later readers; do not let that
@@ -411,9 +389,19 @@ inline bool reserve_collection(Container &result, ReadContext &ctx,
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
-  constexpr size_t elem_bytes = collection_element_memory_bytes<Container>();
-  if (FORY_PREDICT_FALSE(
-          (!reserve_collection_storage<elem_bytes>(ctx, length)))) {
+  using Elem = typename Container::value_type;
+  constexpr size_t elem_bytes = sizeof(Elem);
+  // Portable lower-bound estimate only: STL node/header/debug-layout details
+  // differ across implementations, so generic collections charge value storage.
+  if (FORY_PREDICT_FALSE(static_cast<size_t>(length) >
+                         std::numeric_limits<size_t>::max() / elem_bytes)) {
+    ctx.set_error(Error::invalid_data(
+        "graph memory estimate overflows: length=" + std::to_string(length) +
+        " elementBytes=" + std::to_string(elem_bytes)));
+    return false;
+  }
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(static_cast<size_t>(length) *
+                                                   elem_bytes))) {
     return false;
   }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
