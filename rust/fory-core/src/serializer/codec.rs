@@ -650,7 +650,9 @@ where
         )
     }
 
-    #[inline(always)]
+    // Avoid forcing this fast serializer path into large debug-mode generated readers.
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     fn read_field(context: &mut ReadContext) -> Result<T, Error> {
         let ref_mode = serializer_ref_mode::<T, NULLABLE, TRACK_REF>();
         let read_type_info = serializer_read_type_info::<T>(context);
@@ -662,10 +664,9 @@ where
                 }
                 T::fory_read_type_info(context)?;
             }
-            T::fory_read_data(context)
-        } else {
-            T::fory_read(context, ref_mode, read_type_info)
+            return T::fory_read_data(context);
         }
+        T::fory_read(context, ref_mode, read_type_info)
     }
 
     #[inline(always)]
@@ -700,7 +701,8 @@ where
         Ok(type_info.has_exact_local_schema())
     }
 
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     fn read_field_with_type(
         context: &mut ReadContext,
         remote_field_type: &FieldType,
@@ -715,10 +717,9 @@ where
                 }
                 T::fory_read_type_info(context)?;
             }
-            T::fory_read_data(context)
-        } else {
-            T::fory_read(context, ref_mode, read_type_info)
+            return T::fory_read_data(context);
         }
+        T::fory_read(context, ref_mode, read_type_info)
     }
 
     #[inline(always)]
@@ -732,7 +733,8 @@ where
         T::fory_write(value, context, ref_mode, write_type_info, has_generics)
     }
 
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     fn read_with_mode(
         context: &mut ReadContext,
         ref_mode: RefMode,
@@ -746,10 +748,9 @@ where
                 }
                 T::fory_read_type_info(context)?;
             }
-            T::fory_read_data(context)
-        } else {
-            T::fory_read(context, ref_mode, read_type_info)
+            return T::fory_read_data(context);
         }
+        T::fory_read(context, ref_mode, read_type_info)
     }
 
     #[inline(always)]
@@ -860,20 +861,11 @@ where
 
     #[inline(always)]
     fn read_field(context: &mut ReadContext) -> Result<T, Error> {
-        let ref_mode = serializer_ref_mode::<T, NULLABLE, TRACK_REF>();
-        let read_type_info = serializer_read_type_info::<T>(context);
-        if ref_mode == RefMode::None && !T::fory_is_polymorphic() {
-            if read_type_info {
-                if context.is_compatible() {
-                    let type_info = context.read_any_type_info()?;
-                    return Self::read_data_with_type_info(context, &type_info);
-                }
-                T::fory_read_type_info(context)?;
-            }
-            T::fory_read_data(context)
-        } else {
-            T::fory_read(context, ref_mode, read_type_info)
-        }
+        T::fory_read(
+            context,
+            serializer_ref_mode::<T, NULLABLE, TRACK_REF>(),
+            serializer_read_type_info::<T>(context),
+        )
     }
 
     #[inline(always)]
@@ -891,20 +883,11 @@ where
         context: &mut ReadContext,
         remote_field_type: &FieldType,
     ) -> Result<T, Error> {
-        let ref_mode = field_ref_mode(remote_field_type);
-        let read_type_info = field_read_type_info::<T>(context, remote_field_type);
-        if ref_mode == RefMode::None && !T::fory_is_polymorphic() {
-            if read_type_info {
-                if context.is_compatible() {
-                    let type_info = context.read_any_type_info()?;
-                    return Self::read_data_with_type_info(context, &type_info);
-                }
-                T::fory_read_type_info(context)?;
-            }
-            T::fory_read_data(context)
-        } else {
-            T::fory_read(context, ref_mode, read_type_info)
-        }
+        T::fory_read(
+            context,
+            field_ref_mode(remote_field_type),
+            field_read_type_info::<T>(context, remote_field_type),
+        )
     }
 
     #[inline(always)]
@@ -924,18 +907,7 @@ where
         ref_mode: RefMode,
         read_type_info: bool,
     ) -> Result<T, Error> {
-        if ref_mode == RefMode::None && !T::fory_is_polymorphic() {
-            if read_type_info {
-                if context.is_compatible() {
-                    let type_info = context.read_any_type_info()?;
-                    return Self::read_data_with_type_info(context, &type_info);
-                }
-                T::fory_read_type_info(context)?;
-            }
-            T::fory_read_data(context)
-        } else {
-            T::fory_read(context, ref_mode, read_type_info)
-        }
+        T::fory_read(context, ref_mode, read_type_info)
     }
 
     #[inline(always)]
@@ -1017,20 +989,11 @@ where
 
     #[inline(always)]
     fn read_field(context: &mut ReadContext) -> Result<T, Error> {
-        let ref_mode = serializer_ref_mode::<T, NULLABLE, TRACK_REF>();
-        let read_type_info = serializer_read_type_info::<T>(context);
-        if ref_mode == RefMode::None && !T::fory_is_polymorphic() {
-            if read_type_info {
-                if context.is_compatible() {
-                    let type_info = context.read_any_type_info()?;
-                    return Self::read_data_with_type_info(context, &type_info);
-                }
-                T::fory_read_type_info(context)?;
-            }
-            T::fory_read_data(context)
-        } else {
-            T::fory_read(context, ref_mode, read_type_info)
-        }
+        T::fory_read(
+            context,
+            serializer_ref_mode::<T, NULLABLE, TRACK_REF>(),
+            serializer_read_type_info::<T>(context),
+        )
     }
 
     #[inline(always)]
@@ -1048,20 +1011,11 @@ where
         context: &mut ReadContext,
         remote_field_type: &FieldType,
     ) -> Result<T, Error> {
-        let ref_mode = field_ref_mode(remote_field_type);
-        let read_type_info = field_read_type_info::<T>(context, remote_field_type);
-        if ref_mode == RefMode::None && !T::fory_is_polymorphic() {
-            if read_type_info {
-                if context.is_compatible() {
-                    let type_info = context.read_any_type_info()?;
-                    return Self::read_data_with_type_info(context, &type_info);
-                }
-                T::fory_read_type_info(context)?;
-            }
-            T::fory_read_data(context)
-        } else {
-            T::fory_read(context, ref_mode, read_type_info)
-        }
+        T::fory_read(
+            context,
+            field_ref_mode(remote_field_type),
+            field_read_type_info::<T>(context, remote_field_type),
+        )
     }
 
     #[inline(always)]
@@ -1081,18 +1035,7 @@ where
         ref_mode: RefMode,
         read_type_info: bool,
     ) -> Result<T, Error> {
-        if ref_mode == RefMode::None && !T::fory_is_polymorphic() {
-            if read_type_info {
-                if context.is_compatible() {
-                    let type_info = context.read_any_type_info()?;
-                    return Self::read_data_with_type_info(context, &type_info);
-                }
-                T::fory_read_type_info(context)?;
-            }
-            T::fory_read_data(context)
-        } else {
-            T::fory_read(context, ref_mode, read_type_info)
-        }
+        T::fory_read(context, ref_mode, read_type_info)
     }
 
     #[inline(always)]

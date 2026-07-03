@@ -170,20 +170,19 @@ impl<'a> ResolvedField<'a> {
                 let ty = self.value_ty;
                 if serializer_field_can_use_data_path(self.source.field) {
                     quote! {
-                        let #var = if context.is_compatible()
-                            && fory_core::serializer::util::field_need_read_type_info(
+                        let read_type_info = if context.is_compatible() {
+                            fory_core::serializer::util::field_need_read_type_info(
                                 <#ty as fory_core::Serializer>::fory_static_type_id() as u32
                             )
-                        {
-                            let type_info = context.read_any_type_info()?;
-                            <#ty as fory_core::Serializer>::fory_read_with_type_info(
+                        } else {
+                            false
+                        };
+                        let #var = <fory_core::serializer::codec::SerializerCodec<#ty, false, false>
+                            as fory_core::serializer::codec::Codec<#ty>>::read_with_mode(
                                 context,
                                 fory_core::RefMode::None,
-                                type_info,
-                            )?
-                        } else {
-                            <#ty as fory_core::Serializer>::fory_read_data(context)?
-                        };
+                                read_type_info,
+                            )?;
                     }
                 } else {
                     let ref_mode = serializer_ref_mode_for_field(self.source.field);
@@ -254,20 +253,19 @@ impl<'a> ResolvedField<'a> {
                 let ty = self.value_ty;
                 if serializer_field_can_use_data_path(self.source.field) {
                     quote! {
-                        if context.is_compatible()
-                            && fory_core::serializer::util::field_need_read_type_info(
+                        let read_type_info = if context.is_compatible() {
+                            fory_core::serializer::util::field_need_read_type_info(
                                 <#ty as fory_core::Serializer>::fory_static_type_id() as u32
                             )
-                        {
-                            let type_info = context.read_any_type_info()?;
-                            #var = <#ty as fory_core::Serializer>::fory_read_with_type_info(
+                        } else {
+                            false
+                        };
+                        #var = <fory_core::serializer::codec::SerializerCodec<#ty, false, false>
+                            as fory_core::serializer::codec::Codec<#ty>>::read_with_mode(
                                 context,
                                 fory_core::RefMode::None,
-                                type_info,
+                                read_type_info,
                             )?;
-                        } else {
-                            #var = <#ty as fory_core::Serializer>::fory_read_data(context)?;
-                        }
                     }
                 } else {
                     quote! {
@@ -356,31 +354,12 @@ impl<'a> ResolvedField<'a> {
                         } else {
                             <#ty as fory_core::Serializer>::fory_is_polymorphic()
                         };
-                        if read_ref_mode == fory_core::RefMode::None
-                            && !<#ty as fory_core::Serializer>::fory_is_polymorphic()
-                        {
-                            if read_type_info {
-                                if context.is_compatible() {
-                                    let type_info = context.read_any_type_info()?;
-                                    #var = <#ty as fory_core::Serializer>::fory_read_with_type_info(
-                                        context,
-                                        fory_core::RefMode::None,
-                                        type_info,
-                                    )?;
-                                } else {
-                                    <#ty as fory_core::Serializer>::fory_read_type_info(context)?;
-                                    #var = <#ty as fory_core::Serializer>::fory_read_data(context)?;
-                                }
-                            } else {
-                                #var = <#ty as fory_core::Serializer>::fory_read_data(context)?;
-                            }
-                        } else {
-                            #var = <#ty as fory_core::Serializer>::fory_read(
+                        #var = <fory_core::serializer::codec::SerializerCodec<#ty, false, false>
+                            as fory_core::serializer::codec::Codec<#ty>>::read_with_mode(
                                 context,
                                 read_ref_mode,
                                 read_type_info,
                             )?;
-                        }
                     }
                 } else {
                     quote! {
