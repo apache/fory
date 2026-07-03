@@ -122,7 +122,7 @@ public sealed class TypeInfo
             context => ReadDataObject(serializer, context, boxedValueBytes),
             (context, value, refMode, writeTypeInfo, hasGenerics) =>
                 WriteObject(serializer, context, value, refMode, writeTypeInfo, hasGenerics),
-            (context, refMode, readTypeInfo) => ReadObject(serializer, context, refMode, readTypeInfo),
+            (context, refMode, readTypeInfo) => serializer.Read(context, refMode, readTypeInfo),
             typeMetaFields,
             builtInTypeId,
             null);
@@ -198,15 +198,6 @@ public sealed class TypeInfo
         bool hasGenerics)
     {
         serializer.Write(context, CoerceRuntimeValue(serializer, value), refMode, writeTypeInfo, hasGenerics);
-    }
-
-    private static object? ReadObject<T>(
-        Serializer<T> serializer,
-        ReadContext context,
-        RefMode refMode,
-        bool readTypeInfo)
-    {
-        return serializer.Read(context, refMode, readTypeInfo);
     }
 
     private static T CoerceRuntimeValue<T>(Serializer<T> serializer, object? value)
