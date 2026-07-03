@@ -167,7 +167,7 @@ public final class Fory {
             data: data
         ) { context in
             try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
+                context.readAny(refMode: refMode, readTypeInfo: true),
                 to: Any.self
             )
         }
@@ -186,7 +186,7 @@ public final class Fory {
             data: data
         ) { context in
             try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
+                context.readAny(refMode: refMode, readTypeInfo: true),
                 to: AnyObject.self
             )
         }
@@ -209,7 +209,7 @@ public final class Fory {
             data: data
         ) { context in
             try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
+                context.readAny(refMode: refMode, readTypeInfo: true),
                 to: (any Serializer).self
             )
         }
@@ -227,7 +227,7 @@ public final class Fory {
         try deserializeRoot(
             data: data
         ) { context in
-            try readListOfAny(context: context, refMode: refMode, readTypeInfo: true) ?? []
+            try context.readListOfAny(refMode: refMode, readTypeInfo: true) ?? []
         }
     }
 
@@ -248,7 +248,7 @@ public final class Fory {
         try deserializeRoot(
             data: data
         ) { context in
-            try readMapStringToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
+            try context.readMapStringToAny(refMode: refMode, readTypeInfo: true) ?? [:]
         }
     }
 
@@ -269,7 +269,7 @@ public final class Fory {
         try deserializeRoot(
             data: data
         ) { context in
-            try readMapInt32ToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
+            try context.readMapInt32ToAny(refMode: refMode, readTypeInfo: true) ?? [:]
         }
     }
 
@@ -290,7 +290,7 @@ public final class Fory {
         try deserializeRoot(
             data: data
         ) { context in
-            try readMapAnyHashableToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
+            try context.readMapAnyHashableToAny(refMode: refMode, readTypeInfo: true) ?? [:]
         }
     }
 
@@ -314,7 +314,7 @@ public final class Fory {
             from: buffer
         ) { context in
             try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
+                context.readAny(refMode: refMode, readTypeInfo: true),
                 to: Any.self
             )
         }
@@ -337,7 +337,7 @@ public final class Fory {
             from: buffer
         ) { context in
             try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
+                context.readAny(refMode: refMode, readTypeInfo: true),
                 to: AnyObject.self
             )
         }
@@ -359,7 +359,7 @@ public final class Fory {
             from: buffer
         ) { context in
             try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
+                context.readAny(refMode: refMode, readTypeInfo: true),
                 to: (any Serializer).self
             )
         }
@@ -370,7 +370,7 @@ public final class Fory {
         try deserializeRoot(
             from: buffer
         ) { context in
-            try readListOfAny(context: context, refMode: refMode, readTypeInfo: true) ?? []
+            try context.readListOfAny(refMode: refMode, readTypeInfo: true) ?? []
         }
     }
 
@@ -391,7 +391,7 @@ public final class Fory {
         try deserializeRoot(
             from: buffer
         ) { context in
-            try readMapStringToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
+            try context.readMapStringToAny(refMode: refMode, readTypeInfo: true) ?? [:]
         }
     }
 
@@ -420,7 +420,7 @@ public final class Fory {
         try deserializeRoot(
             from: buffer
         ) { context in
-            try readMapInt32ToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
+            try context.readMapInt32ToAny(refMode: refMode, readTypeInfo: true) ?? [:]
         }
     }
 
@@ -431,7 +431,7 @@ public final class Fory {
         try deserializeRoot(
             from: buffer
         ) { context in
-            try readMapAnyHashableToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
+            try context.readMapAnyHashableToAny(refMode: refMode, readTypeInfo: true) ?? [:]
         }
     }
 
