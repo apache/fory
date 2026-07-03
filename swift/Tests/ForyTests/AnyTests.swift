@@ -92,6 +92,90 @@ private func nestedDynamicAnyList(depth: Int) -> Any {
     return value
 }
 
+private func readAnyRoot<R>(
+    _ fory: Fory,
+    data: Data,
+    _ body: (ReadContext) throws -> R
+) throws -> R {
+    try fory.withReusableReadContext(data: data) { context in
+        try fory.readHead(buffer: context.buffer)
+        let value = try body(context)
+        #expect(context.buffer.remaining == 0)
+        return value
+    }
+}
+
+@Test
+func contextAnyReadersRoundTrip() throws {
+    let fory = Fory(config: .init(trackRef: false, compatible: false))
+    fory.register(AnyHashableDynamicKey.self, id: 510)
+    fory.register(AnyHashableDynamicValue.self, id: 511)
+
+    let anyValue: Any = AnyHashableDynamicValue(label: "context-any", score: 1)
+    let anyDecoded = try readAnyRoot(fory, data: try fory.serialize(anyValue)) { context in
+        try context.readAny(refMode: .nullOnly, readTypeInfo: true)
+    }
+    #expect(
+        anyDecoded as? AnyHashableDynamicValue
+            == AnyHashableDynamicValue(label: "context-any", score: 1)
+    )
+
+    let listValue: [Any] = [
+        Int32(2),
+        "context-list",
+        AnyHashableDynamicValue(label: "context-list-obj", score: 3)
+    ]
+    let listDecoded = try readAnyRoot(fory, data: try fory.serialize(listValue)) { context in
+        try context.readListOfAny(refMode: .nullOnly, readTypeInfo: true)
+    }
+    #expect(listDecoded?[0] as? Int32 == 2)
+    #expect(listDecoded?[1] as? String == "context-list")
+    #expect(
+        listDecoded?[2] as? AnyHashableDynamicValue
+            == AnyHashableDynamicValue(label: "context-list-obj", score: 3)
+    )
+
+    let stringMapValue: [String: Any] = [
+        "a": Int32(4),
+        "b": AnyHashableDynamicValue(label: "context-string-map", score: 5)
+    ]
+    let stringMapDecoded = try readAnyRoot(fory, data: try fory.serialize(stringMapValue)) { context in
+        try context.readMapStringToAny(refMode: .nullOnly, readTypeInfo: true)
+    }
+    #expect(stringMapDecoded?["a"] as? Int32 == 4)
+    #expect(
+        stringMapDecoded?["b"] as? AnyHashableDynamicValue
+            == AnyHashableDynamicValue(label: "context-string-map", score: 5)
+    )
+
+    let int32MapValue: [Int32: Any] = [
+        6: "context-int-map",
+        7: AnyHashableDynamicValue(label: "context-int-map-obj", score: 8)
+    ]
+    let int32MapDecoded = try readAnyRoot(fory, data: try fory.serialize(int32MapValue)) { context in
+        try context.readMapInt32ToAny(refMode: .nullOnly, readTypeInfo: true)
+    }
+    #expect(int32MapDecoded?[6] as? String == "context-int-map")
+    #expect(
+        int32MapDecoded?[7] as? AnyHashableDynamicValue
+            == AnyHashableDynamicValue(label: "context-int-map-obj", score: 8)
+    )
+
+    let anyHashableMapValue: [AnyHashable: Any] = [
+        AnyHashable("x"): Int32(9),
+        AnyHashable(AnyHashableDynamicKey(id: 10)):
+            AnyHashableDynamicValue(label: "context-any-map", score: 11)
+    ]
+    let anyHashableMapDecoded = try readAnyRoot(fory, data: try fory.serialize(anyHashableMapValue)) { context in
+        try context.readMapAnyHashableToAny(refMode: .nullOnly, readTypeInfo: true)
+    }
+    #expect(anyHashableMapDecoded?[AnyHashable("x")] as? Int32 == 9)
+    #expect(
+        anyHashableMapDecoded?[AnyHashable(AnyHashableDynamicKey(id: 10))] as? AnyHashableDynamicValue
+            == AnyHashableDynamicValue(label: "context-any-map", score: 11)
+    )
+}
+
 @Test
 func topLevelAnyHashableRoundTrip() throws {
     let fory = Fory()

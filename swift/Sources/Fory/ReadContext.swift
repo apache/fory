@@ -665,7 +665,7 @@ public final class ReadContext {
         case .float64Array:
             value = try readPrimitiveArray(self) as [Double]
         case .array, .list:
-            value = try readListOfAny(context: self, refMode: .none) ?? []
+            value = try readListOfAny(refMode: .none) ?? []
         case .set:
             value = try Set<AnyHashable>.foryRead(self, refMode: .none, readTypeInfo: false)
         case .map:

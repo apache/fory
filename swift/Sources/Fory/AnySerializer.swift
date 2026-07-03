@@ -588,7 +588,7 @@ public func readAny(
     refMode: RefMode,
     readTypeInfo: Bool = true
 ) throws -> Any? {
-    try SerializableAny.foryRead(context, refMode: refMode, readTypeInfo: readTypeInfo).anyValue()
+    try context.readAny(refMode: refMode, readTypeInfo: readTypeInfo)
 }
 
 public func writeListOfAny(
@@ -612,16 +612,7 @@ public func readListOfAny(
     refMode: RefMode,
     readTypeInfo: Bool = false
 ) throws -> [Any]? {
-    let wrapped: [SerializableAny]? = try [SerializableAny]?.foryRead(
-        context,
-        refMode: refMode,
-        readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-        return nil
-    }
-    try reserveAnyReferenceArrayMemory(context, count: wrapped.count)
-    return wrapped.map { $0.anyValueForCollection() }
+    try context.readListOfAny(refMode: refMode, readTypeInfo: readTypeInfo)
 }
 
 public func writeMapStringToAny(
@@ -647,21 +638,7 @@ public func readMapStringToAny(
     refMode: RefMode,
     readTypeInfo: Bool = false
 ) throws -> [String: Any]? {
-    let wrapped: [String: SerializableAny]? = try [String: SerializableAny]?.foryRead(
-        context,
-        refMode: refMode,
-        readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-        return nil
-    }
-    try reserveAnyReferenceMapMemory(context, [String: Any].self, count: wrapped.count)
-    var map: [String: Any] = [:]
-    map.reserveCapacity(wrapped.count)
-    for pair in wrapped {
-        map[pair.key] = pair.value.anyValueForCollection()
-    }
-    return map
+    try context.readMapStringToAny(refMode: refMode, readTypeInfo: readTypeInfo)
 }
 
 public func writeMapInt32ToAny(
@@ -687,21 +664,7 @@ public func readMapInt32ToAny(
     refMode: RefMode,
     readTypeInfo: Bool = false
 ) throws -> [Int32: Any]? {
-    let wrapped: [Int32: SerializableAny]? = try [Int32: SerializableAny]?.foryRead(
-        context,
-        refMode: refMode,
-        readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-        return nil
-    }
-    try reserveAnyReferenceMapMemory(context, [Int32: Any].self, count: wrapped.count)
-    var map: [Int32: Any] = [:]
-    map.reserveCapacity(wrapped.count)
-    for pair in wrapped {
-        map[pair.key] = pair.value.anyValueForCollection()
-    }
-    return map
+    try context.readMapInt32ToAny(refMode: refMode, readTypeInfo: readTypeInfo)
 }
 
 public func writeMapAnyHashableToAny(
@@ -727,21 +690,97 @@ public func readMapAnyHashableToAny(
     refMode: RefMode,
     readTypeInfo: Bool = false
 ) throws -> [AnyHashable: Any]? {
-    let wrapped: [AnyHashable: SerializableAny]? = try [AnyHashable: SerializableAny]?.foryRead(
-        context,
-        refMode: refMode,
-        readTypeInfo: readTypeInfo
-    )
-    guard let wrapped else {
-        return nil
+    try context.readMapAnyHashableToAny(refMode: refMode, readTypeInfo: readTypeInfo)
+}
+
+public extension ReadContext {
+    // Swift `Any` cannot conform to `Serializer`, so generated and hand-written dynamic-Any
+    // readers must enter through these context methods instead of trying `Any.foryRead(...)`.
+    func readAny(
+        refMode: RefMode,
+        readTypeInfo: Bool = true
+    ) throws -> Any? {
+        try SerializableAny.foryRead(self, refMode: refMode, readTypeInfo: readTypeInfo).anyValue()
     }
-    try reserveAnyReferenceMapMemory(context, [AnyHashable: Any].self, count: wrapped.count)
-    var map: [AnyHashable: Any] = [:]
-    map.reserveCapacity(wrapped.count)
-    for pair in wrapped {
-        map[pair.key] = pair.value.anyValueForCollection()
+
+    func readListOfAny(
+        refMode: RefMode,
+        readTypeInfo: Bool = false
+    ) throws -> [Any]? {
+        let wrapped: [SerializableAny]? = try [SerializableAny]?.foryRead(
+            self,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+        guard let wrapped else {
+            return nil
+        }
+        try reserveAnyReferenceArrayMemory(self, count: wrapped.count)
+        return wrapped.map { $0.anyValueForCollection() }
     }
-    return map
+
+    func readMapStringToAny(
+        refMode: RefMode,
+        readTypeInfo: Bool = false
+    ) throws -> [String: Any]? {
+        let wrapped: [String: SerializableAny]? = try [String: SerializableAny]?.foryRead(
+            self,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+        guard let wrapped else {
+            return nil
+        }
+        try reserveAnyReferenceMapMemory(self, [String: Any].self, count: wrapped.count)
+        var map: [String: Any] = [:]
+        map.reserveCapacity(wrapped.count)
+        for pair in wrapped {
+            map[pair.key] = pair.value.anyValueForCollection()
+        }
+        return map
+    }
+
+    func readMapInt32ToAny(
+        refMode: RefMode,
+        readTypeInfo: Bool = false
+    ) throws -> [Int32: Any]? {
+        let wrapped: [Int32: SerializableAny]? = try [Int32: SerializableAny]?.foryRead(
+            self,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+        guard let wrapped else {
+            return nil
+        }
+        try reserveAnyReferenceMapMemory(self, [Int32: Any].self, count: wrapped.count)
+        var map: [Int32: Any] = [:]
+        map.reserveCapacity(wrapped.count)
+        for pair in wrapped {
+            map[pair.key] = pair.value.anyValueForCollection()
+        }
+        return map
+    }
+
+    func readMapAnyHashableToAny(
+        refMode: RefMode,
+        readTypeInfo: Bool = false
+    ) throws -> [AnyHashable: Any]? {
+        let wrapped: [AnyHashable: SerializableAny]? = try [AnyHashable: SerializableAny]?.foryRead(
+            self,
+            refMode: refMode,
+            readTypeInfo: readTypeInfo
+        )
+        guard let wrapped else {
+            return nil
+        }
+        try reserveAnyReferenceMapMemory(self, [AnyHashable: Any].self, count: wrapped.count)
+        var map: [AnyHashable: Any] = [:]
+        map.reserveCapacity(wrapped.count)
+        for pair in wrapped {
+            map[pair.key] = pair.value.anyValueForCollection()
+        }
+        return map
+    }
 }
 
 func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
