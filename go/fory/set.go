@@ -317,12 +317,15 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	if ctx.HasError() {
 		return
 	}
+	keyBytes := int64(type_.Key().Size())
+	valueBytes := int64(type_.Elem().Size())
+	elemBytes := keyBytes + valueBytes
+	if elemBytes < keyBytes {
+		ctx.SetError(DeserializationErrorf("map entry size overflows: key=%d value=%d", keyBytes, valueBytes))
+		return
+	}
 	if length == 0 {
-		keyBytes := int64(type_.Key().Size())
-		valueBytes := int64(type_.Elem().Size())
-		elemBytes := keyBytes + valueBytes
-		if elemBytes < keyBytes {
-			ctx.SetError(DeserializationErrorf("map entry size overflows: key=%d value=%d", keyBytes, valueBytes))
+		if !ctx.ReserveGraphMemory(graphShallowOwnerBytes) {
 			return
 		}
 		// Initialize empty set if length is 0
@@ -361,13 +364,6 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		return
 	}
 	if !buf.CheckReadable(length, err) {
-		return
-	}
-	keyBytes := int64(type_.Key().Size())
-	valueBytes := int64(type_.Elem().Size())
-	elemBytes := keyBytes + valueBytes
-	if elemBytes < keyBytes {
-		ctx.SetError(DeserializationErrorf("map entry size overflows: key=%d value=%d", keyBytes, valueBytes))
 		return
 	}
 	if length < 0 {

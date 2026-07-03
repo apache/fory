@@ -395,6 +395,6 @@ extension ReadContext {
 
     private func readSkippedUnion() throws -> Any {
         _ = try buffer.readVarUInt32()
-        return try readAny(refMode: .tracking, readTypeInfo: true) ?? ForyAnyNullValue()
+        return try readAny(context: self, refMode: .tracking, readTypeInfo: true) ?? ForyAnyNullValue()
     }
 }

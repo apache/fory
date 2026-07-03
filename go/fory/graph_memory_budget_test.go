@@ -153,6 +153,16 @@ func TestGraphBudgetCumulative(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, empty)
 
+	data, err = New(WithCompatible(false)).Serialize(NewSet[int32]())
+	require.NoError(t, err)
+	var emptySet Set[int32]
+	err = New(WithCompatible(false), WithMaxGraphMemoryBytes(graphShallowOwnerBytes-1)).Deserialize(data, &emptySet)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
+	err = New(WithCompatible(false), WithMaxGraphMemoryBytes(graphShallowOwnerBytes)).Deserialize(data, &emptySet)
+	require.NoError(t, err)
+	require.Empty(t, emptySet)
+
 	writer := New(WithCompatible(false))
 	require.NoError(t, writer.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	data, err = writer.Serialize(&budgetSiblings{A: []string{"a"}, B: []string{"b"}})
