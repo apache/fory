@@ -60,11 +60,6 @@ public sealed class RefReader
 {
     private readonly List<object?> _refs = [];
 
-    internal bool HasRefs
-    {
-        get => _refs.Count != 0;
-    }
-
     public RefFlag ReadRefFlag(ByteReader reader)
     {
         return (RefFlag)reader.ReadInt8();

@@ -613,7 +613,7 @@ public sealed class ForyRuntimeTests
     }
 
     [Fact]
-    public void WireTrackingRefsWorkWithNoRefReader()
+    public void RootObjectPublishesTrackedRef()
     {
         ForyRuntime writer = ForyRuntime.Builder().TrackRef(true).Build();
         writer.Register<Node>(953);
@@ -628,26 +628,6 @@ public sealed class ForyRuntimeTests
         Assert.Equal(7, decoded.Value);
         Assert.NotNull(decoded.Next);
         Assert.Same(decoded, decoded.Next);
-    }
-
-    [Fact]
-    public void WireTrackingRefsResetAfterNoRefRoot()
-    {
-        ForyRuntime writer = ForyRuntime.Builder().TrackRef(true).Build();
-        writer.Register<Node>(954);
-        ForyRuntime reader = ForyRuntime.Builder().TrackRef(false).Build();
-        reader.Register<Node>(954);
-
-        Node source = new() { Value = 9 };
-        source.Next = source;
-        _ = reader.Deserialize<Node>(writer.Serialize(source));
-
-        ByteWriter staleRefPayload = new();
-        staleRefPayload.WriteUInt8(ForyHeaderFlag.IsXlang);
-        staleRefPayload.WriteInt8((sbyte)RefFlag.Ref);
-        staleRefPayload.WriteVarUInt32(0);
-
-        Assert.Throws<RefException>(() => reader.Deserialize<Node>(staleRefPayload.ToArray()));
     }
 
     [Fact]

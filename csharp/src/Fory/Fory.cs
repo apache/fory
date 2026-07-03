@@ -28,14 +28,12 @@ namespace Apache.Fory;
 public sealed class Fory
 {
     private readonly TypeResolver _typeResolver;
-    private readonly bool _trackRef;
     private WriteContext _writeContext;
     private ReadContext _readContext;
 
     internal Fory(Config config)
     {
         Config = config;
-        _trackRef = config.TrackRef;
         _typeResolver = new TypeResolver();
         _writeContext = new WriteContext(
             new ByteWriter(),
@@ -284,70 +282,12 @@ public sealed class Fory
         {
             ReadHead(reader);
             Serializer<T> serializer = _typeResolver.GetSerializer<T>();
-            return _trackRef
-                ? serializer.Read(readContext, RefMode.Tracking, true)
-                : ReadRootNoRef(serializer, readContext);
+            RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
+            return serializer.Read(readContext, refMode, true);
         }
         finally
         {
-            if (_trackRef || readContext.RefReader.HasRefs)
-            {
-                readContext.RefReader.Reset();
-            }
-            if (readContext._reservedRefIds.Count != 0)
-            {
-                readContext._reservedRefIds.Clear();
-            }
-            readContext._typeMetaType = null;
-            readContext._typeMeta = null;
-            readContext._typeMetaByType?.ClearKeys();
-            readContext._readTypeInfoByType.ClearKeys();
-            readContext._cachedTypeMetaType = null;
-            readContext._cachedTypeMeta = null;
-            readContext._currentDynamicReadDepth = 0;
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T ReadRootNoRef<T>(Serializer<T> serializer, ReadContext context)
-    {
-        RefFlag flag = (RefFlag)context.Reader.ReadInt8();
-        if (flag == RefFlag.NotNullValue)
-        {
-            return serializer.Read(context, RefMode.None, true);
-        }
-
-        if (flag == RefFlag.Null)
-        {
-            return serializer.DefaultValue;
-        }
-
-        return ReadRootRefFallback(serializer, context, flag);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static T ReadRootRefFallback<T>(Serializer<T> serializer, ReadContext context, RefFlag flag)
-    {
-        switch (flag)
-        {
-            case RefFlag.Ref:
-                {
-                    uint refId = context.RefReader.ReadRefId(context.Reader);
-                    return context.RefReader.GetRef<T>(refId);
-                }
-            case RefFlag.RefValue:
-                {
-                    uint reservedRefId = context.RefReader.ReserveRefId();
-                    context.SetReservedRefId(reservedRefId);
-                    context.TypeResolver.ReadTypeInfo(serializer, context);
-                    T value = serializer.ReadData(context);
-                    context.StoreRef(value);
-                    context.ClearReservedRefId();
-                    context.RefReader.Reset();
-                    return value;
-                }
-            default:
-                throw new RefException($"invalid ref flag {(sbyte)flag}");
+            readContext.Reset();
         }
     }
 
