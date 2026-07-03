@@ -1076,6 +1076,23 @@ fory::Result<void, fory::Error> RunEvolvingRoundTrip() {
 
 using StringMap = std::unordered_map<std::string, std::string>;
 
+template <typename T>
+fory::Result<void, fory::Error>
+ValidateAnyField(const std::any &actual_any, const std::any &expected_any,
+                 const std::string &field_name) {
+  const auto *actual = std::any_cast<T>(&actual_any);
+  const auto *expected = std::any_cast<T>(&expected_any);
+  if (actual == nullptr || expected == nullptr) {
+    return fory::Unexpected(
+        fory::Error::invalid("any holder " + field_name + " type mismatch"));
+  }
+  if (!(*actual == *expected)) {
+    return fory::Unexpected(
+        fory::Error::invalid("any holder " + field_name + " value mismatch"));
+  }
+  return fory::Result<void, fory::Error>();
+}
+
 fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
@@ -1479,10 +1496,24 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   FORY_TRY(any_roundtrip, fory.deserialize<any_example::AnyHolder>(
                               any_bytes.data(), any_bytes.size()));
 
-  if (!(any_roundtrip == any_holder)) {
-    return fory::Unexpected(
-        fory::Error::invalid("any holder roundtrip mismatch"));
-  }
+  FORY_RETURN_IF_ERROR(ValidateAnyField<bool>(
+      any_roundtrip.bool_value(), any_holder.bool_value(), "bool_value"));
+  FORY_RETURN_IF_ERROR(ValidateAnyField<std::string>(
+      any_roundtrip.string_value(), any_holder.string_value(), "string_value"));
+  FORY_RETURN_IF_ERROR(ValidateAnyField<fory::serialization::Date>(
+      any_roundtrip.date_value(), any_holder.date_value(), "date_value"));
+  FORY_RETURN_IF_ERROR(ValidateAnyField<fory::serialization::Timestamp>(
+      any_roundtrip.timestamp_value(), any_holder.timestamp_value(),
+      "timestamp_value"));
+  FORY_RETURN_IF_ERROR(ValidateAnyField<any_example::AnyInner>(
+      any_roundtrip.message_value(), any_holder.message_value(),
+      "message_value"));
+  FORY_RETURN_IF_ERROR(ValidateAnyField<any_example::AnyUnion>(
+      any_roundtrip.union_value(), any_holder.union_value(), "union_value"));
+  FORY_RETURN_IF_ERROR(ValidateAnyField<std::vector<std::string>>(
+      any_roundtrip.list_value(), any_holder.list_value(), "list_value"));
+  FORY_RETURN_IF_ERROR(ValidateAnyField<StringMap>(
+      any_roundtrip.map_value(), any_holder.map_value(), "map_value"));
 
   example_peer::ExampleMessage example_message = BuildExampleMessage();
   FORY_TRY(example_bytes, fory.serialize(example_message));

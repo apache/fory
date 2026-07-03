@@ -691,13 +691,6 @@ class CppGenerator(BaseGenerator):
     ) -> str:
         member_name = self.get_field_member_name(field)
         other_member = f"other.{member_name}"
-        if isinstance(field.field_type, PrimitiveType) and (
-            field.field_type.kind == PrimitiveKind.ANY
-        ):
-            return (
-                f"((!{member_name}.has_value() && !{other_member}.has_value()) || "
-                f"({member_name}.type() == {other_member}.type()))"
-            )
         if self.is_message_type(
             field.field_type, parent_stack
         ) and self.get_field_weak_ref(field):
@@ -715,6 +708,104 @@ class CppGenerator(BaseGenerator):
                 f"({member_name} == {other_member}))"
             )
         return f"{member_name} == {other_member}"
+
+    def message_has_any(
+        self,
+        message: Message,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[Tuple[str, int]]] = None,
+    ) -> bool:
+        if visiting is None:
+            visiting = set()
+        key = ("message", id(message))
+        if key in visiting:
+            return False
+        visiting.add(key)
+        try:
+            lineage = (parent_stack or []) + [message]
+            return any(
+                self.field_type_has_any(field.field_type, lineage, visiting)
+                for field in message.fields
+            )
+        finally:
+            visiting.remove(key)
+
+    def union_has_any(
+        self,
+        union: Union,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[Tuple[str, int]]] = None,
+    ) -> bool:
+        if visiting is None:
+            visiting = set()
+        key = ("union", id(union))
+        if key in visiting:
+            return False
+        visiting.add(key)
+        try:
+            return any(
+                self.field_type_has_any(field.field_type, parent_stack, visiting)
+                for field in union.fields
+            )
+        finally:
+            visiting.remove(key)
+
+    def field_type_has_any(
+        self,
+        field_type: FieldType,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[Tuple[str, int]]] = None,
+    ) -> bool:
+        """Return True when a field type or its children contain `any`."""
+        if isinstance(field_type, PrimitiveType):
+            return field_type.kind == PrimitiveKind.ANY
+        if isinstance(field_type, ListType):
+            return self.field_type_has_any(
+                field_type.element_type, parent_stack, visiting
+            )
+        if isinstance(field_type, ArrayType):
+            return self.field_type_has_any(
+                field_type.element_type, parent_stack, visiting
+            )
+        if isinstance(field_type, MapType):
+            # `any` is not allowed as map key (rejected first by the validator),
+            # so we only check map value here.
+            return self.field_type_has_any(
+                field_type.value_type, parent_stack, visiting
+            )
+        if isinstance(field_type, NamedType):
+            named_type = self.resolve_named_type(field_type.name, parent_stack)
+            if isinstance(named_type, Message):
+                return self.message_has_any(
+                    named_type, self._parent_stack_for_type(named_type), visiting
+                )
+            if isinstance(named_type, Union):
+                return self.union_has_any(
+                    named_type, self._parent_stack_for_type(named_type), visiting
+                )
+        return False
+
+    def _parent_stack_for_type(self, type_def: object) -> List[Message]:
+        def visit(message: Message, parents: List[Message]) -> Optional[List[Message]]:
+            if message is type_def:
+                return parents
+            for nested_union in message.nested_unions:
+                if nested_union is type_def:
+                    return parents + [message]
+            for nested_enum in message.nested_enums:
+                if nested_enum is type_def:
+                    return parents + [message]
+            for nested_message in message.nested_messages:
+                found = visit(nested_message, parents + [message])
+                if found is not None:
+                    return found
+            return None
+
+        for top in self.schema.messages:
+            found = visit(top, [])
+            if found is not None:
+                return found
+        return []
 
     def is_numeric_field(self, field: Field) -> bool:
         if not isinstance(field.field_type, PrimitiveType):
@@ -914,19 +1005,23 @@ class CppGenerator(BaseGenerator):
                     lines.append("")
             lines.append("")
 
-        lines.append(
-            f"{body_indent}bool operator==(const {class_name}& other) const {{"
-        )
-        if message.fields:
-            conditions = [
-                self.get_field_eq_expression(field, lineage) for field in message.fields
-            ]
-            lines.append(f"{body_indent}  return {' && '.join(conditions)};")
-        else:
-            lines.append(f"{body_indent}  return true;")
-        lines.append(f"{body_indent}}}")
+        # We don't generate equality method for message containing `any`
+        # since C++ doesn't support std::any == std::any.
+        if not self.message_has_any(message, parent_stack):
+            lines.append(
+                f"{body_indent}bool operator==(const {class_name}& other) const {{"
+            )
+            if message.fields:
+                conditions = [
+                    self.get_field_eq_expression(field, lineage)
+                    for field in message.fields
+                ]
+                lines.append(f"{body_indent}  return {' && '.join(conditions)};")
+            else:
+                lines.append(f"{body_indent}  return true;")
+            lines.append(f"{body_indent}}}")
+            lines.append("")
 
-        lines.append("")
         lines.extend(self.generate_bytes_methods(class_name, body_indent))
 
         struct_type_name = self.get_qualified_type_name(message.name, parent_stack)
@@ -1069,12 +1164,15 @@ class CppGenerator(BaseGenerator):
         )
         lines.append(f"{body_indent}  }}")
         lines.append("")
-        lines.append(
-            f"{body_indent}  bool operator==(const {class_name}& other) const {{"
-        )
-        lines.append(f"{body_indent}    return value_ == other.value_;")
-        lines.append(f"{body_indent}  }}")
-        lines.append("")
+        # We don't generate equality method for union containing `any`
+        # since C++ doesn't support std::any == std::any.
+        if not self.union_has_any(union, parent_stack):
+            lines.append(
+                f"{body_indent}  bool operator==(const {class_name}& other) const {{"
+            )
+            lines.append(f"{body_indent}    return value_ == other.value_;")
+            lines.append(f"{body_indent}  }}")
+            lines.append("")
 
         lines.extend(self.generate_bytes_methods(class_name, f"{body_indent}  "))
 
