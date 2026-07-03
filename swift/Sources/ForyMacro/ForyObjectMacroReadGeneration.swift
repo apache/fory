@@ -65,10 +65,6 @@ private func reserveClassGraphOwnerLine(fields: [ParsedField], indent: String) -
     "\(indent)try context.reserveGraphMemory(\(classGraphOwnerBytesExpr(fields)))"
 }
 
-private func reserveValueGraphOwnerLine(indent: String) -> String {
-    "\(indent)try context.reserveGraphMemory(max(1, MemoryLayout<Self>.stride))"
-}
-
 func buildClassReadWrapperDecl(accessPrefix: String) -> String {
     """
     @inline(__always)
@@ -153,7 +149,7 @@ private func buildEmptyStructReadDataDecl(accessPrefix: String) -> String {
     \(accessPrefix)static func foryReadData(_ context: ReadContext) throws -> Self {
         let __buffer = context.buffer
         \(schemaHashCheckExpr())
-        \(reserveValueGraphOwnerLine(indent: "      "))
+        try context.reserveGraphMemory(1)
         return Self()
     }
     """
@@ -177,7 +173,7 @@ private func buildStructReadDataDecl(
         \(accessPrefix)static func foryReadData(_ context: ReadContext) throws -> Self {
             let __buffer = context.buffer
             \(schemaHashCheckExpr())
-            \(reserveValueGraphOwnerLine(indent: "        "))
+            try context.reserveGraphMemory(MemoryLayout<Self>.stride)
             \(schemaReadBody)
             return Self(
                 \(ctorArgs)
@@ -263,7 +259,7 @@ private func buildEmptyStructReadCompatibleDataDecl(accessPrefix: String) -> Str
         guard let typeMeta = remoteTypeInfo.compatibleTypeMeta else {
             throw ForyError.invalidData("compatible type metadata is required")
         }
-        \(reserveValueGraphOwnerLine(indent: "      "))
+        try context.reserveGraphMemory(1)
         if let localTypeMeta = remoteTypeInfo.typeMeta,
            let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
            typeMeta.headerHash == localHeaderHash,
@@ -318,7 +314,7 @@ private func buildStructReadCompatibleDataDecl(
             \(bufferBinding)guard let typeMeta = remoteTypeInfo.compatibleTypeMeta else {
                 throw ForyError.invalidData("compatible type metadata is required")
             }
-            \(reserveValueGraphOwnerLine(indent: "        "))
+            try context.reserveGraphMemory(MemoryLayout<Self>.stride)
             if let localTypeMeta = remoteTypeInfo.typeMeta,
                let localHeaderHash = remoteTypeInfo.typeDefHeaderHash,
                typeMeta.headerHash == localHeaderHash,

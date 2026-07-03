@@ -54,10 +54,10 @@ public final class ReadContext {
 
     @inline(__always)
     public func reserveGraphMemory(_ bytes: Int) throws {
-        if bytes < 0 {
+        if _slowPath(bytes < 0) {
             try throwGraphMemoryOverflow()
         }
-        if bytes > remainingGraphMemoryBytes {
+        if _slowPath(bytes > remainingGraphMemoryBytes) {
             try throwGraphMemoryExceeded(bytes: bytes)
         }
         remainingGraphMemoryBytes -= bytes
