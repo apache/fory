@@ -22,6 +22,7 @@
 #include "fory/meta/field_info.h"
 #include "fory/meta/type_index.h"
 #include "fory/meta/type_traits.h"
+#include "fory/serialization/ref_mode.h"
 #include "fory/type/type.h"
 #include "fory/util/macros.h"
 #include <array>
@@ -44,6 +45,7 @@ namespace fory {
 namespace serialization {
 
 // Forward declarations for trait detection
+class ReadContext;
 template <typename T, typename Enable = void> struct Serializer;
 template <typename T, typename Enable = void> struct SerializationMeta;
 
@@ -334,6 +336,25 @@ FORY_ALWAYS_INLINE bool reserve_allocated_value_owner(Context &ctx) {
     return true;
   } else {
     return ctx.reserve_graph_memory(bytes);
+  }
+}
+
+template <typename T, typename = void>
+struct has_read_root : std::false_type {};
+
+template <typename T>
+struct has_read_root<
+    T, std::void_t<decltype(Serializer<T>::read_root(
+           std::declval<ReadContext &>(), std::declval<RefMode>(), true))>>
+    : std::true_type {};
+
+template <typename T>
+FORY_ALWAYS_INLINE T read_root_object(ReadContext &ctx, RefMode ref_mode,
+                                      bool read_type) {
+  if constexpr (has_read_root<T>::value) {
+    return Serializer<T>::read_root(ctx, ref_mode, read_type);
+  } else {
+    return Serializer<T>::read(ctx, ref_mode, read_type);
   }
 }
 

@@ -187,7 +187,7 @@ func (s primitiveListSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes))
 		return
 	}
-	if !ctx.ReserveGraphMemory(int64(length) * s.elemBytes) {
+	if !ctx.ReserveGraphMemory(graphContainerBytes + int64(length)*s.elemBytes) {
 		return
 	}
 	if length == 0 {
@@ -297,7 +297,7 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 			ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.listReader.elemBytes))
 			return
 		}
-		if !ctx.ReserveGraphMemory(int64(length) * s.listReader.elemBytes) {
+		if !ctx.ReserveGraphMemory(graphContainerBytes + int64(length)*s.listReader.elemBytes) {
 			return
 		}
 		temp := reflect.New(value.Type()).Elem()

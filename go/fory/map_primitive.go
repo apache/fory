@@ -102,7 +102,7 @@ func readTypedMapSize(ctx *ReadContext, elemBytes int64, maxLength int64) (int, 
 		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", size, elemBytes))
 		return 0, false
 	}
-	if !ctx.ReserveGraphMemory(int64(size) * elemBytes) {
+	if !ctx.ReserveGraphMemory(graphContainerBytes + int64(size)*elemBytes) {
 		return 0, false
 	}
 	if size == 0 {

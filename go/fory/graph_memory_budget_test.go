@@ -127,13 +127,13 @@ func TestGraphBudgetCumulative(t *testing.T) {
 	require.NoError(t, writer.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	data, err = writer.Serialize(&budgetSiblings{A: []string{"a"}, B: []string{"b"}})
 	require.NoError(t, err)
-	reader := New(WithCompatible(false), WithMaxGraphMemoryBytes(stringElementBytes))
+	reader := New(WithCompatible(false), WithMaxGraphMemoryBytes(graphContainerBytes+stringElementBytes))
 	require.NoError(t, reader.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	var out budgetSiblings
 	err = reader.Deserialize(data, &out)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-	required := structGraphBytes(reflect.TypeOf(budgetSiblings{})) + 2*stringElementBytes
+	required := structGraphBytes(reflect.TypeOf(budgetSiblings{})) + 2*(graphContainerBytes+stringElementBytes)
 	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required))
 	require.NoError(t, reader.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	require.NoError(t, reader.Deserialize(data, &out))
@@ -145,7 +145,7 @@ func TestGraphMemoryBudgetMapAndOverflow(t *testing.T) {
 	data, err := New().Serialize(map[string]string{"k": "v"})
 	require.NoError(t, err)
 	var out map[string]string
-	oneEntryBudget := graphSizeOf[string]() + graphSizeOf[string]()
+	oneEntryBudget := graphContainerBytes + graphSizeOf[string]() + graphSizeOf[string]()
 	err = New(WithMaxGraphMemoryBytes(oneEntryBudget-1)).Deserialize(data, &out)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
@@ -159,7 +159,7 @@ func TestGraphBudgetSlices(t *testing.T) {
 	data, err := New().Serialize([]string{"a"})
 	require.NoError(t, err)
 	var stringsOut []string
-	err = New(WithMaxGraphMemoryBytes(graphSizeOf[string]()-1)).Deserialize(data, &stringsOut)
+	err = New(WithMaxGraphMemoryBytes(graphContainerBytes+graphSizeOf[string]()-1)).Deserialize(data, &stringsOut)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
 
@@ -167,13 +167,13 @@ func TestGraphBudgetSlices(t *testing.T) {
 	require.NoError(t, writer.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	data, err = writer.Serialize([]budgetItem{{A: 1}})
 	require.NoError(t, err)
-	reader := New(WithMaxGraphMemoryBytes(graphSizeOf[budgetItem]() - 1))
+	reader := New(WithMaxGraphMemoryBytes(graphContainerBytes + graphSizeOf[budgetItem]() - 1))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	var items []budgetItem
 	err = reader.Deserialize(data, &items)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-	reader = New(WithMaxGraphMemoryBytes(graphSizeOf[budgetItem]()))
+	reader = New(WithMaxGraphMemoryBytes(graphContainerBytes + graphSizeOf[budgetItem]()))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	require.NoError(t, reader.Deserialize(data, &items))
 	require.Equal(t, []budgetItem{{A: 1}}, items)

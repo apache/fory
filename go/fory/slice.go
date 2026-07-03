@@ -313,12 +313,6 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 	isArrayType := value.Type().Kind() == reflect.Array
 
-	if length == 0 {
-		if !isArrayType {
-			value.Set(reflect.MakeSlice(value.Type(), 0, 0))
-		}
-		return
-	}
 	if !isArrayType {
 		if length < 0 {
 			ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
@@ -328,9 +322,15 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 			ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes))
 			return
 		}
-		if !ctx.ReserveGraphMemory(int64(length) * s.elemBytes) {
+		if !ctx.ReserveGraphMemory(graphContainerBytes + int64(length)*s.elemBytes) {
 			return
 		}
+	}
+	if length == 0 {
+		if !isArrayType {
+			value.Set(reflect.MakeSlice(value.Type(), 0, 0))
+		}
+		return
 	}
 
 	// ReadData collection flags

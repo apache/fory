@@ -318,7 +318,7 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", size, elemBytes))
 		return
 	}
-	if !ctx.ReserveGraphMemory(int64(size) * elemBytes) {
+	if !ctx.ReserveGraphMemory(graphContainerBytes + int64(size)*elemBytes) {
 		return
 	}
 	if size == 0 {

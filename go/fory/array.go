@@ -323,7 +323,7 @@ func (s arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", value.Len(), elemBytes))
 		return
 	}
-	if !ctx.ReserveGraphMemory(int64(value.Len()) * elemBytes) {
+	if !ctx.ReserveGraphMemory(graphContainerBytes + int64(value.Len())*elemBytes) {
 		return
 	}
 	tempSlice := reflect.MakeSlice(sliceType, value.Len(), value.Len())

@@ -1422,6 +1422,25 @@ func (s *structSerializer) readRoot(ctx *ReadContext, value reflect.Value) {
 	readStruct.ReadData(ctx, value)
 }
 
+func (s *structSerializer) readDynamicValue(ctx *ReadContext, refMode RefMode, refID int32, type_ reflect.Type, value reflect.Value) {
+	graphBytes := s.graphBytes
+	if graphBytes == 0 {
+		graphBytes = structGraphBytes(type_)
+	}
+	if !ctx.ReserveGraphMemory(graphBytes) {
+		return
+	}
+	newValue := reflect.New(type_)
+	if refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
+		ctx.RefResolver().SetReadObject(refID, newValue)
+	}
+	s.ReadData(ctx, newValue.Elem())
+	if ctx.HasError() {
+		return
+	}
+	value.Set(newValue)
+}
+
 func (s *structSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	// typeInfo is already read, don't read it again
 	s.Read(ctx, refMode, false, false, value)

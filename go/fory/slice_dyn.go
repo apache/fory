@@ -283,10 +283,6 @@ func (s *sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, exp
 		return
 	}
 	allocatedByCaller := expectedLength >= 0
-	if length == 0 {
-		value.Set(reflect.MakeSlice(sliceType, 0, 0))
-		return
-	}
 	if !allocatedByCaller {
 		if length < 0 {
 			ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
@@ -296,9 +292,13 @@ func (s *sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, exp
 			ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes))
 			return
 		}
-		if !ctx.ReserveGraphMemory(int64(length) * s.elemBytes) {
+		if !ctx.ReserveGraphMemory(graphContainerBytes + int64(length)*s.elemBytes) {
 			return
 		}
+	}
+	if length == 0 {
+		value.Set(reflect.MakeSlice(sliceType, 0, 0))
+		return
 	}
 
 	collectFlag := buf.ReadInt8(ctxErr)

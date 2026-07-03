@@ -45,7 +45,6 @@
 #include <mutex>
 #include <ostream>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -864,7 +863,7 @@ private:
     // TypeMeta is read inline during deserialization (streaming protocol)
     const RefMode top_level_ref_mode =
         read_ctx_->track_ref() ? RefMode::Tracking : RefMode::NullOnly;
-    T result = Serializer<T>::read(*read_ctx_, top_level_ref_mode, true);
+    T result = read_root_object<T>(*read_ctx_, top_level_ref_mode, true);
     // Check for errors at deserialization boundary
     if (FORY_PREDICT_FALSE(read_ctx_->has_error())) {
       return Unexpected(read_ctx_->take_error());
@@ -890,11 +889,6 @@ private:
     read_ctx_->attach(buffer);
     read_ctx_->remaining_graph_memory_bytes_ =
         static_cast<size_t>(read_ctx_->config_->max_graph_memory_bytes);
-    if constexpr (is_optional_v<std::remove_cv_t<T>> ||
-                  is_std_shared_ptr_v<std::remove_cv_t<T>> ||
-                  is_std_unique_ptr_v<std::remove_cv_t<T>>) {
-      read_ctx_->root_graph_owner_pending_ = true;
-    }
     ReadContextGuard guard(*read_ctx_);
     return deserialize_impl<T>(buffer);
   }

@@ -505,6 +505,9 @@ internal static class CollectionCodec
 
 internal static class DynamicContainerCodec
 {
+    private const int MapBytes = 1;
+    private const int ReferenceBytes = 4;
+
     public static bool TryGetTypeId(object value, out TypeId typeId)
     {
         if (value is IDictionary)
@@ -600,6 +603,7 @@ internal static class DynamicContainerCodec
             return map;
         }
 
+        context.ReserveGraphMemory(MapBytes + (long)map.Count * (ReferenceBytes + ReferenceBytes));
         return new Dictionary<object, object?>(map.NonNullEntries);
     }
 

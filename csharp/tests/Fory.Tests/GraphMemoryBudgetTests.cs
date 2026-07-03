@@ -248,6 +248,19 @@ public sealed class GraphMemoryBudgetTests
     }
 
     [Fact]
+    public void DynamicMapReturnOwnerIsCharged()
+    {
+        Dictionary<object, object?> value = new() { ["a"] = 1, ["b"] = "two" };
+        byte[] bytes = NewFory().Serialize<object>(value);
+        long required = MapBudget<object, object?>(value.Count) * 2;
+
+        Assert.Throws<InvalidDataException>(() => NewFory(required - 1).Deserialize<object>(bytes));
+        Dictionary<object, object?> result = Assert.IsType<Dictionary<object, object?>>(
+            NewFory(required).Deserialize<object>(bytes));
+        Assert.Equal(value.Count, result.Count);
+    }
+
+    [Fact]
     public void ArrayAndInlineListBudget()
     {
         BudgetArrayHolder holder = new()

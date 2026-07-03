@@ -42,7 +42,6 @@ namespace serialization {
 class TypeResolver;
 class ReadContext;
 class TypeMeta;
-template <typename T, typename Enable> struct Serializer;
 
 /// RAII helper to automatically decrease dynamic depth when leaving scope.
 /// Used for tracking nested polymorphic type deserialization depth.
@@ -670,20 +669,11 @@ public:
 
 private:
   friend class Fory;
-  template <typename, typename> friend struct Serializer;
 
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
   FORY_NOINLINE bool set_graph_memory_exceeded(size_t bytes, size_t remaining);
-
-  FORY_ALWAYS_INLINE bool reserve_pending_root_graph_owner(size_t bytes) {
-    if (!root_graph_owner_pending_) {
-      return true;
-    }
-    root_graph_owner_pending_ = false;
-    return reserve_graph_memory(bytes);
-  }
 
   // Error state - accumulated during deserialization, checked at the end
   Error error_;
@@ -694,7 +684,6 @@ private:
   RefReader ref_reader_;
   uint32_t current_dyn_depth_;
   size_t remaining_graph_memory_bytes_ = 0;
-  bool root_graph_owner_pending_ = false;
 
   // Meta sharing state (for compatible mode)
   // Persistent cache storage for TypeInfo objects keyed by meta header.
