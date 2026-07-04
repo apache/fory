@@ -419,15 +419,17 @@ inline bool reserve_collection(std::vector<bool, Alloc> &result,
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
-  const size_t length_bytes = static_cast<size_t>(length);
-  if (FORY_PREDICT_FALSE(length_bytes >
+  const size_t element_count = static_cast<size_t>(length);
+  if (FORY_PREDICT_FALSE(element_count >
                          std::numeric_limits<size_t>::max() - 7)) {
     ctx.set_error(Error::invalid_data(
         "graph memory estimate overflows: length=" + std::to_string(length) +
-        " elementBytes=1"));
+        " elementBits=1"));
     return false;
   }
-  const size_t packed_bytes = (length_bytes + 7) / 8;
+  // std::vector<bool> owns packed bit storage even though the wire payload uses
+  // one byte per bool.
+  const size_t packed_bytes = (element_count + 7) / 8;
   if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(packed_bytes))) {
     return false;
   }
