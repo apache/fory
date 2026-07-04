@@ -758,7 +758,8 @@ void ReadContext::reset() {
   }
   reading_type_infos_.clear();
   current_dyn_depth_ = 0;
-  remaining_graph_memory_bytes_ = 0;
+  // Root deserialization overwrites the remaining graph budget before any
+  // serializer can reserve, so reset avoids an extra hot cleanup store here.
   if (meta_string_table_active_) {
     meta_string_table_.reset();
     meta_string_table_active_ = false;
