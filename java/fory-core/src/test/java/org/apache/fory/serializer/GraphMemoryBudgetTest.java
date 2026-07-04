@@ -28,6 +28,7 @@ import static org.testng.Assert.assertTrue;
 import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -210,6 +211,19 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     assertThrows(
         InsecureException.class, () -> genericNodeFory(required - 1, true).deserialize(bytes));
     assertGenericNode(genericNodeFory(required, true).deserialize(bytes));
+  }
+
+  @Test
+  public void testSubListViewBudget() {
+    ArrayList<Integer> source = new ArrayList<>();
+    Collections.addAll(source, 1, 2, 3, 4);
+    List<Integer> value = source.subList(1, 3);
+    byte[] bytes = builder().withRefTracking(true).build().serialize(value);
+    long required =
+        collectionBytes(source.size()) + GraphMemoryEstimates.shallowObjectBytes(value.getClass());
+
+    assertThrows(InsecureException.class, () -> newFory(required - 1).deserialize(bytes));
+    assertEquals(newFory(required).deserialize(bytes), value);
   }
 
   @Test
