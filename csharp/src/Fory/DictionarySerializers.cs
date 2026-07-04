@@ -233,6 +233,8 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         return ReadData(context, publishRef: true, refId);
     }
 
+    // Map owners can be reached again while keys or values are being read. The ref-aware path
+    // publishes the concrete map immediately after allocation, not after the entry loop.
     private TDictionary ReadData(ReadContext context, bool publishRef, uint refId)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();

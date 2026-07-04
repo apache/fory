@@ -156,6 +156,9 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
             throw new InvalidDataException("dynamic Any value requires type info");
         }
 
+        // Type-erased RefValue reads keep the reserved id local and pass it to the resolved
+        // payload owner. Storing after the call would be too late for owners that can be
+        // self-referenced while their child values are still being read.
         object? result = context.TypeResolver.ReadAnyValue(typeInfo, context, refId);
         context.ClearReadTypeInfo(typeof(object));
         return result;

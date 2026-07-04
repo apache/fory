@@ -559,6 +559,8 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         return ReadData(context, publishRef: true, refId);
     }
 
+    // Dynamic maps keep NullableKeyDictionary as the ref owner even when the returned value is later
+    // converted to Dictionary for non-null keys, so publish this owner before reading entries.
     private NullableKeyDictionary<TKey, TValue> ReadData(ReadContext context, bool publishRef, uint refId)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();

@@ -388,6 +388,9 @@ internal static class CollectionCodec
         return ReadCollectionData(elementSerializer, context, publishRef: true, refId);
     }
 
+    // Collection and array owners may be referenced by their own elements. When a caller has
+    // reserved a ref id, publish the retained owner immediately after allocation and before
+    // element reads; non-ref callers use the same loop with publishRef=false.
     private static List<T> ReadCollectionData<T>(
         Serializer<T> elementSerializer,
         ReadContext context,

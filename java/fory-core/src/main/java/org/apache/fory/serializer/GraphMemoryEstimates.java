@@ -25,7 +25,13 @@ import org.apache.fory.annotation.Internal;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.type.TypeUtils;
 
-/** Portable lower-bound graph-memory estimates for shallow Java owner objects. */
+/**
+ * Portable lower-bound graph-memory estimates for shallow Java owner objects.
+ *
+ * <p>This class is safe for GraalVM build-time initialization: it stores only deterministic
+ * lower-bound constants and class-shape estimates, never runtime heap offsets or mutable runtime
+ * state.
+ */
 @Internal
 public final class GraphMemoryEstimates {
   public static final int REFERENCE_BYTES = 4;

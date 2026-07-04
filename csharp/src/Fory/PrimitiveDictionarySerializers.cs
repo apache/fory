@@ -714,6 +714,8 @@ internal static class PrimitiveDictionaryCodecReader
         where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
         where TMapOps : struct, IPrimitiveMapReadOps<TMap, TKey, TValue>
     {
+        // Primitive map serializers still own a retained map object. Publish it before entry reads
+        // so mixed primitive/dynamic payloads can resolve cycles through the same ref id.
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {

@@ -531,6 +531,9 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("    {");
         if (model.Kind == DeclKind.Class)
         {
+            // Generated class serializers allocate the reference owner before reading fields. Keep
+            // the ref-aware path explicit so self-references publish the final owner, while structs
+            // continue to read as inline values with no generated ref publication.
             sb.AppendLine($"        return {methodName}Core(context, publishRef: false, refId: 0);");
             sb.AppendLine("    }");
             sb.AppendLine();
