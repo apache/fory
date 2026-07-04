@@ -17,36 +17,22 @@
 
 package fory
 
-import (
-	"reflect"
-	"unsafe"
-)
+import "unsafe"
 
-const graphReferenceBytes int64 = 4
+const graphReferenceBytes = 4
 const graphShallowOwnerBytes = 2 * graphReferenceBytes
 
 var stringElementBytes = graphSizeOf[string]()
 var stringMaxLength = maxGraphCount(stringElementBytes)
 
-func graphSizeOf[T any]() int64 {
+func graphSizeOf[T any]() int {
 	var v T
-	return int64(unsafe.Sizeof(v))
+	return int(unsafe.Sizeof(v))
 }
 
-func maxGraphCount(elemBytes int64) int64 {
+func maxGraphCount(elemBytes int) int64 {
 	if elemBytes == 0 {
 		return MaxInt64 - graphShallowOwnerBytes
 	}
-	return (MaxInt64 - graphShallowOwnerBytes) / elemBytes
-}
-
-func structGraphBytes(type_ reflect.Type) int64 {
-	if type_.Kind() != reflect.Struct {
-		return 0
-	}
-	bytes := int64(type_.Size())
-	if bytes == 0 {
-		return graphShallowOwnerBytes
-	}
-	return bytes
+	return (MaxInt64 - graphShallowOwnerBytes) / int64(elemBytes)
 }

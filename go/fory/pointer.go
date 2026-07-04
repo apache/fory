@@ -24,6 +24,7 @@ import (
 // ptrToValueSerializer serializes a pointer to a concrete (non-interface) value
 type ptrToValueSerializer struct {
 	valueSerializer Serializer
+	valueBytes      int
 }
 
 // ptrToInterfaceSerializer serializes a pointer to an interface value
@@ -139,8 +140,8 @@ func (s *ptrToValueSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Check if value is already allocated (for circular reference handling)
 	var newVal reflect.Value
 	if value.IsNil() {
-		// Allocate new value
-		if !ctx.ReserveGraphMemory(structGraphBytes(value.Type().Elem())) {
+		// Pointer serializers reserve only when they allocate the pointed value.
+		if !ctx.ReserveGraphMemory(int64(s.valueBytes)) {
 			return
 		}
 		newVal = reflect.New(value.Type().Elem())
@@ -198,7 +199,8 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
 				// Allocate the pointer value if needed
 				if value.IsNil() {
-					if !ctx.ReserveGraphMemory(structGraphBytes(value.Type().Elem())) {
+					// Pointer serializers reserve only when they allocate the pointed value.
+					if !ctx.ReserveGraphMemory(int64(s.valueBytes)) {
 						return
 					}
 					value.Set(reflect.New(value.Type().Elem()))

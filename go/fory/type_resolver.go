@@ -341,7 +341,14 @@ func (r *TypeResolver) initialize() {
 		// Register interface types first so typeIDToTypeInfo maps to generic types
 		// that can hold any element type when deserializing into any
 		{interfaceSliceType, LIST, mustNewSliceDynSerializer(interfaceType)},
-		{interfaceMapType, MAP, mapSerializer{type_: interfaceMapType, keyReferencable: true, valueReferencable: true}},
+		{interfaceMapType, MAP, mapSerializer{
+			type_:             interfaceMapType,
+			keyReferencable:   true,
+			valueReferencable: true,
+			keyBytes:          int(interfaceMapType.Key().Size()),
+			valueBytes:        int(interfaceMapType.Elem().Size()),
+			maxLength:         maxGraphCount(int(interfaceMapType.Key().Size()) + int(interfaceMapType.Elem().Size())),
+		}},
 		// stringSliceType uses dedicated stringSliceSerializer for optimized serialization
 		// This ensures CollectionIsDeclElementType is set for Java compatibility
 		{stringSliceType, LIST, stringSliceSerializer{}},
@@ -510,6 +517,7 @@ func (r *TypeResolver) RegisterStruct(type_ reflect.Type, typeID TypeId, userTyp
 		if !ok {
 			ptrSerializer = &ptrToValueSerializer{
 				valueSerializer: serializer,
+				valueBytes:      serializer.valueBytes,
 			}
 			r.typeToSerializers[ptrType] = ptrSerializer
 		}
@@ -554,7 +562,7 @@ func (r *TypeResolver) RegisterUnion(type_ reflect.Type, userTypeID uint32, seri
 	r.typeToTypeInfo[type_] = "@" + tag
 
 	ptrType := reflect.PtrTo(type_)
-	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer}
+	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer, valueBytes: int(type_.Size())}
 	r.typeToSerializers[ptrType] = ptrSerializer
 	r.typeToTypeInfo[ptrType] = "*@" + tag
 
@@ -662,7 +670,7 @@ func (r *TypeResolver) registerStructByName(type_ reflect.Type, namespace, typeN
 	r.typeToTypeInfo[type_] = "@" + tag
 
 	ptrType := reflect.PtrTo(type_)
-	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer}
+	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer, valueBytes: int(type_.Size())}
 	r.typeToSerializers[ptrType] = ptrSerializer
 	// use `ptrToValueSerializer` as default deserializer when deserializing data from other languages.
 	r.typeToTypeInfo[ptrType] = "*@" + tag
@@ -703,7 +711,7 @@ func (r *TypeResolver) registerUnionByName(
 	r.typeToTypeInfo[type_] = "@" + tag
 
 	ptrType := reflect.PtrTo(type_)
-	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer}
+	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer, valueBytes: int(type_.Size())}
 	r.typeToSerializers[ptrType] = ptrSerializer
 	r.typeToTypeInfo[ptrType] = "*@" + tag
 
@@ -742,7 +750,7 @@ func (r *TypeResolver) registerExtensionByName(
 	r.typeToTypeInfo[type_] = "@" + tag
 
 	ptrType := reflect.PtrTo(type_)
-	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer}
+	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer, valueBytes: int(type_.Size())}
 	r.typeToSerializers[ptrType] = ptrSerializer
 	r.typeToTypeInfo[ptrType] = "*@" + tag
 
@@ -782,7 +790,7 @@ func (r *TypeResolver) RegisterExtension(
 	r.typeToSerializers[type_] = serializer
 
 	ptrType := reflect.PtrTo(type_)
-	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer}
+	ptrSerializer := &ptrToValueSerializer{valueSerializer: serializer, valueBytes: int(type_.Size())}
 	r.typeToSerializers[ptrType] = ptrSerializer
 
 	// Register type info for both value and pointer types
@@ -920,7 +928,7 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 				ptrSerializer = &ptrToInterfaceSerializer{}
 			} else {
 				// Pointer to concrete value
-				ptrSerializer = &ptrToValueSerializer{valueSerializer: elemSerializer}
+				ptrSerializer = &ptrToValueSerializer{valueSerializer: elemSerializer, valueBytes: int(elemType.Size())}
 			}
 
 			// Create TypeInfo for pointer using element's namespace/typename
@@ -951,7 +959,7 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 		elemSerializer, err := r.getSerializerByType(elemType, false)
 		if err == nil && elemSerializer != nil {
 			// Create pointer serializer for primitive/basic types
-			ptrSerializer := &ptrToValueSerializer{valueSerializer: elemSerializer}
+			ptrSerializer := &ptrToValueSerializer{valueSerializer: elemSerializer, valueBytes: int(elemType.Size())}
 
 			// Create minimal TypeInfo for pointer (no cross-language type info for primitives)
 			ptrInfo := &TypeInfo{
@@ -1627,7 +1635,7 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 		if valueSerializer == nil {
 			return nil, fmt.Errorf("no serializer found for element type %s", elemType)
 		}
-		return &ptrToValueSerializer{valueSerializer}, nil
+		return &ptrToValueSerializer{valueSerializer: valueSerializer, valueBytes: int(elemType.Size())}, nil
 	case reflect.Slice:
 		elem := type_.Elem()
 		// Use optimized primitive slice serializers for all primitive numeric types
@@ -1749,7 +1757,14 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 		// Check if this is a Set type (map[T]struct{} where value is empty struct)
 		// This includes both fory.Set[T] and raw map[T]struct{}
 		if isSetReflectType(type_) {
-			return setSerializer{}, nil
+			keyBytes := int(type_.Key().Size())
+			valueBytes := int(type_.Elem().Size())
+			return setSerializer{
+				type_:      type_,
+				keyBytes:   keyBytes,
+				valueBytes: valueBytes,
+				maxLength:  maxGraphCount(keyBytes + valueBytes),
+			}, nil
 		}
 		hasKeySerializer, hasValueSerializer := !isDynamicType(type_.Key()), !isDynamicType(type_.Elem())
 		// Determine key/value referencability using isRefType which handles xlang mode
@@ -1781,6 +1796,9 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 				keyReferencable:   keyReferencable,
 				valueReferencable: valueReferencable,
 				hasGenerics:       mapInStruct,
+				keyBytes:          int(type_.Key().Size()),
+				valueBytes:        int(type_.Elem().Size()),
+				maxLength:         maxGraphCount(int(type_.Key().Size()) + int(type_.Elem().Size())),
 			}, nil
 		}
 		return mapSerializer{
@@ -1788,6 +1806,9 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			keyReferencable:   keyReferencable,
 			valueReferencable: valueReferencable,
 			hasGenerics:       mapInStruct,
+			keyBytes:          int(type_.Key().Size()),
+			valueBytes:        int(type_.Elem().Size()),
+			maxLength:         maxGraphCount(int(type_.Key().Size()) + int(type_.Elem().Size())),
 		}, nil
 	case reflect.Struct:
 		serializer := r.typeToSerializers[type_]

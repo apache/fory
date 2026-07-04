@@ -89,7 +89,7 @@ func writeMapStringString(buf *ByteBuffer, m map[string]string, hasGenerics bool
 	}
 }
 
-func readTypedMapSize(ctx *ReadContext, elemBytes int64, maxLength int64) (int, bool) {
+func readTypedMapSize(ctx *ReadContext, elemBytes int, maxLength int64) (int, bool) {
 	size := ctx.ReadCollectionLength()
 	if ctx.HasError() {
 		return 0, false
@@ -102,7 +102,7 @@ func readTypedMapSize(ctx *ReadContext, elemBytes int64, maxLength int64) (int, 
 		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", size, elemBytes))
 		return 0, false
 	}
-	if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(size)*elemBytes) {
+	if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(size)*int64(elemBytes)) {
 		return 0, false
 	}
 	if size == 0 {

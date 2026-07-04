@@ -71,11 +71,7 @@ func requireSetHasBudgetItem(t *testing.T, values Set[any], expected int32) {
 }
 
 func graphOwnerSizeOf[T any]() int64 {
-	bytes := graphSizeOf[T]()
-	if bytes == 0 {
-		return 1
-	}
-	return bytes
+	return int64(graphSizeOf[T]())
 }
 
 func TestGraphMemoryBudgetConfig(t *testing.T) {
@@ -172,13 +168,13 @@ func TestGraphBudgetCumulative(t *testing.T) {
 	require.NoError(t, writer.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	data, err = writer.Serialize(&budgetSiblings{A: []string{"a"}, B: []string{"b"}})
 	require.NoError(t, err)
-	reader := New(WithCompatible(false), WithMaxGraphMemoryBytes(graphShallowOwnerBytes+stringElementBytes))
+	reader := New(WithCompatible(false), WithMaxGraphMemoryBytes(graphShallowOwnerBytes+int64(stringElementBytes)))
 	require.NoError(t, reader.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	var out budgetSiblings
 	err = reader.Deserialize(data, &out)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-	required := 2 * (graphShallowOwnerBytes + stringElementBytes)
+	required := int64(2 * (graphShallowOwnerBytes + stringElementBytes))
 	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required))
 	require.NoError(t, reader.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	require.NoError(t, reader.Deserialize(data, &out))
@@ -194,7 +190,7 @@ func TestGraphBudgetGenericSelfReference(t *testing.T) {
 		},
 	}
 	required := graphShallowOwnerBytes +
-		graphSizeOf[budgetGenericNode[string]]() +
+		int64(graphSizeOf[budgetGenericNode[string]]()) +
 		graphShallowOwnerBytes
 
 	writer := New(WithCompatible(false))
@@ -219,7 +215,7 @@ func TestGraphMemoryBudgetMapAndOverflow(t *testing.T) {
 	data, err := New().Serialize(map[string]string{"k": "v"})
 	require.NoError(t, err)
 	var out map[string]string
-	oneEntryBudget := graphShallowOwnerBytes + graphSizeOf[string]() + graphSizeOf[string]()
+	oneEntryBudget := graphShallowOwnerBytes + int64(graphSizeOf[string]()) + int64(graphSizeOf[string]())
 	err = New(WithMaxGraphMemoryBytes(oneEntryBudget-1)).Deserialize(data, &out)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
@@ -233,7 +229,7 @@ func TestGraphBudgetSlices(t *testing.T) {
 	data, err := New().Serialize([]string{"a"})
 	require.NoError(t, err)
 	var stringsOut []string
-	err = New(WithMaxGraphMemoryBytes(graphShallowOwnerBytes+graphSizeOf[string]()-1)).Deserialize(data, &stringsOut)
+	err = New(WithMaxGraphMemoryBytes(graphShallowOwnerBytes+int64(graphSizeOf[string]())-1)).Deserialize(data, &stringsOut)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
 
@@ -241,13 +237,13 @@ func TestGraphBudgetSlices(t *testing.T) {
 	require.NoError(t, writer.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	data, err = writer.Serialize([]budgetItem{{A: 1}})
 	require.NoError(t, err)
-	reader := New(WithMaxGraphMemoryBytes(graphShallowOwnerBytes + graphSizeOf[budgetItem]() - 1))
+	reader := New(WithMaxGraphMemoryBytes(graphShallowOwnerBytes + int64(graphSizeOf[budgetItem]()) - 1))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	var items []budgetItem
 	err = reader.Deserialize(data, &items)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-	reader = New(WithMaxGraphMemoryBytes(graphShallowOwnerBytes + graphSizeOf[budgetItem]()))
+	reader = New(WithMaxGraphMemoryBytes(graphShallowOwnerBytes + int64(graphSizeOf[budgetItem]())))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	require.NoError(t, reader.Deserialize(data, &items))
 	require.Equal(t, []budgetItem{{A: 1}}, items)
@@ -256,7 +252,7 @@ func TestGraphBudgetSlices(t *testing.T) {
 func TestGraphBudgetDynamicStructs(t *testing.T) {
 	writer := New(WithCompatible(false))
 	require.NoError(t, writer.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
-	itemBytes := structGraphBytes(reflect.TypeOf(budgetItem{}))
+	itemBytes := int64(reflect.TypeOf(budgetItem{}).Size())
 
 	sliceData, err := writer.Serialize([]any{budgetItem{A: 1}})
 	require.NoError(t, err)

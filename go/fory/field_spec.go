@@ -1807,7 +1807,7 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 		if err != nil {
 			return nil, err
 		}
-		return &ptrToValueSerializer{valueSerializer: inner}, nil
+		return &ptrToValueSerializer{valueSerializer: inner, valueBytes: int(goType.Elem().Size())}, nil
 	}
 	switch spec.TypeID {
 	case LIST:
@@ -1845,6 +1845,10 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 			elemSerializer:   elemSerializer,
 			elemReferencable: spec.Element != nil && spec.Element.TrackRef,
 			hasGenerics:      true,
+			type_:            goType,
+			keyBytes:         int(goType.Key().Size()),
+			valueBytes:       int(goType.Elem().Size()),
+			maxLength:        maxGraphCount(int(goType.Key().Size()) + int(goType.Elem().Size())),
 		}, nil
 	case MAP:
 		if spec.Key == nil || spec.Value == nil || spec.Key.TypeID == UNKNOWN || spec.Value.TypeID == UNKNOWN ||
@@ -1866,6 +1870,9 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 			keyReferencable:   spec.Key != nil && spec.Key.TrackRef,
 			valueReferencable: spec.Value != nil && spec.Value.TrackRef,
 			hasGenerics:       true,
+			keyBytes:          int(goType.Key().Size()),
+			valueBytes:        int(goType.Elem().Size()),
+			maxLength:         maxGraphCount(int(goType.Key().Size()) + int(goType.Elem().Size())),
 		}, nil
 	}
 	if serializer, ok, err := serializerForEncodedScalar(goType, spec.TypeID); ok || err != nil {

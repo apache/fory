@@ -76,6 +76,10 @@ type setSerializer struct {
 	elemSerializer   Serializer
 	elemReferencable bool
 	hasGenerics      bool
+	type_            reflect.Type
+	keyBytes         int
+	valueBytes       int
+	maxLength        int64
 }
 
 func (s setSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
@@ -317,9 +321,17 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	if ctx.HasError() {
 		return
 	}
-	keyBytes := int64(type_.Key().Size())
-	valueBytes := int64(type_.Elem().Size())
+	keyBytes := s.keyBytes
+	valueBytes := s.valueBytes
+	if s.type_ != type_ {
+		keyBytes = int(type_.Key().Size())
+		valueBytes = int(type_.Elem().Size())
+	}
 	elemBytes := keyBytes + valueBytes
+	maxLength := s.maxLength
+	if s.type_ != type_ {
+		maxLength = maxGraphCount(elemBytes)
+	}
 	if elemBytes < keyBytes {
 		ctx.SetError(DeserializationErrorf("map entry size overflows: key=%d value=%d", keyBytes, valueBytes))
 		return
@@ -370,11 +382,11 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
 		return
 	}
-	if int64(length) > maxGraphCount(elemBytes) {
+	if int64(length) > maxLength {
 		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, elemBytes))
 		return
 	}
-	if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(length)*elemBytes) {
+	if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(length)*int64(elemBytes)) {
 		return
 	}
 
@@ -445,9 +457,14 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
 					boxed = boxed.Elem()
 				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
-					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
-					return
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
+					valueBytes := int(boxed.Type().Size())
+					if structSer, ok := serializer.(*structSerializer); ok {
+						valueBytes = structSer.valueBytes
+					}
+					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
+						return
+					}
 				}
 			}
 			ctx.RefResolver().SetReadObject(refID, elem)
@@ -467,9 +484,14 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
 					boxed = boxed.Elem()
 				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
-					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
-					return
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
+					valueBytes := int(boxed.Type().Size())
+					if structSer, ok := serializer.(*structSerializer); ok {
+						valueBytes = structSer.valueBytes
+					}
+					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
+						return
+					}
 				}
 			}
 			setMapKey(value, elem, keyType)
@@ -484,9 +506,14 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
 					boxed = boxed.Elem()
 				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
-					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
-					return
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
+					valueBytes := int(boxed.Type().Size())
+					if structSer, ok := serializer.(*structSerializer); ok {
+						valueBytes = structSer.valueBytes
+					}
+					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
+						return
+					}
 				}
 			}
 			setMapKey(value, elem, keyType)
@@ -535,9 +562,14 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
 					boxed = boxed.Elem()
 				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
-					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
-					return
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
+					valueBytes := int(boxed.Type().Size())
+					if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
+						valueBytes = structSer.valueBytes
+					}
+					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
+						return
+					}
 				}
 			}
 			ctx.RefResolver().SetReadObject(refID, elem)
@@ -564,9 +596,14 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
 					boxed = boxed.Elem()
 				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
-					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
-					return
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
+					valueBytes := int(boxed.Type().Size())
+					if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
+						valueBytes = structSer.valueBytes
+					}
+					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
+						return
+					}
 				}
 			}
 			setMapKey(value, elem, keyType)
@@ -586,9 +623,14 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
 					boxed = boxed.Elem()
 				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
-					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
-					return
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
+					valueBytes := int(boxed.Type().Size())
+					if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
+						valueBytes = structSer.valueBytes
+					}
+					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
+						return
+					}
 				}
 			}
 			setMapKey(value, elem, keyType)

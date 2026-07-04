@@ -25,12 +25,12 @@ import (
 type primitiveListSerializer struct {
 	type_      reflect.Type
 	elemTypeID TypeId
-	elemBytes  int64
+	elemBytes  int
 	maxLength  int64
 }
 
 func newPrimitiveList(type_ reflect.Type, elemTypeID TypeId, elemType reflect.Type) primitiveListSerializer {
-	elemBytes := int64(elemType.Size())
+	elemBytes := int(elemType.Size())
 	return primitiveListSerializer{
 		type_:      type_,
 		elemTypeID: elemTypeID,
@@ -187,7 +187,7 @@ func (s primitiveListSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes))
 		return
 	}
-	if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(length)*s.elemBytes) {
+	if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(length)*int64(s.elemBytes)) {
 		return
 	}
 	if length == 0 {
@@ -297,7 +297,7 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 			ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.listReader.elemBytes))
 			return
 		}
-		if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(length)*s.listReader.elemBytes) {
+		if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(length)*int64(s.listReader.elemBytes)) {
 			return
 		}
 		temp := reflect.New(value.Type()).Elem()

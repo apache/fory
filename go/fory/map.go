@@ -49,6 +49,9 @@ type mapSerializer struct {
 	keyReferencable   bool
 	valueReferencable bool
 	hasGenerics       bool // True when map is a struct field with declared key/value types
+	keyBytes          int
+	valueBytes        int
+	maxLength         int64
 }
 
 // Write handles ref tracking and type writing, then delegates to WriteData
@@ -303,9 +306,17 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		iface := reflect.TypeOf((*any)(nil)).Elem()
 		mapType = reflect.MapOf(iface, iface)
 	}
-	keyBytes := int64(mapType.Key().Size())
-	valueBytes := int64(mapType.Elem().Size())
+	keyBytes := s.keyBytes
+	valueBytes := s.valueBytes
+	if s.type_ != mapType {
+		keyBytes = int(mapType.Key().Size())
+		valueBytes = int(mapType.Elem().Size())
+	}
 	elemBytes := keyBytes + valueBytes
+	maxLength := s.maxLength
+	if s.type_ != mapType {
+		maxLength = maxGraphCount(elemBytes)
+	}
 	if elemBytes < keyBytes {
 		ctx.SetError(DeserializationErrorf("map entry size overflows: key=%d value=%d", keyBytes, valueBytes))
 		return
@@ -314,11 +325,11 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		ctx.SetError(DeserializationErrorf("negative graph element count: %d", size))
 		return
 	}
-	if int64(size) > maxGraphCount(elemBytes) {
+	if int64(size) > maxLength {
 		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", size, elemBytes))
 		return
 	}
-	if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(size)*elemBytes) {
+	if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(size)*int64(elemBytes)) {
 		return
 	}
 	if size == 0 {
@@ -440,8 +451,12 @@ func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr
 			valType = staticType
 		}
 		valType, ser = wrapMapSerializerIfNeeded(staticType, valType, ser)
+		valueBytes := int(valType.Size())
+		if structSer, ok := ser.(*structSerializer); ok {
+			valueBytes = structSer.valueBytes
+		}
 		if staticType.Kind() == reflect.Interface && valType.Kind() == reflect.Struct &&
-			!ctx.ReserveGraphMemory(structGraphBytes(valType)) {
+			!ctx.ReserveGraphMemory(int64(valueBytes)) {
 			return reflect.Value{}
 		}
 		v := reflect.New(valType).Elem()
@@ -478,8 +493,12 @@ func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr
 	if valType == nil {
 		valType = staticType
 	}
+	valueBytes := int(valType.Size())
+	if structSer, ok := ser.(*structSerializer); ok {
+		valueBytes = structSer.valueBytes
+	}
 	if staticType.Kind() == reflect.Interface && valType.Kind() == reflect.Struct &&
-		!ctx.ReserveGraphMemory(structGraphBytes(valType)) {
+		!ctx.ReserveGraphMemory(int64(valueBytes)) {
 		return reflect.Value{}
 	}
 	v := reflect.New(valType).Elem()
@@ -567,8 +586,12 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 	}
 
 	for i := 0; i < chunkSize; i++ {
+		keyBytes := int(keyType.Size())
+		if structSer, ok := keySer.(*structSerializer); ok {
+			keyBytes = structSer.valueBytes
+		}
 		if declaredKeyType.Kind() == reflect.Interface && keyType.Kind() == reflect.Struct &&
-			!ctx.ReserveGraphMemory(structGraphBytes(keyType)) {
+			!ctx.ReserveGraphMemory(int64(keyBytes)) {
 			return 0
 		}
 		k := reflect.New(keyType).Elem()
@@ -581,8 +604,12 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 			return 0
 		}
 
+		valueBytes := int(valueType.Size())
+		if structSer, ok := valSer.(*structSerializer); ok {
+			valueBytes = structSer.valueBytes
+		}
 		if declaredValueType.Kind() == reflect.Interface && valueType.Kind() == reflect.Struct &&
-			!ctx.ReserveGraphMemory(structGraphBytes(valueType)) {
+			!ctx.ReserveGraphMemory(int64(valueBytes)) {
 			return 0
 		}
 		v := reflect.New(valueType).Elem()
@@ -688,7 +715,7 @@ func wrapMapSerializerIfNeeded(declaredType, actualType reflect.Type, serializer
 		if actualType.Kind() == reflect.Ptr {
 			return actualType, serializer
 		}
-		return reflect.PtrTo(actualType), &ptrToValueSerializer{valueSerializer: serializer}
+		return reflect.PtrTo(actualType), &ptrToValueSerializer{valueSerializer: serializer, valueBytes: int(actualType.Size())}
 	}
 	if declaredType.Kind() == reflect.Interface {
 		if actualType.AssignableTo(declaredType) {
@@ -697,7 +724,7 @@ func wrapMapSerializerIfNeeded(declaredType, actualType reflect.Type, serializer
 		if actualType.Kind() != reflect.Ptr {
 			ptrType := reflect.PtrTo(actualType)
 			if ptrType.AssignableTo(declaredType) {
-				return ptrType, &ptrToValueSerializer{valueSerializer: serializer}
+				return ptrType, &ptrToValueSerializer{valueSerializer: serializer, valueBytes: int(actualType.Size())}
 			}
 		}
 	}
