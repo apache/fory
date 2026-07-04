@@ -812,20 +812,22 @@ cdef class ReadContext:
         self.remaining_graph_memory_bytes = 0
         self.depth = 0
 
-    cdef inline void reserve_graph_memory_c(self, int64_t num_bytes):
+    cdef void _raise_graph_memory_error(self, int64_t num_bytes, int64_t remaining):
         cdef int64_t used
         if num_bytes < 0:
             raise ValueError("Estimated graph memory is negative")
-        if num_bytes > _MAX_GRAPH_MEMORY_BYTES:
-            raise ValueError("Estimated graph memory overflow")
-        if num_bytes > self.remaining_graph_memory_bytes:
-            used = self.max_graph_memory_bytes - self.remaining_graph_memory_bytes
-            raise ValueError(
-                f"Estimated graph memory budget exceeded: requested {num_bytes} bytes, "
-                f"used {used} bytes, limit {self.max_graph_memory_bytes} bytes. "
-                "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
-            )
-        self.remaining_graph_memory_bytes -= num_bytes
+        used = self.max_graph_memory_bytes - remaining
+        raise ValueError(
+            f"Estimated graph memory budget exceeded: requested {num_bytes} bytes, "
+            f"used {used} bytes, limit {self.max_graph_memory_bytes} bytes. "
+            "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
+        )
+
+    cdef inline void reserve_graph_memory_c(self, int64_t num_bytes):
+        cdef int64_t remaining = self.remaining_graph_memory_bytes
+        if num_bytes < 0 or num_bytes > remaining:
+            self._raise_graph_memory_error(num_bytes, remaining)
+        self.remaining_graph_memory_bytes = remaining - num_bytes
 
     cpdef inline reserve_graph_memory(self, num_bytes):
         if num_bytes < 0:

@@ -32,29 +32,6 @@ internal static class CollectionBits
 
 internal static class CollectionCodec
 {
-    private const int ReferenceBytes = 4;
-    // Lower-bound shallow owner costs for retained CLR collection objects. ObjectHeaderBytes is
-    // the CLR object header/method-table estimate, not a Fory wire header; element storage is
-    // charged separately by count at the concrete owner path.
-    private static readonly int ObjectHeaderBytes = IntPtr.Size + IntPtr.Size;
-    private static readonly int ArrayOwnerBytes = ObjectHeaderBytes + sizeof(int);
-    private static readonly int ListOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 2 * sizeof(int);
-    private static readonly int HashSetOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + 4 * sizeof(int);
-    private static readonly int SortedSetOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + sizeof(int);
-    private static readonly int ImmutableHashSetOwnerBytes = ObjectHeaderBytes + ReferenceBytes;
-    private static readonly int LinkedListOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + 2 * sizeof(int);
-    private static readonly int QueueOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 3 * sizeof(int);
-    private static readonly int StackOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 2 * sizeof(int);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static int ElementBytes<T>() => ElementStorage<T>.Bytes;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void ReserveElementStorage<T>(ReadContext context, int ownerBytes, int count)
-    {
-        context.ReserveGraphMemory(ownerBytes + (long)count * ElementBytes<T>());
-    }
-
     private static bool NeedsCompatibleElementTypeMeta(TypeInfo typeInfo, WriteContext context)
     {
         return context.Compatible &&
@@ -217,6 +194,32 @@ internal static class CollectionCodec
         {
             elementSerializer.WriteData(context, list[i], hasGenerics);
         }
+    }
+}
+
+internal static class CollectionReadCodec
+{
+    private const int ReferenceBytes = 4;
+    // Lower-bound shallow owner costs for retained CLR collection objects. ObjectHeaderBytes is
+    // the CLR object header/method-table estimate, not a Fory wire header; element storage is
+    // charged separately by count at the concrete owner path.
+    private static readonly int ObjectHeaderBytes = IntPtr.Size + IntPtr.Size;
+    private static readonly int ArrayOwnerBytes = ObjectHeaderBytes + sizeof(int);
+    private static readonly int ListOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 2 * sizeof(int);
+    private static readonly int HashSetOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + 4 * sizeof(int);
+    private static readonly int SortedSetOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + sizeof(int);
+    private static readonly int ImmutableHashSetOwnerBytes = ObjectHeaderBytes + ReferenceBytes;
+    private static readonly int LinkedListOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + 2 * sizeof(int);
+    private static readonly int QueueOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 3 * sizeof(int);
+    private static readonly int StackOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 2 * sizeof(int);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static int ElementBytes<T>() => ElementStorage<T>.Bytes;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ReserveElementStorage<T>(ReadContext context, int ownerBytes, int count)
+    {
+        context.ReserveGraphMemory(ownerBytes + (long)count * ElementBytes<T>());
     }
 
     private static class ElementStorage<T>
@@ -886,12 +889,12 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
 
     public override T[] ReadData(ReadContext context)
     {
-        return CollectionCodec.ReadArrayData<T>(context.TypeResolver.GetSerializer<T>(), context);
+        return CollectionReadCodec.ReadArrayData<T>(context.TypeResolver.GetSerializer<T>(), context);
     }
 
     private T[] ReadReservedRefData(ReadContext context, uint refId)
     {
-        return CollectionCodec.ReadArrayData(context.TypeResolver.GetSerializer<T>(), context, refId);
+        return CollectionReadCodec.ReadArrayData(context.TypeResolver.GetSerializer<T>(), context, refId);
     }
 
     public override T[] Read(ReadContext context, RefMode refMode, bool readTypeInfo)
@@ -913,7 +916,7 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
                             context.TypeResolver.ReadTypeInfo(this, context);
                         }
 
-                        return CollectionCodec.ReadArrayData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                        return CollectionReadCodec.ReadArrayData(context.TypeResolver.GetSerializer<T>(), context, refId);
                     }
                 case RefFlag.NotNullValue:
                     break;
@@ -943,12 +946,12 @@ public class ListSerializer<T> : Serializer<List<T>>
 
     public override List<T> ReadData(ReadContext context)
     {
-        return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
+        return CollectionReadCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
     private List<T> ReadReservedRefData(ReadContext context, uint refId)
     {
-        return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context, refId);
+        return CollectionReadCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context, refId);
     }
 
     public override List<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
@@ -970,7 +973,7 @@ public class ListSerializer<T> : Serializer<List<T>>
                             context.TypeResolver.ReadTypeInfo(this, context);
                         }
 
-                        return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                        return CollectionReadCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context, refId);
                     }
                 case RefFlag.NotNullValue:
                     break;
@@ -1000,12 +1003,12 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
 
     public override HashSet<T> ReadData(ReadContext context)
     {
-        return CollectionCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context);
+        return CollectionReadCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
     private HashSet<T> ReadReservedRefData(ReadContext context, uint refId)
     {
-        return CollectionCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
+        return CollectionReadCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
     }
 
     public override HashSet<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
@@ -1027,7 +1030,7 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
                             context.TypeResolver.ReadTypeInfo(this, context);
                         }
 
-                        return CollectionCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                        return CollectionReadCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
                     }
                 case RefFlag.NotNullValue:
                     break;
@@ -1057,7 +1060,7 @@ public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : 
 
     public override SortedSet<T> ReadData(ReadContext context)
     {
-        return CollectionCodec.ReadSortedSetData(context.TypeResolver.GetSerializer<T>(), context);
+        return CollectionReadCodec.ReadSortedSetData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
     public override SortedSet<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
@@ -1079,7 +1082,7 @@ public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : 
                             context.TypeResolver.ReadTypeInfo(this, context);
                         }
 
-                        return CollectionCodec.ReadSortedSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                        return CollectionReadCodec.ReadSortedSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
                     }
                 case RefFlag.NotNullValue:
                     break;
@@ -1109,7 +1112,7 @@ public sealed class ImmutableHashSetSerializer<T> : Serializer<ImmutableHashSet<
 
     public override ImmutableHashSet<T> ReadData(ReadContext context)
     {
-        return CollectionCodec.ReadImmutableHashSetData(context.TypeResolver.GetSerializer<T>(), context);
+        return CollectionReadCodec.ReadImmutableHashSetData(context.TypeResolver.GetSerializer<T>(), context);
     }
 }
 
@@ -1125,7 +1128,7 @@ public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
 
     public override LinkedList<T> ReadData(ReadContext context)
     {
-        return CollectionCodec.ReadLinkedListData(context.TypeResolver.GetSerializer<T>(), context);
+        return CollectionReadCodec.ReadLinkedListData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
     public override LinkedList<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
@@ -1147,7 +1150,7 @@ public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
                             context.TypeResolver.ReadTypeInfo(this, context);
                         }
 
-                        return CollectionCodec.ReadLinkedListData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                        return CollectionReadCodec.ReadLinkedListData(context.TypeResolver.GetSerializer<T>(), context, refId);
                     }
                 case RefFlag.NotNullValue:
                     break;
@@ -1177,7 +1180,7 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
 
     public override Queue<T> ReadData(ReadContext context)
     {
-        return CollectionCodec.ReadQueueData(context.TypeResolver.GetSerializer<T>(), context);
+        return CollectionReadCodec.ReadQueueData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
     public override Queue<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
@@ -1199,7 +1202,7 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
                             context.TypeResolver.ReadTypeInfo(this, context);
                         }
 
-                        return CollectionCodec.ReadQueueData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                        return CollectionReadCodec.ReadQueueData(context.TypeResolver.GetSerializer<T>(), context, refId);
                     }
                 case RefFlag.NotNullValue:
                     break;
@@ -1242,7 +1245,7 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
 
     public override Stack<T> ReadData(ReadContext context)
     {
-        return CollectionCodec.ReadStackData(context.TypeResolver.GetSerializer<T>(), context);
+        return CollectionReadCodec.ReadStackData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
     public override Stack<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
@@ -1264,7 +1267,7 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
                             context.TypeResolver.ReadTypeInfo(this, context);
                         }
 
-                        return CollectionCodec.ReadStackData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                        return CollectionReadCodec.ReadStackData(context.TypeResolver.GetSerializer<T>(), context, refId);
                     }
                 case RefFlag.NotNullValue:
                     break;
