@@ -419,6 +419,17 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 		}
 	}
 	declaredGenericDispatch := declaredGenerics && serializerNeedsGenericDispatch(serializer)
+	boxedStructBytes := int64(0)
+	if keyType.Kind() == reflect.Interface && elemType.Kind() == reflect.Struct {
+		// Interface set keys can box struct values; pointer wrappers reserve their own pointee.
+		if _, pointerOwner := serializer.(*ptrToValueSerializer); !pointerOwner {
+			if typeInfo != nil && typeInfo.ValueBytes > 0 {
+				boxedStructBytes = int64(typeInfo.ValueBytes)
+			} else if structSer, ok := serializer.(*structSerializer); ok {
+				boxedStructBytes = int64(structSer.valueBytes)
+			}
+		}
+	}
 
 	for i := 0; i < length; i++ {
 		if trackRefs {
@@ -437,6 +448,9 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 				}
 				continue
 			}
+			if boxedStructBytes > 0 && !ctx.ReserveGraphMemory(boxedStructBytes) {
+				return
+			}
 			elem := reflect.New(elemType).Elem()
 			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
 			if ctx.HasError() {
@@ -452,6 +466,9 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 			if refFlag == NullFlag {
 				continue
 			}
+			if boxedStructBytes > 0 && !ctx.ReserveGraphMemory(boxedStructBytes) {
+				return
+			}
 			elem := reflect.New(elemType).Elem()
 			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
 			if ctx.HasError() {
@@ -459,6 +476,9 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 			}
 			setMapKey(value, elem, keyType)
 		} else {
+			if boxedStructBytes > 0 && !ctx.ReserveGraphMemory(boxedStructBytes) {
+				return
+			}
 			elem := reflect.New(elemType).Elem()
 			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
 			if ctx.HasError() {
@@ -477,67 +497,56 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 	ctxErr := ctx.Err()
 
 	for i := 0; i < length; i++ {
+		refID := int32(-1)
 		if trackRefs {
-			// Read with ref tracking: refFlag + typeId + data
-			refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
+			var refErr error
+			refID, refErr = ctx.RefResolver().TryPreserveRefId(buf)
 			if refErr != nil {
 				ctx.SetError(FromError(refErr))
 				return
 			}
 			if refID == int32(NullFlag) {
-				// Null element - skip for sets
 				continue
 			}
 			if refID < int32(NotNullValueFlag) {
-				// Use existing reference if available
 				elem := ctx.RefResolver().GetReadObject(refID)
 				value.SetMapIndex(elem, emptyStructVal)
 				continue
 			}
-			// Read type info (handles namespaced types, meta sharing, etc.)
-			typeInfo := ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
-			if ctxErr.HasError() {
-				return
-			}
-			// Create new element and deserialize from buffer
-			elem := reflect.New(typeInfo.Type).Elem()
-			typeInfo.Serializer.ReadData(ctx, elem)
-			if ctx.HasError() {
-				return
-			}
-			ctx.RefResolver().SetReadObject(refID, elem)
-			setMapKey(value, elem, keyType)
 		} else if hasNull {
-			// No ref tracking but may have nulls: headFlag + typeId + data (or just NullFlag)
 			headFlag := buf.ReadInt8(ctxErr)
 			if headFlag == NullFlag {
-				// Null element - skip for sets
 				continue
 			}
-			// headFlag should be NotNullValueFlag, read type info
-			typeInfo := ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
-			if ctxErr.HasError() {
-				return
-			}
-			elem := reflect.New(typeInfo.Type).Elem()
-			typeInfo.Serializer.ReadData(ctx, elem)
-			if ctx.HasError() {
-				return
-			}
-			setMapKey(value, elem, keyType)
-		} else {
-			// No ref tracking and no nulls: typeId + data directly
-			typeInfo := ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
-			if ctxErr.HasError() {
-				return
-			}
-			elem := reflect.New(typeInfo.Type).Elem()
-			typeInfo.Serializer.ReadData(ctx, elem)
-			if ctx.HasError() {
-				return
-			}
-			setMapKey(value, elem, keyType)
 		}
+		typeInfo := ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
+		if ctxErr.HasError() {
+			return
+		}
+		valueBytes := typeInfo.ValueBytes
+		if valueBytes == 0 {
+			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
+				valueBytes = structSer.valueBytes
+			}
+		}
+		elemType, serializer := wrapMapSerializerIfNeeded(keyType, typeInfo.Type, typeInfo.Serializer, valueBytes)
+		if keyType.Kind() == reflect.Interface && typeInfo.Type != nil && typeInfo.Type.Kind() == reflect.Struct {
+			// Interface set keys can box struct values; pointer wrappers reserve their own pointee.
+			if _, pointerOwner := serializer.(*ptrToValueSerializer); !pointerOwner && valueBytes > 0 {
+				if !ctx.ReserveGraphMemory(int64(valueBytes)) {
+					return
+				}
+			}
+		}
+		elem := reflect.New(elemType).Elem()
+		serializer.ReadData(ctx, elem)
+		if ctx.HasError() {
+			return
+		}
+		if trackRefs {
+			ctx.RefResolver().SetReadObject(refID, elem)
+		}
+		setMapKey(value, elem, keyType)
 	}
 }
 

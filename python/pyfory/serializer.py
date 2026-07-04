@@ -1080,6 +1080,7 @@ class StatefulSerializer(Serializer):
         state = read_context.read_ref()
 
         read_context.policy.authorize_instantiation(self.cls)
+        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
         if args or kwargs:
             # Case 1: __getnewargs__ was used. Re-create by calling __init__.
             obj = self.cls(*args, **kwargs)
@@ -1099,6 +1100,7 @@ class _DefaultPolicyStatefulSerializer(StatefulSerializer):
         kwargs = read_context.read_ref()
         state = read_context.read_ref()
 
+        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
         if args or kwargs:
             # Case 1: __getnewargs__ was used. Re-create by calling __init__.
             obj = self.cls(*args, **kwargs)
@@ -1227,6 +1229,7 @@ class ReduceSerializer(Serializer):
                 # Create the object using the callable and args
                 if isinstance(callable_obj, type):
                     read_context.policy.authorize_instantiation(callable_obj)
+                read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
                 obj = callable_obj(*args)
 
             # Restore state if present

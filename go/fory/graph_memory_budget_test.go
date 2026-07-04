@@ -299,6 +299,22 @@ func TestGraphBudgetDynamicStructs(t *testing.T) {
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	require.NoError(t, reader.Deserialize(setData, &setOut))
 	requireSetHasBudgetItem(t, setOut, 3)
+
+	mixedSet := NewSet[any]()
+	mixedSet.Add(budgetItem{A: 4}, "leaf")
+	mixedSetData, err := writer.Serialize(mixedSet)
+	require.NoError(t, err)
+	mixedSetBudget := graphShallowOwnerBytes + 2*(int64(setType.Key().Size())+int64(setType.Elem().Size()))
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(mixedSetBudget))
+	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
+	var mixedSetOut Set[any]
+	err = reader.Deserialize(mixedSetData, &mixedSetOut)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(mixedSetBudget+itemBytes))
+	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
+	require.NoError(t, reader.Deserialize(mixedSetData, &mixedSetOut))
+	requireSetHasBudgetItem(t, mixedSetOut, 4)
 }
 
 func TestGraphMemoryBudgetStructOwners(t *testing.T) {

@@ -19,6 +19,9 @@
 
 package org.apache.fory.kotlin.ksp
 
+internal const val JVM_REFERENCE_BYTES = 4
+internal const val JVM_REFERENCE_OBJECT_BYTES = 2 * JVM_REFERENCE_BYTES
+
 internal data class KotlinSourceStruct(
   val packageName: String,
   val typeName: String,
@@ -28,7 +31,7 @@ internal data class KotlinSourceStruct(
   val construction: KotlinStructConstruction = KotlinStructConstruction.CONSTRUCTOR,
   val fields: List<KotlinSourceField>,
   val originatingFiles: List<com.google.devtools.ksp.symbol.KSFile>,
-  val graphMemoryBytes: Int = 1,
+  val graphMemoryBytes: Int = JVM_REFERENCE_OBJECT_BYTES,
 ) {
   val qualifiedSerializerName: String =
     if (packageName.isEmpty()) serializerName else "$packageName.$serializerName"

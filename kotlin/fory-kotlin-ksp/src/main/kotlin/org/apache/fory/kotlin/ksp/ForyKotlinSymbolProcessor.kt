@@ -256,7 +256,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
   }
 
   private fun graphMemoryBytes(fields: List<KotlinSourceField>): Int {
-    var bytes = 1
+    var bytes = JVM_REFERENCE_OBJECT_BYTES
     for (field in fields) {
       bytes = Math.addExact(bytes, fieldGraphMemoryBytes(field.type))
     }

@@ -91,6 +91,19 @@ class BudgetObject:
     pass
 
 
+class BudgetStatefulObject:
+    def __getstate__(self):
+        return None
+
+    def __setstate__(self, state):
+        pass
+
+
+class BudgetReduceObject:
+    def __reduce__(self):
+        return (BudgetReduceObject, ())
+
+
 @dataclasses.dataclass
 class BudgetRefNode:
     value: int = 0
@@ -199,6 +212,40 @@ def test_dynamic_object_budget():
     restored = reader.deserialize(data)
     assert restored.left == value.left
     assert restored.right == value.right
+
+
+def test_stateful_object_budget():
+    value = BudgetStatefulObject()
+    writer = new_fory(xlang=False)
+    writer.register_type(BudgetStatefulObject)
+    data = writer.serialize(value)
+
+    constructor_state_budget = collection_memory(0) + map_memory(0)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        reader = new_fory(constructor_state_budget, xlang=False)
+        reader.register_type(BudgetStatefulObject)
+        reader.deserialize(data)
+
+    reader = new_fory(constructor_state_budget + REFERENCE_OBJECT_BYTES, xlang=False)
+    reader.register_type(BudgetStatefulObject)
+    assert isinstance(reader.deserialize(data), BudgetStatefulObject)
+
+
+def test_reduce_object_budget():
+    value = BudgetReduceObject()
+    writer = new_fory(xlang=False)
+    writer.register_type(BudgetReduceObject)
+    data = writer.serialize(value)
+
+    reduce_args_budget = collection_memory(0)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        reader = new_fory(reduce_args_budget, xlang=False)
+        reader.register_type(BudgetReduceObject)
+        reader.deserialize(data)
+
+    reader = new_fory(reduce_args_budget + REFERENCE_OBJECT_BYTES, xlang=False)
+    reader.register_type(BudgetReduceObject)
+    assert isinstance(reader.deserialize(data), BudgetReduceObject)
 
 
 def test_self_ref_budget():
