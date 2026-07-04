@@ -29,6 +29,8 @@ Load this file when changing `rust/` or Rust xlang behavior.
   `ReadContext` may expose only raw byte reservation; `Vec`,
   collection, map, array, struct, object, and derive codec formulas belong in their serializer
   owners.
+  Treat the option as an approximate collection/map/array/struct/object gate, not an exact heap
+  cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
 - Rust `Vec<T>` stores inline element storage, so general LIST paths reserve
   `len * size_of::<T>()`, including `Vec<String>` and `Vec<struct>`. Maps reserve
   `len * (size_of::<K>() + size_of::<V>())`. Rust struct serializers do not reserve their own

@@ -98,8 +98,7 @@ When enabled, avoids duplicating shared objects and handles cycles.
 
 ### max_graph_memory_bytes(int64_t)
 
-Set the maximum estimated shallow graph memory accepted during one root
-deserialization.
+Set an approximate graph-memory gate for one root deserialization.
 
 ```cpp
 auto fory = Fory::builder()
@@ -111,14 +110,16 @@ The default limit is a fixed `128 MiB` for byte-array, `Buffer`, and stream
 roots. Positive values override the default. Explicit non-positive values are
 rejected when the runtime is created.
 
-This budget is a portable lower-bound estimate for shallow materialized graph
-owners such as dynamic collection backing storage, map key/value storage,
+This budget is a portable lower-bound estimate for materialized graph owners,
+mainly dynamic collection backing storage, map key/value storage,
 object/reference array slots, and struct or object field storage. It is not an
-exact process heap limit and does not include STL implementation details such as
-debug nodes, table buckets, or allocator headers. Dedicated string, binary, and
-primitive dense-array payloads
-continue to rely on their byte-availability checks instead. `std::vector<bool>`
-is counted as packed standard-container storage.
+exact process heap limit; actual process memory can be higher and does not
+include STL implementation details such as debug nodes, table buckets, or
+allocator headers. Dedicated string, binary, primitive scalar, and primitive
+dense-array leaf values are skipped by this budget and continue to rely on
+byte-availability checks: if the unread input does not contain enough bytes,
+Fory will not read or create that leaf value. `std::vector<bool>` is counted as
+packed standard-container storage.
 
 **Default:** `128 MiB`
 
@@ -231,7 +232,7 @@ auto fory = Fory::builder().build_thread_safe();  // Returns ThreadSafeFory
 | `xlang(bool)`                                    | Use xlang mode                                    | `true`    |
 | `compatible(bool)`                               | Enable schema evolution                           | `true`    |
 | `track_ref(bool)`                                | Enable reference tracking                         | `true`    |
-| `max_graph_memory_bytes(int64_t)`                | Max estimated graph memory per root read          | `128 MiB` |
+| `max_graph_memory_bytes(int64_t)`                | Approximate graph-memory gate per root read       | `128 MiB` |
 | `max_dyn_depth(uint32_t)`                        | Maximum nesting depth for dynamic types           | `5`       |
 | `max_type_fields(uint32_t)`                      | Max fields in one received struct metadata body   | `512`     |
 | `max_type_meta_bytes(uint32_t)`                  | Max encoded bytes in one received metadata body   | `4096`    |
@@ -246,7 +247,7 @@ Security-related configuration:
 - Register all structs and polymorphic implementations before deserializing untrusted payloads.
 - Use `check_struct_version(true)` with `compatible(false)` for intentional same-schema payloads.
 - Keep `max_graph_memory_bytes(...)` at the fixed `128 MiB` default for most inputs, or set a
-  positive value for a trusted workload that needs a different envelope.
+  positive value for a trusted workload that needs a different collection/map/struct gate.
 - Keep `max_dyn_depth(...)` as low as your model permits to reject unexpectedly deep polymorphic
   graphs.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a

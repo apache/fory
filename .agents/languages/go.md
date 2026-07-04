@@ -22,6 +22,8 @@ Load this file when changing `go/fory/` or Go xlang behavior.
   their own self storage again. Fixed arrays are caller-owned unless a read path materializes a
   temporary owner. Skip dedicated string, binary, BufferObject, primitive scalar, primitive ARRAY
   slice, and primitive array owners with byte checks.
+  Treat the option as an approximate slice/map/array/struct/object gate, not an exact heap cap. Leaf
+  values skipped by graph budgeting remain gated by unread input bytes.
 - Set `FORY_PANIC_ON_ERROR=1` when debugging a failing Go test so you get the full call stack.
 - Do not set `FORY_PANIC_ON_ERROR=1` when running the full Go test suite, because some tests assert on error contents.
 

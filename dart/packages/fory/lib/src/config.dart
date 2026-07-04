@@ -57,7 +57,11 @@ final class Config {
   /// types.
   final int maxAverageSchemaVersionsPerType;
 
-  /// Maximum estimated graph memory per root deserialization.
+  /// Approximate graph-memory gate for one root deserialization.
+  ///
+  /// Mainly gates materialized lists, maps, arrays, structs, and objects. Leaf
+  /// values are gated by unread input bytes instead, and actual process memory
+  /// can be higher.
   ///
   /// Value must be a positive byte limit.
   final int maxGraphMemoryBytes;

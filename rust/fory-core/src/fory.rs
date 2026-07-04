@@ -261,9 +261,11 @@ impl ForyBuilder {
         self
     }
 
-    /// Sets the maximum estimated graph memory accepted during one root deserialization.
+    /// Sets the approximate graph-memory gate for one root deserialization.
     ///
-    /// Defaults to 128 MiB. Values must be positive byte limits.
+    /// Mainly gates materialized collections, maps, arrays, structs, and objects. Leaf values are
+    /// gated by unread input bytes instead, and actual process memory can be higher. Defaults to
+    /// 128 MiB. Values must be positive byte limits.
     pub fn max_graph_memory_bytes(mut self, max_bytes: i64) -> Self {
         assert!(max_bytes > 0, "max_graph_memory_bytes must be positive");
         assert!(

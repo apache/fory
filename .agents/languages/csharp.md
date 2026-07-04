@@ -19,6 +19,8 @@ Load this file when changing `csharp/` or C# xlang behavior.
   remaining budget.
   `ReadContext` may expose only raw byte reservation; concrete serializers and generated
   serializers must compute list, array, map, struct, and object byte formulas before calling it.
+  Treat the option as an approximate collection/map/array/struct/object gate, not an exact heap
+  cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
 - `ReadContext` must not expose ref-publication pause/resume APIs or any non-budget owner
   controls. Concrete serializers and generated serializers own ref publication timing directly,
   and must not publish temporary owners.

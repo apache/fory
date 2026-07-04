@@ -185,8 +185,11 @@ class Fory:
             max_average_schema_versions_per_type: Average remote metadata versions allowed
                 across accepted remote types.
 
-            max_graph_memory_bytes: Maximum estimated graph memory per root
-                deserialization. Defaults to 128 MiB and must be a positive byte limit.
+            max_graph_memory_bytes: Approximate graph-memory gate per root deserialization.
+                Mainly covers materialized collections, maps, arrays, structs, and objects. Leaf
+                values such as strings, binary, primitive scalars, and dense primitive arrays are
+                gated by unread input bytes instead, and actual process memory can be higher.
+                Defaults to 128 MiB and must be a positive byte limit.
 
             policy: Custom deserialization policy for security checks. When provided,
                 it controls which types can be deserialized, overriding the default policy.

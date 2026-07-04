@@ -71,7 +71,7 @@ class ThreadSafeFory:
 | `max_type_meta_bytes`                  | `int`                           | `4096`      | Maximum encoded body bytes accepted for one received TypeDef body, excluding the 8-byte header and any extended-size varint.                             |
 | `max_schema_versions_per_type`         | `int`                           | `10`        | Maximum accepted remote metadata versions for one logical type.                                                                                          |
 | `max_average_schema_versions_per_type` | `int`                           | `3`         | Average accepted remote metadata versions across accepted remote types. The effective global floor is `8192` schemas.                                    |
-| `max_graph_memory_bytes`               | `int`                           | `134217728` | Maximum estimated shallow graph memory for one root deserialization. Explicit non-positive values are rejected.                                          |
+| `max_graph_memory_bytes`               | `int`                           | `134217728` | Approximate graph-memory gate for one root deserialization. Explicit non-positive values are rejected.                                                   |
 | `policy`                               | `DeserializationPolicy \| None` | `None`      | Deserialization policy used for security checks. Strongly recommended when `strict=False`.                                                               |
 | `field_nullable`                       | `bool`                          | `False`     | Treat dataclass fields as nullable by default.                                                                                                           |
 | `meta_compressor`                      | `Any`                           | `None`      | Optional metadata compressor used for compatible-mode metadata encoding.                                                                                 |
@@ -225,11 +225,14 @@ Received remote metadata is also limited:
 - `max_type_meta_bytes` limits the encoded body bytes accepted for one received TypeDef body.
 - `max_schema_versions_per_type` limits accepted remote metadata versions for one logical type.
 - `max_average_schema_versions_per_type` limits the average across accepted remote types.
-- `max_graph_memory_bytes` limits estimated shallow graph memory created during one root
-  deserialization, including materialized lists, tuples, sets, dicts, object arrays, structs, and
-  Python objects. The default is a fixed `128 MiB` for all root input forms. Set a positive byte
-  value for trusted payloads that legitimately contain larger or smaller object graphs. Explicit
-  non-positive values are rejected when the runtime is created.
+- `max_graph_memory_bytes` sets an approximate gate for materialized graph memory during one root
+  deserialization. The estimate mainly covers lists, tuples, sets, dicts, object arrays, structs,
+  and Python objects. It skips leaf values such as strings, binary data, primitive scalars, and
+  dense primitive arrays, so actual process memory can be higher than this value. Leaf values remain
+  protected by byte-availability checks: if the unread input does not contain enough bytes, Fory
+  will not read or create that leaf value. The default is a fixed `128 MiB` for all root input
+  forms. Set a positive byte value for trusted payloads that legitimately need a larger or smaller
+  gate.
 
 These limits do not change `strict`, `policy`, dynamic loading, unknown-class handling, or
 schema-evolution semantics.
@@ -287,7 +290,7 @@ unchanged.
 - Use `DeserializationPolicy` when `strict=False` is necessary.
 - Keep `max_depth` low enough to reject unexpectedly deep payloads.
 - Keep `max_graph_memory_bytes` at the fixed `128 MiB` default for most inputs, or set a positive
-  explicit limit for trusted workloads with different legitimate object-graph sizes.
+  explicit gate for trusted workloads with different legitimate collection/map/struct sizes.
 - Do not treat xlang/native mode choice as a security control.
 
 ## Related Topics

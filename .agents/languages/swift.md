@@ -22,6 +22,8 @@ Load this file when changing `swift/` or Swift xlang behavior.
   bytes-read accounting or serializer-local budget state. Root APIs reset the budget only; they must
   not pre-reserve root type or root self bytes. `ReadContext` may expose only raw byte reservation;
   array, set, map, struct, and object formulas belong in serializer and field-codec owners.
+  Treat the option as an approximate array/dictionary/set/struct/class/object gate, not an exact
+  heap cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
 - For Swift graph budget formulas, distinguish inline/value storage from reference storage: use
   `MemoryLayout<T>.stride` for value arrays/lists/sets/maps and the 4-byte reference fallback for
   `Serializer.isRefType` / `FieldCodec.isRefType` paths. Class/reference paths reserve their own

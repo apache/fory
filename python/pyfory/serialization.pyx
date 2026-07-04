@@ -113,8 +113,10 @@ cdef class Config:
         max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
         max_schema_versions_per_type: Maximum accepted remote metadata versions for one logical type.
         max_average_schema_versions_per_type: Average remote schema versions allowed across accepted remote types.
-        max_graph_memory_bytes: Maximum estimated graph memory per root
-            deserialization. Defaults to 128 MiB and must be a positive byte limit.
+        max_graph_memory_bytes: Approximate graph-memory gate per root deserialization.
+            Mainly covers materialized collections, maps, arrays, structs, and objects. Leaf values
+            are gated by unread input bytes instead, and actual process memory can be higher.
+            Defaults to 128 MiB and must be a positive byte limit.
         field_nullable: Treats struct/dataclass fields as nullable by default.
         policy: Deserialization policy used for security-sensitive checks.
         meta_compressor: Optional typedef/meta compressor implementation.
@@ -170,8 +172,10 @@ cdef class Config:
             max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
             max_schema_versions_per_type: Maximum accepted remote metadata versions for one logical type.
             max_average_schema_versions_per_type: Average remote schema versions allowed across accepted remote types.
-            max_graph_memory_bytes: Maximum estimated graph memory per root
-                deserialization. Defaults to 128 MiB and must be a positive byte limit.
+            max_graph_memory_bytes: Approximate graph-memory gate per root deserialization.
+                Mainly covers materialized collections, maps, arrays, structs, and objects. Leaf
+                values are gated by unread input bytes instead, and actual process memory can be
+                higher. Defaults to 128 MiB and must be a positive byte limit.
             field_nullable: Treat all struct fields as nullable by default.
             policy: Deserialization policy implementation.
             meta_compressor: Optional typedef/meta compressor.
@@ -880,8 +884,10 @@ cdef class Fory:
             max_type_meta_bytes: Maximum accepted body size in one received TypeDef.
             max_schema_versions_per_type: Maximum accepted remote metadata versions for one logical type.
             max_average_schema_versions_per_type: Average remote schema versions allowed across accepted remote types.
-            max_graph_memory_bytes: Maximum estimated graph memory per root
-                deserialization. Defaults to 128 MiB and must be a positive byte limit.
+            max_graph_memory_bytes: Approximate graph-memory gate per root deserialization.
+                Mainly covers materialized collections, maps, arrays, structs, and objects. Leaf
+                values are gated by unread input bytes instead, and actual process memory can be
+                higher. Defaults to 128 MiB and must be a positive byte limit.
             policy: Optional deserialization policy implementation.
             field_nullable: Treat struct fields as nullable by default.
             meta_compressor: Optional typedef/meta compressor implementation.

@@ -57,7 +57,7 @@ const fory = new Fory({
 | `ref`                             | `false`   | Enable reference tracking for shared or circular object graphs                        |
 | `compatible`                      | `true`    | Allow field additions/removals without breaking existing messages                     |
 | `maxDepth`                        | `50`      | Maximum nesting depth. Must be `>= 2`. Increase for deeply nested structures          |
-| `maxGraphMemoryBytes`             | `128 MiB` | Maximum estimated shallow graph memory accepted during one root deserialization       |
+| `maxGraphMemoryBytes`             | `128 MiB` | Approximate graph-memory gate accepted during one root deserialization                |
 | `maxTypeFields`                   | `512`     | Maximum fields accepted in one received remote struct metadata body                   |
 | `maxTypeMetaBytes`                | `4096`    | Maximum encoded body bytes accepted for one received TypeMeta body                    |
 | `maxSchemaVersionsPerType`        | `10`      | Maximum accepted remote metadata versions for one logical type                        |
@@ -96,10 +96,12 @@ generated from Fory schema IDL. See [Schema Evolution](schema-evolution.md).
 
 ## Graph Memory Budget
 
-`maxGraphMemoryBytes` limits estimated shallow graph memory accepted during one
-root deserialization. The budget covers materialized arrays, sets, object
-arrays, maps, structs, and objects; it is not an exact JavaScript heap limit.
-The default is a fixed `128 MiB` and is not derived from input size.
+`maxGraphMemoryBytes` sets an approximate graph-memory gate for one root deserialization. The
+estimate mainly covers materialized arrays, sets, object arrays, maps, structs, and objects. It
+skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays, so
+actual JavaScript heap use can be higher than this value. Leaf values remain protected by
+byte-availability checks: if the unread input does not contain enough bytes, Fory will not read or
+create that leaf value. The default is a fixed `128 MiB` and is not derived from input size.
 
 Use a positive byte value to set an explicit lower or higher limit:
 
@@ -133,8 +135,9 @@ Security-related configuration:
 
 - Register only the expected schemas before deserializing untrusted payloads.
 - Set `maxDepth` for the maximum nesting depth your service accepts.
-- Set `maxGraphMemoryBytes` for the maximum graph memory your service
-  accepts from one root payload.
+- Set `maxGraphMemoryBytes` as an approximate gate for collection, map, array, struct, and
+  object-heavy payloads. It is not an exact heap cap; leaf values are gated by remaining input
+  bytes.
 - Keep `maxTypeFields` and `maxTypeMetaBytes` at their defaults unless the data
   is not malicious and a trusted peer sends larger remote metadata.
 - Keep `maxSchemaVersionsPerType` and

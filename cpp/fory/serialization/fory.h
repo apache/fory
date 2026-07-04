@@ -110,9 +110,13 @@ public:
     return *this;
   }
 
-  /// Set maximum estimated graph memory for one root deserialization.
+  /// Set the approximate graph-memory gate for one root deserialization.
   ///
-  /// Defaults to 128 MiB. Values must be positive byte limits.
+  /// Mainly gates materialized collections, maps, arrays, structs, and objects.
+  /// Leaf values such as strings, binary, primitive scalars, and dense
+  /// primitive arrays are gated by unread input bytes instead. Actual process
+  /// memory can be higher. Defaults to 128 MiB. Values must be positive byte
+  /// limits.
   ForyBuilder &max_graph_memory_bytes(int64_t max_bytes) {
     FORY_CHECK(max_bytes > 0) << "max_graph_memory_bytes must be positive";
     config_.max_graph_memory_bytes = max_bytes;

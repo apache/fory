@@ -40,8 +40,10 @@ pub struct Config {
     /// When enabled, shared references and circular references are tracked
     /// and preserved during serialization/deserialization.
     pub track_ref: bool,
-    /// Maximum estimated graph memory accepted during one root deserialization.
-    /// Defaults to 128 MiB. Value must be a positive byte limit.
+    /// Approximate graph-memory gate for one root deserialization.
+    /// Mainly gates materialized collections, maps, arrays, structs, and objects.
+    /// Leaf values are gated by unread input bytes instead, and actual process
+    /// memory can be higher. Defaults to 128 MiB. Value must be a positive byte limit.
     pub max_graph_memory_bytes: i64,
     /// Maximum accepted field count in one received struct TypeMeta.
     pub max_type_fields: u32,
@@ -127,7 +129,7 @@ impl Config {
         self.track_ref
     }
 
-    /// Get maximum estimated graph memory per root deserialization.
+    /// Get the approximate graph-memory gate per root deserialization.
     #[inline(always)]
     pub fn max_graph_memory_bytes(&self) -> i64 {
         self.max_graph_memory_bytes

@@ -219,9 +219,10 @@ segmentation is normal input and is not a security issue by itself.
 
 ## Graph Memory Budget
 
-Runtimes should enforce a per-operation budget for estimated shallow memory created by one
+Runtimes should enforce a per-operation approximate gate for estimated memory created by one
 materialized graph. This is cumulative accounting for graph owners created by one top-level
 deserialization operation; it is not exact heap measurement and it is not a raw element-slot limit.
+Actual process memory can be higher than the configured gate.
 
 The public configuration is `maxGraphMemoryBytes`. The default is a fixed `128 MiB` for all input
 forms; positive user configuration overrides the default. Explicit non-positive configuration is
@@ -252,6 +253,10 @@ Graph budget accounting should:
 - preserve existing byte-availability checks before backing allocation or capacity reservation;
 - skip enum/union as separate owners and skip dedicated string, binary, primitive scalar, primitive
   array, and primitive dense-array leaf owners.
+
+Skipped leaf owners must still be gated by remaining input bytes. If the unread input does not
+contain enough bytes for a string, binary value, primitive scalar, primitive array, or primitive
+dense array, the runtime must not read or create that leaf value.
 
 Each runtime must inspect the concrete owner path before choosing formulas. Reserve self storage
 exactly once at the owner that stores, boxes, or allocates the value. Deserialization facades may

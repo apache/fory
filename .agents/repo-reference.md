@@ -92,6 +92,12 @@ allocation formulas, overflow checks, allocation-owner decisions, and reference 
 Value serializers only read their data; the holder or materializer that stores, boxes, or allocates
 the value reserves the storage it owns.
 
+Treat `maxGraphMemoryBytes` and runtime-named equivalents as approximate gates, mainly for
+materialized collection, map, array, struct, and object owners. Actual process memory can be higher.
+Dedicated string, binary, primitive scalar, primitive array, and dense primitive-array leaf values
+are skipped by this graph budget and must remain gated by unread input bytes: if remaining bytes are
+insufficient, the leaf value must not be read or created.
+
 ## Runtime Map
 
 ### Java

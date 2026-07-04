@@ -39,7 +39,7 @@ Default settings:
 | MaxDepth                        | 20        | Maximum nesting depth                             |
 | IsXlang                         | true      | Xlang mode enabled                                |
 | Compatible                      | true      | Compatible schema-evolution metadata enabled      |
-| MaxGraphMemoryBytes             | 134217728 | Graph memory limit per root read                  |
+| MaxGraphMemoryBytes             | 134217728 | Approximate graph-memory gate per root read       |
 | MaxTypeFields                   | 512       | Max fields in one received struct metadata body   |
 | MaxTypeMetaBytes                | 4096      | Max encoded bytes in one received metadata body   |
 | MaxSchemaVersionsPerType        | 10        | Max remote metadata versions for one logical type |
@@ -131,19 +131,22 @@ f := fory.New(fory.WithMaxDepth(30))
 
 ### WithMaxGraphMemoryBytes
 
-Limit estimated shallow graph memory accepted during one root deserialization:
+Set an approximate graph-memory gate for one root deserialization:
 
 ```go
 f := fory.New(fory.WithMaxGraphMemoryBytes(256 * 1024 * 1024))
 ```
 
+The estimate mainly covers materialized slices, maps, sets, arrays, structs, and objects. It skips
+leaf values such as strings, binary data, primitive scalars, and dense primitive arrays, so actual
+process memory can be higher than this value.
+
 The default limit is a fixed `128 MiB` for byte-slice and stream roots. A
 positive value overrides the default. Explicit non-positive values are rejected
-when the runtime is created. The budget covers lower-bound shallow owners plus
-slice backing storage, map key/value storage, sets, materialized struct reads,
-and struct pointer allocation. Strings, binary blobs, and primitive dense array
-owners keep their byte-availability checks and are not reserved against this
-budget.
+when the runtime is created. Graph memory reservation complements byte
+availability checks; it does not replace them. Skipped leaf values are still
+gated by remaining input bytes: if the unread input does not contain enough
+bytes, Fory will not read or create that leaf value.
 
 ### WithMaxTypeFields
 

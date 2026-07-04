@@ -422,10 +422,12 @@ ref-publication controls, temporary-owner controls, serializer-owner controls,
 conversion helpers, or APIs that encode the kind of value being materialized.
 Concrete serializers and generated serializers own those decisions.
 
-The budget estimates lower-bound shallow memory for materialized graph owners,
-not exact heap bytes. Reserve self storage exactly once at the owner that stores
-or allocates the value. Root facades reset the budget only and must not reserve
-root value storage. Reference-backed containers, maps, sets, and
+The budget is an approximate gate for materialized graph owners, mainly
+collections, maps, arrays, structs, and objects. It does not measure exact heap
+bytes, and actual process memory can be higher. Reserve self storage exactly
+once at the owner that stores or allocates the value. Root facades reset the
+budget only and must not reserve root value storage. Reference-backed
+containers, maps, sets, and
 object/reference arrays reserve nonzero owner self cost plus reference slots;
 each referenced heap owner then reserves its own shallow self cost when
 materialized. Inline/value containers reserve element storage; inline/value maps
@@ -446,6 +448,10 @@ container, allocator, table, node, entry, or debug-layout details. Reject
 arithmetic overflow before budget comparison or allocation, and keep the
 existing `checkReadableBytes` proof before backing
 allocation or capacity reservation.
+Skipped leaf owners must still be gated by remaining input bytes. If unread
+bytes are insufficient for a string, binary value, primitive scalar, primitive
+array, or primitive dense array, the runtime must not read or create that leaf
+value.
 
 For TypeDef or TypeMeta bodies, first prove that the encoded metadata body bytes
 are readable through the byte owner. Field-list allocation should happen after

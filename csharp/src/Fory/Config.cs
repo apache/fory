@@ -91,8 +91,14 @@ public sealed class Config
     public int MaxDepth { get; }
 
     /// <summary>
-    /// Gets the maximum estimated graph memory accepted during one root deserialization.
+    /// Gets the approximate graph-memory gate for one root deserialization.
     /// </summary>
+    /// <remarks>
+    /// The estimate mainly covers materialized collections, maps, arrays, structs, and objects. It
+    /// skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays;
+    /// those remain gated by byte-availability checks on the unread input. Actual process memory can
+    /// be higher than this value.
+    /// </remarks>
     public long MaxGraphMemoryBytes { get; }
 
     /// <summary>
@@ -182,8 +188,14 @@ public sealed class ForyBuilder
     }
 
     /// <summary>
-    /// Sets the maximum estimated graph memory accepted during one root deserialization.
+    /// Sets the approximate graph-memory gate for one root deserialization.
     /// </summary>
+    /// <remarks>
+    /// The estimate mainly covers materialized collections, maps, arrays, structs, and objects. It
+    /// skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays;
+    /// those remain gated by byte-availability checks on the unread input. Actual process memory can
+    /// be higher than this value.
+    /// </remarks>
     public ForyBuilder MaxGraphMemoryBytes(long value)
     {
         if (value <= 0)

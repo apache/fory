@@ -112,7 +112,11 @@ func WithMaxDepth(depth int) Option {
 	}
 }
 
-// WithMaxGraphMemoryBytes sets the maximum estimated graph memory accepted during one root deserialization.
+// WithMaxGraphMemoryBytes sets an approximate graph-memory gate for one root
+// deserialization. It mainly gates materialized slices, maps, arrays, structs,
+// and objects. Leaf values such as strings, binary, primitive scalars, and
+// dense primitive arrays are gated by unread input bytes instead, and actual
+// process memory can be higher.
 func WithMaxGraphMemoryBytes(size int64) Option {
 	if size <= 0 {
 		panic("MaxGraphMemoryBytes must be positive")

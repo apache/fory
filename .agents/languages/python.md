@@ -27,6 +27,8 @@ Load this file when changing `python/`, Cython serialization, or Python xlang be
   nonzero shallow self cost plus shallow field/reference storage. Keep string, bytes, primitive
   scalar, `array.array`, primitive dense array, and primitive ndarray owners skipped, and preserve
   byte-availability checks after budget reservation.
+  Treat the option as an approximate collection/dict/array/struct/object gate, not an exact heap
+  cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
 - Public value constructors should accept normal Python values. Raw-bit, raw-buffer, and memoryview entry points should be explicit low-level APIs, and packed carriers should expose the buffer protocol from the actual storage owner when appropriate.
 - When debugging runtime or benchmark behavior, install the local package into the exact interpreter under test instead of relying on mixed `PYTHONPATH` state.
 - For wheel or extension pipeline changes, derive extension-module paths from current build targets, packaging config, or wheel payload discovery rather than historical module names.

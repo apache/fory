@@ -22,6 +22,10 @@ public struct Config {
     public let compatible: Bool
     public let checkClassVersion: Bool
     public let maxDepth: Int
+    /// Approximate graph-memory gate for one root deserialization.
+    ///
+    /// Mainly gates materialized arrays, dictionaries, sets, structs, classes, and objects. Leaf
+    /// values are gated by unread input bytes instead, and actual process memory can be higher.
     public let maxGraphMemoryBytes: Int64
     public let maxTypeFields: Int
     public let maxTypeMetaBytes: Int

@@ -30,8 +30,10 @@ Load this file when changing `cpp/`, Cython build plumbing, or C++ xlang behavio
   byte reservation; collection, map, array, struct, and object
   formulas belong in serializer owners. Skip dedicated string, binary, primitive scalar, primitive
   vector, and primitive dense-array leaf owners; `std::vector<bool>` charges rounded packed-bit
-  storage. General `std::vector<T>` for non-primitive `T` is inline value storage and must be
-  reserved by the vector owner.
+  storage. Treat the option as an approximate collection/map/array/struct/object gate, not an exact
+  heap cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
+  General `std::vector<T>` for non-primitive `T` is inline value storage and must be reserved by the
+  vector owner.
 - C++ graph budget formulas must be portable lower-bound estimates, not STL heap-layout accounting.
   Generic collection-like containers reserve `count_or_capacity * sizeof(value_type)`, map-like
   containers reserve `count * (sizeof(key_type) + sizeof(mapped_type))`, and set-like containers

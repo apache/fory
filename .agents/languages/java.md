@@ -28,6 +28,8 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   object-array owners reserve nonzero shallow self cost plus reference storage;
   referenced object serializers reserve their own nonzero shallow self memory
   plus shallow field storage when materialized.
+  Treat the option as an approximate collection/map/array/struct/object gate, not an exact heap
+  cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
   Reference fields use the 4-byte fallback when the JVM reference size is not
   queried cheaply; primitive fields use their encoded storage width. Preserve
   existing `checkReadableBytes` guards before backing allocation or capacity

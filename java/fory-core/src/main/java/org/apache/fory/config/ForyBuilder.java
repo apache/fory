@@ -573,9 +573,12 @@ public final class ForyBuilder {
   }
 
   /**
-   * Sets the maximum estimated graph memory accepted during one root deserialization.
+   * Sets the approximate graph-memory gate for one root deserialization.
    *
-   * <p>The default is a fixed 128 MiB. Values must be positive byte limits.
+   * <p>The estimate mainly covers materialized collections, maps, arrays, structs, and objects. It
+   * skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays;
+   * those remain gated by byte-availability checks on the unread input. Actual process memory can
+   * be higher than this value. The default is a fixed 128 MiB. Values must be positive byte limits.
    */
   public ForyBuilder withMaxGraphMemoryBytes(long maxGraphMemoryBytes) {
     Preconditions.checkArgument(maxGraphMemoryBytes > 0, "maxGraphMemoryBytes must be positive");
