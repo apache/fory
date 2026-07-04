@@ -36,6 +36,8 @@ COLL_HAS_NULL = 0b10
 COLL_IS_DECL_ELEMENT_TYPE = 0b100
 COLL_IS_SAME_TYPE = 0b1000
 _REFERENCE_BYTES = struct.calcsize("P")
+# Lower-bound shallow owner costs for retained Python collection objects. Element, key, and value
+# slots are charged separately by count below; these are not Fory wire header sizes.
 _LIST_OWNER_BYTES = 4 * _REFERENCE_BYTES
 _TUPLE_OWNER_BYTES = 3 * _REFERENCE_BYTES
 _DICT_OWNER_BYTES = 8 * _REFERENCE_BYTES

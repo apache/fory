@@ -20,6 +20,8 @@ package fory
 import "unsafe"
 
 const graphReferenceBytes = 4
+// Lower-bound owner costs for retained Go slice/map/set values. Counted element, key, and value
+// storage is charged at each concrete owner path; these are not Fory wire header sizes.
 const graphSliceOwnerBytes = int(unsafe.Sizeof([]any{}))
 const graphMapOwnerBytes = int(unsafe.Sizeof(map[any]any{})) + int(unsafe.Sizeof(int(0))) + 2*int(unsafe.Sizeof(uintptr(0)))
 const graphSetOwnerBytes = graphMapOwnerBytes

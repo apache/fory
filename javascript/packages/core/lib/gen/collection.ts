@@ -27,9 +27,8 @@ import { AnyHelper } from "./any";
 import type { ReadContext, WriteContext } from "../context";
 
 const REFERENCE_BYTES = 4;
-// Conservative lower bound for a retained JavaScript Array/List owner: object header, elements
-// reference, length/capacity-style fields, and shape/prototype references. Do not inspect V8 layout
-// on the read hot path.
+// Conservative lower bound for the retained JavaScript Array/List owner itself. Element slots are
+// charged separately by count below; this is not a Fory wire header or a V8 layout probe.
 const ARRAY_LIST_OWNER_BYTES = 6 * REFERENCE_BYTES;
 
 export type CompatibleCollectionArrayReadAction = {

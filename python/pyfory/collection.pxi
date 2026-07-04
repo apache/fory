@@ -42,6 +42,8 @@ cdef int8_t NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF = KEY_HAS_NULL | VALUE_DECL_TY
 cdef int8_t NULL_VALUE_KEY_DECL_TYPE = VALUE_HAS_NULL | KEY_DECL_TYPE
 cdef int8_t NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF = VALUE_HAS_NULL | KEY_DECL_TYPE | TRACKING_KEY_REF
 cdef int64_t _REFERENCE_BYTES = sizeof(PyObject*)
+# Lower-bound shallow owner costs for retained Python collection objects. Element, key, and value
+# slots are charged separately by count below; these are not Fory wire header sizes.
 cdef int64_t _LIST_OWNER_BYTES = 4 * sizeof(PyObject*)
 cdef int64_t _TUPLE_OWNER_BYTES = 3 * sizeof(PyObject*)
 cdef int64_t _SET_OWNER_BYTES = 6 * sizeof(PyObject*)

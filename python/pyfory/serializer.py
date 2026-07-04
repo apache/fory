@@ -44,6 +44,8 @@ from pyfory._fory import (
 
 _WINDOWS = os.name == "nt"
 _REFERENCE_BYTES = struct.calcsize("P")
+# Lower-bound shallow owner costs for retained Python objects/tuples/dicts. Field and entry slots
+# are charged separately by count below; these are not Fory wire header sizes.
 _PY_OBJECT_OWNER_BYTES = 4 * _REFERENCE_BYTES
 _TUPLE_OWNER_BYTES = 3 * _REFERENCE_BYTES
 _DICT_OWNER_BYTES = 8 * _REFERENCE_BYTES

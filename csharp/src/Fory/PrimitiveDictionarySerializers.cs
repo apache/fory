@@ -665,6 +665,9 @@ internal static class PrimitiveDictionaryCodecWriter
 internal static class PrimitiveDictionaryCodecReader
 {
     private const int ReferenceBytes = 4;
+    // Lower-bound shallow owner cost for the retained CLR Dictionary object itself. The two
+    // IntPtr slots approximate the CLR object header/method table; primitive key/value entry
+    // storage is charged separately by count below. This is not a Fory wire header size.
     private static readonly int DictionaryOwnerBytes =
         IntPtr.Size + IntPtr.Size + 4 * ReferenceBytes + 4 * sizeof(int);
 

@@ -39,8 +39,9 @@ import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/uint64.dart';
 
 const int _referenceBytes = 4;
-// Conservative lower bound for a retained Dart List/Set owner; element storage is charged
-// separately by count below, and dense primitive leaf arrays remain byte-gated instead.
+// Conservative lower bound for the retained Dart List/Set owner itself. The six reference-width
+// slots approximate object/runtime metadata and backing-storage state; element slots are charged
+// separately by count below. This is not a Fory wire header or a Dart VM layout probe.
 const int _listOwnerBytes = 6 * _referenceBytes;
 
 @pragma('vm:prefer-inline')

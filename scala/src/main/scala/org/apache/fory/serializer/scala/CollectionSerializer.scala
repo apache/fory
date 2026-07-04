@@ -49,6 +49,8 @@ abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](
     cls: Class[T])
   extends CollectionLikeSerializer[T](typeResolver, cls) {
   private val ReferenceBytes = 4L
+  // Lower-bound shallow owner cost for the retained Scala collection wrapper itself. Element
+  // slots are charged separately by count below; this is not a Fory wire header size.
   private val ScalaCollectionOwnerBytes = 3L * ReferenceBytes
 
   override def onCollectionWrite(

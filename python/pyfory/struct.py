@@ -82,6 +82,8 @@ from pyfory import (
 logger = logging.getLogger(__name__)
 
 _REFERENCE_BYTES = struct.calcsize("P")
+# Lower-bound shallow owner cost for retained Python struct objects. Field slots are charged
+# separately by count below; this is not a Fory wire header size.
 _PY_OBJECT_OWNER_BYTES = 4 * _REFERENCE_BYTES
 
 _MISSING_DEFAULT_INT_TYPES = {

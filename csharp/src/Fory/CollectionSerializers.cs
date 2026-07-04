@@ -33,6 +33,9 @@ internal static class CollectionBits
 internal static class CollectionCodec
 {
     private const int ReferenceBytes = 4;
+    // Lower-bound shallow owner costs for retained CLR collection objects. ObjectHeaderBytes is
+    // the CLR object header/method-table estimate, not a Fory wire header; element storage is
+    // charged separately by count at the concrete owner path.
     private static readonly int ObjectHeaderBytes = IntPtr.Size + IntPtr.Size;
     private static readonly int ArrayOwnerBytes = ObjectHeaderBytes + sizeof(int);
     private static readonly int ListOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 2 * sizeof(int);

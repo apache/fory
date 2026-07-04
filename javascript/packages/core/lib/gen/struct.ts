@@ -29,8 +29,8 @@ import { CompatibleScalarConverter, getCompatibleScalarReadAction } from "../com
 import { shouldSkipCompatibleRead } from "../compatible/field";
 
 const REFERENCE_BYTES = 4;
-// Conservative lower bounds for retained JavaScript owners. These avoid runtime engine-layout
-// probing while keeping object/list owners distinct from the 4-byte reference slot fallback.
+// Conservative lower bounds for retained JavaScript owners themselves. Field/element slots are
+// charged separately by owner formulas; these are not Fory wire headers or V8 layout probes.
 const JS_STRUCT_OWNER_BYTES = 6 * REFERENCE_BYTES;
 const JS_ARRAY_LIST_OWNER_BYTES = 6 * REFERENCE_BYTES;
 

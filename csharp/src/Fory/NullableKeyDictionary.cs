@@ -392,6 +392,9 @@ public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TVal
 public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<NullableKeyDictionary<TKey, TValue>>
 {
     private const int ReferenceBytes = 4;
+    // Lower-bound shallow owner costs for the retained wrapper and inner CLR Dictionary objects.
+    // The IntPtr pairs approximate CLR object headers/method tables; entry storage is charged
+    // separately by count below. These are not Fory wire header sizes.
     private static readonly int DictionaryOwnerBytes =
         IntPtr.Size + IntPtr.Size + 4 * ReferenceBytes + 4 * sizeof(int);
     private static readonly int NullableKeyDictionaryOwnerBytes =

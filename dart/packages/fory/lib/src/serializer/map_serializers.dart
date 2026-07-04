@@ -27,8 +27,8 @@ import 'package:fory/src/serializer/collection_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
 const int _referenceBytes = 4;
-// Conservative lower bound for a retained Dart Map owner. Key/value reference storage is charged
-// by entry count; this avoids runtime layout probing.
+// Conservative lower bound for the retained Dart Map owner itself. Key/value slots are charged by
+// entry count below; this is not a Fory wire header or a Dart VM layout probe.
 const int _mapOwnerBytes = 8 * _referenceBytes;
 
 abstract final class MapFlags {

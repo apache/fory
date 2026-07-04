@@ -35,6 +35,9 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
     where TKey : notnull
 {
     private const int ReferenceBytes = 4;
+    // Lower-bound shallow owner cost for the retained CLR Dictionary object itself. The two
+    // IntPtr slots approximate the CLR object header/method table; key/value entry storage is
+    // charged separately by count below. This is not a Fory wire header size.
     private static readonly int DictionaryOwnerBytes =
         IntPtr.Size + IntPtr.Size + 4 * ReferenceBytes + 4 * sizeof(int);
     private static readonly long MapElementBytes = (long)ElementBytes<TKey>() + ElementBytes<TValue>();

@@ -49,6 +49,8 @@ import scala.collection.{Factory, mutable}
 abstract class AbstractScalaMapSerializer[K, V, T](typeResolver: TypeResolver, cls: Class[T])
   extends MapLikeSerializer[T](typeResolver, cls) {
   private val ReferenceBytes = 4L
+  // Lower-bound shallow owner cost for the retained Scala map wrapper itself. Key/value slots are
+  // charged separately by count below; this is not a Fory wire header size.
   private val ScalaMapOwnerBytes = 3L * ReferenceBytes
 
   def onMapWrite(writeContext: WriteContext, value: T): util.Map[_, _]

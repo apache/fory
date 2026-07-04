@@ -27,8 +27,8 @@ import { AnyHelper } from "./any";
 import { ReadContext, WriteContext } from "../context";
 
 const REFERENCE_BYTES = 4;
-// Conservative lower bound for a retained JavaScript Map owner: object header plus table/state
-// references. The budget is approximate and must not probe engine-specific layouts.
+// Conservative lower bound for the retained JavaScript Map owner itself. Key/value slots are
+// charged separately by count below; this is not a Fory wire header or a V8 layout probe.
 const JS_MAP_OWNER_BYTES = 8 * REFERENCE_BYTES;
 
 const MapFlags = {

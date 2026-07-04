@@ -23,6 +23,8 @@ from cpython.unicode cimport PyUnicode_InternFromString
 
 cdef uint8_t _BASIC_FIELD_NOT_INLINE = 0xFF
 cdef int64_t _STRUCT_REFERENCE_BYTES = sizeof(PyObject*)
+# Lower-bound shallow owner cost for retained Python struct objects. Field slots are charged
+# separately by count below; this is not a Fory wire header size.
 cdef int64_t _STRUCT_OWNER_BYTES = 4 * sizeof(PyObject*)
 
 

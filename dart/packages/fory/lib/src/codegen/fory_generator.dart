@@ -49,6 +49,8 @@ class DebugGeneratedFieldTypeSpec {
 
 final class ForyGenerator extends Generator {
   static const int _referenceBytes = 4;
+  // Conservative lower bound for a retained generated Dart struct object itself. Field reference
+  // slots are added separately; this is not a Fory wire header or a Dart VM layout probe.
   static const int _structObjectOwnerBytes = 6 * _referenceBytes;
 
   static const TypeChecker _foryStructChecker = TypeChecker.typeNamed(
