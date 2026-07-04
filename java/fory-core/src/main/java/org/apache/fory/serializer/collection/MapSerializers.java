@@ -54,6 +54,7 @@ import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.ExternalizableSerializer;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
@@ -66,6 +67,10 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class MapSerializers {
+  private static final int HASH_MAP_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(HashMap.class);
+  private static final int SINGLETON_MAP_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Collections.singletonMap(null, null).getClass());
   private static final Comparator NATURAL_ORDER_COMPARATOR = Comparator.naturalOrder();
 
   private static void requireXlangNaturalOrdering(Class<?> type, Comparator<?> comparator) {
@@ -309,6 +314,7 @@ public class MapSerializers {
       }
       Object key = readContext.readRef();
       Object value = readContext.readRef();
+      readContext.reserveGraphMemory(SINGLETON_MAP_OWNER_BYTES);
       return Collections.singletonMap(key, value);
     }
   }
@@ -601,7 +607,7 @@ public class MapSerializers {
   public static class XlangMapSerializer extends MapLikeSerializer {
 
     public XlangMapSerializer(TypeResolver typeResolver, Class cls) {
-      super(typeResolver, cls, true);
+      super(typeResolver, cls, true, false, HASH_MAP_OWNER_BYTES);
     }
 
     @Override

@@ -49,6 +49,7 @@ import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.Generics;
@@ -58,8 +59,7 @@ import org.apache.fory.util.Preconditions;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public abstract class MapLikeSerializer<T> extends Serializer<T> {
   public static final int MAX_CHUNK_SIZE = 255;
-  private static final int REFERENCE_BYTES = 4;
-  private static final int MAP_OWNER_BYTES = 2 * REFERENCE_BYTES;
+  private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
 
   static final class MapTypeCache {
     final TypeInfoHolder keyTypeInfoWriteCache;
@@ -77,6 +77,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
 
   protected MethodHandle constructor;
   protected final Config config;
+  private final int mapOwnerBytes;
   protected final boolean supportCodegenHook;
   private final GenericType objType;
   // For subclass whose kv type are instantiated already, such as
@@ -102,8 +103,23 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
 
   public MapLikeSerializer(
       TypeResolver typeResolver, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
+    this(
+        typeResolver,
+        cls,
+        supportCodegenHook,
+        immutable,
+        GraphMemoryEstimates.shallowObjectBytes(cls));
+  }
+
+  protected MapLikeSerializer(
+      TypeResolver typeResolver,
+      Class<T> cls,
+      boolean supportCodegenHook,
+      boolean immutable,
+      int mapOwnerBytes) {
     super(typeResolver.getConfig(), cls, immutable);
     this.config = typeResolver.getConfig();
+    this.mapOwnerBytes = mapOwnerBytes;
     this.typeResolver = typeResolver;
     trackRef = typeResolver.getConfig().trackingRef();
     this.supportCodegenHook = supportCodegenHook;
@@ -972,7 +988,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     if (numElements > Integer.MAX_VALUE / 2) {
       throwInvalidMapBodySize(numElements);
     }
-    readContext.reserveGraphMemory(MAP_OWNER_BYTES + (long) numElements * 2 * REFERENCE_BYTES);
+    readContext.reserveGraphMemory(mapOwnerBytes + (long) numElements * 2 * REFERENCE_BYTES);
     buffer.checkReadableBytes(numElements << 1);
     return numElements;
   }

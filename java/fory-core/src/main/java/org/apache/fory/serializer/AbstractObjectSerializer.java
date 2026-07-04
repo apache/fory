@@ -69,8 +69,6 @@ import org.apache.fory.util.record.RecordUtils;
 public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   private static final Logger LOG = LoggerFactory.getLogger(AbstractObjectSerializer.class);
   private static final Object SELF_REFERENCE = new Object();
-  private static final int REFERENCE_BYTES = 4;
-  private static final int OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
   // Constructor-bound objects reserve a ref id before constructor arguments are read, but the
   // object cannot be referenced semantically until the constructor returns. Generated constructor
   // serializers call the tracker before reading ref-tracking constructor-phase fields so nested
@@ -109,21 +107,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     this.typeResolver = typeResolver;
     this.isRecord = RecordUtils.isRecord(type);
     this.objectInstantiator = objectInstantiator;
-    this.objectGraphMemoryBytes = computeObjectGraphMemoryBytes(type);
-  }
-
-  static int computeObjectGraphMemoryBytes(Class<?> type) {
-    int bytes = OBJECT_OWNER_BYTES;
-    for (Field field : ReflectionUtils.getFields(type, true)) {
-      if (!Modifier.isStatic(field.getModifiers())) {
-        bytes = Math.addExact(bytes, fieldGraphMemoryBytes(field.getType()));
-      }
-    }
-    return bytes;
-  }
-
-  private static int fieldGraphMemoryBytes(Class<?> fieldType) {
-    return fieldType.isPrimitive() ? TypeUtils.getSizeOfPrimitiveType(fieldType) : REFERENCE_BYTES;
+    this.objectGraphMemoryBytes = GraphMemoryEstimates.shallowObjectBytes(type);
   }
 
   static void writeField(

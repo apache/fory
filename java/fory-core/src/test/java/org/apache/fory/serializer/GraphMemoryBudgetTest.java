@@ -29,6 +29,7 @@ import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
@@ -41,8 +42,8 @@ import org.testng.annotations.Test;
 
 public class GraphMemoryBudgetTest extends ForyTestBase {
   private static final long DEFAULT_GRAPH_MEMORY_BYTES = 128L * 1024 * 1024;
-  private static final int REFERENCE_BYTES = 4;
-  private static final int OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
+  private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+  private static final int REFERENCE_PAIR_BYTES = 2 * REFERENCE_BYTES;
 
   @Test
   public void testConfigDefaultsAndValidation() {
@@ -131,6 +132,18 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     } finally {
       mapContext.reset();
     }
+  }
+
+  @Test
+  public void testEmptyContainerOwnerEstimates() {
+    assertTrue(collectionBytes(0) > REFERENCE_PAIR_BYTES);
+    assertTrue(hashSetBytes(0) > REFERENCE_PAIR_BYTES);
+    assertTrue(mapBytes(0) > REFERENCE_PAIR_BYTES);
+    assertTrue(objectArrayBytes(0) > REFERENCE_PAIR_BYTES);
+
+    assertEmptyOwnerCharged(ArrayList.class, collectionBytes(0));
+    assertEmptyOwnerCharged(HashSet.class, hashSetBytes(0));
+    assertEmptyOwnerCharged(HashMap.class, mapBytes(0));
   }
 
   @Test
@@ -263,27 +276,58 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   }
 
   private static long collectionBytes(int numElements) {
-    return OBJECT_OWNER_BYTES + (long) numElements * REFERENCE_BYTES;
+    return GraphMemoryEstimates.shallowObjectBytes(ArrayList.class)
+        + (long) numElements * REFERENCE_BYTES;
+  }
+
+  private static long hashSetBytes(int numElements) {
+    return GraphMemoryEstimates.shallowObjectBytes(HashSet.class)
+        + GraphMemoryEstimates.shallowObjectBytes(HashMap.class)
+        + (long) numElements * REFERENCE_BYTES;
   }
 
   private static long mapBytes(int numElements) {
-    return OBJECT_OWNER_BYTES + (long) numElements * 2 * REFERENCE_BYTES;
+    return GraphMemoryEstimates.shallowObjectBytes(HashMap.class)
+        + (long) numElements * 2 * REFERENCE_BYTES;
   }
 
   private static long objectArrayBytes(int numElements) {
-    return OBJECT_OWNER_BYTES + (long) numElements * REFERENCE_BYTES;
+    return GraphMemoryEstimates.objectArrayBytes() + (long) numElements * REFERENCE_BYTES;
   }
 
   private static long emptyPojoBytes() {
-    return OBJECT_OWNER_BYTES;
+    return GraphMemoryEstimates.shallowObjectBytes(EmptyPojo.class);
   }
 
   private static long pojoBytes() {
-    return OBJECT_OWNER_BYTES + 4 + 8 + REFERENCE_BYTES;
+    return GraphMemoryEstimates.shallowObjectBytes(Pojo.class);
   }
 
   private static long genericNodeBytes() {
-    return OBJECT_OWNER_BYTES + 3L * REFERENCE_BYTES;
+    return GraphMemoryEstimates.shallowObjectBytes(GenericNode.class);
+  }
+
+  private static void assertEmptyOwnerCharged(Class<?> type, long ownerBytes) {
+    MemoryBuffer buffer = objectArraySizeBuffer(0);
+    Fory rejected = newFory(ownerBytes - 1);
+    ReadContext rejectedContext = rejected.getReadContext();
+    rejectedContext.prepare(buffer, null, false);
+    try {
+      assertThrows(
+          InsecureException.class, () -> rejected.getSerializer(type).read(rejectedContext));
+    } finally {
+      rejectedContext.reset();
+    }
+
+    Fory accepted = newFory(ownerBytes);
+    ReadContext acceptedContext = accepted.getReadContext();
+    acceptedContext.prepare(objectArraySizeBuffer(0), null, false);
+    try {
+      Object value = accepted.getSerializer(type).read(acceptedContext);
+      assertTrue(type.isInstance(value));
+    } finally {
+      acceptedContext.reset();
+    }
   }
 
   @SuppressWarnings("unchecked")

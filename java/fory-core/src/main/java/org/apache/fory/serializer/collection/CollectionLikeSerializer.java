@@ -37,6 +37,7 @@ import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.util.Preconditions;
@@ -46,11 +47,11 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
-  private static final int REFERENCE_BYTES = 4;
-  private static final int COLLECTION_OWNER_BYTES = 2 * REFERENCE_BYTES;
+  private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
 
   private MethodHandle constructor;
   private int numElements;
+  private final int collectionOwnerBytes;
   protected final Config config;
   protected final boolean supportCodegenHook;
   protected final TypeInfoHolder elementTypeInfoHolder;
@@ -71,17 +72,28 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
 
   public CollectionLikeSerializer(
       TypeResolver typeResolver, Class<T> cls, boolean supportCodegenHook) {
-    super(typeResolver.getConfig(), cls);
-    this.config = typeResolver.getConfig();
-    this.supportCodegenHook = supportCodegenHook;
-    elementTypeInfoHolder = typeResolver.nilTypeInfoHolder();
-    this.typeResolver = typeResolver;
+    this(typeResolver, cls, supportCodegenHook, false);
   }
 
   public CollectionLikeSerializer(
       TypeResolver typeResolver, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
+    this(
+        typeResolver,
+        cls,
+        supportCodegenHook,
+        immutable,
+        GraphMemoryEstimates.shallowObjectBytes(cls));
+  }
+
+  protected CollectionLikeSerializer(
+      TypeResolver typeResolver,
+      Class<T> cls,
+      boolean supportCodegenHook,
+      boolean immutable,
+      int collectionOwnerBytes) {
     super(typeResolver.getConfig(), cls, immutable);
     this.config = typeResolver.getConfig();
+    this.collectionOwnerBytes = collectionOwnerBytes;
     this.supportCodegenHook = supportCodegenHook;
     elementTypeInfoHolder = typeResolver.nilTypeInfoHolder();
     this.typeResolver = typeResolver;
@@ -566,7 +578,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   protected final int readCollectionSize(ReadContext readContext, MemoryBuffer buffer) {
     int numElements = buffer.readVarUInt32Small7();
     checkCollectionSize(numElements);
-    readContext.reserveGraphMemory(COLLECTION_OWNER_BYTES + (long) numElements * REFERENCE_BYTES);
+    readContext.reserveGraphMemory(collectionOwnerBytes + (long) numElements * REFERENCE_BYTES);
     buffer.checkReadableBytes(numElements);
     return numElements;
   }

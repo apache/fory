@@ -75,7 +75,7 @@ public final class ExceptionSerializers {
           messageConstructor == null && MemoryUtils.JDK_LANG_FIELD_ACCESS
               ? createThrowableObjectInstantiator(typeResolver, type)
               : null;
-      graphMemoryBytes = AbstractObjectSerializer.computeObjectGraphMemoryBytes(type);
+      graphMemoryBytes = GraphMemoryEstimates.shallowObjectBytes(type);
       slotsSerializers = buildSlotsSerializers(typeResolver, type);
       if (!MemoryUtils.JDK_LANG_FIELD_ACCESS
           && isJdkThrowable(type)

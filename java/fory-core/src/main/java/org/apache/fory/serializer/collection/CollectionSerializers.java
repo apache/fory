@@ -63,6 +63,7 @@ import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.ExternalizableSerializer;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
@@ -74,7 +75,26 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class CollectionSerializers {
-  private static final int REFERENCE_BYTES = 4;
+  private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+  private static final int ARRAY_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(ArrayList.class);
+  private static final int HASH_MAP_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(HashMap.class);
+  private static final int HASH_SET_OWNER_BYTES =
+      Math.addExact(GraphMemoryEstimates.shallowObjectBytes(HashSet.class), HASH_MAP_OWNER_BYTES);
+  private static final int LINKED_HASH_SET_OWNER_BYTES =
+      Math.addExact(
+          GraphMemoryEstimates.shallowObjectBytes(LinkedHashSet.class),
+          GraphMemoryEstimates.shallowObjectBytes(java.util.LinkedHashMap.class));
+  private static final int SINGLETON_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Collections.singletonList(null).getClass());
+  private static final int SINGLETON_SET_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Collections.singleton(null).getClass());
+  private static final int SET_FROM_MAP_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(
+          Collections.newSetFromMap(new HashMap<>()).getClass());
+  private static final int KEY_SET_VIEW_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(ConcurrentHashMap.KeySetView.class);
 
   private static final Comparator NATURAL_ORDER_COMPARATOR = Comparator.naturalOrder();
 
@@ -152,7 +172,7 @@ public class CollectionSerializers {
     }
 
     public ArraysAsListSerializer(TypeResolver typeResolver, Class<List<?>> cls) {
-      super(typeResolver, cls, typeResolver.getConfig().isXlang());
+      super(typeResolver, cls, typeResolver.getConfig().isXlang(), ARRAY_LIST_OWNER_BYTES);
     }
 
     @Override
@@ -201,7 +221,7 @@ public class CollectionSerializers {
 
   public static final class HashSetSerializer extends CollectionSerializer<HashSet> {
     public HashSetSerializer(TypeResolver typeResolver) {
-      super(typeResolver, HashSet.class, true);
+      super(typeResolver, HashSet.class, true, HASH_SET_OWNER_BYTES);
     }
 
     @Override
@@ -217,7 +237,7 @@ public class CollectionSerializers {
 
   public static final class LinkedHashSetSerializer extends CollectionSerializer<LinkedHashSet> {
     public LinkedHashSetSerializer(TypeResolver typeResolver) {
-      super(typeResolver, LinkedHashSet.class, true);
+      super(typeResolver, LinkedHashSet.class, true, LINKED_HASH_SET_OWNER_BYTES);
     }
 
     @Override
@@ -338,7 +358,7 @@ public class CollectionSerializers {
     public List<?> read(ReadContext readContext) {
       if (config.isXlang()) {
         MemoryBuffer buffer = readContext.getBuffer();
-        int numElements = readCollectionSize(readContext, buffer);
+        int numElements = buffer.readVarUInt32Small7();
         if (numElements != 0) {
           throw new DeserializationException(
               "Empty list body must have zero elements but got " + numElements);
@@ -485,7 +505,9 @@ public class CollectionSerializers {
       if (config.isXlang()) {
         throw new UnsupportedOperationException();
       } else {
-        return Collections.singletonList(readContext.readRef());
+        Object value = readContext.readRef();
+        readContext.reserveGraphMemory(SINGLETON_LIST_OWNER_BYTES);
+        return Collections.singletonList(value);
       }
     }
   }
@@ -515,7 +537,9 @@ public class CollectionSerializers {
       if (config.isXlang()) {
         throw new UnsupportedOperationException();
       } else {
-        return Collections.singleton(readContext.readRef());
+        Object value = readContext.readRef();
+        readContext.reserveGraphMemory(SINGLETON_SET_OWNER_BYTES);
+        return Collections.singleton(value);
       }
     }
   }
@@ -609,7 +633,9 @@ public class CollectionSerializers {
       Set set;
       if (buffer.readBoolean()) {
         readContext.preserveRefId(refId);
-        set = Collections.newSetFromMap(mapSerializer.newMap(readContext));
+        Map map = mapSerializer.newMap(readContext);
+        readContext.reserveGraphMemory(SET_FROM_MAP_OWNER_BYTES);
+        set = Collections.newSetFromMap(map);
         setNumElements(mapSerializer.getAndClearNumElements());
       } else {
         if (!MemoryUtils.JDK_COLLECTION_FIELD_ACCESS) {
@@ -619,6 +645,7 @@ public class CollectionSerializers {
         }
         Map<?, Boolean> map = (Map<?, Boolean>) mapSerializer.read(readContext);
         try {
+          readContext.reserveGraphMemory(SET_FROM_MAP_OWNER_BYTES);
           set = Collections.newSetFromMap(new HashMap<>());
           SetFromMapAccess.restore(set, map);
         } catch (Throwable e) {
@@ -703,6 +730,7 @@ public class CollectionSerializers {
     public ConcurrentHashMap.KeySetView read(ReadContext readContext) {
       ConcurrentHashMap map = (ConcurrentHashMap) readContext.readRef(mapTypeInfoHolder);
       Object value = readContext.readRef(valueTypeInfoHolder);
+      readContext.reserveGraphMemory(KEY_SET_VIEW_OWNER_BYTES);
       return map.keySet(value);
     }
 
@@ -1114,6 +1142,11 @@ public class CollectionSerializers {
       super(typeResolver, cls);
     }
 
+    protected XlangCollectionDefaultSerializer(
+        TypeResolver typeResolver, Class cls, int ownerBytes) {
+      super(typeResolver, cls, true, false, ownerBytes);
+    }
+
     @Override
     public Collection onCollectionWrite(WriteContext writeContext, Object value) {
       MemoryBuffer buffer = writeContext.getBuffer();
@@ -1130,7 +1163,7 @@ public class CollectionSerializers {
 
   public static class XlangListDefaultSerializer extends XlangCollectionDefaultSerializer {
     public XlangListDefaultSerializer(TypeResolver typeResolver, Class cls) {
-      super(typeResolver, cls);
+      super(typeResolver, cls, ARRAY_LIST_OWNER_BYTES);
     }
 
     @Override
@@ -1146,7 +1179,7 @@ public class CollectionSerializers {
 
   public static class XlangSetDefaultSerializer extends XlangCollectionDefaultSerializer {
     public XlangSetDefaultSerializer(TypeResolver typeResolver, Class cls) {
-      super(typeResolver, cls);
+      super(typeResolver, cls, HASH_SET_OWNER_BYTES);
     }
 
     @Override

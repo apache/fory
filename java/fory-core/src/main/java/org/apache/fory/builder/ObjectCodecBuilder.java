@@ -39,8 +39,6 @@ import static org.apache.fory.type.TypeUtils.PRIMITIVE_VOID_TYPE;
 import static org.apache.fory.type.TypeUtils.SHORT_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -67,8 +65,8 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.platform.JdkVersion;
-import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Descriptor;
@@ -97,9 +95,6 @@ import org.apache.fory.util.record.RecordUtils;
  */
 public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   private static final Logger LOG = LoggerFactory.getLogger(ObjectCodecBuilder.class);
-  private static final int REFERENCE_BYTES = 4;
-  private static final int OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
-
   private final Literal classVersionHash;
   protected ObjectCodecOptimizer objectCodecOptimizer;
   protected Map<String, Integer> recordReversedMapping;
@@ -843,17 +838,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   }
 
   private int objectGraphMemoryBytes() {
-    int bytes = OBJECT_OWNER_BYTES;
-    for (Field field : ReflectionUtils.getFields(beanClass, true)) {
-      if (!Modifier.isStatic(field.getModifiers())) {
-        bytes = Math.addExact(bytes, fieldGraphMemoryBytes(field.getType()));
-      }
-    }
-    return bytes;
-  }
-
-  private int fieldGraphMemoryBytes(Class<?> fieldType) {
-    return fieldType.isPrimitive() ? TypeUtils.getSizeOfPrimitiveType(fieldType) : REFERENCE_BYTES;
+    return GraphMemoryEstimates.shallowObjectBytes(beanClass);
   }
 
   protected void deserializeReadGroup(

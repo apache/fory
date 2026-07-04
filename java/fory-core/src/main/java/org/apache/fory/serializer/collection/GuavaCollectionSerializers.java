@@ -43,6 +43,7 @@ import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.Serializer;
 
 /** Serializers for common guava types. */
@@ -96,6 +97,8 @@ public class GuavaCollectionSerializers {
       MemoryBuffer buffer = readContext.getBuffer();
       int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
+      // This is only a transient element holder. readCollectionSize reserves the final Guava
+      // collection owner and reference slots, so do not reserve this helper separately.
       return new CollectionContainer<>(numElements);
     }
 
@@ -129,6 +132,8 @@ public class GuavaCollectionSerializers {
       MemoryBuffer buffer = readContext.getBuffer();
       int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
+      // This is only a transient element holder. readCollectionSize reserves the final Guava
+      // collection owner and reference slots, so do not reserve this helper separately.
       return new CollectionContainer(numElements);
     }
 
@@ -163,6 +168,8 @@ public class GuavaCollectionSerializers {
       MemoryBuffer buffer = readContext.getBuffer();
       int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
+      // This is only a transient element holder. readCollectionSize reserves the final Guava
+      // collection owner and reference slots, so do not reserve this helper separately.
       return new CollectionContainer<>(numElements);
     }
 
@@ -206,6 +213,8 @@ public class GuavaCollectionSerializers {
       int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       Comparator comparator = (Comparator) readContext.readRef();
+      // This is only a transient element holder. readCollectionSize reserves the final Guava
+      // collection owner and reference slots, so do not reserve this helper separately.
       return new SortedCollectionContainer(comparator, numElements);
     }
 
@@ -238,6 +247,8 @@ public class GuavaCollectionSerializers {
       MemoryBuffer buffer = readContext.getBuffer();
       int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
+      // This is only a transient key/value holder. readMapSize reserves the final Guava map owner
+      // and reference slots, so do not reserve this helper separately.
       return new MapContainer(numElements);
     }
 
@@ -373,12 +384,14 @@ public class GuavaCollectionSerializers {
     private final Constructor<?> constructor;
     private final Method readResolveMethod;
     private final boolean biMap;
+    private final int mapOwnerBytes;
 
     public GuavaMapFormSerializer(TypeResolver typeResolver, Class<?> cls, boolean biMap) {
       super(typeResolver.getConfig(), cls);
       this.biMap = biMap;
+      Class<?> mapClass = biMap ? ImmutableBiMap.class : ImmutableMap.class;
+      mapOwnerBytes = GraphMemoryEstimates.shallowObjectBytes(mapClass);
       try {
-        Class<?> mapClass = biMap ? ImmutableBiMap.class : ImmutableMap.class;
         constructor = cls.getDeclaredConstructor(mapClass);
         constructor.setAccessible(true);
         readResolveMethod = findReadResolve(cls);
@@ -407,6 +420,10 @@ public class GuavaCollectionSerializers {
       if (size != 0) {
         buffer.checkReadableBytes(size);
       }
+      // SerializedForm rebuilds the final ImmutableMap/ImmutableBiMap through a transient builder.
+      // Reserve the final Guava map owner and key/value reference slots, not the builder.
+      readContext.reserveGraphMemory(
+          mapOwnerBytes + (long) size * 2 * GraphMemoryEstimates.REFERENCE_BYTES);
       ImmutableMap.Builder builder =
           biMap ? newImmutableBiMapBuilder(size) : newImmutableMapBuilder(size);
       for (int i = 0; i < size; i++) {
