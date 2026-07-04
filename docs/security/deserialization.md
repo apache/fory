@@ -327,7 +327,7 @@ serializer or resolver when possible; read loops should not recompute reflective
 when the owner already knows the concrete type. Interface or dynamic paths reserve only storage that
 Fory clearly materializes and retains.
 
-#### C#
+#### C Sharp
 
 C# combines reference owners and inline value types. Classes, arrays, lists, dictionaries, hash sets,
 and other heap containers reserve a nonzero shallow owner cost plus direct backing, reference-slot,
