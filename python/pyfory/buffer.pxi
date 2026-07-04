@@ -335,6 +335,15 @@ cdef class Buffer:
                 f"Address range {offset, offset + length} out of bound {0, size_}",
             )
 
+    cpdef inline ensure_readable(self, int32_t length):
+        if length < 0:
+            raise_fory_error(CErrorCode.InvalidData, f"Readable byte count {length} is negative")
+        if length == 0:
+            return
+        if not self.c_buffer.ensure_readable(<uint32_t>length, self._error):
+            if not self._error.ok():
+                self._raise_if_error()
+
     cpdef inline write_bool(self, c_bool value):
         self.c_buffer.write_uint8(<uint8_t>value)
     

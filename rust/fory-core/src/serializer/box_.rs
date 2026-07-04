@@ -29,6 +29,12 @@ impl<T: Serializer + ForyDefault> Serializer for Box<T> {
     where
         Self: Sized + ForyDefault,
     {
+        // Box owns the heap storage for T; inline value serializers do not
+        // reserve their own self storage.
+        let heap_bytes = std::mem::size_of::<T>();
+        if heap_bytes != 0 {
+            context.reserve_graph_memory(heap_bytes)?;
+        }
         Ok(Box::new(T::fory_read_data(context)?))
     }
 

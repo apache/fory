@@ -215,8 +215,12 @@ fn read_arc_inner<T: Serializer + ForyDefault + 'static>(
     read_type_info: bool,
     typeinfo: Option<Rc<TypeInfo>>,
 ) -> Result<T, Error> {
-    // Read type info if needed, then read data directly
-    // No recursive ref handling needed since Arc<T> only wraps allowed types
+    // Arc owns the heap storage for T; inline value serializers do not reserve
+    // their own self storage.
+    let heap_bytes = std::mem::size_of::<T>();
+    if heap_bytes != 0 {
+        context.reserve_graph_memory(heap_bytes)?;
+    }
     if let Some(typeinfo) = typeinfo {
         return T::fory_read_with_type_info(context, RefMode::None, typeinfo);
     }

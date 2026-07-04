@@ -35,6 +35,7 @@ public final class ReadContext {
     private var typeInfoScopeStack: [(typeKey: UInt64, previousTypeInfo: TypeInfo?)] = []
     private var lastTypeInfo = TypeInfo.uncached
     private let config: Config
+    var remainingGraphMemoryBytes = 0
 
     init(
         buffer: ByteBuffer,
@@ -49,6 +50,30 @@ public final class ReadContext {
         self.maxDepth = config.maxDepth
         self.config = config
         self.refReader = RefReader()
+    }
+
+    @inline(__always)
+    public func reserveGraphMemory(_ bytes: Int) throws {
+        if _slowPath(bytes < 0) {
+            try throwGraphMemoryOverflow()
+        }
+        if _slowPath(bytes > remainingGraphMemoryBytes) {
+            try throwGraphMemoryExceeded(bytes: bytes)
+        }
+        remainingGraphMemoryBytes -= bytes
+    }
+
+    @inline(never)
+    private func throwGraphMemoryOverflow() throws -> Never {
+        throw ForyError.invalidData("graph memory estimate overflows")
+    }
+
+    @inline(never)
+    private func throwGraphMemoryExceeded(bytes: Int) throws -> Never {
+        let message =
+            "estimated graph memory request \(bytes) bytes exceeds maxGraphMemoryBytes "
+            + "remaining budget \(remainingGraphMemoryBytes) bytes"
+        throw ForyError.invalidData(message)
     }
 
     @inline(__always)
@@ -357,7 +382,8 @@ public final class ReadContext {
             for: localTypeInfo,
             wireTypeID: wireTypeID)
         compatibleTypeDefTypeInfos.push(cachedTypeInfo)
-        return try validateCompatibleTypeInfo(cachedTypeInfo, for: localTypeInfo, wireTypeID: wireTypeID)
+        return try validateCompatibleTypeInfo(
+            cachedTypeInfo, for: localTypeInfo, wireTypeID: wireTypeID)
     }
 
     @inline(__always)
@@ -639,7 +665,7 @@ public final class ReadContext {
         case .float64Array:
             value = try readPrimitiveArray(self) as [Double]
         case .array, .list:
-            value = try readListOfAny(refMode: .none) ?? []
+            value = try readListOfAny(context: self, refMode: .none) ?? []
         case .set:
             value = try Set<AnyHashable>.foryRead(self, refMode: .none, readTypeInfo: false)
         case .map:
@@ -711,86 +737,5 @@ public final class ReadContext {
         }
         compatibleTypeDefTypeInfos.reset()
         metaStrings.reset()
-    }
-}
-
-extension ReadContext {
-    public func readAny(
-        refMode: RefMode,
-        readTypeInfo: Bool = true
-    ) throws -> Any? {
-        try SerializableAny.foryRead(self, refMode: refMode, readTypeInfo: readTypeInfo).anyValue()
-    }
-
-    public func readListOfAny(
-        refMode: RefMode,
-        readTypeInfo: Bool = false
-    ) throws -> [Any]? {
-        let wrapped: [SerializableAny]? = try [SerializableAny]?.foryRead(
-            self,
-            refMode: refMode,
-            readTypeInfo: readTypeInfo
-        )
-        return wrapped?.map { $0.anyValueForCollection() }
-    }
-
-    public func readMapStringToAny(
-        refMode: RefMode,
-        readTypeInfo: Bool = false
-    ) throws -> [String: Any]? {
-        let wrapped: [String: SerializableAny]? = try [String: SerializableAny]?.foryRead(
-            self,
-            refMode: refMode,
-            readTypeInfo: readTypeInfo
-        )
-        guard let wrapped else {
-            return nil
-        }
-        var map: [String: Any] = [:]
-        map.reserveCapacity(wrapped.count)
-        for pair in wrapped {
-            map[pair.key] = pair.value.anyValueForCollection()
-        }
-        return map
-    }
-
-    public func readMapInt32ToAny(
-        refMode: RefMode,
-        readTypeInfo: Bool = false
-    ) throws -> [Int32: Any]? {
-        let wrapped: [Int32: SerializableAny]? = try [Int32: SerializableAny]?.foryRead(
-            self,
-            refMode: refMode,
-            readTypeInfo: readTypeInfo
-        )
-        guard let wrapped else {
-            return nil
-        }
-        var map: [Int32: Any] = [:]
-        map.reserveCapacity(wrapped.count)
-        for pair in wrapped {
-            map[pair.key] = pair.value.anyValueForCollection()
-        }
-        return map
-    }
-
-    public func readMapAnyHashableToAny(
-        refMode: RefMode,
-        readTypeInfo: Bool = false
-    ) throws -> [AnyHashable: Any]? {
-        let wrapped: [AnyHashable: SerializableAny]? = try [AnyHashable: SerializableAny]?.foryRead(
-            self,
-            refMode: refMode,
-            readTypeInfo: readTypeInfo
-        )
-        guard let wrapped else {
-            return nil
-        }
-        var map: [AnyHashable: Any] = [:]
-        map.reserveCapacity(wrapped.count)
-        for pair in wrapped {
-            map[pair.key] = pair.value.anyValueForCollection()
-        }
-        return map
     }
 }

@@ -36,6 +36,7 @@ import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.util.ExceptionUtils;
 
 /** Serializers for jdk9+ java.util.ImmutableCollections. */
@@ -52,6 +53,28 @@ public class ImmutableCollectionSerializers {
   private static MethodHandle setFactory;
   private static MethodHandle map1Factory;
   private static MethodHandle mapNFactory;
+
+  private static final int ARRAY_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(ArrayList.class);
+  private static final int HASH_MAP_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(HashMap.class);
+  private static final int HASH_SET_OWNER_BYTES =
+      Math.addExact(GraphMemoryEstimates.shallowObjectBytes(HashSet.class), HASH_MAP_OWNER_BYTES);
+  private static final int UNMODIFIABLE_LIST_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(
+          Collections.unmodifiableList(new ArrayList<>()).getClass());
+  private static final int UNMODIFIABLE_SET_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(
+          Collections.unmodifiableSet(new HashSet<>()).getClass());
+  private static final int UNMODIFIABLE_MAP_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(
+          Collections.unmodifiableMap(new HashMap<>()).getClass());
+  private static final int IMMUTABLE_LIST_FALLBACK_OWNER_BYTES =
+      Math.addExact(UNMODIFIABLE_LIST_OWNER_BYTES, ARRAY_LIST_OWNER_BYTES);
+  private static final int IMMUTABLE_SET_FALLBACK_OWNER_BYTES =
+      Math.addExact(UNMODIFIABLE_SET_OWNER_BYTES, HASH_SET_OWNER_BYTES);
+  private static final int IMMUTABLE_MAP_FALLBACK_OWNER_BYTES =
+      Math.addExact(UNMODIFIABLE_MAP_OWNER_BYTES, HASH_MAP_OWNER_BYTES);
 
   static {
     if (JdkVersion.MAJOR_VERSION > 8) {
@@ -119,13 +142,13 @@ public class ImmutableCollectionSerializers {
 
   public static class ImmutableListSerializer extends CollectionSerializer {
     public ImmutableListSerializer(TypeResolver typeResolver, Class cls) {
-      super(typeResolver, cls, true);
+      super(typeResolver, cls, true, immutableListOwnerBytes(cls));
     }
 
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       if (JdkVersion.MAJOR_VERSION > 8) {
         return new CollectionContainer<>(numElements);
@@ -180,13 +203,13 @@ public class ImmutableCollectionSerializers {
 
   public static class ImmutableSetSerializer extends CollectionSerializer {
     public ImmutableSetSerializer(TypeResolver typeResolver, Class cls) {
-      super(typeResolver, cls, true);
+      super(typeResolver, cls, true, immutableSetOwnerBytes(cls));
     }
 
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       if (JdkVersion.MAJOR_VERSION > 8) {
         return new CollectionContainer<>(numElements);
@@ -241,13 +264,13 @@ public class ImmutableCollectionSerializers {
 
   public static class ImmutableMapSerializer extends MapSerializer {
     public ImmutableMapSerializer(TypeResolver typeResolver, Class cls) {
-      super(typeResolver, cls, true);
+      super(typeResolver, cls, true, immutableMapOwnerBytes(cls));
     }
 
     @Override
     public Map newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(buffer);
+      int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
       if (JdkVersion.MAJOR_VERSION > 8) {
         return new JDKImmutableMapContainer(numElements);
@@ -321,5 +344,30 @@ public class ImmutableCollectionSerializers {
     resolver.registerInternalSerializer(SetN, new ImmutableSetSerializer(resolver, SetN));
     resolver.registerInternalSerializer(Map1, new ImmutableMapSerializer(resolver, Map1));
     resolver.registerInternalSerializer(MapN, new ImmutableMapSerializer(resolver, MapN));
+  }
+
+  private static int immutableListOwnerBytes(Class<?> cls) {
+    return usesJdkImmutableOwner()
+        ? GraphMemoryEstimates.shallowObjectBytes(cls)
+        : IMMUTABLE_LIST_FALLBACK_OWNER_BYTES;
+  }
+
+  private static int immutableSetOwnerBytes(Class<?> cls) {
+    return usesJdkImmutableOwner()
+        ? GraphMemoryEstimates.shallowObjectBytes(cls)
+        : IMMUTABLE_SET_FALLBACK_OWNER_BYTES;
+  }
+
+  private static int immutableMapOwnerBytes(Class<?> cls) {
+    return usesJdkImmutableOwner()
+        ? GraphMemoryEstimates.shallowObjectBytes(cls)
+        : IMMUTABLE_MAP_FALLBACK_OWNER_BYTES;
+  }
+
+  private static boolean usesJdkImmutableOwner() {
+    // The no-field-access/JDK8 fallback path materializes an unmodifiable wrapper plus a retained
+    // mutable source; charge that final graph shape instead of the inaccessible JDK immutable
+    // implementation class.
+    return JdkVersion.MAJOR_VERSION > 8 && MemoryUtils.JDK_COLLECTION_FIELD_ACCESS;
   }
 }

@@ -651,7 +651,7 @@ func (c *WriteContext) WriteValue(value reflect.Value, refMode RefMode, writeTyp
 	}
 
 	// Get type information and serializer for the value
-	typeInfo, err := c.typeResolver.getTypeInfo(value, true)
+	typeInfo, err := c.typeResolver.GetTypeInfo(value, true)
 	if err != nil {
 		c.SetError(SerializationErrorf("cannot get typeinfo for value %v: %v", value, err))
 		return

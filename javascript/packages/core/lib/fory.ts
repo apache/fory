@@ -38,6 +38,7 @@ const DEFAULT_MAX_TYPE_FIELDS = 512 as const;
 const DEFAULT_MAX_TYPE_META_BYTES = 4096 as const;
 const DEFAULT_MAX_SCHEMA_VERSIONS_PER_TYPE = 10 as const;
 const DEFAULT_MAX_AVERAGE_SCHEMA_VERSIONS_PER_TYPE = 3 as const;
+const DEFAULT_MAX_GRAPH_MEMORY_BYTES = 128 * 1024 * 1024;
 export default class Fory {
   readonly typeResolver: TypeResolver;
   readonly anySerializer: Serializer;
@@ -55,7 +56,10 @@ export default class Fory {
       throw new Error(`maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`);
     }
     this.typeResolver = new TypeResolver(this.config);
-    this.writeContext = new WriteContext(this.typeResolver, this.config);
+    this.writeContext = new WriteContext(
+      this.typeResolver,
+      this.config.hps === undefined ? undefined : { hps: this.config.hps },
+    );
     this.readContext = new ReadContext(this.typeResolver, this.config);
     this.typeResolver.bindContexts(this.writeContext, this.readContext);
     this.typeResolver.init();
@@ -88,10 +92,17 @@ export default class Fory {
         `maxAverageSchemaVersionsPerType must be a positive integer but got ${maxAverageSchemaVersionsPerType}`,
       );
     }
+    const maxGraphMemoryBytes = config?.maxGraphMemoryBytes ?? DEFAULT_MAX_GRAPH_MEMORY_BYTES;
+    if (!Number.isSafeInteger(maxGraphMemoryBytes) || maxGraphMemoryBytes <= 0) {
+      throw new Error(
+        `maxGraphMemoryBytes must be in range [1, ${Number.MAX_SAFE_INTEGER}] but got ${maxGraphMemoryBytes}`,
+      );
+    }
     return {
       ref: Boolean(config?.ref),
       useSliceString: Boolean(config?.useSliceString),
       maxDepth: config?.maxDepth,
+      maxGraphMemoryBytes,
       maxTypeFields,
       maxTypeMetaBytes,
       maxSchemaVersionsPerType,

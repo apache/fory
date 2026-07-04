@@ -291,6 +291,14 @@ export interface Config {
   ref: boolean;
   useSliceString: boolean;
   maxDepth?: number;
+  /**
+   * Approximate graph-memory gate for one root deserialization.
+   *
+   * Mainly gates materialized arrays, maps, sets, structs, and objects. Leaf
+   * values are gated by unread input bytes instead, and actual heap use can be
+   * higher.
+   */
+  maxGraphMemoryBytes: number;
   maxTypeFields: number;
   maxTypeMetaBytes: number;
   maxSchemaVersionsPerType: number;

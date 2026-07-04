@@ -118,17 +118,7 @@ public static class FieldSkipper
                         case RefFlag.RefValue:
                             {
                                 uint reservedRefId = context.RefReader.ReserveRefId();
-                                context.SetReservedRefId(reservedRefId);
-                                try
-                                {
-                                    object? value = ReadInlineTypedPayload(context);
-                                    context.StoreRef(value);
-                                    return value;
-                                }
-                                finally
-                                {
-                                    context.ClearReservedRefId();
-                                }
+                                return ReadInlineTypedPayload(context, reservedRefId);
                             }
                         case RefFlag.NotNullValue:
                             return ReadInlineTypedPayload(context);
@@ -145,6 +135,12 @@ public static class FieldSkipper
     {
         TypeInfo typeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
         return context.TypeResolver.ReadAnyValue(typeInfo, context);
+    }
+
+    private static object? ReadInlineTypedPayload(ReadContext context, uint refId)
+    {
+        TypeInfo typeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
+        return context.TypeResolver.ReadAnyValue(typeInfo, context, refId);
     }
 
     private static object? ReadResolvedValue(ReadContext context, TypeInfo typeInfo, RefMode refMode)
@@ -183,17 +179,7 @@ public static class FieldSkipper
                         case RefFlag.RefValue:
                             {
                                 uint reservedRefId = context.RefReader.ReserveRefId();
-                                context.SetReservedRefId(reservedRefId);
-                                try
-                                {
-                                    object? value = context.TypeResolver.ReadAnyValue(typeInfo, context);
-                                    context.StoreRef(value);
-                                    return value;
-                                }
-                                finally
-                                {
-                                    context.ClearReservedRefId();
-                                }
+                                return context.TypeResolver.ReadAnyValue(typeInfo, context, reservedRefId);
                             }
                         case RefFlag.NotNullValue:
                             return context.TypeResolver.ReadAnyValue(typeInfo, context);

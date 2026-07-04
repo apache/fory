@@ -28,6 +28,12 @@ import { getCompatibleCollectionArrayReadAction } from "./collection";
 import { CompatibleScalarConverter, getCompatibleScalarReadAction } from "../compatible/scalar";
 import { shouldSkipCompatibleRead } from "../compatible/field";
 
+const REFERENCE_BYTES = 4;
+// Conservative lower bounds for retained JavaScript owners themselves. Field/element slots are
+// charged separately by owner formulas; these are not Fory wire headers or V8 layout probes.
+const JS_STRUCT_OWNER_BYTES = 6 * REFERENCE_BYTES;
+const JS_ARRAY_LIST_OWNER_BYTES = 6 * REFERENCE_BYTES;
+
 /**
  * Returns true when a field's read cannot recurse and needs no depth tracking.
  * Covers leaf scalars, typed arrays, and collections/maps whose elements are all leaf types.
@@ -49,15 +55,31 @@ function isDepthFreeField(typeInfo: TypeInfo): boolean {
   return false;
 }
 
-function compatibleReadTargetExpr(typeInfo: TypeInfo, expr: string): string {
+function compatibleReadTargetStmt(
+  typeInfo: TypeInfo,
+  expr: string,
+  readContextName: string,
+  scope: Scope,
+  assignStmt: (expr: string) => string,
+): string {
   const action = getCompatibleCollectionArrayReadAction(typeInfo);
   switch (action?.target) {
     case "array":
-      return expr;
-    case "list":
-      return `Array.from(${expr})`;
+      return assignStmt(expr);
+    case "list": {
+      const value = scope.uniqueName("compatibleValue");
+      return `
+        const ${value} = ${expr};
+        if (${value} === null || ${value} === undefined) {
+          ${assignStmt(value)}
+        } else {
+          ${readContextName}.reserveGraphMemory(${JS_ARRAY_LIST_OWNER_BYTES} + ${value}.length * ${REFERENCE_BYTES});
+          ${assignStmt(`Array.from(${value})`)}
+        }
+      `;
+    }
     default:
-      return expr;
+      return assignStmt(expr);
   }
 }
 
@@ -561,6 +583,10 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     );
   }
 
+  private objectGraphBytes(): number {
+    return JS_STRUCT_OWNER_BYTES + this.sortedProps.length * REFERENCE_BYTES;
+  }
+
   readField(
     fieldName: string,
     fieldTypeInfo: TypeInfo,
@@ -570,7 +596,13 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     const { nullable = false, dynamic, trackingRef } = fieldTypeInfo;
     const refMode = toRefMode(trackingRef, nullable);
     const assignCompatible = (expr: string) =>
-      assignStmt(compatibleReadTargetExpr(fieldTypeInfo, expr));
+      compatibleReadTargetStmt(
+        fieldTypeInfo,
+        expr,
+        this.builder.getReadContextName(),
+        this.scope,
+        assignStmt,
+      );
     if (shouldSkipCompatibleRead(fieldTypeInfo)) {
       const discard = (expr: string) => `${expr};`;
       if (this.builder.resolver.isMonomorphic(fieldTypeInfo, dynamic)) {
@@ -809,13 +841,28 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
 
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
+    const hash = this.typeMeta.computeStructHash();
     if (!this.typeInfo.options?.props || Object.keys(this.typeInfo.options.props).length === 0) {
       return `
-        let ${result} = ${this.serializerExpr}.read(${refState});
+        ${
+          !this.builder.resolver.isCompatible()
+            ? `
+        if(${this.builder.reader.readInt32()} !== ${hash}) {
+          throw new Error("Read class version is not consistent with ${hash} ")
+        }
+      `
+            : ""
+        }
+        ${this.builder.getReadContextName()}.reserveGraphMemory(${JS_STRUCT_OWNER_BYTES});
+        ${
+          this.typeInfo.options?.withConstructor
+            ? `const ${result} = new ${this.builder.getOptions("creator")}();`
+            : `const ${result} = {};`
+        }
+        ${this.maybeReference(result, refState)}
         ${accessor(result)};
       `;
     }
-    const hash = this.typeMeta.computeStructHash();
     const directNumericObjectRead = this.readDirectNumericObject(accessor, refState);
     if (directNumericObjectRead !== null) {
       return `
@@ -841,6 +888,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       `
           : ""
       }
+      ${this.builder.getReadContextName()}.reserveGraphMemory(${this.objectGraphBytes()});
       ${
         this.typeInfo.options!.withConstructor
           ? `
@@ -911,6 +959,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     }
     const result = this.scope.uniqueName("result");
     return `
+      ${this.builder.getReadContextName()}.reserveGraphMemory(${this.objectGraphBytes()});
       const ${result} = {
         ${fields.map(({ key, expr }) => `${CodecBuilder.safePropName(key)}: ${expr}`).join(",\n")}
       };
@@ -1003,6 +1052,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       let ${value};
       ${reads}
       ${this.builder.reader.readSetCursor(cursor)}
+      ${this.builder.getReadContextName()}.reserveGraphMemory(${this.objectGraphBytes()});
       const ${result} = {
         ${fields.map(({ key, local }) => `${CodecBuilder.safePropName(key)}: ${local}`).join(",\n")}
       };

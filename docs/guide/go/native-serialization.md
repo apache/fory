@@ -38,7 +38,7 @@ Use native serialization when:
   the writer.
 - You want compatible schema evolution for Go-only rolling deployments without committing to a
   cross-language type mapping.
-- You are using Go reflection-based serializers for structs that never leave Go.
+- You are using Go fast serializers for structs that never leave Go.
 
 ## Create a Native-Mode Fory Instance
 
@@ -126,7 +126,7 @@ Native serialization keeps Go data in Go-native form:
 - Pointers and nil values, including nil slices and maps.
 - Interfaces and dynamic values when registered serializers can resolve their concrete types.
 - Time values such as `time.Time` and `time.Duration`.
-- Reflection-based serializers.
+- Fast serializers.
 
 Use [Supported Types](supported-types.md) for the full type surface and xlang mapping details.
 

@@ -25,6 +25,8 @@ import (
 type primitiveListSerializer struct {
 	type_      reflect.Type
 	elemTypeID TypeId
+	elemBytes  int
+	maxLength  int64
 }
 
 type compatiblePrimitiveListToArraySerializer struct {
@@ -37,45 +39,52 @@ func newPrimitiveListSerializer(type_ reflect.Type, elemTypeID TypeId) (Serializ
 		return nil, false
 	}
 	elemType := type_.Elem()
+	elemBytes := int(elemType.Size())
+	serializer := primitiveListSerializer{
+		type_:      type_,
+		elemTypeID: elemTypeID,
+		elemBytes:  elemBytes,
+		maxLength:  maxGraphCount(elemBytes),
+	}
 	switch elemType.Kind() {
 	case reflect.Bool:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == BOOL
+		return serializer, elemTypeID == BOOL
 	case reflect.Int8:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT8
+		return serializer, elemTypeID == INT8
 	case reflect.Uint8:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT8
+		return serializer, elemTypeID == UINT8
 	case reflect.Int16:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT16
+		return serializer, elemTypeID == INT16
 	case reflect.Uint16:
 		if elemType == float16Type {
-			return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == FLOAT16
+			return serializer, elemTypeID == FLOAT16
 		}
 		if elemType == bfloat16Type {
-			return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == BFLOAT16
+			return serializer, elemTypeID == BFLOAT16
 		}
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT16
+		return serializer, elemTypeID == UINT16
 	case reflect.Int32:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT32 || elemTypeID == VARINT32
+		return serializer, elemTypeID == INT32 || elemTypeID == VARINT32
 	case reflect.Uint32:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT32 || elemTypeID == VAR_UINT32
+		return serializer, elemTypeID == UINT32 || elemTypeID == VAR_UINT32
 	case reflect.Int64:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
+		return serializer, elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
 	case reflect.Uint64:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
+		return serializer, elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
 	case reflect.Int:
 		if reflect.TypeOf(int(0)).Size() == 8 {
-			return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
+			return serializer, elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
 		}
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == INT32 || elemTypeID == VARINT32
+		return serializer, elemTypeID == INT32 || elemTypeID == VARINT32
 	case reflect.Uint:
 		if reflect.TypeOf(uint(0)).Size() == 8 {
-			return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
+			return serializer, elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
 		}
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == UINT32 || elemTypeID == VAR_UINT32
+		return serializer, elemTypeID == UINT32 || elemTypeID == VAR_UINT32
 	case reflect.Float32:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == FLOAT32
+		return serializer, elemTypeID == FLOAT32
 	case reflect.Float64:
-		return primitiveListSerializer{type_: type_, elemTypeID: elemTypeID}, elemTypeID == FLOAT64
+		return serializer, elemTypeID == FLOAT64
 	default:
 		return nil, false
 	}
@@ -165,6 +174,17 @@ func (s primitiveListSerializer) ReadData(ctx *ReadContext, value reflect.Value)
 	err := ctx.Err()
 	length := ctx.ReadCollectionLength()
 	if ctx.HasError() {
+		return
+	}
+	if length < 0 {
+		ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
+		return
+	}
+	if int64(length) > s.maxLength {
+		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes))
+		return
+	}
+	if !ctx.ReserveGraphMemory(int64(graphSliceOwnerBytes) + int64(length)*int64(s.elemBytes)) {
 		return
 	}
 	if length == 0 {
@@ -266,6 +286,17 @@ func (s compatiblePrimitiveListToArraySerializer) ReadData(ctx *ReadContext, val
 		return
 	}
 	if value.Kind() == reflect.Slice {
+		if length < 0 {
+			ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
+			return
+		}
+		if int64(length) > s.listReader.maxLength {
+			ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.listReader.elemBytes))
+			return
+		}
+		if !ctx.ReserveGraphMemory(int64(graphSliceOwnerBytes) + int64(length)*int64(s.listReader.elemBytes)) {
+			return
+		}
 		temp := reflect.New(value.Type()).Elem()
 		s.listReader.readValues(buf, err, temp, length, false)
 		if ctx.HasError() {

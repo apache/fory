@@ -333,7 +333,7 @@ func (t *TypeSpec) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, er
 	if err != nil {
 		return TypeInfo{}, err
 	}
-	return TypeInfo{Type: goType, TypeID: uint32(t.TypeID), Serializer: serializer}, nil
+	return TypeInfo{Type: goType, TypeID: uint32(t.TypeID), Serializer: serializer, ValueBytes: int(goType.Size())}, nil
 }
 
 func (t *TypeSpec) goTypeForResolver(resolver *TypeResolver) (reflect.Type, error) {
@@ -1807,7 +1807,7 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 		if err != nil {
 			return nil, err
 		}
-		return &ptrToValueSerializer{valueSerializer: inner}, nil
+		return &ptrToValueSerializer{valueSerializer: inner, valueBytes: int(goType.Elem().Size())}, nil
 	}
 	switch spec.TypeID {
 	case LIST:
@@ -1825,9 +1825,9 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 		if spec.Element == nil || spec.Element.TypeID == UNKNOWN || goType.Elem().Kind() == reflect.Interface {
 			switch goType.Kind() {
 			case reflect.Slice:
-				return resolver.GetSliceSerializer(goType)
+				return resolver.getSliceSerializer(goType)
 			case reflect.Array:
-				return resolver.GetArraySerializer(goType)
+				return resolver.getArraySerializer(goType)
 			}
 		}
 		elemSerializer, err := serializerForTypeSpec(resolver, goType.Elem(), spec.Element)
@@ -1845,6 +1845,10 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 			elemSerializer:   elemSerializer,
 			elemReferencable: spec.Element != nil && spec.Element.TrackRef,
 			hasGenerics:      true,
+			type_:            goType,
+			keyBytes:         int(goType.Key().Size()),
+			valueBytes:       int(goType.Elem().Size()),
+			maxLength:        maxGraphCount(int(goType.Key().Size()) + int(goType.Elem().Size())),
 		}, nil
 	case MAP:
 		if spec.Key == nil || spec.Value == nil || spec.Key.TypeID == UNKNOWN || spec.Value.TypeID == UNKNOWN ||
@@ -1866,6 +1870,9 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 			keyReferencable:   spec.Key != nil && spec.Key.TrackRef,
 			valueReferencable: spec.Value != nil && spec.Value.TrackRef,
 			hasGenerics:       true,
+			keyBytes:          int(goType.Key().Size()),
+			valueBytes:        int(goType.Elem().Size()),
+			maxLength:         maxGraphCount(int(goType.Key().Size()) + int(goType.Elem().Size())),
 		}, nil
 	}
 	if serializer, ok, err := serializerForEncodedScalar(goType, spec.TypeID); ok || err != nil {
@@ -1874,9 +1881,9 @@ func serializerForTypeSpec(resolver *TypeResolver, goType reflect.Type, spec *Ty
 	if isPrimitiveArrayType(spec.TypeID) || spec.TypeID == BINARY {
 		switch goType.Kind() {
 		case reflect.Slice:
-			return resolver.GetSliceSerializer(goType)
+			return resolver.getSliceSerializer(goType)
 		case reflect.Array:
-			return resolver.GetArraySerializer(goType)
+			return resolver.getArraySerializer(goType)
 		}
 	}
 	return resolver.getSerializerByType(goType, true)

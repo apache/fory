@@ -34,6 +34,7 @@
     named(foryReadData),
     named(foryReadCompatibleData),
     named(__foryReadChangedData),
+    named(__foryReadPayload),
     named(__foryReadDataImpl),
     named(__foryReadCompatibleDataImpl)
 )
@@ -60,6 +61,7 @@ public macro ForyStruct(evolving: Bool = true) =
     named(foryReadData),
     named(foryReadCompatibleData),
     named(__foryReadChangedData),
+    named(__foryReadPayload),
     named(__foryReadDataImpl),
     named(__foryReadCompatibleDataImpl)
 )
@@ -85,6 +87,7 @@ public macro ForyEnum() = #externalMacro(module: "ForyMacro", type: "ForyEnumMac
     named(foryReadData),
     named(foryReadCompatibleData),
     named(__foryReadChangedData),
+    named(__foryReadPayload),
     named(__foryReadDataImpl),
     named(__foryReadCompatibleDataImpl)
 )

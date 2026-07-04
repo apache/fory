@@ -69,7 +69,7 @@ private func isPrimitiveFastPathField(_ field: ParsedField) -> Bool {
     guard field.dynamicAnyCodec == nil, field.customCodecType == nil else {
         return false
     }
-    guard field.typeID != 27, !compatibleFieldNeedsTypeInfo(field) else {
+    guard field.typeID != MacroTypeId.structType, !compatibleFieldNeedsTypeInfo(field) else {
         return false
     }
     return primitiveUnsafeWriteMethod(for: field) != nil

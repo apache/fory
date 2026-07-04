@@ -1569,6 +1569,9 @@ inline void any_write_adapter(const std::any &value, WriteContext &ctx) {
 }
 
 template <typename T> inline std::any any_read_adapter(ReadContext &ctx) {
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+    return std::any();
+  }
   T value = Serializer<T>::read_data(ctx);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return std::any();
@@ -2123,6 +2126,9 @@ void TypeResolver::harness_write_adapter(const void *value, WriteContext &ctx,
 template <typename T>
 void *TypeResolver::harness_read_adapter(ReadContext &ctx, RefMode ref_mode,
                                          bool read_type_info) {
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+    return nullptr;
+  }
   T value = Serializer<T>::read(ctx, ref_mode, read_type_info);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;
@@ -2147,6 +2153,9 @@ void TypeResolver::harness_write_data_adapter(const void *value,
 
 template <typename T>
 void *TypeResolver::harness_read_data_adapter(ReadContext &ctx) {
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+    return nullptr;
+  }
   T value = Serializer<T>::read_data(ctx);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;
@@ -2169,6 +2178,9 @@ inline void TypeResolver::harness_destroy_adapter_noop(void *ptr) { (void)ptr; }
 template <typename T>
 void *TypeResolver::harness_read_compatible_adapter(ReadContext &ctx,
                                                     const TypeInfo *ti) {
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(sizeof(T)))) {
+    return nullptr;
+  }
   T value = Serializer<T>::read_compatible(ctx, ti);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;

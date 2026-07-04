@@ -96,6 +96,8 @@ func (is *InputStream) Shrink() {
 func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = is.buffer
+	target := reflect.ValueOf(v).Elem()
+	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
 	defer func() {
 		f.readCtx.buffer = origBuffer
 		f.resetReadState()
@@ -106,7 +108,6 @@ func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	target := reflect.ValueOf(v).Elem()
 	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
@@ -123,13 +124,14 @@ func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
 	defer f.resetReadState()
 	// Always reset to enforce stateless semantics.
 	f.readCtx.buffer.ResetWithReader(r, 0)
+	target := reflect.ValueOf(v).Elem()
+	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
 
-	target := reflect.ValueOf(v).Elem()
 	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()

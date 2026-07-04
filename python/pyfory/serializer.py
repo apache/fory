@@ -24,6 +24,7 @@ import inspect
 import marshal
 import os
 import pickle
+import struct
 import types
 from typing import Tuple
 
@@ -42,6 +43,15 @@ from pyfory._fory import (
 )
 
 _WINDOWS = os.name == "nt"
+_REFERENCE_BYTES = struct.calcsize("P")
+# Lower-bound shallow owner costs for retained Python objects/tuples/dicts. Field and entry slots
+# are charged separately by count below; these are not Fory wire header sizes.
+_PY_OBJECT_OWNER_BYTES = 4 * _REFERENCE_BYTES
+_TUPLE_OWNER_BYTES = 3 * _REFERENCE_BYTES
+_DICT_OWNER_BYTES = 8 * _REFERENCE_BYTES
+_SLOTTED_OBJECT_OWNER_BYTES = _PY_OBJECT_OWNER_BYTES
+_DICT_BACKED_OBJECT_OWNER_BYTES = _PY_OBJECT_OWNER_BYTES
+_INSTANCE_DICT_OWNER_BYTES = _DICT_OWNER_BYTES
 
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory.types import TypeId
@@ -933,6 +943,7 @@ class PythonNDArraySerializer(NDArraySerializer):
         if dtype.kind == "O":
             length = read_context.read_varint32()
             _check_non_negative_size(length, "ndarray object")
+            read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES + length * _REFERENCE_BYTES)
             read_context.check_readable_bytes(length)
             items = [read_context.read_ref() for _ in range(length)]
             return np.array(items, dtype=object)
@@ -1081,6 +1092,7 @@ class StatefulSerializer(Serializer):
             obj = self.cls(*args, **kwargs)
         else:
             # Case 2: Only __getstate__ was used. Create without calling __init__.
+            read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
             obj = self.cls.__new__(self.cls)
 
         if state is not None:
@@ -1100,6 +1112,7 @@ class _DefaultPolicyStatefulSerializer(StatefulSerializer):
             obj = self.cls(*args, **kwargs)
         else:
             # Case 2: Only __getstate__ was used. Create without calling __init__.
+            read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
             obj = self.cls.__new__(self.cls)
 
         if state is not None:
@@ -1223,6 +1236,7 @@ class ReduceSerializer(Serializer):
                 # Create the object using the callable and args
                 if isinstance(callable_obj, type):
                     read_context.policy.authorize_instantiation(callable_obj)
+                read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
                 obj = callable_obj(*args)
 
             # Restore state if present
@@ -1346,9 +1360,13 @@ class TypeSerializer(Serializer):
         ref_id = read_context.last_preserved_ref_id()
 
         num_bases = read_context.read_var_uint32()
-        _check_non_negative_size(num_bases, "local class base")
+        assert 0 <= num_bases <= 255, f"Invalid number of bases for local class: {num_bases}"
+        read_context.reserve_graph_memory(_TUPLE_OWNER_BYTES + num_bases * _REFERENCE_BYTES)
+        # The bases tuple is built from per-item reads, so no readable-byte guard is needed here;
+        # graph reservation covers the bases tuple retained by the created class.
         bases = tuple(read_context.read_ref() for _ in range(num_bases))
         read_context.policy.authorize_instantiation(type, module=module, qualname=qualname, bases=bases)
+        read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
         cls = type(name, bases, {})
         read_context.set_read_ref(ref_id, cls)
         read_context.policy.validate_class(cls, is_local=True)
@@ -1358,6 +1376,7 @@ class TypeSerializer(Serializer):
         for _ in range(num_class_methods):
             attr_name = read_context.read_string()
             func = read_context.read_ref()
+            read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
             method = types.MethodType(func, cls)
             setattr(cls, attr_name, method)
         class_dict = read_context.read_ref()
@@ -1532,8 +1551,11 @@ class FunctionSerializer(Serializer):
             self_obj = read_context.read_ref()
             method_name = read_context.read_string()
             if policy is DEFAULT_POLICY:
+                read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
                 return getattr(self_obj, method_name)
-            return _resolve_validated_bound_method(policy, self_obj, method_name, is_local=_is_local_receiver(self_obj))
+            method = _resolve_validated_bound_method(policy, self_obj, method_name, is_local=_is_local_receiver(self_obj))
+            read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
+            return method
 
         if func_type_id == 1:
             module = read_context.read_string()
@@ -1555,6 +1577,7 @@ class FunctionSerializer(Serializer):
         name = qualname.rsplit(".")[-1]
 
         marshalled_code = read_context.read_bytes_and_size()
+        read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
         code = marshal.loads(marshalled_code)
 
         has_defaults = read_context.read_bool()
@@ -1565,6 +1588,7 @@ class FunctionSerializer(Serializer):
             default_values = []
             for _ in range(num_defaults):
                 default_values.append(read_context.read_ref())
+            read_context.reserve_graph_memory(_TUPLE_OWNER_BYTES + num_defaults * _REFERENCE_BYTES)
             defaults = tuple(default_values)
 
         has_closure = read_context.read_bool()
@@ -1577,6 +1601,7 @@ class FunctionSerializer(Serializer):
             for _ in range(num_freevars):
                 closure_values.append(read_context.read_ref())
 
+            read_context.reserve_graph_memory(_TUPLE_OWNER_BYTES + num_freevars * (_REFERENCE_BYTES + _PY_OBJECT_OWNER_BYTES))
             closure = tuple(types.CellType(value) for value in closure_values)
 
         num_freevars = read_context.read_var_uint32()
@@ -1588,6 +1613,13 @@ class FunctionSerializer(Serializer):
         globals_dict = read_context.read_ref()
 
         # Create a globals dictionary with module's globals as the base
+        func_global_entries = len(mod.__dict__) if mod else 0
+        if isinstance(globals_dict, dict):
+            func_global_entries = max(func_global_entries, len(globals_dict))
+        has_builtins = (mod is not None and "__builtins__" in mod.__dict__) or (isinstance(globals_dict, dict) and "__builtins__" in globals_dict)
+        if not has_builtins:
+            func_global_entries += 1
+        read_context.reserve_graph_memory(_DICT_OWNER_BYTES + func_global_entries * 2 * _REFERENCE_BYTES)
         func_globals = {}
         if mod:
             func_globals.update(mod.__dict__)
@@ -1598,6 +1630,7 @@ class FunctionSerializer(Serializer):
         if "__builtins__" not in func_globals:
             func_globals["__builtins__"] = builtins
 
+        read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
         func = types.FunctionType(code, func_globals, name, defaults, closure)
 
         func.__module__ = module
@@ -1645,9 +1678,11 @@ class NativeFuncMethodSerializer(Serializer):
             _authorize_callable_materialization(policy, types.MethodType, method_name=name)
             obj = read_context.read_ref()
             if policy is DEFAULT_POLICY:
+                read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
                 func = getattr(obj, name)
             else:
                 func = _resolve_validated_bound_method(policy, obj, name, is_local=_is_local_receiver(obj))
+                read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
         return func
 
 
@@ -1672,13 +1707,16 @@ class MethodSerializer(Serializer):
         method_name = read_context.read_string()
 
         if self._use_default_policy:
+            read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
             return getattr(instance, method_name)
-        return _resolve_validated_bound_method(
+        method = _resolve_validated_bound_method(
             read_context.policy,
             instance,
             method_name,
             is_local=_is_local_receiver(instance),
         )
+        read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES)
+        return method
 
 
 class ObjectSerializer(Serializer):
@@ -1696,6 +1734,13 @@ class ObjectSerializer(Serializer):
             if isinstance(slots, str):
                 slots = [slots]
             self._slot_field_names = sorted(slots)
+        if self._slot_field_names is None:
+            # Dict-backed objects retain an instance dict with key and value references per field.
+            self._graph_memory_owner_bytes = _DICT_BACKED_OBJECT_OWNER_BYTES + _INSTANCE_DICT_OWNER_BYTES
+            self._graph_memory_field_bytes = 2 * _REFERENCE_BYTES
+        else:
+            self._graph_memory_owner_bytes = _SLOTTED_OBJECT_OWNER_BYTES
+            self._graph_memory_field_bytes = _REFERENCE_BYTES
 
     def write(self, write_context, value):
         if self._slot_field_names is not None:
@@ -1713,10 +1758,11 @@ class ObjectSerializer(Serializer):
     def read(self, read_context):
         policy = read_context.policy
         policy.authorize_instantiation(self.type_)
-        obj = self.type_.__new__(self.type_)
-        read_context.reference(obj)
         num_fields = read_context.read_var_uint32()
         _check_non_negative_size(num_fields, "object field")
+        read_context.reserve_graph_memory(self._graph_memory_owner_bytes + num_fields * self._graph_memory_field_bytes)
+        obj = self.type_.__new__(self.type_)
+        read_context.reference(obj)
         state = {}
         for _ in range(num_fields):
             field_name = read_context.read_string()
@@ -1730,10 +1776,11 @@ class ObjectSerializer(Serializer):
 
 class _DefaultPolicyObjectSerializer(ObjectSerializer):
     def read(self, read_context):
-        obj = self.type_.__new__(self.type_)
-        read_context.reference(obj)
         num_fields = read_context.read_var_uint32()
         _check_non_negative_size(num_fields, "object field")
+        read_context.reserve_graph_memory(self._graph_memory_owner_bytes + num_fields * self._graph_memory_field_bytes)
+        obj = self.type_.__new__(self.type_)
+        read_context.reference(obj)
         for _ in range(num_fields):
             field_name = read_context.read_string()
             field_value = read_context.read_ref()

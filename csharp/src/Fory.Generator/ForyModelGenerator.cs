@@ -150,6 +150,11 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("namespace Apache.Fory.Generated;");
         sb.AppendLine();
+        sb.AppendLine("file static class __ForyGraphElementBytes<T>");
+        sb.AppendLine("{");
+        sb.AppendLine("    internal static readonly int Bytes = typeof(T).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<T>() : 4;");
+        sb.AppendLine("}");
+        sb.AppendLine();
 
         foreach (KeyValuePair<string, TypeModel> entry in models.OrderBy(kv => kv.Key, StringComparer.Ordinal))
         {
@@ -212,6 +217,19 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("    private static bool __ForyRefMetaMatches;");
         sb.AppendLine(
             $"    private const bool __ForyAllFieldsBuiltIn = {BoolLiteral(model.SortedMembers.All(m => m.DynamicAnyKind == DynamicAnyKind.None && m.Classification.IsBuiltIn))};");
+        if (model.Kind == DeclKind.Class)
+        {
+            string graphMemoryExpr = ModelGraphMemoryExpr(model);
+            bool constGraphMemory = IsConstGraphMemoryExpr(graphMemoryExpr);
+            string graphMemoryStorage = constGraphMemory ? "const" : "static readonly";
+            if (!constGraphMemory)
+            {
+                graphMemoryExpr = $"(uint)({graphMemoryExpr})";
+            }
+
+            sb.AppendLine($"    private {graphMemoryStorage} uint __ForyGraphMemoryBytes = {graphMemoryExpr};");
+        }
+
         sb.AppendLine(
             "    private static global::System.Collections.Generic.IReadOnlyList<global::Apache.Fory.TypeMetaFieldInfo>? __ForyNoRefTypeMetaFields;");
         sb.AppendLine(
@@ -446,13 +464,42 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
 
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine($"    private {model.TypeName} ReadDataWithoutTypeMeta(global::Apache.Fory.ReadContext context)");
-        sb.AppendLine("    {");
-        sb.AppendLine($"        {model.TypeName} valueNoTypeMeta = new {model.TypeName}();");
+        EmitReadDataWithoutTypeMeta(sb, model, "ReadDataWithoutTypeMeta");
+        EmitReadDataMethod(sb, model, "ReadData", "ReadDataWithoutTypeMeta", "public");
+
+        sb.AppendLine("}");
+    }
+
+    private static void EmitReadDataWithoutTypeMeta(
+        StringBuilder sb,
+        TypeModel model,
+        string methodName)
+    {
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("        context.StoreRef(valueNoTypeMeta);");
+            sb.AppendLine(
+                $"    private {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context, bool publishRef, uint refId)");
         }
+        else
+        {
+            sb.AppendLine($"    private {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context)");
+        }
+
+        sb.AppendLine("    {");
+        if (model.Kind == DeclKind.Class)
+        {
+            sb.AppendLine("        context.ReserveGraphMemory(__ForyGraphMemoryBytes);");
+        }
+        else
+        {
+            sb.AppendLine("        // Value serializers do not reserve their own graph memory because value storage is");
+            sb.AppendLine("        // owned by the holder that stores or allocates the value. Containers, maps, arrays,");
+            sb.AppendLine("        // pointer/box owners, class/reference owners, or dynamic boxing paths reserve");
+            sb.AppendLine("        // the storage they own.");
+        }
+
+        sb.AppendLine($"        {model.TypeName} valueNoTypeMeta = new {model.TypeName}();");
+        EmitRefPublication(sb, model, "valueNoTypeMeta", 2);
 
         foreach (MemberModel member in model.SortedMembers)
         {
@@ -470,23 +517,110 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("        return valueNoTypeMeta;");
         sb.AppendLine("    }");
         sb.AppendLine();
-        sb.AppendLine($"    public override {model.TypeName} ReadData(global::Apache.Fory.ReadContext context)");
+    }
+
+    private static void EmitReadDataMethod(
+        StringBuilder sb,
+        TypeModel model,
+        string methodName,
+        string noTypeMetaMethodName,
+        string accessibility)
+    {
+        sb.AppendLine("    [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
+        sb.AppendLine($"    {accessibility} override {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
+        if (model.Kind == DeclKind.Class)
+        {
+            // Generated class serializers allocate the reference owner before reading fields. Keep
+            // the ref-aware path in the existing Read API so self-references publish the final
+            // owner, while structs continue to read as inline values with no generated ref
+            // publication.
+            sb.AppendLine($"        return {methodName}Core(context, publishRef: false, refId: 0);");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine(
+                $"    private {model.TypeName} ReadReservedRefData(global::Apache.Fory.ReadContext context, uint refId)");
+            sb.AppendLine("    {");
+            sb.AppendLine($"        return {methodName}Core(context, publishRef: true, refId);");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine(
+                $"    public override {model.TypeName} Read(global::Apache.Fory.ReadContext context, global::Apache.Fory.RefMode refMode, bool readTypeInfo)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (refMode != global::Apache.Fory.RefMode.None)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            global::Apache.Fory.RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);");
+            sb.AppendLine("            switch (flag)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                case global::Apache.Fory.RefFlag.Null:");
+            sb.AppendLine("                    return default!;");
+            sb.AppendLine("                case global::Apache.Fory.RefFlag.Ref:");
+            sb.AppendLine("                    {");
+            sb.AppendLine("                        uint refId = context.RefReader.ReadRefId(context.Reader);");
+            sb.AppendLine($"                        return context.RefReader.GetRef<{model.TypeName}>(refId);");
+            sb.AppendLine("                    }");
+            sb.AppendLine("                case global::Apache.Fory.RefFlag.RefValue:");
+            sb.AppendLine("                    {");
+            sb.AppendLine("                        uint reservedRefId = context.RefReader.ReserveRefId();");
+            sb.AppendLine("                        if (readTypeInfo)");
+            sb.AppendLine("                        {");
+            sb.AppendLine("                            context.TypeResolver.ReadTypeInfo(this, context);");
+            sb.AppendLine("                        }");
+            sb.AppendLine();
+            sb.AppendLine($"                        return {methodName}Core(context, publishRef: true, reservedRefId);");
+            sb.AppendLine("                    }");
+            sb.AppendLine("                case global::Apache.Fory.RefFlag.NotNullValue:");
+            sb.AppendLine("                    break;");
+            sb.AppendLine("                default:");
+            sb.AppendLine("                    throw new global::Apache.Fory.RefException($\"invalid ref flag {(sbyte)flag}\");");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        if (readTypeInfo)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            context.TypeResolver.ReadTypeInfo(this, context);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine($"        return {methodName}Core(context, publishRef: false, refId: 0);");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine(
+                $"    private {model.TypeName} {methodName}Core(global::Apache.Fory.ReadContext context, bool publishRef, uint refId)");
+            sb.AppendLine("    {");
+        }
+
         sb.AppendLine("        if (context.Compatible)");
         sb.AppendLine("        {");
         sb.AppendLine(
             $"            global::Apache.Fory.TypeMeta? maybeTypeMeta = context.GetTypeMeta<{model.TypeName}>();");
         sb.AppendLine("            if (maybeTypeMeta is null)");
         sb.AppendLine("            {");
-        sb.AppendLine("                return ReadDataWithoutTypeMeta(context);");
+        if (model.Kind == DeclKind.Class)
+        {
+            sb.AppendLine($"                return {noTypeMetaMethodName}(context, publishRef, refId);");
+        }
+        else
+        {
+            sb.AppendLine($"                return {noTypeMetaMethodName}(context);");
+        }
+
         sb.AppendLine("            }");
         sb.AppendLine();
         sb.AppendLine("            global::Apache.Fory.TypeMeta typeMeta = maybeTypeMeta;");
-        sb.AppendLine($"            {model.TypeName} value = new {model.TypeName}();");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("            context.StoreRef(value);");
+            sb.AppendLine("            context.ReserveGraphMemory(__ForyGraphMemoryBytes);");
         }
+        else
+        {
+            sb.AppendLine("            // Value serializers do not reserve their own graph memory because value storage is");
+            sb.AppendLine("            // owned by the holder that stores or allocates the value. Containers, maps, arrays,");
+            sb.AppendLine("            // pointer/box owners, class/reference owners, or dynamic boxing paths reserve");
+            sb.AppendLine("            // the storage they own.");
+        }
+
+        sb.AppendLine($"            {model.TypeName} value = new {model.TypeName}();");
+        EmitRefPublication(sb, model, "value", 3);
 
         sb.AppendLine("            bool __ForyExactTypeMeta = __ForyMatchesCachedTypeMeta(typeMeta, context.TrackRef, context.TypeResolver);");
         sb.AppendLine("            if (__ForyAllFieldsBuiltIn && __ForyExactTypeMeta)");
@@ -592,11 +726,20 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("            }");
         sb.AppendLine("        }");
         sb.AppendLine();
-        sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");
         if (model.Kind == DeclKind.Class)
         {
-            sb.AppendLine("        context.StoreRef(valueSchema);");
+            sb.AppendLine("        context.ReserveGraphMemory(__ForyGraphMemoryBytes);");
         }
+        else
+        {
+            sb.AppendLine("        // Value serializers do not reserve their own graph memory because value storage is");
+            sb.AppendLine("        // owned by the holder that stores or allocates the value. Containers, maps, arrays,");
+            sb.AppendLine("        // pointer/box owners, class/reference owners, or dynamic boxing paths reserve");
+            sb.AppendLine("        // the storage they own.");
+        }
+
+        sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");
+        EmitRefPublication(sb, model, "valueSchema", 2);
 
         foreach (MemberModel member in model.SortedMembers)
         {
@@ -605,7 +748,25 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
 
         sb.AppendLine("        return valueSchema;");
         sb.AppendLine("    }");
-        sb.AppendLine("}");
+        sb.AppendLine();
+    }
+
+    private static void EmitRefPublication(
+        StringBuilder sb,
+        TypeModel model,
+        string valueName,
+        int indentLevel)
+    {
+        if (model.Kind != DeclKind.Class)
+        {
+            return;
+        }
+
+        string indent = new(' ', indentLevel * 4);
+        sb.AppendLine($"{indent}if (publishRef)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    context.RefReader.StoreRefAt(refId, {valueName});");
+        sb.AppendLine($"{indent}}}");
     }
 
     private static void EmitUnionSerializer(StringBuilder sb, TypeModel model)
@@ -693,7 +854,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             sb.AppendLine($"            case {caseId}:");
             sb.AppendLine("            {");
             EmitReadUnionCasePayload(sb, unionCase, valueVar, 4);
-            sb.AppendLine($"                return new {unionCase.TypeName}({valueVar});");
+            sb.AppendLine($"                {model.TypeName} __foryUnion = new {unionCase.TypeName}({valueVar});");
+            sb.AppendLine("                return __foryUnion;");
             sb.AppendLine("            }");
         }
 
@@ -705,7 +867,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
         else
         {
-            sb.AppendLine($"                return new {unknownCase.TypeName}(global::Apache.Fory.UnknownCaseSerializer.ReadPayload(context, caseId));");
+            sb.AppendLine($"                {model.TypeName} __foryUnion = new {unknownCase.TypeName}(global::Apache.Fory.UnknownCaseSerializer.ReadPayload(context, caseId));");
+            sb.AppendLine("                return __foryUnion;");
         }
 
         sb.AppendLine("            }");
@@ -1161,12 +1324,14 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine($"{indent}}}");
         string elementTypeName = codec.CarrierKind == CarrierKind.Array ? ElementTypeName(codec.TypeName) : PackedArrayElementTypeName(codec.TypeId);
         uint elementTypeId = PackedArrayElementTypeId(codec.TypeId);
+        string elementBytesExpr = GraphElementBytesExpr(elementTypeName);
         if (codec.CarrierKind == CarrierKind.Array)
         {
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new {ElementTypeName(codec.TypeName)}[{lengthVar}];");
         }
         else
         {
+            sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphListOwnerBytesExpr} + (long){lengthVar} * {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({lengthVar});");
         }
 
@@ -1513,6 +1678,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
         else
         {
+            string elementBytesExpr = GraphElementBytesExpr(PackedArrayElementTypeName(codec.TypeId));
+            sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphListOwnerBytesExpr} + (long){countVar} * {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({countVar});");
         }
 
@@ -1552,6 +1719,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         string sameTypeVar = $"__forySameType{id++}";
         string declaredVar = $"__foryDeclared{id++}";
         sb.AppendLine($"{indent}int {lengthVar} = checked((int)context.Reader.ReadVarUInt32());");
+        string ownerBytesExpr = isSet ? GraphSetOwnerBytesExpr : GraphListOwnerBytesExpr;
+        sb.AppendLine($"{indent}context.ReserveGraphMemory({ownerBytesExpr} + (long){lengthVar} * {GraphElementBytesExpr(element)});");
         sb.AppendLine($"{indent}if ({lengthVar} != 0)");
         sb.AppendLine($"{indent}{{");
         sb.AppendLine($"{indent}    context.Reader.CheckBound({lengthVar});");
@@ -1657,6 +1826,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         FieldCodecModel value = codec.Generics[1];
         string totalVar = $"__foryTotal{id++}";
         sb.AppendLine($"{indent}int {totalVar} = checked((int)context.Reader.ReadVarUInt32());");
+        sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphMapOwnerBytesExpr} + (long){totalVar} * {GraphMapElementBytesExpr(key, value)});");
         sb.AppendLine($"{indent}if ({totalVar} != 0)");
         sb.AppendLine($"{indent}{{");
         sb.AppendLine($"{indent}    context.Reader.CheckBound({totalVar});");
@@ -1796,6 +1966,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             member.Group,
             member.IsCollection,
             member.UseDictionaryTypeInfoCache,
+            member.UsesReferenceStorage,
+            member.FixedValueBytes,
             member.IsRefType,
             member.NeedsFieldTypeInfo,
             member.DynamicAnyKind,
@@ -1813,6 +1985,72 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         return arrayTypeName.EndsWith("[]", StringComparison.Ordinal)
             ? arrayTypeName.Substring(0, arrayTypeName.Length - 2)
             : "object";
+    }
+
+    private const string GraphObjectOwnerBytesExpr =
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 4)";
+    private const string GraphListOwnerBytesExpr =
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 12)";
+    private const string GraphSetOwnerBytesExpr =
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 28)";
+    private const string GraphMapOwnerBytesExpr =
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 32)";
+
+    private static string GraphElementBytesExpr(FieldCodecModel codec)
+    {
+        return GraphElementBytesExpr(
+            codec.Nullable && !codec.NullableValueType
+                ? StripNullableForTypeOf(codec.TypeName)
+                : codec.TypeName);
+    }
+
+    private static string GraphElementBytesExpr(string typeName)
+    {
+        return $"__ForyGraphElementBytes<{typeName}>.Bytes";
+    }
+
+    private static string GraphMapElementBytesExpr(FieldCodecModel key, FieldCodecModel value)
+    {
+        return $"((long){GraphElementBytesExpr(key)} + {GraphElementBytesExpr(value)})";
+    }
+
+    private static string ModelGraphMemoryExpr(TypeModel model)
+    {
+        System.Collections.Generic.List<string> parts = new() { GraphObjectOwnerBytesExpr };
+        foreach (MemberModel member in model.SortedMembers)
+        {
+            parts.Add(FieldGraphMemoryExpr(member));
+        }
+
+        return string.Join(" + ", parts);
+    }
+
+    private static string FieldGraphMemoryExpr(MemberModel member)
+    {
+        if (member.Classification.IsPrimitive && member.Classification.PrimitiveSize > 0)
+        {
+            return $"{member.Classification.PrimitiveSize}";
+        }
+
+        if (member.UsesReferenceStorage)
+        {
+            return "4";
+        }
+
+        if (member.FixedValueBytes > 0)
+        {
+            return $"{member.FixedValueBytes}";
+        }
+
+        string typeName = StripNullableForTypeOf(member.TypeName);
+        return $"global::System.Runtime.CompilerServices.Unsafe.SizeOf<{typeName}>()";
+    }
+
+    private static bool IsConstGraphMemoryExpr(string expression)
+    {
+        return expression.IndexOf("typeof(", StringComparison.Ordinal) < 0 &&
+               expression.IndexOf("IntPtr.", StringComparison.Ordinal) < 0 &&
+               expression.IndexOf("Unsafe.", StringComparison.Ordinal) < 0;
     }
 
     private static string PackedArrayElementTypeName(uint typeId)
@@ -2043,6 +2281,12 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             return;
         }
 
+        if (CanReadInlineValueData(member))
+        {
+            EmitInlineValueDataRead(sb, member, assignmentTarget, readTypeInfoExpr, indent);
+            return;
+        }
+
         if (variableSuffix == "Compat")
         {
             sb.AppendLine(
@@ -2054,9 +2298,56 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().Read(context, {refModeExpr}, {readTypeInfoExpr});");
     }
 
+    private static void EmitInlineValueDataRead(
+        StringBuilder sb,
+        MemberModel member,
+        string assignmentTarget,
+        string readTypeInfoExpr,
+        string indent)
+    {
+        if (readTypeInfoExpr == "false")
+        {
+            sb.AppendLine(
+                $"{indent}{assignmentTarget} = context.TypeResolver.GetSerializer<{member.TypeName}>().ReadData(context);");
+            return;
+        }
+
+        string serializerVar = $"__fory{Sanitize(member.Name)}Serializer";
+        sb.AppendLine(
+            $"{indent}global::Apache.Fory.Serializer<{member.TypeName}> {serializerVar} = context.TypeResolver.GetSerializer<{member.TypeName}>();");
+        if (readTypeInfoExpr == "true")
+        {
+            sb.AppendLine($"{indent}context.TypeResolver.ReadTypeInfo({serializerVar}, context);");
+        }
+        else
+        {
+            sb.AppendLine($"{indent}if ({readTypeInfoExpr})");
+            sb.AppendLine($"{indent}{{");
+            sb.AppendLine($"{indent}  context.TypeResolver.ReadTypeInfo({serializerVar}, context);");
+            sb.AppendLine($"{indent}}}");
+        }
+
+        sb.AppendLine($"{indent}{assignmentTarget} = {serializerVar}.ReadData(context);");
+    }
+
     private static bool CompatibleCaseNeedsRemoteRefMode(MemberModel member)
     {
         return !IsCompatibleScalarMember(member);
+    }
+
+    private static bool CanReadInlineValueData(MemberModel member)
+    {
+        if (member.IsNullable ||
+            member.DynamicAnyKind != DynamicAnyKind.None ||
+            member.FieldCodec is not null ||
+            member.IsRefType ||
+            member.IsCollection ||
+            member.Classification.IsMap)
+        {
+            return false;
+        }
+
+        return !member.Classification.IsBuiltIn;
     }
 
     private static bool IsCompatibleScalarMember(MemberModel member)
@@ -3055,6 +3346,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         TypeClassification classification = resolution.Classification;
+        int fixedValueBytes = FixedGraphValueBytes(unwrappedType, classification);
         int group = classification.IsPrimitive
             ? (isOptional ? 2 : 1)
             : 3;
@@ -3089,12 +3381,50 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             group,
             classification.IsCollection || classification.IsMap,
             classification.IsMap && !IsTypeSealed(unwrappedType),
+            !unwrappedType.IsValueType,
+            fixedValueBytes,
             !unwrappedType.IsValueType && classification.TypeId != 21,
             FieldNeedsTypeInfo(classification, dynamicAnyKind, unwrappedType),
             dynamicAnyKind == DynamicAnyKind.None ? DynamicAnyKind.None : dynamicAnyKind,
             typeMeta,
             fieldCodec,
             schemaType is not null);
+    }
+
+    private static int FixedGraphValueBytes(ITypeSymbol type, TypeClassification classification)
+    {
+        if (classification.IsPrimitive && classification.PrimitiveSize > 0)
+        {
+            return classification.PrimitiveSize;
+        }
+
+        if (type.TypeKind == TypeKind.Enum &&
+            type is INamedTypeSymbol enumType &&
+            enumType.EnumUnderlyingType is not null)
+        {
+            return SpecialTypeBytes(enumType.EnumUnderlyingType.SpecialType);
+        }
+
+        return type.SpecialType == SpecialType.System_Decimal ? 16 : 0;
+    }
+
+    private static int SpecialTypeBytes(SpecialType specialType)
+    {
+        return specialType switch
+        {
+            SpecialType.System_Boolean or
+            SpecialType.System_SByte or
+            SpecialType.System_Byte => 1,
+            SpecialType.System_Int16 or
+            SpecialType.System_UInt16 => 2,
+            SpecialType.System_Int32 or
+            SpecialType.System_UInt32 or
+            SpecialType.System_Single => 4,
+            SpecialType.System_Int64 or
+            SpecialType.System_UInt64 or
+            SpecialType.System_Double => 8,
+            _ => 0,
+        };
     }
 
     private static TypeMetaFieldTypeModel BuildTypeMetaFieldTypeModel(
@@ -4363,6 +4693,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             int group,
             bool isCollection,
             bool useDictionaryTypeInfoCache,
+            bool usesReferenceStorage,
+            int fixedValueBytes,
             bool isRefType,
             bool needsFieldTypeInfo,
             DynamicAnyKind dynamicAnyKind,
@@ -4382,6 +4714,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             Group = group;
             IsCollection = isCollection;
             UseDictionaryTypeInfoCache = useDictionaryTypeInfoCache;
+            UsesReferenceStorage = usesReferenceStorage;
+            FixedValueBytes = fixedValueBytes;
             IsRefType = isRefType;
             NeedsFieldTypeInfo = needsFieldTypeInfo;
             DynamicAnyKind = dynamicAnyKind;
@@ -4402,6 +4736,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         public int Group { get; }
         public bool IsCollection { get; }
         public bool UseDictionaryTypeInfoCache { get; }
+        public bool UsesReferenceStorage { get; }
+        public int FixedValueBytes { get; }
         public bool IsRefType { get; }
         public bool NeedsFieldTypeInfo { get; }
         public DynamicAnyKind DynamicAnyKind { get; }

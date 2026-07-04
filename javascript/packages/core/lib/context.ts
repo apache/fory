@@ -343,7 +343,7 @@ export class WriteContext {
 
   constructor(
     readonly typeResolver: TypeResolverLike,
-    config: Config,
+    config: { hps?: Config["hps"] } = {},
   ) {
     this.writer = new BinaryWriter(config);
     this.refWriter = new RefWriter();
@@ -539,6 +539,8 @@ export class ReadContext {
 
   private _depth = 0;
   private _maxDepth: number;
+  private readonly maxGraphMemoryBytes: number;
+  private remainingGraphMemoryBytes = 0;
   private remoteSchemaVersionsByType: Map<string | number, number> | undefined = undefined;
 
   constructor(
@@ -549,6 +551,7 @@ export class ReadContext {
     this.refReader = new RefReader(this.reader);
     this.metaStringReader = new MetaStringReader();
     this._maxDepth = config.maxDepth ?? 50;
+    this.maxGraphMemoryBytes = config.maxGraphMemoryBytes;
   }
 
   reset(bytes: Uint8Array) {
@@ -557,6 +560,38 @@ export class ReadContext {
     this.metaStringReader.reset();
     this.typeMeta = [];
     this._depth = 0;
+    this.remainingGraphMemoryBytes = this.maxGraphMemoryBytes;
+  }
+
+  reserveGraphMemory(bytes: number) {
+    const remaining = this.remainingGraphMemoryBytes - bytes;
+    if (remaining >= 0 && bytes >= 0 && (bytes | 0) === bytes) {
+      this.remainingGraphMemoryBytes = remaining;
+      return;
+    }
+    this.reserveGraphMemorySlow(bytes, remaining);
+  }
+
+  private reserveGraphMemorySlow(bytes: number, remaining: number) {
+    if (!Number.isSafeInteger(bytes) || bytes < 0) {
+      this.throwGraphMemoryOverflow(bytes);
+    }
+    if (remaining < 0) {
+      this.throwGraphBudgetExceeded(bytes);
+    }
+    this.remainingGraphMemoryBytes = remaining;
+  }
+
+  private throwGraphMemoryOverflow(bytes: number): never {
+    throw new Error(`maxGraphMemoryBytes overflow: requested ${bytes} estimated graph bytes`);
+  }
+
+  private throwGraphBudgetExceeded(bytes: number): never {
+    throw new Error(
+      `maxGraphMemoryBytes exceeded: requested ${bytes} estimated graph bytes, ` +
+        `${this.remainingGraphMemoryBytes} remaining, effective limit ` +
+        `${this.maxGraphMemoryBytes}`,
+    );
   }
 
   isCompatible() {

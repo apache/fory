@@ -103,6 +103,7 @@ public final class ForyBuilder {
   int maxTypeMetaBytes = 4096;
   int maxSchemaVersionsPerType = 10;
   int maxAverageSchemaVersionsPerType = 3;
+  long maxGraphMemoryBytes = 128L * 1024 * 1024;
   float mapRefLoadFactor = 0.51f;
   boolean forVirtualThread = false;
   TypeChecker typeChecker;
@@ -568,6 +569,21 @@ public final class ForyBuilder {
         maxAverageSchemaVersionsPerType);
     this.maxAverageSchemaVersionsPerType = maxAverageSchemaVersionsPerType;
     recordAction(b -> b.withMaxAverageSchemaVersionsPerType(maxAverageSchemaVersionsPerType));
+    return this;
+  }
+
+  /**
+   * Sets the approximate graph-memory gate for one root deserialization.
+   *
+   * <p>The estimate mainly covers materialized collections, maps, arrays, structs, and objects. It
+   * skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays;
+   * those remain gated by byte-availability checks on the unread input. Actual process memory can
+   * be higher than this value. The default is a fixed 128 MiB. Values must be positive byte limits.
+   */
+  public ForyBuilder withMaxGraphMemoryBytes(long maxGraphMemoryBytes) {
+    Preconditions.checkArgument(maxGraphMemoryBytes > 0, "maxGraphMemoryBytes must be positive");
+    this.maxGraphMemoryBytes = maxGraphMemoryBytes;
+    recordAction(b -> b.withMaxGraphMemoryBytes(maxGraphMemoryBytes));
     return this;
   }
 

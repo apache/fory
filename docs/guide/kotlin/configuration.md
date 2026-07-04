@@ -116,6 +116,21 @@ val fory = ForyKotlin.builder().withXlang(false)
     .build()
 ```
 
+### Graph Memory Budget
+
+Kotlin uses the Java `withMaxGraphMemoryBytes(...)` option. It sets an approximate graph-memory gate
+for one root deserialization, mainly for materialized collections, maps, arrays, structs, and
+objects. It skips leaf values such as strings, binary data, primitive scalars, and dense primitive
+arrays, so actual process memory can be higher than this value. Leaf values are still gated by
+remaining input bytes: if the unread input does not contain enough bytes, Fory will not read or
+create that leaf value.
+
+```kotlin
+val fory = ForyKotlin.builder()
+    .withMaxGraphMemoryBytes(128L * 1024 * 1024)
+    .build()
+```
+
 ## Compatible Mode
 
 Compatible mode is enabled by default through the Java builder in both xlang and native mode. Keep
@@ -135,6 +150,7 @@ and any untrusted payload source:
 val fory = ForyKotlin.builder()
     .requireClassRegistration(true)
     .withMaxDepth(50)
+    .withMaxGraphMemoryBytes(128L * 1024 * 1024)
     .withMaxTypeFields(512)
     .withMaxTypeMetaBytes(4096)
     .build()
@@ -144,6 +160,9 @@ Security-related configuration:
 
 - Keep `requireClassRegistration(true)` and register application classes or generated modules.
 - Use `withMaxDepth(...)` to reject unexpectedly deep object graphs.
+- Use `withMaxGraphMemoryBytes(...)` as an approximate gate for collection, map, array, struct, and
+  object-heavy payloads. It is not an exact heap cap; leaf values are gated by remaining input
+  bytes.
 - Keep `withMaxTypeFields(...)`, `withMaxTypeMetaBytes(...)`, and the remote schema-version limits
   at their defaults unless the data is not malicious and a trusted peer sends larger metadata or
   many schema versions.

@@ -79,15 +79,21 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   protected final TypeResolver typeResolver;
   protected final boolean isRecord;
   protected final ObjectInstantiator<T> objectInstantiator;
+  protected final int objectGraphMemoryBytes;
   private SerializationFieldInfo[] fieldInfos;
   private RecordInfo copyRecordInfo;
 
+  // Static generated serializers keep a descriptor-only no-arg constructor so descriptor discovery
+  // can call the virtual getGeneratedDescriptors() method. Do not replace that with a string-named
+  // static method lookup; Android/R8 can rename generated methods unless users add keep rules,
+  // while virtual overrides are renamed consistently with this base type.
   protected AbstractObjectSerializer() {
     super();
     this.config = null;
     this.typeResolver = null;
     this.isRecord = false;
     this.objectInstantiator = null;
+    this.objectGraphMemoryBytes = 0;
   }
 
   public AbstractObjectSerializer(TypeResolver typeResolver, Class<T> type) {
@@ -101,6 +107,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     this.typeResolver = typeResolver;
     this.isRecord = RecordUtils.isRecord(type);
     this.objectInstantiator = objectInstantiator;
+    this.objectGraphMemoryBytes = GraphMemoryEstimates.shallowObjectBytes(type);
   }
 
   static void writeField(

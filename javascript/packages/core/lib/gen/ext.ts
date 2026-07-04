@@ -25,6 +25,11 @@ import { CodegenRegistry } from "./router";
 import { BaseSerializerGenerator } from "./serializer";
 import { TypeMeta } from "../meta/TypeMeta";
 
+const REFERENCE_BYTES = 4;
+// Conservative lower bound for generated JavaScript extension/struct owners themselves. Field
+// slots are charged separately; this is not a Fory wire header or a V8 layout probe.
+const JS_EXT_OBJECT_OWNER_BYTES = 6 * REFERENCE_BYTES;
+
 class ExtSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
   typeMeta: TypeMeta;
@@ -41,6 +46,13 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
     this.ownTypeInfoExpr = `${this.serializerExpr}.getTypeInfo()`;
   }
 
+  private objectGraphBytes(): number {
+    return (
+      JS_EXT_OBJECT_OWNER_BYTES +
+      Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES
+    );
+  }
+
   write(accessor: string): string {
     return `
       ${this.builder.getOptions("customSerializer")}.write(${this.builder.getWriteContextName()}, ${accessor})
@@ -50,6 +62,7 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
   read(accessor: (expr: string) => string, refState: string): string {
     const result = this.scope.uniqueName("result");
     return `
+      ${this.builder.getReadContextName()}.reserveGraphMemory(${this.objectGraphBytes()});
       ${
         this.typeInfo.options!.withConstructor
           ? `

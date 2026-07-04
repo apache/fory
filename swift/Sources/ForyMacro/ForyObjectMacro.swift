@@ -76,10 +76,11 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
             stringLiteral: buildDefaultDecl(isClass: parsed.isClass, fields: parsed.fields, accessPrefix: accessPrefix)
         )
         let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl(accessPrefix: accessPrefix))
-        let readWrapperDecl: DeclSyntax? =
-            parsed.isClass
-            ? DeclSyntax(stringLiteral: buildClassReadWrapperDecl(accessPrefix: accessPrefix))
-            : nil
+        let readWrapperDecl: DeclSyntax =
+            DeclSyntax(
+                stringLiteral: parsed.isClass
+                    ? buildClassReadWrapperDecl(accessPrefix: accessPrefix)
+                    : buildStructReadWrapperDecl(accessPrefix: accessPrefix))
         let writeDecl: DeclSyntax = DeclSyntax(
             stringLiteral: buildWriteDataDecl(sortedFields: sortedFields, accessPrefix: accessPrefix)
         )
@@ -2530,7 +2531,7 @@ private func schemaPrimitiveReserveBytes(for field: ParsedField) -> Int {
     guard !field.isOptional else {
         return 0
     }
-    guard field.dynamicAnyCodec == nil, field.typeID != 27 else {
+    guard field.dynamicAnyCodec == nil, field.typeID != MacroTypeId.structType else {
         return 0
     }
 
@@ -2615,25 +2616,30 @@ private func writeLine(for field: ParsedField) -> String {
         """
 }
 
-private enum MacroTypeId {
+enum MacroTypeId {
+    // The macro target cannot import the runtime TypeId enum; keep these raw IDs aligned.
     static let unknown: UInt32 = 0
-    static let compatibleStruct: UInt32 = 27
-    static let namedStruct: UInt32 = 28
-    static let namedCompatibleStruct: UInt32 = 29
-    static let enumType: UInt32 = 30
-    static let namedEnum: UInt32 = 31
-    static let ext: UInt32 = 32
+    static let enumType: UInt32 = 25
+    static let namedEnum: UInt32 = 26
+    static let structType: UInt32 = 27
+    static let compatibleStruct: UInt32 = 28
+    static let namedStruct: UInt32 = 29
+    static let namedCompatibleStruct: UInt32 = 30
+    static let ext: UInt32 = 31
+    static let namedExt: UInt32 = 32
 }
 
 func compatibleFieldNeedsTypeInfo(_ field: ParsedField) -> Bool {
     switch field.typeID {
     case MacroTypeId.unknown,
+        MacroTypeId.structType,
         MacroTypeId.compatibleStruct,
         MacroTypeId.namedStruct,
         MacroTypeId.namedCompatibleStruct,
         MacroTypeId.enumType,
         MacroTypeId.namedEnum,
-        MacroTypeId.ext:
+        MacroTypeId.ext,
+        MacroTypeId.namedExt:
         return true
     default:
         return false

@@ -30,6 +30,7 @@ STRING_TYPE_ID = TypeId.STRING
 SMALL_STRING_THRESHOLD = 16
 cdef int32_t MAX_CACHED_META_STRINGS = 8192
 cdef int32_t MAX_CACHED_META_STRING_LENGTH = 2048
+cdef int64_t _MAX_GRAPH_MEMORY_BYTES = 9223372036854775807
 
 
 cdef inline uint64_t _mix64(uint64_t x):
@@ -746,6 +747,8 @@ cdef class ReadContext:
     cdef readonly bint field_nullable
     cdef readonly object policy
     cdef readonly int32_t max_depth
+    cdef int64_t max_graph_memory_bytes
+    cdef int64_t remaining_graph_memory_bytes
     cdef readonly RefReader ref_reader
     cdef readonly MetaStringReader meta_string_reader
     cdef readonly MetaShareReadContext meta_share_context
@@ -766,6 +769,8 @@ cdef class ReadContext:
         self.field_nullable = config.field_nullable
         self.policy = config.policy
         self.max_depth = config.max_depth
+        self.max_graph_memory_bytes = config.max_graph_memory_bytes
+        self.remaining_graph_memory_bytes = 0
         self.ref_reader = RefReader(self.track_ref)
         self.meta_string_reader = MetaStringReader(self.type_resolver.shared_registry)
         self.meta_share_context = MetaShareReadContext() if config.scoped_meta_share_enabled else None
@@ -789,6 +794,7 @@ cdef class ReadContext:
         self.buffers = iter(buffers) if buffers is not None else None
         self.unsupported_objects = iter(unsupported_objects) if unsupported_objects is not None else None
         self.peer_out_of_band_enabled = peer_out_of_band_enabled
+        self.remaining_graph_memory_bytes = self.max_graph_memory_bytes
         self.depth = 0
 
     cpdef inline reset(self):
@@ -803,7 +809,32 @@ cdef class ReadContext:
         self.buffers = None
         self.unsupported_objects = None
         self.peer_out_of_band_enabled = False
+        self.remaining_graph_memory_bytes = 0
         self.depth = 0
+
+    cdef void _raise_graph_memory_error(self, int64_t num_bytes, int64_t remaining):
+        cdef int64_t used
+        if num_bytes < 0:
+            raise ValueError("Estimated graph memory is negative")
+        used = self.max_graph_memory_bytes - remaining
+        raise ValueError(
+            f"Estimated graph memory budget exceeded: requested {num_bytes} bytes, "
+            f"used {used} bytes, limit {self.max_graph_memory_bytes} bytes. "
+            "Increase Fory(..., max_graph_memory_bytes=...) for trusted larger payloads."
+        )
+
+    cdef inline void reserve_graph_memory_c(self, int64_t num_bytes):
+        cdef int64_t remaining = self.remaining_graph_memory_bytes
+        if num_bytes < 0 or num_bytes > remaining:
+            self._raise_graph_memory_error(num_bytes, remaining)
+        self.remaining_graph_memory_bytes = remaining - num_bytes
+
+    cpdef inline reserve_graph_memory(self, num_bytes):
+        if num_bytes < 0:
+            raise ValueError("Estimated graph memory is negative")
+        if num_bytes > _MAX_GRAPH_MEMORY_BYTES:
+            raise ValueError("Estimated graph memory overflow")
+        self.reserve_graph_memory_c(<int64_t>num_bytes)
 
     cpdef inline add_context_object(self, key, obj):
         self.context_objects[id(key)] = obj

@@ -21,6 +21,7 @@
 
 #include "fory/serialization/serializer.h"
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -81,11 +82,35 @@ struct MapReserver<MapType,
   static void reserve(MapType &map, uint32_t size) { map.reserve(size); }
 };
 
+template <size_t elem_bytes>
+inline bool reserve_map_storage(ReadContext &ctx, uint32_t length) {
+  if (FORY_PREDICT_FALSE(elem_bytes != 0 &&
+                         static_cast<size_t>(length) >
+                             std::numeric_limits<size_t>::max() / elem_bytes)) {
+    ctx.set_error(Error::invalid_data(
+        "graph memory estimate overflows: length=" + std::to_string(length) +
+        " elementBytes=" + std::to_string(elem_bytes)));
+    return false;
+  }
+  return ctx.reserve_graph_memory(static_cast<size_t>(length) * elem_bytes);
+}
+
 template <typename MapType>
 inline bool reserve_map(MapType &map, ReadContext &ctx, uint32_t length) {
   // Lazy error propagation may continue into later readers; do not let that
   // path retain attacker-controlled capacity after an earlier read failure.
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return false;
+  }
+  using Key = typename MapType::key_type;
+  using Value = typename MapType::mapped_type;
+  // Portable lower-bound estimate only: ordered and unordered map node layouts
+  // vary across STL implementations, allocators, and debug modes.
+  static_assert(sizeof(Key) <=
+                    std::numeric_limits<size_t>::max() - sizeof(Value),
+                "map entry memory estimate overflows");
+  constexpr size_t elem_bytes = sizeof(Key) + sizeof(Value);
+  if (FORY_PREDICT_FALSE((!reserve_map_storage<elem_bytes>(ctx, length)))) {
     return false;
   }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
@@ -1019,7 +1044,6 @@ struct Serializer<std::map<K, V, Args...>> {
     if (!has_value) {
       return MapType{};
     }
-
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -1127,7 +1151,6 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
     if (!has_value) {
       return MapType{};
     }
-
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {

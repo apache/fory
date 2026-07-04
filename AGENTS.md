@@ -32,7 +32,43 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Respect ownership. Keep logic, state, and helpers in their natural owner, and do not move serializer-local, context-local, runtime-type-local, or protocol-local problems into global utilities.
 - Check the spec before implementation. For wire behavior and xlang mapping, use the specs as the source of truth and never copy one runtime's bug into another runtime just to make tests pass.
 - Do not make assumptions about runtime behavior, ownership, registration, metadata construction, protocol semantics, or test coverage. Read the current code, owning docs/specs, and relevant tests before making a design judgment or implementation decision. If the evidence is incomplete, inspect more or state the uncertainty explicitly instead of filling gaps from memory or analogy with another runtime.
-- For untrusted deserialization, read `docs/security/deserialization.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent.
+- For untrusted deserialization, read `docs/security/deserialization.md` before changing allocation, stream filling, skip, reference, metadata, or policy validation behavior. Variable-length deserialization must not allocate or reserve backing/output capacity from attacker-declared lengths or counts before the byte owner has proven proportional readable bytes with `checkReadableBytes` or the runtime equivalent. Root graph memory reservation is accounting only and may happen before that byte check, but it must not replace the byte check.
+- Root deserialization graph memory budgets are approximate gates for materialized graph owners,
+  not exact heap accounting, input byte accounting, or raw element counts. `maxGraphMemoryBytes`
+  defaults to fixed `128 MiB`; positive values override the default; explicit non-positive values
+  are invalid and must be rejected at config/Fory creation. Do not add a disabled-budget sentinel
+  path, derive this budget from root input size, or split known-length and stream root behavior.
+  Read context/read state owns only raw byte reservation with `reserveGraphMemory(bytes)`; it must
+  not expose counted arithmetic helpers or collection, map, array, struct, or object semantic
+  reservation APIs. Do not add any non-memory-budget read-context/read-state API for this feature,
+  including ref-publication controls, temporary-owner controls, serializer-owner controls,
+  conversion helpers, or APIs that encode what kind of value is being materialized. Root facades may
+  set/reset the per-operation budget, but they must not pre-reserve root type, root self bytes, or
+  root value storage. Because the budget is fixed per root, read state must not mirror the
+  configured max into a second active-limit field; use the existing config or one configured max
+  field plus the mutable remaining budget. Concrete serializers and generated serializers own
+  counted formulas, overflow checks, allocation-owner decisions, and reference publication timing
+  for their allocation path. Reserve self storage exactly once at the owner that stores or allocates
+  the value: reference/object runtimes reserve parent owner self cost plus reference storage and
+  every referenced heap owner reserves its own shallow self cost when materialized; inline/value
+  runtimes reserve value storage only in the holder or materializer that actually owns that storage,
+  such as collection, map, set, array, smart-pointer, box, dynamic boxing, or reference-object field
+  storage owners. Value serializers do not reserve their own self storage, including root and
+  generated struct/product read paths. Collection, map, set, and reference-array owners reserve
+  nonzero shallow self cost only when that runtime materializes an independent reference/backing
+  owner, plus backing/reference/inline storage. Struct, record, POJO, compatible, generated, and
+  dynamic object owners reserve a nonzero shallow self cost plus shallow field storage only in
+  reference-object runtimes or dynamic/boxed materialization paths; inline/value struct serializers
+  do not self-charge. Reference fields use 4 bytes when reference size is not cheap or reliable to
+  query; primitive/value fields use their storage width. Parents do not recursively include child
+  object, collection, map, string, binary, or primitive dense-array contents. Skip enum/union as
+  separate owners and skip dedicated string, binary, primitive scalar, primitive array, and
+  primitive dense-array leaf owners. Leaf values skipped by the graph budget must remain gated by
+  byte-availability checks on the unread input; if remaining bytes are insufficient, the leaf value
+  must not be read or created. Actual process memory can be higher than the graph budget. Do not
+  guess allocator, bucket-table, node, debug, or map-entry overhead unless it is a documented
+  lower-bound owner allocation. Do not add dynamic stream bytes-read accounting or nested hot-path
+  cleanup just for this budget.
 - For remote TypeDef/TypeMeta reads, the checked metadata cache is the only owner of remote "already validated" state. Cache hit means the header was previously parsed, body/hash-validated, policy-checked, and published by that cache, so the hot path must skip the body and use cached metadata without extra validation, hashing, limit checks, exact-local checks, allocation, or policy work. A known expected local TypeDef/TypeMeta header/hash match is a local-schema hit, not a remote cache miss: it may skip the body and use the local TypeInfo/TypeMeta without schema-version counting or cache publish. Cache miss is the only path that parses and validates non-local metadata, enforces limits, performs exact-local byte comparison when needed, and publishes remote metadata to the cache. Do not add nullable accepted-header fields, sentinel headers, per-TypeInfo markers, pending metadata state, parallel header-low/header-high slots, or parallel acceptance state for this decision. If a runtime needs a metadata hit hint, cache the concrete checked metadata owner object, such as the TypeInfo, TypeDef, or TypeMeta used by that runtime, and compare its validated header identity directly.
 - When a user corrects a non-obvious invariant, encode it in the nearest source comment before continuing, and also update `AGENTS.md`, `.agents/**`, docs, or specs when the rule is reusable beyond one file. Do not rely only on chat history, task notes, commit messages, or benchmark logs for corrections that protect security, protocol behavior, ownership, naming, or hot-path performance.
 - Reject semantic hacks. Do not bypass broken semantics by deleting cases, simplifying callers, adding coercion hooks, or using workaround fallbacks; fix the underlying bug and prove it with focused tests.
@@ -111,6 +147,19 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - `docs/DEVELOPMENT.md` plus updates under `docs/guide/` and `docs/benchmarks/` are synced to `apache/fory-site`; other website content belongs there.
 - When benchmark logic, scripts, configuration, or compared serializers change, rerun the relevant benchmarks and refresh the artifacts under `docs/benchmarks/**`.
 
+## Network Error Command Log
+
+- 2026-06-26: `cargo check` from `rust/` failed while updating crates.io through
+  `127.0.0.1:7890`; retried as
+  `env -u all_proxy -u http_proxy -u https_proxy -u ALL_PROXY -u HTTP_PROXY -u HTTPS_PROXY cargo check`,
+  which still used the configured proxy. `cargo check --offline` succeeded using the local Cargo
+  cache.
+- 2026-06-26: `cmake -S . -B ../tasks/cpp-cmake-build -DFORY_BUILD_TESTS=ON
+-DFORY_BUILD_SHARED=OFF -DFORY_BUILD_STATIC=ON` from `cpp/` failed while FetchContent tried to
+  clone googletest through `127.0.0.1:7890`; retried as
+  `env -u all_proxy -u http_proxy -u https_proxy -u ALL_PROXY -u HTTP_PROXY -u HTTPS_PROXY cmake -S . -B ../tasks/cpp-cmake-build -DFORY_BUILD_TESTS=ON -DFORY_BUILD_SHARED=OFF -DFORY_BUILD_STATIC=ON`,
+  which still used the configured proxy in the nested clone.
+
 ## Shared Engineering Expectations
 
 - Favor zero-copy techniques, JIT or codegen opportunities, and cache-friendly memory access patterns in performance-critical paths.
@@ -162,6 +211,7 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - When comparing benchmark results against `apache/main`, use a separate sibling worktree named `fory-benchmark-baseline` by default. Before creating a new worktree, check whether `../fory-benchmark-baseline` already exists and reuse it to avoid repeated benchmark dependency rebuilds. Always fetch and sync that baseline worktree to the latest `apache/main` before measuring it, and store benchmark result files under that worktree so older runs remain available as reference data. Treat stored benchmark results as historical references, not truth, because machine load and benchmark variance change over time. Create a different baseline worktree only when explicitly requested.
 - Before benchmarking a checked-out version, install or build the required Fory packages for that version, such as the Java artifacts, Python package, and the target runtime package needed by the benchmark.
 - Run and close old/new benchmark comparisons for exactly one language at a time. If that language has a slowdown greater than 1%, keep working only on that language until the slowdown is within 1% before moving to the next language.
+- Within one language, compare benchmarks case-by-case in adjacent old/new pairs: run one case on fresh `apache/main`, then immediately run the same case on the current branch before moving to the next case. Do not batch all baseline cases and then all current cases, because machine load drift makes that comparison noisier.
 - Treat a same-benchmark slowdown greater than 1% as unresolved until the retained median is within 1% of the baseline. Faster results are acceptable only after verifying that generated code, benchmark shape, safety checks, and protocol semantics did not skip required work. Do not add artificial slowdowns or benchmark-shape changes to force a match.
 - Do not change protocol behavior, benchmark payloads, or public APIs solely to manufacture performance wins.
 - For performance work, run the relevant benchmark immediately after each change and report the command plus before/after numbers.

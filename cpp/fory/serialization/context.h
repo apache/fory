@@ -504,6 +504,15 @@ public:
     }
   }
 
+  FORY_ALWAYS_INLINE bool reserve_graph_memory(size_t bytes) {
+    const size_t remaining = remaining_graph_memory_bytes_;
+    if (FORY_PREDICT_FALSE(bytes > remaining)) {
+      return set_graph_memory_exceeded(bytes, remaining);
+    }
+    remaining_graph_memory_bytes_ = remaining - bytes;
+    return true;
+  }
+
   // ===========================================================================
   // Read methods with Error& parameter
   // All methods accept Error& as parameter for reduced overhead.
@@ -659,9 +668,12 @@ public:
   inline const Config &config() const { return *config_; }
 
 private:
+  friend class Fory;
+
   FORY_NOINLINE Result<std::string, Error>
   check_remote_type_meta_limit(const TypeMeta &type_meta);
   void record_remote_type_meta(const std::string &type_key);
+  FORY_NOINLINE bool set_graph_memory_exceeded(size_t bytes, size_t remaining);
 
   // Error state - accumulated during deserialization, checked at the end
   Error error_;
@@ -671,6 +683,7 @@ private:
   std::unique_ptr<TypeResolver> type_resolver_;
   RefReader ref_reader_;
   uint32_t current_dyn_depth_;
+  size_t remaining_graph_memory_bytes_ = 0;
 
   // Meta sharing state (for compatible mode)
   // Persistent cache storage for TypeInfo objects keyed by meta header.

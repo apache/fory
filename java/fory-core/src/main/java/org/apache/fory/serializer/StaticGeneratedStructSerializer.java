@@ -58,6 +58,9 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
   protected final List<RemoteFieldInfo> remoteFields;
   private final SerializationFieldInfo[] localFieldsById;
 
+  // Descriptor-only generated subclass instances are used by StaticGeneratedSerializerRegistry.
+  // They must not be used for read/write; runtime constructors initialize the real serializer
+  // state.
   protected StaticGeneratedStructSerializer() {
     super();
     this.typeDef = null;

@@ -17,8 +17,8 @@
 
 import Foundation
 
-public extension ReadContext {
-    func skipFieldValue(_ fieldType: TypeMeta.FieldType) throws {
+extension ReadContext {
+    public func skipFieldValue(_ fieldType: TypeMeta.FieldType) throws {
         _ = try readSkippedFieldValue(
             fieldType: fieldType,
             readTypeInfo: needsTypeInfoForSkippedField(fieldType.typeID)
@@ -395,6 +395,6 @@ public extension ReadContext {
 
     private func readSkippedUnion() throws -> Any {
         _ = try buffer.readVarUInt32()
-        return try readAny(refMode: .tracking, readTypeInfo: true) ?? ForyAnyNullValue()
+        return try readAny(context: self, refMode: .tracking, readTypeInfo: true) ?? ForyAnyNullValue()
     }
 }

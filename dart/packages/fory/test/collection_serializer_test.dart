@@ -257,6 +257,19 @@ void main() {
       expect(identical(roundTrip, roundTrip[0]), isTrue);
     });
 
+    test('trackRef true preserves self-referential root sets', () {
+      final fory = Fory();
+      final value = <Object?>{};
+      value.add(value);
+
+      final roundTrip =
+          fory.deserialize<Object?>(fory.serialize(value, trackRef: true))
+              as Set;
+
+      expect(roundTrip, hasLength(1));
+      expect(identical(roundTrip, roundTrip.single), isTrue);
+    });
+
     test('trackRef true preserves self-referential root maps', () {
       final fory = Fory();
       final value = <Object?, Object?>{};

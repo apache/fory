@@ -652,6 +652,9 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		return
 	}
 	ptr := (*[]string)(value.Addr().UnsafePointer())
+	if !reserveStringSlice(ctx, length) {
+		return
+	}
 	if length == 0 {
 		*ptr = make([]string, 0)
 		return
@@ -1424,6 +1427,33 @@ func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 // ReadStringSlice reads []string from buffer using LIST protocol
 func ReadStringSlice(buf *ByteBuffer, err *Error) []string {
 	length := buf.ReadLength(err)
+	return readStringSliceBody(buf, err, length)
+}
+
+func readStringSlice(ctx *ReadContext) []string {
+	length := ctx.buffer.ReadLength(ctx.Err())
+	if ctx.HasError() {
+		return nil
+	}
+	if !reserveStringSlice(ctx, length) {
+		return nil
+	}
+	return readStringSliceBody(ctx.buffer, ctx.Err(), length)
+}
+
+func reserveStringSlice(ctx *ReadContext, length int) bool {
+	if length < 0 {
+		ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
+		return false
+	}
+	if int64(length) > stringMaxLength {
+		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, stringElementBytes))
+		return false
+	}
+	return ctx.ReserveGraphMemory(int64(graphSliceOwnerBytes) + int64(length)*int64(stringElementBytes))
+}
+
+func readStringSliceBody(buf *ByteBuffer, err *Error, length int) []string {
 	if length == 0 {
 		return make([]string, 0)
 	}

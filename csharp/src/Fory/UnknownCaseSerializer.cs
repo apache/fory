@@ -50,17 +50,8 @@ public static class UnknownCaseSerializer
             case RefFlag.RefValue:
                 {
                     uint reservedRefId = context.RefReader.ReserveRefId();
-                    context.SetReservedRefId(reservedRefId);
-                    try
-                    {
-                        (uint typeId, object? value) = ReadNonNullPayload(context);
-                        context.StoreRef(value);
-                        return UnknownCase.FromRuntime(caseId, typeId, value);
-                    }
-                    finally
-                    {
-                        context.ClearReservedRefId();
-                    }
+                    (uint typeId, object? value) = ReadNonNullPayload(context, reservedRefId);
+                    return UnknownCase.FromRuntime(caseId, typeId, value);
                 }
             case RefFlag.NotNullValue:
                 {
@@ -154,11 +145,23 @@ public static class UnknownCaseSerializer
 
     private static (uint TypeId, object? Value) ReadNonNullPayload(ReadContext context)
     {
+        return ReadNonNullPayload(context, hasRef: false, refId: 0);
+    }
+
+    private static (uint TypeId, object? Value) ReadNonNullPayload(ReadContext context, uint refId)
+    {
+        return ReadNonNullPayload(context, hasRef: true, refId);
+    }
+
+    private static (uint TypeId, object? Value) ReadNonNullPayload(ReadContext context, bool hasRef, uint refId)
+    {
         // UnknownCase owns the union payload envelope only. The envelope is not
         // a nested dynamic value, so depth checks belong to the decoded payload
         // serializer or the final root-context reset, not this carrier reader.
         TypeInfo typeInfo = context.TypeResolver.ReadAnyTypeInfo(context);
-        object? value = context.TypeResolver.ReadAnyValue(typeInfo, context);
+        object? value = hasRef
+            ? context.TypeResolver.ReadAnyValue(typeInfo, context, refId)
+            : context.TypeResolver.ReadAnyValue(typeInfo, context);
         return ((uint)(typeInfo.WireTypeId ?? typeInfo.BuiltInTypeId ?? TypeId.Unknown), value);
     }
 }
