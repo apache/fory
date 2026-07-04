@@ -85,6 +85,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   private SerializationFieldInfo[] fieldInfos;
   private RecordInfo copyRecordInfo;
 
+  // Static generated serializers keep a descriptor-only no-arg constructor so descriptor discovery
+  // can call the virtual getGeneratedDescriptors() method. Do not replace that with a string-named
+  // static method lookup; Android/R8 can rename generated methods unless users add keep rules,
+  // while virtual overrides are renamed consistently with this base type.
   protected AbstractObjectSerializer() {
     super();
     this.config = null;

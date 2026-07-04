@@ -152,6 +152,7 @@ final class StaticSerializerSourceWriter {
 
   private void writeConstructors() {
     builder.append("  public ").append(struct.serializerName).append("() {\n");
+    builder.append("    // Descriptor-only constructor; see StaticGeneratedStructSerializer.\n");
     builder.append("    super();\n");
     builder.append("    this.allFields = null;\n");
     builder.append("    this.allFieldIds = null;\n");
