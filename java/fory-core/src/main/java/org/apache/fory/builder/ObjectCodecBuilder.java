@@ -834,11 +834,8 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   }
 
   protected String graphMemoryReserveCode() {
-    return READ_CONTEXT_NAME + ".reserveGraphMemory(" + objectGraphMemoryBytes() + ");";
-  }
-
-  private int objectGraphMemoryBytes() {
-    return GraphMemoryEstimates.shallowObjectBytes(beanClass);
+    int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(beanClass);
+    return READ_CONTEXT_NAME + ".reserveGraphMemory(" + ownerBytes + ");";
   }
 
   protected void deserializeReadGroup(
