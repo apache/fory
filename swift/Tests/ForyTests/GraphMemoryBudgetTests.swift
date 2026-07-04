@@ -32,6 +32,19 @@ private final class BudgetNode {
 }
 
 @ForyStruct
+private final class BudgetSelfNode {
+    var id: Int32 = 0
+    var next: BudgetSelfNode?
+    var children: [BudgetSelfNode] = []
+
+    required init() {}
+
+    init(id: Int32) {
+        self.id = id
+    }
+}
+
+@ForyStruct
 private struct BudgetSiblings {
     var left: [BudgetNode] = []
     var right: [BudgetNode] = []
@@ -104,10 +117,13 @@ private struct BudgetListDenseReader: Equatable {
 
 private let defaultGraphMemoryBytes: Int64 = 128 * 1024 * 1024
 
-private func makeBudgetFory(maxGraphMemoryBytes: Int64 = defaultGraphMemoryBytes) -> Fory {
+private func makeBudgetFory(
+    maxGraphMemoryBytes: Int64 = defaultGraphMemoryBytes,
+    trackRef: Bool = false
+) -> Fory {
     let fory = Fory(
         config: .init(
-            trackRef: false,
+            trackRef: trackRef,
             compatible: false,
             maxGraphMemoryBytes: maxGraphMemoryBytes
         ))
@@ -116,6 +132,7 @@ private func makeBudgetFory(maxGraphMemoryBytes: Int64 = defaultGraphMemoryBytes
     fory.register(BudgetDenseHolder.self, id: 9803)
     fory.register(BudgetValue.self, id: 9804)
     fory.register(BudgetValueHolder.self, id: 9805)
+    fory.register(BudgetSelfNode.self, id: 9810)
     return fory
 }
 
@@ -193,6 +210,13 @@ private func expectInvalidData(_ body: () throws -> Void) {
     }
 }
 
+private func budgetSelfNodeGraphBytes() -> Int {
+    (2 * testReferenceBytes)
+        + MemoryLayout<Int32>.stride
+        + testReferenceBytes
+        + ownerBytes([BudgetSelfNode].self)
+}
+
 @Test
 func fixedDefaultBudget() throws {
     let fory = makeBudgetFory()
@@ -245,6 +269,33 @@ func siblingContainersShareOneBudget() throws {
         .deserialize(bytes)
     #expect(decoded.left.count == 16)
     #expect(decoded.right.count == 16)
+}
+
+@Test
+func generatedSelfReferenceBudget() throws {
+    let value = BudgetSelfNode(id: 7)
+    value.next = value
+    value.children = [value]
+
+    let writer = makeBudgetFory(trackRef: true)
+    let bytes = try writer.serialize(value)
+    let required =
+        budgetSelfNodeGraphBytes()
+        + listBudget(BudgetSelfNode.self, count: 1)
+
+    expectInvalidData {
+        let _: BudgetSelfNode = try makeBudgetFory(
+            maxGraphMemoryBytes: Int64(required - 1),
+            trackRef: true
+        ).deserialize(bytes)
+    }
+    let decoded: BudgetSelfNode = try makeBudgetFory(
+        maxGraphMemoryBytes: Int64(required),
+        trackRef: true
+    ).deserialize(bytes)
+    #expect(decoded === decoded.next)
+    #expect(decoded.children.count == 1)
+    #expect(decoded === decoded.children[0])
 }
 
 @Test

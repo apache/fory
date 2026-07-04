@@ -50,6 +50,14 @@ public sealed class BudgetArrayHolder
 }
 
 [ForyStruct]
+public sealed class BudgetSelfNode
+{
+    public int Id { get; set; }
+    public BudgetSelfNode? Next { get; set; }
+    public List<BudgetSelfNode> Children { get; set; } = [];
+}
+
+[ForyStruct]
 public struct BudgetValue
 {
     public int Id { get; set; }
@@ -117,6 +125,7 @@ public sealed class GraphMemoryBudgetTests
     private static readonly long BudgetItemBytes = ReferenceObjectBytes + 4 + ReferenceBytes;
     private static readonly long BudgetSiblingsBytes = ReferenceObjectBytes + ReferenceBytes + ReferenceBytes;
     private static readonly long BudgetArrayHolderBytes = ReferenceObjectBytes + ReferenceBytes;
+    private static readonly long BudgetSelfNodeBytes = ReferenceObjectBytes + 4 + ReferenceBytes + ReferenceBytes;
     private static readonly long GeneratedGraphHolderBytes = ReferenceObjectBytes + ReferenceBytes;
     private const long BudgetValueBytes = 4;
     private static readonly long BudgetValueHolderBytes = ReferenceObjectBytes + BudgetValueBytes;
@@ -124,11 +133,13 @@ public sealed class GraphMemoryBudgetTests
 
     private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
 
-    private static ForyRuntime NewFory(long maxGraphMemoryBytes = DefaultGraphMemoryBytes)
+    private static ForyRuntime NewFory(
+        long maxGraphMemoryBytes = DefaultGraphMemoryBytes,
+        bool trackRef = false)
     {
         return ForyRuntime.Builder()
             .Compatible(false)
-            .TrackRef(false)
+            .TrackRef(trackRef)
             .MaxGraphMemoryBytes(maxGraphMemoryBytes)
             .Build()
             .Register<BudgetItem>(1001)
@@ -139,7 +150,8 @@ public sealed class GraphMemoryBudgetTests
             .Register<GeneratedSchemaListBudget>(1006)
             .Register<GeneratedPackedListBudget>(1007)
             .Register<GeneratedSchemaMapBudget>(1008)
-            .Register<BudgetValueHolder>(1009);
+            .Register<BudgetValueHolder>(1009)
+            .Register<BudgetSelfNode>(1012);
     }
 
     private static byte[] Serialize<T>(T value)
@@ -223,6 +235,24 @@ public sealed class GraphMemoryBudgetTests
         BudgetSiblings result = NewFory(required).Deserialize<BudgetSiblings>(bytes);
         Assert.Equal(16, result.Left.Count);
         Assert.Equal(16, result.Right.Count);
+    }
+
+    [Fact]
+    public void GeneratedSelfReferenceBudget()
+    {
+        BudgetSelfNode value = new() { Id = 7 };
+        value.Next = value;
+        value.Children.Add(value);
+
+        byte[] bytes = NewFory(trackRef: true).Serialize(value);
+        long required = BudgetSelfNodeBytes + ListBudget<BudgetSelfNode>(1);
+
+        Assert.Throws<InvalidDataException>(
+            () => NewFory(required - 1, trackRef: true).Deserialize<BudgetSelfNode>(bytes));
+        BudgetSelfNode result = NewFory(required, trackRef: true).Deserialize<BudgetSelfNode>(bytes);
+        Assert.Same(result, result.Next);
+        Assert.Single(result.Children);
+        Assert.Same(result, result.Children[0]);
     }
 
     [Fact]

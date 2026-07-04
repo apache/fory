@@ -18,6 +18,7 @@
 import array
 import dataclasses
 import struct
+from typing import Any
 
 import pytest
 
@@ -88,6 +89,13 @@ class BudgetItem:
 
 class BudgetObject:
     pass
+
+
+@dataclasses.dataclass
+class BudgetRefNode:
+    value: int = 0
+    next: Any = pyfory.field(default=None, ref=True, nullable=True)
+    children: Any = pyfory.field(default_factory=list, ref=True, nullable=True)
 
 
 def collection_memory(num_elements):
@@ -191,6 +199,26 @@ def test_dynamic_object_budget():
     restored = reader.deserialize(data)
     assert restored.left == value.left
     assert restored.right == value.right
+
+
+def test_self_ref_budget():
+    value = BudgetRefNode(value=7)
+    value.next = value
+    value.children.append(value)
+    budget = object_memory(3) + collection_memory(1)
+
+    writer = new_fory(xlang=False)
+    writer.register_type(BudgetRefNode)
+    data = writer.serialize(value)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        reader = new_fory(budget - 1, xlang=False)
+        reader.register_type(BudgetRefNode)
+        reader.deserialize(data)
+    reader = new_fory(budget, xlang=False)
+    reader.register_type(BudgetRefNode)
+    restored = reader.deserialize(data)
+    assert restored.next is restored
+    assert restored.children == [restored]
 
 
 def test_map_entry_budget_and_overflow():

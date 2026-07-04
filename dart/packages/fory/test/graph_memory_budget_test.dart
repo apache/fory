@@ -56,6 +56,19 @@ class BudgetGeneratedEnvelope {
 }
 
 @ForyStruct()
+class BudgetSelfNode {
+  BudgetSelfNode();
+
+  int id = 0;
+
+  @ForyField(ref: true)
+  BudgetSelfNode? next;
+
+  @ListField(element: DeclaredType(ref: true))
+  List<BudgetSelfNode> children = <BudgetSelfNode>[];
+}
+
+@ForyStruct()
 class BudgetCompatibleListEnvelope {
   BudgetCompatibleListEnvelope();
 
@@ -98,6 +111,14 @@ void _registerGenerated(Fory fory) {
     fory,
     BudgetGeneratedEnvelope,
     name: 'test.BudgetGeneratedEnvelope',
+  );
+}
+
+void _registerSelfNode(Fory fory) {
+  GraphMemoryBudgetTestForyModule.register(
+    fory,
+    BudgetSelfNode,
+    name: 'test.BudgetSelfNode',
   );
 }
 
@@ -190,6 +211,34 @@ void main() {
         _readWithBudget(value, _listGraphBytes(3) + 3 * _listGraphBytes(0)),
         equals(value),
       );
+    });
+
+    test('reserves generated self reference once', () {
+      final node =
+          BudgetSelfNode()
+            ..id = 7
+            ..next = null;
+      node.next = node;
+      node.children = <BudgetSelfNode>[node];
+
+      final writer = Fory();
+      _registerSelfNode(writer);
+      final bytes = writer.serialize(node);
+      final required = _objectGraphBytes(3) + _listGraphBytes(1);
+
+      final failingReader = Fory(maxGraphMemoryBytes: required - 1);
+      _registerSelfNode(failingReader);
+      expect(
+        () => failingReader.deserialize<BudgetSelfNode>(bytes),
+        _throwsGraphBudget,
+      );
+
+      final passingReader = Fory(maxGraphMemoryBytes: required);
+      _registerSelfNode(passingReader);
+      final roundTrip = passingReader.deserialize<BudgetSelfNode>(bytes);
+      expect(identical(roundTrip, roundTrip.next), isTrue);
+      expect(roundTrip.children, hasLength(1));
+      expect(identical(roundTrip, roundTrip.children.single), isTrue);
     });
 
     test('reserves map entries', () {

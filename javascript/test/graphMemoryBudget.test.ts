@@ -176,6 +176,38 @@ describe("graph memory budget", () => {
     expect(decoded.child).toBeInstanceOf(EmptyChild);
   });
 
+  test("reserves generated self reference once", () => {
+    const typeInfo = Type.struct("budget.self.node", {
+      id: Type.int32({ encoding: "fixed" }).setId(1),
+      next: Type.struct("budget.self.node").setId(2).setNullable(true).setTrackingRef(true),
+      children: Type.list(Type.struct("budget.self.node").setTrackingRef(true)).setId(3),
+    });
+    const node: any = { id: 7, next: null, children: [] };
+    node.next = node;
+    node.children = [node];
+
+    const writer = new Fory({ compatible: false, ref: true });
+    const bytes = writer.register(typeInfo).serialize(node);
+    const required = objectBytes(3) + listBytes(1);
+    const passingReader = new Fory({
+      compatible: false,
+      ref: true,
+      maxGraphMemoryBytes: required,
+    }).register(typeInfo);
+    const failingReader = new Fory({
+      compatible: false,
+      ref: true,
+      maxGraphMemoryBytes: required - 1,
+    }).register(typeInfo);
+
+    expect(() => failingReader.deserialize(bytes)).toThrow(/maxGraphMemoryBytes/);
+    const decoded: any = passingReader.deserialize(bytes);
+    expect(decoded.id).toBe(7);
+    expect(decoded.next).toBe(decoded);
+    expect(decoded.children).toHaveLength(1);
+    expect(decoded.children[0]).toBe(decoded);
+  });
+
   test("reserves map entries", () => {
     const bytes = serializeAny(new Map([[1, 2]]));
 
