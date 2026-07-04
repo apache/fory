@@ -572,7 +572,7 @@ impl<'a> ReadContext<'a> {
 
 #[cold]
 #[inline(never)]
-fn graph_memory_exceeded(bytes: usize, remaining: usize, limit: i64) -> Error {
+fn graph_memory_exceeded(bytes: usize, remaining: usize, limit: usize) -> Error {
     Error::invalid_data(format!(
         "estimated graph memory request {} bytes exceeds max_graph_memory_bytes remaining budget {} bytes out of effective limit {} bytes",
         bytes, remaining, limit

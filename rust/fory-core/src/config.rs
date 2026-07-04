@@ -44,7 +44,7 @@ pub struct Config {
     /// Mainly gates materialized collections, maps, arrays, structs, and objects.
     /// Leaf values are gated by unread input bytes instead, and actual process
     /// memory can be higher. Defaults to 128 MiB. Value must be a positive byte limit.
-    pub max_graph_memory_bytes: i64,
+    pub max_graph_memory_bytes: usize,
     /// Maximum accepted field count in one received struct TypeMeta.
     pub max_type_fields: u32,
     /// Maximum accepted body size in one received TypeMeta.
@@ -131,7 +131,7 @@ impl Config {
 
     /// Get the approximate graph-memory gate per root deserialization.
     #[inline(always)]
-    pub fn max_graph_memory_bytes(&self) -> i64 {
+    pub fn max_graph_memory_bytes(&self) -> usize {
         self.max_graph_memory_bytes
     }
 

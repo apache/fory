@@ -20,7 +20,7 @@ use fory_derive::ForyStruct;
 use std::collections::HashMap;
 use std::mem;
 
-const DEFAULT_GRAPH_MEMORY_BYTES: i64 = 128 * 1024 * 1024;
+const DEFAULT_GRAPH_MEMORY_BYTES: usize = 128 * 1024 * 1024;
 
 #[derive(ForyStruct, Debug, PartialEq)]
 struct BudgetSiblings {
@@ -96,7 +96,7 @@ where
     children: Vec<GenericBudgetNode<T>>,
 }
 
-fn fory_with_budget(max_graph_memory_bytes: i64) -> Fory {
+fn fory_with_budget(max_graph_memory_bytes: usize) -> Fory {
     let mut fory = Fory::builder()
         .xlang(false)
         .compatible(false)
@@ -113,7 +113,7 @@ fn fory_with_budget(max_graph_memory_bytes: i64) -> Fory {
     fory
 }
 
-fn compatible_fory<T>(max_graph_memory_bytes: i64) -> Fory
+fn compatible_fory<T>(max_graph_memory_bytes: usize) -> Fory
 where
     T: fory_core::Serializer + fory_core::StructSerializer + fory_core::ForyDefault,
 {
@@ -138,9 +138,6 @@ fn config_validation() {
     );
     assert!(
         std::panic::catch_unwind(|| Fory::builder().max_graph_memory_bytes(0).build()).is_err()
-    );
-    assert!(
-        std::panic::catch_unwind(|| Fory::builder().max_graph_memory_bytes(-2).build()).is_err()
     );
     let _ = Fory::builder().max_graph_memory_bytes(1).build();
 }
@@ -175,9 +172,9 @@ fn explicit_override() {
 
     let vec_bytes = mem::size_of::<Vec<String>>();
     let estimate = value.len() * vec_bytes;
-    let limited = fory_with_budget((estimate - 1) as i64);
+    let limited = fory_with_budget(estimate - 1);
     assert!(limited.deserialize::<Vec<Vec<String>>>(&bytes).is_err());
-    let explicit = fory_with_budget(estimate as i64);
+    let explicit = fory_with_budget(estimate);
     let decoded: Vec<Vec<String>> = explicit.deserialize(&bytes).unwrap();
     assert_eq!(decoded, value);
 }
@@ -224,7 +221,7 @@ fn sibling_cumulative_budget() {
     };
     let writer = fory_with_budget(DEFAULT_GRAPH_MEMORY_BYTES);
     let bytes = writer.serialize(&value).unwrap();
-    let one_vec = mem::size_of::<String>() as i64;
+    let one_vec = mem::size_of::<String>();
 
     let limited = fory_with_budget(one_vec);
     assert!(limited.deserialize::<BudgetSiblings>(&bytes).is_err());
@@ -237,7 +234,7 @@ fn map_budget() {
     let value: HashMap<String, i32> = HashMap::from([("a".to_string(), 1)]);
     let writer = fory_with_budget(DEFAULT_GRAPH_MEMORY_BYTES);
     let bytes = writer.serialize(&value).unwrap();
-    let required = (mem::size_of::<String>() + mem::size_of::<i32>()) as i64;
+    let required = mem::size_of::<String>() + mem::size_of::<i32>();
 
     let limited = fory_with_budget(required - 1);
     assert!(limited.deserialize::<HashMap<String, i32>>(&bytes).is_err());
@@ -261,7 +258,7 @@ fn inline_value_vec_budget() {
     let bytes = writer.serialize(&value).unwrap();
     let under_inline = value.len() * mem::size_of::<u64>();
 
-    let limited = fory_with_budget(under_inline as i64);
+    let limited = fory_with_budget(under_inline);
     assert!(limited.deserialize::<Vec<BudgetItem>>(&bytes).is_err());
 }
 
@@ -274,11 +271,11 @@ fn box_inline_owner_budget() {
     let bytes = writer.serialize(&value).unwrap();
     let required = mem::size_of::<BudgetItemHolder>();
 
-    assert!(fory_with_budget((required - 1) as i64)
+    assert!(fory_with_budget(required - 1)
         .deserialize::<Box<BudgetItemHolder>>(&bytes)
         .is_err());
     assert_eq!(
-        fory_with_budget(required as i64)
+        fory_with_budget(required)
             .deserialize::<Box<BudgetItemHolder>>(&bytes)
             .unwrap(),
         value
@@ -299,11 +296,11 @@ fn generic_self_reference_budget() {
     let node_bytes = mem::size_of::<GenericBudgetNode<String>>();
     let required = node_bytes;
 
-    assert!(fory_with_budget((required - 1) as i64)
+    assert!(fory_with_budget(required - 1)
         .deserialize::<GenericBudgetNode<String>>(&bytes)
         .is_err());
     assert_eq!(
-        fory_with_budget(required as i64)
+        fory_with_budget(required)
             .deserialize::<GenericBudgetNode<String>>(&bytes)
             .unwrap(),
         value
@@ -324,11 +321,11 @@ fn box_vector_owner_self() {
     let bytes = writer.serialize(&value).unwrap();
     let required = mem::size_of::<Vec<BudgetItem>>() + value.len() * mem::size_of::<BudgetItem>();
 
-    assert!(fory_with_budget((required - 1) as i64)
+    assert!(fory_with_budget(required - 1)
         .deserialize::<Box<Vec<BudgetItem>>>(&bytes)
         .is_err());
     assert_eq!(
-        fory_with_budget(required as i64)
+        fory_with_budget(required)
             .deserialize::<Box<Vec<BudgetItem>>>(&bytes)
             .unwrap(),
         value
@@ -344,10 +341,10 @@ fn compatible_list_array_budget() {
     let bytes = writer.serialize(&value).unwrap();
 
     let required = 64 * mem::size_of::<i32>();
-    let limited = compatible_fory::<DenseWireInts>((required - 1) as i64);
+    let limited = compatible_fory::<DenseWireInts>(required - 1);
     assert!(limited.deserialize::<DenseWireInts>(&bytes).is_err());
 
-    let enough = compatible_fory::<DenseWireInts>(required as i64);
+    let enough = compatible_fory::<DenseWireInts>(required);
     let decoded = enough.deserialize::<DenseWireInts>(&bytes).unwrap();
     assert_eq!(
         decoded,
@@ -457,7 +454,7 @@ fn byte_check_preserved() {
     let last = bytes.len() - 1;
     bytes[last] = 64;
 
-    let reader = fory_with_budget(i64::MAX);
+    let reader = fory_with_budget(usize::MAX);
     let err = reader.deserialize::<Vec<i32>>(&bytes).unwrap_err();
     assert!(matches!(err, Error::BufferOutOfBound(..)), "{err}");
 }
