@@ -900,9 +900,9 @@ impl TypeResolver {
         fn read_data<T2: 'static + Serializer + ForyDefault>(
             context: &mut ReadContext,
         ) -> Result<Box<dyn Any>, Error> {
-            let graph_self_size = T2::fory_graph_self_size();
-            if graph_self_size != 0 {
-                context.reserve_graph_memory(graph_self_size)?;
+            let boxed_bytes = std::mem::size_of::<T2>();
+            if boxed_bytes != 0 {
+                context.reserve_graph_memory(boxed_bytes)?;
             }
             match T2::fory_read_data(context) {
                 Ok(v) => Ok(Box::new(v)),
@@ -913,6 +913,10 @@ impl TypeResolver {
         fn read_data_as_send_sync_any<T2: 'static + Serializer + ForyDefault>(
             context: &mut ReadContext,
         ) -> Result<Box<dyn Any + Send + Sync>, Error> {
+            let boxed_bytes = std::mem::size_of::<T2>();
+            if boxed_bytes != 0 {
+                context.reserve_graph_memory(boxed_bytes)?;
+            }
             T2::fory_read_data_as_send_sync_any(context)
         }
 
@@ -935,9 +939,9 @@ impl TypeResolver {
             context: &mut ReadContext,
             type_info: Rc<TypeInfo>,
         ) -> Result<Box<dyn Any>, Error> {
-            let graph_self_size = T2::fory_graph_self_size();
-            if graph_self_size != 0 {
-                context.reserve_graph_memory(graph_self_size)?;
+            let boxed_bytes = std::mem::size_of::<T2>();
+            if boxed_bytes != 0 {
+                context.reserve_graph_memory(boxed_bytes)?;
             }
             Ok(Box::new(T2::fory_read_compatible(context, type_info)?))
         }
@@ -946,6 +950,10 @@ impl TypeResolver {
             context: &mut ReadContext,
             type_info: Rc<TypeInfo>,
         ) -> Result<Box<dyn Any + Send + Sync>, Error> {
+            let boxed_bytes = std::mem::size_of::<T2>();
+            if boxed_bytes != 0 {
+                context.reserve_graph_memory(boxed_bytes)?;
+            }
             T2::fory_read_compatible_as_send_sync_any(context, type_info)
         }
 
@@ -1123,9 +1131,9 @@ impl TypeResolver {
         fn read_data<T2: 'static + Serializer + ForyDefault>(
             context: &mut ReadContext,
         ) -> Result<Box<dyn Any>, Error> {
-            let graph_self_size = T2::fory_graph_self_size();
-            if graph_self_size != 0 {
-                context.reserve_graph_memory(graph_self_size)?;
+            let boxed_bytes = std::mem::size_of::<T2>();
+            if boxed_bytes != 0 {
+                context.reserve_graph_memory(boxed_bytes)?;
             }
             match T2::fory_read_data(context) {
                 Ok(v) => Ok(Box::new(v)),
@@ -1136,6 +1144,10 @@ impl TypeResolver {
         fn read_data_as_send_sync_any<T2: 'static + Serializer + ForyDefault>(
             context: &mut ReadContext,
         ) -> Result<Box<dyn Any + Send + Sync>, Error> {
+            let boxed_bytes = std::mem::size_of::<T2>();
+            if boxed_bytes != 0 {
+                context.reserve_graph_memory(boxed_bytes)?;
+            }
             T2::fory_read_data_as_send_sync_any(context)
         }
 

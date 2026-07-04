@@ -567,8 +567,8 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_var_u32()?;
-        let elem_bytes = K::fory_graph_storage_size()
-            .checked_add(V::fory_graph_storage_size())
+        let elem_bytes = size_of::<K>()
+            .checked_add(size_of::<V>())
             .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
         let capacity = reserve_map_storage(context, len, elem_bytes)?;
         if len == 0 {
@@ -671,10 +671,6 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
         size_of::<i32>()
     }
 
-    fn fory_graph_self_size() -> usize {
-        size_of::<Self>()
-    }
-
     fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         Ok(TypeId::MAP)
     }
@@ -727,8 +723,8 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_var_u32()?;
-        let elem_bytes = K::fory_graph_storage_size()
-            .checked_add(V::fory_graph_storage_size())
+        let elem_bytes = size_of::<K>()
+            .checked_add(size_of::<V>())
             .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
         let len_usize = reserve_map_storage(context, len, elem_bytes)?;
         if len == 0 {
@@ -828,10 +824,6 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
 
     fn fory_reserved_space() -> usize {
         size_of::<i32>()
-    }
-
-    fn fory_graph_self_size() -> usize {
-        size_of::<Self>()
     }
 
     fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {

@@ -488,11 +488,6 @@ pub trait Codec<T: 'static>: 'static {
         std::mem::size_of::<T>()
     }
 
-    #[inline(always)]
-    fn graph_storage_size() -> usize {
-        std::mem::size_of::<T>()
-    }
-
     fn write_field(value: &T, context: &mut WriteContext) -> Result<(), Error>;
 
     fn read_field(context: &mut ReadContext) -> Result<T, Error>;
@@ -632,11 +627,6 @@ where
     #[inline(always)]
     fn reserved_space() -> usize {
         T::fory_reserved_space() + SIZE_OF_REF_AND_TYPE
-    }
-
-    #[inline(always)]
-    fn graph_storage_size() -> usize {
-        T::fory_graph_storage_size()
     }
 
     #[inline(always)]
@@ -1754,7 +1744,7 @@ where
 
     fn read_data(context: &mut ReadContext) -> Result<Vec<T>, Error> {
         let len = context.reader.read_var_u32()?;
-        reserve_graph_storage(context, len, C::graph_storage_size())?;
+        reserve_graph_storage(context, len, std::mem::size_of::<T>())?;
         if len == 0 {
             return Ok(Vec::new());
         }
@@ -1783,7 +1773,7 @@ where
         remote_field_type: &FieldType,
     ) -> Result<Vec<T>, Error> {
         let len = context.reader.read_var_u32()?;
-        reserve_graph_storage(context, len, C::graph_storage_size())?;
+        reserve_graph_storage(context, len, std::mem::size_of::<T>())?;
         if len == 0 {
             return Ok(Vec::new());
         }
@@ -2326,8 +2316,8 @@ where
 
     fn read_data(context: &mut ReadContext) -> Result<HashMap<K, V>, Error> {
         let len = context.reader.read_var_u32()?;
-        let elem_bytes = KC::graph_storage_size()
-            .checked_add(VC::graph_storage_size())
+        let elem_bytes = std::mem::size_of::<K>()
+            .checked_add(std::mem::size_of::<V>())
             .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
         reserve_graph_storage(context, len, elem_bytes)?;
         if len == 0 {
@@ -2349,8 +2339,8 @@ where
         remote_field_type: &FieldType,
     ) -> Result<HashMap<K, V>, Error> {
         let len = context.reader.read_var_u32()?;
-        let elem_bytes = KC::graph_storage_size()
-            .checked_add(VC::graph_storage_size())
+        let elem_bytes = std::mem::size_of::<K>()
+            .checked_add(std::mem::size_of::<V>())
             .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
         let capacity = reserve_graph_storage(context, len, elem_bytes)?;
         if len == 0 {

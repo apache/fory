@@ -585,10 +585,6 @@ pub trait Serializer: 'static {
         if read_type_info {
             Self::fory_read_type_info(context)?;
         }
-        let graph_self_size = Self::fory_graph_self_size();
-        if graph_self_size != 0 {
-            context.reserve_graph_memory(graph_self_size)?;
-        }
         Self::fory_read_data(context)
     }
 
@@ -1050,31 +1046,6 @@ pub trait Serializer: 'static {
         Self: Sized,
     {
         Self::fory_is_shared_ref()
-    }
-
-    /// Shallow value-owner self storage for root and box/shared-reference allocation sites.
-    ///
-    /// Value serializers must not reserve this unconditionally because parent structs,
-    /// arrays, maps, and collections may already own the inline storage.
-    #[inline(always)]
-    fn fory_graph_self_size() -> usize
-    where
-        Self: Sized,
-    {
-        0
-    }
-
-    #[inline(always)]
-    fn fory_graph_storage_size() -> usize
-    where
-        Self: Sized,
-    {
-        let inline_size = std::mem::size_of::<Self>();
-        if inline_size == 0 {
-            Self::fory_graph_self_size()
-        } else {
-            inline_size
-        }
     }
 
     /// Get the static Fory type ID for this type.

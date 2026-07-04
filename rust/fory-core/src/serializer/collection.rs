@@ -253,7 +253,7 @@ where
     C: FromIterator<T>,
 {
     let len = context.reader.read_var_u32()?;
-    let len_usize = reserve_collection_storage(context, len, T::fory_graph_storage_size())?;
+    let len_usize = reserve_collection_storage(context, len, std::mem::size_of::<T>())?;
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
@@ -298,7 +298,7 @@ where
     T: Serializer + ForyDefault,
 {
     let len = context.reader.read_var_u32()?;
-    let len_usize = reserve_collection_storage(context, len, T::fory_graph_storage_size())?;
+    let len_usize = reserve_collection_storage(context, len, std::mem::size_of::<T>())?;
     if len == 0 {
         return Ok(Vec::new());
     }
@@ -747,7 +747,7 @@ where
 {
     let element_type = generic_field_type(remote_field_type, 0, "list")?;
     let len = context.reader.read_var_u32()?;
-    let len_usize = reserve_collection_storage(context, len, T::fory_graph_storage_size())?;
+    let len_usize = reserve_collection_storage(context, len, std::mem::size_of::<T>())?;
     if len == 0 {
         return Ok(Vec::new());
     }

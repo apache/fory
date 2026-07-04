@@ -31,8 +31,10 @@ Load this file when changing `rust/` or Rust xlang behavior.
   owners.
 - Rust `Vec<T>` stores inline element storage, so general LIST paths reserve
   `len * size_of::<T>()`, including `Vec<String>` and `Vec<struct>`. Maps reserve
-  `len * (size_of::<K>() + size_of::<V>())`. Root/product/box owners reserve shallow value storage
-  exactly once; nested inline value serializers do not charge their own self storage again.
+  `len * (size_of::<K>() + size_of::<V>())`. Rust struct serializers do not reserve their own
+  memory because structs are inline values; parent fields, collection/map backing storage, and
+  Box/Rc/Arc/dynamic-box owners account for storage they own with direct `size_of::<T>()` formulas.
+  Root deserialization does not reserve root object memory.
   Dedicated primitive dense ARRAY `Vec<T>` readers, strings, binary, primitive scalars, and
   primitive fixed-array owners stay skipped and keep their byte checks.
 - Direct `Serializer` collection/map paths and derive `Codec` collection/map paths are separate

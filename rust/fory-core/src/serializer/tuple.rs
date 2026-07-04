@@ -182,11 +182,6 @@ impl<T0: Serializer + ForyDefault> Serializer for (T0,) {
     }
 
     #[inline(always)]
-    fn fory_graph_self_size() -> usize {
-        mem::size_of::<Self>()
-    }
-
-    #[inline(always)]
     fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
         Ok(TypeId::LIST)
     }
@@ -452,11 +447,6 @@ macro_rules! impl_tuple_serializer {
             #[inline(always)]
             fn fory_reserved_space() -> usize {
                 mem::size_of::<u32>() // Size for length
-            }
-
-            #[inline(always)]
-            fn fory_graph_self_size() -> usize {
-                mem::size_of::<Self>()
             }
 
             #[inline(always)]

@@ -119,7 +119,6 @@ pub fn derive_serializer(
         read_type_info_ts,
         reserved_space_ts,
         static_type_id_ts,
-        graph_self_size_ts,
     ) = match &ast.data {
         syn::Data::Struct(s) => {
             let source_fields = source_fields(&s.fields);
@@ -133,9 +132,6 @@ pub fn derive_serializer(
                 read::gen_read_type_info(),
                 write::gen_reserved_space(&source_fields),
                 quote! { fory_core::TypeId::STRUCT },
-                quote! {
-                    ::std::mem::size_of::<Self>()
-                },
             )
         }
         syn::Data::Enum(e) => (
@@ -148,7 +144,6 @@ pub fn derive_serializer(
             derive_enum::gen_read_type_info(e),
             derive_enum::gen_reserved_space(),
             derive_enum::gen_static_type_id(e),
-            quote! { 0 },
         ),
         syn::Data::Union(_) => {
             panic!("Union is not supported")
@@ -232,14 +227,6 @@ pub fn derive_serializer(
             }
 
             #[inline(always)]
-            fn fory_graph_self_size() -> usize
-            where
-                Self: Sized,
-            {
-                #graph_self_size_ts
-            }
-
-            #[inline(always)]
             fn fory_write(&self, context: &mut fory_core::WriteContext, ref_mode: fory_core::RefMode, write_type_info: bool, _: bool) -> ::std::result::Result<(), fory_core::error::Error> {
                 #write_ts
             }
@@ -302,10 +289,6 @@ fn generate_send_sync_tokens(ast: &syn::DeriveInput) -> SendSyncTokens {
                 context: &mut fory_core::ReadContext,
                 type_info: ::std::rc::Rc<fory_core::TypeInfo>,
             ) -> ::std::result::Result<::std::boxed::Box<dyn ::std::any::Any + Send + Sync>, fory_core::error::Error> {
-                let graph_self_size = <Self as fory_core::Serializer>::fory_graph_self_size();
-                if graph_self_size != 0 {
-                    context.reserve_graph_memory(graph_self_size)?;
-                }
                 let value = <Self as fory_core::StructSerializer>::fory_read_compatible(context, type_info)?;
                 ::std::result::Result::Ok(fory_core::serializer::box_send_sync(value))
             }
@@ -322,10 +305,6 @@ fn generate_send_sync_tokens(ast: &syn::DeriveInput) -> SendSyncTokens {
             where
                 Self: Sized + fory_core::ForyDefault,
             {
-                let graph_self_size = <Self as fory_core::Serializer>::fory_graph_self_size();
-                if graph_self_size != 0 {
-                    context.reserve_graph_memory(graph_self_size)?;
-                }
                 let value = <Self as fory_core::Serializer>::fory_read_data(context)?;
                 ::std::result::Result::Ok(fory_core::serializer::box_send_sync(value))
             }
