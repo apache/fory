@@ -130,6 +130,7 @@ type TypeInfo struct {
 	UserTypeID   uint32
 	DispatchId   DispatchId
 	Serializer   Serializer
+	ValueBytes   int // Cached Type.Size for dynamic pointer materialization owners.
 	NeedWriteDef bool
 	NeedWriteRef bool // Whether this type needs reference tracking
 	hashValue    uint64
@@ -397,7 +398,12 @@ func (r *TypeResolver) initialize() {
 		{timestampType, TIMESTAMP, timeSerializer{}},
 		{durationType, DURATION, durationSerializer{}},
 		{decimalType, DECIMAL, decimalSerializer{}},
-		{genericSetType, SET, setSerializer{}},
+		{genericSetType, SET, setSerializer{
+			type_:      genericSetType,
+			keyBytes:   int(genericSetType.Key().Size()),
+			valueBytes: int(genericSetType.Elem().Size()),
+			maxLength:  maxGraphCount(int(genericSetType.Key().Size()) + int(genericSetType.Elem().Size())),
+		}},
 	}
 	for _, elem := range serializers {
 		_, err := r.registerType(elem.Type, uint32(elem.TypeId), invalidUserTypeID, "", "", elem.Serializer, true)
@@ -606,6 +612,7 @@ func (r *TypeResolver) RegisterEnum(type_ reflect.Type, userTypeID uint32) error
 		TypeID:     uint32(ENUM),
 		UserTypeID: userTypeID,
 		Serializer: serializer,
+		ValueBytes: int(type_.Size()),
 		IsDynamic:  isDynamicType(type_),
 		DispatchId: GetDispatchId(type_),
 		hashValue:  calcTypeHash(type_),
@@ -799,6 +806,7 @@ func (r *TypeResolver) RegisterExtension(
 		TypeID:     uint32(EXT),
 		UserTypeID: userTypeID,
 		Serializer: serializer,
+		ValueBytes: int(type_.Size()),
 	}
 	r.userTypeIdToTypeInfo[userTypeID] = typeInfo
 	r.typesInfo[type_] = typeInfo
@@ -942,6 +950,7 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 				UserTypeID:    elemInfo.UserTypeID,
 				DispatchId:    elemInfo.DispatchId,
 				Serializer:    ptrSerializer,
+				ValueBytes:    elemInfo.ValueBytes,
 				NeedWriteDef:  elemInfo.NeedWriteDef,
 				hashValue:     elemInfo.hashValue,
 			}
@@ -1190,11 +1199,16 @@ func (r *TypeResolver) registerType(
 	}
 
 	// Build complete type information structure
+	valueBytes := 0
+	if type_ != nil {
+		valueBytes = int(type_.Size())
+	}
 	typeInfo := &TypeInfo{
 		Type:         type_,
 		TypeID:       typeID,
 		UserTypeID:   userTypeID,
 		Serializer:   serializer,
+		ValueBytes:   valueBytes,
 		PkgPathBytes: nsBytes,   // Encoded namespace bytes
 		NameBytes:    typeBytes, // Encoded type name bytes
 		IsDynamic:    isDynamicType(type_),

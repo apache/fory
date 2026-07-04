@@ -150,6 +150,11 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine("namespace Apache.Fory.Generated;");
         sb.AppendLine();
+        sb.AppendLine("file static class __ForyGraphElementBytes<T>");
+        sb.AppendLine("{");
+        sb.AppendLine("    internal static readonly int Bytes = typeof(T).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<T>() : 4;");
+        sb.AppendLine("}");
+        sb.AppendLine();
 
         foreach (KeyValuePair<string, TypeModel> entry in models.OrderBy(kv => kv.Key, StringComparer.Ordinal))
         {
@@ -1239,8 +1244,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine($"{indent}}}");
         string elementTypeName = codec.CarrierKind == CarrierKind.Array ? ElementTypeName(codec.TypeName) : PackedArrayElementTypeName(codec.TypeId);
         uint elementTypeId = PackedArrayElementTypeId(codec.TypeId);
-        string elementBytesExpr =
-            $"(typeof({elementTypeName}).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<{elementTypeName}>() : 4)";
+        string elementBytesExpr = GraphElementBytesExpr(elementTypeName);
         if (codec.CarrierKind == CarrierKind.Array)
         {
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new {ElementTypeName(codec.TypeName)}[{lengthVar}];");
@@ -1914,7 +1918,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
 
     private static string GraphElementBytesExpr(string typeName)
     {
-        return $"(typeof({typeName}).IsValueType ? global::System.Runtime.CompilerServices.Unsafe.SizeOf<{typeName}>() : 4)";
+        return $"__ForyGraphElementBytes<{typeName}>.Bytes";
     }
 
     private static string GraphMapElementBytesExpr(FieldCodecModel key, FieldCodecModel value)

@@ -311,6 +311,7 @@ func (s *sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, exp
 	var elemTypeInfo *TypeInfo
 	var elemType reflect.Type
 	var elemSerializer Serializer
+	elemValueBytes := 0
 	if (collectFlag & CollectionIsSameType) != 0 {
 		if (collectFlag & CollectionIsDeclElementType) == 0 {
 			elemTypeInfo = ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
@@ -318,10 +319,14 @@ func (s *sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, exp
 		if elemTypeInfo != nil && elemTypeInfo.Serializer != nil {
 			elemType = elemTypeInfo.Type
 			elemSerializer = elemTypeInfo.Serializer
+			elemValueBytes = elemTypeInfo.ValueBytes
 		} else {
 			// When CollectionIsDeclElementType is set, get serializer from the declared element type
 			elemType = sliceType.Elem()
 			elemSerializer, _ = ctx.TypeResolver().getSerializerByType(elemType, false)
+			if structSer, ok := elemSerializer.(*structSerializer); ok {
+				elemValueBytes = structSer.valueBytes
+			}
 		}
 		if ctx.HasError() {
 			return
@@ -333,7 +338,7 @@ func (s *sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, exp
 			value.Set(reflect.MakeSlice(sliceType, length, length))
 		}
 		ctx.RefResolver().Reference(value)
-		s.readSameType(ctx, buf, value, elemType, elemSerializer, collectFlag, length)
+		s.readSameType(ctx, buf, value, elemType, elemSerializer, elemValueBytes, collectFlag, length)
 		return
 	}
 	if !buf.CheckReadable(length, ctxErr) {
@@ -352,7 +357,7 @@ func (s *sliceDynSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode,
 }
 
 // readSameType handles deserialization of slices where all elements share the same type
-func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value reflect.Value, elemType reflect.Type, serializer Serializer, flag int8, length int) {
+func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value reflect.Value, elemType reflect.Type, serializer Serializer, valueBytes int, flag int8, length int) {
 	trackRefs := (flag & CollectionTrackingRef) != 0
 	hasNull := (flag & CollectionHasNull) != 0
 	ctxErr := ctx.Err()
@@ -362,7 +367,7 @@ func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, val
 	}
 
 	// Wrap serializer to produce pointers if needed for interface implementation
-	elemType, serializer = s.wrapSerializerIfNeeded(elemType, serializer)
+	elemType, serializer = s.wrapSerializerIfNeeded(elemType, serializer, valueBytes)
 
 	// Check if element is a named struct type (needs pointer for circular ref support)
 	isNamedStruct := false
@@ -458,7 +463,7 @@ func (s *sliceDynSerializer) readDifferentTypes(
 			if ctxErr.HasError() {
 				return
 			}
-			elemType, serializer := s.wrapSerializerIfNeeded(typeInfo.Type, typeInfo.Serializer)
+			elemType, serializer := s.wrapSerializerIfNeeded(typeInfo.Type, typeInfo.Serializer, typeInfo.ValueBytes)
 			elem := reflect.New(elemType).Elem()
 			serializer.ReadData(ctx, elem)
 			ctx.RefResolver().SetReadObject(refID, elem)
@@ -477,7 +482,7 @@ func (s *sliceDynSerializer) readDifferentTypes(
 			if ctxErr.HasError() {
 				return
 			}
-			elemType, serializer := s.wrapSerializerIfNeeded(typeInfo.Type, typeInfo.Serializer)
+			elemType, serializer := s.wrapSerializerIfNeeded(typeInfo.Type, typeInfo.Serializer, typeInfo.ValueBytes)
 			elem := reflect.New(elemType).Elem()
 			serializer.ReadData(ctx, elem)
 			if ctx.HasError() {
@@ -492,15 +497,20 @@ func (s *sliceDynSerializer) readDifferentTypes(
 //  1. Slice element type is pointer-to-interface and the deserialized type is not a pointer, OR
 //  2. Slice element type is interface and the deserialized type doesn't directly implement it
 //     but the pointer type does (common case where interface has pointer receivers)
-func (s *sliceDynSerializer) wrapSerializerIfNeeded(elemType reflect.Type, serializer Serializer) (reflect.Type, Serializer) {
+func (s *sliceDynSerializer) wrapSerializerIfNeeded(elemType reflect.Type, serializer Serializer, valueBytes int) (reflect.Type, Serializer) {
 	if elemType.Kind() == reflect.Ptr {
 		return elemType, serializer
+	}
+	if valueBytes == 0 {
+		if structSer, ok := serializer.(*structSerializer); ok {
+			valueBytes = structSer.valueBytes
+		}
 	}
 	// Check if we need pointer wrapper for isPointerElem or interface implementation
 	needsPointer := s.isPointerElem ||
 		(s.isInterfaceElem && s.elemType != nil && !elemType.AssignableTo(s.elemType))
 	if needsPointer {
-		return reflect.PtrTo(elemType), &ptrToValueSerializer{valueSerializer: serializer, valueBytes: int(elemType.Size())}
+		return reflect.PtrTo(elemType), &ptrToValueSerializer{valueSerializer: serializer, valueBytes: valueBytes}
 	}
 	return elemType, serializer
 }

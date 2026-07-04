@@ -254,10 +254,14 @@ func (td *TypeDef) buildTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, 
 		TypeID:       td.typeId,
 		UserTypeID:   td.userTypeId,
 		Serializer:   serializer,
+		ValueBytes:   0,
 		PkgPathBytes: td.nsName,
 		NameBytes:    td.typeName,
 		IsDynamic:    type_ == nil, // Mark as dynamic if type is unknown
 		TypeDef:      td,
+	}
+	if type_ != nil {
+		info.ValueBytes = int(type_.Size())
 	}
 	return info, nil
 }

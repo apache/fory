@@ -349,7 +349,7 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				elemSerializer = elemTypeInfo.Serializer
 				elemType := value.Type().Elem()
 				if elemTypeInfo.Type != nil {
-					_, elemSerializer = wrapMapSerializerIfNeeded(elemType, elemTypeInfo.Type, elemSerializer)
+					_, elemSerializer = wrapMapSerializerIfNeeded(elemType, elemTypeInfo.Type, elemSerializer, elemTypeInfo.ValueBytes)
 				}
 				if elemType.Kind() != reflect.Ptr {
 					if ptrSer, ok := elemSerializer.(*ptrToValueSerializer); ok {

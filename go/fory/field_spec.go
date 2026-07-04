@@ -333,7 +333,7 @@ func (t *TypeSpec) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, er
 	if err != nil {
 		return TypeInfo{}, err
 	}
-	return TypeInfo{Type: goType, TypeID: uint32(t.TypeID), Serializer: serializer}, nil
+	return TypeInfo{Type: goType, TypeID: uint32(t.TypeID), Serializer: serializer, ValueBytes: int(goType.Size())}, nil
 }
 
 func (t *TypeSpec) goTypeForResolver(resolver *TypeResolver) (reflect.Type, error) {

@@ -154,7 +154,7 @@ func (s setSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, keys []re
 			// Get type info for first element to use as reference
 			elemTypeInfo, _ = ctx.TypeResolver().getTypeInfo(firstElem, true)
 			if declaredGenerics && elemTypeInfo != nil && !needsElemTypeInfo(TypeId(elemTypeInfo.TypeID)) {
-				elemTypeInfo = &TypeInfo{Type: firstElem.Type(), Serializer: s.elemSerializer}
+				elemTypeInfo = &TypeInfo{Type: firstElem.Type(), Serializer: s.elemSerializer, ValueBytes: s.keyBytes}
 			}
 		}
 	}
@@ -323,15 +323,8 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 	keyBytes := s.keyBytes
 	valueBytes := s.valueBytes
-	if s.type_ != type_ {
-		keyBytes = int(type_.Key().Size())
-		valueBytes = int(type_.Elem().Size())
-	}
 	elemBytes := keyBytes + valueBytes
 	maxLength := s.maxLength
-	if s.type_ != type_ {
-		maxLength = maxGraphCount(elemBytes)
-	}
 	if elemBytes < keyBytes {
 		ctx.SetError(DeserializationErrorf("map entry size overflows: key=%d value=%d", keyBytes, valueBytes))
 		return
@@ -366,7 +359,7 @@ func (s setSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 					return
 				}
 			}
-			elemTypeInfo = &TypeInfo{Type: keyType, Serializer: elemSerializer}
+			elemTypeInfo = &TypeInfo{Type: keyType, Serializer: elemSerializer, ValueBytes: s.keyBytes}
 		} else {
 			// Element type is not declared, read from buffer
 			elemTypeInfo = ctx.TypeResolver().ReadTypeInfo(buf, err)
@@ -417,7 +410,7 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 	if !declaredGenerics && typeInfo != nil && typeInfo.Serializer != nil {
 		serializer = typeInfo.Serializer
 		if typeInfo.Type != nil {
-			elemType, serializer = wrapMapSerializerIfNeeded(keyType, typeInfo.Type, serializer)
+			elemType, serializer = wrapMapSerializerIfNeeded(keyType, typeInfo.Type, serializer, typeInfo.ValueBytes)
 		}
 	}
 	if keyType.Kind() != reflect.Ptr && keyType.Kind() != reflect.Interface {

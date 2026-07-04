@@ -812,7 +812,12 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 				internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT)
 
 		if isNamedStruct {
-			valueBytes := int(actualType.Size())
+			structSer, ok := typeInfo.Serializer.(*structSerializer)
+			if !ok {
+				c.SetError(DeserializationError("expected struct serializer for dynamic named struct"))
+				return
+			}
+			valueBytes := structSer.valueBytes
 			// Dynamic named structs are materialized as pointers for reference
 			// semantics; this branch reserves the heap value it allocates, while
 			// plain struct serializers do not reserve their own storage.
