@@ -89,7 +89,16 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                 case RefFlag.Ref:
                     {
                         uint refId = context.RefReader.ReadRefId(context.Reader);
-                        return context.RefReader.GetRefValue(refId);
+                        object? value = context.RefReader.GetRefValue(refId);
+                        if (value is null)
+                        {
+                            // Real nulls use RefFlag.Null; a null object ref means the owner has
+                            // not been published yet, such as a union value that cannot be
+                            // materialized before its case value is read.
+                            throw new RefException($"ref_id {refId} has not been published");
+                        }
+
+                        return value;
                     }
                 case RefFlag.RefValue:
                     {

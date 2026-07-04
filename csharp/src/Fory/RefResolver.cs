@@ -107,15 +107,7 @@ public sealed class RefReader
             throw new RefException($"ref_id out of range: {refId}");
         }
 
-        object? value = _refs[index];
-        if (value is null)
-        {
-            // Real nulls use RefFlag.Null; a null ref-table slot is a reserved owner that has not
-            // been published yet, so returning it would silently corrupt forward references.
-            throw new RefException($"ref_id {refId} has not been published");
-        }
-
-        return value;
+        return _refs[index];
     }
 
     public void Reset()
