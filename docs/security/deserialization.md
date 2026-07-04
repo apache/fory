@@ -75,6 +75,13 @@ serializer is allowed by the active policy, the application owns whether that
 type's construction, hooks, setters, finalizers, or other logic is safe for the
 application's trust boundary.
 
+When policy-approved construction or callable execution is allowed, resource
+accounting should not claim to bound arbitrary code outside Fory's ownership.
+Fory-owned accounting can cover only objects and storage that Fory itself
+clearly creates or copies and that remain reachable from the materialized graph.
+Temporary helper allocations and user-code internals remain outside that
+accounting boundary.
+
 ## Depth And Progress
 
 Deserialization paths that recurse through objects, metadata, containers, or
@@ -156,6 +163,11 @@ For buffer-backed input:
   supplied at least proportional input bytes before the reader preallocates from
   the count. Estimated memory-budget accounting may reserve budget before this
   byte check because it does not allocate backing storage.
+- Readers should not add count-based readability checks merely because a loop
+  will read that many values when the destination grows incrementally and each
+  item read still uses the normal byte-owner checks. The security boundary is
+  direct preallocation from an untrusted count, not the existence of a counted
+  loop.
 
 For stream-backed input:
 
@@ -205,28 +217,36 @@ validation can cause a no-progress loop, unbounded resource growth, retained
 state, or success across a Fory policy boundary. Protocol-allowed chunk
 segmentation is normal input and is not a security issue by itself.
 
-## Root Graph Memory Budget
+## Graph Memory Budget
 
-Runtimes should enforce a root-deserialization budget for estimated shallow memory created by one
-materialized graph. This is cumulative accounting for graph owners created by one root read; it is
-not exact heap measurement and it is not a raw element-slot limit.
+Runtimes should enforce a per-operation budget for estimated shallow memory created by one
+materialized graph. This is cumulative accounting for graph owners created by one top-level
+deserialization operation; it is not exact heap measurement and it is not a raw element-slot limit.
 
-The public configuration is `maxGraphMemoryBytes`. The default is a fixed `128 MiB` for all root
-input forms; positive user configuration overrides the default. Explicit non-positive configuration
-is invalid and should be rejected when the runtime is created. The budget is not derived from root
-input size, and stream budgeting should not depend on dynamic bytes-read accounting.
+The public configuration is `maxGraphMemoryBytes`. The default is a fixed `128 MiB` for all input
+forms; positive user configuration overrides the default. Explicit non-positive configuration is
+invalid and should be rejected when the runtime is created. The budget is not derived from input
+size, and stream budgeting should not depend on dynamic bytes-read accounting.
 
 Graph budget accounting should:
 
-- happen in root-operation read state, with cleanup owned by the root deserialization `finally`;
+- be initialized in top-level read state, with cleanup owned by the top-level deserialization
+  `finally`;
+- account only for Fory-created objects or storage that are retained by the
+  returned value graph; temporary helper objects used only during construction
+  are outside the graph budget;
+- not claim to budget arbitrary constructor, callable, descriptor, finalizer,
+  or state-restoration internals that run after an explicit policy allows that
+  code;
 - keep read context/read state limited to raw byte reservation; counted arithmetic and collection,
   map, array, struct, and object storage formulas belong in the concrete serializer or generated
   serializer owner;
 - reject arithmetic overflow before comparing budget or allocating;
-- estimate lower-bound shallow owner storage: independently materialized collections, maps, sets,
-  and reference arrays reserve nonzero shallow self cost plus backing/reference/inline storage, and
-  struct/record/POJO/tuple, compatible, generated, and dynamic object owners reserve a nonzero
-  shallow self cost plus shallow field storage;
+- estimate lower-bound shallow owner storage: reference-backed or heap-materialized collections,
+  maps, sets, and reference arrays reserve nonzero shallow self cost plus
+  backing/reference/inline storage, and reference-backed or heap-materialized struct, record,
+  POJO, tuple/product, compatible, generated, and dynamic object owners reserve a nonzero shallow
+  self cost plus shallow field storage;
 - use a 4-byte reference slot when the actual reference slot size is not cheap or reliable to query,
   and use primitive/value field widths for inline storage;
 - preserve existing byte-availability checks before backing allocation or capacity reservation;
@@ -234,14 +254,86 @@ Graph budget accounting should:
   array, and primitive dense-array leaf owners.
 
 Each runtime must inspect the concrete owner path before choosing formulas. Reserve self storage
-exactly once at the owner that stores, boxes, or allocates the value. Root facades may reset the
-budget, but must not pre-reserve root type, root self bytes, or root value storage.
+exactly once at the owner that stores, boxes, or allocates the value. Deserialization facades may
+reset the budget for each operation, but must not pre-reserve the top-level result type, self bytes,
+or value storage.
 Reference-backed paths reserve parent owner self cost plus reference storage, while each referenced
 heap owner reserves its own shallow self cost when materialized. Inline/value paths reserve inline
-element, field, or boxed storage in the holder/allocation owner; value serializers, including root
-and generated struct/product read paths, must not charge their own self storage.
+element, field, or boxed storage in the holder/allocation owner; top-level value serializers and
+generated struct/product read paths must not charge their own self storage.
+For inline/value collection or map runtimes, the top-level value container itself is not charged by
+the deserialization facade or by the container serializer only because it is the returned value.
+Nested value containers are charged as inline slots of the parent holder or as backing storage
+elements of the outer collection that actually owns those slots. Pointer, box, smart-pointer, or
+type-erased materialization paths reserve the shallow storage for the heap value they allocate.
 Parents must not recursively include child object, collection, map, string, binary, or primitive
 dense-array contents; the child owner reserves its own shallow memory when it is materialized.
+
+### Runtime-Specific Owner Notes
+
+#### C++
+
+C++ plain structs, products, and standard-library containers are value storage unless a pointer,
+smart pointer, or type-erased owner allocates them on the heap. Top-level deserialization initializes
+the remaining graph budget but does not reserve `sizeof(T)` for the returned value. Plain value
+serializers must not reserve their own `sizeof(T)` only because they are reading a value.
+
+Generic collection and map serializers reserve the lower-bound element, key, and value storage
+owned by the container path. Nested value container headers are charged when they are inline slots
+of a parent object or elements in an outer container backing store. Smart-pointer and type-erased
+materialization paths reserve the shallow storage for the heap value they allocate before publishing
+or returning it. Generic C++ paths must not invent standard-library header, node, bucket, allocator,
+or debug-layout overheads.
+
+#### Rust
+
+Rust structs, tuples, enums, and collection values are inline value storage unless a `Box`, `Rc`,
+`Arc`, or type-erased owner allocates them. Top-level and derived value read paths initialize or
+consume the budget but do not reserve `size_of::<Self>()` for the value being read. `Vec`, `HashMap`,
+`BTreeMap`, and similar serializers reserve backing or entry value storage that they allocate from
+counts; nested value container headers are charged as parent inline fields or outer backing elements.
+
+Boxed, reference-counted, and type-erased materialization paths reserve `size_of::<T>()` for the heap
+payload they create. Compile-time `size_of::<T>()` formulas are acceptable in those allocation
+owners, but value serializers should not add a parallel self-reserve for the same `T`.
+
+#### Swift
+
+Swift structs, enums, tuples, and collection values are value storage. Top-level value reads and
+nested value serializers should not reserve their own self storage. The holder that owns the value,
+such as a struct field, array backing store, dictionary entry storage, or boxed/dynamic
+materialization path, owns the corresponding graph-budget reservation.
+
+Array, dictionary, and set serializers may reserve lower-bound backing storage using stable Swift
+type-size information, such as `MemoryLayout<T>.stride`, when they allocate or reserve that storage.
+Class, existential, or boxed materialization paths reserve owner storage when Fory creates the
+retained object or box. Runtime object-layout probing should not be added to hot read paths.
+
+#### Go
+
+Go structs and slice or map headers are value storage unless a pointer, interface materialization, or
+other heap owner allocates them. Top-level deserialization and struct value serializers should not
+reserve the returned struct or a nested inline struct by themselves. Pointer serializers reserve the
+concrete struct storage when they allocate a retained `*T`.
+
+Slice, array, map, and set serializers reserve the backing or entry storage they allocate from
+declared counts. Element and entry widths should come from stable type information captured by the
+serializer or resolver when possible; read loops should not recompute reflective size information
+when the owner already knows the concrete type. Interface or dynamic paths reserve only storage that
+Fory clearly materializes and retains.
+
+#### C#
+
+C# combines reference owners and inline value types. Classes, arrays, lists, dictionaries, hash sets,
+and other heap containers reserve a nonzero shallow owner cost plus direct backing, reference-slot,
+or inline element storage. A dictionary is a reference-type container even when its key or value type
+is a struct, so the dictionary owner is still charged separately from its entry storage.
+
+Value structs do not reserve their own self storage when read inline; the holder that stores the
+struct, such as an object field, array element, list backing store, dictionary entry, box, or dynamic
+materialization path, owns that reservation. Boxing, `object`, and dynamic materialization paths
+reserve a boxed owner when Fory creates the retained box. Owner constants should be real portable
+lower bounds for the relevant C# object or container shape, not one-byte or two-pointer tokens.
 
 Runtimes should not guess object headers, array headers, allocator headers, debug-mode fields, hash
 buckets, tree links, hash-chain links, node headers, map-entry objects, spare blocks, or runtime
