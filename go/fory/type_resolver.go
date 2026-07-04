@@ -1740,8 +1740,8 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 			return uint32ArraySerializer{arrayType: type_}, nil
 		}
 
-		if isDynamicType(elem) {
-			return arraySerializer{}, nil
+		if elem.Kind() == reflect.Interface || (elem.Kind() == reflect.Ptr && elem.Elem().Kind() == reflect.Interface) {
+			return newArrayDynSerializer(elem)
 		} else {
 			elemSerializer, err := r.getSerializerByType(type_.Elem(), false)
 			if err != nil {
@@ -1915,6 +1915,9 @@ func (r *TypeResolver) getArraySerializer(arrayType reflect.Type) (Serializer, e
 			return int64ArraySerializer{arrayType: arrayType}, nil
 		}
 		return int32ArraySerializer{arrayType: arrayType}, nil
+	}
+	if elemType.Kind() == reflect.Interface || (elemType.Kind() == reflect.Ptr && elemType.Elem().Kind() == reflect.Interface) {
+		return newArrayDynSerializer(elemType)
 	}
 	// For non-primitive element types, use sliceSerializer
 	elemSerializer, err := r.getSerializerByType(elemType, false)

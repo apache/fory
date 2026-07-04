@@ -27,6 +27,8 @@ import (
 // This serializer is designed for slices with any interface element type
 // (e.g., []any, []io.Reader, []fmt.Stringer, or pointers to interfaces).
 // For slices with concrete element types, use sliceSerializer instead.
+// sliceDynSerializer is pointer-owned because serializers are reused configuration objects;
+// pointer receivers avoid copying cached element budget/type state on hot read/write paths.
 type sliceDynSerializer struct {
 	elemType        reflect.Type
 	isInterfaceElem bool

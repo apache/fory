@@ -290,24 +290,26 @@ func (s *arrayConcreteValueSerializer) ReadWithTypeInfo(ctx *ReadContext, refMod
 // arrayDynSerializer wraps sliceDynSerializer for arrays with interface element types.
 // It converts arrays to slices and delegates to sliceDynSerializer.
 type arrayDynSerializer struct {
-	sliceSerializer sliceDynSerializer
+	// Keep a pointer to the delegated slice serializer so array dynamic reads do not copy
+	// slice serializer state.
+	sliceSerializer *sliceDynSerializer
 }
 
-func newArrayDynSerializer(elemType reflect.Type) (arrayDynSerializer, error) {
+func newArrayDynSerializer(elemType reflect.Type) (*arrayDynSerializer, error) {
 	sliceSer, err := newSliceDynSerializer(elemType)
 	if err != nil {
-		return arrayDynSerializer{}, err
+		return nil, err
 	}
-	return arrayDynSerializer{sliceSerializer: *sliceSer}, nil
+	return &arrayDynSerializer{sliceSerializer: sliceSer}, nil
 }
 
-func (s arrayDynSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+func (s *arrayDynSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	// Convert array to slice and forward to sliceDynSerializer
 	slice := value.Slice(0, value.Len())
 	s.sliceSerializer.WriteData(ctx, slice)
 }
 
-func (s arrayDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+func (s *arrayDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
 	writeArrayRefAndType(ctx, refMode, writeType, value, LIST)
 	if ctx.HasError() {
 		return
@@ -315,7 +317,7 @@ func (s arrayDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType 
 	s.WriteData(ctx, value)
 }
 
-func (s arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+func (s *arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Create a temp slice to read into, then copy back to array
 	sliceType := reflect.SliceOf(value.Type().Elem())
 	elemBytes := s.sliceSerializer.elemBytes
@@ -341,7 +343,7 @@ func (s arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 }
 
-func (s arrayDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+func (s *arrayDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
 	done := readArrayRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
 		return
@@ -349,7 +351,7 @@ func (s arrayDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType boo
 	s.ReadData(ctx, value)
 }
 
-func (s arrayDynSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+func (s *arrayDynSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	s.Read(ctx, refMode, false, false, value)
 }
 
