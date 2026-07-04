@@ -142,7 +142,7 @@ func (s *sliceDynSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, val
 	}
 	// Only get elemTypeInfo if all elements have same type
 	if hasSameType && firstElem.IsValid() {
-		elemTypeInfo, _ = ctx.TypeResolver().getTypeInfo(firstElem, true)
+		elemTypeInfo, _ = ctx.TypeResolver().GetTypeInfo(firstElem, true)
 	}
 
 	// Set collection flags based on findings
@@ -218,7 +218,7 @@ func (s *sliceDynSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuf
 				return
 			}
 			if !refWritten {
-				typeInfo, err := ctx.TypeResolver().getTypeInfo(elem, true)
+				typeInfo, err := ctx.TypeResolver().GetTypeInfo(elem, true)
 				if err != nil {
 					ctx.SetError(FromError(err))
 					return
@@ -233,7 +233,7 @@ func (s *sliceDynSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuf
 				continue
 			}
 			buf.WriteInt8(NotNullValueFlag)
-			typeInfo, err := ctx.TypeResolver().getTypeInfo(elem, true)
+			typeInfo, err := ctx.TypeResolver().GetTypeInfo(elem, true)
 			if err != nil {
 				ctx.SetError(FromError(err))
 				return
@@ -242,7 +242,7 @@ func (s *sliceDynSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuf
 			typeInfo.Serializer.WriteData(ctx, elem)
 		} else {
 			// No ref tracking and no nulls - write type + data directly
-			typeInfo, err := ctx.TypeResolver().getTypeInfo(elem, true)
+			typeInfo, err := ctx.TypeResolver().GetTypeInfo(elem, true)
 			if err != nil {
 				ctx.SetError(FromError(err))
 				return

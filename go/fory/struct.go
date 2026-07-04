@@ -115,7 +115,7 @@ func (s *structSerializer) Write(ctx *WriteContext, refMode RefMode, writeType b
 	}
 	if writeType {
 		// Structs have dynamic type IDs, need to look up from TypeResolver
-		typeInfo, err := ctx.TypeResolver().getTypeInfo(value, true)
+		typeInfo, err := ctx.TypeResolver().GetTypeInfo(value, true)
 		if err != nil {
 			ctx.SetError(FromError(err))
 			return

@@ -139,11 +139,11 @@ func TestStructEvolvingOverride(t *testing.T) {
 
 	resolver := f.GetTypeResolver()
 
-	evolvingInfo, err := resolver.getTypeInfo(reflect.ValueOf(evolvingStruct{}), true)
+	evolvingInfo, err := resolver.GetTypeInfo(reflect.ValueOf(evolvingStruct{}), true)
 	require.NoError(t, err)
 	require.Equal(t, uint32(COMPATIBLE_STRUCT), evolvingInfo.TypeID)
 
-	fixedInfo, err := resolver.getTypeInfo(reflect.ValueOf(fixedStruct{}), true)
+	fixedInfo, err := resolver.GetTypeInfo(reflect.ValueOf(fixedStruct{}), true)
 	require.NoError(t, err)
 	require.Equal(t, uint32(STRUCT), fixedInfo.TypeID)
 
@@ -460,7 +460,7 @@ func TestSetFieldTypeId(t *testing.T) {
 	require.NoError(t, err, "register struct error")
 
 	// Get the struct serializer to inspect the fields
-	typeInfo, err := f.typeResolver.getTypeInfo(reflect.ValueOf(TestStruct{}), false)
+	typeInfo, err := f.typeResolver.GetTypeInfo(reflect.ValueOf(TestStruct{}), false)
 	require.NoError(t, err, "getTypeInfo failed")
 	require.NotNil(t, typeInfo, "typeInfo is nil")
 
@@ -497,7 +497,7 @@ func TestReducedPrecisionSlicesUseListOrdering(t *testing.T) {
 	f := New(WithXlang(true), WithCompatible(false))
 	require.NoError(t, f.RegisterStruct(TestStruct{}, 1004))
 
-	typeInfo, err := f.typeResolver.getTypeInfo(reflect.ValueOf(TestStruct{}), false)
+	typeInfo, err := f.typeResolver.GetTypeInfo(reflect.ValueOf(TestStruct{}), false)
 	require.NoError(t, err)
 
 	structSer, ok := typeInfo.Serializer.(*structSerializer)
@@ -529,7 +529,7 @@ func TestTaggedFieldsKeepGroupedPayloadOrder(t *testing.T) {
 	f := New(WithXlang(true), WithCompatible(true))
 	require.NoError(t, f.RegisterStruct(TaggedSortStruct{}, 1006))
 
-	typeInfo, err := f.typeResolver.getTypeInfo(reflect.ValueOf(TaggedSortStruct{}), false)
+	typeInfo, err := f.typeResolver.GetTypeInfo(reflect.ValueOf(TaggedSortStruct{}), false)
 	require.NoError(t, err)
 	structSer, ok := typeInfo.Serializer.(*structSerializer)
 	require.True(t, ok)

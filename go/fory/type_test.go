@@ -154,12 +154,12 @@ func TestReducedPrecisionArrayTypeIDs(t *testing.T) {
 	fory := NewFory(WithXlang(true), WithCompatible(false))
 	r := newTypeResolver(fory)
 
-	float16Info, err := r.getTypeInfo(reflect.ValueOf([2]float16.Float16{}), true)
+	float16Info, err := r.GetTypeInfo(reflect.ValueOf([2]float16.Float16{}), true)
 	require.NoError(t, err)
 	require.Equal(t, uint32(FLOAT16_ARRAY), float16Info.TypeID)
 	require.IsType(t, float16ArraySerializer{}, float16Info.Serializer)
 
-	bfloat16Info, err := r.getTypeInfo(reflect.ValueOf([2]bfloat16.BFloat16{}), true)
+	bfloat16Info, err := r.GetTypeInfo(reflect.ValueOf([2]bfloat16.BFloat16{}), true)
 	require.NoError(t, err)
 	require.Equal(t, uint32(BFLOAT16_ARRAY), bfloat16Info.TypeID)
 	require.IsType(t, bfloat16ArraySerializer{}, bfloat16Info.Serializer)

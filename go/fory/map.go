@@ -708,9 +708,9 @@ func getTypeInfoForValue(v reflect.Value, resolver *TypeResolver) (*TypeInfo, er
 		if !elem.IsValid() {
 			return nil, fmt.Errorf("invalid interface value")
 		}
-		return resolver.getTypeInfo(elem, true)
+		return resolver.GetTypeInfo(elem, true)
 	}
-	return resolver.getTypeInfo(v, true)
+	return resolver.GetTypeInfo(v, true)
 }
 
 // setMapValue sets a key-value pair into a map, handling interface types

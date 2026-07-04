@@ -387,7 +387,7 @@ func readTypeName(buffer *ByteBuffer, typeNameDecoder *meta.Decoder, err *Error)
 
 // buildTypeDef constructs a TypeDef from a value
 func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
-	infoPtr, err := fory.typeResolver.getTypeInfo(value, true)
+	infoPtr, err := fory.typeResolver.GetTypeInfo(value, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get type info for value %v: %w", value, err)
 	}

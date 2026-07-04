@@ -29,16 +29,6 @@ type primitiveListSerializer struct {
 	maxLength  int64
 }
 
-func newPrimitiveList(type_ reflect.Type, elemTypeID TypeId, elemType reflect.Type) primitiveListSerializer {
-	elemBytes := int(elemType.Size())
-	return primitiveListSerializer{
-		type_:      type_,
-		elemTypeID: elemTypeID,
-		elemBytes:  elemBytes,
-		maxLength:  maxGraphCount(elemBytes),
-	}
-}
-
 type compatiblePrimitiveListToArraySerializer struct {
 	arrayType  reflect.Type
 	listReader primitiveListSerializer
@@ -49,45 +39,52 @@ func newPrimitiveListSerializer(type_ reflect.Type, elemTypeID TypeId) (Serializ
 		return nil, false
 	}
 	elemType := type_.Elem()
+	elemBytes := int(elemType.Size())
+	serializer := primitiveListSerializer{
+		type_:      type_,
+		elemTypeID: elemTypeID,
+		elemBytes:  elemBytes,
+		maxLength:  maxGraphCount(elemBytes),
+	}
 	switch elemType.Kind() {
 	case reflect.Bool:
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == BOOL
+		return serializer, elemTypeID == BOOL
 	case reflect.Int8:
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT8
+		return serializer, elemTypeID == INT8
 	case reflect.Uint8:
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT8
+		return serializer, elemTypeID == UINT8
 	case reflect.Int16:
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT16
+		return serializer, elemTypeID == INT16
 	case reflect.Uint16:
 		if elemType == float16Type {
-			return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == FLOAT16
+			return serializer, elemTypeID == FLOAT16
 		}
 		if elemType == bfloat16Type {
-			return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == BFLOAT16
+			return serializer, elemTypeID == BFLOAT16
 		}
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT16
+		return serializer, elemTypeID == UINT16
 	case reflect.Int32:
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT32 || elemTypeID == VARINT32
+		return serializer, elemTypeID == INT32 || elemTypeID == VARINT32
 	case reflect.Uint32:
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT32 || elemTypeID == VAR_UINT32
+		return serializer, elemTypeID == UINT32 || elemTypeID == VAR_UINT32
 	case reflect.Int64:
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
+		return serializer, elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
 	case reflect.Uint64:
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
+		return serializer, elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
 	case reflect.Int:
 		if reflect.TypeOf(int(0)).Size() == 8 {
-			return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
+			return serializer, elemTypeID == INT64 || elemTypeID == VARINT64 || elemTypeID == TAGGED_INT64
 		}
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == INT32 || elemTypeID == VARINT32
+		return serializer, elemTypeID == INT32 || elemTypeID == VARINT32
 	case reflect.Uint:
 		if reflect.TypeOf(uint(0)).Size() == 8 {
-			return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
+			return serializer, elemTypeID == UINT64 || elemTypeID == VAR_UINT64 || elemTypeID == TAGGED_UINT64
 		}
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == UINT32 || elemTypeID == VAR_UINT32
+		return serializer, elemTypeID == UINT32 || elemTypeID == VAR_UINT32
 	case reflect.Float32:
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == FLOAT32
+		return serializer, elemTypeID == FLOAT32
 	case reflect.Float64:
-		return newPrimitiveList(type_, elemTypeID, elemType), elemTypeID == FLOAT64
+		return serializer, elemTypeID == FLOAT64
 	default:
 		return nil, false
 	}

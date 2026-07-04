@@ -161,11 +161,11 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 			elem := value.Index(i)
 			if isPointerElem {
 				if !elem.IsNil() {
-					elemTypeInfo, _ = ctx.TypeResolver().getTypeInfo(elem.Elem(), true)
+					elemTypeInfo, _ = ctx.TypeResolver().GetTypeInfo(elem.Elem(), true)
 					break
 				}
 			} else {
-				elemTypeInfo, _ = ctx.TypeResolver().getTypeInfo(elem, true)
+				elemTypeInfo, _ = ctx.TypeResolver().GetTypeInfo(elem, true)
 				break
 			}
 		}

@@ -171,7 +171,7 @@ func (s *sliceSerializer) writeDataWithGenerics(ctx *WriteContext, value reflect
 	}
 
 	elemType := s.type_.Elem()
-	elemTypeInfo, _ := ctx.TypeResolver().getTypeInfo(reflect.New(elemType).Elem(), false)
+	elemTypeInfo, _ := ctx.TypeResolver().GetTypeInfo(reflect.New(elemType).Elem(), false)
 	elemDeclared := hasGenerics
 	if elemDeclared && elemTypeInfo != nil && needsElemTypeInfo(TypeId(elemTypeInfo.TypeID)) {
 		elemDeclared = false

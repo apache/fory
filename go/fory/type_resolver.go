@@ -862,7 +862,8 @@ func (r *TypeResolver) getSerializerByTypeID(typeID uint32) Serializer {
 	return nil
 }
 
-func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo, error) {
+// GetTypeInfo returns the TypeInfo for value, creating serializer metadata when create is true.
+func (r *TypeResolver) GetTypeInfo(value reflect.Value, create bool) (*TypeInfo, error) {
 	// First check if type info exists in cache
 	if value.Kind() == reflect.Interface {
 		// make sure the concrete value don't miss its real typeInfo

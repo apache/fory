@@ -618,7 +618,7 @@ func (f *Fory) SerializeTo(buf *ByteBuffer, value any) error {
 	if rv.Kind() == reflect.Ptr && !rv.IsNil() && rv.Elem().Kind() == reflect.Struct && !f.config.TrackRef {
 		// Get TypeInfo using fast pointer cache
 		elemValue := rv.Elem()
-		typeInfo, err := f.typeResolver.getTypeInfo(rv, true)
+		typeInfo, err := f.typeResolver.GetTypeInfo(rv, true)
 		if err == nil && typeInfo != nil && typeInfo.Serializer != nil {
 			// Write not-null flag and type ID directly
 			buf.WriteInt8(NotNullValueFlag)

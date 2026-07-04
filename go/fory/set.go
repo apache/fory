@@ -152,7 +152,7 @@ func (s setSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, keys []re
 			hasNull = true
 		} else {
 			// Get type info for first element to use as reference
-			elemTypeInfo, _ = ctx.TypeResolver().getTypeInfo(firstElem, true)
+			elemTypeInfo, _ = ctx.TypeResolver().GetTypeInfo(firstElem, true)
 			if declaredGenerics && elemTypeInfo != nil && !needsElemTypeInfo(TypeId(elemTypeInfo.TypeID)) {
 				elemTypeInfo = &TypeInfo{Type: firstElem.Type(), Serializer: s.elemSerializer, ValueBytes: s.keyBytes}
 			}
@@ -171,7 +171,7 @@ func (s setSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, keys []re
 		if declaredGenerics {
 			continue
 		}
-		currentTypeInfo, _ := ctx.TypeResolver().getTypeInfo(key, true)
+		currentTypeInfo, _ := ctx.TypeResolver().GetTypeInfo(key, true)
 		var elemTypeID, currentTypeID uint32
 		if elemTypeInfo != nil {
 			elemTypeID = elemTypeInfo.TypeID
@@ -276,7 +276,7 @@ func (s setSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuffer, k
 		}
 
 		// Get type info for each element (since types vary)
-		typeInfo, _ := ctx.TypeResolver().getTypeInfo(key, true)
+		typeInfo, _ := ctx.TypeResolver().GetTypeInfo(key, true)
 
 		if trackRefs {
 			// Write ref flag, type ID, and data

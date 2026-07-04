@@ -58,7 +58,7 @@ func (s *extensionSerializerAdapter) Write(ctx *WriteContext, refMode RefMode, w
 		buf.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		typeInfo, err := ctx.TypeResolver().getTypeInfo(value, true)
+		typeInfo, err := ctx.TypeResolver().GetTypeInfo(value, true)
 		if err != nil {
 			ctx.SetError(FromError(err))
 			return

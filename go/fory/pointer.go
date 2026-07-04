@@ -70,7 +70,7 @@ func (s *ptrToValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 			// Create a zero value for the underlying type and write it
 			zeroValue := reflect.New(value.Type().Elem()).Elem()
 			if writeType {
-				typeInfo, err := ctx.TypeResolver().getTypeInfo(zeroValue, true)
+				typeInfo, err := ctx.TypeResolver().GetTypeInfo(zeroValue, true)
 				if err != nil {
 					ctx.SetError(FromError(err))
 					return
@@ -85,7 +85,7 @@ func (s *ptrToValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 	if writeType {
 		// Always use TypeResolver to get the correct TypeID from registered TypeInfo
 		// This ensures compatible mode uses NAMED_COMPATIBLE_STRUCT instead of NAMED_STRUCT
-		typeInfo, err := ctx.TypeResolver().getTypeInfo(value.Elem(), true)
+		typeInfo, err := ctx.TypeResolver().GetTypeInfo(value.Elem(), true)
 		if err != nil {
 			ctx.SetError(FromError(err))
 			return
