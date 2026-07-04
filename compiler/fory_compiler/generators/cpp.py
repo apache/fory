@@ -1063,8 +1063,18 @@ class CppGenerator(BaseGenerator):
         body_indent = f"{indent}  "
 
         case_enum = f"{class_name}Case"
-        case_types = [
+        raw_case_types = [
             self.get_union_case_type(field, parent_stack) for field in union.fields
+        ]
+        case_aliases = [
+            f"ForyCase{self.to_pascal_case(field.name)}Type"
+            if "," in case_type
+            else None
+            for field, case_type in zip(union.fields, raw_case_types)
+        ]
+        case_types = [
+            alias if alias is not None else case_type
+            for alias, case_type in zip(case_aliases, raw_case_types)
         ]
         variant_type = f"std::variant<{', '.join(case_types)}>"
 
@@ -1079,6 +1089,12 @@ class CppGenerator(BaseGenerator):
             lines.append(f"{body_indent}    {case_name} = {field.number},")
         lines.append(f"{body_indent}  }};")
         lines.append("")
+
+        for alias, case_type in zip(case_aliases, raw_case_types):
+            if alias is not None:
+                lines.append(f"{body_indent}  using {alias} = {case_type};")
+        if any(alias is not None for alias in case_aliases):
+            lines.append("")
 
         lines.append(f"{body_indent}  {class_name}() = default;")
         lines.append("")
@@ -1204,15 +1220,8 @@ class CppGenerator(BaseGenerator):
             union_type = self.get_namespaced_type_name(union.name, parent_stack)
             lines.append(f"FORY_UNION({union_type},")
             for index, field in enumerate(union.fields):
-                case_type = self.generate_namespaced_type(
-                    field.field_type,
-                    False,
-                    field.ref,
-                    field.element_optional,
-                    field.element_ref,
-                    False,
-                    False,
-                    parent_stack,
+                case_type = self.get_union_case_macro_type(
+                    field, union_type, parent_stack
                 )
                 case_ctor = self.to_snake_case(field.name)
                 meta = self.get_union_field_meta(field)
@@ -1225,16 +1234,7 @@ class CppGenerator(BaseGenerator):
         case_ids = ", ".join(str(field.number) for field in union.fields)
         lines.append(f"FORY_UNION_IDS({union_type}, {case_ids});")
         for field in union.fields:
-            case_type = self.generate_namespaced_type(
-                field.field_type,
-                False,
-                field.ref,
-                field.element_optional,
-                field.element_ref,
-                False,
-                False,
-                parent_stack,
-            )
+            case_type = self.get_union_case_macro_type(field, union_type, parent_stack)
             case_ctor = self.to_snake_case(field.name)
             meta = self.get_union_field_meta(field)
             lines.append(
@@ -1242,6 +1242,29 @@ class CppGenerator(BaseGenerator):
             )
 
         return lines
+
+    def get_union_case_macro_type(
+        self,
+        field: Field,
+        union_type: str,
+        parent_stack: List[Message],
+    ) -> str:
+        """Return the C++ type name used in FORY_UNION and FORY_UNION_CASE macros."""
+        case_type = self.generate_namespaced_type(
+            field.field_type,
+            False,
+            field.ref,
+            field.element_optional,
+            field.element_ref,
+            False,
+            False,
+            parent_stack,
+        )
+        # FORY_UNION and FORY_UNION_CASE split macro arguments on commas,
+        # so raw template types such as std::unordered_map<K, V> need an alias.
+        if "," in case_type:
+            return f"{union_type}::ForyCase{self.to_pascal_case(field.name)}Type"
+        return case_type
 
     def get_union_case_type(self, field: Field, parent_stack: List[Message]) -> str:
         """Return the C++ type for a union case."""
