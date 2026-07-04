@@ -551,6 +551,16 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
 
     public override NullableKeyDictionary<TKey, TValue> ReadData(ReadContext context)
     {
+        return ReadData(context, publishRef: false, refId: 0);
+    }
+
+    public override NullableKeyDictionary<TKey, TValue> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return ReadData(context, publishRef: true, refId);
+    }
+
+    private NullableKeyDictionary<TKey, TValue> ReadData(ReadContext context, bool publishRef, uint refId)
+    {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
         TypeInfo keyTypeInfo = context.TypeResolver.GetTypeInfo<TKey>();
@@ -560,7 +570,10 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         {
             ReserveMapStorage(context, totalLength);
             NullableKeyDictionary<TKey, TValue> empty = new();
-            context.StoreRef(empty);
+            if (publishRef)
+            {
+                context.RefReader.StoreRefAt(refId, empty);
+            }
 
             return empty;
         }
@@ -568,7 +581,10 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         ReserveMapStorage(context, totalLength);
         context.Reader.CheckBound(totalLength);
         NullableKeyDictionary<TKey, TValue> map = new(totalLength);
-        context.StoreRef(map);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, map);
+        }
 
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;

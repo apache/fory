@@ -380,17 +380,39 @@ internal static class CollectionCodec
 
     public static List<T> ReadCollectionData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
+        return ReadCollectionData(elementSerializer, context, publishRef: false, refId: 0);
+    }
+
+    internal static List<T> ReadCollectionData<T>(Serializer<T> elementSerializer, ReadContext context, uint refId)
+    {
+        return ReadCollectionData(elementSerializer, context, publishRef: true, refId);
+    }
+
+    private static List<T> ReadCollectionData<T>(
+        Serializer<T> elementSerializer,
+        ReadContext context,
+        bool publishRef,
+        uint refId)
+    {
         int length = ReadLength<T>(context, ListOwnerBytes);
         if (length == 0)
         {
             List<T> empty = [];
-            context.StoreRef(empty);
+            if (publishRef)
+            {
+                context.RefReader.StoreRefAt(refId, empty);
+            }
+
             return empty;
         }
 
         byte header = ReadHeader(context, length);
         List<T> values = new(length);
-        context.StoreRef(values);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, values);
+        }
+
         ReadElements(elementSerializer, context, length, header, new CollectionSink<List<T>, T>(values));
         return values;
     }
@@ -398,17 +420,41 @@ internal static class CollectionCodec
     internal static HashSet<T> ReadHashSetData<T>(Serializer<T> elementSerializer, ReadContext context)
         where T : notnull
     {
+        return ReadHashSetData(elementSerializer, context, publishRef: false, refId: 0);
+    }
+
+    internal static HashSet<T> ReadHashSetData<T>(Serializer<T> elementSerializer, ReadContext context, uint refId)
+        where T : notnull
+    {
+        return ReadHashSetData(elementSerializer, context, publishRef: true, refId);
+    }
+
+    private static HashSet<T> ReadHashSetData<T>(
+        Serializer<T> elementSerializer,
+        ReadContext context,
+        bool publishRef,
+        uint refId)
+        where T : notnull
+    {
         int length = ReadLength<T>(context, HashSetOwnerBytes);
         if (length == 0)
         {
             HashSet<T> empty = new(length);
-            context.StoreRef(empty);
+            if (publishRef)
+            {
+                context.RefReader.StoreRefAt(refId, empty);
+            }
+
             return empty;
         }
 
         byte header = ReadHeader(context, length);
         HashSet<T> values = new(length);
-        context.StoreRef(values);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, values);
+        }
+
         ReadElements(elementSerializer, context, length, header, new CollectionSink<HashSet<T>, T>(values));
         return values;
     }
@@ -416,9 +462,29 @@ internal static class CollectionCodec
     internal static SortedSet<T> ReadSortedSetData<T>(Serializer<T> elementSerializer, ReadContext context)
         where T : notnull
     {
+        return ReadSortedSetData(elementSerializer, context, publishRef: false, refId: 0);
+    }
+
+    internal static SortedSet<T> ReadSortedSetData<T>(Serializer<T> elementSerializer, ReadContext context, uint refId)
+        where T : notnull
+    {
+        return ReadSortedSetData(elementSerializer, context, publishRef: true, refId);
+    }
+
+    private static SortedSet<T> ReadSortedSetData<T>(
+        Serializer<T> elementSerializer,
+        ReadContext context,
+        bool publishRef,
+        uint refId)
+        where T : notnull
+    {
         int length = ReadLength<T>(context, SortedSetOwnerBytes);
         SortedSet<T> values = new();
-        context.StoreRef(values);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, values);
+        }
+
         if (length == 0)
         {
             return values;
@@ -453,9 +519,27 @@ internal static class CollectionCodec
 
     internal static LinkedList<T> ReadLinkedListData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
+        return ReadLinkedListData(elementSerializer, context, publishRef: false, refId: 0);
+    }
+
+    internal static LinkedList<T> ReadLinkedListData<T>(Serializer<T> elementSerializer, ReadContext context, uint refId)
+    {
+        return ReadLinkedListData(elementSerializer, context, publishRef: true, refId);
+    }
+
+    private static LinkedList<T> ReadLinkedListData<T>(
+        Serializer<T> elementSerializer,
+        ReadContext context,
+        bool publishRef,
+        uint refId)
+    {
         int length = ReadLength<T>(context, LinkedListOwnerBytes);
         LinkedList<T> values = new();
-        context.StoreRef(values);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, values);
+        }
+
         if (length == 0)
         {
             return values;
@@ -468,9 +552,27 @@ internal static class CollectionCodec
 
     internal static Queue<T> ReadQueueData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
+        return ReadQueueData(elementSerializer, context, publishRef: false, refId: 0);
+    }
+
+    internal static Queue<T> ReadQueueData<T>(Serializer<T> elementSerializer, ReadContext context, uint refId)
+    {
+        return ReadQueueData(elementSerializer, context, publishRef: true, refId);
+    }
+
+    private static Queue<T> ReadQueueData<T>(
+        Serializer<T> elementSerializer,
+        ReadContext context,
+        bool publishRef,
+        uint refId)
+    {
         int length = ReadLength<T>(context, QueueOwnerBytes);
         Queue<T> values = new(length);
-        context.StoreRef(values);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, values);
+        }
+
         if (length == 0)
         {
             return values;
@@ -483,9 +585,27 @@ internal static class CollectionCodec
 
     internal static Stack<T> ReadStackData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
+        return ReadStackData(elementSerializer, context, publishRef: false, refId: 0);
+    }
+
+    internal static Stack<T> ReadStackData<T>(Serializer<T> elementSerializer, ReadContext context, uint refId)
+    {
+        return ReadStackData(elementSerializer, context, publishRef: true, refId);
+    }
+
+    private static Stack<T> ReadStackData<T>(
+        Serializer<T> elementSerializer,
+        ReadContext context,
+        bool publishRef,
+        uint refId)
+    {
         int length = ReadLength<T>(context, StackOwnerBytes);
         Stack<T> values = new(length);
-        context.StoreRef(values);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, values);
+        }
+
         if (length == 0)
         {
             return values;
@@ -498,17 +618,39 @@ internal static class CollectionCodec
 
     public static T[] ReadArrayData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
+        return ReadArrayData(elementSerializer, context, publishRef: false, refId: 0);
+    }
+
+    internal static T[] ReadArrayData<T>(Serializer<T> elementSerializer, ReadContext context, uint refId)
+    {
+        return ReadArrayData(elementSerializer, context, publishRef: true, refId);
+    }
+
+    private static T[] ReadArrayData<T>(
+        Serializer<T> elementSerializer,
+        ReadContext context,
+        bool publishRef,
+        uint refId)
+    {
         int length = ReadLength<T>(context, ArrayOwnerBytes);
         if (length == 0)
         {
             T[] empty = [];
-            context.StoreRef(empty);
+            if (publishRef)
+            {
+                context.RefReader.StoreRefAt(refId, empty);
+            }
+
             return empty;
         }
 
         byte header = ReadHeader(context, length);
         T[] values = new T[length];
-        context.StoreRef(values);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, values);
+        }
+
         ReadElements(elementSerializer, context, length, header, new ArraySink<T>(values));
         return values;
     }
@@ -601,15 +743,7 @@ internal static class DynamicContainerCodec
     {
         Serializer<NullableKeyDictionary<object, object?>> serializer =
             context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>();
-        bool storeRef = context._reservedRefIds.Count != 0;
         NullableKeyDictionary<object, object?> map = serializer.ReadData(context);
-        if (storeRef)
-        {
-            // Dynamic tracked maps publish the nullable-key owner itself so
-            // nested references resolve to the same returned object.
-            return map;
-        }
-
         if (map.HasNullKey)
         {
             return map;
@@ -617,6 +751,13 @@ internal static class DynamicContainerCodec
 
         context.ReserveGraphMemory(DictionaryOwnerBytes + (long)map.Count * (ReferenceBytes + ReferenceBytes));
         return new Dictionary<object, object?>(map.NonNullEntries);
+    }
+
+    public static object ReadMapPayload(ReadContext context, uint refId)
+    {
+        Serializer<NullableKeyDictionary<object, object?>> serializer =
+            context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>();
+        return serializer.ReadDataWithRef(context, refId);
     }
 
     private static bool TryGetListLikeEnumerable(
@@ -743,6 +884,11 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
     {
         return CollectionCodec.ReadArrayData<T>(context.TypeResolver.GetSerializer<T>(), context);
     }
+
+    public override T[] ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return CollectionCodec.ReadArrayData(context.TypeResolver.GetSerializer<T>(), context, refId);
+    }
 }
 
 public class ListSerializer<T> : Serializer<List<T>>
@@ -758,6 +904,11 @@ public class ListSerializer<T> : Serializer<List<T>>
     public override List<T> ReadData(ReadContext context)
     {
         return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
+    }
+
+    public override List<T> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context, refId);
     }
 }
 
@@ -775,6 +926,11 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
     {
         return CollectionCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context);
     }
+
+    public override HashSet<T> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return CollectionCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
+    }
 }
 
 public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : notnull
@@ -790,6 +946,11 @@ public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : 
     public override SortedSet<T> ReadData(ReadContext context)
     {
         return CollectionCodec.ReadSortedSetData(context.TypeResolver.GetSerializer<T>(), context);
+    }
+
+    public override SortedSet<T> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return CollectionCodec.ReadSortedSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
     }
 }
 
@@ -823,6 +984,11 @@ public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
     {
         return CollectionCodec.ReadLinkedListData(context.TypeResolver.GetSerializer<T>(), context);
     }
+
+    public override LinkedList<T> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return CollectionCodec.ReadLinkedListData(context.TypeResolver.GetSerializer<T>(), context, refId);
+    }
 }
 
 public sealed class QueueSerializer<T> : Serializer<Queue<T>>
@@ -838,6 +1004,11 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
     public override Queue<T> ReadData(ReadContext context)
     {
         return CollectionCodec.ReadQueueData(context.TypeResolver.GetSerializer<T>(), context);
+    }
+
+    public override Queue<T> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return CollectionCodec.ReadQueueData(context.TypeResolver.GetSerializer<T>(), context, refId);
     }
 }
 
@@ -867,5 +1038,10 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
     public override Stack<T> ReadData(ReadContext context)
     {
         return CollectionCodec.ReadStackData(context.TypeResolver.GetSerializer<T>(), context);
+    }
+
+    public override Stack<T> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return CollectionCodec.ReadStackData(context.TypeResolver.GetSerializer<T>(), context, refId);
     }
 }

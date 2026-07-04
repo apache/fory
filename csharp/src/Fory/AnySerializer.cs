@@ -103,11 +103,7 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                 case RefFlag.RefValue:
                     {
                         uint reservedRefId = context.RefReader.ReserveRefId();
-                        context.SetReservedRefId(reservedRefId);
-                        object? value = ReadNonNullDynamicAny(context, readTypeInfo);
-                        context.StoreRef(value);
-                        context.ClearReservedRefId();
-                        return value;
+                        return ReadNonNullDynamicAny(context, readTypeInfo, reservedRefId);
                     }
                 case RefFlag.NotNullValue:
                     break;
@@ -142,6 +138,27 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
         object? value = ReadData(context);
         context.ClearReadTypeInfo(typeof(object));
         return value;
+    }
+
+    private object? ReadNonNullDynamicAny(ReadContext context, bool readTypeInfo, uint refId)
+    {
+        if (!readTypeInfo)
+        {
+            object? value = ReadData(context);
+            context.RefReader.StoreRefAt(refId, value);
+            return value;
+        }
+
+        ReadAnyTypeInfo(context);
+        TypeInfo? typeInfo = context.GetReadTypeInfo(typeof(object));
+        if (typeInfo is null)
+        {
+            throw new InvalidDataException("dynamic Any value requires type info");
+        }
+
+        object? result = context.TypeResolver.ReadAnyValue(typeInfo, context, refId);
+        context.ClearReadTypeInfo(typeof(object));
+        return result;
     }
 }
 

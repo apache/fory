@@ -476,7 +476,16 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         TypeModel model,
         string methodName)
     {
-        sb.AppendLine($"    private {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context)");
+        if (model.Kind == DeclKind.Class)
+        {
+            sb.AppendLine(
+                $"    private {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context, bool publishRef, uint refId)");
+        }
+        else
+        {
+            sb.AppendLine($"    private {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context)");
+        }
+
         sb.AppendLine("    {");
         if (model.Kind == DeclKind.Class)
         {
@@ -491,7 +500,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine($"        {model.TypeName} valueNoTypeMeta = new {model.TypeName}();");
-        EmitStoreRef(sb, model, "valueNoTypeMeta", 2);
+        EmitRefPublication(sb, model, "valueNoTypeMeta", 2);
 
         foreach (MemberModel member in model.SortedMembers)
         {
@@ -520,13 +529,37 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
     {
         sb.AppendLine($"    {accessibility} override {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
+        if (model.Kind == DeclKind.Class)
+        {
+            sb.AppendLine($"        return {methodName}Core(context, publishRef: false, refId: 0);");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine(
+                $"    public override {model.TypeName} ReadDataWithRef(global::Apache.Fory.ReadContext context, uint refId)");
+            sb.AppendLine("    {");
+            sb.AppendLine($"        return {methodName}Core(context, publishRef: true, refId);");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine(
+                $"    private {model.TypeName} {methodName}Core(global::Apache.Fory.ReadContext context, bool publishRef, uint refId)");
+            sb.AppendLine("    {");
+        }
+
         sb.AppendLine("        if (context.Compatible)");
         sb.AppendLine("        {");
         sb.AppendLine(
             $"            global::Apache.Fory.TypeMeta? maybeTypeMeta = context.GetTypeMeta<{model.TypeName}>();");
         sb.AppendLine("            if (maybeTypeMeta is null)");
         sb.AppendLine("            {");
-        sb.AppendLine($"                return {noTypeMetaMethodName}(context);");
+        if (model.Kind == DeclKind.Class)
+        {
+            sb.AppendLine($"                return {noTypeMetaMethodName}(context, publishRef, refId);");
+        }
+        else
+        {
+            sb.AppendLine($"                return {noTypeMetaMethodName}(context);");
+        }
+
         sb.AppendLine("            }");
         sb.AppendLine();
         sb.AppendLine("            global::Apache.Fory.TypeMeta typeMeta = maybeTypeMeta;");
@@ -543,7 +576,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine($"            {model.TypeName} value = new {model.TypeName}();");
-        EmitStoreRef(sb, model, "value", 3);
+        EmitRefPublication(sb, model, "value", 3);
 
         sb.AppendLine("            bool __ForyExactTypeMeta = __ForyMatchesCachedTypeMeta(typeMeta, context.TrackRef, context.TypeResolver);");
         sb.AppendLine("            if (__ForyAllFieldsBuiltIn && __ForyExactTypeMeta)");
@@ -662,7 +695,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");
-        EmitStoreRef(sb, model, "valueSchema", 2);
+        EmitRefPublication(sb, model, "valueSchema", 2);
 
         foreach (MemberModel member in model.SortedMembers)
         {
@@ -674,7 +707,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         sb.AppendLine();
     }
 
-    private static void EmitStoreRef(
+    private static void EmitRefPublication(
         StringBuilder sb,
         TypeModel model,
         string valueName,
@@ -686,7 +719,10 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
 
         string indent = new(' ', indentLevel * 4);
-        sb.AppendLine($"{indent}context.StoreRef({valueName});");
+        sb.AppendLine($"{indent}if (publishRef)");
+        sb.AppendLine($"{indent}{{");
+        sb.AppendLine($"{indent}    context.RefReader.StoreRefAt(refId, {valueName});");
+        sb.AppendLine($"{indent}}}");
     }
 
     private static void EmitUnionSerializer(StringBuilder sb, TypeModel model)

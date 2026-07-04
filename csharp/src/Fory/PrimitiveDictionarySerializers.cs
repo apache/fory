@@ -691,16 +691,50 @@ internal static class PrimitiveDictionaryCodecReader
         where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
         where TMapOps : struct, IPrimitiveMapReadOps<TMap, TKey, TValue>
     {
+        return ReadMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps>(context, publishRef: false, refId: 0);
+    }
+
+    public static TMap ReadMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps>(
+        ReadContext context,
+        uint refId)
+        where TKey : notnull
+        where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
+        where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+        where TMapOps : struct, IPrimitiveMapReadOps<TMap, TKey, TValue>
+    {
+        return ReadMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps>(context, publishRef: true, refId);
+    }
+
+    private static TMap ReadMap<TMap, TKey, TValue, TKeyCodec, TValueCodec, TMapOps>(
+        ReadContext context,
+        bool publishRef,
+        uint refId)
+        where TKey : notnull
+        where TKeyCodec : struct, IPrimitiveDictionaryCodec<TKey>
+        where TValueCodec : struct, IPrimitiveDictionaryCodec<TValue>
+        where TMapOps : struct, IPrimitiveMapReadOps<TMap, TKey, TValue>
+    {
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
             ReserveMapStorage<TKey, TValue>(context, totalLength);
-            return TMapOps.Create(0);
+            TMap empty = TMapOps.Create(0);
+            if (publishRef)
+            {
+                context.RefReader.StoreRefAt(refId, empty);
+            }
+
+            return empty;
         }
 
         ReserveMapStorage<TKey, TValue>(context, totalLength);
         context.Reader.CheckBound(totalLength);
         TMap map = TMapOps.Create(totalLength);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, map);
+        }
+
         TypeId keyTypeId = TKeyCodec.WireTypeId;
         TypeId valueTypeId = TValueCodec.WireTypeId;
         bool keyNullable = TKeyCodec.IsNullable;
@@ -827,6 +861,17 @@ internal class PrimitiveDictionarySerializer<TKey, TValue, TKeyCodec, TValueCode
             TValueCodec,
             DictionaryPrimitiveMapOps<TKey, TValue>>(context);
     }
+
+    public override Dictionary<TKey, TValue> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return PrimitiveDictionaryCodecReader.ReadMap<
+            Dictionary<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            DictionaryPrimitiveMapOps<TKey, TValue>>(context, refId);
+    }
 }
 
 internal class PrimitiveStringKeyDictionarySerializer<TValue, TValueCodec>
@@ -874,6 +919,17 @@ internal class PrimitiveSortedDictionarySerializer<TKey, TValue, TKeyCodec, TVal
             TKeyCodec,
             TValueCodec,
             SortedDictionaryPrimitiveMapOps<TKey, TValue>>(context);
+    }
+
+    public override SortedDictionary<TKey, TValue> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return PrimitiveDictionaryCodecReader.ReadMap<
+            SortedDictionary<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            SortedDictionaryPrimitiveMapOps<TKey, TValue>>(context, refId);
     }
 }
 
@@ -923,6 +979,17 @@ internal class PrimitiveSortedListSerializer<TKey, TValue, TKeyCodec, TValueCode
             TValueCodec,
             SortedListPrimitiveMapOps<TKey, TValue>>(context);
     }
+
+    public override SortedList<TKey, TValue> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return PrimitiveDictionaryCodecReader.ReadMap<
+            SortedList<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            SortedListPrimitiveMapOps<TKey, TValue>>(context, refId);
+    }
 }
 
 internal class PrimitiveStringKeySortedListSerializer<TValue, TValueCodec>
@@ -971,6 +1038,17 @@ internal class PrimitiveConcurrentDictionarySerializer<TKey, TValue, TKeyCodec, 
             TKeyCodec,
             TValueCodec,
             ConcurrentDictionaryPrimitiveMapOps<TKey, TValue>>(context);
+    }
+
+    public override ConcurrentDictionary<TKey, TValue> ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return PrimitiveDictionaryCodecReader.ReadMap<
+            ConcurrentDictionary<TKey, TValue>,
+            TKey,
+            TValue,
+            TKeyCodec,
+            TValueCodec,
+            ConcurrentDictionaryPrimitiveMapOps<TKey, TValue>>(context, refId);
     }
 }
 

@@ -22,7 +22,6 @@ namespace Apache.Fory;
 public sealed class ReadContext
 {
     private const int MinRemoteTypeMetaLimit = 8192;
-    private const uint NoReservedRefId = uint.MaxValue;
 
     private readonly ReusableArray<TypeMeta> _typeMetaRefs = new();
     private readonly UInt64Map<TypeMeta> _typeMetasByHeader = new();
@@ -32,9 +31,6 @@ public sealed class ReadContext
     private readonly List<MetaString> _readMetaStrings = [];
 
     internal readonly UInt64Map<TypeInfo> _readTypeInfoByType = new();
-    // Consumed slots stay on the stack until their matching reader scope clears them. That lets
-    // nested child reads restore an outer owner that has not been materialized yet.
-    internal readonly List<uint> _reservedRefIds = [];
     private readonly int _maxDynamicReadDepth;
     internal Type? _typeMetaType;
     internal TypeMeta? _typeMeta;
@@ -74,7 +70,10 @@ public sealed class ReadContext
 
     public bool CheckStructVersion { get; }
 
-    internal RefReader RefReader { get; }
+    /// <summary>
+    /// Gets low-level reference table operations for serializers that own ref publication timing.
+    /// </summary>
+    public RefReader RefReader { get; }
 
     /// <summary>
     /// Reserves estimated graph memory for the current root deserialization.
@@ -442,39 +441,6 @@ public sealed class ReadContext
         _readTypeInfoByType.Remove(TypeMapKey.Get(type));
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void StoreRef(object? value)
-    {
-        int index = _reservedRefIds.Count - 1;
-        if (index < 0)
-        {
-            return;
-        }
-
-        uint refId = _reservedRefIds[index];
-        if (refId == NoReservedRefId)
-        {
-            return;
-        }
-
-        RefReader.StoreRefAt(refId, value);
-        _reservedRefIds[index] = NoReservedRefId;
-    }
-
-    internal void SetReservedRefId(uint refId)
-    {
-        _reservedRefIds.Add(refId);
-    }
-
-    internal void ClearReservedRefId()
-    {
-        int count = _reservedRefIds.Count;
-        if (count > 0)
-        {
-            _reservedRefIds.RemoveAt(count - 1);
-        }
-    }
-
     internal void IncreaseReadDepth()
     {
         _currentDynamicReadDepth += 1;
@@ -500,7 +466,6 @@ public sealed class ReadContext
         _typeMeta = null;
         _typeMetaByType?.ClearKeys();
         _readTypeInfoByType.ClearKeys();
-        _reservedRefIds.Clear();
         _cachedTypeMetaType = null;
         _cachedTypeMeta = null;
         _currentDynamicReadDepth = 0;

@@ -203,6 +203,11 @@ public sealed class TypeResolver
         return typeInfo.ReadDataObject(context);
     }
 
+    internal object? ReadDataObject(TypeInfo typeInfo, ReadContext context, uint refId)
+    {
+        return typeInfo.ReadDataObjectWithRef(context, refId);
+    }
+
     public void WriteObject(
         TypeInfo typeInfo,
         WriteContext context,
@@ -989,13 +994,23 @@ public sealed class TypeResolver
 
     private object? ReadRegisteredValue(TypeInfo typeInfo, ReadContext context, TypeMeta? typeMeta)
     {
+        return ReadRegisteredValue(typeInfo, context, typeMeta, hasRef: false, refId: 0);
+    }
+
+    private object? ReadRegisteredValue(
+        TypeInfo typeInfo,
+        ReadContext context,
+        TypeMeta? typeMeta,
+        bool hasRef,
+        uint refId)
+    {
         if (typeMeta is not null)
         {
             typeMeta.EnsureAssignedFieldIds(TypeMetaFields(typeInfo, context.TrackRef));
             context.StoreTypeMeta(typeInfo.Type, typeMeta);
         }
 
-        return ReadObject(typeInfo, context, RefMode.None, false);
+        return hasRef ? ReadDataObject(typeInfo, context, refId) : ReadObject(typeInfo, context, RefMode.None, false);
     }
 
     internal TypeInfo ReadAnyTypeInfo(ReadContext context)
@@ -1090,33 +1105,43 @@ public sealed class TypeResolver
 
     internal object? ReadAnyValue(TypeInfo typeInfo, ReadContext context)
     {
-        TypeId wireTypeId = typeInfo.WireTypeId
-                            ?? throw new InvalidDataException($"missing read wire type for {typeInfo.Type}");
+        return ReadAnyValue(typeInfo, context, hasRef: false, refId: 0);
+    }
+
+    internal object? ReadAnyValue(TypeInfo typeInfo, ReadContext context, uint refId)
+    {
         // ReadAnyValue is the shared self-describing payload entry for object/Any,
         // UnknownCase, and compatible field skipping. The Any envelope is not a
         // nesting boundary; only payloads that can recursively contain values
         // advance depth. If a nested read fails, the root context reset owns
         // cleanup of partially advanced depth and type-info state.
+        return ReadAnyValue(typeInfo, context, hasRef: true, refId);
+    }
+
+    private object? ReadAnyValue(TypeInfo typeInfo, ReadContext context, bool hasRef, uint refId)
+    {
+        TypeId wireTypeId = typeInfo.WireTypeId
+                            ?? throw new InvalidDataException($"missing read wire type for {typeInfo.Type}");
         switch (wireTypeId)
         {
             case TypeId.Int32:
-                return context.Reader.ReadInt32();
+                return StoreAnyRef(context, hasRef, refId, context.Reader.ReadInt32());
             case TypeId.Int64:
-                return context.Reader.ReadInt64();
+                return StoreAnyRef(context, hasRef, refId, context.Reader.ReadInt64());
             case TypeId.TaggedInt64:
-                return context.Reader.ReadTaggedInt64();
+                return StoreAnyRef(context, hasRef, refId, context.Reader.ReadTaggedInt64());
             case TypeId.UInt32:
-                return context.Reader.ReadUInt32();
+                return StoreAnyRef(context, hasRef, refId, context.Reader.ReadUInt32());
             case TypeId.UInt64:
-                return context.Reader.ReadUInt64();
+                return StoreAnyRef(context, hasRef, refId, context.Reader.ReadUInt64());
             case TypeId.TaggedUInt64:
-                return context.Reader.ReadTaggedUInt64();
+                return StoreAnyRef(context, hasRef, refId, context.Reader.ReadTaggedUInt64());
             case TypeId.List:
             case TypeId.Set:
             case TypeId.Union:
-                return ReadNestedAnyData(typeInfo, context);
+                return ReadNestedAnyData(typeInfo, context, hasRef, refId);
             case TypeId.Map:
-                return ReadNestedAnyMap(context);
+                return ReadNestedAnyMap(context, hasRef, refId);
             case TypeId.Struct:
             case TypeId.Ext:
             case TypeId.TypedUnion:
@@ -1125,29 +1150,39 @@ public sealed class TypeResolver
             case TypeId.NamedUnion:
             case TypeId.CompatibleStruct:
             case TypeId.NamedCompatibleStruct:
-                return ReadNestedRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta());
+                return ReadNestedRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta(), hasRef, refId);
             case TypeId.Enum:
             case TypeId.NamedEnum:
-                return ReadRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta());
+                return ReadRegisteredValue(typeInfo, context, typeInfo.GetTypeMeta(), hasRef, refId);
             case TypeId.None:
                 return null;
             default:
-                return ReadDataObject(typeInfo, context);
+                return hasRef ? ReadDataObject(typeInfo, context, refId) : ReadDataObject(typeInfo, context);
         }
     }
 
-    private object? ReadNestedAnyData(TypeInfo typeInfo, ReadContext context)
+    private static object? StoreAnyRef(ReadContext context, bool hasRef, uint refId, object? value)
+    {
+        if (hasRef)
+        {
+            context.RefReader.StoreRefAt(refId, value);
+        }
+
+        return value;
+    }
+
+    private object? ReadNestedAnyData(TypeInfo typeInfo, ReadContext context, bool hasRef, uint refId)
     {
         context.IncreaseReadDepth();
-        object? value = ReadDataObject(typeInfo, context);
+        object? value = hasRef ? ReadDataObject(typeInfo, context, refId) : ReadDataObject(typeInfo, context);
         context.DecreaseReadDepth();
         return value;
     }
 
-    private object ReadNestedAnyMap(ReadContext context)
+    private object ReadNestedAnyMap(ReadContext context, bool hasRef, uint refId)
     {
         context.IncreaseReadDepth();
-        object value = DynamicContainerCodec.ReadMapPayload(context);
+        object value = hasRef ? DynamicContainerCodec.ReadMapPayload(context, refId) : DynamicContainerCodec.ReadMapPayload(context);
         context.DecreaseReadDepth();
         return value;
     }
@@ -1155,10 +1190,12 @@ public sealed class TypeResolver
     private object? ReadNestedRegisteredValue(
         TypeInfo typeInfo,
         ReadContext context,
-        TypeMeta? typeMeta)
+        TypeMeta? typeMeta,
+        bool hasRef,
+        uint refId)
     {
         context.IncreaseReadDepth();
-        object? value = ReadRegisteredValue(typeInfo, context, typeMeta);
+        object? value = ReadRegisteredValue(typeInfo, context, typeMeta, hasRef, refId);
         context.DecreaseReadDepth();
         return value;
     }

@@ -46,6 +46,19 @@ public abstract class Serializer<T>
     public abstract T ReadData(ReadContext context);
 
     /// <summary>
+    /// Reads a payload body after the caller has reserved a reference id for the owner.
+    /// </summary>
+    /// <param name="context">Read context.</param>
+    /// <param name="refId">Reserved reference id for the materialized owner.</param>
+    /// <returns>Decoded value.</returns>
+    public virtual T ReadDataWithRef(ReadContext context, uint refId)
+    {
+        T value = ReadData(context);
+        context.RefReader.StoreRefAt(refId, value);
+        return value;
+    }
+
+    /// <summary>
     /// Writes ref metadata and optional type metadata, then delegates to <see cref="WriteData"/>.
     /// </summary>
     /// <param name="context">Write context.</param>
@@ -113,16 +126,12 @@ public abstract class Serializer<T>
                 case RefFlag.RefValue:
                     {
                         uint reservedRefId = context.RefReader.ReserveRefId();
-                        context.SetReservedRefId(reservedRefId);
                         if (readTypeInfo)
                         {
                             context.TypeResolver.ReadTypeInfo(this, context);
                         }
 
-                        T value = ReadData(context);
-                        context.StoreRef(value);
-                        context.ClearReservedRefId();
-                        return value;
+                        return ReadDataWithRef(context, reservedRefId);
                     }
                 case RefFlag.NotNullValue:
                     break;

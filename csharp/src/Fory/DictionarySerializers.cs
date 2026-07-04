@@ -225,6 +225,16 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
 
     public override TDictionary ReadData(ReadContext context)
     {
+        return ReadData(context, publishRef: false, refId: 0);
+    }
+
+    public override TDictionary ReadDataWithRef(ReadContext context, uint refId)
+    {
+        return ReadData(context, publishRef: true, refId);
+    }
+
+    private TDictionary ReadData(ReadContext context, bool publishRef, uint refId)
+    {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
         TypeInfo keyTypeInfo = context.TypeResolver.GetTypeInfo<TKey>();
@@ -234,7 +244,10 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         {
             ReserveMapStorage(context, totalLength);
             TDictionary empty = CreateMap(0);
-            context.StoreRef(empty);
+            if (publishRef)
+            {
+                context.RefReader.StoreRefAt(refId, empty);
+            }
 
             return empty;
         }
@@ -242,7 +255,10 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         ReserveMapStorage(context, totalLength);
         context.Reader.CheckBound(totalLength);
         TDictionary map = CreateMap(totalLength);
-        context.StoreRef(map);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, map);
+        }
 
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;
