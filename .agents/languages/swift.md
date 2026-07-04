@@ -25,9 +25,9 @@ Load this file when changing `swift/` or Swift xlang behavior.
 - For Swift graph budget formulas, distinguish inline/value storage from reference storage: use
   `MemoryLayout<T>.stride` for value arrays/lists/sets/maps and the 4-byte reference fallback for
   `Serializer.isRefType` / `FieldCodec.isRefType` paths. Class/reference paths reserve their own
-  shallow self cost plus field storage when materialized; value serializers reserve self storage
-  only on standalone serializer, generated, or root materialization entries because field, array,
-  set, map, and box holders reserve inline storage exactly once. Independently materialized
+  shallow self cost plus field storage when materialized; value serializers do not reserve their own
+  self storage, including standalone, generated, and root read paths. Field, array, set, map, box,
+  and dynamic materialization owners reserve inline or boxed storage exactly once. Independently materialized
   collection/map/array owners reserve nonzero shallow self cost plus backing/reference/inline
   storage. Dedicated `String`, `Data`/binary,
   primitive scalar, and primitive packed-array owners stay skipped, except compatible

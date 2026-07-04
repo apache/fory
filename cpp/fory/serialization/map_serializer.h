@@ -1044,11 +1044,6 @@ struct Serializer<std::map<K, V, Args...>> {
     if (!has_value) {
       return MapType{};
     }
-    if (ref_mode != RefMode::None &&
-        FORY_PREDICT_FALSE(!reserve_allocated_value_owner<MapType>(ctx))) {
-      return MapType{};
-    }
-
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -1156,11 +1151,6 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
     if (!has_value) {
       return MapType{};
     }
-    if (ref_mode != RefMode::None &&
-        FORY_PREDICT_FALSE(!reserve_allocated_value_owner<MapType>(ctx))) {
-      return MapType{};
-    }
-
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {

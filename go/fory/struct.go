@@ -32,7 +32,6 @@ type structSerializer struct {
 	structHash int32
 	typeID     uint32
 	userTypeID uint32
-	graphBytes int64
 
 	// Pre-sorted and categorized fields (embedded for cache locality)
 	fieldGroup FieldGroup
@@ -63,7 +62,6 @@ func newStructSerializerFromTypeDef(type_ reflect.Type, name string, fieldDefs [
 		type_:      type_,
 		name:       name,
 		userTypeID: invalidUserTypeID,
-		graphBytes: structGraphBytes(type_),
 		fieldDefs:  fieldDefs,
 	}
 }
@@ -79,7 +77,6 @@ func newStructSerializer(type_ reflect.Type, name string) *structSerializer {
 		type_:      type_,
 		name:       name,
 		userTypeID: invalidUserTypeID,
-		graphBytes: structGraphBytes(type_),
 	}
 }
 
@@ -1317,9 +1314,11 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
+	refID := int32(NotNullValueFlag)
 	switch refMode {
 	case RefModeTracking:
-		refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
+		var refErr error
+		refID, refErr = ctx.RefResolver().TryPreserveRefId(buf)
 		if refErr != nil {
 			ctx.SetError(FromError(refErr))
 			return
@@ -1338,6 +1337,7 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 			return
 		}
 	}
+	readStruct := s
 	if readType {
 		if s.type_ != nil {
 			serializer := ctx.TypeResolver().readTypeInfoForType(buf, s.type_, ctxErr)
@@ -1349,85 +1349,35 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 				return
 			}
 			if structSer, ok := serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
-				structSer.ReadData(ctx, value)
+				readStruct = structSer
+			}
+		} else {
+			// Fallback: read type info when expected type is unknown
+			typeInfo := ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
+			if ctxErr.HasError() {
 				return
 			}
-			s.ReadData(ctx, value)
-			return
-		}
-		// Fallback: read type info when expected type is unknown
-		typeInfo := ctx.TypeResolver().ReadTypeInfo(buf, ctxErr)
-		if ctxErr.HasError() {
-			return
-		}
-		if typeInfo != nil {
-			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
-				structSer.ReadData(ctx, value)
-				return
+			if typeInfo != nil {
+				if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
+					readStruct = structSer
+				}
 			}
 		}
-	}
-	s.ReadData(ctx, value)
-}
-
-func (s *structSerializer) readRoot(ctx *ReadContext, value reflect.Value) {
-	buf := ctx.buffer
-	ctxErr := ctx.Err()
-	refID := int32(NotNullValueFlag)
-	if ctx.refResolver.refTracking {
-		var refErr error
-		refID, refErr = ctx.refResolver.TryPreserveRefId(buf)
-		if refErr != nil {
-			ctx.SetError(FromError(refErr))
-			return
-		}
-		if refID < int32(NotNullValueFlag) {
-			obj := ctx.refResolver.GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
-			return
-		}
-	} else {
-		// No-ref roots only need the marker byte; avoid the tracking helper on this hot path.
-		refFlag := buf.ReadInt8(ctxErr)
-		if refFlag == NullFlag {
-			return
-		}
-		if refFlag == RefFlag {
-			buf.ReadVarUint32(ctxErr)
-			return
-		}
-	}
-	readStruct := s
-	if s.type_ != nil {
-		serializer := ctx.typeResolver.readTypeInfoForType(buf, s.type_, ctxErr)
-		if ctxErr.HasError() {
-			return
-		}
-		if serializer == nil {
-			ctx.SetError(DeserializationError("unexpected type id for struct"))
-			return
-		}
-		if structSer, ok := serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
-			readStruct = structSer
-		}
-	}
-	if !ctx.ReserveGraphMemory(readStruct.graphBytes) {
-		return
 	}
 	if ctx.refResolver.refTracking && value.CanAddr() {
+		// Publish addressable value storage before reading fields so self
+		// references resolve without a root-special read path.
 		ctx.refResolver.SetReadObject(refID, value.Addr())
 	}
+	// Value serializers do not reserve their own graph memory because value
+	// storage is owned by the holder that stores or allocates the value.
+	// Containers, maps, arrays, pointer owners, class/reference owners, or
+	// dynamic boxing paths reserve the storage they own.
 	readStruct.ReadData(ctx, value)
 }
 
 func (s *structSerializer) readDynamicValue(ctx *ReadContext, refMode RefMode, refID int32, type_ reflect.Type, value reflect.Value) {
-	graphBytes := s.graphBytes
-	if graphBytes == 0 {
-		graphBytes = structGraphBytes(type_)
-	}
-	if !ctx.ReserveGraphMemory(graphBytes) {
+	if !ctx.ReserveGraphMemory(structGraphBytes(type_)) {
 		return
 	}
 	newValue := reflect.New(type_)

@@ -25,9 +25,9 @@ Load this file when changing `csharp/` or C# xlang behavior.
 - For C# graph budget formulas, distinguish inline value storage from reference storage: use cheap
   value-type size for `List<T>`/`T[]` value paths and the 4-byte reference fallback for reference
   paths. Class/reference serializers reserve their own shallow self cost plus field storage when
-  materialized; struct/value serializers reserve self storage only on standalone serializer,
-  dynamic/boxed, or root materialization entries because field, list, array, map, set, and box
-  holders reserve the inline storage they own. Maps reserve key plus value storage, linked/hash/tree
+  materialized; struct/value serializers do not reserve their own self storage, including generic
+  root reads and generated struct read paths. Fields, lists, arrays, maps, sets, and boxed/dynamic
+  materialization paths reserve the inline or boxed storage they own. Maps reserve key plus value storage, linked/hash/tree
   conversions must not add guessed node or entry overhead, and independently materialized
   collection/map/array owners reserve nonzero shallow self cost.
   Dedicated string, binary, primitive scalar, and primitive dense-array serializers stay skipped and

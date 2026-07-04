@@ -119,12 +119,6 @@ public abstract class Serializer<T>
                             context.TypeResolver.ReadTypeInfo(this, context);
                         }
 
-                        long trackedOwnerBytes = GraphMemory.ValueOwnerBytes<T>();
-                        if (trackedOwnerBytes != 0)
-                        {
-                            context.ReserveGraphMemory(trackedOwnerBytes);
-                        }
-
                         T value = ReadData(context);
                         context.StoreRef(value);
                         context.ClearReservedRefId();
@@ -140,12 +134,6 @@ public abstract class Serializer<T>
         if (readTypeInfo)
         {
             context.TypeResolver.ReadTypeInfo(this, context);
-        }
-
-        long graphBytes = GraphMemory.ValueOwnerBytes<T>();
-        if (graphBytes != 0)
-        {
-            context.ReserveGraphMemory(graphBytes);
         }
 
         return ReadData(context);

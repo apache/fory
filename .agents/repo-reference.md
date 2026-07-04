@@ -85,10 +85,12 @@ Apache Fory is a multi-language serialization framework with multiple wire forma
 Root graph memory budgeting is a read-state accounting feature only. Read context or equivalent
 read state may expose raw byte reservation and, when a runtime cannot reasonably avoid it,
 root-operation budget setup/reset. Root facades may reset the per-operation budget, but must not
-pre-reserve root type or root self bytes. It must not grow semantic APIs for collection, map, array,
-struct, object, temporary-owner, serializer-owner, conversion, counted-allocation, or
-ref-publication control. Concrete serializers and generated serializers own allocation formulas,
-overflow checks, root value storage reservation, and reference publication timing.
+pre-reserve root type, root self bytes, or root value storage. It must not grow semantic APIs for
+collection, map, array, struct, object, temporary-owner, serializer-owner, conversion,
+counted-allocation, or ref-publication control. Concrete serializers and generated serializers own
+allocation formulas, overflow checks, allocation-owner decisions, and reference publication timing.
+Value serializers only read their data; the holder or materializer that stores, boxes, or allocates
+the value reserves the storage it owns.
 
 ## Runtime Map
 

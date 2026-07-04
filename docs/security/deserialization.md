@@ -234,11 +234,12 @@ Graph budget accounting should:
   array, and primitive dense-array leaf owners.
 
 Each runtime must inspect the concrete owner path before choosing formulas. Reserve self storage
-exactly once at the owner that stores or allocates the value. Root facades may reset the budget, but
-must not pre-reserve root type or root self bytes. Reference-backed paths reserve parent owner self
-cost plus reference storage, while each referenced heap owner reserves its own shallow self cost when
-materialized. Inline/value paths reserve inline element, field, or root value storage in the
-holder/allocation owner; nested value serializers must not charge their own self storage again.
+exactly once at the owner that stores, boxes, or allocates the value. Root facades may reset the
+budget, but must not pre-reserve root type, root self bytes, or root value storage.
+Reference-backed paths reserve parent owner self cost plus reference storage, while each referenced
+heap owner reserves its own shallow self cost when materialized. Inline/value paths reserve inline
+element, field, or boxed storage in the holder/allocation owner; value serializers, including root
+and generated struct/product read paths, must not charge their own self storage.
 Parents must not recursively include child object, collection, map, string, binary, or primitive
 dense-array contents; the child owner reserves its own shallow memory when it is materialized.
 

@@ -235,7 +235,7 @@ func siblingContainersShareOneBudget() throws {
     )
     let bytes = try makeBudgetFory().serialize(value)
     let oneList = listBudget(BudgetNode.self, count: 16, elementOwnerBytes: budgetNodeGraphBytes)
-    let required = ownerBytes(BudgetSiblings.self) + oneList * 2
+    let required = oneList * 2
 
     expectInvalidData {
         let _: BudgetSiblings = try makeBudgetFory(maxGraphMemoryBytes: Int64(required - 1))
@@ -324,14 +324,7 @@ func arrayInlineValueBudget() throws {
 func inlineValueFieldBudget() throws {
     let value = BudgetValueHolder(value: BudgetValue(id: 7, enabled: true))
     let bytes = try makeBudgetFory().serialize(value)
-    let required = ownerBytes(BudgetValueHolder.self)
-
-    expectInvalidData {
-        let _: BudgetValueHolder = try makeBudgetFory(maxGraphMemoryBytes: Int64(required - 1))
-            .deserialize(bytes)
-    }
-    let decoded: BudgetValueHolder = try makeBudgetFory(maxGraphMemoryBytes: Int64(required))
-        .deserialize(bytes)
+    let decoded: BudgetValueHolder = try makeBudgetFory(maxGraphMemoryBytes: 1).deserialize(bytes)
     #expect(decoded == value)
 }
 
@@ -358,14 +351,7 @@ func denseLeafOwnersSkipped() throws {
         dense: [1, 2, 3]
     )
     let bytes = try makeBudgetFory().serialize(value)
-    let required = ownerBytes(BudgetDenseHolder.self)
-
-    expectInvalidData {
-        let _: BudgetDenseHolder = try makeBudgetFory(maxGraphMemoryBytes: Int64(required - 1))
-            .deserialize(bytes)
-    }
-    let decoded: BudgetDenseHolder = try makeBudgetFory(maxGraphMemoryBytes: Int64(required))
-        .deserialize(bytes)
+    let decoded: BudgetDenseHolder = try makeBudgetFory(maxGraphMemoryBytes: 1).deserialize(bytes)
     #expect(decoded == value)
 }
 
@@ -484,19 +470,10 @@ func dynamicAnyArrayBudget() throws {
 func compatibleDenseArraySkip() throws {
     let writer = makeCompatibleBudgetFory()
     writer.register(BudgetListDenseWriter.self, id: 9806)
-    let reader = makeCompatibleBudgetFory(
-        maxGraphMemoryBytes: Int64(ownerBytes(BudgetListDenseReader.self))
-    )
+    let reader = makeCompatibleBudgetFory(maxGraphMemoryBytes: 1)
     reader.register(BudgetListDenseReader.self, id: 9806)
     let bytes = try writer.serialize(BudgetListDenseWriter(dense: [1, 2, 3]))
 
-    expectInvalidData {
-        let failingReader = makeCompatibleBudgetFory(
-            maxGraphMemoryBytes: Int64(ownerBytes(BudgetListDenseReader.self) - 1)
-        )
-        failingReader.register(BudgetListDenseReader.self, id: 9806)
-        let _: BudgetListDenseReader = try failingReader.deserialize(bytes)
-    }
     let decoded: BudgetListDenseReader = try reader.deserialize(bytes)
     #expect(decoded.dense == [1, 2, 3])
 }
@@ -509,18 +486,7 @@ func compatibleInlineValueFieldBudget() throws {
     let bytes = try writer.serialize(
         BudgetValueCompatWriter(value: BudgetValue(id: 9, enabled: true), extra: 1))
 
-    expectInvalidData {
-        let failingReader = makeCompatibleBudgetFory(
-            maxGraphMemoryBytes: Int64(ownerBytes(BudgetValueCompatReader.self) - 1)
-        )
-        failingReader.register(BudgetValue.self, id: 9804)
-        failingReader.register(BudgetValueCompatReader.self, id: 9807)
-        let _: BudgetValueCompatReader = try failingReader.deserialize(bytes)
-    }
-
-    let reader = makeCompatibleBudgetFory(
-        maxGraphMemoryBytes: Int64(ownerBytes(BudgetValueCompatReader.self))
-    )
+    let reader = makeCompatibleBudgetFory(maxGraphMemoryBytes: 1)
     reader.register(BudgetValue.self, id: 9804)
     reader.register(BudgetValueCompatReader.self, id: 9807)
     let decoded: BudgetValueCompatReader = try reader.deserialize(bytes)
@@ -538,18 +504,7 @@ func compatibleNestedInlineValueFieldBudget() throws {
             extra: 2
         ))
 
-    expectInvalidData {
-        let failingReader = makeCompatibleBudgetFory(
-            maxGraphMemoryBytes: Int64(ownerBytes(BudgetNestedHolderReader.self) - 1)
-        )
-        failingReader.register(BudgetNestedValueReader.self, id: 9808)
-        failingReader.register(BudgetNestedHolderReader.self, id: 9809)
-        let _: BudgetNestedHolderReader = try failingReader.deserialize(bytes)
-    }
-
-    let reader = makeCompatibleBudgetFory(
-        maxGraphMemoryBytes: Int64(ownerBytes(BudgetNestedHolderReader.self))
-    )
+    let reader = makeCompatibleBudgetFory(maxGraphMemoryBytes: 1)
     reader.register(BudgetNestedValueReader.self, id: 9808)
     reader.register(BudgetNestedHolderReader.self, id: 9809)
     let decoded: BudgetNestedHolderReader = try reader.deserialize(bytes)

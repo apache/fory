@@ -863,7 +863,7 @@ private:
     // TypeMeta is read inline during deserialization (streaming protocol)
     const RefMode top_level_ref_mode =
         read_ctx_->track_ref() ? RefMode::Tracking : RefMode::NullOnly;
-    T result = read_root_object<T>(*read_ctx_, top_level_ref_mode, true);
+    T result = Serializer<T>::read(*read_ctx_, top_level_ref_mode, true);
     // Check for errors at deserialization boundary
     if (FORY_PREDICT_FALSE(read_ctx_->has_error())) {
       return Unexpected(read_ctx_->take_error());

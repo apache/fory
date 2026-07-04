@@ -19,6 +19,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
@@ -102,7 +103,7 @@ public sealed class TypeInfo
         bool evolving = ResolveStructEvolving(type, userTypeKind);
         bool isNullableType = !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
         bool isRefType = type != typeof(string) && !type.IsValueType;
-        long boxedValueBytes = GraphMemory.ValueOwnerBytes<T>();
+        long boxedValueBytes = BoxedValueBytes<T>();
         return new TypeInfo(
             type,
             serializer,
@@ -187,6 +188,36 @@ public sealed class TypeInfo
         }
 
         return serializer.ReadData(context);
+    }
+
+    private static long BoxedValueBytes<T>()
+    {
+        Type type = typeof(T);
+        if (!ShouldReserveBoxedValue(type))
+        {
+            return 0;
+        }
+
+        return Unsafe.SizeOf<T>();
+    }
+
+    private static bool ShouldReserveBoxedValue(Type type)
+    {
+        if (!type.IsValueType ||
+            Nullable.GetUnderlyingType(type) is not null ||
+            type.IsEnum ||
+            type.IsPrimitive)
+        {
+            return false;
+        }
+
+        return type != typeof(decimal) &&
+               type != typeof(Half) &&
+               type != typeof(BFloat16) &&
+               type != typeof(DateOnly) &&
+               type != typeof(DateTime) &&
+               type != typeof(DateTimeOffset) &&
+               type != typeof(TimeSpan);
     }
 
     private static void WriteObject<T>(

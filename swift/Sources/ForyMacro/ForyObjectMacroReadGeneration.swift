@@ -122,24 +122,24 @@ func buildStructReadWrapperDecl(accessPrefix: String) -> String {
     ) throws -> Self {
         switch refMode {
         case .none:
-            return try Self.__foryReadPayloadWithGraphOwner(context, readTypeInfo: readTypeInfo)
+            return try Self.__foryReadPayload(context, readTypeInfo: readTypeInfo)
         case .nullOnly:
             let rawFlag = try context.buffer.readInt8()
             switch rawFlag {
             case RefFlag.null.rawValue:
                 return Self.foryDefault()
             case RefFlag.notNullValue.rawValue:
-                return try Self.__foryReadPayloadWithGraphOwner(context, readTypeInfo: readTypeInfo)
+                return try Self.__foryReadPayload(context, readTypeInfo: readTypeInfo)
             case RefFlag.refValue.rawValue:
                 if context.trackRef {
                     let reservedRefID = context.refReader.reserveRefID()
-                    let value = try Self.__foryReadPayloadWithGraphOwner(context, readTypeInfo: readTypeInfo)
+                    let value = try Self.__foryReadPayload(context, readTypeInfo: readTypeInfo)
                     if let object = value as AnyObject? {
                         context.refReader.storeRef(object, at: reservedRefID)
                     }
                     return value
                 }
-                return try Self.__foryReadPayloadWithGraphOwner(context, readTypeInfo: readTypeInfo)
+                return try Self.__foryReadPayload(context, readTypeInfo: readTypeInfo)
             case RefFlag.ref.rawValue:
                 let refID = try context.buffer.readVarUInt32()
                 return try context.refReader.readRef(refID, as: Self.self)
@@ -159,24 +159,26 @@ func buildStructReadWrapperDecl(accessPrefix: String) -> String {
                 return try context.refReader.readRef(refID, as: Self.self)
             case .refValue:
                 let reservedRefID = context.trackRef ? context.refReader.reserveRefID() : nil
-                let value = try Self.__foryReadPayloadWithGraphOwner(context, readTypeInfo: readTypeInfo)
+                let value = try Self.__foryReadPayload(context, readTypeInfo: readTypeInfo)
                 if let reservedRefID, let object = value as AnyObject? {
                     context.refReader.storeRef(object, at: reservedRefID)
                 }
                 return value
             case .notNullValue:
-                return try Self.__foryReadPayloadWithGraphOwner(context, readTypeInfo: readTypeInfo)
+                return try Self.__foryReadPayload(context, readTypeInfo: readTypeInfo)
             }
         }
     }
 
     @inline(__always)
-    private static func __foryReadPayloadWithGraphOwner(
+    private static func __foryReadPayload(
         _ context: ReadContext,
         readTypeInfo: Bool
     ) throws -> Self {
-        let __ownerBytes = max(1, MemoryLayout<Self>.stride)
-        try context.reserveGraphMemory(__ownerBytes)
+        // Value serializers do not reserve their own graph memory because value
+        // storage is owned by the holder that stores or allocates the value.
+        // Containers, maps, arrays, pointer/box owners, class/reference owners,
+        // or dynamic boxing paths reserve the storage they own.
         if let remoteTypeInfo = try Self.foryReadPayloadTypeInfo(
             context,
             readTypeInfo: readTypeInfo

@@ -477,6 +477,13 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         {
             sb.AppendLine("        context.ReserveGraphMemory(__ForyGraphMemoryBytes);");
         }
+        else
+        {
+            sb.AppendLine("        // Value serializers do not reserve their own graph memory because value storage is");
+            sb.AppendLine("        // owned by the holder that stores or allocates the value. Containers, maps, arrays,");
+            sb.AppendLine("        // pointer/box owners, class/reference owners, or dynamic boxing paths reserve");
+            sb.AppendLine("        // the storage they own.");
+        }
 
         sb.AppendLine($"        {model.TypeName} valueNoTypeMeta = new {model.TypeName}();");
         EmitStoreRef(sb, model, "valueNoTypeMeta", 2);
@@ -521,6 +528,13 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         if (model.Kind == DeclKind.Class)
         {
             sb.AppendLine("            context.ReserveGraphMemory(__ForyGraphMemoryBytes);");
+        }
+        else
+        {
+            sb.AppendLine("            // Value serializers do not reserve their own graph memory because value storage is");
+            sb.AppendLine("            // owned by the holder that stores or allocates the value. Containers, maps, arrays,");
+            sb.AppendLine("            // pointer/box owners, class/reference owners, or dynamic boxing paths reserve");
+            sb.AppendLine("            // the storage they own.");
         }
 
         sb.AppendLine($"            {model.TypeName} value = new {model.TypeName}();");
@@ -633,6 +647,13 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         if (model.Kind == DeclKind.Class)
         {
             sb.AppendLine("        context.ReserveGraphMemory(__ForyGraphMemoryBytes);");
+        }
+        else
+        {
+            sb.AppendLine("        // Value serializers do not reserve their own graph memory because value storage is");
+            sb.AppendLine("        // owned by the holder that stores or allocates the value. Containers, maps, arrays,");
+            sb.AppendLine("        // pointer/box owners, class/reference owners, or dynamic boxing paths reserve");
+            sb.AppendLine("        // the storage they own.");
         }
 
         sb.AppendLine($"        {model.TypeName} valueSchema = new {model.TypeName}();");

@@ -953,12 +953,6 @@ struct Serializer<
     if (ctx.has_error() || !has_value) {
       return std::vector<T, Alloc>();
     }
-    if (ref_mode != RefMode::None &&
-        FORY_PREDICT_FALSE(
-            (!reserve_allocated_value_owner<std::vector<T, Alloc>>(ctx)))) {
-      return std::vector<T, Alloc>();
-    }
-
     // Optional type info for polymorphic containers
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -1252,12 +1246,6 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
     if (ctx.has_error() || !has_value) {
       return std::list<T, Alloc>();
     }
-    if (ref_mode != RefMode::None &&
-        FORY_PREDICT_FALSE(
-            (!reserve_allocated_value_owner<std::list<T, Alloc>>(ctx)))) {
-      return std::list<T, Alloc>();
-    }
-
     // Optional type info for polymorphic containers
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -1457,12 +1445,6 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
     if (ctx.has_error() || !has_value) {
       return std::deque<T, Alloc>();
     }
-    if (ref_mode != RefMode::None &&
-        FORY_PREDICT_FALSE(
-            (!reserve_allocated_value_owner<std::deque<T, Alloc>>(ctx)))) {
-      return std::deque<T, Alloc>();
-    }
-
     // Optional type info for polymorphic containers
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -1663,13 +1645,6 @@ struct Serializer<std::forward_list<T, Alloc>> {
     if (ctx.has_error() || !has_value) {
       return std::forward_list<T, Alloc>();
     }
-    if (ref_mode != RefMode::None &&
-        FORY_PREDICT_FALSE(
-            (!reserve_allocated_value_owner<std::forward_list<T, Alloc>>(
-                ctx)))) {
-      return std::forward_list<T, Alloc>();
-    }
-
     // Optional type info for polymorphic containers
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -2129,12 +2104,6 @@ struct Serializer<std::set<T, Args...>> {
     if (ctx.has_error() || !has_value) {
       return std::set<T, Args...>();
     }
-    if (ref_mode != RefMode::None &&
-        FORY_PREDICT_FALSE(
-            (!reserve_allocated_value_owner<std::set<T, Args...>>(ctx)))) {
-      return std::set<T, Args...>();
-    }
-
     // Read type info
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -2318,13 +2287,6 @@ struct Serializer<std::unordered_set<T, Args...>> {
     if (ctx.has_error() || !has_value) {
       return std::unordered_set<T, Args...>();
     }
-    if (ref_mode != RefMode::None &&
-        FORY_PREDICT_FALSE(
-            (!reserve_allocated_value_owner<std::unordered_set<T, Args...>>(
-                ctx)))) {
-      return std::unordered_set<T, Args...>();
-    }
-
     // Read type info
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());

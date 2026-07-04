@@ -113,9 +113,8 @@ template <typename T> std::vector<uint8_t> serialize_value(const T &value) {
 }
 
 size_t nested_empty_budget(size_t count) {
-  using Outer = std::vector<std::vector<std::string>>;
   using Inner = std::vector<std::string>;
-  return sizeof(Outer) + count * sizeof(Inner);
+  return count * sizeof(Inner);
 }
 
 template <typename T>
@@ -183,8 +182,7 @@ TEST(GraphMemoryBudgetTest, RootKindsShareConfiguredBudget) {
 TEST(GraphMemoryBudgetTest, ExplicitOverride) {
   std::vector<BudgetItem> value(8);
   auto bytes = serialize_value(value);
-  const size_t required =
-      sizeof(std::vector<BudgetItem>) + value.size() * sizeof(BudgetItem);
+  const size_t required = value.size() * sizeof(BudgetItem);
 
   auto small_result =
       with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
@@ -206,8 +204,7 @@ TEST(GraphMemoryBudgetTest, SmartPointerStructOwners) {
   shared_value->id = 7;
   shared_value->name = "shared";
   auto shared_bytes = serialize_value(shared_value);
-  constexpr size_t shared_required =
-      sizeof(std::shared_ptr<BudgetItem>) + sizeof(BudgetItem);
+  constexpr size_t shared_required = sizeof(BudgetItem);
 
   auto shared_small =
       with_fory(static_cast<int64_t>(shared_required - 1), [&](Fory &fory) {
@@ -229,8 +226,7 @@ TEST(GraphMemoryBudgetTest, SmartPointerStructOwners) {
   unique_value->name = "unique";
   auto unique_bytes = serialize_value(unique_value);
 
-  constexpr size_t unique_required =
-      sizeof(std::unique_ptr<BudgetItem>) + sizeof(BudgetItem);
+  constexpr size_t unique_required = sizeof(BudgetItem);
   auto unique_small =
       with_fory(static_cast<int64_t>(unique_required - 1), [&](Fory &fory) {
         return fory.deserialize<std::unique_ptr<BudgetItem>>(unique_bytes);
@@ -250,9 +246,8 @@ TEST(GraphMemoryBudgetTest, SmartPointerStructOwners) {
 TEST(GraphMemoryBudgetTest, SmartPointerVectorOwner) {
   auto value = std::make_shared<std::vector<BudgetItem>>(3);
   auto bytes = serialize_value(value);
-  const size_t required = sizeof(std::shared_ptr<std::vector<BudgetItem>>) +
-                          sizeof(std::vector<BudgetItem>) +
-                          value->size() * sizeof(BudgetItem);
+  const size_t required =
+      sizeof(std::vector<BudgetItem>) + value->size() * sizeof(BudgetItem);
 
   auto small_result =
       with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
@@ -283,8 +278,8 @@ TEST(GraphMemoryBudgetTest, NestedSmartPointerHandlesOwnedByVector) {
   value.back()->name = "right";
 
   auto bytes = serialize_value(value);
-  const size_t required = sizeof(value) + value.size() * sizeof(value[0]) +
-                          value.size() * sizeof(BudgetItem);
+  const size_t required =
+      value.size() * sizeof(value[0]) + value.size() * sizeof(BudgetItem);
 
   auto small_result =
       with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
@@ -307,15 +302,14 @@ TEST(GraphMemoryBudgetTest, NestedSmartPointerHandlesOwnedByVector) {
   EXPECT_EQ(*exact_result.value()[1], *value[1]);
 }
 
-TEST(GraphMemoryBudgetTest, OptionalSmartPointerRootOwnsInlineStorage) {
+TEST(GraphMemoryBudgetTest, OptionalSmartPointerRootChargesPointee) {
   std::optional<std::shared_ptr<BudgetItem>> value =
       std::make_shared<BudgetItem>();
   (*value)->id = 17;
   (*value)->name = "optional";
 
   auto bytes = serialize_value(value);
-  constexpr size_t required =
-      sizeof(std::optional<std::shared_ptr<BudgetItem>>) + sizeof(BudgetItem);
+  constexpr size_t required = sizeof(BudgetItem);
 
   auto small_result =
       with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
@@ -336,16 +330,19 @@ TEST(GraphMemoryBudgetTest, OptionalSmartPointerRootOwnsInlineStorage) {
   EXPECT_EQ(**exact_result.value(), **value);
 }
 
-TEST(GraphMemoryBudgetTest, EmptyStructRootChargesOwner) {
+TEST(GraphMemoryBudgetTest, EmptyStructRootHasNoOwnerCharge) {
   BudgetEmpty value;
-  expect_budget_boundary(value, sizeof(BudgetEmpty));
+  auto bytes = serialize_value(value);
+  auto result = with_fory(
+      1, [&](Fory &fory) { return fory.deserialize<BudgetEmpty>(bytes); });
+  ASSERT_TRUE(result.ok()) << result.error().to_string();
+  EXPECT_EQ(result.value(), value);
 }
 
 TEST(GraphMemoryBudgetTest, NestedEmptyContainers) {
   std::vector<std::vector<std::string>> value(1);
   auto bytes = serialize_value(value);
-  const size_t required = sizeof(std::vector<std::vector<std::string>>) +
-                          sizeof(std::vector<std::string>);
+  const size_t required = sizeof(std::vector<std::string>);
 
   auto small_result =
       with_fory(static_cast<int64_t>(required - 1), [&](Fory &fory) {
@@ -367,19 +364,19 @@ TEST(GraphMemoryBudgetTest, SiblingCumulativeBudget) {
   value.left.resize(16);
   value.right.resize(16);
   auto bytes = serialize_value(value);
-  const size_t root_owner = sizeof(BudgetSiblings);
   const size_t one_vector = value.left.size() * sizeof(BudgetItem);
 
   auto small_result =
-      with_fory(static_cast<int64_t>(root_owner + one_vector), [&](Fory &fory) {
+      with_fory(static_cast<int64_t>(one_vector), [&](Fory &fory) {
         return fory.deserialize<BudgetSiblings>(bytes);
       });
   ASSERT_FALSE(small_result.ok());
   EXPECT_EQ(small_result.error().code(), ErrorCode::InvalidData);
 
-  auto enough_result = with_fory(
-      static_cast<int64_t>(root_owner + one_vector * 2),
-      [&](Fory &fory) { return fory.deserialize<BudgetSiblings>(bytes); });
+  auto enough_result =
+      with_fory(static_cast<int64_t>(one_vector * 2), [&](Fory &fory) {
+        return fory.deserialize<BudgetSiblings>(bytes);
+      });
   ASSERT_TRUE(enough_result.ok()) << enough_result.error().to_string();
   EXPECT_EQ(enough_result.value(), value);
 }
@@ -387,26 +384,20 @@ TEST(GraphMemoryBudgetTest, SiblingCumulativeBudget) {
 TEST(GraphMemoryBudgetTest, MapBudget) {
   std::map<std::string, int32_t> value{{"a", 1}, {"b", 2}, {"c", 3}};
   const size_t entry_bytes = sizeof(std::string) + sizeof(int32_t);
-  const size_t required =
-      sizeof(std::map<std::string, int32_t>) + value.size() * entry_bytes;
+  const size_t required = value.size() * entry_bytes;
 
   expect_budget_boundary(value, required);
 }
 
 TEST(GraphMemoryBudgetTest, CollectionLowerBounds) {
   std::deque<BudgetItem> deque_value(4);
-  expect_budget_boundary(deque_value,
-                         sizeof(std::deque<BudgetItem>) +
-                             deque_value.size() * sizeof(BudgetItem));
+  expect_budget_boundary(deque_value, deque_value.size() * sizeof(BudgetItem));
 
   std::list<BudgetItem> list_value(4);
-  expect_budget_boundary(list_value,
-                         sizeof(std::list<BudgetItem>) +
-                             list_value.size() * sizeof(BudgetItem));
+  expect_budget_boundary(list_value, list_value.size() * sizeof(BudgetItem));
 
   std::forward_list<BudgetItem> forward_value(4);
-  expect_budget_boundary(forward_value, sizeof(std::forward_list<BudgetItem>) +
-                                            size_t{4} * sizeof(BudgetItem));
+  expect_budget_boundary(forward_value, size_t{4} * sizeof(BudgetItem));
 }
 
 TEST(GraphMemoryBudgetTest, VectorBoolChargesPackedStorage) {
@@ -418,26 +409,20 @@ TEST(GraphMemoryBudgetTest, VectorBoolChargesPackedStorage) {
 
 TEST(GraphMemoryBudgetTest, OrderedSetAndMapLowerBounds) {
   std::set<int32_t> set_value{1, 2, 3, 4};
-  expect_budget_boundary(set_value, sizeof(std::set<int32_t>) +
-                                        set_value.size() * sizeof(int32_t));
+  expect_budget_boundary(set_value, set_value.size() * sizeof(int32_t));
 
   std::map<std::string, int32_t> map_value{{"a", 1}, {"b", 2}};
-  expect_budget_boundary(map_value,
-                         sizeof(std::map<std::string, int32_t>) +
-                             map_value.size() *
-                                 (sizeof(std::string) + sizeof(int32_t)));
+  expect_budget_boundary(
+      map_value, map_value.size() * (sizeof(std::string) + sizeof(int32_t)));
 }
 
 TEST(GraphMemoryBudgetTest, UnorderedContainersLowerBounds) {
   std::unordered_set<int32_t> set_value{1, 2, 3, 4};
-  expect_budget_boundary(set_value, sizeof(std::unordered_set<int32_t>) +
-                                        set_value.size() * sizeof(int32_t));
+  expect_budget_boundary(set_value, set_value.size() * sizeof(int32_t));
 
   std::unordered_map<std::string, int32_t> map_value{{"a", 1}, {"b", 2}};
-  expect_budget_boundary(map_value,
-                         sizeof(std::unordered_map<std::string, int32_t>) +
-                             map_value.size() *
-                                 (sizeof(std::string) + sizeof(int32_t)));
+  expect_budget_boundary(
+      map_value, map_value.size() * (sizeof(std::string) + sizeof(int32_t)));
 }
 
 TEST(GraphMemoryBudgetTest, ArrayHasNoStandaloneReservation) {
@@ -454,8 +439,7 @@ TEST(GraphMemoryBudgetTest, FixedInlineOwnerChargesNestedVector) {
   BudgetFixedArrayOwner value;
   value.prefix = {{1, 2, 3, 4}};
   value.items.resize(3);
-  const size_t required =
-      sizeof(BudgetFixedArrayOwner) + value.items.size() * sizeof(BudgetItem);
+  const size_t required = value.items.size() * sizeof(BudgetItem);
 
   expect_budget_boundary(value, required);
 }
@@ -465,7 +449,6 @@ TEST(GraphMemoryBudgetTest, GenericSelfReferenceBudget) {
   value.value = "root";
   value.children.push_back(GenericBudgetNode<std::string>{"child", {}});
   const size_t required =
-      sizeof(GenericBudgetNode<std::string>) +
       value.children.size() * sizeof(GenericBudgetNode<std::string>);
 
   expect_budget_boundary(value, required);

@@ -35,9 +35,9 @@ Load this file when changing `cpp/`, Cython build plumbing, or C++ xlang behavio
 - C++ graph budget formulas must be portable lower-bound estimates, not STL heap-layout accounting.
   Generic collection-like containers reserve `count_or_capacity * sizeof(value_type)`, map-like
   containers reserve `count * (sizeof(key_type) + sizeof(mapped_type))`, and set-like containers
-  reserve `count * sizeof(key_type)`. Root struct/product owners and smart-pointer/box allocation
-  owners reserve shallow self storage exactly once; nested value serializers reserve only dynamic
-  storage they allocate, not their own inline self storage again. Do not add guessed
+  reserve `count * sizeof(key_type)`. Smart-pointer, box, and dynamic allocation owners reserve
+  `sizeof(T)` when they materialize pointed heap storage; root/plain struct/product serializers do
+  not reserve their own self storage. Do not add guessed
   node/header/debug-STL overhead, red-black-tree fields, allocator probing, object-layout
   inspection, generic per-entry pointer overhead, or unordered bucket-table guesses.
 

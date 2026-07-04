@@ -1185,14 +1185,6 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 			targetVal = reflect.ValueOf(target).Elem()
 			targetType = targetVal.Type()
 		}
-		if targetType.Kind() == reflect.Struct {
-			if typeInfo := f.readCtx.getTypeInfoByType(targetType); typeInfo != nil {
-				if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
-					structSer.readRoot(f.readCtx, targetVal)
-					return f.readCtx.CheckError()
-				}
-			}
-		}
 		serializer, err := f.typeResolver.getSerializerByType(targetType, false)
 		if err != nil {
 			return fmt.Errorf("failed to get serializer for type %v: %w", targetType, err)
@@ -1203,16 +1195,5 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 }
 
 func (f *Fory) readRootValue(target reflect.Value) {
-	targetType := target.Type()
-	if targetType.Kind() == reflect.Struct {
-		if typeInfo := f.readCtx.getTypeInfoByType(targetType); typeInfo != nil {
-			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
-				structSer.readRoot(f.readCtx, target)
-			} else {
-				typeInfo.Serializer.Read(f.readCtx, RefModeTracking, true, false, target)
-			}
-			return
-		}
-	}
 	f.readCtx.ReadValue(target, RefModeTracking, true)
 }

@@ -424,14 +424,17 @@ Concrete serializers and generated serializers own those decisions.
 
 The budget estimates lower-bound shallow memory for materialized graph owners,
 not exact heap bytes. Reserve self storage exactly once at the owner that stores
-or allocates the value. Reference-backed containers, maps, sets, and
+or allocates the value. Root facades reset the budget only and must not reserve
+root value storage. Reference-backed containers, maps, sets, and
 object/reference arrays reserve nonzero owner self cost plus reference slots;
 each referenced heap owner then reserves its own shallow self cost when
 materialized. Inline/value containers reserve element storage; inline/value maps
-reserve key plus value storage; root materialization, product, and box owners
-reserve value self storage; and nested value serializers reserve only additional
-dynamic storage they allocate. Struct/record/POJO/tuple, compatible, generated, and dynamic
-object owners reserve a nonzero shallow self cost plus shallow field storage.
+reserve key plus value storage; pointer, box, and dynamic materialization owners
+reserve the heap or boxed storage they allocate. Value serializers, including
+root and generated struct/product read paths, do not reserve their own self
+storage. Struct/record/POJO/tuple, compatible, generated, and dynamic object
+owners reserve a nonzero shallow self cost plus shallow field storage only in
+reference-object runtimes or dynamic/boxed materialization paths.
 Parents must not recursively include child object, collection, map, string,
 binary, or primitive dense-array contents. Skip enum/union as separate owners and
 skip dedicated string, binary, primitive scalar, primitive array, and primitive

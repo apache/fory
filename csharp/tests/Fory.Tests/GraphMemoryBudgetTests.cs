@@ -142,16 +142,6 @@ public sealed class GraphMemoryBudgetTests
             .Register<BudgetValueHolder>(1009);
     }
 
-    private static ForyRuntime NewTrackedFory(long maxGraphMemoryBytes = DefaultGraphMemoryBytes)
-    {
-        return ForyRuntime.Builder()
-            .Compatible(false)
-            .TrackRef(true)
-            .MaxGraphMemoryBytes(maxGraphMemoryBytes)
-            .Build()
-            .Register<BudgetValue>(1005);
-    }
-
     private static byte[] Serialize<T>(T value)
     {
         return NewFory().Serialize(value);
@@ -285,8 +275,7 @@ public sealed class GraphMemoryBudgetTests
     {
         BudgetValue value = new() { Id = 7 };
         byte[] valueBytes = Serialize(value);
-        Assert.Throws<InvalidDataException>(() => NewFory(BudgetValueBytes - 1).Deserialize<BudgetValue>(valueBytes));
-        Assert.Equal(value.Id, NewFory(BudgetValueBytes).Deserialize<BudgetValue>(valueBytes).Id);
+        Assert.Equal(value.Id, NewFory(1).Deserialize<BudgetValue>(valueBytes).Id);
 
         List<BudgetValue> values = Enumerable.Range(0, 4).Select(i => new BudgetValue { Id = i }).ToList();
         byte[] listBytes = Serialize(values);
@@ -298,16 +287,6 @@ public sealed class GraphMemoryBudgetTests
         byte[] holderBytes = Serialize(holder);
         Assert.Throws<InvalidDataException>(() => NewFory(BudgetValueHolderBytes - 1).Deserialize<BudgetValueHolder>(holderBytes));
         Assert.Equal(holder.Value.Id, NewFory(BudgetValueHolderBytes).Deserialize<BudgetValueHolder>(holderBytes).Value.Id);
-    }
-
-    [Fact]
-    public void TrackedValueRootOwnerIsCharged()
-    {
-        BudgetValue value = new() { Id = 17 };
-        byte[] bytes = NewTrackedFory().Serialize(value);
-
-        Assert.Throws<InvalidDataException>(() => NewTrackedFory(BudgetValueBytes - 1).Deserialize<BudgetValue>(bytes));
-        Assert.Equal(value.Id, NewTrackedFory(BudgetValueBytes).Deserialize<BudgetValue>(bytes).Id);
     }
 
     [Fact]

@@ -178,7 +178,7 @@ func TestGraphBudgetCumulative(t *testing.T) {
 	err = reader.Deserialize(data, &out)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-	required := structGraphBytes(reflect.TypeOf(budgetSiblings{})) + 2*(graphShallowOwnerBytes+stringElementBytes)
+	required := 2 * (graphShallowOwnerBytes + stringElementBytes)
 	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required))
 	require.NoError(t, reader.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	require.NoError(t, reader.Deserialize(data, &out))
@@ -193,9 +193,7 @@ func TestGraphBudgetGenericSelfReference(t *testing.T) {
 			{Value: "child", Children: []budgetGenericNode[string]{}},
 		},
 	}
-	type_ := reflect.TypeOf(value)
-	required := structGraphBytes(type_) +
-		graphShallowOwnerBytes +
+	required := graphShallowOwnerBytes +
 		graphSizeOf[budgetGenericNode[string]]() +
 		graphShallowOwnerBytes
 
@@ -326,36 +324,18 @@ func TestGraphMemoryBudgetStructOwners(t *testing.T) {
 	require.NoError(t, reader.Deserialize(data, &out))
 	require.Equal(t, int32(7), out.A)
 
-	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required-1))
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(1))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	var outValue budgetItem
-	err = reader.Deserialize(data, &outValue)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-
-	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required))
-	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	require.NoError(t, reader.Deserialize(data, &outValue))
 	require.Equal(t, int32(7), outValue.A)
 
-	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required-1))
-	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
-	err = reader.DeserializeFromReader(bytes.NewReader(data), &outValue)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-
-	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required))
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(1))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	require.NoError(t, reader.DeserializeFromReader(bytes.NewReader(data), &outValue))
 	require.Equal(t, int32(7), outValue.A)
 
-	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required-1))
-	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
-	err = reader.DeserializeFromStream(NewInputStream(bytes.NewReader(data)), &outValue)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-
-	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required))
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(1))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	require.NoError(t, reader.DeserializeFromStream(NewInputStream(bytes.NewReader(data)), &outValue))
 	require.Equal(t, int32(7), outValue.A)
