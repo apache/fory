@@ -320,12 +320,8 @@ func (s *arrayDynSerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 func (s *arrayDynSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Create a temp slice to read into, then copy back to array
 	sliceType := reflect.SliceOf(value.Type().Elem())
-	elemBytes := s.sliceSerializer.elemBytes
-	if int64(value.Len()) > maxGraphCount(elemBytes) {
-		ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", value.Len(), elemBytes))
-		return
-	}
-	if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(value.Len())*int64(elemBytes)) {
+	// The temp slice is not retained graph memory; bound it by the fixed array length before allocation.
+	if !ctx.Buffer().CheckReadable(value.Len(), ctx.Err()) {
 		return
 	}
 	tempSlice := reflect.MakeSlice(sliceType, value.Len(), value.Len())
