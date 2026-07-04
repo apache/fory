@@ -18,6 +18,7 @@
 import array
 import dataclasses
 import struct
+import sys
 from typing import Any
 
 import pytest
@@ -102,6 +103,17 @@ class BudgetStatefulObject:
 class BudgetReduceObject:
     def __reduce__(self):
         return (BudgetReduceObject, ())
+
+
+SKIP_CLASS_ATTR_NAMES = (
+    "__module__",
+    "__qualname__",
+    "__dict__",
+    "__weakref__",
+    "__annotate__",
+    "__annotate_func__",
+    "__annotations_cache__",
+)
 
 
 @dataclasses.dataclass
@@ -239,13 +251,62 @@ def test_reduce_object_budget():
 
     reduce_args_budget = collection_memory(0)
     with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
-        reader = new_fory(reduce_args_budget, xlang=False)
+        reader = new_fory(reduce_args_budget - 1, xlang=False)
         reader.register_type(BudgetReduceObject)
         reader.deserialize(data)
 
-    reader = new_fory(reduce_args_budget + REFERENCE_OBJECT_BYTES, xlang=False)
+    reader = new_fory(reduce_args_budget, xlang=False)
     reader.register_type(BudgetReduceObject)
     assert isinstance(reader.deserialize(data), BudgetReduceObject)
+
+
+def test_local_function_budget():
+    captured = 7
+
+    def local_func(value=5):
+        return value + captured
+
+    writer = new_fory(xlang=False)
+    data = writer.serialize(local_func)
+
+    module_entries = len(sys.modules[local_func.__module__].__dict__)
+    closure_memory = REFERENCE_OBJECT_BYTES + REFERENCE_BYTES + REFERENCE_OBJECT_BYTES
+    budget = (
+        REFERENCE_OBJECT_BYTES
+        + collection_memory(1)
+        + closure_memory
+        + map_memory(0)
+        + map_memory(module_entries)
+        + REFERENCE_OBJECT_BYTES
+        + map_memory(0)
+    )
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        new_fory(budget - REFERENCE_OBJECT_BYTES, xlang=False).deserialize(data)
+
+    restored = new_fory(budget, xlang=False).deserialize(data)
+    assert restored() == local_func()
+
+
+def test_local_class_budget():
+    def make_class():
+        class LocalBudgetClass:
+            pass
+
+        return LocalBudgetClass
+
+    cls = make_class()
+    writer = new_fory(xlang=False)
+    data = writer.serialize(cls)
+
+    class_attrs = {name: value for name, value in cls.__dict__.items() if name not in SKIP_CLASS_ATTR_NAMES}
+    class_attr_value_budget = sum(collection_memory(len(value)) for value in class_attrs.values() if isinstance(value, tuple))
+    budget = collection_memory(1) + REFERENCE_OBJECT_BYTES + map_memory(len(class_attrs)) + class_attr_value_budget
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        new_fory(collection_memory(1), xlang=False).deserialize(data)
+
+    restored = new_fory(budget, xlang=False).deserialize(data)
+    assert restored.__name__ == cls.__name__
+    assert restored.__bases__ == cls.__bases__
 
 
 def test_self_ref_budget():

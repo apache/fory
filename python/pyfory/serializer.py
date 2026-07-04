@@ -1080,12 +1080,12 @@ class StatefulSerializer(Serializer):
         state = read_context.read_ref()
 
         read_context.policy.authorize_instantiation(self.cls)
-        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
         if args or kwargs:
             # Case 1: __getnewargs__ was used. Re-create by calling __init__.
             obj = self.cls(*args, **kwargs)
         else:
             # Case 2: Only __getstate__ was used. Create without calling __init__.
+            read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
             obj = self.cls.__new__(self.cls)
 
         if state is not None:
@@ -1100,12 +1100,12 @@ class _DefaultPolicyStatefulSerializer(StatefulSerializer):
         kwargs = read_context.read_ref()
         state = read_context.read_ref()
 
-        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
         if args or kwargs:
             # Case 1: __getnewargs__ was used. Re-create by calling __init__.
             obj = self.cls(*args, **kwargs)
         else:
             # Case 2: Only __getstate__ was used. Create without calling __init__.
+            read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
             obj = self.cls.__new__(self.cls)
 
         if state is not None:
@@ -1229,7 +1229,6 @@ class ReduceSerializer(Serializer):
                 # Create the object using the callable and args
                 if isinstance(callable_obj, type):
                     read_context.policy.authorize_instantiation(callable_obj)
-                read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
                 obj = callable_obj(*args)
 
             # Restore state if present
@@ -1354,8 +1353,12 @@ class TypeSerializer(Serializer):
 
         num_bases = read_context.read_var_uint32()
         _check_non_negative_size(num_bases, "local class base")
+        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES + num_bases * _REFERENCE_BYTES)
+        # The bases tuple is built from per-item reads, so no readable-byte guard is needed here;
+        # graph reservation covers the bases tuple retained by the created class.
         bases = tuple(read_context.read_ref() for _ in range(num_bases))
         read_context.policy.authorize_instantiation(type, module=module, qualname=qualname, bases=bases)
+        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
         cls = type(name, bases, {})
         read_context.set_read_ref(ref_id, cls)
         read_context.policy.validate_class(cls, is_local=True)
@@ -1365,6 +1368,7 @@ class TypeSerializer(Serializer):
         for _ in range(num_class_methods):
             attr_name = read_context.read_string()
             func = read_context.read_ref()
+            read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
             method = types.MethodType(func, cls)
             setattr(cls, attr_name, method)
         class_dict = read_context.read_ref()
@@ -1539,8 +1543,11 @@ class FunctionSerializer(Serializer):
             self_obj = read_context.read_ref()
             method_name = read_context.read_string()
             if policy is DEFAULT_POLICY:
+                read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
                 return getattr(self_obj, method_name)
-            return _resolve_validated_bound_method(policy, self_obj, method_name, is_local=_is_local_receiver(self_obj))
+            method = _resolve_validated_bound_method(policy, self_obj, method_name, is_local=_is_local_receiver(self_obj))
+            read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
+            return method
 
         if func_type_id == 1:
             module = read_context.read_string()
@@ -1562,6 +1569,7 @@ class FunctionSerializer(Serializer):
         name = qualname.rsplit(".")[-1]
 
         marshalled_code = read_context.read_bytes_and_size()
+        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
         code = marshal.loads(marshalled_code)
 
         has_defaults = read_context.read_bool()
@@ -1572,6 +1580,7 @@ class FunctionSerializer(Serializer):
             default_values = []
             for _ in range(num_defaults):
                 default_values.append(read_context.read_ref())
+            read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES + num_defaults * _REFERENCE_BYTES)
             defaults = tuple(default_values)
 
         has_closure = read_context.read_bool()
@@ -1584,6 +1593,7 @@ class FunctionSerializer(Serializer):
             for _ in range(num_freevars):
                 closure_values.append(read_context.read_ref())
 
+            read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES + num_freevars * (_REFERENCE_BYTES + _REFERENCE_OBJECT_BYTES))
             closure = tuple(types.CellType(value) for value in closure_values)
 
         num_freevars = read_context.read_var_uint32()
@@ -1595,6 +1605,13 @@ class FunctionSerializer(Serializer):
         globals_dict = read_context.read_ref()
 
         # Create a globals dictionary with module's globals as the base
+        func_global_entries = len(mod.__dict__) if mod else 0
+        if isinstance(globals_dict, dict):
+            func_global_entries = max(func_global_entries, len(globals_dict))
+        has_builtins = (mod is not None and "__builtins__" in mod.__dict__) or (isinstance(globals_dict, dict) and "__builtins__" in globals_dict)
+        if not has_builtins:
+            func_global_entries += 1
+        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES + func_global_entries * 2 * _REFERENCE_BYTES)
         func_globals = {}
         if mod:
             func_globals.update(mod.__dict__)
@@ -1605,6 +1622,7 @@ class FunctionSerializer(Serializer):
         if "__builtins__" not in func_globals:
             func_globals["__builtins__"] = builtins
 
+        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
         func = types.FunctionType(code, func_globals, name, defaults, closure)
 
         func.__module__ = module
@@ -1652,9 +1670,11 @@ class NativeFuncMethodSerializer(Serializer):
             _authorize_callable_materialization(policy, types.MethodType, method_name=name)
             obj = read_context.read_ref()
             if policy is DEFAULT_POLICY:
+                read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
                 func = getattr(obj, name)
             else:
                 func = _resolve_validated_bound_method(policy, obj, name, is_local=_is_local_receiver(obj))
+                read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
         return func
 
 
@@ -1679,13 +1699,16 @@ class MethodSerializer(Serializer):
         method_name = read_context.read_string()
 
         if self._use_default_policy:
+            read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
             return getattr(instance, method_name)
-        return _resolve_validated_bound_method(
+        method = _resolve_validated_bound_method(
             read_context.policy,
             instance,
             method_name,
             is_local=_is_local_receiver(instance),
         )
+        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES)
+        return method
 
 
 class ObjectSerializer(Serializer):
