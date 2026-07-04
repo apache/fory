@@ -108,7 +108,7 @@ func (f *Fory) DeserializeFromStream(is *InputStream, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	f.readRootValue(target)
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -132,7 +132,7 @@ func (f *Fory) DeserializeFromReader(r io.Reader, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	f.readRootValue(target)
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}

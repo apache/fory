@@ -576,7 +576,7 @@ func (f *Fory) Deserialize(data []byte, v any) error {
 		return f.readCtx.TakeError()
 	}
 
-	f.readRootValue(target)
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -670,7 +670,7 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readRootValue(target)
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		f.readCtx.buffer = origBuffer
 		return f.readCtx.TakeError()
@@ -783,7 +783,7 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readRootValue(target)
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -1192,8 +1192,4 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 		serializer.Read(f.readCtx, RefModeTracking, true, false, targetVal)
 		return f.readCtx.CheckError()
 	}
-}
-
-func (f *Fory) readRootValue(target reflect.Value) {
-	f.readCtx.ReadValue(target, RefModeTracking, true)
 }
