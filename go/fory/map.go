@@ -451,14 +451,6 @@ func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr
 			valType = staticType
 		}
 		valType, ser = wrapMapSerializerIfNeeded(staticType, valType, ser)
-		valueBytes := int(valType.Size())
-		if structSer, ok := ser.(*structSerializer); ok {
-			valueBytes = structSer.valueBytes
-		}
-		if staticType.Kind() == reflect.Interface && valType.Kind() == reflect.Struct &&
-			!ctx.ReserveGraphMemory(int64(valueBytes)) {
-			return reflect.Value{}
-		}
 		v := reflect.New(valType).Elem()
 		ser.ReadData(ctx, v)
 		if ctx.HasError() {
@@ -492,14 +484,6 @@ func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr
 
 	if valType == nil {
 		valType = staticType
-	}
-	valueBytes := int(valType.Size())
-	if structSer, ok := ser.(*structSerializer); ok {
-		valueBytes = structSer.valueBytes
-	}
-	if staticType.Kind() == reflect.Interface && valType.Kind() == reflect.Struct &&
-		!ctx.ReserveGraphMemory(int64(valueBytes)) {
-		return reflect.Value{}
 	}
 	v := reflect.New(valType).Elem()
 
@@ -586,14 +570,6 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 	}
 
 	for i := 0; i < chunkSize; i++ {
-		keyBytes := int(keyType.Size())
-		if structSer, ok := keySer.(*structSerializer); ok {
-			keyBytes = structSer.valueBytes
-		}
-		if declaredKeyType.Kind() == reflect.Interface && keyType.Kind() == reflect.Struct &&
-			!ctx.ReserveGraphMemory(int64(keyBytes)) {
-			return 0
-		}
 		k := reflect.New(keyType).Elem()
 		if keyTypeInfo != nil {
 			keySer.ReadWithTypeInfo(ctx, keyRefMode, keyTypeInfo, k)
@@ -604,14 +580,6 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 			return 0
 		}
 
-		valueBytes := int(valueType.Size())
-		if structSer, ok := valSer.(*structSerializer); ok {
-			valueBytes = structSer.valueBytes
-		}
-		if declaredValueType.Kind() == reflect.Interface && valueType.Kind() == reflect.Struct &&
-			!ctx.ReserveGraphMemory(int64(valueBytes)) {
-			return 0
-		}
 		v := reflect.New(valueType).Elem()
 		if valueTypeInfo != nil {
 			valSer.ReadWithTypeInfo(ctx, valRefMode, valueTypeInfo, v)

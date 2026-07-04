@@ -392,14 +392,6 @@ func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, val
 			// For named struct types, use pointer for circular reference support
 			var elem reflect.Value
 			if isNamedStruct {
-				valueBytes := int(elemType.Size())
-				if structSer, ok := serializer.(*structSerializer); ok {
-					valueBytes = structSer.valueBytes
-				}
-				if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
-					!ctx.ReserveGraphMemory(int64(valueBytes)) {
-					return
-				}
 				// Create pointer to struct: *B
 				elem = reflect.New(elemType)
 				// Register reference BEFORE reading data for circular ref support
@@ -407,14 +399,6 @@ func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, val
 				// Read into the struct element
 				serializer.ReadData(ctx, elem.Elem())
 			} else {
-				valueBytes := int(elemType.Size())
-				if structSer, ok := serializer.(*structSerializer); ok {
-					valueBytes = structSer.valueBytes
-				}
-				if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
-					!ctx.ReserveGraphMemory(int64(valueBytes)) {
-					return
-				}
 				elem = reflect.New(elemType).Elem()
 				serializer.ReadData(ctx, elem)
 				ctx.RefResolver().Reference(elem)
@@ -428,14 +412,6 @@ func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, val
 			if refFlag == NullFlag {
 				continue
 			}
-			valueBytes := int(elemType.Size())
-			if structSer, ok := serializer.(*structSerializer); ok {
-				valueBytes = structSer.valueBytes
-			}
-			if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
-				!ctx.ReserveGraphMemory(int64(valueBytes)) {
-				return
-			}
 			elem := reflect.New(elemType).Elem()
 			serializer.ReadData(ctx, elem)
 			if ctx.HasError() {
@@ -443,14 +419,6 @@ func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, val
 			}
 			value.Index(i).Set(elem)
 		} else {
-			valueBytes := int(elemType.Size())
-			if structSer, ok := serializer.(*structSerializer); ok {
-				valueBytes = structSer.valueBytes
-			}
-			if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
-				!ctx.ReserveGraphMemory(int64(valueBytes)) {
-				return
-			}
 			elem := reflect.New(elemType).Elem()
 			serializer.ReadData(ctx, elem)
 			if ctx.HasError() {
@@ -491,14 +459,6 @@ func (s *sliceDynSerializer) readDifferentTypes(
 				return
 			}
 			elemType, serializer := s.wrapSerializerIfNeeded(typeInfo.Type, typeInfo.Serializer)
-			valueBytes := int(elemType.Size())
-			if structSer, ok := serializer.(*structSerializer); ok {
-				valueBytes = structSer.valueBytes
-			}
-			if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
-				!ctx.ReserveGraphMemory(int64(valueBytes)) {
-				return
-			}
 			elem := reflect.New(elemType).Elem()
 			serializer.ReadData(ctx, elem)
 			ctx.RefResolver().SetReadObject(refID, elem)
@@ -518,14 +478,6 @@ func (s *sliceDynSerializer) readDifferentTypes(
 				return
 			}
 			elemType, serializer := s.wrapSerializerIfNeeded(typeInfo.Type, typeInfo.Serializer)
-			valueBytes := int(elemType.Size())
-			if structSer, ok := serializer.(*structSerializer); ok {
-				valueBytes = structSer.valueBytes
-			}
-			if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
-				!ctx.ReserveGraphMemory(int64(valueBytes)) {
-				return
-			}
 			elem := reflect.New(elemType).Elem()
 			serializer.ReadData(ctx, elem)
 			if ctx.HasError() {

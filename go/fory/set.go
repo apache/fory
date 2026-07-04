@@ -452,21 +452,6 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 			if isNull(elem) {
 				continue
 			}
-			if keyType.Kind() == reflect.Interface {
-				boxed := elem
-				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
-					boxed = boxed.Elem()
-				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
-					valueBytes := int(boxed.Type().Size())
-					if structSer, ok := serializer.(*structSerializer); ok {
-						valueBytes = structSer.valueBytes
-					}
-					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
-						return
-					}
-				}
-			}
 			ctx.RefResolver().SetReadObject(refID, elem)
 			setMapKey(value, elem, keyType)
 		} else if hasNull {
@@ -479,42 +464,12 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 			if ctx.HasError() {
 				return
 			}
-			if keyType.Kind() == reflect.Interface {
-				boxed := elem
-				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
-					boxed = boxed.Elem()
-				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
-					valueBytes := int(boxed.Type().Size())
-					if structSer, ok := serializer.(*structSerializer); ok {
-						valueBytes = structSer.valueBytes
-					}
-					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
-						return
-					}
-				}
-			}
 			setMapKey(value, elem, keyType)
 		} else {
 			elem := reflect.New(elemType).Elem()
 			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
 			if ctx.HasError() {
 				return
-			}
-			if keyType.Kind() == reflect.Interface {
-				boxed := elem
-				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
-					boxed = boxed.Elem()
-				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
-					valueBytes := int(boxed.Type().Size())
-					if structSer, ok := serializer.(*structSerializer); ok {
-						valueBytes = structSer.valueBytes
-					}
-					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
-						return
-					}
-				}
 			}
 			setMapKey(value, elem, keyType)
 		}
@@ -557,21 +512,6 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 			if ctx.HasError() {
 				return
 			}
-			if keyType.Kind() == reflect.Interface {
-				boxed := elem
-				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
-					boxed = boxed.Elem()
-				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
-					valueBytes := int(boxed.Type().Size())
-					if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
-						valueBytes = structSer.valueBytes
-					}
-					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
-						return
-					}
-				}
-			}
 			ctx.RefResolver().SetReadObject(refID, elem)
 			setMapKey(value, elem, keyType)
 		} else if hasNull {
@@ -591,21 +531,6 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 			if ctx.HasError() {
 				return
 			}
-			if keyType.Kind() == reflect.Interface {
-				boxed := elem
-				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
-					boxed = boxed.Elem()
-				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
-					valueBytes := int(boxed.Type().Size())
-					if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
-						valueBytes = structSer.valueBytes
-					}
-					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
-						return
-					}
-				}
-			}
 			setMapKey(value, elem, keyType)
 		} else {
 			// No ref tracking and no nulls: typeId + data directly
@@ -617,21 +542,6 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 			typeInfo.Serializer.ReadData(ctx, elem)
 			if ctx.HasError() {
 				return
-			}
-			if keyType.Kind() == reflect.Interface {
-				boxed := elem
-				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
-					boxed = boxed.Elem()
-				}
-				if boxed.IsValid() && boxed.Kind() == reflect.Struct {
-					valueBytes := int(boxed.Type().Size())
-					if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
-						valueBytes = structSer.valueBytes
-					}
-					if !ctx.ReserveGraphMemory(int64(valueBytes)) {
-						return
-					}
-				}
 			}
 			setMapKey(value, elem, keyType)
 		}
