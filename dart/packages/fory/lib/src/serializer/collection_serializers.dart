@@ -641,6 +641,9 @@ void _setArrayValue(Object target, int arrayTypeId, int index, Object? value) {
 }
 
 Object _arrayToListValue(ReadContext context, Object? raw) {
+  // Dedicated primitive-array payloads are leaf values and intentionally skip
+  // graph-memory reservation. This conversion materializes a new Dart List, so
+  // the list reservation below is the first owner charge, not a duplicate.
   if (raw is BoolList) {
     context.reserveGraphMemory(
       _referenceObjectBytes + raw.length * _referenceBytes,
