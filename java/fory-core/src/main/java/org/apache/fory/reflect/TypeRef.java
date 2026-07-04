@@ -162,9 +162,13 @@ public class TypeRef<T> {
   }
 
   private static List<TypeRef<?>> immutableTypeArguments(List<TypeRef<?>> typeArguments) {
-    return typeArguments == null
-        ? null
-        : Collections.unmodifiableList(new ArrayList<>(typeArguments));
+    if (typeArguments == null) {
+      return null;
+    }
+    if (typeArguments.isEmpty()) {
+      return Collections.emptyList();
+    }
+    return Collections.unmodifiableList(new ArrayList<>(typeArguments));
   }
 
   private static List<TypeRef<?>> normalizeContainerTypeArguments(
