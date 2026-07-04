@@ -343,7 +343,7 @@ export class WriteContext {
 
   constructor(
     readonly typeResolver: TypeResolverLike,
-    config: Config,
+    config: { hps?: Config["hps"] } = {},
   ) {
     this.writer = new BinaryWriter(config);
     this.refWriter = new RefWriter();
@@ -564,10 +564,18 @@ export class ReadContext {
   }
 
   reserveGraphMemory(bytes: number) {
+    const remaining = this.remainingGraphMemoryBytes - bytes;
+    if (remaining >= 0 && bytes >= 0 && (bytes | 0) === bytes) {
+      this.remainingGraphMemoryBytes = remaining;
+      return;
+    }
+    this.reserveGraphMemorySlow(bytes, remaining);
+  }
+
+  private reserveGraphMemorySlow(bytes: number, remaining: number) {
     if (!Number.isSafeInteger(bytes) || bytes < 0) {
       this.throwGraphMemoryOverflow(bytes);
     }
-    const remaining = this.remainingGraphMemoryBytes - bytes;
     if (remaining < 0) {
       this.throwGraphBudgetExceeded(bytes);
     }

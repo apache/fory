@@ -70,7 +70,10 @@ public sealed class ReadContext
 
     public bool CheckStructVersion { get; }
 
-    internal RefReader RefReader { get; }
+    /// <summary>
+    /// Low-level reference table reader used by generated and concrete serializers.
+    /// </summary>
+    public RefReader RefReader { get; }
 
     /// <summary>
     /// Reserves estimated graph memory for the current root deserialization.
@@ -82,14 +85,39 @@ public sealed class ReadContext
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ReserveGraphMemory(long bytes)
     {
-        long remaining = _remainingGraphMemoryBytes;
-        if ((ulong)bytes > (ulong)remaining)
+        long remaining = _remainingGraphMemoryBytes - bytes;
+        // Failed root reads reset this context, so keep the common valid reserve to one subtract and
+        // one store; invalid or exceeded reserves repair nothing and throw from the cold path.
+        _remainingGraphMemoryBytes = remaining;
+        if ((bytes | remaining) < 0)
         {
-            ThrowInvalidGraphMemoryReserve(bytes, remaining);
+            ThrowInvalidGraphMemoryReserve(bytes, remaining + bytes);
             return;
         }
+    }
 
-        _remainingGraphMemoryBytes = remaining - bytes;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(int bytes)
+    {
+        long remaining = _remainingGraphMemoryBytes - bytes;
+        _remainingGraphMemoryBytes = remaining;
+        if (((long)bytes | remaining) < 0)
+        {
+            ThrowInvalidGraphMemoryReserve(bytes, remaining + bytes);
+            return;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(uint bytes)
+    {
+        long remaining = _remainingGraphMemoryBytes - bytes;
+        _remainingGraphMemoryBytes = remaining;
+        if (remaining < 0)
+        {
+            ThrowInvalidGraphMemoryReserve(bytes, remaining + bytes);
+            return;
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

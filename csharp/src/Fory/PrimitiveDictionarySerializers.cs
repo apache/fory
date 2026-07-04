@@ -864,15 +864,47 @@ internal class PrimitiveDictionarySerializer<TKey, TValue, TKeyCodec, TValueCode
             DictionaryPrimitiveMapOps<TKey, TValue>>(context);
     }
 
-    public override Dictionary<TKey, TValue> ReadDataWithRef(ReadContext context, uint refId)
+    public override Dictionary<TKey, TValue> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return PrimitiveDictionaryCodecReader.ReadMap<
-            Dictionary<TKey, TValue>,
-            TKey,
-            TValue,
-            TKeyCodec,
-            TValueCodec,
-            DictionaryPrimitiveMapOps<TKey, TValue>>(context, refId);
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<Dictionary<TKey, TValue>>(
+                        context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return PrimitiveDictionaryCodecReader.ReadMap<
+                            Dictionary<TKey, TValue>,
+                            TKey,
+                            TValue,
+                            TKeyCodec,
+                            TValueCodec,
+                            DictionaryPrimitiveMapOps<TKey, TValue>>(context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }
 
@@ -923,15 +955,47 @@ internal class PrimitiveSortedDictionarySerializer<TKey, TValue, TKeyCodec, TVal
             SortedDictionaryPrimitiveMapOps<TKey, TValue>>(context);
     }
 
-    public override SortedDictionary<TKey, TValue> ReadDataWithRef(ReadContext context, uint refId)
+    public override SortedDictionary<TKey, TValue> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return PrimitiveDictionaryCodecReader.ReadMap<
-            SortedDictionary<TKey, TValue>,
-            TKey,
-            TValue,
-            TKeyCodec,
-            TValueCodec,
-            SortedDictionaryPrimitiveMapOps<TKey, TValue>>(context, refId);
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<SortedDictionary<TKey, TValue>>(
+                        context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return PrimitiveDictionaryCodecReader.ReadMap<
+                            SortedDictionary<TKey, TValue>,
+                            TKey,
+                            TValue,
+                            TKeyCodec,
+                            TValueCodec,
+                            SortedDictionaryPrimitiveMapOps<TKey, TValue>>(context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }
 
@@ -982,15 +1046,47 @@ internal class PrimitiveSortedListSerializer<TKey, TValue, TKeyCodec, TValueCode
             SortedListPrimitiveMapOps<TKey, TValue>>(context);
     }
 
-    public override SortedList<TKey, TValue> ReadDataWithRef(ReadContext context, uint refId)
+    public override SortedList<TKey, TValue> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return PrimitiveDictionaryCodecReader.ReadMap<
-            SortedList<TKey, TValue>,
-            TKey,
-            TValue,
-            TKeyCodec,
-            TValueCodec,
-            SortedListPrimitiveMapOps<TKey, TValue>>(context, refId);
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<SortedList<TKey, TValue>>(
+                        context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return PrimitiveDictionaryCodecReader.ReadMap<
+                            SortedList<TKey, TValue>,
+                            TKey,
+                            TValue,
+                            TKeyCodec,
+                            TValueCodec,
+                            SortedListPrimitiveMapOps<TKey, TValue>>(context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }
 
@@ -1042,15 +1138,47 @@ internal class PrimitiveConcurrentDictionarySerializer<TKey, TValue, TKeyCodec, 
             ConcurrentDictionaryPrimitiveMapOps<TKey, TValue>>(context);
     }
 
-    public override ConcurrentDictionary<TKey, TValue> ReadDataWithRef(ReadContext context, uint refId)
+    public override ConcurrentDictionary<TKey, TValue> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return PrimitiveDictionaryCodecReader.ReadMap<
-            ConcurrentDictionary<TKey, TValue>,
-            TKey,
-            TValue,
-            TKeyCodec,
-            TValueCodec,
-            ConcurrentDictionaryPrimitiveMapOps<TKey, TValue>>(context, refId);
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<ConcurrentDictionary<TKey, TValue>>(
+                        context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return PrimitiveDictionaryCodecReader.ReadMap<
+                            ConcurrentDictionary<TKey, TValue>,
+                            TKey,
+                            TValue,
+                            TKeyCodec,
+                            TValueCodec,
+                            ConcurrentDictionaryPrimitiveMapOps<TKey, TValue>>(context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }
 

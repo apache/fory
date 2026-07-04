@@ -228,9 +228,40 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         return ReadData(context, publishRef: false, refId: 0);
     }
 
-    public override TDictionary ReadDataWithRef(ReadContext context, uint refId)
+    public override TDictionary Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return ReadData(context, publishRef: true, refId);
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<TDictionary>(context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return ReadData(context, publishRef: true, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 
     // Map owners can be reached again while keys or values are being read. The ref-aware path

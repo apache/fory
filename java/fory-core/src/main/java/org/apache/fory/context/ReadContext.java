@@ -317,22 +317,26 @@ public final class ReadContext {
     return config;
   }
 
-  // Failure may leave the remaining counter dirty; root cleanup resets read state for the
-  // operation.
   public final void reserveGraphMemory(long bytes) {
-    long remaining = remainingGraphMemoryBytes - bytes;
-    remainingGraphMemoryBytes = remaining;
-    if ((bytes | remaining) < 0) {
-      throwInvalidGraphMemory(bytes, remaining + bytes);
+    if (bytes < 0) {
+      throwInvalidGraphMemory(bytes, remainingGraphMemoryBytes);
     }
+    long remaining = remainingGraphMemoryBytes - bytes;
+    if (remaining < 0) {
+      throwInvalidGraphMemory(bytes, remainingGraphMemoryBytes);
+    }
+    remainingGraphMemoryBytes = remaining;
   }
 
   public final void reserveGraphMemory(int bytes) {
-    long remaining = remainingGraphMemoryBytes - bytes;
-    remainingGraphMemoryBytes = remaining;
-    if ((bytes | remaining) < 0) {
-      throwInvalidGraphMemory(bytes, remaining + bytes);
+    if (bytes < 0) {
+      throwInvalidGraphMemory(bytes, remainingGraphMemoryBytes);
     }
+    long remaining = remainingGraphMemoryBytes - bytes;
+    if (remaining < 0) {
+      throwInvalidGraphMemory(bytes, remainingGraphMemoryBytes);
+    }
+    remainingGraphMemoryBytes = remaining;
   }
 
   private void throwInvalidGraphMemory(long bytes, long remaining) {

@@ -222,13 +222,12 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             string graphMemoryExpr = ModelGraphMemoryExpr(model);
             bool constGraphMemory = IsConstGraphMemoryExpr(graphMemoryExpr);
             string graphMemoryStorage = constGraphMemory ? "const" : "static readonly";
-            string graphMemoryType = constGraphMemory ? "int" : "long";
-            if (constGraphMemory)
+            if (!constGraphMemory)
             {
-                graphMemoryExpr = graphMemoryExpr.Replace("L", string.Empty);
+                graphMemoryExpr = $"(uint)({graphMemoryExpr})";
             }
 
-            sb.AppendLine($"    private {graphMemoryStorage} {graphMemoryType} __ForyGraphMemoryBytes = {graphMemoryExpr};");
+            sb.AppendLine($"    private {graphMemoryStorage} uint __ForyGraphMemoryBytes = {graphMemoryExpr};");
         }
 
         sb.AppendLine(
@@ -527,20 +526,62 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         string noTypeMetaMethodName,
         string accessibility)
     {
+        sb.AppendLine("    [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]");
         sb.AppendLine($"    {accessibility} override {model.TypeName} {methodName}(global::Apache.Fory.ReadContext context)");
         sb.AppendLine("    {");
         if (model.Kind == DeclKind.Class)
         {
             // Generated class serializers allocate the reference owner before reading fields. Keep
-            // the ref-aware path explicit so self-references publish the final owner, while structs
-            // continue to read as inline values with no generated ref publication.
+            // the ref-aware path in the existing Read API so self-references publish the final
+            // owner, while structs continue to read as inline values with no generated ref
+            // publication.
             sb.AppendLine($"        return {methodName}Core(context, publishRef: false, refId: 0);");
             sb.AppendLine("    }");
             sb.AppendLine();
             sb.AppendLine(
-                $"    public override {model.TypeName} ReadDataWithRef(global::Apache.Fory.ReadContext context, uint refId)");
+                $"    private {model.TypeName} ReadReservedRefData(global::Apache.Fory.ReadContext context, uint refId)");
             sb.AppendLine("    {");
             sb.AppendLine($"        return {methodName}Core(context, publishRef: true, refId);");
+            sb.AppendLine("    }");
+            sb.AppendLine();
+            sb.AppendLine(
+                $"    public override {model.TypeName} Read(global::Apache.Fory.ReadContext context, global::Apache.Fory.RefMode refMode, bool readTypeInfo)");
+            sb.AppendLine("    {");
+            sb.AppendLine("        if (refMode != global::Apache.Fory.RefMode.None)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            global::Apache.Fory.RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);");
+            sb.AppendLine("            switch (flag)");
+            sb.AppendLine("            {");
+            sb.AppendLine("                case global::Apache.Fory.RefFlag.Null:");
+            sb.AppendLine("                    return default!;");
+            sb.AppendLine("                case global::Apache.Fory.RefFlag.Ref:");
+            sb.AppendLine("                    {");
+            sb.AppendLine("                        uint refId = context.RefReader.ReadRefId(context.Reader);");
+            sb.AppendLine($"                        return context.RefReader.GetRef<{model.TypeName}>(refId);");
+            sb.AppendLine("                    }");
+            sb.AppendLine("                case global::Apache.Fory.RefFlag.RefValue:");
+            sb.AppendLine("                    {");
+            sb.AppendLine("                        uint reservedRefId = context.RefReader.ReserveRefId();");
+            sb.AppendLine("                        if (readTypeInfo)");
+            sb.AppendLine("                        {");
+            sb.AppendLine("                            context.TypeResolver.ReadTypeInfo(this, context);");
+            sb.AppendLine("                        }");
+            sb.AppendLine();
+            sb.AppendLine($"                        return {methodName}Core(context, publishRef: true, reservedRefId);");
+            sb.AppendLine("                    }");
+            sb.AppendLine("                case global::Apache.Fory.RefFlag.NotNullValue:");
+            sb.AppendLine("                    break;");
+            sb.AppendLine("                default:");
+            sb.AppendLine("                    throw new global::Apache.Fory.RefException($\"invalid ref flag {(sbyte)flag}\");");
+            sb.AppendLine("            }");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine("        if (readTypeInfo)");
+            sb.AppendLine("        {");
+            sb.AppendLine("            context.TypeResolver.ReadTypeInfo(this, context);");
+            sb.AppendLine("        }");
+            sb.AppendLine();
+            sb.AppendLine($"        return {methodName}Core(context, publishRef: false, refId: 0);");
             sb.AppendLine("    }");
             sb.AppendLine();
             sb.AppendLine(
@@ -724,7 +765,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         string indent = new(' ', indentLevel * 4);
         sb.AppendLine($"{indent}if (publishRef)");
         sb.AppendLine($"{indent}{{");
-        sb.AppendLine($"{indent}    PublishRef(context, refId, {valueName});");
+        sb.AppendLine($"{indent}    context.RefReader.StoreRefAt(refId, {valueName});");
         sb.AppendLine($"{indent}}}");
     }
 
@@ -1947,13 +1988,13 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
     }
 
     private const string GraphObjectOwnerBytesExpr =
-        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 4L)";
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 4)";
     private const string GraphListOwnerBytesExpr =
-        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 12L)";
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 12)";
     private const string GraphSetOwnerBytesExpr =
-        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 28L)";
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 28)";
     private const string GraphMapOwnerBytesExpr =
-        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 32L)";
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 32)";
 
     private static string GraphElementBytesExpr(FieldCodecModel codec)
     {
@@ -1988,17 +2029,17 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
     {
         if (member.Classification.IsPrimitive && member.Classification.PrimitiveSize > 0)
         {
-            return $"{member.Classification.PrimitiveSize}L";
+            return $"{member.Classification.PrimitiveSize}";
         }
 
         if (member.UsesReferenceStorage)
         {
-            return "4L";
+            return "4";
         }
 
         if (member.FixedValueBytes > 0)
         {
-            return $"{member.FixedValueBytes}L";
+            return $"{member.FixedValueBytes}";
         }
 
         string typeName = StripNullableForTypeOf(member.TypeName);

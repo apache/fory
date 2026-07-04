@@ -793,7 +793,6 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   public Expression buildDecodeExpression() {
     Reference buffer = new Reference(BUFFER_NAME, bufferTypeRef, false);
     ListExpression expressions = new ListExpression();
-    expressions.add(new Expression.Block(graphMemoryReserveCode()));
     if (typeResolver.checkClassVersion()) {
       expressions.add(checkClassVersion(buffer));
     }
@@ -836,6 +835,13 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   protected String graphMemoryReserveCode() {
     int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(beanClass);
     return READ_CONTEXT_NAME + ".reserveGraphMemory(" + ownerBytes + ");";
+  }
+
+  @Override
+  protected String decodePrefixCode() {
+    // Reserve before the generated buffer local is live; the object owner is still charged before
+    // allocation, but small generated readers keep a leaner hot shape.
+    return graphMemoryReserveCode() + "\n";
   }
 
   protected void deserializeReadGroup(

@@ -283,11 +283,23 @@ public sealed class Fory
             ReadHead(reader);
             Serializer<T> serializer = _typeResolver.GetSerializer<T>();
             RefMode refMode = Config.TrackRef ? RefMode.Tracking : RefMode.NullOnly;
-            return serializer.Read(readContext, refMode, true);
+            T value = serializer.Read(readContext, refMode, true);
+            readContext.RefReader.Reset();
+            readContext._typeMetaType = null;
+            readContext._typeMeta = null;
+            readContext._typeMetaByType?.ClearKeys();
+            readContext._readTypeInfoByType.ClearKeys();
+            readContext._cachedTypeMetaType = null;
+            readContext._cachedTypeMeta = null;
+            readContext._currentDynamicReadDepth = 0;
+            return value;
         }
-        finally
+        catch
         {
+            // Failed roots can leave partially published refs, metadata refs, or graph-budget state.
+            // Keep the success path minimal, but fully reset failed reads before this context is reused.
             readContext.Reset();
+            throw;
         }
     }
 

@@ -56,7 +56,10 @@ export default class Fory {
       throw new Error(`maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`);
     }
     this.typeResolver = new TypeResolver(this.config);
-    this.writeContext = new WriteContext(this.typeResolver, this.config);
+    this.writeContext = new WriteContext(
+      this.typeResolver,
+      this.config.hps === undefined ? undefined : { hps: this.config.hps },
+    );
     this.readContext = new ReadContext(this.typeResolver, this.config);
     this.typeResolver.bindContexts(this.writeContext, this.readContext);
     this.typeResolver.init();

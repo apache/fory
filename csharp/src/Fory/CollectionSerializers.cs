@@ -758,9 +758,10 @@ internal static class DynamicContainerCodec
 
     public static object ReadMapPayload(ReadContext context, uint refId)
     {
-        Serializer<NullableKeyDictionary<object, object?>> serializer =
-            context.TypeResolver.GetSerializer<NullableKeyDictionary<object, object?>>();
-        return serializer.ReadDataWithRef(context, refId);
+        NullableKeyDictionarySerializer<object, object?> serializer =
+            (NullableKeyDictionarySerializer<object, object?>)context.TypeResolver
+                .GetSerializer<NullableKeyDictionary<object, object?>>();
+        return serializer.ReadReservedRefData(context, refId);
     }
 
     private static bool TryGetListLikeEnumerable(
@@ -888,9 +889,45 @@ public sealed class ArraySerializer<T> : Serializer<T[]>
         return CollectionCodec.ReadArrayData<T>(context.TypeResolver.GetSerializer<T>(), context);
     }
 
-    public override T[] ReadDataWithRef(ReadContext context, uint refId)
+    private T[] ReadReservedRefData(ReadContext context, uint refId)
     {
         return CollectionCodec.ReadArrayData(context.TypeResolver.GetSerializer<T>(), context, refId);
+    }
+
+    public override T[] Read(ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<T[]>(context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return CollectionCodec.ReadArrayData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }
 
@@ -909,9 +946,45 @@ public class ListSerializer<T> : Serializer<List<T>>
         return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
-    public override List<T> ReadDataWithRef(ReadContext context, uint refId)
+    private List<T> ReadReservedRefData(ReadContext context, uint refId)
     {
         return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context, refId);
+    }
+
+    public override List<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<List<T>>(context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return CollectionCodec.ReadCollectionData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }
 
@@ -930,9 +1003,45 @@ public sealed class SetSerializer<T> : Serializer<HashSet<T>> where T : notnull
         return CollectionCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
-    public override HashSet<T> ReadDataWithRef(ReadContext context, uint refId)
+    private HashSet<T> ReadReservedRefData(ReadContext context, uint refId)
     {
         return CollectionCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
+    }
+
+    public override HashSet<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<HashSet<T>>(context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return CollectionCodec.ReadHashSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }
 
@@ -951,9 +1060,40 @@ public sealed class SortedSetSerializer<T> : Serializer<SortedSet<T>> where T : 
         return CollectionCodec.ReadSortedSetData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
-    public override SortedSet<T> ReadDataWithRef(ReadContext context, uint refId)
+    public override SortedSet<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return CollectionCodec.ReadSortedSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<SortedSet<T>>(context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return CollectionCodec.ReadSortedSetData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }
 
@@ -988,9 +1128,40 @@ public sealed class LinkedListSerializer<T> : Serializer<LinkedList<T>>
         return CollectionCodec.ReadLinkedListData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
-    public override LinkedList<T> ReadDataWithRef(ReadContext context, uint refId)
+    public override LinkedList<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return CollectionCodec.ReadLinkedListData(context.TypeResolver.GetSerializer<T>(), context, refId);
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<LinkedList<T>>(context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return CollectionCodec.ReadLinkedListData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }
 
@@ -1009,9 +1180,40 @@ public sealed class QueueSerializer<T> : Serializer<Queue<T>>
         return CollectionCodec.ReadQueueData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
-    public override Queue<T> ReadDataWithRef(ReadContext context, uint refId)
+    public override Queue<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return CollectionCodec.ReadQueueData(context.TypeResolver.GetSerializer<T>(), context, refId);
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<Queue<T>>(context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return CollectionCodec.ReadQueueData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }
 
@@ -1043,8 +1245,39 @@ public sealed class StackSerializer<T> : Serializer<Stack<T>>
         return CollectionCodec.ReadStackData(context.TypeResolver.GetSerializer<T>(), context);
     }
 
-    public override Stack<T> ReadDataWithRef(ReadContext context, uint refId)
+    public override Stack<T> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
     {
-        return CollectionCodec.ReadStackData(context.TypeResolver.GetSerializer<T>(), context, refId);
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<Stack<T>>(context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return CollectionCodec.ReadStackData(context.TypeResolver.GetSerializer<T>(), context, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
     }
 }

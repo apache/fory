@@ -205,7 +205,7 @@ public sealed class TypeResolver
 
     internal object? ReadDataObject(TypeInfo typeInfo, ReadContext context, uint refId)
     {
-        return typeInfo.ReadDataObjectWithRef(context, refId);
+        return typeInfo.ReadReservedRefDataObject(context, refId);
     }
 
     public void WriteObject(

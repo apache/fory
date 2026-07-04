@@ -46,36 +46,6 @@ public abstract class Serializer<T>
     public abstract T ReadData(ReadContext context);
 
     /// <summary>
-    /// Reads a payload body after the caller has reserved a reference id for the owner.
-    /// </summary>
-    /// <remarks>
-    /// The default publishes after <see cref="ReadData"/> for serializers whose final owner cannot be
-    /// published earlier. Serializers that allocate the retained owner before reading children must
-    /// override this and store the owner immediately after allocation so self-references resolve.
-    /// </remarks>
-    /// <param name="context">Read context.</param>
-    /// <param name="refId">Reserved reference id for the materialized owner.</param>
-    /// <returns>Decoded value.</returns>
-    public virtual T ReadDataWithRef(ReadContext context, uint refId)
-    {
-        T value = ReadData(context);
-        PublishRef(context, refId, value);
-        return value;
-    }
-
-    /// <summary>
-    /// Publishes a retained owner after the serializer has materialized it.
-    /// </summary>
-    /// <remarks>
-    /// Generated serializers may need to publish immediately after allocation so cyclic fields can
-    /// resolve, but ref-table state stays inside <see cref="ReadContext"/>.
-    /// </remarks>
-    protected static void PublishRef(ReadContext context, uint refId, object? value)
-    {
-        context.RefReader.StoreRefAt(refId, value);
-    }
-
-    /// <summary>
     /// Writes ref metadata and optional type metadata, then delegates to <see cref="WriteData"/>.
     /// </summary>
     /// <param name="context">Write context.</param>
@@ -148,9 +118,11 @@ public abstract class Serializer<T>
                             context.TypeResolver.ReadTypeInfo(this, context);
                         }
 
-                        // ReadContext owns only the ref table; the serializer that materializes the
-                        // owner decides when this reserved id can be published.
-                        return ReadDataWithRef(context, reservedRefId);
+                        // Default/simple serializers can publish after their payload body is read.
+                        // Owners that must publish before child reads override Read directly.
+                        T value = ReadData(context);
+                        context.RefReader.StoreRefAt(reservedRefId, value);
+                        return value;
                     }
                 case RefFlag.NotNullValue:
                     break;

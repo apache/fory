@@ -554,13 +554,50 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         return ReadData(context, publishRef: false, refId: 0);
     }
 
-    public override NullableKeyDictionary<TKey, TValue> ReadDataWithRef(ReadContext context, uint refId)
+    // Dynamic Any consumes the ref flag before selecting this concrete map owner, so the
+    // already-reserved id is published here before entries are read.
+    internal NullableKeyDictionary<TKey, TValue> ReadReservedRefData(ReadContext context, uint refId)
     {
         return ReadData(context, publishRef: true, refId);
     }
 
-    // Dynamic maps keep NullableKeyDictionary as the ref owner even when the returned value is later
-    // converted to Dictionary for non-null keys, so publish this owner before reading entries.
+    public override NullableKeyDictionary<TKey, TValue> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<NullableKeyDictionary<TKey, TValue>>(
+                        context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return ReadData(context, publishRef: true, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
+    }
+
     private NullableKeyDictionary<TKey, TValue> ReadData(ReadContext context, bool publishRef, uint refId)
     {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
