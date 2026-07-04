@@ -123,22 +123,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   private static int fieldGraphMemoryBytes(Class<?> fieldType) {
-    if (!fieldType.isPrimitive()) {
-      return REFERENCE_BYTES;
-    }
-    if (fieldType == boolean.class || fieldType == byte.class) {
-      return 1;
-    }
-    if (fieldType == char.class || fieldType == short.class) {
-      return 2;
-    }
-    if (fieldType == int.class || fieldType == float.class) {
-      return 4;
-    }
-    if (fieldType == long.class || fieldType == double.class) {
-      return 8;
-    }
-    return 0;
+    return fieldType.isPrimitive() ? TypeUtils.getSizeOfPrimitiveType(fieldType) : REFERENCE_BYTES;
   }
 
   static void writeField(
