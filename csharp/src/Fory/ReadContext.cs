@@ -89,7 +89,7 @@ public sealed class ReadContext
         long remaining = _remainingGraphMemoryBytes;
         if ((ulong)bytes > (ulong)remaining)
         {
-            ReserveGraphMemorySlow(bytes, remaining);
+            ThrowInvalidGraphMemoryReserve(bytes, remaining);
             return;
         }
 
@@ -97,7 +97,7 @@ public sealed class ReadContext
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void ReserveGraphMemorySlow(long bytes, long remaining)
+    private void ThrowInvalidGraphMemoryReserve(long bytes, long remaining)
     {
         if (bytes < 0)
         {
