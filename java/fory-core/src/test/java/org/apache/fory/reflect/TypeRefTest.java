@@ -25,6 +25,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.WildcardType;
+import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -104,6 +105,30 @@ public class TypeRefTest extends ForyTestBase {
 
   static class MultiParamList<A, E> extends ArrayList<E> {}
 
+  static class Box<T> extends AbstractList<Box<?>> {
+    @Override
+    public Box<?> get(int index) {
+      return null;
+    }
+
+    @Override
+    public int size() {
+      return 0;
+    }
+  }
+
+  static class RecursiveBox<T> extends AbstractList<RecursiveBox<T>> {
+    @Override
+    public RecursiveBox<T> get(int index) {
+      return null;
+    }
+
+    @Override
+    public int size() {
+      return 0;
+    }
+  }
+
   static class MultiParamMap<A, K, V> extends HashMap<K, V> {}
 
   static class StringKeyMap<V> extends HashMap<String, V> {}
@@ -155,6 +180,30 @@ public class TypeRefTest extends ForyTestBase {
     Assert.assertEquals(fixedKeyMapGenericType.getTypeParametersCount(), 2);
     Assert.assertEquals(fixedKeyMapGenericType.getTypeParameter0().getCls(), String.class);
     Assert.assertEquals(fixedKeyMapGenericType.getTypeParameter1().getCls(), List.class);
+  }
+
+  @Test
+  public void testSelfElementType() {
+    TypeRef<?> boxType = new TypeRef<Box<String>>() {};
+    Assert.assertEquals(boxType.getTypeArguments().size(), 1);
+    TypeRef<?> boxElementType = boxType.getTypeArguments().get(0);
+    Assert.assertEquals(boxElementType.getRawType(), Box.class);
+    Assert.assertTrue(boxElementType.getType() instanceof ParameterizedType);
+    Type boxArgument = ((ParameterizedType) boxElementType.getType()).getActualTypeArguments()[0];
+    Assert.assertTrue(boxArgument instanceof WildcardType);
+    Assert.assertEquals(TypeUtils.getElementType(boxType), boxElementType);
+    Assert.assertNotEquals(boxElementType, TypeRef.of(String.class));
+
+    GenericType boxGenericType = GenericType.build(boxType);
+    Assert.assertEquals(boxGenericType.getTypeParametersCount(), 1);
+    Assert.assertEquals(boxGenericType.getTypeParameter0().getTypeRef(), boxElementType);
+    Assert.assertEquals(boxGenericType.getTypeParameter0().getTypeParametersCount(), 0);
+
+    TypeRef<?> recursiveBoxType = new TypeRef<RecursiveBox<String>>() {};
+    TypeRef<?> recursiveElementType = new TypeRef<RecursiveBox<String>>() {};
+    Assert.assertEquals(recursiveBoxType.getTypeArguments().size(), 1);
+    Assert.assertEquals(recursiveBoxType.getTypeArguments().get(0), recursiveElementType);
+    Assert.assertEquals(TypeUtils.getElementType(recursiveBoxType), recursiveElementType);
   }
 
   @Test
