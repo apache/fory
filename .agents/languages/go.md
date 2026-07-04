@@ -7,7 +7,7 @@ Load this file when changing `go/fory/` or Go xlang behavior.
 - Run Go commands from within `go/fory/`.
 - Changes under `go/` must pass formatting and tests.
 - The Go implementation focuses on fast serializers.
-- Root deserialization graph memory budgets are owned by `ReadContext`.
+- Root deserialization graph memory budget state belongs to `ReadContext`.
   `WithMaxGraphMemoryBytes` uses a fixed `128 MiB` default; positive explicit
   values override it, and explicit non-positive values are invalid at config creation.
   Byte-slice and stream roots use the same configured/default budget behavior.

@@ -111,11 +111,10 @@ final fory = Fory(
 ### `maxGraphMemoryBytes`
 
 Sets an approximate graph-memory gate for one root deserialization. The estimate mainly covers
-materialized Dart lists, sets, maps, object/reference arrays, structs, objects, and compatible
-list/array materialization. It skips leaf values such as strings, binary data, primitive scalars,
-and dense typed-array payloads, so actual process memory can be higher than this value. Leaf values
-remain protected by byte-availability checks: if the unread input does not contain enough bytes,
-Fory will not read or create that leaf value.
+materialized lists, sets, maps, arrays, structs, and objects. It skips leaf values such as strings,
+binary data, primitive scalars, and dense typed-array payloads, so actual process memory can be
+higher than this value. Leaf values remain protected by byte-availability checks: if the unread
+input does not contain enough bytes, Fory will not read or create that leaf value.
 
 The default is a fixed `128 MiB` and is not derived from input size.
 

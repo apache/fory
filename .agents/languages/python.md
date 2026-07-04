@@ -13,7 +13,7 @@ Load this file when changing `python/`, Cython serialization, or Python xlang be
 - Cython mode owns the hot runtime path. Do not duplicate core runtime types between Python and Cython, tunnel Python facade methods into hidden Cython internals, or keep dead shims unless the user explicitly needs a compatibility module path.
 - Use explicit Cython fields and methods for fixed hot-path shapes. Avoid `__getattr__`, generic `object` fields, public bridge internals, or `Fory` backreferences where ownership can stay explicit.
 - Keep Python and Cython context/ref-tracking branch conditions and stack mutations semantically aligned unless a documented intentional difference exists.
-- Root deserialization graph memory budgets are owned by pure-Python and Cython `ReadContext`.
+- Root deserialization graph memory budget state belongs to pure-Python and Cython `ReadContext`.
   Keep `max_graph_memory_bytes` public on `pyfory.Fory`/`Config`; the default effective limit is
   fixed `128 MiB`, positive explicit values override it, and explicit non-positive values are
   invalid at config creation. Byte and stream roots use the same

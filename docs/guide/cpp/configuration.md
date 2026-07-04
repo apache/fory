@@ -110,16 +110,13 @@ The default limit is a fixed `128 MiB` for byte-array, `Buffer`, and stream
 roots. Positive values override the default. Explicit non-positive values are
 rejected when the runtime is created.
 
-This budget is a portable lower-bound estimate for materialized graph owners,
-mainly dynamic collection backing storage, map key/value storage,
-object/reference array slots, and struct or object field storage. It is not an
-exact process heap limit; actual process memory can be higher and does not
-include STL implementation details such as debug nodes, table buckets, or
-allocator headers. Dedicated string, binary, primitive scalar, and primitive
-dense-array leaf values are skipped by this budget and continue to rely on
-byte-availability checks: if the unread input does not contain enough bytes,
-Fory will not read or create that leaf value. `std::vector<bool>` is counted as
-packed standard-container storage.
+This budget is an approximate lower-bound estimate for materialized graph
+owners, mainly collections, maps, arrays, structs, and objects. It is not an
+exact process heap limit; actual process memory can be higher. Dedicated
+string, binary, primitive scalar, and primitive dense-array leaf values are
+skipped by this budget and continue to rely on byte-availability checks: if the
+unread input does not contain enough bytes, Fory will not read or create that
+leaf value.
 
 **Default:** `128 MiB`
 

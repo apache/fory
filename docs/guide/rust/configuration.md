@@ -113,13 +113,12 @@ let fory = Fory::builder()
 ### Graph Memory Budget
 
 `max_graph_memory_bytes(...)` sets an approximate graph-memory gate for one root read. The estimate
-mainly covers `Vec`/collection element storage, map key/value storage, arrays, and materialized
-struct or object field storage; it is not an exact process heap limit. It skips leaf values such as
-strings, binary data, primitive scalars, and dense primitive arrays, so actual process memory can be
-higher than this value. Leaf values remain protected by byte-availability checks: if the unread
-input does not contain enough bytes, Fory will not read or create that leaf value. The default is a
-fixed `128 MiB` for all root input forms. Set a positive byte value when trusted payloads need a
-larger or smaller gate:
+mainly covers materialized collections, maps, arrays, structs, and objects; it is not an exact
+process heap limit. It skips leaf values such as strings, binary data, primitive scalars, and dense
+primitive arrays, so actual process memory can be higher than this value. Leaf values remain
+protected by byte-availability checks: if the unread input does not contain enough bytes, Fory will
+not read or create that leaf value. The default is a fixed `128 MiB` for all root input forms. Set a
+positive byte value when trusted payloads need a larger or smaller gate:
 
 ```rust
 let fory = Fory::builder()
@@ -127,7 +126,7 @@ let fory = Fory::builder()
     .build();
 ```
 
-Explicit non-positive values are rejected when the runtime is created.
+Zero is rejected when the runtime is created.
 
 ### Explicit Xlang Examples
 
@@ -173,7 +172,7 @@ let fory = Fory::builder()
 | `compatible(bool)`                            | Enable schema evolution                           | `true`    |
 | `xlang(bool)`                                 | Use xlang mode                                    | `true`    |
 | `max_dyn_depth(u32)`                          | Maximum nesting depth for dynamic types           | `5`       |
-| `max_graph_memory_bytes(i64)`                 | Approximate graph-memory gate per root read       | `128 MiB` |
+| `max_graph_memory_bytes(usize)`               | Approximate graph-memory gate per root read       | `128 MiB` |
 | `max_type_fields(usize)`                      | Max fields in one received struct metadata body   | `512`     |
 | `max_type_meta_bytes(usize)`                  | Max encoded bytes in one received metadata body   | `4096`    |
 | `max_schema_versions_per_type(usize)`         | Max remote metadata versions for one logical type | `10`      |

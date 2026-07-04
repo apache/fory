@@ -327,7 +327,7 @@ serializer or resolver when possible; read loops should not recompute reflective
 when the owner already knows the concrete type. Interface or dynamic paths reserve only storage that
 Fory clearly materializes and retains.
 
-#### C Sharp
+#### C\#
 
 C# combines reference owners and inline value types. Classes, arrays, lists, dictionaries, hash sets,
 and other heap containers reserve a nonzero shallow owner cost plus direct backing, reference-slot,
@@ -338,12 +338,13 @@ Value structs do not reserve their own self storage when read inline; the holder
 struct, such as an object field, array element, list backing store, dictionary entry, box, or dynamic
 materialization path, owns that reservation. Boxing, `object`, and dynamic materialization paths
 reserve a boxed owner when Fory creates the retained box. Owner constants should be real portable
-lower bounds for the relevant C# object or container shape, not one-byte or two-pointer tokens.
+lower bounds for the relevant C# object or container shape, not placeholder markers.
 
 Runtimes should not guess object headers, array headers, allocator headers, debug-mode fields, hash
 buckets, tree links, hash-chain links, node headers, map-entry objects, spare blocks, or runtime
 table layouts unless the owner path has a cheap, stable, explicit lower-bound storage signal and
-documents the formula. C++ STL node, allocator, and debug-mode overheads should not be guessed.
+documents the formula. Owner constants should be real lower bounds for the owner shape, not
+placeholder markers.
 
 ## Skip Semantics
 

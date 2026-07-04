@@ -14,17 +14,15 @@ Load this file when changing `dart/`.
 - Keep root numeric wrapper defaults separate from generated field metadata. Root wrapper resolution belongs in the builtin resolver, while annotations and generated metadata choose fixed, tagged, or declared-field encodings.
 - Dart 64-bit carriers are optimized for each platform. Do not replace native extension-type wrappers with allocation-heavy classes or route web/native hot paths through `BigInt` unless the user approves a representation change.
 - In `Buffer`, cursor, serializer, and generated-code hot paths, prefer direct byte/local integer operations and conditional import/export files over callbacks, records, holder objects, wrapper round-trips, or runtime platform branches.
-- Root deserialization graph memory budgets are owned by `ReadContext`;
+- Root deserialization graph memory budget state belongs to `ReadContext`;
   `maxGraphMemoryBytes` defaults to fixed `128 MiB`, positive explicit values override it, and
   explicit non-positive values are invalid at config creation. Do not derive the budget from
   `buffer.readableBytes`. `ReadContext` may expose only raw byte reservation; list, set, map, array,
-  struct, and object formulas
-  belong in serializer owners. Reserve Dart list/set/object-array reference
+  struct, and object formulas belong in serializer owners. Reserve Dart list/set/object-array reference
   slots plus nonzero owner self cost, map key/value slots plus nonzero owner
   self cost, compatible array-to-list materialization, and generated object reads before
   allocation. Compatible list-to-typed-array reads skip the dense primitive-array leaf owner while
-  preserving byte checks. Object/struct
-  owners reserve nonzero shallow self memory plus shallow field storage. Skip
+  preserving byte checks. Object/struct owners reserve nonzero shallow self memory plus shallow field storage. Skip
   only dedicated string, binary, primitive scalar, `BoolList`, and typed-array
   dense owner paths with byte checks. Do not add stream bytes-read accounting,
   per-element accounting, extra hot-path allocations, or stale narrower-scope

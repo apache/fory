@@ -126,7 +126,7 @@ Native serialization keeps Go data in Go-native form:
 - Pointers and nil values, including nil slices and maps.
 - Interfaces and dynamic values when registered serializers can resolve their concrete types.
 - Time values such as `time.Time` and `time.Duration`.
-- Reflection-based serializers.
+- Fast serializers.
 
 Use [Supported Types](supported-types.md) for the full type surface and xlang mapping details.
 

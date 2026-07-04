@@ -97,11 +97,11 @@ generated from Fory schema IDL. See [Schema Evolution](schema-evolution.md).
 ## Graph Memory Budget
 
 `maxGraphMemoryBytes` sets an approximate graph-memory gate for one root deserialization. The
-estimate mainly covers materialized arrays, sets, object arrays, maps, structs, and objects. It
-skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays, so
-actual JavaScript heap use can be higher than this value. Leaf values remain protected by
-byte-availability checks: if the unread input does not contain enough bytes, Fory will not read or
-create that leaf value. The default is a fixed `128 MiB` and is not derived from input size.
+estimate mainly covers materialized arrays, sets, maps, structs, and objects. It skips leaf values
+such as strings, binary data, primitive scalars, and dense primitive arrays, so actual JavaScript
+heap use can be higher than this value. Leaf values remain protected by byte-availability checks: if
+the unread input does not contain enough bytes, Fory will not read or create that leaf value. The
+default is a fixed `128 MiB` and is not derived from input size.
 
 Use a positive byte value to set an explicit lower or higher limit:
 
