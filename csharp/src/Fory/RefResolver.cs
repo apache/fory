@@ -107,22 +107,11 @@ public sealed class RefReader
             throw new RefException($"ref_id out of range: {refId}");
         }
 
-        object? value = _refs[index];
-        if (value is null)
-        {
-            throw new RefException($"ref_id {refId} has not been published");
-        }
-
-        return value;
+        return _refs[index];
     }
 
     public void Reset()
     {
-        if (_refs.Count == 0)
-        {
-            return;
-        }
-
         _refs.Clear();
     }
 }
