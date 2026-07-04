@@ -318,25 +318,21 @@ public final class ReadContext {
   }
 
   public final void reserveGraphMemory(long bytes) {
-    if (bytes < 0) {
-      throwInvalidGraphMemory(bytes, remainingGraphMemoryBytes);
+    long remaining = remainingGraphMemoryBytes;
+    long nextRemaining = remaining - bytes;
+    if ((bytes | nextRemaining) < 0) {
+      throwInvalidGraphMemory(bytes, remaining);
     }
-    long remaining = remainingGraphMemoryBytes - bytes;
-    if (remaining < 0) {
-      throwInvalidGraphMemory(bytes, remainingGraphMemoryBytes);
-    }
-    remainingGraphMemoryBytes = remaining;
+    remainingGraphMemoryBytes = nextRemaining;
   }
 
   public final void reserveGraphMemory(int bytes) {
-    if (bytes < 0) {
-      throwInvalidGraphMemory(bytes, remainingGraphMemoryBytes);
+    long remaining = remainingGraphMemoryBytes;
+    long nextRemaining = remaining - bytes;
+    if ((bytes | nextRemaining) < 0) {
+      throwInvalidGraphMemory(bytes, remaining);
     }
-    long remaining = remainingGraphMemoryBytes - bytes;
-    if (remaining < 0) {
-      throwInvalidGraphMemory(bytes, remainingGraphMemoryBytes);
-    }
-    remainingGraphMemoryBytes = remaining;
+    remainingGraphMemoryBytes = nextRemaining;
   }
 
   private void throwInvalidGraphMemory(long bytes, long remaining) {
