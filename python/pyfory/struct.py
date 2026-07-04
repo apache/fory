@@ -82,9 +82,11 @@ from pyfory import (
 logger = logging.getLogger(__name__)
 
 _REFERENCE_BYTES = struct.calcsize("P")
-# Lower-bound shallow owner cost for retained Python struct objects. Field slots are charged
-# separately by count below; this is not a Fory wire header size.
-_PY_OBJECT_OWNER_BYTES = 4 * _REFERENCE_BYTES
+# Lower-bound shallow owner costs for retained Python struct shapes. Normal objects retain an
+# instance dict for field storage; slotted objects store field references in object slots.
+_SLOTTED_STRUCT_OWNER_BYTES = 4 * _REFERENCE_BYTES
+_DICT_BACKED_STRUCT_OWNER_BYTES = 4 * _REFERENCE_BYTES
+_INSTANCE_DICT_OWNER_BYTES = 8 * _REFERENCE_BYTES
 
 _MISSING_DEFAULT_INT_TYPES = {
     int,
@@ -502,6 +504,11 @@ class DataClassSerializer(Serializer):
             and isinstance(self._serializers[index], self._BASIC_SERIALIZERS)
             for index, field_name in enumerate(self._field_names)
         ]
+        if self._has_slots:
+            self._graph_memory_bytes = _SLOTTED_STRUCT_OWNER_BYTES + len(self._field_names) * _REFERENCE_BYTES
+        else:
+            # Dict-backed instances retain an instance dict with key and value references per field.
+            self._graph_memory_bytes = _DICT_BACKED_STRUCT_OWNER_BYTES + _INSTANCE_DICT_OWNER_BYTES + len(self._field_names) * 2 * _REFERENCE_BYTES
 
     def _get_field_names(self, clz):
         if hasattr(clz, "__dict__"):
@@ -657,7 +664,7 @@ class DataClassSerializer(Serializer):
                 raise TypeNotCompatibleError(
                     f"Hash {hash_} is not consistent with {self._hash} for type {self.type_}",
                 )
-        read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES + len(self._field_names) * _REFERENCE_BYTES)
+        read_context.reserve_graph_memory(self._graph_memory_bytes)
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         obj_dict = obj.__dict__ if not self._has_slots else None

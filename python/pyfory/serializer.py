@@ -49,6 +49,9 @@ _REFERENCE_BYTES = struct.calcsize("P")
 _PY_OBJECT_OWNER_BYTES = 4 * _REFERENCE_BYTES
 _TUPLE_OWNER_BYTES = 3 * _REFERENCE_BYTES
 _DICT_OWNER_BYTES = 8 * _REFERENCE_BYTES
+_SLOTTED_OBJECT_OWNER_BYTES = _PY_OBJECT_OWNER_BYTES
+_DICT_BACKED_OBJECT_OWNER_BYTES = _PY_OBJECT_OWNER_BYTES
+_INSTANCE_DICT_OWNER_BYTES = _DICT_OWNER_BYTES
 
 from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory.types import TypeId
@@ -1731,6 +1734,13 @@ class ObjectSerializer(Serializer):
             if isinstance(slots, str):
                 slots = [slots]
             self._slot_field_names = sorted(slots)
+        if self._slot_field_names is None:
+            # Dict-backed objects retain an instance dict with key and value references per field.
+            self._graph_memory_owner_bytes = _DICT_BACKED_OBJECT_OWNER_BYTES + _INSTANCE_DICT_OWNER_BYTES
+            self._graph_memory_field_bytes = 2 * _REFERENCE_BYTES
+        else:
+            self._graph_memory_owner_bytes = _SLOTTED_OBJECT_OWNER_BYTES
+            self._graph_memory_field_bytes = _REFERENCE_BYTES
 
     def write(self, write_context, value):
         if self._slot_field_names is not None:
@@ -1750,7 +1760,7 @@ class ObjectSerializer(Serializer):
         policy.authorize_instantiation(self.type_)
         num_fields = read_context.read_var_uint32()
         _check_non_negative_size(num_fields, "object field")
-        read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES + num_fields * _REFERENCE_BYTES)
+        read_context.reserve_graph_memory(self._graph_memory_owner_bytes + num_fields * self._graph_memory_field_bytes)
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         state = {}
@@ -1768,7 +1778,7 @@ class _DefaultPolicyObjectSerializer(ObjectSerializer):
     def read(self, read_context):
         num_fields = read_context.read_var_uint32()
         _check_non_negative_size(num_fields, "object field")
-        read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES + num_fields * _REFERENCE_BYTES)
+        read_context.reserve_graph_memory(self._graph_memory_owner_bytes + num_fields * self._graph_memory_field_bytes)
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         for _ in range(num_fields):

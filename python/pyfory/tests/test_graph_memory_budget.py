@@ -91,8 +91,26 @@ class BudgetItem:
     value: int
 
 
+@dataclasses.dataclass
+class BudgetPair:
+    left: int
+    right: int
+
+
+@dataclasses.dataclass
+class SlottedBudgetPair:
+    __slots__ = ("left", "right")
+
+    left: int
+    right: int
+
+
 class BudgetObject:
     pass
+
+
+class BudgetSlotsObject:
+    __slots__ = ("left", "right")
 
 
 class BudgetStatefulObject:
@@ -138,8 +156,10 @@ def map_memory(num_entries):
     return DICT_OWNER_BYTES + num_entries * 2 * REFERENCE_BYTES
 
 
-def object_memory(num_fields):
-    return PY_OBJECT_OWNER_BYTES + num_fields * REFERENCE_BYTES
+def object_memory(num_fields, *, slots=False):
+    if slots:
+        return PY_OBJECT_OWNER_BYTES + num_fields * REFERENCE_BYTES
+    return PY_OBJECT_OWNER_BYTES + DICT_OWNER_BYTES + num_fields * 2 * REFERENCE_BYTES
 
 
 def new_fory(limit=DEFAULT_GRAPH_MEMORY_BYTES, *, xlang=True):
@@ -213,6 +233,36 @@ def test_empty_object_owner_is_charged():
     assert reader.deserialize(data) == value
 
 
+def test_struct_storage_shapes():
+    dict_value = BudgetPair(1, 2)
+    slots_value = SlottedBudgetPair(1, 2)
+    dict_budget = object_memory(2)
+    slots_budget = object_memory(2, slots=True)
+    assert dict_budget > slots_budget
+
+    writer = new_fory(xlang=False)
+    writer.register_type(BudgetPair)
+    dict_data = writer.serialize(dict_value)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        reader = new_fory(slots_budget, xlang=False)
+        reader.register_type(BudgetPair)
+        reader.deserialize(dict_data)
+    reader = new_fory(dict_budget, xlang=False)
+    reader.register_type(BudgetPair)
+    assert reader.deserialize(dict_data) == dict_value
+
+    writer = new_fory(xlang=False)
+    writer.register_type(SlottedBudgetPair)
+    slots_data = writer.serialize(slots_value)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        reader = new_fory(slots_budget - 1, xlang=False)
+        reader.register_type(SlottedBudgetPair)
+        reader.deserialize(slots_data)
+    reader = new_fory(slots_budget, xlang=False)
+    reader.register_type(SlottedBudgetPair)
+    assert reader.deserialize(slots_data) == slots_value
+
+
 def test_dynamic_object_budget():
     value = BudgetObject()
     value.left = 1
@@ -228,6 +278,26 @@ def test_dynamic_object_budget():
         reader.deserialize(data)
     reader = new_fory(budget, xlang=False)
     reader.register_type(BudgetObject)
+    restored = reader.deserialize(data)
+    assert restored.left == value.left
+    assert restored.right == value.right
+
+
+def test_slotted_object_budget():
+    value = BudgetSlotsObject()
+    value.left = 1
+    value.right = "x"
+    budget = object_memory(2, slots=True)
+
+    writer = new_fory(xlang=False)
+    writer.register_type(BudgetSlotsObject)
+    data = writer.serialize(value)
+    with pytest.raises(ValueError, match="Estimated graph memory budget exceeded"):
+        reader = new_fory(budget - 1, xlang=False)
+        reader.register_type(BudgetSlotsObject)
+        reader.deserialize(data)
+    reader = new_fory(budget, xlang=False)
+    reader.register_type(BudgetSlotsObject)
     restored = reader.deserialize(data)
     assert restored.left == value.left
     assert restored.right == value.right

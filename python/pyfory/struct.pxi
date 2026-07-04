@@ -23,9 +23,11 @@ from cpython.unicode cimport PyUnicode_InternFromString
 
 cdef uint8_t _BASIC_FIELD_NOT_INLINE = 0xFF
 cdef int64_t _STRUCT_REFERENCE_BYTES = sizeof(PyObject*)
-# Lower-bound shallow owner cost for retained Python struct objects. Field slots are charged
-# separately by count below; this is not a Fory wire header size.
-cdef int64_t _STRUCT_OWNER_BYTES = 4 * sizeof(PyObject*)
+# Lower-bound shallow owner costs for retained Python struct shapes. Normal objects retain an
+# instance dict for field storage; slotted objects store field references in object slots.
+cdef int64_t _SLOTTED_STRUCT_OWNER_BYTES = 4 * sizeof(PyObject*)
+cdef int64_t _DICT_BACKED_STRUCT_OWNER_BYTES = 4 * sizeof(PyObject*)
+cdef int64_t _INSTANCE_DICT_OWNER_BYTES = 8 * sizeof(PyObject*)
 
 
 cdef struct FieldRuntimeInfo:
@@ -63,6 +65,7 @@ cdef class DataClassSerializer(Serializer):
     cdef tuple _serializer_owner
     cdef tuple _validation_field_type_owner
     cdef public dict _default_values_factory
+    cdef public int64_t _graph_memory_bytes
     cdef tuple _missing_field_defaults
     cdef public object _assign_fields
     cdef public object _assigned_field_names
@@ -179,6 +182,17 @@ cdef class DataClassSerializer(Serializer):
             self._default_values_factory = {}
         self._build_fastpath_metadata()
         self._build_missing_field_defaults()
+        if self._has_slots:
+            self._graph_memory_bytes = (
+                _SLOTTED_STRUCT_OWNER_BYTES + <int64_t>len(self._field_names) * _STRUCT_REFERENCE_BYTES
+            )
+        else:
+            # Dict-backed instances retain an instance dict with key and value references per field.
+            self._graph_memory_bytes = (
+                _DICT_BACKED_STRUCT_OWNER_BYTES
+                + _INSTANCE_DICT_OWNER_BYTES
+                + <int64_t>len(self._field_names) * 2 * _STRUCT_REFERENCE_BYTES
+            )
 
         if self._has_validation_fields:
             from pyfory.meta.typedef import coerce_assignable_value, is_value_assignable
@@ -426,9 +440,7 @@ cdef class DataClassSerializer(Serializer):
                     f"Hash {read_hash} is not consistent with {self._hash} for type {self.type_}"
                 )
 
-        read_context.reserve_graph_memory_c(
-            _STRUCT_OWNER_BYTES + <int64_t>self._field_runtime_infos.size() * _STRUCT_REFERENCE_BYTES
-        )
+        read_context.reserve_graph_memory_c(self._graph_memory_bytes)
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         if self._has_slots:
