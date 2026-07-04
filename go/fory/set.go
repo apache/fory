@@ -408,7 +408,7 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 			elemType, serializer = wrapMapSerializerIfNeeded(keyType, typeInfo.Type, serializer)
 		}
 	}
-	if keyType.Kind() != reflect.Ptr {
+	if keyType.Kind() != reflect.Ptr && keyType.Kind() != reflect.Interface {
 		if ptrSer, ok := serializer.(*ptrToValueSerializer); ok {
 			serializer = ptrSer.valueSerializer
 		}
@@ -432,9 +432,6 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 				}
 				continue
 			}
-			if !reserveDynamicStructGraphMemory(ctx, keyType, elemType, serializer) {
-				return
-			}
 			elem := reflect.New(elemType).Elem()
 			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
 			if ctx.HasError() {
@@ -443,6 +440,16 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 			if isNull(elem) {
 				continue
 			}
+			if keyType.Kind() == reflect.Interface {
+				boxed := elem
+				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
+					boxed = boxed.Elem()
+				}
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
+					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
+					return
+				}
+			}
 			ctx.RefResolver().SetReadObject(refID, elem)
 			setMapKey(value, elem, keyType)
 		} else if hasNull {
@@ -450,23 +457,37 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 			if refFlag == NullFlag {
 				continue
 			}
-			if !reserveDynamicStructGraphMemory(ctx, keyType, elemType, serializer) {
-				return
-			}
 			elem := reflect.New(elemType).Elem()
 			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
 			if ctx.HasError() {
 				return
+			}
+			if keyType.Kind() == reflect.Interface {
+				boxed := elem
+				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
+					boxed = boxed.Elem()
+				}
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
+					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
+					return
+				}
 			}
 			setMapKey(value, elem, keyType)
 		} else {
-			if !reserveDynamicStructGraphMemory(ctx, keyType, elemType, serializer) {
-				return
-			}
 			elem := reflect.New(elemType).Elem()
 			readSerializerData(ctx, serializer, declaredGenericDispatch, elem)
 			if ctx.HasError() {
 				return
+			}
+			if keyType.Kind() == reflect.Interface {
+				boxed := elem
+				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
+					boxed = boxed.Elem()
+				}
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
+					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
+					return
+				}
 			}
 			setMapKey(value, elem, keyType)
 		}
@@ -504,13 +525,20 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 				return
 			}
 			// Create new element and deserialize from buffer
-			if !reserveDynamicStructGraphMemory(ctx, keyType, typeInfo.Type, typeInfo.Serializer) {
-				return
-			}
 			elem := reflect.New(typeInfo.Type).Elem()
 			typeInfo.Serializer.ReadData(ctx, elem)
 			if ctx.HasError() {
 				return
+			}
+			if keyType.Kind() == reflect.Interface {
+				boxed := elem
+				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
+					boxed = boxed.Elem()
+				}
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
+					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
+					return
+				}
 			}
 			ctx.RefResolver().SetReadObject(refID, elem)
 			setMapKey(value, elem, keyType)
@@ -526,13 +554,20 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 			if ctxErr.HasError() {
 				return
 			}
-			if !reserveDynamicStructGraphMemory(ctx, keyType, typeInfo.Type, typeInfo.Serializer) {
-				return
-			}
 			elem := reflect.New(typeInfo.Type).Elem()
 			typeInfo.Serializer.ReadData(ctx, elem)
 			if ctx.HasError() {
 				return
+			}
+			if keyType.Kind() == reflect.Interface {
+				boxed := elem
+				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
+					boxed = boxed.Elem()
+				}
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
+					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
+					return
+				}
 			}
 			setMapKey(value, elem, keyType)
 		} else {
@@ -541,13 +576,20 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 			if ctxErr.HasError() {
 				return
 			}
-			if !reserveDynamicStructGraphMemory(ctx, keyType, typeInfo.Type, typeInfo.Serializer) {
-				return
-			}
 			elem := reflect.New(typeInfo.Type).Elem()
 			typeInfo.Serializer.ReadData(ctx, elem)
 			if ctx.HasError() {
 				return
+			}
+			if keyType.Kind() == reflect.Interface {
+				boxed := elem
+				if boxed.Kind() == reflect.Interface && !boxed.IsNil() {
+					boxed = boxed.Elem()
+				}
+				if boxed.IsValid() && boxed.Kind() == reflect.Struct &&
+					!ctx.ReserveGraphMemory(structGraphBytes(boxed.Type())) {
+					return
+				}
 			}
 			setMapKey(value, elem, keyType)
 		}

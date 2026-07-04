@@ -390,7 +390,8 @@ func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, val
 			// For named struct types, use pointer for circular reference support
 			var elem reflect.Value
 			if isNamedStruct {
-				if !reserveDynamicStructGraphMemory(ctx, value.Type().Elem(), elemType, serializer) {
+				if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
+					!ctx.ReserveGraphMemory(structGraphBytes(elemType)) {
 					return
 				}
 				// Create pointer to struct: *B
@@ -400,7 +401,8 @@ func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, val
 				// Read into the struct element
 				serializer.ReadData(ctx, elem.Elem())
 			} else {
-				if !reserveDynamicStructGraphMemory(ctx, value.Type().Elem(), elemType, serializer) {
+				if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
+					!ctx.ReserveGraphMemory(structGraphBytes(elemType)) {
 					return
 				}
 				elem = reflect.New(elemType).Elem()
@@ -416,7 +418,8 @@ func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, val
 			if refFlag == NullFlag {
 				continue
 			}
-			if !reserveDynamicStructGraphMemory(ctx, value.Type().Elem(), elemType, serializer) {
+			if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
+				!ctx.ReserveGraphMemory(structGraphBytes(elemType)) {
 				return
 			}
 			elem := reflect.New(elemType).Elem()
@@ -426,7 +429,8 @@ func (s *sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, val
 			}
 			value.Index(i).Set(elem)
 		} else {
-			if !reserveDynamicStructGraphMemory(ctx, value.Type().Elem(), elemType, serializer) {
+			if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
+				!ctx.ReserveGraphMemory(structGraphBytes(elemType)) {
 				return
 			}
 			elem := reflect.New(elemType).Elem()
@@ -469,7 +473,8 @@ func (s *sliceDynSerializer) readDifferentTypes(
 				return
 			}
 			elemType, serializer := s.wrapSerializerIfNeeded(typeInfo.Type, typeInfo.Serializer)
-			if !reserveDynamicStructGraphMemory(ctx, value.Type().Elem(), elemType, serializer) {
+			if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
+				!ctx.ReserveGraphMemory(structGraphBytes(elemType)) {
 				return
 			}
 			elem := reflect.New(elemType).Elem()
@@ -491,7 +496,8 @@ func (s *sliceDynSerializer) readDifferentTypes(
 				return
 			}
 			elemType, serializer := s.wrapSerializerIfNeeded(typeInfo.Type, typeInfo.Serializer)
-			if !reserveDynamicStructGraphMemory(ctx, value.Type().Elem(), elemType, serializer) {
+			if value.Type().Elem().Kind() == reflect.Interface && elemType.Kind() == reflect.Struct &&
+				!ctx.ReserveGraphMemory(structGraphBytes(elemType)) {
 				return
 			}
 			elem := reflect.New(elemType).Elem()

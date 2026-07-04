@@ -813,7 +813,13 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 
 		if isNamedStruct {
 			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok {
+				if !c.ReserveGraphMemory(structGraphBytes(actualType)) {
+					return
+				}
 				structSer.readDynamicValue(c, refMode, refID, actualType, value)
+				return
+			}
+			if !c.ReserveGraphMemory(structGraphBytes(actualType)) {
 				return
 			}
 			newValue := reflect.New(reflect.PtrTo(actualType)).Elem()

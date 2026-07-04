@@ -440,7 +440,8 @@ func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr
 			valType = staticType
 		}
 		valType, ser = wrapMapSerializerIfNeeded(staticType, valType, ser)
-		if !reserveDynamicStructGraphMemory(ctx, staticType, valType, ser) {
+		if staticType.Kind() == reflect.Interface && valType.Kind() == reflect.Struct &&
+			!ctx.ReserveGraphMemory(structGraphBytes(valType)) {
 			return reflect.Value{}
 		}
 		v := reflect.New(valType).Elem()
@@ -477,7 +478,8 @@ func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr
 	if valType == nil {
 		valType = staticType
 	}
-	if !reserveDynamicStructGraphMemory(ctx, staticType, valType, ser) {
+	if staticType.Kind() == reflect.Interface && valType.Kind() == reflect.Struct &&
+		!ctx.ReserveGraphMemory(structGraphBytes(valType)) {
 		return reflect.Value{}
 	}
 	v := reflect.New(valType).Elem()
@@ -565,7 +567,8 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 	}
 
 	for i := 0; i < chunkSize; i++ {
-		if !reserveDynamicStructGraphMemory(ctx, declaredKeyType, keyType, keySer) {
+		if declaredKeyType.Kind() == reflect.Interface && keyType.Kind() == reflect.Struct &&
+			!ctx.ReserveGraphMemory(structGraphBytes(keyType)) {
 			return 0
 		}
 		k := reflect.New(keyType).Elem()
@@ -578,7 +581,8 @@ func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header 
 			return 0
 		}
 
-		if !reserveDynamicStructGraphMemory(ctx, declaredValueType, valueType, valSer) {
+		if declaredValueType.Kind() == reflect.Interface && valueType.Kind() == reflect.Struct &&
+			!ctx.ReserveGraphMemory(structGraphBytes(valueType)) {
 			return 0
 		}
 		v := reflect.New(valueType).Elem()

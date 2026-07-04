@@ -22,11 +22,8 @@
 #include "fory/meta/field_info.h"
 #include "fory/meta/type_index.h"
 #include "fory/meta/type_traits.h"
-#include "fory/serialization/ref_mode.h"
 #include "fory/type/type.h"
-#include "fory/util/macros.h"
 #include <array>
-#include <cstddef>
 #include <deque>
 #include <forward_list>
 #include <list>
@@ -45,7 +42,6 @@ namespace fory {
 namespace serialization {
 
 // Forward declarations for trait detection
-class ReadContext;
 template <typename T, typename Enable = void> struct Serializer;
 template <typename T, typename Enable = void> struct SerializationMeta;
 

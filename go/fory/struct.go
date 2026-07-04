@@ -1377,9 +1377,6 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 }
 
 func (s *structSerializer) readDynamicValue(ctx *ReadContext, refMode RefMode, refID int32, type_ reflect.Type, value reflect.Value) {
-	if !ctx.ReserveGraphMemory(structGraphBytes(type_)) {
-		return
-	}
 	newValue := reflect.New(type_)
 	if refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
 		ctx.RefResolver().SetReadObject(refID, newValue)
