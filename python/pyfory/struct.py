@@ -82,7 +82,7 @@ from pyfory import (
 logger = logging.getLogger(__name__)
 
 _REFERENCE_BYTES = struct.calcsize("P")
-_REFERENCE_OBJECT_BYTES = 2 * _REFERENCE_BYTES
+_PY_OBJECT_OWNER_BYTES = 4 * _REFERENCE_BYTES
 
 _MISSING_DEFAULT_INT_TYPES = {
     int,
@@ -655,7 +655,7 @@ class DataClassSerializer(Serializer):
                 raise TypeNotCompatibleError(
                     f"Hash {hash_} is not consistent with {self._hash} for type {self.type_}",
                 )
-        read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES + len(self._field_names) * _REFERENCE_BYTES)
+        read_context.reserve_graph_memory(_PY_OBJECT_OWNER_BYTES + len(self._field_names) * _REFERENCE_BYTES)
         obj = self.type_.__new__(self.type_)
         read_context.reference(obj)
         obj_dict = obj.__dict__ if not self._has_slots else None

@@ -23,7 +23,7 @@ from cpython.unicode cimport PyUnicode_InternFromString
 
 cdef uint8_t _BASIC_FIELD_NOT_INLINE = 0xFF
 cdef int64_t _STRUCT_REFERENCE_BYTES = sizeof(PyObject*)
-cdef int64_t _STRUCT_OWNER_BYTES = 2 * sizeof(PyObject*)
+cdef int64_t _STRUCT_OWNER_BYTES = 4 * sizeof(PyObject*)
 
 
 cdef struct FieldRuntimeInfo:

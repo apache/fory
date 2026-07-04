@@ -43,7 +43,6 @@ import org.testng.annotations.Test;
 public class GraphMemoryBudgetTest extends ForyTestBase {
   private static final long DEFAULT_GRAPH_MEMORY_BYTES = 128L * 1024 * 1024;
   private static final int REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
-  private static final int REFERENCE_PAIR_BYTES = 2 * REFERENCE_BYTES;
 
   @Test
   public void testConfigDefaultsAndValidation() {
@@ -136,11 +135,6 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
 
   @Test
   public void testEmptyContainerOwnerEstimates() {
-    assertTrue(collectionBytes(0) > REFERENCE_PAIR_BYTES);
-    assertTrue(hashSetBytes(0) > REFERENCE_PAIR_BYTES);
-    assertTrue(mapBytes(0) > REFERENCE_PAIR_BYTES);
-    assertTrue(objectArrayBytes(0) > REFERENCE_PAIR_BYTES);
-
     assertEmptyOwnerCharged(ArrayList.class, collectionBytes(0));
     assertEmptyOwnerCharged(HashSet.class, hashSetBytes(0));
     assertEmptyOwnerCharged(HashMap.class, mapBytes(0));

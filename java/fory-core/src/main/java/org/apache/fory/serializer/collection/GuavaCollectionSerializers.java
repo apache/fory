@@ -39,6 +39,7 @@ import java.util.Map.Entry;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.TypeInfo;
@@ -526,6 +527,8 @@ public class GuavaCollectionSerializers {
   }
 
   public static final class HashBasedTableSerializer extends Serializer<HashBasedTable> {
+    private static final int HASH_BASED_TABLE_OWNER_BYTES =
+        GraphMemoryEstimates.shallowObjectBytes(HashBasedTable.class);
 
     public HashBasedTableSerializer(TypeResolver typeResolver, Class<HashBasedTable> cls) {
       super(typeResolver.getConfig(), cls);
@@ -547,6 +550,17 @@ public class GuavaCollectionSerializers {
     public HashBasedTable read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
       int size = buffer.readVarUInt32Small7();
+      if (size < 0) {
+        throw new DeserializationException("HashBasedTable size must be non-negative: " + size);
+      }
+      if (size > Integer.MAX_VALUE / 3) {
+        throw new DeserializationException("HashBasedTable body size exceeds int range: " + size);
+      }
+      // HashBasedTable materializes the final table directly; each cell owns row-key,
+      // column-key, and value reference slots in the retained table.
+      readContext.reserveGraphMemory(
+          HASH_BASED_TABLE_OWNER_BYTES + (long) size * 3 * GraphMemoryEstimates.REFERENCE_BYTES);
+      buffer.checkReadableBytes(size * 3);
       HashBasedTable table = HashBasedTable.create();
       if (needToWriteRef) {
         readContext.setReadRef(readContext.lastPreservedRefId(), table);

@@ -665,7 +665,8 @@ internal static class PrimitiveDictionaryCodecWriter
 internal static class PrimitiveDictionaryCodecReader
 {
     private const int ReferenceBytes = 4;
-    private static readonly int MapOwnerBytes = IntPtr.Size * 2;
+    private static readonly int DictionaryOwnerBytes =
+        IntPtr.Size + IntPtr.Size + 4 * ReferenceBytes + 4 * sizeof(int);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ElementBytes<T>() => ElementStorage<T>.Bytes;
@@ -673,7 +674,7 @@ internal static class PrimitiveDictionaryCodecReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ReserveMapStorage<TKey, TValue>(ReadContext context, int count)
     {
-        context.ReserveGraphMemory(MapOwnerBytes + count * ((long)ElementBytes<TKey>() + ElementBytes<TValue>()));
+        context.ReserveGraphMemory(DictionaryOwnerBytes + count * ((long)ElementBytes<TKey>() + ElementBytes<TValue>()));
     }
 
     private static class ElementStorage<T>

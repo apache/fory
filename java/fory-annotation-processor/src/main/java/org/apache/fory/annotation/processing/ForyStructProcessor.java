@@ -65,7 +65,9 @@ import javax.tools.StandardLocation;
 })
 public final class ForyStructProcessor extends AbstractProcessor {
   private static final int REFERENCE_BYTES = 4;
-  private static final int OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
+  // Source classes are not loadable as Class<?> during annotation processing; generated struct
+  // estimates add compile-time field widths to the shared JVM object-base component.
+  private static final int JVM_OBJECT_BASE_BYTES = REFERENCE_BYTES + REFERENCE_BYTES;
   private static final String ARRAY_TYPE = "org.apache.fory.annotation.ArrayType";
   private static final String BFLOAT16_TYPE = "org.apache.fory.annotation.BFloat16Type";
   private static final String EXPOSE = "org.apache.fory.annotation.Expose";
@@ -251,7 +253,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
   }
 
   private int graphMemoryBytes(TypeElement type) {
-    int bytes = OBJECT_OWNER_BYTES;
+    int bytes = JVM_OBJECT_BASE_BYTES;
     for (TypeElement current : hierarchy(type)) {
       for (VariableElement field : ElementFilter.fieldsIn(current.getEnclosedElements())) {
         if (!field.getModifiers().contains(Modifier.STATIC)) {

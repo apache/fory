@@ -48,6 +48,9 @@ abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](
     typeResolver: TypeResolver,
     cls: Class[T])
   extends CollectionLikeSerializer[T](typeResolver, cls) {
+  private val ReferenceBytes = 4L
+  private val ScalaCollectionOwnerBytes = 3L * ReferenceBytes
+
   override def onCollectionWrite(
       writeContext: WriteContext,
       value: T): util.Collection[_]
@@ -56,7 +59,7 @@ abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](
     val buffer = readContext.getBuffer
     val numElements = buffer.readVarUInt32Small7()
     checkCollectionSize(numElements)
-    readContext.reserveGraphMemory(2L * 4L + numElements.toLong * 4L)
+    readContext.reserveGraphMemory(ScalaCollectionOwnerBytes + numElements.toLong * ReferenceBytes)
     setNumElements(numElements)
     val factory = readContext.readRef().asInstanceOf[Factory[A, T]]
     buffer.checkReadableBytes(numElements)

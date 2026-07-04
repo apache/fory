@@ -146,7 +146,8 @@ private func makeCompatibleBudgetFory(maxGraphMemoryBytes: Int64 = defaultGraphM
 }
 
 private let testReferenceBytes = 4
-private let budgetNodeGraphBytes = (2 * testReferenceBytes) + 4
+private let classOwnerBytes = 2 * MemoryLayout<Int>.stride
+private let budgetNodeGraphBytes = classOwnerBytes + 4
 
 private func elementBytes<Element: Serializer>(_ type: Element.Type) -> Int {
     type.isRefType ? testReferenceBytes : max(1, MemoryLayout<Element>.stride)
@@ -211,7 +212,7 @@ private func expectInvalidData(_ body: () throws -> Void) {
 }
 
 private func budgetSelfNodeGraphBytes() -> Int {
-    (2 * testReferenceBytes)
+    classOwnerBytes
         + MemoryLayout<Int32>.stride
         + testReferenceBytes
         + ownerBytes([BudgetSelfNode].self)

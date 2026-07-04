@@ -1251,7 +1251,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         }
         else
         {
-            sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphOwnerBytesExpr} + (long){lengthVar} * {elementBytesExpr});");
+            sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphListOwnerBytesExpr} + (long){lengthVar} * {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({lengthVar});");
         }
 
@@ -1599,7 +1599,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         else
         {
             string elementBytesExpr = GraphElementBytesExpr(PackedArrayElementTypeName(codec.TypeId));
-            sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphOwnerBytesExpr} + (long){countVar} * {elementBytesExpr});");
+            sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphListOwnerBytesExpr} + (long){countVar} * {elementBytesExpr});");
             sb.AppendLine($"{indent}{codec.TypeName} {targetVar} = new({countVar});");
         }
 
@@ -1639,7 +1639,8 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         string sameTypeVar = $"__forySameType{id++}";
         string declaredVar = $"__foryDeclared{id++}";
         sb.AppendLine($"{indent}int {lengthVar} = checked((int)context.Reader.ReadVarUInt32());");
-        sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphOwnerBytesExpr} + (long){lengthVar} * {GraphElementBytesExpr(element)});");
+        string ownerBytesExpr = isSet ? GraphSetOwnerBytesExpr : GraphListOwnerBytesExpr;
+        sb.AppendLine($"{indent}context.ReserveGraphMemory({ownerBytesExpr} + (long){lengthVar} * {GraphElementBytesExpr(element)});");
         sb.AppendLine($"{indent}if ({lengthVar} != 0)");
         sb.AppendLine($"{indent}{{");
         sb.AppendLine($"{indent}    context.Reader.CheckBound({lengthVar});");
@@ -1745,7 +1746,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         FieldCodecModel value = codec.Generics[1];
         string totalVar = $"__foryTotal{id++}";
         sb.AppendLine($"{indent}int {totalVar} = checked((int)context.Reader.ReadVarUInt32());");
-        sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphOwnerBytesExpr} + (long){totalVar} * {GraphMapElementBytesExpr(key, value)});");
+        sb.AppendLine($"{indent}context.ReserveGraphMemory({GraphMapOwnerBytesExpr} + (long){totalVar} * {GraphMapElementBytesExpr(key, value)});");
         sb.AppendLine($"{indent}if ({totalVar} != 0)");
         sb.AppendLine($"{indent}{{");
         sb.AppendLine($"{indent}    context.Reader.CheckBound({totalVar});");
@@ -1906,7 +1907,14 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
             : "object";
     }
 
-    private const string GraphOwnerBytesExpr = "(global::System.IntPtr.Size * 2L)";
+    private const string GraphObjectOwnerBytesExpr =
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 4L)";
+    private const string GraphListOwnerBytesExpr =
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 12L)";
+    private const string GraphSetOwnerBytesExpr =
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 28L)";
+    private const string GraphMapOwnerBytesExpr =
+        "(global::System.IntPtr.Size + global::System.IntPtr.Size + 32L)";
 
     private static string GraphElementBytesExpr(FieldCodecModel codec)
     {
@@ -1928,7 +1936,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
 
     private static string ModelGraphMemoryExpr(TypeModel model)
     {
-        System.Collections.Generic.List<string> parts = new() { GraphOwnerBytesExpr };
+        System.Collections.Generic.List<string> parts = new() { GraphObjectOwnerBytesExpr };
         foreach (MemberModel member in model.SortedMembers)
         {
             parts.Add(FieldGraphMemoryExpr(member));

@@ -33,15 +33,23 @@ internal static class CollectionBits
 internal static class CollectionCodec
 {
     private const int ReferenceBytes = 4;
-    private static readonly int CollectionOwnerBytes = IntPtr.Size * 2;
+    private static readonly int ObjectHeaderBytes = IntPtr.Size + IntPtr.Size;
+    private static readonly int ArrayOwnerBytes = ObjectHeaderBytes + sizeof(int);
+    private static readonly int ListOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 2 * sizeof(int);
+    private static readonly int HashSetOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + 4 * sizeof(int);
+    private static readonly int SortedSetOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + sizeof(int);
+    private static readonly int ImmutableHashSetOwnerBytes = ObjectHeaderBytes + ReferenceBytes;
+    private static readonly int LinkedListOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + 2 * sizeof(int);
+    private static readonly int QueueOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 3 * sizeof(int);
+    private static readonly int StackOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 2 * sizeof(int);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static int ElementBytes<T>() => ElementStorage<T>.Bytes;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void ReserveElementStorage<T>(ReadContext context, int count)
+    internal static void ReserveElementStorage<T>(ReadContext context, int ownerBytes, int count)
     {
-        context.ReserveGraphMemory(CollectionOwnerBytes + (long)count * ElementBytes<T>());
+        context.ReserveGraphMemory(ownerBytes + (long)count * ElementBytes<T>());
     }
 
     private static bool NeedsCompatibleElementTypeMeta(TypeInfo typeInfo, WriteContext context)
@@ -245,10 +253,10 @@ internal static class CollectionCodec
         public void Add(T value) => values.Push(value);
     }
 
-    private static int ReadLength<T>(ReadContext context)
+    private static int ReadLength<T>(ReadContext context, int ownerBytes)
     {
         int length = checked((int)context.Reader.ReadVarUInt32());
-        ReserveElementStorage<T>(context, length);
+        ReserveElementStorage<T>(context, ownerBytes, length);
         return length;
     }
 
@@ -369,7 +377,7 @@ internal static class CollectionCodec
 
     public static List<T> ReadCollectionData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
-        int length = ReadLength<T>(context);
+        int length = ReadLength<T>(context, ListOwnerBytes);
         if (length == 0)
         {
             List<T> empty = [];
@@ -387,7 +395,7 @@ internal static class CollectionCodec
     internal static HashSet<T> ReadHashSetData<T>(Serializer<T> elementSerializer, ReadContext context)
         where T : notnull
     {
-        int length = ReadLength<T>(context);
+        int length = ReadLength<T>(context, HashSetOwnerBytes);
         if (length == 0)
         {
             HashSet<T> empty = new(length);
@@ -405,7 +413,7 @@ internal static class CollectionCodec
     internal static SortedSet<T> ReadSortedSetData<T>(Serializer<T> elementSerializer, ReadContext context)
         where T : notnull
     {
-        int length = ReadLength<T>(context);
+        int length = ReadLength<T>(context, SortedSetOwnerBytes);
         SortedSet<T> values = new();
         context.StoreRef(values);
         if (length == 0)
@@ -423,7 +431,7 @@ internal static class CollectionCodec
         ReadContext context)
         where T : notnull
     {
-        int length = ReadLength<T>(context);
+        int length = ReadLength<T>(context, ImmutableHashSetOwnerBytes);
         ImmutableHashSet<T>.Builder values = ImmutableHashSet.CreateBuilder<T>();
         if (length == 0)
         {
@@ -442,7 +450,7 @@ internal static class CollectionCodec
 
     internal static LinkedList<T> ReadLinkedListData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
-        int length = ReadLength<T>(context);
+        int length = ReadLength<T>(context, LinkedListOwnerBytes);
         LinkedList<T> values = new();
         context.StoreRef(values);
         if (length == 0)
@@ -457,7 +465,7 @@ internal static class CollectionCodec
 
     internal static Queue<T> ReadQueueData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
-        int length = ReadLength<T>(context);
+        int length = ReadLength<T>(context, QueueOwnerBytes);
         Queue<T> values = new(length);
         context.StoreRef(values);
         if (length == 0)
@@ -472,7 +480,7 @@ internal static class CollectionCodec
 
     internal static Stack<T> ReadStackData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
-        int length = ReadLength<T>(context);
+        int length = ReadLength<T>(context, StackOwnerBytes);
         Stack<T> values = new(length);
         context.StoreRef(values);
         if (length == 0)
@@ -487,7 +495,7 @@ internal static class CollectionCodec
 
     public static T[] ReadArrayData<T>(Serializer<T> elementSerializer, ReadContext context)
     {
-        int length = ReadLength<T>(context);
+        int length = ReadLength<T>(context, ArrayOwnerBytes);
         if (length == 0)
         {
             T[] empty = [];
@@ -506,7 +514,8 @@ internal static class CollectionCodec
 internal static class DynamicContainerCodec
 {
     private const int ReferenceBytes = 4;
-    private static readonly int MapOwnerBytes = IntPtr.Size * 2;
+    private static readonly int DictionaryOwnerBytes =
+        IntPtr.Size + IntPtr.Size + 4 * ReferenceBytes + 4 * sizeof(int);
 
     public static bool TryGetTypeId(object value, out TypeId typeId)
     {
@@ -603,7 +612,7 @@ internal static class DynamicContainerCodec
             return map;
         }
 
-        context.ReserveGraphMemory(MapOwnerBytes + (long)map.Count * (ReferenceBytes + ReferenceBytes));
+        context.ReserveGraphMemory(DictionaryOwnerBytes + (long)map.Count * (ReferenceBytes + ReferenceBytes));
         return new Dictionary<object, object?>(map.NonNullEntries);
     }
 

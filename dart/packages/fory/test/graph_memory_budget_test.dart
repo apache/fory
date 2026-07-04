@@ -32,14 +32,14 @@ part 'graph_memory_budget_test.fory.dart';
 const Matcher _throwsGraphBudget = ThrowsGraphBudget();
 const int _defaultGraphMemoryBytes = 128 * 1024 * 1024;
 const int _referenceBytes = 4;
-const int _referenceObjectBytes = 2 * _referenceBytes;
+const int _structObjectOwnerBytes = 6 * _referenceBytes;
+const int _listOwnerBytes = 6 * _referenceBytes;
+const int _mapOwnerBytes = 8 * _referenceBytes;
 
 int _objectGraphBytes(int fields) =>
-    _referenceObjectBytes + fields * _referenceBytes;
-int _listGraphBytes(int count) =>
-    _referenceObjectBytes + count * _referenceBytes;
-int _mapGraphBytes(int count) =>
-    _referenceObjectBytes + count * 2 * _referenceBytes;
+    _structObjectOwnerBytes + fields * _referenceBytes;
+int _listGraphBytes(int count) => _listOwnerBytes + count * _referenceBytes;
+int _mapGraphBytes(int count) => _mapOwnerBytes + count * 2 * _referenceBytes;
 
 @ForyStruct()
 class BudgetGeneratedEnvelope {

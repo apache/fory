@@ -48,6 +48,9 @@ import scala.collection.{Factory, mutable}
  */
 abstract class AbstractScalaMapSerializer[K, V, T](typeResolver: TypeResolver, cls: Class[T])
   extends MapLikeSerializer[T](typeResolver, cls) {
+  private val ReferenceBytes = 4L
+  private val ScalaMapOwnerBytes = 3L * ReferenceBytes
+
   def onMapWrite(writeContext: WriteContext, value: T): util.Map[_, _]
 
   override def newMap(readContext: ReadContext): util.Map[_, _] = {
@@ -57,7 +60,8 @@ abstract class AbstractScalaMapSerializer[K, V, T](typeResolver: TypeResolver, c
     if (numElements > Integer.MAX_VALUE / 2) {
       throw new DeserializationException("Map size is too large to read: " + numElements)
     }
-    readContext.reserveGraphMemory(2L * 4L + numElements.toLong * 2L * 4L)
+    readContext.reserveGraphMemory(
+      ScalaMapOwnerBytes + numElements.toLong * 2L * ReferenceBytes)
     setNumElements(numElements)
     val factory = readContext.readRef().asInstanceOf[Factory[(K, V), T]]
     buffer.checkReadableBytes(numElements << 1)

@@ -55,7 +55,7 @@ private func graphFieldBytesExpr(_ field: ParsedField) -> String {
 }
 
 private func classGraphOwnerBytesExpr(_ fields: [ParsedField]) -> String {
-    let ownerBytes = "(2 * 4)"
+    let ownerBytes = "(2 * MemoryLayout<Int>.stride)"
     if fields.isEmpty {
         return ownerBytes
     }

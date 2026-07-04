@@ -59,10 +59,15 @@ public final class UnknownClassSerializers {
   }
 
   public static final class UnknownStructSerializer extends Serializer {
-    private static final int UNKNOWN_STRUCT_REFERENCE_BYTES = 4;
-    private static final int UNKNOWN_STRUCT_OWNER_BYTES = 2 * UNKNOWN_STRUCT_REFERENCE_BYTES;
+    private static final int UNKNOWN_STRUCT_REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+    private static final int UNKNOWN_STRUCT_OWNER_BYTES =
+        GraphMemoryEstimates.shallowObjectBytes(UnknownClass.UnknownStruct.class);
+    private static final int ARRAY_LIST_OWNER_BYTES =
+        GraphMemoryEstimates.shallowObjectBytes(ArrayList.class);
+    private static final int MAP_ENTRY_OWNER_BYTES =
+        GraphMemoryEstimates.shallowObjectBytes(MapEntry.class);
     private static final int UNKNOWN_STRUCT_ENTRY_BYTES =
-        UNKNOWN_STRUCT_OWNER_BYTES + 2 * UNKNOWN_STRUCT_REFERENCE_BYTES;
+        MAP_ENTRY_OWNER_BYTES + 2 * UNKNOWN_STRUCT_REFERENCE_BYTES;
     private static final int UNKNOWN_STRUCT_REF_FIELDS = 3;
 
     private static final int NONEXISTENT_META_SHARED_ID_SIZE =
@@ -258,7 +263,7 @@ public final class UnknownClassSerializers {
       readContext.reserveGraphMemory(
           UNKNOWN_STRUCT_OWNER_BYTES
               + (long) UNKNOWN_STRUCT_REF_FIELDS * UNKNOWN_STRUCT_REFERENCE_BYTES
-              + UNKNOWN_STRUCT_OWNER_BYTES
+              + ARRAY_LIST_OWNER_BYTES
               + (long) numFields * UNKNOWN_STRUCT_REFERENCE_BYTES
               + (long) numFields * UNKNOWN_STRUCT_ENTRY_BYTES);
       List<Entry<? extends Object, ? extends Object>> entries = new ArrayList<>(numFields);

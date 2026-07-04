@@ -27,7 +27,9 @@ import { AnyHelper } from "./any";
 import { ReadContext, WriteContext } from "../context";
 
 const REFERENCE_BYTES = 4;
-const MAP_OWNER_BYTES = 2 * REFERENCE_BYTES;
+// Conservative lower bound for a retained JavaScript Map owner: object header plus table/state
+// references. The budget is approximate and must not probe engine-specific layouts.
+const JS_MAP_OWNER_BYTES = 8 * REFERENCE_BYTES;
 
 const MapFlags = {
   /** Whether track elements ref. */
@@ -275,7 +277,7 @@ class MapAnySerializer {
 
   read(fromRef: boolean): any {
     let count = this.readContext.reader.readVarUint32Small7();
-    this.readContext.reserveGraphMemory(MAP_OWNER_BYTES + count * 2 * REFERENCE_BYTES);
+    this.readContext.reserveGraphMemory(JS_MAP_OWNER_BYTES + count * 2 * REFERENCE_BYTES);
     const result = new Map();
     if (fromRef) {
       this.readContext.reference(result);
@@ -495,7 +497,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
 
     return `
       let ${count} = ${this.builder.reader.readVarUint32Small7()};
-      ${readContextName}.reserveGraphMemory(${MAP_OWNER_BYTES} + ${count} * 2 * ${REFERENCE_BYTES});
+      ${readContextName}.reserveGraphMemory(${JS_MAP_OWNER_BYTES} + ${count} * 2 * ${REFERENCE_BYTES});
       const ${result} = new Map();
       if (${refState}) {
         ${this.builder.referenceResolver.reference(result)}

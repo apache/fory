@@ -392,7 +392,11 @@ public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TVal
 public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<NullableKeyDictionary<TKey, TValue>>
 {
     private const int ReferenceBytes = 4;
-    private static readonly int MapOwnerBytes = IntPtr.Size * 2;
+    private static readonly int DictionaryOwnerBytes =
+        IntPtr.Size + IntPtr.Size + 4 * ReferenceBytes + 4 * sizeof(int);
+    private static readonly int NullableKeyDictionaryOwnerBytes =
+        IntPtr.Size + IntPtr.Size + 4 * ReferenceBytes + sizeof(bool);
+    private static readonly int MapOwnerBytes = NullableKeyDictionaryOwnerBytes + DictionaryOwnerBytes;
     private static readonly long MapElementBytes = (long)ElementBytes<TKey>() + ElementBytes<TValue>();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -39,7 +39,9 @@ import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/uint64.dart';
 
 const int _referenceBytes = 4;
-const int _referenceObjectBytes = 2 * _referenceBytes;
+// Conservative lower bound for a retained Dart List/Set owner; element storage is charged
+// separately by count below, and dense primitive leaf arrays remain byte-gated instead.
+const int _listOwnerBytes = 6 * _referenceBytes;
 
 @pragma('vm:prefer-inline')
 void _writeDirectTypeInfoValue(
@@ -645,15 +647,11 @@ Object _arrayToListValue(ReadContext context, Object? raw) {
   // graph-memory reservation. This conversion materializes a new Dart List, so
   // the list reservation below is the first owner charge, not a duplicate.
   if (raw is BoolList) {
-    context.reserveGraphMemory(
-      _referenceObjectBytes + raw.length * _referenceBytes,
-    );
+    context.reserveGraphMemory(_listOwnerBytes + raw.length * _referenceBytes);
     return raw.toList();
   }
   if (raw is Iterable) {
-    context.reserveGraphMemory(
-      _referenceObjectBytes + raw.length * _referenceBytes,
-    );
+    context.reserveGraphMemory(_listOwnerBytes + raw.length * _referenceBytes);
     return raw.toList();
   }
   throw StateError('Expected compatible array payload.');
@@ -991,7 +989,7 @@ _PreparedListRead _prepareListRead(
   FieldType? elementFieldType,
 ) {
   final size = context.buffer.readVarUint32();
-  context.reserveGraphMemory(_referenceObjectBytes + size * _referenceBytes);
+  context.reserveGraphMemory(_listOwnerBytes + size * _referenceBytes);
   if (size == 0) {
     return _PreparedListRead(
       size: 0,

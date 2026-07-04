@@ -48,6 +48,9 @@ class DebugGeneratedFieldTypeSpec {
 }
 
 final class ForyGenerator extends Generator {
+  static const int _referenceBytes = 4;
+  static const int _structObjectOwnerBytes = 6 * _referenceBytes;
+
   static const TypeChecker _foryStructChecker = TypeChecker.typeNamed(
     ForyStruct,
     inPackage: 'fory',
@@ -1228,7 +1231,7 @@ final class ForyGenerator extends Generator {
   }
 
   int _graphObjectBytes(_GeneratedStructSpec structSpec) =>
-      2 * 4 + structSpec.fields.length * 4;
+      _structObjectOwnerBytes + structSpec.fields.length * _referenceBytes;
 
   bool _isSkipped(FieldElement field) {
     final annotation = _fieldAnnotationOf(field);

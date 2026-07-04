@@ -150,17 +150,17 @@ func TestGraphBudgetCumulative(t *testing.T) {
 	data, err := New(WithCompatible(false)).Serialize([]any{})
 	require.NoError(t, err)
 	var empty []any
-	err = New(WithCompatible(false), WithMaxGraphMemoryBytes(graphShallowOwnerBytes)).Deserialize(data, &empty)
+	err = New(WithCompatible(false), WithMaxGraphMemoryBytes(int64(graphSliceOwnerBytes))).Deserialize(data, &empty)
 	require.NoError(t, err)
 	require.Empty(t, empty)
 
 	data, err = New(WithCompatible(false)).Serialize(NewSet[int32]())
 	require.NoError(t, err)
 	var emptySet Set[int32]
-	err = New(WithCompatible(false), WithMaxGraphMemoryBytes(graphShallowOwnerBytes-1)).Deserialize(data, &emptySet)
+	err = New(WithCompatible(false), WithMaxGraphMemoryBytes(int64(graphSetOwnerBytes)-1)).Deserialize(data, &emptySet)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-	err = New(WithCompatible(false), WithMaxGraphMemoryBytes(graphShallowOwnerBytes)).Deserialize(data, &emptySet)
+	err = New(WithCompatible(false), WithMaxGraphMemoryBytes(int64(graphSetOwnerBytes))).Deserialize(data, &emptySet)
 	require.NoError(t, err)
 	require.Empty(t, emptySet)
 
@@ -168,13 +168,13 @@ func TestGraphBudgetCumulative(t *testing.T) {
 	require.NoError(t, writer.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	data, err = writer.Serialize(&budgetSiblings{A: []string{"a"}, B: []string{"b"}})
 	require.NoError(t, err)
-	reader := New(WithCompatible(false), WithMaxGraphMemoryBytes(graphShallowOwnerBytes+int64(stringElementBytes)))
+	reader := New(WithCompatible(false), WithMaxGraphMemoryBytes(int64(graphSliceOwnerBytes)+int64(stringElementBytes)))
 	require.NoError(t, reader.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	var out budgetSiblings
 	err = reader.Deserialize(data, &out)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-	required := int64(2 * (graphShallowOwnerBytes + stringElementBytes))
+	required := int64(2 * (graphSliceOwnerBytes + stringElementBytes))
 	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required))
 	require.NoError(t, reader.RegisterStructByName(budgetSiblings{}, "test.BudgetSiblings"))
 	require.NoError(t, reader.Deserialize(data, &out))
@@ -189,9 +189,9 @@ func TestGraphBudgetGenericSelfReference(t *testing.T) {
 			{Value: "child", Children: []budgetGenericNode[string]{}},
 		},
 	}
-	required := graphShallowOwnerBytes +
+	required := int64(graphSliceOwnerBytes) +
 		int64(graphSizeOf[budgetGenericNode[string]]()) +
-		graphShallowOwnerBytes
+		int64(graphSliceOwnerBytes)
 
 	writer := New(WithCompatible(false))
 	require.NoError(t, writer.RegisterStructByName(value, "test.BudgetGenericNodeString"))
@@ -215,7 +215,7 @@ func TestGraphMemoryBudgetMapAndOverflow(t *testing.T) {
 	data, err := New().Serialize(map[string]string{"k": "v"})
 	require.NoError(t, err)
 	var out map[string]string
-	oneEntryBudget := graphShallowOwnerBytes + int64(graphSizeOf[string]()) + int64(graphSizeOf[string]())
+	oneEntryBudget := int64(graphMapOwnerBytes) + int64(graphSizeOf[string]()) + int64(graphSizeOf[string]())
 	err = New(WithMaxGraphMemoryBytes(oneEntryBudget-1)).Deserialize(data, &out)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
@@ -229,7 +229,7 @@ func TestGraphBudgetSlices(t *testing.T) {
 	data, err := New().Serialize([]string{"a"})
 	require.NoError(t, err)
 	var stringsOut []string
-	err = New(WithMaxGraphMemoryBytes(graphShallowOwnerBytes+int64(graphSizeOf[string]())-1)).Deserialize(data, &stringsOut)
+	err = New(WithMaxGraphMemoryBytes(int64(graphSliceOwnerBytes)+int64(graphSizeOf[string]())-1)).Deserialize(data, &stringsOut)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
 
@@ -237,13 +237,13 @@ func TestGraphBudgetSlices(t *testing.T) {
 	require.NoError(t, writer.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	data, err = writer.Serialize([]budgetItem{{A: 1}})
 	require.NoError(t, err)
-	reader := New(WithMaxGraphMemoryBytes(graphShallowOwnerBytes + int64(graphSizeOf[budgetItem]()) - 1))
+	reader := New(WithMaxGraphMemoryBytes(int64(graphSliceOwnerBytes) + int64(graphSizeOf[budgetItem]()) - 1))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	var items []budgetItem
 	err = reader.Deserialize(data, &items)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
-	reader = New(WithMaxGraphMemoryBytes(graphShallowOwnerBytes + int64(graphSizeOf[budgetItem]())))
+	reader = New(WithMaxGraphMemoryBytes(int64(graphSliceOwnerBytes) + int64(graphSizeOf[budgetItem]())))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	require.NoError(t, reader.Deserialize(data, &items))
 	require.Equal(t, []budgetItem{{A: 1}}, items)
@@ -256,7 +256,7 @@ func TestGraphBudgetDynamicStructs(t *testing.T) {
 
 	sliceData, err := writer.Serialize([]any{budgetItem{A: 1}})
 	require.NoError(t, err)
-	sliceBudget := graphShallowOwnerBytes + int64(reflect.TypeOf([]any{}).Elem().Size())
+	sliceBudget := int64(graphSliceOwnerBytes) + int64(reflect.TypeOf([]any{}).Elem().Size())
 	reader := New(WithCompatible(false), WithMaxGraphMemoryBytes(sliceBudget))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	var sliceOut []any
@@ -271,7 +271,7 @@ func TestGraphBudgetDynamicStructs(t *testing.T) {
 	mapData, err := writer.Serialize(map[string]any{"k": budgetItem{A: 2}})
 	require.NoError(t, err)
 	mapType := reflect.TypeOf(map[string]any{})
-	mapBudget := graphShallowOwnerBytes + int64(mapType.Key().Size()) + int64(mapType.Elem().Size())
+	mapBudget := int64(graphMapOwnerBytes) + int64(mapType.Key().Size()) + int64(mapType.Elem().Size())
 	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(mapBudget))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	var mapOut map[string]any
@@ -288,7 +288,7 @@ func TestGraphBudgetDynamicStructs(t *testing.T) {
 	setData, err := writer.Serialize(set)
 	require.NoError(t, err)
 	setType := reflect.TypeOf(Set[any]{})
-	setBudget := graphShallowOwnerBytes + int64(setType.Key().Size()) + int64(setType.Elem().Size())
+	setBudget := int64(graphSetOwnerBytes) + int64(setType.Key().Size()) + int64(setType.Elem().Size())
 	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(setBudget))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	var setOut Set[any]
@@ -304,7 +304,7 @@ func TestGraphBudgetDynamicStructs(t *testing.T) {
 	mixedSet.Add(budgetItem{A: 4}, "leaf")
 	mixedSetData, err := writer.Serialize(mixedSet)
 	require.NoError(t, err)
-	mixedSetBudget := graphShallowOwnerBytes + 2*(int64(setType.Key().Size())+int64(setType.Elem().Size()))
+	mixedSetBudget := int64(graphSetOwnerBytes) + 2*(int64(setType.Key().Size())+int64(setType.Elem().Size()))
 	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(mixedSetBudget))
 	require.NoError(t, reader.RegisterStructByName(budgetItem{}, "test.BudgetItem"))
 	var mixedSetOut Set[any]

@@ -20,7 +20,10 @@ package fory
 import "unsafe"
 
 const graphReferenceBytes = 4
-const graphShallowOwnerBytes = 2 * graphReferenceBytes
+const graphSliceOwnerBytes = int(unsafe.Sizeof([]any{}))
+const graphMapOwnerBytes = int(unsafe.Sizeof(map[any]any{})) + int(unsafe.Sizeof(int(0))) + 2*int(unsafe.Sizeof(uintptr(0)))
+const graphSetOwnerBytes = graphMapOwnerBytes
+const graphMaxOwnerBytes = graphMapOwnerBytes
 
 var stringElementBytes = graphSizeOf[string]()
 var stringMaxLength = maxGraphCount(stringElementBytes)
@@ -32,7 +35,7 @@ func graphSizeOf[T any]() int {
 
 func maxGraphCount(elemBytes int) int64 {
 	if elemBytes == 0 {
-		return MaxInt64 - graphShallowOwnerBytes
+		return MaxInt64 - int64(graphMaxOwnerBytes)
 	}
-	return (MaxInt64 - graphShallowOwnerBytes) / int64(elemBytes)
+	return (MaxInt64 - int64(graphMaxOwnerBytes)) / int64(elemBytes)
 }

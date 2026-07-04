@@ -120,15 +120,27 @@ public sealed class CompatibleBudgetArray
 public sealed class GraphMemoryBudgetTests
 {
     private const int ReferenceBytes = 4;
-    private static readonly int ReferenceObjectBytes = IntPtr.Size * 2;
-    private static readonly long BudgetEmptyBytes = ReferenceObjectBytes;
-    private static readonly long BudgetItemBytes = ReferenceObjectBytes + 4 + ReferenceBytes;
-    private static readonly long BudgetSiblingsBytes = ReferenceObjectBytes + ReferenceBytes + ReferenceBytes;
-    private static readonly long BudgetArrayHolderBytes = ReferenceObjectBytes + ReferenceBytes;
-    private static readonly long BudgetSelfNodeBytes = ReferenceObjectBytes + 4 + ReferenceBytes + ReferenceBytes;
-    private static readonly long GeneratedGraphHolderBytes = ReferenceObjectBytes + ReferenceBytes;
+    private static readonly int ObjectHeaderBytes = IntPtr.Size + IntPtr.Size;
+    private static readonly int ObjectOwnerBytes = ObjectHeaderBytes + 4;
+    private static readonly int ArrayOwnerBytes = ObjectHeaderBytes + sizeof(int);
+    private static readonly int ListOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 2 * sizeof(int);
+    private static readonly int HashSetOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + 4 * sizeof(int);
+    private static readonly int SortedSetOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + sizeof(int);
+    private static readonly int ImmutableHashSetOwnerBytes = ObjectHeaderBytes + ReferenceBytes;
+    private static readonly int LinkedListOwnerBytes = ObjectHeaderBytes + 3 * ReferenceBytes + 2 * sizeof(int);
+    private static readonly int QueueOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 3 * sizeof(int);
+    private static readonly int StackOwnerBytes = ObjectHeaderBytes + ReferenceBytes + 2 * sizeof(int);
+    private static readonly int DictionaryOwnerBytes = ObjectHeaderBytes + 4 * ReferenceBytes + 4 * sizeof(int);
+    private static readonly int NullableKeyDictionaryOwnerBytes =
+        ObjectHeaderBytes + 4 * ReferenceBytes + sizeof(bool);
+    private static readonly long BudgetEmptyBytes = ObjectOwnerBytes;
+    private static readonly long BudgetItemBytes = ObjectOwnerBytes + 4 + ReferenceBytes;
+    private static readonly long BudgetSiblingsBytes = ObjectOwnerBytes + ReferenceBytes + ReferenceBytes;
+    private static readonly long BudgetArrayHolderBytes = ObjectOwnerBytes + ReferenceBytes;
+    private static readonly long BudgetSelfNodeBytes = ObjectOwnerBytes + 4 + ReferenceBytes + ReferenceBytes;
+    private static readonly long GeneratedGraphHolderBytes = ObjectOwnerBytes + ReferenceBytes;
     private const long BudgetValueBytes = 4;
-    private static readonly long BudgetValueHolderBytes = ReferenceObjectBytes + BudgetValueBytes;
+    private static readonly long BudgetValueHolderBytes = ObjectOwnerBytes + BudgetValueBytes;
     private const long DefaultGraphMemoryBytes = 128L * 1024 * 1024;
 
     private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
@@ -161,17 +173,28 @@ public sealed class GraphMemoryBudgetTests
 
     private static long ListBudget<T>(int count)
     {
-        return ReferenceObjectBytes + (long)count * ElementBytes<T>();
+        return ListOwnerBytes + (long)count * ElementBytes<T>();
+    }
+
+    private static long CollectionBudget<T>(int ownerBytes, int count)
+    {
+        return ownerBytes + (long)count * ElementBytes<T>();
     }
 
     private static long ArrayBudget<T>(int count)
     {
-        return ReferenceObjectBytes + (long)count * ElementBytes<T>();
+        return ArrayOwnerBytes + (long)count * ElementBytes<T>();
     }
 
     private static long MapBudget<TKey, TValue>(int count)
     {
-        return ReferenceObjectBytes + (long)count * (ElementBytes<TKey>() + ElementBytes<TValue>());
+        return DictionaryOwnerBytes + (long)count * (ElementBytes<TKey>() + ElementBytes<TValue>());
+    }
+
+    private static long NullableKeyMapBudget<TKey, TValue>(int count)
+    {
+        return NullableKeyDictionaryOwnerBytes
+            + MapBudget<TKey, TValue>(count);
     }
 
     [Fact]
@@ -272,7 +295,7 @@ public sealed class GraphMemoryBudgetTests
     {
         Dictionary<object, object?> value = new() { ["a"] = 1, ["b"] = "two" };
         byte[] bytes = NewFory().Serialize<object>(value);
-        long required = MapBudget<object, object?>(value.Count) * 2;
+        long required = NullableKeyMapBudget<object, object?>(value.Count) + MapBudget<object, object?>(value.Count);
 
         Assert.Throws<InvalidDataException>(() => NewFory(required - 1).Deserialize<object>(bytes));
         Dictionary<object, object?> result = Assert.IsType<Dictionary<object, object?>>(
@@ -347,26 +370,24 @@ public sealed class GraphMemoryBudgetTests
     [Fact]
     public void ConversionCollectionsAreChargedOnce()
     {
-        long required = ListBudget<int>(3);
-
-        Check(new HashSet<int> { 1, 2, 3 }, v => v.SetEquals([1, 2, 3]));
-        Check(new SortedSet<int> { 1, 2, 3 }, v => v.SetEquals([1, 2, 3]));
-        Check(ImmutableHashSet.Create(1, 2, 3), v => v.SetEquals([1, 2, 3]));
-        Check(new LinkedList<int>([1, 2, 3]), v => v.SequenceEqual([1, 2, 3]));
+        Check(CollectionBudget<int>(HashSetOwnerBytes, 3), new HashSet<int> { 1, 2, 3 }, v => v.SetEquals([1, 2, 3]));
+        Check(CollectionBudget<int>(SortedSetOwnerBytes, 3), new SortedSet<int> { 1, 2, 3 }, v => v.SetEquals([1, 2, 3]));
+        Check(CollectionBudget<int>(ImmutableHashSetOwnerBytes, 3), ImmutableHashSet.Create(1, 2, 3), v => v.SetEquals([1, 2, 3]));
+        Check(CollectionBudget<int>(LinkedListOwnerBytes, 3), new LinkedList<int>([1, 2, 3]), v => v.SequenceEqual([1, 2, 3]));
 
         Queue<int> queue = new();
         queue.Enqueue(1);
         queue.Enqueue(2);
         queue.Enqueue(3);
-        Check(queue, v => v.SequenceEqual([1, 2, 3]));
+        Check(CollectionBudget<int>(QueueOwnerBytes, 3), queue, v => v.SequenceEqual([1, 2, 3]));
 
         Stack<int> stack = new();
         stack.Push(1);
         stack.Push(2);
         stack.Push(3);
-        Check(stack, v => v.SequenceEqual([3, 2, 1]));
+        Check(CollectionBudget<int>(StackOwnerBytes, 3), stack, v => v.SequenceEqual([3, 2, 1]));
 
-        void Check<T>(T value, Func<T, bool> assertValue)
+        void Check<T>(long required, T value, Func<T, bool> assertValue)
         {
             byte[] bytes = Serialize(value);
             Assert.Throws<InvalidDataException>(() => NewFory(required - 1).Deserialize<T>(bytes));

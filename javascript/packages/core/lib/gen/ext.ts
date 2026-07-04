@@ -26,7 +26,9 @@ import { BaseSerializerGenerator } from "./serializer";
 import { TypeMeta } from "../meta/TypeMeta";
 
 const REFERENCE_BYTES = 4;
-const OBJECT_OWNER_BYTES = 2 * REFERENCE_BYTES;
+// Conservative lower bound for generated JavaScript extension/struct owners. Avoid engine-specific
+// object-layout probing on read hot paths.
+const JS_EXT_OBJECT_OWNER_BYTES = 6 * REFERENCE_BYTES;
 
 class ExtSerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
@@ -46,7 +48,8 @@ class ExtSerializerGenerator extends BaseSerializerGenerator {
 
   private objectGraphBytes(): number {
     return (
-      OBJECT_OWNER_BYTES + Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES
+      JS_EXT_OBJECT_OWNER_BYTES +
+      Object.keys(this.typeInfo.options?.props ?? {}).length * REFERENCE_BYTES
     );
   }
 

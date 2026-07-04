@@ -294,7 +294,7 @@ func (s *sliceDynSerializer) readData(ctx *ReadContext, value reflect.Value, exp
 			ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes))
 			return
 		}
-		if !ctx.ReserveGraphMemory(graphShallowOwnerBytes + int64(length)*int64(s.elemBytes)) {
+		if !ctx.ReserveGraphMemory(int64(graphSliceOwnerBytes) + int64(length)*int64(s.elemBytes)) {
 			return
 		}
 	}
