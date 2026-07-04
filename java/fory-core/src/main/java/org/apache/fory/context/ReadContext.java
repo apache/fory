@@ -396,10 +396,8 @@ public final class ReadContext {
   }
 
   /** Binds the most recently preserved read ref id to {@code object}. */
-  public final void reference(Object object) {
-    if (trackingRef) {
-      refReader.reference(object);
-    }
+  public void reference(Object object) {
+    refReader.reference(object);
   }
 
   /** Returns a previously read object by ref id. */
@@ -648,15 +646,6 @@ public final class ReadContext {
 
   /** Variant of {@link #readNonRef()} that uses already resolved {@link TypeInfo}. */
   public Object readNonRef(TypeInfo typeInfo) {
-    int typeId = typeInfo.getTypeId();
-    // User-defined xlang type IDs are contiguous; skip the primitive/string switch on this hot
-    // path.
-    if (typeId >= Types.ENUM && typeId <= Types.NAMED_UNION) {
-      increaseDepth();
-      Object read = typeInfo.getSerializer().read(this);
-      decreaseDepth();
-      return read;
-    }
     return readDataInternal(typeInfo);
   }
 
