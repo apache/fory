@@ -1168,8 +1168,7 @@ public class CollectionSerializers {
 
     @Override
     public List newCollection(ReadContext readContext) {
-      MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext, buffer);
+      int numElements = readCollectionSize(readContext, readContext.getBuffer());
       setNumElements(numElements);
       ArrayList list = new ArrayList(numElements);
       readContext.reference(list);
@@ -1184,8 +1183,7 @@ public class CollectionSerializers {
 
     @Override
     public Set newCollection(ReadContext readContext) {
-      MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(readContext, buffer);
+      int numElements = readCollectionSize(readContext, readContext.getBuffer());
       setNumElements(numElements);
       HashSet set = new HashSet(numElements);
       readContext.reference(set);

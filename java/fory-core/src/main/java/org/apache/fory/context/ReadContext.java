@@ -328,11 +328,10 @@ public final class ReadContext {
 
   public final void reserveGraphMemory(int bytes) {
     long remaining = remainingGraphMemoryBytes;
-    long nextRemaining = remaining - bytes;
-    if ((bytes | nextRemaining) < 0) {
+    if (bytes < 0 || remaining < bytes) {
       throwInvalidGraphMemory(bytes, remaining);
     }
-    remainingGraphMemoryBytes = nextRemaining;
+    remainingGraphMemoryBytes = remaining - bytes;
   }
 
   private void throwInvalidGraphMemory(long bytes, long remaining) {

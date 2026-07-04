@@ -247,9 +247,6 @@ final class StaticSerializerSourceWriter {
         .append("  private ")
         .append(struct.typeName)
         .append(" readSchemaConsistent(ReadContext readContext) {\n");
-    // Reserve before the generated buffer local is live; the object owner is still charged before
-    // allocation, but small static generated readers keep a leaner hot shape.
-    appendGraphMemoryReserve();
     builder.append("    MemoryBuffer buffer = readContext.getBuffer();\n");
     builder.append("    if (typeResolver.checkClassVersion()) {\n");
     builder.append("      checkClassVersion(buffer.readInt32(), classVersionHash);\n");
@@ -266,9 +263,11 @@ final class StaticSerializerSourceWriter {
             .append(";\n");
       }
       appendSchemaConsistentRecordLoop();
+      appendGraphMemoryReserve();
       appendRecordConstruction("record", "field", 4);
       builder.append("    return record;\n");
     } else {
+      appendGraphMemoryReserve();
       builder
           .append("    ")
           .append(struct.typeName)
