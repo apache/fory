@@ -59,8 +59,20 @@ public abstract class Serializer<T>
     public virtual T ReadDataWithRef(ReadContext context, uint refId)
     {
         T value = ReadData(context);
-        context.RefReader.StoreRefAt(refId, value);
+        PublishRef(context, refId, value);
         return value;
+    }
+
+    /// <summary>
+    /// Publishes a retained owner after the serializer has materialized it.
+    /// </summary>
+    /// <remarks>
+    /// Generated serializers may need to publish immediately after allocation so cyclic fields can
+    /// resolve, but ref-table state stays inside <see cref="ReadContext"/>.
+    /// </remarks>
+    protected static void PublishRef(ReadContext context, uint refId, object? value)
+    {
+        context.RefReader.StoreRefAt(refId, value);
     }
 
     /// <summary>

@@ -724,7 +724,7 @@ public sealed class ForyModelGenerator : IIncrementalGenerator
         string indent = new(' ', indentLevel * 4);
         sb.AppendLine($"{indent}if (publishRef)");
         sb.AppendLine($"{indent}{{");
-        sb.AppendLine($"{indent}    context.RefReader.StoreRefAt(refId, {valueName});");
+        sb.AppendLine($"{indent}    PublishRef(context, refId, {valueName});");
         sb.AppendLine($"{indent}}}");
     }
 

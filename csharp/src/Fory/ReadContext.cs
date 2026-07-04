@@ -70,10 +70,7 @@ public sealed class ReadContext
 
     public bool CheckStructVersion { get; }
 
-    /// <summary>
-    /// Gets low-level reference table operations for serializers that own ref publication timing.
-    /// </summary>
-    public RefReader RefReader { get; }
+    internal RefReader RefReader { get; }
 
     /// <summary>
     /// Reserves estimated graph memory for the current root deserialization.
