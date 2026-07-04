@@ -1352,7 +1352,7 @@ class TypeSerializer(Serializer):
         ref_id = read_context.last_preserved_ref_id()
 
         num_bases = read_context.read_var_uint32()
-        _check_non_negative_size(num_bases, "local class base")
+        assert 0 <= num_bases <= 255, f"Invalid number of bases for local class: {num_bases}"
         read_context.reserve_graph_memory(_REFERENCE_OBJECT_BYTES + num_bases * _REFERENCE_BYTES)
         # The bases tuple is built from per-item reads, so no readable-byte guard is needed here;
         # graph reservation covers the bases tuple retained by the created class.
