@@ -21,6 +21,7 @@ package org.apache.fory.serializer;
 
 import static org.apache.fory.io.ForyStreamReader.of;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
@@ -186,6 +187,25 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   }
 
   @Test
+  public void testGenericSelfRefBudget() {
+    GenericNode<String> value = new GenericNode<>("root");
+    value.next = value;
+    value.children.add(value);
+    long required = genericNodeBytes() + collectionBytes(1);
+
+    Fory writer = genericNodeFory(DEFAULT_GRAPH_MEMORY_BYTES, true);
+    byte[] bytes = writer.serialize(value);
+
+    assertThrows(
+        InsecureException.class, () -> genericNodeFory(required - 1, false).deserialize(bytes));
+    assertGenericNode(genericNodeFory(required, false).deserialize(bytes));
+
+    assertThrows(
+        InsecureException.class, () -> genericNodeFory(required - 1, true).deserialize(bytes));
+    assertGenericNode(genericNodeFory(required, true).deserialize(bytes));
+  }
+
+  @Test
   public void testScalarOwnersSkipBudget() {
     Fory fory = newFory(1);
     assertEquals(fory.deserialize(fory.serialize("graph budget")), "graph budget");
@@ -227,6 +247,14 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
     return builder().withMaxGraphMemoryBytes(maxGraphMemoryBytes).withCodegen(codegen).build();
   }
 
+  private static Fory genericNodeFory(long maxGraphMemoryBytes, boolean codegen) {
+    return builder()
+        .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
+        .withCodegen(codegen)
+        .withRefTracking(true)
+        .build();
+  }
+
   private static ReadContext prepareContext(Fory fory) {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(0);
     ReadContext readContext = fory.getReadContext();
@@ -252,6 +280,19 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
 
   private static long pojoBytes() {
     return OBJECT_OWNER_BYTES + 4 + 8 + REFERENCE_BYTES;
+  }
+
+  private static long genericNodeBytes() {
+    return OBJECT_OWNER_BYTES + 3L * REFERENCE_BYTES;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static void assertGenericNode(Object decodedObject) {
+    GenericNode<String> decoded = (GenericNode<String>) decodedObject;
+    assertEquals(decoded.value, "root");
+    assertSame(decoded.next, decoded);
+    assertEquals(decoded.children.size(), 1);
+    assertSame(decoded.children.get(0), decoded);
   }
 
   private static List<Object> emptyLists(int numElements) {
@@ -285,6 +326,18 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
   }
 
   public static final class EmptyPojo {}
+
+  public static final class GenericNode<T> {
+    public T value;
+    public GenericNode<T> next;
+    public List<GenericNode<T>> children = new ArrayList<>();
+
+    public GenericNode() {}
+
+    GenericNode(T value) {
+      this.value = value;
+    }
+  }
 
   public static final class Pojo {
     public int intValue;

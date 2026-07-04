@@ -87,6 +87,15 @@ struct DenseWireInts {
     values: Vec<i32>,
 }
 
+#[derive(ForyStruct, Debug, PartialEq)]
+struct GenericBudgetNode<T>
+where
+    T: fory_core::Serializer + fory_core::ForyDefault + Send + Sync + 'static,
+{
+    value: T,
+    children: Vec<GenericBudgetNode<T>>,
+}
+
 fn fory_with_budget(max_graph_memory_bytes: i64) -> Fory {
     let mut fory = Fory::builder()
         .xlang(false)
@@ -99,6 +108,8 @@ fn fory_with_budget(max_graph_memory_bytes: i64) -> Fory {
     fory.register_by_name::<BudgetItemHolder>("BudgetItemHolder")
         .unwrap();
     fory.register_by_name::<BudgetEmpty>("BudgetEmpty").unwrap();
+    fory.register_by_name::<GenericBudgetNode<String>>("GenericBudgetNodeString")
+        .unwrap();
     fory
 }
 
@@ -279,6 +290,31 @@ fn inline_value_field_owner_budget() {
     assert_eq!(
         fory_with_budget(required as i64)
             .deserialize::<BudgetItemHolder>(&bytes)
+            .unwrap(),
+        value
+    );
+}
+
+#[test]
+fn generic_self_reference_budget() {
+    let value = GenericBudgetNode {
+        value: "root".to_string(),
+        children: vec![GenericBudgetNode {
+            value: "child".to_string(),
+            children: Vec::new(),
+        }],
+    };
+    let writer = fory_with_budget(DEFAULT_GRAPH_MEMORY_BYTES);
+    let bytes = writer.serialize(&value).unwrap();
+    let node_bytes = mem::size_of::<GenericBudgetNode<String>>();
+    let required = node_bytes * 2;
+
+    assert!(fory_with_budget((required - 1) as i64)
+        .deserialize::<GenericBudgetNode<String>>(&bytes)
+        .is_err());
+    assert_eq!(
+        fory_with_budget(required as i64)
+            .deserialize::<GenericBudgetNode<String>>(&bytes)
             .unwrap(),
         value
     );

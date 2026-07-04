@@ -35,6 +35,11 @@ type budgetSiblings struct {
 	B []string
 }
 
+type budgetGenericNode[T any] struct {
+	Value    T
+	Children []budgetGenericNode[T]
+}
+
 func requireBudgetItemValue(t *testing.T, value any, expected int32) {
 	t.Helper()
 	switch item := value.(type) {
@@ -179,6 +184,37 @@ func TestGraphBudgetCumulative(t *testing.T) {
 	require.NoError(t, reader.Deserialize(data, &out))
 	require.Equal(t, []string{"a"}, out.A)
 	require.Equal(t, []string{"b"}, out.B)
+}
+
+func TestGraphBudgetGenericSelfReference(t *testing.T) {
+	value := budgetGenericNode[string]{
+		Value: "root",
+		Children: []budgetGenericNode[string]{
+			{Value: "child", Children: []budgetGenericNode[string]{}},
+		},
+	}
+	type_ := reflect.TypeOf(value)
+	required := structGraphBytes(type_) +
+		graphShallowOwnerBytes +
+		graphSizeOf[budgetGenericNode[string]]() +
+		graphShallowOwnerBytes
+
+	writer := New(WithCompatible(false))
+	require.NoError(t, writer.RegisterStructByName(value, "test.BudgetGenericNodeString"))
+	data, err := writer.Serialize(&value)
+	require.NoError(t, err)
+
+	reader := New(WithCompatible(false), WithMaxGraphMemoryBytes(required-1))
+	require.NoError(t, reader.RegisterStructByName(value, "test.BudgetGenericNodeString"))
+	var out budgetGenericNode[string]
+	err = reader.Deserialize(data, &out)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "maxGraphMemoryBytes")
+
+	reader = New(WithCompatible(false), WithMaxGraphMemoryBytes(required))
+	require.NoError(t, reader.RegisterStructByName(value, "test.BudgetGenericNodeString"))
+	require.NoError(t, reader.Deserialize(data, &out))
+	require.Equal(t, value, out)
 }
 
 func TestGraphMemoryBudgetMapAndOverflow(t *testing.T) {

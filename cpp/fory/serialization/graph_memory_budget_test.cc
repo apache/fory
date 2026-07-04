@@ -79,6 +79,17 @@ struct BudgetFixedArrayOwner {
   FORY_STRUCT(BudgetFixedArrayOwner, prefix, items);
 };
 
+template <typename T> struct GenericBudgetNode {
+  T value;
+  std::vector<GenericBudgetNode<T>> children;
+
+  bool operator==(const GenericBudgetNode &other) const {
+    return value == other.value && children == other.children;
+  }
+
+  FORY_STRUCT(GenericBudgetNode, value, children);
+};
+
 template <typename Fn> auto with_fory(int64_t max_graph_memory_bytes, Fn &&fn) {
   auto fory = Fory::builder()
                   .xlang(true)
@@ -90,6 +101,7 @@ template <typename Fn> auto with_fory(int64_t max_graph_memory_bytes, Fn &&fn) {
   fory.register_struct<BudgetSiblings>(2);
   fory.register_struct<BudgetFixedArrayOwner>(3);
   fory.register_struct<BudgetEmpty>(4);
+  fory.register_struct<GenericBudgetNode<std::string>>(5);
   return std::forward<Fn>(fn)(fory);
 }
 
@@ -444,6 +456,17 @@ TEST(GraphMemoryBudgetTest, FixedInlineOwnerChargesNestedVector) {
   value.items.resize(3);
   const size_t required =
       sizeof(BudgetFixedArrayOwner) + value.items.size() * sizeof(BudgetItem);
+
+  expect_budget_boundary(value, required);
+}
+
+TEST(GraphMemoryBudgetTest, GenericSelfReferenceBudget) {
+  GenericBudgetNode<std::string> value;
+  value.value = "root";
+  value.children.push_back(GenericBudgetNode<std::string>{"child", {}});
+  const size_t required =
+      sizeof(GenericBudgetNode<std::string>) +
+      value.children.size() * sizeof(GenericBudgetNode<std::string>);
 
   expect_budget_boundary(value, required);
 }
