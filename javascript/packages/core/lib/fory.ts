@@ -92,7 +92,7 @@ export default class Fory {
     const maxGraphMemoryBytes = config?.maxGraphMemoryBytes ?? DEFAULT_MAX_GRAPH_MEMORY_BYTES;
     if (!Number.isSafeInteger(maxGraphMemoryBytes) || maxGraphMemoryBytes <= 0) {
       throw new Error(
-        `maxGraphMemoryBytes must be a positive safe integer but got ${maxGraphMemoryBytes}`,
+        `maxGraphMemoryBytes must be in range [1, ${Number.MAX_SAFE_INTEGER}] but got ${maxGraphMemoryBytes}`,
       );
     }
     return {

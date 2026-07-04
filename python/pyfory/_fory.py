@@ -219,7 +219,7 @@ class Fory:
         if not isinstance(max_average_schema_versions_per_type, int) or max_average_schema_versions_per_type <= 0:
             raise ValueError("max_average_schema_versions_per_type must be a positive integer")
         if not isinstance(max_graph_memory_bytes, int) or max_graph_memory_bytes <= 0 or max_graph_memory_bytes > (1 << 63) - 1:
-            raise ValueError("max_graph_memory_bytes must be a positive 63-bit integer")
+            raise ValueError("max_graph_memory_bytes must be in range [1, 9223372036854775807]")
         self.max_graph_memory_bytes = max_graph_memory_bytes
         self.config = Config(
             xlang=xlang,

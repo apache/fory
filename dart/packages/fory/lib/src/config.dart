@@ -103,7 +103,11 @@ final class Config {
   static int _positiveSafeInteger(int value, String name) {
     const maxSafeInteger = 9007199254740991;
     if (value <= 0 || value > maxSafeInteger) {
-      throw ArgumentError.value(value, name, 'must be a positive safe integer');
+      throw ArgumentError.value(
+        value,
+        name,
+        'must be in range [1, $maxSafeInteger]',
+      );
     }
     return value;
   }

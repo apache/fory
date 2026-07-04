@@ -47,7 +47,7 @@ public struct Config {
             "maxAverageSchemaVersionsPerType must be positive")
         precondition(
             maxGraphMemoryBytes > 0 && maxGraphMemoryBytes <= Int64(Int.max),
-            "maxGraphMemoryBytes must be a positive byte limit")
+            "maxGraphMemoryBytes must be in range [1, \(Int64(Int.max))]")
         let effectiveCompatible = compatible ?? true
         let effectiveCheckClassVersion = checkClassVersion ?? !effectiveCompatible
         self.trackRef = trackRef

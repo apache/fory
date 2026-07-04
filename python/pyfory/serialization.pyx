@@ -196,7 +196,7 @@ cdef class Config:
             or max_graph_memory_bytes <= 0
             or max_graph_memory_bytes > 9223372036854775807
         ):
-            raise ValueError("max_graph_memory_bytes must be a positive 63-bit integer")
+            raise ValueError("max_graph_memory_bytes must be in range [1, 9223372036854775807]")
         self.max_type_fields = max_type_fields
         self.max_type_meta_bytes = max_type_meta_bytes
         self.max_schema_versions_per_type = max_schema_versions_per_type
@@ -904,7 +904,7 @@ cdef class Fory:
             or max_graph_memory_bytes <= 0
             or max_graph_memory_bytes > 9223372036854775807
         ):
-            raise ValueError("max_graph_memory_bytes must be a positive 63-bit integer")
+            raise ValueError("max_graph_memory_bytes must be in range [1, 9223372036854775807]")
         self.max_graph_memory_bytes = max_graph_memory_bytes
         self.config = Config(
             xlang=xlang,
