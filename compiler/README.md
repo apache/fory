@@ -35,7 +35,7 @@ pip install -e .
 
 Create a `.fdl` file:
 
-```fdl
+```protobuf
 package demo;
 
 enum Color [id=101] {
@@ -114,7 +114,7 @@ data = fory.serialize(cat)
 
 ### Package Declaration
 
-```fdl
+```protobuf
 package com.example.models;
 ```
 
@@ -122,7 +122,7 @@ package com.example.models;
 
 Import types from other FDL files:
 
-```fdl
+```protobuf
 import "common/types.fdl";
 import "models/address.fdl";
 ```
@@ -131,7 +131,7 @@ Imports are resolved relative to the importing file. All types from imported fil
 
 **Example:**
 
-```fdl
+```protobuf
 // common.fdl
 package common;
 
@@ -141,7 +141,7 @@ message Address [id=100] {
 }
 ```
 
-```fdl
+```protobuf
 // user.fdl
 package user;
 import "common.fdl";
@@ -154,7 +154,7 @@ message User [id=101] {
 
 ### Enum Definition
 
-```fdl
+```protobuf
 enum Status [id=100] {
     PENDING = 0;
     ACTIVE = 1;
@@ -164,7 +164,7 @@ enum Status [id=100] {
 
 ### Message Definition
 
-```fdl
+```protobuf
 message User [id=101] {
     string name = 1;
     int32 age = 2;
@@ -176,14 +176,14 @@ message User [id=101] {
 
 Types can have options specified in brackets after the name:
 
-```fdl
+```protobuf
 message User [id=101] { ... }              // Registered with type ID 101
 message User [id=101, deprecated=true] { ... }  // Multiple options
 ```
 
 Types without `[id=...]` use name-based registration:
 
-```fdl
+```protobuf
 message Config { ... }  // Registered as "package.Config"
 ```
 
@@ -207,7 +207,7 @@ message Config { ... }  // Registered as "package.Config"
 
 ### Collection Types
 
-```fdl
+```protobuf
 list<string> tags = 1;               // List<String>
 array<int32> dense_numbers = 2;      // Packed dense int32 array
 map<string, fixed int32> scores = 3; // Map<String, fixed-width Integer>
@@ -220,7 +220,7 @@ map<string, fixed int32> scores = 3; // Map<String, fixed-width Integer>
 - **`list<T>`**: Ordered collection schema (alias: `repeated T`)
 - **`array<T>`**: Dense numeric/vector schema
 
-```fdl
+```protobuf
 message Example {
     optional string nullable_field = 1;
     ref OtherMessage shared_ref = 2;
@@ -234,7 +234,7 @@ message Example {
 
 Define gRPC services alongside message types in the same FDL file:
 
-```fdl
+```protobuf
 package demo.greeter;
 
 message HelloRequest {
@@ -268,7 +268,7 @@ FDL uses plain option keys without a `(fory)` prefix:
 
 **File-level options:**
 
-```fdl
+```protobuf
 option use_record_for_java_message = true;
 option polymorphism = true;
 option enable_auto_type_id = true;
@@ -279,7 +279,7 @@ for types that omit explicit IDs.
 
 **Message/Enum options:**
 
-```fdl
+```protobuf
 message MyMessage [id=100] {
     option evolving = false;
     option use_record_for_java = true;
@@ -294,7 +294,7 @@ enum Status [id=101] {
 
 **Field options:**
 
-```fdl
+```protobuf
 message Example {
     ref MyType friend = 1;
     string nickname = 2 [nullable=true];
@@ -521,7 +521,7 @@ foryc examples/service.fdl --python_out=./gen/python --grpc --grpc-python-mode s
 For each language the compiler emits one gRPC companion file per schema file.
 The following examples use the schema from `examples/service.fdl`:
 
-```fdl
+```protobuf
 package demo.greeter;
 
 message HelloRequest { string name = 1; }
