@@ -10,6 +10,7 @@ The FDL compiler generates cross-language serialization code from schema definit
 - **Type ID and namespace support**: Both numeric IDs and name-based type registration
 - **Field modifiers**: Optional fields, reference tracking, list fields, scalar encoding modifiers
 - **File imports**: Modular schemas with import support
+- **gRPC service generation**: Native gRPC stubs and service bases for Java, Python, Go, Rust, C#, JavaScript, Dart, Kotlin, and Scala
 
 ## Documentation
 
@@ -71,6 +72,9 @@ foryc schema.fdl --java_out=./src/main/java --python_out=./python/src --csharp_o
 
 # Combine with other options
 foryc schema.fdl --java_out=./gen --go_out=./gen/go --csharp_out=./gen/csharp --javascript_out=./gen/js --scala_out=./gen/scala -I ./proto
+
+# Also generate gRPC service stubs
+foryc schema.fdl --lang java,python,go --grpc --output ./generated
 ```
 
 ### 3. Use Generated Code
@@ -226,6 +230,38 @@ message Example {
 }
 ```
 
+### Service Definition
+
+Define gRPC services alongside message types in the same FDL file:
+
+```fdl
+package demo.greeter;
+
+message HelloRequest {
+    string name = 1;
+}
+
+message HelloReply {
+    string reply = 1;
+}
+
+service Greeter {
+    rpc SayHello (HelloRequest) returns (HelloReply);
+    rpc StreamReplies (HelloRequest) returns (stream HelloReply);
+    rpc CollectRequests (stream HelloRequest) returns (HelloReply);
+    rpc Chat (stream HelloRequest) returns (stream HelloReply);
+}
+```
+
+Each `rpc` declaration supports four streaming modes:
+
+| Mode             | Syntax                                         |
+| ---------------- | ---------------------------------------------- |
+| Unary            | `rpc Method (Req) returns (Res)`               |
+| Server streaming | `rpc Method (Req) returns (stream Res)`        |
+| Client streaming | `rpc Method (stream Req) returns (Res)`        |
+| Bidirectional    | `rpc Method (stream Req) returns (stream Res)` |
+
 ### Fory Options
 
 FDL uses plain option keys without a `(fory)` prefix:
@@ -281,18 +317,29 @@ fory_compiler/
 │       └── parser.py     # Recursive descent parser
 ├── ir/
 │   ├── __init__.py
-│   ├── ast.py            # Canonical Fory IDL AST
+│   ├── ast.py            # Canonical Fory IDL AST (Schema, Message, Enum, Service, RpcMethod)
 │   ├── validator.py      # Schema validation
 │   └── emitter.py        # Optional FDL emitter
 └── generators/
-    ├── base.py           # Base generator class
+    ├── base.py           # Base generator class and GeneratorOptions
     ├── java.py           # Java POJO generator
     ├── python.py         # Python dataclass generator
     ├── go.py             # Go struct generator
     ├── rust.py           # Rust struct generator
     ├── cpp.py            # C++ struct generator
     ├── csharp.py         # C# class generator
-    └── javascript.py     # JavaScript interface generator
+    ├── javascript.py     # JavaScript interface generator
+    └── services/
+        ├── base.py       # StreamingMode enum and shared helpers
+        ├── java.py       # Java gRPC stub generator (grpc-java style)
+        ├── python.py     # Python gRPC companion module (grpcio style)
+        ├── go.py         # Go gRPC stub generator (google.golang.org/grpc)
+        ├── rust.py       # Rust gRPC service module (tonic style)
+        ├── csharp.py     # C# gRPC service companion (Grpc.Core style)
+        ├── javascript.py # JavaScript Node.js and gRPC-Web client generators
+        ├── dart.py       # Dart gRPC service companion
+        ├── kotlin.py     # Kotlin coroutine gRPC service companion
+        └── scala.py      # Scala gRPC service companion
 ```
 
 ### FDL Frontend
@@ -307,9 +354,13 @@ The FDL frontend is a hand-written lexer/parser that produces the Fory IDL AST:
 
 Each generator extends `BaseGenerator` and implements:
 
-- `generate()`: Returns list of `GeneratedFile` objects
+- `generate()`: Returns list of `GeneratedFile` objects for type definitions
 - `generate_type()`: Converts FDL types to target language types
+- `generate_services()`: Returns gRPC service companion files when `--grpc` is set
 - Language-specific registration helpers or modules
+
+Service generators live in `generators/services/` as mixins and are combined with the
+corresponding type generator via multiple inheritance in each language generator class.
 
 ## Generated Output
 
@@ -448,20 +499,262 @@ export interface Cat {
 }
 ```
 
+## gRPC Service Generation
+
+Pass `--grpc` to generate gRPC service stubs alongside type definitions for all selected
+languages that support service generation (Java, Python, Go, Rust, C#, JavaScript, Dart,
+Kotlin, and Scala). Stubs use Fory serialization as the on-wire codec.
+
+```bash
+# Generate type definitions and gRPC stubs
+foryc examples/service.fdl --lang java,python,go --grpc --output ./generated
+
+# JavaScript gRPC-Web client (requires --grpc-web, implies JavaScript output)
+foryc examples/service.fdl --javascript_out=./gen/js --grpc-web
+
+# Python async mode (default) or sync mode
+foryc examples/service.fdl --python_out=./gen/python --grpc --grpc-python-mode sync
+```
+
+### Generated gRPC Output
+
+For each language the compiler emits one gRPC companion file per schema file.
+The following examples use the schema from `examples/service.fdl`:
+
+```fdl
+package demo.greeter;
+
+message HelloRequest { string name = 1; }
+message HelloReply   { string reply = 1; }
+
+service Greeter {
+    rpc SayHello (HelloRequest) returns (HelloReply);
+}
+```
+
+#### Java
+
+Generates `<ServiceName>Grpc.java` with a grpc-java-style companion class:
+
+- Method descriptors with double-checked-locking initialization
+- `<ServiceName>ImplBase` abstract server base
+- `<ServiceName>Stub` (async), `<ServiceName>BlockingStub`, and `<ServiceName>FutureStub` client stubs
+- Factory methods `newStub`, `newBlockingStub`, and `newFutureStub`
+- Fory-backed marshaller shared by all methods in the class
+
+```java
+// GreeterGrpc.java (demo/greeter/GreeterGrpc.java)
+public final class GreeterGrpc {
+    public static final String SERVICE_NAME = "demo.greeter.Greeter";
+
+    public abstract static class GreeterImplBase implements io.grpc.BindableService {
+        public void sayHello(HelloRequest request,
+                io.grpc.stub.StreamObserver<HelloReply> responseObserver) {
+            io.grpc.stub.ServerCalls.asyncUnimplementedUnaryCall(
+                getSayHelloMethod(), responseObserver);
+        }
+        @Override
+        public final io.grpc.ServerServiceDefinition bindService() {
+            return GreeterGrpc.bindService(this);
+        }
+    }
+
+    public static final class GreeterStub
+            extends io.grpc.stub.AbstractAsyncStub<GreeterStub> { ... }
+    public static final class GreeterBlockingStub
+            extends io.grpc.stub.AbstractBlockingStub<GreeterBlockingStub> { ... }
+    public static final class GreeterFutureStub
+            extends io.grpc.stub.AbstractFutureStub<GreeterFutureStub> { ... }
+}
+```
+
+#### Python
+
+Generates `<module>_grpc.py` with a grpcio-style companion module. The default API
+mode is async (`grpc.aio`); pass `--grpc-python-mode sync` for the classic sync API:
+
+- `<ServiceName>Stub` client class wired to the Fory serializer/deserializer pair
+- `<ServiceName>Servicer` server base with `UNIMPLEMENTED` stubs
+- Per-service registration helper and a top-level `add_servicer(servicer, server)` dispatcher
+
+```python
+# demo_greeter_grpc.py
+class GreeterStub(object):
+    """Client stub for Greeter."""
+    def __init__(self, channel):
+        self.say_hello = channel.unary_unary(
+            "/demo.greeter.Greeter/SayHello",
+            request_serializer=_serialize,
+            response_deserializer=_deserialize,
+        )
+
+class GreeterServicer(object):
+    """AsyncIO base servicer for Greeter."""
+    async def say_hello(self, request, context):
+        await context.abort(grpc.StatusCode.UNIMPLEMENTED, "Method not implemented!")
+
+def add_servicer(servicer, server): ...
+```
+
+#### Go
+
+Generates `<file>_grpc.go` with a google.golang.org/grpc-compatible stub file:
+
+- `CodecV2` implementing `grpc/encoding.CodecV2` using the Fory thread-safe runtime
+- `<ServiceName>Client` interface and `New<ServiceName>Client` constructor
+- `<ServiceName>Server` interface and `Unimplemented<ServiceName>Server` struct
+- Per-streaming-mode send/receive stream types
+- `Register<ServiceName>Server` and a `ServiceDesc` variable
+
+```go
+// greeter_grpc.go
+type GreeterClient interface {
+    SayHello(ctx context.Context, in *HelloRequest,
+        opts ...grpc.CallOption) (*HelloReply, error)
+}
+
+func NewGreeterClient(cc grpc.ClientConnInterface) GreeterClient { ... }
+
+type GreeterServer interface {
+    SayHello(context.Context, *HelloRequest) (*HelloReply, error)
+    mustEmbedUnimplementedGreeterServer()
+}
+
+func RegisterGreeterServer(s grpc.ServiceRegistrar, srv GreeterServer) { ... }
+```
+
+#### Rust
+
+Generates two files: `<module>_api.rs` (service trait definitions) and
+`<module>_grpc.rs` (tonic-compatible client/server modules):
+
+- A service trait per service name
+- `<service_name>_client` and `<service_name>_server` submodules compatible with tonic
+- Fory codec registered via the `<SERVICE>_SERVICE_NAME` constant
+
+```rust
+// greeter_grpc.rs
+pub mod greeter_client {
+    pub struct GreeterClient<T> { inner: tonic::client::Grpc<T> }
+    impl<T> GreeterClient<T> {
+        pub async fn say_hello(&mut self, request: impl tonic::IntoRequest<HelloRequest>)
+            -> std::result::Result<tonic::Response<HelloReply>, tonic::Status> { ... }
+    }
+}
+
+pub mod greeter_server {
+    pub trait Greeter: std::marker::Send + std::marker::Sync + 'static {
+        async fn say_hello(&self, request: tonic::Request<HelloRequest>)
+            -> std::result::Result<tonic::Response<HelloReply>, tonic::Status>;
+    }
+}
+```
+
+#### C\#
+
+Generates `<ServiceName>Grpc.cs` with a Grpc.Core-style partial class:
+
+- Static Fory marshallers for each distinct request/response type pair
+- `Method<TReq, TRes>` descriptors for each RPC
+- `<ServiceName>Base` abstract server base class
+- `<ServiceName>Client` client class
+- `BindService` helper for server-side registration
+
+```csharp
+// GreeterGrpc.cs
+public static partial class Greeter
+{
+    static readonly string __ServiceName = "demo.greeter.Greeter";
+
+    public abstract class GreeterBase
+    {
+        public virtual Task<HelloReply> SayHello(
+            HelloRequest request, grpc::ServerCallContext context)
+            => throw new grpc::RpcException(new grpc::Status(
+                grpc::StatusCode.Unimplemented, ""));
+    }
+
+    public class GreeterClient : grpc::ClientBase<GreeterClient>
+    {
+        public virtual HelloReply SayHello(
+            HelloRequest request, grpc::CallOptions options = default) { ... }
+    }
+}
+```
+
+#### JavaScript
+
+Generates `<module>_grpc.js` (Node.js, `--grpc`) and/or `<module>_grpc_web.js`
+(browser, `--grpc-web`) TypeScript/JavaScript companion modules:
+
+- `<ServiceName>Client` class extending `grpc.Client` (Node) or a gRPC-Web base (browser)
+- Per-method call wrappers using the Fory serializer/deserializer pair
+- A `<ServiceName>Service` descriptor object for server-side registration (Node)
+
+```typescript
+// greeter_grpc.js (Node)
+export class GreeterClient extends grpc.Client {
+  sayHello(argument, metadata, options, callback) { ... }
+}
+export const GreeterService = {
+  sayHello: { path: "/demo.greeter.Greeter/SayHello", ... },
+};
+```
+
+#### Dart
+
+Generates `<file>_grpc.dart` with a dart-grpc-compatible companion:
+
+- `<ServiceName>Client` class extending `grpc.Client`
+- `<ServiceName>ServiceBase` abstract server base class
+- Fory codec passed as the `serialize`/`deserialize` pair on each `ClientMethod`
+
+#### Kotlin
+
+Generates `<ServiceName>GrpcKt.kt` with grpc-kotlin coroutine companions:
+
+- `<ServiceName>CoroutineImplBase` abstract server base using suspend functions
+- `<ServiceName>CoroutineStub` coroutine client stub
+- Fory serialization used as the gRPC marshaller
+
+#### Scala
+
+Generates `<ServiceName>GrpcScala.scala` with ZIO/Monix-friendly stubs:
+
+- `<ServiceName>Grpc` object with a `bindService` method for server registration
+- `<ServiceName>Stub` client class
+- Fory codec registered as the channel marshaller
+
 ## CLI Reference
 
 ```
 foryc [OPTIONS] FILES...
 
 Arguments:
-  FILES                 FDL files to compile
+  FILES                     FDL files to compile
 
 Options:
-  --lang TEXT          Target languages (java,python,cpp,rust,go,csharp,javascript,swift,dart,scala or "all")
-                       Default: all
-  --output, -o PATH    Output directory
-                       Default: ./generated
-  --help               Show help message
+  --lang TEXT               Target languages (java,python,cpp,rust,go,csharp,
+                            javascript,swift,dart,scala,kotlin or "all")
+                            Default: all
+  --output, -o PATH         Output directory
+                            Default: ./generated
+  --java_out DST_DIR        Generate Java code in DST_DIR
+  --python_out DST_DIR      Generate Python code in DST_DIR
+  --go_out DST_DIR          Generate Go code in DST_DIR
+  --rust_out DST_DIR        Generate Rust code in DST_DIR
+  --cpp_out DST_DIR         Generate C++ code in DST_DIR
+  --csharp_out DST_DIR      Generate C# code in DST_DIR
+  --javascript_out DST_DIR  Generate JavaScript code in DST_DIR
+  --swift_out DST_DIR       Generate Swift code in DST_DIR
+  --dart_out DST_DIR        Generate Dart code in DST_DIR
+  --scala_out DST_DIR       Generate Scala 3 code in DST_DIR
+  --kotlin_out DST_DIR      Generate Kotlin code in DST_DIR
+  -I PATH                   Add a directory to the import search path
+  --grpc                    Generate gRPC service stubs alongside type definitions
+  --grpc-web                Generate JavaScript gRPC-Web client code
+  --grpc-python-mode MODE   Python gRPC API style: async (default) or sync
+  --help                    Show help message
 ```
 
 ## Examples
