@@ -1105,6 +1105,21 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
   static constexpr TypeId type_id = TypeId::MAP;
   using MapType = std::unordered_map<K, V, Args...>;
 
+  static inline void write_type_info(WriteContext &ctx) {
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
+  }
+
+  static inline void read_type_info(ReadContext &ctx) {
+    const TypeInfo *type_info = ctx.read_any_type_info(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+    if (!type_id_matches(type_info->type_id, static_cast<uint32_t>(type_id))) {
+      ctx.set_error(Error::type_mismatch(type_info->type_id,
+                                         static_cast<uint32_t>(type_id)));
+    }
+  }
+
   static inline void write(const MapType &map, WriteContext &ctx,
                            RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
