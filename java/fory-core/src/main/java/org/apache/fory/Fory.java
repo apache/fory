@@ -164,7 +164,7 @@ public final class Fory implements BaseFory {
     readContext =
         new ReadContext(config, new Generics(), typeResolver, refReader, metaStringReader);
     copyContext = new CopyContext(typeResolver, config.copyRef());
-    LOG.infoOnce("Created new fory");
+    LOG.info("Created new fory {}", this);
   }
 
   @Override
