@@ -96,10 +96,10 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     if (shareMeta) {
       TypeDef typeDef = typeResolver.getTypeDef(cls, resolveParent);
       if (Utils.DEBUG_OUTPUT_ENABLED) {
-        LOG.infoOnce("========== ObjectSerializer TypeDef for {} ==========", cls.getName());
-        LOG.infoOnce("TypeDef fieldsInfo count: {}", typeDef.getFieldsInfo().size());
+        LOG.info("========== ObjectSerializer TypeDef for {} ==========", cls.getName());
+        LOG.info("TypeDef fieldsInfo count: {}", typeDef.getFieldsInfo().size());
         for (int i = 0; i < typeDef.getFieldsInfo().size(); i++) {
-          LOG.infoOnce("  [{}] {}", i, typeDef.getFieldsInfo().get(i));
+          LOG.info("  [{}] {}", i, typeDef.getFieldsInfo().get(i));
         }
       }
       descriptors = typeDef.getDescriptors(typeResolver, cls);
@@ -112,12 +112,12 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
       descriptors = grouper.getSortedDescriptors();
     }
     if (Utils.DEBUG_OUTPUT_ENABLED) {
-      LOG.infoOnce(
+      LOG.info(
           "========== ObjectSerializer {} sorted descriptors for {} ==========",
           descriptors.size(),
           cls.getName());
       for (Descriptor d : descriptors) {
-        LOG.infoOnce(
+        LOG.info(
             "  {} -> {}, ref {}, nullable {}",
             StringUtils.toSnakeCase(d.getName()),
             d.getTypeName(),
@@ -161,7 +161,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
   }
 
   private void printWriteFieldDebugInfo(SerializationFieldInfo fieldInfo, MemoryBuffer buffer) {
-    LOG.infoOnce(
+    LOG.info(
         "[Java] write field {} of type {}, writer index {}",
         fieldInfo.descriptor.getName(),
         fieldInfo.typeRef,
@@ -169,7 +169,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
   }
 
   private void printReadFieldDebugInfo(SerializationFieldInfo fieldInfo, MemoryBuffer buffer) {
-    LOG.infoOnce(
+    LOG.info(
         "[Java] read field {} of type {}, reader index {}",
         fieldInfo.descriptor.getName(),
         fieldInfo.typeRef,

@@ -85,10 +85,10 @@ public final class UnknownClassSerializers {
       fieldsInfoMap = new LongMap<>(1);
       Preconditions.checkArgument(typeResolver.getConfig().isMetaShareEnabled());
       if (Utils.DEBUG_OUTPUT_ENABLED && typeDef != null) {
-        LOG.infoOnce("========== UnknownClassSerializer TypeDef for {} ==========", type.getName());
-        LOG.infoOnce("TypeDef fieldsInfo count: {}", typeDef.getFieldCount());
+        LOG.info("========== UnknownClassSerializer TypeDef for {} ==========", type.getName());
+        LOG.info("TypeDef fieldsInfo count: {}", typeDef.getFieldCount());
         for (int i = 0; i < typeDef.getFieldsInfo().size(); i++) {
-          LOG.infoOnce("  [{}] {}", i, typeDef.getFieldsInfo().get(i));
+          LOG.info("  [{}] {}", i, typeDef.getFieldsInfo().get(i));
         }
       }
     }
