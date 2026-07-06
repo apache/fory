@@ -33,6 +33,7 @@ public class Slf4jLogger implements Logger {
   private final boolean isLocationAwareLogger;
 
   private final org.slf4j.Logger logger;
+  private final LogOnceState logOnceState = new LogOnceState();
 
   public Slf4jLogger(Class<?> cls) {
     this.logger = org.slf4j.LoggerFactory.getLogger(cls);
@@ -95,6 +96,34 @@ public class Slf4jLogger implements Logger {
   }
 
   @Override
+  public void infoOnce(String msg) {
+    infoOnce(msg, (Object[]) null);
+  }
+
+  @Override
+  public void infoOnce(String msg, Object arg) {
+    infoOnce(msg, new Object[] {arg});
+  }
+
+  @Override
+  public void infoOnce(String msg, Object arg1, Object arg2) {
+    infoOnce(msg, new Object[] {arg1, arg2});
+  }
+
+  @Override
+  public void infoOnce(String msg, Object... args) {
+    if (LoggerFactory.getLogLevel() < INFO_LEVEL
+        || !logOnceState.shouldLog(INFO_LEVEL, msg, args)) {
+      return;
+    }
+    if (isLocationAwareLogger) {
+      ((LocationAwareLogger) logger).log(null, FQCN, LocationAwareLogger.INFO_INT, msg, args, null);
+    } else {
+      logger.info(msg, args);
+    }
+  }
+
+  @Override
   public void warn(String msg) {
     warn(msg, (Object[]) null);
   }
@@ -124,6 +153,48 @@ public class Slf4jLogger implements Logger {
   @Override
   public void warn(String msg, Throwable t) {
     if (LoggerFactory.getLogLevel() < WARN_LEVEL) {
+      return;
+    }
+    if (isLocationAwareLogger) {
+      ((LocationAwareLogger) logger).log(null, FQCN, LocationAwareLogger.WARN_INT, msg, null, t);
+    } else {
+      logger.warn(msg, t);
+    }
+  }
+
+  @Override
+  public void warnOnce(String msg) {
+    warnOnce(msg, (Object[]) null);
+  }
+
+  @Override
+  public void warnOnce(String msg, Object arg) {
+    warnOnce(msg, new Object[] {arg});
+  }
+
+  @Override
+  public void warnOnce(String msg, Object arg1, Object arg2) {
+    warnOnce(msg, new Object[] {arg1, arg2});
+  }
+
+  @Override
+  public void warnOnce(String msg, Object... args) {
+    if (LoggerFactory.getLogLevel() < WARN_LEVEL
+        || !logOnceState.shouldLog(WARN_LEVEL, msg, args)) {
+      return;
+    }
+    if (isLocationAwareLogger) {
+      ((LocationAwareLogger) logger).log(null, FQCN, LocationAwareLogger.WARN_INT, msg, args, null);
+    } else {
+      logger.warn(msg, args);
+    }
+  }
+
+  @Override
+  public void warnOnce(String msg, Throwable t) {
+    Object[] args = new Object[] {t};
+    if (LoggerFactory.getLogLevel() < WARN_LEVEL
+        || !logOnceState.shouldLog(WARN_LEVEL, msg, args)) {
       return;
     }
     if (isLocationAwareLogger) {

@@ -172,7 +172,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         // In GraalVM native image, ObjectStreamClass.lookup may fail for certain classes due to
         // missing SerializationConstructorAccessor. Returning null keeps stream reconstruction on
         // the serializer-owned object instantiator path.
-        LOG.warn(
+        LOG.warnOnce(
             "ObjectStreamClass.lookup failed for {} in GraalVM native image: {}",
             type.getName(),
             e.getMessage());
@@ -191,7 +191,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
           String.format("Class %s should implement %s.", type, Serializable.class));
     }
     if (!Throwable.class.isAssignableFrom(type)) {
-      LOG.warn(
+      LOG.warnOnce(
           "{} customized jdk serialization, which is inefficient. "
               + "Please replace it with a {} or implements {}",
           type,

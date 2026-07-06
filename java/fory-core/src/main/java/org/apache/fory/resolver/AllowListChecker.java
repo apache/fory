@@ -106,7 +106,7 @@ public class AllowListChecker implements TypeChecker {
               String.format("Class %s is forbidden for serialization.", className));
         }
         if (!containsPrefix(allowList, allowListPrefix, className)) {
-          LOG.warn(
+          LOG.warnOnce(
               "Class {} not in allow list, please check whether objects of this class "
                   + "are allowed for serialization.",
               className);

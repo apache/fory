@@ -109,7 +109,6 @@ public class SubListSerializers {
   public static final class SubListSerializer extends CollectionSerializer<List> {
     private final ViewFields viewFields;
     private final int subListOwnerBytes;
-    private boolean serializedViewBefore;
 
     public SubListSerializer(TypeResolver typeResolver, Class<List> type) {
       this(typeResolver, type, false);
@@ -193,13 +192,10 @@ public class SubListSerializers {
     }
 
     private void checkViewSerialization(Object value) {
-      if (!serializedViewBefore) {
-        serializedViewBefore = true;
-        LOG.warn(
-            "List view of type {} is being serialized/deserialized. Fory writes the source list, "
-                + "offset, and size so JVM and Android readers can parse the same payload.",
-            value.getClass());
-      }
+      LOG.warnOnce(
+          "List view of type {} is being serialized/deserialized. Fory writes the source list, "
+              + "offset, and size so JVM and Android readers can parse the same payload.",
+          value.getClass());
     }
   }
 

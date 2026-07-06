@@ -64,7 +64,7 @@ public class UnmodifiableSerializers {
         SOURCE_COLLECTION_ACCESSOR =
             FieldAccessor.createAccessor(Class.forName(clsName).getDeclaredField("c"));
       } catch (Exception e) {
-        LOG.info("Could not access source collection field in {}", clsName);
+        LOG.infoOnce("Could not access source collection field in {}", clsName);
         throw new RuntimeException(e);
       }
       clsName = "java.util.Collections$UnmodifiableMap";
@@ -73,7 +73,7 @@ public class UnmodifiableSerializers {
         SOURCE_MAP_ACCESSOR =
             FieldAccessor.createAccessor(Class.forName(clsName).getDeclaredField("m"));
       } catch (Exception e) {
-        LOG.info("Could not access source map field in {}", clsName);
+        LOG.infoOnce("Could not access source map field in {}", clsName);
         throw new RuntimeException(e);
       }
     }
