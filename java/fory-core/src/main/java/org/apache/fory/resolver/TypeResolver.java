@@ -1261,7 +1261,7 @@ public abstract class TypeResolver {
         sc = CompatibleSerializer.class;
       } else if (sc == null && GraalvmSupport.isGraalRuntime()) {
         sc = CompatibleSerializer.class;
-        LOG.warn(
+        LOG.warnOnce(
             "Can't generate class at runtime in graalvm for class def {}, use {} instead",
             typeDef,
             sc);
@@ -1431,7 +1431,9 @@ public abstract class TypeResolver {
                 "Class %s not found from classloaders [%s, %s]",
                 className, extRegistry.classLoader, Thread.currentThread().getContextClassLoader());
         if (deserializeUnknownClass) {
-          LOG.warn(msg);
+          if (!config.suppressClassRegistrationWarnings()) {
+            LOG.warnOnce(msg);
+          }
           return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
         }
         throw new IllegalStateException(msg, ex);

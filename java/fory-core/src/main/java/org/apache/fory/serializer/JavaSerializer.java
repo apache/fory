@@ -67,7 +67,7 @@ public class JavaSerializer extends Serializer<Object> {
     // TODO(chgaokunyang) enable this check when ObjectSerializer is implemented.
     // Preconditions.checkArgument(ClassResolver.requireJavaSerialization(cls));
     if (cls != SerializedLambda.class) {
-      LOG.warn(
+      LOG.warnOnce(
           "{} use java built-in serialization, which is inefficient. "
               + "Please replace it with a {} or implements {}",
           cls,
@@ -209,7 +209,7 @@ public class JavaSerializer extends Serializer<Object> {
           && readResolve.getReturnType() == Object.class) {
         return readResolve;
       } else {
-        LOG.warn(
+        LOG.warnOnce(
             "`readResolve` method doesn't match signature: `ANY-ACCESS-MODIFIER Object readResolve()`");
       }
     }
@@ -230,7 +230,7 @@ public class JavaSerializer extends Serializer<Object> {
           && writeReplace.getReturnType() == Object.class) {
         return writeReplace;
       } else {
-        LOG.warn(
+        LOG.warnOnce(
             "`writeReplace` method doesn't match signature: `ANY-ACCESS-MODIFIER Object writeReplace()");
       }
     }

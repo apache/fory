@@ -1345,7 +1345,9 @@ public class XtypeResolver extends TypeResolver {
     String msg = String.format("Class %s not registered", qualifiedName);
     Class<?> type = null;
     if (config.deserializeUnknownClass()) {
-      LOG.warn(msg);
+      if (!config.suppressClassRegistrationWarnings()) {
+        LOG.warnOnce(msg);
+      }
       switch (typeId) {
         case Types.NAMED_ENUM:
         case Types.NAMED_STRUCT:

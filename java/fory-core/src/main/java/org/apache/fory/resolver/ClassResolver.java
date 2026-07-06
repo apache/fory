@@ -1303,12 +1303,12 @@ public class ClassResolver extends TypeResolver {
   public void setSerializer(String className, Class<? extends Serializer> serializer) {
     for (Map.Entry<Class<?>, TypeInfo> entry : classInfoMap.iterable()) {
       if (extRegistry.registeredClasses.get(className) != null) {
-        LOG.warn("Skip clear serializer for registered class {}", className);
+        LOG.warnOnce("Skip clear serializer for registered class {}", className);
         return;
       }
       Class<?> cls = entry.getKey();
       if (cls.getName().equals(className)) {
-        LOG.info("Clear serializer for class {}.", className);
+        LOG.infoOnce("Clear serializer for class {}.", className);
         entry.getValue().setSerializer(this, Serializers.newSerializer(this, cls, serializer));
         clearTypeInfoCache();
         return;
@@ -1325,7 +1325,7 @@ public class ClassResolver extends TypeResolver {
         continue;
       }
       if (className.startsWith(classNamePrefix)) {
-        LOG.info("Clear serializer for class {}.", className);
+        LOG.infoOnce("Clear serializer for class {}.", className);
         entry.getValue().setSerializer(this, Serializers.newSerializer(this, cls, serializer));
         clearTypeInfoCache();
       }
@@ -1554,7 +1554,9 @@ public class ClassResolver extends TypeResolver {
         }
       }
       if (isCrossLanguage()) {
-        LOG.warn("Class {} isn't supported for cross-language serialization.", cls);
+        if (!config.suppressClassRegistrationWarnings()) {
+          LOG.warnOnce("Class {} isn't supported for cross-language serialization.", cls);
+        }
       }
       if (useReplaceResolveSerializer(cls)) {
         return ReplaceResolveSerializer.class;
@@ -1632,7 +1634,7 @@ public class ClassResolver extends TypeResolver {
       }
     } else {
       if (codegen) {
-        LOG.info("Object of type {} can't be serialized by jit", cls);
+        LOG.infoOnce("Object of type {} can't be serialized by jit", cls);
       }
       return staticSerializerClass == null ? ObjectSerializer.class : staticSerializerClass;
     }
@@ -1759,7 +1761,7 @@ public class ClassResolver extends TypeResolver {
           && !hasGraalvmSerializerClass(cls)
           && !shimDispatcher.contains(cls)
           && !extRegistry.isTypeCheckerSet()) {
-        LOG.warn(generateSecurityMsg(cls));
+        LOG.warnOnce(generateSecurityMsg(cls));
       }
     }
 

@@ -80,18 +80,18 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
         "Class version check should be disabled when compatible mode is enabled.");
     Preconditions.checkArgument(config.isMetaShareEnabled(), "Meta share must be enabled.");
     if (Utils.DEBUG_OUTPUT_ENABLED) {
-      LOG.info("========== CompatibleSerializer TypeDef for {} ==========", type.getName());
-      LOG.info("TypeDef fieldsInfo count: {}", typeDef.getFieldCount());
+      LOG.infoOnce("========== CompatibleSerializer TypeDef for {} ==========", type.getName());
+      LOG.infoOnce("TypeDef fieldsInfo count: {}", typeDef.getFieldCount());
       for (int i = 0; i < typeDef.getFieldsInfo().size(); i++) {
-        LOG.info("  [{}] {}", i, typeDef.getFieldsInfo().get(i));
+        LOG.infoOnce("  [{}] {}", i, typeDef.getFieldsInfo().get(i));
       }
     }
     DescriptorGrouper descriptorGrouper = typeResolver.createDescriptorGrouper(typeDef, type);
     if (Utils.DEBUG_OUTPUT_ENABLED) {
-      LOG.info(
+      LOG.infoOnce(
           "========== CompatibleSerializer sorted descriptors for {} ==========", type.getName());
       for (Descriptor d : descriptorGrouper.getSortedDescriptors()) {
-        LOG.info(
+        LOG.infoOnce(
             "  {} -> {}, ref {}, nullable {}, type id {}",
             StringUtils.toSnakeCase(d.getName()),
             d.getTypeName(),
@@ -392,7 +392,7 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
   }
 
   private void printFieldDebugInfo(SerializationFieldInfo fieldInfo, MemoryBuffer buffer) {
-    LOG.info(
+    LOG.infoOnce(
         "[Java] read field {} of type {}, reader index {}",
         fieldInfo.descriptor.getName(),
         fieldInfo.typeRef,
