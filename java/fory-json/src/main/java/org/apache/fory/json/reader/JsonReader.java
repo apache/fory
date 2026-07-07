@@ -437,7 +437,7 @@ public abstract class JsonReader {
   public Year readYear() {
     CharSequence value = tryReadAsciiStringView();
     if (value != null) {
-      return Year.parse(value);
+      return parseYearValue(value);
     }
     return parseYearString(readString());
   }
@@ -760,7 +760,7 @@ public abstract class JsonReader {
 
   private Year parseYearString(String value) {
     try {
-      return Year.parse(value);
+      return parseYearValue(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.Year", e);
     }
@@ -814,6 +814,45 @@ public abstract class JsonReader {
       throw new IllegalArgumentException();
     }
     return high * 10 + low;
+  }
+
+  public static Year parseYearValue(CharSequence value) {
+    // Fory writes Year values as unpadded integers, so parse that shape before
+    // delegating to JDK parsing whose accepted forms differ across JDK versions.
+    int year = tryParseYearInt(value);
+    if (year != Integer.MIN_VALUE) {
+      return Year.of(year);
+    }
+    return Year.parse(value);
+  }
+
+  private static int tryParseYearInt(CharSequence value) {
+    int length = value.length();
+    if (length == 0) {
+      return Integer.MIN_VALUE;
+    }
+    int index = 0;
+    boolean negative = false;
+    char first = value.charAt(0);
+    if (first == '-' || first == '+') {
+      negative = first == '-';
+      index = 1;
+      if (index == length) {
+        return Integer.MIN_VALUE;
+      }
+    }
+    long year = 0;
+    for (; index < length; index++) {
+      int digit = value.charAt(index) - '0';
+      if (digit < 0 || digit > 9) {
+        return Integer.MIN_VALUE;
+      }
+      year = year * 10 + digit;
+      if (year > 999999999L) {
+        return Integer.MIN_VALUE;
+      }
+    }
+    return negative ? (int) -year : (int) year;
   }
 
   private static Number materializeNumber(String number) {

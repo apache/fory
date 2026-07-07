@@ -1500,7 +1500,7 @@ public final class ScalarCodecs {
 
     @Override
     Object fromJsonString(String value) {
-      return Year.parse(value);
+      return JsonReader.parseYearValue(value);
     }
 
     @Override

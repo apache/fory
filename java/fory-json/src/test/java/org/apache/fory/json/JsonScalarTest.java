@@ -599,6 +599,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
         ZonedDateTime.parse("2024-02-03T04:05:06.123+08:00[Asia/Shanghai]"));
     assertEquals(json.fromJson("\"2024\"", Year.class), Year.of(2024));
     assertEquals(json.fromJson("\"1\"", Year.class), Year.of(1));
+    assertEquals(json.fromJson("\"1\"".getBytes(StandardCharsets.UTF_8), Year.class), Year.of(1));
     assertEquals(json.fromJson("\"2024-02\"", YearMonth.class), YearMonth.of(2024, 2));
     assertEquals(json.fromJson("\"--02-03\"", MonthDay.class), MonthDay.of(2, 3));
     assertEquals(json.fromJson("\"P1Y-2M3D\"", Period.class), Period.of(1, -2, 3));
