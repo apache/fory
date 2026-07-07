@@ -40,9 +40,11 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
+import org.apache.fory.serializer.converter.FieldConverters;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
+import org.apache.fory.util.Utils;
 import org.apache.fory.util.record.RecordComponent;
 import org.apache.fory.util.record.RecordUtils;
 
@@ -456,7 +458,9 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
     for (int i = 0; i < indent; i++) {
       code.append(' ');
     }
-    code.append("if (org.apache.fory.util.Utils.DEBUG_OUTPUT_ENABLED) { debugRemoteReadField(\"")
+    code.append("if (")
+        .append(Utils.class.getName())
+        .append(".DEBUG_OUTPUT_ENABLED) { debugRemoteReadField(\"")
         .append(stage)
         .append("\", ")
         .append(remoteField)
@@ -572,7 +576,8 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
     } else {
       return null;
     }
-    return "org.apache.fory.serializer.converter.FieldConverters."
+    return FieldConverters.class.getName()
+        + "."
         + helper
         + "("
         + READ_CONTEXT_NAME

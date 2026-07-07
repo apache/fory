@@ -36,7 +36,6 @@ import javax.annotation.processing.Filer;
 import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.annotation.processing.RoundEnvironment;
-import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
@@ -59,29 +58,32 @@ import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardLocation;
 
-@SupportedAnnotationTypes({
-  "org.apache.fory.annotation.ForyStruct",
-  "org.apache.fory.annotation.ForyDebug"
-})
 public final class ForyStructProcessor extends AbstractProcessor {
-  private static final String ARRAY_TYPE = "org.apache.fory.annotation.ArrayType";
-  private static final String BFLOAT16_TYPE = "org.apache.fory.annotation.BFloat16Type";
-  private static final String EXPOSE = "org.apache.fory.annotation.Expose";
-  private static final String FLOAT16_TYPE = "org.apache.fory.annotation.Float16Type";
-  private static final String FORY_DEBUG = "org.apache.fory.annotation.ForyDebug";
-  private static final String FORY_FIELD = "org.apache.fory.annotation.ForyField";
-  private static final String FORY_STRUCT = "org.apache.fory.annotation.ForyStruct";
-  private static final String IGNORE = "org.apache.fory.annotation.Ignore";
-  private static final String INT32_TYPE = "org.apache.fory.annotation.Int32Type";
-  private static final String INT64_TYPE = "org.apache.fory.annotation.Int64Type";
-  private static final String INT8_TYPE = "org.apache.fory.annotation.Int8Type";
+  private static final String PROCESSOR_PACKAGE = ForyStructProcessor.class.getPackage().getName();
+  private static final String PROCESSOR_SUFFIX = ".annotation.processing";
+  private static final String FORY_PACKAGE =
+      PROCESSOR_PACKAGE.substring(0, PROCESSOR_PACKAGE.length() - PROCESSOR_SUFFIX.length());
+  private static final String ANNOTATION_PACKAGE = FORY_PACKAGE + ".annotation";
+  private static final String COLLECTION_PACKAGE = FORY_PACKAGE + ".collection";
+  private static final String ARRAY_TYPE = annotationClass("ArrayType");
+  private static final String BFLOAT16_TYPE = annotationClass("BFloat16Type");
+  private static final String EXPOSE = annotationClass("Expose");
+  private static final String FLOAT16_TYPE = annotationClass("Float16Type");
+  private static final String FORY_DEBUG = annotationClass("ForyDebug");
+  private static final String FORY_FIELD = annotationClass("ForyField");
+  private static final String FORY_STRUCT = annotationClass("ForyStruct");
+  private static final String IGNORE = annotationClass("Ignore");
+  private static final String INT32_TYPE = annotationClass("Int32Type");
+  private static final String INT64_TYPE = annotationClass("Int64Type");
+  private static final String INT8_TYPE = annotationClass("Int8Type");
   private static final String KOTLIN_METADATA = "kotlin.Metadata";
-  private static final String NULLABLE = "org.apache.fory.annotation.Nullable";
-  private static final String REF = "org.apache.fory.annotation.Ref";
-  private static final String UINT16_TYPE = "org.apache.fory.annotation.UInt16Type";
-  private static final String UINT32_TYPE = "org.apache.fory.annotation.UInt32Type";
-  private static final String UINT64_TYPE = "org.apache.fory.annotation.UInt64Type";
-  private static final String UINT8_TYPE = "org.apache.fory.annotation.UInt8Type";
+  private static final String NULLABLE = annotationClass("Nullable");
+  private static final String REF = annotationClass("Ref");
+  private static final String UINT16_TYPE = annotationClass("UInt16Type");
+  private static final String UINT32_TYPE = annotationClass("UInt32Type");
+  private static final String UINT64_TYPE = annotationClass("UInt64Type");
+  private static final String UINT8_TYPE = annotationClass("UInt8Type");
+  private static final Set<String> SUPPORTED_ANNOTATIONS = supportedAnnotations();
 
   private final Set<String> processed = new HashSet<>();
   private final Map<String, TypeElement> generatedTypes = new HashMap<>();
@@ -93,6 +95,25 @@ public final class ForyStructProcessor extends AbstractProcessor {
   // javac's public tree API reflectively while keeping this processor targetable to Java 8.
   private Object trees;
 
+  private static Set<String> supportedAnnotations() {
+    Set<String> annotations = new HashSet<>();
+    annotations.add(FORY_STRUCT);
+    annotations.add(FORY_DEBUG);
+    return Collections.unmodifiableSet(annotations);
+  }
+
+  private static String annotationClass(String simpleName) {
+    return ANNOTATION_PACKAGE + "." + simpleName;
+  }
+
+  private static String collectionClass(String simpleName) {
+    return COLLECTION_PACKAGE + "." + simpleName;
+  }
+
+  private static String foryClass(String relativeName) {
+    return FORY_PACKAGE + "." + relativeName;
+  }
+
   private enum SerializerMode {
     XLANG("_ForySerializer"),
     NATIVE("_ForyNativeSerializer");
@@ -102,6 +123,11 @@ public final class ForyStructProcessor extends AbstractProcessor {
     SerializerMode(String serializerSuffix) {
       this.serializerSuffix = serializerSuffix;
     }
+  }
+
+  @Override
+  public Set<String> getSupportedAnnotationTypes() {
+    return SUPPORTED_ANNOTATIONS;
   }
 
   @Override
@@ -310,9 +336,16 @@ public final class ForyStructProcessor extends AbstractProcessor {
           .append(struct.qualifiedSerializerName())
           .append(" {\n");
       builder.append("  public <init>();\n");
-      builder.append("  public <init>(org.apache.fory.resolver.TypeResolver, java.lang.Class);\n");
+      builder
+          .append("  public <init>(")
+          .append(foryClass("resolver.TypeResolver"))
+          .append(", java.lang.Class);\n");
       builder.append(
-          "  public <init>(org.apache.fory.resolver.TypeResolver, java.lang.Class, org.apache.fory.meta.TypeDef);\n");
+          "  public <init>("
+              + foryClass("resolver.TypeResolver")
+              + ", java.lang.Class, "
+              + foryClass("meta.TypeDef")
+              + ");\n");
       builder.append("}\n\n");
     }
     return builder.toString();
@@ -849,7 +882,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
           "byte",
           "java.lang.Byte",
           "byte[]",
-          "org.apache.fory.collection.Int8List");
+          collectionClass("Int8List"));
       return rawType.equals("byte[]") ? "Types.INT8_ARRAY" : "Types.INT8";
     }
     if (hasTypeAnnotation(type, treeAnnotations, UINT8_TYPE)) {
@@ -859,9 +892,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
           errorElement,
           arrayComponent
               ? new String[] {"byte"}
-              : new String[] {
-                "int", "java.lang.Integer", "byte[]", "org.apache.fory.collection.UInt8List"
-              });
+              : new String[] {"int", "java.lang.Integer", "byte[]", collectionClass("UInt8List")});
       return rawType.equals("byte[]") ? "Types.UINT8_ARRAY" : "Types.UINT8";
     }
     if (hasTypeAnnotation(type, treeAnnotations, UINT16_TYPE)) {
@@ -872,7 +903,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
           arrayComponent
               ? new String[] {"short"}
               : new String[] {
-                "int", "java.lang.Integer", "short[]", "org.apache.fory.collection.UInt16List"
+                "int", "java.lang.Integer", "short[]", collectionClass("UInt16List")
               });
       return rawType.equals("short[]") ? "Types.UINT16_ARRAY" : "Types.UINT16";
     }
@@ -884,9 +915,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
           errorElement,
           arrayComponent
               ? new String[] {"int"}
-              : new String[] {
-                "long", "java.lang.Long", "int[]", "org.apache.fory.collection.UInt32List"
-              });
+              : new String[] {"long", "java.lang.Long", "int[]", collectionClass("UInt32List")});
       String encoding = int32Encoding(uint32);
       if (rawType.equals("int[]")) {
         return "Types.UINT32_ARRAY";
@@ -901,9 +930,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
           errorElement,
           arrayComponent
               ? new String[] {"long"}
-              : new String[] {
-                "long", "java.lang.Long", "long[]", "org.apache.fory.collection.UInt64List"
-              });
+              : new String[] {"long", "java.lang.Long", "long[]", collectionClass("UInt64List")});
       String encoding = int64Encoding(uint64);
       if (rawType.equals("long[]")) {
         return "Types.UINT64_ARRAY";
@@ -921,7 +948,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
           errorElement,
           "int",
           "java.lang.Integer",
-          "org.apache.fory.collection.Int32List");
+          collectionClass("Int32List"));
       String encoding = int32Encoding(int32);
       return "FIXED".equals(encoding) ? "Types.INT32" : "Types.VARINT32";
     }
@@ -933,7 +960,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
           errorElement,
           "long",
           "java.lang.Long",
-          "org.apache.fory.collection.Int64List");
+          collectionClass("Int64List"));
       String encoding = int64Encoding(int64);
       if ("FIXED".equals(encoding)) {
         return "Types.INT64";
