@@ -19,6 +19,16 @@
 
 package org.apache.fory.json.writer;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.Period;
+import java.time.Year;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAccessor;
+import java.util.UUID;
 import org.apache.fory.json.meta.JsonFieldInfo;
 
 public abstract class JsonWriter {
@@ -49,6 +59,46 @@ public abstract class JsonWriter {
   public abstract void writeChar(char value);
 
   public abstract void writeString(String value);
+
+  public void writeString(CharSequence value) {
+    writeString(value.toString());
+  }
+
+  public void writeBigInteger(BigInteger value) {
+    writeNumber(value.toString());
+  }
+
+  public void writeBigDecimal(BigDecimal value) {
+    writeNumber(value.toString());
+  }
+
+  public void writeUuid(UUID value) {
+    writeString(value.toString());
+  }
+
+  public void writeLocalDate(LocalDate value) {
+    writeString(value.toString());
+  }
+
+  public void writeOffsetDateTime(OffsetDateTime value) {
+    writeString(value.toString());
+  }
+
+  public void writeTemporal(TemporalAccessor value, DateTimeFormatter formatter) {
+    writeString(formatter.format(value));
+  }
+
+  public void writeDuration(Duration value) {
+    writeString(value.toString());
+  }
+
+  public void writePeriod(Period value) {
+    writeString(value.toString());
+  }
+
+  public void writeYear(Year value) {
+    writeString(value.toString());
+  }
 
   public abstract void writeFieldName(String name);
 
