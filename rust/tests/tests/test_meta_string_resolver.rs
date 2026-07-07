@@ -133,3 +133,63 @@ pub fn big_ms() {
         meta_string_reader.reset();
     }
 }
+
+#[test]
+pub fn big_dynamic_survives_growth() {
+    let mut meta_string_writer = MetaStringWriterResolver::default();
+    let data: Vec<_> = (0..20)
+        .map(|i| {
+            Rc::from(
+                NAMESPACE_ENCODER
+                    .encode(&format!("long_meta_string_name_{i:02}_after_growth"))
+                    .unwrap(),
+            )
+        })
+        .collect();
+
+    let mut buffer = vec![];
+    let mut writer = Writer::from_buffer(&mut buffer);
+    for meta_string in data.iter() {
+        meta_string_writer
+            .write_meta_string_bytes(&mut writer, meta_string.clone())
+            .unwrap();
+    }
+    writer.write_var_u32(3);
+
+    let binding = writer.dump();
+    let mut reader = Reader::new(binding.as_slice());
+    let mut meta_string_reader = MetaStringReaderResolver::default();
+    for meta_string in data.iter() {
+        let read = meta_string_reader.read_meta_string(&mut reader).unwrap();
+        assert_eq!(&**meta_string, read);
+    }
+    let read = meta_string_reader.read_meta_string(&mut reader).unwrap();
+    assert_eq!(&*data[0], read);
+}
+
+#[test]
+pub fn small_dynamic_survives_growth() {
+    let mut meta_string_writer = MetaStringWriterResolver::default();
+    let data: Vec<_> = (0..20)
+        .map(|i| Rc::from(NAMESPACE_ENCODER.encode(&format!("s{i:014}")).unwrap()))
+        .collect();
+
+    let mut buffer = vec![];
+    let mut writer = Writer::from_buffer(&mut buffer);
+    for meta_string in data.iter() {
+        meta_string_writer
+            .write_meta_string_bytes(&mut writer, meta_string.clone())
+            .unwrap();
+    }
+    writer.write_var_u32(3);
+
+    let binding = writer.dump();
+    let mut reader = Reader::new(binding.as_slice());
+    let mut meta_string_reader = MetaStringReaderResolver::default();
+    for meta_string in data.iter() {
+        let read = meta_string_reader.read_meta_string(&mut reader).unwrap();
+        assert_eq!(&**meta_string, read);
+    }
+    let read = meta_string_reader.read_meta_string(&mut reader).unwrap();
+    assert_eq!(&*data[0], read);
+}
