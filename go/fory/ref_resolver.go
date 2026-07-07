@@ -202,10 +202,15 @@ func (r *RefResolver) ReadRefOrNull(buffer *ByteBuffer, ctxErr *Error) int8 {
 	}
 	if refTag == RefFlag {
 		// read ref id and get object from ref resolver
-		refId := buffer.ReadVarUint32(ctxErr)
-		object, err := r.readObjectById(int32(refId))
-		if err != nil {
-			ctxErr.SetError(err)
+		refId := int32(buffer.ReadVarUint32(ctxErr))
+		if refId < 0 || int(refId) >= len(r.readObjects) {
+			ctxErr.SetError(InvalidRefIdError(refId))
+			r.readObject = reflect.Value{}
+			return RefFlag
+		}
+		object := r.readObjects[refId]
+		if !object.IsValid() {
+			ctxErr.SetError(InvalidRefIdError(refId))
 			r.readObject = reflect.Value{}
 			return RefFlag
 		}
@@ -254,14 +259,18 @@ func (r *RefResolver) TryPreserveRefId(buffer *ByteBuffer) (int32, error) {
 	}
 	if headFlag == RefFlag {
 		// read ref id and get object from ref resolver
-		refId := buffer.ReadVarUint32(&ctxErr)
+		refId := int32(buffer.ReadVarUint32(&ctxErr))
 		if ctxErr.HasError() {
 			return 0, ctxErr
 		}
-		object, err := r.readObjectById(int32(refId))
-		if err != nil {
+		if refId < 0 || int(refId) >= len(r.readObjects) {
 			r.readObject = reflect.Value{}
-			return 0, err
+			return 0, InvalidRefIdError(refId)
+		}
+		object := r.readObjects[refId]
+		if !object.IsValid() {
+			r.readObject = reflect.Value{}
+			return 0, InvalidRefIdError(refId)
 		}
 		r.readObject = object
 	} else {
@@ -304,20 +313,6 @@ func (r *RefResolver) GetReadObject(refId int32) reflect.Value {
 		return reflect.Value{}
 	}
 	return r.readObjects[refId]
-}
-
-func (r *RefResolver) readObjectById(refId int32) (reflect.Value, error) {
-	if !r.refTracking {
-		return reflect.Value{}, nil
-	}
-	if refId < 0 || int(refId) >= len(r.readObjects) {
-		return reflect.Value{}, InvalidRefIdError(refId)
-	}
-	object := r.readObjects[refId]
-	if !object.IsValid() {
-		return reflect.Value{}, InvalidRefIdError(refId)
-	}
-	return object, nil
 }
 
 func (r *RefResolver) GetCurrentReadObject() reflect.Value {
