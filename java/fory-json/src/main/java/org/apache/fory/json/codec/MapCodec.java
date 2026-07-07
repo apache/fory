@@ -153,11 +153,12 @@ public abstract class MapCodec extends AbstractJsonCodec {
 
   @SuppressWarnings("unchecked")
   private static MapFactory mapFactory(Class<?> rawType, Class<?> keyRawType) {
-    if (unsupportedMapType(rawType) || GuavaJsonSupport.isUnsupportedImmutableImpl(rawType)) {
+    if (unsupportedMapType(rawType) || GuavaCodecs.isUnsupportedImmutableImpl(rawType)) {
       return unsupportedMapFactory(rawType);
     }
-    if (GuavaJsonSupport.isImmutableMap(rawType)) {
-      return guavaImmutableMapFactory(rawType);
+    MapFactory guavaFactory = GuavaCodecs.mapFactory(rawType);
+    if (guavaFactory != null) {
+      return guavaFactory;
     }
     if (rawType == JSONObject.class) {
       return () -> (Map<Object, Object>) (Map<?, ?>) new JSONObject();
@@ -194,20 +195,6 @@ public abstract class MapCodec extends AbstractJsonCodec {
     };
   }
 
-  private static MapFactory guavaImmutableMapFactory(Class<?> rawType) {
-    return new MapFactory() {
-      @Override
-      public Map<Object, Object> newMap() {
-        return new LinkedHashMap<>(0);
-      }
-
-      @Override
-      public Object finish(Map<Object, Object> map) {
-        return GuavaJsonSupport.copyImmutableMap(rawType, map);
-      }
-    };
-  }
-
   private static MapFactory unsupportedMapFactory(Class<?> rawType) {
     return () -> {
       throw new ForyJsonException("Unsupported JSON map type " + rawType);
@@ -233,7 +220,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         || type == Byte.class;
   }
 
-  private interface MapFactory {
+  interface MapFactory {
     Map<Object, Object> newMap();
 
     default Object finish(Map<Object, Object> map) {

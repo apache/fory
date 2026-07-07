@@ -75,6 +75,7 @@ import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.BaseObjectCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
+import org.apache.fory.json.codec.GuavaCodecs;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.MapCodec;
 import org.apache.fory.json.codec.ObjectCodecs;
@@ -291,6 +292,6 @@ public final class JsonSharedRegistry {
     exactCodecs.put(OptionalLong.class, ScalarCodecs.OptionalLongCodec.INSTANCE);
     exactCodecs.put(OptionalDouble.class, ScalarCodecs.OptionalDoubleCodec.INSTANCE);
     exactCodecs.put(ByteBuffer.class, ScalarCodecs.ByteBufferCodec.INSTANCE);
-    ScalarCodecs.registerGuavaExactCodecs(exactCodecs);
+    GuavaCodecs.registerExactCodecs(exactCodecs);
   }
 }

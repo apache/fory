@@ -166,12 +166,12 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
 
   @SuppressWarnings("unchecked")
   private static CollectionFactory collectionFactory(Class<?> rawType, Class<?> elementRawType) {
-    if (unsupportedCollectionType(rawType)
-        || GuavaJsonSupport.isUnsupportedImmutableImpl(rawType)) {
+    if (unsupportedCollectionType(rawType) || GuavaCodecs.isUnsupportedImmutableImpl(rawType)) {
       return unsupportedCollectionFactory(rawType);
     }
-    if (GuavaJsonSupport.isImmutableCollection(rawType)) {
-      return guavaImmutableCollectionFactory(rawType);
+    CollectionFactory guavaFactory = GuavaCodecs.collectionFactory(rawType);
+    if (guavaFactory != null) {
+      return guavaFactory;
     }
     if (rawType == JSONArray.class) {
       return JSONArray::new;
@@ -223,20 +223,6 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
     };
   }
 
-  private static CollectionFactory guavaImmutableCollectionFactory(Class<?> rawType) {
-    return new CollectionFactory() {
-      @Override
-      public Collection<Object> newCollection() {
-        return new ArrayList<>(0);
-      }
-
-      @Override
-      public Object finish(Collection<Object> collection) {
-        return GuavaJsonSupport.copyImmutableCollection(rawType, collection);
-      }
-    };
-  }
-
   private static CollectionFactory unsupportedCollectionFactory(Class<?> rawType) {
     return () -> {
       throw new ForyJsonException("Unsupported JSON collection type " + rawType);
@@ -255,7 +241,7 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
         || name.startsWith("java.util.Collections$Unmodifiable");
   }
 
-  private interface CollectionFactory {
+  interface CollectionFactory {
     CollectionFactory ARRAY_LIST =
         new CollectionFactory() {
           @Override

@@ -60,7 +60,6 @@ import java.util.Currency;
 import java.util.Date;
 import java.util.GregorianCalendar;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -98,13 +97,6 @@ public final class ScalarCodecs {
       DateTimeFormatter.ofPattern("--MM-dd");
 
   private ScalarCodecs() {}
-
-  public static void registerGuavaExactCodecs(Map<Class<?>, JsonCodec> exactCodecs) {
-    if (GuavaJsonSupport.isImmutableIntArrayAvailable()) {
-      exactCodecs.put(
-          GuavaJsonSupport.immutableIntArrayType(), GuavaImmutableIntArrayCodec.INSTANCE);
-    }
-  }
 
   public static final class NaturalCodec extends AbstractJsonCodec {
     public static final NaturalCodec INSTANCE = new NaturalCodec();
@@ -2192,72 +2184,6 @@ public final class ScalarCodecs {
       reader.expect(']');
       reader.exitDepth();
       return new AtomicLongArray(Arrays.copyOf(values, size));
-    }
-  }
-
-  public static final class GuavaImmutableIntArrayCodec extends AbstractJsonCodec {
-    private static final GuavaImmutableIntArrayCodec INSTANCE = new GuavaImmutableIntArrayCodec();
-
-    private GuavaImmutableIntArrayCodec() {}
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeInts(writer, value);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeInts(writer, value);
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return copyOf(readInts(reader));
-    }
-
-    private void writeInts(JsonWriter writer, Object value) {
-      int length = length(value);
-      writer.writeArrayStart();
-      for (int i = 0; i < length; i++) {
-        writer.writeComma(i);
-        writer.writeInt(get(value, i));
-      }
-      writer.writeArrayEnd();
-    }
-
-    private Object copyOf(int[] values) {
-      return GuavaJsonSupport.copyImmutableIntArray(values);
-    }
-
-    private int length(Object value) {
-      return GuavaJsonSupport.immutableIntArrayLength(value);
-    }
-
-    private int get(Object value, int index) {
-      return GuavaJsonSupport.immutableIntArrayGet(value, index);
-    }
-
-    private static int[] readInts(JsonReader reader) {
-      reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
-        reader.exitDepth();
-        return new int[0];
-      }
-      int[] values = new int[8];
-      int size = 0;
-      do {
-        if (reader.tryReadNull()) {
-          throw new ForyJsonException("Cannot read null into ImmutableIntArray element");
-        }
-        if (size == values.length) {
-          values = Arrays.copyOf(values, values.length << 1);
-        }
-        values[size++] = reader.readInt();
-      } while (reader.consume(','));
-      reader.expect(']');
-      reader.exitDepth();
-      return Arrays.copyOf(values, size);
     }
   }
 
