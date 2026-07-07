@@ -19,14 +19,24 @@
 
 package org.apache.fory.json.reader;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Arrays;
+import java.util.UUID;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.memory.LittleEndian;
+import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
 
 public final class Utf8JsonReader extends JsonReader {
   private static final byte[] EMPTY_BYTES = new byte[0];
+  private static final int INITIAL_STRING_DECODE_BUFFER_SIZE = 1024;
+  private static final int RETAINED_STRING_DECODE_BUFFER_SIZE = 8192;
+  private static final boolean LITTLE_ENDIAN = NativeByteOrder.IS_LITTLE_ENDIAN;
   private static final long BYTE_ONES = 0x0101010101010101L;
   private static final int INT_BYTE_ONES = 0x01010101;
   private static final long BYTE_HIGH_BITS = 0x8080808080808080L;
@@ -37,10 +47,21 @@ public final class Utf8JsonReader extends JsonReader {
   private static final int INT_CONTROL_LIMIT_BYTES = 0x20202020;
   private static final long QUOTE_BYTES = 0x2222222222222222L;
   private static final int INT_QUOTE_BYTES = 0x22222222;
+  private static final long LONG_MAX_DIV_10 = Long.MAX_VALUE / 10;
+  private static final int LONG_MAX_MOD_10 = (int) (Long.MAX_VALUE % 10);
+  private static final long LONG_MAX_DIV_100 = Long.MAX_VALUE / 100;
+  private static final int LONG_MAX_MOD_100 = (int) (Long.MAX_VALUE % 100);
+  private static final long LONG_MIN_DIV_10 = Long.MIN_VALUE / 10;
+  private static final int LONG_MIN_LAST_DIGIT = (int) -(Long.MIN_VALUE % 10);
+  private static final long EIGHT_DIGITS = 100_000_000L;
+  private static final long ASCII_ZEROES = 0x3030_3030_3030_3030L;
+  private static final long ASCII_NINES = 0x3939_3939_3939_3939L;
+  private static final long ASCII_HIGH_BITS = 0x8080_8080_8080_8080L;
 
   // JSON syntax bytes are ASCII, so hot token checks can compare signed bytes directly.
   // UTF-8 string decoding must keep unsigned byte conversion for non-ASCII content.
   private byte[] input;
+  private byte[] stringDecodeBuffer = new byte[INITIAL_STRING_DECODE_BUFFER_SIZE];
 
   public Utf8JsonReader() {
     input = EMPTY_BYTES;
@@ -59,6 +80,9 @@ public final class Utf8JsonReader extends JsonReader {
   public void clear() {
     input = EMPTY_BYTES;
     position = 0;
+    if (stringDecodeBuffer.length > RETAINED_STRING_DECODE_BUFFER_SIZE) {
+      stringDecodeBuffer = new byte[RETAINED_STRING_DECODE_BUFFER_SIZE];
+    }
   }
 
   public boolean consumeToken(char expected) {
@@ -103,13 +127,15 @@ public final class Utf8JsonReader extends JsonReader {
         position++;
         return true;
       }
-      if (ch == '}') {
-        position++;
-        return false;
-      }
-      if (!isWhitespace(ch)) {
-        return consumeNextCommaOrEndObjectSlow();
-      }
+      return consumeNextObjectEndOrSlow(ch);
+    }
+    return consumeNextCommaOrEndObjectSlow();
+  }
+
+  private boolean consumeNextObjectEndOrSlow(int ch) {
+    if (ch == '}') {
+      position++;
+      return false;
     }
     return consumeNextCommaOrEndObjectSlow();
   }
@@ -137,13 +163,15 @@ public final class Utf8JsonReader extends JsonReader {
         position++;
         return true;
       }
-      if (ch == ']') {
-        position++;
-        return false;
-      }
-      if (!isWhitespace(ch)) {
-        return consumeNextCommaOrEndArraySlow();
-      }
+      return consumeNextArrayEndOrSlow(ch);
+    }
+    return consumeNextCommaOrEndArraySlow();
+  }
+
+  private boolean consumeNextArrayEndOrSlow(int ch) {
+    if (ch == ']') {
+      position++;
+      return false;
     }
     return consumeNextCommaOrEndArraySlow();
   }
@@ -175,7 +203,7 @@ public final class Utf8JsonReader extends JsonReader {
       if (ch == 'n') {
         return tryReadNullLiteral();
       }
-      if (!isWhitespace(ch)) {
+      if (ch > ' ' || !isWhitespace(ch)) {
         return false;
       }
     }
@@ -183,8 +211,14 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private boolean tryReadNullLiteral() {
-    if (startsWithAscii("null")) {
-      position += 4;
+    byte[] bytes = input;
+    int offset = position;
+    if (offset + 3 < bytes.length
+        && bytes[offset] == 'n'
+        && bytes[offset + 1] == 'u'
+        && bytes[offset + 2] == 'l'
+        && bytes[offset + 3] == 'l') {
+      position = offset + 4;
       return true;
     }
     return false;
@@ -196,8 +230,11 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public boolean readNextBooleanValue() {
-    if (position < input.length && !isWhitespace(input[position])) {
-      return readBooleanToken();
+    if (position < input.length) {
+      int ch = input[position];
+      if (ch > ' ' || !isWhitespace(ch)) {
+        return readBooleanToken();
+      }
     }
     return readBooleanValue();
   }
@@ -207,11 +244,22 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private boolean readBooleanToken() {
-    if (startsWithAscii("true")) {
-      position += 4;
+    byte[] bytes = input;
+    int offset = position;
+    if (offset + 3 < bytes.length
+        && bytes[offset] == 't'
+        && bytes[offset + 1] == 'r'
+        && bytes[offset + 2] == 'u'
+        && bytes[offset + 3] == 'e') {
+      position = offset + 4;
       return true;
-    } else if (startsWithAscii("false")) {
-      position += 5;
+    } else if (offset + 4 < bytes.length
+        && bytes[offset] == 'f'
+        && bytes[offset + 1] == 'a'
+        && bytes[offset + 2] == 'l'
+        && bytes[offset + 3] == 's'
+        && bytes[offset + 4] == 'e') {
+      position = offset + 5;
       return false;
     }
     throw error("Expected boolean");
@@ -223,8 +271,11 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public int readNextIntValue() {
-    if (position < input.length && !isWhitespace(input[position])) {
-      return readIntToken();
+    if (position < input.length) {
+      int ch = input[position];
+      if (ch > ' ' || !isWhitespace(ch)) {
+        return readIntToken();
+      }
     }
     return readIntValue();
   }
@@ -341,14 +392,53 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public long readNextLongValue() {
-    if (position < input.length && !isWhitespace(input[position])) {
-      return readLongToken();
+    if (position < input.length) {
+      int ch = input[position];
+      if (ch > ' ' || !isWhitespace(ch)) {
+        return readLongToken();
+      }
     }
     return readLongValue();
   }
 
   public long readLongTokenValue() {
     return readLongToken();
+  }
+
+  public BigDecimal readBigDecimal() {
+    skipWhitespaceFast();
+    return readBigDecimalToken();
+  }
+
+  public UUID readUuid() {
+    skipWhitespaceFast();
+    int mark = position;
+    try {
+      return readUuidToken();
+    } catch (RuntimeException e) {
+      position = mark;
+      return UUID.fromString(readStringToken());
+    }
+  }
+
+  @Override
+  public double readDouble() {
+    skipWhitespaceFast();
+    return readDoubleToken();
+  }
+
+  public double readNextDoubleValue() {
+    if (position < input.length) {
+      int ch = input[position];
+      if (ch > ' ' || !isWhitespace(ch)) {
+        return readDoubleToken();
+      }
+    }
+    return readDouble();
+  }
+
+  public double readDoubleTokenValue() {
+    return readDoubleToken();
   }
 
   private long readLongToken() {
@@ -377,6 +467,16 @@ public final class Utf8JsonReader extends JsonReader {
     if (safeEnd > inputLength) {
       safeEnd = inputLength;
     }
+    int block = parseEightDigits(bytes, offset, safeEnd);
+    if (block >= 0) {
+      result = result * EIGHT_DIGITS + block;
+      offset += 8;
+      block = parseEightDigits(bytes, offset, safeEnd);
+      if (block >= 0) {
+        result = result * EIGHT_DIGITS + block;
+        offset += 8;
+      }
+    }
     while (offset < safeEnd) {
       ch = bytes[offset];
       if (ch < '0' || ch > '9') {
@@ -403,7 +503,7 @@ public final class Utf8JsonReader extends JsonReader {
         break;
       }
       int digit = ch - '0';
-      if (result > (Long.MAX_VALUE - digit) / 10) {
+      if (result > LONG_MAX_DIV_10 || (result == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
         position = offset;
         throw error("Long overflow");
       }
@@ -416,15 +516,15 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private long readNegativeLongToken(int start) {
-    position = start + 1;
-    long result = 0;
-    long limit = Long.MIN_VALUE;
-    if (position >= input.length) {
+    byte[] bytes = input;
+    int offset = start + 1;
+    int inputLength = bytes.length;
+    if (offset >= inputLength) {
       throw error("Expected digit");
     }
-    int ch = input[position];
+    int ch = bytes[offset];
     if (ch == '0') {
-      position++;
+      position = offset + 1;
       rejectLeadingDigitFast();
       rejectFractionOrExponentFast();
       return 0;
@@ -432,25 +532,466 @@ public final class Utf8JsonReader extends JsonReader {
     if (ch < '1' || ch > '9') {
       throw error("Expected digit");
     }
-    long multmin = limit / 10;
-    while (position < input.length) {
-      ch = input[position];
+    long result = '0' - ch;
+    offset++;
+    int safeEnd = offset + 17;
+    if (safeEnd > inputLength) {
+      safeEnd = inputLength;
+    }
+    int block = parseEightDigits(bytes, offset, safeEnd);
+    if (block >= 0) {
+      result = result * EIGHT_DIGITS - block;
+      offset += 8;
+      block = parseEightDigits(bytes, offset, safeEnd);
+      if (block >= 0) {
+        result = result * EIGHT_DIGITS - block;
+        offset += 8;
+      }
+    }
+    while (offset < safeEnd) {
+      ch = bytes[offset];
+      if (ch < '0' || ch > '9') {
+        break;
+      }
+      result = result * 10 - (ch - '0');
+      offset++;
+    }
+    if (offset < inputLength) {
+      ch = bytes[offset];
+      if (ch >= '0' && ch <= '9') {
+        return readNegativeLongTail(bytes, offset, inputLength, result);
+      }
+    }
+    position = offset;
+    rejectFractionOrExponentFast();
+    return result;
+  }
+
+  private long readNegativeLongTail(byte[] bytes, int offset, int inputLength, long result) {
+    while (offset < inputLength) {
+      int ch = bytes[offset];
       if (ch < '0' || ch > '9') {
         break;
       }
       int digit = ch - '0';
-      if (result < multmin) {
+      if (result < LONG_MIN_DIV_10 || (result == LONG_MIN_DIV_10 && digit > LONG_MIN_LAST_DIGIT)) {
+        position = offset;
         throw error("Long overflow");
       }
-      result *= 10;
-      if (result < Long.MIN_VALUE + digit) {
-        throw error("Long overflow");
-      }
-      result -= digit;
-      position++;
+      result = result * 10 - digit;
+      offset++;
     }
+    position = offset;
     rejectFractionOrExponentFast();
     return result;
+  }
+
+  private static int parseEightDigits(byte[] bytes, int offset, int safeEnd) {
+    if (offset + 8 > safeEnd) {
+      return -1;
+    }
+    // Keep this as one unaligned little-endian load. Eight separate byte loads made the helper too
+    // large for C2 to place well under generated readers, while the byte-lane math stays compact.
+    long chunk = LittleEndian.getInt64(bytes, offset);
+    long digits = chunk - ASCII_ZEROES;
+    if (((digits | (ASCII_NINES - chunk)) & ASCII_HIGH_BITS) != 0) {
+      return -1;
+    }
+    long pairs = (digits * 10 + (digits >>> 8)) & 0x00FF_00FF_00FF_00FFL;
+    long quads = (pairs * 100 + (pairs >>> 16)) & 0x0000_FFFF_0000_FFFFL;
+    return (int) ((quads & 0xFFFF) * 10_000 + (quads >>> 32));
+  }
+
+  private BigDecimal readBigDecimalToken() {
+    byte[] bytes = input;
+    int offset = position;
+    int start = offset;
+    int inputLength = bytes.length;
+    if (offset >= inputLength) {
+      return readBigDecimalFallback(start);
+    }
+    int ch = bytes[offset];
+    if (ch == '-') {
+      return readSignedBigDecimalToken(start);
+    }
+    long unscaled = 0;
+    int scale = 0;
+    if (ch == '0') {
+      offset++;
+      position = offset;
+      rejectLeadingDigitFast();
+    } else if (ch >= '1' && ch <= '9') {
+      do {
+        int digit = ch - '0';
+        if (unscaled > (Long.MAX_VALUE - digit) / 10) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        offset++;
+        if (offset >= inputLength) {
+          break;
+        }
+        ch = bytes[offset];
+      } while (ch >= '0' && ch <= '9');
+    } else {
+      return readBigDecimalFallback(start);
+    }
+    if (offset < inputLength && bytes[offset] == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset < inputLength) {
+        ch = bytes[offset];
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        int digit = ch - '0';
+        if (unscaled > (Long.MAX_VALUE - digit) / 10) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        scale++;
+        offset++;
+      }
+      if (offset == fractionStart) {
+        return readBigDecimalFallback(start);
+      }
+    }
+    if (offset < inputLength) {
+      ch = bytes[offset];
+      if (ch == 'e' || ch == 'E') {
+        return readBigDecimalFallback(start);
+      }
+    }
+    position = offset;
+    return BigDecimal.valueOf(unscaled, scale);
+  }
+
+  private BigDecimal readSignedBigDecimalToken(int start) {
+    byte[] bytes = input;
+    int offset = start + 1;
+    int inputLength = bytes.length;
+    if (offset >= inputLength) {
+      return readBigDecimalFallback(start);
+    }
+    int ch = bytes[offset];
+    long unscaled = 0;
+    int scale = 0;
+    if (ch == '0') {
+      offset++;
+      position = offset;
+      rejectLeadingDigitFast();
+    } else if (ch >= '1' && ch <= '9') {
+      do {
+        int digit = ch - '0';
+        if (unscaled > (Long.MAX_VALUE - digit) / 10) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        offset++;
+        if (offset >= inputLength) {
+          break;
+        }
+        ch = bytes[offset];
+      } while (ch >= '0' && ch <= '9');
+    } else {
+      return readBigDecimalFallback(start);
+    }
+    if (offset < inputLength && bytes[offset] == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset < inputLength) {
+        ch = bytes[offset];
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        int digit = ch - '0';
+        if (unscaled > (Long.MAX_VALUE - digit) / 10) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        scale++;
+        offset++;
+      }
+      if (offset == fractionStart) {
+        return readBigDecimalFallback(start);
+      }
+    }
+    if (offset < inputLength) {
+      ch = bytes[offset];
+      if (ch == 'e' || ch == 'E') {
+        return readBigDecimalFallback(start);
+      }
+    }
+    position = offset;
+    return BigDecimal.valueOf(-unscaled, scale);
+  }
+
+  private BigDecimal readBigDecimalFallback(int start) {
+    // Keep overflow and exponent forms on the existing string constructor path so the fast path
+    // only owns decimals that fit exactly as long + scale.
+    position = start;
+    return new BigDecimal(readNumberAsString());
+  }
+
+  private UUID readUuidToken() {
+    byte[] bytes = input;
+    int offset = position;
+    int start = offset + 1;
+    if (offset + 38 > bytes.length || bytes[offset] != '"') {
+      throw new IllegalArgumentException();
+    }
+    if (bytes[start + 8] != '-'
+        || bytes[start + 13] != '-'
+        || bytes[start + 18] != '-'
+        || bytes[start + 23] != '-'
+        || bytes[start + 36] != '"') {
+      throw new IllegalArgumentException();
+    }
+    long msb = parseHex(bytes, start, 8);
+    msb = (msb << 16) | parseHex(bytes, start + 9, 4);
+    msb = (msb << 16) | parseHex(bytes, start + 14, 4);
+    long lsb = parseHex(bytes, start + 19, 4);
+    lsb = (lsb << 48) | parseHex(bytes, start + 24, 12);
+    position = start + 37;
+    return new UUID(msb, lsb);
+  }
+
+  private static long parseHex(byte[] bytes, int offset, int length) {
+    long value = 0;
+    for (int i = 0; i < length; i++) {
+      value = (value << 4) | hexValue(bytes[offset + i]);
+    }
+    return value;
+  }
+
+  private static int hexValue(int ch) {
+    if (ch >= '0' && ch <= '9') {
+      return ch - '0';
+    }
+    int lower = ch | 0x20;
+    if (lower >= 'a' && lower <= 'f') {
+      return lower - 'a' + 10;
+    }
+    throw new IllegalArgumentException();
+  }
+
+  private double readDoubleToken() {
+    // Keep the fast path exact: compact plain decimals convert through BigDecimal's long+scale
+    // path, while exponents, overflow, and longer precision stay on Java's full parser. The
+    // two-digit accumulator below only reduces parser loop work; it must keep the same overflow
+    // boundary and BigDecimal finish instead of accepting approximate double construction.
+    byte[] bytes = input;
+    int offset = position;
+    int inputLength = bytes.length;
+    if (offset >= inputLength) {
+      return readDoubleFallback(offset);
+    }
+    int ch = bytes[offset];
+    if (ch == '-') {
+      return readSignedDoubleToken(offset);
+    }
+    return readPositiveDoubleToken(bytes, offset, inputLength, ch);
+  }
+
+  private double readPositiveDoubleToken(byte[] bytes, int offset, int inputLength, int ch) {
+    int start = offset;
+    long unscaled = 0;
+    int scale = 0;
+    if (ch == '0') {
+      offset++;
+      if (offset < inputLength) {
+        ch = bytes[offset];
+        if (ch >= '0' && ch <= '9') {
+          return readDoubleFallback(start);
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      unscaled = ch - '0';
+      offset++;
+      while (offset + 1 < inputLength) {
+        int high = bytes[offset] - '0';
+        int low = bytes[offset + 1] - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = bytes[offset] - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          offset++;
+        }
+      }
+    } else {
+      return readDoubleFallback(start);
+    }
+    if (offset < inputLength && bytes[offset] == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset + 1 < inputLength) {
+        int high = bytes[offset] - '0';
+        int low = bytes[offset + 1] - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        scale += 2;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = bytes[offset] - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          scale++;
+          offset++;
+        }
+      }
+      if (offset == fractionStart) {
+        return readDoubleFallback(start);
+      }
+    }
+    return finishDoubleToken(bytes, offset, inputLength, start, unscaled, scale);
+  }
+
+  private double readSignedDoubleToken(int start) {
+    byte[] bytes = input;
+    int offset = start + 1;
+    int inputLength = bytes.length;
+    if (offset >= inputLength) {
+      return readDoubleFallback(start);
+    }
+    int ch = bytes[offset];
+    long unscaled = 0;
+    int scale = 0;
+    if (ch == '0') {
+      offset++;
+      if (offset < inputLength) {
+        ch = bytes[offset];
+        if (ch >= '0' && ch <= '9') {
+          return readDoubleFallback(start);
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      unscaled = ch - '0';
+      offset++;
+      while (offset + 1 < inputLength) {
+        int high = bytes[offset] - '0';
+        int low = bytes[offset + 1] - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = bytes[offset] - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          offset++;
+        }
+      }
+    } else {
+      return readDoubleFallback(start);
+    }
+    if (offset < inputLength && bytes[offset] == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset + 1 < inputLength) {
+        int high = bytes[offset] - '0';
+        int low = bytes[offset + 1] - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        scale += 2;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = bytes[offset] - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          scale++;
+          offset++;
+        }
+      }
+      if (offset == fractionStart) {
+        return readDoubleFallback(start);
+      }
+    }
+    return finishSignedDoubleToken(bytes, offset, inputLength, start, unscaled, scale);
+  }
+
+  private double finishDoubleToken(
+      byte[] bytes, int offset, int inputLength, int start, long unscaled, int scale) {
+    if (offset < inputLength) {
+      int ch = bytes[offset];
+      if (ch == 'e' || ch == 'E') {
+        return readDoubleFallback(start);
+      }
+    }
+    position = offset;
+    return BigDecimal.valueOf(unscaled, scale).doubleValue();
+  }
+
+  private double finishSignedDoubleToken(
+      byte[] bytes, int offset, int inputLength, int start, long unscaled, int scale) {
+    if (offset < inputLength) {
+      int ch = bytes[offset];
+      if (ch == 'e' || ch == 'E') {
+        return readDoubleFallback(start);
+      }
+    }
+    position = offset;
+    if (unscaled == 0) {
+      return -0.0d;
+    }
+    return BigDecimal.valueOf(-unscaled, scale).doubleValue();
+  }
+
+  private double readDoubleFallback(int start) {
+    position = start;
+    if (start < input.length && input[start] == '"') {
+      return readNonFiniteDoubleString();
+    }
+    return Double.parseDouble(readNumberAsString());
   }
 
   @Override
@@ -603,7 +1144,7 @@ public final class Utf8JsonReader extends JsonReader {
       if (ch == 'n' && tryReadNullLiteral()) {
         return null;
       }
-      if (!isWhitespace(ch)) {
+      if (ch > ' ' || !isWhitespace(ch)) {
         return readStringToken();
       }
     }
@@ -623,6 +1164,28 @@ public final class Utf8JsonReader extends JsonReader {
     return readStringToken();
   }
 
+  public LocalDate readIsoLocalDate() {
+    skipWhitespaceFast();
+    int mark = position;
+    LocalDate value = tryReadIsoLocalDateToken();
+    if (value != null) {
+      return value;
+    }
+    position = mark;
+    return readIsoLocalDateFallback(readStringToken());
+  }
+
+  public OffsetDateTime readIsoOffsetDateTime() {
+    skipWhitespaceFast();
+    int mark = position;
+    OffsetDateTime value = tryReadIsoOffsetDateTimeToken();
+    if (value != null) {
+      return value;
+    }
+    position = mark;
+    return readIsoOffsetDateTimeFallback(readStringToken());
+  }
+
   private String readStringToken() {
     byte[] bytes = input;
     int inputLength = bytes.length;
@@ -631,6 +1194,67 @@ public final class Utf8JsonReader extends JsonReader {
     }
     int start = position;
     int offset = start;
+    if (offset + Long.BYTES <= inputLength) {
+      long stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
+      if (stopMask != 0) {
+        return readStringWordStop(start, offset, stopMask);
+      }
+      offset += Long.BYTES;
+      if (offset + Long.BYTES <= inputLength) {
+        stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
+        if (stopMask != 0) {
+          return readStringWordStop(start, offset, stopMask);
+        }
+        offset += Long.BYTES;
+        if (offset + Long.BYTES <= inputLength) {
+          stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
+          if (stopMask != 0) {
+            return readStringWordStop(start, offset, stopMask);
+          }
+          offset += Long.BYTES;
+        }
+      }
+    }
+    return readStringTokenLongTail(start, offset, inputLength);
+  }
+
+  private String readStringWordStop(int start, int offset, long stopMask) {
+    int stop = offset + (Long.numberOfTrailingZeros(stopMask) >>> 3);
+    int b = input[stop];
+    if (b == '"') {
+      position = stop + 1;
+      return newLatin1String(start, stop);
+    }
+    return readStringStop(start, stop, b);
+  }
+
+  private String readStringTokenLongTail(int start, int offset, int inputLength) {
+    byte[] bytes = input;
+    int doubleWordEnd = inputLength - (Long.BYTES << 1);
+    while (offset <= doubleWordEnd) {
+      long stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
+      if (stopMask != 0) {
+        int stop = offset + (Long.numberOfTrailingZeros(stopMask) >>> 3);
+        int b = bytes[stop];
+        if (b == '"') {
+          position = stop + 1;
+          return newLatin1String(start, stop);
+        }
+        return readStringStop(start, stop, b);
+      }
+      int nextOffset = offset + Long.BYTES;
+      stopMask = stringStopMask(LittleEndian.getInt64(bytes, nextOffset));
+      if (stopMask != 0) {
+        int stop = nextOffset + (Long.numberOfTrailingZeros(stopMask) >>> 3);
+        int b = bytes[stop];
+        if (b == '"') {
+          position = stop + 1;
+          return newLatin1String(start, stop);
+        }
+        return readStringStop(start, stop, b);
+      }
+      offset = nextOffset + Long.BYTES;
+    }
     int wordEnd = inputLength - Long.BYTES;
     while (offset <= wordEnd) {
       long stopMask = stringStopMask(LittleEndian.getInt64(bytes, offset));
@@ -646,6 +1270,13 @@ public final class Utf8JsonReader extends JsonReader {
       }
       return readStringStop(start, stop, b);
     }
+    return readStringTokenTail(start, offset, inputLength);
+  }
+
+  private String readStringTokenTail(int start, int offset, int inputLength) {
+    byte[] bytes = input;
+    // Reached only when the whole input has fewer than eight bytes left. Keep this rare tail out
+    // of the hot word scanner so C2 has more budget for common string call sites.
     if (offset + Integer.BYTES <= inputLength) {
       int stopMask = stringStopMask(LittleEndian.getInt32(bytes, offset));
       if (stopMask == 0) {
@@ -680,51 +1311,229 @@ public final class Utf8JsonReader extends JsonReader {
     throw error("Unterminated string");
   }
 
-  private String readStringStop(int start, int stop, int b) {
-    position = stop + 1;
-    if (b >= 0 && b < 0x20) {
-      throw error("Control character in string");
+  private LocalDate tryReadIsoLocalDateToken() {
+    byte[] bytes = input;
+    int offset = position;
+    int length = bytes.length;
+    if (offset + 12 > length || bytes[offset] != '"') {
+      return null;
     }
-    StringBuilder builder = newStringBuilder(start, stop);
-    appendAscii(builder, start, stop);
-    if (b == '\\') {
-      appendEscape(builder);
-      return readStringTail(builder);
+    offset++;
+    int dateStart = offset;
+    if (bytes[dateStart + 4] != '-' || bytes[dateStart + 7] != '-') {
+      return null;
     }
-    if (b < 0) {
-      appendUtf8(builder, b & 0xFF);
-      return readStringTail(builder);
+    int year = parse4(bytes, dateStart);
+    int month = parse2(bytes, dateStart + 5);
+    int day = parse2(bytes, dateStart + 8);
+    int end = dateStart + 10;
+    int ch = bytes[end];
+    if (ch == '"') {
+      position = end + 1;
+      return LocalDate.of(year, month, day);
     }
-    appendUtf8(builder, b);
-    return readStringTail(builder);
+    if (ch == 'T') {
+      int stringEnd = tryScanSimpleStringTail(bytes, end + 1);
+      if (stringEnd < 0) {
+        return null;
+      }
+      position = stringEnd;
+      return LocalDate.of(year, month, day);
+    }
+    return null;
   }
 
-  private StringBuilder newStringBuilder(int start, int stop) {
-    return new StringBuilder(Math.max(16, stop - start + 16));
+  private OffsetDateTime tryReadIsoOffsetDateTimeToken() {
+    byte[] bytes = input;
+    int offset = position;
+    int length = bytes.length;
+    if (offset + 19 > length || bytes[offset] != '"') {
+      return null;
+    }
+    offset++;
+    int start = offset;
+    if (bytes[start + 4] != '-'
+        || bytes[start + 7] != '-'
+        || bytes[start + 10] != 'T'
+        || bytes[start + 13] != ':') {
+      return null;
+    }
+    int year = parse4(bytes, start);
+    int month = parse2(bytes, start + 5);
+    int day = parse2(bytes, start + 8);
+    int hour = parse2(bytes, start + 11);
+    int minute = parse2(bytes, start + 14);
+    return tryReadIsoOffsetDateTimeTail(bytes, start + 16, length, year, month, day, hour, minute);
+  }
+
+  private OffsetDateTime tryReadIsoOffsetDateTimeTail(
+      byte[] bytes, int index, int length, int year, int month, int day, int hour, int minute) {
+    int second = 0;
+    int nano = 0;
+    if (index < length && bytes[index] == ':') {
+      second = parse2(bytes, index + 1);
+      index += 3;
+      if (index < length && bytes[index] == '.') {
+        int fractionStart = index + 1;
+        int fractionEnd = fractionStart;
+        while (fractionEnd < length && isDigit(bytes[fractionEnd])) {
+          fractionEnd++;
+        }
+        if (fractionEnd == fractionStart || fractionEnd - fractionStart > 9) {
+          throw new IllegalArgumentException();
+        }
+        nano = parseNano(bytes, fractionStart, fractionEnd);
+        index = fractionEnd;
+      }
+    }
+    if (index < length && bytes[index] == 'Z') {
+      if (index + 1 >= length || bytes[index + 1] != '"') {
+        return null;
+      }
+      position = index + 2;
+      return OffsetDateTime.of(year, month, day, hour, minute, second, nano, ZoneOffset.UTC);
+    }
+    return tryReadIsoOffsetDateTimeOffsetTail(
+        bytes, index, length, year, month, day, hour, minute, second, nano);
+  }
+
+  private OffsetDateTime tryReadIsoOffsetDateTimeOffsetTail(
+      byte[] bytes,
+      int index,
+      int length,
+      int year,
+      int month,
+      int day,
+      int hour,
+      int minute,
+      int second,
+      int nano) {
+    long offsetAndEnd = tryParseOffsetAndEnd(bytes, index, length);
+    if (offsetAndEnd == Long.MIN_VALUE) {
+      return null;
+    }
+    position = (int) offsetAndEnd;
+    return OffsetDateTime.of(
+        year,
+        month,
+        day,
+        hour,
+        minute,
+        second,
+        nano,
+        ZoneOffset.ofTotalSeconds((int) (offsetAndEnd >> 32)));
+  }
+
+  private int tryScanSimpleStringTail(byte[] bytes, int offset) {
+    int length = bytes.length;
+    while (offset < length) {
+      int b = bytes[offset++];
+      if (b == '"') {
+        return offset;
+      }
+      if (b == '\\' || b < 0x20 || b < 0) {
+        return -1;
+      }
+    }
+    throw error("Unterminated string");
+  }
+
+  private static long tryParseOffsetAndEnd(byte[] bytes, int index, int length) {
+    if (index >= length) {
+      return Long.MIN_VALUE;
+    }
+    int offset = bytes[index];
+    if (offset == 'Z') {
+      if (index + 1 >= length || bytes[index + 1] != '"') {
+        return Long.MIN_VALUE;
+      }
+      return ((long) (index + 2)) & 0xFFFF_FFFFL;
+    }
+    if (offset != '+' && offset != '-') {
+      return Long.MIN_VALUE;
+    }
+    if (index + 6 >= length || bytes[index + 3] != ':') {
+      return Long.MIN_VALUE;
+    }
+    int hour = parse2(bytes, index + 1);
+    int minute = parse2(bytes, index + 4);
+    int second = 0;
+    int end = index + 6;
+    if (bytes[end] == ':') {
+      if (end + 3 >= length) {
+        throw new IllegalArgumentException();
+      }
+      second = parse2(bytes, end + 1);
+      end += 3;
+    }
+    if (bytes[end] != '"') {
+      return Long.MIN_VALUE;
+    }
+    int total = hour * 3600 + minute * 60 + second;
+    if (offset == '-') {
+      total = -total;
+    }
+    return ((long) total << 32) | ((long) (end + 1) & 0xFFFF_FFFFL);
+  }
+
+  private static int parseNano(byte[] bytes, int start, int end) {
+    int nano = 0;
+    for (int i = start; i < end; i++) {
+      nano = nano * 10 + bytes[i] - '0';
+    }
+    for (int i = end - start; i < 9; i++) {
+      nano *= 10;
+    }
+    return nano;
+  }
+
+  private static int parse4(byte[] bytes, int index) {
+    return parse2(bytes, index) * 100 + parse2(bytes, index + 2);
+  }
+
+  private static int parse2(byte[] bytes, int index) {
+    int high = bytes[index] - '0';
+    int low = bytes[index + 1] - '0';
+    if (high < 0 || high > 9 || low < 0 || low > 9) {
+      throw new IllegalArgumentException();
+    }
+    return high * 10 + low;
+  }
+
+  private static boolean isDigit(byte b) {
+    return b >= '0' && b <= '9';
+  }
+
+  private String readStringStop(int start, int stop, int b) {
+    position = stop + 1;
+    int out = stop - start;
+    byte[] bytes = stringDecodeBuffer;
+    if (out == 0 && b < 0) {
+      int first = b & 0xFF;
+      if ((first & 0xF0) == 0xE0 || (first & 0xF8) == 0xF0) {
+        return readStringUtf16FromFirst(bytes, first);
+      }
+    }
+    if (bytes.length < out) {
+      bytes = growStringDecodeBuffer(bytes, out);
+    }
+    System.arraycopy(input, start, bytes, 0, out);
+    return readStringLatin1Tail(bytes, out, b);
   }
 
   private static long stringStopMask(long word) {
-    return (word & BYTE_HIGH_BITS)
-        | byteMatchMask(word, QUOTE_BYTES)
-        | byteMatchMask(word, BACKSLASH_BYTES)
-        | ((word - CONTROL_LIMIT_BYTES) & ~word & BYTE_HIGH_BITS);
+    // UTF-8 mode stops on every high-bit byte, and readStringToken only uses the first stop bit.
+    // Subtraction borrow may only create later high bits after an earlier real stop, so the
+    // compact syntax/range expression preserves the first-stop position. Latin1JsonReader cannot
+    // use this shortcut because high-bit Latin-1 bytes are valid string payload.
+    long syntaxStop = ((word ^ QUOTE_BYTES) - BYTE_ONES) | ((word ^ BACKSLASH_BYTES) - BYTE_ONES);
+    return (syntaxStop | word | (word - CONTROL_LIMIT_BYTES)) & BYTE_HIGH_BITS;
   }
 
   private static int stringStopMask(int word) {
-    return (word & INT_BYTE_HIGH_BITS)
-        | byteMatchMask(word, INT_QUOTE_BYTES)
-        | byteMatchMask(word, INT_BACKSLASH_BYTES)
-        | ((word - INT_CONTROL_LIMIT_BYTES) & ~word & INT_BYTE_HIGH_BITS);
-  }
-
-  private static long byteMatchMask(long word, long repeatedByte) {
-    long match = word ^ repeatedByte;
-    return (match - BYTE_ONES) & ~match & BYTE_HIGH_BITS;
-  }
-
-  private static int byteMatchMask(int word, int repeatedByte) {
-    int match = word ^ repeatedByte;
-    return (match - INT_BYTE_ONES) & ~match & INT_BYTE_HIGH_BITS;
+    int syntaxStop =
+        ((word ^ INT_QUOTE_BYTES) - INT_BYTE_ONES) | ((word ^ INT_BACKSLASH_BYTES) - INT_BYTE_ONES);
+    return (syntaxStop | word | (word - INT_CONTROL_LIMIT_BYTES)) & INT_BYTE_HIGH_BITS;
   }
 
   @Override
@@ -762,7 +1571,7 @@ public final class Utf8JsonReader extends JsonReader {
       if (ch == '"') {
         return tryReadFieldNameColonAt(mark, expectedHash, expectedMask, expectedLength);
       }
-      if (!isWhitespace(ch)) {
+      if (ch > ' ' || !isWhitespace(ch)) {
         return false;
       }
     }
@@ -860,6 +1669,37 @@ public final class Utf8JsonReader extends JsonReader {
     return false;
   }
 
+  public boolean tryReadNextFieldNameToken8(
+      long prefix, long suffix, long suffixMask, int tokenLength) {
+    return tryReadNextRawToken8(prefix, suffix, suffixMask, tokenLength);
+  }
+
+  private boolean tryReadNextRawToken8(long prefix, long suffix, long suffixMask, int tokenLength) {
+    byte[] bytes = input;
+    int mark = position;
+    int suffixOffset = mark + Long.BYTES;
+    if (mark + tokenLength <= bytes.length
+        && LittleEndian.getInt64(bytes, mark) == prefix
+        && readTokenSuffix(bytes, suffixOffset, tokenLength, suffixMask) == suffix) {
+      position = mark + tokenLength;
+      return true;
+    }
+    return false;
+  }
+
+  private static long readTokenSuffix(
+      byte[] bytes, int suffixOffset, int tokenLength, long suffixMask) {
+    if (suffixOffset + Long.BYTES <= bytes.length) {
+      return LittleEndian.getInt64(bytes, suffixOffset) & suffixMask;
+    }
+    int suffixLength = tokenLength - Long.BYTES;
+    long suffix = 0;
+    for (int i = 0; i < suffixLength; i++) {
+      suffix |= (long) (bytes[suffixOffset + i] & 0xFF) << (i << 3);
+    }
+    return suffix;
+  }
+
   private boolean tryReadFieldNameColonAt(
       int mark, long expectedHash, long expectedMask, int expectedLength) {
     byte[] bytes = input;
@@ -923,8 +1763,11 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public long readNextPackedStringHash() {
-    if (position < input.length && !isWhitespace(input[position])) {
-      return readPackedStringHashToken();
+    if (position < input.length) {
+      int ch = input[position];
+      if (ch > ' ' || !isWhitespace(ch)) {
+        return readPackedStringHashToken();
+      }
     }
     return readPackedStringHash();
   }
@@ -1076,40 +1919,6 @@ public final class Utf8JsonReader extends JsonReader {
     return StringSerializer.newLatin1StringZeroCopy(bytes);
   }
 
-  private String readStringTail(StringBuilder builder) {
-    while (position < input.length) {
-      int b = input[position++] & 0xFF;
-      if (b == '"') {
-        return builder.toString();
-      } else if (b == '\\') {
-        appendEscape(builder);
-      } else if (b < 0x20) {
-        throw error("Control character in string");
-      } else if (b < 0x80) {
-        builder.append((char) b);
-      } else {
-        appendUtf8(builder, b);
-      }
-    }
-    throw error("Unterminated string");
-  }
-
-  private void appendAscii(StringBuilder builder, int start, int end) {
-    for (int i = start; i < end; i++) {
-      builder.append((char) (input[i] & 0xFF));
-    }
-  }
-
-  private void appendUtf8(StringBuilder builder, int first) {
-    int codePoint = readUtf8CodePoint(first);
-    if (codePoint <= 0xFFFF) {
-      builder.append((char) codePoint);
-    } else {
-      builder.append(Character.highSurrogate(codePoint));
-      builder.append(Character.lowSurrogate(codePoint));
-    }
-  }
-
   private int readUtf8CodePoint(int first) {
     if ((first & 0xE0) == 0xC0) {
       int second = continuation();
@@ -1139,6 +1948,331 @@ public final class Utf8JsonReader extends JsonReader {
     throw error("Invalid UTF-8 sequence");
   }
 
+  private String readStringLatin1Tail(byte[] bytes, int out, int b) {
+    while (true) {
+      if (b == '"') {
+        return finishDecodedString(bytes, out, false);
+      }
+      if (b == '\\') {
+        char ch = readEscapedStringChar();
+        if (Character.isHighSurrogate(ch)) {
+          char low = readLowSurrogateEscape();
+          bytes = widenStringDecodeBuffer(bytes, out);
+          out <<= 1;
+          bytes = ensureStringDecodeCapacity(bytes, out + 4);
+          out = putUtf16Char(bytes, out, ch);
+          out = putUtf16Char(bytes, out, low);
+          return readStringUtf16Tail(bytes, out);
+        }
+        if (Character.isLowSurrogate(ch)) {
+          throw error("Unpaired low surrogate escape");
+        }
+        if (ch <= 0xFF) {
+          bytes = ensureStringDecodeCapacity(bytes, out + 1);
+          bytes[out++] = (byte) ch;
+        } else {
+          bytes = widenStringDecodeBuffer(bytes, out);
+          out <<= 1;
+          bytes = ensureStringDecodeCapacity(bytes, out + 2);
+          out = putUtf16Char(bytes, out, ch);
+          return readStringUtf16Tail(bytes, out);
+        }
+      } else if (b >= 0 && b < 0x20) {
+        throw error("Control character in string");
+      } else if (b >= 0 && b < 0x80) {
+        bytes = ensureStringDecodeCapacity(bytes, out + 1);
+        bytes[out++] = (byte) b;
+      } else {
+        int codePoint = readUtf8CodePoint(b & 0xFF);
+        if (codePoint <= 0xFF) {
+          bytes = ensureStringDecodeCapacity(bytes, out + 1);
+          bytes[out++] = (byte) codePoint;
+        } else {
+          bytes = widenStringDecodeBuffer(bytes, out);
+          out <<= 1;
+          if (codePoint <= 0xFFFF) {
+            bytes = ensureStringDecodeCapacity(bytes, out + 2);
+            out = putUtf16Char(bytes, out, (char) codePoint);
+          } else {
+            bytes = ensureStringDecodeCapacity(bytes, out + 4);
+            out = putUtf16Char(bytes, out, Character.highSurrogate(codePoint));
+            out = putUtf16Char(bytes, out, Character.lowSurrogate(codePoint));
+          }
+          return readStringUtf16Tail(bytes, out);
+        }
+      }
+      if (position >= input.length) {
+        throw error("Unterminated string");
+      }
+      b = input[position++] & 0xFF;
+    }
+  }
+
+  private String readStringUtf16Tail(byte[] bytes, int out) {
+    byte[] input = this.input;
+    int position = this.position;
+    int inputLength = input.length;
+    int capacity = bytes.length;
+    while (position < inputLength) {
+      int b = input[position++] & 0xFF;
+      if ((b & 0xF0) == 0xE0) {
+        if (position >= inputLength) {
+          this.position = position;
+          throw error("Short UTF-8 sequence");
+        }
+        int second = input[position++] & 0xFF;
+        if ((second & 0xC0) != 0x80) {
+          this.position = position;
+          throw error("Invalid UTF-8 continuation");
+        }
+        if (position >= inputLength) {
+          this.position = position;
+          throw error("Short UTF-8 sequence");
+        }
+        int third = input[position++] & 0xFF;
+        if ((third & 0xC0) != 0x80) {
+          this.position = position;
+          throw error("Invalid UTF-8 continuation");
+        }
+        int codePoint = ((b & 0x0F) << 12) | ((second & 0x3F) << 6) | (third & 0x3F);
+        if (codePoint < 0x800 || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
+          this.position = position;
+          throw error("Invalid UTF-8 sequence");
+        }
+        if (out + 2 > capacity) {
+          bytes = growStringDecodeBuffer(bytes, out + 2);
+          capacity = bytes.length;
+        }
+        out = putUtf16Char(bytes, out, (char) codePoint);
+      } else if (b == '"') {
+        this.position = position;
+        return finishDecodedString(bytes, out, true);
+      } else if (b == '\\') {
+        this.position = position;
+        char ch = readEscapedStringChar();
+        position = this.position;
+        if (Character.isHighSurrogate(ch)) {
+          char low = readLowSurrogateEscape();
+          position = this.position;
+          if (out + 4 > capacity) {
+            bytes = growStringDecodeBuffer(bytes, out + 4);
+            capacity = bytes.length;
+          }
+          out = putUtf16Char(bytes, out, ch);
+          out = putUtf16Char(bytes, out, low);
+        } else if (Character.isLowSurrogate(ch)) {
+          throw error("Unpaired low surrogate escape");
+        } else {
+          if (out + 2 > capacity) {
+            bytes = growStringDecodeBuffer(bytes, out + 2);
+            capacity = bytes.length;
+          }
+          out = putUtf16Char(bytes, out, ch);
+        }
+      } else if (b < 0x20) {
+        this.position = position;
+        throw error("Control character in string");
+      } else if (b < 0x80) {
+        if (out + 2 > capacity) {
+          bytes = growStringDecodeBuffer(bytes, out + 2);
+          capacity = bytes.length;
+        }
+        out = putUtf16Char(bytes, out, (char) b);
+      } else if ((b & 0xE0) == 0xC0) {
+        if (position >= inputLength) {
+          this.position = position;
+          throw error("Short UTF-8 sequence");
+        }
+        int second = input[position++] & 0xFF;
+        if ((second & 0xC0) != 0x80) {
+          this.position = position;
+          throw error("Invalid UTF-8 continuation");
+        }
+        int codePoint = ((b & 0x1F) << 6) | (second & 0x3F);
+        if (codePoint < 0x80) {
+          this.position = position;
+          throw error("Overlong UTF-8 sequence");
+        }
+        if (out + 2 > capacity) {
+          bytes = growStringDecodeBuffer(bytes, out + 2);
+          capacity = bytes.length;
+        }
+        out = putUtf16Char(bytes, out, (char) codePoint);
+      } else if ((b & 0xF8) == 0xF0) {
+        if (position >= inputLength) {
+          this.position = position;
+          throw error("Short UTF-8 sequence");
+        }
+        int second = input[position++] & 0xFF;
+        if ((second & 0xC0) != 0x80) {
+          this.position = position;
+          throw error("Invalid UTF-8 continuation");
+        }
+        if (position >= inputLength) {
+          this.position = position;
+          throw error("Short UTF-8 sequence");
+        }
+        int third = input[position++] & 0xFF;
+        if ((third & 0xC0) != 0x80) {
+          this.position = position;
+          throw error("Invalid UTF-8 continuation");
+        }
+        if (position >= inputLength) {
+          this.position = position;
+          throw error("Short UTF-8 sequence");
+        }
+        int fourth = input[position++] & 0xFF;
+        if ((fourth & 0xC0) != 0x80) {
+          this.position = position;
+          throw error("Invalid UTF-8 continuation");
+        }
+        int codePoint =
+            ((b & 0x07) << 18) | ((second & 0x3F) << 12) | ((third & 0x3F) << 6) | (fourth & 0x3F);
+        if (codePoint < 0x10000 || codePoint > 0x10FFFF) {
+          this.position = position;
+          throw error("Invalid UTF-8 sequence");
+        }
+        if (out + 4 > capacity) {
+          bytes = growStringDecodeBuffer(bytes, out + 4);
+          capacity = bytes.length;
+        }
+        out = putUtf16Char(bytes, out, Character.highSurrogate(codePoint));
+        out = putUtf16Char(bytes, out, Character.lowSurrogate(codePoint));
+      } else {
+        this.position = position;
+        throw error("Invalid UTF-8 sequence");
+      }
+    }
+    throw error("Unterminated string");
+  }
+
+  private String readStringUtf16FromFirst(byte[] bytes, int first) {
+    int codePoint;
+    if ((first & 0xF0) == 0xE0) {
+      byte[] input = this.input;
+      int position = this.position;
+      int inputLength = input.length;
+      if (position >= inputLength) {
+        this.position = position;
+        throw error("Short UTF-8 sequence");
+      }
+      int second = input[position++] & 0xFF;
+      if ((second & 0xC0) != 0x80) {
+        this.position = position;
+        throw error("Invalid UTF-8 continuation");
+      }
+      if (position >= inputLength) {
+        this.position = position;
+        throw error("Short UTF-8 sequence");
+      }
+      int third = input[position++] & 0xFF;
+      if ((third & 0xC0) != 0x80) {
+        this.position = position;
+        throw error("Invalid UTF-8 continuation");
+      }
+      codePoint = ((first & 0x0F) << 12) | ((second & 0x3F) << 6) | (third & 0x3F);
+      if (codePoint < 0x800 || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
+        this.position = position;
+        throw error("Invalid UTF-8 sequence");
+      }
+      this.position = position;
+    } else {
+      codePoint = readUtf8CodePoint(first);
+    }
+    int out;
+    if (codePoint <= 0xFFFF) {
+      bytes = ensureStringDecodeCapacity(bytes, 2);
+      out = putUtf16Char(bytes, 0, (char) codePoint);
+    } else {
+      bytes = ensureStringDecodeCapacity(bytes, 4);
+      out = putUtf16Char(bytes, 0, Character.highSurrogate(codePoint));
+      out = putUtf16Char(bytes, out, Character.lowSurrogate(codePoint));
+    }
+    return readStringUtf16Tail(bytes, out);
+  }
+
+  private char readEscapedStringChar() {
+    if (position >= input.length) {
+      throw error("Unterminated escape");
+    }
+    char escaped = (char) (input[position++] & 0xFF);
+    switch (escaped) {
+      case '"':
+      case '\\':
+      case '/':
+        return escaped;
+      case 'b':
+        return '\b';
+      case 'f':
+        return '\f';
+      case 'n':
+        return '\n';
+      case 'r':
+        return '\r';
+      case 't':
+        return '\t';
+      case 'u':
+        return readUnicodeEscape();
+      default:
+        throw error("Invalid escape");
+    }
+  }
+
+  private char readLowSurrogateEscape() {
+    if (position + 2 > input.length || input[position] != '\\' || input[position + 1] != 'u') {
+      throw error("Unpaired high surrogate escape");
+    }
+    position += 2;
+    char low = readUnicodeEscape();
+    if (!Character.isLowSurrogate(low)) {
+      throw error("Unpaired high surrogate escape");
+    }
+    return low;
+  }
+
+  private String finishDecodedString(byte[] bytes, int length, boolean utf16) {
+    // Strings must not share the reader-owned decode buffer; the buffer is reused by later reads.
+    byte[] result = new byte[length];
+    System.arraycopy(bytes, 0, result, 0, length);
+    return utf16
+        ? StringSerializer.newUtf16StringZeroCopy(result)
+        : StringSerializer.newLatin1StringZeroCopy(result);
+  }
+
+  private byte[] ensureStringDecodeCapacity(byte[] bytes, int capacity) {
+    if (bytes.length < capacity) {
+      return growStringDecodeBuffer(bytes, capacity);
+    }
+    return bytes;
+  }
+
+  private byte[] growStringDecodeBuffer(byte[] bytes, int capacity) {
+    int newCapacity = Math.max(capacity, bytes.length << 1);
+    byte[] grown = Arrays.copyOf(bytes, newCapacity);
+    stringDecodeBuffer = grown;
+    return grown;
+  }
+
+  private byte[] widenStringDecodeBuffer(byte[] bytes, int length) {
+    int utf16Length = length << 1;
+    bytes = ensureStringDecodeCapacity(bytes, utf16Length);
+    for (int i = length - 1, pos = utf16Length - 2; i >= 0; i--, pos -= 2) {
+      putUtf16Char(bytes, pos, (char) (bytes[i] & 0xFF));
+    }
+    return bytes;
+  }
+
+  private static int putUtf16Char(byte[] bytes, int pos, char value) {
+    if (LITTLE_ENDIAN) {
+      bytes[pos] = (byte) value;
+      bytes[pos + 1] = (byte) (value >>> 8);
+    } else {
+      bytes[pos] = (byte) (value >>> 8);
+      bytes[pos + 1] = (byte) value;
+    }
+    return pos + 2;
+  }
+
   private int continuation() {
     if (position >= input.length) {
       throw error("Short UTF-8 sequence");
@@ -1153,6 +2287,9 @@ public final class Utf8JsonReader extends JsonReader {
   private void skipWhitespaceFast() {
     while (position < input.length) {
       int ch = input[position];
+      if (ch > ' ') {
+        return;
+      }
       if (isWhitespace(ch)) {
         position++;
       } else {
@@ -1163,19 +2300,6 @@ public final class Utf8JsonReader extends JsonReader {
 
   private static boolean isWhitespace(int ch) {
     return ch == ' ' || ch == '\n' || ch == '\r' || ch == '\t';
-  }
-
-  private boolean startsWithAscii(String value) {
-    int end = position + value.length();
-    if (end > input.length) {
-      return false;
-    }
-    for (int i = 0; i < value.length(); i++) {
-      if (input[position + i] != value.charAt(i)) {
-        return false;
-      }
-    }
-    return true;
   }
 
   private void rejectLeadingDigitFast() {

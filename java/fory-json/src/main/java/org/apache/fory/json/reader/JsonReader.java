@@ -19,6 +19,22 @@
 
 package org.apache.fory.json.reader;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.MonthDay;
+import java.time.OffsetDateTime;
+import java.time.OffsetTime;
+import java.time.Period;
+import java.time.Year;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.util.UUID;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.meta.JsonFieldInfo;
@@ -29,6 +45,7 @@ public abstract class JsonReader {
   protected int position;
   private int depth;
   private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
+  private final AsciiStringView asciiStringView = new AsciiStringView(this);
 
   protected abstract int length();
 
@@ -48,9 +65,13 @@ public abstract class JsonReader {
   public final void enterDepth() {
     int nextDepth = depth + 1;
     if (nextDepth > maxDepth) {
-      throw error("JSON max depth " + maxDepth + " exceeded");
+      throwMaxDepthExceeded();
     }
     depth = nextDepth;
+  }
+
+  private void throwMaxDepthExceeded() {
+    throw error("JSON max depth " + maxDepth + " exceeded");
   }
 
   public final void exitDepth() {
@@ -59,6 +80,10 @@ public abstract class JsonReader {
 
   public String readNullableString() {
     return tryReadNull() ? null : readString();
+  }
+
+  public String readCharSequence() {
+    return readString();
   }
 
   public final void skipWhitespace() {
@@ -161,8 +186,16 @@ public abstract class JsonReader {
     throw error("Expected boolean");
   }
 
-  public final String readNumber() {
+  public final String readNumberAsString() {
     skipWhitespace();
+    return readNumberToken();
+  }
+
+  public final Number readNumber() {
+    return materializeNumber(readNumberAsString());
+  }
+
+  private String readNumberToken() {
     int start = position;
     if (position < length() && charAt(position) == '-') {
       position++;
@@ -279,6 +312,551 @@ public abstract class JsonReader {
     }
     rejectFractionOrExponent();
     return negative ? result : -result;
+  }
+
+  public double readDouble() {
+    skipWhitespace();
+    if (position < length() && charAt(position) == '"') {
+      return readNonFiniteDoubleString();
+    }
+    return Double.parseDouble(readNumberToken());
+  }
+
+  public float readFloat() {
+    skipWhitespace();
+    if (position < length() && charAt(position) == '"') {
+      return readNonFiniteFloatString();
+    }
+    return Float.parseFloat(readNumberToken());
+  }
+
+  public BigDecimal readBigDecimal() {
+    skipWhitespace();
+    return readBigDecimalToken();
+  }
+
+  public BigInteger readBigInteger() {
+    skipWhitespace();
+    int mark = position;
+    try {
+      return BigInteger.valueOf(readLong());
+    } catch (RuntimeException e) {
+      position = mark;
+      return new BigInteger(readNumberAsString());
+    }
+  }
+
+  public char readChar() {
+    skipWhitespace();
+    int mark = position;
+    if (position >= length() || charAt(position++) != '"') {
+      throw error("Expected string");
+    }
+    if (position >= length()) {
+      throw error("Unterminated string");
+    }
+    char ch = charAt(position++);
+    if (ch > 0 && ch < 0x80 && ch != '\\' && ch != '"' && ch >= 0x20) {
+      if (position < length() && charAt(position++) == '"') {
+        return ch;
+      }
+    }
+    position = mark;
+    String value = readString();
+    if (value.length() != 1) {
+      throw new ForyJsonException("Expected one-character JSON string for char");
+    }
+    return value.charAt(0);
+  }
+
+  public UUID readUuid() {
+    skipWhitespace();
+    int mark = position;
+    try {
+      return readUuidToken();
+    } catch (RuntimeException e) {
+      position = mark;
+      return UUID.fromString(readString());
+    }
+  }
+
+  public LocalTime readIsoLocalTime() {
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      return LocalTime.parse(value);
+    }
+    return parseLocalTimeString(readString());
+  }
+
+  public LocalDateTime readIsoLocalDateTime() {
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      return LocalDateTime.parse(value);
+    }
+    return parseLocalDateTimeString(readString());
+  }
+
+  public Instant readIsoInstant() {
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      return Instant.parse(value);
+    }
+    return parseInstantString(readString());
+  }
+
+  public Duration readDuration() {
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      return Duration.parse(value);
+    }
+    return parseDurationString(readString());
+  }
+
+  public ZoneOffset readZoneOffset() {
+    int mark = position;
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      ZoneOffset offset = tryParseZoneOffset(value);
+      if (offset != null) {
+        return offset;
+      } else {
+        position = mark;
+      }
+    }
+    return parseZoneOffsetString(readString());
+  }
+
+  public ZonedDateTime readZonedDateTime() {
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      return ZonedDateTime.parse(value);
+    }
+    return parseZonedDateTimeString(readString());
+  }
+
+  public Year readYear() {
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      return Year.parse(value);
+    }
+    return parseYearString(readString());
+  }
+
+  public YearMonth readYearMonth() {
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      return YearMonth.parse(value);
+    }
+    return parseYearMonthString(readString());
+  }
+
+  public MonthDay readMonthDay() {
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      return MonthDay.parse(value);
+    }
+    return parseMonthDayString(readString());
+  }
+
+  public Period readPeriod() {
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      return Period.parse(value);
+    }
+    return parsePeriodString(readString());
+  }
+
+  public OffsetTime readOffsetTime() {
+    CharSequence value = tryReadAsciiStringView();
+    if (value != null) {
+      return OffsetTime.parse(value);
+    }
+    return parseOffsetTimeString(readString());
+  }
+
+  private BigDecimal readBigDecimalToken() {
+    int start = position;
+    int inputLength = length();
+    if (position >= inputLength) {
+      return readBigDecimalFallback(start);
+    }
+    char ch = charAt(position);
+    if (ch == '-') {
+      return readSignedBigDecimalToken(start);
+    }
+    long unscaled = 0;
+    int scale = 0;
+    if (ch == '0') {
+      position++;
+      rejectLeadingDigit();
+    } else if (ch >= '1' && ch <= '9') {
+      do {
+        int digit = ch - '0';
+        if (unscaled > (Long.MAX_VALUE - digit) / 10) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        position++;
+        if (position >= inputLength) {
+          break;
+        }
+        ch = charAt(position);
+      } while (ch >= '0' && ch <= '9');
+    } else {
+      return readBigDecimalFallback(start);
+    }
+    if (position < inputLength && charAt(position) == '.') {
+      position++;
+      int fractionStart = position;
+      while (position < inputLength) {
+        ch = charAt(position);
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        int digit = ch - '0';
+        if (unscaled > (Long.MAX_VALUE - digit) / 10) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        scale++;
+        position++;
+      }
+      if (position == fractionStart) {
+        return readBigDecimalFallback(start);
+      }
+    }
+    if (position < inputLength) {
+      ch = charAt(position);
+      if (ch == 'e' || ch == 'E') {
+        return readBigDecimalFallback(start);
+      }
+    }
+    return BigDecimal.valueOf(unscaled, scale);
+  }
+
+  private BigDecimal readSignedBigDecimalToken(int start) {
+    position = start + 1;
+    int inputLength = length();
+    if (position >= inputLength) {
+      return readBigDecimalFallback(start);
+    }
+    char ch = charAt(position);
+    long unscaled = 0;
+    int scale = 0;
+    if (ch == '0') {
+      position++;
+      rejectLeadingDigit();
+    } else if (ch >= '1' && ch <= '9') {
+      do {
+        int digit = ch - '0';
+        if (unscaled > (Long.MAX_VALUE - digit) / 10) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        position++;
+        if (position >= inputLength) {
+          break;
+        }
+        ch = charAt(position);
+      } while (ch >= '0' && ch <= '9');
+    } else {
+      return readBigDecimalFallback(start);
+    }
+    if (position < inputLength && charAt(position) == '.') {
+      position++;
+      int fractionStart = position;
+      while (position < inputLength) {
+        ch = charAt(position);
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        int digit = ch - '0';
+        if (unscaled > (Long.MAX_VALUE - digit) / 10) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        scale++;
+        position++;
+      }
+      if (position == fractionStart) {
+        return readBigDecimalFallback(start);
+      }
+    }
+    if (position < inputLength) {
+      ch = charAt(position);
+      if (ch == 'e' || ch == 'E') {
+        return readBigDecimalFallback(start);
+      }
+    }
+    return BigDecimal.valueOf(-unscaled, scale);
+  }
+
+  private BigDecimal readBigDecimalFallback(int start) {
+    position = start;
+    return new BigDecimal(readNumberAsString());
+  }
+
+  private UUID readUuidToken() {
+    int offset = position;
+    int start = offset + 1;
+    if (offset + 38 > length() || charAt(offset) != '"') {
+      throw new IllegalArgumentException();
+    }
+    if (charAt(start + 8) != '-'
+        || charAt(start + 13) != '-'
+        || charAt(start + 18) != '-'
+        || charAt(start + 23) != '-'
+        || charAt(start + 36) != '"') {
+      throw new IllegalArgumentException();
+    }
+    long msb = parseHex(start, 8);
+    msb = (msb << 16) | parseHex(start + 9, 4);
+    msb = (msb << 16) | parseHex(start + 14, 4);
+    long lsb = parseHex(start + 19, 4);
+    lsb = (lsb << 48) | parseHex(start + 24, 12);
+    position = start + 37;
+    return new UUID(msb, lsb);
+  }
+
+  private long parseHex(int offset, int length) {
+    long value = 0;
+    for (int i = 0; i < length; i++) {
+      value = (value << 4) | uuidHexValue(charAt(offset + i));
+    }
+    return value;
+  }
+
+  private static int uuidHexValue(char ch) {
+    if (ch >= '0' && ch <= '9') {
+      return ch - '0';
+    }
+    char lower = (char) (ch | 0x20);
+    if (lower >= 'a' && lower <= 'f') {
+      return lower - 'a' + 10;
+    }
+    throw new IllegalArgumentException();
+  }
+
+  private AsciiStringView tryReadAsciiStringView() {
+    skipWhitespace();
+    int mark = position;
+    if (position >= length() || charAt(position++) != '"') {
+      throw error("Expected string");
+    }
+    int start = position;
+    while (position < length()) {
+      char ch = charAt(position++);
+      if (ch == '"') {
+        asciiStringView.reset(start, position - 1);
+        return asciiStringView;
+      }
+      if (ch == '\\' || ch < 0x20 || ch >= 0x80) {
+        position = mark;
+        return null;
+      }
+    }
+    throw error("Unterminated string");
+  }
+
+  private ZoneOffset tryParseZoneOffset(CharSequence value) {
+    int length = value.length();
+    if (length == 1 && value.charAt(0) == 'Z') {
+      return ZoneOffset.UTC;
+    }
+    if (length != 6 && length != 9) {
+      return null;
+    }
+    char sign = value.charAt(0);
+    if (sign != '+' && sign != '-') {
+      return null;
+    }
+    if (value.charAt(3) != ':' || (length == 9 && value.charAt(6) != ':')) {
+      return null;
+    }
+    int hour = parse2(value, 1);
+    int minute = parse2(value, 4);
+    int second = length == 9 ? parse2(value, 7) : 0;
+    int total = hour * 3600 + minute * 60 + second;
+    return ZoneOffset.ofTotalSeconds(sign == '-' ? -total : total);
+  }
+
+  protected final LocalDate readIsoLocalDateFallback(String value) {
+    try {
+      int length = value.length();
+      if (length >= 10
+          && (length == 10 || value.charAt(10) == 'T')
+          && value.charAt(4) == '-'
+          && value.charAt(7) == '-') {
+        try {
+          return LocalDate.of(parse4(value, 0), parse2(value, 5), parse2(value, 8));
+        } catch (RuntimeException e) {
+          if (length > 10 && value.charAt(10) == 'T') {
+            return LocalDate.parse(value.substring(0, 10));
+          }
+          return LocalDate.parse(value);
+        }
+      }
+      return LocalDate.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.LocalDate", e);
+    }
+  }
+
+  protected final OffsetDateTime readIsoOffsetDateTimeFallback(String value) {
+    try {
+      return OffsetDateTime.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.OffsetDateTime", e);
+    }
+  }
+
+  private LocalTime parseLocalTimeString(String value) {
+    try {
+      return LocalTime.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.LocalTime", e);
+    }
+  }
+
+  private LocalDateTime parseLocalDateTimeString(String value) {
+    try {
+      return LocalDateTime.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.LocalDateTime", e);
+    }
+  }
+
+  private Instant parseInstantString(String value) {
+    try {
+      return Instant.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.Instant", e);
+    }
+  }
+
+  private Duration parseDurationString(String value) {
+    try {
+      return Duration.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.Duration", e);
+    }
+  }
+
+  private ZoneOffset parseZoneOffsetString(String value) {
+    try {
+      return ZoneOffset.of(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.ZoneOffset", e);
+    }
+  }
+
+  private ZonedDateTime parseZonedDateTimeString(String value) {
+    try {
+      return ZonedDateTime.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.ZonedDateTime", e);
+    }
+  }
+
+  private Year parseYearString(String value) {
+    try {
+      return Year.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.Year", e);
+    }
+  }
+
+  private YearMonth parseYearMonthString(String value) {
+    try {
+      return YearMonth.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.YearMonth", e);
+    }
+  }
+
+  private MonthDay parseMonthDayString(String value) {
+    try {
+      return MonthDay.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.MonthDay", e);
+    }
+  }
+
+  private Period parsePeriodString(String value) {
+    try {
+      return Period.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.Period", e);
+    }
+  }
+
+  private OffsetTime parseOffsetTimeString(String value) {
+    try {
+      return OffsetTime.parse(value);
+    } catch (RuntimeException e) {
+      throw invalidStringValue("java.time.OffsetTime", e);
+    }
+  }
+
+  private ForyJsonException invalidStringValue(String type, RuntimeException e) {
+    return new ForyJsonException(
+        "Invalid " + type + " JSON string at JSON position " + position, e);
+  }
+
+  private static int parse4(CharSequence value, int index) {
+    return parse2(value, index) * 100 + parse2(value, index + 2);
+  }
+
+  private static int parse2(CharSequence value, int index) {
+    int high = value.charAt(index) - '0';
+    int low = value.charAt(index + 1) - '0';
+    if (high < 0 || high > 9 || low < 0 || low > 9) {
+      throw new IllegalArgumentException();
+    }
+    return high * 10 + low;
+  }
+
+  private static Number materializeNumber(String number) {
+    if (number.indexOf('.') >= 0 || number.indexOf('e') >= 0 || number.indexOf('E') >= 0) {
+      return Double.parseDouble(number);
+    }
+    try {
+      return Long.parseLong(number);
+    } catch (NumberFormatException e) {
+      return new BigInteger(number);
+    }
+  }
+
+  protected final double readNonFiniteDoubleString() {
+    String value = readString();
+    switch (value) {
+      case "NaN":
+        return Double.NaN;
+      case "Infinity":
+        return Double.POSITIVE_INFINITY;
+      case "-Infinity":
+        return Double.NEGATIVE_INFINITY;
+      default:
+        // Numeric strings are intentionally not coerced; only writer-emitted non-finite tokens
+        // are accepted here.
+        throw error("Expected finite JSON number or non-finite double string");
+    }
+  }
+
+  protected final float readNonFiniteFloatString() {
+    String value = readString();
+    switch (value) {
+      case "NaN":
+        return Float.NaN;
+      case "Infinity":
+        return Float.POSITIVE_INFINITY;
+      case "-Infinity":
+        return Float.NEGATIVE_INFINITY;
+      default:
+        // Numeric strings are intentionally not coerced; only writer-emitted non-finite tokens
+        // are accepted here.
+        throw error("Expected finite JSON number or non-finite float string");
+    }
   }
 
   public int readFieldNameInt() {
@@ -421,7 +999,7 @@ public abstract class JsonReader {
     } else if (startsWith("null")) {
       position += 4;
     } else {
-      readNumber();
+      readNumberAsString();
     }
   }
 
@@ -434,40 +1012,6 @@ public abstract class JsonReader {
 
   protected final ForyJsonException error(String message) {
     return new ForyJsonException(message + " at JSON position " + position);
-  }
-
-  protected final void appendEscape(StringBuilder builder) {
-    if (position >= length()) {
-      throw error("Unterminated escape");
-    }
-    char escaped = charAt(position++);
-    switch (escaped) {
-      case '"':
-      case '\\':
-      case '/':
-        builder.append(escaped);
-        return;
-      case 'b':
-        builder.append('\b');
-        return;
-      case 'f':
-        builder.append('\f');
-        return;
-      case 'n':
-        builder.append('\n');
-        return;
-      case 'r':
-        builder.append('\r');
-        return;
-      case 't':
-        builder.append('\t');
-        return;
-      case 'u':
-        appendUnicodeEscape(builder);
-        return;
-      default:
-        throw error("Invalid escape");
-    }
   }
 
   private void skipObject() {
@@ -575,26 +1119,6 @@ public abstract class JsonReader {
     }
   }
 
-  private void appendUnicodeEscape(StringBuilder builder) {
-    char ch = readUnicodeEscape();
-    if (Character.isHighSurrogate(ch)) {
-      if (position + 2 > length() || charAt(position) != '\\' || charAt(position + 1) != 'u') {
-        throw error("Unpaired high surrogate escape");
-      }
-      position += 2;
-      char low = readUnicodeEscape();
-      if (!Character.isLowSurrogate(low)) {
-        throw error("Unpaired high surrogate escape");
-      }
-      builder.append(ch);
-      builder.append(low);
-    } else if (Character.isLowSurrogate(ch)) {
-      throw error("Unpaired low surrogate escape");
-    } else {
-      builder.append(ch);
-    }
-  }
-
   protected final char readEscapedFieldNameChar() {
     if (position >= length()) {
       throw error("Unterminated escape");
@@ -645,4 +1169,42 @@ public abstract class JsonReader {
   }
 
   protected abstract String slice(int start, int end);
+
+  private static final class AsciiStringView implements CharSequence {
+    private final JsonReader reader;
+    private int start;
+    private int end;
+
+    AsciiStringView(JsonReader reader) {
+      this.reader = reader;
+    }
+
+    void reset(int start, int end) {
+      this.start = start;
+      this.end = end;
+    }
+
+    @Override
+    public int length() {
+      return end - start;
+    }
+
+    @Override
+    public char charAt(int index) {
+      if (index < 0 || start + index >= end) {
+        throw new IndexOutOfBoundsException();
+      }
+      return reader.charAt(start + index);
+    }
+
+    @Override
+    public CharSequence subSequence(int start, int end) {
+      return toString().subSequence(start, end);
+    }
+
+    @Override
+    public String toString() {
+      return reader.slice(start, end);
+    }
+  }
 }
