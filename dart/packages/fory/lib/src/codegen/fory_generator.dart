@@ -48,6 +48,11 @@ class DebugGeneratedFieldTypeSpec {
 }
 
 final class ForyGenerator extends Generator {
+  static const int _referenceBytes = 4;
+  // Conservative lower bound for a retained generated Dart struct object itself. Field reference
+  // slots are added separately; this is not a Fory wire header or a Dart VM layout probe.
+  static const int _structObjectOwnerBytes = 6 * _referenceBytes;
+
   static const TypeChecker _foryStructChecker = TypeChecker.typeNamed(
     ForyStruct,
     inPackage: 'fory',
@@ -628,9 +633,11 @@ final class ForyGenerator extends Generator {
       ..writeln()
       ..writeln('  @override')
       ..writeln('  ${structSpec.name} read(ReadContext context) {');
+    final graphObjectBytes = _graphObjectBytes(structSpec);
 
     switch (structSpec.constructionModel.mode) {
       case _ConstructorMode.mutable:
+        output.writeln('    context.reserveGraphMemory($graphObjectBytes);');
         output.writeln('    final value = ${structSpec.name}();');
         if (_structNeedsEarlyReadReference(structSpec)) {
           output
@@ -755,6 +762,7 @@ final class ForyGenerator extends Generator {
           }
         }
         final constructorInvocation = _constructorInvocation(structSpec);
+        output.writeln('      context.reserveGraphMemory($graphObjectBytes);');
         output.writeln('      final value = $constructorInvocation;');
         for (final fieldName
             in structSpec.constructionModel.postConstructionFieldNames) {
@@ -809,6 +817,9 @@ final class ForyGenerator extends Generator {
       );
     switch (structSpec.constructionModel.mode) {
       case _ConstructorMode.mutable:
+        output.writeln(
+          '    context.reserveGraphMemory(${_graphObjectBytes(structSpec)});',
+        );
         output.writeln('    final value = ${structSpec.name}();');
         if (_structNeedsEarlyReadReference(structSpec)) {
           output
@@ -999,6 +1010,9 @@ final class ForyGenerator extends Generator {
         ..writeln('    }');
     }
     final constructorInvocation = _constructorInvocation(structSpec);
+    output.writeln(
+      '    context.reserveGraphMemory(${_graphObjectBytes(structSpec)});',
+    );
     output.writeln('    final value = $constructorInvocation;');
     for (final fieldName
         in structSpec.constructionModel.postConstructionFieldNames) {
@@ -1217,6 +1231,9 @@ final class ForyGenerator extends Generator {
     ].join(', ');
     return '${structSpec.name}($arguments)';
   }
+
+  int _graphObjectBytes(_GeneratedStructSpec structSpec) =>
+      _structObjectOwnerBytes + structSpec.fields.length * _referenceBytes;
 
   bool _isSkipped(FieldElement field) {
     final annotation = _fieldAnnotationOf(field);

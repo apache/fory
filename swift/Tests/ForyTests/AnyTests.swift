@@ -92,6 +92,90 @@ private func nestedDynamicAnyList(depth: Int) -> Any {
     return value
 }
 
+private func readAnyRoot<R>(
+    _ fory: Fory,
+    data: Data,
+    _ body: (ReadContext) throws -> R
+) throws -> R {
+    try fory.withReusableReadContext(data: data) { context in
+        try fory.readHead(buffer: context.buffer)
+        let value = try body(context)
+        #expect(context.buffer.remaining == 0)
+        return value
+    }
+}
+
+@Test
+func topLevelAnyReadersRoundTrip() throws {
+    let fory = Fory(config: .init(trackRef: false, compatible: false))
+    fory.register(AnyHashableDynamicKey.self, id: 510)
+    fory.register(AnyHashableDynamicValue.self, id: 511)
+
+    let anyValue: Any = AnyHashableDynamicValue(label: "context-any", score: 1)
+    let anyDecoded = try readAnyRoot(fory, data: try fory.serialize(anyValue)) { context in
+        try readAny(context: context, refMode: .nullOnly, readTypeInfo: true)
+    }
+    #expect(
+        anyDecoded as? AnyHashableDynamicValue
+            == AnyHashableDynamicValue(label: "context-any", score: 1)
+    )
+
+    let listValue: [Any] = [
+        Int32(2),
+        "context-list",
+        AnyHashableDynamicValue(label: "context-list-obj", score: 3)
+    ]
+    let listDecoded = try readAnyRoot(fory, data: try fory.serialize(listValue)) { context in
+        try readListOfAny(context: context, refMode: .nullOnly, readTypeInfo: true)
+    }
+    #expect(listDecoded?[0] as? Int32 == 2)
+    #expect(listDecoded?[1] as? String == "context-list")
+    #expect(
+        listDecoded?[2] as? AnyHashableDynamicValue
+            == AnyHashableDynamicValue(label: "context-list-obj", score: 3)
+    )
+
+    let stringMapValue: [String: Any] = [
+        "a": Int32(4),
+        "b": AnyHashableDynamicValue(label: "context-string-map", score: 5)
+    ]
+    let stringMapDecoded = try readAnyRoot(fory, data: try fory.serialize(stringMapValue)) { context in
+        try readMapStringToAny(context: context, refMode: .nullOnly, readTypeInfo: true)
+    }
+    #expect(stringMapDecoded?["a"] as? Int32 == 4)
+    #expect(
+        stringMapDecoded?["b"] as? AnyHashableDynamicValue
+            == AnyHashableDynamicValue(label: "context-string-map", score: 5)
+    )
+
+    let int32MapValue: [Int32: Any] = [
+        6: "context-int-map",
+        7: AnyHashableDynamicValue(label: "context-int-map-obj", score: 8)
+    ]
+    let int32MapDecoded = try readAnyRoot(fory, data: try fory.serialize(int32MapValue)) { context in
+        try readMapInt32ToAny(context: context, refMode: .nullOnly, readTypeInfo: true)
+    }
+    #expect(int32MapDecoded?[6] as? String == "context-int-map")
+    #expect(
+        int32MapDecoded?[7] as? AnyHashableDynamicValue
+            == AnyHashableDynamicValue(label: "context-int-map-obj", score: 8)
+    )
+
+    let anyHashableMapValue: [AnyHashable: Any] = [
+        AnyHashable("x"): Int32(9),
+        AnyHashable(AnyHashableDynamicKey(id: 10)):
+            AnyHashableDynamicValue(label: "context-any-map", score: 11)
+    ]
+    let anyHashableMapDecoded = try readAnyRoot(fory, data: try fory.serialize(anyHashableMapValue)) { context in
+        try readMapAnyHashableToAny(context: context, refMode: .nullOnly, readTypeInfo: true)
+    }
+    #expect(anyHashableMapDecoded?[AnyHashable("x")] as? Int32 == 9)
+    #expect(
+        anyHashableMapDecoded?[AnyHashable(AnyHashableDynamicKey(id: 10))] as? AnyHashableDynamicValue
+            == AnyHashableDynamicValue(label: "context-any-map", score: 11)
+    )
+}
+
 @Test
 func topLevelAnyHashableRoundTrip() throws {
     let fory = Fory()
@@ -296,10 +380,11 @@ func macroAnyHashableValueFieldRoundTrip() throws {
 func dynamicAnyMapNormalizationForAnyHashableKeys() throws {
     let fory = Fory()
 
-    let heterogeneous: Any = [
-        AnyHashable("k"): Int32(1),
-        AnyHashable(Int32(2)): "v2"
-    ] as [AnyHashable: Any]
+    let heterogeneous: Any =
+        [
+            AnyHashable("k"): Int32(1),
+            AnyHashable(Int32(2)): "v2"
+        ] as [AnyHashable: Any]
     let heteroData = try fory.serialize(heterogeneous)
     let heteroDecoded: Any = try fory.deserialize(heteroData)
     let heteroMap = heteroDecoded as? [AnyHashable: Any]
@@ -307,10 +392,11 @@ func dynamicAnyMapNormalizationForAnyHashableKeys() throws {
     #expect(heteroMap?[AnyHashable("k")] as? Int32 == 1)
     #expect(heteroMap?[AnyHashable(Int32(2))] as? String == "v2")
 
-    let homogeneous: Any = [
-        AnyHashable("a"): Int32(10),
-        AnyHashable("b"): Int32(20)
-    ] as [AnyHashable: Any]
+    let homogeneous: Any =
+        [
+            AnyHashable("a"): Int32(10),
+            AnyHashable("b"): Int32(20)
+        ] as [AnyHashable: Any]
     let homogeneousData = try fory.serialize(homogeneous)
     let homogeneousDecoded: Any = try fory.deserialize(homogeneousData)
     let homogeneousMap = homogeneousDecoded as? [String: Any]

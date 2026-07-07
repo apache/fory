@@ -773,7 +773,7 @@ public abstract class TypeResolver {
         break;
       case Types.COMPATIBLE_STRUCT:
       case Types.NAMED_COMPATIBLE_STRUCT:
-        typeInfo = readSharedClassTypeInfo(readContext, null);
+        typeInfo = readSharedClassTypeInfo(readContext, null, typeInfoCache);
         break;
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
@@ -782,7 +782,7 @@ public abstract class TypeResolver {
         if (!metaContextShareEnabled) {
           typeInfo = readTypeInfoFromBytes(readContext, typeInfoCache, typeId);
         } else {
-          typeInfo = readSharedClassTypeInfo(readContext, null);
+          typeInfo = readSharedClassTypeInfo(readContext, null, typeInfoCache);
         }
         break;
       case Types.LIST:
@@ -1261,7 +1261,7 @@ public abstract class TypeResolver {
         sc = CompatibleSerializer.class;
       } else if (sc == null && GraalvmSupport.isGraalRuntime()) {
         sc = CompatibleSerializer.class;
-        LOG.warn(
+        LOG.warnOnce(
             "Can't generate class at runtime in graalvm for class def {}, use {} instead",
             typeDef,
             sc);
@@ -1431,7 +1431,9 @@ public abstract class TypeResolver {
                 "Class %s not found from classloaders [%s, %s]",
                 className, extRegistry.classLoader, Thread.currentThread().getContextClassLoader());
         if (deserializeUnknownClass) {
-          LOG.warn(msg);
+          if (!config.suppressClassRegistrationWarnings()) {
+            LOG.warnOnce(msg);
+          }
           return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
         }
         throw new IllegalStateException(msg, ex);

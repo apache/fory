@@ -59,6 +59,10 @@ import javax.tools.JavaFileObject;
 import javax.tools.StandardLocation;
 
 public final class ForyStructProcessor extends AbstractProcessor {
+  private static final int REFERENCE_BYTES = 4;
+  // Source classes are not loadable as Class<?> during annotation processing; generated struct
+  // estimates add compile-time field widths to the shared JVM object-base component.
+  private static final int JVM_OBJECT_BASE_BYTES = REFERENCE_BYTES + REFERENCE_BYTES;
   private static final String PROCESSOR_PACKAGE = ForyStructProcessor.class.getPackage().getName();
   private static final String PROCESSOR_SUFFIX = ".annotation.processing";
   private static final String FORY_PACKAGE =
@@ -269,8 +273,44 @@ public final class ForyStructProcessor extends AbstractProcessor {
         serializerName,
         record,
         isForyDebugEnabled(type),
+        graphMemoryBytes(type),
         sourceFields,
         recordConstructorFields);
+  }
+
+  private int graphMemoryBytes(TypeElement type) {
+    int bytes = JVM_OBJECT_BASE_BYTES;
+    for (TypeElement current : hierarchy(type)) {
+      for (VariableElement field : ElementFilter.fieldsIn(current.getEnclosedElements())) {
+        if (!field.getModifiers().contains(Modifier.STATIC)) {
+          bytes = Math.addExact(bytes, fieldGraphMemoryBytes(field.asType()));
+        }
+      }
+    }
+    return bytes;
+  }
+
+  private int fieldGraphMemoryBytes(TypeMirror type) {
+    TypeKind kind = type.getKind();
+    if (!kind.isPrimitive()) {
+      return REFERENCE_BYTES;
+    }
+    switch (kind) {
+      case BOOLEAN:
+      case BYTE:
+        return 1;
+      case CHAR:
+      case SHORT:
+        return 2;
+      case INT:
+      case FLOAT:
+        return 4;
+      case LONG:
+      case DOUBLE:
+        return 8;
+      default:
+        return 0;
+    }
   }
 
   private boolean isForyDebugEnabled(TypeElement type) {

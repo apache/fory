@@ -44,6 +44,7 @@ import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.Preconditions;
@@ -63,7 +64,7 @@ public class SynchronizedSerializers {
         SOURCE_COLLECTION_ACCESSOR =
             FieldAccessor.createAccessor(Class.forName(clsName).getDeclaredField("c"));
       } catch (Exception e) {
-        LOG.info("Could not access source collection field in {}", clsName);
+        LOG.infoOnce("Could not access source collection field in {}", clsName);
         throw new RuntimeException(e);
       }
       clsName = "java.util.Collections$SynchronizedMap";
@@ -71,7 +72,7 @@ public class SynchronizedSerializers {
         SOURCE_MAP_ACCESSOR =
             FieldAccessor.createAccessor(Class.forName(clsName).getDeclaredField("m"));
       } catch (Exception e) {
-        LOG.info("Could not access source map field in {}", clsName);
+        LOG.infoOnce("Could not access source map field in {}", clsName);
         throw new RuntimeException(e);
       }
     }
@@ -82,12 +83,14 @@ public class SynchronizedSerializers {
 
     private final Function factory;
     private final FieldAccessor sourceAccessor;
+    private final int ownerBytes;
 
     public SynchronizedCollectionSerializer(
         TypeResolver typeResolver, Class cls, Function factory, FieldAccessor sourceAccessor) {
       super(typeResolver, cls, false);
       this.factory = factory;
       this.sourceAccessor = sourceAccessor;
+      ownerBytes = GraphMemoryEstimates.shallowObjectBytes(cls);
     }
 
     @Override
@@ -118,6 +121,7 @@ public class SynchronizedSerializers {
     @Override
     public Collection read(ReadContext readContext) {
       final Object sourceCollection = readContext.readRef();
+      readContext.reserveGraphMemory(ownerBytes);
       return (Collection) factory.apply(sourceCollection);
     }
 
@@ -148,12 +152,14 @@ public class SynchronizedSerializers {
   public static final class SynchronizedMapSerializer extends MapSerializer<Map> {
     private final Function factory;
     private final FieldAccessor sourceAccessor;
+    private final int ownerBytes;
 
     public SynchronizedMapSerializer(
         TypeResolver typeResolver, Class cls, Function factory, FieldAccessor sourceAccessor) {
       super(typeResolver, cls, false);
       this.factory = factory;
       this.sourceAccessor = sourceAccessor;
+      ownerBytes = GraphMemoryEstimates.shallowObjectBytes(cls);
     }
 
     @Override
@@ -204,6 +210,7 @@ public class SynchronizedSerializers {
     @Override
     public Map read(ReadContext readContext) {
       final Object sourceCollection = readContext.readRef();
+      readContext.reserveGraphMemory(ownerBytes);
       return (Map) factory.apply(sourceCollection);
     }
   }

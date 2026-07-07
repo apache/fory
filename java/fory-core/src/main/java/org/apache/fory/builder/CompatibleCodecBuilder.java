@@ -212,7 +212,9 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
     decodeCode = decodeCode == null ? "" : decodeCode;
     decodeCode =
         StringUtils.format(
-            "${bufferType} ${buffer} = ${readContext}.getBuffer();\n${code}",
+            "${prefix}${bufferType} ${buffer} = ${readContext}.getBuffer();\n${code}",
+            "prefix",
+            decodePrefixCode(),
             "bufferType",
             ctx.type(MemoryBuffer.class),
             "buffer",

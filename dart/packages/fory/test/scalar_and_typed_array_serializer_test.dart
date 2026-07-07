@@ -62,7 +62,7 @@ FieldInfo _compatibleScalarField({
 }
 
 ReadContext _compatibleReadContext(Buffer buffer) {
-  const config = Config();
+  final config = Config();
   final resolver = TypeResolver(config);
   return ReadContext(config, resolver, RefReader(), MetaStringReader(resolver))
     ..prepare(buffer);

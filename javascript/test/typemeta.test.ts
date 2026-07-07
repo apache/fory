@@ -41,10 +41,7 @@ const LOW_HEADER_BITS_MASK = (1n << HASH_SHIFT_BITS) - 1n;
 const UINT64_MASK = (1n << 64n) - 1n;
 const HEADER_HASH_MASK = UINT64_MASK ^ LOW_HEADER_BITS_MASK;
 
-function decimal(
-  unscaledValue: string | bigint | number,
-  scale: number,
-): Decimal {
+function decimal(unscaledValue: string | bigint | number, scale: number): Decimal {
   return new Decimal(unscaledValue, scale);
 }
 
@@ -118,10 +115,7 @@ describe("typemeta", () => {
     expect(unionInfo.namespace).toBe("com.example");
     expect(unionInfo.typeName).toBe("Payload");
 
-    const explicitInfo = Type.struct(
-      { namespace: "", typeName: "com.example.Raw" },
-      {},
-    );
+    const explicitInfo = Type.struct({ namespace: "", typeName: "com.example.Raw" }, {});
     expect(explicitInfo.namespace).toBe("");
     expect(explicitInfo.typeName).toBe("com.example.Raw");
   });
@@ -133,11 +127,10 @@ describe("typemeta", () => {
     });
 
     const bytes = TypeMeta.fromTypeInfo(typeInfo).toBytes();
-    const header = new DataView(
-      bytes.buffer,
-      bytes.byteOffset,
-      bytes.byteLength,
-    ).getBigUint64(0, true);
+    const header = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getBigUint64(
+      0,
+      true,
+    );
 
     expect(Number(header & META_SIZE_MASK)).toBe(bytes.length - 8);
     expect((header & COMPRESS_META_FLAG) !== 0n).toBe(false);
@@ -163,9 +156,7 @@ describe("typemeta", () => {
   });
 
   test("rejects negative field ids", () => {
-    expect(() => Type.string().setId(-1)).toThrow(
-      "field id must be non-negative",
-    );
+    expect(() => Type.string().setId(-1)).toThrow("field id must be non-negative");
   });
 
   test("orders name-based identifiers with ordinal comparison", () => {
@@ -176,10 +167,7 @@ describe("typemeta", () => {
       }),
     );
 
-    expect(typeMeta.getFieldInfo().map((field) => field.fieldName)).toEqual([
-      "a1",
-      "a_",
-    ]);
+    expect(typeMeta.getFieldInfo().map((field) => field.fieldName)).toEqual(["a1", "a_"]);
   });
 
   test("rejects duplicate explicit field ids", () => {
@@ -219,9 +207,7 @@ describe("typemeta", () => {
 
     const parseReader = new BinaryReader({});
     parseReader.reset(malformed);
-    expect(() => TypeMeta.fromBytes(parseReader)).toThrow(
-      "TypeMeta metadata hash mismatch",
-    );
+    expect(() => TypeMeta.fromBytes(parseReader)).toThrow("TypeMeta metadata hash mismatch");
 
     const skipReader = new BinaryReader({});
     skipReader.reset(bytes);
@@ -237,11 +223,7 @@ describe("typemeta", () => {
       }),
     ).toBytes();
     const malformed = new Uint8Array(bytes);
-    const view = new DataView(
-      malformed.buffer,
-      malformed.byteOffset,
-      malformed.byteLength,
-    );
+    const view = new DataView(malformed.buffer, malformed.byteOffset, malformed.byteLength);
     const header = view.getBigUint64(0, true);
     const bodyOffset = typeMetaBodyOffset(bytes);
     const bodyOnlyHash = bodyOnlyHeaderHashBits(bytes.subarray(bodyOffset));
@@ -251,9 +233,7 @@ describe("typemeta", () => {
     const reader = new BinaryReader({});
     reader.reset(malformed);
 
-    expect(() => TypeMeta.fromBytes(reader)).toThrow(
-      "TypeMeta metadata hash mismatch",
-    );
+    expect(() => TypeMeta.fromBytes(reader)).toThrow("TypeMeta metadata hash mismatch");
   });
 
   test("id enum does not use TypeMeta limits", () => {
@@ -265,9 +245,7 @@ describe("typemeta", () => {
     });
     const serializer = fory.register(Type.enum(101, Color));
 
-    expect(serializer.deserialize(serializer.serialize(Color.Red))).toBe(
-      Color.Red,
-    );
+    expect(serializer.deserialize(serializer.serialize(Color.Red))).toBe(Color.Red);
   });
 
   test("named enum uses TypeMeta for compatible dynamic reads", () => {
@@ -277,20 +255,12 @@ describe("typemeta", () => {
     writerFory.register(Type.enum("example.Color", Color));
     readerFory.register(Type.enum("example.Color", Color));
 
-    expect(readerFory.deserialize(writerFory.serialize(Color.Red))).toBe(
-      Color.Red,
-    );
+    expect(readerFory.deserialize(writerFory.serialize(Color.Red))).toBe(Color.Red);
   });
 
   test("generated named enum validates TypeMeta owner", () => {
-    const colorInfo = Type.enum(
-      { namespace: "example", typeName: "Color" },
-      { Red: 0 },
-    );
-    const otherInfo = Type.enum(
-      { namespace: "example", typeName: "Other" },
-      { Blue: 0 },
-    );
+    const colorInfo = Type.enum({ namespace: "example", typeName: "Color" }, { Red: 0 });
+    const otherInfo = Type.enum({ namespace: "example", typeName: "Other" }, { Blue: 0 });
     const fory = new Fory({ compatible: true, ref: true });
     fory.register(otherInfo);
     const colorReg = fory.register(colorInfo);
@@ -301,9 +271,7 @@ describe("typemeta", () => {
       TypeMeta.fromTypeInfo(otherInfo).toBytes(),
     );
 
-    expect(() => fory.deserialize(tampered, colorReg.serializer)).toThrow(
-      "TypeMeta mismatch",
-    );
+    expect(() => fory.deserialize(tampered, colorReg.serializer)).toThrow("TypeMeta mismatch");
   });
 
   test("generated named ext validates TypeMeta owner", () => {
@@ -335,20 +303,12 @@ describe("typemeta", () => {
       TypeMeta.fromTypeInfo(bravoReg.serializer.getTypeInfo()).toBytes(),
     );
 
-    expect(() => fory.deserialize(tampered, alphaReg.serializer)).toThrow(
-      "TypeMeta mismatch",
-    );
+    expect(() => fory.deserialize(tampered, alphaReg.serializer)).toThrow("TypeMeta mismatch");
   });
 
   test("generated named union validates TypeMeta owner", () => {
-    const leftInfo = Type.union(
-      { namespace: "example", typeName: "Alpha" },
-      { 1: Type.string() },
-    );
-    const rightInfo = Type.union(
-      { namespace: "example", typeName: "Bravo" },
-      { 1: Type.string() },
-    );
+    const leftInfo = Type.union({ namespace: "example", typeName: "Alpha" }, { 1: Type.string() });
+    const rightInfo = Type.union({ namespace: "example", typeName: "Bravo" }, { 1: Type.string() });
     const fory = new Fory({ compatible: true, ref: true });
     const rightReg = fory.register(rightInfo);
     const leftReg = fory.register(leftInfo);
@@ -359,9 +319,7 @@ describe("typemeta", () => {
       TypeMeta.fromTypeInfo(rightReg.serializer.getTypeInfo()).toBytes(),
     );
 
-    expect(() => fory.deserialize(tampered, leftReg.serializer)).toThrow(
-      "TypeMeta mismatch",
-    );
+    expect(() => fory.deserialize(tampered, leftReg.serializer)).toThrow("TypeMeta mismatch");
   });
 
   test("id ext does not use TypeMeta limits", () => {
@@ -477,11 +435,9 @@ describe("typemeta", () => {
       value: Type.int32().setId(1),
     });
 
-    const changedBytes = changedWriterFory
-      .register(changedWriterType)
-      .serialize({
-        value: "456",
-      });
+    const changedBytes = changedWriterFory.register(changedWriterType).serialize({
+      value: "456",
+    });
     const localBytes = localWriterFory.register(localWriterType).serialize({
       value: 123,
     });
@@ -537,8 +493,7 @@ describe("typemeta", () => {
     const reader = readerFory.register(createParentType());
 
     const typeResolver = (readerFory as any).typeResolver;
-    const generateReadSerializer =
-      typeResolver.generateReadSerializer.bind(typeResolver);
+    const generateReadSerializer = typeResolver.generateReadSerializer.bind(typeResolver);
     let generatedReaders = 0;
     typeResolver.generateReadSerializer = (typeInfo: any) => {
       generatedReaders++;
@@ -598,8 +553,7 @@ describe("typemeta", () => {
     );
     const serializers = [{ name: "localA" }, { name: "localB" }] as any[];
     let generatedReaders = 0;
-    (context as any).genSerializerByTypeMetaRuntime = () =>
-      serializers[generatedReaders++];
+    (context as any).genSerializerByTypeMetaRuntime = () => serializers[generatedReaders++];
     const localHashA = typeMeta.getHash() + 1;
     const localHashB = typeMeta.getHash() + 2;
     const originalA = { name: "originalA" } as any;
@@ -642,35 +596,18 @@ describe("typemeta", () => {
   });
 
   test("converts compatible bool scalars", () => {
+    expect(readCompatibleScalar(7220, Type.string(), Type.bool(), "true")).toEqual({ value: true });
+    expect(readCompatibleScalar(7221, Type.bool(), Type.string(), false)).toEqual({
+      value: "false",
+    });
+    expect(readCompatibleScalar(7222, Type.int32({ encoding: "fixed" }), Type.bool(), 1)).toEqual({
+      value: true,
+    });
     expect(
-      readCompatibleScalar(7220, Type.string(), Type.bool(), "true"),
-    ).toEqual({ value: true });
-    expect(
-      readCompatibleScalar(7221, Type.bool(), Type.string(), false),
-    ).toEqual({ value: "false" });
-    expect(
-      readCompatibleScalar(
-        7222,
-        Type.int32({ encoding: "fixed" }),
-        Type.bool(),
-        1,
-      ),
-    ).toEqual({ value: true });
-    expect(
-      readCompatibleScalar(
-        7223,
-        Type.bool(),
-        Type.int32({ encoding: "fixed" }),
-        true,
-      ),
+      readCompatibleScalar(7223, Type.bool(), Type.int32({ encoding: "fixed" }), true),
     ).toEqual({ value: 1 });
 
-    const decimalResult = readCompatibleScalar(
-      7224,
-      Type.bool(),
-      Type.decimal(),
-      false,
-    );
+    const decimalResult = readCompatibleScalar(7224, Type.bool(), Type.decimal(), false);
     expect(decimalResult.value).toBeInstanceOf(Decimal);
     expect(decimalResult.value.equals(decimal(0n, 0))).toBe(true);
   });
@@ -727,9 +664,7 @@ describe("typemeta", () => {
     expect(source).toContain(
       '(external.CompatibleScalarConverter.checkedBool(br.readUint8()) ? "true" : "false")',
     );
-    expect(source).toContain(
-      "external.CompatibleScalarConverter.checkedInt32(br.readInt64())",
-    );
+    expect(source).toContain("external.CompatibleScalarConverter.checkedInt32(br.readInt64())");
     expect(source).not.toContain("CompatibleScalarConverter.read(");
     expect(source).not.toContain("remoteTypeId");
     expect(source).not.toContain("scalarKind(");
@@ -779,27 +714,17 @@ describe("typemeta", () => {
   });
 
   test("rejects invalid bool scalars", () => {
+    expect(() => readCompatibleScalar(7225, Type.string(), Type.bool(), "yes")).toThrow(
+      /not a boolean value/,
+    );
     expect(() =>
-      readCompatibleScalar(7225, Type.string(), Type.bool(), "yes"),
-    ).toThrow(/not a boolean value/);
-    expect(() =>
-      readCompatibleScalar(
-        7226,
-        Type.int32({ encoding: "fixed" }),
-        Type.bool(),
-        2,
-      ),
+      readCompatibleScalar(7226, Type.int32({ encoding: "fixed" }), Type.bool(), 2),
     ).toThrow(/not a boolean value/);
   });
 
   test("converts exact number scalars", () => {
     expect(
-      readCompatibleScalar(
-        7227,
-        Type.int32({ encoding: "fixed" }),
-        Type.int16(),
-        300,
-      ),
+      readCompatibleScalar(7227, Type.int32({ encoding: "fixed" }), Type.int16(), 300),
     ).toEqual({ value: 300 });
     expect(
       readCompatibleScalar(
@@ -809,131 +734,76 @@ describe("typemeta", () => {
         "9223372036854775807",
       ),
     ).toEqual({ value: 9223372036854775807n });
-    expect(
-      readCompatibleScalar(7229, Type.string(), Type.float64(), "0.5"),
-    ).toEqual({ value: 0.5 });
+    expect(readCompatibleScalar(7229, Type.string(), Type.float64(), "0.5")).toEqual({
+      value: 0.5,
+    });
 
-    const decimalResult = readCompatibleScalar(
-      7230,
-      Type.string(),
-      Type.decimal(),
-      "12.340",
-    );
+    const decimalResult = readCompatibleScalar(7230, Type.string(), Type.decimal(), "12.340");
     expect(decimalResult.value).toBeInstanceOf(Decimal);
     expect(decimalResult.value.equals(decimal(1234n, 2))).toBe(true);
 
-    expect(
-      readCompatibleScalar(
-        7231,
-        Type.decimal(),
-        Type.string(),
-        decimal(12340n, 3),
-      ),
-    ).toEqual({ value: "12.34" });
+    expect(readCompatibleScalar(7231, Type.decimal(), Type.string(), decimal(12340n, 3))).toEqual({
+      value: "12.34",
+    });
 
-    const digitBound = readCompatibleScalar(
-      7255,
-      Type.string(),
-      Type.decimal(),
-      "1".repeat(256),
-    );
+    const digitBound = readCompatibleScalar(7255, Type.string(), Type.decimal(), "1".repeat(256));
     expect(digitBound.value).toBeInstanceOf(Decimal);
     expect(digitBound.value.equals(decimal("1".repeat(256), 0))).toBe(true);
 
-    const exponentBound = readCompatibleScalar(
-      7256,
-      Type.string(),
-      Type.decimal(),
-      "1e255",
-    );
+    const exponentBound = readCompatibleScalar(7256, Type.string(), Type.decimal(), "1e255");
     expect(exponentBound.value).toBeInstanceOf(Decimal);
     expect(exponentBound.value.unscaledValue.toString()).toHaveLength(256);
     expect(exponentBound.value.scale).toBe(0);
   });
 
   test("rejects inexact number scalars", () => {
+    expect(() => readCompatibleScalar(7232, Type.string(), Type.float64(), "0.1")).toThrow(
+      /not exactly representable/,
+    );
+    expect(() => readCompatibleScalar(7248, Type.string(), Type.int32(), "+1")).toThrow(
+      /Invalid scalar string/,
+    );
+    expect(() => readCompatibleScalar(7249, Type.string(), Type.float64(), ".5")).toThrow(
+      /Invalid scalar string/,
+    );
+    expect(() => readCompatibleScalar(7250, Type.string(), Type.float64(), "1.")).toThrow(
+      /Invalid scalar string/,
+    );
     expect(() =>
-      readCompatibleScalar(7232, Type.string(), Type.float64(), "0.1"),
-    ).toThrow(/not exactly representable/);
-    expect(() =>
-      readCompatibleScalar(7248, Type.string(), Type.int32(), "+1"),
+      readCompatibleScalar(7251, Type.string(), Type.decimal(), "1".repeat(257)),
     ).toThrow(/Invalid scalar string/);
     expect(() =>
-      readCompatibleScalar(7249, Type.string(), Type.float64(), ".5"),
+      readCompatibleScalar(7253, Type.string(), Type.decimal(), `0.${"0".repeat(319)}`),
     ).toThrow(/Invalid scalar string/);
+    expect(() => readCompatibleScalar(7257, Type.string(), Type.decimal(), "1e1000000")).toThrow(
+      /Invalid scalar string/,
+    );
+    expect(() => readCompatibleScalar(7258, Type.string(), Type.decimal(), "1e256")).toThrow(
+      /Invalid scalar string/,
+    );
+    expect(() => readCompatibleScalar(7233, Type.decimal(), Type.int32(), decimal(5n, 1))).toThrow(
+      /not an integer/,
+    );
     expect(() =>
-      readCompatibleScalar(7250, Type.string(), Type.float64(), "1."),
-    ).toThrow(/Invalid scalar string/);
-    expect(() =>
-      readCompatibleScalar(
-        7251,
-        Type.string(),
-        Type.decimal(),
-        "1".repeat(257),
-      ),
-    ).toThrow(/Invalid scalar string/);
-    expect(() =>
-      readCompatibleScalar(
-        7253,
-        Type.string(),
-        Type.decimal(),
-        `0.${"0".repeat(319)}`,
-      ),
-    ).toThrow(/Invalid scalar string/);
-    expect(() =>
-      readCompatibleScalar(7257, Type.string(), Type.decimal(), "1e1000000"),
-    ).toThrow(/Invalid scalar string/);
-    expect(() =>
-      readCompatibleScalar(7258, Type.string(), Type.decimal(), "1e256"),
-    ).toThrow(/Invalid scalar string/);
-    expect(() =>
-      readCompatibleScalar(7233, Type.decimal(), Type.int32(), decimal(5n, 1)),
-    ).toThrow(/not an integer/);
-    expect(() =>
-      readCompatibleScalar(
-        7259,
-        Type.decimal(),
-        Type.string(),
-        decimal(1n, -256),
-      ),
+      readCompatibleScalar(7259, Type.decimal(), Type.string(), decimal(1n, -256)),
     ).toThrow(/magnitude exceeds compatible conversion limit/);
     expect(() =>
-      readCompatibleScalar(
-        7234,
-        Type.int32({ encoding: "fixed" }),
-        Type.int8(),
-        128,
-      ),
+      readCompatibleScalar(7234, Type.int32({ encoding: "fixed" }), Type.int8(), 128),
     ).toThrow(/outside int8 range/);
-    expect(() =>
-      readCompatibleScalar(7235, Type.float64(), Type.string(), Number.NaN),
-    ).toThrow(/Non-finite scalar value NaN/);
+    expect(() => readCompatibleScalar(7235, Type.float64(), Type.string(), Number.NaN)).toThrow(
+      /Non-finite scalar value NaN/,
+    );
   });
 
   test("composes scalar conversion with nulls", () => {
     expect(
-      readCompatibleScalar(
-        7236,
-        Type.string().setNullable(true),
-        Type.bool(),
-        "false",
-      ),
+      readCompatibleScalar(7236, Type.string().setNullable(true), Type.bool(), "false"),
     ).toEqual({ value: false });
+    expect(readCompatibleScalar(7237, Type.string().setNullable(true), Type.bool(), null)).toEqual({
+      value: null,
+    });
     expect(
-      readCompatibleScalar(
-        7237,
-        Type.string().setNullable(true),
-        Type.bool(),
-        null,
-      ),
-    ).toEqual({ value: null });
-    expect(
-      readCompatibleScalar(
-        7252,
-        Type.string(),
-        Type.bool().setNullable(true),
-        "true",
-      ),
+      readCompatibleScalar(7252, Type.string(), Type.bool().setNullable(true), "true"),
     ).toEqual({ value: true });
   });
 
@@ -955,9 +825,9 @@ describe("typemeta", () => {
     const writer = writerFory.register(RemoteScalars);
     const reader = readerFory.register(LocalScalars);
 
-    expect(() =>
-      reader.deserialize(writer.serialize(new RemoteScalars())),
-    ).toThrow(/unsupported compatible scalar tracking-ref schema mismatch/);
+    expect(() => reader.deserialize(writer.serialize(new RemoteScalars()))).toThrow(
+      /unsupported compatible scalar tracking-ref schema mismatch/,
+    );
   });
 
   test("rejects incompatible matched fields", () => {
@@ -974,19 +844,14 @@ describe("typemeta", () => {
       }),
     );
 
-    expect(() =>
-      reader.deserialize(writer.serialize({ value: "abc" })),
-    ).toThrow(/unsupported compatible field schema mismatch/);
+    expect(() => reader.deserialize(writer.serialize({ value: "abc" }))).toThrow(
+      /unsupported compatible field schema mismatch/,
+    );
   });
 
   test("rejects nested scalar mismatches", () => {
     expect(() =>
-      readCompatibleScalar(
-        7238,
-        Type.list(Type.string()),
-        Type.list(Type.int32()),
-        ["1", "2"],
-      ),
+      readCompatibleScalar(7238, Type.list(Type.string()), Type.list(Type.int32()), ["1", "2"]),
     ).toThrow(/unsupported compatible field schema mismatch/);
 
     expect(() =>
@@ -1013,10 +878,7 @@ describe("typemeta", () => {
       readCompatibleScalar(
         7264,
         Type.map(Type.string(), Type.list(Type.string())),
-        Type.map(
-          Type.string(),
-          Type.list(Type.map(Type.string(), Type.int32())),
-        ),
+        Type.map(Type.string(), Type.list(Type.map(Type.string(), Type.int32()))),
         new Map([["values", ["one"]]]),
       ),
     ).toThrow(/unsupported compatible field schema mismatch/);
@@ -1091,10 +953,7 @@ describe("typemeta", () => {
       options: {},
     };
 
-    const numericRegenerated = readContext.fieldInfoToTypeInfo(
-      namedRemote,
-      numericLocal,
-    );
+    const numericRegenerated = readContext.fieldInfoToTypeInfo(namedRemote, numericLocal);
     expect(numericRegenerated.typeId).toBe(numericLocal.typeId);
     expect(numericRegenerated.userTypeId).toBe(7244);
 
@@ -1106,10 +965,7 @@ describe("typemeta", () => {
       options: {},
     };
 
-    const namedRegenerated = readContext.fieldInfoToTypeInfo(
-      numericRemote,
-      namedLocal,
-    );
+    const namedRegenerated = readContext.fieldInfoToTypeInfo(numericRemote, namedLocal);
     expect(namedRegenerated.typeId).toBe(namedLocal.typeId);
     expect(namedRegenerated.typeName).toBe("External");
   });
@@ -1123,8 +979,7 @@ describe("typemeta", () => {
     const writer = writerFory.register(typeInfo);
     const reader = readerFory.register(typeInfo);
     const typeResolver = (readerFory as any).typeResolver;
-    const generateReadSerializer =
-      typeResolver.generateReadSerializer.bind(typeResolver);
+    const generateReadSerializer = typeResolver.generateReadSerializer.bind(typeResolver);
     let generatedReaders = 0;
     typeResolver.generateReadSerializer = (changedTypeInfo: any) => {
       generatedReaders++;
@@ -1162,9 +1017,7 @@ describe("typemeta", () => {
 
     const badPayload = new Uint8Array(bytes);
     badPayload[badPayload.length - 1] = 2;
-    expect(() => reader.deserialize(badPayload)).toThrow(
-      /Invalid boolean scalar value/,
-    );
+    expect(() => reader.deserialize(badPayload)).toThrow(/Invalid boolean scalar value/);
   });
 
   test("adapts only immediate compatible list and dense array field pairs", () => {
@@ -1212,14 +1065,8 @@ describe("typemeta", () => {
     expect(result.bools).toBeInstanceOf(BoolArray);
     expect(Array.from(result.bools)).toEqual([true, false]);
     expect(result.float16s).toBeInstanceOf(Float16Array as any);
-    expect(Array.from(result.float16s as Iterable<number>)[0]).toBeCloseTo(
-      1.5,
-      1,
-    );
-    expect(Array.from(result.float16s as Iterable<number>)[1]).toBeCloseTo(
-      -2,
-      1,
-    );
+    expect(Array.from(result.float16s as Iterable<number>)[0]).toBeCloseTo(1.5, 1);
+    expect(Array.from(result.float16s as Iterable<number>)[1]).toBeCloseTo(-2, 1);
     expect(result.bfloat16s).toBeInstanceOf(BFloat16Array);
     expect(Array.from(result.bfloat16s as Iterable<number>)).toEqual([1.5, -2]);
   });
@@ -1248,15 +1095,13 @@ describe("typemeta", () => {
     const bytes = new Uint8Array([0, 1, 2, 250, 255]);
     expect(
       Array.from(
-        readCompatibleScalar(7265, Type.binary(), Type.uint8Array(), bytes)
-          .value as Uint8Array,
+        readCompatibleScalar(7265, Type.binary(), Type.uint8Array(), bytes).value as Uint8Array,
       ),
     ).toEqual(Array.from(bytes));
 
     expect(
       Array.from(
-        readCompatibleScalar(7266, Type.uint8Array(), Type.binary(), bytes)
-          .value as Uint8Array,
+        readCompatibleScalar(7266, Type.uint8Array(), Type.binary(), bytes).value as Uint8Array,
       ),
     ).toEqual(Array.from(bytes));
 
@@ -1274,12 +1119,9 @@ describe("typemeta", () => {
 
   test("rejects nested binary and uint8 array positions", () => {
     expect(() =>
-      readCompatibleScalar(
-        7267,
-        Type.list(Type.binary()),
-        Type.list(Type.uint8Array()),
-        [new Uint8Array([1, 2])],
-      ),
+      readCompatibleScalar(7267, Type.list(Type.binary()), Type.list(Type.uint8Array()), [
+        new Uint8Array([1, 2]),
+      ]),
     ).toThrow(/unsupported compatible field schema mismatch/);
   });
 
@@ -1288,9 +1130,7 @@ describe("typemeta", () => {
     const readerFory = new Fory({ compatible: true });
 
     const writerType = Type.struct(7212, {
-      values: Type.list(
-        Type.int32({ encoding: "fixed" }).setNullable(true),
-      ).setId(1),
+      values: Type.list(Type.int32({ encoding: "fixed" }).setNullable(true)).setId(1),
     });
     const readerType = Type.struct(7212, {
       values: Type.int32Array().setId(1),
@@ -1345,9 +1185,7 @@ describe("typemeta", () => {
       values: ["1", "2"],
     });
 
-    expect(() => readerFory.register(readerType).deserialize(bytes)).toThrow(
-      /list\/array/,
-    );
+    expect(() => readerFory.register(readerType).deserialize(bytes)).toThrow(/list\/array/);
   });
 
   test("rejects nested compatible list and dense array positions", () => {
@@ -1365,9 +1203,7 @@ describe("typemeta", () => {
       values: [new Int32Array([1, 2])],
     });
 
-    expect(() => readerFory.register(readerType).deserialize(bytes)).toThrow(
-      /list\/array/,
-    );
+    expect(() => readerFory.register(readerType).deserialize(bytes)).toThrow(/list\/array/);
   });
 
   test("skips remote-only named compatible fields", () => {
@@ -1428,9 +1264,7 @@ describe("typemeta", () => {
     expect(
       (result as ReaderHolder & { animalMap?: Map<string, number> }).animalMap,
     ).toBeUndefined();
-    expect(
-      (result as ReaderHolder & { marker?: number }).marker,
-    ).toBeUndefined();
+    expect((result as ReaderHolder & { marker?: number }).marker).toBeUndefined();
   });
 
   test("skips unknown named custom fields by falling back to any when no local field exists", () => {

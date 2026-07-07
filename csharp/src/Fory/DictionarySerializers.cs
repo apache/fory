@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
@@ -33,6 +34,23 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
     where TDictionary : class, IDictionary<TKey, TValue>
     where TKey : notnull
 {
+    private const int ReferenceBytes = 4;
+    // Lower-bound shallow owner cost for the retained CLR Dictionary object itself. The two
+    // IntPtr slots approximate the CLR object header/method table; key/value entry storage is
+    // charged separately by count below. This is not a Fory wire header size.
+    private static readonly int DictionaryOwnerBytes =
+        IntPtr.Size + IntPtr.Size + 4 * ReferenceBytes + 4 * sizeof(int);
+    private static readonly long MapElementBytes = (long)ElementBytes<TKey>() + ElementBytes<TValue>();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReserveMapStorage(ReadContext context, int count)
+    {
+        context.ReserveGraphMemory(DictionaryOwnerBytes + count * MapElementBytes);
+    }
+
     public override TDictionary DefaultValue => null!;
 
     protected abstract TDictionary CreateMap(int capacity);
@@ -207,6 +225,49 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
 
     public override TDictionary ReadData(ReadContext context)
     {
+        return ReadData(context, publishRef: false, refId: 0);
+    }
+
+    public override TDictionary Read(ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<TDictionary>(context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return ReadData(context, publishRef: true, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
+    }
+
+    // Map owners can be reached again while keys or values are being read. The ref-aware path
+    // publishes the concrete map immediately after allocation, not after the entry loop.
+    private TDictionary ReadData(ReadContext context, bool publishRef, uint refId)
+    {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
         TypeInfo keyTypeInfo = context.TypeResolver.GetTypeInfo<TKey>();
@@ -214,11 +275,24 @@ public abstract class DictionaryLikeSerializer<TDictionary, TKey, TValue> : Seri
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
-            return CreateMap(0);
+            ReserveMapStorage(context, totalLength);
+            TDictionary empty = CreateMap(0);
+            if (publishRef)
+            {
+                context.RefReader.StoreRefAt(refId, empty);
+            }
+
+            return empty;
         }
 
+        ReserveMapStorage(context, totalLength);
         context.Reader.CheckBound(totalLength);
         TDictionary map = CreateMap(totalLength);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, map);
+        }
+
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;
         int readCount = 0;

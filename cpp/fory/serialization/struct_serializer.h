@@ -899,9 +899,6 @@ Container read_configured_list_data(ReadContext &ctx) {
   if (length == 0) {
     return result;
   }
-  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
-    return result;
-  }
   uint8_t bitmap = ctx.read_uint8(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return result;
@@ -915,6 +912,9 @@ Container read_configured_list_data(ReadContext &ctx) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return result;
     }
+  }
+  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+    return result;
   }
   const RefMode elem_ref_mode =
       track_ref ? RefMode::Tracking
@@ -939,7 +939,10 @@ FORY_NOINLINE Container read_configured_list_data_as_array_field(
   using Elem = element_type_t<Container>;
   uint32_t length = ctx.read_var_uint32(ctx.error());
   Container result;
-  if (FORY_PREDICT_FALSE(ctx.has_error()) || length == 0) {
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return result;
+  }
+  if (length == 0) {
     return result;
   }
   uint8_t bitmap = ctx.read_uint8(ctx.error());
@@ -4581,6 +4584,10 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
       if (ctx.track_ref() && ref_flag == ref_value_flag) {
         ctx.ref_reader().reserve_ref_id();
       }
+      // Value serializers do not reserve their own graph memory because value
+      // storage is owned by the holder that stores or allocates the value.
+      // Containers, maps, arrays, smart pointers, and dynamic materializers
+      // reserve the storage they own.
       // In compatible mode: use meta sharing (matches Rust behavior)
       if (ctx.is_compatible()) {
         // In compatible mode: always use remote TypeMeta for schema evolution

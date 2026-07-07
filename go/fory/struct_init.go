@@ -26,16 +26,6 @@ import (
 	"unicode/utf8"
 )
 
-// GetStructHash returns the struct hash for a given type using the provided TypeResolver.
-// This is used by codegen serializers to get the hash at runtime.
-func GetStructHash(type_ reflect.Type, resolver *TypeResolver) int32 {
-	ser := newStructSerializer(type_, "")
-	if err := ser.initialize(resolver); err != nil {
-		panic(fmt.Errorf("failed to initialize struct serializer for hash computation: %v", err))
-	}
-	return ser.structHash
-}
-
 // initialize performs eager initialization of the struct serializer.
 // This should be called at registration time to pre-compute all field metadata.
 func (s *structSerializer) initialize(typeResolver *TypeResolver) error {

@@ -358,7 +358,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     decodeCode = decodeCode == null ? "" : decodeCode;
     decodeCode =
         StringUtils.format(
-            "${bufferType} ${buffer} = ${readContext}.getBuffer();\n${code}",
+            "${prefix}${bufferType} ${buffer} = ${readContext}.getBuffer();\n${code}",
+            "prefix",
+            decodePrefixCode(),
             "bufferType",
             ctx.type(MemoryBuffer.class),
             "buffer",
@@ -385,6 +387,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         Class.class,
         POJO_CLASS_TYPE_NAME);
     return ctx.genCode();
+  }
+
+  protected String decodePrefixCode() {
+    return "";
   }
 
   protected static class InvokeHint {

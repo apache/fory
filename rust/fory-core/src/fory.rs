@@ -261,6 +261,20 @@ impl ForyBuilder {
         self
     }
 
+    /// Sets the approximate graph-memory gate for one root deserialization.
+    ///
+    /// Mainly gates materialized collections, maps, arrays, structs, and objects. Leaf values are
+    /// gated by unread input bytes instead, and actual process memory can be higher. Defaults to
+    /// 128 MiB. Values must be positive byte limits.
+    pub fn max_graph_memory_bytes(mut self, max_bytes: usize) -> Self {
+        assert!(
+            max_bytes > 0,
+            "max_graph_memory_bytes must be in [1, usize::MAX]"
+        );
+        self.config.max_graph_memory_bytes = max_bytes;
+        self
+    }
+
     /// Sets the maximum depth for nested dynamic object serialization.
     ///
     /// # Arguments
@@ -988,6 +1002,7 @@ impl Fory {
         self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
+            context.remaining_graph_memory_bytes = self.config.max_graph_memory_bytes;
             let result = self.deserialize_with_context(context);
             context.detach_reader();
             result
@@ -1051,6 +1066,7 @@ impl Fory {
             let mut new_reader = Reader::new(outlive_buffer);
             new_reader.set_cursor(reader.cursor);
             context.attach_reader(new_reader);
+            context.remaining_graph_memory_bytes = self.config.max_graph_memory_bytes;
             let result = self.deserialize_with_context(context);
             let end = context.detach_reader().get_cursor();
             reader.set_cursor(end);
@@ -1109,7 +1125,6 @@ impl Fory {
         } else {
             RefMode::NullOnly
         };
-        // TypeMeta is read inline during deserialization (streaming protocol)
         let result = <T as Serializer>::fory_read(context, ref_mode, true);
         context.ref_reader.resolve_callbacks();
         result

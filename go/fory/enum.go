@@ -49,7 +49,7 @@ func (s *enumSerializer) Write(ctx *WriteContext, refMode RefMode, writeType boo
 	}
 	if writeType {
 		// For NAMED_ENUM, need to write type info including namespace and typename meta strings
-		typeInfo, err := ctx.TypeResolver().getTypeInfo(value, true)
+		typeInfo, err := ctx.TypeResolver().GetTypeInfo(value, true)
 		if err != nil {
 			ctx.SetError(FromError(err))
 			return

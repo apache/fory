@@ -71,6 +71,7 @@ public final class ReadContext {
   private MetaReadContext metaReadContext;
   private boolean peerOutOfBandEnabled;
   private int depth;
+  private long remainingGraphMemoryBytes;
 
   /**
    * Creates read-side runtime state for one {@code Fory} instance.
@@ -112,6 +113,7 @@ public final class ReadContext {
     this.buffer = buffer;
     this.peerOutOfBandEnabled = peerOutOfBandEnabled;
     this.outOfBandBuffers = outOfBandBuffers == null ? null : outOfBandBuffers.iterator();
+    remainingGraphMemoryBytes = config.maxGraphMemoryBytes();
   }
 
   /**
@@ -307,11 +309,44 @@ public final class ReadContext {
     outOfBandBuffers = null;
     peerOutOfBandEnabled = false;
     depth = 0;
+    remainingGraphMemoryBytes = 0;
   }
 
   /** Returns the immutable runtime configuration for this context. */
   public Config getConfig() {
     return config;
+  }
+
+  public final void reserveGraphMemory(long bytes) {
+    long remaining = remainingGraphMemoryBytes;
+    long nextRemaining = remaining - bytes;
+    if ((bytes | nextRemaining) < 0) {
+      throwInvalidGraphMemory(bytes, remaining);
+    }
+    remainingGraphMemoryBytes = nextRemaining;
+  }
+
+  public final void reserveGraphMemory(int bytes) {
+    long remaining = remainingGraphMemoryBytes;
+    if (bytes < 0 || remaining < bytes) {
+      throwInvalidGraphMemory(bytes, remaining);
+    }
+    remainingGraphMemoryBytes = remaining - bytes;
+  }
+
+  private void throwInvalidGraphMemory(long bytes, long remaining) {
+    if (bytes < 0) {
+      throw new InsecureException(
+          "Estimated graph memory must be non-negative, but got " + bytes + " bytes.");
+    }
+    throw new InsecureException(
+        "Estimated graph memory request "
+            + bytes
+            + " bytes exceeds maxGraphMemoryBytes remaining budget "
+            + remaining
+            + " bytes out of effective limit "
+            + config.maxGraphMemoryBytes()
+            + " bytes. If the data is trusted, increase ForyBuilder#withMaxGraphMemoryBytes.");
   }
 
   /** Returns the generics stack shared by the owning runtime. */

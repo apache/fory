@@ -89,22 +89,21 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
                 case RefFlag.Ref:
                     {
                         uint refId = context.RefReader.ReadRefId(context.Reader);
-                        return context.RefReader.GetRefValue(refId);
+                        object? value = context.RefReader.GetRefValue(refId);
+                        if (value is null)
+                        {
+                            // Real nulls use RefFlag.Null; a null object ref means the owner has
+                            // not been published yet, such as a union value that cannot be
+                            // materialized before its case value is read.
+                            throw new RefException($"ref_id {refId} has not been published");
+                        }
+
+                        return value;
                     }
                 case RefFlag.RefValue:
                     {
                         uint reservedRefId = context.RefReader.ReserveRefId();
-                        context.SetReservedRefId(reservedRefId);
-                        try
-                        {
-                            object? value = ReadNonNullDynamicAny(context, readTypeInfo);
-                            context.StoreRef(value);
-                            return value;
-                        }
-                        finally
-                        {
-                            context.ClearReservedRefId();
-                        }
+                        return ReadNonNullDynamicAny(context, readTypeInfo, reservedRefId);
                     }
                 case RefFlag.NotNullValue:
                     break;
@@ -139,6 +138,30 @@ public sealed class DynamicAnyObjectSerializer : Serializer<object?>
         object? value = ReadData(context);
         context.ClearReadTypeInfo(typeof(object));
         return value;
+    }
+
+    private object? ReadNonNullDynamicAny(ReadContext context, bool readTypeInfo, uint refId)
+    {
+        if (!readTypeInfo)
+        {
+            object? value = ReadData(context);
+            context.RefReader.StoreRefAt(refId, value);
+            return value;
+        }
+
+        ReadAnyTypeInfo(context);
+        TypeInfo? typeInfo = context.GetReadTypeInfo(typeof(object));
+        if (typeInfo is null)
+        {
+            throw new InvalidDataException("dynamic Any value requires type info");
+        }
+
+        // Type-erased RefValue reads keep the reserved id local and pass it to the resolved
+        // payload owner. Storing after the call would be too late for owners that can be
+        // self-referenced while their child values are still being read.
+        object? result = context.TypeResolver.ReadAnyValue(typeInfo, context, refId);
+        context.ClearReadTypeInfo(typeof(object));
+        return result;
     }
 }
 

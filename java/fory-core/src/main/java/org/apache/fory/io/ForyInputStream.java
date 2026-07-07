@@ -64,7 +64,7 @@ public class ForyInputStream extends InputStream implements ForyStreamReader {
         int offset = buffer.size();
         int remainingNeeded = minFillSize - totalRead;
         long targetSize = (long) offset + remainingNeeded;
-        if (targetSize > Integer.MAX_VALUE - 8L) {
+        if (targetSize > MAX_BUFFER_SIZE) {
           throw new IndexOutOfBoundsException("Stream buffer size exceeds supported range");
         }
         if (targetSize > heapMemory.length) {
@@ -72,14 +72,17 @@ public class ForyInputStream extends InputStream implements ForyStreamReader {
           if (!checkedAvailable) {
             checkedAvailable = true;
             // Use available() only as a one-shot growth hint. It may be expensive or
-            // conservative, so failed hints fall back to bounded doubling. Final value
-            // allocation still waits for fillBuffer to complete successfully.
+            // conservative, so failed hints fall back to doubling. Grow by at least a
+            // doubling step so that repeated small fills stay amortized O(1); growing to
+            // the exact target size would copy the whole buffer on every small read,
+            // making stream deserialization O(n^2) overall.
             if (stream.available() >= remainingNeeded) {
-              newSize = (int) targetSize;
+              newSize =
+                  (int) Math.max(targetSize, ForyStreamReader.nextBufferSize(heapMemory.length));
             }
           }
           if (newSize == 0 && offset == heapMemory.length) {
-            newSize = nextBufferSize(heapMemory.length, (int) targetSize);
+            newSize = ForyStreamReader.nextBufferSize(heapMemory.length);
           }
           if (newSize != 0) {
             heapMemory = growBuffer(buffer, newSize);
@@ -111,15 +114,6 @@ public class ForyInputStream extends InputStream implements ForyStreamReader {
     buffer.initHeapBuffer(newBuffer, 0, size);
     heapMemory = newBuffer;
     return heapMemory;
-  }
-
-  private static int nextBufferSize(int size, int targetSize) {
-    long grown = size == 0 ? 1L : (long) size << 1;
-    int maxSize = Integer.MAX_VALUE - 8;
-    if (grown > maxSize) {
-      grown = maxSize;
-    }
-    return (int) Math.min(grown, targetSize);
   }
 
   @Override

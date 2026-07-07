@@ -35,16 +35,17 @@ ThreadSafeFory threadSafe = Fory.Builder().BuildThreadSafe();
 
 `Fory.Builder().Build()` uses:
 
-| Option                            | Default | Description                                       |
-| --------------------------------- | ------- | ------------------------------------------------- |
-| `TrackRef`                        | `false` | Reference tracking disabled                       |
-| `Compatible`                      | `true`  | Compatible schema-evolution metadata enabled      |
-| `CheckStructVersion`              | `false` | Struct schema hash checks disabled                |
-| `MaxDepth`                        | `20`    | Max dynamic nesting depth                         |
-| `MaxTypeFields`                   | `512`   | Max fields in one received struct metadata body   |
-| `MaxTypeMetaBytes`                | `4096`  | Max encoded bytes in one received metadata body   |
-| `MaxSchemaVersionsPerType`        | `10`    | Max remote metadata versions for one logical type |
-| `MaxAverageSchemaVersionsPerType` | `3`     | Average remote metadata versions across types     |
+| Option                            | Default     | Description                                       |
+| --------------------------------- | ----------- | ------------------------------------------------- |
+| `TrackRef`                        | `false`     | Reference tracking disabled                       |
+| `Compatible`                      | `true`      | Compatible schema-evolution metadata enabled      |
+| `CheckStructVersion`              | `false`     | Struct schema hash checks disabled                |
+| `MaxDepth`                        | `20`        | Max dynamic nesting depth                         |
+| `MaxGraphMemoryBytes`             | `134217728` | Approximate graph-memory gate per root read       |
+| `MaxTypeFields`                   | `512`       | Max fields in one received struct metadata body   |
+| `MaxTypeMetaBytes`                | `4096`      | Max encoded bytes in one received metadata body   |
+| `MaxSchemaVersionsPerType`        | `10`        | Max remote metadata versions for one logical type |
+| `MaxAverageSchemaVersionsPerType` | `3`         | Average remote metadata versions across types     |
 
 ## Builder Options
 
@@ -95,6 +96,24 @@ Fory fory = Fory.Builder()
 ```
 
 `value` must be greater than `0`.
+
+### `MaxGraphMemoryBytes(long value)`
+
+Sets an approximate graph-memory gate for one root deserialization. The estimate mainly covers
+materialized collections, maps, arrays, structs, and objects. It skips leaf values such as strings,
+binary data, primitive scalars, and dense primitive arrays, so actual process memory can be higher
+than this value.
+
+```csharp
+Fory fory = Fory.Builder()
+    .MaxGraphMemoryBytes(64L * 1024 * 1024)
+    .Build();
+```
+
+The default limit is a fixed `128 MiB` for all root input forms. A positive value overrides the
+default. Explicit non-positive values are rejected when the runtime is created. Skipped leaf values
+are still gated by remaining input bytes: if the unread input does not contain enough bytes, Fory
+will not read or create that leaf value.
 
 ### `MaxTypeFields(int value)`
 
@@ -173,6 +192,8 @@ Security-related configuration:
 - Register only the expected types before deserializing untrusted payloads.
 - Use `CheckStructVersion(true)` with `Compatible(false)` for intentional same-schema payloads.
 - Set `MaxDepth(...)` to reject unexpectedly deep dynamic object graphs.
+- Set `MaxGraphMemoryBytes(...)` as an approximate gate for collection, map, array, struct, and
+  object-heavy payloads. It is not an exact heap cap; leaf values are gated by remaining input bytes.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer generated or registered concrete models over broad dynamic fields for untrusted input.

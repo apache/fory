@@ -28,6 +28,9 @@ import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Primitives;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -56,10 +59,13 @@ import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
+import org.apache.fory.logging.LogLevel;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.EncodedMetaString;
+import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.longlongpkg.C1;
@@ -285,6 +291,33 @@ public class ClassResolverTest extends ForyTestBase {
         classResolver.getSerializerClass(
             Class.forName("org.apache.fory.serializer.collection.MapContainer")),
         MapSerializers.DefaultJavaMapSerializer.class);
+  }
+
+  @Test
+  public void testSuppressXtypeWarnings() throws Exception {
+    String suppressed =
+        captureOutput(
+            () ->
+                resolveMissingXtype(
+                    Fory.builder()
+                        .withXlang(true)
+                        .withMetaShare(true)
+                        .withDeserializeUnknownClass(true)
+                        .suppressClassRegistrationWarnings(true)
+                        .build()));
+    assertEquals(count(suppressed, "Class missing.pkg.MissingType not registered"), 0);
+
+    String unsuppressed =
+        captureOutput(
+            () ->
+                resolveMissingXtype(
+                    Fory.builder()
+                        .withXlang(true)
+                        .withMetaShare(true)
+                        .withDeserializeUnknownClass(true)
+                        .suppressClassRegistrationWarnings(false)
+                        .build()));
+    assertEquals(count(unsuppressed, "Class missing.pkg.MissingType not registered"), 1);
   }
 
   @Test
@@ -1369,5 +1402,58 @@ public class ClassResolverTest extends ForyTestBase {
     Assert.assertEquals(result[1], AbstractEnum.VALUE2);
     Assert.assertEquals(result[0].getValue(), 1);
     Assert.assertEquals(result[1].getValue(), 2);
+  }
+
+  private static String captureOutput(Runnable action) throws Exception {
+    int previousLogLevel = LoggerFactory.getLogLevel();
+    PrintStream previousOut = System.out;
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    try {
+      LoggerFactory.setLogLevel(LogLevel.WARN_LEVEL);
+      System.setOut(new PrintStream(out, true, StandardCharsets.UTF_8.name()));
+      action.run();
+    } finally {
+      System.setOut(previousOut);
+      LoggerFactory.setLogLevel(previousLogLevel);
+    }
+    return out.toString(StandardCharsets.UTF_8.name());
+  }
+
+  private static void resolveMissingXtype(Fory fory) {
+    try {
+      Method method =
+          XtypeResolver.class.getDeclaredMethod(
+              "loadBytesToTypeInfoWithTypeId",
+              int.class,
+              EncodedMetaString.class,
+              EncodedMetaString.class);
+      method.setAccessible(true);
+      method.invoke(
+          fory.getTypeResolver(),
+          Types.NAMED_STRUCT,
+          Encoders.PACKAGE_ENCODER.encodeBinary("missing.pkg"),
+          Encoders.TYPE_NAME_ENCODER.encodeBinary("MissingType"));
+    } catch (InvocationTargetException e) {
+      Throwable cause = e.getCause();
+      if (!(cause instanceof IllegalStateException)
+          || !cause.getMessage().contains("missing.pkg.MissingType")) {
+        throw new AssertionError(e);
+      }
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  private static int count(String text, String pattern) {
+    int count = 0;
+    int from = 0;
+    while (true) {
+      int index = text.indexOf(pattern, from);
+      if (index < 0) {
+        return count;
+      }
+      count++;
+      from = index + pattern.length();
+    }
   }
 }

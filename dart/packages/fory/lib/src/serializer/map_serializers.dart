@@ -26,6 +26,11 @@ import 'package:fory/src/resolver/type_resolver.dart';
 import 'package:fory/src/serializer/collection_serializers.dart';
 import 'package:fory/src/serializer/serializer.dart';
 
+const int _referenceBytes = 4;
+// Conservative lower bound for the retained Dart Map owner itself. Key/value slots are charged by
+// entry count below; this is not a Fory wire header or a Dart VM layout probe.
+const int _mapOwnerBytes = 8 * _referenceBytes;
+
 abstract final class MapFlags {
   static const int trackingKeyRef = 0x01;
   static const int keyHasNull = 0x02;
@@ -257,6 +262,8 @@ Map<K, V> readTypedMapPayload<K, V>(
   bool hasPreservedRef = false,
 }) {
   var remaining = context.buffer.readVarUint32();
+  context.reserveGraphMemory(_mapOwnerBytes + remaining * 2 * _referenceBytes);
+  context.buffer.checkReadableBytes(remaining);
   final declaredKeyTypeInfo =
       keyFieldType == null || keyFieldType.isDynamic
           ? null

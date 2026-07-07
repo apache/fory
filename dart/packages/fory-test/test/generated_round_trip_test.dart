@@ -28,8 +28,8 @@ import 'package:test/test.dart';
 void main() {
   group('configuration', () {
     test('defaults to compatible mode unless explicitly set', () {
-      expect(const Config().compatible, isTrue);
-      expect(const Config(compatible: false).compatible, isFalse);
+      expect(Config().compatible, isTrue);
+      expect(Config(compatible: false).compatible, isFalse);
     });
   });
 

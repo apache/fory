@@ -25,11 +25,7 @@ import { Scope } from "./scope";
 import { TypeId } from "../type";
 import { BFloat16Array } from "../types/bfloat16";
 import { BoolArray } from "../types/boolArray";
-import {
-  createFloat16Array,
-  createFloat16ArrayFromRaw,
-  getFloat16Raw,
-} from "../types/float16";
+import { createFloat16Array, createFloat16ArrayFromRaw, getFloat16Raw } from "../types/float16";
 
 const endianProbe = new Uint16Array([0x00ff]);
 const IS_LITTLE_ENDIAN = new Uint8Array(endianProbe.buffer)[0] === 0xff;
@@ -394,10 +390,7 @@ CodegenRegistry.register(
   build(Type.uint64(), `BigUint64Array`, 8, "readUint64", "writeUint64"),
 );
 CodegenRegistry.register(TypeId.FLOAT16_ARRAY, Float16ArraySerializerGenerator);
-CodegenRegistry.register(
-  TypeId.BFLOAT16_ARRAY,
-  BFloat16ArraySerializerGenerator,
-);
+CodegenRegistry.register(TypeId.BFLOAT16_ARRAY, BFloat16ArraySerializerGenerator);
 CodegenRegistry.register(
   TypeId.FLOAT32_ARRAY,
   build(Type.float32(), `Float32Array`, 4, "readFloat32", "writeFloat32"),

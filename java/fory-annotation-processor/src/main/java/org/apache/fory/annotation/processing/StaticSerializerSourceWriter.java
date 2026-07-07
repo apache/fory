@@ -169,6 +169,7 @@ final class StaticSerializerSourceWriter {
 
   private void writeConstructors() {
     builder.append("  public ").append(struct.serializerName).append("() {\n");
+    builder.append("    // Descriptor-only constructor; see StaticGeneratedStructSerializer.\n");
     builder.append("    super();\n");
     builder.append("    this.allFields = null;\n");
     builder.append("    this.allFieldIds = null;\n");
@@ -279,9 +280,11 @@ final class StaticSerializerSourceWriter {
             .append(";\n");
       }
       appendSchemaConsistentRecordLoop();
+      appendGraphMemoryReserve();
       appendRecordConstruction("record", "field", 4);
       builder.append("    return record;\n");
     } else {
+      appendGraphMemoryReserve();
       builder
           .append("    ")
           .append(struct.typeName)
@@ -811,6 +814,13 @@ final class StaticSerializerSourceWriter {
     return meta.substring(start + prefix.length(), end);
   }
 
+  private void appendGraphMemoryReserve() {
+    builder
+        .append("    readContext.reserveGraphMemory(")
+        .append(struct.graphMemoryBytes)
+        .append(");\n");
+  }
+
   private void writeCompatibleRead() {
     builder.append("  @Override\n");
     builder
@@ -820,6 +830,7 @@ final class StaticSerializerSourceWriter {
     builder.append("    if (sameSchemaCompatible) {\n");
     builder.append("      return readSchemaConsistent(readContext);\n");
     builder.append("    }\n");
+    appendGraphMemoryReserve();
     if (struct.record) {
       for (SourceField field : struct.fields) {
         builder

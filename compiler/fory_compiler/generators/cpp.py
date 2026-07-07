@@ -691,13 +691,6 @@ class CppGenerator(BaseGenerator):
     ) -> str:
         member_name = self.get_field_member_name(field)
         other_member = f"other.{member_name}"
-        if isinstance(field.field_type, PrimitiveType) and (
-            field.field_type.kind == PrimitiveKind.ANY
-        ):
-            return (
-                f"((!{member_name}.has_value() && !{other_member}.has_value()) || "
-                f"({member_name}.type() == {other_member}.type()))"
-            )
         if self.is_message_type(
             field.field_type, parent_stack
         ) and self.get_field_weak_ref(field):
@@ -715,6 +708,104 @@ class CppGenerator(BaseGenerator):
                 f"({member_name} == {other_member}))"
             )
         return f"{member_name} == {other_member}"
+
+    def message_has_any(
+        self,
+        message: Message,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[Tuple[str, int]]] = None,
+    ) -> bool:
+        if visiting is None:
+            visiting = set()
+        key = ("message", id(message))
+        if key in visiting:
+            return False
+        visiting.add(key)
+        try:
+            lineage = (parent_stack or []) + [message]
+            return any(
+                self.field_type_has_any(field.field_type, lineage, visiting)
+                for field in message.fields
+            )
+        finally:
+            visiting.remove(key)
+
+    def union_has_any(
+        self,
+        union: Union,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[Tuple[str, int]]] = None,
+    ) -> bool:
+        if visiting is None:
+            visiting = set()
+        key = ("union", id(union))
+        if key in visiting:
+            return False
+        visiting.add(key)
+        try:
+            return any(
+                self.field_type_has_any(field.field_type, parent_stack, visiting)
+                for field in union.fields
+            )
+        finally:
+            visiting.remove(key)
+
+    def field_type_has_any(
+        self,
+        field_type: FieldType,
+        parent_stack: Optional[List[Message]] = None,
+        visiting: Optional[Set[Tuple[str, int]]] = None,
+    ) -> bool:
+        """Return True when a field type or its children contain `any`."""
+        if isinstance(field_type, PrimitiveType):
+            return field_type.kind == PrimitiveKind.ANY
+        if isinstance(field_type, ListType):
+            return self.field_type_has_any(
+                field_type.element_type, parent_stack, visiting
+            )
+        if isinstance(field_type, ArrayType):
+            return self.field_type_has_any(
+                field_type.element_type, parent_stack, visiting
+            )
+        if isinstance(field_type, MapType):
+            # `any` is not allowed as map key (rejected first by the validator),
+            # so we only check map value here.
+            return self.field_type_has_any(
+                field_type.value_type, parent_stack, visiting
+            )
+        if isinstance(field_type, NamedType):
+            named_type = self.resolve_named_type(field_type.name, parent_stack)
+            if isinstance(named_type, Message):
+                return self.message_has_any(
+                    named_type, self._parent_stack_for_type(named_type), visiting
+                )
+            if isinstance(named_type, Union):
+                return self.union_has_any(
+                    named_type, self._parent_stack_for_type(named_type), visiting
+                )
+        return False
+
+    def _parent_stack_for_type(self, type_def: object) -> List[Message]:
+        def visit(message: Message, parents: List[Message]) -> Optional[List[Message]]:
+            if message is type_def:
+                return parents
+            for nested_union in message.nested_unions:
+                if nested_union is type_def:
+                    return parents + [message]
+            for nested_enum in message.nested_enums:
+                if nested_enum is type_def:
+                    return parents + [message]
+            for nested_message in message.nested_messages:
+                found = visit(nested_message, parents + [message])
+                if found is not None:
+                    return found
+            return None
+
+        for top in self.schema.messages:
+            found = visit(top, [])
+            if found is not None:
+                return found
+        return []
 
     def is_numeric_field(self, field: Field) -> bool:
         if not isinstance(field.field_type, PrimitiveType):
@@ -914,19 +1005,23 @@ class CppGenerator(BaseGenerator):
                     lines.append("")
             lines.append("")
 
-        lines.append(
-            f"{body_indent}bool operator==(const {class_name}& other) const {{"
-        )
-        if message.fields:
-            conditions = [
-                self.get_field_eq_expression(field, lineage) for field in message.fields
-            ]
-            lines.append(f"{body_indent}  return {' && '.join(conditions)};")
-        else:
-            lines.append(f"{body_indent}  return true;")
-        lines.append(f"{body_indent}}}")
+        # We don't generate equality method for message containing `any`
+        # since C++ doesn't support std::any == std::any.
+        if not self.message_has_any(message, parent_stack):
+            lines.append(
+                f"{body_indent}bool operator==(const {class_name}& other) const {{"
+            )
+            if message.fields:
+                conditions = [
+                    self.get_field_eq_expression(field, lineage)
+                    for field in message.fields
+                ]
+                lines.append(f"{body_indent}  return {' && '.join(conditions)};")
+            else:
+                lines.append(f"{body_indent}  return true;")
+            lines.append(f"{body_indent}}}")
+            lines.append("")
 
-        lines.append("")
         lines.extend(self.generate_bytes_methods(class_name, body_indent))
 
         struct_type_name = self.get_qualified_type_name(message.name, parent_stack)
@@ -968,8 +1063,18 @@ class CppGenerator(BaseGenerator):
         body_indent = f"{indent}  "
 
         case_enum = f"{class_name}Case"
-        case_types = [
+        raw_case_types = [
             self.get_union_case_type(field, parent_stack) for field in union.fields
+        ]
+        case_aliases = [
+            f"ForyCase{self.to_pascal_case(field.name)}Type"
+            if "," in case_type
+            else None
+            for field, case_type in zip(union.fields, raw_case_types)
+        ]
+        case_types = [
+            alias if alias is not None else case_type
+            for alias, case_type in zip(case_aliases, raw_case_types)
         ]
         variant_type = f"std::variant<{', '.join(case_types)}>"
 
@@ -984,6 +1089,12 @@ class CppGenerator(BaseGenerator):
             lines.append(f"{body_indent}    {case_name} = {field.number},")
         lines.append(f"{body_indent}  }};")
         lines.append("")
+
+        for alias, case_type in zip(case_aliases, raw_case_types):
+            if alias is not None:
+                lines.append(f"{body_indent}  using {alias} = {case_type};")
+        if any(alias is not None for alias in case_aliases):
+            lines.append("")
 
         lines.append(f"{body_indent}  {class_name}() = default;")
         lines.append("")
@@ -1069,12 +1180,15 @@ class CppGenerator(BaseGenerator):
         )
         lines.append(f"{body_indent}  }}")
         lines.append("")
-        lines.append(
-            f"{body_indent}  bool operator==(const {class_name}& other) const {{"
-        )
-        lines.append(f"{body_indent}    return value_ == other.value_;")
-        lines.append(f"{body_indent}  }}")
-        lines.append("")
+        # We don't generate equality method for union containing `any`
+        # since C++ doesn't support std::any == std::any.
+        if not self.union_has_any(union, parent_stack):
+            lines.append(
+                f"{body_indent}  bool operator==(const {class_name}& other) const {{"
+            )
+            lines.append(f"{body_indent}    return value_ == other.value_;")
+            lines.append(f"{body_indent}  }}")
+            lines.append("")
 
         lines.extend(self.generate_bytes_methods(class_name, f"{body_indent}  "))
 
@@ -1106,15 +1220,8 @@ class CppGenerator(BaseGenerator):
             union_type = self.get_namespaced_type_name(union.name, parent_stack)
             lines.append(f"FORY_UNION({union_type},")
             for index, field in enumerate(union.fields):
-                case_type = self.generate_namespaced_type(
-                    field.field_type,
-                    False,
-                    field.ref,
-                    field.element_optional,
-                    field.element_ref,
-                    False,
-                    False,
-                    parent_stack,
+                case_type = self.get_union_case_macro_type(
+                    field, union_type, parent_stack
                 )
                 case_ctor = self.to_snake_case(field.name)
                 meta = self.get_union_field_meta(field)
@@ -1127,16 +1234,7 @@ class CppGenerator(BaseGenerator):
         case_ids = ", ".join(str(field.number) for field in union.fields)
         lines.append(f"FORY_UNION_IDS({union_type}, {case_ids});")
         for field in union.fields:
-            case_type = self.generate_namespaced_type(
-                field.field_type,
-                False,
-                field.ref,
-                field.element_optional,
-                field.element_ref,
-                False,
-                False,
-                parent_stack,
-            )
+            case_type = self.get_union_case_macro_type(field, union_type, parent_stack)
             case_ctor = self.to_snake_case(field.name)
             meta = self.get_union_field_meta(field)
             lines.append(
@@ -1144,6 +1242,29 @@ class CppGenerator(BaseGenerator):
             )
 
         return lines
+
+    def get_union_case_macro_type(
+        self,
+        field: Field,
+        union_type: str,
+        parent_stack: List[Message],
+    ) -> str:
+        """Return the C++ type name used in FORY_UNION and FORY_UNION_CASE macros."""
+        case_type = self.generate_namespaced_type(
+            field.field_type,
+            False,
+            field.ref,
+            field.element_optional,
+            field.element_ref,
+            False,
+            False,
+            parent_stack,
+        )
+        # FORY_UNION and FORY_UNION_CASE split macro arguments on commas,
+        # so raw template types such as std::unordered_map<K, V> need an alias.
+        if "," in case_type:
+            return f"{union_type}::ForyCase{self.to_pascal_case(field.name)}Type"
+        return case_type
 
     def get_union_case_type(self, field: Field, parent_stack: List[Message]) -> str:
         """Return the C++ type for a union case."""

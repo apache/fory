@@ -24,6 +24,7 @@ def run():
     logging.info("Executing fory javascript tests.")
     common.cd_project_subdir("javascript")
     common.exec_cmd("npm install")
+    common.exec_cmd("npm run format-check")
     common.exec_cmd("npm run test")
 
     logging.info("Executing fory javascript tests succeeds.")
