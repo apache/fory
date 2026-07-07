@@ -922,10 +922,15 @@ pub fn skip_enum_variant(
             Ok(())
         }
         0b1 => {
-            // Unnamed variant, skip tuple data (which is serialized as a collection)
-            // Tuple uses collection format but doesn't write type info, so skip directly
-            let field_type = FieldType::new(types::LIST, false, vec![unknown_field_type()]);
-            skip_collection(context, &field_type)
+            let len = context.reader.read_var_u32()? as usize;
+            let _header = context.reader.read_u8()?;
+            // Compatible tuple variants use a collection-shaped prefix, but each element is
+            // encoded as a NullOnly field with inline type info. The list skip path would read a
+            // shared element TypeInfo from the header and shift the stream by one byte.
+            for _ in 0..len {
+                skip_any_value(context, true)?;
+            }
+            Ok(())
         }
         0b10 => {
             // Named variant, skip struct-like data using skip_struct
