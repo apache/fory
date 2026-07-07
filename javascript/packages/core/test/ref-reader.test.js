@@ -20,11 +20,14 @@
 "use strict";
 
 const assert = require("node:assert/strict");
-const test = require("node:test").test;
+const runTest =
+  typeof globalThis.expect === "function" && typeof globalThis.test === "function"
+    ? globalThis.test
+    : require("node:test").test;
 const Fory = require("../dist/lib/fory").default;
 const { RefFlags, ConfigFlags } = require("../dist/lib/type");
 
-test("invalid ref id is rejected", () => {
+runTest("invalid ref id is rejected", () => {
   const fory = new Fory({ ref: true });
   const bytes = Uint8Array.from([
     ConfigFlags.isCrossLanguageFlag,
