@@ -50,6 +50,21 @@ fn unknown_field_type() -> FieldType {
 }
 
 #[inline(always)]
+fn has_unknown_element_type(field_type: &FieldType) -> bool {
+    field_type
+        .generics
+        .first()
+        .is_some_and(|elem_type| elem_type.type_id == types::UNKNOWN)
+}
+
+#[inline(always)]
+fn next_byte_is_null_only_ref_flag(context: &mut ReadContext) -> Result<bool, Error> {
+    let value = context.reader.read_i8()?;
+    context.reader.move_back(1);
+    Ok(value == RefFlag::Null as i8 || value == RefFlag::NotNullValue as i8)
+}
+
+#[inline(always)]
 fn skip_bytes(context: &mut ReadContext, len: usize) -> Result<(), Error> {
     context.reader.check_bound(len)?;
     context.reader.move_next(len);
@@ -258,8 +273,23 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
         return Err(Error::invalid_data("empty generics"));
     }
     let default_elem_type = field_type.generics.first().unwrap();
+    if !is_same_type {
+        // Tuple fields use LIST<UNKNOWN> metadata and a collection-shaped prefix, but their
+        // compatible elements are still written as NullOnly values with inline type info.
+        let tuple_elements = header == 0
+            && has_unknown_element_type(field_type)
+            && next_byte_is_null_only_ref_flag(context)?;
+        let read_ref_flag = tuple_elements || track_ref || has_null;
+        context.inc_depth()?;
+        for _ in 0..length {
+            skip_any_value(context, read_ref_flag)?;
+        }
+        context.dec_depth();
+        return Ok(());
+    }
+
     let (type_info, elem_field_type);
-    let elem_type = if is_same_type && !is_declared {
+    let elem_type = if !is_declared {
         let type_info_rc = context.read_any_type_info()?;
         elem_field_type = FieldType::new_with_user_type_id(
             type_info_rc.get_type_id() as u32,
