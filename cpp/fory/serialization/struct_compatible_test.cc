@@ -324,6 +324,28 @@ struct SkippedMapRefReader {
   FORY_STRUCT(SkippedMapRefReader, (kept, fory::F(2)), (alias, fory::F(3)));
 };
 
+struct RefTypeMismatchA {
+  int32_t value = 0;
+  FORY_STRUCT(RefTypeMismatchA, (value, fory::F(1)));
+};
+
+struct RefTypeMismatchB {
+  int32_t value = 0;
+  FORY_STRUCT(RefTypeMismatchB, (value, fory::F(1)));
+};
+
+struct RefTypeMismatchWriter {
+  std::shared_ptr<RefTypeMismatchA> first;
+  std::shared_ptr<RefTypeMismatchA> alias;
+  FORY_STRUCT(RefTypeMismatchWriter, (first, fory::F(1)), (alias, fory::F(2)));
+};
+
+struct RefTypeMismatchReader {
+  std::shared_ptr<RefTypeMismatchA> first;
+  std::shared_ptr<RefTypeMismatchB> alias;
+  FORY_STRUCT(RefTypeMismatchReader, (first, fory::F(1)), (alias, fory::F(2)));
+};
+
 struct ScalarBoolField {
   bool value = false;
   FORY_STRUCT(ScalarBoolField, (value, fory::F(1)));
@@ -861,6 +883,30 @@ TEST(SchemaEvolutionTest, SkippedMapValuesKeepRefIdsAligned) {
   ASSERT_NE(decoded.value().kept, nullptr);
   EXPECT_EQ(decoded.value().kept->value, 44);
   EXPECT_EQ(decoded.value().kept, decoded.value().alias);
+}
+
+TEST(SchemaEvolutionTest, ReferenceTypeMismatchIsRejected) {
+  auto writer = Fory::builder().compatible(true).xlang(true).build();
+  auto reader = Fory::builder().compatible(true).xlang(true).build();
+
+  ASSERT_TRUE(writer.register_struct<RefTypeMismatchA>(1016).ok());
+  ASSERT_TRUE(reader.register_struct<RefTypeMismatchA>(1016).ok());
+  ASSERT_TRUE(reader.register_struct<RefTypeMismatchB>(1017).ok());
+  ASSERT_TRUE(writer.register_struct<RefTypeMismatchWriter>(1018).ok());
+  ASSERT_TRUE(reader.register_struct<RefTypeMismatchReader>(1018).ok());
+
+  auto shared = std::make_shared<RefTypeMismatchA>();
+  shared->value = 45;
+  auto bytes = writer.serialize(RefTypeMismatchWriter{shared, shared});
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+  auto decoded = reader.deserialize<RefTypeMismatchReader>(
+      bytes.value().data(), bytes.value().size());
+
+  ASSERT_FALSE(decoded.ok());
+  EXPECT_EQ(decoded.error().code(), ErrorCode::InvalidRef);
+  EXPECT_NE(decoded.error().message().find("Reference type mismatch"),
+            std::string::npos);
 }
 
 TEST(SchemaEvolutionTest, PimplPropertyNestedNamedStruct) {
