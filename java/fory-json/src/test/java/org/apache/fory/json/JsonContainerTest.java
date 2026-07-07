@@ -30,6 +30,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.primitives.ImmutableIntArray;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.AbstractCollection;
 import java.util.AbstractList;
@@ -354,14 +355,14 @@ public class JsonContainerTest extends ForyJsonTestModels {
     assertUnsupportedCollectionClass(json, Collections.emptyList());
     assertUnsupportedCollectionClass(json, Collections.singletonList("a"));
     assertUnsupportedCollectionClass(json, Collections.unmodifiableList(new ArrayList<>()));
-    assertUnsupportedCollectionClass(json, List.of("a"));
-    assertUnsupportedCollectionClass(json, Set.of("a"));
+    jdk9List("a").ifPresent(list -> assertUnsupportedCollectionClass(json, list));
+    jdk9Set("a").ifPresent(set -> assertUnsupportedCollectionClass(json, set));
     assertUnsupportedCollectionClass(json, ImmutableList.of("a"));
     assertUnsupportedCollectionClass(json, ImmutableSet.of("a"));
     assertUnsupportedMapClass(json, Collections.emptyMap());
     assertUnsupportedMapClass(json, Collections.singletonMap("one", 1));
     assertUnsupportedMapClass(json, Collections.unmodifiableMap(scores()));
-    assertUnsupportedMapClass(json, Map.of("one", 1));
+    jdk9Map("one", 1).ifPresent(map -> assertUnsupportedMapClass(json, map));
     assertUnsupportedMapClass(json, ImmutableMap.of("one", 1));
     assertThrows(
         ForyJsonException.class,
@@ -707,6 +708,42 @@ public class JsonContainerTest extends ForyJsonTestModels {
   private static void assertUnsupportedMapClass(ForyJson json, Object value) {
     assertThrows(
         ForyJsonException.class, () -> json.fromJson("{\"one\":1}", (Class) value.getClass()));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Optional<List<String>> jdk9List(String value) {
+    try {
+      Method factory = List.class.getMethod("of", Object[].class);
+      return Optional.of((List<String>) factory.invoke(null, new Object[] {new Object[] {value}}));
+    } catch (NoSuchMethodException e) {
+      return Optional.empty();
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Optional<Set<String>> jdk9Set(String value) {
+    try {
+      Method factory = Set.class.getMethod("of", Object[].class);
+      return Optional.of((Set<String>) factory.invoke(null, new Object[] {new Object[] {value}}));
+    } catch (NoSuchMethodException e) {
+      return Optional.empty();
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Optional<Map<String, Integer>> jdk9Map(String key, int value) {
+    try {
+      Method factory = Map.class.getMethod("of", Object.class, Object.class);
+      return Optional.of((Map<String, Integer>) factory.invoke(null, key, value));
+    } catch (NoSuchMethodException e) {
+      return Optional.empty();
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
   }
 
   private static void assertAtomicInts(AtomicIntegerArray array, int... expected) {
