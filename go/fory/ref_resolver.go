@@ -228,6 +228,18 @@ func (r *RefResolver) PreserveRefId() (int32, error) {
 	return nextReadRefId, nil
 }
 
+func (r *RefResolver) ReserveSkippedRefId() error {
+	if !r.refTracking {
+		return nil
+	}
+	nextReadRefId := len(r.readObjects)
+	if nextReadRefId > MaxInt32 {
+		return fmt.Errorf("referencable objects exceeds max int32")
+	}
+	r.readObjects = append(r.readObjects, reflect.Value{})
+	return nil
+}
+
 func (r *RefResolver) TryPreserveRefId(buffer *ByteBuffer) (int32, error) {
 	var ctxErr Error
 	headFlag := buffer.ReadInt8(&ctxErr)
