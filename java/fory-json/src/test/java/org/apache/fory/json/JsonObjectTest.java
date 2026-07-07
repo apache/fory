@@ -20,7 +20,11 @@
 package org.apache.fory.json;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +50,34 @@ public class JsonObjectTest extends ForyJsonTestModels {
     assertEquals(
         new String(json.toJsonBytes(new PublicFields()), StandardCharsets.UTF_8),
         "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
+  }
+
+  @Test
+  public void writeJsonToOutputStream() {
+    ForyJson json = ForyJson.builder().build();
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    json.writeJsonTo(new PublicFields(), output);
+    assertEquals(
+        new String(output.toByteArray(), StandardCharsets.UTF_8),
+        "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
+
+    output.reset();
+    json.writeJsonTo(null, output);
+    assertEquals(new String(output.toByteArray(), StandardCharsets.UTF_8), "null");
+
+    OutputStream failing =
+        new OutputStream() {
+          @Override
+          public void write(int b) throws IOException {
+            throw new IOException("closed");
+          }
+
+          @Override
+          public void write(byte[] b, int off, int len) throws IOException {
+            throw new IOException("closed");
+          }
+        };
+    assertThrows(ForyJsonException.class, () -> json.writeJsonTo(new PublicFields(), failing));
   }
 
   @Test
@@ -126,15 +158,15 @@ public class JsonObjectTest extends ForyJsonTestModels {
     ForyJson json = ForyJson.builder().writeNullFields(true).build();
     assertEquals(
         json.toJson(new PublicFields()),
-        "{\"active\":true,\"id\":7,\"missing\":null,\"name\":\"fory\"}");
+        "{\"active\":true,\"id\":7,\"name\":\"fory\",\"missing\":null}");
   }
 
   @Test
-  public void ignoreMethods() {
-    ForyJson json = ForyJson.builder().build();
+  public void fieldOnlyModeIgnoresMethods() {
+    ForyJson json = ForyJson.builder().withFieldMode(true).build();
     assertEquals(
         json.toJson(new MethodsIgnored()),
-        "{\"hidden\":\"hidden\",\"setterCalls\":0,\"value\":\"field\"}");
+        "{\"setterCalls\":0,\"value\":\"field\",\"hidden\":\"hidden\"}");
     MethodsIgnored value =
         json.fromJson("{\"hidden\":\"json\",\"value\":\"json\"}", MethodsIgnored.class);
     assertEquals(hiddenValue(value), "json");

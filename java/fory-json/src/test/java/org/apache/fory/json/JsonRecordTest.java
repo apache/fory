@@ -50,7 +50,7 @@ public class JsonRecordTest extends ForyJsonTestModels {
             .newInstance(7, ZH_TEXT, Arrays.asList("a", "b"), child);
     ForyJson json = ForyJson.builder().build();
     String expected =
-        "{\"child\":{\"label\":\"kid\"},\"id\":7,\"name\":\"你好，Fory\"," + "\"tags\":[\"a\",\"b\"]}";
+        "{\"id\":7,\"name\":\"你好，Fory\",\"tags\":[\"a\",\"b\"]," + "\"child\":{\"label\":\"kid\"}}";
     assertEquals(json.toJson(value), expected);
     assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
     assertGeneratedWhenSupported(json, type);

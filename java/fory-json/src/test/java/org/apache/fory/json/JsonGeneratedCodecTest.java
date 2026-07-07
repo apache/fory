@@ -20,17 +20,33 @@
 package org.apache.fory.json;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
+import static org.testng.Assert.assertTrue;
 
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicReference;
+import org.apache.fory.json.codec.BaseObjectCodec;
+import org.apache.fory.json.codec.GeneratedObjectCodec;
 import org.apache.fory.json.data.GeneratedCollectionFields;
+import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.json.data.RecursiveChild;
 import org.apache.fory.json.data.RecursiveParent;
 import org.apache.fory.json.data.TokenGroup;
 import org.apache.fory.json.data.TokenValues;
+import org.apache.fory.json.meta.JsonAsciiToken;
+import org.apache.fory.json.meta.JsonFieldNameHash;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.testng.annotations.Test;
 
 public class JsonGeneratedCodecTest extends ForyJsonTestModels {
+  private static final String GENERATED_SUFFIX = "ForyJsonCodec";
+
   @Test
   public void writeRecursiveGeneratedTypes() {
     ForyJson json = ForyJson.builder().build();
@@ -54,7 +70,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), first);
     value.count = 7;
     value.name = "beta";
-    value.tags = Arrays.asList("z", "x");
+    value.tags = new ArrayList<>(Arrays.asList("z", "x"));
     value.total = 9;
     String second = "{\"count\":7,\"name\":\"beta\",\"tags\":[\"z\",\"x\"],\"total\":9}";
     assertEquals(json.toJson(value), second);
@@ -118,5 +134,186 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     assertGeneratedCollections(
         json.fromJson(input.getBytes(StandardCharsets.UTF_8), GeneratedCollectionFields.class));
     assertGeneratedWhenSupported(json, GeneratedCollectionFields.class);
+  }
+
+  @Test
+  public void sameConfigUsesSameId() throws Exception {
+    ForyJson first = ForyJson.builder().build();
+    ForyJson second = ForyJson.builder().build();
+    ForyJson writeNullFields = ForyJson.builder().writeNullFields(true).build();
+    first.toJsonBytes(new PublicFields());
+    second.toJsonBytes(new PublicFields());
+    writeNullFields.toJsonBytes(new PublicFields());
+
+    Class<?> firstWriterClass = generatedUtf8WriterClass(first, PublicFields.class);
+    Class<?> secondWriterClass = generatedUtf8WriterClass(second, PublicFields.class);
+    Class<?> writeNullWriterClass = generatedUtf8WriterClass(writeNullFields, PublicFields.class);
+    assertEquals(
+        firstWriterClass.getPackage().getName(), PublicFields.class.getPackage().getName());
+    assertEquals(
+        secondWriterClass.getPackage().getName(), PublicFields.class.getPackage().getName());
+    assertGeneratedName(firstWriterClass, PublicFields.class, "Utf8");
+    assertGeneratedName(secondWriterClass, PublicFields.class, "Utf8");
+    assertGeneratedName(writeNullWriterClass, PublicFields.class, "Utf8");
+    assertEquals(generatedId(secondWriterClass), generatedId(firstWriterClass));
+    assertNotEquals(generatedId(writeNullWriterClass), generatedId(firstWriterClass));
+  }
+
+  @Test
+  public void readLongAsciiFieldToken() {
+    String token = "\"favoriteFruit\":";
+    long prefix = JsonAsciiToken.prefix(token);
+    long suffix = JsonAsciiToken.suffixLong(token);
+    long suffixMask = JsonAsciiToken.suffixMask(token.length());
+    Utf8JsonReader utf8 =
+        new Utf8JsonReader((token + "\"apple\"").getBytes(StandardCharsets.UTF_8));
+    assertTrue(utf8.tryReadNextFieldNameToken8(prefix, suffix, suffixMask, token.length()));
+    assertEquals(utf8.readNullableStringToken(), "apple");
+
+    Latin1JsonReader latin1 = new Latin1JsonReader(latin1Bytes(token + "\"pear\""));
+    assertTrue(latin1.tryReadNextFieldNameToken8(prefix, suffix, suffixMask, token.length()));
+    assertEquals(latin1.readNullableStringToken(), "pear");
+
+    String tailToken = "\"registered\":";
+    long tailPrefix = JsonAsciiToken.prefix(tailToken);
+    long tailSuffix = JsonAsciiToken.suffixLong(tailToken);
+    long tailSuffixMask = JsonAsciiToken.suffixMask(tailToken.length());
+    Utf8JsonReader tailUtf8 =
+        new Utf8JsonReader((tailToken + "1").getBytes(StandardCharsets.UTF_8));
+    assertTrue(
+        tailUtf8.tryReadNextFieldNameToken8(
+            tailPrefix, tailSuffix, tailSuffixMask, tailToken.length()));
+    assertEquals(tailUtf8.readIntTokenValue(), 1);
+    Latin1JsonReader tailLatin1 = new Latin1JsonReader(latin1Bytes(tailToken + "2"));
+    assertTrue(
+        tailLatin1.tryReadNextFieldNameToken8(
+            tailPrefix, tailSuffix, tailSuffixMask, tailToken.length()));
+    assertEquals(tailLatin1.readIntTokenValue(), 2);
+
+    Utf8JsonReader mismatch =
+        new Utf8JsonReader("\"favoriteSeed\":\"pit\"".getBytes(StandardCharsets.UTF_8));
+    assertFalse(mismatch.tryReadNextFieldNameToken8(prefix, suffix, suffixMask, token.length()));
+    assertEquals(mismatch.readFieldNameHash(), JsonFieldNameHash.hash("favoriteSeed"));
+    mismatch.expectNextToken(':');
+    assertEquals(mismatch.readNextNullableString(), "pit");
+  }
+
+  @Test
+  public void readGeneratedLongAsciiFields() {
+    ForyJson json = ForyJson.builder().build();
+    String input =
+        "{\"registered\":\"today\",\"longitude\":12.5,\"favoriteFruit\":\"apple\","
+            + "\"shortName\":\"core\"}";
+    assertLongAsciiFields(json.fromJson(input, LongAsciiFields.class));
+    assertLongAsciiFields(
+        json.fromJson(input.getBytes(StandardCharsets.UTF_8), LongAsciiFields.class));
+    assertGeneratedWhenSupported(json, LongAsciiFields.class);
+  }
+
+  @Test
+  public void readSplitGeneratedFields() {
+    ForyJson json = ForyJson.builder().build();
+    String ordered =
+        "{\"f0\":0,\"f1\":\"one\",\"f2\":2,\"f3\":\"three\",\"f4\":4,\"f5\":\"five\","
+            + "\"f6\":6,\"f7\":\"seven\",\"f8\":8,\"f9\":\"nine\",\"f10\":10,"
+            + "\"f11\":\"eleven\",\"f12\":12,\"f13\":\"thirteen\"}";
+    assertWideFields(json.fromJson(ordered, WideFields.class));
+    assertWideFields(json.fromJson(ordered.getBytes(StandardCharsets.UTF_8), WideFields.class));
+
+    String boundaryFallback =
+        "{\"f0\":0,\"f2\":2,\"f1\":\"one\",\"f3\":\"three\",\"f4\":4,\"f5\":\"five\","
+            + "\"f6\":6,\"f7\":\"seven\",\"f8\":8,\"f9\":\"nine\",\"f10\":10,"
+            + "\"f11\":\"eleven\",\"f12\":12,\"f13\":\"thirteen\"}";
+    assertWideFields(json.fromJson(boundaryFallback, WideFields.class));
+    assertWideFields(
+        json.fromJson(boundaryFallback.getBytes(StandardCharsets.UTF_8), WideFields.class));
+    assertGeneratedWhenSupported(json, WideFields.class);
+  }
+
+  private static void assertWideFields(WideFields value) {
+    assertEquals(value.f0, 0);
+    assertEquals(value.f1, "one");
+    assertEquals(value.f2, 2);
+    assertEquals(value.f3, "three");
+    assertEquals(value.f4, 4);
+    assertEquals(value.f5, "five");
+    assertEquals(value.f6, 6);
+    assertEquals(value.f7, "seven");
+    assertEquals(value.f8, 8);
+    assertEquals(value.f9, "nine");
+    assertEquals(value.f10, 10);
+    assertEquals(value.f11, "eleven");
+    assertEquals(value.f12, 12);
+    assertEquals(value.f13, "thirteen");
+  }
+
+  private static void assertLongAsciiFields(LongAsciiFields value) {
+    assertEquals(value.registered, "today");
+    assertEquals(value.longitude, 12.5d);
+    assertEquals(value.favoriteFruit, "apple");
+    assertEquals(value.shortName, "core");
+  }
+
+  private static byte[] latin1Bytes(String value) {
+    return value.getBytes(StandardCharsets.ISO_8859_1);
+  }
+
+  public static class LongAsciiFields {
+    public String registered;
+    public double longitude;
+    public String favoriteFruit;
+    public String shortName;
+  }
+
+  public static class WideFields {
+    public int f0;
+    public String f1;
+    public int f2;
+    public String f3;
+    public int f4;
+    public String f5;
+    public int f6;
+    public String f7;
+    public int f8;
+    public String f9;
+    public int f10;
+    public String f11;
+    public int f12;
+    public String f13;
+  }
+
+  private static Class<?> generatedUtf8WriterClass(ForyJson json, Class<?> type) throws Exception {
+    Field primarySlotField = ForyJson.class.getDeclaredField("primarySlot");
+    primarySlotField.setAccessible(true);
+    AtomicReference<?> primarySlot = (AtomicReference<?>) primarySlotField.get(json);
+    Object pooledState = primarySlot.get();
+    Field stateField = pooledState.getClass().getDeclaredField("state");
+    stateField.setAccessible(true);
+    Object state = stateField.get(pooledState);
+    Field typeResolverField = state.getClass().getDeclaredField("typeResolver");
+    typeResolverField.setAccessible(true);
+    JsonTypeResolver typeResolver = (JsonTypeResolver) typeResolverField.get(state);
+    BaseObjectCodec codec = typeResolver.getObjectCodec(type);
+    assertTrue(codec instanceof GeneratedObjectCodec);
+    Field utf8WriterField = GeneratedObjectCodec.class.getDeclaredField("utf8Writer");
+    utf8WriterField.setAccessible(true);
+    return utf8WriterField.get(codec).getClass();
+  }
+
+  private static void assertGeneratedName(
+      Class<?> generatedClass, Class<?> valueType, String role) {
+    String simpleName = generatedClass.getSimpleName();
+    assertTrue(simpleName.startsWith(valueType.getSimpleName()), generatedClass.getName());
+    assertTrue(simpleName.contains(role + GENERATED_SUFFIX), generatedClass.getName());
+    assertFalse(simpleName.contains(GENERATED_SUFFIX + "_"), generatedClass.getName());
+    assertTrue(generatedId(generatedClass) >= 0, generatedClass.getName());
+  }
+
+  private static int generatedId(Class<?> generatedClass) {
+    String simpleName = generatedClass.getSimpleName();
+    int suffixStart = simpleName.lastIndexOf(GENERATED_SUFFIX);
+    assertTrue(suffixStart >= 0, generatedClass.getName());
+    String id = simpleName.substring(suffixStart + GENERATED_SUFFIX.length());
+    return id.isEmpty() ? 0 : Integer.parseInt(id);
   }
 }
