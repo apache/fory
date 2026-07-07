@@ -22,6 +22,8 @@ package org.apache.fory.json.resolver;
 import java.io.File;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URL;
 import java.nio.ByteBuffer;
@@ -41,6 +43,11 @@ import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.time.chrono.HijrahDate;
+import java.time.chrono.JapaneseDate;
+import java.time.chrono.MinguoDate;
+import java.time.chrono.ThaiBuddhistDate;
+import java.util.BitSet;
 import java.util.Calendar;
 import java.util.Collection;
 import java.util.Currency;
@@ -56,10 +63,14 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.regex.Pattern;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.BaseObjectCodec;
 import org.apache.fory.json.codec.CodecUtils;
@@ -68,6 +79,7 @@ import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.MapCodec;
 import org.apache.fory.json.codec.ObjectCodecs;
 import org.apache.fory.json.codec.ScalarCodecs;
+import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.reflect.TypeRef;
@@ -79,12 +91,16 @@ public final class JsonSharedRegistry {
   private final CodecRegistry customCodecs;
   private final IdentityHashMap<Class<?>, JsonCodec> exactCodecs;
   private final JsonCodegen codegen;
+  private final boolean propertyDiscoveryEnabled;
 
-  public JsonSharedRegistry(
-      boolean codegenEnabled, boolean writeNullFields, CodecRegistry customCodecs) {
-    this.customCodecs = customCodecs.copy();
+  public JsonSharedRegistry(JsonConfig config) {
+    this.customCodecs = config.codecRegistry().copy();
+    this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
     exactCodecs = new IdentityHashMap<>();
-    codegen = codegenEnabled ? new JsonCodegen(writeNullFields) : null;
+    codegen =
+        config.codegenEnabled()
+            ? new JsonCodegen(config.writeNullFields(), config.getConfigHash())
+            : null;
     registerExactCodecs();
   }
 
@@ -102,6 +118,13 @@ public final class JsonSharedRegistry {
       // JSON strings must not be treated as class-loading authority by the default codecs.
       throw new ForyJsonException("Unsupported JSON type " + rawType);
     }
+    if (InetAddress.class.isAssignableFrom(rawType)
+        || InetSocketAddress.class.isAssignableFrom(rawType)) {
+      throw new ForyJsonException("Unsupported JSON type " + rawType);
+    }
+    if (Number.class.isAssignableFrom(rawType) || CharSequence.class.isAssignableFrom(rawType)) {
+      throw new ForyJsonException("Unsupported JSON type " + rawType);
+    }
     if (rawType.isEnum()) {
       return new ScalarCodecs.EnumCodec(rawType);
     }
@@ -114,6 +137,10 @@ public final class JsonSharedRegistry {
     }
     if (rawType == AtomicReference.class) {
       return new ScalarCodecs.AtomicReferenceCodec(
+          CodecUtils.elementType(typeRef.getType()), localResolver);
+    }
+    if (rawType == AtomicReferenceArray.class) {
+      return new ScalarCodecs.AtomicReferenceArrayCodec(
           CodecUtils.elementType(typeRef.getType()), localResolver);
     }
     if (Calendar.class.isAssignableFrom(rawType)) {
@@ -190,11 +217,17 @@ public final class JsonSharedRegistry {
     return codegen == null ? null : codegen.compile(codec, localResolver);
   }
 
+  boolean propertyDiscoveryEnabled() {
+    return propertyDiscoveryEnabled;
+  }
+
   private void registerExactCodecs() {
     exactCodecs.put(Object.class, ScalarCodecs.NaturalCodec.INSTANCE);
     exactCodecs.put(void.class, ScalarCodecs.VoidCodec.INSTANCE);
     exactCodecs.put(Void.class, ScalarCodecs.VoidCodec.INSTANCE);
+    exactCodecs.put(Number.class, ScalarCodecs.NumberCodec.INSTANCE);
     exactCodecs.put(String.class, ScalarCodecs.StringCodec.INSTANCE);
+    exactCodecs.put(CharSequence.class, ScalarCodecs.CharSequenceCodec.INSTANCE);
     exactCodecs.put(boolean.class, ScalarCodecs.BooleanCodec.INSTANCE);
     exactCodecs.put(Boolean.class, ScalarCodecs.BooleanCodec.INSTANCE);
     exactCodecs.put(int.class, ScalarCodecs.IntCodec.INSTANCE);
@@ -215,11 +248,14 @@ public final class JsonSharedRegistry {
     exactCodecs.put(BigDecimal.class, ScalarCodecs.BigDecimalCodec.INSTANCE);
     exactCodecs.put(Float16.class, ScalarCodecs.Float16Codec.INSTANCE);
     exactCodecs.put(BFloat16.class, ScalarCodecs.BFloat16Codec.INSTANCE);
+    exactCodecs.put(BitSet.class, ScalarCodecs.BitSetCodec.INSTANCE);
     exactCodecs.put(StringBuilder.class, ScalarCodecs.StringBuilderCodec.INSTANCE);
     exactCodecs.put(StringBuffer.class, ScalarCodecs.StringBufferCodec.INSTANCE);
     exactCodecs.put(AtomicBoolean.class, ScalarCodecs.AtomicBooleanCodec.INSTANCE);
     exactCodecs.put(AtomicInteger.class, ScalarCodecs.AtomicIntegerCodec.INSTANCE);
+    exactCodecs.put(AtomicIntegerArray.class, ScalarCodecs.AtomicIntegerArrayCodec.INSTANCE);
     exactCodecs.put(AtomicLong.class, ScalarCodecs.AtomicLongCodec.INSTANCE);
+    exactCodecs.put(AtomicLongArray.class, ScalarCodecs.AtomicLongArrayCodec.INSTANCE);
     exactCodecs.put(Currency.class, ScalarCodecs.CurrencyCodec.INSTANCE);
     exactCodecs.put(File.class, ScalarCodecs.FileCodec.INSTANCE);
     exactCodecs.put(URI.class, ScalarCodecs.UriCodec.INSTANCE);
@@ -230,9 +266,7 @@ public final class JsonSharedRegistry {
     exactCodecs.put(Locale.class, ScalarCodecs.LocaleCodec.INSTANCE);
     exactCodecs.put(Charset.class, ScalarCodecs.CharsetCodec.INSTANCE);
     exactCodecs.put(Date.class, ScalarCodecs.DateCodec.INSTANCE);
-    exactCodecs.put(java.sql.Date.class, ScalarCodecs.SqlDateCodec.INSTANCE);
-    exactCodecs.put(java.sql.Time.class, ScalarCodecs.SqlTimeCodec.INSTANCE);
-    exactCodecs.put(java.sql.Timestamp.class, ScalarCodecs.TimestampCodec.INSTANCE);
+    SqlJsonCodecs.register(exactCodecs);
     exactCodecs.put(Calendar.class, ScalarCodecs.CalendarCodec.INSTANCE);
     exactCodecs.put(TimeZone.class, ScalarCodecs.TimeZoneCodec.INSTANCE);
     exactCodecs.put(LocalDate.class, ScalarCodecs.LocalDateCodec.INSTANCE);
@@ -249,9 +283,14 @@ public final class JsonSharedRegistry {
     exactCodecs.put(Period.class, ScalarCodecs.PeriodCodec.INSTANCE);
     exactCodecs.put(OffsetTime.class, ScalarCodecs.OffsetTimeCodec.INSTANCE);
     exactCodecs.put(OffsetDateTime.class, ScalarCodecs.OffsetDateTimeCodec.INSTANCE);
+    exactCodecs.put(HijrahDate.class, ScalarCodecs.HijrahDateCodec.INSTANCE);
+    exactCodecs.put(JapaneseDate.class, ScalarCodecs.JapaneseDateCodec.INSTANCE);
+    exactCodecs.put(MinguoDate.class, ScalarCodecs.MinguoDateCodec.INSTANCE);
+    exactCodecs.put(ThaiBuddhistDate.class, ScalarCodecs.ThaiBuddhistDateCodec.INSTANCE);
     exactCodecs.put(OptionalInt.class, ScalarCodecs.OptionalIntCodec.INSTANCE);
     exactCodecs.put(OptionalLong.class, ScalarCodecs.OptionalLongCodec.INSTANCE);
     exactCodecs.put(OptionalDouble.class, ScalarCodecs.OptionalDoubleCodec.INSTANCE);
     exactCodecs.put(ByteBuffer.class, ScalarCodecs.ByteBufferCodec.INSTANCE);
+    ScalarCodecs.registerGuavaExactCodecs(exactCodecs);
   }
 }

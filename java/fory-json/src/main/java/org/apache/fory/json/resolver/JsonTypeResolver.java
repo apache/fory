@@ -81,7 +81,7 @@ public final class JsonTypeResolver {
     if (cached != null) {
       return cached;
     }
-    ObjectCodec codec = BaseObjectCodec.build(type);
+    ObjectCodec codec = BaseObjectCodec.build(type, sharedRegistry.propertyDiscoveryEnabled());
     // Codegen may ask for nested object metadata that points back to this type.
     // Publishing before compiling keeps recursive ownership in this resolver cache.
     objectCodecs.put(type, codec);
