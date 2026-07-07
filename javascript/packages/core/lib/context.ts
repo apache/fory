@@ -241,7 +241,16 @@ export class RefReader {
   }
 
   getReadRef(refId: number) {
-    return this.readObjects[refId];
+    const value = this.readObjects[refId];
+    if (
+      !Number.isSafeInteger(refId) ||
+      refId < 0 ||
+      refId >= this.readObjects.length ||
+      value === undefined
+    ) {
+      throw new Error(`Invalid ref id ${refId}, current size ${this.readObjects.length}`);
+    }
+    return value;
   }
 
   readRefFlag() {

@@ -18,6 +18,8 @@
  */
 
 import 'package:fory/fory.dart';
+import 'package:fory/src/context/ref_reader.dart';
+import 'package:fory/src/context/ref_writer.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -44,6 +46,42 @@ void main() {
         equals(
           'InvalidDataException: invalid payload '
           '(caused by FormatException: bad payload)',
+        ),
+      );
+    });
+
+    test('invalid read ref id is rejected', () {
+      final refReader = RefReader();
+      final buffer = Buffer();
+      buffer.writeByte(RefWriter.refFlag);
+      buffer.writeVarUint32(0);
+
+      expect(
+        () => refReader.tryPreserveRefId(Buffer.wrap(buffer.toBytes())),
+        throwsA(
+          isA<InvalidDataException>().having(
+            (error) => error.message,
+            'message',
+            'Invalid ref id 0, current size 0.',
+          ),
+        ),
+      );
+    });
+
+    test('unresolved read ref slot is rejected', () {
+      final refReader = RefReader()..preserveRefId();
+      final buffer = Buffer();
+      buffer.writeByte(RefWriter.refFlag);
+      buffer.writeVarUint32(0);
+
+      expect(
+        () => refReader.tryPreserveRefId(Buffer.wrap(buffer.toBytes())),
+        throwsA(
+          isA<InvalidDataException>().having(
+            (error) => error.message,
+            'message',
+            'Invalid ref id 0, current size 1.',
+          ),
         ),
       );
     });
