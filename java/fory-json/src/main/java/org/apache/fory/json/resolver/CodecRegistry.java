@@ -19,6 +19,9 @@
 
 package org.apache.fory.json.resolver;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -53,5 +56,19 @@ public final class CodecRegistry {
       copied.put(entry.getKey(), entry.getValue());
     }
     return new CodecRegistry(copied);
+  }
+
+  public String codegenKey() {
+    List<Map.Entry<Class<?>, JsonCodec>> entries = new ArrayList<>(codecs.entrySet());
+    entries.sort(Comparator.comparing(entry -> entry.getKey().getName()));
+    StringBuilder builder = new StringBuilder(entries.size() * 48);
+    for (Map.Entry<Class<?>, JsonCodec> entry : entries) {
+      builder
+          .append(entry.getKey().getName())
+          .append('=')
+          .append(entry.getValue().getClass().getName())
+          .append(';');
+    }
+    return builder.toString();
   }
 }

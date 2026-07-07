@@ -22,6 +22,7 @@ package org.apache.fory.json.codec;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.util.AbstractMap;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -122,6 +123,10 @@ public abstract class MapCodec extends AbstractJsonCodec {
     return factory.newMap();
   }
 
+  final Object finishMap(Map<Object, Object> map) {
+    return factory.finish(map);
+  }
+
   private static void writeKey(JsonWriter writer, Object key, MapKeyCodec keyCodec) {
     keyCodec.writeName(writer, key);
   }
@@ -148,6 +153,13 @@ public abstract class MapCodec extends AbstractJsonCodec {
 
   @SuppressWarnings("unchecked")
   private static MapFactory mapFactory(Class<?> rawType, Class<?> keyRawType) {
+    if (unsupportedMapType(rawType) || GuavaCodecs.isUnsupportedImmutableImpl(rawType)) {
+      return unsupportedMapFactory(rawType);
+    }
+    MapFactory guavaFactory = GuavaCodecs.mapFactory(rawType);
+    if (guavaFactory != null) {
+      return guavaFactory;
+    }
     if (rawType == JSONObject.class) {
       return () -> (Map<Object, Object>) (Map<?, ?>) new JSONObject();
     }
@@ -156,6 +168,9 @@ public abstract class MapCodec extends AbstractJsonCodec {
         throw new ForyJsonException("EnumMap requires an enum key type");
       }
       return () -> new EnumMap(keyRawType);
+    }
+    if (rawType == AbstractMap.class) {
+      return () -> new LinkedHashMap<>(0);
     }
     if (rawType == UNTYPED_MAP || rawType.isInterface()) {
       if (ConcurrentMap.class.isAssignableFrom(rawType)) {
@@ -180,6 +195,20 @@ public abstract class MapCodec extends AbstractJsonCodec {
     };
   }
 
+  private static MapFactory unsupportedMapFactory(Class<?> rawType) {
+    return () -> {
+      throw new ForyJsonException("Unsupported JSON map type " + rawType);
+    };
+  }
+
+  private static boolean unsupportedMapType(Class<?> rawType) {
+    String name = rawType.getName();
+    return name.startsWith("java.util.ImmutableCollections$")
+        || name.startsWith("java.util.Collections$Empty")
+        || name.startsWith("java.util.Collections$Singleton")
+        || name.startsWith("java.util.Collections$Unmodifiable");
+  }
+
   private static boolean isNumericKey(Class<?> type) {
     return type == int.class
         || type == Integer.class
@@ -191,8 +220,12 @@ public abstract class MapCodec extends AbstractJsonCodec {
         || type == Byte.class;
   }
 
-  private interface MapFactory {
+  interface MapFactory {
     Map<Object, Object> newMap();
+
+    default Object finish(Map<Object, Object> map) {
+      return map;
+    }
   }
 
   public static final class GenericMapCodec extends MapCodec {
@@ -239,7 +272,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
     Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       Map<Object, Object> map = newMap();
       readGeneric(reader, map, keyCodec, valueTypeInfo, valueCodec, resolver);
-      return map;
+      return finishMap(map);
     }
   }
 
@@ -266,7 +299,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         reader.expectNextToken('}');
       }
       reader.exitDepth();
-      return map;
+      return finishMap(map);
     }
 
     @Override
@@ -287,7 +320,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         reader.expectNextToken('}');
       }
       reader.exitDepth();
-      return map;
+      return finishMap(map);
     }
 
     @Override
@@ -308,7 +341,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         reader.expectNextToken('}');
       }
       reader.exitDepth();
-      return map;
+      return finishMap(map);
     }
 
     abstract Object readLatin1Value(Latin1JsonReader reader);
@@ -364,7 +397,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         reader.expect('}');
       }
       reader.exitDepth();
-      return map;
+      return finishMap(map);
     }
 
     @Override
@@ -429,7 +462,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         reader.expect('}');
       }
       reader.exitDepth();
-      return map;
+      return finishMap(map);
     }
 
     @Override
@@ -495,7 +528,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         reader.expect('}');
       }
       reader.exitDepth();
-      return map;
+      return finishMap(map);
     }
 
     abstract void writeNumber(JsonWriter writer, Object value);
@@ -666,7 +699,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
 
     @Override
     Object readNumber(JsonReader reader) {
-      return Float.parseFloat(reader.readNumber());
+      return reader.readFloat();
     }
   }
 
@@ -682,7 +715,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
 
     @Override
     Object readNumber(JsonReader reader) {
-      return Double.parseDouble(reader.readNumber());
+      return reader.readDouble();
     }
   }
 
@@ -698,7 +731,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
 
     @Override
     Object readNumber(JsonReader reader) {
-      return new BigInteger(reader.readNumber());
+      return new BigInteger(reader.readNumberAsString());
     }
   }
 
@@ -714,7 +747,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
 
     @Override
     Object readNumber(JsonReader reader) {
-      return new BigDecimal(reader.readNumber());
+      return reader.readBigDecimal();
     }
   }
 
@@ -767,7 +800,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         reader.expect('}');
       }
       reader.exitDepth();
-      return map;
+      return finishMap(map);
     }
 
     @Override
@@ -788,7 +821,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         reader.expectNextToken('}');
       }
       reader.exitDepth();
-      return map;
+      return finishMap(map);
     }
 
     @Override
@@ -809,7 +842,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         reader.expectNextToken('}');
       }
       reader.exitDepth();
-      return map;
+      return finishMap(map);
     }
 
     @Override
@@ -830,7 +863,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         reader.expectNextToken('}');
       }
       reader.exitDepth();
-      return map;
+      return finishMap(map);
     }
   }
 

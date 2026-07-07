@@ -20,6 +20,7 @@
 package org.apache.fory.json.meta;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
@@ -33,6 +34,7 @@ import org.apache.fory.json.writer.JsonStringEscaper;
 import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.memory.NativeByteOrder;
 
 public final class JsonFieldInfo {
   private static final int KIND_BOOLEAN = 1;
@@ -54,6 +56,9 @@ public final class JsonFieldInfo {
 
   private final String name;
   private final Field writeField;
+  private final Method writeGetter;
+  private final Field readField;
+  private final Method readSetter;
   private final Type writeType;
   private final Class<?> writeRawType;
   private final Type readType;
@@ -71,12 +76,16 @@ public final class JsonFieldInfo {
   private final Class<?> readElementRawType;
   private final byte[] stringNamePrefix;
   private final byte[] stringCommaNamePrefix;
+  private final byte[] stringUtf16NamePrefix;
+  private final byte[] stringUtf16CommaNamePrefix;
   private final byte[] utf8NamePrefix;
   private final byte[] utf8CommaNamePrefix;
   private final byte[][] stringEnumValues;
   private final byte[][] stringElementEnumValues;
   private final byte[][] stringEnumNameValues;
   private final byte[][] stringEnumCommaValues;
+  private final byte[][] stringUtf16EnumNameValues;
+  private final byte[][] stringUtf16EnumCommaValues;
   private final byte[][] utf8EnumValues;
   private final byte[][] utf8ElementEnumValues;
   private final byte[][] utf8EnumNameValues;
@@ -85,6 +94,10 @@ public final class JsonFieldInfo {
   private final byte[] stringTrueCommaToken;
   private final byte[] stringFalseNameToken;
   private final byte[] stringFalseCommaToken;
+  private final byte[] stringUtf16TrueNameToken;
+  private final byte[] stringUtf16TrueCommaToken;
+  private final byte[] stringUtf16FalseNameToken;
+  private final byte[] stringUtf16FalseCommaToken;
   private final byte[] utf8TrueNameToken;
   private final byte[] utf8TrueCommaToken;
   private final byte[] utf8FalseNameToken;
@@ -98,16 +111,21 @@ public final class JsonFieldInfo {
   public JsonFieldInfo(
       String name,
       Field writeField,
+      Method writeGetter,
       Field readField,
+      Method readSetter,
       JsonFieldAccessor writeAccessor,
       JsonFieldAccessor readAccessor) {
     this.name = name;
     nameHash = JsonFieldNameHash.hash(name);
     this.writeField = writeField;
-    this.writeType = fieldType(writeField);
-    this.writeRawType = fieldRawType(writeField);
-    this.readType = fieldType(readField);
-    this.readRawType = fieldRawType(readField);
+    this.writeGetter = writeGetter;
+    this.readField = readField;
+    this.readSetter = readSetter;
+    this.writeType = writeType(writeField, writeGetter);
+    this.writeRawType = writeRawType(writeField, writeGetter);
+    this.readType = readType(readField, readSetter);
+    this.readRawType = readRawType(readField, readSetter);
     this.writeAccessor = writeAccessor;
     this.readAccessor = readAccessor;
     writeKind = writeRawType == null ? null : kind(writeRawType);
@@ -126,6 +144,8 @@ public final class JsonFieldInfo {
     String utf8Prefix = JsonStringEscaper.escapedNamePrefix(name, false);
     stringNamePrefix = stringPrefix.getBytes(StandardCharsets.ISO_8859_1);
     stringCommaNamePrefix = ("," + stringPrefix).getBytes(StandardCharsets.ISO_8859_1);
+    stringUtf16NamePrefix = toUtf16Bytes(stringNamePrefix);
+    stringUtf16CommaNamePrefix = toUtf16Bytes(stringCommaNamePrefix);
     utf8NamePrefix = utf8Prefix.getBytes(StandardCharsets.UTF_8);
     utf8CommaNamePrefix = ("," + utf8Prefix).getBytes(StandardCharsets.UTF_8);
     stringEnumValues = writeKind == JsonFieldKind.ENUM ? stringEnumValues(writeRawType) : null;
@@ -134,6 +154,14 @@ public final class JsonFieldInfo {
     stringEnumCommaValues =
         writeKind == JsonFieldKind.ENUM
             ? fieldValues(stringCommaNamePrefix, stringEnumValues)
+            : null;
+    stringUtf16EnumNameValues =
+        writeKind == JsonFieldKind.ENUM
+            ? utf16FieldValues(stringUtf16NamePrefix, stringEnumValues)
+            : null;
+    stringUtf16EnumCommaValues =
+        writeKind == JsonFieldKind.ENUM
+            ? utf16FieldValues(stringUtf16CommaNamePrefix, stringEnumValues)
             : null;
     stringElementEnumValues =
         writeElementRawType != null && writeElementRawType.isEnum()
@@ -153,6 +181,10 @@ public final class JsonFieldInfo {
       stringTrueCommaToken = join(stringCommaNamePrefix, TRUE_BYTES);
       stringFalseNameToken = join(stringNamePrefix, FALSE_BYTES);
       stringFalseCommaToken = join(stringCommaNamePrefix, FALSE_BYTES);
+      stringUtf16TrueNameToken = join(stringUtf16NamePrefix, toUtf16Bytes(TRUE_BYTES));
+      stringUtf16TrueCommaToken = join(stringUtf16CommaNamePrefix, toUtf16Bytes(TRUE_BYTES));
+      stringUtf16FalseNameToken = join(stringUtf16NamePrefix, toUtf16Bytes(FALSE_BYTES));
+      stringUtf16FalseCommaToken = join(stringUtf16CommaNamePrefix, toUtf16Bytes(FALSE_BYTES));
       utf8TrueNameToken = join(utf8NamePrefix, TRUE_BYTES);
       utf8TrueCommaToken = join(utf8CommaNamePrefix, TRUE_BYTES);
       utf8FalseNameToken = join(utf8NamePrefix, FALSE_BYTES);
@@ -162,6 +194,10 @@ public final class JsonFieldInfo {
       stringTrueCommaToken = null;
       stringFalseNameToken = null;
       stringFalseCommaToken = null;
+      stringUtf16TrueNameToken = null;
+      stringUtf16TrueCommaToken = null;
+      stringUtf16FalseNameToken = null;
+      stringUtf16FalseCommaToken = null;
       utf8TrueNameToken = null;
       utf8TrueCommaToken = null;
       utf8FalseNameToken = null;
@@ -181,12 +217,24 @@ public final class JsonFieldInfo {
     return writeField;
   }
 
+  public Method writeGetter() {
+    return writeGetter;
+  }
+
   public Type writeType() {
     return writeType;
   }
 
+  private static Type writeType(Field field, Method getter) {
+    return getter == null ? fieldType(field) : getter.getGenericReturnType();
+  }
+
   public Class<?> writeRawType() {
     return writeRawType;
+  }
+
+  private static Class<?> writeRawType(Field field, Method getter) {
+    return getter == null ? fieldRawType(field) : getter.getReturnType();
   }
 
   public JsonFieldKind writeKind() {
@@ -225,12 +273,24 @@ public final class JsonFieldInfo {
     return readType;
   }
 
+  private static Type readType(Field field, Method setter) {
+    return setter == null ? fieldType(field) : setter.getGenericParameterTypes()[0];
+  }
+
   public Field readField() {
-    return readAccessor == null ? null : readAccessor.field();
+    return readField;
+  }
+
+  public Method readSetter() {
+    return readSetter;
   }
 
   public Class<?> readRawType() {
     return readRawType;
+  }
+
+  private static Class<?> readRawType(Field field, Method setter) {
+    return setter == null ? fieldRawType(field) : setter.getParameterTypes()[0];
   }
 
   public JsonFieldKind readKind() {
@@ -297,6 +357,14 @@ public final class JsonFieldInfo {
     return stringCommaNamePrefix;
   }
 
+  public byte[] stringUtf16NamePrefix() {
+    return stringUtf16NamePrefix;
+  }
+
+  public byte[] stringUtf16CommaNamePrefix() {
+    return stringUtf16CommaNamePrefix;
+  }
+
   public byte[] utf8NamePrefix() {
     return utf8NamePrefix;
   }
@@ -327,10 +395,20 @@ public final class JsonFieldInfo {
     return (comma ? stringEnumCommaValues : stringEnumNameValues)[value.ordinal()];
   }
 
+  public byte[] stringUtf16EnumFieldValue(Enum<?> value, boolean comma) {
+    return (comma ? stringUtf16EnumCommaValues : stringUtf16EnumNameValues)[value.ordinal()];
+  }
+
   public byte[] stringBooleanFieldValue(boolean value, boolean comma) {
     return value
         ? (comma ? stringTrueCommaToken : stringTrueNameToken)
         : (comma ? stringFalseCommaToken : stringFalseNameToken);
+  }
+
+  public byte[] stringUtf16BooleanFieldValue(boolean value, boolean comma) {
+    return value
+        ? (comma ? stringUtf16TrueCommaToken : stringUtf16TrueNameToken)
+        : (comma ? stringUtf16FalseCommaToken : stringUtf16FalseNameToken);
   }
 
   public byte[] utf8ElementEnumValue(Enum<?> value) {
@@ -431,7 +509,10 @@ public final class JsonFieldInfo {
         if (!writeRawType.isPrimitive()) {
           return writeStringScalar(writer, object, index);
         }
-        writer.writeRawValue(stringBooleanFieldValue(writeAccessor.getBoolean(object), index != 0));
+        boolean booleanValue = writeAccessor.getBoolean(object);
+        writer.writeRawValue(
+            stringBooleanFieldValue(booleanValue, index != 0),
+            stringUtf16BooleanFieldValue(booleanValue, index != 0));
         return true;
       case KIND_BYTE:
         if (!writeRawType.isPrimitive()) {
@@ -624,7 +705,10 @@ public final class JsonFieldInfo {
     }
     switch (writeKind) {
       case BOOLEAN:
-        writer.writeRawValue(stringBooleanFieldValue(((Boolean) value).booleanValue(), index != 0));
+        boolean booleanValue = ((Boolean) value).booleanValue();
+        writer.writeRawValue(
+            stringBooleanFieldValue(booleanValue, index != 0),
+            stringUtf16BooleanFieldValue(booleanValue, index != 0));
         return true;
       case BYTE:
         writer.writeIntField(
@@ -708,7 +792,8 @@ public final class JsonFieldInfo {
       writer.writeFieldName(this, index);
       writer.writeNull();
     } else {
-      writer.writeRawValue(stringEnumFieldValue(value, index != 0));
+      writer.writeRawValue(
+          stringEnumFieldValue(value, index != 0), stringUtf16EnumFieldValue(value, index != 0));
     }
     return true;
   }
@@ -1101,10 +1186,32 @@ public final class JsonFieldInfo {
     return fieldValues;
   }
 
+  private static byte[][] utf16FieldValues(byte[] utf16Prefix, byte[][] values) {
+    byte[][] fieldValues = new byte[values.length][];
+    for (int i = 0; i < values.length; i++) {
+      fieldValues[i] = join(utf16Prefix, toUtf16Bytes(values[i]));
+    }
+    return fieldValues;
+  }
+
   private static byte[] join(byte[] prefix, byte[] token) {
     byte[] joined = new byte[prefix.length + token.length];
     System.arraycopy(prefix, 0, joined, 0, prefix.length);
     System.arraycopy(token, 0, joined, prefix.length, token.length);
     return joined;
+  }
+
+  private static byte[] toUtf16Bytes(byte[] latin1) {
+    byte[] utf16 = new byte[latin1.length << 1];
+    if (NativeByteOrder.IS_LITTLE_ENDIAN) {
+      for (int i = 0, j = 0; i < latin1.length; i++, j += 2) {
+        utf16[j] = latin1[i];
+      }
+    } else {
+      for (int i = 0, j = 0; i < latin1.length; i++, j += 2) {
+        utf16[j + 1] = latin1[i];
+      }
+    }
+    return utf16;
   }
 }

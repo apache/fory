@@ -91,7 +91,7 @@ public abstract class CodecBuilder {
   static TypeRef<TypeInfoHolder> classInfoHolderTypeRef = TypeRef.of(TypeInfoHolder.class);
   private static final String VAR_HANDLE_TYPE_NAME = "java.lang.invoke.VarHandle";
   private static final String VAR_HANDLE_SUPPORT =
-      "org.apache.fory.builder.VarHandleCodegenSupport";
+      CodecBuilder.class.getPackage().getName() + ".VarHandleCodegenSupport";
   private static final Class<?> VAR_HANDLE_CLASS =
       JdkVersion.MAJOR_VERSION >= 9 ? loadClass(VAR_HANDLE_TYPE_NAME) : Object.class;
   private static final Class<?> VAR_HANDLE_SUPPORT_CLASS =

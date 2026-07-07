@@ -26,6 +26,7 @@ import org.apache.fory.json.resolver.CodecRegistry;
 public final class ForyJsonBuilder {
   private boolean writeNullFields;
   private boolean codegenEnabled = true;
+  private boolean propertyDiscoveryEnabled = true;
   private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
   private final CodecRegistry codecRegistry = new CodecRegistry();
 
@@ -40,6 +41,16 @@ public final class ForyJsonBuilder {
   /** Enables runtime-generated writers for supported public-field classes. */
   public ForyJsonBuilder withCodegen(boolean codegenEnabled) {
     this.codegenEnabled = codegenEnabled;
+    return this;
+  }
+
+  /**
+   * Enables field mode, where JSON object members are discovered from Java fields only. When
+   * disabled, Fory JSON uses the default JavaBean property model: public getters, public setters,
+   * and eligible fields are merged as JSON object members.
+   */
+  public ForyJsonBuilder withFieldMode(boolean fieldMode) {
+    this.propertyDiscoveryEnabled = !fieldMode;
     return this;
   }
 
@@ -59,6 +70,8 @@ public final class ForyJsonBuilder {
   }
 
   public ForyJson build() {
-    return new ForyJson(writeNullFields, codegenEnabled, maxDepth, codecRegistry);
+    return new ForyJson(
+        new JsonConfig(
+            writeNullFields, codegenEnabled, propertyDiscoveryEnabled, maxDepth, codecRegistry));
   }
 }

@@ -234,10 +234,14 @@ public final class Struct implements Serializable {
                           + "import java.util.*;\n"
                           + "public final class %s implements java.io.Serializable {\n"
                           + "  public String toString() {\n"
-                          + "   return org.apache.fory.test.bean.Struct.toString(this);\n"
+                          + "   return "
+                          + Struct.class.getName()
+                          + ".toString(this);\n"
                           + "  }\n"
                           + "  public boolean equals(Object o) {\n"
-                          + "   return org.apache.fory.test.bean.Struct.equalsWith(this, o);\n"
+                          + "   return "
+                          + Struct.class.getName()
+                          + ".equalsWith(this, o);\n"
                           + "  }\n",
                       classname));
 
@@ -286,10 +290,14 @@ public final class Struct implements Serializable {
                           + "import java.util.*;\n"
                           + "public final class %s implements java.io.Serializable {\n"
                           + "  public String toString() {\n"
-                          + "   return org.apache.fory.test.bean.Struct.toString(this);\n"
+                          + "   return "
+                          + Struct.class.getName()
+                          + ".toString(this);\n"
                           + "  }\n"
                           + "  public boolean equals(Object o) {\n"
-                          + "   return org.apache.fory.test.bean.Struct.equalsWith(this, o);\n"
+                          + "   return "
+                          + Struct.class.getName()
+                          + ".equalsWith(this, o);\n"
                           + "  }\n",
                       classname));
 

@@ -20,6 +20,7 @@
 module org.apache.fory.json {
   requires org.apache.fory.core;
   requires static java.sql;
+  requires static com.google.common;
 
   exports org.apache.fory.json;
   exports org.apache.fory.json.annotation;

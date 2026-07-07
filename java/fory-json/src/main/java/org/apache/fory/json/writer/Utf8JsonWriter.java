@@ -19,28 +19,60 @@
 
 package org.apache.fory.json.writer;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.Period;
+import java.time.Year;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.TemporalAccessor;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.UUID;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.serializer.StringSerializer;
 
-public final class Utf8JsonWriter extends JsonWriter {
-  private static final int RETAINED_CAPACITY = 8192;
+public final class Utf8JsonWriter extends JsonWriter implements Appendable {
+  // Pooled writers should retain medium buffers to avoid reallocating common JSON outputs.
+  private static final int RETAINED_CAPACITY = 64 * 1024;
   private static final byte[] MIN_INT_BYTES =
       "-2147483648".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final byte[] MIN_LONG_BYTES =
       "-9223372036854775808".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+  private static final byte[] NAN_BYTES =
+      "\"NaN\"".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+  private static final byte[] POSITIVE_INFINITY_BYTES =
+      "\"Infinity\"".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+  private static final byte[] NEGATIVE_INFINITY_BYTES =
+      "\"-Infinity\"".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+  private static final long EIGHT_DIGITS = 100_000_000L;
   private static final long HIGH_BITS = 0x8080808080808080L;
   private static final int INT_HIGH_BITS = 0x80808080;
+  private static final int SHORT_HIGH_BITS = 0x8080;
   private static final long ASCII_CONTROL_OFFSET = 0x6060606060606060L;
   private static final int INT_ASCII_CONTROL_OFFSET = 0x60606060;
+  private static final int SHORT_ASCII_CONTROL_OFFSET = 0x6060;
+  private static final long ASCII_GT_QUOTE_OFFSET = 0x5D5D5D5D5D5D5D5DL;
+  private static final int INT_ASCII_GT_QUOTE_OFFSET = 0x5D5D5D5D;
+  private static final int SHORT_ASCII_GT_QUOTE_OFFSET = 0x5D5D;
   private static final long ONE_BYTES = 0x0101010101010101L;
   private static final int INT_ONE_BYTES = 0x01010101;
+  private static final int SHORT_ONE_BYTES = 0x0101;
+  private static final byte[] HEX_DIGITS =
+      "0123456789abcdef".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final long QUOTE_BYTES_COMPLEMENT = ~0x2222222222222222L;
   private static final int INT_QUOTE_BYTES_COMPLEMENT = ~0x22222222;
+  private static final int SHORT_QUOTE_BYTES_COMPLEMENT = ~0x2222;
   private static final long BACKSLASH_BYTES_COMPLEMENT = ~0x5C5C5C5C5C5C5C5CL;
   private static final int INT_BACKSLASH_BYTES_COMPLEMENT = ~0x5C5C5C5C;
+  private static final int SHORT_BACKSLASH_BYTES_COMPLEMENT = ~0x5C5C;
   private static final long UTF16_ASCII_MASK = 0xFF80FF80FF80FF80L;
   private static final int[] DIGIT_TRIPLES = new int[1000];
   private static final int[] DIGIT_QUADS = new int[10000];
@@ -88,6 +120,14 @@ public final class Utf8JsonWriter extends JsonWriter {
     return Arrays.copyOf(buffer, position);
   }
 
+  public void writeTo(OutputStream output) {
+    try {
+      output.write(buffer, 0, position);
+    } catch (IOException e) {
+      throw new ForyJsonException("Cannot write JSON output", e);
+    }
+  }
+
   @Override
   public void writeNull() {
     writeAscii("null");
@@ -115,37 +155,36 @@ public final class Utf8JsonWriter extends JsonWriter {
       buffer[position++] = (byte) '-';
       value = -value;
     }
-    if (value <= Integer.MAX_VALUE) {
-      writePositiveIntNoEnsure((int) value);
-      return;
-    }
-    int start = position;
-    do {
-      buffer[position++] = (byte) ('0' + value % 10);
-      value /= 10;
-    } while (value != 0);
-    reverse(start, position - 1);
+    writePositiveLongNoEnsure(value);
   }
 
   @Override
   public void writeFloat(float value) {
     if (!Float.isFinite(value)) {
-      throw new ForyJsonException("JSON does not support non-finite float " + value);
+      writeNonFiniteFloat(value);
+      return;
     }
-    writeAscii(Float.toString(value));
+    writeAsciiNumber(Float.toString(value));
   }
 
   @Override
   public void writeDouble(double value) {
     if (!Double.isFinite(value)) {
-      throw new ForyJsonException("JSON does not support non-finite double " + value);
+      writeNonFiniteDouble(value);
+      return;
     }
-    writeAscii(Double.toString(value));
+    ensure(24);
+    int newPosition = JdkDoubleFormatter.write(buffer, position, value);
+    if (newPosition >= 0) {
+      position = newPosition;
+      return;
+    }
+    writeAsciiNumber(Double.toString(value));
   }
 
   @Override
   public void writeNumber(String value) {
-    writeAscii(value);
+    writeAsciiNumber(value);
   }
 
   @Override
@@ -162,12 +201,11 @@ public final class Utf8JsonWriter extends JsonWriter {
   public void writeString(String value) {
     if (STRING_BYTES_BACKED) {
       byte[] bytes = StringSerializer.getStringBytes(value);
-      byte stringCoder = StringSerializer.getStringCoder(value);
-      if (StringSerializer.isLatin1Coder(stringCoder)) {
+      if (bytes.length == value.length()) {
         if (writeLatin1String(bytes)) {
           return;
         }
-      } else if (StringSerializer.isUtf16Coder(stringCoder)) {
+      } else {
         if (writeUtf16String(bytes)) {
           return;
         }
@@ -176,7 +214,200 @@ public final class Utf8JsonWriter extends JsonWriter {
     writeStringChars(value);
   }
 
+  @Override
+  public void writeString(CharSequence value) {
+    if (value instanceof String) {
+      writeString((String) value);
+      return;
+    }
+    writeStringChars(value);
+  }
+
+  @Override
+  public void writeBigInteger(BigInteger value) {
+    try {
+      writeLong(value.longValueExact());
+    } catch (ArithmeticException e) {
+      writeNumber(value.toString());
+    }
+  }
+
+  @Override
+  public void writeBigDecimal(BigDecimal value) {
+    if (value.scale() == 0) {
+      try {
+        writeLong(value.longValueExact());
+        return;
+      } catch (ArithmeticException e) {
+        // Fall through to BigDecimal's canonical string form for large values.
+      }
+    }
+    writeNumber(value.toString());
+  }
+
+  @Override
+  public void writeUuid(UUID value) {
+    ensure(38);
+    byte[] bytes = buffer;
+    int pos = position;
+    bytes[pos++] = (byte) '"';
+    long high = value.getMostSignificantBits();
+    pos = writeHex(bytes, pos, high, 60, 8);
+    bytes[pos++] = (byte) '-';
+    pos = writeHex(bytes, pos, high, 28, 4);
+    bytes[pos++] = (byte) '-';
+    pos = writeHex(bytes, pos, high, 12, 4);
+    long low = value.getLeastSignificantBits();
+    bytes[pos++] = (byte) '-';
+    pos = writeHex(bytes, pos, low, 60, 4);
+    bytes[pos++] = (byte) '-';
+    pos = writeHex(bytes, pos, low, 44, 12);
+    bytes[pos++] = (byte) '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeLocalDate(LocalDate value) {
+    int year = value.getYear();
+    if (year < 0 || year > 9999) {
+      writeTemporal(value, DateTimeFormatter.ISO_LOCAL_DATE);
+      return;
+    }
+    ensure(12);
+    byte[] bytes = buffer;
+    int pos = position;
+    bytes[pos++] = (byte) '"';
+    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
+    bytes[pos++] = (byte) '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeOffsetDateTime(OffsetDateTime value) {
+    int year = value.getYear();
+    if (year < 0 || year > 9999 || value.getOffset().getTotalSeconds() != 0) {
+      writeTemporal(value, DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+      return;
+    }
+    ensure(32);
+    byte[] bytes = buffer;
+    int pos = position;
+    bytes[pos++] = (byte) '"';
+    pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
+    bytes[pos++] = (byte) 'T';
+    pos =
+        writeTime(
+            bytes, pos, value.getHour(), value.getMinute(), value.getSecond(), value.getNano());
+    bytes[pos++] = (byte) 'Z';
+    bytes[pos++] = (byte) '"';
+    position = pos;
+  }
+
+  @Override
+  public void writeTemporal(TemporalAccessor value, DateTimeFormatter formatter) {
+    writeByteRaw((byte) '"');
+    formatter.formatTo(value, this);
+    writeByteRaw((byte) '"');
+  }
+
+  @Override
+  public void writeDuration(Duration value) {
+    writeByteRaw((byte) '"');
+    writeDurationBody(value);
+    writeByteRaw((byte) '"');
+  }
+
+  @Override
+  public void writePeriod(Period value) {
+    writeByteRaw((byte) '"');
+    if (value.isZero()) {
+      writeAscii("P0D");
+    } else {
+      writeByteRaw((byte) 'P');
+      int years = value.getYears();
+      if (years != 0) {
+        writeInt(years);
+        writeByteRaw((byte) 'Y');
+      }
+      int months = value.getMonths();
+      if (months != 0) {
+        writeInt(months);
+        writeByteRaw((byte) 'M');
+      }
+      int days = value.getDays();
+      if (days != 0) {
+        writeInt(days);
+        writeByteRaw((byte) 'D');
+      }
+    }
+    writeByteRaw((byte) '"');
+  }
+
+  @Override
+  public void writeYear(Year value) {
+    writeByteRaw((byte) '"');
+    writeInt(value.getValue());
+    writeByteRaw((byte) '"');
+  }
+
+  @Override
+  public Utf8JsonWriter append(CharSequence value) {
+    return append(value, 0, value.length());
+  }
+
+  @Override
+  public Utf8JsonWriter append(CharSequence value, int start, int end) {
+    for (int i = start; i < end; i++) {
+      append(value.charAt(i));
+    }
+    return this;
+  }
+
+  @Override
+  public Utf8JsonWriter append(char value) {
+    writeEscapedChar(value);
+    return this;
+  }
+
   private void writeStringChars(String value) {
+    int length = value.length();
+    ensure(length + 2);
+    byte[] bytes = buffer;
+    int pos = position;
+    bytes[pos++] = (byte) '"';
+    int i = 0;
+    while (i + 4 <= length) {
+      char c0 = value.charAt(i);
+      char c1 = value.charAt(i + 1);
+      char c2 = value.charAt(i + 2);
+      char c3 = value.charAt(i + 3);
+      if (isJsonAscii(c0) && isJsonAscii(c1) && isJsonAscii(c2) && isJsonAscii(c3)) {
+        bytes[pos] = (byte) c0;
+        bytes[pos + 1] = (byte) c1;
+        bytes[pos + 2] = (byte) c2;
+        bytes[pos + 3] = (byte) c3;
+        pos += 4;
+        i += 4;
+      } else {
+        break;
+      }
+    }
+    while (i < length) {
+      char ch = value.charAt(i);
+      if (isJsonAscii(ch)) {
+        bytes[pos++] = (byte) ch;
+        i++;
+      } else {
+        position = pos;
+        writeStringSlow(value, i, length);
+        return;
+      }
+    }
+    bytes[pos++] = (byte) '"';
+    position = pos;
+  }
+
+  private void writeStringChars(CharSequence value) {
     int length = value.length();
     ensure(length + 2);
     byte[] bytes = buffer;
@@ -258,9 +489,29 @@ public final class Utf8JsonWriter extends JsonWriter {
     writeIntField(prefix, value);
   }
 
+  public void writeIntField(
+      long namePrefix,
+      long commaPrefix,
+      int namePrefixLength,
+      int commaPrefixLength,
+      int index,
+      int value) {
+    if (index == 0) {
+      writeIntField(namePrefix, 0L, namePrefixLength, value);
+    } else {
+      writeIntField(commaPrefix, 0L, commaPrefixLength, value);
+    }
+  }
+
   public void writeIntField(byte[] prefix, int value) {
     ensure(prefix.length + 11);
     writeRawNoEnsure(prefix);
+    writeIntNoEnsure(value);
+  }
+
+  public void writeIntField(long prefix0, long prefix1, int prefixLength, int value) {
+    ensurePackedPrefix(prefixLength, 11);
+    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
     writeIntNoEnsure(value);
   }
 
@@ -268,6 +519,13 @@ public final class Utf8JsonWriter extends JsonWriter {
     ensure(namePrefix.length + 12);
     buffer[position++] = (byte) '{';
     writeRawNoEnsure(namePrefix);
+    writeIntNoEnsure(value);
+  }
+
+  public void writeObjectIntField(long prefix0, long prefix1, int prefixLength, int value) {
+    ensurePackedPrefix(prefixLength, 12);
+    buffer[position++] = (byte) '{';
+    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
     writeIntNoEnsure(value);
   }
 
@@ -282,10 +540,23 @@ public final class Utf8JsonWriter extends JsonWriter {
     writeLongNoEnsure(value);
   }
 
+  public void writeLongField(long prefix0, long prefix1, int prefixLength, long value) {
+    ensurePackedPrefix(prefixLength, 20);
+    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+    writeLongNoEnsure(value);
+  }
+
   public void writeObjectLongField(byte[] namePrefix, long value) {
     ensure(namePrefix.length + 21);
     buffer[position++] = (byte) '{';
     writeRawNoEnsure(namePrefix);
+    writeLongNoEnsure(value);
+  }
+
+  public void writeObjectLongField(long prefix0, long prefix1, int prefixLength, long value) {
+    ensurePackedPrefix(prefixLength, 21);
+    buffer[position++] = (byte) '{';
+    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
     writeLongNoEnsure(value);
   }
 
@@ -294,19 +565,32 @@ public final class Utf8JsonWriter extends JsonWriter {
     writeStringField(prefix, value);
   }
 
+  public void writeStringField(
+      long namePrefix,
+      long commaPrefix,
+      int namePrefixLength,
+      int commaPrefixLength,
+      int index,
+      String value) {
+    if (index == 0) {
+      writeStringField(namePrefix, 0L, namePrefixLength, value);
+    } else {
+      writeStringField(commaPrefix, 0L, commaPrefixLength, value);
+    }
+  }
+
   public void writeStringField(byte[] prefix, String value) {
     if (STRING_BYTES_BACKED) {
       byte[] bytes = StringSerializer.getStringBytes(value);
-      byte stringCoder = StringSerializer.getStringCoder(value);
       int start = position;
-      if (StringSerializer.isLatin1Coder(stringCoder)) {
+      if (bytes.length == value.length()) {
         ensure(prefix.length + bytes.length + 2);
         writeRawNoEnsure(prefix);
         if (writeLatin1StringNoEnsure(bytes)) {
           return;
         }
         position = start;
-      } else if (StringSerializer.isUtf16Coder(stringCoder)) {
+      } else {
         ensure(prefix.length + (bytes.length >> 1) * 3 + 2);
         writeRawNoEnsure(prefix);
         if (writeUtf16StringNoEnsure(bytes)) {
@@ -318,23 +602,117 @@ public final class Utf8JsonWriter extends JsonWriter {
     writeStringFieldChars(prefix, value);
   }
 
+  public void writeStringField(long prefix0, long prefix1, int prefixLength, String value) {
+    if (STRING_BYTES_BACKED) {
+      byte[] bytes = StringSerializer.getStringBytes(value);
+      int start = position;
+      if (bytes.length == value.length()) {
+        ensurePackedPrefix(prefixLength, bytes.length + 2);
+        writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+        if (writeLatin1StringNoEnsure(bytes)) {
+          return;
+        }
+        position = start;
+      } else {
+        ensurePackedPrefix(prefixLength, (bytes.length >> 1) * 3 + 2);
+        writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+        if (writeUtf16StringNoEnsure(bytes)) {
+          return;
+        }
+        position = start;
+      }
+    }
+    writeStringFieldChars(prefix0, prefix1, prefixLength, value);
+  }
+
   private void writeStringFieldChars(byte[] prefix, String value) {
     ensure(prefix.length + value.length() * 3 + 2);
     writeRawNoEnsure(prefix);
     writeStringNoEnsure(value);
   }
 
+  private void writeStringFieldChars(long prefix0, long prefix1, int prefixLength, String value) {
+    ensurePackedPrefix(prefixLength, value.length() * 3 + 2);
+    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+    writeStringNoEnsure(value);
+  }
+
+  public void writeStringCollection(Collection<String> values) {
+    writeArrayStart();
+    if (values.getClass() == ArrayList.class) {
+      ArrayList<String> list = (ArrayList<String>) values;
+      int size = list.size();
+      if (size != 0) {
+        writeStringElementWithComma(0, list.get(0));
+        for (int i = 1; i < size; i++) {
+          writeStringElementWithComma(1, list.get(i));
+        }
+      }
+    } else {
+      int index = 0;
+      for (String value : values) {
+        writeStringElementWithComma(index++ == 0 ? 0 : 1, value);
+      }
+    }
+    writeArrayEnd();
+  }
+
+  public void writeStringArray(String[] values) {
+    writeArrayStart();
+    int length = values.length;
+    if (length != 0) {
+      int i = 1;
+      writeStringElementWithComma(0, values[0]);
+      if ((length & 1) == 0) {
+        writeStringElementWithComma(1, values[i]);
+        i++;
+      }
+      for (; i < length; i += 2) {
+        writeStringElementWithComma(1, values[i]);
+        writeStringElementWithComma(1, values[i + 1]);
+      }
+    }
+    writeArrayEnd();
+  }
+
+  public void writeLongArray(long[] values) {
+    ensure(2);
+    buffer[position++] = '[';
+    int length = values.length;
+    if (length != 0) {
+      ensure(22);
+      writeLongNoEnsure(values[0]);
+      int i = 1;
+      if ((length & 1) == 0) {
+        ensure(22);
+        buffer[position++] = ',';
+        writeLongNoEnsure(values[i]);
+        i++;
+      }
+      for (; i < length; i += 2) {
+        ensure(44);
+        buffer[position++] = ',';
+        writeLongNoEnsure(values[i]);
+        buffer[position++] = ',';
+        writeLongNoEnsure(values[i + 1]);
+      }
+    }
+    buffer[position++] = ']';
+  }
+
   public void writeStringElement(int index, String value) {
-    int comma = index == 0 ? 0 : 1;
+    writeStringElementWithComma(index == 0 ? 0 : 1, value);
+  }
+
+  private void writeStringElementWithComma(int comma, String value) {
     if (value == null) {
       writeNullStringElement(comma);
       return;
     }
     if (STRING_BYTES_BACKED) {
       byte[] bytes = StringSerializer.getStringBytes(value);
-      byte stringCoder = StringSerializer.getStringCoder(value);
       int start = position;
-      if (StringSerializer.isLatin1Coder(stringCoder)) {
+      if (bytes.length == value.length()) {
         ensure(comma + bytes.length + 2);
         if (comma != 0) {
           buffer[position++] = ',';
@@ -343,7 +721,7 @@ public final class Utf8JsonWriter extends JsonWriter {
           return;
         }
         position = start;
-      } else if (StringSerializer.isUtf16Coder(stringCoder)) {
+      } else {
         ensure(comma + (bytes.length >> 1) * 3 + 2);
         if (comma != 0) {
           buffer[position++] = ',';
@@ -377,6 +755,11 @@ public final class Utf8JsonWriter extends JsonWriter {
     writeRaw(value);
   }
 
+  public void writeRawValue(long prefix0, long prefix1, int prefixLength) {
+    ensure(packedPrefixSize(prefixLength));
+    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+  }
+
   @Override
   public void writeObjectStart() {
     writeByteRaw((byte) '{');
@@ -407,53 +790,244 @@ public final class Utf8JsonWriter extends JsonWriter {
   private boolean writeLatin1String(byte[] value) {
     int length = value.length;
     ensure(length + 2);
-    return writeLatin1StringNoEnsure(value);
+    return writeLatin1StringNoEnsure(value, length);
   }
 
   private boolean writeLatin1StringNoEnsure(byte[] value) {
     int length = value.length;
+    return writeLatin1StringNoEnsure(value, length);
+  }
+
+  private boolean writeLatin1StringNoEnsure(byte[] value, int length) {
+    if (length < 32) {
+      return writeShortLatin1StringNoEnsure(value, length);
+    }
+    return writeLongLatin1StringNoEnsure(value, length);
+  }
+
+  private boolean writeLongLatin1StringNoEnsure(byte[] value, int length) {
     byte[] bytes = buffer;
     int start = position;
+    if (!isJsonAsciiBytes(value, length)) {
+      return false;
+    }
     int pos = start;
     bytes[pos++] = (byte) '"';
+    System.arraycopy(value, 0, bytes, pos, length);
+    pos += length;
+    bytes[pos++] = (byte) '"';
+    position = pos;
+    return true;
+  }
+
+  private static boolean isJsonAsciiBytes(byte[] value, int length) {
     int i = 0;
     int upperBound = length & ~15;
     for (; i < upperBound; i += 16) {
       long word0 = LittleEndian.getInt64(value, i);
       long word1 = LittleEndian.getInt64(value, i + 8);
       if (!isJsonAsciiWord(word0) || !isJsonAsciiWord(word1)) {
-        break;
+        return false;
       }
-      LittleEndian.putInt64(bytes, pos, word0);
-      LittleEndian.putInt64(bytes, pos + 8, word1);
-      pos += 16;
     }
     upperBound = length & ~7;
     for (; i < upperBound; i += 8) {
       long word = LittleEndian.getInt64(value, i);
       if (!isJsonAsciiWord(word)) {
-        break;
+        return false;
       }
-      LittleEndian.putInt64(bytes, pos, word);
-      pos += 8;
     }
     if (i + 4 <= length) {
       int word = LittleEndian.getInt32(value, i);
       if (isJsonAsciiInt(word)) {
-        LittleEndian.putInt32(bytes, pos, word);
-        pos += 4;
         i += 4;
-      }
-    }
-    for (; i < length; i++) {
-      byte ch = value[i];
-      if (isJsonAsciiByte(ch)) {
-        bytes[pos++] = ch;
       } else {
-        position = start;
         return false;
       }
     }
+    if (i + 2 <= length) {
+      int word = (value[i] & 0xFF) | ((value[i + 1] & 0xFF) << 8);
+      if (isJsonAsciiShort(word)) {
+        i += 2;
+      } else {
+        return false;
+      }
+    }
+    for (; i < length; i++) {
+      if (!isJsonAsciiByte(value[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private boolean writeShortLatin1StringNoEnsure(byte[] value, int length) {
+    if (length > 24) {
+      return writeLatin1String25To31(value, length);
+    }
+    if (length > 16) {
+      return writeLatin1String17To24(value, length);
+    }
+    byte[] bytes = buffer;
+    int start = position;
+    int pos = start;
+    bytes[pos++] = (byte) '"';
+    // Short compact strings dominate generated JSON writers. Keep the 8-16 byte path exact here;
+    // longer short-string bands stay in helpers so this common path remains small.
+    if (length >= 8) {
+      long word = LittleEndian.getInt64(value, 0);
+      if (!isJsonAsciiWord(word)) {
+        position = start;
+        return false;
+      }
+      LittleEndian.putInt64(bytes, pos, word);
+      pos += 8;
+      int index = Long.BYTES;
+      if (index + Long.BYTES <= length) {
+        long tail = LittleEndian.getInt64(value, index);
+        if (!isJsonAsciiWord(tail)) {
+          position = start;
+          return false;
+        }
+        LittleEndian.putInt64(bytes, pos, tail);
+        pos += Long.BYTES;
+        index += Long.BYTES;
+      }
+      if (index + Integer.BYTES <= length) {
+        int tail = LittleEndian.getInt32(value, index);
+        if (!isJsonAsciiInt(tail)) {
+          position = start;
+          return false;
+        }
+        LittleEndian.putInt32(bytes, pos, tail);
+        pos += Integer.BYTES;
+        index += Integer.BYTES;
+      }
+      if (index + Short.BYTES <= length) {
+        int tail = (value[index] & 0xFF) | ((value[index + 1] & 0xFF) << 8);
+        if (!isJsonAsciiShort(tail)) {
+          position = start;
+          return false;
+        }
+        bytes[pos] = (byte) tail;
+        bytes[pos + 1] = (byte) (tail >>> 8);
+        pos += Short.BYTES;
+        index += Short.BYTES;
+      }
+      if (index < length) {
+        byte tail = value[index];
+        if (!isJsonAsciiByte(tail)) {
+          position = start;
+          return false;
+        }
+        bytes[pos++] = tail;
+      }
+    } else {
+      // Keep the sub-8 tail outside this method so the common word-sized short-string path stays
+      // small enough to inline into generated object writers.
+      return writeLatin1String0To7(value, length);
+    }
+    bytes[pos++] = (byte) '"';
+    position = pos;
+    return true;
+  }
+
+  private boolean writeLatin1String0To7(byte[] value, int length) {
+    byte[] bytes = buffer;
+    int start = position;
+    int pos = start;
+    bytes[pos++] = (byte) '"';
+    if (length >= 4) {
+      int word = LittleEndian.getInt32(value, 0);
+      if (!isJsonAsciiInt(word)) {
+        position = start;
+        return false;
+      }
+      LittleEndian.putInt32(bytes, pos, word);
+      if (length > 4) {
+        int tailOffset = length - Integer.BYTES;
+        int tail = LittleEndian.getInt32(value, tailOffset);
+        if (!isJsonAsciiInt(tail)) {
+          position = start;
+          return false;
+        }
+        LittleEndian.putInt32(bytes, pos + tailOffset, tail);
+      }
+      pos += length;
+    } else if (length >= 2) {
+      int word = (value[0] & 0xFF) | ((value[1] & 0xFF) << 8);
+      if (!isJsonAsciiShort(word)) {
+        position = start;
+        return false;
+      }
+      bytes[pos] = (byte) word;
+      bytes[pos + 1] = (byte) (word >>> 8);
+      if (length == 3) {
+        byte ch = value[2];
+        if (!isJsonAsciiByte(ch)) {
+          position = start;
+          return false;
+        }
+        bytes[pos + 2] = ch;
+      }
+      pos += length;
+    } else if (length == 1) {
+      byte ch = value[0];
+      if (!isJsonAsciiByte(ch)) {
+        position = start;
+        return false;
+      }
+      bytes[pos++] = ch;
+    }
+    bytes[pos++] = (byte) '"';
+    position = pos;
+    return true;
+  }
+
+  private boolean writeLatin1String25To31(byte[] value, int length) {
+    byte[] bytes = buffer;
+    int start = position;
+    int pos = start;
+    bytes[pos++] = (byte) '"';
+    long word0 = LittleEndian.getInt64(value, 0);
+    long word1 = LittleEndian.getInt64(value, 8);
+    long word2 = LittleEndian.getInt64(value, 16);
+    int tailOffset = length - Long.BYTES;
+    long tail = LittleEndian.getInt64(value, tailOffset);
+    if (!isJsonAsciiWord(word0)
+        || !isJsonAsciiWord(word1)
+        || !isJsonAsciiWord(word2)
+        || !isJsonAsciiWord(tail)) {
+      position = start;
+      return false;
+    }
+    LittleEndian.putInt64(bytes, pos, word0);
+    LittleEndian.putInt64(bytes, pos + 8, word1);
+    LittleEndian.putInt64(bytes, pos + 16, word2);
+    LittleEndian.putInt64(bytes, pos + tailOffset, tail);
+    pos += length;
+    bytes[pos++] = (byte) '"';
+    position = pos;
+    return true;
+  }
+
+  private boolean writeLatin1String17To24(byte[] value, int length) {
+    byte[] bytes = buffer;
+    int start = position;
+    int pos = start;
+    bytes[pos++] = (byte) '"';
+    long word0 = LittleEndian.getInt64(value, 0);
+    long word1 = LittleEndian.getInt64(value, 8);
+    int tailOffset = length - Long.BYTES;
+    long tail = LittleEndian.getInt64(value, tailOffset);
+    if (!isJsonAsciiWord(word0) || !isJsonAsciiWord(word1) || !isJsonAsciiWord(tail)) {
+      position = start;
+      return false;
+    }
+    LittleEndian.putInt64(bytes, pos, word0);
+    LittleEndian.putInt64(bytes, pos + 8, word1);
+    LittleEndian.putInt64(bytes, pos + tailOffset, tail);
+    pos += length;
     bytes[pos++] = (byte) '"';
     position = pos;
     return true;
@@ -485,8 +1059,34 @@ public final class Utf8JsonWriter extends JsonWriter {
       LittleEndian.putInt32(bytes, pos, packed);
       pos += 4;
     }
-    for (; i < length; i += 2) {
+    while (i < length) {
+      if (i + 8 <= length) {
+        char c0 = StringSerializer.getBytesChar(value, i);
+        char c1 = StringSerializer.getBytesChar(value, i + 2);
+        char c2 = StringSerializer.getBytesChar(value, i + 4);
+        char c3 = StringSerializer.getBytesChar(value, i + 6);
+        if (isUtf8ThreeByte(c0)
+            && isUtf8ThreeByte(c1)
+            && isUtf8ThreeByte(c2)
+            && isUtf8ThreeByte(c3)) {
+          bytes[pos++] = (byte) (0xE0 | (c0 >>> 12));
+          bytes[pos++] = (byte) (0x80 | ((c0 >>> 6) & 0x3F));
+          bytes[pos++] = (byte) (0x80 | (c0 & 0x3F));
+          bytes[pos++] = (byte) (0xE0 | (c1 >>> 12));
+          bytes[pos++] = (byte) (0x80 | ((c1 >>> 6) & 0x3F));
+          bytes[pos++] = (byte) (0x80 | (c1 & 0x3F));
+          bytes[pos++] = (byte) (0xE0 | (c2 >>> 12));
+          bytes[pos++] = (byte) (0x80 | ((c2 >>> 6) & 0x3F));
+          bytes[pos++] = (byte) (0x80 | (c2 & 0x3F));
+          bytes[pos++] = (byte) (0xE0 | (c3 >>> 12));
+          bytes[pos++] = (byte) (0x80 | ((c3 >>> 6) & 0x3F));
+          bytes[pos++] = (byte) (0x80 | (c3 & 0x3F));
+          i += 8;
+          continue;
+        }
+      }
       char ch = StringSerializer.getBytesChar(value, i);
+      i += 2;
       if (ch < 0x80) {
         if (!isJsonAscii(ch)) {
           position = start;
@@ -496,7 +1096,7 @@ public final class Utf8JsonWriter extends JsonWriter {
       } else if (ch < 0x800) {
         bytes[pos++] = (byte) (0xC0 | (ch >>> 6));
         bytes[pos++] = (byte) (0x80 | (ch & 0x3F));
-      } else if (Character.isSurrogate(ch)) {
+      } else if (ch >= Character.MIN_SURROGATE && ch <= Character.MAX_SURROGATE) {
         position = start;
         return false;
       } else {
@@ -508,6 +1108,10 @@ public final class Utf8JsonWriter extends JsonWriter {
     bytes[pos++] = (byte) '"';
     position = pos;
     return true;
+  }
+
+  private static boolean isUtf8ThreeByte(char ch) {
+    return ch >= 0x800 && (ch < Character.MIN_SURROGATE || ch > Character.MAX_SURROGATE);
   }
 
   private void writeEscapedChar(char ch) {
@@ -572,15 +1176,93 @@ public final class Utf8JsonWriter extends JsonWriter {
     writeByteRaw((byte) '"');
   }
 
+  private void writeStringSlow(CharSequence value, int index, int length) {
+    for (int i = index; i < length; i++) {
+      char ch = value.charAt(i);
+      if (Character.isHighSurrogate(ch)) {
+        if (i + 1 >= length) {
+          throw new ForyJsonException("Unpaired high surrogate in string");
+        }
+        char low = value.charAt(++i);
+        if (!Character.isLowSurrogate(low)) {
+          throw new ForyJsonException("Unpaired high surrogate in string");
+        }
+        writeCodePoint(Character.toCodePoint(ch, low));
+      } else if (Character.isLowSurrogate(ch)) {
+        throw new ForyJsonException("Unpaired low surrogate in string");
+      } else {
+        writeEscapedChar(ch);
+      }
+    }
+    writeByteRaw((byte) '"');
+  }
+
+  private void writeDurationBody(Duration value) {
+    long seconds = value.getSeconds();
+    int nano = value.getNano();
+    if (seconds == 0 && nano == 0) {
+      writeAscii("PT0S");
+      return;
+    }
+    writeAscii("PT");
+    long hours = seconds / 3600;
+    int minutes = (int) ((seconds % 3600) / 60);
+    int secs = (int) (seconds % 60);
+    if (hours != 0) {
+      writeLong(hours);
+      writeByteRaw((byte) 'H');
+    }
+    if (minutes != 0) {
+      writeInt(minutes);
+      writeByteRaw((byte) 'M');
+    }
+    if (secs == 0 && nano == 0 && (hours != 0 || minutes != 0)) {
+      return;
+    }
+    if (secs < 0 && nano > 0) {
+      if (secs == -1) {
+        writeAscii("-0");
+      } else {
+        writeInt(secs + 1);
+      }
+    } else {
+      writeInt(secs);
+    }
+    if (nano > 0) {
+      int fraction = secs < 0 ? 2_000_000_000 - nano : 1_000_000_000 + nano;
+      writeDurationFraction(fraction);
+    }
+    writeByteRaw((byte) 'S');
+  }
+
+  private void writeDurationFraction(int value) {
+    int fraction = value % 1_000_000_000;
+    int digits = 9;
+    while (fraction % 10 == 0) {
+      fraction /= 10;
+      digits--;
+    }
+    writeByteRaw((byte) '.');
+    int divisor = 1;
+    for (int i = 1; i < digits; i++) {
+      divisor *= 10;
+    }
+    for (int i = 0; i < digits; i++) {
+      int digit = fraction / divisor;
+      writeByteRaw((byte) ('0' + digit));
+      fraction -= digit * divisor;
+      divisor /= 10;
+    }
+  }
+
   private void writeStringNoEnsure(String value) {
     if (STRING_BYTES_BACKED) {
       byte[] bytes = StringSerializer.getStringBytes(value);
-      byte stringCoder = StringSerializer.getStringCoder(value);
-      if (StringSerializer.isLatin1Coder(stringCoder)) {
+      if (bytes.length == value.length()) {
         if (writeLatin1StringNoEnsure(bytes)) {
           return;
         }
-      } else if (StringSerializer.isUtf16Coder(stringCoder)) {
+      } else {
         if (writeUtf16StringNoEnsure(bytes)) {
           return;
         }
@@ -657,6 +1339,32 @@ public final class Utf8JsonWriter extends JsonWriter {
     }
   }
 
+  private void writeAsciiNumber(String value) {
+    if (STRING_BYTES_BACKED) {
+      byte[] bytes = StringSerializer.getStringBytes(value);
+      if (bytes.length == value.length()) {
+        writeRaw(bytes);
+        return;
+      }
+    }
+    writeAscii(value);
+  }
+
+  private void writeNonFiniteFloat(float value) {
+    writeRaw(nonFiniteBytes(value));
+  }
+
+  private void writeNonFiniteDouble(double value) {
+    writeRaw(nonFiniteBytes(value));
+  }
+
+  private static byte[] nonFiniteBytes(double value) {
+    if (Double.isNaN(value)) {
+      return NAN_BYTES;
+    }
+    return value > 0 ? POSITIVE_INFINITY_BYTES : NEGATIVE_INFINITY_BYTES;
+  }
+
   private void writeRaw(byte[] bytes) {
     ensure(bytes.length);
     writeRawNoEnsure(bytes);
@@ -667,17 +1375,25 @@ public final class Utf8JsonWriter extends JsonWriter {
     position += bytes.length;
   }
 
+  private void writePackedRawNoEnsure(long prefix0, long prefix1, int prefixLength) {
+    LittleEndian.putInt64(buffer, position, prefix0);
+    if (prefixLength > Long.BYTES) {
+      LittleEndian.putInt64(buffer, position + Long.BYTES, prefix1);
+    }
+    position += prefixLength;
+  }
+
+  private void ensurePackedPrefix(int prefixLength, int additionalAfterPrefix) {
+    ensure(Math.max(packedPrefixSize(prefixLength), prefixLength + additionalAfterPrefix));
+  }
+
+  private static int packedPrefixSize(int prefixLength) {
+    return prefixLength <= Long.BYTES ? Long.BYTES : Long.BYTES * 2;
+  }
+
   private void writeByteRaw(byte value) {
     ensure(1);
     buffer[position++] = value;
-  }
-
-  private void reverse(int start, int end) {
-    while (start < end) {
-      byte tmp = buffer[start];
-      buffer[start++] = buffer[end];
-      buffer[end--] = tmp;
-    }
   }
 
   private void ensure(int additional) {
@@ -709,16 +1425,38 @@ public final class Utf8JsonWriter extends JsonWriter {
   }
 
   private static boolean isJsonAsciiWord(long word) {
+    long notBackslashMask = ((word ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS;
+    // Common unescaped bytes are greater than '"' and not '\\'. The fallback keeps the exact
+    // quote, backslash, control, and high-bit predicate for the remaining byte values.
+    if ((notBackslashMask & (word + ASCII_GT_QUOTE_OFFSET)) == HIGH_BITS) {
+      return true;
+    }
     return (((word + ASCII_CONTROL_OFFSET) & ~word) & HIGH_BITS) == HIGH_BITS
         && (((word ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS) == HIGH_BITS
-        && (((word ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS) == HIGH_BITS;
+        && notBackslashMask == HIGH_BITS;
   }
 
   private static boolean isJsonAsciiInt(int word) {
+    int notBackslashMask =
+        ((word ^ INT_BACKSLASH_BYTES_COMPLEMENT) + INT_ONE_BYTES) & INT_HIGH_BITS;
+    if ((notBackslashMask & (word + INT_ASCII_GT_QUOTE_OFFSET)) == INT_HIGH_BITS) {
+      return true;
+    }
     return (((word + INT_ASCII_CONTROL_OFFSET) & ~word) & INT_HIGH_BITS) == INT_HIGH_BITS
         && (((word ^ INT_QUOTE_BYTES_COMPLEMENT) + INT_ONE_BYTES) & INT_HIGH_BITS) == INT_HIGH_BITS
-        && (((word ^ INT_BACKSLASH_BYTES_COMPLEMENT) + INT_ONE_BYTES) & INT_HIGH_BITS)
-            == INT_HIGH_BITS;
+        && notBackslashMask == INT_HIGH_BITS;
+  }
+
+  private static boolean isJsonAsciiShort(int word) {
+    int notBackslashMask =
+        ((word ^ SHORT_BACKSLASH_BYTES_COMPLEMENT) + SHORT_ONE_BYTES) & SHORT_HIGH_BITS;
+    if ((notBackslashMask & (word + SHORT_ASCII_GT_QUOTE_OFFSET)) == SHORT_HIGH_BITS) {
+      return true;
+    }
+    return (((word + SHORT_ASCII_CONTROL_OFFSET) & ~word) & SHORT_HIGH_BITS) == SHORT_HIGH_BITS
+        && (((word ^ SHORT_QUOTE_BYTES_COMPLEMENT) + SHORT_ONE_BYTES) & SHORT_HIGH_BITS)
+            == SHORT_HIGH_BITS
+        && notBackslashMask == SHORT_HIGH_BITS;
   }
 
   private static int packUtf16Ascii(long word) {
@@ -750,40 +1488,124 @@ public final class Utf8JsonWriter extends JsonWriter {
       buffer[position++] = (byte) '-';
       value = -value;
     }
+    writePositiveLongNoEnsure(value);
+  }
+
+  private void writePositiveIntNoEnsure(int value) {
+    position = writePositiveInt(buffer, position, value);
+  }
+
+  private void writePositiveLongNoEnsure(long value) {
     if (value <= Integer.MAX_VALUE) {
       writePositiveIntNoEnsure((int) value);
       return;
     }
-    int start = position;
-    do {
-      buffer[position++] = (byte) ('0' + value % 10);
-      value /= 10;
-    } while (value != 0);
-    reverse(start, position - 1);
-  }
-
-  private void writePositiveIntNoEnsure(int value) {
     byte[] bytes = buffer;
     int pos = position;
+    long high = value / EIGHT_DIGITS;
+    int low = (int) (value - high * EIGHT_DIGITS);
+    if (high <= Integer.MAX_VALUE) {
+      pos = writePositiveInt(bytes, pos, (int) high);
+    } else {
+      long top = high / EIGHT_DIGITS;
+      int middle = (int) (high - top * EIGHT_DIGITS);
+      pos = writePositiveInt(bytes, pos, (int) top);
+      pos = writePadded8Digits(bytes, pos, middle);
+    }
+    position = writePadded8Digits(bytes, pos, low);
+  }
+
+  private static int writePositiveInt(byte[] bytes, int pos, int value) {
     if (value < 10000) {
-      position = writeIntUpTo4(bytes, pos, value);
-      return;
+      return writeIntUpTo4(bytes, pos, value);
     }
     int high = divide10000(value);
     int low = value - high * 10000;
     if (high < 10000) {
       if (high >= 1000) {
-        position = writePadded8(bytes, pos, high, low);
-        return;
+        return writePadded8(bytes, pos, high, low);
       }
       pos = writeIntUpTo4(bytes, pos, high);
-      position = writePadded4(bytes, pos, low);
-      return;
+      return writePadded4(bytes, pos, low);
     }
     int top = divide10000(high);
     int middle = high - top * 10000;
     pos = writeIntUpTo4(bytes, pos, top);
-    position = writePadded8(bytes, pos, middle, low);
+    return writePadded8(bytes, pos, middle, low);
+  }
+
+  private static int writePadded8Digits(byte[] bytes, int pos, int value) {
+    int high = divide10000(value);
+    int low = value - high * 10000;
+    return writePadded8(bytes, pos, high, low);
+  }
+
+  private static int writeHex(byte[] bytes, int pos, long value, int shift, int count) {
+    for (int i = 0; i < count; i++) {
+      bytes[pos++] = HEX_DIGITS[(int) ((value >>> shift) & 0xF)];
+      shift -= 4;
+    }
+    return pos;
+  }
+
+  private static int writeLocalDateBytes(byte[] bytes, int pos, int year, int month, int day) {
+    pos = writePadded4(bytes, pos, year);
+    bytes[pos++] = (byte) '-';
+    pos = writeTwoDigits(bytes, pos, month);
+    bytes[pos++] = (byte) '-';
+    return writeTwoDigits(bytes, pos, day);
+  }
+
+  private static int writeTime(byte[] bytes, int pos, int hour, int minute, int second, int nano) {
+    pos = writeTwoDigits(bytes, pos, hour);
+    bytes[pos++] = (byte) ':';
+    pos = writeTwoDigits(bytes, pos, minute);
+    if (second != 0 || nano != 0) {
+      bytes[pos++] = (byte) ':';
+      pos = writeTwoDigits(bytes, pos, second);
+      if (nano != 0) {
+        bytes[pos++] = (byte) '.';
+        pos = writeNano(bytes, pos, nano);
+      }
+    }
+    return pos;
+  }
+
+  private static int writeNano(byte[] bytes, int pos, int nano) {
+    if (nano % 1_000_000 == 0) {
+      return writePadded3(bytes, pos, nano / 1_000_000);
+    }
+    if (nano % 1000 == 0) {
+      int micros = nano / 1000;
+      int high = micros / 1000;
+      int low = micros - high * 1000;
+      pos = writePadded3(bytes, pos, high);
+      return writePadded3(bytes, pos, low);
+    }
+    int first = nano / 100000000;
+    int rem = nano - first * 100000000;
+    int middle = rem / 10000;
+    int low = rem - middle * 10000;
+    bytes[pos++] = (byte) ('0' + first);
+    pos = writePadded4(bytes, pos, middle);
+    return writePadded4(bytes, pos, low);
+  }
+
+  private static int writePadded3(byte[] bytes, int pos, int value) {
+    int high = value / 100;
+    int rem = value - high * 100;
+    int middle = rem / 10;
+    bytes[pos++] = (byte) ('0' + high);
+    bytes[pos++] = (byte) ('0' + middle);
+    bytes[pos++] = (byte) ('0' + (rem - middle * 10));
+    return pos;
+  }
+
+  private static int writeTwoDigits(byte[] bytes, int pos, int value) {
+    int high = value / 10;
+    bytes[pos++] = (byte) ('0' + high);
+    bytes[pos++] = (byte) ('0' + (value - high * 10));
+    return pos;
   }
 
   private static int divide10000(int value) {

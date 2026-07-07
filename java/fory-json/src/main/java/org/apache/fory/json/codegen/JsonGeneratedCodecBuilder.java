@@ -42,6 +42,7 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
 
   JsonGeneratedCodecBuilder(
       JsonCodegen codegen,
+      String generatedPackage,
       String generatedClassName,
       Class<?> type,
       JsonFieldInfo[] properties,
@@ -55,7 +56,7 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
     this.utf8 = utf8;
     this.writer = writer;
     this.record = record;
-    ctx.setPackage(JsonCodegen.PACKAGE);
+    ctx.setPackage(generatedPackage);
     ctx.setClassName(generatedClassName);
     ctx.setClassModifiers("final");
     ctx.addImports(JsonFieldInfo.class, JsonCodec.class, JsonTypeResolver.class);
@@ -81,10 +82,8 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
   @Override
   public String genCode() {
     return writer
-        ? new JsonWriterCodegen(codegen)
-            .genWriterCode(this, generatedClassName, beanClass, properties, utf8)
-        : new JsonReaderCodegen(codegen)
-            .genReaderCode(this, generatedClassName, beanClass, properties, record);
+        ? new JsonWriterCodegen(codegen).genWriterCode(this, beanClass, properties, utf8)
+        : new JsonReaderCodegen(codegen).genReaderCode(this, beanClass, properties, record);
   }
 
   @Override
@@ -119,6 +118,18 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
   }
 
   Expression fieldValue(JsonFieldInfo property, Expression object) {
+    Method getter = property.writeGetter();
+    if (getter != null) {
+      // JSON writers check the returned member value directly. Requesting expression-level null
+      // state here only emits an unused boolean for each nullable getter and bloats generated
+      // object writers enough to hurt C2 inlining.
+      return new Expression.Invoke(
+          object,
+          getter.getName(),
+          property.name(),
+          TypeRef.of(getter.getGenericReturnType()),
+          false);
+    }
     return getFieldValue(object, writeDescriptor(property));
   }
 
@@ -127,6 +138,15 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
   }
 
   Expression setField(JsonFieldInfo property, Expression object, Expression value) {
+    Method setter = property.readSetter();
+    if (setter != null) {
+      Class<?> rawType = setter.getParameterTypes()[0];
+      TypeRef<?> typeRef = TypeRef.of(setter.getGenericParameterTypes()[0]);
+      if (!rawType.isAssignableFrom(value.type().getRawType())) {
+        value = tryInlineCast(value, typeRef);
+      }
+      return new Expression.Invoke(object, setter.getName(), value);
+    }
     return setFieldValue(
         object,
         readDescriptor(property),

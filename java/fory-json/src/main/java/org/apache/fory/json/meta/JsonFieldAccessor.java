@@ -19,7 +19,13 @@
 
 package org.apache.fory.json.meta;
 
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.FieldAccessor;
 
 public abstract class JsonFieldAccessor {
@@ -27,9 +33,21 @@ public abstract class JsonFieldAccessor {
     throw new UnsupportedOperationException();
   }
 
-  public abstract Field field();
+  public Field field() {
+    return null;
+  }
 
-  public abstract FieldAccessor coreAccessor();
+  public Method getter() {
+    return null;
+  }
+
+  public Method setter() {
+    return null;
+  }
+
+  public FieldAccessor coreAccessor() {
+    return null;
+  }
 
   public boolean getBoolean(Object target) {
     return (Boolean) getObject(target);
@@ -101,6 +119,14 @@ public abstract class JsonFieldAccessor {
 
   public static JsonFieldAccessor forField(Field field) {
     return new FieldJsonAccessor(FieldAccessor.createAccessor(field));
+  }
+
+  public static JsonFieldAccessor forGetter(Method getter) {
+    return new GetterJsonAccessor(getter);
+  }
+
+  public static JsonFieldAccessor forSetter(Method setter) {
+    return new SetterJsonAccessor(setter);
   }
 
   private static final class FieldJsonAccessor extends JsonFieldAccessor {
@@ -209,5 +235,84 @@ public abstract class JsonFieldAccessor {
     public void putChar(Object target, char value) {
       accessor.putChar(target, value);
     }
+  }
+
+  private static final class GetterJsonAccessor extends JsonFieldAccessor {
+    private final Method getter;
+    private final MethodHandle getterHandle;
+
+    private GetterJsonAccessor(Method getter) {
+      this.getter = getter;
+      if (AndroidSupport.IS_ANDROID) {
+        getter.setAccessible(true);
+        getterHandle = null;
+      } else {
+        getterHandle = methodHandle(getter);
+      }
+    }
+
+    @Override
+    public Method getter() {
+      return getter;
+    }
+
+    @Override
+    public Object getObject(Object target) {
+      try {
+        if (AndroidSupport.IS_ANDROID) {
+          return getter.invoke(target);
+        }
+        return getterHandle.invoke(target);
+      } catch (Throwable e) {
+        throw accessException(getter, e);
+      }
+    }
+  }
+
+  private static final class SetterJsonAccessor extends JsonFieldAccessor {
+    private final Method setter;
+    private final MethodHandle setterHandle;
+
+    private SetterJsonAccessor(Method setter) {
+      this.setter = setter;
+      if (AndroidSupport.IS_ANDROID) {
+        setter.setAccessible(true);
+        setterHandle = null;
+      } else {
+        setterHandle = methodHandle(setter);
+      }
+    }
+
+    @Override
+    public Method setter() {
+      return setter;
+    }
+
+    @Override
+    public void putObject(Object target, Object value) {
+      try {
+        if (AndroidSupport.IS_ANDROID) {
+          setter.invoke(target, value);
+        } else {
+          setterHandle.invoke(target, value);
+        }
+      } catch (Throwable e) {
+        throw accessException(setter, e);
+      }
+    }
+  }
+
+  private static MethodHandle methodHandle(Method method) {
+    try {
+      return _JDKAccess._trustedLookup(method.getDeclaringClass()).unreflect(method);
+    } catch (IllegalAccessException e) {
+      throw accessException(method, e);
+    }
+  }
+
+  private static ForyJsonException accessException(Method method, Throwable e) {
+    Throwable cause =
+        e instanceof InvocationTargetException ? ((InvocationTargetException) e).getCause() : e;
+    return new ForyJsonException("Cannot access JSON property method " + method, cause);
   }
 }

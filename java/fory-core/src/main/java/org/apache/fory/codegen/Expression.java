@@ -1597,7 +1597,7 @@ public interface Expression {
     }
   }
 
-  class NewArray extends AbstractExpression {
+  class NewArray extends Inlineable {
     private TypeRef<?> type;
     private Expression[] elements;
 
@@ -1662,59 +1662,35 @@ public interface Expression {
       Class<?> rawType = getRawType(type);
       String arrayType = getArrayType(rawType);
       String value = ctx.newName("arr");
+      String arrayValue;
       if (dims != null) {
         // multi-dimension array
         ExprCode dimsExprCode = dims.genCode(ctx);
         if (StringUtils.isNotBlank(dimsExprCode.code())) {
           codeBuilder.append(dimsExprCode.code()).append('\n');
         }
-        // "${arrType} ${value} = new ${elementType}[$?][$?]...
-        codeBuilder
-            .append(arrayType)
-            .append(' ')
-            .append(value)
-            .append(" = new ")
-            .append(ctx.type(elemType));
+        // "new ${elementType}[$?][$?]..."
+        StringBuilder arrayValueBuilder = new StringBuilder("new ").append(ctx.type(elemType));
         for (int i = 0; i < numDimensions; i++) {
           // dims is dimensions array, which store size of per dim.
           String idim = StringUtils.format("${dims}[${i}]", "dims", dimsExprCode.value(), "i", i);
-          codeBuilder.append('[').append(idim).append("]");
+          arrayValueBuilder.append('[').append(idim).append("]");
         }
-        codeBuilder.append(';');
+        arrayValue = arrayValueBuilder.toString();
       } else if (dim != null) {
         ExprCode dimExprCode = dim.genCode(ctx);
         if (StringUtils.isNotBlank(dimExprCode.code())) {
           codeBuilder.append(dimExprCode.code()).append('\n');
         }
+        StringBuilder arrayValueBuilder = new StringBuilder("new ").append(ctx.type(elemType));
+        arrayValueBuilder.append('[').append(dimExprCode.value()).append(']');
         if (numDimensions > 1) {
           // multi-dimension array
-          // "${arrType} ${value} = new ${elementType}[$?][][][]...
-          codeBuilder
-              .append(arrayType)
-              .append(' ')
-              .append(value)
-              .append(" = new ")
-              .append(ctx.type(elemType));
-          codeBuilder.append('[').append(dimExprCode.value()).append(']');
           for (int i = 1; i < numDimensions; i++) {
-            codeBuilder.append('[').append("]");
+            arrayValueBuilder.append('[').append("]");
           }
-          codeBuilder.append(';');
-        } else {
-          // one-dimension array
-          String code =
-              StringUtils.format(
-                  "${type} ${value} = new ${elemType}[${dim}];",
-                  "type",
-                  arrayType,
-                  "elemType",
-                  ctx.type(elemType),
-                  "value",
-                  value,
-                  "dim",
-                  dimExprCode.value());
-          codeBuilder.append(code);
         }
+        arrayValue = arrayValueBuilder.toString();
       } else {
         // create array with init value
         int len = elements.length;
@@ -1733,18 +1709,22 @@ public interface Expression {
           }
         }
 
-        String code =
+        arrayValue =
             StringUtils.format(
-                "${type} ${value} = new ${type} {${args}};",
-                "type",
-                arrayType,
-                "value",
-                value,
-                "args",
-                argsBuilder.toString());
-        codeBuilder.append(code);
+                "new ${type} {${args}}", "type", arrayType, "args", argsBuilder.toString());
       }
 
+      if (inlineCall) {
+        String code = StringUtils.isBlank(codeBuilder) ? null : codeBuilder.toString();
+        return new ExprCode(code, null, Code.variable(rawType, arrayValue));
+      }
+      codeBuilder
+          .append(arrayType)
+          .append(' ')
+          .append(value)
+          .append(" = ")
+          .append(arrayValue)
+          .append(';');
       return new ExprCode(codeBuilder.toString(), null, Code.variable(rawType, value));
     }
   }

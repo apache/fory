@@ -124,7 +124,9 @@ public class LazyArrayData extends AbstractExpression {
         StringUtils.format(
             ""
                 + "java.util.List ${result} = \n"
-                + "  new org.apache.fory.format.encoder.LazyArray(${arr}) {\n"
+                + "  new "
+                + LazyArray.class.getName()
+                + "(${arr}) {\n"
                 + "    protected Object deserialize(int index) {\n"
                 + "      if (!array().isNullAt(index)) {\n"
                 + "        ${elemType} elemValue = array().${method}(index);\n"

@@ -33,6 +33,7 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.collection.Tuple2;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.platform.JdkVersion;
@@ -453,6 +454,87 @@ public class StringSerializerTest extends ForyTestBase {
       buffer.writeBytes(bytes);
       assertEquals(readSerializer(fory, serializer, buffer), "abc你好");
       assertEquals(buffer.readerIndex(), buffer.writerIndex());
+    }
+  }
+
+  @Test
+  public void testRejectInvalidUtf8DecodedBytes() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withStringCompressed(true)
+            .withWriteNumUtf16BytesForUtf8Encoding(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    StringSerializer serializer = new StringSerializer(fory.getConfig());
+    byte utf8 = 2;
+    for (MemoryBuffer buffer :
+        new MemoryBuffer[] {
+          MemoryUtils.buffer(32), MemoryUtils.wrap(ByteBuffer.allocateDirect(32))
+        }) {
+      buffer.writerIndex(0);
+      buffer.readerIndex(0);
+      buffer.writeVarUInt64(((long) (1 << 20) << 2) | utf8);
+      buffer.writeInt32(1);
+      buffer.writeByte((byte) 'a');
+      buffer.readerIndex(0);
+      Assert.assertThrows(
+          DeserializationException.class, () -> serializer.readCompressedBytesString(buffer));
+    }
+  }
+
+  @Test
+  public void testRejectMismatchedUtf8DecodedBytes() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withStringCompressed(true)
+            .withWriteNumUtf16BytesForUtf8Encoding(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    StringSerializer serializer = new StringSerializer(fory.getConfig());
+    byte[] bytes = "éé".getBytes(StandardCharsets.UTF_8);
+    byte utf8 = 2;
+    for (MemoryBuffer buffer :
+        new MemoryBuffer[] {
+          MemoryUtils.buffer(32), MemoryUtils.wrap(ByteBuffer.allocateDirect(32))
+        }) {
+      buffer.writerIndex(0);
+      buffer.readerIndex(0);
+      buffer.writeVarUInt64((6L << 2) | utf8);
+      buffer.writeInt32(bytes.length);
+      buffer.writeBytes(bytes);
+      buffer.readerIndex(0);
+      Assert.assertThrows(
+          DeserializationException.class, () -> serializer.readCompressedBytesString(buffer));
+    }
+  }
+
+  @Test
+  public void testRejectMismatchedUtf8DecodedChars() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withStringCompressed(true)
+            .withWriteNumUtf16BytesForUtf8Encoding(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    StringSerializer serializer = new StringSerializer(fory.getConfig());
+    byte[] bytes = "éé".getBytes(StandardCharsets.UTF_8);
+    for (MemoryBuffer buffer :
+        new MemoryBuffer[] {
+          MemoryUtils.buffer(32), MemoryUtils.wrap(ByteBuffer.allocateDirect(32))
+        }) {
+      buffer.writerIndex(0);
+      buffer.readerIndex(0);
+      buffer.writeInt32(bytes.length);
+      buffer.writeBytes(bytes);
+      buffer.readerIndex(0);
+      Assert.assertThrows(
+          DeserializationException.class, () -> serializer.readCharsUTF8PerfOptimized(buffer, 6));
     }
   }
 

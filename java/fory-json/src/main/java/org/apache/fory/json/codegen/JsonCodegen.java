@@ -19,12 +19,15 @@
 
 package org.apache.fory.json.codegen;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Collection;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.json.ForyJsonException;
@@ -40,22 +43,26 @@ import org.apache.fory.json.reader.Utf8ObjectReader;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringObjectWriter;
 import org.apache.fory.json.writer.Utf8ObjectWriter;
+import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.util.record.RecordUtils;
 
 public final class JsonCodegen {
-  static final String PACKAGE = "org.apache.fory.json.codegen";
   static final int GENERIC_READER = 0;
   static final int LATIN1_READER = 1;
   static final int UTF16_READER = 2;
   static final int UTF8_READER = 3;
-  private static final AtomicInteger ID = new AtomicInteger();
+
+  private static final Map<String, Map<String, Integer>> ID_GENERATOR = new ConcurrentHashMap<>();
 
   final boolean writeNullFields;
+  private final int configHash;
   private final CodeGenerator codeGenerator;
   private final ClassLoader jsonLoader;
 
-  public JsonCodegen(boolean writeNullFields) {
+  public JsonCodegen(boolean writeNullFields, int configHash) {
     this.writeNullFields = writeNullFields;
+    this.configHash = configHash;
     jsonLoader = JsonCodegen.class.getClassLoader();
     codeGenerator = new CodeGenerator(jsonLoader);
   }
@@ -78,17 +85,29 @@ public final class JsonCodegen {
         return null;
       }
     }
-    String className = className(type);
+    String generatedPackage = CodeGenerator.getPackage(type);
     JsonCodec[] writeCodecs = writeCodecs(writeProperties);
     Utf8ObjectWriter utf8Writer =
         (Utf8ObjectWriter)
-            compileWriter(className + "_Utf8", type, writeProperties, writeCodecs, true);
+            compileWriter(
+                generatedPackage,
+                className(type, "Utf8"),
+                type,
+                writeProperties,
+                writeCodecs,
+                true);
     if (utf8Writer == null) {
       return null;
     }
     StringObjectWriter stringWriter =
         (StringObjectWriter)
-            compileWriter(className + "_String", type, writeProperties, writeCodecs, false);
+            compileWriter(
+                generatedPackage,
+                className(type, "String"),
+                type,
+                writeProperties,
+                writeCodecs,
+                false);
     if (stringWriter == null) {
       return null;
     }
@@ -97,7 +116,13 @@ public final class JsonCodegen {
     ObjectReader reader =
         (ObjectReader)
             compileReader(
-                className + "_Reader", type, readProperties, readCodecs, readObjectCodecs, record);
+                generatedPackage,
+                className(type, "Reader"),
+                type,
+                readProperties,
+                readCodecs,
+                readObjectCodecs,
+                record);
     if (reader == null) {
       return null;
     }
@@ -111,26 +136,37 @@ public final class JsonCodegen {
   }
 
   private Object compileWriter(
+      String generatedPackage,
       String className,
       Class<?> type,
       JsonFieldInfo[] properties,
       JsonCodec[] nestedCodecs,
       boolean utf8) {
     String code =
-        new JsonGeneratedCodecBuilder(this, className, type, properties, utf8, true, false)
+        new JsonGeneratedCodecBuilder(
+                this, generatedPackage, className, type, properties, utf8, true, false)
             .genCode();
     try {
-      Class<?> writerClass = compileClass(className, code);
-      Constructor<?> constructor =
-          writerClass.getDeclaredConstructor(JsonFieldInfo[].class, JsonCodec[].class);
-      constructor.setAccessible(true);
-      return constructor.newInstance(properties, nestedCodecs);
+      Class<?> writerClass = compileClass(generatedPackage, className, code);
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            writerClass.getDeclaredConstructor(JsonFieldInfo[].class, JsonCodec[].class);
+        constructor.setAccessible(true);
+        return constructor.newInstance(properties, nestedCodecs);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(writerClass)
+              .findConstructor(
+                  writerClass,
+                  MethodType.methodType(void.class, JsonFieldInfo[].class, JsonCodec[].class));
+      return constructor.invoke(properties, nestedCodecs);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot compile generated JSON writer " + className, e);
     }
   }
 
   private Object compileReader(
+      String generatedPackage,
       String className,
       Class<?> type,
       JsonFieldInfo[] properties,
@@ -138,24 +174,38 @@ public final class JsonCodegen {
       BaseObjectCodec[] nestedCodecs,
       boolean record) {
     String code =
-        new JsonGeneratedCodecBuilder(this, className, type, properties, false, false, record)
+        new JsonGeneratedCodecBuilder(
+                this, generatedPackage, className, type, properties, false, false, record)
             .genCode();
     try {
-      Class<?> readerClass = compileClass(className, code);
-      Constructor<?> constructor =
-          readerClass.getDeclaredConstructor(
-              JsonFieldInfo[].class, JsonCodec[].class, BaseObjectCodec[].class);
-      constructor.setAccessible(true);
-      return constructor.newInstance(properties, readCodecs, nestedCodecs);
+      Class<?> readerClass = compileClass(generatedPackage, className, code);
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            readerClass.getDeclaredConstructor(
+                JsonFieldInfo[].class, JsonCodec[].class, BaseObjectCodec[].class);
+        constructor.setAccessible(true);
+        return constructor.newInstance(properties, readCodecs, nestedCodecs);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(readerClass)
+              .findConstructor(
+                  readerClass,
+                  MethodType.methodType(
+                      void.class,
+                      JsonFieldInfo[].class,
+                      JsonCodec[].class,
+                      BaseObjectCodec[].class));
+      return constructor.invoke(properties, readCodecs, nestedCodecs);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot compile generated JSON reader " + className, e);
     }
   }
 
-  private Class<?> compileClass(String className, String code) throws ClassNotFoundException {
-    CompileUnit unit = new CompileUnit(PACKAGE, className, code);
+  private Class<?> compileClass(String generatedPackage, String className, String code)
+      throws ClassNotFoundException {
+    CompileUnit unit = new CompileUnit(generatedPackage, className, code);
     ClassLoader classLoader = codeGenerator.compile(unit);
-    return classLoader.loadClass(PACKAGE + "." + className);
+    return classLoader.loadClass(qualifiedClassName(generatedPackage, className));
   }
 
   private static JsonCodec[] writeCodecs(JsonFieldInfo[] properties) {
@@ -203,10 +253,10 @@ public final class JsonCodegen {
 
   private boolean canCompileWrite(JsonFieldInfo property) {
     Field field = property.writeField();
-    if (field == null) {
+    if (field == null && property.writeGetter() == null) {
       return false;
     }
-    if (!isRecordField(property) && property.writeField() == null) {
+    if (property.writeGetter() != null && !canCall(property.writeGetter())) {
       return false;
     }
     Class<?> rawType = property.writeRawType();
@@ -221,7 +271,12 @@ public final class JsonCodegen {
     if (!record && property.readAccessor() == null) {
       return false;
     }
-    if (!record && property.readAccessor().coreAccessor() == null) {
+    if (!record && property.readSetter() != null && !canCall(property.readSetter())) {
+      return false;
+    }
+    if (!record
+        && property.readSetter() == null
+        && property.readAccessor().coreAccessor() == null) {
       return false;
     }
     Class<?> rawType = property.readRawType();
@@ -234,6 +289,11 @@ public final class JsonCodegen {
 
   private boolean canCompile(Class<?> type) {
     return CodeGenerator.sourcePublicAccessible(type) && isVisible(type);
+  }
+
+  private boolean canCall(Method method) {
+    return Modifier.isPublic(method.getModifiers())
+        && CodeGenerator.sourcePublicAccessible(method.getDeclaringClass());
   }
 
   private boolean isVisible(Class<?> type) {
@@ -294,6 +354,8 @@ public final class JsonCodegen {
       case COLLECTION:
       case MAP:
         return true;
+      case OBJECT:
+        return !usesReadObjectCodec(property);
       default:
         return false;
     }
@@ -306,7 +368,7 @@ public final class JsonCodegen {
       case MAP:
         return true;
       case OBJECT:
-        return usesReadObjectCodec(property);
+        return true;
       default:
         return false;
     }
@@ -323,13 +385,39 @@ public final class JsonCodegen {
     return nestedType != null && nestedType != type;
   }
 
-  private static String className(Class<?> type) {
-    String name = type.getName().replace('.', '_').replace('$', '_');
-    String uniqueId = CodeGenerator.getClassUniqueId(type);
-    if (uniqueId.isEmpty()) {
-      uniqueId = String.valueOf(ID.incrementAndGet());
+  private String className(Class<?> type, String role) {
+    String name = simpleClassName(type) + role + "ForyJsonCodec";
+    Map<String, Integer> subGenerator =
+        ID_GENERATOR.computeIfAbsent(name, key -> new ConcurrentHashMap<>());
+    String key = configHash + "_" + CodeGenerator.getClassUniqueId(type);
+    Integer id = subGenerator.get(key);
+    if (id == null) {
+      synchronized (subGenerator) {
+        id = subGenerator.computeIfAbsent(key, ignored -> subGenerator.size());
+      }
     }
-    return "JsonWriter_" + name + "_" + uniqueId;
+    return id == 0 ? name : name + id;
+  }
+
+  private static String simpleClassName(Class<?> type) {
+    String name = type.getName();
+    Package declaringPackage = type.getPackage();
+    if (declaringPackage != null) {
+      String prefix = declaringPackage.getName() + ".";
+      if (name.startsWith(prefix)) {
+        name = name.substring(prefix.length());
+      }
+    } else {
+      int separator = name.lastIndexOf('.');
+      if (separator >= 0) {
+        name = name.substring(separator + 1);
+      }
+    }
+    return name.replace('.', '_').replace('$', '_');
+  }
+
+  private static String qualifiedClassName(String generatedPackage, String className) {
+    return generatedPackage.isEmpty() ? className : generatedPackage + "." + className;
   }
 
   private static boolean isPojo(Class<?> type) {

@@ -21,6 +21,7 @@ package org.apache.fory.json.meta;
 
 public final class JsonAsciiToken {
   private static final int MAX_SUFFIX_LENGTH = 3;
+  private static final int MAX_LONG_SUFFIX_LENGTH = Long.BYTES;
 
   private JsonAsciiToken() {}
 
@@ -29,6 +30,19 @@ public final class JsonAsciiToken {
     if (length == 0 || suffixLength(length) > MAX_SUFFIX_LENGTH) {
       return false;
     }
+    return isLatin1Token(token);
+  }
+
+  public static boolean isLongPackable(String token) {
+    int length = token.length();
+    if (length == 0 || suffixLength(length) > MAX_LONG_SUFFIX_LENGTH) {
+      return false;
+    }
+    return isLatin1Token(token);
+  }
+
+  private static boolean isLatin1Token(String token) {
+    int length = token.length();
     for (int i = 0; i < length; i++) {
       char ch = token.charAt(i);
       if (ch == 0 || ch > 0xFF) {
@@ -59,6 +73,20 @@ public final class JsonAsciiToken {
       value |= (token.charAt(i + Long.BYTES) & 0xFF) << (i << 3);
     }
     return value;
+  }
+
+  public static long suffixLong(String token) {
+    int suffixLength = suffixLength(token.length());
+    long value = 0;
+    for (int i = 0; i < suffixLength; i++) {
+      value |= (long) (token.charAt(i + Long.BYTES) & 0xFF) << (i << 3);
+    }
+    return value;
+  }
+
+  public static long suffixMask(int tokenLength) {
+    int suffixLength = suffixLength(tokenLength);
+    return suffixLength == Long.BYTES ? -1L : (1L << (suffixLength << 3)) - 1;
   }
 
   public static int suffixLength(int tokenLength) {
