@@ -149,6 +149,11 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 
 ## Network Error Command Log
 
+- 2026-07-08: `cmake -S . -B /private/tmp/fory-cpp-ref-skip-build
+-DFORY_BUILD_TESTS=ON -DFORY_BUILD_SHARED=OFF -DFORY_BUILD_STATIC=ON` from `cpp/`
+  failed while FetchContent tried to clone googletest through `127.0.0.1:7890`; retried as
+  `env -u all_proxy -u http_proxy -u https_proxy -u ALL_PROXY -u HTTP_PROXY -u HTTPS_PROXY cmake -S . -B /private/tmp/fory-cpp-ref-skip-build -DFORY_BUILD_TESTS=ON -DFORY_BUILD_SHARED=OFF -DFORY_BUILD_STATIC=ON`,
+  which succeeded.
 - 2026-06-26: `cargo check` from `rust/` failed while updating crates.io through
   `127.0.0.1:7890`; retried as
   `env -u all_proxy -u http_proxy -u https_proxy -u ALL_PROXY -u HTTP_PROXY -u HTTPS_PROXY cargo check`,
