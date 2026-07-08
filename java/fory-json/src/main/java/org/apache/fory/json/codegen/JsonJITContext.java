@@ -80,13 +80,16 @@ public final class JsonJITContext {
                 T result = jitAction.call();
                 try {
                   lock();
-                  List<NotifyCallback> notifyCallbacks = hasJITResult.remove(id);
+                  // Keep this entry visible while the owner callback installs generated codecs.
+                  // Recursive codec construction can subscribe nested fields for the same type.
+                  List<NotifyCallback> notifyCallbacks = hasJITResult.get(id);
                   callback.onSuccess(result);
                   if (notifyCallbacks != null) {
-                    for (NotifyCallback notifyCallback : notifyCallbacks) {
-                      notifyCallback.onNotifyResult(result);
+                    for (int i = 0; i < notifyCallbacks.size(); i++) {
+                      notifyCallbacks.get(i).onNotifyResult(result);
                     }
                   }
+                  hasJITResult.remove(id);
                 } finally {
                   unlock();
                 }

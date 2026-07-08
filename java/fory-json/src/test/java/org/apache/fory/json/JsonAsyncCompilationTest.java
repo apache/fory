@@ -135,12 +135,28 @@ public class JsonAsyncCompilationTest {
         () -> {
           assertFalse(first.getObjectCodec(AsyncChild.class) instanceof GeneratedObjectCodec);
           assertFalse(second.getObjectCodec(AsyncChild.class) instanceof GeneratedObjectCodec);
+          assertEquals(pendingJitCount(json), 1);
         });
     BaseObjectCodec firstCodec = awaitGenerated(first, AsyncChild.class);
     BaseObjectCodec secondCodec = awaitGenerated(second, AsyncChild.class);
     assertTrue(firstCodec instanceof GeneratedObjectCodec, firstCodec.getClass().getName());
     assertTrue(secondCodec instanceof GeneratedObjectCodec, secondCodec.getClass().getName());
     assertTrue(firstCodec != secondCodec);
+    assertEquals(generatedUtf8WriterClass(firstCodec), generatedUtf8WriterClass(secondCodec));
+  }
+
+  @Test
+  public void asyncReusesGeneratedClassesForNewResolver() throws Exception {
+    ForyJson json = ForyJson.builder().build();
+    JsonSharedRegistry sharedRegistry = (JsonSharedRegistry) field(json, "sharedRegistry");
+    JsonTypeResolver first = new JsonTypeResolver(sharedRegistry);
+    assertFalse(first.getObjectCodec(AsyncChild.class) instanceof GeneratedObjectCodec);
+    BaseObjectCodec firstCodec = awaitGenerated(first, AsyncChild.class);
+    JsonTypeResolver second = new JsonTypeResolver(sharedRegistry);
+    BaseObjectCodec secondCodec = second.getObjectCodec(AsyncChild.class);
+    assertTrue(secondCodec instanceof GeneratedObjectCodec, secondCodec.getClass().getName());
+    assertTrue(firstCodec != secondCodec);
+    assertEquals(generatedUtf8WriterClass(firstCodec), generatedUtf8WriterClass(secondCodec));
   }
 
   @Test
@@ -206,6 +222,18 @@ public class JsonAsyncCompilationTest {
     Object sharedRegistry = field(json, "sharedRegistry");
     Object jitContext = field(sharedRegistry, "jitContext");
     return (boolean) field(jitContext, "asyncCompilationEnabled");
+  }
+
+  private static int pendingJitCount(ForyJson json) throws Exception {
+    Object sharedRegistry = field(json, "sharedRegistry");
+    Object jitContext = field(sharedRegistry, "jitContext");
+    return ((Map<?, ?>) field(jitContext, "hasJITResult")).size();
+  }
+
+  private static Class<?> generatedUtf8WriterClass(BaseObjectCodec codec) throws Exception {
+    Field field = GeneratedObjectCodec.class.getDeclaredField("utf8Writer");
+    field.setAccessible(true);
+    return field.get(codec).getClass();
   }
 
   private static void assertCachedGeneratedChild(

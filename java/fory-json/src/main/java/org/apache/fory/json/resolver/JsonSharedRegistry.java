@@ -82,6 +82,7 @@ import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
+import org.apache.fory.json.codegen.JsonCodegen.GeneratedObjectCodecClasses;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.reflect.TypeRef;
@@ -219,14 +220,28 @@ public final class JsonSharedRegistry {
   public BaseObjectCodec compileObject(
       ObjectCodec codec,
       JsonTypeResolver localResolver,
-      JsonJITContext.ObjectJITCallback<BaseObjectCodec> callback) {
+      JsonJITContext.ObjectJITCallback<GeneratedObjectCodecClasses> callback) {
     if (codegen == null || !codegen.canCompile(codec)) {
       return null;
     }
-    return jitContext.registerObjectJITCallback(
-        () -> codec,
-        () -> jitContext.asyncVisitJson(this, ignored -> codegen.compile(codec, localResolver)),
-        callback);
+    GeneratedObjectCodecClasses classes = codegen.generatedClasses(codec.type());
+    if (classes == null) {
+      classes =
+          jitContext.registerObjectJITCallback(
+              () -> null,
+              () -> jitContext.asyncVisitJson(this, ignored -> codegen.compileClasses(codec)),
+              callback);
+    }
+    return classes == null ? null : codegen.newCodec(codec, localResolver, classes);
+  }
+
+  BaseObjectCodec newGeneratedCodec(
+      ObjectCodec codec, JsonTypeResolver resolver, GeneratedObjectCodecClasses classes) {
+    return codegen.newCodec(codec, resolver, classes);
+  }
+
+  GeneratedObjectCodecClasses generatedClasses(Class<?> type) {
+    return codegen == null ? null : codegen.generatedClasses(type);
   }
 
   JsonJITContext jitContext() {
