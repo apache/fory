@@ -2017,7 +2017,9 @@ public class ClassResolver extends TypeResolver {
     TypeDef typeDef;
     Preconditions.checkArgument(
         serializerClass != UnknownClassSerializers.UnknownStructSerializer.class);
-    if (needToWriteTypeDef(serializerClass)) {
+    if (needToWriteTypeDef(serializerClass) || needsCollectionFieldTypeDef(serializerClass)) {
+      // Default collection/map serializers remain non-struct roots, but their wrapper fields still
+      // need TypeDef metadata so remote compatible readers can evolve those fields.
       typeDef = typeDefMap.computeIfAbsent(typeInfo.type, cls -> TypeDef.buildTypeDef(this, cls));
     } else {
       // Some type will use other serializers such MapSerializer and so on.
@@ -2030,6 +2032,11 @@ public class ClassResolver extends TypeResolver {
     }
     typeInfo.typeDef = typeDef;
     return typeDef;
+  }
+
+  private static boolean needsCollectionFieldTypeDef(Class<? extends Serializer> serializerClass) {
+    return serializerClass == CollectionSerializers.DefaultJavaCollectionSerializer.class
+        || serializerClass == MapSerializers.DefaultJavaMapSerializer.class;
   }
 
   /**
