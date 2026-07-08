@@ -2054,12 +2054,13 @@ public final class ScalarCodecs {
 
   public static final class AtomicReferenceCodec extends AbstractJsonCodec {
     private final JsonTypeInfo valueTypeInfo;
-    private final JsonCodec valueCodec;
+    private JsonCodec valueCodec;
 
     public AtomicReferenceCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
       valueCodec = valueTypeInfo.codec();
+      resolver.registerJITNotifyCallback(valueRawType, codec -> valueCodec = codec);
     }
 
     @Override
@@ -2189,12 +2190,13 @@ public final class ScalarCodecs {
 
   public static final class AtomicReferenceArrayCodec extends AbstractJsonCodec {
     private final JsonTypeInfo valueTypeInfo;
-    private final JsonCodec valueCodec;
+    private JsonCodec valueCodec;
 
     public AtomicReferenceArrayCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
       valueCodec = valueTypeInfo.codec();
+      resolver.registerJITNotifyCallback(valueRawType, codec -> valueCodec = codec);
     }
 
     @Override
@@ -2243,12 +2245,13 @@ public final class ScalarCodecs {
 
   public static final class OptionalCodec extends AbstractJsonCodec {
     private final JsonTypeInfo valueTypeInfo;
-    private final JsonCodec valueCodec;
+    private JsonCodec valueCodec;
 
     public OptionalCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
       valueCodec = valueTypeInfo.codec();
+      resolver.registerJITNotifyCallback(valueRawType, codec -> valueCodec = codec);
     }
 
     @Override

@@ -26,9 +26,15 @@ import java.util.Arrays;
 import java.util.List;
 import org.apache.fory.platform.JdkVersion;
 import org.testng.SkipException;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonRecordTest extends ForyJsonTestModels {
+  @Factory(dataProvider = "codegen")
+  public JsonRecordTest(boolean codegen) {
+    super(codegen);
+  }
+
   @Test
   public void writeReadRecordClass() throws Exception {
     if (JdkVersion.MAJOR_VERSION < 17) {
@@ -48,7 +54,7 @@ public class JsonRecordTest extends ForyJsonTestModels {
     Object value =
         type.getConstructor(int.class, String.class, List.class, childType)
             .newInstance(7, ZH_TEXT, Arrays.asList("a", "b"), child);
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected =
         "{\"id\":7,\"name\":\"你好，Fory\",\"tags\":[\"a\",\"b\"]," + "\"child\":{\"label\":\"kid\"}}";
     assertEquals(json.toJson(value), expected);

@@ -65,12 +65,18 @@ import org.apache.fory.json.data.MapKeyFields;
 import org.apache.fory.json.data.Nested;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.reflect.TypeRef;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonContainerTest extends ForyJsonTestModels {
+  @Factory(dataProvider = "codegen")
+  public JsonContainerTest(boolean codegen) {
+    super(codegen);
+  }
+
   @Test
   public void writeNestedCollections() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(
         json.toJson(new Nested()),
         "{\"kind\":\"FAST\",\"names\":[\"a\",\"b\"],\"scores\":{\"one\":1,\"two\":2}}");
@@ -78,7 +84,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readTypeRefList() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     List<TokenValues> values =
         json.fromJson(
             "[{\"count\":1,\"name\":\"alpha\",\"tags\":[\"x\",\"y\"],\"total\":2},"
@@ -93,7 +99,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readCollectionSubclassElementType() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     Shelf shelf = json.fromJson("{\"notes\":[{\"title\":\"first\"}]}", Shelf.class);
     assertEquals(shelf.notes.get(0).getClass(), Note.class);
     assertEquals(shelf.notes.get(0).title, "first");
@@ -101,7 +107,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readMapSubclassValueType() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     PaletteGroups groups = json.fromJson("{\"warm\":{\"primary\":\"red\"}}", PaletteGroups.class);
     assertEquals(groups.get("warm").getClass(), PaletteCodes.class);
     assertEquals(groups.get("warm").get("primary"), "red");
@@ -109,7 +115,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readTypeRefMapBytes() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     byte[] bytes =
         "{\"first\":{\"count\":5,\"name\":\"gamma\",\"tags\":[\"u\"],\"total\":6}}"
             .getBytes(StandardCharsets.UTF_8);
@@ -123,7 +129,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readJsonContainers() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     JSONObject object =
         json.fromJson("{\"name\":\"fory\",\"items\":[1,\"你好，Fory\"]}", JSONObject.class);
     assertEquals(object.get("name"), "fory");
@@ -139,7 +145,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void parsedContainersStartSmall() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     JSONArray array = json.fromJson("[1]", JSONArray.class);
     assertEquals(arrayCapacity(array), 1);
     assertEquals(arrayCapacity(json.fromJson("[]", JSONArray.class)), 0);
@@ -180,7 +186,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void writeJsonContainers() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     JSONObject object = new JSONObject();
     JSONArray values = new JSONArray();
     values.add(Integer.valueOf(1));
@@ -194,7 +200,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadMapKeyFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected =
         "{\"intNames\":{\"1\":\"one\",\"2\":\"two\"},\"scores\":{\"FAST\":1,\"SMALL\":2}}";
     assertEquals(json.toJson(new MapKeyFields()), expected);
@@ -205,7 +211,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void writeRootMapNumericKeys() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     Map<Integer, Integer> value =
         json.fromJson("{\"7\":70,\"8\":80}", new TypeRef<Map<Integer, Integer>>() {});
     assertEquals(json.toJson(new LinkedHashMap<>(value)), "{\"7\":70,\"8\":80}");
@@ -213,7 +219,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readTypeRefOptional() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     Optional<TokenValues> value =
         json.fromJson(
             "{\"count\":9,\"name\":\"optional\",\"tags\":[\"a\"],\"total\":10}",
@@ -226,7 +232,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readTypeRefMapKeys() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     Map<Integer, String> value =
         json.fromJson("{\"1\":\"one\",\"2\":\"two\"}", new TypeRef<Map<Integer, String>>() {});
     assertEquals(value, intNames());
@@ -253,7 +259,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readFastContainerTypeRefs() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(
         json.fromJson("[\"alpha\",\"你好，Fory\"]", new TypeRef<List<String>>() {}),
         Arrays.asList("alpha", ZH_TEXT));
@@ -285,7 +291,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readDeclaredJdkContainers() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     DeclaredJdkContainers value =
         json.fromJson(
             "{\"collection\":[\"a\",\"b\"],\"list\":[\"c\"],\"sequential\":[\"d\"],"
@@ -312,7 +318,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readMutableContainersUnchanged() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     List<String> list = json.fromJson("[\"a\"]", new TypeRef<List<String>>() {});
     assertTrue(list instanceof ArrayList);
     assertEquals(list, Collections.singletonList("a"));
@@ -338,7 +344,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readEnumContainersStillWork() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     EnumContainers value =
         json.fromJson(
             "{\"kinds\":[\"FAST\",\"SMALL\"],\"scores\":{\"FAST\":1}}", EnumContainers.class);
@@ -350,7 +356,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void rejectRuntimeContainerClasses() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertUnsupportedCollectionClass(json, Arrays.asList("a"));
     assertUnsupportedCollectionClass(json, Collections.emptyList());
     assertUnsupportedCollectionClass(json, Collections.singletonList("a"));
@@ -371,7 +377,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readGuavaImmutableContainers() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     GuavaContainers value =
         json.fromJson(
             "{\"list\":[\"a\",\"b\"],\"set\":[\"c\",\"d\"],"
@@ -394,7 +400,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void rejectGuavaImmutableNulls() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertThrows(
         ForyJsonException.class,
         () -> json.fromJson("[\"a\",null]", new TypeRef<ImmutableList<String>>() {}));
@@ -406,7 +412,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadFastContainerFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String input =
         "{\"booleans\":[true,false],\"flags\":{\"enabled\":true,\"disabled\":false},"
             + "\"intNames\":{\"1\":\"one\",\"2\":\"two\"},\"ints\":[1,2],"
@@ -419,7 +425,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readPrimitiveArrayRoots() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new int[] {1, 2}), "[1,2]");
     assertEquals(json.fromJson("[1,2]", int[].class), new int[] {1, 2});
     assertEquals(
@@ -434,7 +440,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readUtf8StringArrays() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(
         json.fromJson("[\"a\"]".getBytes(StandardCharsets.UTF_8), String[].class),
         new String[] {"a"});
@@ -453,7 +459,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readStringInputStringArrays() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.fromJson("[\"a\"]", String[].class), new String[] {"a"});
     assertEquals(
         json.fromJson("[\"a\",null,\"b\",\"c\",\"d\",\"e\",\"f\",\"g\"]", String[].class),
@@ -469,7 +475,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readUtf8LongArrays() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(
         json.fromJson("[7]".getBytes(StandardCharsets.UTF_8), long[].class), new long[] {7L});
     assertEquals(
@@ -485,7 +491,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readStringInputLongArrays() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.fromJson("[7]", long[].class), new long[] {7L});
     assertEquals(
         json.fromJson("[1,2,3,4,5,6,7,8]", long[].class),
@@ -503,7 +509,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadBoxedPrimitiveArrays() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new Integer[] {1, null, -2}), "[1,null,-2]");
     assertEquals(
         json.fromJson("[1,null,-2]".getBytes(StandardCharsets.UTF_8), Integer[].class),
@@ -537,7 +543,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readReferenceObjectArrays() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     Note[] notes = json.fromJson("[{\"title\":\"one\"},null,{\"title\":\"two\"}]", Note[].class);
     assertEquals(notes.getClass(), Note[].class);
     assertEquals(notes.length, 3);
@@ -566,7 +572,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void readReentrantObjectArray() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     ArrayNode[] roots =
         json.fromJson(
             "[{\"name\":\"root\",\"children\":[{\"name\":\"leaf\",\"children\":[]}]}]"
@@ -600,7 +606,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadAtomicArrays() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new AtomicIntegerArray(new int[] {1, -2, 3})), "[1,-2,3]");
     assertAtomicInts(json.fromJson("[1,-2,3]", AtomicIntegerArray.class), 1, -2, 3);
     assertEquals(

@@ -24,13 +24,13 @@ import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.reflect.TypeRef;
 
-/** Immutable JSON type binding resolved and owned by {@link JsonTypeResolver}. */
+/** JSON type binding resolved and owned by {@link JsonTypeResolver}. */
 public final class JsonTypeInfo {
   private final Type type;
   private final TypeRef<?> typeRef;
   private final Class<?> rawType;
   private final JsonFieldKind kind;
-  private final JsonCodec codec;
+  private JsonCodec codec;
   private final boolean primitive;
 
   JsonTypeInfo(
@@ -61,6 +61,10 @@ public final class JsonTypeInfo {
 
   public JsonCodec codec() {
     return codec;
+  }
+
+  void setCodec(JsonCodec codec) {
+    this.codec = codec;
   }
 
   public boolean primitive() {

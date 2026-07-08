@@ -109,7 +109,7 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
     JsonCodec elementCodec = elementTypeInfo.codec();
     if (elementCodec instanceof BaseObjectCodec) {
       return new ObjectCollectionCodec(
-          typeRef, factory, elementTypeInfo, (BaseObjectCodec) elementCodec);
+          typeRef, factory, elementTypeInfo, (BaseObjectCodec) elementCodec, resolver);
     }
     return new GenericCollectionCodec(typeRef, factory, elementTypeInfo, elementCodec);
   }
@@ -877,16 +877,19 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
 
   public static final class ObjectCollectionCodec extends CollectionCodec {
     private final JsonTypeInfo elementTypeInfo;
-    private final BaseObjectCodec elementCodec;
+    private BaseObjectCodec elementCodec;
 
     private ObjectCollectionCodec(
         TypeRef<?> typeRef,
         CollectionFactory factory,
         JsonTypeInfo elementTypeInfo,
-        BaseObjectCodec elementCodec) {
+        BaseObjectCodec elementCodec,
+        JsonTypeResolver resolver) {
       super(typeRef, factory);
       this.elementTypeInfo = elementTypeInfo;
       this.elementCodec = elementCodec;
+      resolver.registerJITNotifyCallback(
+          elementTypeInfo.rawType(), codec -> this.elementCodec = (BaseObjectCodec) codec);
     }
 
     @Override

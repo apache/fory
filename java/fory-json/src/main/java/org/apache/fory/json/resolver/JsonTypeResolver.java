@@ -23,11 +23,13 @@ import java.lang.reflect.Type;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import org.apache.fory.json.codec.BaseObjectCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.ObjectCodec;
-import org.apache.fory.json.codec.ObjectCodecs;
+import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.reflect.TypeRef;
 
 /**
@@ -37,8 +39,8 @@ import org.apache.fory.reflect.TypeRef;
  * Runtime JSON values, including non-enumerated string or number values/tokens, must stay uncached.
  */
 public final class JsonTypeResolver {
-  private final IdentityHashMap<Class<?>, BaseObjectCodec> objectCodecs = new IdentityHashMap<>();
-  private final Map<Object, JsonTypeInfo> typeInfos = new HashMap<>();
+  private final Map<Class<?>, BaseObjectCodec> objectCodecs;
+  private final Map<Object, JsonTypeInfo> typeInfos;
   private final JsonSharedRegistry sharedRegistry;
 
   private enum RuntimeObjectKey {
@@ -47,6 +49,13 @@ public final class JsonTypeResolver {
 
   public JsonTypeResolver(JsonSharedRegistry sharedRegistry) {
     this.sharedRegistry = sharedRegistry;
+    if (sharedRegistry.asyncCompilationEnabled()) {
+      objectCodecs = new ConcurrentHashMap<>();
+      typeInfos = new ConcurrentHashMap<>();
+    } else {
+      objectCodecs = new IdentityHashMap<>();
+      typeInfos = new HashMap<>();
+    }
   }
 
   public BaseObjectCodec getObjectCodec(Class<?> type) {
@@ -54,7 +63,16 @@ public final class JsonTypeResolver {
     if (codec != null) {
       return codec;
     }
-    return buildObjectCodec(type);
+    try {
+      sharedRegistry.jitContext().lock();
+      codec = objectCodecs.get(type);
+      if (codec != null) {
+        return codec;
+      }
+      return buildObjectCodec(type);
+    } finally {
+      sharedRegistry.jitContext().unlock();
+    }
   }
 
   public JsonTypeInfo getTypeInfo(Type declaredType, Class<?> fallback) {
@@ -64,7 +82,16 @@ public final class JsonTypeResolver {
     if (typeInfo != null) {
       return typeInfo;
     }
-    return buildTypeInfo(key, rawType, declaredType);
+    try {
+      sharedRegistry.jitContext().lock();
+      typeInfo = typeInfos.get(key);
+      if (typeInfo != null) {
+        return typeInfo;
+      }
+      return buildTypeInfo(key, rawType, declaredType);
+    } finally {
+      sharedRegistry.jitContext().unlock();
+    }
   }
 
   public JsonTypeInfo getRuntimeTypeInfo(Class<?> runtimeType) {
@@ -73,7 +100,16 @@ public final class JsonTypeResolver {
     if (typeInfo != null) {
       return typeInfo;
     }
-    return buildRuntimeTypeInfo(key, runtimeType);
+    try {
+      sharedRegistry.jitContext().lock();
+      typeInfo = typeInfos.get(key);
+      if (typeInfo != null) {
+        return typeInfo;
+      }
+      return buildRuntimeTypeInfo(key, runtimeType);
+    } finally {
+      sharedRegistry.jitContext().unlock();
+    }
   }
 
   private BaseObjectCodec buildObjectCodec(Class<?> type) {
@@ -87,11 +123,26 @@ public final class JsonTypeResolver {
     objectCodecs.put(type, codec);
     try {
       codec.resolveTypes(this);
-      ObjectCodecs codecs = sharedRegistry.compileObject(codec, this);
-      if (codecs != null) {
-        BaseObjectCodec generated = codec.withCodecs(codecs);
-        objectCodecs.put(type, generated);
-        return generated;
+      BaseObjectCodec compiled =
+          sharedRegistry.compileObject(
+              codec,
+              this,
+              new JsonJITContext.ObjectJITCallback<BaseObjectCodec>() {
+                @Override
+                public void onSuccess(BaseObjectCodec result) {
+                  if (result != null) {
+                    setObjectCodec(type, result);
+                  }
+                }
+
+                @Override
+                public Object id() {
+                  return type;
+                }
+              });
+      if (compiled != null && compiled != codec) {
+        setObjectCodec(type, compiled);
+        return compiled;
       }
       return codec;
     } catch (RuntimeException | Error e) {
@@ -116,7 +167,10 @@ public final class JsonTypeResolver {
     if (codec == null) {
       codec = getObjectCodec(rawType);
     }
-    return new JsonTypeInfo(declaredType, typeRef, rawType, sharedRegistry.kind(rawType), codec);
+    JsonTypeInfo typeInfo =
+        new JsonTypeInfo(declaredType, typeRef, rawType, sharedRegistry.kind(rawType), codec);
+    registerCodecUpdate(rawType, typeInfo, codec);
+    return typeInfo;
   }
 
   private JsonTypeInfo buildRuntimeTypeInfo(Object key, Class<?> rawType) {
@@ -134,8 +188,50 @@ public final class JsonTypeResolver {
     }
     JsonTypeInfo typeInfo =
         new JsonTypeInfo(rawType, typeRef, rawType, sharedRegistry.kind(rawType), codec);
+    registerCodecUpdate(rawType, typeInfo, codec);
     typeInfos.put(key, typeInfo);
     return typeInfo;
+  }
+
+  public void registerJITNotifyCallback(Class<?> type, Consumer<JsonCodec> updater) {
+    if (!sharedRegistry.hasJITResult(type)) {
+      return;
+    }
+    sharedRegistry.registerJITNotifyCallback(
+        type,
+        new JsonJITContext.NotifyCallback() {
+          @Override
+          public void onNotifyResult(Object result) {
+            if (result instanceof JsonCodec) {
+              updater.accept((JsonCodec) result);
+            } else {
+              onNotifyMissed();
+            }
+          }
+
+          @Override
+          public void onNotifyMissed() {
+            updater.accept(getObjectCodec(type));
+          }
+        });
+  }
+
+  private void registerCodecUpdate(Class<?> rawType, JsonTypeInfo typeInfo, JsonCodec codec) {
+    if (codec instanceof BaseObjectCodec) {
+      registerJITNotifyCallback(rawType, typeInfo::setCodec);
+    }
+  }
+
+  private void setObjectCodec(Class<?> type, BaseObjectCodec codec) {
+    objectCodecs.put(type, codec);
+    JsonTypeInfo typeInfo = typeInfos.get(type);
+    if (typeInfo != null) {
+      typeInfo.setCodec(codec);
+    }
+    JsonTypeInfo runtimeTypeInfo = typeInfos.get(RuntimeObjectKey.INSTANCE);
+    if (type == Object.class && runtimeTypeInfo != null) {
+      runtimeTypeInfo.setCodec(codec);
+    }
   }
 
   private static Object typeInfoKey(Type declaredType, Class<?> rawType) {

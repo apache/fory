@@ -32,8 +32,9 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.BaseObjectCodec;
+import org.apache.fory.json.codec.GeneratedObjectCodec;
 import org.apache.fory.json.codec.JsonCodec;
-import org.apache.fory.json.codec.ObjectCodecs;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.reader.Latin1ObjectReader;
@@ -45,6 +46,7 @@ import org.apache.fory.json.writer.StringObjectWriter;
 import org.apache.fory.json.writer.Utf8ObjectWriter;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.internal._JDKAccess;
+import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.util.record.RecordUtils;
 
 public final class JsonCodegen {
@@ -67,24 +69,14 @@ public final class JsonCodegen {
     codeGenerator = new CodeGenerator(jsonLoader);
   }
 
-  public ObjectCodecs compile(BaseObjectCodec objectCodec, JsonTypeResolver typeResolver) {
+  public GeneratedObjectCodec compile(ObjectCodec objectCodec, JsonTypeResolver typeResolver) {
     Class<?> type = objectCodec.type();
-    if (!canCompile(type)) {
+    if (!canCompile(objectCodec)) {
       return null;
     }
     boolean record = objectCodec.isRecord();
     JsonFieldInfo[] writeProperties = objectCodec.writeFields();
-    for (int i = 0; i < writeProperties.length; i++) {
-      if (!canCompileWrite(writeProperties[i])) {
-        return null;
-      }
-    }
     JsonFieldInfo[] readProperties = objectCodec.readFields();
-    for (int i = 0; i < readProperties.length; i++) {
-      if (!canCompileRead(readProperties[i], record)) {
-        return null;
-      }
-    }
     String generatedPackage = CodeGenerator.getPackage(type);
     JsonCodec[] writeCodecs = writeCodecs(writeProperties);
     Utf8ObjectWriter utf8Writer =
@@ -126,13 +118,37 @@ public final class JsonCodegen {
     if (reader == null) {
       return null;
     }
-    return new ObjectCodecs(
+    registerWriterCallbacks(typeResolver, stringWriter, writeProperties);
+    registerWriterCallbacks(typeResolver, utf8Writer, writeProperties);
+    registerReaderCallbacks(typeResolver, reader, type, readProperties);
+    return objectCodec.withGenerated(
         stringWriter,
         utf8Writer,
         reader,
         (Latin1ObjectReader) reader,
         (Utf16ObjectReader) reader,
         (Utf8ObjectReader) reader);
+  }
+
+  public boolean canCompile(BaseObjectCodec objectCodec) {
+    Class<?> type = objectCodec.type();
+    if (!canCompileType(type)) {
+      return false;
+    }
+    boolean record = objectCodec.isRecord();
+    JsonFieldInfo[] writeProperties = objectCodec.writeFields();
+    for (int i = 0; i < writeProperties.length; i++) {
+      if (!canCompileWrite(writeProperties[i])) {
+        return false;
+      }
+    }
+    JsonFieldInfo[] readProperties = objectCodec.readFields();
+    for (int i = 0; i < readProperties.length; i++) {
+      if (!canCompileRead(readProperties[i], record)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private Object compileWriter(
@@ -287,7 +303,7 @@ public final class JsonCodegen {
     return !isPojo(elementType) || isVisible(elementType);
   }
 
-  private boolean canCompile(Class<?> type) {
+  private boolean canCompileType(Class<?> type) {
     return CodeGenerator.sourcePublicAccessible(type) && isVisible(type);
   }
 
@@ -315,11 +331,47 @@ public final class JsonCodegen {
   }
 
   Class<?> codecFieldType(JsonCodec codec) {
+    if (codec instanceof BaseObjectCodec) {
+      return BaseObjectCodec.class;
+    }
     Class<?> type = codec.getClass();
     if (isPublicSourceType(type) && isVisible(type)) {
       return type;
     }
     return JsonCodec.class;
+  }
+
+  private static void registerWriterCallbacks(
+      JsonTypeResolver resolver, Object writer, JsonFieldInfo[] properties) {
+    for (int i = 0; i < properties.length; i++) {
+      JsonFieldInfo property = properties[i];
+      if (usesWriteCodec(property) && property.writeTypeInfo().codec() instanceof BaseObjectCodec) {
+        registerFieldCallback(resolver, writer, "c" + i, property.writeRawType());
+      }
+    }
+  }
+
+  private static void registerReaderCallbacks(
+      JsonTypeResolver resolver, Object reader, Class<?> type, JsonFieldInfo[] properties) {
+    for (int i = 0; i < properties.length; i++) {
+      JsonFieldInfo property = properties[i];
+      if (usesReadCodec(property) && property.readTypeInfo().codec() instanceof BaseObjectCodec) {
+        registerFieldCallback(resolver, reader, "r" + i, property.readRawType());
+      }
+      if (storesReadObjectCodec(type, property)) {
+        registerFieldCallback(resolver, reader, "c" + i, readNestedType(property));
+      }
+    }
+  }
+
+  private static void registerFieldCallback(
+      JsonTypeResolver resolver, Object owner, String fieldName, Class<?> type) {
+    if (type == null) {
+      return;
+    }
+    Field field = ReflectionUtils.getField(owner.getClass(), fieldName);
+    resolver.registerJITNotifyCallback(
+        type, codec -> ReflectionUtils.setObjectFieldValue(owner, field, codec));
   }
 
   private static boolean isPublicSourceType(Class<?> type) {

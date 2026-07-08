@@ -26,6 +26,7 @@ import org.apache.fory.json.resolver.CodecRegistry;
 public final class ForyJsonBuilder {
   private boolean writeNullFields;
   private boolean codegenEnabled = true;
+  private boolean asyncCompilationEnabled = true;
   private boolean propertyDiscoveryEnabled = true;
   private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
   private final CodecRegistry codecRegistry = new CodecRegistry();
@@ -38,9 +39,15 @@ public final class ForyJsonBuilder {
     return this;
   }
 
-  /** Enables runtime-generated writers for supported public-field classes. */
+  /** Enables generated object codecs for supported classes. Enabled by default. */
   public ForyJsonBuilder withCodegen(boolean codegenEnabled) {
     this.codegenEnabled = codegenEnabled;
+    return this;
+  }
+
+  /** Enables asynchronous runtime compilation for generated object codecs. Enabled by default. */
+  public ForyJsonBuilder withAsyncCompilation(boolean asyncCompilationEnabled) {
+    this.asyncCompilationEnabled = asyncCompilationEnabled;
     return this;
   }
 
@@ -72,6 +79,11 @@ public final class ForyJsonBuilder {
   public ForyJson build() {
     return new ForyJson(
         new JsonConfig(
-            writeNullFields, codegenEnabled, propertyDiscoveryEnabled, maxDepth, codecRegistry));
+            writeNullFields,
+            codegenEnabled,
+            asyncCompilationEnabled,
+            propertyDiscoveryEnabled,
+            maxDepth,
+            codecRegistry));
   }
 }

@@ -35,19 +35,25 @@ import org.apache.fory.json.data.BeanProperties.MixedBean;
 import org.apache.fory.json.data.BeanProperties.OverloadedSetterBean;
 import org.apache.fory.json.data.BeanProperties.SetterBean;
 import org.apache.fory.json.data.BeanProperties.SetterOnlyBean;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonPropertyTest extends ForyJsonTestModels {
+  @Factory(dataProvider = "codegen")
+  public JsonPropertyTest(boolean codegen) {
+    super(codegen);
+  }
+
   @Test
   public void writePrivateGetters() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new GetterBean()), "{\"id\":17,\"name\":\"getter-field\"}");
     assertGeneratedWhenSupported(json, GetterBean.class);
   }
 
   @Test
   public void readPrivateSetters() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     SetterBean value = json.fromJson("{\"id\":4,\"name\":\"alpha\"}", SetterBean.class);
     assertEquals(SetterBean.id(value), 5);
     assertEquals(SetterBean.name(value), "set-alpha");
@@ -57,7 +63,7 @@ public class JsonPropertyTest extends ForyJsonTestModels {
 
   @Test
   public void roundTripMixedProperties() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String text = "{\"count\":3,\"name\":\"mixed\",\"score\":5}";
     assertEquals(json.toJson(new MixedBean()), text);
     assertEquals(json.toJson(json.fromJson(text, MixedBean.class)), text);
@@ -66,13 +72,13 @@ public class JsonPropertyTest extends ForyJsonTestModels {
 
   @Test
   public void writeBooleanIsGetter() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new BooleanBean()), "{\"ready\":true}");
   }
 
   @Test
   public void getterOnlyWrites() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new GetterOnlyBean()), "{\"computed\":6}");
     GetterOnlyBean value = json.fromJson("{\"computed\":99}", GetterOnlyBean.class);
     assertEquals(json.toJson(value), "{\"computed\":6}");
@@ -80,7 +86,7 @@ public class JsonPropertyTest extends ForyJsonTestModels {
 
   @Test
   public void setterOnlyReads() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new SetterOnlyBean()), "{}");
     SetterOnlyBean value = json.fromJson("{\"secret\":\"alpha\"}", SetterOnlyBean.class);
     assertEquals(SetterOnlyBean.received(value), "set-alpha");
@@ -88,7 +94,7 @@ public class JsonPropertyTest extends ForyJsonTestModels {
 
   @Test
   public void fieldOnlyMode() {
-    ForyJson json = ForyJson.builder().withFieldMode(true).build();
+    ForyJson json = newJsonBuilder().withFieldMode(true).build();
     assertEquals(json.toJson(new GetterBean()), "{\"id\":7,\"name\":\"field\"}");
     assertEquals(json.toJson(new GetterOnlyBean()), "{}");
     SetterOnlyBean value = json.fromJson("{\"secret\":\"alpha\"}", SetterOnlyBean.class);
@@ -97,7 +103,7 @@ public class JsonPropertyTest extends ForyJsonTestModels {
 
   @Test
   public void rejectPropertyConflicts() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.toJson(new DuplicateGetterBean()));
     assertThrows(
         ForyJsonException.class,
@@ -107,7 +113,7 @@ public class JsonPropertyTest extends ForyJsonTestModels {
 
   @Test
   public void inheritedProperties() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new InheritedChild()), "{\"id\":4,\"name\":\"child\"}");
     InheritedChild value = json.fromJson("{\"id\":7,\"name\":\"json\"}", InheritedChild.class);
     assertEquals(InheritedParent.id(value), 8);
@@ -116,13 +122,13 @@ public class JsonPropertyTest extends ForyJsonTestModels {
 
   @Test
   public void ignoreInvalidAccessors() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new InvalidAccessorBean()), "{\"value\":\"field\"}");
   }
 
   @Test
   public void finalFieldsStayReadOnly() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new FinalFieldBean()), "{\"id\":1,\"name\":\"field\"}");
     FinalFieldBean value = json.fromJson("{\"id\":9,\"name\":\"json\"}", FinalFieldBean.class);
     assertEquals(value.id, 1);

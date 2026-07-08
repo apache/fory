@@ -29,6 +29,7 @@ import org.apache.fory.json.resolver.CodecRegistry;
 public final class JsonConfig {
   private final boolean writeNullFields;
   private final boolean codegenEnabled;
+  private final boolean asyncCompilationEnabled;
   private final boolean propertyDiscoveryEnabled;
   private final int maxDepth;
   private final CodecRegistry codecRegistry;
@@ -38,11 +39,13 @@ public final class JsonConfig {
   JsonConfig(
       boolean writeNullFields,
       boolean codegenEnabled,
+      boolean asyncCompilationEnabled,
       boolean propertyDiscoveryEnabled,
       int maxDepth,
       CodecRegistry codecRegistry) {
     this.writeNullFields = writeNullFields;
     this.codegenEnabled = codegenEnabled;
+    this.asyncCompilationEnabled = asyncCompilationEnabled;
     this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
     this.maxDepth = maxDepth;
     this.codecRegistry = codecRegistry;
@@ -55,6 +58,10 @@ public final class JsonConfig {
 
   public boolean codegenEnabled() {
     return codegenEnabled;
+  }
+
+  public boolean asyncCompilationEnabled() {
+    return asyncCompilationEnabled;
   }
 
   public boolean propertyDiscoveryEnabled() {
@@ -80,6 +87,7 @@ public final class JsonConfig {
     JsonConfig that = (JsonConfig) other;
     return writeNullFields == that.writeNullFields
         && codegenEnabled == that.codegenEnabled
+        && asyncCompilationEnabled == that.asyncCompilationEnabled
         && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
         && maxDepth == that.maxDepth
         && Objects.equals(codecRegistryKey, that.codecRegistryKey);
@@ -88,7 +96,12 @@ public final class JsonConfig {
   @Override
   public int hashCode() {
     return Objects.hash(
-        writeNullFields, codegenEnabled, propertyDiscoveryEnabled, maxDepth, codecRegistryKey);
+        writeNullFields,
+        codegenEnabled,
+        asyncCompilationEnabled,
+        propertyDiscoveryEnabled,
+        maxDepth,
+        codecRegistryKey);
   }
 
   private static final AtomicInteger COUNTER = new AtomicInteger(0);

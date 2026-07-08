@@ -78,10 +78,11 @@ import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.GuavaCodecs;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.MapCodec;
-import org.apache.fory.json.codec.ObjectCodecs;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
+import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.BFloat16;
@@ -92,12 +93,14 @@ public final class JsonSharedRegistry {
   private final CodecRegistry customCodecs;
   private final IdentityHashMap<Class<?>, JsonCodec> exactCodecs;
   private final JsonCodegen codegen;
+  private final JsonJITContext jitContext;
   private final boolean propertyDiscoveryEnabled;
 
   public JsonSharedRegistry(JsonConfig config) {
     this.customCodecs = config.codecRegistry().copy();
     this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
     exactCodecs = new IdentityHashMap<>();
+    jitContext = new JsonJITContext(config.asyncCompilationEnabled());
     codegen =
         config.codegenEnabled()
             ? new JsonCodegen(config.writeNullFields(), config.getConfigHash())
@@ -214,8 +217,33 @@ public final class JsonSharedRegistry {
     return JsonFieldKind.OBJECT;
   }
 
-  public ObjectCodecs compileObject(BaseObjectCodec codec, JsonTypeResolver localResolver) {
-    return codegen == null ? null : codegen.compile(codec, localResolver);
+  public BaseObjectCodec compileObject(
+      ObjectCodec codec,
+      JsonTypeResolver localResolver,
+      JsonJITContext.ObjectJITCallback<BaseObjectCodec> callback) {
+    if (codegen == null || !codegen.canCompile(codec)) {
+      return null;
+    }
+    return jitContext.registerObjectJITCallback(
+        () -> codec,
+        () -> jitContext.asyncVisitJson(this, ignored -> codegen.compile(codec, localResolver)),
+        callback);
+  }
+
+  JsonJITContext jitContext() {
+    return jitContext;
+  }
+
+  boolean hasJITResult(Class<?> type) {
+    return jitContext.hasJITResult(type);
+  }
+
+  boolean asyncCompilationEnabled() {
+    return jitContext.asyncCompilationEnabled();
+  }
+
+  void registerJITNotifyCallback(Class<?> type, JsonJITContext.NotifyCallback callback) {
+    jitContext.registerJITNotifyCallback(type, callback);
   }
 
   boolean propertyDiscoveryEnabled() {

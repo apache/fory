@@ -41,12 +41,18 @@ import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonStringTest extends ForyJsonTestModels {
+  @Factory(dataProvider = "codegen")
+  public JsonStringTest(boolean codegen) {
+    super(codegen);
+  }
+
   @Test
   public void escapeStrings() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     PublicFields fields = new PublicFields();
     fields.name = "a\n\"b\"\\\u1234";
     String stringExpected = "{\"active\":true,\"id\":7,\"name\":\"a\\n\\\"b\\\"\\\\\u1234\"}";
@@ -56,7 +62,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void writeUtf16StringText() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     UnicodeValues values = new UnicodeValues();
     String expected =
         "{\"first\":\"\u1234\",\"second\":\"music \uD834\uDD1E\","
@@ -155,7 +161,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void writeUtf16Char() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     CharValue value = new CharValue();
     value.value = '\u1234';
     assertEquals(json.toJson(value), "{\"value\":\"\u1234\"}");
@@ -165,7 +171,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void writeNonLatin1Matrix() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     UnicodeMatrix value = new UnicodeMatrix();
     String expected = unicodeMatrixJson();
     assertEquals(json.toJson(value), expected);
@@ -183,7 +189,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadZhEuStrings() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertTextRoundTrip(json, ZH_TEXT);
     assertTextRoundTrip(json, EU_TEXT);
   }
@@ -241,7 +247,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void readStringInputLayouts() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String latin1Json = "{\"active\":true,\"id\":7,\"name\":\"café\"}";
     String utf16Json = "{\"active\":true,\"id\":7,\"name\":\"你好，Fory\"}";
     if (StringSerializer.isBytesBackedString()) {
@@ -256,7 +262,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void readStringInputEscapes() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
 
     String asciiEscaped = json.fromJson("\"line\\n\\r\\t\\b\\f\\\\\\\"\\/end\"", String.class);
     String latin1Escaped = json.fromJson("\"caf\\u00E9\"", String.class);
@@ -312,7 +318,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void readUnicodeFieldNames() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String direct = "{\"café\":\"" + EU_TEXT + "\",\"你好\":\"" + ZH_TEXT + "\"}";
     String escaped = "{\"caf\\u00e9\":\"" + EU_TEXT + "\",\"\\u4f60\\u597d\":\"" + ZH_TEXT + "\"}";
     UnicodeFieldNames directValue = json.fromJson(direct, UnicodeFieldNames.class);
@@ -329,7 +335,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void readUnicodeEnum() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String direct = "{\"kind\":\"你好\"}";
     String escaped = "{\"kind\":\"\\u4f60\\u597d\"}";
     String asciiDirect = "{\"kind\":\"FAST\"}";
@@ -351,7 +357,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void writeLatin1NonAsciiBytes() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     PublicFields fields = new PublicFields();
     fields.name = "caf\u00e9";
     assertEquals(json.toJson(fields), "{\"active\":true,\"id\":7,\"name\":\"caf\u00e9\"}");
@@ -367,7 +373,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void rejectSurrogateChar() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     CharValue value = new CharValue();
     value.value = '\uD800';
     assertThrows(ForyJsonException.class, () -> json.toJson(value));
@@ -376,7 +382,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void rejectSurrogateString() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     PublicFields fields = new PublicFields();
     fields.name = "\uD800";
     assertThrows(ForyJsonException.class, () -> json.toJson(fields));
@@ -385,7 +391,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void writeSurrogatePair() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     PublicFields fields = new PublicFields();
     fields.name = "a\uD83D\uDE00";
     String stringExpected = "{\"active\":true,\"id\":7,\"name\":\"a\uD83D\uDE00\"}";
@@ -397,7 +403,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void writeStringScanBoundaries() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     for (int length :
         new int[] {
           0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 16, 17, 20, 23, 24, 25, 30, 31, 32, 33, 63, 64, 65
@@ -415,7 +421,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void readStringScanBoundaries() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     for (int length : new int[] {0, 1, 7, 8, 15, 16, 17, 23, 24, 31, 32, 33, 63, 64, 65}) {
       String value = repeat('a', length);
       String input = "\"" + value + "\"";
@@ -448,7 +454,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void readUtf8DecodedStrings() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String ascii = readUtf8String(json, "\"plain ascii\"");
     String latin1 = readUtf8String(json, "\"caf\u00e9\"");
     String escaped = readUtf8String(json, "\"line\\n\\t\\\\\\\"\\/end\"");
@@ -483,7 +489,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void rejectInvalidSurrogates() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.fromJson("\"\\uD834\\uDD1E\"", String.class), "\uD834\uDD1E");
     assertThrows(ForyJsonException.class, () -> json.fromJson("\"\\uD800\"", String.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("\"\\uDC00\"", String.class));
