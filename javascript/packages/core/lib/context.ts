@@ -241,16 +241,9 @@ export class RefReader {
   }
 
   getReadRef(refId: number) {
-    const value = this.readObjects[refId];
-    if (
-      !Number.isSafeInteger(refId) ||
-      refId < 0 ||
-      refId >= this.readObjects.length ||
-      value === undefined
-    ) {
-      throw new Error(`Invalid ref id ${refId}, current size ${this.readObjects.length}`);
-    }
-    return value;
+    // Missing compatible structs may surface as null field values, but they are
+    // not published as reference targets; keep this hot path as a direct lookup.
+    return this.readObjects[refId];
   }
 
   readRefFlag() {

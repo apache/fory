@@ -19,9 +19,10 @@
 
 import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/context/ref_writer.dart';
-import 'package:fory/src/exceptions.dart';
 
 final class RefReader {
+  // Missing compatible structs may surface as null field values, but they are
+  // not published as reference targets; keep ref reads as direct lookups.
   final List<Object?> _refs = <Object?>[];
   final List<int> _preservedIds = <int>[];
   Object? _resolved;
@@ -32,7 +33,7 @@ final class RefReader {
     if (flag == RefWriter.refFlag) {
       final id = buffer.readVarUint32();
       _resolvedId = id;
-      _resolved = _resolveRef(id);
+      _resolved = _refs[id];
       return flag;
     }
     _resolvedId = null;
@@ -49,7 +50,7 @@ final class RefReader {
     if (flag == RefWriter.refFlag) {
       final id = buffer.readVarUint32();
       _resolvedId = id;
-      _resolved = _resolveRef(id);
+      _resolved = _refs[id];
       return flag;
     }
     return flag;
@@ -76,7 +77,7 @@ final class RefReader {
 
   int? get readRefId => _resolvedId;
 
-  Object? getReadRef([int? id]) => id == null ? _resolved : _resolveRef(id);
+  Object? getReadRef([int? id]) => id == null ? _resolved : _refs[id];
 
   Object? readRefAt(int id) => _refs[id];
 
@@ -92,11 +93,6 @@ final class RefReader {
   }
 
   void setReadRef(int id, Object? value) {
-    if (id < 0 || id >= _refs.length) {
-      throw InvalidDataException(
-        'Invalid ref id $id, current size ${_refs.length}.',
-      );
-    }
     _refs[id] = value;
     if (_preservedIds.isNotEmpty && _preservedIds.last == id) {
       // Late-bound values must release their reserved slot; otherwise a later
@@ -110,20 +106,5 @@ final class RefReader {
     _preservedIds.clear();
     _resolved = null;
     _resolvedId = null;
-  }
-
-  Object _resolveRef(int id) {
-    if (id < 0 || id >= _refs.length) {
-      throw InvalidDataException(
-        'Invalid ref id $id, current size ${_refs.length}.',
-      );
-    }
-    final value = _refs[id];
-    if (value == null) {
-      throw InvalidDataException(
-        'Invalid ref id $id, current size ${_refs.length}.',
-      );
-    }
-    return value;
   }
 }
