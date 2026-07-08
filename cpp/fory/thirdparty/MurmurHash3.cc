@@ -9,6 +9,8 @@
 
 #include "fory/thirdparty/MurmurHash3.h"
 
+#include <cstring>
+
 //-----------------------------------------------------------------------------
 // Platform-specific functions and macros
 
@@ -58,28 +60,20 @@ inline uint64_t rotl64(uint64_t x, int8_t r) {
 #endif // !defined(_MSC_VER)
 
 //-----------------------------------------------------------------------------
-// Block read - on little-endian machines this is a single load,
-// while on big-endian or unknown machines the byte accesses should
-// still get optimized into the most efficient instruction.
-FORCE_INLINE uint32_t getblock(const uint32_t *p, int i) {
-#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-  return p[i];
-#else
-  const uint8_t *c = (const uint8_t *)&p[i];
+// Block read. Fory callers may pass slices at arbitrary byte alignment, so
+// assemble little-endian words from bytes instead of aliasing the input as
+// uint32_t/uint64_t arrays.
+FORCE_INLINE uint32_t getblock32(const uint8_t *p, int i) {
+  const uint8_t *c = p + i * 4;
   return (uint32_t)c[0] | (uint32_t)c[1] << 8 | (uint32_t)c[2] << 16 |
          (uint32_t)c[3] << 24;
-#endif
 }
 
-FORCE_INLINE uint64_t getblock(const uint64_t *p, int i) {
-#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-  return p[i];
-#else
-  const uint8_t *c = (const uint8_t *)&p[i];
+FORCE_INLINE uint64_t getblock64(const uint8_t *p, int i) {
+  const uint8_t *c = p + i * 8;
   return (uint64_t)c[0] | (uint64_t)c[1] << 8 | (uint64_t)c[2] << 16 |
          (uint64_t)c[3] << 24 | (uint64_t)c[4] << 32 | (uint64_t)c[5] << 40 |
          (uint64_t)c[6] << 48 | (uint64_t)c[7] << 56;
-#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -121,10 +115,10 @@ void MurmurHash3_x86_32(const void *key, int len, uint32_t seed, void *out) {
   //----------
   // body
 
-  const uint32_t *blocks = (const uint32_t *)(data + nblocks * 4);
+  const uint8_t *blocks = data + nblocks * 4;
 
   for (int i = -nblocks; i; i++) {
-    uint32_t k1 = getblock(blocks, i);
+    uint32_t k1 = getblock32(blocks, i);
 
     k1 *= c1;
     k1 = ROTL32(k1, 15);
@@ -162,7 +156,7 @@ void MurmurHash3_x86_32(const void *key, int len, uint32_t seed, void *out) {
 
   h1 = fmix(h1);
 
-  *(uint32_t *)out = h1;
+  std::memcpy(out, &h1, sizeof(h1));
 }
 
 //-----------------------------------------------------------------------------
@@ -185,13 +179,13 @@ void MurmurHash3_x86_128(const void *key, const int len, uint32_t seed,
   //----------
   // body
 
-  const uint32_t *blocks = (const uint32_t *)(data + nblocks * 16);
+  const uint8_t *blocks = data + nblocks * 16;
 
   for (int i = -nblocks; i; i++) {
-    uint32_t k1 = getblock(blocks, i * 4 + 0);
-    uint32_t k2 = getblock(blocks, i * 4 + 1);
-    uint32_t k3 = getblock(blocks, i * 4 + 2);
-    uint32_t k4 = getblock(blocks, i * 4 + 3);
+    uint32_t k1 = getblock32(blocks, i * 4 + 0);
+    uint32_t k2 = getblock32(blocks, i * 4 + 1);
+    uint32_t k3 = getblock32(blocks, i * 4 + 2);
+    uint32_t k4 = getblock32(blocks, i * 4 + 3);
 
     k1 *= c1;
     k1 = ROTL32(k1, 15);
@@ -319,10 +313,8 @@ void MurmurHash3_x86_128(const void *key, const int len, uint32_t seed,
   h3 += h1;
   h4 += h1;
 
-  ((uint32_t *)out)[0] = h1;
-  ((uint32_t *)out)[1] = h2;
-  ((uint32_t *)out)[2] = h3;
-  ((uint32_t *)out)[3] = h4;
+  uint32_t hash[4] = {h1, h2, h3, h4};
+  std::memcpy(out, hash, sizeof(hash));
 }
 
 //-----------------------------------------------------------------------------
@@ -341,11 +333,9 @@ void MurmurHash3_x64_128(const void *key, const int len, const uint32_t seed,
   //----------
   // body
 
-  const uint64_t *blocks = (const uint64_t *)(data);
-
   for (int i = 0; i < nblocks; i++) {
-    uint64_t k1 = getblock(blocks, i * 2 + 0);
-    uint64_t k2 = getblock(blocks, i * 2 + 1);
+    uint64_t k1 = getblock64(data, i * 2 + 0);
+    uint64_t k2 = getblock64(data, i * 2 + 1);
 
     k1 *= c1;
     k1 = ROTL64(k1, 31);
@@ -431,8 +421,8 @@ void MurmurHash3_x64_128(const void *key, const int len, const uint32_t seed,
   h1 += h2;
   h2 += h1;
 
-  ((uint64_t *)out)[0] = h1;
-  ((uint64_t *)out)[1] = h2;
+  uint64_t hash[2] = {h1, h2};
+  std::memcpy(out, hash, sizeof(hash));
 }
 
 //-----------------------------------------------------------------------------
