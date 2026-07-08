@@ -954,7 +954,13 @@ public class ClassResolver extends TypeResolver {
     if (hasFieldMetadata) {
       // Preserve the normal TypeInfo/name cache so locally generated or dynamically registered
       // classes can be resolved when the TypeDef is decoded by the same resolver.
-      getTypeIdForTypeDef(cls);
+      int typeId = getTypeIdForTypeDef(cls);
+      if (usesNonStructTypeDef(cls)) {
+        // Field metadata does not make collection/map/custom-serializer classes struct-owned.
+        // Their natural serializers may delegate field IO internally, but the TypeDef root kind
+        // must still resolve to the non-struct serializer family on the reader.
+        return normalizeTypeDefRootTypeId(cls, typeId);
+      }
       return getFieldMetadataTypeIdForTypeDef(cls);
     }
     TypeInfo typeInfo = classInfoMap.get(cls);
