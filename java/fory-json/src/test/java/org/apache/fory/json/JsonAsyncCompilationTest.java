@@ -47,6 +47,7 @@ public class JsonAsyncCompilationTest {
   public void defaultBuilderEnablesAsync() throws Exception {
     assertTrue(asyncCompilationEnabled(ForyJson.builder().build()));
     assertFalse(asyncCompilationEnabled(ForyJson.builder().withAsyncCompilation(false).build()));
+    assertFalse(asyncCompilationEnabled(ForyJson.builder().withCodegen(false).build()));
   }
 
   @Test
@@ -104,6 +105,23 @@ public class JsonAsyncCompilationTest {
         });
     awaitGenerated(json, Object.class);
     assertEquals(json.toJson(holder), expected);
+  }
+
+  @Test
+  public void objectClassJitKeepsNaturalObjectBinding() throws Exception {
+    ForyJson json = ForyJson.builder().build();
+    assertTrue(json.fromJson("[1]", Object.class) instanceof JSONArray);
+    JSONObject before =
+        (JSONObject) json.fromJson("{\"items\":[1],\"name\":\"fory\"}", Object.class);
+    assertTrue(before.get("items") instanceof JSONArray);
+    json.hasGeneratedWriter(Object.class);
+    awaitGenerated(json, Object.class);
+    assertEquals(json.fromJson("7", Object.class), Long.valueOf(7));
+    assertTrue(json.fromJson("[1]", Object.class) instanceof JSONArray);
+    JSONObject after =
+        (JSONObject) json.fromJson("{\"items\":[1],\"name\":\"fory\"}", Object.class);
+    assertTrue(after.get("items") instanceof JSONArray);
+    assertEquals(after.get("name"), "fory");
   }
 
   @Test

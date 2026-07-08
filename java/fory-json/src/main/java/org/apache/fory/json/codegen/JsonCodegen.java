@@ -118,9 +118,10 @@ public final class JsonCodegen {
     if (reader == null) {
       return null;
     }
-    registerWriterCallbacks(typeResolver, stringWriter, writeProperties);
-    registerWriterCallbacks(typeResolver, utf8Writer, writeProperties);
-    registerReaderCallbacks(typeResolver, reader, type, readProperties);
+    registerWriterCallbacks(typeResolver, stringWriter, writeProperties, writeCodecs);
+    registerWriterCallbacks(typeResolver, utf8Writer, writeProperties, writeCodecs);
+    registerReaderCallbacks(
+        typeResolver, reader, type, readProperties, readCodecs, readObjectCodecs);
     return objectCodec.withGenerated(
         stringWriter,
         utf8Writer,
@@ -342,24 +343,31 @@ public final class JsonCodegen {
   }
 
   private static void registerWriterCallbacks(
-      JsonTypeResolver resolver, Object writer, JsonFieldInfo[] properties) {
+      JsonTypeResolver resolver, Object writer, JsonFieldInfo[] properties, JsonCodec[] codecs) {
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
-      if (usesWriteCodec(property) && property.writeTypeInfo().codec() instanceof BaseObjectCodec) {
-        registerFieldCallback(resolver, writer, "c" + i, property.writeTypeInfo().codec());
+      JsonCodec codec = codecs[i];
+      if (usesWriteCodec(property) && codec instanceof BaseObjectCodec) {
+        registerFieldCallback(resolver, writer, "c" + i, codec);
       }
     }
   }
 
   private static void registerReaderCallbacks(
-      JsonTypeResolver resolver, Object reader, Class<?> type, JsonFieldInfo[] properties) {
+      JsonTypeResolver resolver,
+      Object reader,
+      Class<?> type,
+      JsonFieldInfo[] properties,
+      JsonCodec[] codecs,
+      BaseObjectCodec[] objectCodecs) {
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
-      if (usesReadCodec(property) && property.readTypeInfo().codec() instanceof BaseObjectCodec) {
-        registerFieldCallback(resolver, reader, "r" + i, property.readTypeInfo().codec());
+      JsonCodec codec = codecs[i];
+      if (usesReadCodec(property) && codec instanceof BaseObjectCodec) {
+        registerFieldCallback(resolver, reader, "r" + i, codec);
       }
       if (storesReadObjectCodec(type, property)) {
-        registerFieldCallback(resolver, reader, "c" + i, property.readTypeInfo().codec());
+        registerFieldCallback(resolver, reader, "c" + i, objectCodecs[i]);
       }
     }
   }

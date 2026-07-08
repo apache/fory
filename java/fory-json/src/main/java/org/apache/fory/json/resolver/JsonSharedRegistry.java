@@ -100,11 +100,10 @@ public final class JsonSharedRegistry {
     this.customCodecs = config.codecRegistry().copy();
     this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
     exactCodecs = new IdentityHashMap<>();
-    jitContext = new JsonJITContext(config.asyncCompilationEnabled());
+    boolean codegenEnabled = config.codegenEnabled();
+    jitContext = new JsonJITContext(codegenEnabled && config.asyncCompilationEnabled());
     codegen =
-        config.codegenEnabled()
-            ? new JsonCodegen(config.writeNullFields(), config.getCodegenHash())
-            : null;
+        codegenEnabled ? new JsonCodegen(config.writeNullFields(), config.getCodegenHash()) : null;
     registerExactCodecs();
   }
 

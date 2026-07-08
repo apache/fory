@@ -234,13 +234,16 @@ public final class JsonTypeResolver {
 
   private void setObjectCodec(Class<?> type, BaseObjectCodec codec) {
     objectCodecs.put(type, codec);
+    if (type == Object.class) {
+      JsonTypeInfo runtimeTypeInfo = typeInfos.get(RuntimeObjectKey.INSTANCE);
+      if (runtimeTypeInfo != null) {
+        runtimeTypeInfo.setCodec(codec);
+      }
+      return;
+    }
     JsonTypeInfo typeInfo = typeInfos.get(type);
     if (typeInfo != null) {
       typeInfo.setCodec(codec);
-    }
-    JsonTypeInfo runtimeTypeInfo = typeInfos.get(RuntimeObjectKey.INSTANCE);
-    if (type == Object.class && runtimeTypeInfo != null) {
-      runtimeTypeInfo.setCodec(codec);
     }
   }
 
