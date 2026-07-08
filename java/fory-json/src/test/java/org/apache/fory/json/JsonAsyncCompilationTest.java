@@ -38,6 +38,8 @@ import org.apache.fory.json.codec.BaseObjectCodec;
 import org.apache.fory.json.codec.GeneratedObjectCodec;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.data.RecursiveParent;
+import org.apache.fory.json.resolver.JsonSharedRegistry;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.testng.annotations.Test;
 
 public class JsonAsyncCompilationTest {
@@ -78,6 +80,49 @@ public class JsonAsyncCompilationTest {
     assertEquals(read.optional.get().name, "optional");
     assertEquals(read.atomic.get().name, "atomic");
     assertCachedGeneratedChild(json, AsyncParent.class, AsyncChild.class);
+  }
+
+  @Test
+  public void objectDeclaredCodecsKeepNaturalSemantics() throws Exception {
+    ForyJson json = ForyJson.builder().build();
+    ObjectHolder holder = new ObjectHolder();
+    holder.array = new Object[] {"array", 7, child("array-child", 8)};
+    holder.atomic = new AtomicReference<Object>("atomic");
+    holder.map = new LinkedHashMap<>();
+    holder.map.put("string", "value");
+    holder.map.put("number", 9);
+    holder.optional = Optional.of("optional");
+    String expected =
+        "{\"array\":[\"array\",7,{\"id\":8,\"name\":\"array-child\"}],"
+            + "\"atomic\":\"atomic\",\"map\":{\"string\":\"value\",\"number\":9},"
+            + "\"optional\":\"optional\"}";
+    withJitLocked(
+        json,
+        () -> {
+          json.hasGeneratedWriter(Object.class);
+          assertEquals(json.toJson(holder), expected);
+        });
+    awaitGenerated(json, Object.class);
+    assertEquals(json.toJson(holder), expected);
+  }
+
+  @Test
+  public void asyncCompilationKeepsResolverLocalCodecs() throws Exception {
+    ForyJson json = ForyJson.builder().build();
+    JsonSharedRegistry sharedRegistry = (JsonSharedRegistry) field(json, "sharedRegistry");
+    JsonTypeResolver first = new JsonTypeResolver(sharedRegistry);
+    JsonTypeResolver second = new JsonTypeResolver(sharedRegistry);
+    withJitLocked(
+        json,
+        () -> {
+          assertFalse(first.getObjectCodec(AsyncChild.class) instanceof GeneratedObjectCodec);
+          assertFalse(second.getObjectCodec(AsyncChild.class) instanceof GeneratedObjectCodec);
+        });
+    BaseObjectCodec firstCodec = awaitGenerated(first, AsyncChild.class);
+    BaseObjectCodec secondCodec = awaitGenerated(second, AsyncChild.class);
+    assertTrue(firstCodec instanceof GeneratedObjectCodec, firstCodec.getClass().getName());
+    assertTrue(secondCodec instanceof GeneratedObjectCodec, secondCodec.getClass().getName());
+    assertTrue(firstCodec != secondCodec);
   }
 
   @Test
@@ -124,6 +169,19 @@ public class JsonAsyncCompilationTest {
       Thread.sleep(10);
     }
     fail("Timed out waiting for generated JSON codec for " + type);
+  }
+
+  private static BaseObjectCodec awaitGenerated(JsonTypeResolver resolver, Class<?> type)
+      throws InterruptedException {
+    for (int i = 0; i < 200; i++) {
+      BaseObjectCodec codec = resolver.getObjectCodec(type);
+      if (codec instanceof GeneratedObjectCodec) {
+        return codec;
+      }
+      Thread.sleep(10);
+    }
+    fail("Timed out waiting for generated JSON codec for " + type);
+    throw new IllegalStateException("unreachable");
   }
 
   private static boolean asyncCompilationEnabled(ForyJson json) throws Exception {
@@ -218,6 +276,21 @@ public class JsonAsyncCompilationTest {
     return field.get(owner);
   }
 
+  private static void withJitLocked(ForyJson json, ThrowingRunnable action) throws Exception {
+    Object sharedRegistry = field(json, "sharedRegistry");
+    Object jitContext = field(sharedRegistry, "jitContext");
+    jitContext.getClass().getMethod("lock").invoke(jitContext);
+    try {
+      action.run();
+    } finally {
+      jitContext.getClass().getMethod("unlock").invoke(jitContext);
+    }
+  }
+
+  private interface ThrowingRunnable {
+    void run() throws Exception;
+  }
+
   public static final class AsyncParent {
     public AsyncChild[] array;
     public AtomicReference<AsyncChild> atomic;
@@ -230,5 +303,12 @@ public class JsonAsyncCompilationTest {
   public static final class AsyncChild {
     public int id;
     public String name;
+  }
+
+  public static final class ObjectHolder {
+    public Object[] array;
+    public AtomicReference<Object> atomic;
+    public Map<String, Object> map;
+    public Optional<Object> optional;
   }
 }

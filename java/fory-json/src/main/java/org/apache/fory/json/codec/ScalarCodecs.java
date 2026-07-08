@@ -2060,7 +2060,7 @@ public final class ScalarCodecs {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
       valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueRawType, codec -> valueCodec = codec);
+      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
     }
 
     @Override
@@ -2196,7 +2196,7 @@ public final class ScalarCodecs {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
       valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueRawType, codec -> valueCodec = codec);
+      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
     }
 
     @Override
@@ -2251,7 +2251,7 @@ public final class ScalarCodecs {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
       valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueRawType, codec -> valueCodec = codec);
+      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
     }
 
     @Override

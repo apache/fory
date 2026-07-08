@@ -244,7 +244,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
       this.keyCodec = keyCodec;
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
       valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueRawType, codec -> valueCodec = codec);
+      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
     }
 
     @Override

@@ -34,7 +34,8 @@ public final class JsonConfig {
   private final int maxDepth;
   private final CodecRegistry codecRegistry;
   private final String codecRegistryKey;
-  private transient int configHash;
+  private final CodegenKey codegenKey;
+  private transient int codegenHash;
 
   JsonConfig(
       boolean writeNullFields,
@@ -50,6 +51,7 @@ public final class JsonConfig {
     this.maxDepth = maxDepth;
     this.codecRegistry = codecRegistry;
     codecRegistryKey = codecRegistry.codegenKey();
+    codegenKey = new CodegenKey(writeNullFields, propertyDiscoveryEnabled, codecRegistryKey);
   }
 
   public boolean writeNullFields() {
@@ -106,13 +108,46 @@ public final class JsonConfig {
 
   private static final AtomicInteger COUNTER = new AtomicInteger(0);
 
-  // Equal configs share one map entry, following core Config's generated-code naming model.
-  private static final ConcurrentMap<JsonConfig, Integer> CONFIG_ID_MAP = new ConcurrentHashMap<>();
+  // Equal generated source inputs share one map entry, following core generated-code naming model.
+  private static final ConcurrentMap<CodegenKey, Integer> CODEGEN_ID_MAP =
+      new ConcurrentHashMap<>();
 
-  public int getConfigHash() {
-    if (configHash == 0) {
-      configHash = CONFIG_ID_MAP.computeIfAbsent(this, key -> COUNTER.incrementAndGet());
+  public int getCodegenHash() {
+    if (codegenHash == 0) {
+      codegenHash = CODEGEN_ID_MAP.computeIfAbsent(codegenKey, key -> COUNTER.incrementAndGet());
     }
-    return configHash;
+    return codegenHash;
+  }
+
+  private static final class CodegenKey {
+    private final boolean writeNullFields;
+    private final boolean propertyDiscoveryEnabled;
+    private final String codecRegistryKey;
+
+    private CodegenKey(
+        boolean writeNullFields, boolean propertyDiscoveryEnabled, String codecRegistryKey) {
+      this.writeNullFields = writeNullFields;
+      this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
+      this.codecRegistryKey = codecRegistryKey;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other) {
+        return true;
+      }
+      if (other == null || getClass() != other.getClass()) {
+        return false;
+      }
+      CodegenKey that = (CodegenKey) other;
+      return writeNullFields == that.writeNullFields
+          && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
+          && Objects.equals(codecRegistryKey, that.codecRegistryKey);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(writeNullFields, propertyDiscoveryEnabled, codecRegistryKey);
+    }
   }
 }

@@ -103,7 +103,7 @@ public final class JsonSharedRegistry {
     jitContext = new JsonJITContext(config.asyncCompilationEnabled());
     codegen =
         config.codegenEnabled()
-            ? new JsonCodegen(config.writeNullFields(), config.getConfigHash())
+            ? new JsonCodegen(config.writeNullFields(), config.getCodegenHash())
             : null;
     registerExactCodecs();
   }
@@ -234,16 +234,16 @@ public final class JsonSharedRegistry {
     return jitContext;
   }
 
-  boolean hasJITResult(Class<?> type) {
-    return jitContext.hasJITResult(type);
+  boolean hasJITResult(Object id) {
+    return jitContext.hasJITResult(id);
   }
 
   boolean asyncCompilationEnabled() {
     return jitContext.asyncCompilationEnabled();
   }
 
-  void registerJITNotifyCallback(Class<?> type, JsonJITContext.NotifyCallback callback) {
-    jitContext.registerJITNotifyCallback(type, callback);
+  void registerJITNotifyCallback(Object id, JsonJITContext.NotifyCallback callback) {
+    jitContext.registerJITNotifyCallback(id, callback);
   }
 
   boolean propertyDiscoveryEnabled() {

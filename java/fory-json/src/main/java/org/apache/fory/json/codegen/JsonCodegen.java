@@ -58,13 +58,13 @@ public final class JsonCodegen {
   private static final Map<String, Map<String, Integer>> ID_GENERATOR = new ConcurrentHashMap<>();
 
   final boolean writeNullFields;
-  private final int configHash;
+  private final int codegenHash;
   private final CodeGenerator codeGenerator;
   private final ClassLoader jsonLoader;
 
-  public JsonCodegen(boolean writeNullFields, int configHash) {
+  public JsonCodegen(boolean writeNullFields, int codegenHash) {
     this.writeNullFields = writeNullFields;
-    this.configHash = configHash;
+    this.codegenHash = codegenHash;
     jsonLoader = JsonCodegen.class.getClassLoader();
     codeGenerator = new CodeGenerator(jsonLoader);
   }
@@ -346,7 +346,7 @@ public final class JsonCodegen {
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
       if (usesWriteCodec(property) && property.writeTypeInfo().codec() instanceof BaseObjectCodec) {
-        registerFieldCallback(resolver, writer, "c" + i, property.writeRawType());
+        registerFieldCallback(resolver, writer, "c" + i, property.writeTypeInfo().codec());
       }
     }
   }
@@ -356,22 +356,19 @@ public final class JsonCodegen {
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
       if (usesReadCodec(property) && property.readTypeInfo().codec() instanceof BaseObjectCodec) {
-        registerFieldCallback(resolver, reader, "r" + i, property.readRawType());
+        registerFieldCallback(resolver, reader, "r" + i, property.readTypeInfo().codec());
       }
       if (storesReadObjectCodec(type, property)) {
-        registerFieldCallback(resolver, reader, "c" + i, readNestedType(property));
+        registerFieldCallback(resolver, reader, "c" + i, property.readTypeInfo().codec());
       }
     }
   }
 
   private static void registerFieldCallback(
-      JsonTypeResolver resolver, Object owner, String fieldName, Class<?> type) {
-    if (type == null) {
-      return;
-    }
+      JsonTypeResolver resolver, Object owner, String fieldName, JsonCodec currentCodec) {
     Field field = ReflectionUtils.getField(owner.getClass(), fieldName);
     resolver.registerJITNotifyCallback(
-        type, codec -> ReflectionUtils.setObjectFieldValue(owner, field, codec));
+        currentCodec, codec -> ReflectionUtils.setObjectFieldValue(owner, field, codec));
   }
 
   private static boolean isPublicSourceType(Class<?> type) {
@@ -441,7 +438,7 @@ public final class JsonCodegen {
     String name = simpleClassName(type) + role + "ForyJsonCodec";
     Map<String, Integer> subGenerator =
         ID_GENERATOR.computeIfAbsent(name, key -> new ConcurrentHashMap<>());
-    String key = configHash + "_" + CodeGenerator.getClassUniqueId(type);
+    String key = codegenHash + "_" + CodeGenerator.getClassUniqueId(type);
     Integer id = subGenerator.get(key);
     if (id == null) {
       synchronized (subGenerator) {

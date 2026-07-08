@@ -137,7 +137,7 @@ public final class JsonTypeResolver {
 
                 @Override
                 public Object id() {
-                  return type;
+                  return codec;
                 }
               });
       if (compiled != null && compiled != codec) {
@@ -169,7 +169,7 @@ public final class JsonTypeResolver {
     }
     JsonTypeInfo typeInfo =
         new JsonTypeInfo(declaredType, typeRef, rawType, sharedRegistry.kind(rawType), codec);
-    registerCodecUpdate(rawType, typeInfo, codec);
+    registerCodecUpdate(typeInfo, codec);
     return typeInfo;
   }
 
@@ -188,17 +188,26 @@ public final class JsonTypeResolver {
     }
     JsonTypeInfo typeInfo =
         new JsonTypeInfo(rawType, typeRef, rawType, sharedRegistry.kind(rawType), codec);
-    registerCodecUpdate(rawType, typeInfo, codec);
+    registerCodecUpdate(typeInfo, codec);
     typeInfos.put(key, typeInfo);
     return typeInfo;
   }
 
-  public void registerJITNotifyCallback(Class<?> type, Consumer<JsonCodec> updater) {
-    if (!sharedRegistry.hasJITResult(type)) {
+  public void registerJITNotifyCallback(JsonCodec currentCodec, Consumer<JsonCodec> updater) {
+    if (!(currentCodec instanceof BaseObjectCodec)) {
+      return;
+    }
+    BaseObjectCodec objectCodec = (BaseObjectCodec) currentCodec;
+    Class<?> type = objectCodec.type();
+    if (!sharedRegistry.hasJITResult(objectCodec)) {
+      BaseObjectCodec latest = getObjectCodec(type);
+      if (latest != objectCodec) {
+        updater.accept(latest);
+      }
       return;
     }
     sharedRegistry.registerJITNotifyCallback(
-        type,
+        objectCodec,
         new JsonJITContext.NotifyCallback() {
           @Override
           public void onNotifyResult(Object result) {
@@ -211,15 +220,16 @@ public final class JsonTypeResolver {
 
           @Override
           public void onNotifyMissed() {
-            updater.accept(getObjectCodec(type));
+            BaseObjectCodec latest = getObjectCodec(type);
+            if (latest != objectCodec) {
+              updater.accept(latest);
+            }
           }
         });
   }
 
-  private void registerCodecUpdate(Class<?> rawType, JsonTypeInfo typeInfo, JsonCodec codec) {
-    if (codec instanceof BaseObjectCodec) {
-      registerJITNotifyCallback(rawType, typeInfo::setCodec);
-    }
+  private void registerCodecUpdate(JsonTypeInfo typeInfo, JsonCodec codec) {
+    registerJITNotifyCallback(codec, typeInfo::setCodec);
   }
 
   private void setObjectCodec(Class<?> type, BaseObjectCodec codec) {

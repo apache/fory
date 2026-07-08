@@ -889,7 +889,7 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
       this.elementTypeInfo = elementTypeInfo;
       this.elementCodec = elementCodec;
       resolver.registerJITNotifyCallback(
-          elementTypeInfo.rawType(), codec -> this.elementCodec = (BaseObjectCodec) codec);
+          elementCodec, codec -> this.elementCodec = (BaseObjectCodec) codec);
     }
 
     @Override

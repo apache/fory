@@ -1242,7 +1242,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       super(componentType);
       this.elementTypeInfo = elementTypeInfo;
       elementCodec = elementTypeInfo.codec();
-      resolver.registerJITNotifyCallback(componentType, codec -> elementCodec = codec);
+      resolver.registerJITNotifyCallback(elementCodec, codec -> elementCodec = codec);
     }
 
     @Override
