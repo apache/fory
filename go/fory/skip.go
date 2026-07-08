@@ -30,6 +30,37 @@ func skipSizedBytes(ctx *ReadContext, size uint64) {
 	ctx.buffer.Skip(int(size), ctx.Err())
 }
 
+func consumeSkippedRefFlag(ctx *ReadContext, readRefFlag bool) bool {
+	if !readRefFlag {
+		return true
+	}
+	err := ctx.Err()
+	refFlag := ctx.buffer.ReadInt8(err)
+	if ctx.HasError() {
+		return false
+	}
+	switch refFlag {
+	case NullFlag:
+		return false
+	case RefFlag:
+		_ = ctx.buffer.ReadVarUint32(err)
+		return false
+	case RefValueFlag:
+		// A skipped first occurrence still consumes a producer ref id. Keep
+		// numbering aligned without adding a pending ref for the next materialized value.
+		if reserveErr := ctx.RefResolver().ReserveSkippedRefId(); reserveErr != nil {
+			ctx.SetError(FromError(reserveErr))
+			return false
+		}
+		return true
+	case NotNullValueFlag:
+		return true
+	default:
+		ctx.SetError(DeserializationErrorf("invalid ref flag %d", refFlag))
+		return false
+	}
+}
+
 // SkipFieldValue skips a field value in compatible mode when the field doesn't exist
 // or is incompatible with the local type.
 // Uses context error state for deferred error checking.
@@ -45,17 +76,8 @@ func SkipFieldValueWithTypeFlag(ctx *ReadContext, fieldDef FieldDef, readRefFlag
 	if readTypeInfo {
 		// Type info was written for this field (struct fields in compatible mode)
 		// Read ref flag first if needed
-		if readRefFlag {
-			refFlag := ctx.buffer.ReadInt8(err)
-			if refFlag == NullFlag {
-				return
-			}
-			if refFlag == RefFlag {
-				// Reference to already-seen object, skip the reference index
-				_ = ctx.buffer.ReadVarUint32(err)
-				return
-			}
-			// RefValueFlag (0) or NotNullValueFlag (-1) means we need to read the actual object
+		if !consumeSkippedRefFlag(ctx, readRefFlag) {
+			return
 		}
 
 		// Read type info (typeID + meta_index)
@@ -135,20 +157,8 @@ func isStructTypeId(id TypeId) bool {
 func SkipAnyValue(ctx *ReadContext, readRefFlag bool) {
 	err := ctx.Err()
 	// Handle ref flag first if needed
-	if readRefFlag {
-		refFlag := ctx.buffer.ReadInt8(err)
-		if ctx.HasError() {
-			return
-		}
-		if refFlag == NullFlag {
-			return
-		}
-		if refFlag == RefFlag {
-			// Reference to already-seen object, skip the reference index
-			_ = ctx.buffer.ReadVarUint32(err)
-			return
-		}
-		// RefValueFlag (0) or NotNullValueFlag (-1) means we need to read the actual object
+	if !consumeSkippedRefFlag(ctx, readRefFlag) {
+		return
 	}
 
 	// ReadData type_id first
@@ -265,6 +275,7 @@ func skipCollection(ctx *ReadContext, fieldDef FieldDef) {
 		elemDef = FieldDef{
 			typeSpec: NewSimpleTypeSpec(TypeId(elemTypeInfo.TypeID)),
 			nullable: hasNull,
+			trackRef: trackRef,
 		}
 	} else if isDeclared {
 		// Use declared element type from the collection's field type
@@ -272,19 +283,22 @@ func skipCollection(ctx *ReadContext, fieldDef FieldDef) {
 			elemDef = FieldDef{
 				typeSpec: fieldDef.typeSpec.elementType,
 				nullable: hasNull,
+				trackRef: trackRef,
 			}
 		} else {
 			// Fallback: use unknown type
 			elemDef = FieldDef{
 				typeSpec: NewSimpleTypeSpec(UNKNOWN),
 				nullable: true,
+				trackRef: trackRef,
 			}
 		}
 	} else {
 		// Not same type - each element has its own type info, use unknown
 		elemDef = FieldDef{
 			typeSpec: NewSimpleTypeSpec(UNKNOWN),
-			nullable: true,
+			nullable: hasNull,
+			trackRef: trackRef,
 		}
 	}
 
@@ -297,7 +311,7 @@ func skipCollection(ctx *ReadContext, fieldDef FieldDef) {
 
 	for i := uint32(0); i < length; i++ {
 		// Read ref flag if collection has ref tracking enabled
-		skipValue(ctx, elemDef, trackRef, false, elemTypeInfo)
+		skipValue(ctx, elemDef, trackRef || hasNull, false, elemTypeInfo)
 		if ctx.HasError() {
 			return
 		}
@@ -547,20 +561,8 @@ func skipStruct(ctx *ReadContext, info *TypeInfo) {
 // Uses context error state for deferred error checking.
 func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bool, typeInfo *TypeInfo) {
 	err := ctx.Err()
-	if readRefFlag {
-		refFlag := ctx.buffer.ReadInt8(err)
-		if ctx.HasError() {
-			return
-		}
-		if refFlag == NullFlag {
-			return
-		}
-		if refFlag == RefFlag {
-			// Reference to already-seen object, skip the reference index
-			_ = ctx.buffer.ReadVarUint32(err)
-			return
-		}
-		// RefValueFlag (0) or NotNullValueFlag (-1) means we need to read the actual object
+	if !consumeSkippedRefFlag(ctx, readRefFlag) {
+		return
 	}
 
 	typeIDNum := uint32(fieldDef.typeSpec.TypeId())

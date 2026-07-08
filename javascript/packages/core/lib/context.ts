@@ -241,6 +241,8 @@ export class RefReader {
   }
 
   getReadRef(refId: number) {
+    // Missing compatible structs may surface as null field values, but they are
+    // not published as reference targets; keep this hot path as a direct lookup.
     return this.readObjects[refId];
   }
 

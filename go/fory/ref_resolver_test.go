@@ -44,9 +44,11 @@ func TestReferenceResolver(t *testing.T) {
 	}
 	refResolver.readObjects = make([]reflect.Value, len(refResolver.writtenObjects))
 	ctxErr := &Error{}
-	for range values {
+	for i, data := range values {
 		require.Equal(t, refResolver.ReadRefOrNull(buf, ctxErr), RefValueFlag)
+		refResolver.SetReadObject(int32(i), reflect.ValueOf(data))
 		require.Equal(t, refResolver.ReadRefOrNull(buf, ctxErr), RefFlag)
+		require.False(t, ctxErr.HasError())
 	}
 	{
 		s := []int{1, 2, 3}
@@ -200,6 +202,30 @@ func TestRefResolverOOBPanic(t *testing.T) {
 	require.NotPanics(t, func() {
 		resolver.ReadRefOrNull(buffer, &ctxErr)
 	}, "RefResolver.GetReadObject should not panic on OOB index")
+	require.True(t, ctxErr.HasError())
+}
+
+func TestRefResolverRejectsSkippedSlotRef(t *testing.T) {
+	resolver := newRefResolver(true)
+	require.NoError(t, resolver.ReserveSkippedRefId())
+	keptID, err := resolver.PreserveRefId()
+	require.NoError(t, err)
+	kept := reflect.ValueOf("kept")
+	resolver.SetReadObject(keptID, kept)
+
+	skippedRef := NewByteBuffer(nil)
+	skippedRef.WriteInt8(RefFlag)
+	skippedRef.WriteVarUint32(0)
+	_, err = resolver.TryPreserveRefId(skippedRef)
+	require.Error(t, err)
+
+	keptRef := NewByteBuffer(nil)
+	keptRef.WriteInt8(RefFlag)
+	keptRef.WriteVarUint32(uint32(keptID))
+	refID, err := resolver.TryPreserveRefId(keptRef)
+	require.NoError(t, err)
+	require.Equal(t, int32(RefFlag), refID)
+	require.Equal(t, kept.String(), resolver.GetCurrentReadObject().String())
 }
 
 // TestRefResolverBoundaryRegression verifies that valid boundary indices

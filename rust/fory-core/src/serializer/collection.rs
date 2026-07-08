@@ -26,7 +26,7 @@ use crate::serializer::{ForyDefault, Serializer};
 use crate::type_id::{self, need_to_write_type_for_field, TypeId, PRIMITIVE_ARRAY_TYPES};
 use crate::types::{bfloat16::bfloat16, float16::float16};
 
-const TRACKING_REF: u8 = 0b1;
+pub const TRACKING_REF: u8 = 0b1;
 
 pub const HAS_NULL: u8 = 0b10;
 

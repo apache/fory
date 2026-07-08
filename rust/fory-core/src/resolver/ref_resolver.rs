@@ -272,6 +272,9 @@ impl RefReader {
     #[inline(always)]
     pub fn reserve_ref_id(&mut self) -> u32 {
         let ref_id = self.refs.len() as u32;
+        // Skipped values reserve their producer ref id but intentionally stay
+        // unresolved. A later Ref to this slot must fail downcast instead of
+        // aliasing the next materialized object.
         self.refs.push(Box::new(()));
         ref_id
     }
