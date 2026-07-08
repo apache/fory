@@ -42,14 +42,21 @@ public final class GeneratedObjectCodec extends BaseObjectCodec {
   private final Utf16ObjectReader utf16Reader;
   private final Utf8ObjectReader utf8Reader;
 
-  GeneratedObjectCodec(ObjectCodec base, ObjectCodecs codecs) {
+  GeneratedObjectCodec(
+      ObjectCodec base,
+      StringObjectWriter stringWriter,
+      Utf8ObjectWriter utf8Writer,
+      ObjectReader reader,
+      Latin1ObjectReader latin1Reader,
+      Utf16ObjectReader utf16Reader,
+      Utf8ObjectReader utf8Reader) {
     super(base.type, base.writeFields, base.readFields, base.instantiator);
-    stringWriter = codecs.stringWriter();
-    utf8Writer = codecs.utf8Writer();
-    reader = codecs.reader();
-    latin1Reader = codecs.latin1Reader();
-    utf16Reader = codecs.utf16Reader();
-    utf8Reader = codecs.utf8Reader();
+    this.stringWriter = stringWriter;
+    this.utf8Writer = utf8Writer;
+    this.reader = reader;
+    this.latin1Reader = latin1Reader;
+    this.utf16Reader = utf16Reader;
+    this.utf8Reader = utf8Reader;
   }
 
   @Override

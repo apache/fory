@@ -83,12 +83,18 @@ import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.StringSerializer;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonScalarTest extends ForyJsonTestModels {
+  @Factory(dataProvider = "codegen")
+  public JsonScalarTest(boolean codegen) {
+    super(codegen);
+  }
+
   @Test
   public void writeBoxedScalars() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected =
         "{\"bool\":true,\"byteValue\":2,\"charValue\":\"x\",\"doubleValue\":2.5,"
             + "\"floatValue\":1.5,\"intValue\":4,\"longValue\":5,\"shortValue\":3}";
@@ -126,7 +132,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadNonFiniteFloats() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(Double.NaN), "\"NaN\"");
     assertEquals(json.toJson(Double.POSITIVE_INFINITY), "\"Infinity\"");
     assertEquals(json.toJson(Double.NEGATIVE_INFINITY), "\"-Infinity\"");
@@ -189,7 +195,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeNaturalObjectValues() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected =
         "{\"bool\":true,\"list\":[\"a\",1,false],\"map\":{\"name\":\"fory\",\"score\":9},"
             + "\"number\":7,\"text\":\"fory\"}";
@@ -200,7 +206,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeNaturalEmptyObject() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected = "{\"value\":{}}";
     assertEquals(json.toJson(new NaturalObjectValue()), expected);
     assertEquals(
@@ -209,7 +215,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readBoxedScalars() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     BoxedScalars value =
         json.fromJson(
             "{\"bool\":false,\"byteValue\":6,\"charValue\":\"z\",\"doubleValue\":3.5,"
@@ -227,7 +233,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readNumericBoundaries() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String latin1 =
         "{\"intMax\":2147483647,\"intMin\":-2147483648,"
             + "\"longMax\":9223372036854775807,\"longMin\":-9223372036854775808,"
@@ -329,7 +335,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeNumericBoundaries() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     NumericBoundaries value = new NumericBoundaries();
     value.intMax = Integer.MAX_VALUE;
     value.intMin = Integer.MIN_VALUE;
@@ -360,7 +366,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         writer.toJson(), "[\"" + ZH_TEXT + "\",9223372036854775807,2147483648,-2147483648]");
 
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     Utf16NumericFields value = new Utf16NumericFields();
     value.prefix = ZH_TEXT;
     value.zero = 0;
@@ -392,7 +398,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadCoreScalarFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     CoreScalarFields value = new CoreScalarFields();
     String expected =
         "{\"atomicInt\":7,\"bigDecimal\":12345.6789,\"bigInteger\":12345678901234567890,"
@@ -427,7 +433,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadAtomicScalars() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new AtomicBoolean(true)), "true");
     assertEquals(json.fromJson("false", AtomicBoolean.class).get(), false);
     assertEquals(json.toJson(new AtomicInteger(12)), "12");
@@ -446,7 +452,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeUtf8ScalarFormats() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     UUID uuid = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
     assertEquals(
         new String(json.toJsonBytes(uuid), StandardCharsets.UTF_8),
@@ -491,7 +497,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeGeneratedUtf8Scalars() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     Utf8ScalarFields fields = new Utf8ScalarFields();
     fields.uuid = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
     fields.decimal = new BigDecimal("12345.6789");
@@ -509,7 +515,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeCommonScalarFastFormats() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     UUID uuid = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
     assertEquals(json.toJson(new StringBuilder("build")), "\"build\"");
     assertEquals(
@@ -552,7 +558,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readScalarRoots() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.fromJson("7", int.class), Integer.valueOf(7));
     assertEquals(json.fromJson("true", boolean.class), Boolean.TRUE);
     assertEquals(json.fromJson("0.100", BigDecimal.class), new BigDecimal("0.100"));
@@ -579,7 +585,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readCommonScalarFastFormats() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.fromJson("123456789", BigInteger.class), BigInteger.valueOf(123456789L));
     assertEquals(json.fromJson("123456789", BigDecimal.class), new BigDecimal("123456789"));
     assertEquals(
@@ -649,7 +655,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadSqlTimeScalars() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     java.sql.Date date = new java.sql.Date(123456789L);
     Time time = new Time(234567890L);
     Timestamp timestamp = new Timestamp(345678901L);
@@ -663,7 +669,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readDoubleDecimalContainers() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     byte[] doublesJson = "[12.5,-0.0,1.25e2]".getBytes(StandardCharsets.UTF_8);
     double[] doubles = json.fromJson(doublesJson, double[].class);
     assertEquals(doubles, new double[] {12.5d, -0.0d, 125.0d});
@@ -700,7 +706,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readGeneratedUtf8BigDecimal() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     byte[] input =
         ("{\"uuid\":\"123e4567-e89b-12d3-a456-426614174000\","
                 + "\"decimal\":0.12345678901234567,"
@@ -714,7 +720,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readGeneratedLatin1Scalars() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String input =
         "{\"uuid\":\"123e4567-e89b-12d3-a456-426614174000\","
             + "\"decimal\":0.12345678901234567,"
@@ -730,7 +736,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readUntypedLargeInteger() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     BigInteger unsigned = new BigInteger("18446744073709550616");
     assertEquals(json.fromJson(unsigned.toString(), Object.class), unsigned);
     JSONObject object = json.fromJson("{\"count\":18446744073709550616}", JSONObject.class);
@@ -739,7 +745,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadDeclaredNumber() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.fromJson("7", Number.class), Long.valueOf(7));
     assertEquals(
         json.fromJson("9223372036854775808", Number.class), new BigInteger("9223372036854775808"));
@@ -764,7 +770,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadCharSequence() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     CharSequence root = json.fromJson("\"fory\"", CharSequence.class);
     assertEquals(root, "fory");
     assertEquals(root.getClass(), String.class);
@@ -780,7 +786,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadBitSet() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     BitSet empty = new BitSet();
     assertEquals(json.toJson(empty), "[]");
     assertEquals(json.fromJson("[]", BitSet.class), empty);
@@ -807,7 +813,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadChronoDates() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     LocalDate iso = LocalDate.of(2024, 2, 3);
     ChronoDateFields fields = new ChronoDateFields();
     fields.hijrah = HijrahChronology.INSTANCE.date(iso);
@@ -831,7 +837,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void rejectNetworkAddressTypes() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.toJson(InetAddress.getLoopbackAddress()));
     assertThrows(
         ForyJsonException.class,
@@ -844,7 +850,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void rejectClassTypeByDefault() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.toJson(String.class));
     assertThrows(ForyJsonException.class, () -> json.toJson(int.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("\"java.lang.String\"", Class.class));
@@ -853,7 +859,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void rejectClassFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.toJson(new ClassFieldHolder()));
     assertThrows(
         ForyJsonException.class,
@@ -862,7 +868,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void rejectClassArrays() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.toJson(new Class<?>[] {String.class}));
     assertThrows(
         ForyJsonException.class, () -> json.fromJson("[\"java.lang.String\"]", Class[].class));
@@ -874,7 +880,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeReadFileAndPath() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     File file = new File("fory-json-file.txt");
     Path path = Paths.get("fory-json-path.txt");
     assertEquals(json.toJson(file), "\"fory-json-file.txt\"");
@@ -894,7 +900,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readLocalDateFromDateTime() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     LocalDate expected = LocalDate.of(2023, 7, 2);
     assertEquals(json.fromJson("\"2023-07-02T16:00:00.000Z\"", LocalDate.class), expected);
     assertEquals(
@@ -908,7 +914,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readLocalDateFallbackForms() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     LocalDate extended = LocalDate.of(10000, 2, 3);
     assertEquals(json.fromJson("\"+10000-02-03\"", LocalDate.class), extended);
     assertEquals(
@@ -920,7 +926,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readOffsetDateTime() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     OffsetDateTime utc = OffsetDateTime.of(2024, 2, 3, 4, 5, 6, 0, ZoneOffset.UTC);
     assertEquals(json.fromJson("\"2024-02-03T04:05:06Z\"", OffsetDateTime.class), utc);
     assertEquals(
@@ -946,7 +952,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void readOffsetDateTimeFallbackForms() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     OffsetDateTime extended = OffsetDateTime.of(10000, 2, 3, 4, 5, 6, 0, ZoneOffset.ofHours(8));
     String input = "\"+10000-02-03T04:05:06+08:00\"";
     assertEquals(json.fromJson(input, OffsetDateTime.class), extended);
@@ -971,7 +977,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(timestampReader.readIsoOffsetDateTime(), timestamp);
     timestampReader.finish();
 
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     Utf16TemporalFields fields =
         json.fromJson(
             "{\"text\":\"中文\",\"date\":\"2023-07-02\","
@@ -985,16 +991,16 @@ public class JsonScalarTest extends ForyJsonTestModels {
   @Test
   public void objectFieldUsesUtf8Codec() {
     ForyJson json =
-        ForyJson.builder().registerCodec(ModeAwareValue.class, new ModeAwareCodec()).build();
+        newJsonBuilder().registerCodec(ModeAwareValue.class, new ModeAwareCodec()).build();
     ModeAwareHolder holder =
         json.fromJson("{\"value\":{}}".getBytes(StandardCharsets.UTF_8), ModeAwareHolder.class);
-    assertEquals(holder.value.mode, "utf8");
+    assertEquals(holder.value.mode, codegenEnabled() ? "utf8" : "generic");
   }
 
   @Test
   public void byteInputUsesUtf8Codec() {
     ForyJson json =
-        ForyJson.builder().registerCodec(ModeAwareValue.class, new ModeAwareCodec()).build();
+        newJsonBuilder().registerCodec(ModeAwareValue.class, new ModeAwareCodec()).build();
     ModeAwareValue value =
         json.fromJson("{}".getBytes(StandardCharsets.UTF_8), ModeAwareValue.class);
     assertEquals(value.mode, "utf8");
@@ -1003,7 +1009,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   @Test
   public void stringInputUsesLatin1Codec() {
     ForyJson json =
-        ForyJson.builder().registerCodec(ModeAwareValue.class, new ModeAwareCodec()).build();
+        newJsonBuilder().registerCodec(ModeAwareValue.class, new ModeAwareCodec()).build();
     ModeAwareValue value = json.fromJson("{}", ModeAwareValue.class);
     String expected = StringSerializer.isBytesBackedString() ? "latin1" : "utf16";
     assertEquals(value.mode, expected);
@@ -1012,14 +1018,14 @@ public class JsonScalarTest extends ForyJsonTestModels {
   @Test
   public void stringInputUsesUtf16Codec() {
     ForyJson json =
-        ForyJson.builder().registerCodec(ModeAwareValue.class, new ModeAwareCodec()).build();
+        newJsonBuilder().registerCodec(ModeAwareValue.class, new ModeAwareCodec()).build();
     ModeAwareValue value = json.fromJson("{\"ignored\":\"\u0100\"}", ModeAwareValue.class);
     assertEquals(value.mode, "utf16");
   }
 
   @Test
   public void rejectMalformedStringScalar() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertThrows(
         RuntimeException.class,
         () -> json.fromJson("\"2024-02-03 04:05:06\"", LocalDateTime.class));
@@ -1027,7 +1033,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void rejectLeadingZero() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.fromJson("01", int.class));
     assertThrows(
         ForyJsonException.class,

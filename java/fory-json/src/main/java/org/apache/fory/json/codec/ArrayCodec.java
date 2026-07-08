@@ -75,7 +75,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     } else if (componentType == String.class) {
       return StringArrayCodec.INSTANCE;
     }
-    return new ObjectArrayCodec(componentType, resolver.getTypeInfo(componentType, componentType));
+    return new ObjectArrayCodec(
+        componentType, resolver.getTypeInfo(componentType, componentType), resolver);
   }
 
   @Override
@@ -1231,15 +1232,17 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     private static final int MAX_CACHED_VALUES_SIZE = 1024;
 
     private final JsonTypeInfo elementTypeInfo;
-    private final JsonCodec elementCodec;
+    private JsonCodec elementCodec;
     // Recursive object-array reads borrow one scratch slot per active depth.
     private final Object[][] valuesCache = new Object[VALUES_CACHE_DEPTH][];
     private int valuesDepth;
 
-    private ObjectArrayCodec(Class<?> componentType, JsonTypeInfo elementTypeInfo) {
+    private ObjectArrayCodec(
+        Class<?> componentType, JsonTypeInfo elementTypeInfo, JsonTypeResolver resolver) {
       super(componentType);
       this.elementTypeInfo = elementTypeInfo;
       elementCodec = elementTypeInfo.codec();
+      resolver.registerJITNotifyCallback(elementCodec, codec -> elementCodec = codec);
     }
 
     @Override

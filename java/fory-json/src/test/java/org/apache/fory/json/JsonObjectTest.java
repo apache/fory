@@ -40,12 +40,18 @@ import org.apache.fory.json.data.MethodsIgnored;
 import org.apache.fory.json.data.ParentValue;
 import org.apache.fory.json.data.PrivateFields;
 import org.apache.fory.json.data.PublicFields;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonObjectTest extends ForyJsonTestModels {
+  @Factory(dataProvider = "codegen")
+  public JsonObjectTest(boolean codegen) {
+    super(codegen);
+  }
+
   @Test
   public void writePublicFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new PublicFields()), "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
     assertEquals(
         new String(json.toJsonBytes(new PublicFields()), StandardCharsets.UTF_8),
@@ -54,7 +60,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void writeJsonToOutputStream() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     json.writeJsonTo(new PublicFields(), output);
     assertEquals(
@@ -82,7 +88,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void writeFirstIntGenerated() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected = "{\"count\":2,\"name\":\"first\"}";
     assertEquals(json.toJson(new FirstIntField()), expected);
     assertEquals(
@@ -92,7 +98,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void sharedFacadeThreads() throws Exception {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected = "{\"active\":true,\"id\":7,\"name\":\"fory\"}";
     int threads = 8;
     int iterations = 200;
@@ -129,14 +135,14 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void useGeneratedWriter() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new PublicFields()), "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
     assertGeneratedWhenSupported(json, PublicFields.class);
   }
 
   @Test
-  public void disableGeneratedWriter() {
-    ForyJson json = ForyJson.builder().withCodegen(false).build();
+  public void generatedWriterSetting() {
+    ForyJson json = newJson();
     assertEquals(json.toJson(new PublicFields()), "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
     PublicFields fields =
         json.fromJson("{\"active\":false,\"id\":8,\"name\":\"json\"}", PublicFields.class);
@@ -150,12 +156,12 @@ public class JsonObjectTest extends ForyJsonTestModels {
             BoxedScalars.class);
     assertEquals(scalars.byteValue, Byte.valueOf((byte) 2));
     assertEquals(scalars.shortValue, Short.valueOf((short) 3));
-    assertEquals(json.hasGeneratedWriter(PublicFields.class), false);
+    assertGeneratedWhenSupported(json, PublicFields.class);
   }
 
   @Test
   public void writeNullFields() {
-    ForyJson json = ForyJson.builder().writeNullFields(true).build();
+    ForyJson json = newJsonBuilder().writeNullFields(true).build();
     assertEquals(
         json.toJson(new PublicFields()),
         "{\"active\":true,\"id\":7,\"name\":\"fory\",\"missing\":null}");
@@ -163,7 +169,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void fieldOnlyModeIgnoresMethods() {
-    ForyJson json = ForyJson.builder().withFieldMode(true).build();
+    ForyJson json = newJsonBuilder().withFieldMode(true).build();
     assertEquals(
         json.toJson(new MethodsIgnored()),
         "{\"setterCalls\":0,\"value\":\"field\",\"hidden\":\"hidden\"}");
@@ -176,7 +182,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void writeDeclaredFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected = "{\"id\":11,\"name\":\"private\"}";
     assertEquals(json.toJson(new PrivateFields()), expected);
     assertEquals(
@@ -193,13 +199,13 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void writeDirectionalIgnore() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertEquals(json.toJson(new DirectionalIgnore()), "{\"writeOnly\":2}");
   }
 
   @Test
   public void writeDeclaredObjectFieldType() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String expected = "{\"value\":{\"parent\":1}}";
     assertEquals(json.toJson(new DeclaredParentField()), expected);
     assertEquals(
@@ -212,7 +218,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void readPublicFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     PublicFields fields =
         json.fromJson(
             "{\"unknown\":[1,true,{\"x\":\"y\"}],\"name\":\"fory\",\"id\":7,\"active\":true}",
@@ -224,7 +230,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void readUtf8Bytes() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     byte[] bytes =
         "{\"name\":\"\uD83D\uDE00\u1234\",\"id\":8,\"active\":false}"
             .getBytes(StandardCharsets.UTF_8);
@@ -236,7 +242,7 @@ public class JsonObjectTest extends ForyJsonTestModels {
 
   @Test
   public void readDirectionalIgnore() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     DirectionalIgnore value =
         json.fromJson("{\"both\":7,\"writeOnly\":8,\"readOnly\":9}", DirectionalIgnore.class);
     assertEquals(value.both, 1);

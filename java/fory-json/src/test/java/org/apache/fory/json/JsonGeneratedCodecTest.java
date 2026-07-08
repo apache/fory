@@ -23,6 +23,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
@@ -42,14 +43,20 @@ import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonGeneratedCodecTest extends ForyJsonTestModels {
+  @Factory(dataProvider = "codegen")
+  public JsonGeneratedCodecTest(boolean codegen) {
+    super(codegen);
+  }
+
   private static final String GENERATED_SUFFIX = "ForyJsonCodec";
 
   @Test
   public void writeRecursiveGeneratedTypes() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     RecursiveParent value = new RecursiveParent();
     assertEquals(json.toJson(value), "{\"child\":{\"name\":\"child\"},\"name\":\"parent\"}");
     assertEquals(
@@ -61,7 +68,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
 
   @Test
   public void writeGeneratedTokenChanges() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     TokenValues value = new TokenValues();
     String first = "{\"count\":1,\"name\":\"alpha\",\"tags\":[\"x\",\"y\"],\"total\":2}";
     assertEquals(json.toJson(value), first);
@@ -80,7 +87,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
 
   @Test
   public void writeGeneratedTokenLanes() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     TokenGroup group = new TokenGroup();
     group.values =
         Arrays.asList(
@@ -112,7 +119,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
 
   @Test
   public void readGeneratedObjectCollection() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String input = "{\"values\":[{\"count\":1,\"name\":\"alpha\",\"tags\":[\"x\"],\"total\":2}]}";
     TokenGroup stringValue = json.fromJson(input, TokenGroup.class);
     TokenGroup utf8Value = json.fromJson(input.getBytes(StandardCharsets.UTF_8), TokenGroup.class);
@@ -127,7 +134,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
 
   @Test
   public void readGeneratedCollectionFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String input =
         "{\"kinds\":[\"FAST\",\"SMALL\"],\"names\":[\"alpha\",\"你好，Fory\"]," + "\"numbers\":[1,2]}";
     assertGeneratedCollections(json.fromJson(input, GeneratedCollectionFields.class));
@@ -138,24 +145,38 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
 
   @Test
   public void sameConfigUsesSameId() throws Exception {
-    ForyJson first = ForyJson.builder().build();
-    ForyJson second = ForyJson.builder().build();
-    ForyJson writeNullFields = ForyJson.builder().writeNullFields(true).build();
+    ForyJson first = newJson();
+    ForyJson second = newJson();
+    ForyJson writeNullFields = newJsonBuilder().writeNullFields(true).build();
     first.toJsonBytes(new PublicFields());
     second.toJsonBytes(new PublicFields());
     writeNullFields.toJsonBytes(new PublicFields());
+    if (!codegenEnabled()) {
+      assertFalse(first.hasGeneratedWriter(PublicFields.class));
+      assertFalse(second.hasGeneratedWriter(PublicFields.class));
+      assertFalse(writeNullFields.hasGeneratedWriter(PublicFields.class));
+      return;
+    }
 
     Class<?> firstWriterClass = generatedUtf8WriterClass(first, PublicFields.class);
     Class<?> secondWriterClass = generatedUtf8WriterClass(second, PublicFields.class);
     Class<?> writeNullWriterClass = generatedUtf8WriterClass(writeNullFields, PublicFields.class);
+    ForyJson asyncDefault = ForyJson.builder().withCodegen(true).build();
+    asyncDefault.toJsonBytes(new PublicFields());
+    awaitGenerated(asyncDefault, PublicFields.class);
+    Class<?> asyncWriterClass = generatedUtf8WriterClass(asyncDefault, PublicFields.class);
     assertEquals(
         firstWriterClass.getPackage().getName(), PublicFields.class.getPackage().getName());
     assertEquals(
         secondWriterClass.getPackage().getName(), PublicFields.class.getPackage().getName());
+    assertEquals(
+        asyncWriterClass.getPackage().getName(), PublicFields.class.getPackage().getName());
     assertGeneratedName(firstWriterClass, PublicFields.class, "Utf8");
     assertGeneratedName(secondWriterClass, PublicFields.class, "Utf8");
     assertGeneratedName(writeNullWriterClass, PublicFields.class, "Utf8");
+    assertGeneratedName(asyncWriterClass, PublicFields.class, "Utf8");
     assertEquals(generatedId(secondWriterClass), generatedId(firstWriterClass));
+    assertEquals(generatedId(asyncWriterClass), generatedId(firstWriterClass));
     assertNotEquals(generatedId(writeNullWriterClass), generatedId(firstWriterClass));
   }
 
@@ -200,7 +221,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
 
   @Test
   public void readGeneratedLongAsciiFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String input =
         "{\"registered\":\"today\",\"longitude\":12.5,\"favoriteFruit\":\"apple\","
             + "\"shortName\":\"core\"}";
@@ -212,7 +233,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
 
   @Test
   public void readSplitGeneratedFields() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     String ordered =
         "{\"f0\":0,\"f1\":\"one\",\"f2\":2,\"f3\":\"three\",\"f4\":4,\"f5\":\"five\","
             + "\"f6\":6,\"f7\":\"seven\",\"f8\":8,\"f9\":\"nine\",\"f10\":10,"
@@ -298,6 +319,16 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     Field utf8WriterField = GeneratedObjectCodec.class.getDeclaredField("utf8Writer");
     utf8WriterField.setAccessible(true);
     return utf8WriterField.get(codec).getClass();
+  }
+
+  private static void awaitGenerated(ForyJson json, Class<?> type) throws InterruptedException {
+    for (int i = 0; i < 200; i++) {
+      if (json.hasGeneratedWriter(type)) {
+        return;
+      }
+      Thread.sleep(10);
+    }
+    fail("Timed out waiting for generated JSON codec for " + type);
   }
 
   private static void assertGeneratedName(

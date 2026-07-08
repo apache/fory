@@ -52,6 +52,7 @@ import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.data.UnicodeMatrix;
 import org.apache.fory.reflect.FieldAccessor;
 import org.testng.SkipException;
+import org.testng.annotations.DataProvider;
 
 public abstract class ForyJsonTestModels {
   protected static final String TWO_BYTE_TEXT = JsonTestData.TWO_BYTE_TEXT;
@@ -61,6 +62,28 @@ public abstract class ForyJsonTestModels {
   protected static final String COMBINING_TEXT = JsonTestData.COMBINING_TEXT;
   protected static final String ZH_TEXT = JsonTestData.ZH_TEXT;
   protected static final String EU_TEXT = JsonTestData.EU_TEXT;
+  private final boolean codegen;
+
+  protected ForyJsonTestModels(boolean codegen) {
+    this.codegen = codegen;
+  }
+
+  @DataProvider(name = "codegen")
+  public static Object[][] codegen() {
+    return new Object[][] {{false}, {true}};
+  }
+
+  protected final ForyJsonBuilder newJsonBuilder() {
+    return ForyJson.builder().withCodegen(codegen).withAsyncCompilation(false);
+  }
+
+  protected final ForyJson newJson() {
+    return newJsonBuilder().build();
+  }
+
+  protected final boolean codegenEnabled() {
+    return codegen;
+  }
 
   protected static TokenValues tokenValue(int count, String name, List<String> tags, long total) {
     TokenValues value = new TokenValues();
@@ -268,8 +291,8 @@ public abstract class ForyJsonTestModels {
         json.fromJson(objectJson.getBytes(StandardCharsets.UTF_8), PublicFields.class).name, text);
   }
 
-  protected static void assertGeneratedWhenSupported(ForyJson json, Class<?> type) {
-    assertTrue(json.hasGeneratedWriter(type));
+  protected final void assertGeneratedWhenSupported(ForyJson json, Class<?> type) {
+    assertEquals(json.hasGeneratedWriter(type), codegen);
   }
 
   protected static String repeat(char ch, int length) {

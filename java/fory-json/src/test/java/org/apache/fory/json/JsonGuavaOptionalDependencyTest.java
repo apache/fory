@@ -31,16 +31,24 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.fory.platform.JdkVersion;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
-public class JsonGuavaOptionalDependencyTest {
+public class JsonGuavaOptionalDependencyTest extends ForyJsonTestModels {
   private static final String RESULT = "RESULT:ok";
+
+  @Factory(dataProvider = "codegen")
+  public JsonGuavaOptionalDependencyTest(boolean codegen) {
+    super(codegen);
+  }
 
   @Test
   public void buildWithoutGuava() throws Exception {
     String filteredClassPath = removeGuavaFromClasspath(System.getProperty("java.class.path"));
     Process process =
-        new ProcessBuilder(javaCommand(filteredClassPath, NoGuavaMain.class))
+        new ProcessBuilder(
+                javaCommand(
+                    filteredClassPath, NoGuavaMain.class, Boolean.toString(codegenEnabled())))
             .redirectErrorStream(true)
             .start();
     String output = readFully(process.getInputStream());
@@ -48,7 +56,7 @@ public class JsonGuavaOptionalDependencyTest {
     assertTrue(output.contains(RESULT), output);
   }
 
-  private static List<String> javaCommand(String classPath, Class<?> mainClass) {
+  private static List<String> javaCommand(String classPath, Class<?> mainClass, String codegen) {
     List<String> command =
         new java.util.ArrayList<>(
             Arrays.asList(
@@ -63,6 +71,7 @@ public class JsonGuavaOptionalDependencyTest {
     command.add("-cp");
     command.add(classPath);
     command.add(mainClass.getName());
+    command.add(codegen);
     return command;
   }
 
@@ -87,7 +96,8 @@ public class JsonGuavaOptionalDependencyTest {
       assertNotLoadable("com.google.common.collect.ImmutableList");
       assertNotLoadable("com.google.common.primitives.ImmutableIntArray");
 
-      ForyJson json = ForyJson.builder().build();
+      boolean codegen = Boolean.parseBoolean(args[0]);
+      ForyJson json = ForyJson.builder().withCodegen(codegen).withAsyncCompilation(false).build();
       PlainValue stringValue = json.fromJson("{\"name\":\"string\",\"count\":7}", PlainValue.class);
       assertValue(stringValue, "string", 7);
 

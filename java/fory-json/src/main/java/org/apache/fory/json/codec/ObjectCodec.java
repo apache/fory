@@ -20,6 +20,12 @@
 package org.apache.fory.json.codec;
 
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.reader.Latin1ObjectReader;
+import org.apache.fory.json.reader.ObjectReader;
+import org.apache.fory.json.reader.Utf16ObjectReader;
+import org.apache.fory.json.reader.Utf8ObjectReader;
+import org.apache.fory.json.writer.StringObjectWriter;
+import org.apache.fory.json.writer.Utf8ObjectWriter;
 import org.apache.fory.reflect.ObjectInstantiator;
 
 public final class ObjectCodec extends BaseObjectCodec {
@@ -31,7 +37,14 @@ public final class ObjectCodec extends BaseObjectCodec {
     super(type, writeFields, readFields, instantiator);
   }
 
-  public GeneratedObjectCodec withCodecs(ObjectCodecs codecs) {
-    return new GeneratedObjectCodec(this, codecs);
+  public GeneratedObjectCodec withGenerated(
+      StringObjectWriter stringWriter,
+      Utf8ObjectWriter utf8Writer,
+      ObjectReader reader,
+      Latin1ObjectReader latin1Reader,
+      Utf16ObjectReader utf16Reader,
+      Utf8ObjectReader utf8Reader) {
+    return new GeneratedObjectCodec(
+        this, stringWriter, utf8Writer, reader, latin1Reader, utf16Reader, utf8Reader);
   }
 }

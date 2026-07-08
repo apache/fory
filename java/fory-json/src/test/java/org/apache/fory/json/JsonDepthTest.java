@@ -27,12 +27,18 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.apache.fory.json.data.DepthNode;
 import org.apache.fory.reflect.TypeRef;
+import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonDepthTest extends ForyJsonTestModels {
+  @Factory(dataProvider = "codegen")
+  public JsonDepthTest(boolean codegen) {
+    super(codegen);
+  }
+
   @Test
   public void defaultMaxDepth() {
-    ForyJson json = ForyJson.builder().build();
+    ForyJson json = newJson();
     assertTrue(
         json.fromJson(nestedArray(ForyJson.DEFAULT_MAX_DEPTH), Object.class) instanceof JSONArray);
     assertThrows(
@@ -42,7 +48,7 @@ public class JsonDepthTest extends ForyJsonTestModels {
 
   @Test
   public void readMaxDepth() {
-    ForyJson json = ForyJson.builder().maxDepth(2).build();
+    ForyJson json = newJsonBuilder().maxDepth(2).build();
     assertEquals(json.fromJson("{\"child\":{\"value\":1}}", DepthNode.class).child.value, 1);
     assertThrows(
         ForyJsonException.class,
@@ -57,7 +63,7 @@ public class JsonDepthTest extends ForyJsonTestModels {
 
   @Test
   public void readContainerMaxDepth() {
-    ForyJson json = ForyJson.builder().maxDepth(2).build();
+    ForyJson json = newJsonBuilder().maxDepth(2).build();
     assertTrue(json.fromJson("[[1]]", Object.class) instanceof JSONArray);
     assertThrows(ForyJsonException.class, () -> json.fromJson("[[[1]]]", Object.class));
     assertEquals(
@@ -66,7 +72,7 @@ public class JsonDepthTest extends ForyJsonTestModels {
         ForyJsonException.class,
         () -> json.fromJson("{\"a\":{\"b\":{\"c\":1}}}", new TypeRef<Map<String, Object>>() {}));
 
-    ForyJson nestedJson = ForyJson.builder().maxDepth(3).build();
+    ForyJson nestedJson = newJsonBuilder().maxDepth(3).build();
     assertEquals(
         nestedJson
             .fromJson("{\"children\":[{\"value\":2}]}", DepthNode.class)
@@ -91,7 +97,7 @@ public class JsonDepthTest extends ForyJsonTestModels {
 
   @Test
   public void readJsonObjectMaxDepth() {
-    ForyJson json = ForyJson.builder().maxDepth(2).build();
+    ForyJson json = newJsonBuilder().maxDepth(2).build();
     JSONObject object = json.fromJson("{\"items\":[1]}", JSONObject.class);
     assertTrue(object.get("items") instanceof JSONArray);
     assertThrows(
@@ -101,7 +107,7 @@ public class JsonDepthTest extends ForyJsonTestModels {
 
   @Test
   public void readDepthReset() {
-    ForyJson json = ForyJson.builder().maxDepth(1).build();
+    ForyJson json = newJsonBuilder().maxDepth(1).build();
     assertThrows(
         ForyJsonException.class, () -> json.fromJson("{\"child\":{\"value\":1}}", DepthNode.class));
     assertEquals(json.fromJson("{\"value\":2}", DepthNode.class).value, 2);
@@ -116,6 +122,6 @@ public class JsonDepthTest extends ForyJsonTestModels {
 
   @Test
   public void rejectInvalidMaxDepth() {
-    assertThrows(IllegalArgumentException.class, () -> ForyJson.builder().maxDepth(0));
+    assertThrows(IllegalArgumentException.class, () -> newJsonBuilder().maxDepth(0));
   }
 }

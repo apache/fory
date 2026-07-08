@@ -231,7 +231,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
   public static final class GenericMapCodec extends MapCodec {
     private final MapKeyCodec keyCodec;
     private final JsonTypeInfo valueTypeInfo;
-    private final JsonCodec valueCodec;
+    private JsonCodec valueCodec;
 
     private GenericMapCodec(
         TypeRef<?> typeRef,
@@ -244,6 +244,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
       this.keyCodec = keyCodec;
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
       valueCodec = valueTypeInfo.codec();
+      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
     }
 
     @Override
