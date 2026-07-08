@@ -56,12 +56,14 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.ExternalizableSerializer;
 import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
@@ -1050,17 +1052,33 @@ public class CollectionSerializers {
     private Serializer<T> dataSerializer;
 
     public DefaultJavaCollectionSerializer(TypeResolver typeResolver, Class<T> cls) {
+      this(typeResolver, cls, null, true);
+    }
+
+    public DefaultJavaCollectionSerializer(
+        TypeResolver typeResolver, Class<T> cls, TypeDef typeDef) {
+      this(typeResolver, cls, typeDef, false);
+    }
+
+    private DefaultJavaCollectionSerializer(
+        TypeResolver typeResolver, Class<T> cls, TypeDef typeDef, boolean registerSerializer) {
       super(typeResolver, cls, false);
       Preconditions.checkArgument(
           !config.isXlang(),
           "Fory cross-language default collection serializer should use "
               + CollectionSerializer.class);
-      typeResolver.setSerializer(cls, this);
-      Class<? extends Serializer> serializerClass =
-          ((ClassResolver) typeResolver)
-              .getObjectSerializerClass(
-                  cls, sc -> dataSerializer = Serializers.newSerializer(typeResolver, cls, sc));
-      dataSerializer = Serializers.newSerializer(typeResolver, cls, serializerClass);
+      if (registerSerializer) {
+        typeResolver.setSerializer(cls, this);
+      }
+      if (typeDef == null) {
+        Class<? extends Serializer> serializerClass =
+            ((ClassResolver) typeResolver)
+                .getObjectSerializerClass(
+                    cls, sc -> dataSerializer = Serializers.newSerializer(typeResolver, cls, sc));
+        dataSerializer = Serializers.newSerializer(typeResolver, cls, serializerClass);
+      } else {
+        dataSerializer = new CompatibleSerializer<>(typeResolver, cls, typeDef);
+      }
       // No need to set object serializer to this, it will be set in class resolver later.
       // typeResolver.setSerializer(cls, this);
     }

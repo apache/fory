@@ -93,6 +93,8 @@ import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.serializer.UnknownClass.UnknownEmptyStruct;
 import org.apache.fory.serializer.UnknownClass.UnknownStruct;
 import org.apache.fory.serializer.UnknownClassSerializers;
+import org.apache.fory.serializer.collection.CollectionSerializers;
+import org.apache.fory.serializer.collection.MapSerializers;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorBuilder;
 import org.apache.fory.type.DescriptorGrouper;
@@ -1136,7 +1138,10 @@ public abstract class TypeResolver {
     TypeInfo typeInfo;
     if (!typeDef.isStructSchemaKind()
         && !UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
-      typeInfo = getTypeInfo(cls);
+      typeInfo =
+          typeDef.getFieldsInfo().isEmpty()
+              ? getTypeInfo(cls)
+              : getMetaSharedTypeInfo(typeDef, cls);
     } else if (ClassResolver.useReplaceResolveSerializer(cls)) {
       // For classes with writeReplace/readResolve, use their natural serializer
       // (ReplaceResolveSerializer) instead of CompatibleSerializer
@@ -1193,6 +1198,14 @@ public abstract class TypeResolver {
       if ((Types.isExtType(streamTypeId) && !Types.isExtType(localTypeInfo.typeId))
           || (Types.isUnionType(streamTypeId) && !Types.isUnionType(localTypeInfo.typeId))) {
         throw new SerializerUnregisteredException(typeDef.getClassName());
+      }
+      Serializer<?> serializer = newMetaSharedExtSerializer(cls, typeDef, localTypeInfo);
+      if (serializer != null) {
+        TypeInfo typeInfo =
+            new TypeInfo(this, cls, null, localTypeInfo.typeId, typeDef.getClassSpec().userTypeId);
+        typeInfo.typeDef = typeDef;
+        typeInfo.setSerializer(this, serializer);
+        return typeInfo;
       }
       return localTypeInfo;
     }
@@ -1299,6 +1312,22 @@ public abstract class TypeResolver {
       typeInfo.setSerializer(this, Serializers.newSerializer(this, cls, sc));
     }
     return typeInfo;
+  }
+
+  private Serializer<?> newMetaSharedExtSerializer(
+      Class<?> cls, TypeDef typeDef, TypeInfo localTypeInfo) {
+    if (typeDef.getFieldsInfo().isEmpty()) {
+      return null;
+    }
+    Serializer<?> serializer = localTypeInfo.getSerializer();
+    Class<?> serializerClass = serializer.getClass();
+    if (serializerClass == CollectionSerializers.DefaultJavaCollectionSerializer.class) {
+      return new CollectionSerializers.DefaultJavaCollectionSerializer<>(this, cls, typeDef);
+    }
+    if (serializerClass == MapSerializers.DefaultJavaMapSerializer.class) {
+      return new MapSerializers.DefaultJavaMapSerializer<>(this, cls, typeDef);
+    }
+    return null;
   }
 
   private Serializer<?> newGeneratedCompatibleSerializer(

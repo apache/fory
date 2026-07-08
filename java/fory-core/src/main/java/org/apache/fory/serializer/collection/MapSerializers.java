@@ -49,10 +49,12 @@ import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.ExternalizableSerializer;
 import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
@@ -510,16 +512,31 @@ public class MapSerializers {
     private Serializer<T> dataSerializer;
 
     public DefaultJavaMapSerializer(TypeResolver typeResolver, Class<T> cls) {
+      this(typeResolver, cls, null, true);
+    }
+
+    public DefaultJavaMapSerializer(TypeResolver typeResolver, Class<T> cls, TypeDef typeDef) {
+      this(typeResolver, cls, typeDef, false);
+    }
+
+    private DefaultJavaMapSerializer(
+        TypeResolver typeResolver, Class<T> cls, TypeDef typeDef, boolean registerSerializer) {
       super(typeResolver, cls, false);
       Preconditions.checkArgument(
           !config.isXlang(),
           "Fory cross-language default map serializer should use " + MapSerializer.class);
-      typeResolver.setSerializer(cls, this);
-      Class<? extends Serializer> serializerClass =
-          ((ClassResolver) typeResolver)
-              .getObjectSerializerClass(
-                  cls, sc -> dataSerializer = Serializers.newSerializer(typeResolver, cls, sc));
-      dataSerializer = Serializers.newSerializer(typeResolver, cls, serializerClass);
+      if (registerSerializer) {
+        typeResolver.setSerializer(cls, this);
+      }
+      if (typeDef == null) {
+        Class<? extends Serializer> serializerClass =
+            ((ClassResolver) typeResolver)
+                .getObjectSerializerClass(
+                    cls, sc -> dataSerializer = Serializers.newSerializer(typeResolver, cls, sc));
+        dataSerializer = Serializers.newSerializer(typeResolver, cls, serializerClass);
+      } else {
+        dataSerializer = new CompatibleSerializer<>(typeResolver, cls, typeDef);
+      }
       // No need to set object serializer to this, it will be set in class resolver later.
       // typeResolver.setSerializer(cls, this);
     }

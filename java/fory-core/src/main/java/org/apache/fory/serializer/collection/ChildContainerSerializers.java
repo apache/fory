@@ -25,6 +25,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -54,9 +55,11 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.AbstractObjectSerializer;
 import org.apache.fory.serializer.CompatibleLayerSerializer;
+import org.apache.fory.serializer.CompatibleLayerSerializerBase;
 import org.apache.fory.serializer.FieldGroups;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.JavaSerializer;
@@ -645,12 +648,11 @@ public class ChildContainerSerializers {
     readAndCheckNumClassLayers(readContext, collection.getClass(), slotsSerializers.length);
     for (Serializer slotsSerializer : slotsSerializers) {
       if (slotsSerializer instanceof CompatibleLayerSerializer) {
-        CompatibleLayerSerializer compatibleSerializer =
-            (CompatibleLayerSerializer) slotsSerializer;
-        // Read layer class meta first if meta share is enabled
-        // This corresponds to writeLayerClassMeta() in CompatibleLayerSerializer.write()
+        CompatibleLayerSerializerBase compatibleSerializer =
+            (CompatibleLayerSerializerBase) slotsSerializer;
         if (typeResolver.getConfig().isMetaShareEnabled()) {
-          readAndSkipLayerClassMeta(readContext);
+          compatibleSerializer =
+              readLayerSerializer(readContext, typeResolver, compatibleSerializer);
         }
         compatibleSerializer.readAndSetFields(readContext, collection);
       } else {
@@ -686,16 +688,16 @@ public class ChildContainerSerializers {
   }
 
   /**
-   * Read and skip the layer class meta from buffer. This is used to skip over the class definition
-   * that was written by CompatibleLayerSerializer.writeLayerClassMeta(). For
-   * ChildContainerSerializers, we use the same serializer on both write and read sides, so we just
-   * need to skip the meta without actually parsing it.
+   * Read the layer class meta that was written by CompatibleLayerSerializer.writeLayerClassMeta().
    */
-  private static void readAndSkipLayerClassMeta(ReadContext readContext) {
+  private static CompatibleLayerSerializerBase readLayerSerializer(
+      ReadContext readContext,
+      TypeResolver typeResolver,
+      CompatibleLayerSerializerBase localSerializer) {
     MemoryBuffer buffer = readContext.getBuffer();
     MetaReadContext metaReadContext = readContext.getMetaReadContext();
     if (metaReadContext == null) {
-      return;
+      return localSerializer;
     }
     int indexMarker = buffer.readVarUInt32Small14();
     boolean isRef = (indexMarker & 1) == 1;
@@ -704,16 +706,47 @@ public class ChildContainerSerializers {
       if (index >= metaReadContext.readTypeInfos.size) {
         throw new ForyException("Invalid layer metadata reference id " + index);
       }
-      // Reference to previously read type - nothing more to read
-      return;
+      TypeInfo typeInfo = metaReadContext.readTypeInfos.get(index);
+      if (typeInfo == null) {
+        throw new ForyException("Invalid layer metadata reference id " + index);
+      }
+      return getLayerSerializer(typeResolver, localSerializer, typeInfo);
     }
-    // New type - need to read and skip the TypeDef bytes
     long id = buffer.readInt64();
-    TypeDef.skipTypeDef(buffer, id);
-    // Add a placeholder to keep readTypeInfos indices in sync with the write side's classMap.
-    // The write side (writeLayerClassMeta) adds layer marker classes to classMap which shares
-    // the same index space as writeSharedClassMeta. Without this placeholder, subsequent
-    // readSharedClassMeta reference lookups would use wrong indices.
-    metaReadContext.readTypeInfos.add(null);
+    TypeInfo typeInfo = readLayerTypeInfo(typeResolver, buffer, localSerializer, id);
+    metaReadContext.readTypeInfos.add(typeInfo);
+    return getLayerSerializer(typeResolver, localSerializer, typeInfo);
+  }
+
+  private static TypeInfo readLayerTypeInfo(
+      TypeResolver typeResolver,
+      MemoryBuffer buffer,
+      CompatibleLayerSerializerBase localSerializer,
+      long typeDefId) {
+    TypeDef localTypeDef = localSerializer.getLayerTypeDef();
+    byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefId);
+    Class<?> layerClass = localSerializer.getType();
+    typeResolver.checkClassForDeserialization(layerClass);
+    TypeDef typeDef =
+        Arrays.equals(encoded, localTypeDef.getEncoded())
+            ? localTypeDef
+            : typeResolver.cacheRemoteTypeDef(TypeDef.readTypeDef(typeResolver, encoded));
+    return new TypeInfo(layerClass, typeDef);
+  }
+
+  private static CompatibleLayerSerializerBase getLayerSerializer(
+      TypeResolver typeResolver, CompatibleLayerSerializerBase localSerializer, TypeInfo typeInfo) {
+    Serializer<?> serializer = typeInfo.getSerializer();
+    if (serializer != null) {
+      return (CompatibleLayerSerializerBase) serializer;
+    }
+    CompatibleLayerSerializer<?> newSerializer =
+        new CompatibleLayerSerializer(
+            typeResolver,
+            localSerializer.getType(),
+            typeInfo.getTypeDef(),
+            localSerializer.getLayerMarkerClass());
+    typeInfo.setSerializer(newSerializer);
+    return newSerializer;
   }
 }
