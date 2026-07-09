@@ -734,7 +734,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
 
     @Override
     Object readNumber(JsonReader reader) {
-      return new BigInteger(reader.readNumberAsString());
+      return reader.readBigInteger();
     }
   }
 

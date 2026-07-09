@@ -43,20 +43,20 @@ import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 
 public abstract class JsonReader {
+  private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
+  static final int MAX_BIG_DECIMAL_SCALE = 10_000;
+
   protected int position;
   private final int maxDepth;
-  private final int maxNumberLength;
   private int depth;
   private final AsciiStringView asciiStringView = new AsciiStringView(this);
 
   protected JsonReader() {
     this.maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
-    this.maxNumberLength = ForyJson.DEFAULT_MAX_NUMBER_LENGTH;
   }
 
   protected JsonReader(JsonConfig config) {
     this.maxDepth = config.maxDepth();
-    this.maxNumberLength = config.maxNumberLength();
   }
 
   protected abstract int length();
@@ -79,12 +79,6 @@ public abstract class JsonReader {
 
   private void throwMaxDepthExceeded() {
     throw error("JSON max depth " + maxDepth + " exceeded");
-  }
-
-  protected final void checkNumberLength(int length) {
-    if (length > maxNumberLength) {
-      throw error("JSON number length " + length + " exceeds max " + maxNumberLength);
-    }
   }
 
   public final void exitDepth() {
@@ -228,8 +222,7 @@ public abstract class JsonReader {
     if (start == position) {
       throw error("Expected number");
     }
-    checkNumberLength(position - start);
-    return sliceNumberToken(start, position);
+    return slice(start, position);
   }
 
   public final int readInt() {
@@ -356,7 +349,7 @@ public abstract class JsonReader {
       return BigInteger.valueOf(readLong());
     } catch (RuntimeException e) {
       position = mark;
-      return new BigInteger(readNumberAsString());
+      return parseBigInteger(readNumberAsString());
     }
   }
 
@@ -545,6 +538,9 @@ public abstract class JsonReader {
         return readBigDecimalFallback(start);
       }
     }
+    if (scale > MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
     return BigDecimal.valueOf(unscaled, scale);
   }
 
@@ -602,12 +598,15 @@ public abstract class JsonReader {
         return readBigDecimalFallback(start);
       }
     }
+    if (scale > MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
     return BigDecimal.valueOf(-unscaled, scale);
   }
 
   private BigDecimal readBigDecimalFallback(int start) {
     position = start;
-    return new BigDecimal(readNumberAsString());
+    return parseBigDecimal(readNumberAsString());
   }
 
   private UUID readUuidToken() {
@@ -902,15 +901,38 @@ public abstract class JsonReader {
     return negative ? (int) -year : (int) year;
   }
 
-  private static Number materializeNumber(String number) {
+  private Number materializeNumber(String number) {
     if (number.indexOf('.') >= 0 || number.indexOf('e') >= 0 || number.indexOf('E') >= 0) {
       return Double.parseDouble(number);
     }
     try {
       return Long.parseLong(number);
     } catch (NumberFormatException e) {
-      return new BigInteger(number);
+      return parseBigInteger(number);
     }
+  }
+
+  final BigInteger parseBigInteger(String number) {
+    if (number.length() > MAX_BIG_NUMBER_LENGTH) {
+      throw error("JSON big number length " + MAX_BIG_NUMBER_LENGTH + " exceeded");
+    }
+    return new BigInteger(number);
+  }
+
+  final BigDecimal parseBigDecimal(String number) {
+    if (number.length() > MAX_BIG_NUMBER_LENGTH) {
+      throw error("JSON big number length " + MAX_BIG_NUMBER_LENGTH + " exceeded");
+    }
+    BigDecimal value = new BigDecimal(number);
+    int scale = value.scale();
+    if (scale > MAX_BIG_DECIMAL_SCALE || scale < -MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
+    return value;
+  }
+
+  final void throwBigDecimalScaleExceeded() {
+    throw error("JSON big decimal scale " + MAX_BIG_DECIMAL_SCALE + " exceeded");
   }
 
   protected final double readNonFiniteDoubleString() {
@@ -1255,8 +1277,6 @@ public abstract class JsonReader {
   }
 
   protected abstract String slice(int start, int end);
-
-  protected abstract String sliceNumberToken(int start, int end);
 
   private static final class AsciiStringView implements CharSequence {
     private final JsonReader reader;

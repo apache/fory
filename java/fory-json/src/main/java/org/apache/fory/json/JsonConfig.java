@@ -32,7 +32,6 @@ public final class JsonConfig {
   private final boolean asyncCompilationEnabled;
   private final boolean propertyDiscoveryEnabled;
   private final int maxDepth;
-  private final int maxNumberLength;
   private final CodecRegistry codecRegistry;
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
@@ -46,7 +45,6 @@ public final class JsonConfig {
       boolean asyncCompilationEnabled,
       boolean propertyDiscoveryEnabled,
       int maxDepth,
-      int maxNumberLength,
       CodecRegistry codecRegistry,
       JsonTypeChecker typeChecker) {
     this.writeNullFields = writeNullFields;
@@ -54,7 +52,6 @@ public final class JsonConfig {
     this.asyncCompilationEnabled = asyncCompilationEnabled;
     this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
     this.maxDepth = maxDepth;
-    this.maxNumberLength = maxNumberLength;
     this.codecRegistry = codecRegistry;
     this.typeChecker = typeChecker;
     typeCheckContext = new JsonTypeCheckContext();
@@ -80,10 +77,6 @@ public final class JsonConfig {
 
   public int maxDepth() {
     return maxDepth;
-  }
-
-  public int maxNumberLength() {
-    return maxNumberLength;
   }
 
   public CodecRegistry codecRegistry() {
@@ -112,7 +105,6 @@ public final class JsonConfig {
         && asyncCompilationEnabled == that.asyncCompilationEnabled
         && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
         && maxDepth == that.maxDepth
-        && maxNumberLength == that.maxNumberLength
         && typeChecker == that.typeChecker
         && Objects.equals(codecRegistryKey, that.codecRegistryKey);
   }
@@ -124,7 +116,6 @@ public final class JsonConfig {
     result = 31 * result + Boolean.hashCode(asyncCompilationEnabled);
     result = 31 * result + Boolean.hashCode(propertyDiscoveryEnabled);
     result = 31 * result + maxDepth;
-    result = 31 * result + maxNumberLength;
     result = 31 * result + System.identityHashCode(typeChecker);
     result = 31 * result + codecRegistryKey.hashCode();
     return result;

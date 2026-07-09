@@ -682,6 +682,9 @@ public final class Utf8JsonReader extends JsonReader {
       }
     }
     position = offset;
+    if (scale > MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
     return BigDecimal.valueOf(unscaled, scale);
   }
 
@@ -742,6 +745,9 @@ public final class Utf8JsonReader extends JsonReader {
       }
     }
     position = offset;
+    if (scale > MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
     return BigDecimal.valueOf(-unscaled, scale);
   }
 
@@ -749,7 +755,7 @@ public final class Utf8JsonReader extends JsonReader {
     // Keep overflow and exponent forms on the existing string constructor path so the fast path
     // only owns decimals that fit exactly as long + scale.
     position = start;
-    return new BigDecimal(readNumberAsString());
+    return parseBigDecimal(readNumberAsString());
   }
 
   private UUID readUuidToken() {
@@ -1932,11 +1938,6 @@ public final class Utf8JsonReader extends JsonReader {
   @Override
   protected String slice(int start, int end) {
     return newLatin1String(start, end);
-  }
-
-  @Override
-  protected String sliceNumberToken(int start, int end) {
-    return newLatin1StringUnchecked(start, end);
   }
 
   private String newLatin1String(int start, int end) {

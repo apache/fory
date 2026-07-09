@@ -1821,7 +1821,7 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
 
     @Override
     Object readElement(JsonReader reader) {
-      return new BigInteger(reader.readNumberAsString());
+      return reader.readBigInteger();
     }
   }
 

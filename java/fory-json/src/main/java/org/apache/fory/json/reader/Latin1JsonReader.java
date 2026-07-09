@@ -675,6 +675,9 @@ public final class Latin1JsonReader extends JsonReader {
       }
     }
     position = offset;
+    if (scale > MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
     return BigDecimal.valueOf(unscaled, scale);
   }
 
@@ -735,12 +738,15 @@ public final class Latin1JsonReader extends JsonReader {
       }
     }
     position = offset;
+    if (scale > MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
     return BigDecimal.valueOf(-unscaled, scale);
   }
 
   private BigDecimal readBigDecimalFallback(int start) {
     position = start;
-    return new BigDecimal(readNumberAsString());
+    return parseBigDecimal(readNumberAsString());
   }
 
   private UUID readUuidToken() {
@@ -1866,11 +1872,6 @@ public final class Latin1JsonReader extends JsonReader {
   @Override
   protected String slice(int start, int end) {
     return newLatin1String(start, end);
-  }
-
-  @Override
-  protected String sliceNumberToken(int start, int end) {
-    return newLatin1StringUnchecked(start, end);
   }
 
   private String newLatin1String(int start, int end) {

@@ -1933,11 +1933,6 @@ public final class Utf16JsonReader extends JsonReader {
     return input.substring(start, end);
   }
 
-  @Override
-  protected String sliceNumberToken(int start, int end) {
-    return input.substring(start, end);
-  }
-
   private void skipWhitespaceFast() {
     int inputLength = length;
     while (position < inputLength) {

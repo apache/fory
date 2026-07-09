@@ -22,6 +22,7 @@ package org.apache.fory.json;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import java.io.File;
 import java.math.BigDecimal;
@@ -78,7 +79,6 @@ import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.resolver.CodecRegistry;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.JsonWriter;
@@ -90,6 +90,8 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonScalarTest extends ForyJsonTestModels {
+  private static final int BIG_NUMBER_LIMIT = 10_000;
+
   @Factory(dataProvider = "codegen")
   public JsonScalarTest(boolean codegen) {
     super(codegen);
@@ -1074,37 +1076,68 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void rejectNumberLengthOverflow() {
-    assertThrows(IllegalArgumentException.class, () -> newJsonBuilder().maxNumberLength(0));
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> newJsonBuilder().maxNumberLength(ForyJson.MIN_MAX_NUMBER_LENGTH - 1));
-
-    ForyJson numberLimited =
-        newJsonBuilder().maxNumberLength(ForyJson.MIN_MAX_NUMBER_LENGTH).build();
+  public void guardBigIntegerLength() {
+    ForyJson json = newJson();
+    String accepted = repeat('1', BIG_NUMBER_LIMIT);
     assertEquals(
-        numberLimited.fromJson(repeat('1', ForyJson.MIN_MAX_NUMBER_LENGTH), BigInteger.class),
-        new BigInteger(repeat('1', ForyJson.MIN_MAX_NUMBER_LENGTH)));
+        json.fromJson(accepted.getBytes(StandardCharsets.UTF_8), BigInteger.class),
+        new BigInteger(accepted));
     assertThrows(
         ForyJsonException.class,
-        () ->
-            numberLimited.fromJson(
-                repeat('1', ForyJson.MIN_MAX_NUMBER_LENGTH + 1), BigInteger.class));
+        () -> json.fromJson(repeat('1', BIG_NUMBER_LIMIT + 1), BigInteger.class));
   }
 
   @Test
-  public void concreteFloatReadersBypassNumberFallback() {
-    JsonConfig config = directNumberLimitConfig(1);
+  public void guardBigDecimalLength() {
+    ForyJson json = newJson();
+    String accepted = repeat('1', BIG_NUMBER_LIMIT);
+    assertEquals(
+        json.fromJson(accepted.getBytes(StandardCharsets.UTF_8), BigDecimal.class),
+        new BigDecimal(accepted));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson(repeat('1', BIG_NUMBER_LIMIT + 1), BigDecimal.class));
+  }
+
+  @Test
+  public void guardBigDecimalScale() {
+    ForyJson json = newJson();
+    assertThrows(ForyJsonException.class, () -> json.fromJson("1e-10001", BigDecimal.class));
+    String fastPathScale = "0." + repeat('0', BIG_NUMBER_LIMIT) + "1";
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson(fastPathScale.getBytes(StandardCharsets.UTF_8), BigDecimal.class));
+  }
+
+  @Test
+  public void guardUntypedBigIntegerFallback() {
+    ForyJson json = newJson();
+    String oversized = repeat('1', BIG_NUMBER_LIMIT + 1);
+    assertThrows(ForyJsonException.class, () -> json.fromJson(oversized, Object.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson(oversized, Number.class));
+  }
+
+  @Test
+  public void primitiveOverflowRemainsOverflow() {
+    String oversized = repeat('1', BIG_NUMBER_LIMIT + 1);
+    ForyJsonException intError =
+        expectThrows(
+            ForyJsonException.class,
+            () -> new Utf8JsonReader(oversized.getBytes(StandardCharsets.UTF_8)).readInt());
+    assertTrue(intError.getMessage().contains("Integer overflow"));
+    ForyJsonException longError =
+        expectThrows(ForyJsonException.class, () -> new Latin1JsonReader(oversized).readLong());
+    assertTrue(longError.getMessage().contains("Long overflow"));
+  }
+
+  @Test
+  public void concreteDoubleReadersParseFastValues() {
     String token = "12.5";
     byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
-    assertEquals(new Utf8JsonReader(config, utf8).readFloat(), 12.5f);
-    assertEquals(new Utf8JsonReader(config, utf8).readDouble(), 12.5d);
-    assertEquals(new Latin1JsonReader(config, token).readFloat(), 12.5f);
-    assertEquals(new Latin1JsonReader(config, token).readDouble(), 12.5d);
-    byte[] utf16 = new byte[token.length() << 1];
-    StringSerializer.copyStringCharsToBytes(token, utf16);
-    assertEquals(new Utf16JsonReader(config).reset(token, utf16).readFloat(), 12.5f);
-    assertEquals(new Utf16JsonReader(config).reset(token, utf16).readDouble(), 12.5d);
+    assertEquals(new Utf8JsonReader(utf8).readDouble(), 12.5d);
+    assertEquals(new Utf8JsonReader(utf8).readDoubleTokenValue(), 12.5d);
+    assertEquals(new Latin1JsonReader(token).readDouble(), 12.5d);
+    assertEquals(new Latin1JsonReader(token).readDoubleTokenValue(), 12.5d);
   }
 
   @Test
@@ -1339,17 +1372,5 @@ public class JsonScalarTest extends ForyJsonTestModels {
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
     return new Utf16JsonReader().reset(input, bytes);
-  }
-
-  private static JsonConfig directNumberLimitConfig(int maxNumberLength) {
-    return new JsonConfig(
-        false,
-        false,
-        false,
-        true,
-        ForyJson.DEFAULT_MAX_DEPTH,
-        maxNumberLength,
-        new CodecRegistry(),
-        null);
   }
 }

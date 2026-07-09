@@ -577,14 +577,7 @@ public final class ScalarCodecs {
       writer.writeNumber(toJsonNumber(value));
     }
 
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return fromJsonNumber(reader.readNumberAsString());
-    }
-
     abstract String toJsonNumber(Object value);
-
-    abstract Object fromJsonNumber(String value);
   }
 
   public static final class NumberCodec extends AbstractJsonCodec {
@@ -667,11 +660,6 @@ public final class ScalarCodecs {
     String toJsonNumber(Object value) {
       return value.toString();
     }
-
-    @Override
-    Object fromJsonNumber(String value) {
-      return new BigInteger(value);
-    }
   }
 
   public static final class BigDecimalCodec extends NumberValueCodec {
@@ -700,11 +688,6 @@ public final class ScalarCodecs {
     @Override
     String toJsonNumber(Object value) {
       return value.toString();
-    }
-
-    @Override
-    Object fromJsonNumber(String value) {
-      return new BigDecimal(value);
     }
 
     @Override

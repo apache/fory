@@ -50,11 +50,6 @@ public final class ForyJson {
   /** Default maximum nested JSON object/array depth accepted by parsers. */
   public static final int DEFAULT_MAX_DEPTH = 20;
 
-  /** Default maximum JSON number token length accepted by parsers. */
-  public static final int DEFAULT_MAX_NUMBER_LENGTH = 1000;
-
-  static final int MIN_MAX_NUMBER_LENGTH = 64;
-
   private final JsonConfig config;
   private final JsonSharedRegistry sharedRegistry;
   private final int poolSize;
