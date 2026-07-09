@@ -821,7 +821,6 @@ public final class Utf8JsonReader extends JsonReader {
   private double readPositiveDoubleToken(byte[] bytes, int offset, int inputLength, int ch) {
     int start = offset;
     long unscaled = 0;
-    int scale = 0;
     if (ch == '0') {
       offset++;
       if (offset < inputLength) {
@@ -861,6 +860,63 @@ public final class Utf8JsonReader extends JsonReader {
     } else {
       return readDoubleFallback(start);
     }
+    return readPositiveDoubleTail(bytes, offset, inputLength, start, unscaled);
+  }
+
+  private double readSignedDoubleToken(int start) {
+    byte[] bytes = input;
+    int offset = start + 1;
+    int inputLength = bytes.length;
+    if (offset >= inputLength) {
+      return readDoubleFallback(start);
+    }
+    int ch = bytes[offset];
+    long unscaled = 0;
+    if (ch == '0') {
+      offset++;
+      if (offset < inputLength) {
+        ch = bytes[offset];
+        if (ch >= '0' && ch <= '9') {
+          return readDoubleFallback(start);
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      unscaled = ch - '0';
+      offset++;
+      while (offset + 1 < inputLength) {
+        int high = bytes[offset] - '0';
+        int low = bytes[offset + 1] - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = bytes[offset] - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          offset++;
+        }
+      }
+    } else {
+      return readDoubleFallback(start);
+    }
+    return readSignedDoubleTail(bytes, offset, inputLength, start, unscaled);
+  }
+
+  private double readPositiveDoubleTail(
+      byte[] bytes, int offset, int inputLength, int start, long unscaled) {
+    int scale = 0;
     if (offset < inputLength && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
@@ -898,55 +954,9 @@ public final class Utf8JsonReader extends JsonReader {
     return finishDoubleToken(bytes, offset, inputLength, start, unscaled, scale);
   }
 
-  private double readSignedDoubleToken(int start) {
-    byte[] bytes = input;
-    int offset = start + 1;
-    int inputLength = bytes.length;
-    if (offset >= inputLength) {
-      return readDoubleFallback(start);
-    }
-    int ch = bytes[offset];
-    long unscaled = 0;
+  private double readSignedDoubleTail(
+      byte[] bytes, int offset, int inputLength, int start, long unscaled) {
     int scale = 0;
-    if (ch == '0') {
-      offset++;
-      if (offset < inputLength) {
-        ch = bytes[offset];
-        if (ch >= '0' && ch <= '9') {
-          return readDoubleFallback(start);
-        }
-      }
-    } else if (ch >= '1' && ch <= '9') {
-      unscaled = ch - '0';
-      offset++;
-      while (offset + 1 < inputLength) {
-        int high = bytes[offset] - '0';
-        int low = bytes[offset + 1] - '0';
-        if (high < 0 || high > 9 || low < 0 || low > 9) {
-          break;
-        }
-        int pair = high * 10 + low;
-        if (unscaled > LONG_MAX_DIV_100
-            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
-          return readDoubleFallback(start);
-        }
-        unscaled = unscaled * 100 + pair;
-        offset += 2;
-      }
-      if (offset < inputLength) {
-        int digit = bytes[offset] - '0';
-        if (digit >= 0 && digit <= 9) {
-          if (unscaled > LONG_MAX_DIV_10
-              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
-            return readDoubleFallback(start);
-          }
-          unscaled = unscaled * 10 + digit;
-          offset++;
-        }
-      }
-    } else {
-      return readDoubleFallback(start);
-    }
     if (offset < inputLength && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
