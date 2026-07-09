@@ -244,7 +244,14 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   @Test
   public void classExposeSkipped() {
     ForyJson json = rejectingJson(Class.class);
-    assertEquals(json.toJson(new ExposedClassMember()), "{\"id\":7}");
+    ExposedClassMember value = new ExposedClassMember();
+    value.id = 7;
+    assertEquals(json.toJson(value), "{}");
+    ExposedClassMember read =
+        json.fromJson(
+            "{\"id\":9,\"name\":\"leak\",\"type\":\"java.lang.String\"}", ExposedClassMember.class);
+    assertEquals(read.id, 0);
+    assertEquals(read.name, null);
   }
 
   private ForyJson rejectingJson(Class<?> rejectedType) {
@@ -289,7 +296,8 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
 
   public static final class ExposedClassMember {
     @Expose public Class<?> type = String.class;
-    public int id = 7;
+    public int id;
+    public String name;
   }
 
   private static final class NullCodec implements JsonCodec {

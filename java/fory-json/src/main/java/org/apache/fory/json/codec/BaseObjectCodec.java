@@ -408,7 +408,7 @@ public abstract class BaseObjectCodec extends AbstractJsonCodec {
         current != null && current != Object.class;
         current = current.getSuperclass()) {
       for (Field field : current.getDeclaredFields()) {
-        if (isEligibleField(field) && field.isAnnotationPresent(Expose.class)) {
+        if (isExposeModeField(field) && field.isAnnotationPresent(Expose.class)) {
           return true;
         }
       }
@@ -421,8 +421,8 @@ public abstract class BaseObjectCodec extends AbstractJsonCodec {
         current != null && current != Object.class;
         current = current.getSuperclass()) {
       for (Field field : current.getDeclaredFields()) {
-        if (isEligibleField(field)
-            && (record || !Modifier.isFinal(field.getModifiers()))
+        if (isExposeModeField(field)
+            && (record || !Modifier.isFinal(field.getModifiers()) || field.getType() == Class.class)
             && field.isAnnotationPresent(Expose.class)) {
           return true;
         }
@@ -436,6 +436,15 @@ public abstract class BaseObjectCodec extends AbstractJsonCodec {
     return !Modifier.isStatic(modifiers)
         && !Modifier.isTransient(modifiers)
         && field.getType() != Class.class
+        && !field.isSynthetic();
+  }
+
+  private static boolean isExposeModeField(Field field) {
+    int modifiers = field.getModifiers();
+    // Class fields can put a type in @Expose allowlist mode even though JSON never reads or
+    // writes those fields as data.
+    return !Modifier.isStatic(modifiers)
+        && !Modifier.isTransient(modifiers)
         && !field.isSynthetic();
   }
 
