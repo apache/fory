@@ -408,7 +408,8 @@ public abstract class BaseObjectCodec extends AbstractJsonCodec {
         current != null && current != Object.class;
         current = current.getSuperclass()) {
       for (Field field : current.getDeclaredFields()) {
-        if (isExposeModeField(field) && field.isAnnotationPresent(Expose.class)) {
+        rejectClassExpose(field);
+        if (isEligibleField(field) && field.isAnnotationPresent(Expose.class)) {
           return true;
         }
       }
@@ -421,8 +422,9 @@ public abstract class BaseObjectCodec extends AbstractJsonCodec {
         current != null && current != Object.class;
         current = current.getSuperclass()) {
       for (Field field : current.getDeclaredFields()) {
-        if (isExposeModeField(field)
-            && (record || !Modifier.isFinal(field.getModifiers()) || field.getType() == Class.class)
+        rejectClassExpose(field);
+        if (isEligibleField(field)
+            && (record || !Modifier.isFinal(field.getModifiers()))
             && field.isAnnotationPresent(Expose.class)) {
           return true;
         }
@@ -439,13 +441,11 @@ public abstract class BaseObjectCodec extends AbstractJsonCodec {
         && !field.isSynthetic();
   }
 
-  private static boolean isExposeModeField(Field field) {
-    int modifiers = field.getModifiers();
-    // Class fields can put a type in @Expose allowlist mode even though JSON never reads or
-    // writes those fields as data.
-    return !Modifier.isStatic(modifiers)
-        && !Modifier.isTransient(modifiers)
-        && !field.isSynthetic();
+  private static void rejectClassExpose(Field field) {
+    if (field.getType() == Class.class && field.isAnnotationPresent(Expose.class)) {
+      // Class fields are never JSON data fields, so @Expose on them cannot define an allowlist.
+      throw new ForyJsonException("@Expose is not supported on JSON Class field: " + field);
+    }
   }
 
   private static boolean isEligibleAccessor(Method method) {
