@@ -310,17 +310,11 @@ public final class JsonSharedRegistry {
     }
     String className = type.getName();
     DisallowedList.checkNotInDisallowedList(className);
-    if (type.isPrimitive()) {
-      return true;
-    }
     return isSecureLeafName(className);
   }
 
   private boolean isSecureName(String className) {
     DisallowedList.checkNotInDisallowedList(className);
-    if (isPrimitiveName(className)) {
-      return true;
-    }
     return isSecureLeafName(className);
   }
 
@@ -369,23 +363,6 @@ public final class JsonSharedRegistry {
   private static InsecureException forbiddenClass(String className) {
     return new InsecureException(
         String.format("Class %s is forbidden for Fory JSON serialization.", className));
-  }
-
-  private static boolean isPrimitiveName(String className) {
-    switch (className) {
-      case "boolean":
-      case "byte":
-      case "short":
-      case "char":
-      case "int":
-      case "long":
-      case "float":
-      case "double":
-      case "void":
-        return true;
-      default:
-        return false;
-    }
   }
 
   private static Set<String> classNames(Map<Class<?>, JsonCodec> codecs) {

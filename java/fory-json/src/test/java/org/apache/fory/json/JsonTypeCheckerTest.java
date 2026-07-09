@@ -106,6 +106,16 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void customPrimitiveUsesChecker() {
+    ForyJson json =
+        newJsonBuilder()
+            .registerCodec(int.class, NULL_CODEC)
+            .withTypeChecker((className, context) -> !className.equals(int.class.getName()))
+            .build();
+    assertThrows(InsecureException.class, () -> json.fromJson("1", int.class));
+  }
+
+  @Test
   public void contextHasNoClass() {
     JsonTypeCheckContext[] seen = new JsonTypeCheckContext[1];
     ForyJson json =
