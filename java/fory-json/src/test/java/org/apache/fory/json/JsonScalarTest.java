@@ -1337,6 +1337,15 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         new Latin1JsonReader(latin1Bytes("\"Infinity\"")).readFloat(), Float.POSITIVE_INFINITY);
     assertEquals(utf16Reader("\"-Infinity\"").readFloat(), Float.NEGATIVE_INFINITY);
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            new Utf8JsonReader("\"\\u004e\\u0061\\u004e\"".getBytes(StandardCharsets.UTF_8))
+                .readFloat());
+    assertThrows(
+        ForyJsonException.class,
+        () -> new Latin1JsonReader(latin1Bytes("\"\\u0049nfinity\"")).readFloat());
+    assertThrows(ForyJsonException.class, () -> utf16Reader("\"-\\u0049nfinity\"").readFloat());
   }
 
   @Test
