@@ -29,6 +29,7 @@ public final class ForyJsonBuilder {
   private boolean asyncCompilationEnabled = true;
   private boolean propertyDiscoveryEnabled = true;
   private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
+  private JsonTypeChecker typeChecker;
   private final CodecRegistry codecRegistry = new CodecRegistry();
 
   ForyJsonBuilder() {}
@@ -76,6 +77,17 @@ public final class ForyJsonBuilder {
     return this;
   }
 
+  /**
+   * Sets the JSON type checker. Pass {@code null} to allow all non-disallowed classes.
+   *
+   * <p>The checker must be thread-safe because one {@link ForyJson} instance can be used
+   * concurrently.
+   */
+  public ForyJsonBuilder withTypeChecker(JsonTypeChecker typeChecker) {
+    this.typeChecker = typeChecker;
+    return this;
+  }
+
   public ForyJson build() {
     return new ForyJson(
         new JsonConfig(
@@ -84,6 +96,7 @@ public final class ForyJsonBuilder {
             asyncCompilationEnabled,
             propertyDiscoveryEnabled,
             maxDepth,
-            codecRegistry));
+            codecRegistry,
+            typeChecker));
   }
 }

@@ -52,6 +52,7 @@ import java.util.Calendar;
 import java.util.Collection;
 import java.util.Currency;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -59,8 +60,10 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
@@ -69,8 +72,11 @@ import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.regex.Pattern;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonConfig;
+import org.apache.fory.json.JsonTypeCheckContext;
+import org.apache.fory.json.JsonTypeChecker;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.BaseObjectCodec;
 import org.apache.fory.json.codec.CodecUtils;
@@ -86,19 +92,33 @@ import org.apache.fory.json.codegen.JsonCodegen.GeneratedObjectCodecClasses;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.resolver.DisallowedList;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Float16;
+import org.apache.fory.type.TypeUtils;
 
 /** Shared JSON codec registry used by all local resolvers for one {@code ForyJson}. */
 public final class JsonSharedRegistry {
+  private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
+
   private final CodecRegistry customCodecs;
   private final IdentityHashMap<Class<?>, JsonCodec> exactCodecs;
+  private final Set<String> defaultExactCodecNames;
+  private final Set<String> customCodecNames;
+  private final JsonTypeChecker typeChecker;
+  private final JsonTypeCheckContext typeCheckContext;
+  private final ConcurrentHashMap<String, Boolean> typeCheckCache;
+  private final Object typeCheckCacheLock;
   private final JsonCodegen codegen;
   private final JsonJITContext jitContext;
   private final boolean propertyDiscoveryEnabled;
 
   public JsonSharedRegistry(JsonConfig config) {
     this.customCodecs = config.codecRegistry().copy();
+    typeChecker = config.typeChecker();
+    typeCheckContext = config.typeCheckContext();
+    typeCheckCache = typeChecker == null ? null : new ConcurrentHashMap<>();
+    typeCheckCacheLock = typeChecker == null ? null : new Object();
     this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
     exactCodecs = new IdentityHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
@@ -106,6 +126,8 @@ public final class JsonSharedRegistry {
     codegen =
         codegenEnabled ? new JsonCodegen(config.writeNullFields(), config.getCodegenHash()) : null;
     registerExactCodecs();
+    defaultExactCodecNames = classNames(exactCodecs);
+    customCodecNames = customCodecs.classNames();
   }
 
   public JsonCodec createCodec(
@@ -262,6 +284,116 @@ public final class JsonSharedRegistry {
 
   boolean propertyDiscoveryEnabled() {
     return propertyDiscoveryEnabled;
+  }
+
+  void checkSecure(String className) {
+    if (!isSecureName(className)) {
+      throw forbiddenClass(className);
+    }
+  }
+
+  void checkSecure(Class<?> type) {
+    if (!isSecureType(type)) {
+      throw forbiddenClass(type.getName());
+    }
+  }
+
+  private boolean isSecureType(Class<?> type) {
+    if (type.isArray()) {
+      return isSecureType(TypeUtils.getArrayComponent(type));
+    }
+    if (!type.isEnum() && Enum.class.isAssignableFrom(type) && type != Enum.class) {
+      Class<?> enclosingClass = type.getEnclosingClass();
+      if (enclosingClass != null && enclosingClass.isEnum()) {
+        return isSecureType(enclosingClass);
+      }
+    }
+    String className = type.getName();
+    DisallowedList.checkNotInDisallowedList(className);
+    if (type.isPrimitive()) {
+      return true;
+    }
+    return isSecureLeafName(className);
+  }
+
+  private boolean isSecureName(String className) {
+    DisallowedList.checkNotInDisallowedList(className);
+    if (isPrimitiveName(className)) {
+      return true;
+    }
+    return isSecureLeafName(className);
+  }
+
+  private boolean isSecureLeafName(String className) {
+    if (defaultExactCodecNames.contains(className) && !customCodecNames.contains(className)) {
+      return true;
+    }
+    JsonTypeChecker checker = typeChecker;
+    if (checker == null) {
+      return true;
+    }
+    return checkType(className, checker);
+  }
+
+  private boolean checkType(String className, JsonTypeChecker checker) {
+    ConcurrentHashMap<String, Boolean> cache = typeCheckCache;
+    Boolean cached = cache.get(className);
+    if (cached != null) {
+      return cached.booleanValue();
+    }
+    if (cache.size() >= TYPE_CHECK_CACHE_LIMIT) {
+      return checker.checkType(className, typeCheckContext);
+    }
+    // Keep cacheable cold-path misses under one lock so concurrent duplicate names publish
+    // exactly one checker decision without allocating per-name futures or holders.
+    synchronized (typeCheckCacheLock) {
+      cached = cache.get(className);
+      if (cached != null) {
+        return cached.booleanValue();
+      }
+      if (cache.size() >= TYPE_CHECK_CACHE_LIMIT) {
+        return checker.checkType(className, typeCheckContext);
+      }
+      boolean allowed;
+      try {
+        allowed = checker.checkType(className, typeCheckContext);
+      } catch (InsecureException e) {
+        cache.put(className, false);
+        throw e;
+      }
+      cache.put(className, allowed);
+      return allowed;
+    }
+  }
+
+  private static InsecureException forbiddenClass(String className) {
+    return new InsecureException(
+        String.format("Class %s is forbidden for Fory JSON serialization.", className));
+  }
+
+  private static boolean isPrimitiveName(String className) {
+    switch (className) {
+      case "boolean":
+      case "byte":
+      case "short":
+      case "char":
+      case "int":
+      case "long":
+      case "float":
+      case "double":
+      case "void":
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  private static Set<String> classNames(Map<Class<?>, JsonCodec> codecs) {
+    Set<String> names = new HashSet<>(codecs.size());
+    for (Class<?> type : codecs.keySet()) {
+      names.add(type.getName());
+    }
+    return names;
   }
 
   private void registerExactCodecs() {

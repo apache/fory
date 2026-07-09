@@ -117,11 +117,16 @@ public final class JsonTypeResolver {
     }
   }
 
+  public void checkSecure(Class<?> type) {
+    sharedRegistry.checkSecure(type);
+  }
+
   private BaseObjectCodec buildObjectCodec(Class<?> type) {
     BaseObjectCodec cached = objectCodecs.get(type);
     if (cached != null) {
       return cached;
     }
+    sharedRegistry.checkSecure(type);
     ObjectCodec codec = BaseObjectCodec.build(type, sharedRegistry.propertyDiscoveryEnabled());
     // Codegen may ask for nested object metadata that points back to this type.
     // Publishing before compiling keeps recursive ownership in this resolver cache.
@@ -168,6 +173,7 @@ public final class JsonTypeResolver {
   }
 
   private JsonTypeInfo buildTypeInfo(Class<?> rawType, Type declaredType) {
+    sharedRegistry.checkSecure(rawType);
     TypeRef<?> typeRef = typeRef(declaredType, rawType);
     JsonCodec codec = sharedRegistry.createCodec(rawType, typeRef, this);
     if (codec == null) {
@@ -184,6 +190,7 @@ public final class JsonTypeResolver {
     if (cached != null) {
       return cached;
     }
+    sharedRegistry.checkSecure(rawType);
     TypeRef<?> typeRef = TypeRef.of(rawType);
     JsonCodec codec =
         rawType == Object.class
