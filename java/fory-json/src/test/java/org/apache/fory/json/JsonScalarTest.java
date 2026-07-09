@@ -651,6 +651,18 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void bigNumberChunkCacheIsBounded() throws Exception {
+    Utf8JsonWriter writer = new Utf8JsonWriter(false, new byte[4]);
+    writer.writeBigInteger(new BigInteger(repeat('1', 9500)));
+    Field chunksField = JsonWriter.class.getDeclaredField("bigNumberChunks");
+    chunksField.setAccessible(true);
+    assertTrue(((int[]) chunksField.get(writer)).length > 1024);
+
+    writer.reset();
+    assertEquals(chunksField.get(writer), null);
+  }
+
+  @Test
   public void readScalarRoots() {
     ForyJson json = newJson();
     assertEquals(json.fromJson("7", int.class), Integer.valueOf(7));

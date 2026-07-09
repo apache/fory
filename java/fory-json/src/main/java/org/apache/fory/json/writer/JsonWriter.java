@@ -37,6 +37,7 @@ import org.apache.fory.json.meta.JsonFieldInfo;
 
 public abstract class JsonWriter {
   private static final BigInteger BIG_INTEGER_CHUNK_BASE = BigInteger.valueOf(1_000_000_000);
+  private static final int MAX_RETAINED_BIG_NUMBER_CHUNKS = 1024;
   private static final int[] POWERS_OF_TEN = {
     1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000,
   };
@@ -64,6 +65,9 @@ public abstract class JsonWriter {
 
   public void reset() {
     depth = 0;
+    if (bigNumberChunks != null && bigNumberChunks.length > MAX_RETAINED_BIG_NUMBER_CHUNKS) {
+      bigNumberChunks = null;
+    }
   }
 
   protected final void enterDepth() {
@@ -156,7 +160,8 @@ public abstract class JsonWriter {
       chunks[0] = 0;
       return 1;
     }
-    int capacity = Math.max(1, (((value.bitLength() * 1233) >>> 12) + 8) / 9);
+    long digitEstimate = (((long) value.bitLength() * 1233) >>> 12) + 1;
+    int capacity = Math.max(1, (int) Math.min(Integer.MAX_VALUE, (digitEstimate + 8) / 9));
     int[] chunks = ensureBigNumberChunks(capacity);
     int count = 0;
     while (value.signum() != 0) {
