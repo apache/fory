@@ -45,8 +45,33 @@ import org.apache.fory.json.meta.JsonFieldTable;
 public abstract class JsonReader {
   private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;
+  private static final int COMPACT_DECIMAL_MAX_SCALE = 18;
+  private static final long[] LONG_POWERS_OF_TEN = {
+    1L,
+    10L,
+    100L,
+    1_000L,
+    10_000L,
+    100_000L,
+    1_000_000L,
+    10_000_000L,
+    100_000_000L,
+    1_000_000_000L,
+    10_000_000_000L,
+    100_000_000_000L,
+    1_000_000_000_000L,
+    10_000_000_000_000L,
+    100_000_000_000_000L,
+    1_000_000_000_000_000L,
+    10_000_000_000_000_000L,
+    100_000_000_000_000_000L,
+    1_000_000_000_000_000_000L
+  };
   private static final int DOUBLE_FAST_MAX_SCALE = 15;
   private static final long DOUBLE_FAST_MAX_UNSCALED = 1L << 53;
+  private static final int DOUBLE_FRACTION_BITS = 52;
+  private static final long DOUBLE_SIGN_BIT = 0x8000_0000_0000_0000L;
+  private static final long DOUBLE_FRACTION_MASK = (1L << DOUBLE_FRACTION_BITS) - 1;
   private static final double[] DOUBLE_POWERS_OF_TEN = {
     1.0d,
     10.0d,
@@ -67,6 +92,9 @@ public abstract class JsonReader {
   };
   private static final int FLOAT_FAST_MAX_SCALE = 7;
   private static final long FLOAT_FAST_MAX_UNSCALED = 1L << 24;
+  private static final int FLOAT_FRACTION_BITS = 23;
+  private static final int FLOAT_SIGN_BIT = 0x8000_0000;
+  private static final int FLOAT_FRACTION_MASK = (1 << FLOAT_FRACTION_BITS) - 1;
   private static final float[] FLOAT_POWERS_OF_TEN = {
     1.0f, 10.0f, 100.0f, 1_000.0f, 10_000.0f, 100_000.0f, 1_000_000.0f, 10_000_000.0f
   };
@@ -1056,12 +1084,171 @@ public abstract class JsonReader {
     return (double) unscaled / DOUBLE_POWERS_OF_TEN[scale];
   }
 
+  // Primitive readers reach this path after JSON grammar and long-overflow checks; keep compact
+  // plain decimals off readNumberAsString() and BigDecimal construction.
+  protected static boolean canUseCompactDouble(int scale) {
+    return scale <= COMPACT_DECIMAL_MAX_SCALE;
+  }
+
+  protected static double compactDoubleValue(boolean negative, long unscaled, int scale) {
+    long divisor = LONG_POWERS_OF_TEN[scale];
+    int exponent = floorLog2Quotient(unscaled, divisor);
+    long significand = roundedSignificand(unscaled, divisor, exponent, DOUBLE_FRACTION_BITS);
+    if (significand == (1L << (DOUBLE_FRACTION_BITS + 1))) {
+      exponent++;
+      significand >>>= 1;
+    }
+    long bits = ((long) (exponent + 1023) << DOUBLE_FRACTION_BITS);
+    bits |= significand & DOUBLE_FRACTION_MASK;
+    if (negative) {
+      bits |= DOUBLE_SIGN_BIT;
+    }
+    return Double.longBitsToDouble(bits);
+  }
+
   protected static boolean canUseFastFloat(long unscaled, int scale) {
     return scale <= FLOAT_FAST_MAX_SCALE && unscaled <= FLOAT_FAST_MAX_UNSCALED;
   }
 
   protected static float fastFloatValue(long unscaled, int scale) {
     return (float) unscaled / FLOAT_POWERS_OF_TEN[scale];
+  }
+
+  protected static boolean canUseCompactFloat(int scale) {
+    return scale <= COMPACT_DECIMAL_MAX_SCALE;
+  }
+
+  protected static float compactFloatValue(boolean negative, long unscaled, int scale) {
+    long divisor = LONG_POWERS_OF_TEN[scale];
+    int exponent = floorLog2Quotient(unscaled, divisor);
+    long significand = roundedSignificand(unscaled, divisor, exponent, FLOAT_FRACTION_BITS);
+    if (significand == (1L << (FLOAT_FRACTION_BITS + 1))) {
+      exponent++;
+      significand >>>= 1;
+    }
+    int bits = (exponent + 127) << FLOAT_FRACTION_BITS;
+    bits |= (int) significand & FLOAT_FRACTION_MASK;
+    if (negative) {
+      bits |= FLOAT_SIGN_BIT;
+    }
+    return Float.intBitsToFloat(bits);
+  }
+
+  private static long roundedSignificand(
+      long unscaled, long divisor, int exponent, int fractionBits) {
+    int binaryShift = fractionBits - exponent;
+    long numHigh;
+    long numLow;
+    long denHigh;
+    long denLow;
+    if (binaryShift >= 0) {
+      numHigh = shiftedHigh(unscaled, binaryShift);
+      numLow = shiftedLow(unscaled, binaryShift);
+      denHigh = 0;
+      denLow = divisor;
+    } else {
+      numHigh = 0;
+      numLow = unscaled;
+      int denominatorShift = -binaryShift;
+      denHigh = shiftedHigh(divisor, denominatorShift);
+      denLow = shiftedLow(divisor, denominatorShift);
+    }
+
+    int shift = bitLength(numHigh, numLow) - bitLength(denHigh, denLow);
+    long shiftedDenHigh = shiftLeftHigh(denHigh, denLow, shift);
+    long shiftedDenLow = shiftLeftLow(denLow, shift);
+    long quotient = 0;
+    for (int bit = shift; bit >= 0; bit--) {
+      if (compareUnsigned(numHigh, numLow, shiftedDenHigh, shiftedDenLow) >= 0) {
+        long newLow = numLow - shiftedDenLow;
+        numHigh -= shiftedDenHigh + (Long.compareUnsigned(numLow, shiftedDenLow) < 0 ? 1 : 0);
+        numLow = newLow;
+        quotient |= 1L << bit;
+      }
+      long nextLow = (shiftedDenLow >>> 1) | (shiftedDenHigh << 63);
+      shiftedDenHigh >>>= 1;
+      shiftedDenLow = nextLow;
+    }
+
+    long twiceHigh = (numHigh << 1) | (numLow >>> 63);
+    long twiceLow = numLow << 1;
+    int cmp = compareUnsigned(twiceHigh, twiceLow, denHigh, denLow);
+    if (cmp > 0 || (cmp == 0 && (quotient & 1) != 0)) {
+      quotient++;
+    }
+    return quotient;
+  }
+
+  private static int floorLog2Quotient(long unscaled, long divisor) {
+    int exponent = bitLength(0, unscaled) - bitLength(0, divisor);
+    if (compareWithScaledDivisor(unscaled, divisor, exponent) < 0) {
+      exponent--;
+    }
+    return exponent;
+  }
+
+  private static int compareWithScaledDivisor(long unscaled, long divisor, int exponent) {
+    if (exponent >= 0) {
+      return compareUnsigned(
+          0, unscaled, shiftedHigh(divisor, exponent), shiftedLow(divisor, exponent));
+    }
+    int shift = -exponent;
+    return compareUnsigned(shiftedHigh(unscaled, shift), shiftedLow(unscaled, shift), 0, divisor);
+  }
+
+  private static int bitLength(long high, long low) {
+    if (high != 0) {
+      return Long.SIZE + Long.SIZE - Long.numberOfLeadingZeros(high);
+    }
+    return Long.SIZE - Long.numberOfLeadingZeros(low);
+  }
+
+  private static long shiftedHigh(long value, int shift) {
+    if (shift == 0) {
+      return 0;
+    }
+    if (shift < Long.SIZE) {
+      return value >>> (Long.SIZE - shift);
+    }
+    return value << (shift - Long.SIZE);
+  }
+
+  private static long shiftedLow(long value, int shift) {
+    if (shift == 0) {
+      return value;
+    }
+    if (shift < Long.SIZE) {
+      return value << shift;
+    }
+    return 0;
+  }
+
+  private static long shiftLeftHigh(long high, long low, int shift) {
+    if (shift == 0) {
+      return high;
+    }
+    if (shift < Long.SIZE) {
+      return (high << shift) | (low >>> (Long.SIZE - shift));
+    }
+    return low << (shift - Long.SIZE);
+  }
+
+  private static long shiftLeftLow(long low, int shift) {
+    if (shift == 0) {
+      return low;
+    }
+    if (shift < Long.SIZE) {
+      return low << shift;
+    }
+    return 0;
+  }
+
+  private static int compareUnsigned(long high1, long low1, long high2, long low2) {
+    int highCmp = Long.compareUnsigned(high1, high2);
+    if (highCmp != 0) {
+      return highCmp;
+    }
+    return Long.compareUnsigned(low1, low2);
   }
 
   protected final double readNonFiniteDoubleString() {

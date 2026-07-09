@@ -753,6 +753,9 @@ public final class Utf16JsonReader extends JsonReader {
     }
     position = offset;
     if (!canUseFastFloat(unscaled, scale)) {
+      if (canUseCompactFloat(scale)) {
+        return compactFloatValue(false, unscaled, scale);
+      }
       return readFloatFallback(start);
     }
     return fastFloatValue(unscaled, scale);
@@ -771,6 +774,9 @@ public final class Utf16JsonReader extends JsonReader {
       return -0.0f;
     }
     if (!canUseFastFloat(unscaled, scale)) {
+      if (canUseCompactFloat(scale)) {
+        return compactFloatValue(true, unscaled, scale);
+      }
       return readFloatFallback(start);
     }
     return -fastFloatValue(unscaled, scale);
@@ -967,6 +973,9 @@ public final class Utf16JsonReader extends JsonReader {
     }
     position = offset;
     if (!canUseFastDouble(unscaled, scale)) {
+      if (canUseCompactDouble(scale)) {
+        return compactDoubleValue(false, unscaled, scale);
+      }
       return readDoubleFallback(start);
     }
     return fastDoubleValue(unscaled, scale);
@@ -985,6 +994,9 @@ public final class Utf16JsonReader extends JsonReader {
       return -0.0d;
     }
     if (!canUseFastDouble(unscaled, scale)) {
+      if (canUseCompactDouble(scale)) {
+        return compactDoubleValue(true, unscaled, scale);
+      }
       return readDoubleFallback(start);
     }
     return -fastDoubleValue(unscaled, scale);

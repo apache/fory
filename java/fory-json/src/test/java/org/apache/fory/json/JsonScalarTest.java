@@ -63,6 +63,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1163,6 +1164,18 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void parseCompactDoubleDecimals() {
+    assertDoubleBits("46.916843283327836");
+    assertDoubleBits("-179.12345678901234");
+    assertDoubleBits("9007199254740993");
+    Random random = new Random(424242L);
+    for (int i = 0; i < 256; i++) {
+      double bound = (i & 1) == 0 ? 90.0d : 180.0d;
+      assertDoubleBits(Double.toString(bound * random.nextDouble()));
+    }
+  }
+
+  @Test
   public void readFloatAvoidsDoubleRounding() {
     String token = "1.0000000596046448";
     int expected = Float.floatToRawIntBits(Float.parseFloat(token));
@@ -1171,8 +1184,16 @@ public class JsonScalarTest extends ForyJsonTestModels {
             new Utf8JsonReader(token.getBytes(StandardCharsets.UTF_8)).readFloat()),
         expected);
     assertEquals(
+        Float.floatToRawIntBits(
+            new Utf8JsonReader(token.getBytes(StandardCharsets.UTF_8)).readFloatTokenValue()),
+        expected);
+    assertEquals(
         Float.floatToRawIntBits(new Latin1JsonReader(latin1Bytes(token)).readFloat()), expected);
+    assertEquals(
+        Float.floatToRawIntBits(new Latin1JsonReader(latin1Bytes(token)).readFloatTokenValue()),
+        expected);
     assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloat()), expected);
+    assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloatTokenValue()), expected);
   }
 
   @Test
@@ -1374,6 +1395,19 @@ public class JsonScalarTest extends ForyJsonTestModels {
     for (Field field : owner.getClass().getDeclaredFields()) {
       assertTrue(field.getType() != JsonFieldInfo.class, field.toString());
     }
+  }
+
+  private static void assertDoubleBits(String token) {
+    long expected = Double.doubleToRawLongBits(Double.parseDouble(token));
+    byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
+    byte[] latin1 = latin1Bytes(token);
+    assertEquals(Double.doubleToRawLongBits(new Utf8JsonReader(utf8).readDouble()), expected);
+    assertEquals(
+        Double.doubleToRawLongBits(new Utf8JsonReader(utf8).readDoubleTokenValue()), expected);
+    assertEquals(Double.doubleToRawLongBits(new Latin1JsonReader(latin1).readDouble()), expected);
+    assertEquals(
+        Double.doubleToRawLongBits(new Latin1JsonReader(latin1).readDoubleTokenValue()), expected);
+    assertEquals(Double.doubleToRawLongBits(utf16Reader(token).readDouble()), expected);
   }
 
   private static Object reflectField(Object owner, String name) throws Exception {
