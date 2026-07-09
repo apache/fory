@@ -1816,7 +1816,7 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
 
     @Override
     void writeNumber(JsonWriter writer, Object value) {
-      writer.writeNumber(value.toString());
+      writer.writeBigInteger((BigInteger) value);
     }
 
     @Override
@@ -1832,7 +1832,7 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
 
     @Override
     void writeNumber(JsonWriter writer, Object value) {
-      writer.writeNumber(value.toString());
+      writer.writeBigDecimal((BigDecimal) value);
     }
 
     @Override

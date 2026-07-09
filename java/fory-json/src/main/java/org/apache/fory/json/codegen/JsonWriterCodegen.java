@@ -900,10 +900,7 @@ final class JsonWriterCodegen {
     } else if (rawType == OffsetDateTime.class) {
       writerMethod = "writeOffsetDateTime";
     } else if (rawType == BigDecimal.class) {
-      return new Expression.Invoke(
-          writer,
-          "writeNumber",
-          new Expression.Invoke(value, "toString", TypeRef.of(String.class)).inline());
+      writerMethod = "writeBigDecimal";
     } else {
       return null;
     }

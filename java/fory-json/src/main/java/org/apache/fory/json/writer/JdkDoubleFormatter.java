@@ -27,8 +27,9 @@ import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 
-/** Exact JDK double formatter access for UTF-8 JSON number output. */
+/** Exact JDK double formatter access for JSON number output without materializing a String. */
 final class JdkDoubleFormatter {
+  static final int MAX_CHARS = 24;
   private static final MethodHandle PUT_DECIMAL = loadPutDecimal();
 
   private JdkDoubleFormatter() {}
@@ -40,6 +41,21 @@ final class JdkDoubleFormatter {
     }
     try {
       return (int) putDecimal.invokeExact(buffer, position, value);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot write JSON double " + value, e);
+    }
+  }
+
+  static void appendTo(double value, StringBuilder builder) {
+    try {
+      builder.setLength(0);
+      // HotSpot JDK 8 delegates this to FloatingDecimal.appendTo and current HotSpot delegates it
+      // to DoubleToDecimal.putDecimal, so the portable fallback writes into the reused builder
+      // instead of materializing Double.toString(value).
+      builder.append(value);
+      if (builder.length() == 0) {
+        throw new ForyJsonException("JDK double formatter produced no output");
+      }
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot write JSON double " + value, e);
     }

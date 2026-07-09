@@ -28,6 +28,7 @@ import java.time.Period;
 import java.time.Year;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
+import java.util.Arrays;
 import java.util.UUID;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.ForyJsonException;
@@ -35,8 +36,13 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 
 public abstract class JsonWriter {
+  private static final BigInteger BIG_INTEGER_CHUNK_BASE = BigInteger.valueOf(1_000_000_000);
+  private static final int[] POWERS_OF_TEN = {
+    1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000,
+  };
   private final boolean writeNullFields;
   private final int maxDepth;
+  private int[] bigNumberChunks;
   private int depth;
 
   JsonWriter(boolean writeNullFields) {
@@ -98,12 +104,164 @@ public abstract class JsonWriter {
     writeString(value.toString());
   }
 
+  // Keep arbitrary-precision formatting writer-owned; codecs may receive subclasses whose
+  // toString() is not the JSON numeric format owner.
   public void writeBigInteger(BigInteger value) {
-    writeNumber(value.toString());
+    try {
+      writeLong(value.longValueExact());
+    } catch (ArithmeticException e) {
+      int signum = value.signum();
+      if (signum < 0) {
+        writeNumber("-");
+        value = value.negate();
+      }
+      writeBigIntegerMagnitude(value);
+    }
   }
 
   public void writeBigDecimal(BigDecimal value) {
-    writeNumber(value.toString());
+    if (value.scale() == 0) {
+      try {
+        writeLong(value.longValueExact());
+        return;
+      } catch (ArithmeticException e) {
+        // Fall through to chunked arbitrary-precision formatting.
+      }
+    }
+    int signum = value.signum();
+    BigInteger unscaled = value.unscaledValue();
+    if (signum < 0) {
+      writeNumber("-");
+      unscaled = unscaled.negate();
+    }
+    int chunkCount = collectBigIntegerChunks(unscaled);
+    int precision = digitCount(bigNumberChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
+    int scale = value.scale();
+    long adjustedExponent = (long) precision - scale - 1L;
+    if (scale >= 0 && adjustedExponent >= -6) {
+      writePlainDecimal(chunkCount, precision, scale);
+    } else {
+      writeScientificDecimal(chunkCount, precision, adjustedExponent);
+    }
+  }
+
+  private void writeBigIntegerMagnitude(BigInteger value) {
+    int chunkCount = collectBigIntegerChunks(value);
+    writeIntegerChunks(chunkCount);
+  }
+
+  private int collectBigIntegerChunks(BigInteger value) {
+    if (value.signum() == 0) {
+      int[] chunks = ensureBigNumberChunks(1);
+      chunks[0] = 0;
+      return 1;
+    }
+    int capacity = Math.max(1, (((value.bitLength() * 1233) >>> 12) + 8) / 9);
+    int[] chunks = ensureBigNumberChunks(capacity);
+    int count = 0;
+    while (value.signum() != 0) {
+      if (count == chunks.length) {
+        chunks = Arrays.copyOf(chunks, count << 1);
+        bigNumberChunks = chunks;
+      }
+      BigInteger[] divRem = value.divideAndRemainder(BIG_INTEGER_CHUNK_BASE);
+      chunks[count++] = divRem[1].intValue();
+      value = divRem[0];
+    }
+    return count;
+  }
+
+  private int[] ensureBigNumberChunks(int capacity) {
+    int[] chunks = bigNumberChunks;
+    if (chunks == null || chunks.length < capacity) {
+      chunks = new int[capacity];
+      bigNumberChunks = chunks;
+    }
+    return chunks;
+  }
+
+  private void writeIntegerChunks(int chunkCount) {
+    int[] chunks = bigNumberChunks;
+    writeInt(chunks[chunkCount - 1]);
+    for (int i = chunkCount - 2; i >= 0; i--) {
+      writePaddedChunk(chunks[i]);
+    }
+  }
+
+  private void writePlainDecimal(int chunkCount, int precision, int scale) {
+    long point = (long) precision - scale;
+    if (point <= 0) {
+      writeNumber("0.");
+      writeZeroes(-point);
+      writeDigits(chunkCount, -1);
+      return;
+    }
+    writeDigits(chunkCount, point);
+  }
+
+  private void writeScientificDecimal(int chunkCount, int precision, long adjustedExponent) {
+    writeDigits(chunkCount, precision == 1 ? -1 : 1);
+    writeNumber("E");
+    if (adjustedExponent >= 0) {
+      writeNumber("+");
+    }
+    writeLong(adjustedExponent);
+  }
+
+  private void writeDigits(int chunkCount, long point) {
+    int[] chunks = bigNumberChunks;
+    long index = 0;
+    for (int i = chunkCount - 1; i >= 0; i--) {
+      int chunk = chunks[i];
+      int digits = i == chunkCount - 1 ? digitCount(chunk) : 9;
+      int divisor = POWERS_OF_TEN[digits - 1];
+      for (int j = 0; j < digits; j++) {
+        if (index == point) {
+          writeNumber(".");
+        }
+        int digit = chunk / divisor;
+        chunk -= digit * divisor;
+        divisor /= 10;
+        writeInt(digit);
+        index++;
+      }
+    }
+  }
+
+  private void writePaddedChunk(int chunk) {
+    writeZeroes(9 - digitCount(chunk));
+    writeInt(chunk);
+  }
+
+  private void writeZeroes(long count) {
+    while (count >= 9) {
+      writeNumber("000000000");
+      count -= 9;
+    }
+    for (long i = 0; i < count; i++) {
+      writeNumber("0");
+    }
+  }
+
+  private static int digitCount(int value) {
+    if (value >= 100_000_000) {
+      return 9;
+    } else if (value >= 10_000_000) {
+      return 8;
+    } else if (value >= 1_000_000) {
+      return 7;
+    } else if (value >= 100_000) {
+      return 6;
+    } else if (value >= 10_000) {
+      return 5;
+    } else if (value >= 1_000) {
+      return 4;
+    } else if (value >= 100) {
+      return 3;
+    } else if (value >= 10) {
+      return 2;
+    }
+    return 1;
   }
 
   public void writeUuid(UUID value) {

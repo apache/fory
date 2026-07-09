@@ -566,20 +566,6 @@ public final class ScalarCodecs {
     abstract Object fromJsonString(String value);
   }
 
-  public abstract static class NumberValueCodec extends AbstractJsonCodec {
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNumber(toJsonNumber(value));
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNumber(toJsonNumber(value));
-    }
-
-    abstract String toJsonNumber(Object value);
-  }
-
   public static final class NumberCodec extends AbstractJsonCodec {
     public static final NumberCodec INSTANCE = new NumberCodec();
 
@@ -633,7 +619,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class BigIntegerCodec extends NumberValueCodec {
+  public static final class BigIntegerCodec extends AbstractJsonCodec {
     public static final BigIntegerCodec INSTANCE = new BigIntegerCodec();
 
     @Override
@@ -655,14 +641,9 @@ public final class ScalarCodecs {
     Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readBigInteger();
     }
-
-    @Override
-    String toJsonNumber(Object value) {
-      return value.toString();
-    }
   }
 
-  public static final class BigDecimalCodec extends NumberValueCodec {
+  public static final class BigDecimalCodec extends AbstractJsonCodec {
     public static final BigDecimalCodec INSTANCE = new BigDecimalCodec();
 
     @Override
@@ -683,11 +664,6 @@ public final class ScalarCodecs {
     @Override
     Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readBigDecimal();
-    }
-
-    @Override
-    String toJsonNumber(Object value) {
-      return value.toString();
     }
 
     @Override

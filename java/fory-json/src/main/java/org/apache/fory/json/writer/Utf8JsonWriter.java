@@ -21,8 +21,6 @@ package org.apache.fory.json.writer;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -99,7 +97,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private byte[] buffer;
-  private StringBuilder floatBuilder;
+  private StringBuilder decimalBuilder;
   private int position;
 
   public Utf8JsonWriter(boolean writeNullFields) {
@@ -179,10 +177,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       position = newPosition;
       return;
     }
-    StringBuilder builder = floatBuilder;
+    StringBuilder builder = decimalBuilder;
     if (builder == null) {
       builder = new StringBuilder(JdkFloatFormatter.MAX_CHARS);
-      floatBuilder = builder;
+      decimalBuilder = builder;
     }
     JdkFloatFormatter.appendTo(value, builder);
     append(builder);
@@ -195,13 +193,20 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       writeNonFiniteDouble(value);
       return;
     }
-    ensure(24);
+    ensure(JdkDoubleFormatter.MAX_CHARS);
     int newPosition = JdkDoubleFormatter.write(buffer, position, value);
     if (newPosition >= 0) {
       position = newPosition;
       return;
     }
-    writeAsciiNumber(Double.toString(value));
+    StringBuilder builder = decimalBuilder;
+    if (builder == null) {
+      builder = new StringBuilder(JdkDoubleFormatter.MAX_CHARS);
+      decimalBuilder = builder;
+    }
+    JdkDoubleFormatter.appendTo(value, builder);
+    append(builder);
+    builder.setLength(0);
   }
 
   @Override
@@ -243,28 +248,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       return;
     }
     writeStringChars(value);
-  }
-
-  @Override
-  public void writeBigInteger(BigInteger value) {
-    try {
-      writeLong(value.longValueExact());
-    } catch (ArithmeticException e) {
-      writeNumber(value.toString());
-    }
-  }
-
-  @Override
-  public void writeBigDecimal(BigDecimal value) {
-    if (value.scale() == 0) {
-      try {
-        writeLong(value.longValueExact());
-        return;
-      } catch (ArithmeticException e) {
-        // Fall through to BigDecimal's canonical string form for large values.
-      }
-    }
-    writeNumber(value.toString());
   }
 
   @Override

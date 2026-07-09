@@ -19,8 +19,6 @@
 
 package org.apache.fory.json.writer;
 
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -106,7 +104,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
 
   private byte[] buffer;
   private byte[] scratch;
-  private StringBuilder floatBuilder;
+  private StringBuilder decimalBuilder;
   private byte coder;
   private byte nextCoder;
   private boolean latin1Output;
@@ -235,10 +233,10 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         return;
       }
     }
-    StringBuilder builder = floatBuilder;
+    StringBuilder builder = decimalBuilder;
     if (builder == null) {
       builder = new StringBuilder(JdkFloatFormatter.MAX_CHARS);
-      floatBuilder = builder;
+      decimalBuilder = builder;
     }
     JdkFloatFormatter.appendTo(value, builder);
     append(builder);
@@ -251,7 +249,31 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       writeNonFiniteDouble(value);
       return;
     }
-    writeAscii(Double.toString(value));
+    if (coder == LATIN1) {
+      ensure(JdkDoubleFormatter.MAX_CHARS);
+      int newPosition = JdkDoubleFormatter.write(buffer, position, value);
+      if (newPosition >= 0) {
+        position = newPosition;
+        return;
+      }
+    } else {
+      ensureScratch(JdkDoubleFormatter.MAX_CHARS);
+      int end = JdkDoubleFormatter.write(scratch, 0, value);
+      if (end >= 0) {
+        for (int i = 0; i < end; i++) {
+          writeByteRaw(scratch[i]);
+        }
+        return;
+      }
+    }
+    StringBuilder builder = decimalBuilder;
+    if (builder == null) {
+      builder = new StringBuilder(JdkDoubleFormatter.MAX_CHARS);
+      decimalBuilder = builder;
+    }
+    JdkDoubleFormatter.appendTo(value, builder);
+    append(builder);
+    builder.setLength(0);
   }
 
   @Override
@@ -290,28 +312,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       return;
     }
     writeStringUtf16(value);
-  }
-
-  @Override
-  public void writeBigInteger(BigInteger value) {
-    try {
-      writeLong(value.longValueExact());
-    } catch (ArithmeticException e) {
-      writeNumber(value.toString());
-    }
-  }
-
-  @Override
-  public void writeBigDecimal(BigDecimal value) {
-    if (value.scale() == 0) {
-      try {
-        writeLong(value.longValueExact());
-        return;
-      } catch (ArithmeticException e) {
-        // Fall through to BigDecimal's canonical string form for large values.
-      }
-    }
-    writeNumber(value.toString());
   }
 
   @Override
