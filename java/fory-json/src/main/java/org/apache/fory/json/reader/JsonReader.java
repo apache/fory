@@ -384,10 +384,7 @@ public abstract class JsonReader {
 
   public float readFloat() {
     skipWhitespace();
-    if (position < length() && charAt(position) == '"') {
-      return readNonFiniteFloatString();
-    }
-    return Float.parseFloat(readNumberToken());
+    return readFloatFallbackValue(position);
   }
 
   public BigDecimal readBigDecimal() {
@@ -1134,6 +1131,178 @@ public abstract class JsonReader {
     return Float.intBitsToFloat(bits);
   }
 
+  protected final float readFloatFallbackValue(int start) {
+    position = start;
+    if (start < length() && charAt(start) == '"') {
+      return readNonFiniteFloatLiteral();
+    }
+    return readFloatNumberFallback(start);
+  }
+
+  // Float fallback remains reader-owned: it must not materialize a number String or construct
+  // arbitrary-precision numbers. Big number allocation is owned only by BigInteger/BigDecimal.
+  private float readFloatNumberFallback(int start) {
+    int offset = start;
+    int inputLength = length();
+    boolean negative = false;
+    if (offset < inputLength && charAt(offset) == '-') {
+      negative = true;
+      offset++;
+    }
+    if (offset >= inputLength) {
+      throw error("Expected float");
+    }
+
+    int ch = charAt(offset);
+    boolean hasIntegerDigit = false;
+    boolean leadingZero = ch == '0';
+    long significand = 0;
+    int storedDigits = 0;
+    int truncatedDigits = 0;
+    int fractionDigits = 0;
+    boolean nonZeroSeen = false;
+    boolean sticky = false;
+
+    if (leadingZero) {
+      hasIntegerDigit = true;
+      offset++;
+      if (offset < inputLength) {
+        ch = charAt(offset);
+        if (ch >= '0' && ch <= '9') {
+          throw error("Leading zero in number");
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      do {
+        int digit = ch - '0';
+        if (digit != 0 || nonZeroSeen) {
+          nonZeroSeen = true;
+          if (storedDigits < 18) {
+            significand = significand * 10 + digit;
+            storedDigits++;
+          } else {
+            truncatedDigits++;
+            sticky |= digit != 0;
+          }
+        }
+        hasIntegerDigit = true;
+        offset++;
+        ch = offset < inputLength ? charAt(offset) : -1;
+      } while (ch >= '0' && ch <= '9');
+    } else {
+      throw error("Expected float");
+    }
+
+    if (!hasIntegerDigit) {
+      throw error("Expected float");
+    }
+
+    if (offset < inputLength && charAt(offset) == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset < inputLength) {
+        ch = charAt(offset);
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        int digit = ch - '0';
+        if (digit != 0 || nonZeroSeen) {
+          nonZeroSeen = true;
+          if (storedDigits < 18) {
+            significand = significand * 10 + digit;
+            storedDigits++;
+          } else {
+            truncatedDigits++;
+            sticky |= digit != 0;
+          }
+        }
+        fractionDigits++;
+        offset++;
+      }
+      if (offset == fractionStart) {
+        throw error("Expected digit");
+      }
+    }
+
+    int exponent = 0;
+    if (offset < inputLength) {
+      ch = charAt(offset);
+      if (ch == 'e' || ch == 'E') {
+        offset++;
+        boolean negativeExponent = false;
+        if (offset < inputLength) {
+          ch = charAt(offset);
+          if (ch == '-' || ch == '+') {
+            negativeExponent = ch == '-';
+            offset++;
+          }
+        }
+        int exponentStart = offset;
+        while (offset < inputLength) {
+          ch = charAt(offset);
+          if (ch < '0' || ch > '9') {
+            break;
+          }
+          if (exponent < 10_000) {
+            exponent = exponent * 10 + ch - '0';
+          }
+          offset++;
+        }
+        if (offset == exponentStart) {
+          throw error("Expected exponent digit");
+        }
+        if (negativeExponent) {
+          exponent = -exponent;
+        }
+      }
+    }
+
+    position = offset;
+    if (!nonZeroSeen) {
+      return negative ? -0.0f : 0.0f;
+    }
+    int scale = fractionDigits - exponent - truncatedDigits;
+    return floatFromDecimal(negative, significand, scale, sticky);
+  }
+
+  private static float floatFromDecimal(
+      boolean negative, long significand, int scale, boolean sticky) {
+    if (!sticky) {
+      if (scale >= 0 && scale <= COMPACT_DECIMAL_MAX_SCALE) {
+        return compactFloatValue(negative, significand, scale);
+      }
+      if (scale < 0 && scale >= -COMPACT_DECIMAL_MAX_SCALE) {
+        long multiplied = multiplyByPowerOfTen(significand, -scale);
+        if (multiplied >= 0) {
+          return compactFloatValue(negative, multiplied, 0);
+        }
+      }
+    }
+    double value = (double) significand;
+    int decimalExponent = -scale;
+    if (decimalExponent > 0) {
+      if (decimalExponent > 50) {
+        return negative ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
+      }
+      value *= Math.pow(10.0d, decimalExponent);
+    } else if (decimalExponent < 0) {
+      if (decimalExponent < -350) {
+        return negative ? -0.0f : 0.0f;
+      }
+      value /= Math.pow(10.0d, -decimalExponent);
+    }
+    float result = (float) value;
+    return negative ? -result : result;
+  }
+
+  private static long multiplyByPowerOfTen(long value, int power) {
+    long multiplier = LONG_POWERS_OF_TEN[power];
+    if (value != 0 && value > Long.MAX_VALUE / multiplier) {
+      return -1;
+    }
+    return value * multiplier;
+  }
+
   private static long roundedSignificand(
       long unscaled, long divisor, int exponent, int fractionBits) {
     int binaryShift = fractionBits - exponent;
@@ -1267,20 +1436,38 @@ public abstract class JsonReader {
     }
   }
 
-  protected final float readNonFiniteFloatString() {
-    String value = readString();
-    switch (value) {
-      case "NaN":
-        return Float.NaN;
-      case "Infinity":
-        return Float.POSITIVE_INFINITY;
-      case "-Infinity":
-        return Float.NEGATIVE_INFINITY;
-      default:
-        // Numeric strings are intentionally not coerced; only writer-emitted non-finite tokens
-        // are accepted here.
-        throw error("Expected finite JSON number or non-finite float string");
+  protected final float readNonFiniteFloatLiteral() {
+    if (matchesQuotedAscii("NaN")) {
+      position += 5;
+      return Float.NaN;
     }
+    if (matchesQuotedAscii("Infinity")) {
+      position += 10;
+      return Float.POSITIVE_INFINITY;
+    }
+    if (matchesQuotedAscii("-Infinity")) {
+      position += 11;
+      return Float.NEGATIVE_INFINITY;
+    }
+    // Numeric strings are intentionally not coerced; only writer-emitted non-finite tokens
+    // are accepted here.
+    throw error("Expected finite JSON number or non-finite float string");
+  }
+
+  private boolean matchesQuotedAscii(String value) {
+    int start = position;
+    int valueLength = value.length();
+    if (start + valueLength + 2 > length()
+        || charAt(start) != '"'
+        || charAt(start + valueLength + 1) != '"') {
+      return false;
+    }
+    for (int i = 0; i < valueLength; i++) {
+      if (charAt(start + i + 1) != value.charAt(i)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   public int readFieldNameInt() {

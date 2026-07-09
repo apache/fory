@@ -1052,11 +1052,7 @@ public final class Latin1JsonReader extends JsonReader {
   }
 
   private float readFloatFallback(int start) {
-    position = start;
-    if (start < input.length && input[start] == '"') {
-      return readNonFiniteFloatString();
-    }
-    return Float.parseFloat(readNumberAsString());
+    return readFloatFallbackValue(start);
   }
 
   private double readPositiveDoubleToken(byte[] bytes, int offset, int inputLength, int ch) {

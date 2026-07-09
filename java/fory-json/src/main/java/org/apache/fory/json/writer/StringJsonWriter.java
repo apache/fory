@@ -106,6 +106,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
 
   private byte[] buffer;
   private byte[] scratch;
+  private StringBuilder floatBuilder;
   private byte coder;
   private byte nextCoder;
   private boolean latin1Output;
@@ -217,7 +218,30 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       writeNonFiniteFloat(value);
       return;
     }
-    writeAscii(Float.toString(value));
+    if (coder == LATIN1) {
+      ensure(JdkFloatFormatter.MAX_CHARS);
+      int newPosition = JdkFloatFormatter.write(buffer, position, value);
+      if (newPosition >= 0) {
+        position = newPosition;
+        return;
+      }
+    } else {
+      int end = JdkFloatFormatter.write(scratch, 0, value);
+      if (end >= 0) {
+        for (int i = 0; i < end; i++) {
+          writeByteRaw(scratch[i]);
+        }
+        return;
+      }
+    }
+    StringBuilder builder = floatBuilder;
+    if (builder == null) {
+      builder = new StringBuilder(JdkFloatFormatter.MAX_CHARS);
+      floatBuilder = builder;
+    }
+    JdkFloatFormatter.appendTo(value, builder);
+    append(builder);
+    builder.setLength(0);
   }
 
   @Override

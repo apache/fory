@@ -99,6 +99,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private byte[] buffer;
+  private StringBuilder floatBuilder;
   private int position;
 
   public Utf8JsonWriter(boolean writeNullFields) {
@@ -172,7 +173,20 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       writeNonFiniteFloat(value);
       return;
     }
-    writeAsciiNumber(Float.toString(value));
+    ensure(JdkFloatFormatter.MAX_CHARS);
+    int newPosition = JdkFloatFormatter.write(buffer, position, value);
+    if (newPosition >= 0) {
+      position = newPosition;
+      return;
+    }
+    StringBuilder builder = floatBuilder;
+    if (builder == null) {
+      builder = new StringBuilder(JdkFloatFormatter.MAX_CHARS);
+      floatBuilder = builder;
+    }
+    JdkFloatFormatter.appendTo(value, builder);
+    append(builder);
+    builder.setLength(0);
   }
 
   @Override

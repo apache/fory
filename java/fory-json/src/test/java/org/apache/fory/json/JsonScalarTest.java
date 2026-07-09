@@ -204,6 +204,29 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeFiniteFloatsDirectly() {
+    ForyJson json = newJson();
+    float[] values = {1.5f, 1.1f, Float.MIN_VALUE, Float.MAX_VALUE, 1.0e-20f, 1.0e20f};
+    for (float value : values) {
+      String expected = Float.toString(value);
+      assertEquals(json.toJson(value), expected);
+      assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+
+      Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+      utf8Writer.writeFloat(value);
+      assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+
+      StringJsonWriter stringWriter = new StringJsonWriter(false);
+      stringWriter.writeArrayStart();
+      stringWriter.writeString(ZH_TEXT);
+      stringWriter.writeComma(1);
+      stringWriter.writeFloat(value);
+      stringWriter.writeArrayEnd();
+      assertEquals(stringWriter.toJson(), "[\"" + ZH_TEXT + "\"," + expected + "]");
+    }
+  }
+
+  @Test
   public void writeNaturalObjectValues() {
     ForyJson json = newJson();
     String expected =
@@ -1197,6 +1220,21 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readFloatFallbackTokens() {
+    assertFloatBits("1.25e2");
+    assertFloatBits("-7.5E-3");
+    assertFloatBits("3.4028235E38");
+    assertFloatBits("1.4E-45");
+    assertFloatBits("1e39");
+    assertFloatBits("-1e-46");
+    assertTrue(
+        Float.isNaN(new Utf8JsonReader("\"NaN\"".getBytes(StandardCharsets.UTF_8)).readFloat()));
+    assertEquals(
+        new Latin1JsonReader(latin1Bytes("\"Infinity\"")).readFloat(), Float.POSITIVE_INFINITY);
+    assertEquals(utf16Reader("\"-Infinity\"").readFloat(), Float.NEGATIVE_INFINITY);
+  }
+
+  @Test
   public void generatedFloatReadersUseDirectPath() throws Exception {
     ForyJson json = newJson();
     String token = "1.0000000596046448";
@@ -1408,6 +1446,19 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         Double.doubleToRawLongBits(new Latin1JsonReader(latin1).readDoubleTokenValue()), expected);
     assertEquals(Double.doubleToRawLongBits(utf16Reader(token).readDouble()), expected);
+  }
+
+  private static void assertFloatBits(String token) {
+    int expected = Float.floatToRawIntBits(Float.parseFloat(token));
+    byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
+    byte[] latin1 = latin1Bytes(token);
+    assertEquals(Float.floatToRawIntBits(new Utf8JsonReader(utf8).readFloat()), expected);
+    assertEquals(Float.floatToRawIntBits(new Utf8JsonReader(utf8).readFloatTokenValue()), expected);
+    assertEquals(Float.floatToRawIntBits(new Latin1JsonReader(latin1).readFloat()), expected);
+    assertEquals(
+        Float.floatToRawIntBits(new Latin1JsonReader(latin1).readFloatTokenValue()), expected);
+    assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloat()), expected);
+    assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloatTokenValue()), expected);
   }
 
   private static Object reflectField(Object owner, String name) throws Exception {

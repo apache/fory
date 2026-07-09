@@ -783,11 +783,7 @@ public final class Utf16JsonReader extends JsonReader {
   }
 
   private float readFloatFallback(int start) {
-    position = start;
-    if (start < length && charAtFast(start) == '"') {
-      return readNonFiniteFloatString();
-    }
-    return Float.parseFloat(readNumberAsString());
+    return readFloatFallbackValue(start);
   }
 
   private double readPositiveDoubleToken(int offset, int inputLength, char ch) {
