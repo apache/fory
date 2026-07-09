@@ -1040,8 +1040,12 @@ public abstract class JsonReader {
   }
 
   private Number materializeNumber(String number) {
-    if (number.indexOf('.') >= 0 || number.indexOf('e') >= 0 || number.indexOf('E') >= 0) {
-      return Double.parseDouble(number);
+    int length = number.length();
+    for (int i = 0; i < length; i++) {
+      char ch = number.charAt(i);
+      if (ch == '.' || ch == 'e' || ch == 'E') {
+        return Double.parseDouble(number);
+      }
     }
     try {
       return Long.parseLong(number);
