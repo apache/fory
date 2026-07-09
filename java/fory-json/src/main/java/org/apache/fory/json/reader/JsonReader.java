@@ -45,6 +45,31 @@ import org.apache.fory.json.meta.JsonFieldTable;
 public abstract class JsonReader {
   private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;
+  private static final int DOUBLE_FAST_MAX_SCALE = 15;
+  private static final long DOUBLE_FAST_MAX_UNSCALED = 1L << 53;
+  private static final double[] DOUBLE_POWERS_OF_TEN = {
+    1.0d,
+    10.0d,
+    100.0d,
+    1_000.0d,
+    10_000.0d,
+    100_000.0d,
+    1_000_000.0d,
+    10_000_000.0d,
+    100_000_000.0d,
+    1_000_000_000.0d,
+    10_000_000_000.0d,
+    100_000_000_000.0d,
+    1_000_000_000_000.0d,
+    10_000_000_000_000.0d,
+    100_000_000_000_000.0d,
+    1_000_000_000_000_000.0d
+  };
+  private static final int FLOAT_FAST_MAX_SCALE = 7;
+  private static final long FLOAT_FAST_MAX_UNSCALED = 1L << 24;
+  private static final float[] FLOAT_POWERS_OF_TEN = {
+    1.0f, 10.0f, 100.0f, 1_000.0f, 10_000.0f, 100_000.0f, 1_000_000.0f, 10_000_000.0f
+  };
 
   protected int position;
   private final int maxDepth;
@@ -485,7 +510,7 @@ public abstract class JsonReader {
     int start = position;
     int inputLength = length();
     if (position >= inputLength) {
-      return readBigDecimalFallback(start);
+      return readBoundedBigDecimal(start);
     }
     char ch = charAt(position);
     if (ch == '-') {
@@ -500,7 +525,7 @@ public abstract class JsonReader {
       do {
         int digit = ch - '0';
         if (unscaled > (Long.MAX_VALUE - digit) / 10) {
-          return readBigDecimalFallback(start);
+          return readBoundedBigDecimal(start);
         }
         unscaled = unscaled * 10 + digit;
         position++;
@@ -510,7 +535,7 @@ public abstract class JsonReader {
         ch = charAt(position);
       } while (ch >= '0' && ch <= '9');
     } else {
-      return readBigDecimalFallback(start);
+      return readBoundedBigDecimal(start);
     }
     if (position < inputLength && charAt(position) == '.') {
       position++;
@@ -522,20 +547,23 @@ public abstract class JsonReader {
         }
         int digit = ch - '0';
         if (unscaled > (Long.MAX_VALUE - digit) / 10) {
-          return readBigDecimalFallback(start);
+          return readBoundedBigDecimal(start);
         }
         unscaled = unscaled * 10 + digit;
         scale++;
+        if (scale > MAX_BIG_DECIMAL_SCALE) {
+          throwBigDecimalScaleExceeded();
+        }
         position++;
       }
       if (position == fractionStart) {
-        return readBigDecimalFallback(start);
+        return readBoundedBigDecimal(start);
       }
     }
     if (position < inputLength) {
       ch = charAt(position);
       if (ch == 'e' || ch == 'E') {
-        return readBigDecimalFallback(start);
+        return readBoundedBigDecimal(start);
       }
     }
     if (scale > MAX_BIG_DECIMAL_SCALE) {
@@ -548,7 +576,7 @@ public abstract class JsonReader {
     position = start + 1;
     int inputLength = length();
     if (position >= inputLength) {
-      return readBigDecimalFallback(start);
+      return readBoundedBigDecimal(start);
     }
     char ch = charAt(position);
     long unscaled = 0;
@@ -560,7 +588,7 @@ public abstract class JsonReader {
       do {
         int digit = ch - '0';
         if (unscaled > (Long.MAX_VALUE - digit) / 10) {
-          return readBigDecimalFallback(start);
+          return readBoundedBigDecimal(start);
         }
         unscaled = unscaled * 10 + digit;
         position++;
@@ -570,7 +598,7 @@ public abstract class JsonReader {
         ch = charAt(position);
       } while (ch >= '0' && ch <= '9');
     } else {
-      return readBigDecimalFallback(start);
+      return readBoundedBigDecimal(start);
     }
     if (position < inputLength && charAt(position) == '.') {
       position++;
@@ -582,20 +610,23 @@ public abstract class JsonReader {
         }
         int digit = ch - '0';
         if (unscaled > (Long.MAX_VALUE - digit) / 10) {
-          return readBigDecimalFallback(start);
+          return readBoundedBigDecimal(start);
         }
         unscaled = unscaled * 10 + digit;
         scale++;
+        if (scale > MAX_BIG_DECIMAL_SCALE) {
+          throwBigDecimalScaleExceeded();
+        }
         position++;
       }
       if (position == fractionStart) {
-        return readBigDecimalFallback(start);
+        return readBoundedBigDecimal(start);
       }
     }
     if (position < inputLength) {
       ch = charAt(position);
       if (ch == 'e' || ch == 'E') {
-        return readBigDecimalFallback(start);
+        return readBoundedBigDecimal(start);
       }
     }
     if (scale > MAX_BIG_DECIMAL_SCALE) {
@@ -604,9 +635,119 @@ public abstract class JsonReader {
     return BigDecimal.valueOf(-unscaled, scale);
   }
 
-  private BigDecimal readBigDecimalFallback(int start) {
+  protected final BigDecimal readBoundedBigDecimal(int start) {
+    checkBigNumberToken(start);
     position = start;
     return parseBigDecimal(readNumberAsString());
+  }
+
+  private void checkBigNumberToken(int start) {
+    int offset = start;
+    int inputLength = length();
+    int tokenLength = 0;
+    if (offset < inputLength && charAt(offset) == '-') {
+      offset++;
+      tokenLength++;
+    }
+    if (offset >= inputLength) {
+      position = offset;
+      throw error("Expected digit");
+    }
+    char ch = charAt(offset);
+    if (ch == '0') {
+      offset++;
+      tokenLength++;
+      if (tokenLength > MAX_BIG_NUMBER_LENGTH) {
+        throwBigNumberLengthExceeded(offset);
+      }
+      if (offset < inputLength) {
+        ch = charAt(offset);
+        if (ch >= '0' && ch <= '9') {
+          position = offset;
+          throw error("Leading zero in number");
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      do {
+        offset++;
+        tokenLength++;
+        if (tokenLength > MAX_BIG_NUMBER_LENGTH) {
+          throwBigNumberLengthExceeded(offset);
+        }
+        if (offset >= inputLength) {
+          break;
+        }
+        ch = charAt(offset);
+      } while (ch >= '0' && ch <= '9');
+    } else {
+      position = offset;
+      throw error("Expected digit");
+    }
+    int scale = 0;
+    if (offset < inputLength && charAt(offset) == '.') {
+      offset++;
+      tokenLength++;
+      if (tokenLength > MAX_BIG_NUMBER_LENGTH) {
+        throwBigNumberLengthExceeded(offset);
+      }
+      int fractionStart = offset;
+      while (offset < inputLength) {
+        ch = charAt(offset);
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        offset++;
+        tokenLength++;
+        scale++;
+        if (tokenLength > MAX_BIG_NUMBER_LENGTH) {
+          throwBigNumberLengthExceeded(offset);
+        }
+        if (scale > MAX_BIG_DECIMAL_SCALE) {
+          position = offset;
+          throwBigDecimalScaleExceeded();
+        }
+      }
+      if (offset == fractionStart) {
+        position = offset;
+        throw error("Expected digit");
+      }
+    }
+    if (offset < inputLength) {
+      ch = charAt(offset);
+      if (ch == 'e' || ch == 'E') {
+        offset++;
+        tokenLength++;
+        if (tokenLength > MAX_BIG_NUMBER_LENGTH) {
+          throwBigNumberLengthExceeded(offset);
+        }
+        if (offset < inputLength) {
+          ch = charAt(offset);
+          if (ch == '+' || ch == '-') {
+            offset++;
+            tokenLength++;
+            if (tokenLength > MAX_BIG_NUMBER_LENGTH) {
+              throwBigNumberLengthExceeded(offset);
+            }
+          }
+        }
+        int exponentStart = offset;
+        while (offset < inputLength) {
+          ch = charAt(offset);
+          if (ch < '0' || ch > '9') {
+            break;
+          }
+          offset++;
+          tokenLength++;
+          if (tokenLength > MAX_BIG_NUMBER_LENGTH) {
+            throwBigNumberLengthExceeded(offset);
+          }
+        }
+        if (offset == exponentStart) {
+          position = offset;
+          throw error("Expected digit");
+        }
+      }
+    }
   }
 
   private UUID readUuidToken() {
@@ -881,14 +1022,14 @@ public abstract class JsonReader {
 
   final BigInteger parseBigInteger(String number) {
     if (number.length() > MAX_BIG_NUMBER_LENGTH) {
-      throw error("JSON big number length " + MAX_BIG_NUMBER_LENGTH + " exceeded");
+      throwBigNumberLengthExceeded(position);
     }
     return new BigInteger(number);
   }
 
   final BigDecimal parseBigDecimal(String number) {
     if (number.length() > MAX_BIG_NUMBER_LENGTH) {
-      throw error("JSON big number length " + MAX_BIG_NUMBER_LENGTH + " exceeded");
+      throwBigNumberLengthExceeded(position);
     }
     BigDecimal value = new BigDecimal(number);
     int scale = value.scale();
@@ -900,6 +1041,27 @@ public abstract class JsonReader {
 
   final void throwBigDecimalScaleExceeded() {
     throw error("JSON big decimal scale " + MAX_BIG_DECIMAL_SCALE + " exceeded");
+  }
+
+  private void throwBigNumberLengthExceeded(int offset) {
+    position = offset;
+    throw error("JSON big number length " + MAX_BIG_NUMBER_LENGTH + " exceeded");
+  }
+
+  protected static boolean canUseFastDouble(long unscaled, int scale) {
+    return scale <= DOUBLE_FAST_MAX_SCALE && unscaled <= DOUBLE_FAST_MAX_UNSCALED;
+  }
+
+  protected static double fastDoubleValue(long unscaled, int scale) {
+    return (double) unscaled / DOUBLE_POWERS_OF_TEN[scale];
+  }
+
+  protected static boolean canUseFastFloat(long unscaled, int scale) {
+    return scale <= FLOAT_FAST_MAX_SCALE && unscaled <= FLOAT_FAST_MAX_UNSCALED;
+  }
+
+  protected static float fastFloatValue(long unscaled, int scale) {
+    return (float) unscaled / FLOAT_POWERS_OF_TEN[scale];
   }
 
   protected final double readNonFiniteDoubleString() {

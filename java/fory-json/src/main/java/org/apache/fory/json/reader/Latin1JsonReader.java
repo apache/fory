@@ -614,13 +614,27 @@ public final class Latin1JsonReader extends JsonReader {
     return readDoubleToken();
   }
 
+  public float readNextFloatValue() {
+    if (position < input.length) {
+      int ch = input[position];
+      if (ch > ' ' || !isWhitespace(ch)) {
+        return readFloatToken();
+      }
+    }
+    return readFloat();
+  }
+
+  public float readFloatTokenValue() {
+    return readFloatToken();
+  }
+
   private BigDecimal readBigDecimalToken() {
     byte[] bytes = input;
     int offset = position;
     int start = offset;
     int inputLength = bytes.length;
     if (offset >= inputLength) {
-      return readBigDecimalFallback(start);
+      return readBoundedBigDecimal(start);
     }
     int ch = bytes[offset];
     if (ch == '-') {
@@ -636,7 +650,7 @@ public final class Latin1JsonReader extends JsonReader {
       do {
         int digit = ch - '0';
         if (unscaled > (Long.MAX_VALUE - digit) / 10) {
-          return readBigDecimalFallback(start);
+          return readBoundedBigDecimal(start);
         }
         unscaled = unscaled * 10 + digit;
         offset++;
@@ -646,7 +660,7 @@ public final class Latin1JsonReader extends JsonReader {
         ch = bytes[offset];
       } while (ch >= '0' && ch <= '9');
     } else {
-      return readBigDecimalFallback(start);
+      return readBoundedBigDecimal(start);
     }
     if (offset < inputLength && bytes[offset] == '.') {
       offset++;
@@ -658,20 +672,24 @@ public final class Latin1JsonReader extends JsonReader {
         }
         int digit = ch - '0';
         if (unscaled > (Long.MAX_VALUE - digit) / 10) {
-          return readBigDecimalFallback(start);
+          return readBoundedBigDecimal(start);
         }
         unscaled = unscaled * 10 + digit;
         scale++;
+        if (scale > MAX_BIG_DECIMAL_SCALE) {
+          position = offset;
+          throwBigDecimalScaleExceeded();
+        }
         offset++;
       }
       if (offset == fractionStart) {
-        return readBigDecimalFallback(start);
+        return readBoundedBigDecimal(start);
       }
     }
     if (offset < inputLength) {
       ch = bytes[offset];
       if (ch == 'e' || ch == 'E') {
-        return readBigDecimalFallback(start);
+        return readBoundedBigDecimal(start);
       }
     }
     position = offset;
@@ -686,7 +704,7 @@ public final class Latin1JsonReader extends JsonReader {
     int offset = start + 1;
     int inputLength = bytes.length;
     if (offset >= inputLength) {
-      return readBigDecimalFallback(start);
+      return readBoundedBigDecimal(start);
     }
     int ch = bytes[offset];
     long unscaled = 0;
@@ -699,7 +717,7 @@ public final class Latin1JsonReader extends JsonReader {
       do {
         int digit = ch - '0';
         if (unscaled > (Long.MAX_VALUE - digit) / 10) {
-          return readBigDecimalFallback(start);
+          return readBoundedBigDecimal(start);
         }
         unscaled = unscaled * 10 + digit;
         offset++;
@@ -709,7 +727,7 @@ public final class Latin1JsonReader extends JsonReader {
         ch = bytes[offset];
       } while (ch >= '0' && ch <= '9');
     } else {
-      return readBigDecimalFallback(start);
+      return readBoundedBigDecimal(start);
     }
     if (offset < inputLength && bytes[offset] == '.') {
       offset++;
@@ -721,20 +739,24 @@ public final class Latin1JsonReader extends JsonReader {
         }
         int digit = ch - '0';
         if (unscaled > (Long.MAX_VALUE - digit) / 10) {
-          return readBigDecimalFallback(start);
+          return readBoundedBigDecimal(start);
         }
         unscaled = unscaled * 10 + digit;
         scale++;
+        if (scale > MAX_BIG_DECIMAL_SCALE) {
+          position = offset;
+          throwBigDecimalScaleExceeded();
+        }
         offset++;
       }
       if (offset == fractionStart) {
-        return readBigDecimalFallback(start);
+        return readBoundedBigDecimal(start);
       }
     }
     if (offset < inputLength) {
       ch = bytes[offset];
       if (ch == 'e' || ch == 'E') {
-        return readBigDecimalFallback(start);
+        return readBoundedBigDecimal(start);
       }
     }
     position = offset;
@@ -742,11 +764,6 @@ public final class Latin1JsonReader extends JsonReader {
       throwBigDecimalScaleExceeded();
     }
     return BigDecimal.valueOf(-unscaled, scale);
-  }
-
-  private BigDecimal readBigDecimalFallback(int start) {
-    position = start;
-    return parseBigDecimal(readNumberAsString());
   }
 
   private UUID readUuidToken() {
@@ -1004,7 +1021,10 @@ public final class Latin1JsonReader extends JsonReader {
       }
     }
     position = offset;
-    return BigDecimal.valueOf(unscaled, scale).floatValue();
+    if (!canUseFastFloat(unscaled, scale)) {
+      return readFloatFallback(start);
+    }
+    return fastFloatValue(unscaled, scale);
   }
 
   private float finishSignedFloatToken(
@@ -1019,7 +1039,10 @@ public final class Latin1JsonReader extends JsonReader {
     if (unscaled == 0) {
       return -0.0f;
     }
-    return BigDecimal.valueOf(-unscaled, scale).floatValue();
+    if (!canUseFastFloat(unscaled, scale)) {
+      return readFloatFallback(start);
+    }
+    return -fastFloatValue(unscaled, scale);
   }
 
   private float readFloatFallback(int start) {
@@ -1215,7 +1238,10 @@ public final class Latin1JsonReader extends JsonReader {
       }
     }
     position = offset;
-    return BigDecimal.valueOf(unscaled, scale).doubleValue();
+    if (!canUseFastDouble(unscaled, scale)) {
+      return readDoubleFallback(start);
+    }
+    return fastDoubleValue(unscaled, scale);
   }
 
   private double finishSignedDoubleToken(
@@ -1230,7 +1256,10 @@ public final class Latin1JsonReader extends JsonReader {
     if (unscaled == 0) {
       return -0.0d;
     }
-    return BigDecimal.valueOf(-unscaled, scale).doubleValue();
+    if (!canUseFastDouble(unscaled, scale)) {
+      return readDoubleFallback(start);
+    }
+    return -fastDoubleValue(unscaled, scale);
   }
 
   private double readDoubleFallback(int start) {

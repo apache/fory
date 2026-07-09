@@ -19,7 +19,6 @@
 
 package org.apache.fory.json.reader;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -532,6 +531,20 @@ public final class Utf16JsonReader extends JsonReader {
     return readFloatToken();
   }
 
+  public float readNextFloatValue() {
+    if (position < length) {
+      char ch = charAtFast(position);
+      if (ch > ' ' || !isWhitespace(ch)) {
+        return readFloatToken();
+      }
+    }
+    return readFloat();
+  }
+
+  public float readFloatTokenValue() {
+    return readFloatToken();
+  }
+
   private double readDoubleToken() {
     int offset = position;
     int inputLength = length;
@@ -739,7 +752,10 @@ public final class Utf16JsonReader extends JsonReader {
       }
     }
     position = offset;
-    return BigDecimal.valueOf(unscaled, scale).floatValue();
+    if (!canUseFastFloat(unscaled, scale)) {
+      return readFloatFallback(start);
+    }
+    return fastFloatValue(unscaled, scale);
   }
 
   private float finishSignedFloatToken(
@@ -754,7 +770,10 @@ public final class Utf16JsonReader extends JsonReader {
     if (unscaled == 0) {
       return -0.0f;
     }
-    return BigDecimal.valueOf(-unscaled, scale).floatValue();
+    if (!canUseFastFloat(unscaled, scale)) {
+      return readFloatFallback(start);
+    }
+    return -fastFloatValue(unscaled, scale);
   }
 
   private float readFloatFallback(int start) {
@@ -947,7 +966,10 @@ public final class Utf16JsonReader extends JsonReader {
       }
     }
     position = offset;
-    return BigDecimal.valueOf(unscaled, scale).doubleValue();
+    if (!canUseFastDouble(unscaled, scale)) {
+      return readDoubleFallback(start);
+    }
+    return fastDoubleValue(unscaled, scale);
   }
 
   private double finishSignedDoubleToken(
@@ -962,7 +984,10 @@ public final class Utf16JsonReader extends JsonReader {
     if (unscaled == 0) {
       return -0.0d;
     }
-    return BigDecimal.valueOf(-unscaled, scale).doubleValue();
+    if (!canUseFastDouble(unscaled, scale)) {
+      return readDoubleFallback(start);
+    }
+    return -fastDoubleValue(unscaled, scale);
   }
 
   private double readDoubleFallback(int start) {

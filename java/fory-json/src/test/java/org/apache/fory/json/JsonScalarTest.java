@@ -25,6 +25,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -67,6 +68,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.fory.json.codec.BaseObjectCodec;
+import org.apache.fory.json.codec.GeneratedObjectCodec;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.data.BoxedScalars;
 import org.apache.fory.json.data.CoreScalarFields;
@@ -75,6 +78,7 @@ import org.apache.fory.json.data.NaturalObjectValue;
 import org.apache.fory.json.data.NaturalValues;
 import org.apache.fory.json.data.NumericBoundaries;
 import org.apache.fory.json.data.PublicFields;
+import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -1108,6 +1112,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertThrows(
         ForyJsonException.class,
         () -> json.fromJson(repeat('1', BIG_NUMBER_LIMIT + 1), BigDecimal.class));
+    String overflowFallback = repeat('9', 20) + "." + repeat('1', BIG_NUMBER_LIMIT + 1);
+    assertEarlyBigDecimalReject(
+        new Utf8JsonReader(overflowFallback.getBytes(StandardCharsets.UTF_8)));
+    assertEarlyBigDecimalReject(new Latin1JsonReader(latin1Bytes(overflowFallback)));
+    assertEarlyBigDecimalReject(utf16Reader(overflowFallback));
   }
 
   @Test
@@ -1164,6 +1173,24 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         Float.floatToRawIntBits(new Latin1JsonReader(latin1Bytes(token)).readFloat()), expected);
     assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloat()), expected);
+  }
+
+  @Test
+  public void generatedFloatReadersUseDirectPath() throws Exception {
+    ForyJson json = newJson();
+    String token = "1.0000000596046448";
+    int expected = Float.floatToRawIntBits(Float.parseFloat(token));
+    FloatFields fields =
+        json.fromJson("{\"value\":" + token + ",\"boxed\":" + token + "}", FloatFields.class);
+    assertEquals(Float.floatToRawIntBits(fields.value), expected);
+    assertEquals(Float.floatToRawIntBits(fields.boxed.floatValue()), expected);
+    if (codegenEnabled()) {
+      GeneratedObjectCodec codec = generatedObjectCodec(json, FloatFields.class);
+      assertNoJsonFieldInfoFields(reflectField(codec, "reader"));
+      assertNoJsonFieldInfoFields(reflectField(codec, "latin1Reader"));
+      assertNoJsonFieldInfoFields(reflectField(codec, "utf16Reader"));
+      assertNoJsonFieldInfoFields(reflectField(codec, "utf8Reader"));
+    }
   }
 
   @Test
@@ -1257,6 +1284,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
     public Float boxed;
   }
 
+  public static final class FloatFields {
+    public float value;
+    public Float boxed;
+  }
+
   public static final class ModeAwareHolder {
     public ModeAwareValue value;
   }
@@ -1326,6 +1358,28 @@ public class JsonScalarTest extends ForyJsonTestModels {
     } catch (ForyJsonException e) {
       assertTrue(e.getCause() instanceof DateTimeException);
     }
+  }
+
+  private static GeneratedObjectCodec generatedObjectCodec(ForyJson json, Class<?> type)
+      throws Exception {
+    Object primarySlot = ((AtomicReference<?>) reflectField(json, "primarySlot")).get();
+    Object state = reflectField(primarySlot, "state");
+    JsonTypeResolver resolver = (JsonTypeResolver) reflectField(state, "typeResolver");
+    BaseObjectCodec codec = resolver.getObjectCodec(type);
+    assertTrue(codec instanceof GeneratedObjectCodec);
+    return (GeneratedObjectCodec) codec;
+  }
+
+  private static void assertNoJsonFieldInfoFields(Object owner) {
+    for (Field field : owner.getClass().getDeclaredFields()) {
+      assertTrue(field.getType() != JsonFieldInfo.class, field.toString());
+    }
+  }
+
+  private static Object reflectField(Object owner, String name) throws Exception {
+    Field field = owner.getClass().getDeclaredField(name);
+    field.setAccessible(true);
+    return field.get(owner);
   }
 
   private static final class UrlStringCodec implements JsonCodec {
@@ -1398,5 +1452,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
     return new Utf16JsonReader().reset(input, bytes);
+  }
+
+  private static void assertEarlyBigDecimalReject(JsonReader reader) {
+    ForyJsonException error = expectThrows(ForyJsonException.class, reader::readBigDecimal);
+    assertTrue(error.getMessage().contains("JSON big number length " + BIG_NUMBER_LIMIT));
+    assertTrue(error.getMessage().contains("JSON position " + (BIG_NUMBER_LIMIT + 1)));
   }
 }
