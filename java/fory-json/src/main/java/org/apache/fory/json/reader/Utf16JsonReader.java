@@ -1003,7 +1003,7 @@ public final class Utf16JsonReader extends JsonReader {
     // the UTF-16 fast path only owns compact plain decimals matching the byte readers.
     position = start;
     if (start < length && charAtFast(start) == '"') {
-      return readNonFiniteDoubleString();
+      return readNonFiniteDoubleLiteral();
     }
     return Double.parseDouble(readNumberAsString());
   }

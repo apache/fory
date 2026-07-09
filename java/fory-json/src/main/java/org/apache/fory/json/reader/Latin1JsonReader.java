@@ -1275,7 +1275,7 @@ public final class Latin1JsonReader extends JsonReader {
     // the Latin1 fast path only owns compact plain decimals matching the UTF-8 reader.
     position = start;
     if (start < input.length && input[start] == '"') {
-      return readNonFiniteDoubleString();
+      return readNonFiniteDoubleLiteral();
     }
     return Double.parseDouble(readNumberAsString());
   }

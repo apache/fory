@@ -382,7 +382,7 @@ public abstract class JsonReader {
   public double readDouble() {
     skipWhitespace();
     if (position < length() && charAt(position) == '"') {
-      return readNonFiniteDoubleString();
+      return readNonFiniteDoubleLiteral();
     }
     return Double.parseDouble(readNumberToken());
   }
@@ -948,14 +948,23 @@ public abstract class JsonReader {
     if (number.length() > MAX_BIG_NUMBER_LENGTH) {
       throwBigNumberLengthExceeded(position);
     }
-    return new BigInteger(number);
+    try {
+      return new BigInteger(number);
+    } catch (NumberFormatException e) {
+      throw new ForyJsonException("Invalid JSON big integer at JSON position " + position, e);
+    }
   }
 
   final BigDecimal parseBigDecimal(String number) {
     if (number.length() > MAX_BIG_NUMBER_LENGTH) {
       throwBigNumberLengthExceeded(position);
     }
-    BigDecimal value = new BigDecimal(number);
+    BigDecimal value;
+    try {
+      value = new BigDecimal(number);
+    } catch (NumberFormatException e) {
+      throw new ForyJsonException("Invalid JSON big decimal at JSON position " + position, e);
+    }
     int scale = value.scale();
     if (scale > MAX_BIG_DECIMAL_SCALE || scale < -MAX_BIG_DECIMAL_SCALE) {
       throwBigDecimalScaleExceeded();
@@ -1547,20 +1556,22 @@ public abstract class JsonReader {
     return Long.compareUnsigned(low1, low2);
   }
 
-  protected final double readNonFiniteDoubleString() {
-    String value = readString();
-    switch (value) {
-      case "NaN":
-        return Double.NaN;
-      case "Infinity":
-        return Double.POSITIVE_INFINITY;
-      case "-Infinity":
-        return Double.NEGATIVE_INFINITY;
-      default:
-        // Numeric strings are intentionally not coerced; only writer-emitted non-finite tokens
-        // are accepted here.
-        throw error("Expected finite JSON number or non-finite double string");
+  protected final double readNonFiniteDoubleLiteral() {
+    if (matchesQuotedAscii("NaN")) {
+      position += 5;
+      return Double.NaN;
     }
+    if (matchesQuotedAscii("Infinity")) {
+      position += 10;
+      return Double.POSITIVE_INFINITY;
+    }
+    if (matchesQuotedAscii("-Infinity")) {
+      position += 11;
+      return Double.NEGATIVE_INFINITY;
+    }
+    // Numeric strings are intentionally not coerced; only writer-emitted non-finite tokens
+    // are accepted here.
+    throw error("Expected finite JSON number or non-finite double string");
   }
 
   protected final float readNonFiniteFloatLiteral() {

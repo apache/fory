@@ -1282,7 +1282,7 @@ public final class Utf8JsonReader extends JsonReader {
   private double readDoubleFallback(int start) {
     position = start;
     if (start < input.length && input[start] == '"') {
-      return readNonFiniteDoubleString();
+      return readNonFiniteDoubleLiteral();
     }
     return Double.parseDouble(readNumberAsString());
   }

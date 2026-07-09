@@ -175,6 +175,17 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         new Latin1JsonReader(latin1Bytes("\"Infinity\"")).readDouble(), Double.POSITIVE_INFINITY);
     assertEquals(utf16Reader("\"-Infinity\"").readDouble(), Double.NEGATIVE_INFINITY);
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            new Utf8JsonReader("\"\\u004e\\u0061\\u004e\"".getBytes(StandardCharsets.UTF_8))
+                .readDouble());
+    assertThrows(
+        ForyJsonException.class,
+        () -> new Latin1JsonReader(latin1Bytes("\"\\u0049nfinity\"")).readDouble());
+    assertThrows(ForyJsonException.class, () -> utf16Reader("\"-\\u0049nfinity\"").readDouble());
+    assertThrows(
+        ForyJsonException.class, () -> json.fromJson("\"\\u004e\\u0061\\u004e\"", Double.class));
 
     NonFiniteNumbers numbers =
         json.fromJson(
@@ -1216,6 +1227,19 @@ public class JsonScalarTest extends ForyJsonTestModels {
     String oversized = repeat('1', BIG_NUMBER_LIMIT + 1);
     assertThrows(ForyJsonException.class, () -> json.fromJson(oversized, Object.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson(oversized, Number.class));
+  }
+
+  @Test
+  public void rejectInvalidBigNumbers() {
+    ForyJson json = newJson();
+    assertThrows(ForyJsonException.class, () -> json.fromJson("1.5", BigInteger.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("1e2147483648", BigDecimal.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> new Utf8JsonReader("1.5".getBytes(StandardCharsets.UTF_8)).readBigInteger());
+    assertThrows(
+        ForyJsonException.class, () -> new Latin1JsonReader(latin1Bytes("1e2")).readBigInteger());
+    assertThrows(ForyJsonException.class, () -> utf16Reader("1e2").readBigInteger());
   }
 
   @Test
