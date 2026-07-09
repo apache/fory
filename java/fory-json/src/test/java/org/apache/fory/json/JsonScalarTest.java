@@ -1154,6 +1154,19 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readFloatAvoidsDoubleRounding() {
+    String token = "1.0000000596046448";
+    int expected = Float.floatToRawIntBits(Float.parseFloat(token));
+    assertEquals(
+        Float.floatToRawIntBits(
+            new Utf8JsonReader(token.getBytes(StandardCharsets.UTF_8)).readFloat()),
+        expected);
+    assertEquals(
+        Float.floatToRawIntBits(new Latin1JsonReader(latin1Bytes(token)).readFloat()), expected);
+    assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloat()), expected);
+  }
+
+  @Test
   public void rejectLeadingZero() {
     ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.fromJson("01", int.class));

@@ -62,7 +62,7 @@ public final class ForyJsonBuilder {
     return this;
   }
 
-  /** Sets the maximum nested JSON object/array depth allowed while parsing. */
+  /** Sets the maximum nested JSON object/array depth allowed while reading or writing. */
   public ForyJsonBuilder maxDepth(int maxDepth) {
     if (maxDepth < 1) {
       throw new IllegalArgumentException("maxDepth must be positive");

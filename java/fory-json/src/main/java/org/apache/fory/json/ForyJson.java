@@ -47,7 +47,7 @@ public final class ForyJson {
   private static final int DEFAULT_POOL_SIZE =
       Math.max(1, Runtime.getRuntime().availableProcessors() * 4);
 
-  /** Default maximum nested JSON object/array depth accepted by parsers. */
+  /** Default maximum nested JSON object/array depth accepted while reading or writing. */
   public static final int DEFAULT_MAX_DEPTH = 20;
 
   private final JsonConfig config;
