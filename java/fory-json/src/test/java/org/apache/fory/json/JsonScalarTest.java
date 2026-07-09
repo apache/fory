@@ -986,7 +986,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void rejectTemporalFractionOverflow() {
+  public void rejectInvalidTemporalStrings() {
     ForyJson json = newJson();
     assertEquals(
         json.fromJson("\"04:05:06.123456789\"", LocalTime.class), LocalTime.of(4, 5, 6, 123456789));
@@ -1004,8 +1004,19 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertThrows(
         ForyJsonException.class,
         () -> utf16Reader("\"2024-02-03T04:05:06.1234567890+08:30\"").readIsoOffsetDateTime());
+  }
+
+  @Test
+  public void rejectNumericTemporalTokens() {
+    ForyJson json = newJson();
+    assertThrows(ForyJsonException.class, () -> json.fromJson("1.25", Instant.class));
     assertThrows(
-        ForyJsonException.class, () -> json.fromJson("\"PT1.1234567890S\"", Duration.class));
+        ForyJsonException.class,
+        () -> json.fromJson("1.25".getBytes(StandardCharsets.UTF_8), Instant.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("1.25", Duration.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("1.25".getBytes(StandardCharsets.UTF_8), Duration.class));
   }
 
   @Test

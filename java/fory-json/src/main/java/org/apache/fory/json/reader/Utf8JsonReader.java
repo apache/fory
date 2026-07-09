@@ -1408,7 +1408,7 @@ public final class Utf8JsonReader extends JsonReader {
           throw new IllegalArgumentException();
         }
         if (fractionEnd - fractionStart > 9) {
-          throw error("Temporal fractional seconds exceed nanosecond precision");
+          throw error("OffsetDateTime fractional seconds exceed nanosecond precision");
         }
         nano = parseNano(bytes, fractionStart, fractionEnd);
         index = fractionEnd;

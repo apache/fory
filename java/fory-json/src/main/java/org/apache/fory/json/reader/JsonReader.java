@@ -716,7 +716,6 @@ public abstract class JsonReader {
   }
 
   protected final OffsetDateTime readIsoOffsetDateTimeFallback(String value) {
-    checkTemporalFraction(value, "java.time.OffsetDateTime");
     try {
       return OffsetDateTime.parse(value);
     } catch (RuntimeException e) {
@@ -725,7 +724,6 @@ public abstract class JsonReader {
   }
 
   private LocalTime parseLocalTimeValue(CharSequence value) {
-    checkTemporalFraction(value, "java.time.LocalTime");
     try {
       return LocalTime.parse(value);
     } catch (RuntimeException e) {
@@ -734,7 +732,6 @@ public abstract class JsonReader {
   }
 
   private LocalDateTime parseLocalDateTimeValue(CharSequence value) {
-    checkTemporalFraction(value, "java.time.LocalDateTime");
     try {
       return LocalDateTime.parse(value);
     } catch (RuntimeException e) {
@@ -743,7 +740,6 @@ public abstract class JsonReader {
   }
 
   private Instant parseInstantValue(CharSequence value) {
-    checkTemporalFraction(value, "java.time.Instant");
     try {
       return Instant.parse(value);
     } catch (RuntimeException e) {
@@ -752,7 +748,6 @@ public abstract class JsonReader {
   }
 
   private Duration parseDurationValue(CharSequence value) {
-    checkTemporalFraction(value, "java.time.Duration");
     try {
       return Duration.parse(value);
     } catch (RuntimeException e) {
@@ -769,7 +764,6 @@ public abstract class JsonReader {
   }
 
   private ZonedDateTime parseZonedDateTimeValue(CharSequence value) {
-    checkTemporalFraction(value, "java.time.ZonedDateTime");
     try {
       return ZonedDateTime.parse(value);
     } catch (RuntimeException e) {
@@ -810,38 +804,11 @@ public abstract class JsonReader {
   }
 
   private OffsetTime parseOffsetTimeValue(CharSequence value) {
-    checkTemporalFraction(value, "java.time.OffsetTime");
     try {
       return OffsetTime.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.OffsetTime", e);
     }
-  }
-
-  private void checkTemporalFraction(CharSequence value, String type) {
-    int length = value.length();
-    for (int i = 1; i + 1 < length; i++) {
-      if (value.charAt(i) != '.'
-          || !isDigit(value.charAt(i - 1))
-          || !isDigit(value.charAt(i + 1))) {
-        continue;
-      }
-      int fractionEnd = i + 2;
-      while (fractionEnd < length && isDigit(value.charAt(fractionEnd))) {
-        fractionEnd++;
-      }
-      if (fractionEnd - i - 1 > 9) {
-        throw new ForyJsonException(
-            type
-                + " JSON string has more than 9 fractional second digits at JSON position "
-                + position);
-      }
-      i = fractionEnd;
-    }
-  }
-
-  private static boolean isDigit(char ch) {
-    return ch >= '0' && ch <= '9';
   }
 
   private ForyJsonException invalidStringValue(String type, RuntimeException e) {
