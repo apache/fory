@@ -64,6 +64,8 @@ public abstract class MapCodec extends AbstractJsonCodec {
     Class<?> keyRawType = CodecUtils.rawType(keyType, Object.class);
     Type valueType = keyValueTypeRefs.f1.getType();
     Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
+    resolver.checkSecure(keyRawType);
+    resolver.checkSecure(valueRawType);
     MapFactory factory = mapFactory(rawType, keyRawType);
     if (keyRawType == String.class) {
       if (valueRawType == String.class) {

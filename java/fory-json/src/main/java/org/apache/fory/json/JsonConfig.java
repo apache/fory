@@ -33,6 +33,8 @@ public final class JsonConfig {
   private final boolean propertyDiscoveryEnabled;
   private final int maxDepth;
   private final CodecRegistry codecRegistry;
+  private final JsonTypeChecker typeChecker;
+  private final JsonTypeCheckContext typeCheckContext;
   private final String codecRegistryKey;
   private final CodegenKey codegenKey;
   private transient int codegenHash;
@@ -43,13 +45,16 @@ public final class JsonConfig {
       boolean asyncCompilationEnabled,
       boolean propertyDiscoveryEnabled,
       int maxDepth,
-      CodecRegistry codecRegistry) {
+      CodecRegistry codecRegistry,
+      JsonTypeChecker typeChecker) {
     this.writeNullFields = writeNullFields;
     this.codegenEnabled = codegenEnabled;
     this.asyncCompilationEnabled = asyncCompilationEnabled;
     this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
     this.maxDepth = maxDepth;
     this.codecRegistry = codecRegistry;
+    this.typeChecker = typeChecker;
+    typeCheckContext = new JsonTypeCheckContext();
     codecRegistryKey = codecRegistry.codegenKey();
     codegenKey = new CodegenKey(writeNullFields, propertyDiscoveryEnabled, codecRegistryKey);
   }
@@ -78,6 +83,14 @@ public final class JsonConfig {
     return codecRegistry;
   }
 
+  public JsonTypeChecker typeChecker() {
+    return typeChecker;
+  }
+
+  public JsonTypeCheckContext typeCheckContext() {
+    return typeCheckContext;
+  }
+
   @Override
   public boolean equals(Object other) {
     if (this == other) {
@@ -92,18 +105,20 @@ public final class JsonConfig {
         && asyncCompilationEnabled == that.asyncCompilationEnabled
         && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
         && maxDepth == that.maxDepth
+        && typeChecker == that.typeChecker
         && Objects.equals(codecRegistryKey, that.codecRegistryKey);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(
-        writeNullFields,
-        codegenEnabled,
-        asyncCompilationEnabled,
-        propertyDiscoveryEnabled,
-        maxDepth,
-        codecRegistryKey);
+    int result = Boolean.hashCode(writeNullFields);
+    result = 31 * result + Boolean.hashCode(codegenEnabled);
+    result = 31 * result + Boolean.hashCode(asyncCompilationEnabled);
+    result = 31 * result + Boolean.hashCode(propertyDiscoveryEnabled);
+    result = 31 * result + maxDepth;
+    result = 31 * result + System.identityHashCode(typeChecker);
+    result = 31 * result + codecRegistryKey.hashCode();
+    return result;
   }
 
   private static final AtomicInteger COUNTER = new AtomicInteger(0);

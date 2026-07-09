@@ -52,6 +52,13 @@ public class DisallowedListTest extends ForyTestBase {
   }
 
   @Test
+  public void testDisallowedListImmutable() {
+    Set<String> disallowedClasses = DisallowedList.getDisallowedClasses();
+    Assert.assertThrows(
+        UnsupportedOperationException.class, () -> disallowedClasses.add("example.NotAllowed"));
+  }
+
+  @Test
   public void testCheckHitDisallowedList() {
     // Hit the disallowed list.
     Assert.assertThrows(

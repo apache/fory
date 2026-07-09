@@ -435,6 +435,7 @@ public abstract class BaseObjectCodec extends AbstractJsonCodec {
     int modifiers = field.getModifiers();
     return !Modifier.isStatic(modifiers)
         && !Modifier.isTransient(modifiers)
+        && field.getType() != Class.class
         && !field.isSynthetic();
   }
 
@@ -447,7 +448,9 @@ public abstract class BaseObjectCodec extends AbstractJsonCodec {
   }
 
   private static String getterPropertyName(Method method) {
-    if (method.getParameterCount() != 0 || method.getReturnType() == void.class) {
+    if (method.getParameterCount() != 0
+        || method.getReturnType() == void.class
+        || method.getReturnType() == Class.class) {
       return null;
     }
     String name = method.getName();
@@ -466,7 +469,9 @@ public abstract class BaseObjectCodec extends AbstractJsonCodec {
   }
 
   private static String setterPropertyName(Method method) {
-    if (method.getParameterCount() != 1 || method.getReturnType() != void.class) {
+    if (method.getParameterCount() != 1
+        || method.getReturnType() != void.class
+        || method.getParameterTypes()[0] == Class.class) {
       return null;
     }
     String name = method.getName();

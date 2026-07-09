@@ -858,12 +858,12 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void rejectClassFields() {
+  public void skipClassFields() {
     ForyJson json = newJson();
-    assertThrows(ForyJsonException.class, () -> json.toJson(new ClassFieldHolder()));
-    assertThrows(
-        ForyJsonException.class,
-        () -> json.fromJson("{\"type\":\"java.lang.String\"}", ClassFieldHolder.class));
+    assertEquals(json.toJson(new ClassFieldHolder()), "{}");
+    ClassFieldHolder holder =
+        json.fromJson("{\"type\":\"java.lang.Integer\"}", ClassFieldHolder.class);
+    assertEquals(holder.type, String.class);
   }
 
   @Test

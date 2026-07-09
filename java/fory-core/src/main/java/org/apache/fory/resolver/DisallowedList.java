@@ -20,12 +20,13 @@
 package org.apache.fory.resolver;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.fory.exception.InsecureException;
 
 /** A class to record which classes are not allowed for serialization. */
-class DisallowedList {
+public final class DisallowedList {
 
   // Embedded disallowed class names list - no external file dependency
   private static final String[] DISALLOWED_CLASSES = {
@@ -290,14 +291,16 @@ class DisallowedList {
   };
 
   private static final Set<String> DEFAULT_DISALLOWED_LIST_SET =
-      Arrays.stream(DISALLOWED_CLASSES).collect(Collectors.toSet());
+      Collections.unmodifiableSet(Arrays.stream(DISALLOWED_CLASSES).collect(Collectors.toSet()));
+
+  private DisallowedList() {}
 
   /**
-   * Get the disallowed class names as a Set for testing purposes.
+   * Get the disallowed class names as an immutable set.
    *
    * @return Set of disallowed class names
    */
-  static Set<String> getDisallowedClasses() {
+  public static Set<String> getDisallowedClasses() {
     return DEFAULT_DISALLOWED_LIST_SET;
   }
 
@@ -309,7 +312,7 @@ class DisallowedList {
    * @param clsName Class Name that needs to be judged.
    * @throws InsecureException If the class is in the disallowed list.
    */
-  static void checkNotInDisallowedList(String clsName) {
+  public static void checkNotInDisallowedList(String clsName) {
     if (DEFAULT_DISALLOWED_LIST_SET.contains(clsName)) {
       throw new InsecureException(String.format("%s hit disallowed list", clsName));
     }

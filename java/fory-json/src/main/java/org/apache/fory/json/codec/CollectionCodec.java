@@ -74,6 +74,7 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
     TypeRef<?> elementTypeRef = CodecUtils.elementTypeRef(typeRef);
     Type elementType = elementTypeRef.getType();
     Class<?> elementRawType = CodecUtils.rawType(elementType, Object.class);
+    resolver.checkSecure(elementRawType);
     CollectionFactory factory = collectionFactory(rawType, elementRawType);
     if (elementRawType == String.class) {
       return new StringCollectionCodec(typeRef, factory);
