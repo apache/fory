@@ -23,13 +23,14 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 
 /** Exact JDK float formatter access for JSON number output without materializing a String. */
 final class JdkFloatFormatter {
   static final int MAX_CHARS = 16;
   private static final MethodHandle PUT_DECIMAL = loadPutDecimal();
-  private static final MethodHandle APPEND_TO = loadAppendToBuilder();
 
   private JdkFloatFormatter() {}
 
@@ -46,16 +47,12 @@ final class JdkFloatFormatter {
   }
 
   static void appendTo(float value, StringBuilder builder) {
-    MethodHandle appendTo = APPEND_TO;
-    if (appendTo == null) {
-      throw new ForyJsonException("Cannot write JSON float without a JDK float formatter");
-    }
     try {
-      // JDK 8 BinaryToASCIIBuffer only appends to StringBuilder/StringBuffer, not arbitrary
-      // Appendable implementations. Writers reuse this builder and copy chars without creating a
-      // String.
       builder.setLength(0);
-      appendTo.invokeExact(value, (Appendable) builder);
+      // HotSpot JDK 8 delegates this to FloatingDecimal.appendTo and current HotSpot delegates it
+      // to FloatToDecimal.putDecimal, so the portable fallback writes into the reused builder
+      // instead of materializing Float.toString(value).
+      builder.append(value);
       if (builder.length() == 0) {
         throw new ForyJsonException("JDK float formatter produced no output");
       }
@@ -65,6 +62,9 @@ final class JdkFloatFormatter {
   }
 
   private static MethodHandle loadPutDecimal() {
+    if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      return null;
+    }
     try {
       Class<?> formatterClass = Class.forName("jdk.internal.math.FloatToDecimal");
       Lookup lookup = _JDKAccess._trustedLookup(formatterClass);
@@ -78,33 +78,6 @@ final class JdkFloatFormatter {
           .bindTo(latin1)
           .asType(MethodType.methodType(int.class, byte[].class, int.class, float.class));
     } catch (ClassNotFoundException | NoSuchFieldException | NoSuchMethodException e) {
-      return null;
-    } catch (IllegalAccessException e) {
-      return null;
-    } catch (Throwable e) {
-      throw new ExceptionInInitializerError(e);
-    }
-  }
-
-  private static MethodHandle loadAppendToBuilder() {
-    MethodHandle appendTo = loadAppendToBuilder("jdk.internal.math.FloatingDecimal");
-    if (appendTo != null) {
-      return appendTo;
-    }
-    return loadAppendToBuilder("sun.misc.FloatingDecimal");
-  }
-
-  private static MethodHandle loadAppendToBuilder(String className) {
-    try {
-      Class<?> formatterClass = Class.forName(className);
-      Lookup lookup = _JDKAccess._trustedLookup(formatterClass);
-      return lookup
-          .findStatic(
-              formatterClass,
-              "appendTo",
-              MethodType.methodType(void.class, float.class, Appendable.class))
-          .asType(MethodType.methodType(void.class, float.class, Appendable.class));
-    } catch (ClassNotFoundException | NoSuchMethodException e) {
       return null;
     } catch (IllegalAccessException e) {
       return null;

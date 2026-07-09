@@ -26,6 +26,7 @@ import static org.testng.Assert.expectThrows;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -1259,6 +1260,21 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         new Latin1JsonReader(latin1Bytes("\"Infinity\"")).readFloat(), Float.POSITIVE_INFINITY);
     assertEquals(utf16Reader("\"-Infinity\"").readFloat(), Float.NEGATIVE_INFINITY);
+  }
+
+  @Test
+  public void portableFloatFormatterFallback() throws Exception {
+    Method appendTo =
+        Class.forName("org.apache.fory.json.writer.JdkFloatFormatter")
+            .getDeclaredMethod("appendTo", float.class, StringBuilder.class);
+    appendTo.setAccessible(true);
+    float[] values = {1.5f, 1.1f, Float.MIN_VALUE, Float.MAX_VALUE, 1.0e-20f, 1.0e20f};
+    StringBuilder builder = new StringBuilder(16);
+    for (float value : values) {
+      appendTo.invoke(null, value, builder);
+      assertEquals(builder.toString(), Float.toString(value));
+      builder.setLength(0);
+    }
   }
 
   @Test
