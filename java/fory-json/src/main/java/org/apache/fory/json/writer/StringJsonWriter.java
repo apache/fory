@@ -226,6 +226,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         return;
       }
     } else {
+      ensureScratch(JdkFloatFormatter.MAX_CHARS);
       int end = JdkFloatFormatter.write(scratch, 0, value);
       if (end >= 0) {
         for (int i = 0; i < end; i++) {
@@ -1741,6 +1742,12 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     int minCapacity = position + additional;
     if (minCapacity > buffer.length) {
       grow(minCapacity);
+    }
+  }
+
+  private void ensureScratch(int minCapacity) {
+    if (scratch.length < minCapacity) {
+      scratch = growScratch(minCapacity);
     }
   }
 

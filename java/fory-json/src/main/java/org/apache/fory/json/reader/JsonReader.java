@@ -95,6 +95,10 @@ public abstract class JsonReader {
   private static final int FLOAT_FRACTION_BITS = 23;
   private static final int FLOAT_SIGN_BIT = 0x8000_0000;
   private static final int FLOAT_FRACTION_MASK = (1 << FLOAT_FRACTION_BITS) - 1;
+  private static final int FLOAT_EXPONENT_MASK = 0x7f80_0000;
+  private static final int FLOAT_INFINITY_BITS = 0x7f80_0000;
+  private static final int FLOAT_MAX_FINITE_BITS = 0x7f7f_ffff;
+  private static final int FLOAT_BOUNDARY_DIGITS = 192;
   private static final float[] FLOAT_POWERS_OF_TEN = {
     1.0f, 10.0f, 100.0f, 1_000.0f, 10_000.0f, 100_000.0f, 1_000_000.0f, 10_000_000.0f
   };
@@ -103,6 +107,7 @@ public abstract class JsonReader {
   private final int maxDepth;
   private int depth;
   private final AsciiStringView asciiStringView = new AsciiStringView(this);
+  private byte[] floatBoundaryDigits;
 
   protected JsonReader() {
     this.maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
@@ -1088,6 +1093,9 @@ public abstract class JsonReader {
   }
 
   protected static double compactDoubleValue(boolean negative, long unscaled, int scale) {
+    if (unscaled == 0) {
+      return negative ? -0.0d : 0.0d;
+    }
     long divisor = LONG_POWERS_OF_TEN[scale];
     int exponent = floorLog2Quotient(unscaled, divisor);
     long significand = roundedSignificand(unscaled, divisor, exponent, DOUBLE_FRACTION_BITS);
@@ -1116,6 +1124,9 @@ public abstract class JsonReader {
   }
 
   protected static float compactFloatValue(boolean negative, long unscaled, int scale) {
+    if (unscaled == 0) {
+      return negative ? -0.0f : 0.0f;
+    }
     long divisor = LONG_POWERS_OF_TEN[scale];
     int exponent = floorLog2Quotient(unscaled, divisor);
     long significand = roundedSignificand(unscaled, divisor, exponent, FLOAT_FRACTION_BITS);
@@ -1262,11 +1273,11 @@ public abstract class JsonReader {
       return negative ? -0.0f : 0.0f;
     }
     int scale = fractionDigits - exponent - truncatedDigits;
-    return floatFromDecimal(negative, significand, scale, sticky);
+    return floatFromDecimal(negative, significand, scale, sticky, start, offset);
   }
 
-  private static float floatFromDecimal(
-      boolean negative, long significand, int scale, boolean sticky) {
+  private float floatFromDecimal(
+      boolean negative, long significand, int scale, boolean sticky, int start, int end) {
     if (!sticky) {
       if (scale >= 0 && scale <= COMPACT_DECIMAL_MAX_SCALE) {
         return compactFloatValue(negative, significand, scale);
@@ -1278,6 +1289,11 @@ public abstract class JsonReader {
         }
       }
     }
+    float result = approximateFloat(negative, significand, scale);
+    return correctFloatToken(negative, result, start, end);
+  }
+
+  private static float approximateFloat(boolean negative, long significand, int scale) {
     double value = (double) significand;
     int decimalExponent = -scale;
     if (decimalExponent > 0) {
@@ -1293,6 +1309,223 @@ public abstract class JsonReader {
     }
     float result = (float) value;
     return negative ? -result : result;
+  }
+
+  // Long float tokens can sit within one double ULP of a float midpoint. Correct the close
+  // estimate against exact adjacent-float boundaries so fallback never needs a number String.
+  private float correctFloatToken(boolean negative, float estimate, int start, int end) {
+    int bits = Float.floatToRawIntBits(estimate);
+    bits &= ~FLOAT_SIGN_BIT;
+    byte[] boundary = floatBoundaryDigits;
+    if (boundary == null) {
+      boundary = new byte[FLOAT_BOUNDARY_DIGITS];
+      floatBoundaryDigits = boundary;
+    }
+    for (int i = 0; i < 4; i++) {
+      if (bits == FLOAT_INFINITY_BITS) {
+        int packed = buildFloatBoundary(FLOAT_MAX_FINITE_BITS, FLOAT_INFINITY_BITS, boundary);
+        int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
+        if (cmp < 0) {
+          bits = FLOAT_MAX_FINITE_BITS;
+          continue;
+        }
+        break;
+      }
+      if (bits == 0) {
+        int packed = buildFloatBoundary(0, 1, boundary);
+        int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
+        if (cmp > 0) {
+          bits = 1;
+          continue;
+        }
+        break;
+      }
+
+      int packed = buildFloatBoundary(bits - 1, bits, boundary);
+      int cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
+      if (cmp < 0 || (cmp == 0 && !isEvenFloat(bits))) {
+        bits--;
+        continue;
+      }
+
+      packed = buildFloatBoundary(bits, bits + 1, boundary);
+      cmp = compareTokenToBoundary(start, end, boundary, packed >>> 16, packed & 0xffff);
+      if (cmp > 0 || (cmp == 0 && !isEvenFloat(bits))) {
+        bits++;
+        continue;
+      }
+      break;
+    }
+    float result = Float.intBitsToFloat(bits);
+    return negative ? -result : result;
+  }
+
+  private static int buildFloatBoundary(int lowBits, int highBits, byte[] digits) {
+    int numerator;
+    int binaryExponent;
+    if (highBits == FLOAT_INFINITY_BITS) {
+      numerator = (1 << (FLOAT_FRACTION_BITS + 2)) - 1;
+      binaryExponent = 103;
+    } else {
+      int lowMantissa = floatMantissa(lowBits);
+      int lowExponent = floatBinaryExponent(lowBits);
+      int highMantissa = floatMantissa(highBits);
+      int highExponent = floatBinaryExponent(highBits);
+      int exponent = Math.min(lowExponent, highExponent);
+      numerator =
+          (lowMantissa << (lowExponent - exponent)) + (highMantissa << (highExponent - exponent));
+      binaryExponent = exponent - 1;
+    }
+    int length = writeBoundaryDigits(numerator, binaryExponent, digits);
+    int scale = binaryExponent < 0 ? -binaryExponent : 0;
+    return (length << 16) | scale;
+  }
+
+  private static int floatMantissa(int bits) {
+    int fraction = bits & FLOAT_FRACTION_MASK;
+    return (bits & FLOAT_EXPONENT_MASK) == 0 ? fraction : fraction | (1 << FLOAT_FRACTION_BITS);
+  }
+
+  private static int floatBinaryExponent(int bits) {
+    int exponent = (bits & FLOAT_EXPONENT_MASK) >>> FLOAT_FRACTION_BITS;
+    return exponent == 0 ? -149 : exponent - 150;
+  }
+
+  private static int writeBoundaryDigits(int numerator, int binaryExponent, byte[] digits) {
+    int length = 0;
+    int value = numerator;
+    do {
+      digits[length++] = (byte) (value % 10);
+      value /= 10;
+    } while (value != 0);
+    int factor = binaryExponent >= 0 ? 2 : 5;
+    int count = binaryExponent >= 0 ? binaryExponent : -binaryExponent;
+    for (int i = 0; i < count; i++) {
+      length = multiplyDecimalDigits(digits, length, factor);
+    }
+    for (int left = 0, right = length - 1; left < right; left++, right--) {
+      byte digit = digits[left];
+      digits[left] = digits[right];
+      digits[right] = digit;
+    }
+    return length;
+  }
+
+  private static int multiplyDecimalDigits(byte[] digits, int length, int factor) {
+    int carry = 0;
+    for (int i = 0; i < length; i++) {
+      int product = digits[i] * factor + carry;
+      digits[i] = (byte) (product % 10);
+      carry = product / 10;
+    }
+    while (carry != 0) {
+      digits[length++] = (byte) (carry % 10);
+      carry /= 10;
+    }
+    return length;
+  }
+
+  private int compareTokenToBoundary(
+      int start, int end, byte[] boundaryDigits, int boundaryLength, int boundaryScale) {
+    int offset = start;
+    if (offset < end && charAt(offset) == '-') {
+      offset++;
+    }
+    int scan = offset;
+    int digitCount = 0;
+    int fractionDigits = 0;
+    boolean fraction = false;
+    boolean significant = false;
+    while (scan < end) {
+      int ch = charAt(scan);
+      if (ch >= '0' && ch <= '9') {
+        if (ch != '0' || significant) {
+          significant = true;
+          digitCount++;
+        }
+        if (fraction) {
+          fractionDigits++;
+        }
+        scan++;
+      } else if (ch == '.') {
+        fraction = true;
+        scan++;
+      } else {
+        break;
+      }
+    }
+    if (!significant) {
+      return -1;
+    }
+    int exponent = 0;
+    if (scan < end) {
+      int ch = charAt(scan);
+      if (ch == 'e' || ch == 'E') {
+        scan++;
+        boolean negativeExponent = false;
+        if (scan < end) {
+          ch = charAt(scan);
+          if (ch == '-' || ch == '+') {
+            negativeExponent = ch == '-';
+            scan++;
+          }
+        }
+        while (scan < end) {
+          ch = charAt(scan);
+          if (ch < '0' || ch > '9') {
+            break;
+          }
+          if (exponent < 100_000) {
+            exponent = exponent * 10 + ch - '0';
+          }
+          scan++;
+        }
+        if (negativeExponent) {
+          exponent = -exponent;
+        }
+      }
+    }
+
+    int adjustedLength = digitCount + exponent - fractionDigits;
+    int boundaryAdjustedLength = boundaryLength - boundaryScale;
+    if (adjustedLength != boundaryAdjustedLength) {
+      return adjustedLength < boundaryAdjustedLength ? -1 : 1;
+    }
+
+    scan = offset;
+    significant = false;
+    int emitted = 0;
+    int max = Math.max(digitCount, boundaryLength);
+    for (int i = 0; i < max; i++) {
+      int digit = 0;
+      if (emitted < digitCount) {
+        while (scan < end) {
+          int ch = charAt(scan++);
+          if (ch == 'e' || ch == 'E') {
+            break;
+          }
+          if (ch < '0' || ch > '9') {
+            continue;
+          }
+          if (ch == '0' && !significant) {
+            continue;
+          }
+          significant = true;
+          digit = ch - '0';
+          emitted++;
+          break;
+        }
+      }
+      int boundaryDigit = i < boundaryLength ? boundaryDigits[i] : 0;
+      if (digit != boundaryDigit) {
+        return digit < boundaryDigit ? -1 : 1;
+      }
+    }
+    return 0;
+  }
+
+  private static boolean isEvenFloat(int bits) {
+    return (bits & 1) == 0;
   }
 
   private static long multiplyByPowerOfTen(long value, int power) {

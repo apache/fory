@@ -223,6 +223,12 @@ public class JsonScalarTest extends ForyJsonTestModels {
       stringWriter.writeFloat(value);
       stringWriter.writeArrayEnd();
       assertEquals(stringWriter.toJson(), "[\"" + ZH_TEXT + "\"," + expected + "]");
+
+      StringJsonWriter smallWriter = new StringJsonWriter(false, new byte[4]);
+      smallWriter.writeString(ZH_TEXT);
+      smallWriter.writeComma(1);
+      smallWriter.writeFloat(value);
+      assertEquals(smallWriter.toJson(), "\"" + ZH_TEXT + "\"," + expected);
     }
   }
 
@@ -1199,6 +1205,14 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void parseCompactZeroDecimals() {
+    assertDoubleBits("0.0000000000000000");
+    assertDoubleBits("-0.0000000000000000");
+    assertFloatBits("0.00000000", 0);
+    assertFloatBits("-0.00000000", Float.floatToRawIntBits(-0.0f));
+  }
+
+  @Test
   public void readFloatAvoidsDoubleRounding() {
     String token = "1.0000000596046448";
     int expected = Float.floatToRawIntBits(Float.parseFloat(token));
@@ -1217,6 +1231,19 @@ public class JsonScalarTest extends ForyJsonTestModels {
         expected);
     assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloat()), expected);
     assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloatTokenValue()), expected);
+  }
+
+  @Test
+  public void readFloatBoundaryTokens() {
+    assertFloatBits(floatBoundaryToken(0x3f80_0000, 0x3f80_0001, 0), 0x3f80_0000);
+    assertFloatBits(floatBoundaryToken(0x3f80_0000, 0x3f80_0001, 1), 0x3f80_0001);
+    assertFloatBits("-" + floatBoundaryToken(0x3f80_0000, 0x3f80_0001, 0), 0xbf80_0000);
+    assertFloatBits("-" + floatBoundaryToken(0x3f80_0000, 0x3f80_0001, 1), 0xbf80_0001);
+    assertFloatBits(floatBoundaryToken(0x3f80_0001, 0x3f80_0002, 0), 0x3f80_0002);
+    assertFloatBits(floatBoundaryToken(0, 1, 0), 0);
+    assertFloatBits(floatBoundaryToken(0, 1, 1), 1);
+    assertFloatBits(floatBoundaryToken(0x7f7f_ffff, 0x7f80_0000, -1), 0x7f7f_ffff);
+    assertFloatBits(floatBoundaryToken(0x7f7f_ffff, 0x7f80_0000, 0), 0x7f80_0000);
   }
 
   @Test
@@ -1450,6 +1477,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   private static void assertFloatBits(String token) {
     int expected = Float.floatToRawIntBits(Float.parseFloat(token));
+    assertFloatBits(token, expected);
+  }
+
+  private static void assertFloatBits(String token, int expected) {
     byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
     byte[] latin1 = latin1Bytes(token);
     assertEquals(Float.floatToRawIntBits(new Utf8JsonReader(utf8).readFloat()), expected);
@@ -1459,6 +1490,50 @@ public class JsonScalarTest extends ForyJsonTestModels {
         Float.floatToRawIntBits(new Latin1JsonReader(latin1).readFloatTokenValue()), expected);
     assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloat()), expected);
     assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloatTokenValue()), expected);
+  }
+
+  private static String floatBoundaryToken(int lowBits, int highBits, int units) {
+    BigDecimal value = floatBoundaryValue(lowBits, highBits);
+    if (units != 0) {
+      int scale = Math.max(value.scale(), 0);
+      BigDecimal unit = BigDecimal.ONE.scaleByPowerOfTen(-scale);
+      value = value.add(unit.multiply(BigDecimal.valueOf(units)));
+    }
+    return value.toPlainString();
+  }
+
+  private static BigDecimal floatBoundaryValue(int lowBits, int highBits) {
+    int numerator;
+    int binaryExponent;
+    if (highBits == 0x7f80_0000) {
+      numerator = (1 << 25) - 1;
+      binaryExponent = 103;
+    } else {
+      int lowMantissa = testFloatMantissa(lowBits);
+      int lowExponent = testFloatExponent(lowBits);
+      int highMantissa = testFloatMantissa(highBits);
+      int highExponent = testFloatExponent(highBits);
+      int exponent = Math.min(lowExponent, highExponent);
+      numerator =
+          (lowMantissa << (lowExponent - exponent)) + (highMantissa << (highExponent - exponent));
+      binaryExponent = exponent - 1;
+    }
+    BigInteger integer = BigInteger.valueOf(numerator);
+    if (binaryExponent >= 0) {
+      return new BigDecimal(integer.shiftLeft(binaryExponent));
+    }
+    int scale = -binaryExponent;
+    return new BigDecimal(integer.multiply(BigInteger.valueOf(5).pow(scale)), scale);
+  }
+
+  private static int testFloatMantissa(int bits) {
+    int fraction = bits & 0x007f_ffff;
+    return (bits & 0x7f80_0000) == 0 ? fraction : fraction | (1 << 23);
+  }
+
+  private static int testFloatExponent(int bits) {
+    int exponent = (bits & 0x7f80_0000) >>> 23;
+    return exponent == 0 ? -149 : exponent - 150;
   }
 
   private static Object reflectField(Object owner, String name) throws Exception {
