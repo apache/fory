@@ -1137,7 +1137,8 @@ public class JsonScalarTest extends ForyJsonTestModels {
             () -> new Utf8JsonReader(oversized.getBytes(StandardCharsets.UTF_8)).readInt());
     assertTrue(intError.getMessage().contains("Integer overflow"));
     ForyJsonException longError =
-        expectThrows(ForyJsonException.class, () -> new Latin1JsonReader(oversized).readLong());
+        expectThrows(
+            ForyJsonException.class, () -> new Latin1JsonReader(latin1Bytes(oversized)).readLong());
     assertTrue(longError.getMessage().contains("Long overflow"));
   }
 
@@ -1145,10 +1146,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void concreteDoubleReadersParseFastValues() {
     String token = "12.5";
     byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
+    byte[] latin1 = latin1Bytes(token);
     assertEquals(new Utf8JsonReader(utf8).readDouble(), 12.5d);
     assertEquals(new Utf8JsonReader(utf8).readDoubleTokenValue(), 12.5d);
-    assertEquals(new Latin1JsonReader(token).readDouble(), 12.5d);
-    assertEquals(new Latin1JsonReader(token).readDoubleTokenValue(), 12.5d);
+    assertEquals(new Latin1JsonReader(latin1).readDouble(), 12.5d);
+    assertEquals(new Latin1JsonReader(latin1).readDoubleTokenValue(), 12.5d);
   }
 
   @Test
