@@ -50,24 +50,26 @@ public final class ForyJson {
   /** Default maximum nested JSON object/array depth accepted by parsers. */
   public static final int DEFAULT_MAX_DEPTH = 20;
 
+  /** Default maximum JSON number token length accepted by parsers. */
+  public static final int DEFAULT_MAX_NUMBER_LENGTH = 1000;
+
+  static final int MIN_MAX_NUMBER_LENGTH = 64;
+
+  private final JsonConfig config;
   private final JsonSharedRegistry sharedRegistry;
-  private final boolean writeNullFields;
-  private final int maxDepth;
   private final int poolSize;
   private final AtomicReference<PooledState> primarySlot;
   private final AtomicReferenceArray<PooledState> slots;
 
   ForyJson(JsonConfig config) {
-    this.writeNullFields = config.writeNullFields();
-    this.maxDepth = config.maxDepth();
+    this.config = config;
     sharedRegistry = new JsonSharedRegistry(config);
     poolSize = DEFAULT_POOL_SIZE;
     primarySlot =
-        new AtomicReference<>(
-            new PooledState(new JsonState(writeNullFields, sharedRegistry), PRIMARY_SLOT));
+        new AtomicReference<>(new PooledState(new JsonState(config, sharedRegistry), PRIMARY_SLOT));
     slots = new AtomicReferenceArray<>(poolSize);
     for (int i = 0; i < poolSize; i++) {
-      slots.set(i, new PooledState(new JsonState(writeNullFields, sharedRegistry), i));
+      slots.set(i, new PooledState(new JsonState(config, sharedRegistry), i));
     }
   }
 
@@ -162,7 +164,7 @@ public final class ForyJson {
     PooledState entry = acquire();
     JsonState state = entry.state;
     try {
-      return castValue(readUtf8Value(state.utf8Reader(bytes, maxDepth), type, type, state), type);
+      return castValue(readUtf8Value(state.utf8Reader(bytes), type, type, state), type);
     } finally {
       state.clearUtf8Reader();
       release(entry);
@@ -175,8 +177,7 @@ public final class ForyJson {
     JsonState state = entry.state;
     try {
       Object value =
-          readUtf8Value(
-              state.utf8Reader(bytes, maxDepth), typeRef.getType(), typeRef.getRawType(), state);
+          readUtf8Value(state.utf8Reader(bytes), typeRef.getType(), typeRef.getRawType(), state);
       return castValue(value, typeRef);
     } finally {
       state.clearUtf8Reader();
@@ -203,7 +204,7 @@ public final class ForyJson {
     if (entry != null) {
       return entry;
     }
-    return new PooledState(new JsonState(writeNullFields, sharedRegistry), TEMPORARY_SLOT);
+    return new PooledState(new JsonState(config, sharedRegistry), TEMPORARY_SLOT);
   }
 
   private void release(PooledState entry) {
@@ -260,13 +261,13 @@ public final class ForyJson {
       if (StringSerializer.isLatin1Coder(coder)) {
         // Keep String input on its reader owner even when ASCII Latin1 bytes match UTF-8;
         // custom JsonCodec implementations can observe readLatin1/readUtf8 dispatch.
-        return readLatin1Value(state.latin1Reader(json, maxDepth), type, fallback, state);
+        return readLatin1Value(state.latin1Reader(json), type, fallback, state);
       }
       if (StringSerializer.isUtf16Coder(coder)) {
-        return readUtf16Value(state.utf16Reader(json, maxDepth), type, fallback, state);
+        return readUtf16Value(state.utf16Reader(json), type, fallback, state);
       }
     }
-    return readUtf16Value(state.legacyUtf16Reader(json, maxDepth), type, fallback, state);
+    return readUtf16Value(state.legacyUtf16Reader(json), type, fallback, state);
   }
 
   private Object readLatin1Value(
@@ -329,29 +330,27 @@ public final class ForyJson {
     private Class<?> lastRootFallback;
     private JsonTypeInfo lastRootInfo;
 
-    private JsonState(boolean writeNullFields, JsonSharedRegistry sharedRegistry) {
-      utf8Writer = new Utf8JsonWriter(writeNullFields, new byte[INITIAL_BUFFER_SIZE]);
-      stringWriter = new StringJsonWriter(writeNullFields, new byte[INITIAL_BUFFER_SIZE]);
-      utf8Reader = new Utf8JsonReader();
-      latin1Reader = new Latin1JsonReader();
-      utf16Reader = new Utf16JsonReader();
+    private JsonState(JsonConfig config, JsonSharedRegistry sharedRegistry) {
+      utf8Writer = new Utf8JsonWriter(config, new byte[INITIAL_BUFFER_SIZE]);
+      stringWriter = new StringJsonWriter(config, new byte[INITIAL_BUFFER_SIZE]);
+      utf8Reader = new Utf8JsonReader(config);
+      latin1Reader = new Latin1JsonReader(config);
+      utf16Reader = new Utf16JsonReader(config);
       typeResolver = new JsonTypeResolver(sharedRegistry);
       legacyUtf16Bytes = EMPTY_BYTES;
     }
 
-    private Latin1JsonReader latin1Reader(String input, int maxDepth) {
+    private Latin1JsonReader latin1Reader(String input) {
       latin1Reader.reset(input);
-      latin1Reader.resetDepth(maxDepth);
       return latin1Reader;
     }
 
-    private Utf16JsonReader utf16Reader(String input, int maxDepth) {
+    private Utf16JsonReader utf16Reader(String input) {
       utf16Reader.reset(input);
-      utf16Reader.resetDepth(maxDepth);
       return utf16Reader;
     }
 
-    private Utf16JsonReader legacyUtf16Reader(String input, int maxDepth) {
+    private Utf16JsonReader legacyUtf16Reader(String input) {
       int length = input.length();
       if (length > (Integer.MAX_VALUE >>> 1)) {
         throw new IllegalArgumentException("String is too large");
@@ -369,28 +368,23 @@ public final class ForyJson {
       }
       // Legacy char[]-backed Strings are converted once so parsing still uses UTF16 byte loads.
       StringSerializer.copyStringCharsToBytes(input, bytes);
-      utf16Reader.resetUtf16Bytes(input, bytes);
-      utf16Reader.resetDepth(maxDepth);
+      utf16Reader.reset(input, bytes);
       return utf16Reader;
     }
 
-    private Utf8JsonReader utf8Reader(byte[] input, int maxDepth) {
+    private Utf8JsonReader utf8Reader(byte[] input) {
       utf8Reader.reset(input);
-      utf8Reader.resetDepth(maxDepth);
       return utf8Reader;
     }
 
     // Clear only readers reset by the current public parse entry; clearing the unused readers shows
     // up on small byte-input parses and does not release additional retained input.
     private void clearStringReaders() {
-      latin1Reader.clearDepth();
-      utf16Reader.clearDepth();
       latin1Reader.clear();
       utf16Reader.clear();
     }
 
     private void clearUtf8Reader() {
-      utf8Reader.clearDepth();
       utf8Reader.clear();
     }
 

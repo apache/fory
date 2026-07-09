@@ -44,7 +44,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.fory.json.ForyJsonException;
-import org.apache.fory.json.JSONArray;
+import org.apache.fory.json.JsonArray;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -121,7 +121,7 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
 
   static Collection<Object> readUntyped(JsonReader reader, JsonTypeResolver resolver) {
     JsonTypeInfo elementInfo = resolver.getTypeInfo(Object.class, Object.class);
-    Collection<Object> collection = new JSONArray();
+    Collection<Object> collection = new JsonArray();
     readGeneric(reader, collection, elementInfo, elementInfo.codec(), resolver);
     return collection;
   }
@@ -174,8 +174,8 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
     if (guavaFactory != null) {
       return guavaFactory;
     }
-    if (rawType == JSONArray.class) {
-      return JSONArray::new;
+    if (rawType == JsonArray.class) {
+      return JsonArray::new;
     }
     if (rawType == EnumSet.class) {
       if (!elementRawType.isEnum()) {

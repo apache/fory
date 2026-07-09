@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.json.ForyJsonException;
-import org.apache.fory.json.JSONObject;
+import org.apache.fory.json.JsonObject;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -116,7 +116,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
 
   static Map<Object, Object> readUntyped(JsonReader reader, JsonTypeResolver resolver) {
     JsonTypeInfo valueInfo = resolver.getTypeInfo(Object.class, Object.class);
-    Map<Object, Object> map = (Map<Object, Object>) (Map<?, ?>) new JSONObject();
+    Map<Object, Object> map = (Map<Object, Object>) (Map<?, ?>) new JsonObject();
     readGeneric(reader, map, MapKeyCodec.STRING, valueInfo, valueInfo.codec(), resolver);
     return map;
   }
@@ -162,8 +162,8 @@ public abstract class MapCodec extends AbstractJsonCodec {
     if (guavaFactory != null) {
       return guavaFactory;
     }
-    if (rawType == JSONObject.class) {
-      return () -> (Map<Object, Object>) (Map<?, ?>) new JSONObject();
+    if (rawType == JsonObject.class) {
+      return () -> (Map<Object, Object>) (Map<?, ?>) new JsonObject();
     }
     if (rawType == EnumMap.class) {
       if (!keyRawType.isEnum()) {

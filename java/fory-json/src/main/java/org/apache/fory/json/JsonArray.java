@@ -23,14 +23,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 /** Mutable JSON array container for dynamic JSON values. */
-public final class JSONArray extends ArrayList<Object> {
-  public JSONArray() {
+public final class JsonArray extends ArrayList<Object> {
+  public JsonArray() {
     // JSON input has no trusted array size; start from zero to avoid default capacity
     // amplification for many tiny arrays.
     super(0);
   }
 
-  public JSONArray(Collection<?> values) {
+  public JsonArray(Collection<?> values) {
     super(values);
   }
 }

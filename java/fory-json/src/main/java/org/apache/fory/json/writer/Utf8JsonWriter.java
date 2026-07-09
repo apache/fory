@@ -35,6 +35,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.UUID;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.serializer.StringSerializer;
@@ -109,7 +110,14 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     this.buffer = buffer;
   }
 
+  public Utf8JsonWriter(JsonConfig config, byte[] buffer) {
+    super(config);
+    this.buffer = buffer;
+  }
+
+  @Override
   public void reset() {
+    super.reset();
     if (buffer.length > RETAINED_CAPACITY) {
       buffer = new byte[RETAINED_CAPACITY];
     }
@@ -516,6 +524,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectIntField(byte[] namePrefix, int value) {
+    enterDepth();
     ensure(namePrefix.length + 12);
     buffer[position++] = (byte) '{';
     writeRawNoEnsure(namePrefix);
@@ -523,6 +532,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectIntField(long prefix0, long prefix1, int prefixLength, int value) {
+    enterDepth();
     ensurePackedPrefix(prefixLength, 12);
     buffer[position++] = (byte) '{';
     writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
@@ -547,6 +557,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectLongField(byte[] namePrefix, long value) {
+    enterDepth();
     ensure(namePrefix.length + 21);
     buffer[position++] = (byte) '{';
     writeRawNoEnsure(namePrefix);
@@ -554,6 +565,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectLongField(long prefix0, long prefix1, int prefixLength, long value) {
+    enterDepth();
     ensurePackedPrefix(prefixLength, 21);
     buffer[position++] = (byte) '{';
     writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
@@ -676,6 +688,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeLongArray(long[] values) {
+    enterDepth();
     ensure(2);
     buffer[position++] = '[';
     int length = values.length;
@@ -698,6 +711,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       }
     }
     buffer[position++] = ']';
+    exitDepth();
   }
 
   public void writeStringElement(int index, String value) {
@@ -762,22 +776,26 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeObjectStart() {
+    enterDepth();
     writeByteRaw((byte) '{');
   }
 
   @Override
   public void writeObjectEnd() {
     writeByteRaw((byte) '}');
+    exitDepth();
   }
 
   @Override
   public void writeArrayStart() {
+    enterDepth();
     writeByteRaw((byte) '[');
   }
 
   @Override
   public void writeArrayEnd() {
     writeByteRaw((byte) ']');
+    exitDepth();
   }
 
   @Override

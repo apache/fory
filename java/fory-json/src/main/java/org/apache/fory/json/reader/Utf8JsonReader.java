@@ -25,6 +25,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.UUID;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
@@ -67,17 +68,29 @@ public final class Utf8JsonReader extends JsonReader {
     input = EMPTY_BYTES;
   }
 
+  public Utf8JsonReader(JsonConfig config) {
+    super(config);
+    input = EMPTY_BYTES;
+  }
+
   public Utf8JsonReader(byte[] input) {
-    this.input = input;
+    reset(input);
+  }
+
+  public Utf8JsonReader(JsonConfig config, byte[] input) {
+    this(config);
+    reset(input);
   }
 
   public Utf8JsonReader reset(byte[] input) {
     this.input = input;
     position = 0;
+    reset();
     return this;
   }
 
   public void clear() {
+    reset();
     input = EMPTY_BYTES;
     position = 0;
     if (stringDecodeBuffer.length > RETAINED_STRING_DECODE_BUFFER_SIZE) {
@@ -425,6 +438,12 @@ public final class Utf8JsonReader extends JsonReader {
   public double readDouble() {
     skipWhitespaceFast();
     return readDoubleToken();
+  }
+
+  @Override
+  public float readFloat() {
+    skipWhitespaceFast();
+    return (float) readDoubleToken();
   }
 
   public double readNextDoubleValue() {
@@ -1379,8 +1398,11 @@ public final class Utf8JsonReader extends JsonReader {
         while (fractionEnd < length && isDigit(bytes[fractionEnd])) {
           fractionEnd++;
         }
-        if (fractionEnd == fractionStart || fractionEnd - fractionStart > 9) {
+        if (fractionEnd == fractionStart) {
           throw new IllegalArgumentException();
+        }
+        if (fractionEnd - fractionStart > 9) {
+          throw error("Temporal fractional seconds exceed nanosecond precision");
         }
         nano = parseNano(bytes, fractionStart, fractionEnd);
         index = fractionEnd;
@@ -1912,7 +1934,16 @@ public final class Utf8JsonReader extends JsonReader {
     return newLatin1String(start, end);
   }
 
+  @Override
+  protected String sliceNumberToken(int start, int end) {
+    return newLatin1StringUnchecked(start, end);
+  }
+
   private String newLatin1String(int start, int end) {
+    return newLatin1StringUnchecked(start, end);
+  }
+
+  private String newLatin1StringUnchecked(int start, int end) {
     int length = end - start;
     byte[] bytes = new byte[length];
     System.arraycopy(input, start, bytes, 0, length);

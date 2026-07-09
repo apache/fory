@@ -19,10 +19,12 @@
 
 package org.apache.fory.json.reader;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
@@ -49,6 +51,10 @@ public final class Utf16JsonReader extends JsonReader {
   private static final long UTF16_NON_LATIN_BYTES = 0xFF00FF00FF00FF00L;
   private static final long UTF16_SURROGATE_MASK = 0xf800f800f800f800L;
   private static final long UTF16_SURROGATE_PREFIX = 0xd800d800d800d800L;
+  private static final long LONG_MAX_DIV_10 = Long.MAX_VALUE / 10;
+  private static final int LONG_MAX_MOD_10 = (int) (Long.MAX_VALUE % 10);
+  private static final long LONG_MAX_DIV_100 = Long.MAX_VALUE / 100;
+  private static final int LONG_MAX_MOD_100 = (int) (Long.MAX_VALUE % 100);
   private String input;
   private byte[] bytes;
   private int length;
@@ -60,7 +66,19 @@ public final class Utf16JsonReader extends JsonReader {
     length = 0;
   }
 
+  public Utf16JsonReader(JsonConfig config) {
+    super(config);
+    input = "";
+    bytes = null;
+    length = 0;
+  }
+
   public Utf16JsonReader(String input) {
+    reset(input);
+  }
+
+  public Utf16JsonReader(JsonConfig config, String input) {
+    this(config);
     reset(input);
   }
 
@@ -72,16 +90,18 @@ public final class Utf16JsonReader extends JsonReader {
         bytes = StringSerializer.getStringBytes(input);
         length = bytes.length >>> 1;
         position = 0;
+        reset();
         return this;
       }
     }
     bytes = null;
     length = input.length();
     position = 0;
+    reset();
     return this;
   }
 
-  public Utf16JsonReader resetUtf16Bytes(String input, byte[] bytes) {
+  public Utf16JsonReader reset(String input, byte[] bytes) {
     int length = input.length();
     if (length > (Integer.MAX_VALUE >>> 1)) {
       throw new IllegalArgumentException("String is too large");
@@ -93,10 +113,12 @@ public final class Utf16JsonReader extends JsonReader {
     this.bytes = bytes;
     this.length = length;
     position = 0;
+    reset();
     return this;
   }
 
   public void clear() {
+    reset();
     input = "";
     bytes = null;
     length = 0;
@@ -499,6 +521,233 @@ public final class Utf16JsonReader extends JsonReader {
   }
 
   @Override
+  public double readDouble() {
+    skipWhitespaceFast();
+    return readDoubleToken();
+  }
+
+  @Override
+  public float readFloat() {
+    skipWhitespaceFast();
+    return (float) readDoubleToken();
+  }
+
+  private double readDoubleToken() {
+    int offset = position;
+    int inputLength = length;
+    if (offset >= inputLength) {
+      return readDoubleFallback(offset);
+    }
+    char ch = charAtFast(offset);
+    if (ch == '-') {
+      return readSignedDoubleToken(offset);
+    }
+    return readPositiveDoubleToken(offset, inputLength, ch);
+  }
+
+  private double readPositiveDoubleToken(int offset, int inputLength, char ch) {
+    int start = offset;
+    long unscaled = 0;
+    int scale = 0;
+    if (ch == '0') {
+      offset++;
+      if (offset < inputLength) {
+        ch = charAtFast(offset);
+        if (ch >= '0' && ch <= '9') {
+          return readDoubleFallback(start);
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      unscaled = ch - '0';
+      offset++;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          offset++;
+        }
+      }
+    } else {
+      return readDoubleFallback(start);
+    }
+    if (offset < inputLength && charAtFast(offset) == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        scale += 2;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          scale++;
+          offset++;
+        }
+      }
+      if (offset == fractionStart) {
+        return readDoubleFallback(start);
+      }
+    }
+    return finishDoubleToken(offset, inputLength, start, unscaled, scale);
+  }
+
+  private double readSignedDoubleToken(int start) {
+    int offset = start + 1;
+    int inputLength = length;
+    if (offset >= inputLength) {
+      return readDoubleFallback(start);
+    }
+    char ch = charAtFast(offset);
+    long unscaled = 0;
+    int scale = 0;
+    if (ch == '0') {
+      offset++;
+      if (offset < inputLength) {
+        ch = charAtFast(offset);
+        if (ch >= '0' && ch <= '9') {
+          return readDoubleFallback(start);
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      unscaled = ch - '0';
+      offset++;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          offset++;
+        }
+      }
+    } else {
+      return readDoubleFallback(start);
+    }
+    if (offset < inputLength && charAtFast(offset) == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        scale += 2;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          scale++;
+          offset++;
+        }
+      }
+      if (offset == fractionStart) {
+        return readDoubleFallback(start);
+      }
+    }
+    return finishSignedDoubleToken(offset, inputLength, start, unscaled, scale);
+  }
+
+  private double finishDoubleToken(
+      int offset, int inputLength, int start, long unscaled, int scale) {
+    if (offset < inputLength) {
+      char ch = charAtFast(offset);
+      if (ch == 'e' || ch == 'E') {
+        return readDoubleFallback(start);
+      }
+    }
+    position = offset;
+    return BigDecimal.valueOf(unscaled, scale).doubleValue();
+  }
+
+  private double finishSignedDoubleToken(
+      int offset, int inputLength, int start, long unscaled, int scale) {
+    if (offset < inputLength) {
+      char ch = charAtFast(offset);
+      if (ch == 'e' || ch == 'E') {
+        return readDoubleFallback(start);
+      }
+    }
+    position = offset;
+    if (unscaled == 0) {
+      return -0.0d;
+    }
+    return BigDecimal.valueOf(-unscaled, scale).doubleValue();
+  }
+
+  private double readDoubleFallback(int start) {
+    // Exponents, overflow, non-finite strings, and malformed forms stay on Java's full parser;
+    // the UTF-16 fast path only owns compact plain decimals matching the byte readers.
+    position = start;
+    if (start < length && charAtFast(start) == '"') {
+      return readNonFiniteDoubleString();
+    }
+    return Double.parseDouble(readNumberAsString());
+  }
+
+  @Override
   public int readFieldNameInt() {
     skipWhitespaceFast();
     int nameStart = position;
@@ -791,7 +1040,10 @@ public final class Utf16JsonReader extends JsonReader {
       position = stop + 1;
       // Preserve Java compact-string invariants: a LATIN1-representable token must keep the JDK's
       // normal LATIN1 representation, otherwise equality/hash behavior can differ for map/set keys.
-      return nonLatin ? newUtf16String(localBytes, start, stop) : input.substring(start, stop);
+      if (nonLatin) {
+        return newUtf16String(localBytes, start, stop);
+      }
+      return input.substring(start, stop);
     }
     if (ch == '\\') {
       position = stop + 1;
@@ -819,7 +1071,7 @@ public final class Utf16JsonReader extends JsonReader {
     return (word & mask & UTF16_NON_LATIN_BYTES) != 0;
   }
 
-  private static String newUtf16String(byte[] localBytes, int start, int stop) {
+  private String newUtf16String(byte[] localBytes, int start, int stop) {
     byte[] valueBytes = new byte[(stop - start) << 1];
     System.arraycopy(localBytes, start << 1, valueBytes, 0, valueBytes.length);
     return StringSerializer.newUtf16StringZeroCopy(valueBytes);
@@ -1142,8 +1394,11 @@ public final class Utf16JsonReader extends JsonReader {
         while (fractionEnd < inputLength && isDigit(charAtFast(fractionEnd))) {
           fractionEnd++;
         }
-        if (fractionEnd == fractionStart || fractionEnd - fractionStart > 9) {
+        if (fractionEnd == fractionStart) {
           throw new IllegalArgumentException();
+        }
+        if (fractionEnd - fractionStart > 9) {
+          throw error("Temporal fractional seconds exceed nanosecond precision");
         }
         nano = parseNano(fractionStart, fractionEnd);
         index = fractionEnd;
@@ -1675,6 +1930,11 @@ public final class Utf16JsonReader extends JsonReader {
 
   @Override
   protected String slice(int start, int end) {
+    return input.substring(start, end);
+  }
+
+  @Override
+  protected String sliceNumberToken(int start, int end) {
     return input.substring(start, end);
   }
 

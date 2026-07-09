@@ -34,6 +34,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.UUID;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
@@ -120,7 +121,15 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     scratch = new byte[buffer.length];
   }
 
+  public StringJsonWriter(JsonConfig config, byte[] buffer) {
+    super(config);
+    this.buffer = buffer;
+    scratch = new byte[buffer.length];
+  }
+
+  @Override
   public void reset() {
+    super.reset();
     if (buffer.length > RETAINED_CAPACITY) {
       buffer = new byte[RETAINED_CAPACITY];
     }
@@ -561,6 +570,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectIntField(byte[] namePrefix, int value) {
+    enterDepth();
     if (coder == LATIN1) {
       writeObjectIntFieldLatin1(namePrefix, value);
       return;
@@ -569,6 +579,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectIntField(byte[] namePrefix, byte[] utf16NamePrefix, int value) {
+    enterDepth();
     if (coder == LATIN1) {
       writeObjectIntFieldLatin1(namePrefix, value);
       return;
@@ -584,6 +595,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       long utf16Prefix3,
       int utf16PrefixLength,
       int value) {
+    enterDepth();
     if (coder == LATIN1) {
       writeObjectIntFieldLatin1(namePrefix, value);
       return;
@@ -710,6 +722,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectLongField(byte[] namePrefix, long value) {
+    enterDepth();
     if (coder == LATIN1) {
       writeObjectLongFieldLatin1(namePrefix, value);
       return;
@@ -718,6 +731,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectLongField(byte[] namePrefix, byte[] utf16NamePrefix, long value) {
+    enterDepth();
     if (coder == LATIN1) {
       writeObjectLongFieldLatin1(namePrefix, value);
       return;
@@ -733,6 +747,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       long utf16Prefix3,
       int utf16PrefixLength,
       long value) {
+    enterDepth();
     if (coder == LATIN1) {
       writeObjectLongFieldLatin1(namePrefix, value);
       return;
@@ -1047,22 +1062,26 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeObjectStart() {
+    enterDepth();
     writeByteRaw((byte) '{');
   }
 
   @Override
   public void writeObjectEnd() {
     writeByteRaw((byte) '}');
+    exitDepth();
   }
 
   @Override
   public void writeArrayStart() {
+    enterDepth();
     writeByteRaw((byte) '[');
   }
 
   @Override
   public void writeArrayEnd() {
     writeByteRaw((byte) ']');
+    exitDepth();
   }
 
   @Override

@@ -79,7 +79,7 @@ public class JsonStringTest extends ForyJsonTestModels {
     String input = "\"music \uD834\uDD1E\"";
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
-    Utf16JsonReader reader = new Utf16JsonReader().resetUtf16Bytes(input, bytes);
+    Utf16JsonReader reader = new Utf16JsonReader().reset(input, bytes);
     assertEquals(reader.readString(), "music \uD834\uDD1E");
     reader.finish();
   }
@@ -529,7 +529,7 @@ public class JsonStringTest extends ForyJsonTestModels {
   private static Utf16JsonReader utf16Reader(String input) {
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
-    return new Utf16JsonReader().resetUtf16Bytes(input, bytes);
+    return new Utf16JsonReader().reset(input, bytes);
   }
 
   private static long packedNameMask(int length) {

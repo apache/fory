@@ -148,6 +148,9 @@ public final class JsonSharedRegistry {
         || InetSocketAddress.class.isAssignableFrom(rawType)) {
       throw new ForyJsonException("Unsupported JSON type " + rawType);
     }
+    if (URL.class.isAssignableFrom(rawType)) {
+      throw new ForyJsonException("Unsupported JSON type " + rawType);
+    }
     if (Number.class.isAssignableFrom(rawType) || CharSequence.class.isAssignableFrom(rawType)) {
       throw new ForyJsonException("Unsupported JSON type " + rawType);
     }
@@ -411,7 +414,6 @@ public final class JsonSharedRegistry {
     exactCodecs.put(Currency.class, ScalarCodecs.CurrencyCodec.INSTANCE);
     exactCodecs.put(File.class, ScalarCodecs.FileCodec.INSTANCE);
     exactCodecs.put(URI.class, ScalarCodecs.UriCodec.INSTANCE);
-    exactCodecs.put(URL.class, ScalarCodecs.UrlCodec.INSTANCE);
     exactCodecs.put(Path.class, ScalarCodecs.PathCodec.INSTANCE);
     exactCodecs.put(Pattern.class, ScalarCodecs.PatternCodec.INSTANCE);
     exactCodecs.put(UUID.class, ScalarCodecs.UuidCodec.INSTANCE);

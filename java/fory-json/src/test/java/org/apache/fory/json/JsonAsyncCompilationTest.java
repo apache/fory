@@ -110,17 +110,17 @@ public class JsonAsyncCompilationTest {
   @Test
   public void objectClassJitKeepsNaturalObjectBinding() throws Exception {
     ForyJson json = ForyJson.builder().build();
-    assertTrue(json.fromJson("[1]", Object.class) instanceof JSONArray);
-    JSONObject before =
-        (JSONObject) json.fromJson("{\"items\":[1],\"name\":\"fory\"}", Object.class);
-    assertTrue(before.get("items") instanceof JSONArray);
+    assertTrue(json.fromJson("[1]", Object.class) instanceof JsonArray);
+    JsonObject before =
+        (JsonObject) json.fromJson("{\"items\":[1],\"name\":\"fory\"}", Object.class);
+    assertTrue(before.get("items") instanceof JsonArray);
     json.hasGeneratedWriter(Object.class);
     awaitGenerated(json, Object.class);
     assertEquals(json.fromJson("7", Object.class), Long.valueOf(7));
-    assertTrue(json.fromJson("[1]", Object.class) instanceof JSONArray);
-    JSONObject after =
-        (JSONObject) json.fromJson("{\"items\":[1],\"name\":\"fory\"}", Object.class);
-    assertTrue(after.get("items") instanceof JSONArray);
+    assertTrue(json.fromJson("[1]", Object.class) instanceof JsonArray);
+    JsonObject after =
+        (JsonObject) json.fromJson("{\"items\":[1],\"name\":\"fory\"}", Object.class);
+    assertTrue(after.get("items") instanceof JsonArray);
     assertEquals(after.get("name"), "fory");
   }
 

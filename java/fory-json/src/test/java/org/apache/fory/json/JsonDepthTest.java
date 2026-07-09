@@ -24,6 +24,7 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Map;
 import org.apache.fory.json.data.DepthNode;
 import org.apache.fory.reflect.TypeRef;
@@ -40,7 +41,7 @@ public class JsonDepthTest extends ForyJsonTestModels {
   public void defaultMaxDepth() {
     ForyJson json = newJson();
     assertTrue(
-        json.fromJson(nestedArray(ForyJson.DEFAULT_MAX_DEPTH), Object.class) instanceof JSONArray);
+        json.fromJson(nestedArray(ForyJson.DEFAULT_MAX_DEPTH), Object.class) instanceof JsonArray);
     assertThrows(
         ForyJsonException.class,
         () -> json.fromJson(nestedArray(ForyJson.DEFAULT_MAX_DEPTH + 1), Object.class));
@@ -64,7 +65,7 @@ public class JsonDepthTest extends ForyJsonTestModels {
   @Test
   public void readContainerMaxDepth() {
     ForyJson json = newJsonBuilder().maxDepth(2).build();
-    assertTrue(json.fromJson("[[1]]", Object.class) instanceof JSONArray);
+    assertTrue(json.fromJson("[[1]]", Object.class) instanceof JsonArray);
     assertThrows(ForyJsonException.class, () -> json.fromJson("[[[1]]]", Object.class));
     assertEquals(
         json.fromJson("{\"a\":{\"b\":1}}", new TypeRef<Map<String, Object>>() {}).size(), 1);
@@ -98,11 +99,11 @@ public class JsonDepthTest extends ForyJsonTestModels {
   @Test
   public void readJsonObjectMaxDepth() {
     ForyJson json = newJsonBuilder().maxDepth(2).build();
-    JSONObject object = json.fromJson("{\"items\":[1]}", JSONObject.class);
-    assertTrue(object.get("items") instanceof JSONArray);
+    JsonObject object = json.fromJson("{\"items\":[1]}", JsonObject.class);
+    assertTrue(object.get("items") instanceof JsonArray);
     assertThrows(
-        ForyJsonException.class, () -> json.fromJson("{\"items\":[{}]}", JSONObject.class));
-    assertThrows(ForyJsonException.class, () -> json.fromJson("[[{}]]", JSONArray.class));
+        ForyJsonException.class, () -> json.fromJson("{\"items\":[{}]}", JsonObject.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("[[{}]]", JsonArray.class));
   }
 
   @Test
@@ -121,7 +122,53 @@ public class JsonDepthTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeContainerMaxDepth() {
+    ForyJson json = newJsonBuilder().maxDepth(2).build();
+    JsonArray array = new JsonArray();
+    array.add(new JsonArray(Arrays.asList(1)));
+    assertEquals(json.toJson(array), "[[1]]");
+    ((JsonArray) array.get(0)).set(0, new JsonArray(Arrays.asList(1)));
+    assertThrows(ForyJsonException.class, () -> json.toJson(array));
+
+    JsonObject object = new JsonObject();
+    JsonObject child = new JsonObject();
+    child.put("grandchild", new JsonObject());
+    object.put("child", child);
+    assertThrows(ForyJsonException.class, () -> json.toJsonBytes(object));
+  }
+
+  @Test
+  public void writeObjectMaxDepth() {
+    ForyJson json = newJsonBuilder().maxDepth(2).build();
+    DepthNode shallow = new DepthNode();
+    shallow.child = new DepthNode();
+    assertEquals(json.fromJson(json.toJson(shallow), DepthNode.class).child.value, 0);
+
+    DepthNode deep = new DepthNode();
+    deep.child = new DepthNode();
+    deep.child.child = new DepthNode();
+    assertThrows(ForyJsonException.class, () -> json.toJson(deep));
+    assertEquals(json.fromJson(json.toJson(shallow), DepthNode.class).child.value, 0);
+  }
+
+  @Test
+  public void writeArrayFieldMaxDepth() {
+    ForyJson json = newJsonBuilder().maxDepth(1).build();
+    LongArrayHolder holder = new LongArrayHolder();
+    holder.values = new long[] {1};
+    assertThrows(ForyJsonException.class, () -> json.toJsonBytes(holder));
+    assertEquals(
+        new String(
+            newJsonBuilder().maxDepth(2).build().toJsonBytes(holder), StandardCharsets.UTF_8),
+        "{\"values\":[1]}");
+  }
+
+  @Test
   public void rejectInvalidMaxDepth() {
     assertThrows(IllegalArgumentException.class, () -> newJsonBuilder().maxDepth(0));
+  }
+
+  public static final class LongArrayHolder {
+    public long[] values;
   }
 }

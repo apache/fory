@@ -181,6 +181,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
                 false,
                 true,
                 ForyJson.DEFAULT_MAX_DEPTH,
+                ForyJson.DEFAULT_MAX_NUMBER_LENGTH,
                 new CodecRegistry(),
                 checker));
     Method checkSecure = JsonSharedRegistry.class.getDeclaredMethod("checkSecure", String.class);

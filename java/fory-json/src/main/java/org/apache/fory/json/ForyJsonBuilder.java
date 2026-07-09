@@ -29,6 +29,7 @@ public final class ForyJsonBuilder {
   private boolean asyncCompilationEnabled = true;
   private boolean propertyDiscoveryEnabled = true;
   private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
+  private int maxNumberLength = ForyJson.DEFAULT_MAX_NUMBER_LENGTH;
   private JsonTypeChecker typeChecker;
   private final CodecRegistry codecRegistry = new CodecRegistry();
 
@@ -71,6 +72,16 @@ public final class ForyJsonBuilder {
     return this;
   }
 
+  /** Sets the maximum JSON number token length allowed while parsing. */
+  public ForyJsonBuilder maxNumberLength(int maxNumberLength) {
+    if (maxNumberLength < ForyJson.MIN_MAX_NUMBER_LENGTH) {
+      throw new IllegalArgumentException(
+          "maxNumberLength must be at least " + ForyJson.MIN_MAX_NUMBER_LENGTH);
+    }
+    this.maxNumberLength = maxNumberLength;
+    return this;
+  }
+
   /** Registers a custom JSON codec for {@code type}. */
   public <T> ForyJsonBuilder registerCodec(Class<T> type, JsonCodec codec) {
     codecRegistry.register(type, codec);
@@ -96,6 +107,7 @@ public final class ForyJsonBuilder {
             asyncCompilationEnabled,
             propertyDiscoveryEnabled,
             maxDepth,
+            maxNumberLength,
             codecRegistry,
             typeChecker));
   }

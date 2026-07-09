@@ -28,6 +28,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -68,6 +69,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.data.BoxedScalars;
 import org.apache.fory.json.data.CoreScalarFields;
+import org.apache.fory.json.data.JsonTestData;
 import org.apache.fory.json.data.NaturalObjectValue;
 import org.apache.fory.json.data.NaturalValues;
 import org.apache.fory.json.data.NumericBoundaries;
@@ -76,6 +78,7 @@ import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.CodecRegistry;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.JsonWriter;
@@ -407,7 +410,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
             + "\"instant\":\"2026-06-21T01:02:03Z\",\"locale\":\"zh-Hans-CN\","
             + "\"maybe\":\"yes\",\"optionalInt\":4,\"timeZone\":\"UTC\","
             + "\"uri\":\"https://fory.apache.org/json\","
-            + "\"url\":\"https://fory.apache.org/\","
             + "\"uuid\":\"123e4567-e89b-12d3-a456-426614174000\"}";
     assertEquals(json.toJson(value), expected);
     assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
@@ -427,8 +429,25 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(read.optionalInt.getAsInt(), 4);
     assertEquals(read.timeZone.getID(), "UTC");
     assertEquals(read.uri, value.uri);
-    assertEquals(read.url, value.url);
     assertEquals(read.uuid, value.uuid);
+  }
+
+  @Test
+  public void rejectUrlByDefault() {
+    ForyJson json = newJson();
+    URL url = JsonTestData.url("https://fory.apache.org/");
+    assertThrows(ForyJsonException.class, () -> json.toJson(url));
+    assertThrows(
+        ForyJsonException.class, () -> json.fromJson("\"https://fory.apache.org/\"", URL.class));
+  }
+
+  @Test
+  public void registeredUrlCodec() {
+    ForyJson json = newJsonBuilder().registerCodec(URL.class, new UrlStringCodec()).build();
+    URL url = JsonTestData.url("https://fory.apache.org/");
+    String encoded = "\"https://fory.apache.org/\"";
+    assertEquals(json.toJson(url), encoded);
+    assertEquals(json.fromJson(encoded, URL.class), url);
   }
 
   @Test
@@ -739,7 +758,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     ForyJson json = newJson();
     BigInteger unsigned = new BigInteger("18446744073709550616");
     assertEquals(json.fromJson(unsigned.toString(), Object.class), unsigned);
-    JSONObject object = json.fromJson("{\"count\":18446744073709550616}", JSONObject.class);
+    JsonObject object = json.fromJson("{\"count\":18446744073709550616}", JsonObject.class);
     assertEquals(object.get("count"), unsigned);
   }
 
@@ -965,6 +984,29 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void rejectTemporalFractionOverflow() {
+    ForyJson json = newJson();
+    assertEquals(
+        json.fromJson("\"04:05:06.123456789\"", LocalTime.class), LocalTime.of(4, 5, 6, 123456789));
+    assertThrows(
+        ForyJsonException.class, () -> json.fromJson("\"04:05:06.1234567890\"", LocalTime.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("\"04:05:06.1234567890+08:00\"", OffsetTime.class));
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            json.fromJson(
+                "\"2024-02-03T04:05:06.1234567890+08:30\"".getBytes(StandardCharsets.UTF_8),
+                OffsetDateTime.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> utf16Reader("\"2024-02-03T04:05:06.1234567890+08:30\"").readIsoOffsetDateTime());
+    assertThrows(
+        ForyJsonException.class, () -> json.fromJson("\"PT1.1234567890S\"", Duration.class));
+  }
+
+  @Test
   public void readUtf16TemporalScalars() {
     LocalDate date = LocalDate.of(2023, 7, 2);
     Utf16JsonReader dateReader = utf16Reader("\"2023-07-02T16:00:00.000Z\"");
@@ -1029,6 +1071,40 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertThrows(
         RuntimeException.class,
         () -> json.fromJson("\"2024-02-03 04:05:06\"", LocalDateTime.class));
+  }
+
+  @Test
+  public void rejectNumberLengthOverflow() {
+    assertThrows(IllegalArgumentException.class, () -> newJsonBuilder().maxNumberLength(0));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> newJsonBuilder().maxNumberLength(ForyJson.MIN_MAX_NUMBER_LENGTH - 1));
+
+    ForyJson numberLimited =
+        newJsonBuilder().maxNumberLength(ForyJson.MIN_MAX_NUMBER_LENGTH).build();
+    assertEquals(
+        numberLimited.fromJson(repeat('1', ForyJson.MIN_MAX_NUMBER_LENGTH), BigInteger.class),
+        new BigInteger(repeat('1', ForyJson.MIN_MAX_NUMBER_LENGTH)));
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            numberLimited.fromJson(
+                repeat('1', ForyJson.MIN_MAX_NUMBER_LENGTH + 1), BigInteger.class));
+  }
+
+  @Test
+  public void concreteFloatReadersBypassNumberFallback() {
+    JsonConfig config = directNumberLimitConfig(1);
+    String token = "12.5";
+    byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
+    assertEquals(new Utf8JsonReader(config, utf8).readFloat(), 12.5f);
+    assertEquals(new Utf8JsonReader(config, utf8).readDouble(), 12.5d);
+    assertEquals(new Latin1JsonReader(config, token).readFloat(), 12.5f);
+    assertEquals(new Latin1JsonReader(config, token).readDouble(), 12.5d);
+    byte[] utf16 = new byte[token.length() << 1];
+    StringSerializer.copyStringCharsToBytes(token, utf16);
+    assertEquals(new Utf16JsonReader(config).reset(token, utf16).readFloat(), 12.5f);
+    assertEquals(new Utf16JsonReader(config).reset(token, utf16).readDouble(), 12.5d);
   }
 
   @Test
@@ -1193,6 +1269,28 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
   }
 
+  private static final class UrlStringCodec implements JsonCodec {
+    @Override
+    public void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+      writer.writeString(value.toString());
+    }
+
+    @Override
+    public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+      writer.writeString(value.toString());
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+      writer.writeString(value.toString());
+    }
+
+    @Override
+    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return JsonTestData.url(reader.readString());
+    }
+  }
+
   private static final class ModeAwareCodec implements JsonCodec {
     @Override
     public void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
@@ -1240,6 +1338,18 @@ public class JsonScalarTest extends ForyJsonTestModels {
   private static Utf16JsonReader utf16Reader(String input) {
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
-    return new Utf16JsonReader().resetUtf16Bytes(input, bytes);
+    return new Utf16JsonReader().reset(input, bytes);
+  }
+
+  private static JsonConfig directNumberLimitConfig(int maxNumberLength) {
+    return new JsonConfig(
+        false,
+        false,
+        false,
+        true,
+        ForyJson.DEFAULT_MAX_DEPTH,
+        maxNumberLength,
+        new CodecRegistry(),
+        null);
   }
 }

@@ -29,17 +29,51 @@ import java.time.Year;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
 import java.util.UUID;
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 
 public abstract class JsonWriter {
   private final boolean writeNullFields;
+  private final int maxDepth;
+  private int depth;
 
   JsonWriter(boolean writeNullFields) {
+    this(writeNullFields, ForyJson.DEFAULT_MAX_DEPTH);
+  }
+
+  JsonWriter(JsonConfig config) {
+    this(config.writeNullFields(), config.maxDepth());
+  }
+
+  JsonWriter(boolean writeNullFields, int maxDepth) {
     this.writeNullFields = writeNullFields;
+    this.maxDepth = maxDepth;
   }
 
   public final boolean writeNullFields() {
     return writeNullFields;
+  }
+
+  public void reset() {
+    depth = 0;
+  }
+
+  protected final void enterDepth() {
+    int nextDepth = depth + 1;
+    if (nextDepth > maxDepth) {
+      throwMaxDepthExceeded();
+    }
+    depth = nextDepth;
+  }
+
+  protected final void exitDepth() {
+    depth--;
+  }
+
+  private void throwMaxDepthExceeded() {
+    throw new ForyJsonException("JSON max depth " + maxDepth + " exceeded");
   }
 
   public abstract void writeNull();

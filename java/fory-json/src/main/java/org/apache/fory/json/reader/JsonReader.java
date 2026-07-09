@@ -37,15 +37,27 @@ import java.time.ZonedDateTime;
 import java.util.UUID;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 
 public abstract class JsonReader {
   protected int position;
+  private final int maxDepth;
+  private final int maxNumberLength;
   private int depth;
-  private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
   private final AsciiStringView asciiStringView = new AsciiStringView(this);
+
+  protected JsonReader() {
+    this.maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
+    this.maxNumberLength = ForyJson.DEFAULT_MAX_NUMBER_LENGTH;
+  }
+
+  protected JsonReader(JsonConfig config) {
+    this.maxDepth = config.maxDepth();
+    this.maxNumberLength = config.maxNumberLength();
+  }
 
   protected abstract int length();
 
@@ -53,12 +65,7 @@ public abstract class JsonReader {
 
   public abstract String readString();
 
-  public final void resetDepth(int maxDepth) {
-    this.maxDepth = maxDepth;
-    depth = 0;
-  }
-
-  public final void clearDepth() {
+  protected final void reset() {
     depth = 0;
   }
 
@@ -72,6 +79,12 @@ public abstract class JsonReader {
 
   private void throwMaxDepthExceeded() {
     throw error("JSON max depth " + maxDepth + " exceeded");
+  }
+
+  protected final void checkNumberLength(int length) {
+    if (length > maxNumberLength) {
+      throw error("JSON number length " + length + " exceeds max " + maxNumberLength);
+    }
   }
 
   public final void exitDepth() {
@@ -215,7 +228,8 @@ public abstract class JsonReader {
     if (start == position) {
       throw error("Expected number");
     }
-    return slice(start, position);
+    checkNumberLength(position - start);
+    return sliceNumberToken(start, position);
   }
 
   public final int readInt() {
@@ -383,33 +397,33 @@ public abstract class JsonReader {
   public LocalTime readIsoLocalTime() {
     CharSequence value = tryReadAsciiStringView();
     if (value != null) {
-      return LocalTime.parse(value);
+      return parseLocalTimeValue(value);
     }
-    return parseLocalTimeString(readString());
+    return parseLocalTimeValue(readString());
   }
 
   public LocalDateTime readIsoLocalDateTime() {
     CharSequence value = tryReadAsciiStringView();
     if (value != null) {
-      return LocalDateTime.parse(value);
+      return parseLocalDateTimeValue(value);
     }
-    return parseLocalDateTimeString(readString());
+    return parseLocalDateTimeValue(readString());
   }
 
   public Instant readIsoInstant() {
     CharSequence value = tryReadAsciiStringView();
     if (value != null) {
-      return Instant.parse(value);
+      return parseInstantValue(value);
     }
-    return parseInstantString(readString());
+    return parseInstantValue(readString());
   }
 
   public Duration readDuration() {
     CharSequence value = tryReadAsciiStringView();
     if (value != null) {
-      return Duration.parse(value);
+      return parseDurationValue(value);
     }
-    return parseDurationString(readString());
+    return parseDurationValue(readString());
   }
 
   public ZoneOffset readZoneOffset() {
@@ -429,9 +443,9 @@ public abstract class JsonReader {
   public ZonedDateTime readZonedDateTime() {
     CharSequence value = tryReadAsciiStringView();
     if (value != null) {
-      return ZonedDateTime.parse(value);
+      return parseZonedDateTimeValue(value);
     }
-    return parseZonedDateTimeString(readString());
+    return parseZonedDateTimeValue(readString());
   }
 
   public Year readYear() {
@@ -469,9 +483,9 @@ public abstract class JsonReader {
   public OffsetTime readOffsetTime() {
     CharSequence value = tryReadAsciiStringView();
     if (value != null) {
-      return OffsetTime.parse(value);
+      return parseOffsetTimeValue(value);
     }
-    return parseOffsetTimeString(readString());
+    return parseOffsetTimeValue(readString());
   }
 
   private BigDecimal readBigDecimalToken() {
@@ -703,6 +717,7 @@ public abstract class JsonReader {
   }
 
   protected final OffsetDateTime readIsoOffsetDateTimeFallback(String value) {
+    checkTemporalFraction(value, "java.time.OffsetDateTime");
     try {
       return OffsetDateTime.parse(value);
     } catch (RuntimeException e) {
@@ -710,7 +725,8 @@ public abstract class JsonReader {
     }
   }
 
-  private LocalTime parseLocalTimeString(String value) {
+  private LocalTime parseLocalTimeValue(CharSequence value) {
+    checkTemporalFraction(value, "java.time.LocalTime");
     try {
       return LocalTime.parse(value);
     } catch (RuntimeException e) {
@@ -718,7 +734,8 @@ public abstract class JsonReader {
     }
   }
 
-  private LocalDateTime parseLocalDateTimeString(String value) {
+  private LocalDateTime parseLocalDateTimeValue(CharSequence value) {
+    checkTemporalFraction(value, "java.time.LocalDateTime");
     try {
       return LocalDateTime.parse(value);
     } catch (RuntimeException e) {
@@ -726,7 +743,8 @@ public abstract class JsonReader {
     }
   }
 
-  private Instant parseInstantString(String value) {
+  private Instant parseInstantValue(CharSequence value) {
+    checkTemporalFraction(value, "java.time.Instant");
     try {
       return Instant.parse(value);
     } catch (RuntimeException e) {
@@ -734,7 +752,8 @@ public abstract class JsonReader {
     }
   }
 
-  private Duration parseDurationString(String value) {
+  private Duration parseDurationValue(CharSequence value) {
+    checkTemporalFraction(value, "java.time.Duration");
     try {
       return Duration.parse(value);
     } catch (RuntimeException e) {
@@ -750,7 +769,8 @@ public abstract class JsonReader {
     }
   }
 
-  private ZonedDateTime parseZonedDateTimeString(String value) {
+  private ZonedDateTime parseZonedDateTimeValue(CharSequence value) {
+    checkTemporalFraction(value, "java.time.ZonedDateTime");
     try {
       return ZonedDateTime.parse(value);
     } catch (RuntimeException e) {
@@ -790,12 +810,39 @@ public abstract class JsonReader {
     }
   }
 
-  private OffsetTime parseOffsetTimeString(String value) {
+  private OffsetTime parseOffsetTimeValue(CharSequence value) {
+    checkTemporalFraction(value, "java.time.OffsetTime");
     try {
       return OffsetTime.parse(value);
     } catch (RuntimeException e) {
       throw invalidStringValue("java.time.OffsetTime", e);
     }
+  }
+
+  private void checkTemporalFraction(CharSequence value, String type) {
+    int length = value.length();
+    for (int i = 1; i + 1 < length; i++) {
+      if (value.charAt(i) != '.'
+          || !isDigit(value.charAt(i - 1))
+          || !isDigit(value.charAt(i + 1))) {
+        continue;
+      }
+      int fractionEnd = i + 2;
+      while (fractionEnd < length && isDigit(value.charAt(fractionEnd))) {
+        fractionEnd++;
+      }
+      if (fractionEnd - i - 1 > 9) {
+        throw new ForyJsonException(
+            type
+                + " JSON string has more than 9 fractional second digits at JSON position "
+                + position);
+      }
+      i = fractionEnd;
+    }
+  }
+
+  private static boolean isDigit(char ch) {
+    return ch >= '0' && ch <= '9';
   }
 
   private ForyJsonException invalidStringValue(String type, RuntimeException e) {
@@ -1208,6 +1255,8 @@ public abstract class JsonReader {
   }
 
   protected abstract String slice(int start, int end);
+
+  protected abstract String sliceNumberToken(int start, int end);
 
   private static final class AsciiStringView implements CharSequence {
     private final JsonReader reader;

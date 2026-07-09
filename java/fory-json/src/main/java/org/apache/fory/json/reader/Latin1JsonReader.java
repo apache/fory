@@ -25,6 +25,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.UUID;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
@@ -67,17 +68,33 @@ public final class Latin1JsonReader extends JsonReader {
     input = EMPTY_BYTES;
   }
 
+  public Latin1JsonReader(JsonConfig config) {
+    super(config);
+    input = EMPTY_BYTES;
+  }
+
   public Latin1JsonReader(byte[] input) {
-    this.input = input;
+    reset(input);
   }
 
   public Latin1JsonReader(String input) {
     reset(input);
   }
 
+  public Latin1JsonReader(JsonConfig config, byte[] input) {
+    this(config);
+    reset(input);
+  }
+
+  public Latin1JsonReader(JsonConfig config, String input) {
+    this(config);
+    reset(input);
+  }
+
   public Latin1JsonReader reset(byte[] input) {
     this.input = input;
     position = 0;
+    reset();
     return this;
   }
 
@@ -91,10 +108,12 @@ public final class Latin1JsonReader extends JsonReader {
     }
     this.input = StringSerializer.getStringBytes(input);
     position = 0;
+    reset();
     return this;
   }
 
   public void clear() {
+    reset();
     input = EMPTY_BYTES;
     position = 0;
     if (stringDecodeBuffer.length > RETAINED_STRING_DECODE_BUFFER_SIZE) {
@@ -575,6 +594,12 @@ public final class Latin1JsonReader extends JsonReader {
     return readDoubleToken();
   }
 
+  @Override
+  public float readFloat() {
+    skipWhitespaceFast();
+    return (float) readDoubleToken();
+  }
+
   public double readNextDoubleValue() {
     if (position < input.length) {
       int ch = input[position];
@@ -968,6 +993,8 @@ public final class Latin1JsonReader extends JsonReader {
   }
 
   private double readDoubleFallback(int start) {
+    // Exponents, overflow, non-finite strings, and malformed forms stay on Java's full parser;
+    // the Latin1 fast path only owns compact plain decimals matching the UTF-8 reader.
     position = start;
     if (start < input.length && input[start] == '"') {
       return readNonFiniteDoubleString();
@@ -1319,8 +1346,11 @@ public final class Latin1JsonReader extends JsonReader {
         while (fractionEnd < length && isDigit(bytes[fractionEnd])) {
           fractionEnd++;
         }
-        if (fractionEnd == fractionStart || fractionEnd - fractionStart > 9) {
+        if (fractionEnd == fractionStart) {
           throw new IllegalArgumentException();
+        }
+        if (fractionEnd - fractionStart > 9) {
+          throw error("Temporal fractional seconds exceed nanosecond precision");
         }
         nano = parseNano(bytes, fractionStart, fractionEnd);
         index = fractionEnd;
@@ -1838,7 +1868,16 @@ public final class Latin1JsonReader extends JsonReader {
     return newLatin1String(start, end);
   }
 
+  @Override
+  protected String sliceNumberToken(int start, int end) {
+    return newLatin1StringUnchecked(start, end);
+  }
+
   private String newLatin1String(int start, int end) {
+    return newLatin1StringUnchecked(start, end);
+  }
+
+  private String newLatin1StringUnchecked(int start, int end) {
     int length = end - start;
     byte[] bytes = new byte[length];
     System.arraycopy(input, start, bytes, 0, length);

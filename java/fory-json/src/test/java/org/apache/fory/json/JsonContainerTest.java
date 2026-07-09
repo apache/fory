@@ -130,25 +130,25 @@ public class JsonContainerTest extends ForyJsonTestModels {
   @Test
   public void readJsonContainers() {
     ForyJson json = newJson();
-    JSONObject object =
-        json.fromJson("{\"name\":\"fory\",\"items\":[1,\"你好，Fory\"]}", JSONObject.class);
+    JsonObject object =
+        json.fromJson("{\"name\":\"fory\",\"items\":[1,\"你好，Fory\"]}", JsonObject.class);
     assertEquals(object.get("name"), "fory");
-    assertTrue(object.get("items") instanceof JSONArray);
-    JSONArray items = (JSONArray) object.get("items");
+    assertTrue(object.get("items") instanceof JsonArray);
+    JsonArray items = (JsonArray) object.get("items");
     assertEquals(items.get(0), Long.valueOf(1));
     assertEquals(items.get(1), ZH_TEXT);
 
     Object natural = json.fromJson("{\"items\":[true]}", Object.class);
-    assertTrue(natural instanceof JSONObject);
-    assertTrue(((JSONObject) natural).get("items") instanceof JSONArray);
+    assertTrue(natural instanceof JsonObject);
+    assertTrue(((JsonObject) natural).get("items") instanceof JsonArray);
   }
 
   @Test
   public void parsedContainersStartSmall() {
     ForyJson json = newJson();
-    JSONArray array = json.fromJson("[1]", JSONArray.class);
+    JsonArray array = json.fromJson("[1]", JsonArray.class);
     assertEquals(arrayCapacity(array), 1);
-    assertEquals(arrayCapacity(json.fromJson("[]", JSONArray.class)), 0);
+    assertEquals(arrayCapacity(json.fromJson("[]", JsonArray.class)), 0);
 
     List<Object> list = json.fromJson("[1]", new TypeRef<List<Object>>() {});
     assertTrue(list instanceof ArrayList);
@@ -175,9 +175,9 @@ public class JsonContainerTest extends ForyJsonTestModels {
     assertEquals(notes.get(6).title, "g");
     assertEquals(arrayCapacity((ArrayList<?>) notes), 7);
 
-    JSONObject object = json.fromJson("{\"x\":1}", JSONObject.class);
+    JsonObject object = json.fromJson("{\"x\":1}", JsonObject.class);
     assertEquals(mapCapacity(object), 2);
-    assertEquals(mapCapacity(json.fromJson("{}", JSONObject.class)), 0);
+    assertEquals(mapCapacity(json.fromJson("{}", JsonObject.class)), 0);
 
     Map<String, Object> map = json.fromJson("{\"x\":1}", new TypeRef<Map<String, Object>>() {});
     assertTrue(map instanceof LinkedHashMap);
@@ -187,8 +187,8 @@ public class JsonContainerTest extends ForyJsonTestModels {
   @Test
   public void writeJsonContainers() {
     ForyJson json = newJson();
-    JSONObject object = new JSONObject();
-    JSONArray values = new JSONArray();
+    JsonObject object = new JsonObject();
+    JsonArray values = new JsonArray();
     values.add(Integer.valueOf(1));
     values.add(ZH_TEXT);
     object.put("values", values);

@@ -22,9 +22,7 @@ package org.apache.fory.json.codec;
 import java.io.File;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.file.Paths;
@@ -931,24 +929,6 @@ public final class ScalarCodecs {
     @Override
     Object fromJsonString(String value) {
       return URI.create(value);
-    }
-  }
-
-  public static final class UrlCodec extends StringValueCodec {
-    public static final UrlCodec INSTANCE = new UrlCodec();
-
-    @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      try {
-        return new URL(value);
-      } catch (MalformedURLException e) {
-        throw new ForyJsonException("Invalid URL " + value, e);
-      }
     }
   }
 
