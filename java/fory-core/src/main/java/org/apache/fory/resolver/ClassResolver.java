@@ -754,6 +754,10 @@ public class ClassResolver extends TypeResolver {
       return Types.ENUM;
     } else if (serializer != null && !isStructSerializer(serializer)) {
       return Types.EXT;
+    } else if (serializer == null && usesNonStructTypeDef(cls)) {
+      // Registered TypeInfo may be created before the natural serializer is materialized. Keep
+      // TypeDef classification stable for classes that are known to use non-struct serializers.
+      return Types.EXT;
     } else {
       return useStructEvolution(cls, metaContextShareEnabled)
           ? Types.COMPATIBLE_STRUCT

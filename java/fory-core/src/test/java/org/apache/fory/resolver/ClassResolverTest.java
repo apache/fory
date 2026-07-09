@@ -30,6 +30,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Primitives;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.io.Serializable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
@@ -42,6 +43,8 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -1402,6 +1405,135 @@ public class ClassResolverTest extends ForyTestBase {
     Assert.assertEquals(result[1], AbstractEnum.VALUE2);
     Assert.assertEquals(result[0].getValue(), 1);
     Assert.assertEquals(result[1].getValue(), 2);
+  }
+
+  @Test
+  public void testReadResolveTypeDefState() {
+    byte[] groupBytes =
+        newReadResolveFory()
+            .serialize(
+                new ReadResolveGroup(7, new HashSet<>(Arrays.asList(ReadResolveCode.of("FR")))));
+    byte[] geoBytes =
+        newReadResolveFory()
+            .serialize(
+                new ReadResolveGeo(new ArrayList<>(Arrays.asList(ReadResolveCode.of("GB")))));
+
+    Fory reader = newReadResolveFory();
+    ClassResolver resolver = (ClassResolver) reader.getTypeResolver();
+    assertEquals(resolver.getTypeIdForTypeDef(ReadResolveCode.class), Types.EXT);
+    assertEquals(
+        reader.deserialize(groupBytes),
+        new ReadResolveGroup(7, new HashSet<>(Arrays.asList(ReadResolveCode.of("FR")))));
+    assertEquals(resolver.getTypeIdForTypeDef(ReadResolveCode.class), Types.EXT);
+    assertEquals(
+        reader.deserialize(geoBytes),
+        new ReadResolveGeo(new ArrayList<>(Arrays.asList(ReadResolveCode.of("GB")))));
+    assertEquals(resolver.getTypeIdForTypeDef(ReadResolveCode.class), Types.EXT);
+  }
+
+  private static Fory newReadResolveFory() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .requireClassRegistration(true)
+            .withCompatible(true)
+            .build();
+    fory.register(ReadResolveCode.class, 100);
+    fory.register(ReadResolveGroup.class, 101);
+    fory.register(ReadResolveGeo.class, 102);
+    return fory;
+  }
+
+  public static final class ReadResolveCode implements Serializable {
+    public String value;
+
+    public ReadResolveCode() {}
+
+    private ReadResolveCode(String value) {
+      this.value = value;
+    }
+
+    static ReadResolveCode of(String value) {
+      return new ReadResolveCode(value);
+    }
+
+    private Object readResolve() {
+      return this;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof ReadResolveCode)) {
+        return false;
+      }
+      ReadResolveCode that = (ReadResolveCode) o;
+      return Objects.equals(value, that.value);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(value);
+    }
+  }
+
+  public static final class ReadResolveGroup implements Serializable {
+    public int id;
+    public Set<ReadResolveCode> codes;
+
+    public ReadResolveGroup() {}
+
+    ReadResolveGroup(int id, Set<ReadResolveCode> codes) {
+      this.id = id;
+      this.codes = codes;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof ReadResolveGroup)) {
+        return false;
+      }
+      ReadResolveGroup that = (ReadResolveGroup) o;
+      return id == that.id && Objects.equals(codes, that.codes);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(id, codes);
+    }
+  }
+
+  public static final class ReadResolveGeo implements Serializable {
+    public List<ReadResolveCode> codes;
+
+    public ReadResolveGeo() {}
+
+    ReadResolveGeo(List<ReadResolveCode> codes) {
+      this.codes = codes;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (!(o instanceof ReadResolveGeo)) {
+        return false;
+      }
+      ReadResolveGeo that = (ReadResolveGeo) o;
+      return Objects.equals(codes, that.codes);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(codes);
+    }
   }
 
   private static String captureOutput(Runnable action) throws Exception {
