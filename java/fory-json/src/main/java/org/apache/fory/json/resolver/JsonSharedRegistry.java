@@ -88,7 +88,7 @@ import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
-import org.apache.fory.json.codegen.JsonCodegen.GeneratedObjectCodecClasses;
+import org.apache.fory.json.codegen.JsonCodegen.GeneratedObjectCodecClass;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.reflect.TypeRef;
@@ -250,28 +250,28 @@ public final class JsonSharedRegistry {
   public BaseObjectCodec compileObject(
       ObjectCodec codec,
       JsonTypeResolver localResolver,
-      JsonJITContext.ObjectJITCallback<GeneratedObjectCodecClasses> callback) {
+      JsonJITContext.ObjectJITCallback<GeneratedObjectCodecClass> callback) {
     if (codegen == null || !codegen.canCompile(codec)) {
       return null;
     }
-    GeneratedObjectCodecClasses classes = codegen.generatedClasses(codec.type());
-    if (classes == null) {
-      classes =
+    GeneratedObjectCodecClass generatedClass = codegen.generatedClass(codec.type());
+    if (generatedClass == null) {
+      generatedClass =
           jitContext.registerObjectJITCallback(
               () -> null,
-              () -> jitContext.asyncVisitJson(this, ignored -> codegen.compileClasses(codec)),
+              () -> jitContext.asyncVisitJson(this, ignored -> codegen.compileClass(codec)),
               callback);
     }
-    return classes == null ? null : codegen.newCodec(codec, localResolver, classes);
+    return generatedClass == null ? null : codegen.newCodec(codec, localResolver, generatedClass);
   }
 
   BaseObjectCodec newGeneratedCodec(
-      ObjectCodec codec, JsonTypeResolver resolver, GeneratedObjectCodecClasses classes) {
-    return codegen.newCodec(codec, resolver, classes);
+      ObjectCodec codec, JsonTypeResolver resolver, GeneratedObjectCodecClass generatedClass) {
+    return codegen.newCodec(codec, resolver, generatedClass);
   }
 
-  GeneratedObjectCodecClasses generatedClasses(Class<?> type) {
-    return codegen == null ? null : codegen.generatedClasses(type);
+  GeneratedObjectCodecClass generatedClass(Class<?> type) {
+    return codegen == null ? null : codegen.generatedClass(type);
   }
 
   JsonJITContext jitContext() {

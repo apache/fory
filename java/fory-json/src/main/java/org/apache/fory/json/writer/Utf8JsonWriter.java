@@ -100,9 +100,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   private byte[] buffer;
   private final StringBuilder decimalBuilder;
-  // BigInteger has no string cache; direct chunks avoid a String on every write. Keep this scratch
-  // concrete-writer-owned and bound retained capacity in reset().
-  private int[] bigIntegerChunks;
   private int position;
 
   public Utf8JsonWriter(boolean writeNullFields) {
@@ -126,9 +123,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     super.reset();
     if (buffer.length > RETAINED_CAPACITY) {
       buffer = new byte[RETAINED_CAPACITY];
-    }
-    if (bigIntegerChunks != null && bigIntegerChunks.length > BigNumberDigits.MAX_RETAINED_CHUNKS) {
-      bigIntegerChunks = null;
     }
     position = 0;
   }
@@ -1421,49 +1415,35 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   private void writeBigIntegerDigits(BigInteger value) {
     int signum = value.signum();
-    int chunkCount = collectBigIntegerChunks(value);
-    int precision =
-        BigNumberDigits.digitCount(bigIntegerChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
-    ensureNumberChars((long) precision + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK);
+    int chunkCapacity = BigNumberDigits.chunkCapacity(value);
+    long outputCapacity =
+        (long) chunkCapacity * 9 + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK;
+    ensureNumberChars(outputCapacity + (long) chunkCapacity * Integer.BYTES);
+    byte[] bytes = buffer;
+    int scratchOffset = position + (int) outputCapacity;
+    int chunkCount = collectBigIntegerChunks(value, bytes, scratchOffset);
+    int topChunk = LittleEndian.getInt32(bytes, scratchOffset + (chunkCount - 1) * Integer.BYTES);
     if (signum < 0) {
-      buffer[position++] = (byte) '-';
+      bytes[position++] = (byte) '-';
     }
-    int[] chunks = bigIntegerChunks;
-    int pos = writePositiveInt(buffer, position, chunks[chunkCount - 1]);
+    int pos = writePositiveInt(bytes, position, topChunk);
     for (int i = chunkCount - 2; i >= 0; i--) {
-      pos = writePadded9(buffer, pos, chunks[i]);
+      int chunk = LittleEndian.getInt32(bytes, scratchOffset + i * Integer.BYTES);
+      pos = writePadded9(bytes, pos, chunk);
     }
     position = pos;
   }
 
-  private int collectBigIntegerChunks(BigInteger value) {
-    if (value.signum() == 0) {
-      int[] chunks = ensureBigIntegerChunks(1);
-      chunks[0] = 0;
-      return 1;
-    }
-    int[] chunks = ensureBigIntegerChunks(BigNumberDigits.chunkCapacity(value));
+  private static int collectBigIntegerChunks(BigInteger value, byte[] bytes, int offset) {
     int count = 0;
     while (value.signum() != 0) {
-      if (count == chunks.length) {
-        chunks = Arrays.copyOf(chunks, count << 1);
-        bigIntegerChunks = chunks;
-      }
       BigInteger[] quotientAndRemainder = value.divideAndRemainder(BigNumberDigits.CHUNK_BASE);
       int chunk = quotientAndRemainder[1].intValue();
-      chunks[count++] = chunk < 0 ? -chunk : chunk;
+      LittleEndian.putInt32(bytes, offset + count * Integer.BYTES, chunk < 0 ? -chunk : chunk);
+      count++;
       value = quotientAndRemainder[0];
     }
     return count;
-  }
-
-  private int[] ensureBigIntegerChunks(int capacity) {
-    int[] chunks = bigIntegerChunks;
-    if (chunks == null || chunks.length < capacity) {
-      chunks = new int[capacity];
-      bigIntegerChunks = chunks;
-    }
-    return chunks;
   }
 
   private void writeAsciiNumberNoEnsure(String value, int length) {
@@ -1503,6 +1483,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     position += bytes.length;
   }
 
+  // Keep the complete compact-decimal layout in this concrete-writer method. Splitting its
+  // branches into small helpers lets C2 inline the whole formatter into generated object writers,
+  // exhausting their node budget and slowing unrelated fields.
   private void writeCompactBigDecimal(long unscaled, int scale) {
     if (scale == 0) {
       writeLong(unscaled);
@@ -1515,43 +1498,42 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     int precision = BigNumberDigits.digitCount(unscaled);
     long adjustedExponent = (long) precision - scale - 1L;
     boolean plain = scale >= 0 && adjustedExponent >= -6;
-    long outputChars =
-        (negative ? 1L : 0L)
-            + (plain
-                ? plainDecimalChars(precision, (long) precision - scale)
-                : scientificDecimalChars(precision, adjustedExponent));
+    long point = (long) precision - scale;
+    long outputChars;
+    if (plain) {
+      outputChars = point <= 0 ? 2L - point + precision : precision + 1L;
+    } else {
+      long magnitude = adjustedExponent < 0 ? -adjustedExponent : adjustedExponent;
+      outputChars =
+          (long) precision + (precision == 1 ? 0 : 1) + 2 + BigNumberDigits.digitCount(magnitude);
+    }
+    outputChars += negative ? 1 : 0;
     ensureNumberChars(outputChars + BigNumberDigits.PACKED_WRITE_SLACK);
     if (negative) {
       buffer[position++] = (byte) '-';
     }
     if (plain) {
-      writePlainCompactDecimal(unscaled, precision, scale);
-    } else {
-      writeScientificCompactDecimal(unscaled, precision, adjustedExponent);
-    }
-  }
-
-  private void writePlainCompactDecimal(long unscaled, int precision, int scale) {
-    long point = (long) precision - scale;
-    if (point <= 0) {
-      byte[] bytes = buffer;
-      int pos = position;
-      bytes[pos++] = (byte) '0';
-      bytes[pos++] = (byte) '.';
-      position = pos;
-      writeZeroes(-point);
-      writePaddedCompactDigits(unscaled, precision);
+      if (point <= 0) {
+        byte[] bytes = buffer;
+        int pos = position;
+        bytes[pos++] = (byte) '0';
+        bytes[pos++] = (byte) '.';
+        long zeroes = -point;
+        while (zeroes-- > 0) {
+          bytes[pos++] = (byte) '0';
+        }
+        position = pos;
+        writePaddedCompactDigits(unscaled, precision);
+        return;
+      }
+      long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[scale];
+      long integer = unscaled / divisor;
+      long fraction = unscaled - integer * divisor;
+      writePaddedCompactDigits(integer, (int) point);
+      buffer[position++] = (byte) '.';
+      writePaddedCompactDigits(fraction, scale);
       return;
     }
-    long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[scale];
-    long integer = unscaled / divisor;
-    long fraction = unscaled - integer * divisor;
-    writePaddedCompactDigits(integer, (int) point);
-    buffer[position++] = (byte) '.';
-    writePaddedCompactDigits(fraction, scale);
-  }
-
-  private void writeScientificCompactDecimal(long unscaled, int precision, long adjustedExponent) {
     if (precision == 1) {
       writePositiveLongNoEnsure(unscaled);
     } else {
@@ -1593,15 +1575,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       pos = writePadded9(bytes, pos, middle);
     }
     position = writePadded9(bytes, pos, low);
-  }
-
-  private void writeZeroes(long count) {
-    byte[] bytes = buffer;
-    int pos = position;
-    while (count-- > 0) {
-      bytes[pos++] = (byte) '0';
-    }
-    position = pos;
   }
 
   private void ensureNumberChars(long chars) {
@@ -1791,22 +1764,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       bytes[pos++] = (byte) '0';
     }
     return writePositiveInt(bytes, pos, value);
-  }
-
-  private static long plainDecimalChars(int precision, long point) {
-    if (point <= 0) {
-      return 2L - point + precision;
-    }
-    return precision + (point < precision ? 1 : 0);
-  }
-
-  private static long scientificDecimalChars(int precision, long adjustedExponent) {
-    long magnitude = adjustedExponent < 0 ? -adjustedExponent : adjustedExponent;
-    return (long) precision
-        + (precision == 1 ? 0 : 1)
-        + 1
-        + 1
-        + BigNumberDigits.digitCount(magnitude);
   }
 
   private static int writeHex(byte[] bytes, int pos, long value, int shift, int count) {

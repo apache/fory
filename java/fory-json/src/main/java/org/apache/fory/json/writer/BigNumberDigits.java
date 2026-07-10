@@ -23,7 +23,6 @@ import java.math.BigInteger;
 
 final class BigNumberDigits {
   static final BigInteger CHUNK_BASE = BigInteger.valueOf(1_000_000_000);
-  static final int MAX_RETAINED_CHUNKS = 1024;
   // Packed 1-3 digit stores write one four-byte word; concrete writers reserve this tail once.
   static final int PACKED_WRITE_SLACK = 3;
   static final long[] LONG_POWERS_OF_TEN = {

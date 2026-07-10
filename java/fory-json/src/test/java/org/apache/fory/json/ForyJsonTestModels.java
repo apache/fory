@@ -292,7 +292,7 @@ public abstract class ForyJsonTestModels {
   }
 
   protected final void assertGeneratedWhenSupported(ForyJson json, Class<?> type) {
-    assertEquals(json.hasGeneratedWriter(type), codegen);
+    assertEquals(json.hasGeneratedCodec(type), codegen);
   }
 
   protected static String repeat(char ch, int length) {

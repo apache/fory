@@ -22,10 +22,14 @@ package org.apache.fory.json.codegen;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import org.apache.fory.builder.CodecBuilder;
+import org.apache.fory.codegen.Code;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.codec.BaseObjectCodec;
+import org.apache.fory.json.codec.GeneratedObjectCodec;
 import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
@@ -34,9 +38,8 @@ import org.apache.fory.util.record.RecordUtils;
 
 final class JsonGeneratedCodecBuilder extends CodecBuilder {
   private final String generatedClassName;
-  private final JsonFieldInfo[] properties;
-  private final boolean utf8;
-  private final boolean writer;
+  private final JsonFieldInfo[] writeProperties;
+  private final JsonFieldInfo[] readProperties;
   private final boolean record;
   private final JsonCodegen codegen;
 
@@ -45,24 +48,21 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
       String generatedPackage,
       String generatedClassName,
       Class<?> type,
-      JsonFieldInfo[] properties,
-      boolean utf8,
-      boolean writer,
+      JsonFieldInfo[] writeProperties,
+      JsonFieldInfo[] readProperties,
       boolean record) {
     super(new CodegenContext(), TypeRef.of(type));
     this.codegen = codegen;
     this.generatedClassName = generatedClassName;
-    this.properties = properties;
-    this.utf8 = utf8;
-    this.writer = writer;
+    this.writeProperties = writeProperties;
+    this.readProperties = readProperties;
     this.record = record;
     ctx.setPackage(generatedPackage);
     ctx.setClassName(generatedClassName);
     ctx.setClassModifiers("final");
+    ctx.extendsClasses(ctx.type(GeneratedObjectCodec.class));
     ctx.addImports(JsonFieldInfo.class, JsonCodec.class, JsonTypeResolver.class);
-    String[] generatedMethodNames = {
-      "object", "value", "writer", "reader", "owner", "typeResolver"
-    };
+    String[] generatedMethodNames = {"object", "value", "writer", "reader", "typeResolver"};
     for (String name : generatedMethodNames) {
       if (!ctx.containName(name)) {
         ctx.reserveName(name);
@@ -81,9 +81,30 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
 
   @Override
   public String genCode() {
-    return writer
-        ? new JsonWriterCodegen(codegen).genWriterCode(this, beanClass, properties, utf8)
-        : new JsonReaderCodegen(codegen).genReaderCode(this, beanClass, properties, record);
+    Expression.ListExpression initializers = new Expression.ListExpression();
+    initializers.add(
+        new JsonWriterCodegen(codegen).addWriterCode(this, beanClass, writeProperties));
+    initializers.add(
+        new JsonReaderCodegen(codegen).addReaderCode(this, beanClass, readProperties, record));
+    ctx.clearExprState();
+    Code.ExprCode body = initializers.genCode(ctx);
+    String code = body.code();
+    code = code == null ? "" : ctx.optimizeMethodCode(code);
+    ctx.addConstructor(
+        "super(base);\n" + code,
+        ObjectCodec.class,
+        "base",
+        JsonFieldInfo[].class,
+        "writeProperties",
+        JsonCodec[].class,
+        "writeCodecs",
+        JsonFieldInfo[].class,
+        "readProperties",
+        JsonCodec[].class,
+        "readCodecs",
+        BaseObjectCodec[].class,
+        "objectCodecs");
+    return ctx.genCode();
   }
 
   @Override

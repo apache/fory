@@ -109,9 +109,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   // runtime that does not expose the direct UTF16 formatter.
   private byte[] scratch;
   private final StringBuilder decimalBuilder;
-  // BigInteger has no string cache; direct chunks avoid a String on every write. Keep this scratch
-  // concrete-writer-owned and bound retained capacity in reset().
-  private int[] bigIntegerChunks;
   private byte coder;
   private byte nextCoder;
   private boolean latin1Output;
@@ -143,9 +140,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     }
     if (scratch.length > RETAINED_CAPACITY) {
       scratch = new byte[RETAINED_CAPACITY];
-    }
-    if (bigIntegerChunks != null && bigIntegerChunks.length > BigNumberDigits.MAX_RETAINED_CHUNKS) {
-      bigIntegerChunks = null;
     }
     coder = nextCoder;
     latin1Output = coder == UTF16;
@@ -1660,67 +1654,56 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
 
   private void writeBigIntegerLatin1(BigInteger value) {
     int signum = value.signum();
-    int chunkCount = collectBigIntegerChunks(value);
-    int precision =
-        BigNumberDigits.digitCount(bigIntegerChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
-    ensureNumberLatin1(
-        (long) precision + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK);
+    int chunkCapacity = BigNumberDigits.chunkCapacity(value);
+    long outputCapacity =
+        (long) chunkCapacity * 9 + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK;
+    ensureNumberLatin1(outputCapacity + (long) chunkCapacity * Integer.BYTES);
+    byte[] bytes = buffer;
+    int scratchOffset = position + (int) outputCapacity;
+    int chunkCount = collectBigIntegerChunks(value, bytes, scratchOffset);
+    int topChunk = LittleEndian.getInt32(bytes, scratchOffset + (chunkCount - 1) * Integer.BYTES);
     if (signum < 0) {
-      buffer[position++] = (byte) '-';
+      bytes[position++] = (byte) '-';
     }
-    int[] chunks = bigIntegerChunks;
-    int pos = writePositiveIntLatin1(buffer, position, chunks[chunkCount - 1]);
+    int pos = writePositiveIntLatin1(bytes, position, topChunk);
     for (int i = chunkCount - 2; i >= 0; i--) {
-      pos = writePadded9Latin1(buffer, pos, chunks[i]);
+      int chunk = LittleEndian.getInt32(bytes, scratchOffset + i * Integer.BYTES);
+      pos = writePadded9Latin1(bytes, pos, chunk);
     }
     position = pos;
   }
 
   private void writeBigIntegerUtf16(BigInteger value) {
     int signum = value.signum();
-    int chunkCount = collectBigIntegerChunks(value);
-    int precision =
-        BigNumberDigits.digitCount(bigIntegerChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
-    ensureNumberUtf16((long) precision + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK);
+    int chunkCapacity = BigNumberDigits.chunkCapacity(value);
+    long outputCapacity =
+        (long) chunkCapacity * 9 + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK;
+    ensureNumberUtf16(outputCapacity + (long) chunkCapacity * Character.BYTES);
+    byte[] bytes = buffer;
+    int scratchOffset = position + (int) (outputCapacity * Character.BYTES);
+    int chunkCount = collectBigIntegerChunks(value, bytes, scratchOffset);
+    int topChunk = LittleEndian.getInt32(bytes, scratchOffset + (chunkCount - 1) * Integer.BYTES);
     if (signum < 0) {
-      position = putUtf16Byte(buffer, position, (byte) '-');
+      position = putUtf16Byte(bytes, position, (byte) '-');
     }
-    int[] chunks = bigIntegerChunks;
-    int pos = writePositiveIntUtf16(buffer, position, chunks[chunkCount - 1]);
+    int pos = writePositiveIntUtf16(bytes, position, topChunk);
     for (int i = chunkCount - 2; i >= 0; i--) {
-      pos = writePadded9Utf16(buffer, pos, chunks[i]);
+      int chunk = LittleEndian.getInt32(bytes, scratchOffset + i * Integer.BYTES);
+      pos = writePadded9Utf16(bytes, pos, chunk);
     }
     position = pos;
   }
 
-  private int collectBigIntegerChunks(BigInteger value) {
-    if (value.signum() == 0) {
-      int[] chunks = ensureBigIntegerChunks(1);
-      chunks[0] = 0;
-      return 1;
-    }
-    int[] chunks = ensureBigIntegerChunks(BigNumberDigits.chunkCapacity(value));
+  private static int collectBigIntegerChunks(BigInteger value, byte[] bytes, int offset) {
     int count = 0;
     while (value.signum() != 0) {
-      if (count == chunks.length) {
-        chunks = Arrays.copyOf(chunks, count << 1);
-        bigIntegerChunks = chunks;
-      }
       BigInteger[] quotientAndRemainder = value.divideAndRemainder(BigNumberDigits.CHUNK_BASE);
       int chunk = quotientAndRemainder[1].intValue();
-      chunks[count++] = chunk < 0 ? -chunk : chunk;
+      LittleEndian.putInt32(bytes, offset + count * Integer.BYTES, chunk < 0 ? -chunk : chunk);
+      count++;
       value = quotientAndRemainder[0];
     }
     return count;
-  }
-
-  private int[] ensureBigIntegerChunks(int capacity) {
-    int[] chunks = bigIntegerChunks;
-    if (chunks == null || chunks.length < capacity) {
-      chunks = new int[capacity];
-      bigIntegerChunks = chunks;
-    }
-    return chunks;
   }
 
   private void writeLatin1NumberNoEnsure(String value, int length) {
@@ -1886,6 +1869,8 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     position += bytes.length;
   }
 
+  // Keep each coder's complete compact-decimal layout in one method. Small layout helpers are
+  // recursively inlined into generated object writers and can exhaust their C2 node budget.
   private void writeCompactBigDecimalLatin1(long unscaled, int scale) {
     if (scale == 0) {
       writeLongLatin1(unscaled);
@@ -1898,92 +1883,42 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     int precision = BigNumberDigits.digitCount(unscaled);
     long adjustedExponent = (long) precision - scale - 1L;
     boolean plain = scale >= 0 && adjustedExponent >= -6;
-    long outputChars =
-        (negative ? 1L : 0L)
-            + (plain
-                ? plainDecimalChars(precision, (long) precision - scale)
-                : scientificDecimalChars(precision, adjustedExponent));
+    long point = (long) precision - scale;
+    long outputChars;
+    if (plain) {
+      outputChars = point <= 0 ? 2L - point + precision : precision + 1L;
+    } else {
+      long magnitude = adjustedExponent < 0 ? -adjustedExponent : adjustedExponent;
+      outputChars =
+          (long) precision + (precision == 1 ? 0 : 1) + 2 + BigNumberDigits.digitCount(magnitude);
+    }
+    outputChars += negative ? 1 : 0;
     ensureNumberLatin1(outputChars + BigNumberDigits.PACKED_WRITE_SLACK);
     if (negative) {
       buffer[position++] = (byte) '-';
     }
     if (plain) {
-      writePlainCompactDecimalLatin1(unscaled, precision, scale);
-    } else {
-      writeScientificCompactDecimalLatin1(unscaled, precision, adjustedExponent);
-    }
-  }
-
-  private void writeCompactBigDecimalUtf16(long unscaled, int scale) {
-    if (scale == 0) {
-      writeLongUtf16(unscaled);
+      if (point <= 0) {
+        byte[] bytes = buffer;
+        int pos = position;
+        bytes[pos++] = (byte) '0';
+        bytes[pos++] = (byte) '.';
+        long zeroes = -point;
+        while (zeroes-- > 0) {
+          bytes[pos++] = (byte) '0';
+        }
+        position = pos;
+        writePaddedCompactLatin1(unscaled, precision);
+        return;
+      }
+      long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[scale];
+      long integer = unscaled / divisor;
+      long fraction = unscaled - integer * divisor;
+      writePaddedCompactLatin1(integer, (int) point);
+      buffer[position++] = (byte) '.';
+      writePaddedCompactLatin1(fraction, scale);
       return;
     }
-    boolean negative = unscaled < 0;
-    if (negative) {
-      unscaled = -unscaled;
-    }
-    int precision = BigNumberDigits.digitCount(unscaled);
-    long adjustedExponent = (long) precision - scale - 1L;
-    boolean plain = scale >= 0 && adjustedExponent >= -6;
-    long outputChars =
-        (negative ? 1L : 0L)
-            + (plain
-                ? plainDecimalChars(precision, (long) precision - scale)
-                : scientificDecimalChars(precision, adjustedExponent));
-    ensureNumberUtf16(outputChars + BigNumberDigits.PACKED_WRITE_SLACK);
-    if (negative) {
-      position = putUtf16Byte(buffer, position, (byte) '-');
-    }
-    if (plain) {
-      writePlainCompactDecimalUtf16(unscaled, precision, scale);
-    } else {
-      writeScientificCompactDecimalUtf16(unscaled, precision, adjustedExponent);
-    }
-  }
-
-  private void writePlainCompactDecimalLatin1(long unscaled, int precision, int scale) {
-    long point = (long) precision - scale;
-    if (point <= 0) {
-      byte[] bytes = buffer;
-      int pos = position;
-      bytes[pos++] = (byte) '0';
-      bytes[pos++] = (byte) '.';
-      position = pos;
-      writeZeroesLatin1(-point);
-      writePaddedCompactLatin1(unscaled, precision);
-      return;
-    }
-    long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[scale];
-    long integer = unscaled / divisor;
-    long fraction = unscaled - integer * divisor;
-    writePaddedCompactLatin1(integer, (int) point);
-    buffer[position++] = (byte) '.';
-    writePaddedCompactLatin1(fraction, scale);
-  }
-
-  private void writePlainCompactDecimalUtf16(long unscaled, int precision, int scale) {
-    long point = (long) precision - scale;
-    if (point <= 0) {
-      byte[] bytes = buffer;
-      int pos = position;
-      pos = putUtf16Byte(bytes, pos, (byte) '0');
-      pos = putUtf16Byte(bytes, pos, (byte) '.');
-      position = pos;
-      writeZeroesUtf16(-point);
-      writePaddedCompactUtf16(unscaled, precision);
-      return;
-    }
-    long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[scale];
-    long integer = unscaled / divisor;
-    long fraction = unscaled - integer * divisor;
-    writePaddedCompactUtf16(integer, (int) point);
-    position = putUtf16Byte(buffer, position, (byte) '.');
-    writePaddedCompactUtf16(fraction, scale);
-  }
-
-  private void writeScientificCompactDecimalLatin1(
-      long unscaled, int precision, long adjustedExponent) {
     if (precision == 1) {
       writePositiveLongLatin1NoEnsure(unscaled);
     } else {
@@ -2007,8 +1942,54 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writeLongLatin1NoEnsure(adjustedExponent);
   }
 
-  private void writeScientificCompactDecimalUtf16(
-      long unscaled, int precision, long adjustedExponent) {
+  private void writeCompactBigDecimalUtf16(long unscaled, int scale) {
+    if (scale == 0) {
+      writeLongUtf16(unscaled);
+      return;
+    }
+    boolean negative = unscaled < 0;
+    if (negative) {
+      unscaled = -unscaled;
+    }
+    int precision = BigNumberDigits.digitCount(unscaled);
+    long adjustedExponent = (long) precision - scale - 1L;
+    boolean plain = scale >= 0 && adjustedExponent >= -6;
+    long point = (long) precision - scale;
+    long outputChars;
+    if (plain) {
+      outputChars = point <= 0 ? 2L - point + precision : precision + 1L;
+    } else {
+      long magnitude = adjustedExponent < 0 ? -adjustedExponent : adjustedExponent;
+      outputChars =
+          (long) precision + (precision == 1 ? 0 : 1) + 2 + BigNumberDigits.digitCount(magnitude);
+    }
+    outputChars += negative ? 1 : 0;
+    ensureNumberUtf16(outputChars + BigNumberDigits.PACKED_WRITE_SLACK);
+    if (negative) {
+      position = putUtf16Byte(buffer, position, (byte) '-');
+    }
+    if (plain) {
+      if (point <= 0) {
+        byte[] bytes = buffer;
+        int pos = position;
+        pos = putUtf16Byte(bytes, pos, (byte) '0');
+        pos = putUtf16Byte(bytes, pos, (byte) '.');
+        long zeroes = -point;
+        while (zeroes-- > 0) {
+          pos = putUtf16Byte(bytes, pos, (byte) '0');
+        }
+        position = pos;
+        writePaddedCompactUtf16(unscaled, precision);
+        return;
+      }
+      long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[scale];
+      long integer = unscaled / divisor;
+      long fraction = unscaled - integer * divisor;
+      writePaddedCompactUtf16(integer, (int) point);
+      position = putUtf16Byte(buffer, position, (byte) '.');
+      writePaddedCompactUtf16(fraction, scale);
+      return;
+    }
     if (precision == 1) {
       position = writePositiveLongUtf16(buffer, position, unscaled);
     } else {
@@ -2070,24 +2051,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       pos = writePadded9Utf16(bytes, pos, middle);
     }
     position = writePadded9Utf16(bytes, pos, low);
-  }
-
-  private void writeZeroesLatin1(long count) {
-    byte[] bytes = buffer;
-    int pos = position;
-    while (count-- > 0) {
-      bytes[pos++] = (byte) '0';
-    }
-    position = pos;
-  }
-
-  private void writeZeroesUtf16(long count) {
-    byte[] bytes = buffer;
-    int pos = position;
-    while (count-- > 0) {
-      pos = putUtf16Byte(bytes, pos, (byte) '0');
-    }
-    position = pos;
   }
 
   private void ensureNumberLatin1(long chars) {
@@ -2712,22 +2675,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       pos = putUtf16Byte(bytes, pos, (byte) '0');
     }
     return writePositiveIntUtf16(bytes, pos, value);
-  }
-
-  private static long plainDecimalChars(int precision, long point) {
-    if (point <= 0) {
-      return 2L - point + precision;
-    }
-    return precision + (point < precision ? 1 : 0);
-  }
-
-  private static long scientificDecimalChars(int precision, long adjustedExponent) {
-    long magnitude = adjustedExponent < 0 ? -adjustedExponent : adjustedExponent;
-    return (long) precision
-        + (precision == 1 ? 0 : 1)
-        + 1
-        + 1
-        + BigNumberDigits.digitCount(magnitude);
   }
 
   private static int putUtf16Byte(byte[] bytes, int pos, byte value) {

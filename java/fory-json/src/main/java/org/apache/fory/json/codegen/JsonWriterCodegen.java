@@ -44,9 +44,7 @@ import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
-import org.apache.fory.json.writer.StringObjectWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
-import org.apache.fory.json.writer.Utf8ObjectWriter;
 import org.apache.fory.reflect.TypeRef;
 
 final class JsonWriterCodegen {
@@ -89,15 +87,6 @@ final class JsonWriterCodegen {
     return new Expression.Comparator("!=", left, right, true);
   }
 
-  private static void addGeneratedConstructor(
-      CodegenContext ctx, Expression expression, Object... params) {
-    ctx.clearExprState();
-    Code.ExprCode body = expression.genCode(ctx);
-    String code = body.code();
-    code = code == null ? "" : ctx.optimizeMethodCode(code);
-    ctx.addConstructor(code, params);
-  }
-
   private static void addGeneratedMethod(
       CodegenContext ctx,
       String modifier,
@@ -112,58 +101,88 @@ final class JsonWriterCodegen {
     ctx.addMethod(modifier, name, code, returnType, params);
   }
 
-  String genWriterCode(
-      JsonGeneratedCodecBuilder builder, Class<?> type, JsonFieldInfo[] properties, boolean utf8) {
+  Expression addWriterCode(
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonFieldInfo[] properties) {
     CodegenContext ctx = builder.context();
     ctx.addImports(StringJsonWriter.class, Utf8JsonWriter.class);
-    ctx.implementsInterfaces(ctx.type(utf8 ? Utf8ObjectWriter.class : StringObjectWriter.class));
     boolean objectStartFused = canFuseObjectStart(properties);
-    StringPrefixFields stringPrefixFields =
-        utf8 ? null : stringPrefixFields(properties, objectStartFused);
+    StringPrefixFields stringPrefixFields = stringPrefixFields(properties, objectStartFused);
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
       if (usesWriteInfo(property)) {
-        ctx.addField(JsonFieldInfo.class, "p" + i);
+        ctx.addField(JsonFieldInfo.class, "wp" + i);
       }
       if (usesWriteCodec(property)) {
-        ctx.addField(codecFieldType(property.writeTypeInfo().codec()), "c" + i);
+        ctx.addField(codecFieldType(property.writeTypeInfo().codec()), "w" + i);
       }
       if (usesPrefix(property)) {
-        if (utf8) {
-          ctx.addField(byte[].class, "u" + i);
-          ctx.addField(byte[].class, "uc" + i);
-        } else {
-          ctx.addField(byte[].class, "s" + i);
-          ctx.addField(byte[].class, "sc" + i);
-          if (stringPrefixFields.name[i]) {
-            ctx.addField(byte[].class, "s16" + i);
-          }
-          if (stringPrefixFields.comma[i]) {
-            ctx.addField(byte[].class, "sc16" + i);
-          }
+        ctx.addField(byte[].class, "u" + i);
+        ctx.addField(byte[].class, "uc" + i);
+        ctx.addField(byte[].class, "s" + i);
+        ctx.addField(byte[].class, "sc" + i);
+        if (stringPrefixFields.name[i]) {
+          ctx.addField(byte[].class, "s16" + i);
+        }
+        if (stringPrefixFields.comma[i]) {
+          ctx.addField(byte[].class, "sc16" + i);
         }
       }
     }
-    addGeneratedConstructor(
-        ctx,
-        writerConstructorExpression(properties, utf8, stringPrefixFields),
-        JsonFieldInfo[].class,
-        "properties",
-        JsonCodec[].class,
-        "codecs");
-    addGeneratedMethod(
-        ctx,
-        "public",
-        utf8 ? "writeUtf8" : "writeString",
-        writeExpression(builder, type, properties, utf8, objectStartFused),
+    ctx.addMethod(
+        "@Override public final",
+        "writeUtf8",
+        "if (value == null) {\n"
+            + "  writer.writeNull();\n"
+            + "  return;\n"
+            + "}\n"
+            + "writeUtf8NonNull(writer, value, typeResolver);",
         void.class,
-        utf8 ? Utf8JsonWriter.class : StringJsonWriter.class,
+        Utf8JsonWriter.class,
         "writer",
         Object.class,
         "value",
         JsonTypeResolver.class,
         "typeResolver");
-    return ctx.genCode();
+    ctx.addMethod(
+        "@Override public final",
+        "writeString",
+        "if (value == null) {\n"
+            + "  writer.writeNull();\n"
+            + "  return;\n"
+            + "}\n"
+            + "writeStringNonNull(writer, value, typeResolver);",
+        void.class,
+        StringJsonWriter.class,
+        "writer",
+        Object.class,
+        "value",
+        JsonTypeResolver.class,
+        "typeResolver");
+    addGeneratedMethod(
+        ctx,
+        "@Override protected final",
+        "writeUtf8NonNull",
+        writeExpression(builder, type, properties, true, objectStartFused),
+        void.class,
+        Utf8JsonWriter.class,
+        "writer",
+        Object.class,
+        "value",
+        JsonTypeResolver.class,
+        "typeResolver");
+    addGeneratedMethod(
+        ctx,
+        "@Override protected final",
+        "writeStringNonNull",
+        writeExpression(builder, type, properties, false, objectStartFused),
+        void.class,
+        StringJsonWriter.class,
+        "writer",
+        Object.class,
+        "value",
+        JsonTypeResolver.class,
+        "typeResolver");
+    return writerConstructorExpression(properties, stringPrefixFields);
   }
 
   private StringPrefixFields stringPrefixFields(
@@ -222,65 +241,61 @@ final class JsonWriterCodegen {
   }
 
   private Expression writerConstructorExpression(
-      JsonFieldInfo[] properties, boolean utf8, StringPrefixFields stringPrefixFields) {
+      JsonFieldInfo[] properties, StringPrefixFields stringPrefixFields) {
     Expression.ListExpression expressions = new Expression.ListExpression();
-    Reference propertiesRef = new Reference("properties", TypeRef.of(JsonFieldInfo[].class));
-    Reference codecsRef = new Reference("codecs", TypeRef.of(JsonCodec[].class));
+    Reference propertiesRef = new Reference("writeProperties", TypeRef.of(JsonFieldInfo[].class));
+    Reference codecsRef = new Reference("writeCodecs", TypeRef.of(JsonCodec[].class));
     for (int i = 0; i < properties.length; i++) {
       Expression id = Expression.Literal.ofInt(i);
       Expression property = new Expression.ArrayValue(propertiesRef, id);
       if (usesWriteInfo(properties[i])) {
         expressions.add(
             new Expression.Assign(
-                new Reference("this.p" + i, TypeRef.of(JsonFieldInfo.class)), property));
+                new Reference("this.wp" + i, TypeRef.of(JsonFieldInfo.class)), property));
       }
       if (usesWriteCodec(properties[i])) {
         Class<?> codecType = codecFieldType(properties[i].writeTypeInfo().codec());
         expressions.add(
             new Expression.Assign(
-                new Reference("this.c" + i, TypeRef.of(codecType)),
+                new Reference("this.w" + i, TypeRef.of(codecType)),
                 new Expression.Cast(
                     new Expression.ArrayValue(codecsRef, id), TypeRef.of(codecType))));
       }
       if (usesPrefix(properties[i])) {
-        if (utf8) {
+        expressions.add(
+            new Expression.Assign(
+                new Reference("this.u" + i, TypeRef.of(byte[].class)),
+                new Expression.Invoke(property, "utf8NamePrefix", TypeRef.of(byte[].class))
+                    .inline()));
+        expressions.add(
+            new Expression.Assign(
+                new Reference("this.uc" + i, TypeRef.of(byte[].class)),
+                new Expression.Invoke(property, "utf8CommaNamePrefix", TypeRef.of(byte[].class))
+                    .inline()));
+        expressions.add(
+            new Expression.Assign(
+                new Reference("this.s" + i, TypeRef.of(byte[].class)),
+                new Expression.Invoke(property, "stringNamePrefix", TypeRef.of(byte[].class))
+                    .inline()));
+        expressions.add(
+            new Expression.Assign(
+                new Reference("this.sc" + i, TypeRef.of(byte[].class)),
+                new Expression.Invoke(property, "stringCommaNamePrefix", TypeRef.of(byte[].class))
+                    .inline()));
+        if (stringPrefixFields.name[i]) {
           expressions.add(
               new Expression.Assign(
-                  new Reference("this.u" + i, TypeRef.of(byte[].class)),
-                  new Expression.Invoke(property, "utf8NamePrefix", TypeRef.of(byte[].class))
+                  new Reference("this.s16" + i, TypeRef.of(byte[].class)),
+                  new Expression.Invoke(property, "stringUtf16NamePrefix", TypeRef.of(byte[].class))
                       .inline()));
+        }
+        if (stringPrefixFields.comma[i]) {
           expressions.add(
               new Expression.Assign(
-                  new Reference("this.uc" + i, TypeRef.of(byte[].class)),
-                  new Expression.Invoke(property, "utf8CommaNamePrefix", TypeRef.of(byte[].class))
+                  new Reference("this.sc16" + i, TypeRef.of(byte[].class)),
+                  new Expression.Invoke(
+                          property, "stringUtf16CommaNamePrefix", TypeRef.of(byte[].class))
                       .inline()));
-        } else {
-          expressions.add(
-              new Expression.Assign(
-                  new Reference("this.s" + i, TypeRef.of(byte[].class)),
-                  new Expression.Invoke(property, "stringNamePrefix", TypeRef.of(byte[].class))
-                      .inline()));
-          expressions.add(
-              new Expression.Assign(
-                  new Reference("this.sc" + i, TypeRef.of(byte[].class)),
-                  new Expression.Invoke(property, "stringCommaNamePrefix", TypeRef.of(byte[].class))
-                      .inline()));
-          if (stringPrefixFields.name[i]) {
-            expressions.add(
-                new Expression.Assign(
-                    new Reference("this.s16" + i, TypeRef.of(byte[].class)),
-                    new Expression.Invoke(
-                            property, "stringUtf16NamePrefix", TypeRef.of(byte[].class))
-                        .inline()));
-          }
-          if (stringPrefixFields.comma[i]) {
-            expressions.add(
-                new Expression.Assign(
-                    new Reference("this.sc16" + i, TypeRef.of(byte[].class)),
-                    new Expression.Invoke(
-                            property, "stringUtf16CommaNamePrefix", TypeRef.of(byte[].class))
-                        .inline()));
-          }
         }
       }
     }
@@ -326,11 +341,11 @@ final class JsonWriterCodegen {
       if (splitMembers && commaKnown) {
         memberGroup.add(member);
         if (memberGroup.size() == MEMBER_GROUP_SIZE) {
-          addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver);
+          addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver, utf8);
         }
       } else {
         if (splitMembers) {
-          addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver);
+          addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver, utf8);
         }
         expressions.add(member);
       }
@@ -339,7 +354,7 @@ final class JsonWriterCodegen {
       }
     }
     if (splitMembers) {
-      addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver, true);
+      addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver, utf8, true);
     }
     expressions.add(new Expression.Invoke(writer, "writeObjectEnd"));
     return expressions;
@@ -351,8 +366,9 @@ final class JsonWriterCodegen {
       List<Expression> memberGroup,
       Expression object,
       Reference writer,
-      Reference typeResolver) {
-    addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver, false);
+      Reference typeResolver,
+      boolean utf8) {
+    addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver, utf8, false);
   }
 
   private static void addMemberGroup(
@@ -362,6 +378,7 @@ final class JsonWriterCodegen {
       Expression object,
       Reference writer,
       Reference typeResolver,
+      boolean utf8,
       boolean inlineSmallTail) {
     if (memberGroup.isEmpty()) {
       return;
@@ -382,7 +399,7 @@ final class JsonWriterCodegen {
             builder.context(),
             cutPoints,
             new Expression.ListExpression(new ArrayList<>(memberGroup)),
-            "writeMembers",
+            utf8 ? "writeUtf8Members" : "writeStringMembers",
             false));
     memberGroup.clear();
   }
@@ -859,7 +876,7 @@ final class JsonWriterCodegen {
   private static Expression booleanFieldValue(
       int id, Expression value, boolean utf8, boolean commaKnown, Expression index) {
     return new Expression.Invoke(
-            fieldRef("p" + id, JsonFieldInfo.class),
+            fieldRef("wp" + id, JsonFieldInfo.class),
             utf8 ? "utf8BooleanFieldValue" : "stringBooleanFieldValue",
             TypeRef.of(byte[].class),
             value,
@@ -870,7 +887,7 @@ final class JsonWriterCodegen {
   private static Expression enumFieldValue(
       int id, Expression value, boolean utf8, boolean commaKnown, Expression index) {
     return new Expression.Invoke(
-            fieldRef("p" + id, JsonFieldInfo.class),
+            fieldRef("wp" + id, JsonFieldInfo.class),
             utf8 ? "utf8EnumFieldValue" : "stringEnumFieldValue",
             TypeRef.of(byte[].class),
             value,
@@ -881,7 +898,7 @@ final class JsonWriterCodegen {
   private static Expression stringUtf16EnumFieldValue(
       int id, Expression value, boolean commaKnown, Expression index) {
     return new Expression.Invoke(
-            fieldRef("p" + id, JsonFieldInfo.class),
+            fieldRef("wp" + id, JsonFieldInfo.class),
             "stringUtf16EnumFieldValue",
             TypeRef.of(byte[].class),
             value,
@@ -892,7 +909,7 @@ final class JsonWriterCodegen {
   private static Expression writeCodec(
       int id, Expression value, boolean utf8, Expression writer, Expression typeResolver) {
     return new Expression.Invoke(
-        fieldRef("c" + id, JsonCodec.class),
+        fieldRef("w" + id, JsonCodec.class),
         utf8 ? "writeUtf8" : "writeString",
         writer,
         value,

@@ -39,7 +39,7 @@ public abstract class AbstractJsonCodec implements JsonCodec {
   }
 
   @Override
-  public final void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+  public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
     if (value == null) {
       writer.writeNull();
     } else {
@@ -48,7 +48,7 @@ public abstract class AbstractJsonCodec implements JsonCodec {
   }
 
   @Override
-  public final void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+  public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
     if (value == null) {
       writer.writeNull();
     } else {

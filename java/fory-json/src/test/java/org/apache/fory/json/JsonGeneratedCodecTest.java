@@ -152,32 +152,30 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     second.toJsonBytes(new PublicFields());
     writeNullFields.toJsonBytes(new PublicFields());
     if (!codegenEnabled()) {
-      assertFalse(first.hasGeneratedWriter(PublicFields.class));
-      assertFalse(second.hasGeneratedWriter(PublicFields.class));
-      assertFalse(writeNullFields.hasGeneratedWriter(PublicFields.class));
+      assertFalse(first.hasGeneratedCodec(PublicFields.class));
+      assertFalse(second.hasGeneratedCodec(PublicFields.class));
+      assertFalse(writeNullFields.hasGeneratedCodec(PublicFields.class));
       return;
     }
 
-    Class<?> firstWriterClass = generatedUtf8WriterClass(first, PublicFields.class);
-    Class<?> secondWriterClass = generatedUtf8WriterClass(second, PublicFields.class);
-    Class<?> writeNullWriterClass = generatedUtf8WriterClass(writeNullFields, PublicFields.class);
+    Class<?> firstCodecClass = generatedCodecClass(first, PublicFields.class);
+    Class<?> secondCodecClass = generatedCodecClass(second, PublicFields.class);
+    Class<?> writeNullCodecClass = generatedCodecClass(writeNullFields, PublicFields.class);
     ForyJson asyncDefault = ForyJson.builder().withCodegen(true).build();
     asyncDefault.toJsonBytes(new PublicFields());
     awaitGenerated(asyncDefault, PublicFields.class);
-    Class<?> asyncWriterClass = generatedUtf8WriterClass(asyncDefault, PublicFields.class);
+    Class<?> asyncCodecClass = generatedCodecClass(asyncDefault, PublicFields.class);
+    assertEquals(firstCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
     assertEquals(
-        firstWriterClass.getPackage().getName(), PublicFields.class.getPackage().getName());
-    assertEquals(
-        secondWriterClass.getPackage().getName(), PublicFields.class.getPackage().getName());
-    assertEquals(
-        asyncWriterClass.getPackage().getName(), PublicFields.class.getPackage().getName());
-    assertGeneratedName(firstWriterClass, PublicFields.class, "Utf8");
-    assertGeneratedName(secondWriterClass, PublicFields.class, "Utf8");
-    assertGeneratedName(writeNullWriterClass, PublicFields.class, "Utf8");
-    assertGeneratedName(asyncWriterClass, PublicFields.class, "Utf8");
-    assertEquals(generatedId(secondWriterClass), generatedId(firstWriterClass));
-    assertEquals(generatedId(asyncWriterClass), generatedId(firstWriterClass));
-    assertNotEquals(generatedId(writeNullWriterClass), generatedId(firstWriterClass));
+        secondCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
+    assertEquals(asyncCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
+    assertGeneratedName(firstCodecClass, PublicFields.class, "Object");
+    assertGeneratedName(secondCodecClass, PublicFields.class, "Object");
+    assertGeneratedName(writeNullCodecClass, PublicFields.class, "Object");
+    assertGeneratedName(asyncCodecClass, PublicFields.class, "Object");
+    assertEquals(generatedId(secondCodecClass), generatedId(firstCodecClass));
+    assertEquals(generatedId(asyncCodecClass), generatedId(firstCodecClass));
+    assertNotEquals(generatedId(writeNullCodecClass), generatedId(firstCodecClass));
   }
 
   @Test
@@ -303,7 +301,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     public String f13;
   }
 
-  private static Class<?> generatedUtf8WriterClass(ForyJson json, Class<?> type) throws Exception {
+  private static Class<?> generatedCodecClass(ForyJson json, Class<?> type) throws Exception {
     Field primarySlotField = ForyJson.class.getDeclaredField("primarySlot");
     primarySlotField.setAccessible(true);
     AtomicReference<?> primarySlot = (AtomicReference<?>) primarySlotField.get(json);
@@ -316,14 +314,12 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     JsonTypeResolver typeResolver = (JsonTypeResolver) typeResolverField.get(state);
     BaseObjectCodec codec = typeResolver.getObjectCodec(type);
     assertTrue(codec instanceof GeneratedObjectCodec);
-    Field utf8WriterField = GeneratedObjectCodec.class.getDeclaredField("utf8Writer");
-    utf8WriterField.setAccessible(true);
-    return utf8WriterField.get(codec).getClass();
+    return codec.getClass();
   }
 
   private static void awaitGenerated(ForyJson json, Class<?> type) throws InterruptedException {
     for (int i = 0; i < 200; i++) {
-      if (json.hasGeneratedWriter(type)) {
+      if (json.hasGeneratedCodec(type)) {
         return;
       }
       Thread.sleep(10);

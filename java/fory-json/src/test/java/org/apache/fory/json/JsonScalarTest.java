@@ -796,6 +796,12 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void writeLargeBigInteger() {
+    BigInteger value = BigInteger.TEN.pow(9_216);
+    assertWriterNumber(value, value.toString());
+  }
+
+  @Test
   public void handleBigNumberSubtypes() {
     BigIntegerSubtype integer = new BigIntegerSubtype("42");
     BigDecimalSubtype decimal = new BigDecimalSubtype("12345678901234567890.123");
@@ -1825,10 +1831,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(Float.floatToRawIntBits(fields.boxed.floatValue()), expected);
     if (codegenEnabled()) {
       GeneratedObjectCodec codec = generatedObjectCodec(json, FloatFields.class);
-      assertNoJsonFieldInfoFields(reflectField(codec, "reader"));
-      assertNoJsonFieldInfoFields(reflectField(codec, "latin1Reader"));
-      assertNoJsonFieldInfoFields(reflectField(codec, "utf16Reader"));
-      assertNoJsonFieldInfoFields(reflectField(codec, "utf8Reader"));
+      assertNoJsonFieldInfoFields(codec);
     }
   }
 

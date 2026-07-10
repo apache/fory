@@ -100,7 +100,7 @@ public class JsonAsyncCompilationTest {
     withJitLocked(
         json,
         () -> {
-          json.hasGeneratedWriter(Object.class);
+          json.hasGeneratedCodec(Object.class);
           assertEquals(json.toJson(holder), expected);
         });
     awaitGenerated(json, Object.class);
@@ -114,7 +114,7 @@ public class JsonAsyncCompilationTest {
     JsonObject before =
         (JsonObject) json.fromJson("{\"items\":[1],\"name\":\"fory\"}", Object.class);
     assertTrue(before.get("items") instanceof JsonArray);
-    json.hasGeneratedWriter(Object.class);
+    json.hasGeneratedCodec(Object.class);
     awaitGenerated(json, Object.class);
     assertEquals(json.fromJson("7", Object.class), Long.valueOf(7));
     assertTrue(json.fromJson("[1]", Object.class) instanceof JsonArray);
@@ -142,7 +142,7 @@ public class JsonAsyncCompilationTest {
     assertTrue(firstCodec instanceof GeneratedObjectCodec, firstCodec.getClass().getName());
     assertTrue(secondCodec instanceof GeneratedObjectCodec, secondCodec.getClass().getName());
     assertTrue(firstCodec != secondCodec);
-    assertEquals(generatedUtf8WriterClass(firstCodec), generatedUtf8WriterClass(secondCodec));
+    assertEquals(firstCodec.getClass(), secondCodec.getClass());
   }
 
   @Test
@@ -156,7 +156,7 @@ public class JsonAsyncCompilationTest {
     BaseObjectCodec secondCodec = second.getObjectCodec(AsyncChild.class);
     assertTrue(secondCodec instanceof GeneratedObjectCodec, secondCodec.getClass().getName());
     assertTrue(firstCodec != secondCodec);
-    assertEquals(generatedUtf8WriterClass(firstCodec), generatedUtf8WriterClass(secondCodec));
+    assertEquals(firstCodec.getClass(), secondCodec.getClass());
   }
 
   @Test
@@ -173,7 +173,7 @@ public class JsonAsyncCompilationTest {
     ForyJson json = ForyJson.builder().withCodegen(false).build();
     assertEquals(json.toJson(child("root", 1)), "{\"id\":1,\"name\":\"root\"}");
     Thread.sleep(50);
-    assertFalse(json.hasGeneratedWriter(AsyncChild.class));
+    assertFalse(json.hasGeneratedCodec(AsyncChild.class));
   }
 
   private static AsyncParent parent() {
@@ -197,7 +197,7 @@ public class JsonAsyncCompilationTest {
 
   private static void awaitGenerated(ForyJson json, Class<?> type) throws InterruptedException {
     for (int i = 0; i < 200; i++) {
-      if (json.hasGeneratedWriter(type)) {
+      if (json.hasGeneratedCodec(type)) {
         return;
       }
       Thread.sleep(10);
@@ -228,12 +228,6 @@ public class JsonAsyncCompilationTest {
     Object sharedRegistry = field(json, "sharedRegistry");
     Object jitContext = field(sharedRegistry, "jitContext");
     return ((Map<?, ?>) field(jitContext, "hasJITResult")).size();
-  }
-
-  private static Class<?> generatedUtf8WriterClass(BaseObjectCodec codec) throws Exception {
-    Field field = GeneratedObjectCodec.class.getDeclaredField("utf8Writer");
-    field.setAccessible(true);
-    return field.get(codec).getClass();
   }
 
   private static void assertCachedGeneratedChild(

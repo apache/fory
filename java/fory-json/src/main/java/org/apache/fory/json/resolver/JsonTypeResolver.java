@@ -31,7 +31,7 @@ import org.apache.fory.json.codec.BaseObjectCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.ObjectCodec;
-import org.apache.fory.json.codegen.JsonCodegen.GeneratedObjectCodecClasses;
+import org.apache.fory.json.codegen.JsonCodegen.GeneratedObjectCodecClass;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.reflect.TypeRef;
 
@@ -137,9 +137,9 @@ public final class JsonTypeResolver {
           sharedRegistry.compileObject(
               codec,
               this,
-              new JsonJITContext.ObjectJITCallback<GeneratedObjectCodecClasses>() {
+              new JsonJITContext.ObjectJITCallback<GeneratedObjectCodecClass>() {
                 @Override
-                public void onSuccess(GeneratedObjectCodecClasses result) {
+                public void onSuccess(GeneratedObjectCodecClass result) {
                   BaseObjectCodec generated = newGeneratedCodec(codec, result);
                   if (generated != null) {
                     setObjectCodec(type, generated);
@@ -229,11 +229,9 @@ public final class JsonTypeResolver {
               updater.accept(latest);
               return;
             }
-            if (result instanceof GeneratedObjectCodecClasses
-                && objectCodec instanceof ObjectCodec) {
+            if (result instanceof GeneratedObjectCodecClass && objectCodec instanceof ObjectCodec) {
               BaseObjectCodec generated =
-                  newGeneratedCodec(
-                      (ObjectCodec) objectCodec, (GeneratedObjectCodecClasses) result);
+                  newGeneratedCodec((ObjectCodec) objectCodec, (GeneratedObjectCodecClass) result);
               if (generated != null) {
                 setObjectCodec(type, generated);
                 updater.accept(generated);
@@ -273,7 +271,7 @@ public final class JsonTypeResolver {
   }
 
   private BaseObjectCodec newGeneratedCodec(
-      ObjectCodec codec, GeneratedObjectCodecClasses classes) {
+      ObjectCodec codec, GeneratedObjectCodecClass generatedClass) {
     Class<?> type = codec.type();
     // Generated codec construction may request a recursive object codec. Keep the current
     // interpreter until the outer generated codec is installed and its pending callbacks run.
@@ -281,7 +279,7 @@ public final class JsonTypeResolver {
       return codec;
     }
     try {
-      return sharedRegistry.newGeneratedCodec(codec, this, classes);
+      return sharedRegistry.newGeneratedCodec(codec, this, generatedClass);
     } finally {
       installingCodecs.remove(type);
     }
@@ -294,8 +292,8 @@ public final class JsonTypeResolver {
     if (installingCodecs.contains(type)) {
       return codec;
     }
-    GeneratedObjectCodecClasses classes = sharedRegistry.generatedClasses(type);
-    if (classes == null) {
+    GeneratedObjectCodecClass generatedClass = sharedRegistry.generatedClass(type);
+    if (generatedClass == null) {
       return codec;
     }
     if (!sharedRegistry.jitContext().lockedByCurrentThread()) {
@@ -310,7 +308,7 @@ public final class JsonTypeResolver {
     if (latest != null && latest != codec) {
       return latest;
     }
-    BaseObjectCodec generated = newGeneratedCodec((ObjectCodec) codec, classes);
+    BaseObjectCodec generated = newGeneratedCodec((ObjectCodec) codec, generatedClass);
     if (generated != null) {
       setObjectCodec(type, generated);
       return generated;

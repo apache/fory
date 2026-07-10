@@ -180,7 +180,7 @@ public final class ForyJson {
     }
   }
 
-  boolean hasGeneratedWriter(Class<?> type) {
+  boolean hasGeneratedCodec(Class<?> type) {
     PooledState entry = acquire();
     try {
       return entry.state.typeResolver.getObjectCodec(type) instanceof GeneratedObjectCodec;
