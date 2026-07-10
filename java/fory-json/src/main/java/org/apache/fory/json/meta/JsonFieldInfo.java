@@ -63,9 +63,9 @@ public final class JsonFieldInfo {
   private final Class<?> writeRawType;
   private final Type readType;
   private final Class<?> readRawType;
-  private final JsonFieldKind writeKind;
-  private final JsonFieldKind readKind;
-  private final int writeKindId;
+  private JsonFieldKind writeKind;
+  private JsonFieldKind readKind;
+  private int writeKindId;
   private final JsonFieldAccessor writeAccessor;
   private final JsonFieldAccessor readAccessor;
   private final Type writeElementType;
@@ -312,11 +312,14 @@ public final class JsonFieldInfo {
   public void resolveTypes(JsonTypeResolver typeResolver) {
     if (writeRawType != null) {
       writeTypeInfo = typeResolver.getTypeInfo(writeType, writeRawType);
+      writeKind = writeTypeInfo.kind();
+      writeKindId = kindId(writeKind);
     }
     if (readRawType != null) {
       readTypeInfo = typeResolver.getTypeInfo(readType, readRawType);
+      readKind = readTypeInfo.kind();
     }
-    if (readElementRawType != null) {
+    if (readKind == JsonFieldKind.COLLECTION && readElementRawType != null) {
       readElementTypeInfo = typeResolver.getTypeInfo(readElementType, readElementRawType);
     }
   }

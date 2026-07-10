@@ -22,6 +22,7 @@ package org.apache.fory.json.codegen;
 import static org.apache.fory.codegen.ExpressionUtils.add;
 import static org.apache.fory.codegen.ExpressionUtils.cast;
 import static org.apache.fory.codegen.ExpressionUtils.inline;
+import static org.apache.fory.codegen.ExpressionUtils.valueOf;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -37,6 +38,7 @@ import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.codegen.ExpressionOptimizer;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.resolver.JsonTypeResolver;
@@ -460,8 +462,18 @@ final class JsonWriterCodegen {
       Expression typeResolver) {
     Class<?> rawType = property.writeRawType();
     if (rawType.isPrimitive()) {
+      Expression fieldValue = builder.fieldValue(property, object);
+      if (property.writeKind() == JsonFieldKind.OBJECT) {
+        Expression value =
+            new Expression.Variable(
+                "v" + id, valueOf(TypeRef.of(rawType).wrap(), inline(fieldValue)));
+        return new Expression.ListExpression(
+            value,
+            writeFieldName(property, id, utf8, commaKnown, index, writer),
+            writeCodec(id, value, utf8, writer, typeResolver));
+      }
       return writePrimitive(
-          property, id, builder.fieldValue(property, object), utf8, commaKnown, index, writer);
+          property, id, fieldValue, utf8, commaKnown, index, writer);
     }
     Expression value =
         new Expression.Variable(
@@ -748,7 +760,7 @@ final class JsonWriterCodegen {
         }
         return writeCodec(id, value, utf8, writer, typeResolver);
       case OBJECT:
-        Expression scalar = writeExactUtf8Scalar(property.writeRawType(), value, utf8, writer);
+        Expression scalar = writeExactUtf8Scalar(property, value, utf8, writer);
         return scalar == null ? writeCodec(id, value, utf8, writer, typeResolver) : scalar;
       default:
         return writeCodec(id, value, utf8, writer, typeResolver);
@@ -888,18 +900,21 @@ final class JsonWriterCodegen {
   }
 
   private static Expression writeExactUtf8Scalar(
-      Class<?> rawType, Expression value, boolean utf8, Expression writer) {
+      JsonFieldInfo property, Expression value, boolean utf8, Expression writer) {
     if (!utf8) {
       return null;
     }
+    Class<?> rawType = property.writeRawType();
+    JsonCodec codec = property.writeTypeInfo().codec();
     String writerMethod;
-    if (rawType == UUID.class) {
+    if (rawType == UUID.class && codec == ScalarCodecs.UuidCodec.INSTANCE) {
       writerMethod = "writeUuid";
-    } else if (rawType == LocalDate.class) {
+    } else if (rawType == LocalDate.class && codec == ScalarCodecs.LocalDateCodec.INSTANCE) {
       writerMethod = "writeLocalDate";
-    } else if (rawType == OffsetDateTime.class) {
+    } else if (rawType == OffsetDateTime.class
+        && codec == ScalarCodecs.OffsetDateTimeCodec.INSTANCE) {
       writerMethod = "writeOffsetDateTime";
-    } else if (rawType == BigDecimal.class) {
+    } else if (rawType == BigDecimal.class && codec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
       writerMethod = "writeBigDecimal";
     } else {
       return null;

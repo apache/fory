@@ -19,6 +19,8 @@
 
 package org.apache.fory.json.writer;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -103,8 +105,11 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   }
 
   private byte[] buffer;
+  // The alternate coder buffer also retains enough capacity for LATIN1 formatter staging on a
+  // runtime that does not expose the direct UTF16 formatter.
   private byte[] scratch;
-  private StringBuilder decimalBuilder;
+  private final StringBuilder decimalBuilder;
+  private int[] bigNumberChunks;
   private byte coder;
   private byte nextCoder;
   private boolean latin1Output;
@@ -116,14 +121,16 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
 
   public StringJsonWriter(boolean writeNullFields, byte[] buffer) {
     super(writeNullFields);
-    this.buffer = buffer;
-    scratch = new byte[buffer.length];
+    this.buffer = initialBuffer(buffer);
+    scratch = new byte[this.buffer.length];
+    decimalBuilder = newDecimalBuilder();
   }
 
   public StringJsonWriter(JsonConfig config, byte[] buffer) {
     super(config);
-    this.buffer = buffer;
-    scratch = new byte[buffer.length];
+    this.buffer = initialBuffer(buffer);
+    scratch = new byte[this.buffer.length];
+    decimalBuilder = newDecimalBuilder();
   }
 
   @Override
@@ -134,6 +141,9 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     }
     if (scratch.length > RETAINED_CAPACITY) {
       scratch = new byte[RETAINED_CAPACITY];
+    }
+    if (bigNumberChunks != null && bigNumberChunks.length > BigNumberDigits.MAX_RETAINED_CHUNKS) {
+      bigNumberChunks = null;
     }
     coder = nextCoder;
     latin1Output = coder == UTF16;
@@ -198,16 +208,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       buffer[position++] = (byte) '-';
       value = -value;
     }
-    if (value <= Integer.MAX_VALUE) {
-      writePositiveIntNoEnsure((int) value);
-      return;
-    }
-    int start = position;
-    do {
-      buffer[position++] = (byte) ('0' + value % 10);
-      value /= 10;
-    } while (value != 0);
-    reverse(start, position - 1);
+    writePositiveLongLatin1NoEnsure(value);
   }
 
   @Override
@@ -224,23 +225,21 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         return;
       }
     } else {
-      ensureScratch(JdkFloatFormatter.MAX_CHARS);
+      ensure(JdkFloatFormatter.MAX_CHARS << 1);
+      int newPosition = JdkFloatFormatter.writeUtf16(buffer, position, value);
+      if (newPosition >= 0) {
+        position = newPosition;
+        return;
+      }
       int end = JdkFloatFormatter.write(scratch, 0, value);
       if (end >= 0) {
-        for (int i = 0; i < end; i++) {
-          writeByteRaw(scratch[i]);
-        }
+        writeAsciiUtf16(scratch, end);
         return;
       }
     }
     StringBuilder builder = decimalBuilder;
-    if (builder == null) {
-      builder = new StringBuilder(JdkFloatFormatter.MAX_CHARS);
-      decimalBuilder = builder;
-    }
     JdkFloatFormatter.appendTo(value, builder);
-    append(builder);
-    builder.setLength(0);
+    writeDecimalBuilder(builder);
   }
 
   @Override
@@ -257,28 +256,102 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         return;
       }
     } else {
-      ensureScratch(JdkDoubleFormatter.MAX_CHARS);
+      ensure(JdkDoubleFormatter.MAX_CHARS << 1);
+      int newPosition = JdkDoubleFormatter.writeUtf16(buffer, position, value);
+      if (newPosition >= 0) {
+        position = newPosition;
+        return;
+      }
       int end = JdkDoubleFormatter.write(scratch, 0, value);
       if (end >= 0) {
-        for (int i = 0; i < end; i++) {
-          writeByteRaw(scratch[i]);
-        }
+        writeAsciiUtf16(scratch, end);
         return;
       }
     }
     StringBuilder builder = decimalBuilder;
-    if (builder == null) {
-      builder = new StringBuilder(JdkDoubleFormatter.MAX_CHARS);
-      decimalBuilder = builder;
-    }
     JdkDoubleFormatter.appendTo(value, builder);
-    append(builder);
-    builder.setLength(0);
+    writeDecimalBuilder(builder);
+  }
+
+  private static StringBuilder newDecimalBuilder() {
+    return JdkFloatFormatter.isAvailable() && JdkDoubleFormatter.isAvailable()
+        ? null
+        : new StringBuilder(JdkDoubleFormatter.MAX_CHARS);
+  }
+
+  private static byte[] initialBuffer(byte[] buffer) {
+    return buffer.length >= JdkDoubleFormatter.MAX_CHARS
+        ? buffer
+        : new byte[JdkDoubleFormatter.MAX_CHARS];
+  }
+
+  private void writeDecimalBuilder(StringBuilder builder) {
+    int length = builder.length();
+    if (coder == LATIN1) {
+      byte[] bytes = buffer;
+      int pos = position;
+      for (int i = 0; i < length; i++) {
+        bytes[pos++] = (byte) builder.charAt(i);
+      }
+      position = pos;
+      return;
+    }
+    ensure(length << 1);
+    byte[] bytes = buffer;
+    int pos = position;
+    for (int i = 0; i < length; i++) {
+      pos = putUtf16Byte(bytes, pos, (byte) builder.charAt(i));
+    }
+    position = pos;
   }
 
   @Override
   public void writeNumber(String value) {
     writeAscii(value);
+  }
+
+  @Override
+  public void writeBigInteger(BigInteger value) {
+    if (BigNumberDigits.fitsLong(value)) {
+      writeLong(value.longValue());
+      return;
+    }
+    if (coder == LATIN1) {
+      writeBigIntegerLatin1(value);
+      return;
+    }
+    writeBigIntegerUtf16(value);
+  }
+
+  @Override
+  public void writeBigDecimal(BigDecimal value) {
+    long compact = BigDecimalFields.compactValue(value);
+    int scale = BigDecimalFields.scale(value);
+    if (BigDecimalFields.isCompact(compact)) {
+      writeCompactBigDecimal(compact, scale);
+      return;
+    }
+    writeInflatedBigDecimal(BigDecimalFields.inflatedValue(value), scale);
+  }
+
+  private void writeCompactBigDecimal(long compact, int scale) {
+    if (coder == LATIN1) {
+      writeCompactBigDecimalLatin1(compact, scale);
+      return;
+    }
+    writeCompactBigDecimalUtf16(compact, scale);
+  }
+
+  private void writeInflatedBigDecimal(BigInteger unscaled, int scale) {
+    if (scale == 0 && BigNumberDigits.fitsLong(unscaled)) {
+      writeLong(unscaled.longValue());
+      return;
+    }
+    if (coder == LATIN1) {
+      writeBigDecimalLatin1(unscaled, scale);
+      return;
+    }
+    writeBigDecimalUtf16(unscaled, scale);
   }
 
   @Override
@@ -1671,9 +1744,557 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     position = pos;
   }
 
+  private void writeAsciiUtf16(byte[] source, int length) {
+    ensure(length << 1);
+    byte[] target = buffer;
+    int sourceOffset = 0;
+    int pos = position;
+    int bulkEnd = length & ~3;
+    while (sourceOffset < bulkEnd) {
+      long packed = LittleEndian.getInt32(source, sourceOffset) & 0xffff_ffffL;
+      long utf16 = spreadLatin1ToUtf16(packed);
+      LittleEndian.putInt64(target, pos, LITTLE_ENDIAN ? utf16 : utf16 << 8);
+      sourceOffset += 4;
+      pos += 8;
+    }
+    while (sourceOffset < length) {
+      pos = putUtf16Byte(target, pos, source[sourceOffset++]);
+    }
+    position = pos;
+  }
+
   private void writeRawLatin1NoEnsure(byte[] bytes) {
     System.arraycopy(bytes, 0, buffer, position, bytes.length);
     position += bytes.length;
+  }
+
+  private void writeCompactBigDecimalLatin1(long unscaled, int scale) {
+    if (scale == 0) {
+      writeLongLatin1(unscaled);
+      return;
+    }
+    boolean negative = unscaled < 0;
+    if (negative) {
+      unscaled = -unscaled;
+    }
+    int precision = BigNumberDigits.digitCount(unscaled);
+    long adjustedExponent = (long) precision - scale - 1L;
+    boolean plain = scale >= 0 && adjustedExponent >= -6;
+    long outputChars =
+        (negative ? 1L : 0L)
+            + (plain
+                ? plainDecimalChars(precision, (long) precision - scale)
+                : scientificDecimalChars(precision, adjustedExponent));
+    ensureNumberLatin1(outputChars + BigNumberDigits.PACKED_WRITE_SLACK);
+    if (negative) {
+      buffer[position++] = (byte) '-';
+    }
+    if (plain) {
+      writePlainCompactDecimalLatin1(unscaled, precision, scale);
+    } else {
+      writeScientificCompactDecimalLatin1(unscaled, precision, adjustedExponent);
+    }
+  }
+
+  private void writeCompactBigDecimalUtf16(long unscaled, int scale) {
+    if (scale == 0) {
+      writeLongUtf16(unscaled);
+      return;
+    }
+    boolean negative = unscaled < 0;
+    if (negative) {
+      unscaled = -unscaled;
+    }
+    int precision = BigNumberDigits.digitCount(unscaled);
+    long adjustedExponent = (long) precision - scale - 1L;
+    boolean plain = scale >= 0 && adjustedExponent >= -6;
+    long outputChars =
+        (negative ? 1L : 0L)
+            + (plain
+                ? plainDecimalChars(precision, (long) precision - scale)
+                : scientificDecimalChars(precision, adjustedExponent));
+    ensureNumberUtf16(outputChars + BigNumberDigits.PACKED_WRITE_SLACK);
+    if (negative) {
+      position = putUtf16Byte(buffer, position, (byte) '-');
+    }
+    if (plain) {
+      writePlainCompactDecimalUtf16(unscaled, precision, scale);
+    } else {
+      writeScientificCompactDecimalUtf16(unscaled, precision, adjustedExponent);
+    }
+  }
+
+  private void writeBigIntegerLatin1(BigInteger value) {
+    int signum = value.signum();
+    int chunkCount = collectBigIntegerChunks(value);
+    int precision =
+        BigNumberDigits.digitCount(bigNumberChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
+    ensureNumberLatin1(
+        (long) precision + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK);
+    if (signum < 0) {
+      buffer[position++] = (byte) '-';
+    }
+    writeIntegerChunksLatin1(chunkCount);
+  }
+
+  private void writeBigIntegerUtf16(BigInteger value) {
+    int signum = value.signum();
+    int chunkCount = collectBigIntegerChunks(value);
+    int precision =
+        BigNumberDigits.digitCount(bigNumberChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
+    ensureNumberUtf16((long) precision + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK);
+    if (signum < 0) {
+      position = putUtf16Byte(buffer, position, (byte) '-');
+    }
+    writeIntegerChunksUtf16(chunkCount);
+  }
+
+  private void writeBigDecimalLatin1(BigInteger unscaled, int scale) {
+    int signum = unscaled.signum();
+    int chunkCount = collectBigIntegerChunks(unscaled);
+    int precision =
+        BigNumberDigits.digitCount(bigNumberChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
+    long adjustedExponent = (long) precision - scale - 1L;
+    boolean plain = scale >= 0 && adjustedExponent >= -6;
+    long outputChars =
+        (signum < 0 ? 1L : 0L)
+            + (plain
+                ? plainDecimalChars(precision, (long) precision - scale)
+                : scientificDecimalChars(precision, adjustedExponent));
+    ensureNumberLatin1(outputChars + BigNumberDigits.PACKED_WRITE_SLACK);
+    if (signum < 0) {
+      buffer[position++] = (byte) '-';
+    }
+    if (plain) {
+      writePlainDecimalLatin1(chunkCount, precision, scale);
+    } else {
+      writeScientificDecimalLatin1(chunkCount, precision, adjustedExponent);
+    }
+  }
+
+  private void writeBigDecimalUtf16(BigInteger unscaled, int scale) {
+    int signum = unscaled.signum();
+    int chunkCount = collectBigIntegerChunks(unscaled);
+    int precision =
+        BigNumberDigits.digitCount(bigNumberChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
+    long adjustedExponent = (long) precision - scale - 1L;
+    boolean plain = scale >= 0 && adjustedExponent >= -6;
+    long outputChars =
+        (signum < 0 ? 1L : 0L)
+            + (plain
+                ? plainDecimalChars(precision, (long) precision - scale)
+                : scientificDecimalChars(precision, adjustedExponent));
+    ensureNumberUtf16(outputChars + BigNumberDigits.PACKED_WRITE_SLACK);
+    if (signum < 0) {
+      position = putUtf16Byte(buffer, position, (byte) '-');
+    }
+    if (plain) {
+      writePlainDecimalUtf16(chunkCount, precision, scale);
+    } else {
+      writeScientificDecimalUtf16(chunkCount, precision, adjustedExponent);
+    }
+  }
+
+  private void writePlainCompactDecimalLatin1(long unscaled, int precision, int scale) {
+    long point = (long) precision - scale;
+    if (point <= 0) {
+      byte[] bytes = buffer;
+      int pos = position;
+      bytes[pos++] = (byte) '0';
+      bytes[pos++] = (byte) '.';
+      position = pos;
+      writeZeroesLatin1(-point);
+      writePaddedCompactLatin1(unscaled, precision);
+      return;
+    }
+    long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[scale];
+    long integer = unscaled / divisor;
+    long fraction = unscaled - integer * divisor;
+    writePaddedCompactLatin1(integer, (int) point);
+    buffer[position++] = (byte) '.';
+    writePaddedCompactLatin1(fraction, scale);
+  }
+
+  private void writePlainCompactDecimalUtf16(long unscaled, int precision, int scale) {
+    long point = (long) precision - scale;
+    if (point <= 0) {
+      byte[] bytes = buffer;
+      int pos = position;
+      pos = putUtf16Byte(bytes, pos, (byte) '0');
+      pos = putUtf16Byte(bytes, pos, (byte) '.');
+      position = pos;
+      writeZeroesUtf16(-point);
+      writePaddedCompactUtf16(unscaled, precision);
+      return;
+    }
+    long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[scale];
+    long integer = unscaled / divisor;
+    long fraction = unscaled - integer * divisor;
+    writePaddedCompactUtf16(integer, (int) point);
+    position = putUtf16Byte(buffer, position, (byte) '.');
+    writePaddedCompactUtf16(fraction, scale);
+  }
+
+  private void writeScientificCompactDecimalLatin1(
+      long unscaled, int precision, long adjustedExponent) {
+    if (precision == 1) {
+      writePositiveLongLatin1NoEnsure(unscaled);
+    } else {
+      long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[precision - 1];
+      int first = (int) (unscaled / divisor);
+      long rest = unscaled - first * divisor;
+      byte[] bytes = buffer;
+      int pos = position;
+      bytes[pos++] = (byte) ('0' + first);
+      bytes[pos++] = (byte) '.';
+      position = pos;
+      writePaddedCompactLatin1(rest, precision - 1);
+    }
+    byte[] bytes = buffer;
+    int pos = position;
+    bytes[pos++] = (byte) 'E';
+    if (adjustedExponent >= 0) {
+      bytes[pos++] = (byte) '+';
+    }
+    position = pos;
+    writeLongLatin1NoEnsure(adjustedExponent);
+  }
+
+  private void writeScientificCompactDecimalUtf16(
+      long unscaled, int precision, long adjustedExponent) {
+    if (precision == 1) {
+      position = writePositiveLongUtf16(buffer, position, unscaled);
+    } else {
+      long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[precision - 1];
+      int first = (int) (unscaled / divisor);
+      long rest = unscaled - first * divisor;
+      byte[] bytes = buffer;
+      int pos = position;
+      pos = putUtf16Byte(bytes, pos, (byte) ('0' + first));
+      pos = putUtf16Byte(bytes, pos, (byte) '.');
+      position = pos;
+      writePaddedCompactUtf16(rest, precision - 1);
+    }
+    byte[] bytes = buffer;
+    int pos = position;
+    pos = putUtf16Byte(bytes, pos, (byte) 'E');
+    if (adjustedExponent >= 0) {
+      pos = putUtf16Byte(bytes, pos, (byte) '+');
+    }
+    position = pos;
+    writeLongUtf16NoEnsure(adjustedExponent);
+  }
+
+  private int collectBigIntegerChunks(BigInteger value) {
+    if (value.signum() == 0) {
+      int[] chunks = ensureBigNumberChunks(1);
+      chunks[0] = 0;
+      return 1;
+    }
+    int[] chunks = ensureBigNumberChunks(BigNumberDigits.chunkCapacity(value));
+    int count = 0;
+    while (value.signum() != 0) {
+      if (count == chunks.length) {
+        chunks = Arrays.copyOf(chunks, count << 1);
+        bigNumberChunks = chunks;
+      }
+      BigInteger[] divRem = value.divideAndRemainder(BigNumberDigits.CHUNK_BASE);
+      int chunk = divRem[1].intValue();
+      chunks[count++] = chunk < 0 ? -chunk : chunk;
+      value = divRem[0];
+    }
+    return count;
+  }
+
+  private int[] ensureBigNumberChunks(int capacity) {
+    int[] chunks = bigNumberChunks;
+    if (chunks == null || chunks.length < capacity) {
+      chunks = new int[capacity];
+      bigNumberChunks = chunks;
+    }
+    return chunks;
+  }
+
+  private void writeIntegerChunksLatin1(int chunkCount) {
+    int[] chunks = bigNumberChunks;
+    int pos = writePositiveIntLatin1(buffer, position, chunks[chunkCount - 1]);
+    for (int i = chunkCount - 2; i >= 0; i--) {
+      pos = writePadded9Latin1(buffer, pos, chunks[i]);
+    }
+    position = pos;
+  }
+
+  private void writeIntegerChunksUtf16(int chunkCount) {
+    int[] chunks = bigNumberChunks;
+    int pos = writePositiveIntUtf16(buffer, position, chunks[chunkCount - 1]);
+    for (int i = chunkCount - 2; i >= 0; i--) {
+      pos = writePadded9Utf16(buffer, pos, chunks[i]);
+    }
+    position = pos;
+  }
+
+  private void writePlainDecimalLatin1(int chunkCount, int precision, int scale) {
+    long point = (long) precision - scale;
+    if (point <= 0) {
+      byte[] bytes = buffer;
+      int pos = position;
+      bytes[pos++] = (byte) '0';
+      bytes[pos++] = (byte) '.';
+      position = pos;
+      writeZeroesLatin1(-point);
+      writeIntegerChunksLatin1(chunkCount);
+      return;
+    }
+    if (point == precision) {
+      writeIntegerChunksLatin1(chunkCount);
+      return;
+    }
+    writeChunkedDecimalLatin1(chunkCount, (int) point);
+  }
+
+  private void writePlainDecimalUtf16(int chunkCount, int precision, int scale) {
+    long point = (long) precision - scale;
+    if (point <= 0) {
+      byte[] bytes = buffer;
+      int pos = position;
+      pos = putUtf16Byte(bytes, pos, (byte) '0');
+      pos = putUtf16Byte(bytes, pos, (byte) '.');
+      position = pos;
+      writeZeroesUtf16(-point);
+      writeIntegerChunksUtf16(chunkCount);
+      return;
+    }
+    if (point == precision) {
+      writeIntegerChunksUtf16(chunkCount);
+      return;
+    }
+    writeChunkedDecimalUtf16(chunkCount, (int) point);
+  }
+
+  private void writeScientificDecimalLatin1(int chunkCount, int precision, long adjustedExponent) {
+    if (precision == 1) {
+      writeIntegerChunksLatin1(chunkCount);
+    } else {
+      writeScientificDigitsLatin1(chunkCount);
+    }
+    byte[] bytes = buffer;
+    int pos = position;
+    bytes[pos++] = (byte) 'E';
+    if (adjustedExponent >= 0) {
+      bytes[pos++] = (byte) '+';
+    }
+    position = pos;
+    writeLongLatin1NoEnsure(adjustedExponent);
+  }
+
+  private void writeScientificDecimalUtf16(int chunkCount, int precision, long adjustedExponent) {
+    if (precision == 1) {
+      writeIntegerChunksUtf16(chunkCount);
+    } else {
+      writeScientificDigitsUtf16(chunkCount);
+    }
+    byte[] bytes = buffer;
+    int pos = position;
+    pos = putUtf16Byte(bytes, pos, (byte) 'E');
+    if (adjustedExponent >= 0) {
+      pos = putUtf16Byte(bytes, pos, (byte) '+');
+    }
+    position = pos;
+    writeLongUtf16NoEnsure(adjustedExponent);
+  }
+
+  private void writeChunkedDecimalLatin1(int chunkCount, int point) {
+    int[] chunks = bigNumberChunks;
+    byte[] bytes = buffer;
+    int pos = position;
+    int index = chunkCount - 1;
+    int top = chunks[index--];
+    int topDigits = BigNumberDigits.digitCount(top);
+    if (point < topDigits) {
+      int fractionDigits = topDigits - point;
+      int divisor = BigNumberDigits.POWERS_OF_TEN[fractionDigits];
+      int integer = top / divisor;
+      pos = writePositiveIntLatin1(bytes, pos, integer);
+      bytes[pos++] = (byte) '.';
+      pos = writePaddedDigitsLatin1(bytes, pos, top - integer * divisor, fractionDigits);
+    } else {
+      pos = writePositiveIntLatin1(bytes, pos, top);
+      int remaining = point - topDigits;
+      while (remaining >= 9) {
+        pos = writePadded9Latin1(bytes, pos, chunks[index--]);
+        remaining -= 9;
+      }
+      if (remaining == 0) {
+        bytes[pos++] = (byte) '.';
+      } else {
+        int chunk = chunks[index--];
+        int fractionDigits = 9 - remaining;
+        int divisor = BigNumberDigits.POWERS_OF_TEN[fractionDigits];
+        int integer = chunk / divisor;
+        pos = writePaddedDigitsLatin1(bytes, pos, integer, remaining);
+        bytes[pos++] = (byte) '.';
+        pos = writePaddedDigitsLatin1(bytes, pos, chunk - integer * divisor, fractionDigits);
+      }
+    }
+    while (index >= 0) {
+      pos = writePadded9Latin1(bytes, pos, chunks[index--]);
+    }
+    position = pos;
+  }
+
+  private void writeChunkedDecimalUtf16(int chunkCount, int point) {
+    int[] chunks = bigNumberChunks;
+    byte[] bytes = buffer;
+    int pos = position;
+    int index = chunkCount - 1;
+    int top = chunks[index--];
+    int topDigits = BigNumberDigits.digitCount(top);
+    if (point < topDigits) {
+      int fractionDigits = topDigits - point;
+      int divisor = BigNumberDigits.POWERS_OF_TEN[fractionDigits];
+      int integer = top / divisor;
+      pos = writePositiveIntUtf16(bytes, pos, integer);
+      pos = putUtf16Byte(bytes, pos, (byte) '.');
+      pos = writePaddedDigitsUtf16(bytes, pos, top - integer * divisor, fractionDigits);
+    } else {
+      pos = writePositiveIntUtf16(bytes, pos, top);
+      int remaining = point - topDigits;
+      while (remaining >= 9) {
+        pos = writePadded9Utf16(bytes, pos, chunks[index--]);
+        remaining -= 9;
+      }
+      if (remaining == 0) {
+        pos = putUtf16Byte(bytes, pos, (byte) '.');
+      } else {
+        int chunk = chunks[index--];
+        int fractionDigits = 9 - remaining;
+        int divisor = BigNumberDigits.POWERS_OF_TEN[fractionDigits];
+        int integer = chunk / divisor;
+        pos = writePaddedDigitsUtf16(bytes, pos, integer, remaining);
+        pos = putUtf16Byte(bytes, pos, (byte) '.');
+        pos = writePaddedDigitsUtf16(bytes, pos, chunk - integer * divisor, fractionDigits);
+      }
+    }
+    while (index >= 0) {
+      pos = writePadded9Utf16(bytes, pos, chunks[index--]);
+    }
+    position = pos;
+  }
+
+  private void writeScientificDigitsLatin1(int chunkCount) {
+    int[] chunks = bigNumberChunks;
+    byte[] bytes = buffer;
+    int index = chunkCount - 1;
+    int top = chunks[index--];
+    int topDigits = BigNumberDigits.digitCount(top);
+    int divisor = BigNumberDigits.POWERS_OF_TEN[topDigits - 1];
+    int first = top / divisor;
+    int pos = position;
+    bytes[pos++] = (byte) ('0' + first);
+    bytes[pos++] = (byte) '.';
+    if (topDigits > 1) {
+      pos = writePaddedDigitsLatin1(bytes, pos, top - first * divisor, topDigits - 1);
+    }
+    while (index >= 0) {
+      pos = writePadded9Latin1(bytes, pos, chunks[index--]);
+    }
+    position = pos;
+  }
+
+  private void writeScientificDigitsUtf16(int chunkCount) {
+    int[] chunks = bigNumberChunks;
+    byte[] bytes = buffer;
+    int index = chunkCount - 1;
+    int top = chunks[index--];
+    int topDigits = BigNumberDigits.digitCount(top);
+    int divisor = BigNumberDigits.POWERS_OF_TEN[topDigits - 1];
+    int first = top / divisor;
+    int pos = position;
+    pos = putUtf16Byte(bytes, pos, (byte) ('0' + first));
+    pos = putUtf16Byte(bytes, pos, (byte) '.');
+    if (topDigits > 1) {
+      pos = writePaddedDigitsUtf16(bytes, pos, top - first * divisor, topDigits - 1);
+    }
+    while (index >= 0) {
+      pos = writePadded9Utf16(bytes, pos, chunks[index--]);
+    }
+    position = pos;
+  }
+
+  private void writePaddedCompactLatin1(long value, int digits) {
+    if (digits <= 9) {
+      position = writePaddedDigitsLatin1(buffer, position, (int) value, digits);
+      return;
+    }
+    long high = value / 1_000_000_000L;
+    int low = (int) (value - high * 1_000_000_000L);
+    byte[] bytes = buffer;
+    int pos = position;
+    if (digits <= 18) {
+      pos = writePaddedDigitsLatin1(bytes, pos, (int) high, digits - 9);
+    } else {
+      int top = (int) (high / 1_000_000_000L);
+      int middle = (int) (high - (long) top * 1_000_000_000L);
+      pos = writePaddedDigitsLatin1(bytes, pos, top, 1);
+      pos = writePadded9Latin1(bytes, pos, middle);
+    }
+    position = writePadded9Latin1(bytes, pos, low);
+  }
+
+  private void writePaddedCompactUtf16(long value, int digits) {
+    if (digits <= 9) {
+      position = writePaddedDigitsUtf16(buffer, position, (int) value, digits);
+      return;
+    }
+    long high = value / 1_000_000_000L;
+    int low = (int) (value - high * 1_000_000_000L);
+    byte[] bytes = buffer;
+    int pos = position;
+    if (digits <= 18) {
+      pos = writePaddedDigitsUtf16(bytes, pos, (int) high, digits - 9);
+    } else {
+      int top = (int) (high / 1_000_000_000L);
+      int middle = (int) (high - (long) top * 1_000_000_000L);
+      pos = writePaddedDigitsUtf16(bytes, pos, top, 1);
+      pos = writePadded9Utf16(bytes, pos, middle);
+    }
+    position = writePadded9Utf16(bytes, pos, low);
+  }
+
+  private void writeZeroesLatin1(long count) {
+    byte[] bytes = buffer;
+    int pos = position;
+    while (count-- > 0) {
+      bytes[pos++] = (byte) '0';
+    }
+    position = pos;
+  }
+
+  private void writeZeroesUtf16(long count) {
+    byte[] bytes = buffer;
+    int pos = position;
+    while (count-- > 0) {
+      pos = putUtf16Byte(bytes, pos, (byte) '0');
+    }
+    position = pos;
+  }
+
+  private void ensureNumberLatin1(long chars) {
+    if (chars > Integer.MAX_VALUE - position) {
+      throwNumberOutputTooLarge();
+    }
+    ensure((int) chars);
+  }
+
+  private void ensureNumberUtf16(long chars) {
+    if (chars > ((long) Integer.MAX_VALUE - position) / 2) {
+      throwNumberOutputTooLarge();
+    }
+    ensure((int) (chars << 1));
+  }
+
+  private static void throwNumberOutputTooLarge() {
+    throw new ForyJsonException("JSON number output too large");
   }
 
   private void writeByteRaw(byte value) {
@@ -1711,14 +2332,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writeUtf16CharNoEnsure(value);
   }
 
-  private void reverse(int start, int end) {
-    while (start < end) {
-      byte tmp = buffer[start];
-      buffer[start++] = buffer[end];
-      buffer[end--] = tmp;
-    }
-  }
-
   private void writeUtf16ByteNoEnsure(byte value) {
     position = putUtf16Char(buffer, position, (char) (value & 0xff));
   }
@@ -1742,12 +2355,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     int minCapacity = position + additional;
     if (minCapacity > buffer.length) {
       grow(minCapacity);
-    }
-  }
-
-  private void ensureScratch(int minCapacity) {
-    if (scratch.length < minCapacity) {
-      scratch = growScratch(minCapacity);
     }
   }
 
@@ -1931,16 +2538,28 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       buffer[position++] = (byte) '-';
       value = -value;
     }
+    writePositiveLongLatin1NoEnsure(value);
+  }
+
+  private void writePositiveLongLatin1NoEnsure(long value) {
     if (value <= Integer.MAX_VALUE) {
       writePositiveIntNoEnsure((int) value);
       return;
     }
-    int start = position;
-    do {
-      buffer[position++] = (byte) ('0' + value % 10);
-      value /= 10;
-    } while (value != 0);
-    reverse(start, position - 1);
+    byte[] bytes = buffer;
+    int pos = position;
+    long high = value / DECIMAL_8;
+    int low = (int) (value - high * DECIMAL_8);
+    if (high < DECIMAL_8) {
+      pos = writePositiveIntLatin1(bytes, pos, (int) high);
+      position = writePadded8DigitsLatin1(bytes, pos, low);
+      return;
+    }
+    long top = high / DECIMAL_8;
+    int middle = (int) (high - top * DECIMAL_8);
+    pos = writePositiveIntLatin1(bytes, pos, (int) top);
+    pos = writePadded8DigitsLatin1(bytes, pos, middle);
+    position = writePadded8DigitsLatin1(bytes, pos, low);
   }
 
   private void writeLongUtf16(long value) {
@@ -2177,6 +2796,45 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     return pos + 8;
   }
 
+  private static int writePositiveIntLatin1(byte[] bytes, int pos, int value) {
+    if (value < 10000) {
+      return writeIntUpTo4(bytes, pos, value);
+    }
+    int high = divide10000(value);
+    int low = value - high * 10000;
+    if (high < 10000) {
+      if (high >= 1000) {
+        return writePadded8(bytes, pos, high, low);
+      }
+      pos = writeIntUpTo4(bytes, pos, high);
+      return writePadded4(bytes, pos, low);
+    }
+    int top = divide10000(high);
+    int middle = high - top * 10000;
+    pos = writeIntUpTo4(bytes, pos, top);
+    return writePadded8(bytes, pos, middle, low);
+  }
+
+  private static int writePadded9Latin1(byte[] bytes, int pos, int value) {
+    int high = value / 100_000_000;
+    bytes[pos++] = (byte) ('0' + high);
+    return writePadded8DigitsLatin1(bytes, pos, value - high * 100_000_000);
+  }
+
+  private static int writePaddedDigitsLatin1(byte[] bytes, int pos, int value, int digits) {
+    int zeroes = digits - BigNumberDigits.digitCount(value);
+    while (zeroes-- > 0) {
+      bytes[pos++] = (byte) '0';
+    }
+    return writePositiveIntLatin1(bytes, pos, value);
+  }
+
+  private static int writePadded8DigitsLatin1(byte[] bytes, int pos, int value) {
+    int high = divide10000(value);
+    int low = value - high * 10000;
+    return writePadded8(bytes, pos, high, low);
+  }
+
   private static int writeIntUpTo4Utf16(byte[] bytes, int pos, int value) {
     if (value < 1000) {
       return writeIntUpTo3Utf16(bytes, pos, value);
@@ -2229,6 +2887,36 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     int high = divide10000(value);
     int low = value - high * 10000;
     return writePadded8Utf16(bytes, pos, high, low);
+  }
+
+  private static int writePadded9Utf16(byte[] bytes, int pos, int value) {
+    int high = value / 100_000_000;
+    pos = putUtf16Byte(bytes, pos, (byte) ('0' + high));
+    return writePadded8Utf16(bytes, pos, value - high * 100_000_000);
+  }
+
+  private static int writePaddedDigitsUtf16(byte[] bytes, int pos, int value, int digits) {
+    int zeroes = digits - BigNumberDigits.digitCount(value);
+    while (zeroes-- > 0) {
+      pos = putUtf16Byte(bytes, pos, (byte) '0');
+    }
+    return writePositiveIntUtf16(bytes, pos, value);
+  }
+
+  private static long plainDecimalChars(int precision, long point) {
+    if (point <= 0) {
+      return 2L - point + precision;
+    }
+    return precision + (point < precision ? 1 : 0);
+  }
+
+  private static long scientificDecimalChars(int precision, long adjustedExponent) {
+    long magnitude = adjustedExponent < 0 ? -adjustedExponent : adjustedExponent;
+    return (long) precision
+        + (precision == 1 ? 0 : 1)
+        + 1
+        + 1
+        + BigNumberDigits.digitCount(magnitude);
   }
 
   private static int putUtf16Byte(byte[] bytes, int pos, byte value) {

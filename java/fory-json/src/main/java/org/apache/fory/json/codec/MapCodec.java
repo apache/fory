@@ -65,49 +65,50 @@ public abstract class MapCodec extends AbstractJsonCodec {
     Type valueType = keyValueTypeRefs.f1.getType();
     Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
     resolver.checkSecure(keyRawType);
-    resolver.checkSecure(valueRawType);
     MapFactory factory = mapFactory(rawType, keyRawType);
+    JsonTypeInfo valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+    JsonCodec valueCodec = valueTypeInfo.codec();
     if (keyRawType == String.class) {
-      if (valueRawType == String.class) {
+      if (valueCodec == ScalarCodecs.StringCodec.INSTANCE) {
         return new StringStringMapCodec(typeRef, factory);
       }
-      if (valueRawType == Boolean.class || valueRawType == boolean.class) {
+      if (valueCodec == ScalarCodecs.BooleanCodec.INSTANCE) {
         return new StringBooleanMapCodec(typeRef, factory);
       }
-      if (valueRawType == Integer.class || valueRawType == int.class) {
+      if (valueCodec == ScalarCodecs.IntCodec.INSTANCE) {
         return new StringIntMapCodec(typeRef, factory);
       }
-      if (valueRawType == Long.class || valueRawType == long.class) {
+      if (valueCodec == ScalarCodecs.LongCodec.INSTANCE) {
         return new StringLongMapCodec(typeRef, factory);
       }
-      if (valueRawType == Short.class || valueRawType == short.class) {
+      if (valueCodec == ScalarCodecs.ShortCodec.INSTANCE) {
         return new StringShortMapCodec(typeRef, factory);
       }
-      if (valueRawType == Byte.class || valueRawType == byte.class) {
+      if (valueCodec == ScalarCodecs.ByteCodec.INSTANCE) {
         return new StringByteMapCodec(typeRef, factory);
       }
-      if (valueRawType == Float.class || valueRawType == float.class) {
+      if (valueCodec == ScalarCodecs.FloatCodec.INSTANCE) {
         return new StringFloatMapCodec(typeRef, factory);
       }
-      if (valueRawType == Double.class || valueRawType == double.class) {
+      if (valueCodec == ScalarCodecs.DoubleCodec.INSTANCE) {
         return new StringDoubleMapCodec(typeRef, factory);
       }
-      if (valueRawType == BigInteger.class) {
+      if (valueCodec == ScalarCodecs.BigIntegerCodec.INSTANCE) {
         return new StringBigIntegerMapCodec(typeRef, factory);
       }
-      if (valueRawType == BigDecimal.class) {
+      if (valueCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
         return new StringBigDecimalMapCodec(typeRef, factory);
       }
     }
     if (keyRawType == Object.class) {
       return new GenericMapCodec(
-          typeRef, factory, MapKeyCodec.OBJECT, valueType, valueRawType, resolver);
+          typeRef, factory, MapKeyCodec.OBJECT, valueTypeInfo, valueCodec, resolver);
     }
-    if (valueRawType == String.class && isNumericKey(keyRawType)) {
+    if (valueCodec == ScalarCodecs.StringCodec.INSTANCE && isNumericKey(keyRawType)) {
       return new NumberStringMapCodec(typeRef, factory, MapKeyCodec.of(keyRawType));
     }
     return new GenericMapCodec(
-        typeRef, factory, MapKeyCodec.of(keyRawType), valueType, valueRawType, resolver);
+        typeRef, factory, MapKeyCodec.of(keyRawType), valueTypeInfo, valueCodec, resolver);
   }
 
   final TypeRef<?> typeRef() {
@@ -239,14 +240,14 @@ public abstract class MapCodec extends AbstractJsonCodec {
         TypeRef<?> typeRef,
         MapFactory factory,
         MapKeyCodec keyCodec,
-        Type valueType,
-        Class<?> valueRawType,
+        JsonTypeInfo valueTypeInfo,
+        JsonCodec valueCodec,
         JsonTypeResolver resolver) {
       super(typeRef, factory);
       this.keyCodec = keyCodec;
-      valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
-      valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
+      this.valueTypeInfo = valueTypeInfo;
+      this.valueCodec = valueCodec;
+      resolver.registerJITNotifyCallback(valueCodec, codec -> this.valueCodec = codec);
     }
 
     @Override
@@ -704,6 +705,21 @@ public abstract class MapCodec extends AbstractJsonCodec {
     Object readNumber(JsonReader reader) {
       return reader.readFloat();
     }
+
+    @Override
+    Object readLatin1Number(Latin1JsonReader reader) {
+      return reader.readFloatTokenValue();
+    }
+
+    @Override
+    Object readUtf16Number(Utf16JsonReader reader) {
+      return reader.readFloatTokenValue();
+    }
+
+    @Override
+    Object readUtf8Number(Utf8JsonReader reader) {
+      return reader.readFloatTokenValue();
+    }
   }
 
   public static final class StringDoubleMapCodec extends StringNumberMapCodec {
@@ -719,6 +735,21 @@ public abstract class MapCodec extends AbstractJsonCodec {
     @Override
     Object readNumber(JsonReader reader) {
       return reader.readDouble();
+    }
+
+    @Override
+    Object readLatin1Number(Latin1JsonReader reader) {
+      return reader.readDoubleTokenValue();
+    }
+
+    @Override
+    Object readUtf16Number(Utf16JsonReader reader) {
+      return reader.readDoubleTokenValue();
+    }
+
+    @Override
+    Object readUtf8Number(Utf8JsonReader reader) {
+      return reader.readDoubleTokenValue();
     }
   }
 

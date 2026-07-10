@@ -200,6 +200,11 @@ public final class JsonSharedRegistry {
   }
 
   public JsonFieldKind kind(Class<?> type) {
+    // A registered codec owns the full representation. Resolve that choice before object metadata
+    // and codegen specialize fields so generated and interpreted paths cannot bypass the codec.
+    if (customCodecs.get(type) != null) {
+      return JsonFieldKind.OBJECT;
+    }
     if (type == boolean.class || type == Boolean.class) {
       return JsonFieldKind.BOOLEAN;
     }

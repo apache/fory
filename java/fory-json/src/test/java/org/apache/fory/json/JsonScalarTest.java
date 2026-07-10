@@ -442,6 +442,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     value.longMax = Long.MAX_VALUE;
     value.longMin = Long.MIN_VALUE;
     value.negative = -12345;
+    value.floatValue = 1.0000001f;
+    value.doubleValue = 46.916843283327836d;
+    value.bigInteger = new NoToStringBigInteger("-123456789012345678901234567890");
+    value.bigDecimal = new NoToStringBigDecimal("12345678901234567890.123456789");
     String expected =
         "{\"prefix\":\""
             + ZH_TEXT
@@ -450,9 +454,20 @@ public class JsonScalarTest extends ForyJsonTestModels {
             + "\"nineDigits\":100000000,\"intMax\":2147483647,"
             + "\"intMin\":-2147483648,\"aroundIntMax\":2147483648,"
             + "\"longMax\":9223372036854775807,\"longMin\":-9223372036854775808,"
-            + "\"negative\":-12345}";
+            + "\"negative\":-12345,\"floatValue\":1.0000001,"
+            + "\"doubleValue\":46.916843283327836,"
+            + "\"bigInteger\":-123456789012345678901234567890,"
+            + "\"bigDecimal\":12345678901234567890.123456789}";
     assertEquals(json.toJson(value), expected);
     assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+    Utf16NumericFields decoded = json.fromJson(expected, Utf16NumericFields.class);
+    assertEquals(
+        Float.floatToRawIntBits(decoded.floatValue), Float.floatToRawIntBits(value.floatValue));
+    assertEquals(
+        Double.doubleToRawLongBits(decoded.doubleValue),
+        Double.doubleToRawLongBits(value.doubleValue));
+    assertEquals(decoded.bigInteger, value.bigInteger);
+    assertEquals(decoded.bigDecimal, value.bigDecimal);
   }
 
   @Test
@@ -648,29 +663,220 @@ public class JsonScalarTest extends ForyJsonTestModels {
     for (BigInteger value : integers) {
       assertWriterNumber(value, value.toString());
     }
+    assertWriterNumber(
+        new NoToStringBigInteger("123456789012345678901234567890"),
+        "123456789012345678901234567890");
+    assertWriterNumber(
+        new NoToStringBigInteger("-123456789012345678901234567890"),
+        "-123456789012345678901234567890");
     BigDecimal[] decimals = {
       new BigDecimal("12345.6789"),
       new BigDecimal("0.000001"),
       new BigDecimal("0.0000001"),
       new BigDecimal("0").setScale(7),
       new BigDecimal("1E+7"),
-      new BigDecimal("-1.2345E+8")
+      new BigDecimal("-1.2345E+8"),
+      BigDecimal.valueOf(0.12345678901234567d)
     };
     for (BigDecimal value : decimals) {
       assertWriterNumber(value, value.toString());
     }
+    assertWriterNumber(new NoToStringBigDecimal("12345.6789"), "12345.6789");
+    assertWriterNumber(new NoToStringBigDecimal("1E+7"), "1E+7");
+    assertWriterNumber(new NoToStringBigDecimal("-1.2345E+8"), "-1.2345E+8");
   }
 
   @Test
-  public void bigNumberChunkCacheIsBounded() throws Exception {
-    Utf8JsonWriter writer = new Utf8JsonWriter(false, new byte[4]);
-    writer.writeBigInteger(new BigInteger(repeat('1', 9500)));
-    Field chunksField = JsonWriter.class.getDeclaredField("bigNumberChunks");
-    chunksField.setAccessible(true);
-    assertTrue(((int[]) chunksField.get(writer)).length > 1024);
+  public void writeBigNumberCorners() {
+    BigInteger chunkBase = BigInteger.valueOf(1_000_000_000L);
+    BigInteger[] longEdges = {
+      BigInteger.valueOf(Long.MIN_VALUE),
+      BigInteger.valueOf(Long.MAX_VALUE),
+      BigInteger.valueOf(Long.MIN_VALUE).subtract(BigInteger.ONE),
+      BigInteger.valueOf(Long.MAX_VALUE).add(BigInteger.ONE)
+    };
+    for (BigInteger value : longEdges) {
+      String expected = value.toString();
+      assertWriterNumber(new NoToStringBigInteger(expected), expected);
+    }
+    for (int power = 2; power <= 5; power++) {
+      BigInteger boundary = chunkBase.pow(power);
+      for (int delta = -1; delta <= 1; delta++) {
+        BigInteger value = boundary.add(BigInteger.valueOf(delta));
+        String expected = value.toString();
+        assertWriterNumber(new NoToStringBigInteger(expected), expected);
+        expected = value.negate().toString();
+        assertWriterNumber(new NoToStringBigInteger(expected), expected);
+      }
+    }
 
-    writer.reset();
-    assertEquals(chunksField.get(writer), null);
+    BigInteger coefficient = new BigInteger("123456789012345678901234567890123456");
+    for (int scale = -12; scale <= 42; scale++) {
+      assertBigDecimalWriter(coefficient, scale);
+      assertBigDecimalWriter(coefficient.negate(), scale);
+    }
+    for (int precision = 19; precision <= 36; precision++) {
+      BigInteger value = new BigInteger("1" + repeat('2', precision - 2) + "3");
+      for (int scale : new int[] {1, precision - 1, precision, precision + 6, precision + 7}) {
+        assertBigDecimalWriter(value, scale);
+        assertBigDecimalWriter(value.negate(), scale);
+      }
+    }
+    assertBigDecimalWriter(coefficient, Integer.MIN_VALUE);
+    assertBigDecimalWriter(coefficient.negate(), Integer.MAX_VALUE);
+    assertBigDecimalWriter(BigInteger.valueOf(Long.MIN_VALUE), 0);
+    assertBigDecimalWriter(BigInteger.valueOf(Long.MIN_VALUE), 17);
+    for (int scale : new int[] {0, 1, 6, 7, -1, Integer.MIN_VALUE, Integer.MAX_VALUE}) {
+      assertBigDecimalWriter(BigInteger.ZERO, scale);
+    }
+  }
+
+  @Test
+  public void writeCompactBigDecimalCorners() {
+    long[] coefficients = {
+      0L,
+      1L,
+      9L,
+      10L,
+      99L,
+      100L,
+      999_999_999L,
+      1_000_000_000L,
+      9_999_999_999L,
+      99_999_999_999_999_999L,
+      999_999_999_999_999_999L,
+      Long.MAX_VALUE
+    };
+    int[] scales = {-2, 0, 1, 6, 7, 8, 9, 16, 17, 18, 19, 24};
+    for (long coefficient : coefficients) {
+      BigInteger value = BigInteger.valueOf(coefficient);
+      for (int scale : scales) {
+        assertBigDecimalWriter(value, scale);
+        assertBigDecimalWriter(value.negate(), scale);
+      }
+    }
+    long boundary = 1;
+    for (int power = 1; power <= 18; power++) {
+      boundary *= 10;
+      for (int delta = -1; delta <= 1; delta++) {
+        BigInteger value = BigInteger.valueOf(boundary + delta);
+        for (int scale : new int[] {1, power, power + 7, -1}) {
+          assertBigDecimalWriter(value, scale);
+          assertBigDecimalWriter(value.negate(), scale);
+        }
+      }
+    }
+  }
+
+  @Test
+  public void writeRandomBigNumbers() {
+    Random random = new Random(719_241L);
+    for (int i = 0; i < 128; i++) {
+      BigInteger integer = new BigInteger(1 + random.nextInt(2048), random);
+      if (random.nextBoolean()) {
+        integer = integer.negate();
+      }
+      String integerText = integer.toString();
+      assertWriterNumber(new NoToStringBigInteger(integerText), integerText);
+
+      int scale = random.nextInt(601) - 300;
+      BigDecimal decimal = new BigDecimal(integer, scale);
+      assertWriterNumber(new NoToStringBigDecimal(integer, scale), decimal.toString());
+    }
+  }
+
+  @Test
+  public void writeFiniteIeeeCorners() {
+    float[] floats = {
+      0.0f,
+      -0.0f,
+      Float.MIN_VALUE,
+      Float.MIN_NORMAL,
+      Math.nextDown(1.0f),
+      1.0f,
+      Math.nextUp(1.0f),
+      Float.MAX_VALUE
+    };
+    for (float value : floats) {
+      assertFloatWriter(value);
+    }
+    double[] doubles = {
+      0.0d,
+      -0.0d,
+      Double.MIN_VALUE,
+      Double.MIN_NORMAL,
+      Math.nextDown(1.0d),
+      1.0d,
+      Math.nextUp(1.0d),
+      Double.MAX_VALUE
+    };
+    for (double value : doubles) {
+      assertDoubleWriter(value);
+    }
+  }
+
+  @Test
+  public void writeRandomIeeeValues() {
+    Random random = new Random(881_726_454_633_252L);
+    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[32]);
+    StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[32]);
+    StringJsonWriter utf16Writer = new StringJsonWriter(false, new byte[32]);
+    for (int i = 0; i < 2048; i++) {
+      float floatValue = Float.intBitsToFloat(random.nextInt());
+      if (Float.isFinite(floatValue)) {
+        String expected = Float.toString(floatValue);
+        utf8Writer.reset();
+        utf8Writer.writeFloat(floatValue);
+        assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+        stringWriter.reset();
+        stringWriter.writeFloat(floatValue);
+        assertEquals(stringWriter.toJson(), expected);
+        utf16Writer.reset();
+        utf16Writer.writeString("\u0100");
+        utf16Writer.writeComma(1);
+        utf16Writer.writeFloat(floatValue);
+        assertEquals(utf16Writer.toJson(), "\"\u0100\"," + expected);
+      }
+
+      double doubleValue = Double.longBitsToDouble(random.nextLong());
+      if (Double.isFinite(doubleValue)) {
+        String expected = Double.toString(doubleValue);
+        utf8Writer.reset();
+        utf8Writer.writeDouble(doubleValue);
+        assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+        stringWriter.reset();
+        stringWriter.writeDouble(doubleValue);
+        assertEquals(stringWriter.toJson(), expected);
+        utf16Writer.reset();
+        utf16Writer.writeString("\u0100");
+        utf16Writer.writeComma(1);
+        utf16Writer.writeDouble(doubleValue);
+        assertEquals(utf16Writer.toJson(), "\"\u0100\"," + expected);
+      }
+    }
+  }
+
+  @Test
+  public void bigNumberChunkCachesAreBounded() throws Exception {
+    BigInteger value = new BigInteger(repeat('1', 9500));
+
+    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+    utf8Writer.writeBigInteger(value);
+    Field utf8Chunks = Utf8JsonWriter.class.getDeclaredField("bigNumberChunks");
+    utf8Chunks.setAccessible(true);
+    assertEquals(((int[]) utf8Chunks.get(utf8Writer)).length, (9500 + 8) / 9);
+
+    utf8Writer.reset();
+    assertEquals(utf8Chunks.get(utf8Writer), null);
+
+    StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
+    stringWriter.writeBigInteger(value);
+    Field stringChunks = StringJsonWriter.class.getDeclaredField("bigNumberChunks");
+    stringChunks.setAccessible(true);
+    assertEquals(((int[]) stringChunks.get(stringWriter)).length, (9500 + 8) / 9);
+
+    stringWriter.reset();
+    assertEquals(stringChunks.get(stringWriter), null);
   }
 
   @Test
@@ -819,6 +1025,16 @@ public class JsonScalarTest extends ForyJsonTestModels {
             new TypeRef<Map<String, BigDecimal>>() {});
     assertEquals(decimalMap.get("small"), new BigDecimal("0.100"));
     assertEquals(decimalMap.get("large"), new BigDecimal("12345678901234567890.123"));
+
+    String arrays =
+        "{\"boxedDoubles\":[12.5,null,1.25e2],\"boxedFloats\":[12.5,null,1.25e2],"
+            + "\"doubles\":[12.5,-0.0,1.25e2],\"floats\":[12.5,-0.0,1.25e2]}";
+    assertFloatingArrays(json.fromJson(arrays, FloatingArrays.class));
+    assertFloatingArrays(
+        json.fromJson(arrays.getBytes(StandardCharsets.UTF_8), FloatingArrays.class));
+    assertFloatingArrays(
+        json.fromJson(
+            "{\"ignored\":\"\u0100\"," + arrays.substring(1), FloatingArrays.class));
   }
 
   @Test
@@ -1215,10 +1431,25 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void guardBigDecimalScale() {
     ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.fromJson("1e-10001", BigDecimal.class));
+    assertBigDecimalReaders("1e10000");
+    assertBigDecimalReaders("0.1e10001");
+    assertBigDecimalReaders("0.1e-9999");
+    assertThrows(ForyJsonException.class, () -> json.fromJson("1e10001", BigDecimal.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("0.1e10002", BigDecimal.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("0.1e-10000", BigDecimal.class));
+    String accepted = "0." + repeat('0', BIG_NUMBER_LIMIT - 1) + "1";
+    assertBigDecimalReaders(accepted);
     String fastPathScale = "0." + repeat('0', BIG_NUMBER_LIMIT) + "1";
     assertThrows(
         ForyJsonException.class,
         () -> json.fromJson(fastPathScale.getBytes(StandardCharsets.UTF_8), BigDecimal.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> new Utf8JsonReader(fastPathScale.getBytes(StandardCharsets.UTF_8)).readBigDecimal());
+    assertThrows(
+        ForyJsonException.class,
+        () -> new Latin1JsonReader(latin1Bytes(fastPathScale)).readBigDecimal());
+    assertThrows(ForyJsonException.class, () -> utf16Reader(fastPathScale).readBigDecimal());
   }
 
   @Test
@@ -1240,6 +1471,19 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertThrows(
         ForyJsonException.class, () -> new Latin1JsonReader(latin1Bytes("1e2")).readBigInteger());
     assertThrows(ForyJsonException.class, () -> utf16Reader("1e2").readBigInteger());
+  }
+
+  @Test
+  public void readCompactBigDecimalExponents() {
+    assertBigDecimalReaders("1.25e2");
+    assertBigDecimalReaders("-7.5E-3");
+    assertBigDecimalReaders("0.00000000000000000001e20");
+    assertBigDecimalReaders("1e+" + repeat('0', BIG_NUMBER_LIMIT + 1) + "1");
+    assertBigDecimalReaders(
+        "0."
+            + repeat('0', BIG_NUMBER_LIMIT + 1)
+            + "1e"
+            + (BIG_NUMBER_LIMIT + 2));
   }
 
   @Test
@@ -1292,6 +1536,8 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(new Utf8JsonReader(utf8).readDoubleTokenValue(), 12.5d);
     assertEquals(new Latin1JsonReader(latin1).readDouble(), 12.5d);
     assertEquals(new Latin1JsonReader(latin1).readDoubleTokenValue(), 12.5d);
+    assertEquals(utf16Reader(token).readDouble(), 12.5d);
+    assertEquals(utf16Reader(token).readDoubleTokenValue(), 12.5d);
   }
 
   @Test
@@ -1304,6 +1550,38 @@ public class JsonScalarTest extends ForyJsonTestModels {
       double bound = (i & 1) == 0 ? 90.0d : 180.0d;
       assertDoubleBits(Double.toString(bound * random.nextDouble()));
     }
+
+    long[] boundaries = {
+      1L,
+      (1L << 24) - 1,
+      1L << 24,
+      (1L << 24) + 1,
+      (1L << 53) - 1,
+      1L << 53,
+      (1L << 53) + 1,
+      Long.MAX_VALUE
+    };
+    for (long unscaled : boundaries) {
+      for (int scale = 0; scale <= 18; scale++) {
+        String token = BigDecimal.valueOf(unscaled, scale).toPlainString();
+        assertDoubleBits(token);
+        assertDoubleBits("-" + token);
+        assertFloatBits(token);
+        assertFloatBits("-" + token);
+      }
+    }
+    for (int i = 0; i < 4096; i++) {
+      long unscaled = random.nextLong() & Long.MAX_VALUE;
+      if (unscaled == 0) {
+        unscaled = 1;
+      }
+      String token = BigDecimal.valueOf(unscaled, random.nextInt(19)).toPlainString();
+      if (random.nextBoolean()) {
+        token = "-" + token;
+      }
+      assertDoubleBits(token);
+      assertFloatBits(token);
+    }
   }
 
   @Test
@@ -1312,6 +1590,57 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertDoubleBits("-0.0000000000000000");
     assertFloatBits("0.00000000", 0);
     assertFloatBits("-0.00000000", Float.floatToRawIntBits(-0.0f));
+  }
+
+  @Test
+  public void readDoubleRandomTokens() {
+    Random random = new Random(1357911L);
+    for (int i = 0; i < 2048; i++) {
+      double value = Double.longBitsToDouble(random.nextLong());
+      if (Double.isFinite(value)) {
+        assertDoubleBits(Double.toString(value));
+      }
+    }
+  }
+
+  @Test
+  public void readDoubleDecimalTokens() {
+    Random random = new Random(246802468L);
+    for (int i = 0; i < 512; i++) {
+      assertDoubleBits(randomDoubleToken(random));
+    }
+  }
+
+  @Test
+  public void readDoubleBoundaryTokens() {
+    long one = 0x3ff0_0000_0000_0000L;
+    assertDoubleBits(doubleBoundaryToken(one, one + 1, 0), one);
+    assertDoubleBits(doubleBoundaryToken(one, one + 1, 1), one + 1);
+    assertDoubleBits("-" + doubleBoundaryToken(one, one + 1, 0), one | Long.MIN_VALUE);
+    assertDoubleBits("-" + doubleBoundaryToken(one, one + 1, 1), one + 1 | Long.MIN_VALUE);
+    assertDoubleBits(doubleBoundaryToken(one + 1, one + 2, 0), one + 2);
+    assertDoubleBits(doubleBoundaryToken(0, 1, 0), 0);
+    assertDoubleBits(doubleBoundaryToken(0, 1, 1), 1);
+    assertDoubleBits(
+        doubleBoundaryToken(0x7fef_ffff_ffff_ffffL, 0x7ff0_0000_0000_0000L, -1),
+        0x7fef_ffff_ffff_ffffL);
+    assertDoubleBits(
+        doubleBoundaryToken(0x7fef_ffff_ffff_ffffL, 0x7ff0_0000_0000_0000L, 0),
+        0x7ff0_0000_0000_0000L);
+  }
+
+  @Test
+  public void readDoubleFallbackTokens() {
+    assertDoubleBits("1.25e2");
+    assertDoubleBits("-7.5E-3");
+    assertDoubleBits("1.7976931348623157e308");
+    assertDoubleBits("4.9e-324");
+    assertDoubleBits("1e309");
+    assertDoubleBits("-1e-325");
+    assertDoubleBits("123456789012345678901234567890.12345678901234567890e-120");
+    long one = Double.doubleToRawLongBits(1.0d);
+    assertDoubleBits("0." + repeat('0', 100_001) + "1e100002", one);
+    assertDoubleBits("1" + repeat('0', 100_001) + "e-100001", one);
   }
 
   @Test
@@ -1356,6 +1685,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertFloatBits("1.4E-45");
     assertFloatBits("1e39");
     assertFloatBits("-1e-46");
+    // JDK 8 overflows these cancellation forms, but the exact decimal value is 1.0.
+    int one = Float.floatToRawIntBits(1.0f);
+    assertFloatBits("0." + repeat('0', 100_001) + "1e100002", one);
+    assertFloatBits("1" + repeat('0', 100_001) + "e-100001", one);
     assertTrue(
         Float.isNaN(new Utf8JsonReader("\"NaN\"".getBytes(StandardCharsets.UTF_8)).readFloat()));
     assertEquals(
@@ -1430,6 +1763,81 @@ public class JsonScalarTest extends ForyJsonTestModels {
       assertNoJsonFieldInfoFields(reflectField(codec, "utf16Reader"));
       assertNoJsonFieldInfoFields(reflectField(codec, "utf8Reader"));
     }
+  }
+
+  @Test
+  public void customNumericCodecsOwnFields() {
+    ForyJson json =
+        newJsonBuilder()
+            .registerCodec(float.class, new TaggedNumberCodec("float", Float.valueOf(11.5f)))
+            .registerCodec(Float.class, new TaggedNumberCodec("float", Float.valueOf(11.5f)))
+            .registerCodec(double.class, new TaggedNumberCodec("double", Double.valueOf(22.5d)))
+            .registerCodec(Double.class, new TaggedNumberCodec("double", Double.valueOf(22.5d)))
+            .registerCodec(
+                BigDecimal.class,
+                new TaggedNumberCodec("decimal", new BigDecimal("33.5")))
+            .build();
+    CustomNumericFields fields = new CustomNumericFields();
+    fields.floatValue = 1.25f;
+    fields.floatBoxed = Float.valueOf(1.25f);
+    fields.doubleValue = 2.5d;
+    fields.doubleBoxed = Double.valueOf(2.5d);
+    fields.decimal = new BigDecimal("3.75");
+    String expected =
+        "{\"decimal\":\"decimal\",\"doubleBoxed\":\"double\","
+            + "\"doubleValue\":\"double\",\"floatBoxed\":\"float\","
+            + "\"floatValue\":\"float\"}";
+    assertEquals(json.toJson(fields), expected);
+    assertEquals(new String(json.toJsonBytes(fields), StandardCharsets.UTF_8), expected);
+    assertCustomNumericFields(json.fromJson(expected, CustomNumericFields.class));
+    assertCustomNumericFields(
+        json.fromJson(expected.getBytes(StandardCharsets.UTF_8), CustomNumericFields.class));
+    assertCustomNumericFields(
+        json.fromJson(
+            "{\"ignored\":\"\u0100\",\"decimal\":\"decimal\","
+                + "\"doubleBoxed\":\"double\",\"doubleValue\":\"double\","
+                + "\"floatBoxed\":\"float\",\"floatValue\":\"float\"}",
+            CustomNumericFields.class));
+    assertGeneratedWhenSupported(json, CustomNumericFields.class);
+  }
+
+  @Test
+  public void customNumericCodecsOwnContainers() {
+    ForyJson json =
+        newJsonBuilder()
+            .registerCodec(float.class, new TaggedNumberCodec("float", Float.valueOf(11.5f)))
+            .registerCodec(Float.class, new TaggedNumberCodec("float", Float.valueOf(11.5f)))
+            .registerCodec(
+                BigDecimal.class,
+                new TaggedNumberCodec("decimal", new BigDecimal("33.5")))
+            .build();
+    CustomNumericContainers value = new CustomNumericContainers();
+    value.decimalArray = new BigDecimal[] {new BigDecimal("1.25")};
+    value.decimals = new LinkedHashMap<>();
+    value.decimals.put("a", new BigDecimal("1.25"));
+    value.floatArray = new Float[] {Float.valueOf(2.5f)};
+    value.floats = Arrays.asList(Float.valueOf(2.5f));
+    value.primitiveFloats = new float[] {2.5f};
+    String expected =
+        "{\"decimalArray\":[\"decimal\"],\"decimals\":{\"a\":\"decimal\"},"
+            + "\"floatArray\":[\"float\"],\"floats\":[\"float\"],"
+            + "\"primitiveFloats\":[\"float\"]}";
+    assertEquals(json.toJson(value), expected);
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+    assertCustomNumericContainers(json.fromJson(expected, CustomNumericContainers.class));
+    assertCustomNumericContainers(
+        json.fromJson(expected.getBytes(StandardCharsets.UTF_8), CustomNumericContainers.class));
+    assertCustomNumericContainers(
+        json.fromJson(
+            "{\"ignored\":\"\u0100\"," + expected.substring(1), CustomNumericContainers.class));
+    assertGeneratedWhenSupported(json, CustomNumericContainers.class);
+  }
+
+  @Test
+  public void floatingFallbackErrorPositions() {
+    assertFloatingErrorPosition("  01", 3, "Leading zero in number");
+    assertFloatingErrorPosition("  1.", 4, "Expected digit");
+    assertFloatingErrorPosition("  1e+", 5, "Expected exponent digit");
   }
 
   @Test
@@ -1514,6 +1922,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     public long longMax;
     public long longMin;
     public int negative;
+    public float floatValue;
+    public double doubleValue;
+    public BigInteger bigInteger;
+    public BigDecimal bigDecimal;
   }
 
   public static final class NonFiniteNumbers {
@@ -1526,6 +1938,29 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public static final class FloatFields {
     public float value;
     public Float boxed;
+  }
+
+  public static final class CustomNumericFields {
+    public BigDecimal decimal;
+    public Double doubleBoxed;
+    public double doubleValue;
+    public Float floatBoxed;
+    public float floatValue;
+  }
+
+  public static final class CustomNumericContainers {
+    public BigDecimal[] decimalArray;
+    public Map<String, BigDecimal> decimals;
+    public Float[] floatArray;
+    public List<Float> floats;
+    public float[] primitiveFloats;
+  }
+
+  public static final class FloatingArrays {
+    public Double[] boxedDoubles;
+    public Float[] boxedFloats;
+    public double[] doubles;
+    public float[] floats;
   }
 
   public static final class BigNumberContainers {
@@ -1549,6 +1984,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
     public String toString(int radix) {
       throw new AssertionError("BigInteger writers must own numeric formatting");
     }
+
+    @Override
+    public BigInteger negate() {
+      throw new AssertionError("BigInteger writers must not allocate a negated magnitude");
+    }
   }
 
   private static final class NoToStringBigDecimal extends BigDecimal {
@@ -1556,9 +1996,28 @@ public class JsonScalarTest extends ForyJsonTestModels {
       super(value);
     }
 
+    private NoToStringBigDecimal(BigInteger unscaled, int scale) {
+      super(unscaled, scale);
+    }
+
     @Override
     public String toString() {
       throw new AssertionError("BigDecimal writers must own numeric formatting");
+    }
+
+    @Override
+    public BigInteger unscaledValue() {
+      throw new AssertionError("BigDecimal writers must read the stored coefficient directly");
+    }
+
+    @Override
+    public int scale() {
+      throw new AssertionError("BigDecimal writers must read the stored scale directly");
+    }
+
+    @Override
+    public BigDecimal negate() {
+      throw new AssertionError("BigDecimal writers must not allocate a negated magnitude");
     }
   }
 
@@ -1651,6 +2110,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   private static void assertDoubleBits(String token) {
     long expected = Double.doubleToRawLongBits(Double.parseDouble(token));
+    assertDoubleBits(token, expected);
+  }
+
+  private static void assertDoubleBits(String token, long expected) {
     byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
     byte[] latin1 = latin1Bytes(token);
     assertEquals(Double.doubleToRawLongBits(new Utf8JsonReader(utf8).readDouble()), expected);
@@ -1660,6 +2123,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         Double.doubleToRawLongBits(new Latin1JsonReader(latin1).readDoubleTokenValue()), expected);
     assertEquals(Double.doubleToRawLongBits(utf16Reader(token).readDouble()), expected);
+    assertEquals(Double.doubleToRawLongBits(utf16Reader(token).readDoubleTokenValue()), expected);
   }
 
   private static void assertFloatBits(String token) {
@@ -1687,6 +2151,40 @@ public class JsonScalarTest extends ForyJsonTestModels {
       value = value.add(unit.multiply(BigDecimal.valueOf(units)));
     }
     return value.toPlainString();
+  }
+
+  private static String doubleBoundaryToken(long lowBits, long highBits, int units) {
+    BigDecimal value = doubleBoundaryValue(lowBits, highBits);
+    if (units != 0) {
+      int scale = Math.max(value.scale(), 0);
+      BigDecimal unit = BigDecimal.ONE.scaleByPowerOfTen(-scale);
+      value = value.add(unit.multiply(BigDecimal.valueOf(units)));
+    }
+    return value.toPlainString();
+  }
+
+  private static BigDecimal doubleBoundaryValue(long lowBits, long highBits) {
+    long numerator;
+    int binaryExponent;
+    if (highBits == 0x7ff0_0000_0000_0000L) {
+      numerator = (1L << 54) - 1;
+      binaryExponent = 970;
+    } else {
+      long lowMantissa = testDoubleMantissa(lowBits);
+      int lowExponent = testDoubleExponent(lowBits);
+      long highMantissa = testDoubleMantissa(highBits);
+      int highExponent = testDoubleExponent(highBits);
+      int exponent = Math.min(lowExponent, highExponent);
+      numerator =
+          (lowMantissa << (lowExponent - exponent)) + (highMantissa << (highExponent - exponent));
+      binaryExponent = exponent - 1;
+    }
+    BigInteger integer = BigInteger.valueOf(numerator);
+    if (binaryExponent >= 0) {
+      return new BigDecimal(integer.shiftLeft(binaryExponent));
+    }
+    int scale = -binaryExponent;
+    return new BigDecimal(integer.multiply(BigInteger.valueOf(5).pow(scale)), scale);
   }
 
   private static BigDecimal floatBoundaryValue(int lowBits, int highBits) {
@@ -1741,6 +2239,32 @@ public class JsonScalarTest extends ForyJsonTestModels {
     return builder.toString();
   }
 
+  private static String randomDoubleToken(Random random) {
+    StringBuilder builder = new StringBuilder(96);
+    if (random.nextBoolean()) {
+      builder.append('-');
+    }
+    int integerDigits = 1 + random.nextInt(30);
+    builder.append((char) ('1' + random.nextInt(9)));
+    for (int i = 1; i < integerDigits; i++) {
+      builder.append((char) ('0' + random.nextInt(10)));
+    }
+    if (random.nextBoolean()) {
+      int fractionDigits = 1 + random.nextInt(50);
+      builder.append('.');
+      for (int i = 0; i < fractionDigits; i++) {
+        builder.append((char) ('0' + random.nextInt(10)));
+      }
+    }
+    int exponent = random.nextInt(801) - 400;
+    builder.append(random.nextBoolean() ? 'e' : 'E');
+    if (exponent >= 0 && random.nextBoolean()) {
+      builder.append('+');
+    }
+    builder.append(exponent);
+    return builder.toString();
+  }
+
   private static int testFloatMantissa(int bits) {
     int fraction = bits & 0x007f_ffff;
     return (bits & 0x7f80_0000) == 0 ? fraction : fraction | (1 << 23);
@@ -1749,6 +2273,16 @@ public class JsonScalarTest extends ForyJsonTestModels {
   private static int testFloatExponent(int bits) {
     int exponent = (bits & 0x7f80_0000) >>> 23;
     return exponent == 0 ? -149 : exponent - 150;
+  }
+
+  private static long testDoubleMantissa(long bits) {
+    long fraction = bits & 0x000f_ffff_ffff_ffffL;
+    return (bits & 0x7ff0_0000_0000_0000L) == 0 ? fraction : fraction | (1L << 52);
+  }
+
+  private static int testDoubleExponent(long bits) {
+    int exponent = (int) ((bits & 0x7ff0_0000_0000_0000L) >>> 52);
+    return exponent == 0 ? -1074 : exponent - 1075;
   }
 
   private static Object reflectField(Object owner, String name) throws Exception {
@@ -1823,10 +2357,96 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
   }
 
+  private static final class TaggedNumberCodec implements JsonCodec {
+    private final String token;
+    private final Number decoded;
+
+    private TaggedNumberCodec(String token, Number decoded) {
+      this.token = token;
+      this.decoded = decoded;
+    }
+
+    @Override
+    public void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+      writer.writeString(token);
+    }
+
+    @Override
+    public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+      writer.writeString(token);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+      writer.writeString(token);
+    }
+
+    @Override
+    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      assertEquals(reader.readString(), token);
+      return decoded;
+    }
+
+  }
+
   private static Utf16JsonReader utf16Reader(String input) {
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
     return new Utf16JsonReader().reset(input, bytes);
+  }
+
+  private static void assertCustomNumericFields(CustomNumericFields fields) {
+    assertEquals(Float.floatToRawIntBits(fields.floatValue), Float.floatToRawIntBits(11.5f));
+    assertEquals(
+        Float.floatToRawIntBits(fields.floatBoxed.floatValue()), Float.floatToRawIntBits(11.5f));
+    assertEquals(Double.doubleToRawLongBits(fields.doubleValue), Double.doubleToRawLongBits(22.5d));
+    assertEquals(
+        Double.doubleToRawLongBits(fields.doubleBoxed.doubleValue()),
+        Double.doubleToRawLongBits(22.5d));
+    assertEquals(fields.decimal, new BigDecimal("33.5"));
+  }
+
+  private static void assertCustomNumericContainers(CustomNumericContainers value) {
+    assertEquals(value.decimalArray[0], new BigDecimal("33.5"));
+    assertEquals(value.decimals.get("a"), new BigDecimal("33.5"));
+    assertEquals(
+        Float.floatToRawIntBits(value.floatArray[0].floatValue()),
+        Float.floatToRawIntBits(11.5f));
+    assertEquals(
+        Float.floatToRawIntBits(value.floats.get(0).floatValue()),
+        Float.floatToRawIntBits(11.5f));
+    assertEquals(
+        Float.floatToRawIntBits(value.primitiveFloats[0]), Float.floatToRawIntBits(11.5f));
+  }
+
+  private static void assertFloatingArrays(FloatingArrays value) {
+    assertEquals(value.boxedDoubles, new Double[] {12.5d, null, 125.0d});
+    assertEquals(value.boxedFloats, new Float[] {12.5f, null, 125.0f});
+    assertEquals(value.doubles, new double[] {12.5d, -0.0d, 125.0d});
+    assertEquals(value.floats, new float[] {12.5f, -0.0f, 125.0f});
+  }
+
+  private static void assertFloatingErrorPosition(String input, int position, String message) {
+    JsonReader[] readers = {
+      new Utf8JsonReader(input.getBytes(StandardCharsets.UTF_8)),
+      new Latin1JsonReader(latin1Bytes(input)),
+      utf16Reader(input)
+    };
+    String expected = message + " at JSON position " + position;
+    for (JsonReader reader : readers) {
+      ForyJsonException floatError = expectThrows(ForyJsonException.class, reader::readFloat);
+      assertEquals(floatError.getMessage(), expected);
+    }
+    readers =
+        new JsonReader[] {
+          new Utf8JsonReader(input.getBytes(StandardCharsets.UTF_8)),
+          new Latin1JsonReader(latin1Bytes(input)),
+          utf16Reader(input)
+        };
+    for (JsonReader reader : readers) {
+      ForyJsonException doubleError = expectThrows(ForyJsonException.class, reader::readDouble);
+      assertEquals(doubleError.getMessage(), expected);
+    }
   }
 
   private static void assertWriterNumber(BigInteger value, String expected) {
@@ -1836,6 +2456,9 @@ public class JsonScalarTest extends ForyJsonTestModels {
     StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
     stringWriter.writeBigInteger(value);
     assertEquals(stringWriter.toJson(), expected);
+    StringJsonWriter utf16Writer = utf16StringWriter();
+    utf16Writer.writeBigInteger(value);
+    assertEquals(utf16Writer.toJson(), expected);
   }
 
   private static void assertWriterNumber(BigDecimal value, String expected) {
@@ -1845,6 +2468,57 @@ public class JsonScalarTest extends ForyJsonTestModels {
     StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
     stringWriter.writeBigDecimal(value);
     assertEquals(stringWriter.toJson(), expected);
+    StringJsonWriter utf16Writer = utf16StringWriter();
+    utf16Writer.writeBigDecimal(value);
+    assertEquals(utf16Writer.toJson(), expected);
+  }
+
+  private static void assertBigDecimalWriter(BigInteger unscaled, int scale) {
+    BigDecimal value = new BigDecimal(unscaled, scale);
+    String expected = value.toString();
+    assertWriterNumber(new NoToStringBigDecimal(unscaled, scale), expected);
+  }
+
+  private static void assertBigDecimalReaders(String token) {
+    BigDecimal expected = new BigDecimal(token);
+    assertEquals(
+        new Utf8JsonReader(token.getBytes(StandardCharsets.UTF_8)).readBigDecimal(), expected);
+    assertEquals(new Latin1JsonReader(latin1Bytes(token)).readBigDecimal(), expected);
+    assertEquals(utf16Reader(token).readBigDecimal(), expected);
+  }
+
+  private static void assertFloatWriter(float value) {
+    String expected = Float.toString(value);
+    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+    utf8Writer.writeFloat(value);
+    assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+    StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
+    stringWriter.writeFloat(value);
+    assertEquals(stringWriter.toJson(), expected);
+    StringJsonWriter utf16Writer = utf16StringWriter();
+    utf16Writer.writeFloat(value);
+    assertEquals(utf16Writer.toJson(), expected);
+  }
+
+  private static void assertDoubleWriter(double value) {
+    String expected = Double.toString(value);
+    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+    utf8Writer.writeDouble(value);
+    assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
+    StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
+    stringWriter.writeDouble(value);
+    assertEquals(stringWriter.toJson(), expected);
+    StringJsonWriter utf16Writer = utf16StringWriter();
+    utf16Writer.writeDouble(value);
+    assertEquals(utf16Writer.toJson(), expected);
+  }
+
+  private static StringJsonWriter utf16StringWriter() {
+    StringJsonWriter writer = new StringJsonWriter(false, new byte[4]);
+    writer.writeString("\u0100");
+    writer.toJson();
+    writer.reset();
+    return writer;
   }
 
   private static void assertBigDecimalLengthReject(JsonReader reader) {

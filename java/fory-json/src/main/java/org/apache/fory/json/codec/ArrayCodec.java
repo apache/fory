@@ -40,43 +40,53 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
   }
 
   public static ArrayCodec create(Class<?> componentType, JsonTypeResolver resolver) {
-    if (componentType == int.class) {
+    JsonTypeInfo componentTypeInfo = resolver.getTypeInfo(componentType, componentType);
+    JsonCodec componentCodec = componentTypeInfo.codec();
+    if (componentType == int.class && componentCodec == ScalarCodecs.IntCodec.INSTANCE) {
       return IntArrayCodec.INSTANCE;
-    } else if (componentType == long.class) {
+    } else if (componentType == long.class && componentCodec == ScalarCodecs.LongCodec.INSTANCE) {
       return LongArrayCodec.INSTANCE;
-    } else if (componentType == boolean.class) {
+    } else if (componentType == boolean.class
+        && componentCodec == ScalarCodecs.BooleanCodec.INSTANCE) {
       return BooleanArrayCodec.INSTANCE;
-    } else if (componentType == short.class) {
+    } else if (componentType == short.class && componentCodec == ScalarCodecs.ShortCodec.INSTANCE) {
       return ShortArrayCodec.INSTANCE;
-    } else if (componentType == byte.class) {
+    } else if (componentType == byte.class && componentCodec == ScalarCodecs.ByteCodec.INSTANCE) {
       return ByteArrayCodec.INSTANCE;
-    } else if (componentType == char.class) {
+    } else if (componentType == char.class && componentCodec == ScalarCodecs.CharCodec.INSTANCE) {
       return CharArrayCodec.INSTANCE;
-    } else if (componentType == float.class) {
+    } else if (componentType == float.class && componentCodec == ScalarCodecs.FloatCodec.INSTANCE) {
       return FloatArrayCodec.INSTANCE;
-    } else if (componentType == double.class) {
+    } else if (componentType == double.class
+        && componentCodec == ScalarCodecs.DoubleCodec.INSTANCE) {
       return DoubleArrayCodec.INSTANCE;
-    } else if (componentType == Integer.class) {
+    } else if (componentType == Integer.class && componentCodec == ScalarCodecs.IntCodec.INSTANCE) {
       return BoxedIntArrayCodec.INSTANCE;
-    } else if (componentType == Long.class) {
+    } else if (componentType == Long.class && componentCodec == ScalarCodecs.LongCodec.INSTANCE) {
       return BoxedLongArrayCodec.INSTANCE;
-    } else if (componentType == Boolean.class) {
+    } else if (componentType == Boolean.class
+        && componentCodec == ScalarCodecs.BooleanCodec.INSTANCE) {
       return BoxedBooleanArrayCodec.INSTANCE;
-    } else if (componentType == Short.class) {
+    } else if (componentType == Short.class && componentCodec == ScalarCodecs.ShortCodec.INSTANCE) {
       return BoxedShortArrayCodec.INSTANCE;
-    } else if (componentType == Byte.class) {
+    } else if (componentType == Byte.class && componentCodec == ScalarCodecs.ByteCodec.INSTANCE) {
       return BoxedByteArrayCodec.INSTANCE;
-    } else if (componentType == Character.class) {
+    } else if (componentType == Character.class
+        && componentCodec == ScalarCodecs.CharCodec.INSTANCE) {
       return BoxedCharArrayCodec.INSTANCE;
-    } else if (componentType == Float.class) {
+    } else if (componentType == Float.class && componentCodec == ScalarCodecs.FloatCodec.INSTANCE) {
       return BoxedFloatArrayCodec.INSTANCE;
-    } else if (componentType == Double.class) {
+    } else if (componentType == Double.class
+        && componentCodec == ScalarCodecs.DoubleCodec.INSTANCE) {
       return BoxedDoubleArrayCodec.INSTANCE;
-    } else if (componentType == String.class) {
+    } else if (componentType == String.class
+        && componentCodec == ScalarCodecs.StringCodec.INSTANCE) {
       return StringArrayCodec.INSTANCE;
     }
-    return new ObjectArrayCodec(
-        componentType, resolver.getTypeInfo(componentType, componentType), resolver);
+    if (componentType.isPrimitive()) {
+      return new CustomPrimitiveArrayCodec(componentType, componentTypeInfo, componentCodec);
+    }
+    return new ObjectArrayCodec(componentType, componentTypeInfo, resolver);
   }
 
   @Override
@@ -826,6 +836,87 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
+
+    @Override
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new float[0];
+        }
+        float[] values = new float[8];
+        int size = 0;
+        do {
+          rejectNull(reader);
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] = reader.readNextFloatValue();
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new float[0];
+        }
+        float[] values = new float[8];
+        int size = 0;
+        do {
+          rejectNull(reader);
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] = reader.readNextFloatValue();
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new float[0];
+        }
+        float[] values = new float[8];
+        int size = 0;
+        do {
+          rejectNull(reader);
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] = reader.readNextFloatValue();
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
   }
 
   public static final class DoubleArrayCodec extends ArrayCodec {
@@ -866,6 +957,87 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       reader.expect(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new double[0];
+        }
+        double[] values = new double[8];
+        int size = 0;
+        do {
+          rejectNull(reader);
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] = reader.readNextDoubleValue();
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new double[0];
+        }
+        double[] values = new double[8];
+        int size = 0;
+        do {
+          rejectNull(reader);
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] = reader.readNextDoubleValue();
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new double[0];
+        }
+        double[] values = new double[8];
+        int size = 0;
+        do {
+          rejectNull(reader);
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] = reader.readNextDoubleValue();
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
     }
   }
 
@@ -1248,10 +1420,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     @Override
     void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
       Object[] array = (Object[]) value;
+      JsonCodec codec = elementCodec;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
         writer.writeComma(i);
-        elementCodec.write(writer, array[i], resolver);
+        codec.write(writer, array[i], resolver);
       }
       writer.writeArrayEnd();
     }
@@ -1259,10 +1432,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     @Override
     void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       Object[] array = (Object[]) value;
+      JsonCodec codec = elementCodec;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
         writer.writeComma(i);
-        elementCodec.writeString(writer, array[i], resolver);
+        codec.writeString(writer, array[i], resolver);
       }
       writer.writeArrayEnd();
     }
@@ -1270,10 +1444,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     @Override
     void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
       Object[] array = (Object[]) value;
+      JsonCodec codec = elementCodec;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
         writer.writeComma(i);
-        elementCodec.writeUtf8(writer, array[i], resolver);
+        codec.writeUtf8(writer, array[i], resolver);
       }
       writer.writeArrayEnd();
     }
@@ -1294,6 +1469,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       int size = 0;
       boolean success = false;
       valuesDepth = depth + 1;
+      JsonCodec codec = elementCodec;
       try {
         reader.expect('[');
         if (!reader.consume(']')) {
@@ -1301,7 +1477,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
             if (size == values.length) {
               values = Arrays.copyOf(values, values.length << 1);
             }
-            values[size++] = elementCodec.read(reader, elementTypeInfo, resolver);
+            values[size++] = codec.read(reader, elementTypeInfo, resolver);
           } while (reader.consume(','));
           reader.expect(']');
         }
@@ -1310,20 +1486,339 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         success = true;
         return array;
       } finally {
+        releaseValues(values, size, depth, useCache, success);
         reader.exitDepth();
-        // Failed reads drop the scratch array, because it may contain partially parsed user values.
-        if (success && useCache) {
-          if (values.length <= MAX_CACHED_VALUES_SIZE) {
-            Arrays.fill(values, 0, size, null);
-            valuesCache[depth] = values;
-          } else {
-            // Keep the depth slot usable without retaining a grown array from one large value.
-            valuesCache[depth] = new Object[INITIAL_VALUES_SIZE];
-          }
-        }
-        // Restore the codec recursion depth after the matching cache slot has been handled.
-        valuesDepth = depth;
       }
+    }
+
+    @Override
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      int depth = valuesDepth;
+      boolean useCache = depth < VALUES_CACHE_DEPTH;
+      Object[] values = null;
+      if (useCache) {
+        values = valuesCache[depth];
+        valuesCache[depth] = null;
+      }
+      if (values == null) {
+        values = new Object[INITIAL_VALUES_SIZE];
+      }
+      int size = 0;
+      boolean success = false;
+      valuesDepth = depth + 1;
+      JsonCodec codec = elementCodec;
+      try {
+        reader.expectNextToken('[');
+        if (!reader.consumeNextToken(']')) {
+          do {
+            if (size == values.length) {
+              values = Arrays.copyOf(values, values.length << 1);
+            }
+            values[size++] = codec.readLatin1(reader, elementTypeInfo, resolver);
+          } while (reader.consumeNextCommaOrEndArray());
+        }
+        Object[] array = (Object[]) Array.newInstance(componentType, size);
+        System.arraycopy(values, 0, array, 0, size);
+        success = true;
+        return array;
+      } finally {
+        releaseValues(values, size, depth, useCache, success);
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      int depth = valuesDepth;
+      boolean useCache = depth < VALUES_CACHE_DEPTH;
+      Object[] values = null;
+      if (useCache) {
+        values = valuesCache[depth];
+        valuesCache[depth] = null;
+      }
+      if (values == null) {
+        values = new Object[INITIAL_VALUES_SIZE];
+      }
+      int size = 0;
+      boolean success = false;
+      valuesDepth = depth + 1;
+      JsonCodec codec = elementCodec;
+      try {
+        reader.expectNextToken('[');
+        if (!reader.consumeNextToken(']')) {
+          do {
+            if (size == values.length) {
+              values = Arrays.copyOf(values, values.length << 1);
+            }
+            values[size++] = codec.readUtf16(reader, elementTypeInfo, resolver);
+          } while (reader.consumeNextCommaOrEndArray());
+        }
+        Object[] array = (Object[]) Array.newInstance(componentType, size);
+        System.arraycopy(values, 0, array, 0, size);
+        success = true;
+        return array;
+      } finally {
+        releaseValues(values, size, depth, useCache, success);
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      int depth = valuesDepth;
+      boolean useCache = depth < VALUES_CACHE_DEPTH;
+      Object[] values = null;
+      if (useCache) {
+        values = valuesCache[depth];
+        valuesCache[depth] = null;
+      }
+      if (values == null) {
+        values = new Object[INITIAL_VALUES_SIZE];
+      }
+      int size = 0;
+      boolean success = false;
+      valuesDepth = depth + 1;
+      JsonCodec codec = elementCodec;
+      try {
+        reader.expectNextToken('[');
+        if (!reader.consumeNextToken(']')) {
+          do {
+            if (size == values.length) {
+              values = Arrays.copyOf(values, values.length << 1);
+            }
+            values[size++] = codec.readUtf8(reader, elementTypeInfo, resolver);
+          } while (reader.consumeNextCommaOrEndArray());
+        }
+        Object[] array = (Object[]) Array.newInstance(componentType, size);
+        System.arraycopy(values, 0, array, 0, size);
+        success = true;
+        return array;
+      } finally {
+        releaseValues(values, size, depth, useCache, success);
+        reader.exitDepth();
+      }
+    }
+
+    private void releaseValues(
+        Object[] values, int size, int depth, boolean useCache, boolean success) {
+      // Failed reads drop the scratch array, because it may contain partially parsed user values.
+      if (success && useCache) {
+        if (values.length <= MAX_CACHED_VALUES_SIZE) {
+          Arrays.fill(values, 0, size, null);
+          valuesCache[depth] = values;
+        } else {
+          // Keep the depth slot usable without retaining a grown array from one large value.
+          valuesCache[depth] = new Object[INITIAL_VALUES_SIZE];
+        }
+      }
+      // Restore the codec recursion depth after the matching cache slot has been handled.
+      valuesDepth = depth;
+    }
+  }
+
+  private static final class CustomPrimitiveArrayCodec extends ArrayCodec {
+    private static final int INITIAL_SIZE = 8;
+
+    private final JsonTypeInfo elementTypeInfo;
+    private final JsonCodec elementCodec;
+
+    private CustomPrimitiveArrayCodec(
+        Class<?> componentType, JsonTypeInfo elementTypeInfo, JsonCodec elementCodec) {
+      super(componentType);
+      this.elementTypeInfo = elementTypeInfo;
+      this.elementCodec = elementCodec;
+    }
+
+    @Override
+    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+      JsonCodec codec = elementCodec;
+      writer.writeArrayStart();
+      int length = Array.getLength(value);
+      for (int i = 0; i < length; i++) {
+        writer.writeComma(i);
+        codec.write(writer, Array.get(value, i), resolver);
+      }
+      writer.writeArrayEnd();
+    }
+
+    @Override
+    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+      JsonCodec codec = elementCodec;
+      writer.writeArrayStart();
+      int length = Array.getLength(value);
+      for (int i = 0; i < length; i++) {
+        writer.writeComma(i);
+        codec.writeString(writer, Array.get(value, i), resolver);
+      }
+      writer.writeArrayEnd();
+    }
+
+    @Override
+    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+      JsonCodec codec = elementCodec;
+      writer.writeArrayStart();
+      int length = Array.getLength(value);
+      for (int i = 0; i < length; i++) {
+        writer.writeComma(i);
+        codec.writeUtf8(writer, Array.get(value, i), resolver);
+      }
+      writer.writeArrayEnd();
+    }
+
+    @Override
+    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      try {
+        reader.expect('[');
+        if (reader.consume(']')) {
+          return Array.newInstance(componentType, 0);
+        }
+        Object values = Array.newInstance(componentType, INITIAL_SIZE);
+        int size = 0;
+        JsonCodec codec = elementCodec;
+        do {
+          if (size == Array.getLength(values)) {
+            Object grown = Array.newInstance(componentType, size << 1);
+            System.arraycopy(values, 0, grown, 0, size);
+            values = grown;
+          }
+          Object element = codec.read(reader, elementTypeInfo, resolver);
+          if (element == null) {
+            throw new ForyJsonException("Cannot read null into primitive array element");
+          }
+          Array.set(values, size++, element);
+        } while (reader.consume(','));
+        reader.expect(']');
+        if (size == Array.getLength(values)) {
+          return values;
+        }
+        Object result = Array.newInstance(componentType, size);
+        System.arraycopy(values, 0, result, 0, size);
+        return result;
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return Array.newInstance(componentType, 0);
+        }
+        Object values = Array.newInstance(componentType, INITIAL_SIZE);
+        int size = 0;
+        JsonCodec codec = elementCodec;
+        do {
+          if (size == Array.getLength(values)) {
+            Object grown = Array.newInstance(componentType, size << 1);
+            System.arraycopy(values, 0, grown, 0, size);
+            values = grown;
+          }
+          Object element = codec.readLatin1(reader, elementTypeInfo, resolver);
+          putElement(values, size++, element);
+        } while (reader.consumeNextCommaOrEndArray());
+        return copyArray(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return Array.newInstance(componentType, 0);
+        }
+        Object values = Array.newInstance(componentType, INITIAL_SIZE);
+        int size = 0;
+        JsonCodec codec = elementCodec;
+        do {
+          if (size == Array.getLength(values)) {
+            Object grown = Array.newInstance(componentType, size << 1);
+            System.arraycopy(values, 0, grown, 0, size);
+            values = grown;
+          }
+          Object element = codec.readUtf16(reader, elementTypeInfo, resolver);
+          putElement(values, size++, element);
+        } while (reader.consumeNextCommaOrEndArray());
+        return copyArray(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return Array.newInstance(componentType, 0);
+        }
+        Object values = Array.newInstance(componentType, INITIAL_SIZE);
+        int size = 0;
+        JsonCodec codec = elementCodec;
+        do {
+          if (size == Array.getLength(values)) {
+            Object grown = Array.newInstance(componentType, size << 1);
+            System.arraycopy(values, 0, grown, 0, size);
+            values = grown;
+          }
+          Object element = codec.readUtf8(reader, elementTypeInfo, resolver);
+          putElement(values, size++, element);
+        } while (reader.consumeNextCommaOrEndArray());
+        return copyArray(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    private void putElement(Object values, int index, Object element) {
+      if (element == null) {
+        throw new ForyJsonException("Cannot read null into primitive array element");
+      }
+      Array.set(values, index, element);
+    }
+
+    private Object copyArray(Object values, int size) {
+      if (size == Array.getLength(values)) {
+        return values;
+      }
+      Object result = Array.newInstance(componentType, size);
+      System.arraycopy(values, 0, result, 0, size);
+      return result;
     }
   }
 
@@ -1641,6 +2136,87 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
+
+    @Override
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new Float[0];
+        }
+        Float[] values = new Float[8];
+        int size = 0;
+        do {
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] =
+              reader.tryReadNextNullToken() ? null : Float.valueOf(reader.readNextFloatValue());
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new Float[0];
+        }
+        Float[] values = new Float[8];
+        int size = 0;
+        do {
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] =
+              reader.tryReadNextNullToken() ? null : Float.valueOf(reader.readNextFloatValue());
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new Float[0];
+        }
+        Float[] values = new Float[8];
+        int size = 0;
+        do {
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] =
+              reader.tryReadNextNullToken() ? null : Float.valueOf(reader.readNextFloatValue());
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
   }
 
   public static final class BoxedDoubleArrayCodec extends ArrayCodec {
@@ -1685,6 +2261,87 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       reader.expect(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new Double[0];
+        }
+        Double[] values = new Double[8];
+        int size = 0;
+        do {
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] =
+              reader.tryReadNextNullToken() ? null : Double.valueOf(reader.readNextDoubleValue());
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new Double[0];
+        }
+        Double[] values = new Double[8];
+        int size = 0;
+        do {
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] =
+              reader.tryReadNextNullToken() ? null : Double.valueOf(reader.readNextDoubleValue());
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      try {
+        reader.expectNextToken('[');
+        if (reader.consumeNextToken(']')) {
+          return new Double[0];
+        }
+        Double[] values = new Double[8];
+        int size = 0;
+        do {
+          if (size == values.length) {
+            values = Arrays.copyOf(values, values.length << 1);
+          }
+          values[size++] =
+              reader.tryReadNextNullToken() ? null : Double.valueOf(reader.readNextDoubleValue());
+        } while (reader.consumeNextCommaOrEndArray());
+        return Arrays.copyOf(values, size);
+      } finally {
+        reader.exitDepth();
+      }
     }
   }
 

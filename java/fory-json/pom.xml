@@ -39,6 +39,7 @@
     <maven.compiler.source>8</maven.compiler.source>
     <maven.compiler.target>8</maven.compiler.target>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
+    <fory.json.mr.classes>${project.build.directory}/multi-release-classes</fory.json.mr.classes>
     <fory.json.jdk25.test.classes>${project.build.directory}/jdk25-test-classes</fory.json.jdk25.test.classes>
     <fory.core.jdk25.test.classes>${project.basedir}/../fory-core/target/jdk25-test-classes</fory.core.jdk25.test.classes>
   </properties>
@@ -161,7 +162,7 @@
       </build>
     </profile>
     <profile>
-      <id>jdk25-core-test-overlay</id>
+      <id>jdk25-multi-release</id>
       <activation>
         <jdk>[25,)</jdk>
       </activation>
@@ -169,9 +170,68 @@
         <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-source-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>attach-sources</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-antrun-plugin</artifactId>
             <version>3.1.0</version>
             <executions>
+              <execution>
+                <id>compile-jdk25-classes</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <delete dir="${fory.json.mr.classes}/25"/>
+                    <mkdir dir="${fory.json.mr.classes}/25"/>
+                    <javac srcdir="${project.basedir}/src/main/java25"
+                           destdir="${fory.json.mr.classes}/25"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="org/**/*.java"/>
+                      <classpath>
+                        <path refid="maven.compile.classpath"/>
+                        <pathelement location="${project.build.outputDirectory}"/>
+                      </classpath>
+                      <compilerarg value="--release"/>
+                      <compilerarg value="22"/>
+                      <compilerarg value="-sourcepath"/>
+                      <compilerarg value=""/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>inject-jdk25-classes</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar"
+                         update="true">
+                      <zipfileset dir="${fory.json.mr.classes}/25"
+                                  prefix="META-INF/versions/25"
+                                  includes="**/*.class"/>
+                    </jar>
+                  </target>
+                </configuration>
+              </execution>
               <execution>
                 <id>prepare-jdk25-test-classes</id>
                 <phase>process-test-classes</phase>
@@ -192,10 +252,61 @@
                       </fileset>
                     </copy>
                     <copy todir="${fory.json.jdk25.test.classes}" overwrite="true">
+                      <fileset dir="${fory.json.mr.classes}/25">
+                        <exclude name="module-info.class"/>
+                      </fileset>
+                    </copy>
+                    <copy todir="${fory.json.jdk25.test.classes}" overwrite="true">
                       <fileset dir="${fory.core.jdk25.test.classes}" erroronmissingdir="false">
                         <exclude name="module-info.class"/>
                       </fileset>
                     </copy>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>verify-jdk25-multi-release-jar</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <java
+                        classname="org.apache.fory.json.writer.Jdk25MultiReleaseJarVerifier"
+                        fork="true"
+                        failonerror="true">
+                      <classpath>
+                        <pathelement location="${project.build.testOutputDirectory}"/>
+                        <path refid="maven.test.classpath"/>
+                      </classpath>
+                      <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
+                      <arg value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
+                    </java>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>patch-jdk25-source-jar</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <property
+                        name="jdk25.sources.jar"
+                        value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
+                    <available file="${jdk25.sources.jar}" property="jdk25.sources.jar.present"/>
+                    <fail
+                        unless="jdk25.sources.jar.present"
+                        message="Multi-release source patching requires ${jdk25.sources.jar}."/>
+                    <jar destfile="${jdk25.sources.jar}" update="true">
+                      <zipfileset dir="${project.basedir}/src/main/java25"
+                                  prefix="META-INF/versions/25">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                    </jar>
                   </target>
                 </configuration>
               </execution>

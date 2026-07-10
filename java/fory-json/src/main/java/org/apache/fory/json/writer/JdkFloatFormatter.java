@@ -30,59 +30,87 @@ import org.apache.fory.platform.internal._JDKAccess;
 /** Exact JDK float formatter access for JSON number output without materializing a String. */
 final class JdkFloatFormatter {
   static final int MAX_CHARS = 16;
-  private static final MethodHandle PUT_DECIMAL = loadPutDecimal();
+  private static final MethodHandle PUT_DECIMAL_LATIN1 = loadPutDecimal("LATIN1");
+  private static final MethodHandle PUT_DECIMAL_UTF16 = loadPutDecimal("UTF16");
 
   private JdkFloatFormatter() {}
 
   static int write(byte[] buffer, int position, float value) {
-    MethodHandle putDecimal = PUT_DECIMAL;
+    MethodHandle putDecimal = PUT_DECIMAL_LATIN1;
     if (putDecimal == null) {
       return -1;
     }
     try {
       return (int) putDecimal.invokeExact(buffer, position, value);
+    } catch (ThreadDeath e) {
+      throw e;
+    } catch (VirtualMachineError e) {
+      throw e;
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot write JSON float " + value, e);
     }
+  }
+
+  static int writeUtf16(byte[] buffer, int position, float value) {
+    MethodHandle putDecimal = PUT_DECIMAL_UTF16;
+    if (putDecimal == null) {
+      return -1;
+    }
+    try {
+      return (int) putDecimal.invokeExact(buffer, position >>> 1, value) << 1;
+    } catch (ThreadDeath e) {
+      throw e;
+    } catch (VirtualMachineError e) {
+      throw e;
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot write JSON float " + value, e);
+    }
+  }
+
+  static boolean isAvailable() {
+    return PUT_DECIMAL_LATIN1 != null;
   }
 
   static void appendTo(float value, StringBuilder builder) {
     try {
       builder.setLength(0);
-      // HotSpot JDK 8 delegates this to FloatingDecimal.appendTo and current HotSpot delegates it
-      // to FloatToDecimal.putDecimal, so the portable fallback writes into the reused builder
-      // instead of materializing Float.toString(value).
+      // Supported OpenJDK and Android libcore implementations append through their decimal
+      // formatter, so the portable path reuses this builder instead of materializing a String.
       builder.append(value);
       if (builder.length() == 0) {
         throw new ForyJsonException("JDK float formatter produced no output");
       }
+    } catch (ThreadDeath e) {
+      throw e;
+    } catch (VirtualMachineError e) {
+      throw e;
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot write JSON float " + value, e);
     }
   }
 
-  private static MethodHandle loadPutDecimal() {
+  private static MethodHandle loadPutDecimal(String coder) {
     if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
       return null;
     }
     try {
       Class<?> formatterClass = Class.forName("jdk.internal.math.FloatToDecimal");
       Lookup lookup = _JDKAccess._trustedLookup(formatterClass);
-      Object latin1 = lookup.findStaticGetter(formatterClass, "LATIN1", formatterClass).invoke();
+      Object formatter = lookup.findStaticGetter(formatterClass, coder, formatterClass).invoke();
       MethodHandle putDecimal =
           lookup.findVirtual(
               formatterClass,
               "putDecimal",
               MethodType.methodType(int.class, byte[].class, int.class, float.class));
       return putDecimal
-          .bindTo(latin1)
+          .bindTo(formatter)
           .asType(MethodType.methodType(int.class, byte[].class, int.class, float.class));
-    } catch (ClassNotFoundException | NoSuchFieldException | NoSuchMethodException e) {
-      return null;
-    } catch (IllegalAccessException e) {
-      return null;
+    } catch (ThreadDeath e) {
+      throw e;
+    } catch (VirtualMachineError e) {
+      throw e;
     } catch (Throwable e) {
-      throw new ExceptionInInitializerError(e);
+      return null;
     }
   }
 }

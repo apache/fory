@@ -249,6 +249,9 @@ public final class JsonCodegen {
     if (rawType != null && !rawType.isPrimitive() && !isVisible(rawType)) {
       return false;
     }
+    if (property.writeKind() != JsonFieldKind.COLLECTION) {
+      return true;
+    }
     Class<?> elementType = property.writeElementRawType();
     return !isPojo(elementType) || isVisible(elementType);
   }
@@ -268,6 +271,9 @@ public final class JsonCodegen {
     Class<?> rawType = property.readRawType();
     if (rawType != null && !rawType.isPrimitive() && !isVisible(rawType)) {
       return false;
+    }
+    if (property.readKind() != JsonFieldKind.COLLECTION) {
+      return true;
     }
     Class<?> elementType = property.readElementRawType();
     return !isPojo(elementType) || isVisible(elementType);

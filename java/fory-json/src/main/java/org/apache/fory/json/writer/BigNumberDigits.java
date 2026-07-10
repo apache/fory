@@ -1,0 +1,86 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.json.writer;
+
+import java.math.BigInteger;
+
+final class BigNumberDigits {
+  static final BigInteger CHUNK_BASE = BigInteger.valueOf(1_000_000_000);
+  static final int MAX_RETAINED_CHUNKS = 1024;
+  // Packed 1-3 digit stores write one four-byte word; concrete writers reserve this tail once.
+  static final int PACKED_WRITE_SLACK = 3;
+  static final int[] POWERS_OF_TEN = {
+    1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000,
+  };
+  static final long[] LONG_POWERS_OF_TEN = {
+    1L,
+    10L,
+    100L,
+    1_000L,
+    10_000L,
+    100_000L,
+    1_000_000L,
+    10_000_000L,
+    100_000_000L,
+    1_000_000_000L,
+    10_000_000_000L,
+    100_000_000_000L,
+    1_000_000_000_000L,
+    10_000_000_000_000L,
+    100_000_000_000_000L,
+    1_000_000_000_000_000L,
+    10_000_000_000_000_000L,
+    100_000_000_000_000_000L,
+    1_000_000_000_000_000_000L,
+  };
+
+  private BigNumberDigits() {}
+
+  static int chunkCapacity(BigInteger value) {
+    // 315653 / 2^20 is a tight upper bound for log10(2). The chunk array must not
+    // underestimate: growing a near-exact large-number scratch array would briefly retain both
+    // arrays and almost double peak memory for one write.
+    long digitEstimate = (((long) value.bitLength() * 315653) >>> 20) + 1;
+    return Math.max(1, (int) Math.min(Integer.MAX_VALUE, (digitEstimate + 8) / 9));
+  }
+
+  static boolean fitsLong(BigInteger value) {
+    return value.bitLength() <= 63;
+  }
+
+  static int digitCount(int value) {
+    if (value < 10) {
+      return 1;
+    }
+    // 1233 / 4096 approximates log10(2); one power-of-ten comparison makes it exact.
+    int estimate = ((33 - Integer.numberOfLeadingZeros(value)) * 1233) >>> 12;
+    return value < LONG_POWERS_OF_TEN[estimate] ? estimate : estimate + 1;
+  }
+
+  static int digitCount(long value) {
+    if (value < 10) {
+      return 1;
+    }
+    int estimate = ((65 - Long.numberOfLeadingZeros(value)) * 1233) >>> 12;
+    return estimate >= LONG_POWERS_OF_TEN.length || value < LONG_POWERS_OF_TEN[estimate]
+        ? estimate
+        : estimate + 1;
+  }
+}

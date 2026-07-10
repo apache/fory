@@ -1361,10 +1361,10 @@ final class JsonReaderCodegen {
   }
 
   private static String readDoubleMethod(int readerMode, boolean tokenValueRead) {
-    if (readerMode == LATIN1_READER || readerMode == UTF8_READER) {
-      return tokenValueRead ? "readDoubleTokenValue" : "readNextDoubleValue";
+    if (readerMode == GENERIC_READER) {
+      return "readDouble";
     }
-    return "readDouble";
+    return tokenValueRead ? "readDoubleTokenValue" : "readNextDoubleValue";
   }
 
   private static String readStringMethod(int readerMode, boolean tokenValueRead) {

@@ -74,40 +74,39 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
     TypeRef<?> elementTypeRef = CodecUtils.elementTypeRef(typeRef);
     Type elementType = elementTypeRef.getType();
     Class<?> elementRawType = CodecUtils.rawType(elementType, Object.class);
-    resolver.checkSecure(elementRawType);
     CollectionFactory factory = collectionFactory(rawType, elementRawType);
-    if (elementRawType == String.class) {
-      return new StringCollectionCodec(typeRef, factory);
-    }
-    if (elementRawType == Boolean.class || elementRawType == boolean.class) {
-      return new BooleanCollectionCodec(typeRef, factory);
-    }
-    if (elementRawType == Integer.class || elementRawType == int.class) {
-      return new IntCollectionCodec(typeRef, factory);
-    }
-    if (elementRawType == Long.class || elementRawType == long.class) {
-      return new LongCollectionCodec(typeRef, factory);
-    }
-    if (elementRawType == Short.class || elementRawType == short.class) {
-      return new ShortCollectionCodec(typeRef, factory);
-    }
-    if (elementRawType == Byte.class || elementRawType == byte.class) {
-      return new ByteCollectionCodec(typeRef, factory);
-    }
-    if (elementRawType == Float.class || elementRawType == float.class) {
-      return new FloatCollectionCodec(typeRef, factory);
-    }
-    if (elementRawType == Double.class || elementRawType == double.class) {
-      return new DoubleCollectionCodec(typeRef, factory);
-    }
-    if (elementRawType == BigInteger.class) {
-      return new BigIntegerCollectionCodec(typeRef, factory);
-    }
-    if (elementRawType == BigDecimal.class) {
-      return new BigDecimalCollectionCodec(typeRef, factory);
-    }
     JsonTypeInfo elementTypeInfo = resolver.getTypeInfo(elementType, elementRawType);
     JsonCodec elementCodec = elementTypeInfo.codec();
+    if (elementCodec == ScalarCodecs.StringCodec.INSTANCE) {
+      return new StringCollectionCodec(typeRef, factory);
+    }
+    if (elementCodec == ScalarCodecs.BooleanCodec.INSTANCE) {
+      return new BooleanCollectionCodec(typeRef, factory);
+    }
+    if (elementCodec == ScalarCodecs.IntCodec.INSTANCE) {
+      return new IntCollectionCodec(typeRef, factory);
+    }
+    if (elementCodec == ScalarCodecs.LongCodec.INSTANCE) {
+      return new LongCollectionCodec(typeRef, factory);
+    }
+    if (elementCodec == ScalarCodecs.ShortCodec.INSTANCE) {
+      return new ShortCollectionCodec(typeRef, factory);
+    }
+    if (elementCodec == ScalarCodecs.ByteCodec.INSTANCE) {
+      return new ByteCollectionCodec(typeRef, factory);
+    }
+    if (elementCodec == ScalarCodecs.FloatCodec.INSTANCE) {
+      return new FloatCollectionCodec(typeRef, factory);
+    }
+    if (elementCodec == ScalarCodecs.DoubleCodec.INSTANCE) {
+      return new DoubleCollectionCodec(typeRef, factory);
+    }
+    if (elementCodec == ScalarCodecs.BigIntegerCodec.INSTANCE) {
+      return new BigIntegerCollectionCodec(typeRef, factory);
+    }
+    if (elementCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
+      return new BigDecimalCollectionCodec(typeRef, factory);
+    }
     if (elementCodec instanceof BaseObjectCodec) {
       return new ObjectCollectionCodec(
           typeRef, factory, elementTypeInfo, (BaseObjectCodec) elementCodec, resolver);
@@ -1791,6 +1790,21 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
     Object readElement(JsonReader reader) {
       return reader.readFloat();
     }
+
+    @Override
+    Object readLatin1Element(Latin1JsonReader reader) {
+      return reader.readNextFloatValue();
+    }
+
+    @Override
+    Object readUtf16Element(Utf16JsonReader reader) {
+      return reader.readNextFloatValue();
+    }
+
+    @Override
+    Object readUtf8Element(Utf8JsonReader reader) {
+      return reader.readNextFloatValue();
+    }
   }
 
   public static final class DoubleCollectionCodec extends NumberCollectionCodec {
@@ -1806,6 +1820,21 @@ public abstract class CollectionCodec extends AbstractJsonCodec {
     @Override
     Object readElement(JsonReader reader) {
       return reader.readDouble();
+    }
+
+    @Override
+    Object readLatin1Element(Latin1JsonReader reader) {
+      return reader.readNextDoubleValue();
+    }
+
+    @Override
+    Object readUtf16Element(Utf16JsonReader reader) {
+      return reader.readNextDoubleValue();
+    }
+
+    @Override
+    Object readUtf8Element(Utf8JsonReader reader) {
+      return reader.readNextDoubleValue();
     }
   }
 
