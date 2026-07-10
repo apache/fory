@@ -33,6 +33,7 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.BaseObjectCodec;
+import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.GeneratedObjectCodec;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.ObjectCodec;
@@ -373,10 +374,16 @@ public final class JsonCodegen {
       case OBJECT:
         return true;
       case COLLECTION:
-        return property.writeElementRawType() != String.class;
+        return !writesStringCollectionDirectly(property);
       default:
         return false;
     }
+  }
+
+  static boolean writesStringCollectionDirectly(JsonFieldInfo property) {
+    return property.writeElementRawType() == String.class
+        && property.writeTypeInfo().codec().getClass()
+            == CollectionCodec.StringCollectionCodec.class;
   }
 
   static boolean usesReadCodec(JsonFieldInfo property) {

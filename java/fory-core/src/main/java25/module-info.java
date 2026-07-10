@@ -39,6 +39,7 @@ module org.apache.fory.core {
   exports org.apache.fory.memory;
   exports org.apache.fory.meta;
   exports org.apache.fory.platform;
+  exports org.apache.fory.platform.internal to org.apache.fory.json;
   exports org.apache.fory.pool;
   exports org.apache.fory.reflect;
   exports org.apache.fory.resolver;

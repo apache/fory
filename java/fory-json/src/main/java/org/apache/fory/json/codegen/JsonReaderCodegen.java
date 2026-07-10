@@ -1303,19 +1303,15 @@ final class JsonReaderCodegen {
         .inline();
   }
 
-  private static Expression readFloatExpr(int readerMode, boolean tokenValueRead) {
+  private static Expression readFloatExpr(int readerMode) {
     return new Expression.Invoke(
-            readerRef(readerMode),
-            readFloatMethod(readerMode, tokenValueRead),
-            TypeRef.of(float.class))
+            readerRef(readerMode), readFloatMethod(readerMode), TypeRef.of(float.class))
         .inline();
   }
 
-  private static Expression readDoubleExpr(int readerMode, boolean tokenValueRead) {
+  private static Expression readDoubleExpr(int readerMode) {
     return new Expression.Invoke(
-            readerRef(readerMode),
-            readDoubleMethod(readerMode, tokenValueRead),
-            TypeRef.of(double.class))
+            readerRef(readerMode), readDoubleMethod(readerMode), TypeRef.of(double.class))
         .inline();
   }
 
@@ -1353,18 +1349,20 @@ final class JsonReaderCodegen {
     return tokenValueRead ? "readLongTokenValue" : "readNextLongValue";
   }
 
-  private static String readFloatMethod(int readerMode, boolean tokenValueRead) {
+  // Exact generated field-name tokens stop at ':'. The next-value methods preserve the direct
+  // token parser for compact JSON while accepting legal whitespace before the value.
+  private static String readFloatMethod(int readerMode) {
     if (readerMode == GENERIC_READER) {
       return "readFloat";
     }
-    return tokenValueRead ? "readFloatTokenValue" : "readNextFloatValue";
+    return "readNextFloatValue";
   }
 
-  private static String readDoubleMethod(int readerMode, boolean tokenValueRead) {
+  private static String readDoubleMethod(int readerMode) {
     if (readerMode == GENERIC_READER) {
       return "readDouble";
     }
-    return tokenValueRead ? "readDoubleTokenValue" : "readNextDoubleValue";
+    return "readNextDoubleValue";
   }
 
   private static String readStringMethod(int readerMode, boolean tokenValueRead) {
@@ -1686,9 +1684,9 @@ final class JsonReaderCodegen {
       case LONG:
         return readLong(builder, property, rawType, readerMode, object, tokenValueRead);
       case FLOAT:
-        return readFloat(builder, property, rawType, readerMode, object, tokenValueRead);
+        return readFloat(builder, property, rawType, readerMode, object);
       case DOUBLE:
-        return readDouble(builder, property, rawType, readerMode, object, tokenValueRead);
+        return readDouble(builder, property, rawType, readerMode, object);
       case STRING:
         return builder.setField(property, object, readStringExpr(readerMode, tokenValueRead));
       case ENUM:
@@ -1726,9 +1724,9 @@ final class JsonReaderCodegen {
       case LONG:
         return readRecordLong(rawType, id, readerMode, object, tokenValueRead);
       case FLOAT:
-        return readRecordFloat(rawType, id, readerMode, object, tokenValueRead);
+        return readRecordFloat(rawType, id, readerMode, object);
       case DOUBLE:
-        return readRecordDouble(rawType, id, readerMode, object, tokenValueRead);
+        return readRecordDouble(rawType, id, readerMode, object);
       case STRING:
         return assignRecord(object, id, readStringExpr(readerMode, tokenValueRead));
       case ENUM:
@@ -1791,8 +1789,8 @@ final class JsonReaderCodegen {
   }
 
   private static Expression readRecordFloat(
-      Class<?> rawType, int id, int readerMode, Expression object, boolean tokenValueRead) {
-    Expression value = box(Float.class, readFloatExpr(readerMode, tokenValueRead));
+      Class<?> rawType, int id, int readerMode, Expression object) {
+    Expression value = box(Float.class, readFloatExpr(readerMode));
     if (rawType.isPrimitive()) {
       return assignRecord(object, id, value);
     }
@@ -1803,8 +1801,8 @@ final class JsonReaderCodegen {
   }
 
   private static Expression readRecordDouble(
-      Class<?> rawType, int id, int readerMode, Expression object, boolean tokenValueRead) {
-    Expression value = box(Double.class, readDoubleExpr(readerMode, tokenValueRead));
+      Class<?> rawType, int id, int readerMode, Expression object) {
+    Expression value = box(Double.class, readDoubleExpr(readerMode));
     if (rawType.isPrimitive()) {
       return assignRecord(object, id, value);
     }
@@ -1901,16 +1899,14 @@ final class JsonReaderCodegen {
       JsonFieldInfo property,
       Class<?> rawType,
       int readerMode,
-      Expression object,
-      boolean tokenValueRead) {
+      Expression object) {
     if (rawType.isPrimitive()) {
-      return builder.setField(property, object, readFloatExpr(readerMode, tokenValueRead));
+      return builder.setField(property, object, readFloatExpr(readerMode));
     }
     return new Expression.If(
         tryReadNullExpr(readerMode),
         builder.setNull(property, object),
-        builder.setField(
-            property, object, box(Float.class, readFloatExpr(readerMode, tokenValueRead))));
+        builder.setField(property, object, box(Float.class, readFloatExpr(readerMode))));
   }
 
   private static Expression readDouble(
@@ -1918,16 +1914,14 @@ final class JsonReaderCodegen {
       JsonFieldInfo property,
       Class<?> rawType,
       int readerMode,
-      Expression object,
-      boolean tokenValueRead) {
+      Expression object) {
     if (rawType.isPrimitive()) {
-      return builder.setField(property, object, readDoubleExpr(readerMode, tokenValueRead));
+      return builder.setField(property, object, readDoubleExpr(readerMode));
     }
     return new Expression.If(
         tryReadNullExpr(readerMode),
         builder.setNull(property, object),
-        builder.setField(
-            property, object, box(Double.class, readDoubleExpr(readerMode, tokenValueRead))));
+        builder.setField(property, object, box(Double.class, readDoubleExpr(readerMode))));
   }
 
   private static Expression readEnum(

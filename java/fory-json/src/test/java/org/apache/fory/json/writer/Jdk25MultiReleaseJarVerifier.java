@@ -20,12 +20,15 @@
 package org.apache.fory.json.writer;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -41,11 +44,14 @@ public final class Jdk25MultiReleaseJarVerifier {
   private Jdk25MultiReleaseJarVerifier() {}
 
   public static void main(String[] args) throws Exception {
-    if (args.length != 2) {
+    if (args.length != 3) {
       throw new IllegalArgumentException(
-          "Usage: Jdk25MultiReleaseJarVerifier <fory-json.jar> <fory-json-sources.jar>");
+          "Usage: Jdk25MultiReleaseJarVerifier <fory-json.jar> <fory-json-sources.jar>"
+              + " <fory-core.jar>");
     }
-    verify(Paths.get(args[0]), Paths.get(args[1]));
+    Path jarPath = Paths.get(args[0]);
+    verify(jarPath, Paths.get(args[1]));
+    verifyModulePath(jarPath, Paths.get(args[2]));
   }
 
   static void verify(Path jarPath, Path sourcesPath) throws Exception {
@@ -78,6 +84,31 @@ public final class Jdk25MultiReleaseJarVerifier {
     require(Modifier.isStatic(modifiers), name + " must be static");
     require(Modifier.isFinal(modifiers), name + " must be final");
     require("java.lang.invoke.VarHandle".equals(field.getType().getName()), name + " type");
+  }
+
+  private static void verifyModulePath(Path jsonJar, Path coreJar) throws Exception {
+    Path testClasses =
+        Paths.get(
+            Jdk25MultiReleaseJarVerifier.class
+                .getProtectionDomain()
+                .getCodeSource()
+                .getLocation()
+                .toURI());
+    List<String> command = new ArrayList<>();
+    command.add(Paths.get(System.getProperty("java.home"), "bin", "java").toString());
+    command.add("--module-path");
+    command.add(coreJar + File.pathSeparator + jsonJar);
+    command.add("--add-modules");
+    command.add("org.apache.fory.json");
+    command.add("--add-opens");
+    command.add("java.base/java.lang.invoke=org.apache.fory.core");
+    command.add("--add-opens");
+    command.add("org.apache.fory.json/org.apache.fory.json.writer=ALL-UNNAMED");
+    command.add("-cp");
+    command.add(testClasses.toString());
+    command.add("org.apache.fory.json.verify.Jdk25ModulePathProbe");
+    Process process = new ProcessBuilder(command).inheritIO().start();
+    require(process.waitFor() == 0, "named-module BigDecimal writer probe failed");
   }
 
   private static byte[] read(JarFile jar, String name) throws IOException {

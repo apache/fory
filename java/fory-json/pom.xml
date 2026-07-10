@@ -272,6 +272,13 @@
                 </goals>
                 <configuration>
                   <target>
+                    <condition
+                        property="fory.core.module.jar"
+                        value="${project.basedir}/../fory-core/target/fory-core-${project.version}.jar"
+                        else="${settings.localRepository}/org/apache/fory/fory-core/${project.version}/fory-core-${project.version}.jar">
+                      <available
+                          file="${project.basedir}/../fory-core/target/fory-core-${project.version}.jar"/>
+                    </condition>
                     <java
                         classname="org.apache.fory.json.writer.Jdk25MultiReleaseJarVerifier"
                         fork="true"
@@ -282,6 +289,7 @@
                       </classpath>
                       <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
                       <arg value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
+                      <arg value="${fory.core.module.jar}"/>
                     </java>
                   </target>
                 </configuration>

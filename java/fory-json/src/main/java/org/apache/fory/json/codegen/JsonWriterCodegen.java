@@ -37,6 +37,7 @@ import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.codegen.ExpressionOptimizer;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.meta.JsonFieldInfo;
@@ -472,8 +473,7 @@ final class JsonWriterCodegen {
             writeFieldName(property, id, utf8, commaKnown, index, writer),
             writeCodec(id, value, utf8, writer, typeResolver));
       }
-      return writePrimitive(
-          property, id, fieldValue, utf8, commaKnown, index, writer);
+      return writePrimitive(property, id, fieldValue, utf8, commaKnown, index, writer);
     }
     Expression value =
         new Expression.Variable(
@@ -750,12 +750,12 @@ final class JsonWriterCodegen {
       case CHAR:
         return writeScalar(kind, value, writer);
       case ARRAY:
-        Expression array = writeExactUtf8Array(property.writeRawType(), value, utf8, writer);
+        Expression array = writeExactUtf8Array(property, value, utf8, writer);
         return array == null ? writeCodec(id, value, utf8, writer, typeResolver) : array;
       case MAP:
         return writeCodec(id, value, utf8, writer, typeResolver);
       case COLLECTION:
-        if (property.writeElementRawType() == String.class) {
+        if (JsonCodegen.writesStringCollectionDirectly(property)) {
           return writeStringCollection(value, utf8, writer);
         }
         return writeCodec(id, value, utf8, writer, typeResolver);
@@ -923,14 +923,16 @@ final class JsonWriterCodegen {
   }
 
   private static Expression writeExactUtf8Array(
-      Class<?> rawType, Expression value, boolean utf8, Expression writer) {
+      JsonFieldInfo property, Expression value, boolean utf8, Expression writer) {
     if (!utf8) {
       return null;
     }
-    if (rawType == String[].class) {
+    Class<?> rawType = property.writeRawType();
+    Class<?> codecType = property.writeTypeInfo().codec().getClass();
+    if (rawType == String[].class && codecType == ArrayCodec.StringArrayCodec.class) {
       return new Expression.Invoke(writer, "writeStringArray", value);
     }
-    if (rawType == long[].class) {
+    if (rawType == long[].class && codecType == ArrayCodec.LongArrayCodec.class) {
       return new Expression.Invoke(writer, "writeLongArray", value);
     }
     return null;
