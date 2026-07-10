@@ -764,26 +764,24 @@ public final class ScalarCodecs {
 
     private static BitSet readBitSet(JsonReader reader) {
       reader.enterDepth();
-      try {
-        reader.expect('[');
-        long[] words = new long[4];
-        int size = 0;
-        if (!reader.consume(']')) {
-          do {
-            if (size == words.length) {
-              words = Arrays.copyOf(words, words.length << 1);
-            }
-            words[size++] = reader.readLong();
-          } while (reader.consume(','));
-          reader.expect(']');
-        }
-        if (size != words.length) {
-          words = Arrays.copyOf(words, size);
-        }
-        return BitSet.valueOf(words);
-      } finally {
-        reader.exitDepth();
+      reader.expect('[');
+      long[] words = new long[4];
+      int size = 0;
+      if (!reader.consume(']')) {
+        do {
+          if (size == words.length) {
+            words = Arrays.copyOf(words, words.length << 1);
+          }
+          words[size++] = reader.readLong();
+        } while (reader.consume(','));
+        reader.expect(']');
       }
+      if (size != words.length) {
+        words = Arrays.copyOf(words, size);
+      }
+      BitSet bitSet = BitSet.valueOf(words);
+      reader.exitDepth();
+      return bitSet;
     }
   }
 

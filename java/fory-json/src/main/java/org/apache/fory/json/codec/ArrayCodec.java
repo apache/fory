@@ -844,24 +844,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new float[0];
-        }
-        float[] values = new float[8];
-        int size = 0;
-        do {
-          rejectNull(reader);
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] = reader.readNextFloatValue();
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new float[0];
       }
+      float[] values = new float[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readNextFloatValue();
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
 
     @Override
@@ -871,24 +869,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new float[0];
-        }
-        float[] values = new float[8];
-        int size = 0;
-        do {
-          rejectNull(reader);
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] = reader.readNextFloatValue();
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new float[0];
       }
+      float[] values = new float[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readNextFloatValue();
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
 
     @Override
@@ -898,24 +894,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new float[0];
-        }
-        float[] values = new float[8];
-        int size = 0;
-        do {
-          rejectNull(reader);
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] = reader.readNextFloatValue();
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new float[0];
       }
+      float[] values = new float[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readNextFloatValue();
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
   }
 
@@ -966,24 +960,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new double[0];
-        }
-        double[] values = new double[8];
-        int size = 0;
-        do {
-          rejectNull(reader);
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] = reader.readNextDoubleValue();
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new double[0];
       }
+      double[] values = new double[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readNextDoubleValue();
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
 
     @Override
@@ -993,24 +985,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new double[0];
-        }
-        double[] values = new double[8];
-        int size = 0;
-        do {
-          rejectNull(reader);
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] = reader.readNextDoubleValue();
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new double[0];
       }
+      double[] values = new double[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readNextDoubleValue();
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
 
     @Override
@@ -1020,24 +1010,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new double[0];
-        }
-        double[] values = new double[8];
-        int size = 0;
-        do {
-          rejectNull(reader);
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] = reader.readNextDoubleValue();
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new double[0];
       }
+      double[] values = new double[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readNextDoubleValue();
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
   }
 
@@ -1683,36 +1671,35 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     @Override
     Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      try {
-        reader.expect('[');
-        if (reader.consume(']')) {
-          return Array.newInstance(componentType, 0);
-        }
-        Object values = Array.newInstance(componentType, INITIAL_SIZE);
-        int size = 0;
-        JsonCodec codec = elementCodec;
-        do {
-          if (size == Array.getLength(values)) {
-            Object grown = Array.newInstance(componentType, size << 1);
-            System.arraycopy(values, 0, grown, 0, size);
-            values = grown;
-          }
-          Object element = codec.read(reader, elementTypeInfo, resolver);
-          if (element == null) {
-            throw new ForyJsonException("Cannot read null into primitive array element");
-          }
-          Array.set(values, size++, element);
-        } while (reader.consume(','));
-        reader.expect(']');
-        if (size == Array.getLength(values)) {
-          return values;
-        }
-        Object result = Array.newInstance(componentType, size);
-        System.arraycopy(values, 0, result, 0, size);
-        return result;
-      } finally {
+      reader.expect('[');
+      if (reader.consume(']')) {
         reader.exitDepth();
+        return Array.newInstance(componentType, 0);
       }
+      Object values = Array.newInstance(componentType, INITIAL_SIZE);
+      int size = 0;
+      JsonCodec codec = elementCodec;
+      do {
+        if (size == Array.getLength(values)) {
+          Object grown = Array.newInstance(componentType, size << 1);
+          System.arraycopy(values, 0, grown, 0, size);
+          values = grown;
+        }
+        Object element = codec.read(reader, elementTypeInfo, resolver);
+        if (element == null) {
+          throw new ForyJsonException("Cannot read null into primitive array element");
+        }
+        Array.set(values, size++, element);
+      } while (reader.consume(','));
+      reader.expect(']');
+      if (size == Array.getLength(values)) {
+        reader.exitDepth();
+        return values;
+      }
+      Object result = Array.newInstance(componentType, size);
+      System.arraycopy(values, 0, result, 0, size);
+      reader.exitDepth();
+      return result;
     }
 
     @Override
@@ -1722,27 +1709,26 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return Array.newInstance(componentType, 0);
-        }
-        Object values = Array.newInstance(componentType, INITIAL_SIZE);
-        int size = 0;
-        JsonCodec codec = elementCodec;
-        do {
-          if (size == Array.getLength(values)) {
-            Object grown = Array.newInstance(componentType, size << 1);
-            System.arraycopy(values, 0, grown, 0, size);
-            values = grown;
-          }
-          Object element = codec.readLatin1(reader, elementTypeInfo, resolver);
-          putElement(values, size++, element);
-        } while (reader.consumeNextCommaOrEndArray());
-        return copyArray(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return Array.newInstance(componentType, 0);
       }
+      Object values = Array.newInstance(componentType, INITIAL_SIZE);
+      int size = 0;
+      JsonCodec codec = elementCodec;
+      do {
+        if (size == Array.getLength(values)) {
+          Object grown = Array.newInstance(componentType, size << 1);
+          System.arraycopy(values, 0, grown, 0, size);
+          values = grown;
+        }
+        Object element = codec.readLatin1(reader, elementTypeInfo, resolver);
+        putElement(values, size++, element);
+      } while (reader.consumeNextCommaOrEndArray());
+      Object result = copyArray(values, size);
+      reader.exitDepth();
+      return result;
     }
 
     @Override
@@ -1752,27 +1738,26 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return Array.newInstance(componentType, 0);
-        }
-        Object values = Array.newInstance(componentType, INITIAL_SIZE);
-        int size = 0;
-        JsonCodec codec = elementCodec;
-        do {
-          if (size == Array.getLength(values)) {
-            Object grown = Array.newInstance(componentType, size << 1);
-            System.arraycopy(values, 0, grown, 0, size);
-            values = grown;
-          }
-          Object element = codec.readUtf16(reader, elementTypeInfo, resolver);
-          putElement(values, size++, element);
-        } while (reader.consumeNextCommaOrEndArray());
-        return copyArray(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return Array.newInstance(componentType, 0);
       }
+      Object values = Array.newInstance(componentType, INITIAL_SIZE);
+      int size = 0;
+      JsonCodec codec = elementCodec;
+      do {
+        if (size == Array.getLength(values)) {
+          Object grown = Array.newInstance(componentType, size << 1);
+          System.arraycopy(values, 0, grown, 0, size);
+          values = grown;
+        }
+        Object element = codec.readUtf16(reader, elementTypeInfo, resolver);
+        putElement(values, size++, element);
+      } while (reader.consumeNextCommaOrEndArray());
+      Object result = copyArray(values, size);
+      reader.exitDepth();
+      return result;
     }
 
     @Override
@@ -1782,27 +1767,26 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return Array.newInstance(componentType, 0);
-        }
-        Object values = Array.newInstance(componentType, INITIAL_SIZE);
-        int size = 0;
-        JsonCodec codec = elementCodec;
-        do {
-          if (size == Array.getLength(values)) {
-            Object grown = Array.newInstance(componentType, size << 1);
-            System.arraycopy(values, 0, grown, 0, size);
-            values = grown;
-          }
-          Object element = codec.readUtf8(reader, elementTypeInfo, resolver);
-          putElement(values, size++, element);
-        } while (reader.consumeNextCommaOrEndArray());
-        return copyArray(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return Array.newInstance(componentType, 0);
       }
+      Object values = Array.newInstance(componentType, INITIAL_SIZE);
+      int size = 0;
+      JsonCodec codec = elementCodec;
+      do {
+        if (size == Array.getLength(values)) {
+          Object grown = Array.newInstance(componentType, size << 1);
+          System.arraycopy(values, 0, grown, 0, size);
+          values = grown;
+        }
+        Object element = codec.readUtf8(reader, elementTypeInfo, resolver);
+        putElement(values, size++, element);
+      } while (reader.consumeNextCommaOrEndArray());
+      Object result = copyArray(values, size);
+      reader.exitDepth();
+      return result;
     }
 
     private void putElement(Object values, int index, Object element) {
@@ -2144,24 +2128,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new Float[0];
-        }
-        Float[] values = new Float[8];
-        int size = 0;
-        do {
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] =
-              reader.tryReadNextNullToken() ? null : Float.valueOf(reader.readNextFloatValue());
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new Float[0];
       }
+      Float[] values = new Float[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Float.valueOf(reader.readNextFloatValue());
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
 
     @Override
@@ -2171,24 +2153,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new Float[0];
-        }
-        Float[] values = new Float[8];
-        int size = 0;
-        do {
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] =
-              reader.tryReadNextNullToken() ? null : Float.valueOf(reader.readNextFloatValue());
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new Float[0];
       }
+      Float[] values = new Float[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Float.valueOf(reader.readNextFloatValue());
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
 
     @Override
@@ -2198,24 +2178,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new Float[0];
-        }
-        Float[] values = new Float[8];
-        int size = 0;
-        do {
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] =
-              reader.tryReadNextNullToken() ? null : Float.valueOf(reader.readNextFloatValue());
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new Float[0];
       }
+      Float[] values = new Float[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Float.valueOf(reader.readNextFloatValue());
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
   }
 
@@ -2270,24 +2248,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new Double[0];
-        }
-        Double[] values = new Double[8];
-        int size = 0;
-        do {
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] =
-              reader.tryReadNextNullToken() ? null : Double.valueOf(reader.readNextDoubleValue());
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new Double[0];
       }
+      Double[] values = new Double[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Double.valueOf(reader.readNextDoubleValue());
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
 
     @Override
@@ -2297,24 +2273,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new Double[0];
-        }
-        Double[] values = new Double[8];
-        int size = 0;
-        do {
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] =
-              reader.tryReadNextNullToken() ? null : Double.valueOf(reader.readNextDoubleValue());
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new Double[0];
       }
+      Double[] values = new Double[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Double.valueOf(reader.readNextDoubleValue());
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
 
     @Override
@@ -2324,24 +2298,22 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         return null;
       }
       reader.enterDepth();
-      try {
-        reader.expectNextToken('[');
-        if (reader.consumeNextToken(']')) {
-          return new Double[0];
-        }
-        Double[] values = new Double[8];
-        int size = 0;
-        do {
-          if (size == values.length) {
-            values = Arrays.copyOf(values, values.length << 1);
-          }
-          values[size++] =
-              reader.tryReadNextNullToken() ? null : Double.valueOf(reader.readNextDoubleValue());
-        } while (reader.consumeNextCommaOrEndArray());
-        return Arrays.copyOf(values, size);
-      } finally {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
+        return new Double[0];
       }
+      Double[] values = new Double[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Double.valueOf(reader.readNextDoubleValue());
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
     }
   }
 

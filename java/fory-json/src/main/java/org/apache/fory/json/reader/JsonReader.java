@@ -153,6 +153,8 @@ public abstract class JsonReader {
   }
 
   public final void exitDepth() {
+    // Failed root reads reset depth when the reader is cleared. Nested codecs decrement only after
+    // a successful value; do not add try/finally solely to restore depth on parse failure.
     depth--;
   }
 
