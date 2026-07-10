@@ -30,7 +30,6 @@ public final class Jdk25ModulePathProbe {
   public static void main(String[] args) throws Exception {
     Class<?> fieldsType = Class.forName("org.apache.fory.json.writer.BigDecimalFields");
     requireHandle(fieldsType, "INT_COMPACT");
-    requireHandle(fieldsType, "INT_VAL");
     requireHandle(fieldsType, "SCALE");
 
     Class<?> foryJsonType = Class.forName("org.apache.fory.json.ForyJson");

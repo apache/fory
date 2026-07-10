@@ -444,8 +444,8 @@ public class JsonScalarTest extends ForyJsonTestModels {
     value.negative = -12345;
     value.floatValue = 1.0000001f;
     value.doubleValue = 46.916843283327836d;
-    value.bigInteger = new NoToStringBigInteger("-123456789012345678901234567890");
-    value.bigDecimal = new NoToStringBigDecimal("12345678901234567890.123456789");
+    value.bigInteger = new BigInteger("-123456789012345678901234567890");
+    value.bigDecimal = new BigDecimal("12345678901234567890.123456789");
     String expected =
         "{\"prefix\":\""
             + ZH_TEXT
@@ -591,21 +591,24 @@ public class JsonScalarTest extends ForyJsonTestModels {
     Utf8ScalarFields fields = new Utf8ScalarFields();
     fields.uuid = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
     fields.decimal = new BigDecimal("12345.6789");
+    fields.integer = new BigInteger("123456789012345678901234567890");
     fields.date = LocalDate.of(2024, 2, 3);
     fields.timestamp = OffsetDateTime.of(2024, 2, 3, 4, 5, 6, 123456789, ZoneOffset.UTC);
     String expected =
         "{\"uuid\":\"123e4567-e89b-12d3-a456-426614174000\","
             + "\"decimal\":12345.6789,"
+            + "\"integer\":123456789012345678901234567890,"
             + "\"date\":\"2024-02-03\","
             + "\"timestamp\":\"2024-02-03T04:05:06.123456789Z\"}";
     assertEquals(new String(json.toJsonBytes(fields), StandardCharsets.UTF_8), expected);
     assertEquals(json.toJson(fields), expected);
     assertGeneratedWhenSupported(json, Utf8ScalarFields.class);
 
-    fields.decimal = new NoToStringBigDecimal("12345.6789");
+    fields.decimal = new BigDecimal("12345678901234567890.123");
     expected =
         "{\"uuid\":\"123e4567-e89b-12d3-a456-426614174000\","
-            + "\"decimal\":12345.6789,"
+            + "\"decimal\":12345678901234567890.123,"
+            + "\"integer\":123456789012345678901234567890,"
             + "\"date\":\"2024-02-03\","
             + "\"timestamp\":\"2024-02-03T04:05:06.123456789Z\"}";
     assertEquals(new String(json.toJsonBytes(fields), StandardCharsets.UTF_8), expected);
@@ -655,7 +658,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void writeBigNumbersDirectly() {
+  public void writeBigNumbers() {
     BigInteger[] integers = {
       new BigInteger("123456789012345678901234567890"),
       new BigInteger("-123456789012345678901234567890")
@@ -663,12 +666,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
     for (BigInteger value : integers) {
       assertWriterNumber(value, value.toString());
     }
-    assertWriterNumber(
-        new NoToStringBigInteger("123456789012345678901234567890"),
-        "123456789012345678901234567890");
-    assertWriterNumber(
-        new NoToStringBigInteger("-123456789012345678901234567890"),
-        "-123456789012345678901234567890");
     BigDecimal[] decimals = {
       new BigDecimal("12345.6789"),
       new BigDecimal("0.000001"),
@@ -681,9 +678,19 @@ public class JsonScalarTest extends ForyJsonTestModels {
     for (BigDecimal value : decimals) {
       assertWriterNumber(value, value.toString());
     }
-    assertWriterNumber(new NoToStringBigDecimal("12345.6789"), "12345.6789");
-    assertWriterNumber(new NoToStringBigDecimal("1E+7"), "1E+7");
-    assertWriterNumber(new NoToStringBigDecimal("-1.2345E+8"), "-1.2345E+8");
+    for (int digits : new int[] {20, 100, 1000}) {
+      BigInteger integer = new BigInteger(repeat('9', digits));
+      assertWriterNumber(integer, integer.toString());
+      assertWriterNumber(integer.negate(), integer.negate().toString());
+      assertBigIntegerReaders(integer.toString());
+      assertBigIntegerReaders(integer.negate().toString());
+      for (int scale : new int[] {0, digits / 2, digits + 7, -3}) {
+        assertBigDecimalWriter(integer, scale);
+        assertBigDecimalWriter(integer.negate(), scale);
+        assertBigDecimalReaders(new BigDecimal(integer, scale).toString());
+        assertBigDecimalReaders(new BigDecimal(integer.negate(), scale).toString());
+      }
+    }
   }
 
   @Test
@@ -697,16 +704,16 @@ public class JsonScalarTest extends ForyJsonTestModels {
     };
     for (BigInteger value : longEdges) {
       String expected = value.toString();
-      assertWriterNumber(new NoToStringBigInteger(expected), expected);
+      assertWriterNumber(value, expected);
     }
     for (int power = 2; power <= 5; power++) {
       BigInteger boundary = chunkBase.pow(power);
       for (int delta = -1; delta <= 1; delta++) {
         BigInteger value = boundary.add(BigInteger.valueOf(delta));
         String expected = value.toString();
-        assertWriterNumber(new NoToStringBigInteger(expected), expected);
+        assertWriterNumber(value, expected);
         expected = value.negate().toString();
-        assertWriterNumber(new NoToStringBigInteger(expected), expected);
+        assertWriterNumber(value.negate(), expected);
       }
     }
 
@@ -777,12 +784,91 @@ public class JsonScalarTest extends ForyJsonTestModels {
         integer = integer.negate();
       }
       String integerText = integer.toString();
-      assertWriterNumber(new NoToStringBigInteger(integerText), integerText);
+      assertWriterNumber(integer, integerText);
+      assertBigIntegerReaders(integerText);
 
       int scale = random.nextInt(601) - 300;
       BigDecimal decimal = new BigDecimal(integer, scale);
-      assertWriterNumber(new NoToStringBigDecimal(integer, scale), decimal.toString());
+      String decimalText = decimal.toString();
+      assertWriterNumber(decimal, decimalText);
+      assertBigDecimalReaders(decimalText);
     }
+  }
+
+  @Test
+  public void rejectBigNumberSubtypes() {
+    BigIntegerSubtype integer = new BigIntegerSubtype("42");
+    BigDecimalSubtype decimal = new BigDecimalSubtype("12345678901234567890.123");
+
+    assertSubtypeRejected(
+        () -> new Utf8JsonWriter(false).writeBigInteger(integer), BigIntegerSubtype.class);
+    assertSubtypeRejected(
+        () -> new StringJsonWriter(false).writeBigInteger(integer), BigIntegerSubtype.class);
+    assertSubtypeRejected(
+        () -> utf16StringWriter().writeBigInteger(integer), BigIntegerSubtype.class);
+    assertSubtypeRejected(
+        () -> new Utf8JsonWriter(false).writeBigDecimal(decimal), BigDecimalSubtype.class);
+    assertSubtypeRejected(
+        () -> new StringJsonWriter(false).writeBigDecimal(decimal), BigDecimalSubtype.class);
+    assertSubtypeRejected(
+        () -> utf16StringWriter().writeBigDecimal(decimal), BigDecimalSubtype.class);
+
+    ForyJson json = newJson();
+    BigNumberFields fields = new BigNumberFields();
+    fields.integer = integer;
+    assertSubtypeRejected(() -> json.toJson(fields), BigIntegerSubtype.class);
+    fields.integer = null;
+    fields.decimal = decimal;
+    assertSubtypeRejected(() -> json.toJsonBytes(fields), BigDecimalSubtype.class);
+
+    BigNumberContainers containers = new BigNumberContainers();
+    containers.bigIntegers = Arrays.asList(integer);
+    assertSubtypeRejected(() -> json.toJson(containers), BigIntegerSubtype.class);
+
+    ForyJson custom =
+        newJsonBuilder()
+            .registerCodec(
+                BigInteger.class, new TaggedNumberCodec("integer", BigInteger.valueOf(42)))
+            .registerCodec(
+                BigDecimal.class, new TaggedNumberCodec("decimal", new BigDecimal("1.25")))
+            .build();
+    fields.integer = integer;
+    fields.decimal = decimal;
+    String expected = "{\"decimal\":\"decimal\",\"integer\":\"integer\"}";
+    assertEquals(custom.toJson(fields), expected);
+    assertEquals(new String(custom.toJsonBytes(fields), StandardCharsets.UTF_8), expected);
+
+    ForyJson subtypeCustom =
+        newJsonBuilder()
+            .registerCodec(
+                BigIntegerSubtype.class,
+                new TaggedNumberCodec("integer-subtype", BigInteger.valueOf(42)))
+            .registerCodec(
+                BigDecimalSubtype.class,
+                new TaggedNumberCodec("decimal-subtype", new BigDecimal("1.25")))
+            .build();
+    assertEquals(subtypeCustom.toJson(integer), "\"integer-subtype\"");
+    assertEquals(
+        new String(subtypeCustom.toJsonBytes(decimal), StandardCharsets.UTF_8),
+        "\"decimal-subtype\"");
+  }
+
+  @Test
+  public void rejectOversizedNumberOutput() throws Exception {
+    BigInteger integer = new BigInteger("9223372036854775808");
+    BigDecimal decimal = new BigDecimal("9223372036854775808");
+
+    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+    setIntField(utf8Writer, "position", Integer.MAX_VALUE - 2);
+    assertNumberOutputTooLarge(() -> utf8Writer.writeBigInteger(integer));
+
+    StringJsonWriter latin1Writer = new StringJsonWriter(false, new byte[4]);
+    setIntField(latin1Writer, "position", Integer.MAX_VALUE - 2);
+    assertNumberOutputTooLarge(() -> latin1Writer.writeBigDecimal(decimal));
+
+    StringJsonWriter utf16Writer = utf16StringWriter();
+    setIntField(utf16Writer, "position", Integer.MAX_VALUE - 2);
+    assertNumberOutputTooLarge(() -> utf16Writer.writeBigInteger(integer));
   }
 
   @Test
@@ -854,29 +940,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
         assertEquals(utf16Writer.toJson(), "\"\u0100\"," + expected);
       }
     }
-  }
-
-  @Test
-  public void bigNumberChunkCachesAreBounded() throws Exception {
-    BigInteger value = new BigInteger(repeat('1', 9500));
-
-    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
-    utf8Writer.writeBigInteger(value);
-    Field utf8Chunks = Utf8JsonWriter.class.getDeclaredField("bigNumberChunks");
-    utf8Chunks.setAccessible(true);
-    assertEquals(((int[]) utf8Chunks.get(utf8Writer)).length, (9500 + 8) / 9);
-
-    utf8Writer.reset();
-    assertEquals(utf8Chunks.get(utf8Writer), null);
-
-    StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
-    stringWriter.writeBigInteger(value);
-    Field stringChunks = StringJsonWriter.class.getDeclaredField("bigNumberChunks");
-    stringChunks.setAccessible(true);
-    assertEquals(((int[]) stringChunks.get(stringWriter)).length, (9500 + 8) / 9);
-
-    stringWriter.reset();
-    assertEquals(stringChunks.get(stringWriter), null);
   }
 
   @Test
@@ -1487,18 +1550,13 @@ public class JsonScalarTest extends ForyJsonTestModels {
     ForyJson json = newJson();
     BigNumberContainers value = new BigNumberContainers();
     value.bigIntegers =
-        Arrays.asList(
-            new NoToStringBigInteger("42"),
-            new NoToStringBigInteger("123456789012345678901234567890"));
+        Arrays.asList(new BigInteger("42"), new BigInteger("123456789012345678901234567890"));
     value.bigDecimals =
-        Arrays.asList(
-            new NoToStringBigDecimal("43"),
-            new NoToStringBigDecimal("12345.6789"),
-            new NoToStringBigDecimal("1E+7"));
+        Arrays.asList(new BigDecimal("43"), new BigDecimal("12345.6789"), new BigDecimal("1E+7"));
     value.bigIntegerMap = new LinkedHashMap<>();
-    value.bigIntegerMap.put("value", new NoToStringBigInteger("-123456789012345678901234567890"));
+    value.bigIntegerMap.put("value", new BigInteger("-123456789012345678901234567890"));
     value.bigDecimalMap = new LinkedHashMap<>();
-    value.bigDecimalMap.put("value", new NoToStringBigDecimal("-1.2345E+8"));
+    value.bigDecimalMap.put("value", new BigDecimal("-1.2345E+8"));
 
     String expected =
         "{\"bigIntegers\":[42,123456789012345678901234567890],"
@@ -1507,6 +1565,20 @@ public class JsonScalarTest extends ForyJsonTestModels {
             + "\"bigDecimalMap\":{\"value\":-1.2345E+8}}";
     assertEquals(json.toJson(value), expected);
     assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+
+    BigInteger[] integers = {
+      new BigInteger("42"), new BigInteger("123456789012345678901234567890")
+    };
+    String integerJson = "[42,123456789012345678901234567890]";
+    assertEquals(json.toJson(integers), integerJson);
+    assertEquals(
+        Arrays.asList(json.fromJson(integerJson, BigInteger[].class)), Arrays.asList(integers));
+
+    BigDecimal[] decimals = {new BigDecimal("0.100"), new BigDecimal("1.2345E+30")};
+    String decimalJson = "[0.100,1.2345E+30]";
+    assertEquals(new String(json.toJsonBytes(decimals), StandardCharsets.UTF_8), decimalJson);
+    assertEquals(
+        Arrays.asList(json.fromJson(decimalJson, BigDecimal[].class)), Arrays.asList(decimals));
   }
 
   @Test
@@ -1909,6 +1981,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public static final class Utf8ScalarFields {
     public UUID uuid;
     public BigDecimal decimal;
+    public BigInteger integer;
     public LocalDate date;
     public OffsetDateTime timestamp;
   }
@@ -2015,54 +2088,65 @@ public class JsonScalarTest extends ForyJsonTestModels {
     public Map<String, BigDecimal> bigDecimalMap;
   }
 
-  private static final class NoToStringBigInteger extends BigInteger {
-    private NoToStringBigInteger(String value) {
+  public static final class BigNumberFields {
+    public BigDecimal decimal;
+    public BigInteger integer;
+  }
+
+  private static final class BigIntegerSubtype extends BigInteger {
+    private BigIntegerSubtype(String value) {
       super(value);
     }
 
     @Override
     public String toString() {
-      throw new AssertionError("BigInteger writers must own numeric formatting");
+      throw new AssertionError("The default codec must reject BigInteger subtypes");
     }
 
     @Override
     public String toString(int radix) {
-      throw new AssertionError("BigInteger writers must own numeric formatting");
+      throw new AssertionError("The default codec must reject BigInteger subtypes");
+    }
+
+    @Override
+    public int bitLength() {
+      throw new AssertionError("The default codec must reject BigInteger subtypes");
+    }
+
+    @Override
+    public long longValue() {
+      throw new AssertionError("The default codec must reject BigInteger subtypes");
     }
 
     @Override
     public BigInteger negate() {
-      throw new AssertionError("BigInteger writers must not allocate a negated magnitude");
+      throw new AssertionError("The default codec must reject BigInteger subtypes");
     }
   }
 
-  private static final class NoToStringBigDecimal extends BigDecimal {
-    private NoToStringBigDecimal(String value) {
+  private static final class BigDecimalSubtype extends BigDecimal {
+    private BigDecimalSubtype(String value) {
       super(value);
-    }
-
-    private NoToStringBigDecimal(BigInteger unscaled, int scale) {
-      super(unscaled, scale);
     }
 
     @Override
     public String toString() {
-      throw new AssertionError("BigDecimal writers must own numeric formatting");
+      throw new AssertionError("The default codec must reject BigDecimal subtypes");
     }
 
     @Override
     public BigInteger unscaledValue() {
-      throw new AssertionError("BigDecimal writers must read the stored coefficient directly");
+      throw new AssertionError("The default codec must reject BigDecimal subtypes");
     }
 
     @Override
     public int scale() {
-      throw new AssertionError("BigDecimal writers must read the stored scale directly");
+      throw new AssertionError("The default codec must reject BigDecimal subtypes");
     }
 
     @Override
     public BigDecimal negate() {
-      throw new AssertionError("BigDecimal writers must not allocate a negated magnitude");
+      throw new AssertionError("The default codec must reject BigDecimal subtypes");
     }
   }
 
@@ -2336,6 +2420,12 @@ public class JsonScalarTest extends ForyJsonTestModels {
     return field.get(owner);
   }
 
+  private static void setIntField(Object owner, String name, int value) throws Exception {
+    Field field = owner.getClass().getDeclaredField(name);
+    field.setAccessible(true);
+    field.setInt(owner, value);
+  }
+
   private static final class UrlStringCodec implements JsonCodec {
     @Override
     public void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
@@ -2563,8 +2653,15 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   private static void assertBigDecimalWriter(BigInteger unscaled, int scale) {
     BigDecimal value = new BigDecimal(unscaled, scale);
-    String expected = value.toString();
-    assertWriterNumber(new NoToStringBigDecimal(unscaled, scale), expected);
+    assertWriterNumber(value, value.toString());
+  }
+
+  private static void assertBigIntegerReaders(String token) {
+    BigInteger expected = new BigInteger(token);
+    assertEquals(
+        new Utf8JsonReader(token.getBytes(StandardCharsets.UTF_8)).readBigInteger(), expected);
+    assertEquals(new Latin1JsonReader(latin1Bytes(token)).readBigInteger(), expected);
+    assertEquals(utf16Reader(token).readBigInteger(), expected);
   }
 
   private static void assertBigDecimalReaders(String token) {
@@ -2573,6 +2670,17 @@ public class JsonScalarTest extends ForyJsonTestModels {
         new Utf8JsonReader(token.getBytes(StandardCharsets.UTF_8)).readBigDecimal(), expected);
     assertEquals(new Latin1JsonReader(latin1Bytes(token)).readBigDecimal(), expected);
     assertEquals(utf16Reader(token).readBigDecimal(), expected);
+  }
+
+  private static void assertSubtypeRejected(Runnable action, Class<?> type) {
+    ForyJsonException error = expectThrows(ForyJsonException.class, action::run);
+    assertTrue(error.getMessage().contains(type.getName()));
+    assertTrue(error.getMessage().contains("explicit codec"));
+  }
+
+  private static void assertNumberOutputTooLarge(Runnable action) {
+    ForyJsonException error = expectThrows(ForyJsonException.class, action::run);
+    assertEquals(error.getMessage(), "JSON number output too large");
   }
 
   private static void assertFloatWriter(float value) {

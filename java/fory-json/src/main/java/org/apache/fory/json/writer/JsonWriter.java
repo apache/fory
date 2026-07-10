@@ -102,11 +102,23 @@ public abstract class JsonWriter {
     writeString(value.toString());
   }
 
-  // Concrete writers own arbitrary-precision numeric formatting so digit output stays direct to
-  // the byte or compact-string buffer representation instead of flowing through virtual writes.
+  // Concrete writers own direct compact formatting and copying canonical arbitrary-precision text
+  // into their byte or compact-string buffer representation.
   public abstract void writeBigInteger(BigInteger value);
 
   public abstract void writeBigDecimal(BigDecimal value);
+
+  protected static void throwUnsupportedBigNumber(Class<?> type) {
+    BigNumberType.throwUnsupported(type);
+  }
+
+  // Keep exception construction outside compiled numeric paths and defer loading until failure.
+  private static final class BigNumberType {
+    private static void throwUnsupported(Class<?> type) {
+      throw new ForyJsonException(
+          "Unsupported JSON big-number subtype " + type + "; register an explicit codec");
+    }
+  }
 
   public void writeUuid(UUID value) {
     writeString(value.toString());

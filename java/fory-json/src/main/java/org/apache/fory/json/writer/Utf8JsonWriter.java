@@ -100,7 +100,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   private byte[] buffer;
   private final StringBuilder decimalBuilder;
-  private int[] bigNumberChunks;
   private int position;
 
   public Utf8JsonWriter(boolean writeNullFields) {
@@ -124,9 +123,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     super.reset();
     if (buffer.length > RETAINED_CAPACITY) {
       buffer = new byte[RETAINED_CAPACITY];
-    }
-    if (bigNumberChunks != null && bigNumberChunks.length > BigNumberDigits.MAX_RETAINED_CHUNKS) {
-      bigNumberChunks = null;
     }
     position = 0;
   }
@@ -230,61 +226,27 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeBigInteger(BigInteger value) {
+    if (value.getClass() != BigInteger.class) {
+      throwUnsupportedBigNumber(value.getClass());
+    }
     if (BigNumberDigits.fitsLong(value)) {
       writeLong(value.longValue());
       return;
     }
-    writeInflatedBigInteger(value);
+    writeBigNumberText(value.toString());
   }
 
   @Override
   public void writeBigDecimal(BigDecimal value) {
+    if (value.getClass() != BigDecimal.class) {
+      throwUnsupportedBigNumber(value.getClass());
+    }
     long compact = BigDecimalFields.compactValue(value);
-    int scale = BigDecimalFields.scale(value);
     if (BigDecimalFields.isCompact(compact)) {
-      writeCompactBigDecimal(compact, scale);
+      writeCompactBigDecimal(compact, BigDecimalFields.scale(value));
       return;
     }
-    writeInflatedBigDecimal(BigDecimalFields.inflatedValue(value), scale);
-  }
-
-  private void writeInflatedBigInteger(BigInteger value) {
-    int signum = value.signum();
-    int chunkCount = collectBigIntegerChunks(value);
-    int precision =
-        BigNumberDigits.digitCount(bigNumberChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
-    ensureNumberChars((long) precision + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK);
-    if (signum < 0) {
-      buffer[position++] = (byte) '-';
-    }
-    writeIntegerChunks(chunkCount);
-  }
-
-  private void writeInflatedBigDecimal(BigInteger unscaled, int scale) {
-    if (scale == 0 && BigNumberDigits.fitsLong(unscaled)) {
-      writeLong(unscaled.longValue());
-      return;
-    }
-    int signum = unscaled.signum();
-    int chunkCount = collectBigIntegerChunks(unscaled);
-    int precision =
-        BigNumberDigits.digitCount(bigNumberChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
-    long adjustedExponent = (long) precision - scale - 1L;
-    boolean plain = scale >= 0 && adjustedExponent >= -6;
-    long outputChars =
-        (signum < 0 ? 1L : 0L)
-            + (plain
-                ? plainDecimalChars(precision, (long) precision - scale)
-                : scientificDecimalChars(precision, adjustedExponent));
-    ensureNumberChars(outputChars + BigNumberDigits.PACKED_WRITE_SLACK);
-    if (signum < 0) {
-      buffer[position++] = (byte) '-';
-    }
-    if (plain) {
-      writePlainDecimal(chunkCount, precision, scale);
-    } else {
-      writeScientificDecimal(chunkCount, precision, adjustedExponent);
-    }
+    writeBigNumberText(value.toString());
   }
 
   @Override
@@ -1428,14 +1390,27 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private void writeAsciiNumber(String value) {
+    int length = value.length();
+    ensure(length);
+    writeAsciiNumberNoEnsure(value, length);
+  }
+
+  private void writeBigNumberText(String value) {
+    int length = value.length();
+    ensureNumberChars(length);
+    writeAsciiNumberNoEnsure(value, length);
+  }
+
+  private void writeAsciiNumberNoEnsure(String value, int length) {
     if (STRING_BYTES_BACKED) {
       byte[] bytes = StringSerializer.getStringBytes(value);
-      if (bytes.length == value.length()) {
-        writeRaw(bytes);
+      if (bytes.length == length) {
+        System.arraycopy(bytes, 0, buffer, position, length);
+        position += length;
         return;
       }
     }
-    writeAscii(value);
+    writeAsciiNoEnsure(value);
   }
 
   private void writeNonFiniteFloat(float value) {
@@ -1555,139 +1530,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     position = writePadded9(bytes, pos, low);
   }
 
-  private int collectBigIntegerChunks(BigInteger value) {
-    if (value.signum() == 0) {
-      int[] chunks = ensureBigNumberChunks(1);
-      chunks[0] = 0;
-      return 1;
-    }
-    int[] chunks = ensureBigNumberChunks(BigNumberDigits.chunkCapacity(value));
-    int count = 0;
-    while (value.signum() != 0) {
-      if (count == chunks.length) {
-        chunks = Arrays.copyOf(chunks, count << 1);
-        bigNumberChunks = chunks;
-      }
-      BigInteger[] divRem = value.divideAndRemainder(BigNumberDigits.CHUNK_BASE);
-      int chunk = divRem[1].intValue();
-      chunks[count++] = chunk < 0 ? -chunk : chunk;
-      value = divRem[0];
-    }
-    return count;
-  }
-
-  private int[] ensureBigNumberChunks(int capacity) {
-    int[] chunks = bigNumberChunks;
-    if (chunks == null || chunks.length < capacity) {
-      chunks = new int[capacity];
-      bigNumberChunks = chunks;
-    }
-    return chunks;
-  }
-
-  private void writeIntegerChunks(int chunkCount) {
-    int[] chunks = bigNumberChunks;
-    int pos = writePositiveInt(buffer, position, chunks[chunkCount - 1]);
-    for (int i = chunkCount - 2; i >= 0; i--) {
-      pos = writePadded9(buffer, pos, chunks[i]);
-    }
-    position = pos;
-  }
-
-  private void writePlainDecimal(int chunkCount, int precision, int scale) {
-    long point = (long) precision - scale;
-    if (point <= 0) {
-      byte[] bytes = buffer;
-      int pos = position;
-      bytes[pos++] = (byte) '0';
-      bytes[pos++] = (byte) '.';
-      position = pos;
-      writeZeroes(-point);
-      writeIntegerChunks(chunkCount);
-      return;
-    }
-    if (point == precision) {
-      writeIntegerChunks(chunkCount);
-      return;
-    }
-    writeChunkedDecimal(chunkCount, (int) point);
-  }
-
-  private void writeScientificDecimal(int chunkCount, int precision, long adjustedExponent) {
-    if (precision == 1) {
-      writeIntegerChunks(chunkCount);
-    } else {
-      writeScientificDigits(chunkCount);
-    }
-    byte[] bytes = buffer;
-    int pos = position;
-    bytes[pos++] = (byte) 'E';
-    if (adjustedExponent >= 0) {
-      bytes[pos++] = (byte) '+';
-    }
-    position = pos;
-    writeLongNoEnsure(adjustedExponent);
-  }
-
-  private void writeChunkedDecimal(int chunkCount, int point) {
-    int[] chunks = bigNumberChunks;
-    byte[] bytes = buffer;
-    int pos = position;
-    int index = chunkCount - 1;
-    int top = chunks[index--];
-    int topDigits = BigNumberDigits.digitCount(top);
-    if (point < topDigits) {
-      int fractionDigits = topDigits - point;
-      int divisor = BigNumberDigits.POWERS_OF_TEN[fractionDigits];
-      int integer = top / divisor;
-      pos = writePositiveInt(bytes, pos, integer);
-      bytes[pos++] = (byte) '.';
-      pos = writePaddedDigits(bytes, pos, top - integer * divisor, fractionDigits);
-    } else {
-      pos = writePositiveInt(bytes, pos, top);
-      int remaining = point - topDigits;
-      while (remaining >= 9) {
-        pos = writePadded9(bytes, pos, chunks[index--]);
-        remaining -= 9;
-      }
-      if (remaining == 0) {
-        bytes[pos++] = (byte) '.';
-      } else {
-        int chunk = chunks[index--];
-        int fractionDigits = 9 - remaining;
-        int divisor = BigNumberDigits.POWERS_OF_TEN[fractionDigits];
-        int integer = chunk / divisor;
-        pos = writePaddedDigits(bytes, pos, integer, remaining);
-        bytes[pos++] = (byte) '.';
-        pos = writePaddedDigits(bytes, pos, chunk - integer * divisor, fractionDigits);
-      }
-    }
-    while (index >= 0) {
-      pos = writePadded9(bytes, pos, chunks[index--]);
-    }
-    position = pos;
-  }
-
-  private void writeScientificDigits(int chunkCount) {
-    int[] chunks = bigNumberChunks;
-    byte[] bytes = buffer;
-    int index = chunkCount - 1;
-    int top = chunks[index--];
-    int topDigits = BigNumberDigits.digitCount(top);
-    int divisor = BigNumberDigits.POWERS_OF_TEN[topDigits - 1];
-    int first = top / divisor;
-    int pos = position;
-    bytes[pos++] = (byte) ('0' + first);
-    bytes[pos++] = (byte) '.';
-    if (topDigits > 1) {
-      pos = writePaddedDigits(bytes, pos, top - first * divisor, topDigits - 1);
-    }
-    while (index >= 0) {
-      pos = writePadded9(bytes, pos, chunks[index--]);
-    }
-    position = pos;
-  }
-
   private void writeZeroes(long count) {
     byte[] bytes = buffer;
     int pos = position;
@@ -1737,10 +1579,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private void grow(int minCapacity) {
-    int newCapacity = buffer.length << 1;
-    while (newCapacity < minCapacity) {
-      newCapacity <<= 1;
-    }
+    int capacity = buffer.length;
+    int expanded = capacity + Math.max(capacity, 1);
+    int newCapacity = expanded >= minCapacity && expanded > 0 ? expanded : minCapacity;
     buffer = Arrays.copyOf(buffer, newCapacity);
   }
 

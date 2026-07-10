@@ -21,14 +21,12 @@ package org.apache.fory.json.writer;
 
 import java.lang.invoke.VarHandle;
 import java.math.BigDecimal;
-import java.math.BigInteger;
 import org.apache.fory.platform.internal._JDKAccess;
 
-/** Reads BigDecimal's stored representation through constant VarHandles that C2 can inline. */
+/** Reads the compact BigDecimal representation through constant VarHandles that C2 can inline. */
 final class BigDecimalFields {
   static final long INFLATED = Long.MIN_VALUE;
   private static final VarHandle INT_COMPACT = fieldHandle("intCompact", long.class);
-  private static final VarHandle INT_VAL = fieldHandle("intVal", BigInteger.class);
   private static final VarHandle SCALE = fieldHandle("scale", int.class);
 
   private BigDecimalFields() {}
@@ -40,11 +38,6 @@ final class BigDecimalFields {
 
   static boolean isCompact(long value) {
     return value != INFLATED;
-  }
-
-  static BigInteger inflatedValue(BigDecimal value) {
-    VarHandle handle = INT_VAL;
-    return handle == null ? value.unscaledValue() : (BigInteger) handle.get(value);
   }
 
   static int scale(BigDecimal value) {
