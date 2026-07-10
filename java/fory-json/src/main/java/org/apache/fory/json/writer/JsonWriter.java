@@ -102,8 +102,8 @@ public abstract class JsonWriter {
     writeString(value.toString());
   }
 
-  // Concrete writers own direct compact formatting and copying canonical arbitrary-precision text
-  // into their byte or compact-string buffer representation.
+  // Concrete writers own compact BigDecimal formatting, BigInteger chunk output, and canonical
+  // arbitrary-precision text copying in their byte or compact-string representation.
   public abstract void writeBigInteger(BigInteger value);
 
   public abstract void writeBigDecimal(BigDecimal value);

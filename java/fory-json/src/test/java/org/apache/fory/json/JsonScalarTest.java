@@ -796,9 +796,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void rejectBigNumberSubtypes() {
+  public void handleBigNumberSubtypes() {
     BigIntegerSubtype integer = new BigIntegerSubtype("42");
     BigDecimalSubtype decimal = new BigDecimalSubtype("12345678901234567890.123");
+    BigDecimalSubtype compactDecimal = new BigDecimalSubtype("1.25");
 
     assertSubtypeRejected(
         () -> new Utf8JsonWriter(false).writeBigInteger(integer), BigIntegerSubtype.class);
@@ -806,12 +807,8 @@ public class JsonScalarTest extends ForyJsonTestModels {
         () -> new StringJsonWriter(false).writeBigInteger(integer), BigIntegerSubtype.class);
     assertSubtypeRejected(
         () -> utf16StringWriter().writeBigInteger(integer), BigIntegerSubtype.class);
-    assertSubtypeRejected(
-        () -> new Utf8JsonWriter(false).writeBigDecimal(decimal), BigDecimalSubtype.class);
-    assertSubtypeRejected(
-        () -> new StringJsonWriter(false).writeBigDecimal(decimal), BigDecimalSubtype.class);
-    assertSubtypeRejected(
-        () -> utf16StringWriter().writeBigDecimal(decimal), BigDecimalSubtype.class);
+    assertWriterNumber(decimal, "12345678901234567890.123");
+    assertWriterNumber(compactDecimal, "1.25");
 
     ForyJson json = newJson();
     BigNumberFields fields = new BigNumberFields();
@@ -819,7 +816,9 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertSubtypeRejected(() -> json.toJson(fields), BigIntegerSubtype.class);
     fields.integer = null;
     fields.decimal = decimal;
-    assertSubtypeRejected(() -> json.toJsonBytes(fields), BigDecimalSubtype.class);
+    String canonical = "{\"decimal\":12345678901234567890.123}";
+    assertEquals(json.toJson(fields), canonical);
+    assertEquals(new String(json.toJsonBytes(fields), StandardCharsets.UTF_8), canonical);
 
     BigNumberContainers containers = new BigNumberContainers();
     containers.bigIntegers = Arrays.asList(integer);

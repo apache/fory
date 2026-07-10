@@ -100,6 +100,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   private byte[] buffer;
   private final StringBuilder decimalBuilder;
+  // BigInteger has no string cache; direct chunks avoid a String on every write. Keep this scratch
+  // concrete-writer-owned and bound retained capacity in reset().
+  private int[] bigIntegerChunks;
   private int position;
 
   public Utf8JsonWriter(boolean writeNullFields) {
@@ -123,6 +126,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     super.reset();
     if (buffer.length > RETAINED_CAPACITY) {
       buffer = new byte[RETAINED_CAPACITY];
+    }
+    if (bigIntegerChunks != null && bigIntegerChunks.length > BigNumberDigits.MAX_RETAINED_CHUNKS) {
+      bigIntegerChunks = null;
     }
     position = 0;
   }
@@ -233,20 +239,17 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       writeLong(value.longValue());
       return;
     }
-    writeBigNumberText(value.toString());
+    writeBigIntegerDigits(value);
   }
 
   @Override
   public void writeBigDecimal(BigDecimal value) {
-    if (value.getClass() != BigDecimal.class) {
-      throwUnsupportedBigNumber(value.getClass());
-    }
     long compact = BigDecimalFields.compactValue(value);
     if (BigDecimalFields.isCompact(compact)) {
       writeCompactBigDecimal(compact, BigDecimalFields.scale(value));
       return;
     }
-    writeBigNumberText(value.toString());
+    writeInflatedBigDecimal(value);
   }
 
   @Override
@@ -1399,6 +1402,68 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     int length = value.length();
     ensureNumberChars(length);
     writeAsciiNumberNoEnsure(value, length);
+  }
+
+  private void writeInflatedBigDecimal(BigDecimal value) {
+    if (value.getClass() == BigDecimal.class) {
+      writeBigNumberText(value.toString());
+      return;
+    }
+    // Never invoke overridable numeric methods on a subtype. Rebuild the canonical JDK value from
+    // BigDecimal's base fields on this cold path.
+    if (!BigDecimalFields.canReadInflatedValue()) {
+      throwUnsupportedBigNumber(value.getClass());
+    }
+    BigDecimal canonical =
+        new BigDecimal(BigDecimalFields.inflatedValue(value), BigDecimalFields.scale(value));
+    writeBigNumberText(canonical.toString());
+  }
+
+  private void writeBigIntegerDigits(BigInteger value) {
+    int signum = value.signum();
+    int chunkCount = collectBigIntegerChunks(value);
+    int precision =
+        BigNumberDigits.digitCount(bigIntegerChunks[chunkCount - 1]) + (chunkCount - 1) * 9;
+    ensureNumberChars((long) precision + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK);
+    if (signum < 0) {
+      buffer[position++] = (byte) '-';
+    }
+    int[] chunks = bigIntegerChunks;
+    int pos = writePositiveInt(buffer, position, chunks[chunkCount - 1]);
+    for (int i = chunkCount - 2; i >= 0; i--) {
+      pos = writePadded9(buffer, pos, chunks[i]);
+    }
+    position = pos;
+  }
+
+  private int collectBigIntegerChunks(BigInteger value) {
+    if (value.signum() == 0) {
+      int[] chunks = ensureBigIntegerChunks(1);
+      chunks[0] = 0;
+      return 1;
+    }
+    int[] chunks = ensureBigIntegerChunks(BigNumberDigits.chunkCapacity(value));
+    int count = 0;
+    while (value.signum() != 0) {
+      if (count == chunks.length) {
+        chunks = Arrays.copyOf(chunks, count << 1);
+        bigIntegerChunks = chunks;
+      }
+      BigInteger[] quotientAndRemainder = value.divideAndRemainder(BigNumberDigits.CHUNK_BASE);
+      int chunk = quotientAndRemainder[1].intValue();
+      chunks[count++] = chunk < 0 ? -chunk : chunk;
+      value = quotientAndRemainder[0];
+    }
+    return count;
+  }
+
+  private int[] ensureBigIntegerChunks(int capacity) {
+    int[] chunks = bigIntegerChunks;
+    if (chunks == null || chunks.length < capacity) {
+      chunks = new int[capacity];
+      bigIntegerChunks = chunks;
+    }
+    return chunks;
   }
 
   private void writeAsciiNumberNoEnsure(String value, int length) {

@@ -21,23 +21,33 @@ package org.apache.fory.json.writer;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import org.apache.fory.reflect.FieldAccessor;
 
-/** Reads the compact BigDecimal representation used by concrete JSON writers. */
+/** Reads BigDecimal's stored representation without invoking overridable accessors. */
 final class BigDecimalFields {
   static final long INFLATED = Long.MIN_VALUE;
   private static final FieldAccessor INT_COMPACT = fieldAccessor("intCompact", long.class);
+  private static final FieldAccessor INT_VAL = fieldAccessor("intVal", BigInteger.class);
   private static final FieldAccessor SCALE = fieldAccessor("scale", int.class);
 
   private BigDecimalFields() {}
 
   static long compactValue(BigDecimal value) {
     FieldAccessor accessor = INT_COMPACT;
-    return accessor == null ? INFLATED : accessor.getLong(value);
+    return accessor == null || SCALE == null ? INFLATED : accessor.getLong(value);
   }
 
   static boolean isCompact(long value) {
     return value != INFLATED;
+  }
+
+  static boolean canReadInflatedValue() {
+    return INT_COMPACT != null && INT_VAL != null && SCALE != null;
+  }
+
+  static BigInteger inflatedValue(BigDecimal value) {
+    return (BigInteger) INT_VAL.getObject(value);
   }
 
   static int scale(BigDecimal value) {

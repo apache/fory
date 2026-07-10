@@ -22,6 +22,8 @@ package org.apache.fory.json.writer;
 import java.math.BigInteger;
 
 final class BigNumberDigits {
+  static final BigInteger CHUNK_BASE = BigInteger.valueOf(1_000_000_000);
+  static final int MAX_RETAINED_CHUNKS = 1024;
   // Packed 1-3 digit stores write one four-byte word; concrete writers reserve this tail once.
   static final int PACKED_WRITE_SLACK = 3;
   static final long[] LONG_POWERS_OF_TEN = {
@@ -47,6 +49,12 @@ final class BigNumberDigits {
   };
 
   private BigNumberDigits() {}
+
+  static int chunkCapacity(BigInteger value) {
+    // 315653 / 2^20 is an upper bound for log10(2), so this cannot underestimate.
+    long digitEstimate = (((long) value.bitLength() * 315653) >>> 20) + 1;
+    return Math.max(1, (int) Math.min(Integer.MAX_VALUE, (digitEstimate + 8) / 9));
+  }
 
   static boolean fitsLong(BigInteger value) {
     return value.bitLength() <= 63;
