@@ -29,7 +29,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.UUID;
@@ -60,7 +59,6 @@ abstract class JsonWriterCodegen {
   final JsonCodegen codegen;
   private final boolean writeNullFields;
   private Class<?> ownerType;
-  private boolean inlineObjectCollections;
 
   JsonWriterCodegen(JsonCodegen codegen) {
     this.codegen = codegen;
@@ -78,8 +76,6 @@ abstract class JsonWriterCodegen {
   abstract String writeMethod();
 
   abstract String membersMethod();
-
-  abstract String objectCollectionMethod();
 
   abstract int splitMemberThreshold();
 
@@ -199,10 +195,35 @@ abstract class JsonWriterCodegen {
         "properties",
         JsonCodegen.generatedCodecArrayType(ctx, codecArrayType()),
         "codecs");
-    ctx.clearExprState();
-    Code.ExprCode body = writeExpression(builder, type, properties, objectStartFused).genCode(ctx);
-    String bodyCode = body.code();
-    bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
+    String bodyCode;
+    // Keep the sole nullable capability entry small for wide POJOs. Callers can inline its null
+    // ownership without absorbing the independently compiled field graph into a container loop.
+    if (properties.length >= splitMemberThreshold()) {
+      String objectMethod = writeMethod() + "Object";
+      addGeneratedMethod(
+          ctx,
+          "private final",
+          objectMethod,
+          writeExpression(
+              builder, properties, objectStartFused, new Reference("object", TypeRef.of(type))),
+          void.class,
+          writerType(),
+          "writer",
+          type,
+          "object");
+      bodyCode = "this." + objectMethod + "(writer, (" + ctx.type(type) + ") value);\n";
+    } else {
+      ctx.clearExprState();
+      Expression object =
+          new Expression.Variable(
+              "object",
+              new Expression.Cast(
+                  new Reference("value", TypeRef.of(Object.class)), TypeRef.of(type)));
+      Code.ExprCode body =
+          writeExpression(builder, properties, objectStartFused, object).genCode(ctx);
+      bodyCode = body.code();
+      bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
+    }
     ctx.addMethod(
         "@Override public final",
         writeMethod(),
@@ -300,14 +321,9 @@ abstract class JsonWriterCodegen {
 
   private Expression writeExpression(
       JsonGeneratedCodecBuilder builder,
-      Class<?> type,
       JsonFieldInfo[] properties,
-      boolean objectStartFused) {
-    Expression object =
-        new Expression.Variable(
-            "object",
-            new Expression.Cast(
-                new Reference("value", TypeRef.of(Object.class)), TypeRef.of(type)));
+      boolean objectStartFused,
+      Expression object) {
     Reference writer = writerRef();
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(object);
@@ -319,7 +335,6 @@ abstract class JsonWriterCodegen {
     }
     boolean commaKnown = objectStartFused;
     boolean splitMembers = properties.length >= splitMemberThreshold();
-    inlineObjectCollections = splitMembers;
     List<Expression> memberGroup = splitMembers ? new ArrayList<>(MAX_MEMBERS_PER_METHOD) : null;
     for (int i = 0; i < properties.length; i++) {
       Expression member;
@@ -439,8 +454,7 @@ abstract class JsonWriterCodegen {
               || kind == JsonFieldKind.ARRAY && writeExactArray(property, value, writer) == null
               || kind == JsonFieldKind.OBJECT && writeExactScalar(property, value, writer) == null
               || kind == JsonFieldKind.COLLECTION
-                  && !JsonCodegen.writesStringCollectionDirectly(property)
-                  && !JsonCodegen.writesObjectCollectionDirectly(property);
+                  && !JsonCodegen.writesStringCollectionDirectly(property);
       if (onlyCodec) {
         return new Expression.ListExpression(
             value,
@@ -455,7 +469,7 @@ abstract class JsonWriterCodegen {
                 new Expression.ListExpression(
                     writeFieldName(property, id, commaKnown, index, writer),
                     new Expression.Invoke(writer, "writeNull")),
-                writeValue(builder, property, id, value, commaKnown, index, writer)));
+                writeValue(property, id, value, commaKnown, index, writer)));
       }
       return new Expression.ListExpression(
           value,
@@ -463,14 +477,14 @@ abstract class JsonWriterCodegen {
           new Expression.If(
               eq(value, nullValue),
               new Expression.Invoke(writer, "writeNull"),
-              writeValue(builder, property, id, value, true, index, writer)));
+              writeValue(property, id, value, true, index, writer)));
     }
     Expression write =
         isPrefixValue(property.writeKind())
-            ? writeValue(builder, property, id, value, commaKnown, index, writer)
+            ? writeValue(property, id, value, commaKnown, index, writer)
             : new Expression.ListExpression(
                 writeFieldName(property, id, commaKnown, index, writer),
-                writeValue(builder, property, id, value, true, index, writer));
+                writeValue(property, id, value, true, index, writer));
     return new Expression.ListExpression(value, new Expression.If(ne(value, nullValue), write));
   }
 
@@ -499,7 +513,6 @@ abstract class JsonWriterCodegen {
   }
 
   private Expression writeValue(
-      JsonGeneratedCodecBuilder builder,
       JsonFieldInfo property,
       int id,
       Expression value,
@@ -559,9 +572,6 @@ abstract class JsonWriterCodegen {
       case COLLECTION:
         if (JsonCodegen.writesStringCollectionDirectly(property)) {
           return writeStringCollection(value, writer);
-        }
-        if (JsonCodegen.writesObjectCollectionDirectly(property)) {
-          return writeObjectCollection(builder, property, id, value, writer);
         }
         return writeCodec(property, id, value, writer);
       case OBJECT:
@@ -683,77 +693,9 @@ abstract class JsonWriterCodegen {
   }
 
   private boolean storesWriteCodec(JsonFieldInfo property) {
-    if (JsonCodegen.writesObjectCollectionDirectly(property)) {
-      return property.writeElementRawType() != ownerType;
-    }
     return usesWriteCodec(property)
         && (!property.writeTypeInfo().usesDefaultObjectCodec()
             || property.writeRawType() != ownerType);
-  }
-
-  private Expression writeObjectCollection(
-      JsonGeneratedCodecBuilder builder,
-      JsonFieldInfo property,
-      int id,
-      Expression value,
-      Expression writer) {
-    TypeRef<?> codecType = TypeRef.of(objectWriterType());
-    Expression codec =
-        property.writeElementRawType() == ownerType
-            ? new Reference("this", codecType)
-            : fieldRef("w" + id, codecType.getRawType());
-    Expression arrayList =
-        new Expression.Variable("list", new Expression.Cast(value, TypeRef.of(ArrayList.class)));
-    Expression arrayListLoop =
-        new Expression.ListExpression(
-            arrayList,
-            new Expression.ForLoop(
-                Expression.Literal.ofInt(0),
-                new Expression.Invoke(arrayList, "size", TypeRef.of(int.class)),
-                Expression.Literal.ofInt(1),
-                index ->
-                    writeObjectCollectionElement(
-                        index,
-                        new Expression.Invoke(
-                            arrayList, "get", TypeRef.of(Object.class), false, index),
-                        codec,
-                        writer)));
-    Expression collection =
-        new Expression.Variable(
-            "collection", new Expression.Cast(value, TypeRef.of(Collection.class)));
-    Expression collectionLoop =
-        new Expression.ListExpression(
-            collection,
-            new Expression.ForEach(
-                collection,
-                TypeRef.of(Object.class),
-                false,
-                (index, element) -> writeObjectCollectionElement(index, element, codec, writer)));
-    Expression exactArrayList =
-        eq(
-            new Expression.Invoke(value, "getClass", TypeRef.of(Class.class)).inline(),
-            Expression.Literal.ofClass(ArrayList.class));
-    Expression body =
-        new Expression.ListExpression(
-            new Expression.Invoke(writer, "writeArrayStart"),
-            new Expression.If(exactArrayList, arrayListLoop, collectionLoop),
-            new Expression.Invoke(writer, "writeArrayEnd"));
-    if (inlineObjectCollections) {
-      return body;
-    }
-    LinkedHashSet<Expression> cutPoints = new LinkedHashSet<>();
-    cutPoints.add(value);
-    cutPoints.add(writer);
-    return ExpressionOptimizer.invokeGenerated(
-        builder.context(), cutPoints, body, objectCollectionMethod(), false);
-  }
-
-  private Expression writeObjectCollectionElement(
-      Expression index, Expression element, Expression codec, Expression writer) {
-    return new Expression.ListExpression(
-        element,
-        new Expression.Invoke(writer, "writeComma", index),
-        new Expression.Invoke(codec, writeMethod(), writer, element));
   }
 
   private static Expression writeStringCollection(Expression value, Expression writer) {
@@ -824,9 +766,6 @@ abstract class JsonWriterCodegen {
 
     @Override
     Class<?> codecFieldType(JsonFieldInfo property) {
-      if (JsonCodegen.writesObjectCollectionDirectly(property)) {
-        return StringWriterCodec.class;
-      }
       return codegen.stringWriterFieldType(property.writeTypeInfo());
     }
 
@@ -853,11 +792,6 @@ abstract class JsonWriterCodegen {
     @Override
     String membersMethod() {
       return "writeStringMembers";
-    }
-
-    @Override
-    String objectCollectionMethod() {
-      return "writeStringObjectCollection";
     }
 
     @Override
@@ -1073,9 +1007,6 @@ abstract class JsonWriterCodegen {
 
     @Override
     Class<?> codecFieldType(JsonFieldInfo property) {
-      if (JsonCodegen.writesObjectCollectionDirectly(property)) {
-        return Utf8WriterCodec.class;
-      }
       return codegen.utf8WriterFieldType(property.writeTypeInfo());
     }
 
@@ -1102,11 +1033,6 @@ abstract class JsonWriterCodegen {
     @Override
     String membersMethod() {
       return "writeUtf8Members";
-    }
-
-    @Override
-    String objectCollectionMethod() {
-      return "writeUtf8ObjectCollection";
     }
 
     @Override

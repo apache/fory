@@ -189,16 +189,16 @@ public class JsonAsyncCompilationTest {
     JsonTypeInfo childInfo = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
 
     Object parentCapability = resolver.stringWriter(parent);
-    assertCapabilityFields(parentCapability, StringWriterCodec.class, child, 2);
+    assertCapabilityFields(parentCapability, StringWriterCodec.class, child, 1);
     Object childCapability = resolver.stringWriter(child);
     assertSame(childInfo.stringWriter(), childCapability);
-    assertPublishedChild(parentCapability, StringWriterCodec.class, childCapability, child, 2);
+    assertPublishedChild(parentCapability, StringWriterCodec.class, childCapability, child, 1);
 
     parentCapability = resolver.utf8Writer(parent);
-    assertCapabilityFields(parentCapability, Utf8WriterCodec.class, child, 2);
+    assertCapabilityFields(parentCapability, Utf8WriterCodec.class, child, 1);
     childCapability = resolver.utf8Writer(child);
     assertSame(childInfo.utf8Writer(), childCapability);
-    assertPublishedChild(parentCapability, Utf8WriterCodec.class, childCapability, child, 2);
+    assertPublishedChild(parentCapability, Utf8WriterCodec.class, childCapability, child, 1);
 
     parentCapability = resolver.latin1Reader(parent);
     assertCapabilityFields(parentCapability, Latin1ReaderCodec.class, child, 2);

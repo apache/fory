@@ -146,7 +146,7 @@ public final class JsonCodegen {
         (StringWriterCodec<Object>[]) new StringWriterCodec<?>[properties.length];
     for (int i = 0; i < properties.length; i++) {
       if (usesWriteCodec(properties[i])) {
-        codecs[i] = stringWriter(properties[i], resolver);
+        codecs[i] = stringWriter(properties[i]);
       }
     }
     StringWriterCodec<Object> writer = generatedClass.newCodec(properties, codecs);
@@ -162,7 +162,7 @@ public final class JsonCodegen {
         (Utf8WriterCodec<Object>[]) new Utf8WriterCodec<?>[properties.length];
     for (int i = 0; i < properties.length; i++) {
       if (usesWriteCodec(properties[i])) {
-        codecs[i] = utf8Writer(properties[i], resolver);
+        codecs[i] = utf8Writer(properties[i]);
       }
     }
     Utf8WriterCodec<Object> writer = generatedClass.newCodec(properties, codecs);
@@ -390,32 +390,18 @@ public final class JsonCodegen {
             == CollectionCodec.StringCollectionCodec.class;
   }
 
-  static boolean writesObjectCollectionDirectly(JsonFieldInfo property) {
-    return property.writeKind() == JsonFieldKind.COLLECTION
-        && property.writeElementRawType() != null
-        && property.writeTypeInfo().stringWriter().getClass()
-            == CollectionCodec.ObjectCollectionCodec.class
-        && property.writeTypeInfo().utf8Writer().getClass()
-            == CollectionCodec.ObjectCollectionCodec.class;
-  }
-
-  static JsonTypeInfo writeObjectTypeInfo(JsonFieldInfo property, JsonTypeResolver resolver) {
-    if (writesObjectCollectionDirectly(property)) {
-      return resolver.getTypeInfo(property.writeElementType(), property.writeElementRawType());
-    }
+  private static JsonTypeInfo writeObjectTypeInfo(JsonFieldInfo property) {
     JsonTypeInfo typeInfo = property.writeTypeInfo();
     return usesWriteCodec(property) && typeInfo.usesDefaultObjectCodec() ? typeInfo : null;
   }
 
-  private static StringWriterCodec<Object> stringWriter(
-      JsonFieldInfo property, JsonTypeResolver resolver) {
-    JsonTypeInfo typeInfo = writeObjectTypeInfo(property, resolver);
+  private static StringWriterCodec<Object> stringWriter(JsonFieldInfo property) {
+    JsonTypeInfo typeInfo = writeObjectTypeInfo(property);
     return typeInfo == null ? property.writeTypeInfo().stringWriter() : typeInfo.stringWriter();
   }
 
-  private static Utf8WriterCodec<Object> utf8Writer(
-      JsonFieldInfo property, JsonTypeResolver resolver) {
-    JsonTypeInfo typeInfo = writeObjectTypeInfo(property, resolver);
+  private static Utf8WriterCodec<Object> utf8Writer(JsonFieldInfo property) {
+    JsonTypeInfo typeInfo = writeObjectTypeInfo(property);
     return typeInfo == null ? property.writeTypeInfo().utf8Writer() : typeInfo.utf8Writer();
   }
 
@@ -515,7 +501,7 @@ public final class JsonCodegen {
   private static void registerStringWriterUpdates(
       JsonTypeResolver resolver, Object owner, Class<?> type, JsonFieldInfo[] properties) {
     for (int i = 0; i < properties.length; i++) {
-      JsonTypeInfo typeInfo = writeObjectTypeInfo(properties[i], resolver);
+      JsonTypeInfo typeInfo = writeObjectTypeInfo(properties[i]);
       Class<?> nestedType = typeInfo == null ? null : typeInfo.rawType();
       if (nestedType != null && nestedType != type) {
         Field field = ReflectionUtils.getField(owner.getClass(), "w" + i);
@@ -527,7 +513,7 @@ public final class JsonCodegen {
   private static void registerUtf8WriterUpdates(
       JsonTypeResolver resolver, Object owner, Class<?> type, JsonFieldInfo[] properties) {
     for (int i = 0; i < properties.length; i++) {
-      JsonTypeInfo typeInfo = writeObjectTypeInfo(properties[i], resolver);
+      JsonTypeInfo typeInfo = writeObjectTypeInfo(properties[i]);
       Class<?> nestedType = typeInfo == null ? null : typeInfo.rawType();
       if (nestedType != null && nestedType != type) {
         Field field = ReflectionUtils.getField(owner.getClass(), "w" + i);
@@ -588,11 +574,7 @@ public final class JsonCodegen {
     if (rawType != null && !rawType.isPrimitive() && !isVisible(rawType)) {
       return false;
     }
-    if (property.writeKind() != JsonFieldKind.COLLECTION) {
-      return true;
-    }
-    Class<?> elementType = property.writeElementRawType();
-    return !isPojo(elementType) || isVisible(elementType);
+    return true;
   }
 
   private boolean canCompileRead(JsonFieldInfo property, boolean record) {

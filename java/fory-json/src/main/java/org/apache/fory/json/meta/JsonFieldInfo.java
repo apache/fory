@@ -73,7 +73,6 @@ public final class JsonFieldInfo {
   private int readPrimitiveKindId;
   private final JsonFieldAccessor writeAccessor;
   private final JsonFieldAccessor readAccessor;
-  private final Type writeElementType;
   private final Type readElementType;
   private final Type writeMapValueType;
   private final Class<?> writeArrayComponentType;
@@ -140,7 +139,7 @@ public final class JsonFieldInfo {
     readKind = readRawType == null ? null : kind(readRawType);
     writeKindId = writeKind == null ? 0 : kindId(writeKind);
     readPrimitiveKindId = primitiveKindId(readRawType, readKind);
-    writeElementType =
+    Type writeElementType =
         writeKind == JsonFieldKind.COLLECTION ? CodecUtils.elementType(writeType) : null;
     readElementType =
         readKind == JsonFieldKind.COLLECTION ? CodecUtils.elementType(readType) : null;
@@ -252,10 +251,6 @@ public final class JsonFieldInfo {
 
   public JsonFieldAccessor writeAccessor() {
     return writeAccessor;
-  }
-
-  public Type writeElementType() {
-    return writeElementType;
   }
 
   public Type readElementType() {
