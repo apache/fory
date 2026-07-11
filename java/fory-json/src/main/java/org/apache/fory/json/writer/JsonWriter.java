@@ -100,8 +100,9 @@ public abstract class JsonWriter {
     writeString(value.toString());
   }
 
-  // Concrete writers own compact BigDecimal formatting, BigInteger chunk output, and canonical
-  // arbitrary-precision text copying in their byte or compact-string representation.
+  // Concrete writers own compact BigDecimal formatting and canonical arbitrary-precision text
+  // copying. BigInteger values outside long range use the JDK conversion, whose recursive large
+  // magnitude algorithm avoids the repeated quotient/remainder allocation of a local chunk loop.
   public abstract void writeBigInteger(BigInteger value);
 
   public abstract void writeBigDecimal(BigDecimal value);

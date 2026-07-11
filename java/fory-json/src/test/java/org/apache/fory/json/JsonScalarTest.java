@@ -765,7 +765,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeBigNumberCorners() {
-    BigInteger chunkBase = BigInteger.valueOf(1_000_000_000L);
     BigInteger[] longEdges = {
       BigInteger.valueOf(Long.MIN_VALUE),
       BigInteger.valueOf(Long.MAX_VALUE),
@@ -775,16 +774,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
     for (BigInteger value : longEdges) {
       String expected = value.toString();
       assertWriterNumber(value, expected);
-    }
-    for (int power = 2; power <= 5; power++) {
-      BigInteger boundary = chunkBase.pow(power);
-      for (int delta = -1; delta <= 1; delta++) {
-        BigInteger value = boundary.add(BigInteger.valueOf(delta));
-        String expected = value.toString();
-        assertWriterNumber(value, expected);
-        expected = value.negate().toString();
-        assertWriterNumber(value.negate(), expected);
-      }
     }
 
     BigInteger coefficient = new BigInteger("123456789012345678901234567890123456");

@@ -309,11 +309,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       writeLong(value.longValue());
       return;
     }
-    if (coder == LATIN1) {
-      writeBigIntegerLatin1(value);
-    } else {
-      writeBigIntegerUtf16(value);
-    }
+    writeBigNumberText(value.toString());
   }
 
   @Override
@@ -1644,60 +1640,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     BigDecimal canonical =
         new BigDecimal(BigDecimalFields.inflatedValue(value), BigDecimalFields.scale(value));
     writeBigNumberText(canonical.toString());
-  }
-
-  private void writeBigIntegerLatin1(BigInteger value) {
-    int signum = value.signum();
-    int chunkCapacity = BigNumberDigits.chunkCapacity(value);
-    long outputCapacity =
-        (long) chunkCapacity * 9 + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK;
-    ensureNumberLatin1(outputCapacity + (long) chunkCapacity * Integer.BYTES);
-    byte[] bytes = buffer;
-    int scratchOffset = position + (int) outputCapacity;
-    int chunkCount = collectBigIntegerChunks(value, bytes, scratchOffset);
-    int topChunk = LittleEndian.getInt32(bytes, scratchOffset + (chunkCount - 1) * Integer.BYTES);
-    if (signum < 0) {
-      bytes[position++] = (byte) '-';
-    }
-    int pos = writePositiveIntLatin1(bytes, position, topChunk);
-    for (int i = chunkCount - 2; i >= 0; i--) {
-      int chunk = LittleEndian.getInt32(bytes, scratchOffset + i * Integer.BYTES);
-      pos = writePadded9Latin1(bytes, pos, chunk);
-    }
-    position = pos;
-  }
-
-  private void writeBigIntegerUtf16(BigInteger value) {
-    int signum = value.signum();
-    int chunkCapacity = BigNumberDigits.chunkCapacity(value);
-    long outputCapacity =
-        (long) chunkCapacity * 9 + (signum < 0 ? 1 : 0) + BigNumberDigits.PACKED_WRITE_SLACK;
-    ensureNumberUtf16(outputCapacity + (long) chunkCapacity * Character.BYTES);
-    byte[] bytes = buffer;
-    int scratchOffset = position + (int) (outputCapacity * Character.BYTES);
-    int chunkCount = collectBigIntegerChunks(value, bytes, scratchOffset);
-    int topChunk = LittleEndian.getInt32(bytes, scratchOffset + (chunkCount - 1) * Integer.BYTES);
-    if (signum < 0) {
-      position = putUtf16Byte(bytes, position, (byte) '-');
-    }
-    int pos = writePositiveIntUtf16(bytes, position, topChunk);
-    for (int i = chunkCount - 2; i >= 0; i--) {
-      int chunk = LittleEndian.getInt32(bytes, scratchOffset + i * Integer.BYTES);
-      pos = writePadded9Utf16(bytes, pos, chunk);
-    }
-    position = pos;
-  }
-
-  private static int collectBigIntegerChunks(BigInteger value, byte[] bytes, int offset) {
-    int count = 0;
-    while (value.signum() != 0) {
-      BigInteger[] quotientAndRemainder = value.divideAndRemainder(BigNumberDigits.CHUNK_BASE);
-      int chunk = quotientAndRemainder[1].intValue();
-      LittleEndian.putInt32(bytes, offset + count * Integer.BYTES, chunk < 0 ? -chunk : chunk);
-      count++;
-      value = quotientAndRemainder[0];
-    }
-    return count;
   }
 
   private void writeLatin1NumberNoEnsure(String value, int length) {
