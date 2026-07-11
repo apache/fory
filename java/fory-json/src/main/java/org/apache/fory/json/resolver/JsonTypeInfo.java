@@ -44,17 +44,13 @@ public final class JsonTypeInfo {
   private Utf16ReaderCodec<Object> utf16Reader;
   private Utf8ReaderCodec<Object> utf8Reader;
   private final boolean defaultObjectCodec;
-  private final boolean objectCollectionCodec;
-  private final boolean collectionCreatesArrayList;
 
   JsonTypeInfo(
       Type type,
       TypeRef<?> typeRef,
       Class<?> rawType,
       JsonFieldKind kind,
-      JsonCodec<Object> codec,
-      boolean objectCollectionCodec,
-      boolean collectionCreatesArrayList) {
+      JsonCodec<Object> codec) {
     this.type = type;
     this.typeRef = typeRef;
     this.rawType = rawType;
@@ -67,8 +63,6 @@ public final class JsonTypeInfo {
     // Only the raw-class ObjectCodec can be replaced by raw-class generated capabilities.
     // ParameterizedObjectCodec owns binding-specific field types and must remain the slot owner.
     defaultObjectCodec = codec.getClass() == ObjectCodec.class;
-    this.objectCollectionCodec = objectCollectionCodec;
-    this.collectionCreatesArrayList = collectionCreatesArrayList;
   }
 
   public Type type() {
@@ -129,13 +123,5 @@ public final class JsonTypeInfo {
 
   public boolean usesDefaultObjectCodec() {
     return defaultObjectCodec;
-  }
-
-  public boolean usesObjectCollectionCodec() {
-    return objectCollectionCodec;
-  }
-
-  public boolean collectionCreatesArrayList() {
-    return collectionCreatesArrayList;
   }
 }

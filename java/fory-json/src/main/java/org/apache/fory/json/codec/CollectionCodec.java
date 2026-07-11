@@ -163,19 +163,19 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   @Internal
-  public final Collection<Object> newCollection() {
+  final Collection<Object> newCollection() {
     // JSON arrays do not carry a trusted size. Avoid speculative backing-array preallocation in
     // parser hot paths; it can waste memory for small arrays and amplify untrusted input.
     return factory.newCollection();
   }
 
   @Internal
-  public final Collection<?> finishCollection(Collection<Object> collection) {
+  final Collection<?> finishCollection(Collection<Object> collection) {
     return factory.finish(collection);
   }
 
   @Internal
-  public final boolean createsArrayList() {
+  final boolean createsArrayList() {
     return createsArrayList;
   }
 

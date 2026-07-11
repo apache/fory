@@ -25,7 +25,6 @@ import java.util.Map;
 import java.util.function.Consumer;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.codec.CodecUtils;
-import org.apache.fory.json.codec.CollectionCodec.ObjectCollectionCodec;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
@@ -281,17 +280,7 @@ public final class JsonTypeResolver {
 
   private JsonTypeInfo newTypeInfo(
       Type type, TypeRef<?> typeRef, Class<?> rawType, JsonCodec<?> codec) {
-    boolean objectCollectionCodec = codec.getClass() == ObjectCollectionCodec.class;
-    boolean collectionCreatesArrayList =
-        objectCollectionCodec && ((ObjectCollectionCodec) codec).createsArrayList();
-    return new JsonTypeInfo(
-        type,
-        typeRef,
-        rawType,
-        sharedRegistry.kind(rawType),
-        bindCodec(codec),
-        objectCollectionCodec,
-        collectionCreatesArrayList);
+    return new JsonTypeInfo(type, typeRef, rawType, sharedRegistry.kind(rawType), bindCodec(codec));
   }
 
   private static boolean matchesObjectType(JsonTypeInfo typeInfo, Class<?> type) {

@@ -201,22 +201,22 @@ public class JsonAsyncCompilationTest {
     assertPublishedChild(parentCapability, Utf8WriterCodec.class, childCapability, child, 1);
 
     parentCapability = resolver.latin1Reader(parent);
-    assertCapabilityFields(parentCapability, Latin1ReaderCodec.class, child, 2);
+    assertCapabilityFields(parentCapability, Latin1ReaderCodec.class, child, 1);
     childCapability = resolver.latin1Reader(child);
     assertSame(childInfo.latin1Reader(), childCapability);
-    assertPublishedChild(parentCapability, Latin1ReaderCodec.class, childCapability, child, 2);
+    assertPublishedChild(parentCapability, Latin1ReaderCodec.class, childCapability, child, 1);
 
     parentCapability = resolver.utf16Reader(parent);
-    assertCapabilityFields(parentCapability, Utf16ReaderCodec.class, child, 2);
+    assertCapabilityFields(parentCapability, Utf16ReaderCodec.class, child, 1);
     childCapability = resolver.utf16Reader(child);
     assertSame(childInfo.utf16Reader(), childCapability);
-    assertPublishedChild(parentCapability, Utf16ReaderCodec.class, childCapability, child, 2);
+    assertPublishedChild(parentCapability, Utf16ReaderCodec.class, childCapability, child, 1);
 
     parentCapability = resolver.utf8Reader(parent);
-    assertCapabilityFields(parentCapability, Utf8ReaderCodec.class, child, 2);
+    assertCapabilityFields(parentCapability, Utf8ReaderCodec.class, child, 1);
     childCapability = resolver.utf8Reader(child);
     assertSame(childInfo.utf8Reader(), childCapability);
-    assertPublishedChild(parentCapability, Utf8ReaderCodec.class, childCapability, child, 2);
+    assertPublishedChild(parentCapability, Utf8ReaderCodec.class, childCapability, child, 1);
   }
 
   @Test
@@ -344,7 +344,7 @@ public class JsonAsyncCompilationTest {
         nestedReaders++;
       }
     }
-    assertEquals(nestedReaders, 2);
+    assertEquals(nestedReaders, 1);
   }
 
   private static JsonTypeResolver resolver(ForyJson json) throws Exception {

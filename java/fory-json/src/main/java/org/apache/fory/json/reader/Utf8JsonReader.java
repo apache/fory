@@ -2194,10 +2194,6 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private String newLatin1String(int start, int end) {
-    return newLatin1StringUnchecked(start, end);
-  }
-
-  private String newLatin1StringUnchecked(int start, int end) {
     int length = end - start;
     byte[] bytes = new byte[length];
     System.arraycopy(input, start, bytes, 0, length);

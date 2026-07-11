@@ -27,7 +27,6 @@ import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.json.codec.CollectionCodec;
-import org.apache.fory.json.codec.CollectionCodec.ObjectCollectionCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
@@ -114,7 +113,7 @@ abstract class JsonReaderCodegen {
       if (usesReadInfo(properties[i])) {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
-      if (JsonCodegen.storesReadCodec(properties[i])) {
+      if (JsonCodegen.usesReadCodec(properties[i])) {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(properties[i])), "r" + i);
       }
       if (storesReadObjectCodec(type, properties[i])) {
@@ -130,7 +129,6 @@ abstract class JsonReaderCodegen {
         "properties",
         JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
         "codecs");
-    addObjectCollectionMethods(ctx, type, properties);
     ctx.clearExprState();
     Code.ExprCode body =
         fastReadExpression(builder, readMethod, slowMethod, type, properties, record).genCode(ctx);
@@ -148,182 +146,6 @@ abstract class JsonReaderCodegen {
     addReadFieldMethods(ctx, builder, readMethod, readerType, type, properties, record);
     addSlowReadMethods(ctx, builder, slowMethod, readerType, type, properties, record);
     return ctx.genCode();
-  }
-
-  final void addObjectCollectionMethods(
-      CodegenContext ctx, Class<?> type, JsonFieldInfo[] properties) {
-    Class<?> readerType = readerType();
-    for (int id = 0; id < properties.length; id++) {
-      JsonFieldInfo property = properties[id];
-      if (!JsonCodegen.readsObjectCollectionDirectly(property)) {
-        continue;
-      }
-      String child = property.readElementRawType() == type ? "this" : "o" + id;
-      String element = objectCollectionElement(child, id);
-      if (property.readTypeInfo().collectionCreatesArrayList()) {
-        ctx.addMethod(
-            "private final",
-            collectionMethod(id),
-            arrayListCollectionBody(id, element),
-            Object.class,
-            readerType,
-            "reader");
-        ctx.addMethod(
-            "private final",
-            collectionTailMethod(id),
-            arrayListCollectionTailBody(id, element),
-            Object.class,
-            readerType,
-            "reader",
-            Object.class,
-            "e0",
-            Object.class,
-            "e1",
-            Object.class,
-            "e2",
-            Object.class,
-            "e3");
-        ctx.addMethod(
-            "private final",
-            collectionLongTailMethod(id),
-            arrayListCollectionLongTailBody(element),
-            Object.class,
-            readerType,
-            "reader",
-            Object.class,
-            "e0",
-            Object.class,
-            "e1",
-            Object.class,
-            "e2",
-            Object.class,
-            "e3",
-            Object.class,
-            "e4",
-            Object.class,
-            "e5");
-      } else {
-        ctx.addMethod(
-            "private final",
-            collectionMethod(id),
-            objectCollectionBody(id, element),
-            Object.class,
-            readerType,
-            "reader");
-      }
-    }
-  }
-
-  final String objectCollectionBody(int id, String element) {
-    return "if (reader.tryReadNullToken()) {\n"
-        + "  return null;\n"
-        + "}\n"
-        + "reader.enterDepth();\n"
-        + "java.util.Collection<Object> collection = r"
-        + id
-        + ".newCollection();\n"
-        + "reader.expectNextToken('[');\n"
-        + "if (!reader.consumeNextToken(']')) {\n"
-        + "  do {\n"
-        + "    collection.add("
-        + element
-        + ");\n"
-        + "  } while (reader.consumeNextCommaOrEndArray());\n"
-        + "}\n"
-        + "reader.exitDepth();\n"
-        + "return r"
-        + id
-        + ".finishCollection(collection);";
-  }
-
-  final String arrayListCollectionBody(int id, String element) {
-    StringBuilder code = new StringBuilder();
-    code.append("if (reader.tryReadNullToken()) {\n")
-        .append("  return null;\n")
-        .append("}\n")
-        .append("reader.enterDepth();\n")
-        .append("reader.expectNextToken('[');\n")
-        .append("if (reader.consumeNextToken(']')) {\n")
-        .append("  reader.exitDepth();\n")
-        .append("  return new java.util.ArrayList<Object>(0);\n")
-        .append("}\n");
-    for (int i = 0; i < 4; i++) {
-      code.append("Object e").append(i).append(" = ").append(element).append(";\n");
-      code.append("if (!reader.consumeNextCommaOrEndArray()) {\n");
-      appendArrayListReturn(code, i + 1);
-      code.append("}\n");
-    }
-    code.append("return ").append(collectionTailMethod(id)).append("(reader, e0, e1, e2, e3);");
-    return code.toString();
-  }
-
-  final String arrayListCollectionTailBody(int id, String element) {
-    StringBuilder code = new StringBuilder();
-    for (int i = 4; i < 6; i++) {
-      code.append("Object e").append(i).append(" = ").append(element).append(";\n");
-      code.append("if (!reader.consumeNextCommaOrEndArray()) {\n");
-      appendArrayListReturn(code, i + 1);
-      code.append("}\n");
-    }
-    code.append("return ")
-        .append(collectionLongTailMethod(id))
-        .append("(reader, e0, e1, e2, e3, e4, e5);");
-    return code.toString();
-  }
-
-  final String arrayListCollectionLongTailBody(String element) {
-    StringBuilder code = new StringBuilder();
-    for (int i = 6; i < 8; i++) {
-      code.append("Object e").append(i).append(" = ").append(element).append(";\n");
-      code.append("if (!reader.consumeNextCommaOrEndArray()) {\n");
-      appendArrayListReturn(code, i + 1);
-      code.append("}\n");
-    }
-    code.append("java.util.ArrayList<Object> list = new java.util.ArrayList<Object>(9);\n");
-    appendArrayListAdds(code, 8);
-    code.append("do {\n")
-        .append("  list.add(")
-        .append(element)
-        .append(");\n")
-        .append("} while (reader.consumeNextCommaOrEndArray());\n")
-        .append("reader.exitDepth();\n")
-        .append("return list;");
-    return code.toString();
-  }
-
-  final void appendArrayListReturn(StringBuilder code, int size) {
-    code.append("  reader.exitDepth();\n")
-        .append("  java.util.ArrayList<Object> list = new java.util.ArrayList<Object>(")
-        .append(size)
-        .append(");\n");
-    appendArrayListAdds(code, size, "  ");
-    code.append("  return list;\n");
-  }
-
-  final void appendArrayListAdds(StringBuilder code, int size) {
-    appendArrayListAdds(code, size, "");
-  }
-
-  final void appendArrayListAdds(StringBuilder code, int size, String indent) {
-    for (int i = 0; i < size; i++) {
-      code.append(indent).append("list.add(e").append(i).append(");\n");
-    }
-  }
-
-  final String objectCollectionElement(String child, int id) {
-    return child + "." + readMethod() + "(reader)";
-  }
-
-  final String collectionMethod(int id) {
-    return "readCollection" + id;
-  }
-
-  final String collectionTailMethod(int id) {
-    return "readCollectionTail" + id;
-  }
-
-  final String collectionLongTailMethod(int id) {
-    return "readCollectionLongTail" + id;
   }
 
   private void addFastReadGroupMethods(
@@ -490,7 +312,7 @@ abstract class JsonReaderCodegen {
               hashes,
               new Expression.Invoke(property, "nameHash", TypeRef.of(long.class)).inline(),
               id));
-      if (JsonCodegen.storesReadCodec(properties[i])) {
+      if (JsonCodegen.usesReadCodec(properties[i])) {
         Class<?> codecType = codecFieldType(properties[i]);
         expressions.add(
             new Expression.Assign(
@@ -1872,19 +1694,6 @@ abstract class JsonReaderCodegen {
   }
 
   final Expression readCollectionValue(JsonFieldInfo property, int id) {
-    if (JsonCodegen.readsObjectCollectionDirectly(property)) {
-      return new Expression.Cast(
-          inline(
-              new Expression.Invoke(
-                  new Reference("this", TypeRef.of(Object.class)),
-                  collectionMethod(id),
-                  "",
-                  TypeRef.of(Object.class),
-                  false,
-                  false,
-                  readerRef())),
-          TypeRef.of(property.readRawType()));
-    }
     return new Expression.Cast(
         inline(
             new Expression.Invoke(
@@ -1917,9 +1726,6 @@ abstract class JsonReaderCodegen {
 
     @Override
     Class<?> codecFieldType(JsonFieldInfo property) {
-      if (JsonCodegen.readsObjectCollectionDirectly(property)) {
-        return ObjectCollectionCodec.class;
-      }
       return codegen.latin1ReaderFieldType(property.readTypeInfo());
     }
 
@@ -1998,9 +1804,6 @@ abstract class JsonReaderCodegen {
 
     @Override
     Class<?> codecFieldType(JsonFieldInfo property) {
-      if (JsonCodegen.readsObjectCollectionDirectly(property)) {
-        return ObjectCollectionCodec.class;
-      }
       return codegen.utf16ReaderFieldType(property.readTypeInfo());
     }
 
@@ -2077,9 +1880,6 @@ abstract class JsonReaderCodegen {
 
     @Override
     Class<?> codecFieldType(JsonFieldInfo property) {
-      if (JsonCodegen.readsObjectCollectionDirectly(property)) {
-        return ObjectCollectionCodec.class;
-      }
       return codegen.utf8ReaderFieldType(property.readTypeInfo());
     }
 

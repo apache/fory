@@ -25,7 +25,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.annotation.Internal;
@@ -360,9 +359,6 @@ public final class JsonCodegen {
   }
 
   static Class<?> readNestedType(JsonFieldInfo property) {
-    if (readsObjectCollectionDirectly(property)) {
-      return property.readElementRawType();
-    }
     if (property.readKind() == JsonFieldKind.OBJECT
         && property.readRawType() != Object.class
         && property.readTypeInfo().usesDefaultObjectCodec()) {
@@ -419,26 +415,10 @@ public final class JsonCodegen {
     }
   }
 
-  static boolean storesReadCodec(JsonFieldInfo property) {
-    if (readsObjectCollectionDirectly(property)) {
-      return !property.readTypeInfo().collectionCreatesArrayList();
-    }
-    return usesReadCodec(property);
-  }
-
   static boolean usesReadObjectCodec(JsonFieldInfo property) {
     return property.readKind() == JsonFieldKind.OBJECT
         && property.readRawType() != Object.class
         && property.readTypeInfo().usesDefaultObjectCodec();
-  }
-
-  static boolean readsObjectCollectionDirectly(JsonFieldInfo property) {
-    JsonTypeInfo elementTypeInfo = property.readElementTypeInfo();
-    return property.readKind() == JsonFieldKind.COLLECTION
-        && property.readElementRawType() != null
-        && elementTypeInfo != null
-        && elementTypeInfo.usesDefaultObjectCodec()
-        && property.readTypeInfo().usesObjectCollectionCodec();
   }
 
   static boolean storesReadObjectCodec(Class<?> type, JsonFieldInfo property) {
@@ -447,25 +427,19 @@ public final class JsonCodegen {
   }
 
   static JsonTypeInfo readObjectTypeInfo(JsonFieldInfo property) {
-    return readNestedType(property) == null ? null : nestedReadTypeInfo(property);
-  }
-
-  private static JsonTypeInfo nestedReadTypeInfo(JsonFieldInfo property) {
-    return readsObjectCollectionDirectly(property)
-        ? property.readElementTypeInfo()
-        : property.readTypeInfo();
+    return readNestedType(property) == null ? null : property.readTypeInfo();
   }
 
   private static void collectLatin1Readers(
       Class<?> type, JsonFieldInfo[] properties, Latin1ReaderCodec<Object>[] codecs) {
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
-      if (storesReadCodec(property)) {
+      if (usesReadCodec(property)) {
         codecs[i] = property.readTypeInfo().latin1Reader();
       }
       if (storesReadObjectCodec(type, property)) {
         codecs[properties.length + i] =
-            (Latin1ReaderCodec<Object>) nestedReadTypeInfo(property).latin1Reader();
+            (Latin1ReaderCodec<Object>) property.readTypeInfo().latin1Reader();
       }
     }
   }
@@ -474,12 +448,12 @@ public final class JsonCodegen {
       Class<?> type, JsonFieldInfo[] properties, Utf16ReaderCodec<Object>[] codecs) {
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
-      if (storesReadCodec(property)) {
+      if (usesReadCodec(property)) {
         codecs[i] = property.readTypeInfo().utf16Reader();
       }
       if (storesReadObjectCodec(type, property)) {
         codecs[properties.length + i] =
-            (Utf16ReaderCodec<Object>) nestedReadTypeInfo(property).utf16Reader();
+            (Utf16ReaderCodec<Object>) property.readTypeInfo().utf16Reader();
       }
     }
   }
@@ -488,12 +462,12 @@ public final class JsonCodegen {
       Class<?> type, JsonFieldInfo[] properties, Utf8ReaderCodec<Object>[] codecs) {
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
-      if (storesReadCodec(property)) {
+      if (usesReadCodec(property)) {
         codecs[i] = property.readTypeInfo().utf8Reader();
       }
       if (storesReadObjectCodec(type, property)) {
         codecs[properties.length + i] =
-            (Utf8ReaderCodec<Object>) nestedReadTypeInfo(property).utf8Reader();
+            (Utf8ReaderCodec<Object>) property.readTypeInfo().utf8Reader();
       }
     }
   }
@@ -593,11 +567,7 @@ public final class JsonCodegen {
     if (rawType != null && !rawType.isPrimitive() && !isVisible(rawType)) {
       return false;
     }
-    if (property.readKind() != JsonFieldKind.COLLECTION) {
-      return true;
-    }
-    Class<?> elementType = property.readElementRawType();
-    return !isPojo(elementType) || isVisible(elementType);
+    return true;
   }
 
   private boolean canCompileType(Class<?> type) {
@@ -671,25 +641,6 @@ public final class JsonCodegen {
 
   private static String qualifiedClassName(String generatedPackage, String className) {
     return generatedPackage.isEmpty() ? className : generatedPackage + "." + className;
-  }
-
-  private static boolean isPojo(Class<?> type) {
-    return type != null
-        && type != Object.class
-        && type != String.class
-        && type != Boolean.class
-        && type != Byte.class
-        && type != Short.class
-        && type != Integer.class
-        && type != Long.class
-        && type != Float.class
-        && type != Double.class
-        && type != Character.class
-        && !type.isPrimitive()
-        && !type.isEnum()
-        && !type.isArray()
-        && !Collection.class.isAssignableFrom(type)
-        && !Map.class.isAssignableFrom(type);
   }
 
   @Internal

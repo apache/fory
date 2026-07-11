@@ -73,11 +73,9 @@ public final class JsonFieldInfo {
   private int readPrimitiveKindId;
   private final JsonFieldAccessor writeAccessor;
   private final JsonFieldAccessor readAccessor;
-  private final Type readElementType;
   private final Type writeMapValueType;
   private final Class<?> writeArrayComponentType;
   private final Class<?> writeElementRawType;
-  private final Class<?> readElementRawType;
   private final byte[] stringNamePrefix;
   private final byte[] stringCommaNamePrefix;
   private final byte[] stringUtf16NamePrefix;
@@ -110,7 +108,6 @@ public final class JsonFieldInfo {
   private int readIndex = -1;
   private JsonTypeInfo writeTypeInfo;
   private JsonTypeInfo readTypeInfo;
-  private JsonTypeInfo readElementTypeInfo;
 
   public JsonFieldInfo(
       String name,
@@ -141,13 +138,10 @@ public final class JsonFieldInfo {
     readPrimitiveKindId = primitiveKindId(readRawType, readKind);
     Type writeElementType =
         writeKind == JsonFieldKind.COLLECTION ? CodecUtils.elementType(writeType) : null;
-    readElementType =
-        readKind == JsonFieldKind.COLLECTION ? CodecUtils.elementType(readType) : null;
     writeMapValueType = writeKind == JsonFieldKind.MAP ? CodecUtils.mapValueType(writeType) : null;
     writeArrayComponentType =
         writeKind == JsonFieldKind.ARRAY ? writeRawType.getComponentType() : null;
     writeElementRawType = writeElementType == null ? null : knownRawType(writeElementType);
-    readElementRawType = readElementType == null ? null : knownRawType(readElementType);
     String stringPrefix = JsonStringEscaper.escapedNamePrefix(name, true);
     String utf8Prefix = JsonStringEscaper.escapedNamePrefix(name, false);
     stringNamePrefix = stringPrefix.getBytes(StandardCharsets.ISO_8859_1);
@@ -253,16 +247,8 @@ public final class JsonFieldInfo {
     return writeAccessor;
   }
 
-  public Type readElementType() {
-    return readElementType;
-  }
-
   public Class<?> writeElementRawType() {
     return writeElementRawType;
-  }
-
-  public Class<?> readElementRawType() {
-    return readElementRawType;
   }
 
   public Type writeMapValueType() {
@@ -331,9 +317,6 @@ public final class JsonFieldInfo {
       readTypeInfo = typeResolver.getTypeInfo(readType, readRawType);
       readKind = readTypeInfo.kind();
       readPrimitiveKindId = primitiveKindId(readRawType, readKind);
-    }
-    if (readKind == JsonFieldKind.COLLECTION && readElementRawType != null) {
-      readElementTypeInfo = typeResolver.getTypeInfo(readElementType, readElementRawType);
     }
   }
 
@@ -529,10 +512,6 @@ public final class JsonFieldInfo {
 
   public JsonTypeInfo readTypeInfo() {
     return readTypeInfo;
-  }
-
-  public JsonTypeInfo readElementTypeInfo() {
-    return readElementTypeInfo;
   }
 
   public byte[] stringNamePrefix() {
