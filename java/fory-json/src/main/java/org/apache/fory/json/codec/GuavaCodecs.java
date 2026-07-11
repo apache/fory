@@ -36,6 +36,7 @@ import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.JsonWriter;
+import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
 /** Declared public Guava JSON type codecs and factories. */
@@ -217,13 +218,13 @@ public final class GuavaCodecs {
     }
   }
 
-  private static final class ImmutableIntArrayCodec extends AbstractJsonCodec {
+  private static final class ImmutableIntArrayCodec extends SharedJsonCodec {
     private static final ImmutableIntArrayCodec INSTANCE = new ImmutableIntArrayCodec();
 
     private ImmutableIntArrayCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writeInts(writer, value);
     }
 
@@ -233,7 +234,7 @@ public final class GuavaCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return copyOf(readInts(reader));
     }
 

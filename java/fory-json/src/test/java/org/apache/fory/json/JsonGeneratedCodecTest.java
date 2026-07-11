@@ -29,9 +29,10 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.fory.json.codec.BaseObjectCodec;
-import org.apache.fory.json.codec.GeneratedObjectCodec;
 import org.apache.fory.json.data.GeneratedCollectionFields;
 import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.json.data.RecursiveChild;
@@ -133,6 +134,46 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void generatedObjectCollections() {
+    ForyJson json = newJson();
+    String latin1 = objectCollectionsJson("value");
+    ObjectCollections latin1Value = json.fromJson(latin1, ObjectCollections.class);
+    assertObjectCollections(latin1Value, "value");
+
+    String utf16 = objectCollectionsJson(ZH_TEXT);
+    ObjectCollections utf16Value = json.fromJson(utf16, ObjectCollections.class);
+    assertObjectCollections(utf16Value, ZH_TEXT);
+    ObjectCollections utf8Value =
+        json.fromJson(utf16.getBytes(StandardCharsets.UTF_8), ObjectCollections.class);
+    assertObjectCollections(utf8Value, ZH_TEXT);
+
+    ObjectCollections empty = json.fromJson("{\"values\":[],\"set\":[]}", ObjectCollections.class);
+    assertTrue(empty.values.isEmpty());
+    assertTrue(empty.set.isEmpty());
+
+    assertEquals(json.toJson(utf16Value), utf16);
+    assertEquals(new String(json.toJsonBytes(utf16Value), StandardCharsets.UTF_8), utf16);
+    assertGeneratedWhenSupported(json, ObjectCollections.class);
+    assertGeneratedWhenSupported(json, TokenValues.class);
+  }
+
+  @Test
+  public void recursiveObjectCollection() {
+    ForyJson json = newJson();
+    String input = "{\"children\":[{\"children\":[],\"id\":2},null],\"id\":1}";
+    RecursiveCollection stringValue = json.fromJson(input, RecursiveCollection.class);
+    RecursiveCollection utf8Value =
+        json.fromJson(input.getBytes(StandardCharsets.UTF_8), RecursiveCollection.class);
+    assertEquals(stringValue.id, 1);
+    assertEquals(stringValue.children.get(0).id, 2);
+    assertEquals(stringValue.children.get(1), null);
+    assertEquals(utf8Value.children.get(0).children.size(), 0);
+    assertEquals(json.toJson(stringValue), input);
+    assertEquals(new String(json.toJsonBytes(stringValue), StandardCharsets.UTF_8), input);
+    assertGeneratedWhenSupported(json, RecursiveCollection.class);
+  }
+
+  @Test
   public void readGeneratedCollectionFields() {
     ForyJson json = newJson();
     String input =
@@ -152,9 +193,9 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     second.toJsonBytes(new PublicFields());
     writeNullFields.toJsonBytes(new PublicFields());
     if (!codegenEnabled()) {
-      assertFalse(first.hasGeneratedCodec(PublicFields.class));
-      assertFalse(second.hasGeneratedCodec(PublicFields.class));
-      assertFalse(writeNullFields.hasGeneratedCodec(PublicFields.class));
+      assertFalse(hasGeneratedCapability(first, PublicFields.class));
+      assertFalse(hasGeneratedCapability(second, PublicFields.class));
+      assertFalse(hasGeneratedCapability(writeNullFields, PublicFields.class));
       return;
     }
 
@@ -163,16 +204,16 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     Class<?> writeNullCodecClass = generatedCodecClass(writeNullFields, PublicFields.class);
     ForyJson asyncDefault = ForyJson.builder().withCodegen(true).build();
     asyncDefault.toJsonBytes(new PublicFields());
-    awaitGenerated(asyncDefault, PublicFields.class);
+    awaitUtf8Writer(asyncDefault, PublicFields.class, new PublicFields());
     Class<?> asyncCodecClass = generatedCodecClass(asyncDefault, PublicFields.class);
     assertEquals(firstCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
     assertEquals(
         secondCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
     assertEquals(asyncCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
-    assertGeneratedName(firstCodecClass, PublicFields.class, "Object");
-    assertGeneratedName(secondCodecClass, PublicFields.class, "Object");
-    assertGeneratedName(writeNullCodecClass, PublicFields.class, "Object");
-    assertGeneratedName(asyncCodecClass, PublicFields.class, "Object");
+    assertGeneratedName(firstCodecClass, PublicFields.class, "Utf8Writer");
+    assertGeneratedName(secondCodecClass, PublicFields.class, "Utf8Writer");
+    assertGeneratedName(writeNullCodecClass, PublicFields.class, "Utf8Writer");
+    assertGeneratedName(asyncCodecClass, PublicFields.class, "Utf8Writer");
     assertEquals(generatedId(secondCodecClass), generatedId(firstCodecClass));
     assertEquals(generatedId(asyncCodecClass), generatedId(firstCodecClass));
     assertNotEquals(generatedId(writeNullCodecClass), generatedId(firstCodecClass));
@@ -301,6 +342,54 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     public String f13;
   }
 
+  public static final class ObjectCollections {
+    public List<TokenValues> values;
+    public Set<TokenValues> set;
+  }
+
+  public static final class RecursiveCollection {
+    public List<RecursiveCollection> children;
+    public int id;
+  }
+
+  private static String objectCollectionsJson(String name) {
+    StringBuilder values = new StringBuilder();
+    for (int i = 0; i < 10; i++) {
+      if (i != 0) {
+        values.append(',');
+      }
+      values.append(i == 4 ? "null" : tokenJson(i, name));
+    }
+    return "{\"values\":["
+        + values
+        + "],\"set\":["
+        + tokenJson(10, name)
+        + ","
+        + tokenJson(11, name)
+        + "]}";
+  }
+
+  private static String tokenJson(int id, String name) {
+    return "{\"count\":"
+        + id
+        + ",\"name\":\""
+        + name
+        + id
+        + "\",\"tags\":[\"x\"],\"total\":"
+        + (id + 1)
+        + "}";
+  }
+
+  private static void assertObjectCollections(ObjectCollections value, String name) {
+    assertEquals(value.values.size(), 10);
+    assertEquals(value.values.get(0).name, name + 0);
+    assertEquals(value.values.get(4), null);
+    assertEquals(value.values.get(9).total, 10L);
+    assertTrue(value.set instanceof LinkedHashSet);
+    assertEquals(value.set.size(), 2);
+    assertEquals(value.set.iterator().next().name, name + 10);
+  }
+
   private static Class<?> generatedCodecClass(ForyJson json, Class<?> type) throws Exception {
     Field primarySlotField = ForyJson.class.getDeclaredField("primarySlot");
     primarySlotField.setAccessible(true);
@@ -312,14 +401,19 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     Field typeResolverField = state.getClass().getDeclaredField("typeResolver");
     typeResolverField.setAccessible(true);
     JsonTypeResolver typeResolver = (JsonTypeResolver) typeResolverField.get(state);
-    BaseObjectCodec codec = typeResolver.getObjectCodec(type);
-    assertTrue(codec instanceof GeneratedObjectCodec);
+    Object owner = typeResolver.getObjectCodec(type);
+    Object codec = typeResolver.getTypeInfo(type, type).utf8Writer();
+    assertTrue(codec != owner, codec.getClass().getName());
     return codec.getClass();
   }
 
-  private static void awaitGenerated(ForyJson json, Class<?> type) throws InterruptedException {
+  private static void awaitUtf8Writer(ForyJson json, Class<?> type, Object value)
+      throws InterruptedException {
     for (int i = 0; i < 200; i++) {
-      if (json.hasGeneratedCodec(type)) {
+      // Async compilation publishes the generated class; the owning resolver installs it when this
+      // concrete path is entered again.
+      json.toJsonBytes(value);
+      if (hasGeneratedCapability(json, type)) {
         return;
       }
       Thread.sleep(10);

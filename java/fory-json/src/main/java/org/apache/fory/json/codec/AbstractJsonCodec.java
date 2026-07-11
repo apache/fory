@@ -20,24 +20,16 @@
 package org.apache.fory.json.codec;
 
 import org.apache.fory.json.ForyJsonException;
-import org.apache.fory.json.meta.JsonFieldAccessor;
-import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.reader.Utf16JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
-import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
+/** Null handling shared by codecs whose five concrete paths own their non-null implementation. */
 public abstract class AbstractJsonCodec implements JsonCodec {
-  @Override
-  public final void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writeNonNull(writer, value, resolver);
-    }
-  }
-
   @Override
   public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
     if (value == null) {
@@ -57,33 +49,49 @@ public abstract class AbstractJsonCodec implements JsonCodec {
   }
 
   @Override
-  public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-    if (reader.peekNull()) {
-      reader.readNull();
-      if (typeInfo.primitive()) {
-        throw new ForyJsonException("Cannot read null into primitive " + typeInfo.rawType());
-      }
-      return null;
+  public Object readLatin1(
+      Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    if (reader.tryReadNullToken()) {
+      return nullValue(typeInfo);
     }
-    return readNonNull(reader, typeInfo, resolver);
+    return readLatin1NonNull(reader, typeInfo, resolver);
   }
 
-  abstract void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver);
-
-  void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-    writeNonNull(writer, value, resolver);
+  @Override
+  public Object readUtf16(
+      Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    if (reader.tryReadNullToken()) {
+      return nullValue(typeInfo);
+    }
+    return readUtf16NonNull(reader, typeInfo, resolver);
   }
+
+  @Override
+  public Object readUtf8(Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    if (reader.tryReadNullToken()) {
+      return nullValue(typeInfo);
+    }
+    return readUtf8NonNull(reader, typeInfo, resolver);
+  }
+
+  abstract void writeStringNonNull(
+      StringJsonWriter writer, Object value, JsonTypeResolver resolver);
 
   abstract void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver);
 
-  abstract Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver);
+  abstract Object readLatin1NonNull(
+      Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver);
 
-  final void readFieldDefault(
-      JsonReader reader,
-      Object object,
-      JsonFieldAccessor accessor,
-      JsonTypeInfo typeInfo,
-      JsonTypeResolver resolver) {
-    JsonCodec.super.readField(reader, object, accessor, typeInfo, resolver);
+  abstract Object readUtf16NonNull(
+      Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver);
+
+  abstract Object readUtf8NonNull(
+      Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver);
+
+  private static Object nullValue(JsonTypeInfo typeInfo) {
+    if (typeInfo.primitive()) {
+      throw new ForyJsonException("Cannot read null into primitive " + typeInfo.rawType());
+    }
+    return null;
   }
 }

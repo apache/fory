@@ -21,6 +21,12 @@ package org.apache.fory.json.resolver;
 
 import java.lang.reflect.Type;
 import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.Latin1ReaderCodec;
+import org.apache.fory.json.codec.ObjectCodec;
+import org.apache.fory.json.codec.StringWriterCodec;
+import org.apache.fory.json.codec.Utf16ReaderCodec;
+import org.apache.fory.json.codec.Utf8ReaderCodec;
+import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.reflect.TypeRef;
 
@@ -30,7 +36,14 @@ public final class JsonTypeInfo {
   private final TypeRef<?> typeRef;
   private final Class<?> rawType;
   private final JsonFieldKind kind;
-  private JsonCodec codec;
+  // JsonJITContext orders every installation and dependent-field update. These stay plain fields
+  // so established codec calls do not pay volatile or atomic access on the hot path.
+  private StringWriterCodec stringWriter;
+  private Utf8WriterCodec utf8Writer;
+  private Latin1ReaderCodec latin1Reader;
+  private Utf16ReaderCodec utf16Reader;
+  private Utf8ReaderCodec utf8Reader;
+  private final boolean defaultObjectCodec;
   private final boolean primitive;
 
   JsonTypeInfo(
@@ -39,7 +52,12 @@ public final class JsonTypeInfo {
     this.typeRef = typeRef;
     this.rawType = rawType;
     this.kind = kind;
-    this.codec = codec;
+    stringWriter = codec;
+    utf8Writer = codec;
+    latin1Reader = codec;
+    utf16Reader = codec;
+    utf8Reader = codec;
+    defaultObjectCodec = codec instanceof ObjectCodec;
     primitive = rawType.isPrimitive();
   }
 
@@ -59,12 +77,48 @@ public final class JsonTypeInfo {
     return kind;
   }
 
-  public JsonCodec codec() {
-    return codec;
+  public StringWriterCodec stringWriter() {
+    return stringWriter;
   }
 
-  void setCodec(JsonCodec codec) {
-    this.codec = codec;
+  public Utf8WriterCodec utf8Writer() {
+    return utf8Writer;
+  }
+
+  public Latin1ReaderCodec latin1Reader() {
+    return latin1Reader;
+  }
+
+  public Utf16ReaderCodec utf16Reader() {
+    return utf16Reader;
+  }
+
+  public Utf8ReaderCodec utf8Reader() {
+    return utf8Reader;
+  }
+
+  void setStringWriter(StringWriterCodec stringWriter) {
+    this.stringWriter = stringWriter;
+  }
+
+  void setUtf8Writer(Utf8WriterCodec utf8Writer) {
+    this.utf8Writer = utf8Writer;
+  }
+
+  void setLatin1Reader(Latin1ReaderCodec latin1Reader) {
+    this.latin1Reader = latin1Reader;
+  }
+
+  void setUtf16Reader(Utf16ReaderCodec utf16Reader) {
+    this.utf16Reader = utf16Reader;
+  }
+
+  void setUtf8Reader(Utf8ReaderCodec utf8Reader) {
+    this.utf8Reader = utf8Reader;
+  }
+
+  public boolean usesDefaultObjectCodec() {
+    return defaultObjectCodec;
   }
 
   public boolean primitive() {

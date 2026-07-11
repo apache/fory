@@ -26,14 +26,20 @@ import org.apache.fory.codegen.Code;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
-import org.apache.fory.json.codec.BaseObjectCodec;
 import org.apache.fory.json.codec.CollectionCodec;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.CollectionCodec.ObjectCollectionCodec;
+import org.apache.fory.json.codec.Latin1ObjectReaderCodec;
+import org.apache.fory.json.codec.Latin1ReaderCodec;
+import org.apache.fory.json.codec.ObjectCodec;
+import org.apache.fory.json.codec.ScalarCodecs;
+import org.apache.fory.json.codec.Utf16ObjectReaderCodec;
+import org.apache.fory.json.codec.Utf16ReaderCodec;
+import org.apache.fory.json.codec.Utf8ObjectReaderCodec;
+import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.meta.JsonFieldTable;
-import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -43,7 +49,6 @@ import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.reflect.TypeRef;
 
 final class JsonReaderCodegen {
-  private static final int GENERIC_READER = JsonCodegen.GENERIC_READER;
   private static final int LATIN1_READER = JsonCodegen.LATIN1_READER;
   private static final int UTF16_READER = JsonCodegen.UTF16_READER;
   private static final int UTF8_READER = JsonCodegen.UTF8_READER;
@@ -60,177 +65,178 @@ final class JsonReaderCodegen {
     this.codegen = codegen;
   }
 
-  private Class<?> codecFieldType(JsonCodec codec) {
-    return codegen.codecFieldType(codec);
+  private Class<?> codecFieldType(JsonFieldInfo property, int readerMode) {
+    if (JsonCodegen.readsObjectCollectionDirectly(property)) {
+      return ObjectCollectionCodec.class;
+    }
+    return codegen.readerFieldType(property.readTypeInfo(), readerMode);
   }
 
   private static Class<?> readNestedType(JsonFieldInfo property) {
     return JsonCodegen.readNestedType(property);
   }
 
-  Expression addReaderCode(
+  String genReaderCode(
       JsonGeneratedCodecBuilder builder,
       Class<?> type,
       JsonFieldInfo[] properties,
+      JsonCodecPath path,
       boolean record) {
+    int readerMode = readerMode(path);
+    Class<?> readerType = readerType(readerMode);
+    String readMethod = readMethod(readerMode);
+    String nonNullMethod = readMethod + "NonNull";
+    String slowMethod = readMethod + "Slow";
     CodegenContext ctx = builder.context();
     ctx.addImports(
-        BaseObjectCodec.class,
-        JsonReader.class,
+        ObjectCodec.class,
         Latin1JsonReader.class,
         Utf16JsonReader.class,
         Utf8JsonReader.class,
         JsonFieldTable.class);
+    ctx.implementsInterfaces(ctx.type(objectReaderType(readerMode)));
+    // Generated readers retain immutable lookup metadata directly. Only record readers keep the
+    // ObjectCodec because record allocation and construction remain owned by it.
+    ctx.addField(JsonFieldTable.class, "readTable");
+    if (record) {
+      ctx.addField(ObjectCodec.class, "owner");
+    }
     ctx.addField(long[].class, "fieldHashes");
     for (int i = 0; i < properties.length; i++) {
       if (usesReadInfo(properties[i])) {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
-      if (usesReadCodec(properties[i])) {
-        ctx.addField(codecFieldType(properties[i].readTypeInfo().codec()), "r" + i);
+      if (JsonCodegen.storesReadCodec(properties[i])) {
+        ctx.addField(codecFieldType(properties[i], readerMode), "r" + i);
       }
       if (usesReadTypeField(properties[i])) {
         ctx.addField(JsonTypeInfo.class, "rt" + i);
       }
       if (storesReadObjectCodec(type, properties[i])) {
-        ctx.addField(BaseObjectCodec.class, "o" + i);
+        ctx.addField(objectReaderType(readerMode), "o" + i);
       }
     }
-    ctx.addMethod(
-        "@Override public final",
-        "read",
-        "if (reader.peekNull()) {\n"
-            + "  reader.readNull();\n"
-            + "  return null;\n"
-            + "}\n"
-            + "return readNonNull(reader, typeInfo, typeResolver);",
-        Object.class,
-        JsonReader.class,
-        "reader",
-        JsonTypeInfo.class,
-        "typeInfo",
-        JsonTypeResolver.class,
-        "typeResolver");
-    addNullableReadMethod(ctx, "readLatin1", "readLatin1NonNull", Latin1JsonReader.class);
-    addNullableReadMethod(ctx, "readUtf16", "readUtf16NonNull", Utf16JsonReader.class);
-    addNullableReadMethod(ctx, "readUtf8", "readUtf8NonNull", Utf8JsonReader.class);
-    addGeneratedMethod(
+    addGeneratedConstructor(
         ctx,
-        "@Override protected final",
-        "readNonNull",
-        readExpression(builder, type, properties, GENERIC_READER, record),
-        Object.class,
-        JsonReader.class,
-        "reader",
-        JsonTypeInfo.class,
-        "typeInfo",
-        JsonTypeResolver.class,
-        "typeResolver");
-    addReadFieldMethods(
-        ctx, builder, "read", JsonReader.class, type, properties, GENERIC_READER, record);
+        readerConstructorExpression(type, properties, readerMode, record),
+        ObjectCodec.class,
+        "owner",
+        JsonFieldInfo[].class,
+        "properties",
+        readerArrayType(readerMode),
+        "codecs",
+        objectReaderArrayType(readerMode),
+        "objectCodecs");
+    addObjectCollectionMethods(ctx, type, properties, readerMode);
+    addNullableReadMethod(ctx, readMethod, nonNullMethod, readerType);
     addGeneratedMethod(
         ctx,
         "@Override public final",
-        "readLatin1NonNull",
-        fastReadExpression(
-            builder, "readLatin1", "readLatin1Slow", type, properties, LATIN1_READER, record),
+        nonNullMethod,
+        fastReadExpression(builder, readMethod, slowMethod, type, properties, readerMode, record),
         Object.class,
-        Latin1JsonReader.class,
+        readerType,
         "reader",
         JsonTypeInfo.class,
         "typeInfo",
         JsonTypeResolver.class,
         "typeResolver");
     addFastReadGroupMethods(
-        ctx,
-        builder,
-        "readLatin1",
-        "readLatin1Slow",
-        Latin1JsonReader.class,
-        type,
-        properties,
-        LATIN1_READER,
-        record);
-    addReadFieldMethods(
-        ctx,
-        builder,
-        "readLatin1",
-        Latin1JsonReader.class,
-        type,
-        properties,
-        LATIN1_READER,
-        record);
-    addSlowReadMethods(
-        ctx,
-        builder,
-        "readLatin1Slow",
-        Latin1JsonReader.class,
-        type,
-        properties,
-        LATIN1_READER,
-        record);
-    addGeneratedMethod(
-        ctx,
-        "@Override public final",
-        "readUtf16NonNull",
-        fastReadExpression(
-            builder, "readUtf16", "readUtf16Slow", type, properties, UTF16_READER, record),
-        Object.class,
-        Utf16JsonReader.class,
-        "reader",
-        JsonTypeInfo.class,
-        "typeInfo",
-        JsonTypeResolver.class,
-        "typeResolver");
-    addFastReadGroupMethods(
-        ctx,
-        builder,
-        "readUtf16",
-        "readUtf16Slow",
-        Utf16JsonReader.class,
-        type,
-        properties,
-        UTF16_READER,
-        record);
-    addReadFieldMethods(
-        ctx, builder, "readUtf16", Utf16JsonReader.class, type, properties, UTF16_READER, record);
-    addSlowReadMethods(
-        ctx,
-        builder,
-        "readUtf16Slow",
-        Utf16JsonReader.class,
-        type,
-        properties,
-        UTF16_READER,
-        record);
-    addGeneratedMethod(
-        ctx,
-        "@Override public final",
-        "readUtf8NonNull",
-        fastReadExpression(
-            builder, "readUtf8", "readUtf8Slow", type, properties, UTF8_READER, record),
-        Object.class,
-        Utf8JsonReader.class,
-        "reader",
-        JsonTypeInfo.class,
-        "typeInfo",
-        JsonTypeResolver.class,
-        "typeResolver");
-    addFastReadGroupMethods(
-        ctx,
-        builder,
-        "readUtf8",
-        "readUtf8Slow",
-        Utf8JsonReader.class,
-        type,
-        properties,
-        UTF8_READER,
-        record);
-    addReadFieldMethods(
-        ctx, builder, "readUtf8", Utf8JsonReader.class, type, properties, UTF8_READER, record);
-    addSlowReadMethods(
-        ctx, builder, "readUtf8Slow", Utf8JsonReader.class, type, properties, UTF8_READER, record);
-    return readerConstructorExpression(type, properties);
+        ctx, builder, readMethod, slowMethod, readerType, type, properties, readerMode, record);
+    addReadFieldMethods(ctx, builder, readMethod, readerType, type, properties, readerMode, record);
+    addSlowReadMethods(ctx, builder, slowMethod, readerType, type, properties, readerMode, record);
+    return ctx.genCode();
+  }
+
+  private static int readerMode(JsonCodecPath path) {
+    switch (path) {
+      case LATIN1_READER:
+        return LATIN1_READER;
+      case UTF16_READER:
+        return UTF16_READER;
+      case UTF8_READER:
+        return UTF8_READER;
+      default:
+        throw new IllegalArgumentException("Not a reader path " + path);
+    }
+  }
+
+  private static Class<?> readerType(int readerMode) {
+    switch (readerMode) {
+      case LATIN1_READER:
+        return Latin1JsonReader.class;
+      case UTF16_READER:
+        return Utf16JsonReader.class;
+      case UTF8_READER:
+        return Utf8JsonReader.class;
+      default:
+        throw new IllegalArgumentException("Unknown reader mode " + readerMode);
+    }
+  }
+
+  private static Class<?> objectReaderType(int readerMode) {
+    switch (readerMode) {
+      case LATIN1_READER:
+        return Latin1ObjectReaderCodec.class;
+      case UTF16_READER:
+        return Utf16ObjectReaderCodec.class;
+      case UTF8_READER:
+        return Utf8ObjectReaderCodec.class;
+      default:
+        throw new IllegalArgumentException("Unknown reader mode " + readerMode);
+    }
+  }
+
+  private static Class<?> readerCapabilityType(int readerMode) {
+    switch (readerMode) {
+      case LATIN1_READER:
+        return Latin1ReaderCodec.class;
+      case UTF16_READER:
+        return Utf16ReaderCodec.class;
+      case UTF8_READER:
+        return Utf8ReaderCodec.class;
+      default:
+        throw new IllegalArgumentException("Unknown reader mode " + readerMode);
+    }
+  }
+
+  private static Class<?> readerArrayType(int readerMode) {
+    switch (readerMode) {
+      case LATIN1_READER:
+        return Latin1ReaderCodec[].class;
+      case UTF16_READER:
+        return Utf16ReaderCodec[].class;
+      case UTF8_READER:
+        return Utf8ReaderCodec[].class;
+      default:
+        throw new IllegalArgumentException("Unknown reader mode " + readerMode);
+    }
+  }
+
+  private static Class<?> objectReaderArrayType(int readerMode) {
+    switch (readerMode) {
+      case LATIN1_READER:
+        return Latin1ObjectReaderCodec[].class;
+      case UTF16_READER:
+        return Utf16ObjectReaderCodec[].class;
+      case UTF8_READER:
+        return Utf8ObjectReaderCodec[].class;
+      default:
+        throw new IllegalArgumentException("Unknown reader mode " + readerMode);
+    }
+  }
+
+  private static String readMethod(int readerMode) {
+    switch (readerMode) {
+      case LATIN1_READER:
+        return "readLatin1";
+      case UTF16_READER:
+        return "readUtf16";
+      case UTF8_READER:
+        return "readUtf8";
+      default:
+        throw new IllegalArgumentException("Unknown reader mode " + readerMode);
+    }
   }
 
   private static void addNullableReadMethod(
@@ -251,6 +257,193 @@ final class JsonReaderCodegen {
         "typeInfo",
         JsonTypeResolver.class,
         "typeResolver");
+  }
+
+  private static void addObjectCollectionMethods(
+      CodegenContext ctx, Class<?> type, JsonFieldInfo[] properties, int readerMode) {
+    Class<?> readerType = readerType(readerMode);
+    for (int id = 0; id < properties.length; id++) {
+      JsonFieldInfo property = properties[id];
+      if (!JsonCodegen.readsObjectCollectionDirectly(property)) {
+        continue;
+      }
+      String child = property.readElementRawType() == type ? "this" : "o" + id;
+      String element = objectCollectionElement(child, id, readerMode);
+      ObjectCollectionCodec codec = (ObjectCollectionCodec) property.readTypeInfo().latin1Reader();
+      if (codec.createsArrayList()) {
+        ctx.addMethod(
+            "private final",
+            collectionMethod(id),
+            arrayListCollectionBody(id, element),
+            Object.class,
+            readerType,
+            "reader",
+            JsonTypeResolver.class,
+            "typeResolver");
+        ctx.addMethod(
+            "private final",
+            collectionTailMethod(id),
+            arrayListCollectionTailBody(id, element),
+            Object.class,
+            readerType,
+            "reader",
+            JsonTypeResolver.class,
+            "typeResolver",
+            Object.class,
+            "e0",
+            Object.class,
+            "e1",
+            Object.class,
+            "e2",
+            Object.class,
+            "e3");
+        ctx.addMethod(
+            "private final",
+            collectionLongTailMethod(id),
+            arrayListCollectionLongTailBody(element),
+            Object.class,
+            readerType,
+            "reader",
+            JsonTypeResolver.class,
+            "typeResolver",
+            Object.class,
+            "e0",
+            Object.class,
+            "e1",
+            Object.class,
+            "e2",
+            Object.class,
+            "e3",
+            Object.class,
+            "e4",
+            Object.class,
+            "e5");
+      } else {
+        ctx.addMethod(
+            "private final",
+            collectionMethod(id),
+            objectCollectionBody(id, element),
+            Object.class,
+            readerType,
+            "reader",
+            JsonTypeResolver.class,
+            "typeResolver");
+      }
+    }
+  }
+
+  private static String objectCollectionBody(int id, String element) {
+    return "reader.enterDepth();\n"
+        + "java.util.Collection<Object> collection = r"
+        + id
+        + ".newCollection();\n"
+        + "reader.expectNextToken('[');\n"
+        + "if (!reader.consumeNextToken(']')) {\n"
+        + "  do {\n"
+        + "    collection.add("
+        + element
+        + ");\n"
+        + "  } while (reader.consumeNextCommaOrEndArray());\n"
+        + "}\n"
+        + "reader.exitDepth();\n"
+        + "return r"
+        + id
+        + ".finishCollection(collection);";
+  }
+
+  private static String arrayListCollectionBody(int id, String element) {
+    StringBuilder code = new StringBuilder();
+    code.append("reader.enterDepth();\n")
+        .append("reader.expectNextToken('[');\n")
+        .append("if (reader.consumeNextToken(']')) {\n")
+        .append("  reader.exitDepth();\n")
+        .append("  return new java.util.ArrayList<Object>(0);\n")
+        .append("}\n");
+    for (int i = 0; i < 4; i++) {
+      code.append("Object e").append(i).append(" = ").append(element).append(";\n");
+      code.append("if (!reader.consumeNextCommaOrEndArray()) {\n");
+      appendArrayListReturn(code, i + 1);
+      code.append("}\n");
+    }
+    code.append("return ")
+        .append(collectionTailMethod(id))
+        .append("(reader, typeResolver, e0, e1, e2, e3);");
+    return code.toString();
+  }
+
+  private static String arrayListCollectionTailBody(int id, String element) {
+    StringBuilder code = new StringBuilder();
+    for (int i = 4; i < 6; i++) {
+      code.append("Object e").append(i).append(" = ").append(element).append(";\n");
+      code.append("if (!reader.consumeNextCommaOrEndArray()) {\n");
+      appendArrayListReturn(code, i + 1);
+      code.append("}\n");
+    }
+    code.append("return ")
+        .append(collectionLongTailMethod(id))
+        .append("(reader, typeResolver, e0, e1, e2, e3, e4, e5);");
+    return code.toString();
+  }
+
+  private static String arrayListCollectionLongTailBody(String element) {
+    StringBuilder code = new StringBuilder();
+    for (int i = 6; i < 8; i++) {
+      code.append("Object e").append(i).append(" = ").append(element).append(";\n");
+      code.append("if (!reader.consumeNextCommaOrEndArray()) {\n");
+      appendArrayListReturn(code, i + 1);
+      code.append("}\n");
+    }
+    code.append("java.util.ArrayList<Object> list = new java.util.ArrayList<Object>(9);\n");
+    appendArrayListAdds(code, 8);
+    code.append("do {\n")
+        .append("  list.add(")
+        .append(element)
+        .append(");\n")
+        .append("} while (reader.consumeNextCommaOrEndArray());\n")
+        .append("reader.exitDepth();\n")
+        .append("return list;");
+    return code.toString();
+  }
+
+  private static void appendArrayListReturn(StringBuilder code, int size) {
+    code.append("  reader.exitDepth();\n")
+        .append("  java.util.ArrayList<Object> list = new java.util.ArrayList<Object>(")
+        .append(size)
+        .append(");\n");
+    appendArrayListAdds(code, size, "  ");
+    code.append("  return list;\n");
+  }
+
+  private static void appendArrayListAdds(StringBuilder code, int size) {
+    appendArrayListAdds(code, size, "");
+  }
+
+  private static void appendArrayListAdds(StringBuilder code, int size, String indent) {
+    for (int i = 0; i < size; i++) {
+      code.append(indent).append("list.add(e").append(i).append(");\n");
+    }
+  }
+
+  private static String objectCollectionElement(String child, int id, int readerMode) {
+    return "reader.tryReadNextNullToken() ? null : "
+        + child
+        + "."
+        + readObjectNonNullMethod(readerMode)
+        + "(reader, rt"
+        + id
+        + ", typeResolver)";
+  }
+
+  private static String collectionMethod(int id) {
+    return "readCollection" + id;
+  }
+
+  private static String collectionTailMethod(int id) {
+    return "readCollectionTail" + id;
+  }
+
+  private static String collectionLongTailMethod(int id) {
+    return "readCollectionLongTail" + id;
   }
 
   private void addFastReadGroupMethods(
@@ -385,11 +578,31 @@ final class JsonReaderCodegen {
     ctx.addMethod(modifier, name, code, returnType, params);
   }
 
-  private Expression readerConstructorExpression(Class<?> type, JsonFieldInfo[] properties) {
+  private void addGeneratedConstructor(
+      CodegenContext ctx, Expression expression, Object... params) {
+    ctx.clearExprState();
+    Code.ExprCode body = expression.genCode(ctx);
+    String code = body.code();
+    code = code == null ? "" : ctx.optimizeMethodCode(code);
+    ctx.addConstructor(code, params);
+  }
+
+  private Expression readerConstructorExpression(
+      Class<?> type, JsonFieldInfo[] properties, int readerMode, boolean record) {
     Expression.ListExpression expressions = new Expression.ListExpression();
-    Reference propertiesRef = new Reference("readProperties", TypeRef.of(JsonFieldInfo[].class));
-    Reference codecsRef = new Reference("readCodecs", TypeRef.of(JsonCodec[].class));
-    Reference objectCodecsRef = new Reference("objectCodecs", TypeRef.of(BaseObjectCodec[].class));
+    Reference propertiesRef = new Reference("properties", TypeRef.of(JsonFieldInfo[].class));
+    Reference codecsRef = new Reference("codecs", TypeRef.of(readerArrayType(readerMode)));
+    Reference objectCodecsRef =
+        new Reference("objectCodecs", TypeRef.of(objectReaderArrayType(readerMode)));
+    Reference owner = new Reference("owner", TypeRef.of(ObjectCodec.class));
+    expressions.add(
+        new Expression.Assign(
+            new Reference("this.readTable", TypeRef.of(JsonFieldTable.class)),
+            new Expression.Invoke(owner, "readTable", TypeRef.of(JsonFieldTable.class))));
+    if (record) {
+      expressions.add(
+          new Expression.Assign(new Reference("this.owner", TypeRef.of(ObjectCodec.class)), owner));
+    }
     Reference hashes = new Reference("this.fieldHashes", TypeRef.of(long[].class));
     expressions.add(
         new Expression.Assign(
@@ -412,8 +625,8 @@ final class JsonReaderCodegen {
               hashes,
               new Expression.Invoke(property, "nameHash", TypeRef.of(long.class)).inline(),
               id));
-      if (usesReadCodec(properties[i])) {
-        Class<?> codecType = codecFieldType(properties[i].readTypeInfo().codec());
+      if (JsonCodegen.storesReadCodec(properties[i])) {
+        Class<?> codecType = codecFieldType(properties[i], readerMode);
         expressions.add(
             new Expression.Assign(
                 new Reference("this.r" + i, TypeRef.of(codecType)),
@@ -421,48 +634,23 @@ final class JsonReaderCodegen {
                     new Expression.ArrayValue(codecsRef, id), TypeRef.of(codecType))));
       }
       if (usesReadTypeField(properties[i])) {
+        String typeInfoMethod =
+            JsonCodegen.readsObjectCollectionDirectly(properties[i])
+                ? "readElementTypeInfo"
+                : "readTypeInfo";
         expressions.add(
             new Expression.Assign(
                 new Reference("this.rt" + i, TypeRef.of(JsonTypeInfo.class)),
-                new Expression.Invoke(property, "readTypeInfo", TypeRef.of(JsonTypeInfo.class))
+                new Expression.Invoke(property, typeInfoMethod, TypeRef.of(JsonTypeInfo.class))
                     .inline()));
       }
       if (storesReadObjectCodec(type, properties[i])) {
         expressions.add(
             new Expression.Assign(
-                new Reference("this.o" + i, TypeRef.of(BaseObjectCodec.class)),
+                new Reference("this.o" + i, TypeRef.of(objectReaderType(readerMode))),
                 new Expression.ArrayValue(objectCodecsRef, id)));
       }
     }
-    return expressions;
-  }
-
-  private Expression readExpression(
-      JsonGeneratedCodecBuilder builder,
-      Class<?> type,
-      JsonFieldInfo[] properties,
-      int readerMode,
-      boolean record) {
-    Expression object = objectExpression(builder, record);
-    Expression hashes =
-        new Expression.Variable("localFieldHashes", fieldRef("fieldHashes", long[].class));
-    Expression expectedIndex =
-        new Expression.Variable("expectedIndex", Expression.Literal.ofInt(0));
-    Expression.ListExpression expressions = new Expression.ListExpression();
-    expressions.add(new Expression.Invoke(readerRef(readerMode), "enterDepth"));
-    expressions.add(object);
-    expressions.add(expectExpr(readerMode, '{'));
-    expressions.add(new Expression.If(consumeExpr(readerMode, '}'), returnObject(object, record)));
-    expressions.add(hashes);
-    expressions.add(expectedIndex);
-    Expression.ListExpression loop = new Expression.ListExpression();
-    loop.add(
-        readNextHashedField(
-            builder, type, properties, readerMode, object, hashes, expectedIndex, record));
-    loop.add(
-        new Expression.If(not(consumeCommaOrEndObjectExpr(readerMode)), new Expression.Break()));
-    expressions.add(new Expression.While(Expression.Literal.True, loop));
-    expressions.add(returnObject(object, record));
     return expressions;
   }
 
@@ -483,10 +671,11 @@ final class JsonReaderCodegen {
     expressions.add(new Expression.Invoke(readerRef(readerMode), "enterDepth"));
     expressions.add(object);
     expressions.add(expectExpr(readerMode, '{'));
-    expressions.add(new Expression.If(consumeExpr(readerMode, '}'), returnObject(object, record)));
+    expressions.add(
+        new Expression.If(consumeExpr(readerMode, '}'), returnObject(object, record, readerMode)));
     if (properties.length == 0) {
       expressions.add(slowCall(slowMethod, object, Expression.Literal.ofInt(0)));
-      expressions.add(returnObject(object, record));
+      expressions.add(returnObject(object, record, readerMode));
       return expressions;
     }
     Expression hashes =
@@ -503,7 +692,7 @@ final class JsonReaderCodegen {
               builder, slowMethod, type, properties, i, readerMode, object, hashes, skips, record);
       expressions.add(i == 0 ? read : new Expression.If(not(skips[i]), read));
     }
-    expressions.add(returnObject(object, record));
+    expressions.add(returnObject(object, record, readerMode));
     return expressions;
   }
 
@@ -520,7 +709,8 @@ final class JsonReaderCodegen {
     expressions.add(new Expression.Invoke(readerRef(readerMode), "enterDepth"));
     expressions.add(object);
     expressions.add(expectExpr(readerMode, '{'));
-    expressions.add(new Expression.If(consumeExpr(readerMode, '}'), returnObject(object, record)));
+    expressions.add(
+        new Expression.If(consumeExpr(readerMode, '}'), returnObject(object, record, readerMode)));
     Expression hashes =
         new Expression.Variable("localFieldHashes", fieldRef("fieldHashes", long[].class));
     expressions.add(hashes);
@@ -539,10 +729,10 @@ final class JsonReaderCodegen {
                   typeResolverRef(),
                   object,
                   hashes));
-      expressions.add(new Expression.If(not(groupCall), returnObject(object, record)));
+      expressions.add(new Expression.If(not(groupCall), returnObject(object, record, readerMode)));
       start = end;
     }
-    expressions.add(returnObject(object, record));
+    expressions.add(returnObject(object, record, readerMode));
     return expressions;
   }
 
@@ -821,12 +1011,24 @@ final class JsonReaderCodegen {
                       object,
                       record)),
               slowConsumedReturn(
-                  slowMethod, index, fieldIndexInvoke(fieldHash), object, record, groupHelper),
+                  slowMethod,
+                  index,
+                  fieldIndexInvoke(fieldHash),
+                  object,
+                  record,
+                  groupHelper,
+                  readerMode),
               groupHelper);
     } else {
       fallback =
           slowConsumedReturn(
-              slowMethod, index, fieldIndexInvoke(fieldHash), object, record, groupHelper);
+              slowMethod,
+              index,
+              fieldIndexInvoke(fieldHash),
+              object,
+              record,
+              groupHelper,
+              readerMode);
     }
     return statementIf(
         ne(fieldHash, arrayValue(hashes, index)),
@@ -934,21 +1136,6 @@ final class JsonReaderCodegen {
     return true;
   }
 
-  private static String readMethod(int readerMode) {
-    switch (readerMode) {
-      case GENERIC_READER:
-        return "read";
-      case LATIN1_READER:
-        return "readLatin1";
-      case UTF16_READER:
-        return "readUtf16";
-      case UTF8_READER:
-        return "readUtf8";
-      default:
-        throw new IllegalArgumentException(String.valueOf(readerMode));
-    }
-  }
-
   private static boolean shouldSplitFieldSwitch(JsonFieldInfo[] properties) {
     return properties.length > READ_FIELD_SWITCH_SIZE;
   }
@@ -963,9 +1150,8 @@ final class JsonReaderCodegen {
     return new Expression.Variable("object", builder.newObject());
   }
 
-  private Expression returnObject(Expression object, boolean record) {
-    Expression exitDepth =
-        new Expression.Invoke(new Reference("reader", TypeRef.of(JsonReader.class)), "exitDepth");
+  private Expression returnObject(Expression object, boolean record, int readerMode) {
+    Expression exitDepth = new Expression.Invoke(readerRef(readerMode), "exitDepth");
     if (record) {
       return new Expression.ListExpression(
           exitDepth,
@@ -992,10 +1178,15 @@ final class JsonReaderCodegen {
   }
 
   private Expression slowConsumedReturn(
-      String slowMethod, int index, Expression firstFieldIndex, Expression object, boolean record) {
+      String slowMethod,
+      int index,
+      Expression firstFieldIndex,
+      Expression object,
+      boolean record,
+      int readerMode) {
     return new Expression.ListExpression(
         slowCall(slowMethod, object, Expression.Literal.ofInt(index), firstFieldIndex),
-        returnObject(object, record));
+        returnObject(object, record, readerMode));
   }
 
   private Expression slowConsumedReturn(
@@ -1004,9 +1195,10 @@ final class JsonReaderCodegen {
       Expression firstFieldIndex,
       Expression object,
       boolean record,
-      boolean groupHelper) {
+      boolean groupHelper,
+      int readerMode) {
     if (!groupHelper) {
-      return slowConsumedReturn(slowMethod, index, firstFieldIndex, object, record);
+      return slowConsumedReturn(slowMethod, index, firstFieldIndex, object, record, readerMode);
     }
     return new Expression.ListExpression(
         slowCall(slowMethod, object, Expression.Literal.ofInt(index), firstFieldIndex),
@@ -1037,7 +1229,7 @@ final class JsonReaderCodegen {
       boolean record) {
     if (index + 1 < propertyCount) {
       return new Expression.If(
-          not(consumeCommaOrEndObjectExpr(readerMode)), returnObject(object, record));
+          not(consumeCommaOrEndObjectExpr(readerMode)), returnObject(object, record, readerMode));
     }
     return new Expression.If(
         consumeCommaOrEndObjectExpr(readerMode),
@@ -1215,7 +1407,15 @@ final class JsonReaderCodegen {
   }
 
   private static Reference ownerRef() {
-    return new Reference("this", TypeRef.of(BaseObjectCodec.class));
+    return fieldRef("owner", ObjectCodec.class);
+  }
+
+  private static Reference readTableRef() {
+    return fieldRef("readTable", JsonFieldTable.class);
+  }
+
+  private static Reference selfRef(int readerMode) {
+    return new Reference("this", TypeRef.of(objectReaderType(readerMode)));
   }
 
   private static Reference typeResolverRef() {
@@ -1239,21 +1439,19 @@ final class JsonReaderCodegen {
       case UTF8_READER:
         return Utf8JsonReader.class;
       default:
-        return JsonReader.class;
+        throw new IllegalArgumentException(String.valueOf(readerMode));
     }
   }
 
   private static Expression expectExpr(int readerMode, char token) {
     return new Expression.Invoke(
-        readerRef(readerMode),
-        readerMode == GENERIC_READER ? "expect" : "expectNextToken",
-        Expression.Literal.ofChar(token));
+        readerRef(readerMode), "expectNextToken", Expression.Literal.ofChar(token));
   }
 
   private static Expression consumeExpr(int readerMode, char token) {
     return new Expression.Invoke(
             readerRef(readerMode),
-            readerMode == GENERIC_READER ? "consume" : "consumeNextToken",
+            "consumeNextToken",
             TypeRef.of(boolean.class),
             Expression.Literal.ofChar(token))
         .inline();
@@ -1261,19 +1459,13 @@ final class JsonReaderCodegen {
 
   private static Expression consumeCommaOrEndObjectExpr(int readerMode) {
     return new Expression.Invoke(
-            readerRef(readerMode),
-            readerMode == GENERIC_READER
-                ? "consumeCommaOrEndObject"
-                : "consumeNextCommaOrEndObject",
-            TypeRef.of(boolean.class))
+            readerRef(readerMode), "consumeNextCommaOrEndObject", TypeRef.of(boolean.class))
         .inline();
   }
 
   private static Expression tryReadNullExpr(int readerMode) {
     return new Expression.Invoke(
-            readerRef(readerMode),
-            readerMode == GENERIC_READER ? "tryReadNull" : "tryReadNextNullToken",
-            TypeRef.of(boolean.class))
+            readerRef(readerMode), "tryReadNextNullToken", TypeRef.of(boolean.class))
         .inline();
   }
 
@@ -1337,46 +1529,28 @@ final class JsonReaderCodegen {
   }
 
   private static String readBooleanMethod(int readerMode, boolean tokenValueRead) {
-    if (readerMode == GENERIC_READER) {
-      return "readBoolean";
-    }
     return tokenValueRead ? "readBooleanTokenValue" : "readNextBooleanValue";
   }
 
   private static String readIntMethod(int readerMode, boolean tokenValueRead) {
-    if (readerMode == GENERIC_READER) {
-      return "readInt";
-    }
     return tokenValueRead ? "readIntTokenValue" : "readNextIntValue";
   }
 
   private static String readLongMethod(int readerMode, boolean tokenValueRead) {
-    if (readerMode == GENERIC_READER) {
-      return "readLong";
-    }
     return tokenValueRead ? "readLongTokenValue" : "readNextLongValue";
   }
 
   // Exact generated field-name tokens stop at ':'. The next-value methods preserve the direct
   // token parser for compact JSON while accepting legal whitespace before the value.
   private static String readFloatMethod(int readerMode) {
-    if (readerMode == GENERIC_READER) {
-      return "readFloat";
-    }
     return "readNextFloatValue";
   }
 
   private static String readDoubleMethod(int readerMode) {
-    if (readerMode == GENERIC_READER) {
-      return "readDouble";
-    }
     return "readNextDoubleValue";
   }
 
   private static String readStringMethod(int readerMode, boolean tokenValueRead) {
-    if (readerMode == GENERIC_READER) {
-      return "readNullableString";
-    }
     return tokenValueRead ? "readNullableStringToken" : "readNextNullableString";
   }
 
@@ -1390,12 +1564,7 @@ final class JsonReaderCodegen {
   }
 
   private static Expression fieldIndexInvoke(Expression fieldHash) {
-    return new Expression.Invoke(
-            new Expression.Invoke(ownerRef(), "readTable", TypeRef.of(JsonFieldTable.class)),
-            "index",
-            TypeRef.of(int.class),
-            true,
-            fieldHash)
+    return new Expression.Invoke(readTableRef(), "index", TypeRef.of(int.class), true, fieldHash)
         .inline();
   }
 
@@ -1661,7 +1830,7 @@ final class JsonReaderCodegen {
   private static boolean usesReadObjectCodec(JsonFieldInfo property) {
     return property.readKind() == JsonFieldKind.OBJECT
         && property.readRawType() != Object.class
-        && property.readTypeInfo().codec() instanceof BaseObjectCodec;
+        && property.readTypeInfo().usesDefaultObjectCodec();
   }
 
   private static boolean storesReadObjectCodec(Class<?> type, JsonFieldInfo property) {
@@ -1707,7 +1876,7 @@ final class JsonReaderCodegen {
       default:
         return new Expression.Invoke(
             fieldRef("rp" + id, JsonFieldInfo.class),
-            "read",
+            readFieldMethod(readerMode),
             readerRef(readerMode),
             object,
             typeResolverRef());
@@ -1750,7 +1919,7 @@ final class JsonReaderCodegen {
             id,
             new Expression.Invoke(
                 fieldRef("rp" + id, JsonFieldInfo.class),
-                "readValue",
+                readFieldValueMethod(readerMode),
                 TypeRef.of(Object.class),
                 true,
                 readerRef(readerMode),
@@ -1829,7 +1998,7 @@ final class JsonReaderCodegen {
   private static Expression readRecordObject(
       Class<?> type, JsonFieldInfo property, int id, int readerMode, Expression object) {
     if (property.readRawType() == Object.class
-        || !(property.readTypeInfo().codec() instanceof BaseObjectCodec)) {
+        || !property.readTypeInfo().usesDefaultObjectCodec()) {
       return assignRecord(object, id, readResolvedValue(property, id, readerMode));
     }
     return new Expression.If(
@@ -1840,9 +2009,6 @@ final class JsonReaderCodegen {
 
   private static Expression readRecordCollection(
       JsonFieldInfo property, int id, int readerMode, Expression object) {
-    if (readerMode == GENERIC_READER) {
-      return assignRecord(object, id, readResolvedValue(property, id, readerMode));
-    }
     return new Expression.If(
         tryReadNullExpr(readerMode),
         assignRecord(object, id, new Expression.Null(TypeRef.of(property.readRawType()), false)),
@@ -1989,9 +2155,6 @@ final class JsonReaderCodegen {
       int id,
       int readerMode,
       Expression object) {
-    if (readerMode == GENERIC_READER) {
-      return readResolvedField(builder, property, id, readerMode, object);
-    }
     return new Expression.If(
         tryReadNullExpr(readerMode),
         builder.setNull(property, object),
@@ -2006,7 +2169,7 @@ final class JsonReaderCodegen {
       int readerMode,
       Expression object) {
     if (property.readRawType() == Object.class
-        || !(property.readTypeInfo().codec() instanceof BaseObjectCodec)) {
+        || !property.readTypeInfo().usesDefaultObjectCodec()) {
       return readResolvedField(builder, property, id, readerMode, object);
     }
     return new Expression.If(
@@ -2034,7 +2197,7 @@ final class JsonReaderCodegen {
     return new Expression.Cast(
         inline(
             new Expression.Invoke(
-                fieldRef("r" + id, JsonCodec.class),
+                fieldRef("r" + id, ScalarCodecs.EnumCodec.class),
                 readEnumMethod(readerMode, tokenValueRead, hashFallback),
                 "",
                 TypeRef.of(Object.class),
@@ -2051,7 +2214,7 @@ final class JsonReaderCodegen {
     return new Expression.Cast(
         inline(
             new Expression.Invoke(
-                fieldRef("r" + id, JsonCodec.class),
+                fieldRef("r" + id, readerCapabilityType(readerMode)),
                 readObjectMethod(readerMode),
                 TypeRef.of(Object.class),
                 false,
@@ -2062,6 +2225,20 @@ final class JsonReaderCodegen {
   }
 
   private static Expression readCollectionValue(JsonFieldInfo property, int id, int readerMode) {
+    if (JsonCodegen.readsObjectCollectionDirectly(property)) {
+      return new Expression.Cast(
+          inline(
+              new Expression.Invoke(
+                  new Reference("this", TypeRef.of(Object.class)),
+                  collectionMethod(id),
+                  "",
+                  TypeRef.of(Object.class),
+                  false,
+                  false,
+                  readerRef(readerMode),
+                  typeResolverRef())),
+          TypeRef.of(property.readRawType()));
+    }
     return new Expression.Cast(
         inline(
             new Expression.Invoke(
@@ -2078,7 +2255,9 @@ final class JsonReaderCodegen {
   private static Expression readObjectValue(
       Class<?> type, JsonFieldInfo property, int id, int readerMode) {
     Expression codec =
-        property.readRawType() == type ? ownerRef() : fieldRef("o" + id, BaseObjectCodec.class);
+        property.readRawType() == type
+            ? selfRef(readerMode)
+            : fieldRef("o" + id, objectReaderType(readerMode));
     return new Expression.Cast(
         inline(
             new Expression.Invoke(
@@ -2124,6 +2303,32 @@ final class JsonReaderCodegen {
         return "readUtf8";
       default:
         return "read";
+    }
+  }
+
+  private static String readFieldMethod(int readerMode) {
+    switch (readerMode) {
+      case LATIN1_READER:
+        return "readLatin1";
+      case UTF16_READER:
+        return "readUtf16";
+      case UTF8_READER:
+        return "readUtf8";
+      default:
+        throw new IllegalArgumentException(String.valueOf(readerMode));
+    }
+  }
+
+  private static String readFieldValueMethod(int readerMode) {
+    switch (readerMode) {
+      case LATIN1_READER:
+        return "readLatin1Value";
+      case UTF16_READER:
+        return "readUtf16Value";
+      case UTF8_READER:
+        return "readUtf8Value";
+      default:
+        throw new IllegalArgumentException(String.valueOf(readerMode));
     }
   }
 

@@ -34,12 +34,13 @@ import org.apache.fory.annotation.Expose;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.data.Kind;
-import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.reader.Utf16JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.CodecRegistry;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
-import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
@@ -298,11 +299,6 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
 
   private static final class NullCodec implements JsonCodec {
     @Override
-    public void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNull();
-    }
-
-    @Override
     public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeNull();
     }
@@ -313,7 +309,22 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
     }
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.skipValue();
+      return null;
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.skipValue();
+      return null;
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.skipValue();
       return null;
     }

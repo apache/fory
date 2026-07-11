@@ -41,7 +41,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
 
   public static ArrayCodec create(Class<?> componentType, JsonTypeResolver resolver) {
     JsonTypeInfo componentTypeInfo = resolver.getTypeInfo(componentType, componentType);
-    JsonCodec componentCodec = componentTypeInfo.codec();
+    Object componentCodec = componentTypeInfo.stringWriter();
     if (componentType == int.class && componentCodec == ScalarCodecs.IntCodec.INSTANCE) {
       return IntArrayCodec.INSTANCE;
     } else if (componentType == long.class && componentCodec == ScalarCodecs.LongCodec.INSTANCE) {
@@ -84,22 +84,30 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       return StringArrayCodec.INSTANCE;
     }
     if (componentType.isPrimitive()) {
-      return new CustomPrimitiveArrayCodec(componentType, componentTypeInfo, componentCodec);
+      return new CustomPrimitiveArrayCodec(componentType, componentTypeInfo);
     }
     return new ObjectArrayCodec(componentType, componentTypeInfo, resolver);
   }
 
-  @Override
-  void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-    writeNonNull(writer, value, resolver);
+  private abstract static class DirectArrayCodec extends ArrayCodec {
+    DirectArrayCodec(Class<?> componentType) {
+      super(componentType);
+    }
+
+    @Override
+    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+      writeArray(writer, value);
+    }
+
+    @Override
+    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+      writeArray(writer, value);
+    }
+
+    abstract void writeArray(JsonWriter writer, Object value);
   }
 
-  @Override
-  void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-    writeNonNull(writer, value, resolver);
-  }
-
-  public static final class IntArrayCodec extends ArrayCodec {
+  public static final class IntArrayCodec extends DirectArrayCodec {
     private static final IntArrayCodec INSTANCE = new IntArrayCodec();
 
     private IntArrayCodec() {
@@ -107,7 +115,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       int[] array = (int[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -118,33 +126,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
-        reader.exitDepth();
-        return new int[0];
-      }
-      int[] values = new int[8];
-      int size = 0;
-      do {
-        rejectNull(reader);
-        if (size == values.length) {
-          values = Arrays.copyOf(values, values.length << 1);
-        }
-        values[size++] = reader.readInt();
-      } while (reader.consume(','));
-      reader.expect(']');
-      reader.exitDepth();
-      return Arrays.copyOf(values, size);
-    }
-
-    @Override
-    public Object readLatin1(
+    public Object readLatin1NonNull(
         Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -166,11 +149,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
+    public Object readUtf16NonNull(
         Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -192,11 +172,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
+    public Object readUtf8NonNull(
         Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -218,7 +195,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
   }
 
-  public static final class LongArrayCodec extends ArrayCodec {
+  public static final class LongArrayCodec extends DirectArrayCodec {
     private static final LongArrayCodec INSTANCE = new LongArrayCodec();
 
     private LongArrayCodec() {
@@ -226,7 +203,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       long[] array = (long[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -237,33 +214,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
-        reader.exitDepth();
-        return new long[0];
-      }
-      long[] values = new long[8];
-      int size = 0;
-      do {
-        rejectNull(reader);
-        if (size == values.length) {
-          values = Arrays.copyOf(values, values.length << 1);
-        }
-        values[size++] = reader.readLong();
-      } while (reader.consume(','));
-      reader.expect(']');
-      reader.exitDepth();
-      return Arrays.copyOf(values, size);
-    }
-
-    @Override
-    public Object readLatin1(
+    public Object readLatin1NonNull(
         Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -357,11 +309,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
+    public Object readUtf16NonNull(
         Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -455,11 +404,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
+    public Object readUtf8NonNull(
         Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -555,7 +501,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
   }
 
-  public static final class BooleanArrayCodec extends ArrayCodec {
+  public static final class BooleanArrayCodec extends DirectArrayCodec {
     private static final BooleanArrayCodec INSTANCE = new BooleanArrayCodec();
 
     private BooleanArrayCodec() {
@@ -563,7 +509,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       boolean[] array = (boolean[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -574,33 +520,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
-        reader.exitDepth();
-        return new boolean[0];
-      }
-      boolean[] values = new boolean[8];
-      int size = 0;
-      do {
-        rejectNull(reader);
-        if (size == values.length) {
-          values = Arrays.copyOf(values, values.length << 1);
-        }
-        values[size++] = reader.readBoolean();
-      } while (reader.consume(','));
-      reader.expect(']');
-      reader.exitDepth();
-      return Arrays.copyOf(values, size);
-    }
-
-    @Override
-    public Object readLatin1(
+    public Object readLatin1NonNull(
         Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -622,11 +543,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
+    public Object readUtf16NonNull(
         Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -648,11 +566,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
+    public Object readUtf8NonNull(
         Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -674,7 +589,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
   }
 
-  public static final class ShortArrayCodec extends ArrayCodec {
+  public static final class ShortArrayCodec extends DirectArrayCodec {
     private static final ShortArrayCodec INSTANCE = new ShortArrayCodec();
 
     private ShortArrayCodec() {
@@ -682,7 +597,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       short[] array = (short[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -693,10 +608,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new short[0];
       }
@@ -707,15 +623,61 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = readShort(reader.readInt());
-      } while (reader.consume(','));
-      reader.expect(']');
+        values[size++] = readShort(reader.readIntValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new short[0];
+      }
+      short[] values = new short[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = readShort(reader.readIntValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new short[0];
+      }
+      short[] values = new short[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = readShort(reader.readIntValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
   }
 
-  public static final class ByteArrayCodec extends ArrayCodec {
+  public static final class ByteArrayCodec extends DirectArrayCodec {
     private static final ByteArrayCodec INSTANCE = new ByteArrayCodec();
 
     private ByteArrayCodec() {
@@ -723,7 +685,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       byte[] array = (byte[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -734,10 +696,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new byte[0];
       }
@@ -748,15 +711,61 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = readByte(reader.readInt());
-      } while (reader.consume(','));
-      reader.expect(']');
+        values[size++] = readByte(reader.readIntValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new byte[0];
+      }
+      byte[] values = new byte[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = readByte(reader.readIntValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new byte[0];
+      }
+      byte[] values = new byte[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = readByte(reader.readIntValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
   }
 
-  public static final class CharArrayCodec extends ArrayCodec {
+  public static final class CharArrayCodec extends DirectArrayCodec {
     private static final CharArrayCodec INSTANCE = new CharArrayCodec();
 
     private CharArrayCodec() {
@@ -764,7 +773,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       char[] array = (char[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -775,10 +784,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new char[0];
       }
@@ -789,15 +799,61 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = readChar(reader);
-      } while (reader.consume(','));
-      reader.expect(']');
+        values[size++] = readChar(reader.readString());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new char[0];
+      }
+      char[] values = new char[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = readChar(reader.readString());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new char[0];
+      }
+      char[] values = new char[8];
+      int size = 0;
+      do {
+        rejectNull(reader);
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = readChar(reader.readString());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
   }
 
-  public static final class FloatArrayCodec extends ArrayCodec {
+  public static final class FloatArrayCodec extends DirectArrayCodec {
     private static final FloatArrayCodec INSTANCE = new FloatArrayCodec();
 
     private FloatArrayCodec() {
@@ -805,7 +861,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       float[] array = (float[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -816,33 +872,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
-        reader.exitDepth();
-        return new float[0];
-      }
-      float[] values = new float[8];
-      int size = 0;
-      do {
-        rejectNull(reader);
-        if (size == values.length) {
-          values = Arrays.copyOf(values, values.length << 1);
-        }
-        values[size++] = reader.readFloat();
-      } while (reader.consume(','));
-      reader.expect(']');
-      reader.exitDepth();
-      return Arrays.copyOf(values, size);
-    }
-
-    @Override
-    public Object readLatin1(
+    public Object readLatin1NonNull(
         Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -863,11 +894,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
+    public Object readUtf16NonNull(
         Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -888,11 +916,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
+    public Object readUtf8NonNull(
         Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -913,7 +938,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
   }
 
-  public static final class DoubleArrayCodec extends ArrayCodec {
+  public static final class DoubleArrayCodec extends DirectArrayCodec {
     private static final DoubleArrayCodec INSTANCE = new DoubleArrayCodec();
 
     private DoubleArrayCodec() {
@@ -921,7 +946,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       double[] array = (double[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -932,33 +957,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
-        reader.exitDepth();
-        return new double[0];
-      }
-      double[] values = new double[8];
-      int size = 0;
-      do {
-        rejectNull(reader);
-        if (size == values.length) {
-          values = Arrays.copyOf(values, values.length << 1);
-        }
-        values[size++] = reader.readDouble();
-      } while (reader.consume(','));
-      reader.expect(']');
-      reader.exitDepth();
-      return Arrays.copyOf(values, size);
-    }
-
-    @Override
-    public Object readLatin1(
+    public Object readLatin1NonNull(
         Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -979,11 +979,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
+    public Object readUtf16NonNull(
         Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -1004,11 +1001,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
+    public Object readUtf8NonNull(
         Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -1029,7 +1023,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
   }
 
-  public static final class StringArrayCodec extends ArrayCodec {
+  public static final class StringArrayCodec extends DirectArrayCodec {
     private static final StringArrayCodec INSTANCE = new StringArrayCodec();
 
     private StringArrayCodec() {
@@ -1037,7 +1031,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       String[] array = (String[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -1072,32 +1066,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
-        reader.exitDepth();
-        return new String[0];
-      }
-      String[] values = new String[8];
-      int size = 0;
-      do {
-        if (size == values.length) {
-          values = Arrays.copyOf(values, values.length << 1);
-        }
-        values[size++] = reader.readNullableString();
-      } while (reader.consume(','));
-      reader.expect(']');
-      reader.exitDepth();
-      return Arrays.copyOf(values, size);
-    }
-
-    @Override
-    public Object readLatin1(
+    public Object readLatin1NonNull(
         Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -1190,11 +1160,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
+    public Object readUtf16NonNull(
         Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -1287,11 +1254,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
+    public Object readUtf8NonNull(
         Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -1392,7 +1356,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     private static final int MAX_CACHED_VALUES_SIZE = 1024;
 
     private final JsonTypeInfo elementTypeInfo;
-    private JsonCodec elementCodec;
+    private StringWriterCodec stringWriter;
+    private Utf8WriterCodec utf8Writer;
+    private Latin1ReaderCodec latin1Reader;
+    private Utf16ReaderCodec utf16Reader;
+    private Utf8ReaderCodec utf8Reader;
     // Recursive object-array reads borrow one scratch slot per active depth.
     private final Object[][] valuesCache = new Object[VALUES_CACHE_DEPTH][];
     private int valuesDepth;
@@ -1401,26 +1369,25 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         Class<?> componentType, JsonTypeInfo elementTypeInfo, JsonTypeResolver resolver) {
       super(componentType);
       this.elementTypeInfo = elementTypeInfo;
-      elementCodec = elementTypeInfo.codec();
-      resolver.registerJITNotifyCallback(elementCodec, codec -> elementCodec = codec);
-    }
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      Object[] array = (Object[]) value;
-      JsonCodec codec = elementCodec;
-      writer.writeArrayStart();
-      for (int i = 0; i < array.length; i++) {
-        writer.writeComma(i);
-        codec.write(writer, array[i], resolver);
+      stringWriter = elementTypeInfo.stringWriter();
+      utf8Writer = elementTypeInfo.utf8Writer();
+      latin1Reader = elementTypeInfo.latin1Reader();
+      utf16Reader = elementTypeInfo.utf16Reader();
+      utf8Reader = elementTypeInfo.utf8Reader();
+      if (elementTypeInfo.usesDefaultObjectCodec()) {
+        Class<?> elementType = elementTypeInfo.rawType();
+        resolver.registerStringWriterUpdate(elementType, codec -> stringWriter = codec);
+        resolver.registerUtf8WriterUpdate(elementType, codec -> utf8Writer = codec);
+        resolver.registerLatin1ReaderUpdate(elementType, codec -> latin1Reader = codec);
+        resolver.registerUtf16ReaderUpdate(elementType, codec -> utf16Reader = codec);
+        resolver.registerUtf8ReaderUpdate(elementType, codec -> utf8Reader = codec);
       }
-      writer.writeArrayEnd();
     }
 
     @Override
     void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       Object[] array = (Object[]) value;
-      JsonCodec codec = elementCodec;
+      StringWriterCodec codec = stringWriter;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
         writer.writeComma(i);
@@ -1432,7 +1399,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     @Override
     void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
       Object[] array = (Object[]) value;
-      JsonCodec codec = elementCodec;
+      Utf8WriterCodec codec = utf8Writer;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
         writer.writeComma(i);
@@ -1442,49 +1409,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      int depth = valuesDepth;
-      boolean useCache = depth < VALUES_CACHE_DEPTH;
-      Object[] values = null;
-      if (useCache) {
-        values = valuesCache[depth];
-        valuesCache[depth] = null;
-      }
-      if (values == null) {
-        values = new Object[INITIAL_VALUES_SIZE];
-      }
-      int size = 0;
-      boolean success = false;
-      valuesDepth = depth + 1;
-      JsonCodec codec = elementCodec;
-      try {
-        reader.expect('[');
-        if (!reader.consume(']')) {
-          do {
-            if (size == values.length) {
-              values = Arrays.copyOf(values, values.length << 1);
-            }
-            values[size++] = codec.read(reader, elementTypeInfo, resolver);
-          } while (reader.consume(','));
-          reader.expect(']');
-        }
-        Object[] array = (Object[]) Array.newInstance(componentType, size);
-        System.arraycopy(values, 0, array, 0, size);
-        success = true;
-        return array;
-      } finally {
-        releaseValues(values, size, depth, useCache, success);
-        reader.exitDepth();
-      }
-    }
-
-    @Override
-    public Object readLatin1(
+    public Object readLatin1NonNull(
         Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       int depth = valuesDepth;
       boolean useCache = depth < VALUES_CACHE_DEPTH;
@@ -1499,7 +1425,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       int size = 0;
       boolean success = false;
       valuesDepth = depth + 1;
-      JsonCodec codec = elementCodec;
+      Latin1ReaderCodec codec = latin1Reader;
       try {
         reader.expectNextToken('[');
         if (!reader.consumeNextToken(']')) {
@@ -1521,11 +1447,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
+    public Object readUtf16NonNull(
         Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       int depth = valuesDepth;
       boolean useCache = depth < VALUES_CACHE_DEPTH;
@@ -1540,7 +1463,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       int size = 0;
       boolean success = false;
       valuesDepth = depth + 1;
-      JsonCodec codec = elementCodec;
+      Utf16ReaderCodec codec = utf16Reader;
       try {
         reader.expectNextToken('[');
         if (!reader.consumeNextToken(']')) {
@@ -1562,11 +1485,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
+    public Object readUtf8NonNull(
         Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       int depth = valuesDepth;
       boolean useCache = depth < VALUES_CACHE_DEPTH;
@@ -1581,7 +1501,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       int size = 0;
       boolean success = false;
       valuesDepth = depth + 1;
-      JsonCodec codec = elementCodec;
+      Utf8ReaderCodec codec = utf8Reader;
       try {
         reader.expectNextToken('[');
         if (!reader.consumeNextToken(']')) {
@@ -1623,30 +1543,25 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     private static final int INITIAL_SIZE = 8;
 
     private final JsonTypeInfo elementTypeInfo;
-    private final JsonCodec elementCodec;
+    private final StringWriterCodec stringWriter;
+    private final Utf8WriterCodec utf8Writer;
+    private final Latin1ReaderCodec latin1Reader;
+    private final Utf16ReaderCodec utf16Reader;
+    private final Utf8ReaderCodec utf8Reader;
 
-    private CustomPrimitiveArrayCodec(
-        Class<?> componentType, JsonTypeInfo elementTypeInfo, JsonCodec elementCodec) {
+    private CustomPrimitiveArrayCodec(Class<?> componentType, JsonTypeInfo elementTypeInfo) {
       super(componentType);
       this.elementTypeInfo = elementTypeInfo;
-      this.elementCodec = elementCodec;
-    }
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      JsonCodec codec = elementCodec;
-      writer.writeArrayStart();
-      int length = Array.getLength(value);
-      for (int i = 0; i < length; i++) {
-        writer.writeComma(i);
-        codec.write(writer, Array.get(value, i), resolver);
-      }
-      writer.writeArrayEnd();
+      stringWriter = elementTypeInfo.stringWriter();
+      utf8Writer = elementTypeInfo.utf8Writer();
+      latin1Reader = elementTypeInfo.latin1Reader();
+      utf16Reader = elementTypeInfo.utf16Reader();
+      utf8Reader = elementTypeInfo.utf8Reader();
     }
 
     @Override
     void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      JsonCodec codec = elementCodec;
+      StringWriterCodec codec = stringWriter;
       writer.writeArrayStart();
       int length = Array.getLength(value);
       for (int i = 0; i < length; i++) {
@@ -1658,7 +1573,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
 
     @Override
     void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      JsonCodec codec = elementCodec;
+      Utf8WriterCodec codec = utf8Writer;
       writer.writeArrayStart();
       int length = Array.getLength(value);
       for (int i = 0; i < length; i++) {
@@ -1669,45 +1584,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
-        reader.exitDepth();
-        return Array.newInstance(componentType, 0);
-      }
-      Object values = Array.newInstance(componentType, INITIAL_SIZE);
-      int size = 0;
-      JsonCodec codec = elementCodec;
-      do {
-        if (size == Array.getLength(values)) {
-          Object grown = Array.newInstance(componentType, size << 1);
-          System.arraycopy(values, 0, grown, 0, size);
-          values = grown;
-        }
-        Object element = codec.read(reader, elementTypeInfo, resolver);
-        if (element == null) {
-          throw new ForyJsonException("Cannot read null into primitive array element");
-        }
-        Array.set(values, size++, element);
-      } while (reader.consume(','));
-      reader.expect(']');
-      if (size == Array.getLength(values)) {
-        reader.exitDepth();
-        return values;
-      }
-      Object result = Array.newInstance(componentType, size);
-      System.arraycopy(values, 0, result, 0, size);
-      reader.exitDepth();
-      return result;
-    }
-
-    @Override
-    public Object readLatin1(
+    public Object readLatin1NonNull(
         Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -1716,7 +1594,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       }
       Object values = Array.newInstance(componentType, INITIAL_SIZE);
       int size = 0;
-      JsonCodec codec = elementCodec;
+      Latin1ReaderCodec codec = latin1Reader;
       do {
         if (size == Array.getLength(values)) {
           Object grown = Array.newInstance(componentType, size << 1);
@@ -1732,11 +1610,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
+    public Object readUtf16NonNull(
         Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -1745,7 +1620,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       }
       Object values = Array.newInstance(componentType, INITIAL_SIZE);
       int size = 0;
-      JsonCodec codec = elementCodec;
+      Utf16ReaderCodec codec = utf16Reader;
       do {
         if (size == Array.getLength(values)) {
           Object grown = Array.newInstance(componentType, size << 1);
@@ -1761,11 +1636,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
+    public Object readUtf8NonNull(
         Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -1774,7 +1646,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
       }
       Object values = Array.newInstance(componentType, INITIAL_SIZE);
       int size = 0;
-      JsonCodec codec = elementCodec;
+      Utf8ReaderCodec codec = utf8Reader;
       do {
         if (size == Array.getLength(values)) {
           Object grown = Array.newInstance(componentType, size << 1);
@@ -1806,7 +1678,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
   }
 
-  public static final class BoxedIntArrayCodec extends ArrayCodec {
+  public static final class BoxedIntArrayCodec extends DirectArrayCodec {
     private static final BoxedIntArrayCodec INSTANCE = new BoxedIntArrayCodec();
 
     private BoxedIntArrayCodec() {
@@ -1814,7 +1686,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       Integer[] array = (Integer[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -1830,10 +1702,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new Integer[0];
       }
@@ -1843,15 +1716,62 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = reader.tryReadNull() ? null : reader.readInt();
-      } while (reader.consume(','));
-      reader.expect(']');
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Integer.valueOf(reader.readIntValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Integer[0];
+      }
+      Integer[] values = new Integer[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Integer.valueOf(reader.readIntValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Integer[0];
+      }
+      Integer[] values = new Integer[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Integer.valueOf(reader.readIntValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
   }
 
-  public static final class BoxedLongArrayCodec extends ArrayCodec {
+  public static final class BoxedLongArrayCodec extends DirectArrayCodec {
     private static final BoxedLongArrayCodec INSTANCE = new BoxedLongArrayCodec();
 
     private BoxedLongArrayCodec() {
@@ -1859,7 +1779,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       Long[] array = (Long[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -1875,10 +1795,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new Long[0];
       }
@@ -1888,15 +1809,62 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = reader.tryReadNull() ? null : reader.readLong();
-      } while (reader.consume(','));
-      reader.expect(']');
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Long.valueOf(reader.readLongValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Long[0];
+      }
+      Long[] values = new Long[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Long.valueOf(reader.readLongValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Long[0];
+      }
+      Long[] values = new Long[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Long.valueOf(reader.readLongValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
   }
 
-  public static final class BoxedBooleanArrayCodec extends ArrayCodec {
+  public static final class BoxedBooleanArrayCodec extends DirectArrayCodec {
     private static final BoxedBooleanArrayCodec INSTANCE = new BoxedBooleanArrayCodec();
 
     private BoxedBooleanArrayCodec() {
@@ -1904,7 +1872,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       Boolean[] array = (Boolean[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -1920,10 +1888,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new Boolean[0];
       }
@@ -1933,15 +1902,62 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = reader.tryReadNull() ? null : reader.readBoolean();
-      } while (reader.consume(','));
-      reader.expect(']');
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Boolean.valueOf(reader.readBooleanValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Boolean[0];
+      }
+      Boolean[] values = new Boolean[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Boolean.valueOf(reader.readBooleanValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Boolean[0];
+      }
+      Boolean[] values = new Boolean[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Boolean.valueOf(reader.readBooleanValue());
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
   }
 
-  public static final class BoxedShortArrayCodec extends ArrayCodec {
+  public static final class BoxedShortArrayCodec extends DirectArrayCodec {
     private static final BoxedShortArrayCodec INSTANCE = new BoxedShortArrayCodec();
 
     private BoxedShortArrayCodec() {
@@ -1949,7 +1965,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       Short[] array = (Short[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -1965,10 +1981,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new Short[0];
       }
@@ -1978,15 +1995,62 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = reader.tryReadNull() ? null : readShort(reader.readInt());
-      } while (reader.consume(','));
-      reader.expect(']');
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Short.valueOf(readShort(reader.readIntValue()));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Short[0];
+      }
+      Short[] values = new Short[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Short.valueOf(readShort(reader.readIntValue()));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Short[0];
+      }
+      Short[] values = new Short[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Short.valueOf(readShort(reader.readIntValue()));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
   }
 
-  public static final class BoxedByteArrayCodec extends ArrayCodec {
+  public static final class BoxedByteArrayCodec extends DirectArrayCodec {
     private static final BoxedByteArrayCodec INSTANCE = new BoxedByteArrayCodec();
 
     private BoxedByteArrayCodec() {
@@ -1994,7 +2058,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       Byte[] array = (Byte[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -2010,10 +2074,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new Byte[0];
       }
@@ -2023,15 +2088,62 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = reader.tryReadNull() ? null : readByte(reader.readInt());
-      } while (reader.consume(','));
-      reader.expect(']');
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Byte.valueOf(readByte(reader.readIntValue()));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Byte[0];
+      }
+      Byte[] values = new Byte[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Byte.valueOf(readByte(reader.readIntValue()));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Byte[0];
+      }
+      Byte[] values = new Byte[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] =
+            reader.tryReadNextNullToken() ? null : Byte.valueOf(readByte(reader.readIntValue()));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
   }
 
-  public static final class BoxedCharArrayCodec extends ArrayCodec {
+  public static final class BoxedCharArrayCodec extends DirectArrayCodec {
     private static final BoxedCharArrayCodec INSTANCE = new BoxedCharArrayCodec();
 
     private BoxedCharArrayCodec() {
@@ -2039,7 +2151,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       Character[] array = (Character[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -2055,10 +2167,11 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new Character[0];
       }
@@ -2068,16 +2181,62 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        String value = reader.readNullableString();
-        values[size++] = value == null ? null : readChar(value);
-      } while (reader.consume(','));
-      reader.expect(']');
+        String element = reader.readNextNullableString();
+        values[size++] = element == null ? null : Character.valueOf(readChar(element));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Character[0];
+      }
+      Character[] values = new Character[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        String element = reader.readNextNullableString();
+        values[size++] = element == null ? null : Character.valueOf(readChar(element));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    @Override
+    public Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new Character[0];
+      }
+      Character[] values = new Character[8];
+      int size = 0;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        String element = reader.readNextNullableString();
+        values[size++] = element == null ? null : Character.valueOf(readChar(element));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken(']');
       reader.exitDepth();
       return Arrays.copyOf(values, size);
     }
   }
 
-  public static final class BoxedFloatArrayCodec extends ArrayCodec {
+  public static final class BoxedFloatArrayCodec extends DirectArrayCodec {
     private static final BoxedFloatArrayCodec INSTANCE = new BoxedFloatArrayCodec();
 
     private BoxedFloatArrayCodec() {
@@ -2085,7 +2244,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       Float[] array = (Float[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -2101,32 +2260,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
-        reader.exitDepth();
-        return new Float[0];
-      }
-      Float[] values = new Float[8];
-      int size = 0;
-      do {
-        if (size == values.length) {
-          values = Arrays.copyOf(values, values.length << 1);
-        }
-        values[size++] = reader.tryReadNull() ? null : reader.readFloat();
-      } while (reader.consume(','));
-      reader.expect(']');
-      reader.exitDepth();
-      return Arrays.copyOf(values, size);
-    }
-
-    @Override
-    public Object readLatin1(
+    public Object readLatin1NonNull(
         Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -2147,11 +2282,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
+    public Object readUtf16NonNull(
         Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -2172,11 +2304,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
+    public Object readUtf8NonNull(
         Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -2197,7 +2326,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
   }
 
-  public static final class BoxedDoubleArrayCodec extends ArrayCodec {
+  public static final class BoxedDoubleArrayCodec extends DirectArrayCodec {
     private static final BoxedDoubleArrayCodec INSTANCE = new BoxedDoubleArrayCodec();
 
     private BoxedDoubleArrayCodec() {
@@ -2205,7 +2334,7 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeArray(JsonWriter writer, Object value) {
       Double[] array = (Double[]) value;
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -2221,32 +2350,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
-        reader.exitDepth();
-        return new Double[0];
-      }
-      Double[] values = new Double[8];
-      int size = 0;
-      do {
-        if (size == values.length) {
-          values = Arrays.copyOf(values, values.length << 1);
-        }
-        values[size++] = reader.tryReadNull() ? null : reader.readDouble();
-      } while (reader.consume(','));
-      reader.expect(']');
-      reader.exitDepth();
-      return Arrays.copyOf(values, size);
-    }
-
-    @Override
-    public Object readLatin1(
+    public Object readLatin1NonNull(
         Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -2267,11 +2372,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
+    public Object readUtf16NonNull(
         Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
@@ -2292,11 +2394,8 @@ public abstract class ArrayCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
+    public Object readUtf8NonNull(
         Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
       reader.enterDepth();
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {

@@ -78,17 +78,14 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.JsonTypeCheckContext;
 import org.apache.fory.json.JsonTypeChecker;
 import org.apache.fory.json.codec.ArrayCodec;
-import org.apache.fory.json.codec.BaseObjectCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.GuavaCodecs;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.MapCodec;
-import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
-import org.apache.fory.json.codegen.JsonCodegen.GeneratedObjectCodecClass;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.reflect.TypeRef;
@@ -122,9 +119,9 @@ public final class JsonSharedRegistry {
     this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
     exactCodecs = new IdentityHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
-    jitContext = new JsonJITContext(codegenEnabled && config.asyncCompilationEnabled());
     codegen =
         codegenEnabled ? new JsonCodegen(config.writeNullFields(), config.getCodegenHash()) : null;
+    jitContext = new JsonJITContext(codegen, codegenEnabled && config.asyncCompilationEnabled());
     registerExactCodecs();
     defaultExactCodecNames = classNames(exactCodecs);
     customCodecNames = customCodecs.classNames();
@@ -247,47 +244,8 @@ public final class JsonSharedRegistry {
     return JsonFieldKind.OBJECT;
   }
 
-  public BaseObjectCodec compileObject(
-      ObjectCodec codec,
-      JsonTypeResolver localResolver,
-      JsonJITContext.ObjectJITCallback<GeneratedObjectCodecClass> callback) {
-    if (codegen == null || !codegen.canCompile(codec)) {
-      return null;
-    }
-    GeneratedObjectCodecClass generatedClass = codegen.generatedClass(codec.type());
-    if (generatedClass == null) {
-      generatedClass =
-          jitContext.registerObjectJITCallback(
-              () -> null,
-              () -> jitContext.asyncVisitJson(this, ignored -> codegen.compileClass(codec)),
-              callback);
-    }
-    return generatedClass == null ? null : codegen.newCodec(codec, localResolver, generatedClass);
-  }
-
-  BaseObjectCodec newGeneratedCodec(
-      ObjectCodec codec, JsonTypeResolver resolver, GeneratedObjectCodecClass generatedClass) {
-    return codegen.newCodec(codec, resolver, generatedClass);
-  }
-
-  GeneratedObjectCodecClass generatedClass(Class<?> type) {
-    return codegen == null ? null : codegen.generatedClass(type);
-  }
-
   JsonJITContext jitContext() {
     return jitContext;
-  }
-
-  boolean hasJITResult(Object id) {
-    return jitContext.hasJITResult(id);
-  }
-
-  boolean asyncCompilationEnabled() {
-    return jitContext.asyncCompilationEnabled();
-  }
-
-  void registerJITNotifyCallback(Object id, JsonJITContext.NotifyCallback callback) {
-    jitContext.registerJITNotifyCallback(id, callback);
   }
 
   boolean propertyDiscoveryEnabled() {

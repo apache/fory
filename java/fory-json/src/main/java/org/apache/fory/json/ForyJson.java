@@ -24,7 +24,6 @@ import java.lang.reflect.Type;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
-import org.apache.fory.json.codec.GeneratedObjectCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -82,7 +81,7 @@ public final class ForyJson {
       } else {
         JsonTypeResolver resolver = state.typeResolver;
         JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-        typeInfo.codec().writeString(writer, value, resolver);
+        typeInfo.stringWriter().writeString(writer, value, resolver);
       }
       return writer.toJson();
     } finally {
@@ -101,7 +100,7 @@ public final class ForyJson {
       } else {
         JsonTypeResolver resolver = state.typeResolver;
         JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-        typeInfo.codec().writeUtf8(writer, value, resolver);
+        typeInfo.utf8Writer().writeUtf8(writer, value, resolver);
       }
       return writer.toJsonBytes();
     } finally {
@@ -122,7 +121,7 @@ public final class ForyJson {
       } else {
         JsonTypeResolver resolver = state.typeResolver;
         JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-        typeInfo.codec().writeUtf8(writer, value, resolver);
+        typeInfo.utf8Writer().writeUtf8(writer, value, resolver);
       }
       writer.writeTo(output);
     } finally {
@@ -176,15 +175,6 @@ public final class ForyJson {
       return castValue(value, typeRef);
     } finally {
       state.clearUtf8Reader();
-      release(entry);
-    }
-  }
-
-  boolean hasGeneratedCodec(Class<?> type) {
-    PooledState entry = acquire();
-    try {
-      return entry.state.typeResolver.getObjectCodec(type) instanceof GeneratedObjectCodec;
-    } finally {
       release(entry);
     }
   }
@@ -269,7 +259,7 @@ public final class ForyJson {
       Latin1JsonReader reader, Type type, Class<?> fallback, JsonState state) {
     JsonTypeResolver resolver = state.typeResolver;
     JsonTypeInfo typeInfo = state.rootTypeInfo(type, fallback);
-    Object value = typeInfo.codec().readLatin1(reader, typeInfo, resolver);
+    Object value = typeInfo.latin1Reader().readLatin1(reader, typeInfo, resolver);
     reader.finish();
     return value;
   }
@@ -278,7 +268,7 @@ public final class ForyJson {
       Utf16JsonReader reader, Type type, Class<?> fallback, JsonState state) {
     JsonTypeResolver resolver = state.typeResolver;
     JsonTypeInfo typeInfo = state.rootTypeInfo(type, fallback);
-    Object value = typeInfo.codec().readUtf16(reader, typeInfo, resolver);
+    Object value = typeInfo.utf16Reader().readUtf16(reader, typeInfo, resolver);
     reader.finish();
     return value;
   }
@@ -287,7 +277,7 @@ public final class ForyJson {
       Utf8JsonReader reader, Type type, Class<?> fallback, JsonState state) {
     JsonTypeResolver resolver = state.typeResolver;
     JsonTypeInfo typeInfo = state.rootTypeInfo(type, fallback);
-    Object value = typeInfo.codec().readUtf8(reader, typeInfo, resolver);
+    Object value = typeInfo.utf8Reader().readUtf8(reader, typeInfo, resolver);
     reader.finish();
     return value;
   }

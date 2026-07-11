@@ -21,25 +21,28 @@ package org.apache.fory.json;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-import org.apache.fory.json.codec.BaseObjectCodec;
-import org.apache.fory.json.codec.GeneratedObjectCodec;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.Latin1ObjectReaderCodec;
+import org.apache.fory.json.codec.ObjectCodec;
+import org.apache.fory.json.codec.StringObjectWriterCodec;
+import org.apache.fory.json.codec.StringWriterCodec;
+import org.apache.fory.json.codec.Utf16ObjectReaderCodec;
+import org.apache.fory.json.codec.Utf8ObjectReaderCodec;
+import org.apache.fory.json.codec.Utf8ObjectWriterCodec;
 import org.apache.fory.json.data.RecursiveParent;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
+import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.serializer.StringSerializer;
 import org.testng.annotations.Test;
 
 public class JsonAsyncCompilationTest {
@@ -51,263 +54,313 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
-  public void asyncCompilationPublishesGeneratedCodec() throws Exception {
-    ForyJson json = ForyJson.builder().build();
+  public void capabilitiesCompileLazily() throws Exception {
+    ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
+    JsonTypeResolver resolver = resolver(json);
+    ObjectCodec owner = resolver.getObjectCodec(AsyncChild.class);
+    JsonTypeInfo info = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
+    assertAllOwner(info, owner);
+
     AsyncChild value = child("root", 1);
     assertEquals(json.toJson(value), "{\"id\":1,\"name\":\"root\"}");
-    awaitGenerated(json, AsyncChild.class);
-    assertEquals(json.toJson(value), "{\"id\":1,\"name\":\"root\"}");
-    assertEquals(json.fromJson("{\"id\":2,\"name\":\"read\"}", AsyncChild.class).name, "read");
+    assertTrue(info.stringWriter() != owner);
+    assertSame(info.utf8Writer(), owner);
+    assertSame(info.latin1Reader(), owner);
+    assertSame(info.utf16Reader(), owner);
+    assertSame(info.utf8Reader(), owner);
+
+    assertEquals(
+        new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
+        "{\"id\":1,\"name\":\"root\"}");
+    assertTrue(info.utf8Writer() != owner);
+    assertEquals(json.fromJson("{\"id\":2,\"name\":\"latin\"}", AsyncChild.class).id, 2);
+    if (StringSerializer.isBytesBackedString()) {
+      assertTrue(info.latin1Reader() != owner);
+      assertSame(info.utf16Reader(), owner);
+    } else {
+      assertSame(info.latin1Reader(), owner);
+      assertTrue(info.utf16Reader() != owner);
+      resolver.latin1Reader(owner);
+      assertTrue(info.latin1Reader() != owner);
+    }
+    assertEquals(json.fromJson("{\"id\":3,\"name\":\"\u4f60\"}", AsyncChild.class).id, 3);
+    assertTrue(info.utf16Reader() != owner);
+    assertEquals(
+        json.fromJson(
+                "{\"id\":4,\"name\":\"utf8\"}".getBytes(StandardCharsets.UTF_8), AsyncChild.class)
+            .id,
+        4);
+    assertTrue(info.utf8Reader() != owner);
+    assertSame(resolver.getObjectCodec(AsyncChild.class), owner);
   }
 
   @Test
-  public void asyncUpdatesCachedNestedCodecs() throws Exception {
+  public void asyncInstancesAreResolverLocal() throws Exception {
     ForyJson json = ForyJson.builder().build();
-    AsyncParent value = parent();
-    String expected =
-        "{\"array\":[{\"id\":2,\"name\":\"array\"}],\"atomic\":{\"id\":6,\"name\":\"atomic\"},"
-            + "\"child\":{\"id\":1,\"name\":\"child\"},\"list\":[{\"id\":3,\"name\":\"list\"}],"
-            + "\"map\":{\"entry\":{\"id\":4,\"name\":\"map\"}},"
-            + "\"optional\":{\"id\":5,\"name\":\"optional\"}}";
-    assertEquals(json.toJson(value), expected);
-    awaitGenerated(json, AsyncParent.class);
-    awaitGenerated(json, AsyncChild.class);
-    assertEquals(json.toJson(value), expected);
-    AsyncParent read = json.fromJson(expected, AsyncParent.class);
-    assertEquals(read.child.name, "child");
-    assertEquals(read.array[0].name, "array");
-    assertEquals(read.list.get(0).name, "list");
-    assertEquals(read.map.get("entry").name, "map");
-    assertEquals(read.optional.get().name, "optional");
-    assertEquals(read.atomic.get().name, "atomic");
-    assertCachedGeneratedChild(json, AsyncParent.class, AsyncChild.class);
+    JsonSharedRegistry registry = (JsonSharedRegistry) field(json, "sharedRegistry");
+    JsonTypeResolver first = new JsonTypeResolver(registry);
+    JsonTypeResolver second = new JsonTypeResolver(registry);
+    ObjectCodec firstOwner = first.getObjectCodec(AsyncChild.class);
+    ObjectCodec secondOwner = second.getObjectCodec(AsyncChild.class);
+
+    StringWriterCodec firstWriter = awaitStringWriter(first, firstOwner);
+    StringWriterCodec secondWriter = awaitStringWriter(second, secondOwner);
+    assertTrue(firstWriter != firstOwner);
+    assertTrue(secondWriter != secondOwner);
+    assertTrue(firstWriter != secondWriter);
+    assertEquals(firstWriter.getClass(), secondWriter.getClass());
+    assertSame(first.getObjectCodec(AsyncChild.class), firstOwner);
+    assertSame(second.getObjectCodec(AsyncChild.class), secondOwner);
   }
 
   @Test
-  public void objectDeclaredCodecsKeepNaturalSemantics() throws Exception {
+  public void nestedAndRecursiveTypes() throws Exception {
     ForyJson json = ForyJson.builder().build();
-    ObjectHolder holder = new ObjectHolder();
-    holder.array = new Object[] {"array", 7, child("array-child", 8)};
-    holder.atomic = new AtomicReference<Object>("atomic");
-    holder.map = new LinkedHashMap<>();
-    holder.map.put("string", "value");
-    holder.map.put("number", 9);
-    holder.optional = Optional.of("optional");
-    String expected =
-        "{\"array\":[\"array\",7,{\"id\":8,\"name\":\"array-child\"}],"
-            + "\"atomic\":\"atomic\",\"map\":{\"string\":\"value\",\"number\":9},"
-            + "\"optional\":\"optional\"}";
-    withJitLocked(
-        json,
-        () -> {
-          json.hasGeneratedCodec(Object.class);
-          assertEquals(json.toJson(holder), expected);
-        });
-    awaitGenerated(json, Object.class);
-    assertEquals(json.toJson(holder), expected);
-  }
-
-  @Test
-  public void objectClassJitKeepsNaturalObjectBinding() throws Exception {
-    ForyJson json = ForyJson.builder().build();
-    assertTrue(json.fromJson("[1]", Object.class) instanceof JsonArray);
-    JsonObject before =
-        (JsonObject) json.fromJson("{\"items\":[1],\"name\":\"fory\"}", Object.class);
-    assertTrue(before.get("items") instanceof JsonArray);
-    json.hasGeneratedCodec(Object.class);
-    awaitGenerated(json, Object.class);
-    assertEquals(json.fromJson("7", Object.class), Long.valueOf(7));
-    assertTrue(json.fromJson("[1]", Object.class) instanceof JsonArray);
-    JsonObject after =
-        (JsonObject) json.fromJson("{\"items\":[1],\"name\":\"fory\"}", Object.class);
-    assertTrue(after.get("items") instanceof JsonArray);
-    assertEquals(after.get("name"), "fory");
-  }
-
-  @Test
-  public void asyncCompilationKeepsResolverLocalCodecs() throws Exception {
-    ForyJson json = ForyJson.builder().build();
-    JsonSharedRegistry sharedRegistry = (JsonSharedRegistry) field(json, "sharedRegistry");
-    JsonTypeResolver first = new JsonTypeResolver(sharedRegistry);
-    JsonTypeResolver second = new JsonTypeResolver(sharedRegistry);
-    withJitLocked(
-        json,
-        () -> {
-          assertFalse(first.getObjectCodec(AsyncChild.class) instanceof GeneratedObjectCodec);
-          assertFalse(second.getObjectCodec(AsyncChild.class) instanceof GeneratedObjectCodec);
-          assertEquals(pendingJitCount(json), 1);
-        });
-    BaseObjectCodec firstCodec = awaitGenerated(first, AsyncChild.class);
-    BaseObjectCodec secondCodec = awaitGenerated(second, AsyncChild.class);
-    assertTrue(firstCodec instanceof GeneratedObjectCodec, firstCodec.getClass().getName());
-    assertTrue(secondCodec instanceof GeneratedObjectCodec, secondCodec.getClass().getName());
-    assertTrue(firstCodec != secondCodec);
-    assertEquals(firstCodec.getClass(), secondCodec.getClass());
-  }
-
-  @Test
-  public void asyncReusesGeneratedClassesForNewResolver() throws Exception {
-    ForyJson json = ForyJson.builder().build();
-    JsonSharedRegistry sharedRegistry = (JsonSharedRegistry) field(json, "sharedRegistry");
-    JsonTypeResolver first = new JsonTypeResolver(sharedRegistry);
-    assertFalse(first.getObjectCodec(AsyncChild.class) instanceof GeneratedObjectCodec);
-    BaseObjectCodec firstCodec = awaitGenerated(first, AsyncChild.class);
-    JsonTypeResolver second = new JsonTypeResolver(sharedRegistry);
-    BaseObjectCodec secondCodec = second.getObjectCodec(AsyncChild.class);
-    assertTrue(secondCodec instanceof GeneratedObjectCodec, secondCodec.getClass().getName());
-    assertTrue(firstCodec != secondCodec);
-    assertEquals(firstCodec.getClass(), secondCodec.getClass());
-  }
-
-  @Test
-  public void asyncRecursiveTypes() throws Exception {
-    ForyJson json = ForyJson.builder().build();
-    RecursiveParent value = new RecursiveParent();
-    assertEquals(json.toJson(value), "{\"child\":{\"name\":\"child\"},\"name\":\"parent\"}");
-    awaitGenerated(json, RecursiveParent.class);
-    assertEquals(json.toJson(value), "{\"child\":{\"name\":\"child\"},\"name\":\"parent\"}");
-  }
-
-  @Test
-  public void disabledCodegenIgnoresAsync() throws Exception {
-    ForyJson json = ForyJson.builder().withCodegen(false).build();
-    assertEquals(json.toJson(child("root", 1)), "{\"id\":1,\"name\":\"root\"}");
-    Thread.sleep(50);
-    assertFalse(json.hasGeneratedCodec(AsyncChild.class));
-  }
-
-  private static AsyncParent parent() {
     AsyncParent parent = new AsyncParent();
     parent.child = child("child", 1);
-    parent.array = new AsyncChild[] {child("array", 2)};
-    parent.list = Collections.singletonList(child("list", 3));
-    parent.map = new LinkedHashMap<>();
-    parent.map.put("entry", child("map", 4));
-    parent.optional = Optional.of(child("optional", 5));
-    parent.atomic = new AtomicReference<>(child("atomic", 6));
-    return parent;
+    parent.children = new LinkedHashMap<>();
+    parent.children.put("nested", child("nested", 2));
+    parent.list = Arrays.asList(child("listed", 3));
+    String expected =
+        "{\"child\":{\"id\":1,\"name\":\"child\"},\"children\":{\"nested\":{\"id\":2,\"name\":\"nested\"}},"
+            + "\"list\":[{\"id\":3,\"name\":\"listed\"}]}";
+    assertEquals(json.toJson(parent), expected);
+    awaitStringWriter(resolver(json), resolver(json).getObjectCodec(AsyncParent.class));
+    awaitStringWriter(resolver(json), resolver(json).getObjectCodec(AsyncChild.class));
+    assertEquals(json.toJson(parent), expected);
+    awaitUtf8Readers(json, expected, AsyncParent.class, AsyncChild.class);
+    AsyncParent decoded =
+        json.fromJson(expected.getBytes(StandardCharsets.UTF_8), AsyncParent.class);
+    assertEquals(decoded.children.get("nested").id, 2);
+    assertEquals(decoded.list.get(0).id, 3);
+    assertNestedUtf8Readers(json);
+
+    RecursiveParent recursive = new RecursiveParent();
+    assertEquals(json.toJson(recursive), "{\"child\":{\"name\":\"child\"},\"name\":\"parent\"}");
   }
 
-  private static AsyncChild child(String name, int id) {
-    AsyncChild child = new AsyncChild();
-    child.name = name;
-    child.id = id;
-    return child;
+  @Test
+  public void objectClassKeepsNaturalSemantics() {
+    ForyJson json = ForyJson.builder().build();
+    assertEquals(json.fromJson("7", Object.class), Long.valueOf(7));
+    assertTrue(json.fromJson("[1]", Object.class) instanceof JsonArray);
+    JsonObject object = (JsonObject) json.fromJson("{\"items\":[1]}", Object.class);
+    assertTrue(object.get("items") instanceof JsonArray);
   }
 
-  private static void awaitGenerated(ForyJson json, Class<?> type) throws InterruptedException {
-    for (int i = 0; i < 200; i++) {
-      if (json.hasGeneratedCodec(type)) {
-        return;
-      }
-      Thread.sleep(10);
+  @Test
+  public void selfRecursiveWriterUsesThis() throws Exception {
+    ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
+    SelfRecursive value = new SelfRecursive();
+    value.id = 1;
+    value.next = new SelfRecursive();
+    value.next.id = 2;
+    assertEquals(json.toJson(value), "{\"id\":1,\"next\":{\"id\":2}}");
+
+    JsonTypeResolver resolver = resolver(json);
+    ObjectCodec owner = resolver.getObjectCodec(SelfRecursive.class);
+    StringWriterCodec writer = resolver.stringWriter(owner);
+    assertTrue(writer != owner);
+    for (Field field : writer.getClass().getDeclaredFields()) {
+      assertFalse(field.getType() == StringObjectWriterCodec.class, field.toString());
     }
-    fail("Timed out waiting for generated JSON codec for " + type);
   }
 
-  private static BaseObjectCodec awaitGenerated(JsonTypeResolver resolver, Class<?> type)
+  @Test
+  public void dependencyOrder() throws Exception {
+    ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
+    JsonTypeResolver resolver = resolver(json);
+    ObjectCodec parent = resolver.getObjectCodec(AsyncParent.class);
+    ObjectCodec child = resolver.getObjectCodec(AsyncChild.class);
+    JsonTypeInfo childInfo = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
+
+    Object parentCapability = resolver.stringWriter(parent);
+    assertGeneratedChild(
+        parentCapability,
+        StringObjectWriterCodec.class,
+        childInfo.stringWriter(),
+        child,
+        2);
+    parentCapability = resolver.utf8Writer(parent);
+    assertGeneratedChild(
+        parentCapability,
+        Utf8ObjectWriterCodec.class,
+        childInfo.utf8Writer(),
+        child,
+        2);
+    parentCapability = resolver.latin1Reader(parent);
+    assertGeneratedChild(
+        parentCapability,
+        Latin1ObjectReaderCodec.class,
+        childInfo.latin1Reader(),
+        child,
+        2);
+    parentCapability = resolver.utf16Reader(parent);
+    assertGeneratedChild(
+        parentCapability,
+        Utf16ObjectReaderCodec.class,
+        childInfo.utf16Reader(),
+        child,
+        2);
+    parentCapability = resolver.utf8Reader(parent);
+    assertGeneratedChild(
+        parentCapability,
+        Utf8ObjectReaderCodec.class,
+        childInfo.utf8Reader(),
+        child,
+        2);
+  }
+
+  @Test
+  public void mutualDependencyOrder() throws Exception {
+    ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
+    JsonTypeResolver resolver = resolver(json);
+    ObjectCodec firstOwner = resolver.getObjectCodec(MutualFirst.class);
+    ObjectCodec secondOwner = resolver.getObjectCodec(MutualSecond.class);
+    JsonTypeInfo firstInfo = resolver.getTypeInfo(MutualFirst.class, MutualFirst.class);
+    JsonTypeInfo secondInfo = resolver.getTypeInfo(MutualSecond.class, MutualSecond.class);
+
+    resolver.stringWriter(firstOwner);
+    assertMutualFields(
+        firstInfo.stringWriter(),
+        secondInfo.stringWriter(),
+        StringObjectWriterCodec.class,
+        firstOwner,
+        secondOwner);
+    resolver.utf8Writer(firstOwner);
+    assertMutualFields(
+        firstInfo.utf8Writer(),
+        secondInfo.utf8Writer(),
+        Utf8ObjectWriterCodec.class,
+        firstOwner,
+        secondOwner);
+    resolver.latin1Reader(firstOwner);
+    assertMutualFields(
+        firstInfo.latin1Reader(),
+        secondInfo.latin1Reader(),
+        Latin1ObjectReaderCodec.class,
+        firstOwner,
+        secondOwner);
+    resolver.utf16Reader(firstOwner);
+    assertMutualFields(
+        firstInfo.utf16Reader(),
+        secondInfo.utf16Reader(),
+        Utf16ObjectReaderCodec.class,
+        firstOwner,
+        secondOwner);
+    resolver.utf8Reader(firstOwner);
+    assertMutualFields(
+        firstInfo.utf8Reader(),
+        secondInfo.utf8Reader(),
+        Utf8ObjectReaderCodec.class,
+        firstOwner,
+        secondOwner);
+  }
+
+  private static void assertGeneratedChild(
+      Object parent,
+      Class<?> fieldType,
+      Object child,
+      ObjectCodec childOwner,
+      int expectedFields)
+      throws Exception {
+    assertFalse(parent instanceof ObjectCodec, parent.getClass().getName());
+    assertTrue(child != childOwner, child.getClass().getName());
+    assertCapabilityFields(parent, fieldType, child, expectedFields);
+  }
+
+  private static void assertMutualFields(
+      Object first,
+      Object second,
+      Class<?> fieldType,
+      ObjectCodec firstOwner,
+      ObjectCodec secondOwner)
+      throws Exception {
+    assertTrue(first != firstOwner, first.getClass().getName());
+    assertTrue(second != secondOwner, second.getClass().getName());
+    assertCapabilityFields(first, fieldType, second, 1);
+    assertCapabilityFields(second, fieldType, first, 1);
+  }
+
+  private static void assertCapabilityFields(
+      Object owner, Class<?> fieldType, Object expected, int expectedFields) throws Exception {
+    int count = 0;
+    for (Field field : owner.getClass().getDeclaredFields()) {
+      if (field.getType() == fieldType) {
+        field.setAccessible(true);
+        assertSame(field.get(owner), expected, field.toString());
+        count++;
+      }
+    }
+    assertEquals(count, expectedFields, owner.getClass().getName());
+  }
+
+  private static void assertAllOwner(JsonTypeInfo info, ObjectCodec owner) {
+    assertSame(info.stringWriter(), owner);
+    assertSame(info.utf8Writer(), owner);
+    assertSame(info.latin1Reader(), owner);
+    assertSame(info.utf16Reader(), owner);
+    assertSame(info.utf8Reader(), owner);
+  }
+
+  private static StringWriterCodec awaitStringWriter(JsonTypeResolver resolver, ObjectCodec owner)
       throws InterruptedException {
     for (int i = 0; i < 200; i++) {
-      BaseObjectCodec codec = resolver.getObjectCodec(type);
-      if (codec instanceof GeneratedObjectCodec) {
-        return codec;
+      StringWriterCodec writer = resolver.stringWriter(owner);
+      if (writer != owner) {
+        return writer;
       }
       Thread.sleep(10);
     }
-    fail("Timed out waiting for generated JSON codec for " + type);
+    fail("Timed out waiting for generated JSON string writer for " + owner.type());
     throw new IllegalStateException("unreachable");
   }
 
-  private static boolean asyncCompilationEnabled(ForyJson json) throws Exception {
-    Object sharedRegistry = field(json, "sharedRegistry");
-    Object jitContext = field(sharedRegistry, "jitContext");
-    return (boolean) field(jitContext, "asyncCompilationEnabled");
-  }
-
-  private static int pendingJitCount(ForyJson json) throws Exception {
-    Object sharedRegistry = field(json, "sharedRegistry");
-    Object jitContext = field(sharedRegistry, "jitContext");
-    return ((Map<?, ?>) field(jitContext, "hasJITResult")).size();
-  }
-
-  private static void assertCachedGeneratedChild(
-      ForyJson json, Class<?> parentType, Class<?> childType) throws Exception {
-    GeneratedObjectCodec codec = generatedObjectCodec(json, parentType);
-    AtomicInteger cachedChildFields = new AtomicInteger();
-    scanCachedCodecs(
-        codec, childType, cachedChildFields, Collections.newSetFromMap(new IdentityHashMap<>()));
-    assertTrue(
-        cachedChildFields.get() >= 6,
-        "Expected cached generated child codecs, got " + cachedChildFields.get());
-  }
-
-  private static GeneratedObjectCodec generatedObjectCodec(ForyJson json, Class<?> type)
+  private static void awaitUtf8Readers(ForyJson json, String input, Class<?>... types)
       throws Exception {
-    Object primarySlot = ((AtomicReference<?>) field(json, "primarySlot")).get();
-    Object state = field(primarySlot, "state");
-    Object resolver = field(state, "typeResolver");
-    BaseObjectCodec codec =
-        (BaseObjectCodec)
-            resolver.getClass().getMethod("getObjectCodec", Class.class).invoke(resolver, type);
-    assertTrue(codec instanceof GeneratedObjectCodec);
-    return (GeneratedObjectCodec) codec;
-  }
-
-  private static void scanCachedCodecs(
-      Object owner, Class<?> childType, AtomicInteger cachedChildFields, java.util.Set<Object> seen)
-      throws Exception {
-    if (owner == null || !seen.add(owner)) {
-      return;
-    }
-    if (owner instanceof BaseObjectCodec) {
-      BaseObjectCodec codec = (BaseObjectCodec) owner;
-      if (codec.type() == childType) {
-        assertTrue(codec instanceof GeneratedObjectCodec, codec.getClass().getName());
-        cachedChildFields.incrementAndGet();
+    JsonTypeResolver resolver = resolver(json);
+    byte[] bytes = input.getBytes(StandardCharsets.UTF_8);
+    for (int i = 0; i < 200; i++) {
+      json.fromJson(bytes, AsyncParent.class);
+      boolean generated = true;
+      for (Class<?> type : types) {
+        ObjectCodec owner = resolver.getObjectCodec(type);
+        generated &= resolver.getTypeInfo(type, type).utf8Reader() != owner;
       }
-      if (!(codec instanceof GeneratedObjectCodec)) {
+      if (generated) {
         return;
       }
+      Thread.sleep(10);
     }
-    Class<?> type = owner.getClass();
-    if (!isCodecOwner(type)) {
-      return;
-    }
-    for (Field field : allFields(type)) {
-      if (Modifier.isStatic(field.getModifiers()) || field.getType().isPrimitive()) {
-        continue;
-      }
-      field.setAccessible(true);
-      Object value = field.get(owner);
-      if (value instanceof BaseObjectCodec && ((BaseObjectCodec) value).type() == childType) {
-        assertTrue(value instanceof GeneratedObjectCodec, value.getClass().getName());
-        cachedChildFields.incrementAndGet();
-        continue;
-      }
-      if (value instanceof BaseObjectCodec
-          || value instanceof JsonCodec
-          || isCodecOwner(value == null ? null : value.getClass())) {
-        scanCachedCodecs(value, childType, cachedChildFields, seen);
-      }
-    }
+    fail("Timed out waiting for generated JSON UTF8 readers");
   }
 
-  private static boolean isCodecOwner(Class<?> type) {
-    if (type == null) {
-      return false;
+  private static void assertNestedUtf8Readers(ForyJson json) throws Exception {
+    JsonTypeResolver resolver = resolver(json);
+    Object parentReader = resolver.getTypeInfo(AsyncParent.class, AsyncParent.class).utf8Reader();
+    Object childReader = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class).utf8Reader();
+    int nestedReaders = 0;
+    for (Field field : parentReader.getClass().getDeclaredFields()) {
+      if (field.getType() == Utf8ObjectReaderCodec.class) {
+        field.setAccessible(true);
+        assertSame(field.get(parentReader), childReader);
+        nestedReaders++;
+      }
     }
-    Package pkg = type.getPackage();
-    String packageName = pkg == null ? "" : pkg.getName();
-    return packageName.startsWith("org.apache.fory.json.codec")
-        || type.getSimpleName().contains("ForyJsonCodec");
+    assertEquals(nestedReaders, 2);
   }
 
-  private static java.util.List<Field> allFields(Class<?> type) {
-    java.util.ArrayList<Field> fields = new java.util.ArrayList<>();
-    for (Class<?> current = type; current != null; current = current.getSuperclass()) {
-      fields.addAll(Arrays.asList(current.getDeclaredFields()));
-    }
-    return fields;
+  private static JsonTypeResolver resolver(ForyJson json) throws Exception {
+    Object pooledState =
+        ((java.util.concurrent.atomic.AtomicReference<?>) field(json, "primarySlot")).get();
+    Object state = field(pooledState, "state");
+    return (JsonTypeResolver) field(state, "typeResolver");
+  }
+
+  private static boolean asyncCompilationEnabled(ForyJson json) throws Exception {
+    Object registry = field(json, "sharedRegistry");
+    Object jitContext = field(registry, "jitContext");
+    return (boolean) field(jitContext, "asyncCompilationEnabled");
   }
 
   private static Object field(Object owner, String name) throws Exception {
@@ -316,28 +369,17 @@ public class JsonAsyncCompilationTest {
     return field.get(owner);
   }
 
-  private static void withJitLocked(ForyJson json, ThrowingRunnable action) throws Exception {
-    Object sharedRegistry = field(json, "sharedRegistry");
-    Object jitContext = field(sharedRegistry, "jitContext");
-    jitContext.getClass().getMethod("lock").invoke(jitContext);
-    try {
-      action.run();
-    } finally {
-      jitContext.getClass().getMethod("unlock").invoke(jitContext);
-    }
-  }
-
-  private interface ThrowingRunnable {
-    void run() throws Exception;
+  private static AsyncChild child(String name, int id) {
+    AsyncChild child = new AsyncChild();
+    child.id = id;
+    child.name = name;
+    return child;
   }
 
   public static final class AsyncParent {
-    public AsyncChild[] array;
-    public AtomicReference<AsyncChild> atomic;
     public AsyncChild child;
-    public java.util.List<AsyncChild> list;
-    public Map<String, AsyncChild> map;
-    public Optional<AsyncChild> optional;
+    public Map<String, AsyncChild> children;
+    public List<AsyncChild> list;
   }
 
   public static final class AsyncChild {
@@ -345,10 +387,16 @@ public class JsonAsyncCompilationTest {
     public String name;
   }
 
-  public static final class ObjectHolder {
-    public Object[] array;
-    public AtomicReference<Object> atomic;
-    public Map<String, Object> map;
-    public Optional<Object> optional;
+  public static final class SelfRecursive {
+    public int id;
+    public SelfRecursive next;
+  }
+
+  public static final class MutualFirst {
+    public MutualSecond second;
+  }
+
+  public static final class MutualSecond {
+    public MutualFirst first;
   }
 }

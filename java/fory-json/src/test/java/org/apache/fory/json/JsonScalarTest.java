@@ -70,8 +70,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.fory.json.codec.BaseObjectCodec;
-import org.apache.fory.json.codec.GeneratedObjectCodec;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.data.BoxedScalars;
 import org.apache.fory.json.data.CoreScalarFields;
@@ -87,7 +85,6 @@ import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
-import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
@@ -1428,7 +1425,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
         newJsonBuilder().registerCodec(ModeAwareValue.class, new ModeAwareCodec()).build();
     ModeAwareHolder holder =
         json.fromJson("{\"value\":{}}".getBytes(StandardCharsets.UTF_8), ModeAwareHolder.class);
-    assertEquals(holder.value.mode, codegenEnabled() ? "utf8" : "generic");
+    assertEquals(holder.value.mode, "utf8");
   }
 
   @Test
@@ -1830,7 +1827,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(Float.floatToRawIntBits(fields.value), expected);
     assertEquals(Float.floatToRawIntBits(fields.boxed.floatValue()), expected);
     if (codegenEnabled()) {
-      GeneratedObjectCodec codec = generatedObjectCodec(json, FloatFields.class);
+      Object codec = generatedReader(json, FloatFields.class);
       assertNoJsonFieldInfoFields(codec);
     }
   }
@@ -2223,14 +2220,16 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
   }
 
-  private static GeneratedObjectCodec generatedObjectCodec(ForyJson json, Class<?> type)
-      throws Exception {
+  private static Object generatedReader(ForyJson json, Class<?> type) throws Exception {
     Object primarySlot = ((AtomicReference<?>) reflectField(json, "primarySlot")).get();
     Object state = reflectField(primarySlot, "state");
     JsonTypeResolver resolver = (JsonTypeResolver) reflectField(state, "typeResolver");
-    BaseObjectCodec codec = resolver.getObjectCodec(type);
-    assertTrue(codec instanceof GeneratedObjectCodec);
-    return (GeneratedObjectCodec) codec;
+    Object owner = resolver.getObjectCodec(type);
+    JsonTypeInfo typeInfo = resolver.getTypeInfo(type, type);
+    Object codec =
+        StringSerializer.isBytesBackedString() ? typeInfo.latin1Reader() : typeInfo.utf16Reader();
+    assertTrue(codec != owner, codec.getClass().getName());
+    return codec;
   }
 
   private static void assertNoJsonFieldInfoFields(Object owner) {
@@ -2430,11 +2429,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   private static final class UrlStringCodec implements JsonCodec {
     @Override
-    public void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(value.toString());
-    }
-
-    @Override
     public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeString(value.toString());
     }
@@ -2445,18 +2439,26 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return JsonTestData.url(reader.readString());
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return JsonTestData.url(reader.readString());
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return JsonTestData.url(reader.readString());
     }
   }
 
   private static final class ModeAwareCodec implements JsonCodec {
     @Override
-    public void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNull();
-    }
-
-    @Override
     public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeNull();
     }
@@ -2464,12 +2466,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeNull();
-    }
-
-    @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.skipValue();
-      return new ModeAwareValue("generic");
     }
 
     @Override
@@ -2504,11 +2500,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
 
     @Override
-    public void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(token);
-    }
-
-    @Override
     public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeString(token);
     }
@@ -2519,7 +2510,22 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      assertEquals(reader.readString(), token);
+      return decoded;
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      assertEquals(reader.readString(), token);
+      return decoded;
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       assertEquals(reader.readString(), token);
       return decoded;
     }
@@ -2535,11 +2541,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
 
     @Override
-    public void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(token);
-    }
-
-    @Override
     public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeString(token);
     }
@@ -2550,7 +2551,22 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      assertEquals(reader.readString(), token);
+      return decoded;
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      assertEquals(reader.readString(), token);
+      return decoded;
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       assertEquals(reader.readString(), token);
       return decoded;
     }

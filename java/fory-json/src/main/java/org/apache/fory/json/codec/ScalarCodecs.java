@@ -102,25 +102,20 @@ public final class ScalarCodecs {
     private NaturalCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      JsonTypeInfo typeInfo = resolver.getRuntimeTypeInfo(value.getClass());
-      typeInfo.codec().write(writer, value, resolver);
-    }
-
-    @Override
     void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       JsonTypeInfo typeInfo = resolver.getRuntimeTypeInfo(value.getClass());
-      typeInfo.codec().writeString(writer, value, resolver);
+      typeInfo.stringWriter().writeString(writer, value, resolver);
     }
 
     @Override
     void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
       JsonTypeInfo typeInfo = resolver.getRuntimeTypeInfo(value.getClass());
-      typeInfo.codec().writeUtf8(writer, value, resolver);
+      typeInfo.utf8Writer().writeUtf8(writer, value, resolver);
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       char token = reader.peekToken();
       if (token == '"') {
         return reader.readString();
@@ -136,15 +131,47 @@ public final class ScalarCodecs {
       }
       return reader.readNumber();
     }
+
+    @Override
+    Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      char token = reader.peekToken();
+      if (token == '"') {
+        return reader.readString();
+      } else if (token == '{') {
+        return MapCodec.readUntyped(reader, resolver);
+      } else if (token == '[') {
+        return CollectionCodec.readUntyped(reader, resolver);
+      } else if (token == 't' || token == 'f') {
+        return reader.readBoolean();
+      }
+      return reader.readNumber();
+    }
+
+    @Override
+    Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      char token = reader.peekToken();
+      if (token == '"') {
+        return reader.readString();
+      } else if (token == '{') {
+        return MapCodec.readUntyped(reader, resolver);
+      } else if (token == '[') {
+        return CollectionCodec.readUntyped(reader, resolver);
+      } else if (token == 't' || token == 'f') {
+        return reader.readBoolean();
+      }
+      return reader.readNumber();
+    }
   }
 
-  public static final class StringCodec extends AbstractJsonCodec {
+  public static final class StringCodec extends SharedJsonCodec {
     public static final StringCodec INSTANCE = new StringCodec();
 
     private StringCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeString((String) value);
     }
 
@@ -154,18 +181,18 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readString();
     }
   }
 
-  public static final class CharSequenceCodec extends AbstractJsonCodec {
+  public static final class CharSequenceCodec extends SharedJsonCodec {
     public static final CharSequenceCodec INSTANCE = new CharSequenceCodec();
 
     private CharSequenceCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeString((CharSequence) value);
     }
 
@@ -180,22 +207,22 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readCharSequence();
     }
   }
 
-  public static final class VoidCodec extends AbstractJsonCodec {
+  public static final class VoidCodec extends SharedJsonCodec {
     public static final VoidCodec INSTANCE = new VoidCodec();
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValueOrNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.readNull();
       return null;
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeNull();
     }
 
@@ -205,19 +232,19 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.readNull();
       return null;
     }
   }
 
-  public static final class BooleanCodec extends AbstractJsonCodec {
+  public static final class BooleanCodec extends SharedJsonCodec {
     public static final BooleanCodec INSTANCE = new BooleanCodec();
 
     private BooleanCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeBoolean((Boolean) value);
     }
 
@@ -227,19 +254,19 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readBoolean();
     }
 
     @Override
-    public void readField(
+    void readFieldValue(
         JsonReader reader,
         Object object,
         JsonFieldAccessor accessor,
         JsonTypeInfo typeInfo,
         JsonTypeResolver resolver) {
       if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
+        readFieldValueDefault(reader, object, accessor, typeInfo, resolver);
       } else if (typeInfo.primitive()) {
         accessor.putBoolean(object, reader.readBoolean());
       } else {
@@ -248,13 +275,13 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class IntCodec extends AbstractJsonCodec {
+  public static final class IntCodec extends SharedJsonCodec {
     public static final IntCodec INSTANCE = new IntCodec();
 
     private IntCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeInt((Integer) value);
     }
 
@@ -264,19 +291,19 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readInt();
     }
 
     @Override
-    public void readField(
+    void readFieldValue(
         JsonReader reader,
         Object object,
         JsonFieldAccessor accessor,
         JsonTypeInfo typeInfo,
         JsonTypeResolver resolver) {
       if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
+        readFieldValueDefault(reader, object, accessor, typeInfo, resolver);
       } else if (typeInfo.primitive()) {
         accessor.putInt(object, reader.readInt());
       } else {
@@ -285,13 +312,13 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class LongCodec extends AbstractJsonCodec {
+  public static final class LongCodec extends SharedJsonCodec {
     public static final LongCodec INSTANCE = new LongCodec();
 
     private LongCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeLong((Long) value);
     }
 
@@ -301,19 +328,19 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readLong();
     }
 
     @Override
-    public void readField(
+    void readFieldValue(
         JsonReader reader,
         Object object,
         JsonFieldAccessor accessor,
         JsonTypeInfo typeInfo,
         JsonTypeResolver resolver) {
       if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
+        readFieldValueDefault(reader, object, accessor, typeInfo, resolver);
       } else if (typeInfo.primitive()) {
         accessor.putLong(object, reader.readLong());
       } else {
@@ -322,13 +349,13 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class ShortCodec extends AbstractJsonCodec {
+  public static final class ShortCodec extends SharedJsonCodec {
     public static final ShortCodec INSTANCE = new ShortCodec();
 
     private ShortCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeInt(((Short) value).intValue());
     }
 
@@ -338,7 +365,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       int value = reader.readInt();
       if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
         throw new ForyJsonException("Short overflow");
@@ -347,14 +374,14 @@ public final class ScalarCodecs {
     }
 
     @Override
-    public void readField(
+    void readFieldValue(
         JsonReader reader,
         Object object,
         JsonFieldAccessor accessor,
         JsonTypeInfo typeInfo,
         JsonTypeResolver resolver) {
       if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
+        readFieldValueDefault(reader, object, accessor, typeInfo, resolver);
       } else if (typeInfo.primitive()) {
         int value = reader.readInt();
         if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
@@ -371,13 +398,13 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class ByteCodec extends AbstractJsonCodec {
+  public static final class ByteCodec extends SharedJsonCodec {
     public static final ByteCodec INSTANCE = new ByteCodec();
 
     private ByteCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeInt(((Byte) value).intValue());
     }
 
@@ -387,7 +414,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       int value = reader.readInt();
       if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
         throw new ForyJsonException("Byte overflow");
@@ -396,14 +423,14 @@ public final class ScalarCodecs {
     }
 
     @Override
-    public void readField(
+    void readFieldValue(
         JsonReader reader,
         Object object,
         JsonFieldAccessor accessor,
         JsonTypeInfo typeInfo,
         JsonTypeResolver resolver) {
       if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
+        readFieldValueDefault(reader, object, accessor, typeInfo, resolver);
       } else if (typeInfo.primitive()) {
         int value = reader.readInt();
         if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
@@ -420,13 +447,13 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class FloatCodec extends AbstractJsonCodec {
+  public static final class FloatCodec extends SharedJsonCodec {
     public static final FloatCodec INSTANCE = new FloatCodec();
 
     private FloatCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeFloat((Float) value);
     }
 
@@ -436,19 +463,19 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readFloat();
     }
 
     @Override
-    public void readField(
+    void readFieldValue(
         JsonReader reader,
         Object object,
         JsonFieldAccessor accessor,
         JsonTypeInfo typeInfo,
         JsonTypeResolver resolver) {
       if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
+        readFieldValueDefault(reader, object, accessor, typeInfo, resolver);
       } else if (typeInfo.primitive()) {
         accessor.putFloat(object, reader.readFloat());
       } else {
@@ -457,13 +484,13 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class DoubleCodec extends AbstractJsonCodec {
+  public static final class DoubleCodec extends SharedJsonCodec {
     public static final DoubleCodec INSTANCE = new DoubleCodec();
 
     private DoubleCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeDouble((Double) value);
     }
 
@@ -473,19 +500,19 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readDouble();
     }
 
     @Override
-    public void readField(
+    void readFieldValue(
         JsonReader reader,
         Object object,
         JsonFieldAccessor accessor,
         JsonTypeInfo typeInfo,
         JsonTypeResolver resolver) {
       if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
+        readFieldValueDefault(reader, object, accessor, typeInfo, resolver);
       } else if (typeInfo.primitive()) {
         accessor.putDouble(object, reader.readDouble());
       } else {
@@ -494,13 +521,13 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class CharCodec extends AbstractJsonCodec {
+  public static final class CharCodec extends SharedJsonCodec {
     public static final CharCodec INSTANCE = new CharCodec();
 
     private CharCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeChar((Character) value);
     }
 
@@ -510,21 +537,21 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readChar();
     }
 
     @Override
-    public void readField(
+    void readFieldValue(
         JsonReader reader,
         Object object,
         JsonFieldAccessor accessor,
         JsonTypeInfo typeInfo,
         JsonTypeResolver resolver) {
       if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
+        readFieldValueDefault(reader, object, accessor, typeInfo, resolver);
       } else {
-        char value = (Character) readNonNull(reader, typeInfo, resolver);
+        char value = (Character) readValue(reader, typeInfo, resolver);
         if (typeInfo.primitive()) {
           accessor.putChar(object, value);
         } else {
@@ -534,9 +561,9 @@ public final class ScalarCodecs {
     }
   }
 
-  public abstract static class StringValueCodec extends AbstractJsonCodec {
+  public abstract static class StringValueCodec extends SharedJsonCodec {
     @Override
-    final void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    final void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeString(toJsonString(value));
     }
 
@@ -546,7 +573,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    final Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    final Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return readStringValue(reader.readString(), typeInfo);
     }
 
@@ -566,13 +593,13 @@ public final class ScalarCodecs {
     abstract Object fromJsonString(String value);
   }
 
-  public static final class NumberCodec extends AbstractJsonCodec {
+  public static final class NumberCodec extends SharedJsonCodec {
     public static final NumberCodec INSTANCE = new NumberCodec();
 
     private NumberCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writeNumberValue(writer, (Number) value);
     }
 
@@ -587,7 +614,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readNumber();
     }
 
@@ -619,11 +646,11 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class BigIntegerCodec extends AbstractJsonCodec {
+  public static final class BigIntegerCodec extends SharedJsonCodec {
     public static final BigIntegerCodec INSTANCE = new BigIntegerCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeBigInteger((BigInteger) value);
     }
 
@@ -638,16 +665,16 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readBigInteger();
     }
   }
 
-  public static final class BigDecimalCodec extends AbstractJsonCodec {
+  public static final class BigDecimalCodec extends SharedJsonCodec {
     public static final BigDecimalCodec INSTANCE = new BigDecimalCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeBigDecimal((BigDecimal) value);
     }
 
@@ -662,7 +689,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return reader.readBigDecimal();
     }
 
@@ -694,11 +721,11 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class Float16Codec extends AbstractJsonCodec {
+  public static final class Float16Codec extends SharedJsonCodec {
     public static final Float16Codec INSTANCE = new Float16Codec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeFloat(((Float16) value).floatValue());
     }
 
@@ -708,16 +735,16 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return Float16.valueOf(reader.readFloat());
     }
   }
 
-  public static final class BFloat16Codec extends AbstractJsonCodec {
+  public static final class BFloat16Codec extends SharedJsonCodec {
     public static final BFloat16Codec INSTANCE = new BFloat16Codec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeFloat(((BFloat16) value).floatValue());
     }
 
@@ -727,18 +754,18 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return BFloat16.valueOf(reader.readFloat());
     }
   }
 
-  public static final class BitSetCodec extends AbstractJsonCodec {
+  public static final class BitSetCodec extends SharedJsonCodec {
     public static final BitSetCodec INSTANCE = new BitSetCodec();
 
     private BitSetCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writeBitSet(writer, (BitSet) value);
     }
 
@@ -748,7 +775,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return readBitSet(reader);
     }
 
@@ -982,11 +1009,11 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class DateCodec extends AbstractJsonCodec {
+  public static final class DateCodec extends SharedJsonCodec {
     public static final DateCodec INSTANCE = new DateCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeLong(((Date) value).getTime());
     }
 
@@ -996,16 +1023,16 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return new Date(reader.readLong());
     }
   }
 
-  public static final class CalendarCodec extends AbstractJsonCodec {
+  public static final class CalendarCodec extends SharedJsonCodec {
     public static final CalendarCodec INSTANCE = new CalendarCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeLong(((Calendar) value).getTimeInMillis());
     }
 
@@ -1015,7 +1042,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       Calendar calendar = new GregorianCalendar();
       calendar.setTimeInMillis(reader.readLong());
       return calendar;
@@ -1932,11 +1959,11 @@ public final class ScalarCodecs {
     return c >= '0' && c <= '9';
   }
 
-  public static final class AtomicBooleanCodec extends AbstractJsonCodec {
+  public static final class AtomicBooleanCodec extends SharedJsonCodec {
     public static final AtomicBooleanCodec INSTANCE = new AtomicBooleanCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeBoolean(((AtomicBoolean) value).get());
     }
 
@@ -1946,16 +1973,16 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return new AtomicBoolean(reader.readBoolean());
     }
   }
 
-  public static final class AtomicIntegerCodec extends AbstractJsonCodec {
+  public static final class AtomicIntegerCodec extends SharedJsonCodec {
     public static final AtomicIntegerCodec INSTANCE = new AtomicIntegerCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeInt(((AtomicInteger) value).get());
     }
 
@@ -1965,16 +1992,16 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return new AtomicInteger(reader.readInt());
     }
   }
 
-  public static final class AtomicLongCodec extends AbstractJsonCodec {
+  public static final class AtomicLongCodec extends SharedJsonCodec {
     public static final AtomicLongCodec INSTANCE = new AtomicLongCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeLong(((AtomicLong) value).get());
     }
 
@@ -1984,52 +2011,101 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return new AtomicLong(reader.readLong());
     }
   }
 
   public static final class AtomicReferenceCodec extends AbstractJsonCodec {
     private final JsonTypeInfo valueTypeInfo;
-    private JsonCodec valueCodec;
+    private StringWriterCodec stringWriter;
+    private Utf8WriterCodec utf8Writer;
+    private Latin1ReaderCodec latin1Reader;
+    private Utf16ReaderCodec utf16Reader;
+    private Utf8ReaderCodec utf8Reader;
 
     public AtomicReferenceCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
-      valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
+      stringWriter = valueTypeInfo.stringWriter();
+      utf8Writer = valueTypeInfo.utf8Writer();
+      latin1Reader = valueTypeInfo.latin1Reader();
+      utf16Reader = valueTypeInfo.utf16Reader();
+      utf8Reader = valueTypeInfo.utf8Reader();
+      registerUpdates(valueRawType, resolver);
+    }
+
+    private void registerUpdates(Class<?> valueType, JsonTypeResolver resolver) {
+      if (!valueTypeInfo.usesDefaultObjectCodec()) {
+        return;
+      }
+      resolver.registerStringWriterUpdate(valueType, codec -> stringWriter = codec);
+      resolver.registerUtf8WriterUpdate(valueType, codec -> utf8Writer = codec);
+      resolver.registerLatin1ReaderUpdate(valueType, codec -> latin1Reader = codec);
+      resolver.registerUtf16ReaderUpdate(valueType, codec -> utf16Reader = codec);
+      resolver.registerUtf8ReaderUpdate(valueType, codec -> utf8Reader = codec);
     }
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+      stringWriter.writeString(writer, ((AtomicReference<?>) value).get(), resolver);
+    }
+
+    @Override
+    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+      utf8Writer.writeUtf8(writer, ((AtomicReference<?>) value).get(), resolver);
+    }
+
+    @Override
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       Object value =
-          reader.peekNull()
-              ? readNullValue(reader)
-              : valueCodec.read(reader, valueTypeInfo, resolver);
+          reader.tryReadNullToken()
+              ? null
+              : latin1Reader.readLatin1(reader, valueTypeInfo, resolver);
       return new AtomicReference<>(value);
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return new AtomicReference<>(valueCodec.read(reader, valueTypeInfo, resolver));
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      Object value =
+          reader.tryReadNullToken() ? null : utf16Reader.readUtf16(reader, valueTypeInfo, resolver);
+      return new AtomicReference<>(value);
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      valueCodec.write(writer, ((AtomicReference<?>) value).get(), resolver);
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      Object value =
+          reader.tryReadNullToken() ? null : utf8Reader.readUtf8(reader, valueTypeInfo, resolver);
+      return new AtomicReference<>(value);
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      valueCodec.writeUtf8(writer, ((AtomicReference<?>) value).get(), resolver);
+    Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return new AtomicReference<>(latin1Reader.readLatin1(reader, valueTypeInfo, resolver));
+    }
+
+    @Override
+    Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return new AtomicReference<>(utf16Reader.readUtf16(reader, valueTypeInfo, resolver));
+    }
+
+    @Override
+    Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return new AtomicReference<>(utf8Reader.readUtf8(reader, valueTypeInfo, resolver));
     }
   }
 
-  public static final class AtomicIntegerArrayCodec extends AbstractJsonCodec {
+  public static final class AtomicIntegerArrayCodec extends SharedJsonCodec {
     public static final AtomicIntegerArrayCodec INSTANCE = new AtomicIntegerArrayCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       AtomicIntegerArray array = (AtomicIntegerArray) value;
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
@@ -2051,7 +2127,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -2075,11 +2151,11 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicLongArrayCodec extends AbstractJsonCodec {
+  public static final class AtomicLongArrayCodec extends SharedJsonCodec {
     public static final AtomicLongArrayCodec INSTANCE = new AtomicLongArrayCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       AtomicLongArray array = (AtomicLongArray) value;
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
@@ -2101,7 +2177,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -2127,22 +2203,37 @@ public final class ScalarCodecs {
 
   public static final class AtomicReferenceArrayCodec extends AbstractJsonCodec {
     private final JsonTypeInfo valueTypeInfo;
-    private JsonCodec valueCodec;
+    private StringWriterCodec stringWriter;
+    private Utf8WriterCodec utf8Writer;
+    private Latin1ReaderCodec latin1Reader;
+    private Utf16ReaderCodec utf16Reader;
+    private Utf8ReaderCodec utf8Reader;
 
     public AtomicReferenceArrayCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
-      valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
+      stringWriter = valueTypeInfo.stringWriter();
+      utf8Writer = valueTypeInfo.utf8Writer();
+      latin1Reader = valueTypeInfo.latin1Reader();
+      utf16Reader = valueTypeInfo.utf16Reader();
+      utf8Reader = valueTypeInfo.utf8Reader();
+      if (valueTypeInfo.usesDefaultObjectCodec()) {
+        resolver.registerStringWriterUpdate(valueRawType, codec -> stringWriter = codec);
+        resolver.registerUtf8WriterUpdate(valueRawType, codec -> utf8Writer = codec);
+        resolver.registerLatin1ReaderUpdate(valueRawType, codec -> latin1Reader = codec);
+        resolver.registerUtf16ReaderUpdate(valueRawType, codec -> utf16Reader = codec);
+        resolver.registerUtf8ReaderUpdate(valueRawType, codec -> utf8Reader = codec);
+      }
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       AtomicReferenceArray<?> array = (AtomicReferenceArray<?>) value;
+      StringWriterCodec codec = stringWriter;
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
-        valueCodec.write(writer, array.get(i), resolver);
+        codec.writeString(writer, array.get(i), resolver);
       }
       writer.writeArrayEnd();
     }
@@ -2153,16 +2244,69 @@ public final class ScalarCodecs {
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
-        valueCodec.writeUtf8(writer, array.get(i), resolver);
+        utf8Writer.writeUtf8(writer, array.get(i), resolver);
       }
       writer.writeArrayEnd();
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return readAtomicReferenceArray(reader, typeInfo, resolver, latin1Reader);
+    }
+
+    @Override
+    Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new AtomicReferenceArray<>(0);
+      }
+      Object[] values = new Object[8];
+      int size = 0;
+      Utf16ReaderCodec codec = utf16Reader;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = codec.readUtf16(reader, valueTypeInfo, resolver);
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
+    }
+
+    @Override
+    Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new AtomicReferenceArray<>(0);
+      }
+      Object[] values = new Object[8];
+      int size = 0;
+      Utf8ReaderCodec codec = utf8Reader;
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = codec.readUtf8(reader, valueTypeInfo, resolver);
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
+    }
+
+    private Object readAtomicReferenceArray(
+        Latin1JsonReader reader,
+        JsonTypeInfo typeInfo,
+        JsonTypeResolver resolver,
+        Latin1ReaderCodec codec) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new AtomicReferenceArray<>(0);
       }
@@ -2172,9 +2316,8 @@ public final class ScalarCodecs {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = valueCodec.read(reader, valueTypeInfo, resolver);
-      } while (reader.consume(','));
-      reader.expect(']');
+        values[size++] = codec.readLatin1(reader, valueTypeInfo, resolver);
+      } while (reader.consumeNextCommaOrEndArray());
       reader.exitDepth();
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
     }
@@ -2182,34 +2325,34 @@ public final class ScalarCodecs {
 
   public static final class OptionalCodec extends AbstractJsonCodec {
     private final JsonTypeInfo valueTypeInfo;
-    private JsonCodec valueCodec;
+    private StringWriterCodec stringWriter;
+    private Utf8WriterCodec utf8Writer;
+    private Latin1ReaderCodec latin1Reader;
+    private Utf16ReaderCodec utf16Reader;
+    private Utf8ReaderCodec utf8Reader;
 
     public OptionalCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
-      valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
-    }
-
-    @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        reader.readNull();
-        return Optional.empty();
+      stringWriter = valueTypeInfo.stringWriter();
+      utf8Writer = valueTypeInfo.utf8Writer();
+      latin1Reader = valueTypeInfo.latin1Reader();
+      utf16Reader = valueTypeInfo.utf16Reader();
+      utf8Reader = valueTypeInfo.utf8Reader();
+      if (valueTypeInfo.usesDefaultObjectCodec()) {
+        resolver.registerStringWriterUpdate(valueRawType, codec -> stringWriter = codec);
+        resolver.registerUtf8WriterUpdate(valueRawType, codec -> utf8Writer = codec);
+        resolver.registerLatin1ReaderUpdate(valueRawType, codec -> latin1Reader = codec);
+        resolver.registerUtf16ReaderUpdate(valueRawType, codec -> utf16Reader = codec);
+        resolver.registerUtf8ReaderUpdate(valueRawType, codec -> utf8Reader = codec);
       }
-      return Optional.ofNullable(valueCodec.read(reader, valueTypeInfo, resolver));
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return Optional.ofNullable(valueCodec.read(reader, valueTypeInfo, resolver));
-    }
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       Optional<?> optional = (Optional<?>) value;
       if (optional.isPresent()) {
-        valueCodec.write(writer, optional.get(), resolver);
+        stringWriter.writeString(writer, optional.get(), resolver);
       } else {
         writer.writeNull();
       }
@@ -2219,18 +2362,60 @@ public final class ScalarCodecs {
     void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
       Optional<?> optional = (Optional<?>) value;
       if (optional.isPresent()) {
-        valueCodec.writeUtf8(writer, optional.get(), resolver);
+        utf8Writer.writeUtf8(writer, optional.get(), resolver);
       } else {
         writer.writeNull();
       }
     }
+
+    @Override
+    public Object readLatin1(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return reader.tryReadNullToken()
+          ? Optional.empty()
+          : Optional.ofNullable(latin1Reader.readLatin1(reader, valueTypeInfo, resolver));
+    }
+
+    @Override
+    public Object readUtf16(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return reader.tryReadNullToken()
+          ? Optional.empty()
+          : Optional.ofNullable(utf16Reader.readUtf16(reader, valueTypeInfo, resolver));
+    }
+
+    @Override
+    public Object readUtf8(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return reader.tryReadNullToken()
+          ? Optional.empty()
+          : Optional.ofNullable(utf8Reader.readUtf8(reader, valueTypeInfo, resolver));
+    }
+
+    @Override
+    Object readLatin1NonNull(
+        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return Optional.ofNullable(latin1Reader.readLatin1(reader, valueTypeInfo, resolver));
+    }
+
+    @Override
+    Object readUtf16NonNull(
+        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return Optional.ofNullable(utf16Reader.readUtf16(reader, valueTypeInfo, resolver));
+    }
+
+    @Override
+    Object readUtf8NonNull(
+        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+      return Optional.ofNullable(utf8Reader.readUtf8(reader, valueTypeInfo, resolver));
+    }
   }
 
-  public static final class OptionalIntCodec extends AbstractJsonCodec {
+  public static final class OptionalIntCodec extends SharedJsonCodec {
     public static final OptionalIntCodec INSTANCE = new OptionalIntCodec();
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValueOrNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       if (reader.peekNull()) {
         reader.readNull();
         return OptionalInt.empty();
@@ -2239,7 +2424,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       OptionalInt optional = (OptionalInt) value;
       if (optional.isPresent()) {
         writer.writeInt(optional.getAsInt());
@@ -2250,20 +2435,25 @@ public final class ScalarCodecs {
 
     @Override
     void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
+      OptionalInt optional = (OptionalInt) value;
+      if (optional.isPresent()) {
+        writer.writeInt(optional.getAsInt());
+      } else {
+        writer.writeNull();
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return OptionalInt.of(reader.readInt());
     }
   }
 
-  public static final class OptionalLongCodec extends AbstractJsonCodec {
+  public static final class OptionalLongCodec extends SharedJsonCodec {
     public static final OptionalLongCodec INSTANCE = new OptionalLongCodec();
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValueOrNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       if (reader.peekNull()) {
         reader.readNull();
         return OptionalLong.empty();
@@ -2272,7 +2462,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       OptionalLong optional = (OptionalLong) value;
       if (optional.isPresent()) {
         writer.writeLong(optional.getAsLong());
@@ -2283,20 +2473,25 @@ public final class ScalarCodecs {
 
     @Override
     void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
+      OptionalLong optional = (OptionalLong) value;
+      if (optional.isPresent()) {
+        writer.writeLong(optional.getAsLong());
+      } else {
+        writer.writeNull();
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return OptionalLong.of(reader.readLong());
     }
   }
 
-  public static final class OptionalDoubleCodec extends AbstractJsonCodec {
+  public static final class OptionalDoubleCodec extends SharedJsonCodec {
     public static final OptionalDoubleCodec INSTANCE = new OptionalDoubleCodec();
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValueOrNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       if (reader.peekNull()) {
         reader.readNull();
         return OptionalDouble.empty();
@@ -2305,7 +2500,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       OptionalDouble optional = (OptionalDouble) value;
       if (optional.isPresent()) {
         writer.writeDouble(optional.getAsDouble());
@@ -2316,20 +2511,25 @@ public final class ScalarCodecs {
 
     @Override
     void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
+      OptionalDouble optional = (OptionalDouble) value;
+      if (optional.isPresent()) {
+        writer.writeDouble(optional.getAsDouble());
+      } else {
+        writer.writeNull();
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return OptionalDouble.of(reader.readDouble());
     }
   }
 
-  public static final class ByteBufferCodec extends AbstractJsonCodec {
+  public static final class ByteBufferCodec extends SharedJsonCodec {
     public static final ByteBufferCodec INSTANCE = new ByteBufferCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writeBuffer(writer, (ByteBuffer) value);
     }
 
@@ -2339,7 +2539,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       reader.enterDepth();
       byte[] bytes = new byte[16];
       int size = 0;
@@ -2373,7 +2573,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class EnumCodec extends AbstractJsonCodec {
+  public static final class EnumCodec extends SharedJsonCodec {
     private final Class<?> type;
     private final long[] nameHashes;
     private final long[] tokenPrefixes;
@@ -2418,7 +2618,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeString(((Enum<?>) value).name());
     }
 
@@ -2515,7 +2715,7 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       return readEnum(reader);
     }
 

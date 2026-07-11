@@ -17,12 +17,16 @@
  * under the License.
  */
 
-package org.apache.fory.json.codec;
+package org.apache.fory.json.codegen;
 
-/** Composite JSON codec implemented by handwritten and user-registered codecs. */
-public interface JsonCodec
-    extends StringWriterCodec,
-        Utf8WriterCodec,
-        Latin1ReaderCodec,
-        Utf16ReaderCodec,
-        Utf8ReaderCodec {}
+enum JsonCodecPath {
+  STRING_WRITER,
+  UTF8_WRITER,
+  LATIN1_READER,
+  UTF16_READER,
+  UTF8_READER;
+
+  boolean writer() {
+    return this == STRING_WRITER || this == UTF8_WRITER;
+  }
+}

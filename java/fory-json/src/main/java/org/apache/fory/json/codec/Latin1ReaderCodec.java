@@ -19,10 +19,21 @@
 
 package org.apache.fory.json.codec;
 
-/** Composite JSON codec implemented by handwritten and user-registered codecs. */
-public interface JsonCodec
-    extends StringWriterCodec,
-        Utf8WriterCodec,
-        Latin1ReaderCodec,
-        Utf16ReaderCodec,
-        Utf8ReaderCodec {}
+import org.apache.fory.json.meta.JsonFieldAccessor;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
+
+/** Reads one resolved Java type through {@link Latin1JsonReader}. */
+public interface Latin1ReaderCodec {
+  Object readLatin1(Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver);
+
+  default void readLatin1Field(
+      Latin1JsonReader reader,
+      Object object,
+      JsonFieldAccessor accessor,
+      JsonTypeInfo typeInfo,
+      JsonTypeResolver resolver) {
+    accessor.putObject(object, readLatin1(reader, typeInfo, resolver));
+  }
+}

@@ -19,10 +19,10 @@
 
 package org.apache.fory.json.codec;
 
-/** Composite JSON codec implemented by handwritten and user-registered codecs. */
-public interface JsonCodec
-    extends StringWriterCodec,
-        Utf8WriterCodec,
-        Latin1ReaderCodec,
-        Utf16ReaderCodec,
-        Utf8ReaderCodec {}
+import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.json.writer.Utf8JsonWriter;
+
+/** UTF8-writer capability for a POJO value whose null state was already handled. */
+public interface Utf8ObjectWriterCodec extends Utf8WriterCodec {
+  void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver);
+}

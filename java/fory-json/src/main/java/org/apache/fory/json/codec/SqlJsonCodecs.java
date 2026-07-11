@@ -26,7 +26,7 @@ import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
-import org.apache.fory.json.writer.JsonWriter;
+import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
 /** Optional SQL JSON codecs loaded only through class-name based registration. */
@@ -58,7 +58,7 @@ public final class SqlJsonCodecs {
     }
   }
 
-  private static final class SqlMillisCodec extends AbstractJsonCodec {
+  private static final class SqlMillisCodec extends SharedJsonCodec {
     private final Constructor<?> constructor;
 
     private SqlMillisCodec(Class<?> type) {
@@ -70,7 +70,7 @@ public final class SqlJsonCodecs {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
       writer.writeLong(((Date) value).getTime());
     }
 
@@ -80,7 +80,7 @@ public final class SqlJsonCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
       try {
         return constructor.newInstance(reader.readLong());
       } catch (ReflectiveOperationException e) {

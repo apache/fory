@@ -50,6 +50,8 @@ import org.apache.fory.json.data.PrivateFields;
 import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.data.UnicodeMatrix;
+import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.FieldAccessor;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
@@ -292,7 +294,31 @@ public abstract class ForyJsonTestModels {
   }
 
   protected final void assertGeneratedWhenSupported(ForyJson json, Class<?> type) {
-    assertEquals(json.hasGeneratedCodec(type), codegen);
+    assertEquals(hasGeneratedCapability(json, type), codegen);
+  }
+
+  protected static boolean hasGeneratedCapability(ForyJson json, Class<?> type) {
+    try {
+      Field primarySlotField = ForyJson.class.getDeclaredField("primarySlot");
+      primarySlotField.setAccessible(true);
+      Object pooledState =
+          ((java.util.concurrent.atomic.AtomicReference<?>) primarySlotField.get(json)).get();
+      Field stateField = pooledState.getClass().getDeclaredField("state");
+      stateField.setAccessible(true);
+      Object state = stateField.get(pooledState);
+      Field resolverField = state.getClass().getDeclaredField("typeResolver");
+      resolverField.setAccessible(true);
+      JsonTypeResolver resolver = (JsonTypeResolver) resolverField.get(state);
+      JsonTypeInfo info = resolver.getTypeInfo(type, type);
+      Object owner = resolver.getObjectCodec(type);
+      return info.stringWriter() != owner
+          || info.utf8Writer() != owner
+          || info.latin1Reader() != owner
+          || info.utf16Reader() != owner
+          || info.utf8Reader() != owner;
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
   }
 
   protected static String repeat(char ch, int length) {
