@@ -93,9 +93,14 @@ final class JdkFloatFormatter {
     if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
       return null;
     }
+    Class<?> formatterClass;
     try {
-      Class<?> formatterClass = Class.forName("jdk.internal.math.FloatToDecimal");
-      Lookup lookup = _JDKAccess._trustedLookup(formatterClass);
+      formatterClass = Class.forName("jdk.internal.math.FloatToDecimal");
+    } catch (ClassNotFoundException e) {
+      return null;
+    }
+    Lookup lookup = _JDKAccess._trustedLookup(formatterClass);
+    try {
       Object formatter = lookup.findStaticGetter(formatterClass, coder, formatterClass).invoke();
       MethodHandle putDecimal =
           lookup.findVirtual(
@@ -105,12 +110,14 @@ final class JdkFloatFormatter {
       return putDecimal
           .bindTo(formatter)
           .asType(MethodType.methodType(int.class, byte[].class, int.class, float.class));
+    } catch (NoSuchFieldException | NoSuchMethodException e) {
+      return null;
     } catch (ThreadDeath e) {
       throw e;
     } catch (VirtualMachineError e) {
       throw e;
     } catch (Throwable e) {
-      return null;
+      throw new ForyJsonException("Cannot initialize JDK float formatter " + coder, e);
     }
   }
 }

@@ -1017,6 +1017,41 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void reuseFloatingWriters() {
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
+    utf8Writer.writeFloat(1.25f);
+    utf8Writer.writeComma(1);
+    utf8Writer.writeDouble(Double.NaN);
+    utf8Writer.writeComma(2);
+    utf8Writer.writeDouble(-0.0d);
+    assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), "1.25,\"NaN\",-0.0");
+    utf8Writer.reset();
+    utf8Writer.writeDouble(Double.MIN_VALUE);
+    assertEquals(
+        new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8),
+        Double.toString(Double.MIN_VALUE));
+
+    StringJsonWriter stringWriter = newStringWriter(new byte[4]);
+    stringWriter.writeDouble(1.25d);
+    stringWriter.writeComma(1);
+    stringWriter.writeFloat(Float.POSITIVE_INFINITY);
+    stringWriter.writeComma(2);
+    stringWriter.writeFloat(-0.0f);
+    assertEquals(stringWriter.toJson(), "1.25,\"Infinity\",-0.0");
+    stringWriter.reset();
+    stringWriter.writeFloat(Float.MIN_VALUE);
+    assertEquals(stringWriter.toJson(), Float.toString(Float.MIN_VALUE));
+
+    StringJsonWriter utf16Writer = utf16StringWriter();
+    utf16Writer.writeFloat(1.25f);
+    utf16Writer.writeComma(1);
+    utf16Writer.writeDouble(Double.NEGATIVE_INFINITY);
+    utf16Writer.writeComma(2);
+    utf16Writer.writeDouble(-0.0d);
+    assertEquals(utf16Writer.toJson(), "1.25,\"-Infinity\",-0.0");
+  }
+
+  @Test
   public void readScalarRoots() {
     ForyJson json = newJson();
     assertEquals(json.fromJson("7", int.class), Integer.valueOf(7));
@@ -1215,15 +1250,55 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         json.fromJson("9223372036854775808", Number.class), new BigInteger("9223372036854775808"));
     assertEquals(json.fromJson("1.25e2", Number.class), Double.valueOf(125.0d));
+    assertTrue(Double.isNaN(json.fromJson("\"NaN\"", Number.class).doubleValue()));
+    assertEquals(
+        json.fromJson("\"Infinity\"".getBytes(StandardCharsets.UTF_8), Number.class),
+        Double.POSITIVE_INFINITY);
+    assertEquals(json.fromJson("1e309", Number.class), Double.POSITIVE_INFINITY);
+    assertEquals(
+        Double.doubleToRawLongBits(json.fromJson("-0.0", Number.class).doubleValue()),
+        Double.doubleToRawLongBits(-0.0d));
     assertEquals(json.fromJson("7", Object.class), Long.valueOf(7));
+    assertEquals(json.fromJson("\"NaN\"", Object.class), "NaN");
+    assertEquals(json.fromJson(json.toJson((Object) Double.NaN), Object.class), "NaN");
     assertThrows(ForyJsonException.class, () -> json.fromJson("01", Number.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("1.", Number.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"nan\"", Number.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("\"1.25\"", Number.class));
+    assertThrows(
+        ForyJsonException.class, () -> json.fromJson("\"\\u004e\\u0061\\u004e\"", Number.class));
+
+    Number[] numberArray = json.fromJson("[\"NaN\",\"Infinity\",-0.0]", Number[].class);
+    assertTrue(Double.isNaN(numberArray[0].doubleValue()));
+    assertEquals(numberArray[1], Double.POSITIVE_INFINITY);
+    assertEquals(
+        Double.doubleToRawLongBits(numberArray[2].doubleValue()),
+        Double.doubleToRawLongBits(-0.0d));
+    List<Number> numberList =
+        json.fromJson(
+            "[\"-Infinity\",1.25]".getBytes(StandardCharsets.UTF_8),
+            new TypeRef<List<Number>>() {});
+    assertEquals(numberList, Arrays.asList(Double.NEGATIVE_INFINITY, Double.valueOf(1.25d)));
+    Map<String, Number> numberMap =
+        json.fromJson("{\"nan\":\"NaN\",\"integer\":7}", new TypeRef<Map<String, Number>>() {});
+    assertTrue(Double.isNaN(numberMap.get("nan").doubleValue()));
+    assertEquals(numberMap.get("integer"), Long.valueOf(7));
 
     NumberFields fields = new NumberFields();
     fields.value = Integer.valueOf(7);
     assertEquals(json.toJson(fields), "{\"value\":7}");
     fields.value = new BigDecimal("0.100");
     assertEquals(new String(json.toJsonBytes(fields), StandardCharsets.UTF_8), "{\"value\":0.100}");
+    fields.value = Double.NEGATIVE_INFINITY;
+    String nonFiniteJson = json.toJson(fields);
+    assertEquals(nonFiniteJson, "{\"value\":\"-Infinity\"}");
+    assertEquals(json.fromJson(nonFiniteJson, NumberFields.class).value, Double.NEGATIVE_INFINITY);
+    assertEquals(
+        json.fromJson(nonFiniteJson.getBytes(StandardCharsets.UTF_8), NumberFields.class).value,
+        Double.NEGATIVE_INFINITY);
+    NumberFields utf16Fields =
+        json.fromJson("{\"ignored\":\"\u0100\",\"value\":\"Infinity\"}", NumberFields.class);
+    assertEquals(utf16Fields.value, Double.POSITIVE_INFINITY);
 
     NumberFields read = json.fromJson("{\"value\":9223372036854775808}", NumberFields.class);
     assertEquals(read.value, new BigInteger("9223372036854775808"));
@@ -1819,6 +1894,27 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readDoubleExponentMidpoints() {
+    long[] fractions = {0L, 1L, 0x0007_ffff_ffff_ffffL, 0x000f_ffff_ffff_fffeL};
+    for (int exponent = 0; exponent < 0x7ff; exponent += 31) {
+      for (long fraction : fractions) {
+        long low = ((long) exponent << 52) | fraction;
+        for (int units = -1; units <= 1; units++) {
+          assertDoubleBits(doubleBoundaryToken(low, low + 1, units));
+        }
+      }
+    }
+    for (long low :
+        new long[] {
+          0L, 1L, 0x000f_ffff_ffff_ffffL, 0x0010_0000_0000_0000L, 0x7fef_ffff_ffff_ffffL
+        }) {
+      for (int units = -1; units <= 1; units++) {
+        assertDoubleBits(doubleBoundaryToken(low, low + 1, units));
+      }
+    }
+  }
+
+  @Test
   public void readDoubleFallbackTokens() {
     assertDoubleBits("1.25e2");
     assertDoubleBits("-7.5E-3");
@@ -1863,6 +1959,19 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertFloatBits(floatBoundaryToken(0, 1, 1), 1);
     assertFloatBits(floatBoundaryToken(0x7f7f_ffff, 0x7f80_0000, -1), 0x7f7f_ffff);
     assertFloatBits(floatBoundaryToken(0x7f7f_ffff, 0x7f80_0000, 0), 0x7f80_0000);
+  }
+
+  @Test
+  public void readFloatExponentMidpoints() {
+    int[] fractions = {0, 1, 0x003f_ffff, 0x007f_fffe};
+    for (int exponent = 0; exponent < 0xff; exponent++) {
+      for (int fraction : fractions) {
+        int low = (exponent << 23) | fraction;
+        for (int units = -1; units <= 1; units++) {
+          assertFloatBits(floatBoundaryToken(low, low + 1, units));
+        }
+      }
+    }
   }
 
   @Test
@@ -2304,22 +2413,23 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
     @Override
     public String toString() {
-      throw new AssertionError("The default codec must reject BigDecimal subtypes");
+      throw new AssertionError("The default codec must not invoke BigDecimal subtype toString");
     }
 
     @Override
     public BigInteger unscaledValue() {
-      throw new AssertionError("The default codec must reject BigDecimal subtypes");
+      throw new AssertionError(
+          "The default codec must not invoke BigDecimal subtype unscaledValue");
     }
 
     @Override
     public int scale() {
-      throw new AssertionError("The default codec must reject BigDecimal subtypes");
+      throw new AssertionError("The default codec must not invoke BigDecimal subtype scale");
     }
 
     @Override
     public BigDecimal negate() {
-      throw new AssertionError("The default codec must reject BigDecimal subtypes");
+      throw new AssertionError("The default codec must not invoke BigDecimal subtype negate");
     }
   }
 

@@ -50,7 +50,7 @@ public final class ForyJson {
   private static final int INITIAL_BUFFER_SIZE = 8192;
   private static final int RETAINED_UTF16_BYTES = 64 * 1024;
   private static final int PRIMARY_SLOT = -1;
-  private static final int TEMPORARY_SLOT = -2;
+  private static final int UNPOOLED_SLOT = -2;
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final int DEFAULT_POOL_SIZE =
       Math.max(1, Runtime.getRuntime().availableProcessors() * 4);
@@ -255,7 +255,7 @@ public final class ForyJson {
     if (entry != null) {
       return entry;
     }
-    return new PooledState(new JsonState(config, sharedRegistry), TEMPORARY_SLOT);
+    return new PooledState(new JsonState(config, sharedRegistry), UNPOOLED_SLOT);
   }
 
   private void release(PooledState entry) {
@@ -318,7 +318,7 @@ public final class ForyJson {
         return readUtf16Value(state.utf16Reader(json), type, fallback, state);
       }
     }
-    return readUtf16Value(state.legacyUtf16Reader(json), type, fallback, state);
+    return readUtf16Value(state.charBackedUtf16Reader(json), type, fallback, state);
   }
 
   private Object readLatin1Value(
@@ -389,7 +389,7 @@ public final class ForyJson {
     private final Utf8JsonReader utf8Reader;
     private final Latin1JsonReader latin1Reader;
     private final Utf16JsonReader utf16Reader;
-    private byte[] legacyUtf16Bytes;
+    private byte[] charBackedUtf16Bytes;
     private Type lastRootType;
     private Class<?> lastRootFallback;
     private JsonTypeInfo lastRootInfo;
@@ -401,7 +401,7 @@ public final class ForyJson {
       utf8Reader = new Utf8JsonReader(config, typeResolver);
       latin1Reader = new Latin1JsonReader(config, typeResolver);
       utf16Reader = new Utf16JsonReader(config, typeResolver);
-      legacyUtf16Bytes = EMPTY_BYTES;
+      charBackedUtf16Bytes = EMPTY_BYTES;
     }
 
     private Latin1JsonReader latin1Reader(String input) {
@@ -414,7 +414,7 @@ public final class ForyJson {
       return utf16Reader;
     }
 
-    private Utf16JsonReader legacyUtf16Reader(String input) {
+    private Utf16JsonReader charBackedUtf16Reader(String input) {
       int length = input.length();
       if (length > (Integer.MAX_VALUE >>> 1)) {
         throw new IllegalArgumentException("String is too large");
@@ -422,15 +422,15 @@ public final class ForyJson {
       int numBytes = length << 1;
       byte[] bytes;
       if (numBytes <= RETAINED_UTF16_BYTES) {
-        bytes = legacyUtf16Bytes;
+        bytes = charBackedUtf16Bytes;
         if (bytes.length < numBytes) {
           bytes = new byte[Math.max(numBytes, INITIAL_BUFFER_SIZE)];
-          legacyUtf16Bytes = bytes;
+          charBackedUtf16Bytes = bytes;
         }
       } else {
         bytes = new byte[numBytes];
       }
-      // Legacy char[]-backed Strings are converted once so parsing still uses UTF16 byte loads.
+      // JDK 8 char[]-backed Strings are converted once so parsing still uses UTF16 byte loads.
       StringSerializer.copyStringCharsToBytes(input, bytes);
       utf16Reader.reset(input, bytes);
       return utf16Reader;

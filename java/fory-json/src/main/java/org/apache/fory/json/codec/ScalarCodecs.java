@@ -757,17 +757,26 @@ public final class ScalarCodecs {
 
     @Override
     public Number readLatin1(Latin1JsonReader reader) {
-      return reader.tryReadNullToken() ? null : reader.readNumber();
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      return reader.peekToken() == '"' ? reader.readDouble() : reader.readNumber();
     }
 
     @Override
     public Number readUtf16(Utf16JsonReader reader) {
-      return reader.tryReadNullToken() ? null : reader.readNumber();
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      return reader.peekToken() == '"' ? reader.readDouble() : reader.readNumber();
     }
 
     @Override
     public Number readUtf8(Utf8JsonReader reader) {
-      return reader.tryReadNullToken() ? null : reader.readNumber();
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      return reader.peekToken() == '"' ? reader.readDouble() : reader.readNumber();
     }
 
     private static void writeNumberValue(StringJsonWriter writer, Number value) {

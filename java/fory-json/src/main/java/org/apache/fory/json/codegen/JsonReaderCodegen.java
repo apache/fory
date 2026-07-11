@@ -319,15 +319,11 @@ abstract class JsonReaderCodegen {
                 new Reference("this.r" + i, TypeRef.of(codecType)),
                 new Expression.Cast(
                     new Expression.ArrayValue(codecsRef, id), TypeRef.of(codecType))));
-      }
-      if (storesReadObjectCodec(type, properties[i])) {
-        // One property may retain both its collection codec (rN) and its element object codec (oN).
-        // The second half keeps those roles distinct without restoring a second capability array.
-        Expression objectId = Expression.Literal.ofInt(properties.length + i);
+      } else if (storesReadObjectCodec(type, properties[i])) {
         expressions.add(
             new Expression.Assign(
                 new Reference("this.o" + i, TypeRef.of(readerCapabilityType())),
-                new Expression.ArrayValue(codecsRef, objectId)));
+                new Expression.ArrayValue(codecsRef, id)));
       }
     }
     return expressions;

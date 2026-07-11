@@ -1122,22 +1122,6 @@ public final class JsonFieldInfo {
     return rawType == Object.class ? null : rawType;
   }
 
-  private static boolean isScalarType(Class<?> rawType) {
-    return rawType == String.class
-        || rawType == Boolean.class
-        || rawType == Byte.class
-        || rawType == Short.class
-        || rawType == Integer.class
-        || rawType == Long.class
-        || rawType == Float.class
-        || rawType == Double.class
-        || rawType == Character.class
-        || rawType.isPrimitive()
-        || rawType.isArray()
-        || Collection.class.isAssignableFrom(rawType)
-        || Map.class.isAssignableFrom(rawType);
-  }
-
   private static byte[][] enumValues(Class<?> enumType) {
     Object[] constants = enumType.getEnumConstants();
     byte[][] values = new byte[constants.length][];

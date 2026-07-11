@@ -78,6 +78,7 @@ public final class Jdk25MultiReleaseJarVerifier {
     Class<?> type = new VersionClassLoader().define(versionClass);
     require(CLASS_NAME.equals(type.getName()), "wrong JDK25 class name");
     requireVarHandle(type, "INT_COMPACT");
+    requireVarHandle(type, "INT_VAL");
     requireVarHandle(type, "SCALE");
   }
 

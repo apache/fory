@@ -65,7 +65,7 @@ public abstract class JsonWriter {
   protected final void enterDepth() {
     int nextDepth = depth + 1;
     if (nextDepth > maxDepth) {
-      DepthLimit.throwExceeded(maxDepth);
+      throwDepthExceeded(maxDepth);
     }
     depth = nextDepth;
   }
@@ -74,12 +74,8 @@ public abstract class JsonWriter {
     depth--;
   }
 
-  // Keep exception construction out of the compiled common path. Java 8 has no portable noinline
-  // annotation, and this holder remains unloaded until an actual depth failure occurs.
-  private static final class DepthLimit {
-    private static void throwExceeded(int maxDepth) {
-      throw new ForyJsonException("JSON max depth " + maxDepth + " exceeded");
-    }
+  private static void throwDepthExceeded(int maxDepth) {
+    throw new ForyJsonException("JSON max depth " + maxDepth + " exceeded");
   }
 
   public abstract void writeNull();
@@ -111,15 +107,8 @@ public abstract class JsonWriter {
   public abstract void writeBigDecimal(BigDecimal value);
 
   protected static void throwUnsupportedBigNumber(Class<?> type) {
-    BigNumberType.throwUnsupported(type);
-  }
-
-  // Keep exception construction outside compiled numeric paths and defer loading until failure.
-  private static final class BigNumberType {
-    private static void throwUnsupported(Class<?> type) {
-      throw new ForyJsonException(
-          "Unsupported JSON big-number subtype " + type + "; register an explicit codec");
-    }
+    throw new ForyJsonException(
+        "Unsupported JSON big-number subtype " + type + "; register an explicit codec");
   }
 
   public void writeUuid(UUID value) {

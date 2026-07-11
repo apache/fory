@@ -127,6 +127,7 @@ public class JsonAsyncCompilationTest {
     ObjectCodec<AsyncChild> firstOwner;
     try {
       firstOwner = first.getObjectCodec(AsyncChild.class);
+      first.getTypeInfo(AsyncChild.class, AsyncChild.class);
       assertSame(first.stringWriter(firstOwner), firstOwner);
     } finally {
       first.unlockJIT();
@@ -135,6 +136,7 @@ public class JsonAsyncCompilationTest {
     ObjectCodec<AsyncChild> secondOwner;
     try {
       secondOwner = second.getObjectCodec(AsyncChild.class);
+      second.getTypeInfo(AsyncChild.class, AsyncChild.class);
       assertSame(second.stringWriter(secondOwner), secondOwner);
     } finally {
       second.unlockJIT();
@@ -226,6 +228,7 @@ public class JsonAsyncCompilationTest {
     ObjectCodec<AsyncChild> owner;
     try {
       owner = resolver.getObjectCodec(AsyncChild.class);
+      resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
       assertSame(resolver.stringWriter(owner), owner);
       assertSame(resolver.stringWriter(owner), owner);
     } finally {
@@ -249,6 +252,7 @@ public class JsonAsyncCompilationTest {
     compilerResolver.lockJIT();
     try {
       ObjectCodec<AsyncChild> owner = compilerResolver.getObjectCodec(AsyncChild.class);
+      compilerResolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
       assertSame(compilerResolver.stringWriter(owner), owner);
     } finally {
       compilerResolver.unlockJIT();
@@ -313,6 +317,7 @@ public class JsonAsyncCompilationTest {
     compilerResolver.lockJIT();
     try {
       ObjectCodec<AsyncChild> owner = compilerResolver.getObjectCodec(AsyncChild.class);
+      compilerResolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
       assertSame(compilerResolver.utf8Writer(owner), owner);
     } finally {
       compilerResolver.unlockJIT();
@@ -449,6 +454,8 @@ public class JsonAsyncCompilationTest {
             "{\"value\":\"typed\"}".getBytes(StandardCharsets.UTF_8), declaredType);
     assertEquals(decoded.value, "typed");
     assertEquals(controlled.executor.submittedTasks(), 0);
+    assertEquals(controlled.json.fromJson("7", Object.class), Long.valueOf(7));
+    assertEquals(controlled.executor.submittedTasks(), 0);
 
     JsonTypeResolver resolver = resolver(controlled.json);
     resolver.lockJIT();
@@ -560,6 +567,7 @@ public class JsonAsyncCompilationTest {
     JsonTypeResolver resolver = resolver(json);
     ObjectCodec<AsyncParent> parent = resolver.getObjectCodec(AsyncParent.class);
     ObjectCodec<AsyncChild> child = resolver.getObjectCodec(AsyncChild.class);
+    resolver.getTypeInfo(AsyncParent.class, AsyncParent.class);
     JsonTypeInfo childInfo = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
 
     Object parentCapability = resolver.stringWriter(parent);

@@ -93,11 +93,16 @@ final class JdkDoubleFormatter {
     if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
       return null;
     }
+    Class<?> formatterClass;
     try {
       // This is the same formatter used by Double.toString; using it directly avoids materializing
       // the intermediate String while preserving JDK numeric spelling exactly.
-      Class<?> formatterClass = Class.forName("jdk.internal.math.DoubleToDecimal");
-      Lookup lookup = _JDKAccess._trustedLookup(formatterClass);
+      formatterClass = Class.forName("jdk.internal.math.DoubleToDecimal");
+    } catch (ClassNotFoundException e) {
+      return null;
+    }
+    Lookup lookup = _JDKAccess._trustedLookup(formatterClass);
+    try {
       Object formatter = lookup.findStaticGetter(formatterClass, coder, formatterClass).invoke();
       MethodHandle putDecimal =
           lookup.findVirtual(
@@ -107,12 +112,14 @@ final class JdkDoubleFormatter {
       return putDecimal
           .bindTo(formatter)
           .asType(MethodType.methodType(int.class, byte[].class, int.class, double.class));
+    } catch (NoSuchFieldException | NoSuchMethodException e) {
+      return null;
     } catch (ThreadDeath e) {
       throw e;
     } catch (VirtualMachineError e) {
       throw e;
     } catch (Throwable e) {
-      return null;
+      throw new ForyJsonException("Cannot initialize JDK double formatter " + coder, e);
     }
   }
 }
