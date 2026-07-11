@@ -25,7 +25,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.fail;
 
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
@@ -204,20 +203,13 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     Class<?> firstCodecClass = generatedCodecClass(first, PublicFields.class);
     Class<?> secondCodecClass = generatedCodecClass(second, PublicFields.class);
     Class<?> writeNullCodecClass = generatedCodecClass(writeNullFields, PublicFields.class);
-    ForyJson asyncDefault = ForyJson.builder().withCodegen(true).build();
-    asyncDefault.toJsonBytes(new PublicFields());
-    awaitUtf8Writer(asyncDefault, PublicFields.class, new PublicFields());
-    Class<?> asyncCodecClass = generatedCodecClass(asyncDefault, PublicFields.class);
     assertEquals(firstCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
     assertEquals(
         secondCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
-    assertEquals(asyncCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
     assertGeneratedName(firstCodecClass, PublicFields.class, "Utf8Writer");
     assertGeneratedName(secondCodecClass, PublicFields.class, "Utf8Writer");
     assertGeneratedName(writeNullCodecClass, PublicFields.class, "Utf8Writer");
-    assertGeneratedName(asyncCodecClass, PublicFields.class, "Utf8Writer");
     assertEquals(generatedId(secondCodecClass), generatedId(firstCodecClass));
-    assertEquals(generatedId(asyncCodecClass), generatedId(firstCodecClass));
     assertNotEquals(generatedId(writeNullCodecClass), generatedId(firstCodecClass));
   }
 
@@ -405,20 +397,6 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     Object codec = typeResolver.getTypeInfo(type, type).utf8Writer();
     assertTrue(codec != owner, codec.getClass().getName());
     return codec.getClass();
-  }
-
-  private static void awaitUtf8Writer(ForyJson json, Class<?> type, Object value)
-      throws InterruptedException {
-    for (int i = 0; i < 200; i++) {
-      // Async compilation publishes the generated class; the owning resolver installs it when this
-      // concrete path is entered again.
-      json.toJsonBytes(value);
-      if (hasGeneratedCapability(json, type)) {
-        return;
-      }
-      Thread.sleep(10);
-    }
-    fail("Timed out waiting for generated JSON codec for " + type);
   }
 
   private static void assertGeneratedName(

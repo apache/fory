@@ -35,7 +35,16 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.StringSerializer;
 
-/** Thread-safe public facade for Fory JSON serialization and parsing. */
+/**
+ * Thread-safe public facade for Fory JSON serialization and parsing.
+ *
+ * <p>Each pooled state owns one resolver-local JIT lock. A root operation holds that lock from root
+ * type resolution through completion of its codec graph, so asynchronous generated-capability
+ * installation cannot mutate ordinary resolver or generated child fields midway through the graph.
+ * Different pooled states use different locks and remain concurrent. Completed writer-buffer
+ * materialization or output, writer reset, and reader clear run after JIT unlock; only reset and
+ * clear must finish before the clean state returns to the pool.
+ */
 public final class ForyJson {
   private static final int PREFERRED_SLOT_RETRIES = 2;
   private static final int INITIAL_BUFFER_SIZE = 8192;
@@ -56,8 +65,12 @@ public final class ForyJson {
   private final AtomicReferenceArray<PooledState> slots;
 
   ForyJson(JsonConfig config) {
+    this(config, new JsonSharedRegistry(config));
+  }
+
+  ForyJson(JsonConfig config, JsonSharedRegistry sharedRegistry) {
     this.config = config;
-    sharedRegistry = new JsonSharedRegistry(config);
+    this.sharedRegistry = sharedRegistry;
     poolSize = DEFAULT_POOL_SIZE;
     primarySlot =
         new AtomicReference<>(new PooledState(new JsonState(config, sharedRegistry), PRIMARY_SLOT));
@@ -76,16 +89,24 @@ public final class ForyJson {
     JsonState state = entry.state;
     StringJsonWriter writer = state.stringWriter;
     try {
-      if (value == null) {
-        writer.writeNull();
-      } else {
-        JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-        typeInfo.stringWriter().writeString(writer, value);
+      state.typeResolver.lockJIT();
+      try {
+        if (value == null) {
+          writer.writeNull();
+        } else {
+          JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
+          typeInfo.stringWriter().writeString(writer, value);
+        }
+      } finally {
+        state.typeResolver.unlockJIT();
       }
       return writer.toJson();
     } finally {
-      writer.reset();
-      release(entry);
+      try {
+        writer.reset();
+      } finally {
+        release(entry);
+      }
     }
   }
 
@@ -94,16 +115,24 @@ public final class ForyJson {
     JsonState state = entry.state;
     Utf8JsonWriter writer = state.utf8Writer;
     try {
-      if (value == null) {
-        writer.writeNull();
-      } else {
-        JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-        typeInfo.utf8Writer().writeUtf8(writer, value);
+      state.typeResolver.lockJIT();
+      try {
+        if (value == null) {
+          writer.writeNull();
+        } else {
+          JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
+          typeInfo.utf8Writer().writeUtf8(writer, value);
+        }
+      } finally {
+        state.typeResolver.unlockJIT();
       }
       return writer.toJsonBytes();
     } finally {
-      writer.reset();
-      release(entry);
+      try {
+        writer.reset();
+      } finally {
+        release(entry);
+      }
     }
   }
 
@@ -114,16 +143,24 @@ public final class ForyJson {
     JsonState state = entry.state;
     Utf8JsonWriter writer = state.utf8Writer;
     try {
-      if (value == null) {
-        writer.writeNull();
-      } else {
-        JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-        typeInfo.utf8Writer().writeUtf8(writer, value);
+      state.typeResolver.lockJIT();
+      try {
+        if (value == null) {
+          writer.writeNull();
+        } else {
+          JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
+          typeInfo.utf8Writer().writeUtf8(writer, value);
+        }
+      } finally {
+        state.typeResolver.unlockJIT();
       }
       writer.writeTo(output);
     } finally {
-      writer.reset();
-      release(entry);
+      try {
+        writer.reset();
+      } finally {
+        release(entry);
+      }
     }
   }
 
@@ -131,10 +168,18 @@ public final class ForyJson {
     PooledState entry = acquire();
     JsonState state = entry.state;
     try {
-      return castValue(readJavaStringValue(json, type, type, state), type);
+      state.typeResolver.lockJIT();
+      try {
+        return castValue(readJavaStringValue(json, type, type, state), type);
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
     } finally {
-      state.clearStringReaders();
-      release(entry);
+      try {
+        state.clearStringReaders();
+      } finally {
+        release(entry);
+      }
     }
   }
 
@@ -143,11 +188,19 @@ public final class ForyJson {
     PooledState entry = acquire();
     JsonState state = entry.state;
     try {
-      Object value = readJavaStringValue(json, typeRef.getType(), typeRef.getRawType(), state);
-      return castValue(value, typeRef);
+      state.typeResolver.lockJIT();
+      try {
+        Object value = readJavaStringValue(json, typeRef.getType(), typeRef.getRawType(), state);
+        return castValue(value, typeRef);
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
     } finally {
-      state.clearStringReaders();
-      release(entry);
+      try {
+        state.clearStringReaders();
+      } finally {
+        release(entry);
+      }
     }
   }
 
@@ -155,10 +208,18 @@ public final class ForyJson {
     PooledState entry = acquire();
     JsonState state = entry.state;
     try {
-      return castValue(readUtf8Value(state.utf8Reader(bytes), type, type, state), type);
+      state.typeResolver.lockJIT();
+      try {
+        return castValue(readUtf8Value(state.utf8Reader(bytes), type, type, state), type);
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
     } finally {
-      state.clearUtf8Reader();
-      release(entry);
+      try {
+        state.clearUtf8Reader();
+      } finally {
+        release(entry);
+      }
     }
   }
 
@@ -167,12 +228,20 @@ public final class ForyJson {
     PooledState entry = acquire();
     JsonState state = entry.state;
     try {
-      Object value =
-          readUtf8Value(state.utf8Reader(bytes), typeRef.getType(), typeRef.getRawType(), state);
-      return castValue(value, typeRef);
+      state.typeResolver.lockJIT();
+      try {
+        Object value =
+            readUtf8Value(state.utf8Reader(bytes), typeRef.getType(), typeRef.getRawType(), state);
+        return castValue(value, typeRef);
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
     } finally {
-      state.clearUtf8Reader();
-      release(entry);
+      try {
+        state.clearUtf8Reader();
+      } finally {
+        release(entry);
+      }
     }
   }
 

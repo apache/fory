@@ -64,6 +64,7 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
@@ -94,7 +95,13 @@ import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Float16;
 import org.apache.fory.type.TypeUtils;
 
-/** Shared JSON codec registry used by all local resolvers for one {@code ForyJson}. */
+/**
+ * Shared JSON codec registry used by all local resolvers for one {@code ForyJson}.
+ *
+ * <p>The registry shares codec definitions and generated classes through {@link JsonCodegen}. It
+ * creates a separate generic {@link JsonJITContext} for each resolver; JIT locks and callbacks are
+ * never shared across pooled JSON states.
+ */
 public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
 
@@ -107,10 +114,15 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<String, Boolean> typeCheckCache;
   private final Object typeCheckCacheLock;
   private final JsonCodegen codegen;
-  private final JsonJITContext jitContext;
+  private final boolean asyncCompilationEnabled;
+  private final ExecutorService compilationService;
   private final boolean propertyDiscoveryEnabled;
 
   public JsonSharedRegistry(JsonConfig config) {
+    this(config, null);
+  }
+
+  JsonSharedRegistry(JsonConfig config, ExecutorService compilationService) {
     this.customCodecs = config.codecRegistry().copy();
     typeChecker = config.typeChecker();
     typeCheckContext = config.typeCheckContext();
@@ -121,7 +133,8 @@ public final class JsonSharedRegistry {
     boolean codegenEnabled = config.codegenEnabled();
     codegen =
         codegenEnabled ? new JsonCodegen(config.writeNullFields(), config.getCodegenHash()) : null;
-    jitContext = new JsonJITContext(codegen, codegenEnabled && config.asyncCompilationEnabled());
+    asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
+    this.compilationService = compilationService;
     registerExactCodecs();
     defaultExactCodecNames = classNames(exactCodecs);
     customCodecNames = customCodecs.classNames();
@@ -244,8 +257,12 @@ public final class JsonSharedRegistry {
     return JsonFieldKind.OBJECT;
   }
 
-  JsonJITContext jitContext() {
-    return jitContext;
+  JsonJITContext newJITContext() {
+    return new JsonJITContext(asyncCompilationEnabled, compilationService);
+  }
+
+  JsonCodegen codegen() {
+    return codegen;
   }
 
   boolean propertyDiscoveryEnabled() {

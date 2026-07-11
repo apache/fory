@@ -19,9 +19,6 @@
 
 package org.apache.fory.json.codegen;
 
-import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodType;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -42,10 +39,6 @@ import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.resolver.JsonTypeInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
-import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.internal._JDKAccess;
-import org.apache.fory.reflect.ReflectionUtils;
 
 public final class JsonCodegen {
   private static final Map<String, Map<String, Integer>> ID_GENERATOR = new ConcurrentHashMap<>();
@@ -54,11 +47,11 @@ public final class JsonCodegen {
   private final int codegenHash;
   private final CodeGenerator codeGenerator;
   private final ClassLoader jsonLoader;
-  private final ConcurrentHashMap<Class<?>, GeneratedStringWriterClass> stringWriters;
-  private final ConcurrentHashMap<Class<?>, GeneratedUtf8WriterClass> utf8Writers;
-  private final ConcurrentHashMap<Class<?>, GeneratedLatin1ReaderClass> latin1Readers;
-  private final ConcurrentHashMap<Class<?>, GeneratedUtf16ReaderClass> utf16Readers;
-  private final ConcurrentHashMap<Class<?>, GeneratedUtf8ReaderClass> utf8Readers;
+  private final Map<Class<?>, Class<?>> stringWriterClasses = new ConcurrentHashMap<>();
+  private final Map<Class<?>, Class<?>> utf8WriterClasses = new ConcurrentHashMap<>();
+  private final Map<Class<?>, Class<?>> latin1ReaderClasses = new ConcurrentHashMap<>();
+  private final Map<Class<?>, Class<?>> utf16ReaderClasses = new ConcurrentHashMap<>();
+  private final Map<Class<?>, Class<?>> utf8ReaderClasses = new ConcurrentHashMap<>();
 
   static String generatedCodecType(CodegenContext ctx, Class<?> codecType) {
     // Janino-generated serializers use erased types, matching Fory core code generation. Runtime
@@ -75,137 +68,93 @@ public final class JsonCodegen {
     this.codegenHash = codegenHash;
     jsonLoader = JsonCodegen.class.getClassLoader();
     codeGenerator = new CodeGenerator(jsonLoader);
-    stringWriters = new ConcurrentHashMap<>();
-    utf8Writers = new ConcurrentHashMap<>();
-    latin1Readers = new ConcurrentHashMap<>();
-    utf16Readers = new ConcurrentHashMap<>();
-    utf8Readers = new ConcurrentHashMap<>();
   }
 
-  GeneratedStringWriterClass stringWriterClass(Class<?> type) {
-    return stringWriters.get(type);
-  }
-
-  GeneratedUtf8WriterClass utf8WriterClass(Class<?> type) {
-    return utf8Writers.get(type);
-  }
-
-  GeneratedLatin1ReaderClass latin1ReaderClass(Class<?> type) {
-    return latin1Readers.get(type);
-  }
-
-  GeneratedUtf16ReaderClass utf16ReaderClass(Class<?> type) {
-    return utf16Readers.get(type);
-  }
-
-  GeneratedUtf8ReaderClass utf8ReaderClass(Class<?> type) {
-    return utf8Readers.get(type);
-  }
-
-  GeneratedStringWriterClass compileStringWriter(ObjectCodec<?> codec) {
+  /**
+   * Compiles one concrete capability from fully resolved object metadata.
+   *
+   * <p>These compile methods run without a resolver-local JIT lock. Source-generation decisions may
+   * inspect active codec classes only for non-default bindings, whose capability fields are never
+   * replaced by generated raw-object codecs. Mutable default-object child capabilities are read
+   * only by {@link org.apache.fory.json.resolver.JsonTypeResolver} while it constructs a
+   * resolver-local instance under its JIT lock.
+   *
+   * <p>Generated classes are cached here because this object is shared by every pooled resolver of
+   * one Fory JSON instance. Concurrent map computation provides generated-class single-flight;
+   * resolver-local construction and capability publication belong to {@link
+   * org.apache.fory.json.resolver.JsonTypeResolver} and are ordered by its generic {@link
+   * JsonJITContext} callbacks.
+   */
+  @Internal
+  public Class<?> compileStringWriter(ObjectCodec<?> codec) {
     if (!canCompileWriter(codec)) {
       return null;
     }
-    return stringWriters.computeIfAbsent(codec.type(), ignored -> buildStringWriter(codec));
+    return stringWriterClasses.computeIfAbsent(codec.type(), ignored -> buildStringWriter(codec));
   }
 
-  GeneratedUtf8WriterClass compileUtf8Writer(ObjectCodec<?> codec) {
+  @Internal
+  public Class<?> compileUtf8Writer(ObjectCodec<?> codec) {
     if (!canCompileWriter(codec)) {
       return null;
     }
-    return utf8Writers.computeIfAbsent(codec.type(), ignored -> buildUtf8Writer(codec));
+    return utf8WriterClasses.computeIfAbsent(codec.type(), ignored -> buildUtf8Writer(codec));
   }
 
-  GeneratedLatin1ReaderClass compileLatin1Reader(ObjectCodec<?> codec) {
+  @Internal
+  public Class<?> compileLatin1Reader(ObjectCodec<?> codec) {
     if (!canCompileReader(codec)) {
       return null;
     }
-    return latin1Readers.computeIfAbsent(codec.type(), ignored -> buildLatin1Reader(codec));
+    return latin1ReaderClasses.computeIfAbsent(codec.type(), ignored -> buildLatin1Reader(codec));
   }
 
-  GeneratedUtf16ReaderClass compileUtf16Reader(ObjectCodec<?> codec) {
+  @Internal
+  public Class<?> compileUtf16Reader(ObjectCodec<?> codec) {
     if (!canCompileReader(codec)) {
       return null;
     }
-    return utf16Readers.computeIfAbsent(codec.type(), ignored -> buildUtf16Reader(codec));
+    return utf16ReaderClasses.computeIfAbsent(codec.type(), ignored -> buildUtf16Reader(codec));
   }
 
-  GeneratedUtf8ReaderClass compileUtf8Reader(ObjectCodec<?> codec) {
+  @Internal
+  public Class<?> compileUtf8Reader(ObjectCodec<?> codec) {
     if (!canCompileReader(codec)) {
       return null;
     }
-    return utf8Readers.computeIfAbsent(codec.type(), ignored -> buildUtf8Reader(codec));
+    return utf8ReaderClasses.computeIfAbsent(codec.type(), ignored -> buildUtf8Reader(codec));
   }
 
-  @SuppressWarnings("unchecked")
-  StringWriterCodec<Object> newStringWriter(
-      ObjectCodec<?> owner, JsonTypeResolver resolver, GeneratedStringWriterClass generatedClass) {
-    JsonFieldInfo[] properties = owner.writeFields();
-    StringWriterCodec<Object>[] codecs =
-        (StringWriterCodec<Object>[]) new StringWriterCodec<?>[properties.length];
-    for (int i = 0; i < properties.length; i++) {
-      if (usesWriteCodec(properties[i])) {
-        codecs[i] = stringWriter(properties[i]);
-      }
-    }
-    StringWriterCodec<Object> writer = generatedClass.newCodec(properties, codecs);
-    registerStringWriterUpdates(resolver, writer, owner.type(), properties);
-    return writer;
+  @Internal
+  public String stringWriterJITId(Class<?> type) {
+    return jitId(type, "StringWriter");
   }
 
-  @SuppressWarnings("unchecked")
-  Utf8WriterCodec<Object> newUtf8Writer(
-      ObjectCodec<?> owner, JsonTypeResolver resolver, GeneratedUtf8WriterClass generatedClass) {
-    JsonFieldInfo[] properties = owner.writeFields();
-    Utf8WriterCodec<Object>[] codecs =
-        (Utf8WriterCodec<Object>[]) new Utf8WriterCodec<?>[properties.length];
-    for (int i = 0; i < properties.length; i++) {
-      if (usesWriteCodec(properties[i])) {
-        codecs[i] = utf8Writer(properties[i]);
-      }
-    }
-    Utf8WriterCodec<Object> writer = generatedClass.newCodec(properties, codecs);
-    registerUtf8WriterUpdates(resolver, writer, owner.type(), properties);
-    return writer;
+  @Internal
+  public String utf8WriterJITId(Class<?> type) {
+    return jitId(type, "Utf8Writer");
   }
 
-  @SuppressWarnings("unchecked")
-  Latin1ReaderCodec<Object> newLatin1Reader(
-      ObjectCodec<?> owner, JsonTypeResolver resolver, GeneratedLatin1ReaderClass generatedClass) {
-    JsonFieldInfo[] properties = owner.readFields();
-    Latin1ReaderCodec<Object>[] codecs =
-        (Latin1ReaderCodec<Object>[]) new Latin1ReaderCodec<?>[properties.length << 1];
-    collectLatin1Readers(owner.type(), properties, codecs);
-    Latin1ReaderCodec<Object> reader = generatedClass.newCodec(owner, properties, codecs);
-    registerLatin1ReaderUpdates(resolver, reader, owner.type(), properties);
-    return reader;
+  @Internal
+  public String latin1ReaderJITId(Class<?> type) {
+    return jitId(type, "Latin1Reader");
   }
 
-  @SuppressWarnings("unchecked")
-  Utf16ReaderCodec<Object> newUtf16Reader(
-      ObjectCodec<?> owner, JsonTypeResolver resolver, GeneratedUtf16ReaderClass generatedClass) {
-    JsonFieldInfo[] properties = owner.readFields();
-    Utf16ReaderCodec<Object>[] codecs =
-        (Utf16ReaderCodec<Object>[]) new Utf16ReaderCodec<?>[properties.length << 1];
-    collectUtf16Readers(owner.type(), properties, codecs);
-    Utf16ReaderCodec<Object> reader = generatedClass.newCodec(owner, properties, codecs);
-    registerUtf16ReaderUpdates(resolver, reader, owner.type(), properties);
-    return reader;
+  @Internal
+  public String utf16ReaderJITId(Class<?> type) {
+    return jitId(type, "Utf16Reader");
   }
 
-  @SuppressWarnings("unchecked")
-  Utf8ReaderCodec<Object> newUtf8Reader(
-      ObjectCodec<?> owner, JsonTypeResolver resolver, GeneratedUtf8ReaderClass generatedClass) {
-    JsonFieldInfo[] properties = owner.readFields();
-    Utf8ReaderCodec<Object>[] codecs =
-        (Utf8ReaderCodec<Object>[]) new Utf8ReaderCodec<?>[properties.length << 1];
-    collectUtf8Readers(owner.type(), properties, codecs);
-    Utf8ReaderCodec<Object> reader = generatedClass.newCodec(owner, properties, codecs);
-    registerUtf8ReaderUpdates(resolver, reader, owner.type(), properties);
-    return reader;
+  @Internal
+  public String utf8ReaderJITId(Class<?> type) {
+    return jitId(type, "Utf8Reader");
   }
 
-  private GeneratedStringWriterClass buildStringWriter(ObjectCodec<?> codec) {
+  private String jitId(Class<?> type, String role) {
+    return qualifiedClassName(CodeGenerator.getPackage(type), className(type, role));
+  }
+
+  private Class<?> buildStringWriter(ObjectCodec<?> codec) {
     Class<?> type = codec.type();
     String generatedPackage = CodeGenerator.getPackage(type);
     String className = className(type, "StringWriter");
@@ -214,10 +163,10 @@ public final class JsonCodegen {
     String code =
         new JsonWriterCodegen.StringGenerator(this)
             .genWriterCode(builder, type, codec.writeFields());
-    return new GeneratedStringWriterClass(compileCodecClass(generatedPackage, className, code));
+    return compileCodecClass(generatedPackage, className, code);
   }
 
-  private GeneratedUtf8WriterClass buildUtf8Writer(ObjectCodec<?> codec) {
+  private Class<?> buildUtf8Writer(ObjectCodec<?> codec) {
     Class<?> type = codec.type();
     String generatedPackage = CodeGenerator.getPackage(type);
     String className = className(type, "Utf8Writer");
@@ -225,10 +174,10 @@ public final class JsonCodegen {
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
     String code =
         new JsonWriterCodegen.Utf8Generator(this).genWriterCode(builder, type, codec.writeFields());
-    return new GeneratedUtf8WriterClass(compileCodecClass(generatedPackage, className, code));
+    return compileCodecClass(generatedPackage, className, code);
   }
 
-  private GeneratedLatin1ReaderClass buildLatin1Reader(ObjectCodec<?> codec) {
+  private Class<?> buildLatin1Reader(ObjectCodec<?> codec) {
     Class<?> type = codec.type();
     String generatedPackage = CodeGenerator.getPackage(type);
     String className = className(type, "Latin1Reader");
@@ -237,10 +186,10 @@ public final class JsonCodegen {
     String code =
         new JsonReaderCodegen.Latin1Generator(this)
             .genReaderCode(builder, type, codec.readFields(), codec.isRecord());
-    return new GeneratedLatin1ReaderClass(compileCodecClass(generatedPackage, className, code));
+    return compileCodecClass(generatedPackage, className, code);
   }
 
-  private GeneratedUtf16ReaderClass buildUtf16Reader(ObjectCodec<?> codec) {
+  private Class<?> buildUtf16Reader(ObjectCodec<?> codec) {
     Class<?> type = codec.type();
     String generatedPackage = CodeGenerator.getPackage(type);
     String className = className(type, "Utf16Reader");
@@ -249,10 +198,10 @@ public final class JsonCodegen {
     String code =
         new JsonReaderCodegen.Utf16Generator(this)
             .genReaderCode(builder, type, codec.readFields(), codec.isRecord());
-    return new GeneratedUtf16ReaderClass(compileCodecClass(generatedPackage, className, code));
+    return compileCodecClass(generatedPackage, className, code);
   }
 
-  private GeneratedUtf8ReaderClass buildUtf8Reader(ObjectCodec<?> codec) {
+  private Class<?> buildUtf8Reader(ObjectCodec<?> codec) {
     Class<?> type = codec.type();
     String generatedPackage = CodeGenerator.getPackage(type);
     String className = className(type, "Utf8Reader");
@@ -261,7 +210,7 @@ public final class JsonCodegen {
     String code =
         new JsonReaderCodegen.Utf8Generator(this)
             .genReaderCode(builder, type, codec.readFields(), codec.isRecord());
-    return new GeneratedUtf8ReaderClass(compileCodecClass(generatedPackage, className, code));
+    return compileCodecClass(generatedPackage, className, code);
   }
 
   private Class<?> compileCodecClass(String generatedPackage, String className, String code) {
@@ -274,7 +223,8 @@ public final class JsonCodegen {
     }
   }
 
-  boolean canCompileWriter(ObjectCodec<?> codec) {
+  @Internal
+  public boolean canCompileWriter(ObjectCodec<?> codec) {
     if (!canCompileType(codec.type())) {
       return false;
     }
@@ -287,7 +237,8 @@ public final class JsonCodegen {
     return true;
   }
 
-  boolean canCompileReader(ObjectCodec<?> codec) {
+  @Internal
+  public boolean canCompileReader(ObjectCodec<?> codec) {
     if (!canCompileType(codec.type())) {
       return false;
     }
@@ -358,7 +309,8 @@ public final class JsonCodegen {
     return Utf8ReaderCodec.class;
   }
 
-  static Class<?> readNestedType(JsonFieldInfo property) {
+  @Internal
+  public static Class<?> readNestedType(JsonFieldInfo property) {
     if (property.readKind() == JsonFieldKind.OBJECT
         && property.readRawType() != Object.class
         && property.readTypeInfo().usesDefaultObjectCodec()) {
@@ -367,7 +319,8 @@ public final class JsonCodegen {
     return null;
   }
 
-  static boolean usesWriteCodec(JsonFieldInfo property) {
+  @Internal
+  public static boolean usesWriteCodec(JsonFieldInfo property) {
     switch (property.writeKind()) {
       case ARRAY:
       case MAP:
@@ -391,17 +344,14 @@ public final class JsonCodegen {
     return usesWriteCodec(property) && typeInfo.usesDefaultObjectCodec() ? typeInfo : null;
   }
 
-  private static StringWriterCodec<Object> stringWriter(JsonFieldInfo property) {
+  @Internal
+  public static Class<?> writeNestedType(JsonFieldInfo property) {
     JsonTypeInfo typeInfo = writeObjectTypeInfo(property);
-    return typeInfo == null ? property.writeTypeInfo().stringWriter() : typeInfo.stringWriter();
+    return typeInfo == null ? null : typeInfo.rawType();
   }
 
-  private static Utf8WriterCodec<Object> utf8Writer(JsonFieldInfo property) {
-    JsonTypeInfo typeInfo = writeObjectTypeInfo(property);
-    return typeInfo == null ? property.writeTypeInfo().utf8Writer() : typeInfo.utf8Writer();
-  }
-
-  static boolean usesReadCodec(JsonFieldInfo property) {
+  @Internal
+  public static boolean usesReadCodec(JsonFieldInfo property) {
     switch (property.readKind()) {
       case ENUM:
       case ARRAY:
@@ -424,116 +374,6 @@ public final class JsonCodegen {
   static boolean storesReadObjectCodec(Class<?> type, JsonFieldInfo property) {
     Class<?> nestedType = readNestedType(property);
     return nestedType != null && nestedType != type;
-  }
-
-  static JsonTypeInfo readObjectTypeInfo(JsonFieldInfo property) {
-    return readNestedType(property) == null ? null : property.readTypeInfo();
-  }
-
-  private static void collectLatin1Readers(
-      Class<?> type, JsonFieldInfo[] properties, Latin1ReaderCodec<Object>[] codecs) {
-    for (int i = 0; i < properties.length; i++) {
-      JsonFieldInfo property = properties[i];
-      if (usesReadCodec(property)) {
-        codecs[i] = property.readTypeInfo().latin1Reader();
-      }
-      if (storesReadObjectCodec(type, property)) {
-        codecs[properties.length + i] =
-            (Latin1ReaderCodec<Object>) property.readTypeInfo().latin1Reader();
-      }
-    }
-  }
-
-  private static void collectUtf16Readers(
-      Class<?> type, JsonFieldInfo[] properties, Utf16ReaderCodec<Object>[] codecs) {
-    for (int i = 0; i < properties.length; i++) {
-      JsonFieldInfo property = properties[i];
-      if (usesReadCodec(property)) {
-        codecs[i] = property.readTypeInfo().utf16Reader();
-      }
-      if (storesReadObjectCodec(type, property)) {
-        codecs[properties.length + i] =
-            (Utf16ReaderCodec<Object>) property.readTypeInfo().utf16Reader();
-      }
-    }
-  }
-
-  private static void collectUtf8Readers(
-      Class<?> type, JsonFieldInfo[] properties, Utf8ReaderCodec<Object>[] codecs) {
-    for (int i = 0; i < properties.length; i++) {
-      JsonFieldInfo property = properties[i];
-      if (usesReadCodec(property)) {
-        codecs[i] = property.readTypeInfo().utf8Reader();
-      }
-      if (storesReadObjectCodec(type, property)) {
-        codecs[properties.length + i] =
-            (Utf8ReaderCodec<Object>) property.readTypeInfo().utf8Reader();
-      }
-    }
-  }
-
-  private static void registerStringWriterUpdates(
-      JsonTypeResolver resolver, Object owner, Class<?> type, JsonFieldInfo[] properties) {
-    for (int i = 0; i < properties.length; i++) {
-      JsonTypeInfo typeInfo = writeObjectTypeInfo(properties[i]);
-      Class<?> nestedType = typeInfo == null ? null : typeInfo.rawType();
-      if (nestedType != null && nestedType != type) {
-        Field field = ReflectionUtils.getField(owner.getClass(), "w" + i);
-        resolver.registerStringWriterUpdate(nestedType, value -> setField(owner, field, value));
-      }
-    }
-  }
-
-  private static void registerUtf8WriterUpdates(
-      JsonTypeResolver resolver, Object owner, Class<?> type, JsonFieldInfo[] properties) {
-    for (int i = 0; i < properties.length; i++) {
-      JsonTypeInfo typeInfo = writeObjectTypeInfo(properties[i]);
-      Class<?> nestedType = typeInfo == null ? null : typeInfo.rawType();
-      if (nestedType != null && nestedType != type) {
-        Field field = ReflectionUtils.getField(owner.getClass(), "w" + i);
-        resolver.registerUtf8WriterUpdate(nestedType, value -> setField(owner, field, value));
-      }
-    }
-  }
-
-  private static void registerLatin1ReaderUpdates(
-      JsonTypeResolver resolver, Object owner, Class<?> type, JsonFieldInfo[] properties) {
-    for (int i = 0; i < properties.length; i++) {
-      JsonTypeInfo typeInfo = readObjectTypeInfo(properties[i]);
-      Class<?> nestedType = typeInfo == null ? null : typeInfo.rawType();
-      if (nestedType != null && nestedType != type) {
-        Field field = ReflectionUtils.getField(owner.getClass(), "o" + i);
-        resolver.registerLatin1ReaderUpdate(nestedType, value -> setField(owner, field, value));
-      }
-    }
-  }
-
-  private static void registerUtf16ReaderUpdates(
-      JsonTypeResolver resolver, Object owner, Class<?> type, JsonFieldInfo[] properties) {
-    for (int i = 0; i < properties.length; i++) {
-      JsonTypeInfo typeInfo = readObjectTypeInfo(properties[i]);
-      Class<?> nestedType = typeInfo == null ? null : typeInfo.rawType();
-      if (nestedType != null && nestedType != type) {
-        Field field = ReflectionUtils.getField(owner.getClass(), "o" + i);
-        resolver.registerUtf16ReaderUpdate(nestedType, value -> setField(owner, field, value));
-      }
-    }
-  }
-
-  private static void registerUtf8ReaderUpdates(
-      JsonTypeResolver resolver, Object owner, Class<?> type, JsonFieldInfo[] properties) {
-    for (int i = 0; i < properties.length; i++) {
-      JsonTypeInfo typeInfo = readObjectTypeInfo(properties[i]);
-      Class<?> nestedType = typeInfo == null ? null : typeInfo.rawType();
-      if (nestedType != null && nestedType != type) {
-        Field field = ReflectionUtils.getField(owner.getClass(), "o" + i);
-        resolver.registerUtf8ReaderUpdate(nestedType, value -> setField(owner, field, value));
-      }
-    }
-  }
-
-  private static void setField(Object owner, Field field, Object value) {
-    ReflectionUtils.setObjectFieldValue(owner, field, value);
   }
 
   private boolean canCompileWrite(JsonFieldInfo property) {
@@ -641,225 +481,5 @@ public final class JsonCodegen {
 
   private static String qualifiedClassName(String generatedPackage, String className) {
     return generatedPackage.isEmpty() ? className : generatedPackage + "." + className;
-  }
-
-  @Internal
-  static final class GeneratedStringWriterClass {
-    private final MethodHandle constructor;
-    private final Constructor<?> androidConstructor;
-
-    private GeneratedStringWriterClass(Class<?> codecClass) {
-      try {
-        if (AndroidSupport.IS_ANDROID) {
-          androidConstructor =
-              codecClass.getDeclaredConstructor(JsonFieldInfo[].class, StringWriterCodec[].class);
-          androidConstructor.setAccessible(true);
-          constructor = null;
-        } else {
-          constructor =
-              _JDKAccess._trustedLookup(codecClass)
-                  .findConstructor(
-                      codecClass,
-                      MethodType.methodType(
-                          void.class, JsonFieldInfo[].class, StringWriterCodec[].class));
-          androidConstructor = null;
-        }
-      } catch (Throwable e) {
-        throw new ForyJsonException(
-            "Cannot resolve generated JSON String writer constructor " + codecClass.getName(), e);
-      }
-    }
-
-    @SuppressWarnings("unchecked")
-    private StringWriterCodec<Object> newCodec(
-        JsonFieldInfo[] properties, StringWriterCodec<Object>[] codecs) {
-      try {
-        if (AndroidSupport.IS_ANDROID) {
-          return (StringWriterCodec<Object>) androidConstructor.newInstance(properties, codecs);
-        }
-        return (StringWriterCodec<Object>) constructor.invoke(properties, codecs);
-      } catch (Throwable e) {
-        throw new ForyJsonException("Cannot instantiate generated JSON String writer", e);
-      }
-    }
-  }
-
-  @Internal
-  static final class GeneratedUtf8WriterClass {
-    private final MethodHandle constructor;
-    private final Constructor<?> androidConstructor;
-
-    private GeneratedUtf8WriterClass(Class<?> codecClass) {
-      try {
-        if (AndroidSupport.IS_ANDROID) {
-          androidConstructor =
-              codecClass.getDeclaredConstructor(JsonFieldInfo[].class, Utf8WriterCodec[].class);
-          androidConstructor.setAccessible(true);
-          constructor = null;
-        } else {
-          constructor =
-              _JDKAccess._trustedLookup(codecClass)
-                  .findConstructor(
-                      codecClass,
-                      MethodType.methodType(
-                          void.class, JsonFieldInfo[].class, Utf8WriterCodec[].class));
-          androidConstructor = null;
-        }
-      } catch (Throwable e) {
-        throw new ForyJsonException(
-            "Cannot resolve generated JSON UTF8 writer constructor " + codecClass.getName(), e);
-      }
-    }
-
-    @SuppressWarnings("unchecked")
-    private Utf8WriterCodec<Object> newCodec(
-        JsonFieldInfo[] properties, Utf8WriterCodec<Object>[] codecs) {
-      try {
-        if (AndroidSupport.IS_ANDROID) {
-          return (Utf8WriterCodec<Object>) androidConstructor.newInstance(properties, codecs);
-        }
-        return (Utf8WriterCodec<Object>) constructor.invoke(properties, codecs);
-      } catch (Throwable e) {
-        throw new ForyJsonException("Cannot instantiate generated JSON UTF8 writer", e);
-      }
-    }
-  }
-
-  @Internal
-  static final class GeneratedLatin1ReaderClass {
-    private final MethodHandle constructor;
-    private final Constructor<?> androidConstructor;
-
-    private GeneratedLatin1ReaderClass(Class<?> codecClass) {
-      try {
-        if (AndroidSupport.IS_ANDROID) {
-          androidConstructor =
-              codecClass.getDeclaredConstructor(
-                  ObjectCodec.class, JsonFieldInfo[].class, Latin1ReaderCodec[].class);
-          androidConstructor.setAccessible(true);
-          constructor = null;
-        } else {
-          constructor =
-              _JDKAccess._trustedLookup(codecClass)
-                  .findConstructor(
-                      codecClass,
-                      MethodType.methodType(
-                          void.class,
-                          ObjectCodec.class,
-                          JsonFieldInfo[].class,
-                          Latin1ReaderCodec[].class));
-          androidConstructor = null;
-        }
-      } catch (Throwable e) {
-        throw new ForyJsonException(
-            "Cannot resolve generated JSON Latin1 reader constructor " + codecClass.getName(), e);
-      }
-    }
-
-    @SuppressWarnings("unchecked")
-    private Latin1ReaderCodec<Object> newCodec(
-        ObjectCodec<?> owner, JsonFieldInfo[] properties, Latin1ReaderCodec<Object>[] codecs) {
-      try {
-        if (AndroidSupport.IS_ANDROID) {
-          return (Latin1ReaderCodec<Object>)
-              androidConstructor.newInstance(owner, properties, codecs);
-        }
-        return (Latin1ReaderCodec<Object>) constructor.invoke(owner, properties, codecs);
-      } catch (Throwable e) {
-        throw new ForyJsonException("Cannot instantiate generated JSON Latin1 reader", e);
-      }
-    }
-  }
-
-  @Internal
-  static final class GeneratedUtf16ReaderClass {
-    private final MethodHandle constructor;
-    private final Constructor<?> androidConstructor;
-
-    private GeneratedUtf16ReaderClass(Class<?> codecClass) {
-      try {
-        if (AndroidSupport.IS_ANDROID) {
-          androidConstructor =
-              codecClass.getDeclaredConstructor(
-                  ObjectCodec.class, JsonFieldInfo[].class, Utf16ReaderCodec[].class);
-          androidConstructor.setAccessible(true);
-          constructor = null;
-        } else {
-          constructor =
-              _JDKAccess._trustedLookup(codecClass)
-                  .findConstructor(
-                      codecClass,
-                      MethodType.methodType(
-                          void.class,
-                          ObjectCodec.class,
-                          JsonFieldInfo[].class,
-                          Utf16ReaderCodec[].class));
-          androidConstructor = null;
-        }
-      } catch (Throwable e) {
-        throw new ForyJsonException(
-            "Cannot resolve generated JSON UTF16 reader constructor " + codecClass.getName(), e);
-      }
-    }
-
-    @SuppressWarnings("unchecked")
-    private Utf16ReaderCodec<Object> newCodec(
-        ObjectCodec<?> owner, JsonFieldInfo[] properties, Utf16ReaderCodec<Object>[] codecs) {
-      try {
-        if (AndroidSupport.IS_ANDROID) {
-          return (Utf16ReaderCodec<Object>)
-              androidConstructor.newInstance(owner, properties, codecs);
-        }
-        return (Utf16ReaderCodec<Object>) constructor.invoke(owner, properties, codecs);
-      } catch (Throwable e) {
-        throw new ForyJsonException("Cannot instantiate generated JSON UTF16 reader", e);
-      }
-    }
-  }
-
-  @Internal
-  static final class GeneratedUtf8ReaderClass {
-    private final MethodHandle constructor;
-    private final Constructor<?> androidConstructor;
-
-    private GeneratedUtf8ReaderClass(Class<?> codecClass) {
-      try {
-        if (AndroidSupport.IS_ANDROID) {
-          androidConstructor =
-              codecClass.getDeclaredConstructor(
-                  ObjectCodec.class, JsonFieldInfo[].class, Utf8ReaderCodec[].class);
-          androidConstructor.setAccessible(true);
-          constructor = null;
-        } else {
-          constructor =
-              _JDKAccess._trustedLookup(codecClass)
-                  .findConstructor(
-                      codecClass,
-                      MethodType.methodType(
-                          void.class,
-                          ObjectCodec.class,
-                          JsonFieldInfo[].class,
-                          Utf8ReaderCodec[].class));
-          androidConstructor = null;
-        }
-      } catch (Throwable e) {
-        throw new ForyJsonException(
-            "Cannot resolve generated JSON UTF8 reader constructor " + codecClass.getName(), e);
-      }
-    }
-
-    @SuppressWarnings("unchecked")
-    private Utf8ReaderCodec<Object> newCodec(
-        ObjectCodec<?> owner, JsonFieldInfo[] properties, Utf8ReaderCodec<Object>[] codecs) {
-      try {
-        if (AndroidSupport.IS_ANDROID) {
-          return (Utf8ReaderCodec<Object>)
-              androidConstructor.newInstance(owner, properties, codecs);
-        }
-        return (Utf8ReaderCodec<Object>) constructor.invoke(owner, properties, codecs);
-      } catch (Throwable e) {
-        throw new ForyJsonException("Cannot instantiate generated JSON UTF8 reader", e);
-      }
-    }
   }
 }

@@ -30,14 +30,20 @@ import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.reflect.TypeRef;
 
-/** JSON type binding resolved and owned by {@link JsonTypeResolver}. */
+/**
+ * JSON type binding resolved and owned by {@link JsonTypeResolver}.
+ *
+ * <p>The five capability fields are deliberately ordinary fields. A resolver-local JIT lock covers
+ * every root graph operation and every generated capability installation, so lock release and the
+ * next root acquisition publish slot changes without adding volatile reads to established codec
+ * dispatch. Only exact raw-class {@link ObjectCodec} bindings may receive generated replacements;
+ * custom and parameterized bindings retain their original semantic owner.
+ */
 public final class JsonTypeInfo {
   private final Type type;
   private final TypeRef<?> typeRef;
   private final Class<?> rawType;
   private final JsonFieldKind kind;
-  // JsonJITContext orders every installation and dependent-field update. These stay plain fields
-  // so established codec calls do not pay volatile or atomic access on the hot path.
   private StringWriterCodec<Object> stringWriter;
   private Utf8WriterCodec<Object> utf8Writer;
   private Latin1ReaderCodec<Object> latin1Reader;

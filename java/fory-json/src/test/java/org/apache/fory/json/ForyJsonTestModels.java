@@ -345,13 +345,18 @@ public abstract class ForyJsonTestModels {
       Field resolverField = state.getClass().getDeclaredField("typeResolver");
       resolverField.setAccessible(true);
       JsonTypeResolver resolver = (JsonTypeResolver) resolverField.get(state);
-      JsonTypeInfo info = resolver.getTypeInfo(type, type);
-      Object owner = resolver.getObjectCodec(type);
-      return info.stringWriter() != owner
-          || info.utf8Writer() != owner
-          || info.latin1Reader() != owner
-          || info.utf16Reader() != owner
-          || info.utf8Reader() != owner;
+      resolver.lockJIT();
+      try {
+        JsonTypeInfo info = resolver.getTypeInfo(type, type);
+        Object owner = resolver.getObjectCodec(type);
+        return info.stringWriter() != owner
+            || info.utf8Writer() != owner
+            || info.latin1Reader() != owner
+            || info.utf16Reader() != owner
+            || info.utf8Reader() != owner;
+      } finally {
+        resolver.unlockJIT();
+      }
     } catch (ReflectiveOperationException e) {
       throw new AssertionError(e);
     }

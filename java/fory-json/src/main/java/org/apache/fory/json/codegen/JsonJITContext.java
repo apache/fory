@@ -20,417 +20,187 @@
 package org.apache.fory.json.codegen;
 
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
-import java.util.function.Consumer;
+import java.util.concurrent.locks.ReentrantLock;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.codegen.CodeGenerator;
-import org.apache.fory.json.codec.Latin1ReaderCodec;
-import org.apache.fory.json.codec.ObjectCodec;
-import org.apache.fory.json.codec.StringWriterCodec;
-import org.apache.fory.json.codec.Utf16ReaderCodec;
-import org.apache.fory.json.codec.Utf8ReaderCodec;
-import org.apache.fory.json.codec.Utf8WriterCodec;
-import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.util.ExceptionUtils;
+import org.apache.fory.util.Preconditions;
 
-/** Owns JSON generated-class scheduling and resolver-local capability installation. */
+/**
+ * Resolver-local asynchronous JIT callback context.
+ *
+ * <p>This class deliberately has the same owner model as Fory core's JIT context. It knows nothing
+ * about JSON readers, writers, capabilities, generated classes, or resolver metadata. A root graph
+ * and its completion callbacks use the same local lock. The JIT action runs outside that lock;
+ * success reacquires it before invoking the owner's publication callback and its registered notify
+ * callbacks.
+ */
+@Internal
 public final class JsonJITContext {
-  private final JsonCodegen codegen;
   private final boolean asyncCompilationEnabled;
-  private final Set<Class<?>> stringWriterTasks;
-  private final Set<Class<?>> utf8WriterTasks;
-  private final Set<Class<?>> latin1ReaderTasks;
-  private final Set<Class<?>> utf16ReaderTasks;
-  private final Set<Class<?>> utf8ReaderTasks;
-  private final Set<Class<?>> failedStringWriters;
-  private final Set<Class<?>> failedUtf8Writers;
-  private final Set<Class<?>> failedLatin1Readers;
-  private final Set<Class<?>> failedUtf16Readers;
-  private final Set<Class<?>> failedUtf8Readers;
+  private final ExecutorService compilationService;
+  private final ReentrantLock jitLock;
+  private final Map<Object, List<NotifyCallback>> callbacks;
+  private int numRunningTasks;
 
-  public JsonJITContext(JsonCodegen codegen, boolean asyncCompilationEnabled) {
-    this.codegen = codegen;
+  @Internal
+  public JsonJITContext(boolean asyncCompilationEnabled, ExecutorService compilationService) {
     this.asyncCompilationEnabled = asyncCompilationEnabled;
-    stringWriterTasks = ConcurrentHashMap.newKeySet();
-    utf8WriterTasks = ConcurrentHashMap.newKeySet();
-    latin1ReaderTasks = ConcurrentHashMap.newKeySet();
-    utf16ReaderTasks = ConcurrentHashMap.newKeySet();
-    utf8ReaderTasks = ConcurrentHashMap.newKeySet();
-    failedStringWriters = ConcurrentHashMap.newKeySet();
-    failedUtf8Writers = ConcurrentHashMap.newKeySet();
-    failedLatin1Readers = ConcurrentHashMap.newKeySet();
-    failedUtf16Readers = ConcurrentHashMap.newKeySet();
-    failedUtf8Readers = ConcurrentHashMap.newKeySet();
+    this.compilationService = compilationService;
+    jitLock = new ReentrantLock(true);
+    callbacks = new HashMap<>();
   }
 
-  public boolean asyncCompilationEnabled() {
-    return asyncCompilationEnabled;
-  }
-
-  public LocalState newLocalState(JsonTypeResolver resolver) {
-    return new LocalState(resolver);
-  }
-
-  private void requestStringWriter(ObjectCodec<?> codec) {
-    request(
-        codec, stringWriterTasks, failedStringWriters, () -> codegen.compileStringWriter(codec));
-  }
-
-  private void requestUtf8Writer(ObjectCodec<?> codec) {
-    request(codec, utf8WriterTasks, failedUtf8Writers, () -> codegen.compileUtf8Writer(codec));
-  }
-
-  private void requestLatin1Reader(ObjectCodec<?> codec) {
-    request(
-        codec, latin1ReaderTasks, failedLatin1Readers, () -> codegen.compileLatin1Reader(codec));
-  }
-
-  private void requestUtf16Reader(ObjectCodec<?> codec) {
-    request(codec, utf16ReaderTasks, failedUtf16Readers, () -> codegen.compileUtf16Reader(codec));
-  }
-
-  private void requestUtf8Reader(ObjectCodec<?> codec) {
-    request(codec, utf8ReaderTasks, failedUtf8Readers, () -> codegen.compileUtf8Reader(codec));
-  }
-
-  private void request(
-      ObjectCodec<?> codec, Set<Class<?>> tasks, Set<Class<?>> failures, Runnable compile) {
-    if (!asyncCompilationEnabled) {
-      compile.run();
-      return;
-    }
-    Class<?> type = codec.type();
-    if (failures.contains(type) || !tasks.add(type)) {
-      return;
-    }
-    ExecutorService service = CodeGenerator.getCompilationService();
-    service.execute(
-        () -> {
-          try {
-            compile.run();
-          } catch (Throwable t) {
-            failures.add(type);
-            ExceptionUtils.throwException(t);
-          } finally {
-            tasks.remove(type);
+  @Internal
+  public <T> T registerJITCallback(
+      Callable<T> interpretedAction, Callable<T> jitAction, JITCallback<T> callback) {
+    try {
+      lock();
+      if (!asyncCompilationEnabled) {
+        Object id = callback.id();
+        if (callbacks.containsKey(id)) {
+          return interpretedAction.call();
+        }
+        callbacks.put(id, new ArrayList<>());
+        try {
+          T result = jitAction.call();
+          callback.onSuccess(result);
+          List<NotifyCallback> notifyCallbacks = callbacks.get(id);
+          for (int i = 0; i < notifyCallbacks.size(); i++) {
+            notifyCallbacks.get(i).onNotifyResult(result);
           }
-        });
+          return result;
+        } catch (Throwable t) {
+          callback.onFailure(t);
+          ExceptionUtils.throwException(t);
+          throw new IllegalStateException("unreachable");
+        } finally {
+          callbacks.remove(id);
+        }
+      }
+      callbacks.computeIfAbsent(callback.id(), ignored -> new ArrayList<>());
+      numRunningTasks++;
+      ExecutorService service = compilationService;
+      if (service == null) {
+        service = CodeGenerator.getCompilationService();
+      }
+      try {
+        service.execute(() -> runJITAction(jitAction, callback));
+      } catch (Throwable t) {
+        finishTask();
+        callback.onFailure(t);
+        ExceptionUtils.throwException(t);
+      }
+      return interpretedAction.call();
+    } catch (Exception e) {
+      ExceptionUtils.throwException(e);
+      throw new IllegalStateException("unreachable");
+    } finally {
+      unlock();
+    }
   }
 
-  /** Resolver-local state. All methods run on the thread which exclusively borrowed that state. */
-  public final class LocalState {
-    // Request each type/path only on its first interpreted entrance. Re-entering the global task
-    // sets from every call keeps JIT scheduling on the hot path while asynchronous compilation is
-    // pending. Generated owners publish replacements through the capability-specific updates below.
-    private final JsonTypeResolver resolver;
-    private final IdentityHashMap<Class<?>, StringWriterCodec<Object>> stringWriters;
-    private final IdentityHashMap<Class<?>, Utf8WriterCodec<Object>> utf8Writers;
-    private final IdentityHashMap<Class<?>, Latin1ReaderCodec<Object>> latin1Readers;
-    private final IdentityHashMap<Class<?>, Utf16ReaderCodec<Object>> utf16Readers;
-    private final IdentityHashMap<Class<?>, Utf8ReaderCodec<Object>> utf8Readers;
-    private final IdentityHashMap<Class<?>, List<Consumer<StringWriterCodec<Object>>>>
-        stringWriterUpdates;
-    private final IdentityHashMap<Class<?>, List<Consumer<Utf8WriterCodec<Object>>>>
-        utf8WriterUpdates;
-    private final IdentityHashMap<Class<?>, List<Consumer<Latin1ReaderCodec<Object>>>>
-        latin1ReaderUpdates;
-    private final IdentityHashMap<Class<?>, List<Consumer<Utf16ReaderCodec<Object>>>>
-        utf16ReaderUpdates;
-    private final IdentityHashMap<Class<?>, List<Consumer<Utf8ReaderCodec<Object>>>>
-        utf8ReaderUpdates;
-    private IdentityHashMap<Class<?>, Boolean> requestedStringWriters;
-    private IdentityHashMap<Class<?>, Boolean> requestedUtf8Writers;
-    private IdentityHashMap<Class<?>, Boolean> requestedLatin1Readers;
-    private IdentityHashMap<Class<?>, Boolean> requestedUtf16Readers;
-    private IdentityHashMap<Class<?>, Boolean> requestedUtf8Readers;
-
-    private LocalState(JsonTypeResolver resolver) {
-      this.resolver = resolver;
-      stringWriters = new IdentityHashMap<>();
-      utf8Writers = new IdentityHashMap<>();
-      latin1Readers = new IdentityHashMap<>();
-      utf16Readers = new IdentityHashMap<>();
-      utf8Readers = new IdentityHashMap<>();
-      stringWriterUpdates = new IdentityHashMap<>();
-      utf8WriterUpdates = new IdentityHashMap<>();
-      latin1ReaderUpdates = new IdentityHashMap<>();
-      utf16ReaderUpdates = new IdentityHashMap<>();
-      utf8ReaderUpdates = new IdentityHashMap<>();
+  private <T> void runJITAction(Callable<T> jitAction, JITCallback<T> callback) {
+    T result;
+    try {
+      result = jitAction.call();
+    } catch (Throwable t) {
+      completeFailure(callback, t);
+      return;
     }
+    completeSuccess(callback, result);
+  }
 
-    public StringWriterCodec<Object> installedStringWriter(Class<?> type) {
-      return stringWriters.get(type);
+  private <T> void completeSuccess(JITCallback<T> callback, T result) {
+    try {
+      lock();
+      callback.onSuccess(result);
+      List<NotifyCallback> notifyCallbacks = callbacks.get(callback.id());
+      if (notifyCallbacks != null) {
+        for (int i = 0; i < notifyCallbacks.size(); i++) {
+          notifyCallbacks.get(i).onNotifyResult(result);
+        }
+      }
+    } finally {
+      finishTask();
+      unlock();
     }
+  }
 
-    public Utf8WriterCodec<Object> installedUtf8Writer(Class<?> type) {
-      return utf8Writers.get(type);
+  private <T> void completeFailure(JITCallback<T> callback, Throwable failure) {
+    try {
+      lock();
+      callback.onFailure(failure);
+    } finally {
+      finishTask();
+      unlock();
     }
+    ExceptionUtils.throwException(failure);
+  }
 
-    public Latin1ReaderCodec<Object> installedLatin1Reader(Class<?> type) {
-      return latin1Readers.get(type);
+  private void finishTask() {
+    numRunningTasks--;
+    if (numRunningTasks == 0) {
+      callbacks.clear();
     }
+  }
 
-    public Utf16ReaderCodec<Object> installedUtf16Reader(Class<?> type) {
-      return utf16Readers.get(type);
-    }
-
-    public Utf8ReaderCodec<Object> installedUtf8Reader(Class<?> type) {
-      return utf8Readers.get(type);
-    }
-
-    public StringWriterCodec<?> stringWriter(ObjectCodec<?> codec) {
-      Class<?> type = codec.type();
-      StringWriterCodec<Object> installed = stringWriters.get(type);
-      if (installed != null) {
-        return installed;
-      }
-      if (codegen == null || failedStringWriters.contains(type)) {
-        return codec;
-      }
-      requestStringWriterOnce(codec);
-      JsonCodegen.GeneratedStringWriterClass generated = codegen.stringWriterClass(type);
-      if (generated == null) {
-        return codec;
-      }
-      installed = codegen.newStringWriter(codec, resolver, generated);
-      stringWriters.put(type, installed);
-      resolver.installStringWriter(type, installed);
-      notifyUpdates(stringWriterUpdates.remove(type), installed);
-      return installed;
-    }
-
-    public Utf8WriterCodec<?> utf8Writer(ObjectCodec<?> codec) {
-      Class<?> type = codec.type();
-      Utf8WriterCodec<Object> installed = utf8Writers.get(type);
-      if (installed != null) {
-        return installed;
-      }
-      if (codegen == null || failedUtf8Writers.contains(type)) {
-        return codec;
-      }
-      requestUtf8WriterOnce(codec);
-      JsonCodegen.GeneratedUtf8WriterClass generated = codegen.utf8WriterClass(type);
-      if (generated == null) {
-        return codec;
-      }
-      installed = codegen.newUtf8Writer(codec, resolver, generated);
-      utf8Writers.put(type, installed);
-      resolver.installUtf8Writer(type, installed);
-      notifyUpdates(utf8WriterUpdates.remove(type), installed);
-      return installed;
-    }
-
-    public Latin1ReaderCodec<?> latin1Reader(ObjectCodec<?> codec) {
-      Class<?> type = codec.type();
-      Latin1ReaderCodec<Object> installed = latin1Readers.get(type);
-      if (installed != null) {
-        return installed;
-      }
-      if (codegen == null || failedLatin1Readers.contains(type)) {
-        return codec;
-      }
-      requestLatin1ReaderOnce(codec);
-      JsonCodegen.GeneratedLatin1ReaderClass generated = codegen.latin1ReaderClass(type);
-      if (generated == null) {
-        return codec;
-      }
-      installed = codegen.newLatin1Reader(codec, resolver, generated);
-      latin1Readers.put(type, installed);
-      resolver.installLatin1Reader(type, installed);
-      notifyUpdates(latin1ReaderUpdates.remove(type), installed);
-      return installed;
-    }
-
-    public Utf16ReaderCodec<?> utf16Reader(ObjectCodec<?> codec) {
-      Class<?> type = codec.type();
-      Utf16ReaderCodec<Object> installed = utf16Readers.get(type);
-      if (installed != null) {
-        return installed;
-      }
-      if (codegen == null || failedUtf16Readers.contains(type)) {
-        return codec;
-      }
-      requestUtf16ReaderOnce(codec);
-      JsonCodegen.GeneratedUtf16ReaderClass generated = codegen.utf16ReaderClass(type);
-      if (generated == null) {
-        return codec;
-      }
-      installed = codegen.newUtf16Reader(codec, resolver, generated);
-      utf16Readers.put(type, installed);
-      resolver.installUtf16Reader(type, installed);
-      notifyUpdates(utf16ReaderUpdates.remove(type), installed);
-      return installed;
-    }
-
-    public Utf8ReaderCodec<?> utf8Reader(ObjectCodec<?> codec) {
-      Class<?> type = codec.type();
-      Utf8ReaderCodec<Object> installed = utf8Readers.get(type);
-      if (installed != null) {
-        return installed;
-      }
-      if (codegen == null || failedUtf8Readers.contains(type)) {
-        return codec;
-      }
-      requestUtf8ReaderOnce(codec);
-      JsonCodegen.GeneratedUtf8ReaderClass generated = codegen.utf8ReaderClass(type);
-      if (generated == null) {
-        return codec;
-      }
-      installed = codegen.newUtf8Reader(codec, resolver, generated);
-      utf8Readers.put(type, installed);
-      resolver.installUtf8Reader(type, installed);
-      notifyUpdates(utf8ReaderUpdates.remove(type), installed);
-      return installed;
-    }
-
-    private void requestStringWriterOnce(ObjectCodec<?> codec) {
-      Class<?> type = codec.type();
-      IdentityHashMap<Class<?>, Boolean> requested = requestedStringWriters;
-      if (requested != null && requested.containsKey(type)) {
-        return;
-      }
-      if (requested == null) {
-        requested = new IdentityHashMap<>();
-        requestedStringWriters = requested;
-      }
-      requested.put(type, Boolean.TRUE);
-      if (codegen.canCompileWriter(codec)) {
-        requestStringWriter(codec);
+  public void registerJITNotifyCallback(Object id, NotifyCallback callback) {
+    Preconditions.checkNotNull(id);
+    try {
+      lock();
+      List<NotifyCallback> notifyCallbacks = callbacks.get(id);
+      if (notifyCallbacks == null) {
+        callback.onNotifyMissed();
       } else {
-        failedStringWriters.add(type);
+        notifyCallbacks.add(callback);
       }
+    } finally {
+      unlock();
+    }
+  }
+
+  @Internal
+  public void lock() {
+    if (asyncCompilationEnabled) {
+      jitLock.lock();
+    }
+  }
+
+  @Internal
+  public void unlock() {
+    if (asyncCompilationEnabled) {
+      jitLock.unlock();
+    }
+  }
+
+  @Internal
+  public boolean lockedByCurrentThread() {
+    return !asyncCompilationEnabled || jitLock.isHeldByCurrentThread();
+  }
+
+  @Internal
+  public interface JITCallback<T> {
+    void onSuccess(T result);
+
+    default void onFailure(Throwable failure) {
+      ExceptionUtils.throwException(failure);
     }
 
-    private void requestUtf8WriterOnce(ObjectCodec<?> codec) {
-      Class<?> type = codec.type();
-      IdentityHashMap<Class<?>, Boolean> requested = requestedUtf8Writers;
-      if (requested != null && requested.containsKey(type)) {
-        return;
-      }
-      if (requested == null) {
-        requested = new IdentityHashMap<>();
-        requestedUtf8Writers = requested;
-      }
-      requested.put(type, Boolean.TRUE);
-      if (codegen.canCompileWriter(codec)) {
-        requestUtf8Writer(codec);
-      } else {
-        failedUtf8Writers.add(type);
-      }
+    Object id();
+  }
+
+  @Internal
+  public interface NotifyCallback {
+    default void onNotifyResult(Object result) {
+      onNotifyMissed();
     }
 
-    private void requestLatin1ReaderOnce(ObjectCodec<?> codec) {
-      Class<?> type = codec.type();
-      IdentityHashMap<Class<?>, Boolean> requested = requestedLatin1Readers;
-      if (requested != null && requested.containsKey(type)) {
-        return;
-      }
-      if (requested == null) {
-        requested = new IdentityHashMap<>();
-        requestedLatin1Readers = requested;
-      }
-      requested.put(type, Boolean.TRUE);
-      if (codegen.canCompileReader(codec)) {
-        requestLatin1Reader(codec);
-      } else {
-        failedLatin1Readers.add(type);
-      }
-    }
-
-    private void requestUtf16ReaderOnce(ObjectCodec<?> codec) {
-      Class<?> type = codec.type();
-      IdentityHashMap<Class<?>, Boolean> requested = requestedUtf16Readers;
-      if (requested != null && requested.containsKey(type)) {
-        return;
-      }
-      if (requested == null) {
-        requested = new IdentityHashMap<>();
-        requestedUtf16Readers = requested;
-      }
-      requested.put(type, Boolean.TRUE);
-      if (codegen.canCompileReader(codec)) {
-        requestUtf16Reader(codec);
-      } else {
-        failedUtf16Readers.add(type);
-      }
-    }
-
-    private void requestUtf8ReaderOnce(ObjectCodec<?> codec) {
-      Class<?> type = codec.type();
-      IdentityHashMap<Class<?>, Boolean> requested = requestedUtf8Readers;
-      if (requested != null && requested.containsKey(type)) {
-        return;
-      }
-      if (requested == null) {
-        requested = new IdentityHashMap<>();
-        requestedUtf8Readers = requested;
-      }
-      requested.put(type, Boolean.TRUE);
-      if (codegen.canCompileReader(codec)) {
-        requestUtf8Reader(codec);
-      } else {
-        failedUtf8Readers.add(type);
-      }
-    }
-
-    public void registerStringWriterUpdate(
-        Class<?> type, Consumer<StringWriterCodec<Object>> updater) {
-      StringWriterCodec<Object> installed = stringWriters.get(type);
-      if (installed != null) {
-        updater.accept(installed);
-      } else {
-        stringWriterUpdates.computeIfAbsent(type, ignored -> new ArrayList<>()).add(updater);
-      }
-    }
-
-    public void registerUtf8WriterUpdate(Class<?> type, Consumer<Utf8WriterCodec<Object>> updater) {
-      Utf8WriterCodec<Object> installed = utf8Writers.get(type);
-      if (installed != null) {
-        updater.accept(installed);
-      } else {
-        utf8WriterUpdates.computeIfAbsent(type, ignored -> new ArrayList<>()).add(updater);
-      }
-    }
-
-    public void registerLatin1ReaderUpdate(
-        Class<?> type, Consumer<Latin1ReaderCodec<Object>> updater) {
-      Latin1ReaderCodec<Object> installed = latin1Readers.get(type);
-      if (installed != null) {
-        updater.accept(installed);
-      } else {
-        latin1ReaderUpdates.computeIfAbsent(type, ignored -> new ArrayList<>()).add(updater);
-      }
-    }
-
-    public void registerUtf16ReaderUpdate(
-        Class<?> type, Consumer<Utf16ReaderCodec<Object>> updater) {
-      Utf16ReaderCodec<Object> installed = utf16Readers.get(type);
-      if (installed != null) {
-        updater.accept(installed);
-      } else {
-        utf16ReaderUpdates.computeIfAbsent(type, ignored -> new ArrayList<>()).add(updater);
-      }
-    }
-
-    public void registerUtf8ReaderUpdate(Class<?> type, Consumer<Utf8ReaderCodec<Object>> updater) {
-      Utf8ReaderCodec<Object> installed = utf8Readers.get(type);
-      if (installed != null) {
-        updater.accept(installed);
-      } else {
-        utf8ReaderUpdates.computeIfAbsent(type, ignored -> new ArrayList<>()).add(updater);
-      }
-    }
-
-    private <T> void notifyUpdates(List<Consumer<T>> updates, T value) {
-      if (updates == null) {
-        return;
-      }
-      for (int i = 0; i < updates.size(); i++) {
-        updates.get(i).accept(value);
-      }
-    }
+    void onNotifyMissed();
   }
 }
