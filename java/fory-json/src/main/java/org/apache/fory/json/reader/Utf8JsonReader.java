@@ -29,6 +29,7 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
@@ -64,21 +65,13 @@ public final class Utf8JsonReader extends JsonReader {
   private byte[] input;
   private byte[] stringDecodeBuffer = new byte[INITIAL_STRING_DECODE_BUFFER_SIZE];
 
-  public Utf8JsonReader() {
+  public Utf8JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
+    super(config, typeResolver);
     input = EMPTY_BYTES;
   }
 
-  public Utf8JsonReader(JsonConfig config) {
-    super(config);
-    input = EMPTY_BYTES;
-  }
-
-  public Utf8JsonReader(byte[] input) {
-    reset(input);
-  }
-
-  public Utf8JsonReader(JsonConfig config, byte[] input) {
-    this(config);
+  public Utf8JsonReader(JsonConfig config, JsonTypeResolver typeResolver, byte[] input) {
+    this(config, typeResolver);
     reset(input);
   }
 

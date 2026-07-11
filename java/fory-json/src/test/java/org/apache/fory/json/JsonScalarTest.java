@@ -19,6 +19,11 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
+import static org.apache.fory.json.JsonTestSupport.newStringWriter;
+import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
+import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
+import static org.apache.fory.json.JsonTestSupport.newUtf8Writer;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -128,20 +133,20 @@ public class JsonScalarTest extends ForyJsonTestModels {
       Double.MAX_VALUE
     };
     for (double value : values) {
-      Utf8JsonWriter writer = new Utf8JsonWriter(false, new byte[4]);
+      Utf8JsonWriter writer = newUtf8Writer(new byte[4]);
       writer.writeDouble(value);
       assertEquals(
           new String(writer.toJsonBytes(), StandardCharsets.UTF_8), Double.toString(value));
-      StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
+      StringJsonWriter stringWriter = newStringWriter(new byte[4]);
       stringWriter.writeDouble(value);
       assertEquals(stringWriter.toJson(), Double.toString(value));
-      StringJsonWriter utf16Writer = new StringJsonWriter(false, new byte[4]);
+      StringJsonWriter utf16Writer = newStringWriter(new byte[4]);
       utf16Writer.writeString("\u0100");
       utf16Writer.writeComma(1);
       utf16Writer.writeDouble(value);
       assertEquals(utf16Writer.toJson(), "\"\u0100\"," + Double.toString(value));
     }
-    Utf8JsonWriter writer = new Utf8JsonWriter(false, new byte[4]);
+    Utf8JsonWriter writer = newUtf8Writer(new byte[4]);
     writer.writeDouble(Double.NaN);
     assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), "\"NaN\"");
   }
@@ -168,18 +173,18 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertTrue(Float.isNaN(json.fromJson("\"NaN\"".getBytes(StandardCharsets.UTF_8), Float.class)));
     assertEquals(json.fromJson("\"Infinity\"", float.class), Float.POSITIVE_INFINITY);
     assertTrue(
-        Double.isNaN(new Utf8JsonReader("\"NaN\"".getBytes(StandardCharsets.UTF_8)).readDouble()));
+        Double.isNaN(newUtf8Reader("\"NaN\"".getBytes(StandardCharsets.UTF_8)).readDouble()));
     assertEquals(
-        new Latin1JsonReader(latin1Bytes("\"Infinity\"")).readDouble(), Double.POSITIVE_INFINITY);
+        newLatin1Reader(latin1Bytes("\"Infinity\"")).readDouble(), Double.POSITIVE_INFINITY);
     assertEquals(utf16Reader("\"-Infinity\"").readDouble(), Double.NEGATIVE_INFINITY);
     assertThrows(
         ForyJsonException.class,
         () ->
-            new Utf8JsonReader("\"\\u004e\\u0061\\u004e\"".getBytes(StandardCharsets.UTF_8))
+            newUtf8Reader("\"\\u004e\\u0061\\u004e\"".getBytes(StandardCharsets.UTF_8))
                 .readDouble());
     assertThrows(
         ForyJsonException.class,
-        () -> new Latin1JsonReader(latin1Bytes("\"\\u0049nfinity\"")).readDouble());
+        () -> newLatin1Reader(latin1Bytes("\"\\u0049nfinity\"")).readDouble());
     assertThrows(ForyJsonException.class, () -> utf16Reader("\"-\\u0049nfinity\"").readDouble());
     assertThrows(
         ForyJsonException.class, () -> json.fromJson("\"\\u004e\\u0061\\u004e\"", Double.class));
@@ -229,11 +234,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
       assertEquals(json.toJson(value), expected);
       assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
 
-      Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+      Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
       utf8Writer.writeFloat(value);
       assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
 
-      StringJsonWriter stringWriter = new StringJsonWriter(false);
+      StringJsonWriter stringWriter = newStringWriter();
       stringWriter.writeArrayStart();
       stringWriter.writeString(ZH_TEXT);
       stringWriter.writeComma(1);
@@ -241,7 +246,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
       stringWriter.writeArrayEnd();
       assertEquals(stringWriter.toJson(), "[\"" + ZH_TEXT + "\"," + expected + "]");
 
-      StringJsonWriter smallWriter = new StringJsonWriter(false, new byte[4]);
+      StringJsonWriter smallWriter = newStringWriter(new byte[4]);
       smallWriter.writeString(ZH_TEXT);
       smallWriter.writeComma(1);
       smallWriter.writeFloat(value);
@@ -288,6 +293,76 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void readPrimitiveFields() {
+    ForyJson json = newJson();
+    String values =
+        "{\"bool\":true,\"byteValue\":2,\"shortValue\":3,\"intValue\":4,"
+            + "\"longValue\":5,\"floatValue\":1.5,\"doubleValue\":2.5,\"charValue\":\"x\"}";
+    assertPrimitiveFields(json.fromJson(values, PrimitiveFields.class));
+    assertPrimitiveFields(
+        json.fromJson(values.replace("}", ",\"text\":\"" + ZH_TEXT + "\"}"), PrimitiveFields.class));
+    assertPrimitiveFields(
+        json.fromJson(values.getBytes(StandardCharsets.UTF_8), PrimitiveFields.class));
+
+    String[] names = {
+      "bool", "byteValue", "shortValue", "intValue", "longValue", "floatValue", "doubleValue",
+      "charValue"
+    };
+    for (String name : names) {
+      assertThrows(
+          ForyJsonException.class,
+          () -> json.fromJson("{\"" + name + "\":null}", PrimitiveFields.class));
+    }
+  }
+
+  @Test
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  public void readScalarNulls() {
+    ForyJson json = newJson();
+    Class<?>[] primitiveTypes = {
+      boolean.class,
+      byte.class,
+      short.class,
+      int.class,
+      long.class,
+      float.class,
+      double.class,
+      char.class
+    };
+    Class<?>[] boxedTypes = {
+      Boolean.class,
+      Byte.class,
+      Short.class,
+      Integer.class,
+      Long.class,
+      Float.class,
+      Double.class,
+      Character.class
+    };
+    for (int i = 0; i < primitiveTypes.length; i++) {
+      Class primitiveType = primitiveTypes[i];
+      Class boxedType = boxedTypes[i];
+      assertThrows(ForyJsonException.class, () -> json.fromJson("null", primitiveType));
+      assertEquals(json.fromJson("null", boxedType), null);
+    }
+
+    BoxedScalars boxed =
+        json.fromJson(
+            "{\"bool\":null,\"byteValue\":null,\"charValue\":null,\"doubleValue\":null,"
+                + "\"floatValue\":null,\"intValue\":null,\"longValue\":null,"
+                + "\"shortValue\":null}",
+            BoxedScalars.class);
+    assertEquals(boxed.bool, null);
+    assertEquals(boxed.byteValue, null);
+    assertEquals(boxed.charValue, null);
+    assertEquals(boxed.doubleValue, null);
+    assertEquals(boxed.floatValue, null);
+    assertEquals(boxed.intValue, null);
+    assertEquals(boxed.longValue, null);
+    assertEquals(boxed.shortValue, null);
+  }
+
+  @Test
   public void readNumericBoundaries() {
     ForyJson json = newJson();
     String latin1 =
@@ -317,76 +392,67 @@ public class JsonScalarTest extends ForyJsonTestModels {
   @Test
   public void readUtf8DoubleTokens() {
     assertEquals(
-        new Utf8JsonReader("12.375".getBytes(StandardCharsets.UTF_8)).readDoubleTokenValue(),
-        12.375d);
+        newUtf8Reader("12.375".getBytes(StandardCharsets.UTF_8)).readDoubleTokenValue(), 12.375d);
     assertEquals(
         Double.doubleToRawLongBits(
-            new Utf8JsonReader("-0.0".getBytes(StandardCharsets.UTF_8)).readDoubleTokenValue()),
+            newUtf8Reader("-0.0".getBytes(StandardCharsets.UTF_8)).readDoubleTokenValue()),
         Double.doubleToRawLongBits(-0.0d));
     assertEquals(
-        new Utf8JsonReader("1.25e2".getBytes(StandardCharsets.UTF_8)).readDoubleTokenValue(),
-        125.0d);
+        newUtf8Reader("1.25e2".getBytes(StandardCharsets.UTF_8)).readDoubleTokenValue(), 125.0d);
     assertThrows(
         ForyJsonException.class,
-        () -> new Utf8JsonReader("01.5".getBytes(StandardCharsets.UTF_8)).readDoubleTokenValue());
+        () -> newUtf8Reader("01.5".getBytes(StandardCharsets.UTF_8)).readDoubleTokenValue());
   }
 
   @Test
   public void readLatin1DoubleTokens() {
-    assertEquals(new Latin1JsonReader(latin1Bytes("12.375")).readDouble(), 12.375d);
+    assertEquals(newLatin1Reader(latin1Bytes("12.375")).readDouble(), 12.375d);
     assertEquals(
-        Double.doubleToRawLongBits(new Latin1JsonReader(latin1Bytes("-0.0")).readDouble()),
+        Double.doubleToRawLongBits(newLatin1Reader(latin1Bytes("-0.0")).readDouble()),
         Double.doubleToRawLongBits(-0.0d));
-    assertEquals(new Latin1JsonReader(latin1Bytes("1.25e2")).readDouble(), 125.0d);
-    assertThrows(
-        ForyJsonException.class, () -> new Latin1JsonReader(latin1Bytes("01.5")).readDouble());
+    assertEquals(newLatin1Reader(latin1Bytes("1.25e2")).readDouble(), 125.0d);
+    assertThrows(ForyJsonException.class, () -> newLatin1Reader(latin1Bytes("01.5")).readDouble());
   }
 
   @Test
   public void readUtf8LongBlocks() {
     assertEquals(
-        new Utf8JsonReader("123456789012345678".getBytes(StandardCharsets.UTF_8))
-            .readLongTokenValue(),
+        newUtf8Reader("123456789012345678".getBytes(StandardCharsets.UTF_8)).readLongTokenValue(),
         123456789012345678L);
     assertEquals(
-        new Utf8JsonReader("-123456789012345678".getBytes(StandardCharsets.UTF_8))
-            .readLongTokenValue(),
+        newUtf8Reader("-123456789012345678".getBytes(StandardCharsets.UTF_8)).readLongTokenValue(),
         -123456789012345678L);
     assertEquals(
-        new Utf8JsonReader("9223372036854775807".getBytes(StandardCharsets.UTF_8))
-            .readLongTokenValue(),
+        newUtf8Reader("9223372036854775807".getBytes(StandardCharsets.UTF_8)).readLongTokenValue(),
         Long.MAX_VALUE);
     assertEquals(
-        new Utf8JsonReader("-9223372036854775808".getBytes(StandardCharsets.UTF_8))
-            .readLongTokenValue(),
+        newUtf8Reader("-9223372036854775808".getBytes(StandardCharsets.UTF_8)).readLongTokenValue(),
         Long.MIN_VALUE);
     assertThrows(
         ForyJsonException.class,
         () ->
-            new Utf8JsonReader("9223372036854775808".getBytes(StandardCharsets.UTF_8))
+            newUtf8Reader("9223372036854775808".getBytes(StandardCharsets.UTF_8))
                 .readLongTokenValue());
   }
 
   @Test
   public void readLatin1LongBlocks() {
     assertEquals(
-        new Latin1JsonReader(latin1Bytes("123456789012345678")).readLongTokenValue(),
+        newLatin1Reader(latin1Bytes("123456789012345678")).readLongTokenValue(),
         123456789012345678L);
     assertEquals(
-        new Latin1JsonReader(latin1Bytes("-123456789012345678")).readLongTokenValue(),
+        newLatin1Reader(latin1Bytes("-123456789012345678")).readLongTokenValue(),
         -123456789012345678L);
     assertEquals(
-        new Latin1JsonReader(latin1Bytes("9223372036854775807")).readLongTokenValue(),
-        Long.MAX_VALUE);
+        newLatin1Reader(latin1Bytes("9223372036854775807")).readLongTokenValue(), Long.MAX_VALUE);
     assertEquals(
-        new Latin1JsonReader(latin1Bytes("-9223372036854775808")).readLongTokenValue(),
-        Long.MIN_VALUE);
+        newLatin1Reader(latin1Bytes("-9223372036854775808")).readLongTokenValue(), Long.MIN_VALUE);
     assertThrows(
         ForyJsonException.class,
-        () -> new Latin1JsonReader(latin1Bytes("9223372036854775808")).readLongTokenValue());
+        () -> newLatin1Reader(latin1Bytes("9223372036854775808")).readLongTokenValue());
     assertThrows(
         ForyJsonException.class,
-        () -> new Latin1JsonReader(latin1Bytes("-9223372036854775809")).readLongTokenValue());
+        () -> newLatin1Reader(latin1Bytes("-9223372036854775809")).readLongTokenValue());
   }
 
   @Test
@@ -409,7 +475,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test
   public void writeUtf16Numbers() {
-    StringJsonWriter writer = new StringJsonWriter(false);
+    StringJsonWriter writer = newStringWriter();
     writer.writeArrayStart();
     writer.writeString(ZH_TEXT);
     writer.writeComma(1);
@@ -804,10 +870,9 @@ public class JsonScalarTest extends ForyJsonTestModels {
     BigDecimalSubtype decimal = new BigDecimalSubtype("12345678901234567890.123");
     BigDecimalSubtype compactDecimal = new BigDecimalSubtype("1.25");
 
+    assertSubtypeRejected(() -> newUtf8Writer().writeBigInteger(integer), BigIntegerSubtype.class);
     assertSubtypeRejected(
-        () -> new Utf8JsonWriter(false).writeBigInteger(integer), BigIntegerSubtype.class);
-    assertSubtypeRejected(
-        () -> new StringJsonWriter(false).writeBigInteger(integer), BigIntegerSubtype.class);
+        () -> newStringWriter().writeBigInteger(integer), BigIntegerSubtype.class);
     assertSubtypeRejected(
         () -> utf16StringWriter().writeBigInteger(integer), BigIntegerSubtype.class);
     assertWriterNumber(decimal, "12345678901234567890.123");
@@ -830,9 +895,9 @@ public class JsonScalarTest extends ForyJsonTestModels {
     ForyJson custom =
         newJsonBuilder()
             .registerCodec(
-                BigInteger.class, new TaggedNumberCodec("integer", BigInteger.valueOf(42)))
+                BigInteger.class, new TaggedNumberCodec<>("integer", BigInteger.valueOf(42)))
             .registerCodec(
-                BigDecimal.class, new TaggedNumberCodec("decimal", new BigDecimal("1.25")))
+                BigDecimal.class, new TaggedNumberCodec<>("decimal", new BigDecimal("1.25")))
             .build();
     fields.integer = integer;
     fields.decimal = decimal;
@@ -844,10 +909,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
         newJsonBuilder()
             .registerCodec(
                 BigIntegerSubtype.class,
-                new TaggedNumberCodec("integer-subtype", BigInteger.valueOf(42)))
+                new TaggedNumberCodec<>("integer-subtype", new BigIntegerSubtype("42")))
             .registerCodec(
                 BigDecimalSubtype.class,
-                new TaggedNumberCodec("decimal-subtype", new BigDecimal("1.25")))
+                new TaggedNumberCodec<>("decimal-subtype", new BigDecimalSubtype("1.25")))
             .build();
     assertEquals(subtypeCustom.toJson(integer), "\"integer-subtype\"");
     assertEquals(
@@ -860,11 +925,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
     BigInteger integer = new BigInteger("9223372036854775808");
     BigDecimal decimal = new BigDecimal("9223372036854775808");
 
-    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
     setIntField(utf8Writer, "position", Integer.MAX_VALUE - 2);
     assertNumberOutputTooLarge(() -> utf8Writer.writeBigInteger(integer));
 
-    StringJsonWriter latin1Writer = new StringJsonWriter(false, new byte[4]);
+    StringJsonWriter latin1Writer = newStringWriter(new byte[4]);
     setIntField(latin1Writer, "position", Integer.MAX_VALUE - 2);
     assertNumberOutputTooLarge(() -> latin1Writer.writeBigDecimal(decimal));
 
@@ -906,9 +971,9 @@ public class JsonScalarTest extends ForyJsonTestModels {
   @Test
   public void writeRandomIeeeValues() {
     Random random = new Random(881_726_454_633_252L);
-    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[32]);
-    StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[32]);
-    StringJsonWriter utf16Writer = new StringJsonWriter(false, new byte[32]);
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[32]);
+    StringJsonWriter stringWriter = newStringWriter(new byte[32]);
+    StringJsonWriter utf16Writer = newStringWriter(new byte[32]);
     for (int i = 0; i < 2048; i++) {
       float floatValue = Float.intBitsToFloat(random.nextInt());
       if (Float.isFinite(floatValue)) {
@@ -1006,38 +1071,34 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void readCommonScalarReaders() {
     String uuid = "\"123e4567-e89b-12d3-a456-426614174000\"";
     UUID expectedUuid = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
-    assertEquals(
-        new Utf8JsonReader(uuid.getBytes(StandardCharsets.UTF_8)).readUuid(), expectedUuid);
-    assertEquals(new Latin1JsonReader(latin1Bytes(uuid)).readUuid(), expectedUuid);
+    assertEquals(newUtf8Reader(uuid.getBytes(StandardCharsets.UTF_8)).readUuid(), expectedUuid);
+    assertEquals(newLatin1Reader(latin1Bytes(uuid)).readUuid(), expectedUuid);
     assertEquals(utf16Reader(uuid).readUuid(), expectedUuid);
 
     assertEquals(
-        new Utf8JsonReader("123456789".getBytes(StandardCharsets.UTF_8)).readBigInteger(),
+        newUtf8Reader("123456789".getBytes(StandardCharsets.UTF_8)).readBigInteger(),
         BigInteger.valueOf(123456789L));
     assertEquals(
-        new Latin1JsonReader(latin1Bytes("123456789")).readBigInteger(),
-        BigInteger.valueOf(123456789L));
+        newLatin1Reader(latin1Bytes("123456789")).readBigInteger(), BigInteger.valueOf(123456789L));
     assertEquals(utf16Reader("123456789").readBigInteger(), BigInteger.valueOf(123456789L));
     assertEquals(
-        new Utf8JsonReader("123.45".getBytes(StandardCharsets.UTF_8)).readBigDecimal(),
+        newUtf8Reader("123.45".getBytes(StandardCharsets.UTF_8)).readBigDecimal(),
         new BigDecimal("123.45"));
-    assertEquals(
-        new Latin1JsonReader(latin1Bytes("123.45")).readBigDecimal(), new BigDecimal("123.45"));
+    assertEquals(newLatin1Reader(latin1Bytes("123.45")).readBigDecimal(), new BigDecimal("123.45"));
     assertEquals(utf16Reader("123.45").readBigDecimal(), new BigDecimal("123.45"));
 
     String time = "\"04:05:06.123\"";
     LocalTime expectedTime = LocalTime.of(4, 5, 6, 123_000_000);
     assertEquals(
-        new Utf8JsonReader(time.getBytes(StandardCharsets.UTF_8)).readIsoLocalTime(), expectedTime);
-    assertEquals(new Latin1JsonReader(latin1Bytes(time)).readIsoLocalTime(), expectedTime);
+        newUtf8Reader(time.getBytes(StandardCharsets.UTF_8)).readIsoLocalTime(), expectedTime);
+    assertEquals(newLatin1Reader(latin1Bytes(time)).readIsoLocalTime(), expectedTime);
     assertEquals(utf16Reader(time).readIsoLocalTime(), expectedTime);
 
     String duration = "\"PT1H1M1.123S\"";
     Duration expectedDuration = Duration.ofSeconds(3661, 123_000_000);
     assertEquals(
-        new Utf8JsonReader(duration.getBytes(StandardCharsets.UTF_8)).readDuration(),
-        expectedDuration);
-    assertEquals(new Latin1JsonReader(latin1Bytes(duration)).readDuration(), expectedDuration);
+        newUtf8Reader(duration.getBytes(StandardCharsets.UTF_8)).readDuration(), expectedDuration);
+    assertEquals(newLatin1Reader(latin1Bytes(duration)).readDuration(), expectedDuration);
     assertEquals(utf16Reader(duration).readDuration(), expectedDuration);
   }
 
@@ -1455,6 +1516,61 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void customCodecOwnsNull() {
+    ForyJson json =
+        newJsonBuilder()
+            .writeNullFields(true)
+            .registerCodec(NullOwnedValue.class, new NullOwnedValueCodec())
+            .build();
+    NullOwnedHolder holder = new NullOwnedHolder();
+    assertEquals(json.toJson(holder), "{\"value\":\"string-null\"}");
+    assertEquals(
+        new String(json.toJsonBytes(holder), StandardCharsets.UTF_8),
+        "{\"value\":\"utf8-null\"}");
+
+    String stringMode = StringSerializer.isBytesBackedString() ? "latin1-null" : "utf16-null";
+    assertEquals(json.fromJson("null", NullOwnedValue.class).mode, stringMode);
+    assertEquals(
+        json.fromJson("null".getBytes(StandardCharsets.UTF_8), NullOwnedValue.class).mode,
+        "utf8-null");
+    assertEquals(
+        json.fromJson("{\"ignored\":\"\u0100\",\"value\":null}", NullOwnedHolder.class)
+            .value
+            .mode,
+        "utf16-null");
+
+    NullOwnedContainers containers = new NullOwnedContainers();
+    containers.array = new NullOwnedValue[] {null};
+    containers.list = Arrays.asList((NullOwnedValue) null);
+    containers.map = new LinkedHashMap<>();
+    containers.map.put("key", null);
+    assertEquals(
+        json.toJson(containers),
+        "{\"array\":[\"string-null\"],\"list\":[\"string-null\"],"
+            + "\"map\":{\"key\":\"string-null\"}}");
+    assertEquals(
+        new String(json.toJsonBytes(containers), StandardCharsets.UTF_8),
+        "{\"array\":[\"utf8-null\"],\"list\":[\"utf8-null\"],"
+            + "\"map\":{\"key\":\"utf8-null\"}}");
+
+    NullOwnedContainers read =
+        json.fromJson(
+            "{\"array\":[null],\"list\":[null],\"map\":{\"key\":null}}"
+                .getBytes(StandardCharsets.UTF_8),
+            NullOwnedContainers.class);
+    assertEquals(read.array[0].mode, "utf8-null");
+    assertEquals(read.list.get(0).mode, "utf8-null");
+    assertEquals(read.map.get("key").mode, "utf8-null");
+
+    ForyJson omitNulls =
+        newJsonBuilder()
+            .writeNullFields(false)
+            .registerCodec(NullOwnedValue.class, new NullOwnedValueCodec())
+            .build();
+    assertEquals(omitNulls.toJson(holder), "{}");
+  }
+
+  @Test
   public void rejectMalformedStringScalar() {
     ForyJson json = newJson();
     assertThrows(
@@ -1485,9 +1601,8 @@ public class JsonScalarTest extends ForyJsonTestModels {
         ForyJsonException.class,
         () -> json.fromJson(repeat('1', BIG_NUMBER_LIMIT + 1), BigDecimal.class));
     String overflowFallback = repeat('9', 20) + "." + repeat('1', BIG_NUMBER_LIMIT + 1);
-    assertBigDecimalLengthReject(
-        new Utf8JsonReader(overflowFallback.getBytes(StandardCharsets.UTF_8)));
-    assertBigDecimalLengthReject(new Latin1JsonReader(latin1Bytes(overflowFallback)));
+    assertBigDecimalLengthReject(newUtf8Reader(overflowFallback.getBytes(StandardCharsets.UTF_8)));
+    assertBigDecimalLengthReject(newLatin1Reader(latin1Bytes(overflowFallback)));
     assertBigDecimalLengthReject(utf16Reader(overflowFallback));
   }
 
@@ -1509,10 +1624,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
         () -> json.fromJson(fastPathScale.getBytes(StandardCharsets.UTF_8), BigDecimal.class));
     assertThrows(
         ForyJsonException.class,
-        () -> new Utf8JsonReader(fastPathScale.getBytes(StandardCharsets.UTF_8)).readBigDecimal());
+        () -> newUtf8Reader(fastPathScale.getBytes(StandardCharsets.UTF_8)).readBigDecimal());
     assertThrows(
         ForyJsonException.class,
-        () -> new Latin1JsonReader(latin1Bytes(fastPathScale)).readBigDecimal());
+        () -> newLatin1Reader(latin1Bytes(fastPathScale)).readBigDecimal());
     assertThrows(ForyJsonException.class, () -> utf16Reader(fastPathScale).readBigDecimal());
   }
 
@@ -1531,9 +1646,9 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertThrows(ForyJsonException.class, () -> json.fromJson("1e2147483648", BigDecimal.class));
     assertThrows(
         ForyJsonException.class,
-        () -> new Utf8JsonReader("1.5".getBytes(StandardCharsets.UTF_8)).readBigInteger());
+        () -> newUtf8Reader("1.5".getBytes(StandardCharsets.UTF_8)).readBigInteger());
     assertThrows(
-        ForyJsonException.class, () -> new Latin1JsonReader(latin1Bytes("1e2")).readBigInteger());
+        ForyJsonException.class, () -> newLatin1Reader(latin1Bytes("1e2")).readBigInteger());
     assertThrows(ForyJsonException.class, () -> utf16Reader("1e2").readBigInteger());
   }
 
@@ -1589,11 +1704,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
     ForyJsonException intError =
         expectThrows(
             ForyJsonException.class,
-            () -> new Utf8JsonReader(oversized.getBytes(StandardCharsets.UTF_8)).readInt());
+            () -> newUtf8Reader(oversized.getBytes(StandardCharsets.UTF_8)).readInt());
     assertTrue(intError.getMessage().contains("Integer overflow"));
     ForyJsonException longError =
         expectThrows(
-            ForyJsonException.class, () -> new Latin1JsonReader(latin1Bytes(oversized)).readLong());
+            ForyJsonException.class, () -> newLatin1Reader(latin1Bytes(oversized)).readLong());
     assertTrue(longError.getMessage().contains("Long overflow"));
   }
 
@@ -1602,10 +1717,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     String token = "12.5";
     byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
     byte[] latin1 = latin1Bytes(token);
-    assertEquals(new Utf8JsonReader(utf8).readDouble(), 12.5d);
-    assertEquals(new Utf8JsonReader(utf8).readDoubleTokenValue(), 12.5d);
-    assertEquals(new Latin1JsonReader(latin1).readDouble(), 12.5d);
-    assertEquals(new Latin1JsonReader(latin1).readDoubleTokenValue(), 12.5d);
+    assertEquals(newUtf8Reader(utf8).readDouble(), 12.5d);
+    assertEquals(newUtf8Reader(utf8).readDoubleTokenValue(), 12.5d);
+    assertEquals(newLatin1Reader(latin1).readDouble(), 12.5d);
+    assertEquals(newLatin1Reader(latin1).readDoubleTokenValue(), 12.5d);
     assertEquals(utf16Reader(token).readDouble(), 12.5d);
     assertEquals(utf16Reader(token).readDoubleTokenValue(), 12.5d);
   }
@@ -1718,17 +1833,16 @@ public class JsonScalarTest extends ForyJsonTestModels {
     String token = "1.0000000596046448";
     int expected = Float.floatToRawIntBits(Float.parseFloat(token));
     assertEquals(
-        Float.floatToRawIntBits(
-            new Utf8JsonReader(token.getBytes(StandardCharsets.UTF_8)).readFloat()),
+        Float.floatToRawIntBits(newUtf8Reader(token.getBytes(StandardCharsets.UTF_8)).readFloat()),
         expected);
     assertEquals(
         Float.floatToRawIntBits(
-            new Utf8JsonReader(token.getBytes(StandardCharsets.UTF_8)).readFloatTokenValue()),
+            newUtf8Reader(token.getBytes(StandardCharsets.UTF_8)).readFloatTokenValue()),
         expected);
     assertEquals(
-        Float.floatToRawIntBits(new Latin1JsonReader(latin1Bytes(token)).readFloat()), expected);
+        Float.floatToRawIntBits(newLatin1Reader(latin1Bytes(token)).readFloat()), expected);
     assertEquals(
-        Float.floatToRawIntBits(new Latin1JsonReader(latin1Bytes(token)).readFloatTokenValue()),
+        Float.floatToRawIntBits(newLatin1Reader(latin1Bytes(token)).readFloatTokenValue()),
         expected);
     assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloat()), expected);
     assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloatTokenValue()), expected);
@@ -1759,19 +1873,17 @@ public class JsonScalarTest extends ForyJsonTestModels {
     int one = Float.floatToRawIntBits(1.0f);
     assertFloatBits("0." + repeat('0', 100_001) + "1e100002", one);
     assertFloatBits("1" + repeat('0', 100_001) + "e-100001", one);
-    assertTrue(
-        Float.isNaN(new Utf8JsonReader("\"NaN\"".getBytes(StandardCharsets.UTF_8)).readFloat()));
-    assertEquals(
-        new Latin1JsonReader(latin1Bytes("\"Infinity\"")).readFloat(), Float.POSITIVE_INFINITY);
+    assertTrue(Float.isNaN(newUtf8Reader("\"NaN\"".getBytes(StandardCharsets.UTF_8)).readFloat()));
+    assertEquals(newLatin1Reader(latin1Bytes("\"Infinity\"")).readFloat(), Float.POSITIVE_INFINITY);
     assertEquals(utf16Reader("\"-Infinity\"").readFloat(), Float.NEGATIVE_INFINITY);
     assertThrows(
         ForyJsonException.class,
         () ->
-            new Utf8JsonReader("\"\\u004e\\u0061\\u004e\"".getBytes(StandardCharsets.UTF_8))
+            newUtf8Reader("\"\\u004e\\u0061\\u004e\"".getBytes(StandardCharsets.UTF_8))
                 .readFloat());
     assertThrows(
         ForyJsonException.class,
-        () -> new Latin1JsonReader(latin1Bytes("\"\\u0049nfinity\"")).readFloat());
+        () -> newLatin1Reader(latin1Bytes("\"\\u0049nfinity\"")).readFloat());
     assertThrows(ForyJsonException.class, () -> utf16Reader("\"-\\u0049nfinity\"").readFloat());
   }
 
@@ -1851,12 +1963,12 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void customNumericCodecsOwnFields() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(float.class, new TaggedNumberCodec("float", Float.valueOf(11.5f)))
-            .registerCodec(Float.class, new TaggedNumberCodec("float", Float.valueOf(11.5f)))
-            .registerCodec(double.class, new TaggedNumberCodec("double", Double.valueOf(22.5d)))
-            .registerCodec(Double.class, new TaggedNumberCodec("double", Double.valueOf(22.5d)))
+            .registerCodec(float.class, new TaggedNumberCodec<>("float", Float.valueOf(11.5f)))
+            .registerCodec(Float.class, new TaggedNumberCodec<>("float", Float.valueOf(11.5f)))
+            .registerCodec(double.class, new TaggedNumberCodec<>("double", Double.valueOf(22.5d)))
+            .registerCodec(Double.class, new TaggedNumberCodec<>("double", Double.valueOf(22.5d)))
             .registerCodec(
-                BigDecimal.class, new TaggedNumberCodec("decimal", new BigDecimal("33.5")))
+                BigDecimal.class, new TaggedNumberCodec<>("decimal", new BigDecimal("33.5")))
             .build();
     CustomNumericFields fields = new CustomNumericFields();
     fields.floatValue = 1.25f;
@@ -1886,10 +1998,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void customNumericCodecsOwnContainers() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(float.class, new TaggedNumberCodec("float", Float.valueOf(11.5f)))
-            .registerCodec(Float.class, new TaggedNumberCodec("float", Float.valueOf(11.5f)))
+            .registerCodec(float.class, new TaggedNumberCodec<>("float", Float.valueOf(11.5f)))
+            .registerCodec(Float.class, new TaggedNumberCodec<>("float", Float.valueOf(11.5f)))
             .registerCodec(
-                BigDecimal.class, new TaggedNumberCodec("decimal", new BigDecimal("33.5")))
+                BigDecimal.class, new TaggedNumberCodec<>("decimal", new BigDecimal("33.5")))
             .build();
     CustomNumericContainers value = new CustomNumericContainers();
     value.decimalArray = new BigDecimal[] {new BigDecimal("1.25")};
@@ -1918,7 +2030,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     ForyJson json =
         newJsonBuilder()
             .registerCodec(String.class, new TaggedStringCodec("string", "decoded"))
-            .registerCodec(long.class, new TaggedNumberCodec("long", Long.valueOf(7L)))
+            .registerCodec(long.class, new TaggedNumberCodec<>("long", Long.valueOf(7L)))
             .build();
     CustomDirectContainers value = new CustomDirectContainers();
     value.longs = new long[] {1L};
@@ -1962,6 +2074,17 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   public static final class ClassArrayFields {
     public Class<?>[] types = new Class<?>[] {String.class};
+  }
+
+  public static final class PrimitiveFields {
+    public boolean bool;
+    public byte byteValue;
+    public short shortValue;
+    public int intValue;
+    public long longValue;
+    public float floatValue;
+    public double doubleValue;
+    public char charValue;
   }
 
   public static final class FilePathFields {
@@ -2238,6 +2361,17 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
   }
 
+  private static void assertPrimitiveFields(PrimitiveFields value) {
+    assertTrue(value.bool);
+    assertEquals(value.byteValue, (byte) 2);
+    assertEquals(value.shortValue, (short) 3);
+    assertEquals(value.intValue, 4);
+    assertEquals(value.longValue, 5L);
+    assertEquals(Float.floatToRawIntBits(value.floatValue), Float.floatToRawIntBits(1.5f));
+    assertEquals(Double.doubleToRawLongBits(value.doubleValue), Double.doubleToRawLongBits(2.5d));
+    assertEquals(value.charValue, 'x');
+  }
+
   private static void assertDoubleBits(String token) {
     long expected = Double.doubleToRawLongBits(Double.parseDouble(token));
     assertDoubleBits(token, expected);
@@ -2246,12 +2380,11 @@ public class JsonScalarTest extends ForyJsonTestModels {
   private static void assertDoubleBits(String token, long expected) {
     byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
     byte[] latin1 = latin1Bytes(token);
-    assertEquals(Double.doubleToRawLongBits(new Utf8JsonReader(utf8).readDouble()), expected);
+    assertEquals(Double.doubleToRawLongBits(newUtf8Reader(utf8).readDouble()), expected);
+    assertEquals(Double.doubleToRawLongBits(newUtf8Reader(utf8).readDoubleTokenValue()), expected);
+    assertEquals(Double.doubleToRawLongBits(newLatin1Reader(latin1).readDouble()), expected);
     assertEquals(
-        Double.doubleToRawLongBits(new Utf8JsonReader(utf8).readDoubleTokenValue()), expected);
-    assertEquals(Double.doubleToRawLongBits(new Latin1JsonReader(latin1).readDouble()), expected);
-    assertEquals(
-        Double.doubleToRawLongBits(new Latin1JsonReader(latin1).readDoubleTokenValue()), expected);
+        Double.doubleToRawLongBits(newLatin1Reader(latin1).readDoubleTokenValue()), expected);
     assertEquals(Double.doubleToRawLongBits(utf16Reader(token).readDouble()), expected);
     assertEquals(Double.doubleToRawLongBits(utf16Reader(token).readDoubleTokenValue()), expected);
   }
@@ -2264,11 +2397,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
   private static void assertFloatBits(String token, int expected) {
     byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
     byte[] latin1 = latin1Bytes(token);
-    assertEquals(Float.floatToRawIntBits(new Utf8JsonReader(utf8).readFloat()), expected);
-    assertEquals(Float.floatToRawIntBits(new Utf8JsonReader(utf8).readFloatTokenValue()), expected);
-    assertEquals(Float.floatToRawIntBits(new Latin1JsonReader(latin1).readFloat()), expected);
-    assertEquals(
-        Float.floatToRawIntBits(new Latin1JsonReader(latin1).readFloatTokenValue()), expected);
+    assertEquals(Float.floatToRawIntBits(newUtf8Reader(utf8).readFloat()), expected);
+    assertEquals(Float.floatToRawIntBits(newUtf8Reader(utf8).readFloatTokenValue()), expected);
+    assertEquals(Float.floatToRawIntBits(newLatin1Reader(latin1).readFloat()), expected);
+    assertEquals(Float.floatToRawIntBits(newLatin1Reader(latin1).readFloatTokenValue()), expected);
     assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloat()), expected);
     assertEquals(Float.floatToRawIntBits(utf16Reader(token).readFloatTokenValue()), expected);
   }
@@ -2427,111 +2559,169 @@ public class JsonScalarTest extends ForyJsonTestModels {
     field.setInt(owner, value);
   }
 
-  private static final class UrlStringCodec implements JsonCodec {
+  private static final class UrlStringCodec implements JsonCodec<URL> {
     @Override
-    public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(value.toString());
+    public void writeString(StringJsonWriter writer, URL value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.toString());
+      }
     }
 
     @Override
-    public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(value.toString());
+    public void writeUtf8(Utf8JsonWriter writer, URL value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.toString());
+      }
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return JsonTestData.url(reader.readString());
+    public URL readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : JsonTestData.url(value);
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return JsonTestData.url(reader.readString());
+    public URL readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : JsonTestData.url(value);
     }
 
     @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return JsonTestData.url(reader.readString());
+    public URL readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : JsonTestData.url(value);
     }
   }
 
-  private static final class ModeAwareCodec implements JsonCodec {
+  public static final class NullOwnedValue {
+    public String mode;
+
+    public NullOwnedValue() {}
+
+    private NullOwnedValue(String mode) {
+      this.mode = mode;
+    }
+  }
+
+  public static final class NullOwnedHolder {
+    public NullOwnedValue value;
+  }
+
+  public static final class NullOwnedContainers {
+    public NullOwnedValue[] array;
+    public List<NullOwnedValue> list;
+    public Map<String, NullOwnedValue> map;
+  }
+
+  private static final class NullOwnedValueCodec implements JsonCodec<NullOwnedValue> {
     @Override
-    public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+    public void writeString(StringJsonWriter writer, NullOwnedValue value) {
+      writer.writeString(value == null ? "string-null" : value.mode);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, NullOwnedValue value) {
+      writer.writeString(value == null ? "utf8-null" : value.mode);
+    }
+
+    @Override
+    public NullOwnedValue readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return new NullOwnedValue("latin1-null");
+      }
+      return new NullOwnedValue(reader.readString());
+    }
+
+    @Override
+    public NullOwnedValue readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return new NullOwnedValue("utf16-null");
+      }
+      return new NullOwnedValue(reader.readString());
+    }
+
+    @Override
+    public NullOwnedValue readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return new NullOwnedValue("utf8-null");
+      }
+      return new NullOwnedValue(reader.readString());
+    }
+  }
+
+  private static final class ModeAwareCodec implements JsonCodec<ModeAwareValue> {
+    @Override
+    public void writeString(StringJsonWriter writer, ModeAwareValue value) {
       writer.writeNull();
     }
 
     @Override
-    public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, ModeAwareValue value) {
       writer.writeNull();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public ModeAwareValue readLatin1(Latin1JsonReader reader) {
       reader.skipValue();
       return new ModeAwareValue("latin1");
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public ModeAwareValue readUtf16(Utf16JsonReader reader) {
       reader.skipValue();
       return new ModeAwareValue("utf16");
     }
 
     @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public ModeAwareValue readUtf8(Utf8JsonReader reader) {
       reader.skipValue();
       return new ModeAwareValue("utf8");
     }
   }
 
-  private static final class TaggedNumberCodec implements JsonCodec {
+  private static final class TaggedNumberCodec<T extends Number> implements JsonCodec<T> {
     private final String token;
-    private final Number decoded;
+    private final T decoded;
 
-    private TaggedNumberCodec(String token, Number decoded) {
+    private TaggedNumberCodec(String token, T decoded) {
       this.token = token;
       this.decoded = decoded;
     }
 
     @Override
-    public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+    public void writeString(StringJsonWriter writer, T value) {
       writer.writeString(token);
     }
 
     @Override
-    public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, T value) {
       writer.writeString(token);
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public T readLatin1(Latin1JsonReader reader) {
       assertEquals(reader.readString(), token);
       return decoded;
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public T readUtf16(Utf16JsonReader reader) {
       assertEquals(reader.readString(), token);
       return decoded;
     }
 
     @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public T readUtf8(Utf8JsonReader reader) {
       assertEquals(reader.readString(), token);
       return decoded;
     }
   }
 
-  private static final class TaggedStringCodec implements JsonCodec {
+  private static final class TaggedStringCodec implements JsonCodec<String> {
     private final String token;
     private final String decoded;
 
@@ -2541,32 +2731,29 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
 
     @Override
-    public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+    public void writeString(StringJsonWriter writer, String value) {
       writer.writeString(token);
     }
 
     @Override
-    public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, String value) {
       writer.writeString(token);
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public String readLatin1(Latin1JsonReader reader) {
       assertEquals(reader.readString(), token);
       return decoded;
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public String readUtf16(Utf16JsonReader reader) {
       assertEquals(reader.readString(), token);
       return decoded;
     }
 
     @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public String readUtf8(Utf8JsonReader reader) {
       assertEquals(reader.readString(), token);
       return decoded;
     }
@@ -2575,7 +2762,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   private static Utf16JsonReader utf16Reader(String input) {
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
-    return new Utf16JsonReader().reset(input, bytes);
+    return newUtf16Reader().reset(input, bytes);
   }
 
   private static void assertCustomNumericFields(CustomNumericFields fields) {
@@ -2624,8 +2811,8 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   private static void assertFloatingErrorPosition(String input, int position, String message) {
     JsonReader[] readers = {
-      new Utf8JsonReader(input.getBytes(StandardCharsets.UTF_8)),
-      new Latin1JsonReader(latin1Bytes(input)),
+      newUtf8Reader(input.getBytes(StandardCharsets.UTF_8)),
+      newLatin1Reader(latin1Bytes(input)),
       utf16Reader(input)
     };
     String expected = message + " at JSON position " + position;
@@ -2635,8 +2822,8 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
     readers =
         new JsonReader[] {
-          new Utf8JsonReader(input.getBytes(StandardCharsets.UTF_8)),
-          new Latin1JsonReader(latin1Bytes(input)),
+          newUtf8Reader(input.getBytes(StandardCharsets.UTF_8)),
+          newLatin1Reader(latin1Bytes(input)),
           utf16Reader(input)
         };
     for (JsonReader reader : readers) {
@@ -2646,10 +2833,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   private static void assertWriterNumber(BigInteger value, String expected) {
-    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
     utf8Writer.writeBigInteger(value);
     assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
-    StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
+    StringJsonWriter stringWriter = newStringWriter(new byte[4]);
     stringWriter.writeBigInteger(value);
     assertEquals(stringWriter.toJson(), expected);
     StringJsonWriter utf16Writer = utf16StringWriter();
@@ -2658,10 +2845,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   private static void assertWriterNumber(BigDecimal value, String expected) {
-    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
     utf8Writer.writeBigDecimal(value);
     assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
-    StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
+    StringJsonWriter stringWriter = newStringWriter(new byte[4]);
     stringWriter.writeBigDecimal(value);
     assertEquals(stringWriter.toJson(), expected);
     StringJsonWriter utf16Writer = utf16StringWriter();
@@ -2676,17 +2863,15 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   private static void assertBigIntegerReaders(String token) {
     BigInteger expected = new BigInteger(token);
-    assertEquals(
-        new Utf8JsonReader(token.getBytes(StandardCharsets.UTF_8)).readBigInteger(), expected);
-    assertEquals(new Latin1JsonReader(latin1Bytes(token)).readBigInteger(), expected);
+    assertEquals(newUtf8Reader(token.getBytes(StandardCharsets.UTF_8)).readBigInteger(), expected);
+    assertEquals(newLatin1Reader(latin1Bytes(token)).readBigInteger(), expected);
     assertEquals(utf16Reader(token).readBigInteger(), expected);
   }
 
   private static void assertBigDecimalReaders(String token) {
     BigDecimal expected = new BigDecimal(token);
-    assertEquals(
-        new Utf8JsonReader(token.getBytes(StandardCharsets.UTF_8)).readBigDecimal(), expected);
-    assertEquals(new Latin1JsonReader(latin1Bytes(token)).readBigDecimal(), expected);
+    assertEquals(newUtf8Reader(token.getBytes(StandardCharsets.UTF_8)).readBigDecimal(), expected);
+    assertEquals(newLatin1Reader(latin1Bytes(token)).readBigDecimal(), expected);
     assertEquals(utf16Reader(token).readBigDecimal(), expected);
   }
 
@@ -2703,10 +2888,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   private static void assertFloatWriter(float value) {
     String expected = Float.toString(value);
-    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
     utf8Writer.writeFloat(value);
     assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
-    StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
+    StringJsonWriter stringWriter = newStringWriter(new byte[4]);
     stringWriter.writeFloat(value);
     assertEquals(stringWriter.toJson(), expected);
     StringJsonWriter utf16Writer = utf16StringWriter();
@@ -2716,10 +2901,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   private static void assertDoubleWriter(double value) {
     String expected = Double.toString(value);
-    Utf8JsonWriter utf8Writer = new Utf8JsonWriter(false, new byte[4]);
+    Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
     utf8Writer.writeDouble(value);
     assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
-    StringJsonWriter stringWriter = new StringJsonWriter(false, new byte[4]);
+    StringJsonWriter stringWriter = newStringWriter(new byte[4]);
     stringWriter.writeDouble(value);
     assertEquals(stringWriter.toJson(), expected);
     StringJsonWriter utf16Writer = utf16StringWriter();
@@ -2728,7 +2913,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   private static StringJsonWriter utf16StringWriter() {
-    StringJsonWriter writer = new StringJsonWriter(false, new byte[4]);
+    StringJsonWriter writer = newStringWriter(new byte[4]);
     writer.writeString("\u0100");
     writer.toJson();
     writer.reset();

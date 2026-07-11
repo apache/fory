@@ -19,10 +19,9 @@
 
 package org.apache.fory.json.codec;
 
-import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 
-/** Writes one resolved Java type through {@link StringJsonWriter}. */
-public interface StringWriterCodec {
-  void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver);
+/** Writes one complete resolved Java value, including {@code null}, through {@link StringJsonWriter}. */
+public interface StringWriterCodec<T> {
+  void writeString(StringJsonWriter writer, T value);
 }

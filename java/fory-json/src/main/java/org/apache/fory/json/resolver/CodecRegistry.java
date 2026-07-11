@@ -32,29 +32,29 @@ import org.apache.fory.util.Preconditions;
 
 /** Registry for user-supplied JSON codecs. */
 public final class CodecRegistry {
-  private final ConcurrentMap<Class<?>, JsonCodec> codecs;
+  private final ConcurrentMap<Class<?>, JsonCodec<?>> codecs;
 
   public CodecRegistry() {
     codecs = new ConcurrentHashMap<>();
   }
 
-  private CodecRegistry(ConcurrentMap<Class<?>, JsonCodec> codecs) {
+  private CodecRegistry(ConcurrentMap<Class<?>, JsonCodec<?>> codecs) {
     this.codecs = codecs;
   }
 
-  public <T> void register(Class<T> type, JsonCodec codec) {
+  public <T> void register(Class<T> type, JsonCodec<T> codec) {
     Preconditions.checkNotNull(type);
     Preconditions.checkNotNull(codec);
     codecs.put(type, codec);
   }
 
-  public JsonCodec get(Class<?> type) {
+  public JsonCodec<?> get(Class<?> type) {
     return codecs.get(type);
   }
 
   public CodecRegistry copy() {
-    ConcurrentMap<Class<?>, JsonCodec> copied = new ConcurrentHashMap<>(codecs.size());
-    for (Map.Entry<Class<?>, JsonCodec> entry : codecs.entrySet()) {
+    ConcurrentMap<Class<?>, JsonCodec<?>> copied = new ConcurrentHashMap<>(codecs.size());
+    for (Map.Entry<Class<?>, JsonCodec<?>> entry : codecs.entrySet()) {
       copied.put(entry.getKey(), entry.getValue());
     }
     return new CodecRegistry(copied);
@@ -69,10 +69,10 @@ public final class CodecRegistry {
   }
 
   public String codegenKey() {
-    List<Map.Entry<Class<?>, JsonCodec>> entries = new ArrayList<>(codecs.entrySet());
+    List<Map.Entry<Class<?>, JsonCodec<?>>> entries = new ArrayList<>(codecs.entrySet());
     entries.sort(Comparator.comparing(entry -> entry.getKey().getName()));
     StringBuilder builder = new StringBuilder(entries.size() * 48);
-    for (Map.Entry<Class<?>, JsonCodec> entry : entries) {
+    for (Map.Entry<Class<?>, JsonCodec<?>> entry : entries) {
       builder
           .append(entry.getKey().getName())
           .append('=')

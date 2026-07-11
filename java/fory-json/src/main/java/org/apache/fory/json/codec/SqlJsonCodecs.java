@@ -23,9 +23,9 @@ import java.lang.reflect.Constructor;
 import java.util.Date;
 import java.util.IdentityHashMap;
 import org.apache.fory.json.ForyJsonException;
-import org.apache.fory.json.reader.JsonReader;
-import org.apache.fory.json.resolver.JsonTypeInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.reader.Utf16JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
@@ -37,31 +37,32 @@ public final class SqlJsonCodecs {
 
   private SqlJsonCodecs() {}
 
-  public static void register(IdentityHashMap<Class<?>, JsonCodec> codecs) {
+  public static void register(IdentityHashMap<Class<?>, JsonCodec<?>> codecs) {
     register(codecs, SQL_DATE);
     register(codecs, SQL_TIME);
     register(codecs, SQL_TIMESTAMP);
   }
 
-  private static void register(IdentityHashMap<Class<?>, JsonCodec> codecs, String className) {
-    Class<?> type = loadClass(className);
+  private static void register(IdentityHashMap<Class<?>, JsonCodec<?>> codecs, String className) {
+    Class<? extends Date> type = loadClass(className);
     if (type != null) {
-      codecs.put(type, new SqlMillisCodec(type));
+      codecs.put(type, new SqlMillisCodec<>(type));
     }
   }
 
-  private static Class<?> loadClass(String className) {
+  private static Class<? extends Date> loadClass(String className) {
     try {
-      return Class.forName(className, false, SqlJsonCodecs.class.getClassLoader());
+      return Class.forName(className, false, SqlJsonCodecs.class.getClassLoader())
+          .asSubclass(Date.class);
     } catch (ClassNotFoundException | LinkageError e) {
       return null;
     }
   }
 
-  private static final class SqlMillisCodec extends SharedJsonCodec {
-    private final Constructor<?> constructor;
+  private static final class SqlMillisCodec<T extends Date> implements JsonCodec<T> {
+    private final Constructor<T> constructor;
 
-    private SqlMillisCodec(Class<?> type) {
+    private SqlMillisCodec(Class<T> type) {
       try {
         constructor = type.getConstructor(long.class);
       } catch (NoSuchMethodException e) {
@@ -70,21 +71,44 @@ public final class SqlJsonCodecs {
     }
 
     @Override
-    void writeStringValue(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLong(((Date) value).getTime());
+    public void writeString(StringJsonWriter writer, T value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLong(value.getTime());
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLong(((Date) value).getTime());
+    public void writeUtf8(Utf8JsonWriter writer, T value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLong(value.getTime());
+      }
     }
 
     @Override
-    Object readValue(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public T readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : newSqlValue(reader.readLong());
+    }
+
+    @Override
+    public T readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : newSqlValue(reader.readLong());
+    }
+
+    @Override
+    public T readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : newSqlValue(reader.readLong());
+    }
+
+    private T newSqlValue(long millis) {
       try {
-        return constructor.newInstance(reader.readLong());
+        return constructor.newInstance(millis);
       } catch (ReflectiveOperationException e) {
-        throw new ForyJsonException("Cannot create SQL JSON type " + typeInfo.rawType(), e);
+        throw new ForyJsonException(
+            "Cannot create SQL JSON type " + constructor.getDeclaringClass(), e);
       }
     }
   }

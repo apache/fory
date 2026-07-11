@@ -19,10 +19,9 @@
 
 package org.apache.fory.json.codec;
 
-import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
-/** Writes one resolved Java type through {@link Utf8JsonWriter}. */
-public interface Utf8WriterCodec {
-  void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver);
+/** Writes one complete resolved Java value, including {@code null}, through {@link Utf8JsonWriter}. */
+public interface Utf8WriterCodec<T> {
+  void writeUtf8(Utf8JsonWriter writer, T value);
 }

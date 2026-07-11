@@ -29,6 +29,7 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
@@ -64,30 +65,18 @@ public final class Latin1JsonReader extends JsonReader {
   private byte[] input;
   private byte[] stringDecodeBuffer = new byte[INITIAL_STRING_DECODE_BUFFER_SIZE];
 
-  public Latin1JsonReader() {
+  public Latin1JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
+    super(config, typeResolver);
     input = EMPTY_BYTES;
   }
 
-  public Latin1JsonReader(JsonConfig config) {
-    super(config);
-    input = EMPTY_BYTES;
-  }
-
-  public Latin1JsonReader(byte[] input) {
+  public Latin1JsonReader(JsonConfig config, JsonTypeResolver typeResolver, byte[] input) {
+    this(config, typeResolver);
     reset(input);
   }
 
-  public Latin1JsonReader(String input) {
-    reset(input);
-  }
-
-  public Latin1JsonReader(JsonConfig config, byte[] input) {
-    this(config);
-    reset(input);
-  }
-
-  public Latin1JsonReader(JsonConfig config, String input) {
-    this(config);
+  public Latin1JsonReader(JsonConfig config, JsonTypeResolver typeResolver, String input) {
+    this(config, typeResolver);
     reset(input);
   }
 

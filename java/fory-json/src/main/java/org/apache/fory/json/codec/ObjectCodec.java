@@ -38,21 +38,16 @@ import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.ObjectInstantiator;
 import org.apache.fory.reflect.ObjectInstantiators;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.util.record.RecordInfo;
 import org.apache.fory.util.record.RecordUtils;
 
-public final class ObjectCodec extends AbstractJsonCodec
-    implements StringObjectWriterCodec,
-        Utf8ObjectWriterCodec,
-        Latin1ObjectReaderCodec,
-        Utf16ObjectReaderCodec,
-        Utf8ObjectReaderCodec {
+public class ObjectCodec<T> implements JsonCodec<T> {
   protected final Class<?> type;
   protected final JsonFieldInfo[] writeFields;
   protected final JsonFieldInfo[] readFields;
@@ -62,7 +57,7 @@ public final class ObjectCodec extends AbstractJsonCodec
   private final RecordInfo recordInfo;
   private final Object[] recordFieldDefaults;
 
-  ObjectCodec(
+  private ObjectCodec(
       Class<?> type,
       JsonFieldInfo[] writeFields,
       JsonFieldInfo[] readFields,
@@ -86,7 +81,9 @@ public final class ObjectCodec extends AbstractJsonCodec
     }
   }
 
-  public static ObjectCodec build(Class<?> type, boolean propertyDiscoveryEnabled) {
+  public static <T> ObjectCodec<T> build(
+      TypeRef<T> ownerType, boolean propertyDiscoveryEnabled) {
+    Class<?> type = ownerType.getRawType();
     if (type.isInterface()
         || Modifier.isAbstract(type.getModifiers())
         || type.isPrimitive()
@@ -108,7 +105,7 @@ public final class ObjectCodec extends AbstractJsonCodec
       if (!builder.hasWriteSource() && !builder.hasReadSink()) {
         continue;
       }
-      JsonFieldInfo field = builder.build(record);
+      JsonFieldInfo field = builder.build(record, ownerType);
       if (builder.hasWriteSource()) {
         writes.add(field);
       }
@@ -121,8 +118,11 @@ public final class ObjectCodec extends AbstractJsonCodec
     for (int i = 0; i < readArray.length; i++) {
       readArray[i].setReadIndex(i);
     }
-    return new ObjectCodec(
-        type, writeArray, readArray, ObjectInstantiators.createObjectInstantiator(type));
+    ObjectInstantiator<?> instantiator = ObjectInstantiators.createObjectInstantiator(type);
+    if (ownerType.getType() instanceof Class) {
+      return new ObjectCodec<>(type, writeArray, readArray, instantiator);
+    }
+    return new ParameterizedObjectCodec<>(type, writeArray, readArray, instantiator);
   }
 
   private static void addFields(
@@ -224,8 +224,9 @@ public final class ObjectCodec extends AbstractJsonCodec
     }
   }
 
-  public final Object newInstance() {
-    return instantiator.newInstance();
+  @SuppressWarnings("unchecked")
+  public final T newInstance() {
+    return (T) instantiator.newInstance();
   }
 
   @Internal
@@ -234,66 +235,49 @@ public final class ObjectCodec extends AbstractJsonCodec
   }
 
   @Internal
-  public final Object newRecord(Object[] values) {
+  @SuppressWarnings("unchecked")
+  public final T newRecord(Object[] values) {
     Object[] arguments = RecordUtils.remapping(recordInfo, values);
     Object object = instantiator.newInstanceWithArguments(arguments);
     Arrays.fill(recordInfo.getRecordComponents(), null);
-    return object;
+    return (T) object;
   }
 
   @Override
-  public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-    StringWriterCodec codec = resolver.stringWriter(this);
+  public void writeString(StringJsonWriter writer, T value) {
+    StringWriterCodec<T> codec = writer.typeResolver().stringWriter(this);
     if (codec != this) {
-      codec.writeString(writer, value, resolver);
+      codec.writeString(writer, value);
     } else if (value == null) {
       writer.writeNull();
     } else {
-      writeStringObject(writer, value, resolver);
+      writeStringObject(writer, value);
     }
   }
 
   @Override
-  public void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-    StringWriterCodec codec = resolver.stringWriter(this);
-    if (codec == this) {
-      writeStringObject(writer, value, resolver);
-    } else {
-      ((StringObjectWriterCodec) codec).writeStringNonNull(writer, value, resolver);
-    }
-  }
-
-  @Override
-  public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-    Utf8WriterCodec codec = resolver.utf8Writer(this);
+  public void writeUtf8(Utf8JsonWriter writer, T value) {
+    Utf8WriterCodec<T> codec = writer.typeResolver().utf8Writer(this);
     if (codec != this) {
-      codec.writeUtf8(writer, value, resolver);
+      codec.writeUtf8(writer, value);
     } else if (value == null) {
       writer.writeNull();
     } else {
-      writeUtf8Object(writer, value, resolver);
+      writeUtf8Object(writer, value);
     }
   }
 
-  @Override
-  public void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-    Utf8WriterCodec codec = resolver.utf8Writer(this);
-    if (codec == this) {
-      writeUtf8Object(writer, value, resolver);
-    } else {
-      ((Utf8ObjectWriterCodec) codec).writeUtf8NonNull(writer, value, resolver);
-    }
-  }
-
-  private Object readLatin1Object(
-      Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+  // Raw and parameterized bindings share the same interpreted object algorithms inside this
+  // top-level owner. Package access avoids Java 8 synthetic accessors from the nested binding;
+  // these methods are not codec entries and must not be used for capability dispatch.
+  final T readLatin1Object(Latin1JsonReader reader) {
     reader.enterDepth();
     if (record) {
-      Object object = readLatin1Record(reader, resolver);
+      T object = readLatin1Record(reader);
       reader.exitDepth();
       return object;
     }
-    Object object = newInstance();
+    T object = newInstance();
     reader.expect('{');
     if (reader.consume('}')) {
       reader.exitDepth();
@@ -305,7 +289,7 @@ public final class ObjectCodec extends AbstractJsonCodec
       if (field == null) {
         reader.skipValue();
       } else {
-        field.readLatin1(reader, object, resolver);
+        field.readLatin1(reader, object);
       }
     } while (reader.consume(','));
     reader.expect('}');
@@ -313,15 +297,14 @@ public final class ObjectCodec extends AbstractJsonCodec
     return object;
   }
 
-  private Object readUtf16Object(
-      Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+  final T readUtf16Object(Utf16JsonReader reader) {
     reader.enterDepth();
     if (record) {
-      Object object = readUtf16Record(reader, resolver);
+      T object = readUtf16Record(reader);
       reader.exitDepth();
       return object;
     }
-    Object object = newInstance();
+    T object = newInstance();
     reader.expect('{');
     if (reader.consume('}')) {
       reader.exitDepth();
@@ -333,7 +316,7 @@ public final class ObjectCodec extends AbstractJsonCodec
       if (field == null) {
         reader.skipValue();
       } else {
-        field.readUtf16(reader, object, resolver);
+        field.readUtf16(reader, object);
       }
     } while (reader.consume(','));
     reader.expect('}');
@@ -341,15 +324,14 @@ public final class ObjectCodec extends AbstractJsonCodec
     return object;
   }
 
-  private Object readUtf8Object(
-      Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+  final T readUtf8Object(Utf8JsonReader reader) {
     reader.enterDepth();
     if (record) {
-      Object object = readUtf8Record(reader, resolver);
+      T object = readUtf8Record(reader);
       reader.exitDepth();
       return object;
     }
-    Object object = newInstance();
+    T object = newInstance();
     reader.expect('{');
     if (reader.consume('}')) {
       reader.exitDepth();
@@ -361,7 +343,7 @@ public final class ObjectCodec extends AbstractJsonCodec
       if (field == null) {
         reader.skipValue();
       } else {
-        field.readUtf8(reader, object, resolver);
+        field.readUtf8(reader, object);
       }
     } while (reader.consume(','));
     reader.expect('}');
@@ -370,71 +352,42 @@ public final class ObjectCodec extends AbstractJsonCodec
   }
 
   @Override
-  public Object readLatin1(
-      Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-    Latin1ObjectReaderCodec codec = resolver.latin1Reader(this);
+  public T readLatin1(Latin1JsonReader reader) {
+    Latin1ReaderCodec<T> codec = reader.typeResolver().latin1Reader(this);
     if (codec != this) {
-      return codec.readLatin1(reader, typeInfo, resolver);
+      return codec.readLatin1(reader);
     }
     if (reader.tryReadNullToken()) {
       return null;
     }
-    return readLatin1Object(reader, typeInfo, resolver);
+    return readLatin1Object(reader);
   }
 
   @Override
-  public Object readLatin1NonNull(
-      Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-    Latin1ObjectReaderCodec codec = resolver.latin1Reader(this);
-    return codec == this
-        ? readLatin1Object(reader, typeInfo, resolver)
-        : codec.readLatin1NonNull(reader, typeInfo, resolver);
-  }
-
-  @Override
-  public Object readUtf16(
-      Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-    Utf16ObjectReaderCodec codec = resolver.utf16Reader(this);
+  public T readUtf16(Utf16JsonReader reader) {
+    Utf16ReaderCodec<T> codec = reader.typeResolver().utf16Reader(this);
     if (codec != this) {
-      return codec.readUtf16(reader, typeInfo, resolver);
+      return codec.readUtf16(reader);
     }
     if (reader.tryReadNullToken()) {
       return null;
     }
-    return readUtf16Object(reader, typeInfo, resolver);
+    return readUtf16Object(reader);
   }
 
   @Override
-  public Object readUtf16NonNull(
-      Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-    Utf16ObjectReaderCodec codec = resolver.utf16Reader(this);
-    return codec == this
-        ? readUtf16Object(reader, typeInfo, resolver)
-        : codec.readUtf16NonNull(reader, typeInfo, resolver);
-  }
-
-  @Override
-  public Object readUtf8(Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-    Utf8ObjectReaderCodec codec = resolver.utf8Reader(this);
+  public T readUtf8(Utf8JsonReader reader) {
+    Utf8ReaderCodec<T> codec = reader.typeResolver().utf8Reader(this);
     if (codec != this) {
-      return codec.readUtf8(reader, typeInfo, resolver);
+      return codec.readUtf8(reader);
     }
     if (reader.tryReadNullToken()) {
       return null;
     }
-    return readUtf8Object(reader, typeInfo, resolver);
+    return readUtf8Object(reader);
   }
 
-  @Override
-  public Object readUtf8NonNull(
-      Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-    Utf8ObjectReaderCodec codec = resolver.utf8Reader(this);
-    return codec == this
-        ? readUtf8Object(reader, typeInfo, resolver)
-        : codec.readUtf8NonNull(reader, typeInfo, resolver);
-  }
-
-  private Object readLatin1Record(Latin1JsonReader reader, JsonTypeResolver resolver) {
+  private T readLatin1Record(Latin1JsonReader reader) {
     Object[] values = newRecordFieldValues();
     reader.expect('{');
     if (!reader.consume('}')) {
@@ -444,7 +397,7 @@ public final class ObjectCodec extends AbstractJsonCodec
         if (field == null) {
           reader.skipValue();
         } else {
-          values[field.readIndex()] = field.readLatin1Value(reader, resolver);
+          values[field.readIndex()] = field.readLatin1Value(reader);
         }
       } while (reader.consume(','));
       reader.expect('}');
@@ -452,7 +405,7 @@ public final class ObjectCodec extends AbstractJsonCodec
     return newRecord(values);
   }
 
-  private Object readUtf16Record(Utf16JsonReader reader, JsonTypeResolver resolver) {
+  private T readUtf16Record(Utf16JsonReader reader) {
     Object[] values = newRecordFieldValues();
     reader.expect('{');
     if (!reader.consume('}')) {
@@ -462,7 +415,7 @@ public final class ObjectCodec extends AbstractJsonCodec
         if (field == null) {
           reader.skipValue();
         } else {
-          values[field.readIndex()] = field.readUtf16Value(reader, resolver);
+          values[field.readIndex()] = field.readUtf16Value(reader);
         }
       } while (reader.consume(','));
       reader.expect('}');
@@ -470,7 +423,7 @@ public final class ObjectCodec extends AbstractJsonCodec
     return newRecord(values);
   }
 
-  private Object readUtf8Record(Utf8JsonReader reader, JsonTypeResolver resolver) {
+  private T readUtf8Record(Utf8JsonReader reader) {
     Object[] values = newRecordFieldValues();
     reader.expect('{');
     if (!reader.consume('}')) {
@@ -480,7 +433,7 @@ public final class ObjectCodec extends AbstractJsonCodec
         if (field == null) {
           reader.skipValue();
         } else {
-          values[field.readIndex()] = field.readUtf8Value(reader, resolver);
+          values[field.readIndex()] = field.readUtf8Value(reader);
         }
       } while (reader.consume(','));
       reader.expect('}');
@@ -488,56 +441,56 @@ public final class ObjectCodec extends AbstractJsonCodec
     return newRecord(values);
   }
 
-  private void writeStringObject(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+  final void writeStringObject(StringJsonWriter writer, Object value) {
     writer.writeObjectStart();
     int written = 0;
     JsonFieldInfo[] fields = writeFields;
     int length = fields.length;
     int i = 0;
     while (i + 4 <= length) {
-      if (fields[i++].writeString(writer, value, resolver, written)) {
+      if (fields[i++].writeString(writer, value, written)) {
         written++;
       }
-      if (fields[i++].writeString(writer, value, resolver, written)) {
+      if (fields[i++].writeString(writer, value, written)) {
         written++;
       }
-      if (fields[i++].writeString(writer, value, resolver, written)) {
+      if (fields[i++].writeString(writer, value, written)) {
         written++;
       }
-      if (fields[i++].writeString(writer, value, resolver, written)) {
+      if (fields[i++].writeString(writer, value, written)) {
         written++;
       }
     }
     while (i < length) {
-      if (fields[i++].writeString(writer, value, resolver, written)) {
+      if (fields[i++].writeString(writer, value, written)) {
         written++;
       }
     }
     writer.writeObjectEnd();
   }
 
-  private void writeUtf8Object(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+  final void writeUtf8Object(Utf8JsonWriter writer, Object value) {
     writer.writeObjectStart();
     int written = 0;
     JsonFieldInfo[] fields = writeFields;
     int length = fields.length;
     int i = 0;
     while (i + 4 <= length) {
-      if (fields[i++].writeUtf8(writer, value, resolver, written)) {
+      if (fields[i++].writeUtf8(writer, value, written)) {
         written++;
       }
-      if (fields[i++].writeUtf8(writer, value, resolver, written)) {
+      if (fields[i++].writeUtf8(writer, value, written)) {
         written++;
       }
-      if (fields[i++].writeUtf8(writer, value, resolver, written)) {
+      if (fields[i++].writeUtf8(writer, value, written)) {
         written++;
       }
-      if (fields[i++].writeUtf8(writer, value, resolver, written)) {
+      if (fields[i++].writeUtf8(writer, value, written)) {
         written++;
       }
     }
     while (i < length) {
-      if (fields[i++].writeUtf8(writer, value, resolver, written)) {
+      if (fields[i++].writeUtf8(writer, value, written)) {
         written++;
       }
     }
@@ -739,7 +692,7 @@ public final class ObjectCodec extends AbstractJsonCodec
       return readSetter != null || readField != null;
     }
 
-    private JsonFieldInfo build(boolean record) {
+    private JsonFieldInfo build(boolean record, TypeRef<?> ownerType) {
       validateTypes();
       writeAccessor =
           writeGetter != null
@@ -750,7 +703,14 @@ public final class ObjectCodec extends AbstractJsonCodec
               ? JsonFieldAccessor.forSetter(readSetter)
               : (readField == null || record ? null : JsonFieldAccessor.forField(readField));
       return new JsonFieldInfo(
-          name, writeField, writeGetter, readField, readSetter, writeAccessor, readAccessor);
+          name,
+          writeField,
+          writeGetter,
+          readField,
+          readSetter,
+          writeAccessor,
+          readAccessor,
+          ownerType);
     }
 
     private boolean methodAllowed(boolean exposeMode, boolean fieldAllowed) {
@@ -772,5 +732,50 @@ public final class ObjectCodec extends AbstractJsonCodec
     private static Type fieldType(Field field) {
       return field == null ? null : field.getGenericType();
     }
+  }
+
+  /** Owns one parameterized POJO binding whose child types differ from the raw-class binding. */
+  private static final class ParameterizedObjectCodec<T> extends ObjectCodec<T> {
+    private ParameterizedObjectCodec(
+        Class<?> type,
+        JsonFieldInfo[] writeFields,
+        JsonFieldInfo[] readFields,
+        ObjectInstantiator<?> instantiator) {
+      super(type, writeFields, readFields, instantiator);
+    }
+
+    @Override
+    public void writeString(StringJsonWriter writer, T value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writeStringObject(writer, value);
+      }
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, T value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writeUtf8Object(writer, value);
+      }
+    }
+
+    @Override
+    public T readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readLatin1Object(reader);
+    }
+
+    @Override
+    public T readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readUtf16Object(reader);
+    }
+
+    @Override
+    public T readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readUtf8Object(reader);
+    }
+
   }
 }

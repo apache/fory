@@ -19,6 +19,9 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
+import static org.apache.fory.json.JsonTestSupport.newStringWriter;
+import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
@@ -79,7 +82,7 @@ public class JsonStringTest extends ForyJsonTestModels {
     String input = "\"music \uD834\uDD1E\"";
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
-    Utf16JsonReader reader = new Utf16JsonReader().reset(input, bytes);
+    Utf16JsonReader reader = newUtf16Reader().reset(input, bytes);
     assertEquals(reader.readString(), "music \uD834\uDD1E");
     reader.finish();
   }
@@ -196,7 +199,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void stringWriterResetAfterMaterialize() {
-    StringJsonWriter writer = new StringJsonWriter(false, new byte[16]);
+    StringJsonWriter writer = newStringWriter(new byte[16]);
     writer.writeString("你好，Fory");
     String utf16Json = writer.toJson();
     writer.reset();
@@ -212,7 +215,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void stringWriterLatin1AfterUtf16() {
-    StringJsonWriter writer = new StringJsonWriter(false, new byte[16]);
+    StringJsonWriter writer = newStringWriter(new byte[16]);
     writer.writeArrayStart();
     writer.writeStringElement(0, "你好");
     writer.writeStringElement(1, "http://example.com/keynote.jpg");
@@ -225,7 +228,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void stringWriterUtf16Escapes() {
-    StringJsonWriter writer = new StringJsonWriter(false, new byte[16]);
+    StringJsonWriter writer = newStringWriter(new byte[16]);
     writer.writeArrayStart();
     writer.writeStringElement(0, "你好");
     writer.writeStringElement(1, "前缀\"\\\\\n\u1234");
@@ -235,7 +238,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void stringWriterShrinksOnReset() throws Exception {
-    StringJsonWriter writer = new StringJsonWriter(false, new byte[16]);
+    StringJsonWriter writer = newStringWriter(new byte[16]);
     writer.writeString(repeat('a', 40000) + "你好，Fory");
     assertTrue(writerBufferLength(writer) > 65536);
     writer.toJson();
@@ -301,7 +304,7 @@ public class JsonStringTest extends ForyJsonTestModels {
     String latin1Input = "\"" + repeat('a', 9000) + "\\n\"";
     if (StringSerializer.isBytesBackedString()
         && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(latin1Input))) {
-      Latin1JsonReader latin1Reader = new Latin1JsonReader(latin1Input);
+      Latin1JsonReader latin1Reader = newLatin1Reader(latin1Input);
       assertEquals(latin1Reader.readString(), repeat('a', 9000) + "\n");
       assertTrue(readerBufferLength(latin1Reader) > 8192);
       latin1Reader.clear();
@@ -309,7 +312,7 @@ public class JsonStringTest extends ForyJsonTestModels {
     }
 
     String utf16Input = "\"中文" + repeat('b', 9000) + "\\n\"";
-    Utf16JsonReader utf16Reader = new Utf16JsonReader(utf16Input);
+    Utf16JsonReader utf16Reader = newUtf16Reader(utf16Input);
     assertEquals(utf16Reader.readString(), "中文" + repeat('b', 9000) + "\n");
     assertTrue(readerBufferLength(utf16Reader) > 8192);
     utf16Reader.clear();
@@ -529,7 +532,7 @@ public class JsonStringTest extends ForyJsonTestModels {
   private static Utf16JsonReader utf16Reader(String input) {
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
-    return new Utf16JsonReader().reset(input, bytes);
+    return newUtf16Reader().reset(input, bytes);
   }
 
   private static long packedNameMask(int length) {

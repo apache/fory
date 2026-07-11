@@ -28,6 +28,7 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
@@ -60,25 +61,15 @@ public final class Utf16JsonReader extends JsonReader {
   private int length;
   private byte[] stringDecodeBuffer = new byte[INITIAL_STRING_DECODE_BUFFER_SIZE];
 
-  public Utf16JsonReader() {
+  public Utf16JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
+    super(config, typeResolver);
     input = "";
     bytes = null;
     length = 0;
   }
 
-  public Utf16JsonReader(JsonConfig config) {
-    super(config);
-    input = "";
-    bytes = null;
-    length = 0;
-  }
-
-  public Utf16JsonReader(String input) {
-    reset(input);
-  }
-
-  public Utf16JsonReader(JsonConfig config, String input) {
-    this(config);
+  public Utf16JsonReader(JsonConfig config, JsonTypeResolver typeResolver, String input) {
+    this(config, typeResolver);
     reset(input);
   }
 

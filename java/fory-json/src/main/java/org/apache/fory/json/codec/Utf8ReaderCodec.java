@@ -19,21 +19,9 @@
 
 package org.apache.fory.json.codec;
 
-import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.resolver.JsonTypeInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
 
-/** Reads one resolved Java type through {@link Utf8JsonReader}. */
-public interface Utf8ReaderCodec {
-  Object readUtf8(Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver);
-
-  default void readUtf8Field(
-      Utf8JsonReader reader,
-      Object object,
-      JsonFieldAccessor accessor,
-      JsonTypeInfo typeInfo,
-      JsonTypeResolver resolver) {
-    accessor.putObject(object, readUtf8(reader, typeInfo, resolver));
-  }
+/** Reads one complete resolved Java value, including JSON {@code null}, through {@link Utf8JsonReader}. */
+public interface Utf8ReaderCodec<T> {
+  T readUtf8(Utf8JsonReader reader);
 }

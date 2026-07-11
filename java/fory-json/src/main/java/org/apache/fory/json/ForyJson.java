@@ -79,9 +79,8 @@ public final class ForyJson {
       if (value == null) {
         writer.writeNull();
       } else {
-        JsonTypeResolver resolver = state.typeResolver;
         JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-        typeInfo.stringWriter().writeString(writer, value, resolver);
+        typeInfo.stringWriter().writeString(writer, value);
       }
       return writer.toJson();
     } finally {
@@ -98,9 +97,8 @@ public final class ForyJson {
       if (value == null) {
         writer.writeNull();
       } else {
-        JsonTypeResolver resolver = state.typeResolver;
         JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-        typeInfo.utf8Writer().writeUtf8(writer, value, resolver);
+        typeInfo.utf8Writer().writeUtf8(writer, value);
       }
       return writer.toJsonBytes();
     } finally {
@@ -119,9 +117,8 @@ public final class ForyJson {
       if (value == null) {
         writer.writeNull();
       } else {
-        JsonTypeResolver resolver = state.typeResolver;
         JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-        typeInfo.utf8Writer().writeUtf8(writer, value, resolver);
+        typeInfo.utf8Writer().writeUtf8(writer, value);
       }
       writer.writeTo(output);
     } finally {
@@ -245,7 +242,7 @@ public final class ForyJson {
       byte coder = StringSerializer.getStringCoder(json);
       if (StringSerializer.isLatin1Coder(coder)) {
         // Keep String input on its reader owner even when ASCII Latin1 bytes match UTF-8;
-        // custom JsonCodec implementations can observe readLatin1/readUtf8 dispatch.
+        // custom JsonCodec implementations can observe readLatin1/readUtf16 dispatch.
         return readLatin1Value(state.latin1Reader(json), type, fallback, state);
       }
       if (StringSerializer.isUtf16Coder(coder)) {
@@ -257,27 +254,24 @@ public final class ForyJson {
 
   private Object readLatin1Value(
       Latin1JsonReader reader, Type type, Class<?> fallback, JsonState state) {
-    JsonTypeResolver resolver = state.typeResolver;
     JsonTypeInfo typeInfo = state.rootTypeInfo(type, fallback);
-    Object value = typeInfo.latin1Reader().readLatin1(reader, typeInfo, resolver);
+    Object value = typeInfo.latin1Reader().readLatin1(reader);
     reader.finish();
     return value;
   }
 
   private Object readUtf16Value(
       Utf16JsonReader reader, Type type, Class<?> fallback, JsonState state) {
-    JsonTypeResolver resolver = state.typeResolver;
     JsonTypeInfo typeInfo = state.rootTypeInfo(type, fallback);
-    Object value = typeInfo.utf16Reader().readUtf16(reader, typeInfo, resolver);
+    Object value = typeInfo.utf16Reader().readUtf16(reader);
     reader.finish();
     return value;
   }
 
   private Object readUtf8Value(
       Utf8JsonReader reader, Type type, Class<?> fallback, JsonState state) {
-    JsonTypeResolver resolver = state.typeResolver;
     JsonTypeInfo typeInfo = state.rootTypeInfo(type, fallback);
-    Object value = typeInfo.utf8Reader().readUtf8(reader, typeInfo, resolver);
+    Object value = typeInfo.utf8Reader().readUtf8(reader);
     reader.finish();
     return value;
   }
@@ -304,24 +298,24 @@ public final class ForyJson {
   }
 
   private static final class JsonState {
+    private final JsonTypeResolver typeResolver;
     private final Utf8JsonWriter utf8Writer;
     private final StringJsonWriter stringWriter;
     private final Utf8JsonReader utf8Reader;
     private final Latin1JsonReader latin1Reader;
     private final Utf16JsonReader utf16Reader;
-    private final JsonTypeResolver typeResolver;
     private byte[] legacyUtf16Bytes;
     private Type lastRootType;
     private Class<?> lastRootFallback;
     private JsonTypeInfo lastRootInfo;
 
     private JsonState(JsonConfig config, JsonSharedRegistry sharedRegistry) {
-      utf8Writer = new Utf8JsonWriter(config, new byte[INITIAL_BUFFER_SIZE]);
-      stringWriter = new StringJsonWriter(config, new byte[INITIAL_BUFFER_SIZE]);
-      utf8Reader = new Utf8JsonReader(config);
-      latin1Reader = new Latin1JsonReader(config);
-      utf16Reader = new Utf16JsonReader(config);
       typeResolver = new JsonTypeResolver(sharedRegistry);
+      utf8Writer = new Utf8JsonWriter(config, typeResolver, new byte[INITIAL_BUFFER_SIZE]);
+      stringWriter = new StringJsonWriter(config, typeResolver, new byte[INITIAL_BUFFER_SIZE]);
+      utf8Reader = new Utf8JsonReader(config, typeResolver);
+      latin1Reader = new Latin1JsonReader(config, typeResolver);
+      utf16Reader = new Utf16JsonReader(config, typeResolver);
       legacyUtf16Bytes = EMPTY_BYTES;
     }
 

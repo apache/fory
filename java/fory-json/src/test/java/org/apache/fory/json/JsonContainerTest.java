@@ -31,6 +31,8 @@ import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.ImmutableSortedSet;
 import com.google.common.primitives.ImmutableIntArray;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.util.AbstractCollection;
 import java.util.AbstractList;
@@ -95,6 +97,29 @@ public class JsonContainerTest extends ForyJsonTestModels {
     assertEquals(values.get(0).tags, Arrays.asList("x", "y"));
     assertEquals(values.get(1).count, 3);
     assertEquals(values.get(1).total, 4);
+  }
+
+  @Test
+  public void readParameterizedPojo() {
+    ForyJson json = newJson();
+    GenericBox<String> strings =
+        json.fromJson(
+            "{\"value\":\"latin\",\"values\":[\"one\",\"two\"]}",
+            new TypeRef<GenericBox<String>>() {});
+    assertEquals(strings.value, "latin");
+    assertEquals(strings.values, Arrays.asList("one", "two"));
+
+    String objectJson =
+        "{\"value\":{\"count\":1,\"name\":\"你好，Fory\",\"tags\":[],\"total\":2},"
+            + "\"values\":[{\"count\":3,\"name\":\"utf8\",\"tags\":[],\"total\":4}]}";
+    GenericBox<TokenValues> objects =
+        json.fromJson(
+            objectJson.getBytes(StandardCharsets.UTF_8),
+            new TypeRef<GenericBox<TokenValues>>() {});
+    assertEquals(objects.value.getClass(), TokenValues.class);
+    assertEquals(objects.value.name, ZH_TEXT);
+    assertEquals(objects.values.get(0).getClass(), TokenValues.class);
+    assertEquals(objects.values.get(0).name, "utf8");
   }
 
   @Test
@@ -287,6 +312,74 @@ public class JsonContainerTest extends ForyJsonTestModels {
     assertEquals(
         json.fromJson("{\"1\":\"one\",\"2\":\"two\"}", new TypeRef<Map<Integer, String>>() {}),
         intNames());
+  }
+
+  @Test
+  public void readNullableScalarContainers() {
+    ForyJson json = newJson();
+    assertEquals(
+        json.fromJson("[\"\u0100\",null]", new TypeRef<List<String>>() {}),
+        Arrays.asList("\u0100", null));
+    assertEquals(
+        json.fromJson("[true,null]", new TypeRef<List<Boolean>>() {}),
+        Arrays.asList(Boolean.TRUE, null));
+    assertEquals(
+        json.fromJson("[1,null]".getBytes(StandardCharsets.UTF_8), new TypeRef<List<Integer>>() {}),
+        Arrays.asList(Integer.valueOf(1), null));
+    assertEquals(
+        json.fromJson("[1,null]", new TypeRef<List<Long>>() {}),
+        Arrays.asList(Long.valueOf(1), null));
+    assertEquals(
+        json.fromJson("[1,null]", new TypeRef<List<Short>>() {}),
+        Arrays.asList(Short.valueOf((short) 1), null));
+    assertEquals(
+        json.fromJson("[1,null]", new TypeRef<List<Byte>>() {}),
+        Arrays.asList(Byte.valueOf((byte) 1), null));
+    assertEquals(
+        json.fromJson("[1.5,null]", new TypeRef<List<Float>>() {}),
+        Arrays.asList(Float.valueOf(1.5f), null));
+    assertEquals(
+        json.fromJson("[1.5,null]", new TypeRef<List<Double>>() {}),
+        Arrays.asList(Double.valueOf(1.5d), null));
+    assertEquals(
+        json.fromJson("[123,null]", new TypeRef<List<BigInteger>>() {}),
+        Arrays.asList(BigInteger.valueOf(123), null));
+    assertEquals(
+        json.fromJson("[1.25,null]", new TypeRef<List<BigDecimal>>() {}),
+        Arrays.asList(new BigDecimal("1.25"), null));
+
+    assertEquals(
+        json.fromJson("{\"key\":null}", new TypeRef<Map<String, String>>() {}),
+        Collections.<String, String>singletonMap("key", null));
+    assertEquals(
+        json.fromJson("{\"key\":null}", new TypeRef<Map<String, Boolean>>() {}),
+        Collections.<String, Boolean>singletonMap("key", null));
+    assertEquals(
+        json.fromJson(
+            "{\"key\":null}".getBytes(StandardCharsets.UTF_8),
+            new TypeRef<Map<String, Integer>>() {}),
+        Collections.<String, Integer>singletonMap("key", null));
+    assertEquals(
+        json.fromJson("{\"key\":null}", new TypeRef<Map<String, Long>>() {}),
+        Collections.<String, Long>singletonMap("key", null));
+    assertEquals(
+        json.fromJson("{\"key\":null}", new TypeRef<Map<String, Short>>() {}),
+        Collections.<String, Short>singletonMap("key", null));
+    assertEquals(
+        json.fromJson("{\"key\":null}", new TypeRef<Map<String, Byte>>() {}),
+        Collections.<String, Byte>singletonMap("key", null));
+    assertEquals(
+        json.fromJson("{\"key\":null}", new TypeRef<Map<String, Float>>() {}),
+        Collections.<String, Float>singletonMap("key", null));
+    assertEquals(
+        json.fromJson("{\"key\":null}", new TypeRef<Map<String, Double>>() {}),
+        Collections.<String, Double>singletonMap("key", null));
+    assertEquals(
+        json.fromJson("{\"key\":null}", new TypeRef<Map<String, BigInteger>>() {}),
+        Collections.<String, BigInteger>singletonMap("key", null));
+    assertEquals(
+        json.fromJson("{\"\u0100\":null}", new TypeRef<Map<String, BigDecimal>>() {}),
+        Collections.<String, BigDecimal>singletonMap("\u0100", null));
   }
 
   @Test
@@ -642,6 +735,11 @@ public class JsonContainerTest extends ForyJsonTestModels {
 
   public static final class Shelf {
     public NoteList notes;
+  }
+
+  public static final class GenericBox<T> {
+    public T value;
+    public List<T> values;
   }
 
   public static final class NoteList extends ArrayList<Note> {}

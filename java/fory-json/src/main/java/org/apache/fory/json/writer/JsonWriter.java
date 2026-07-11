@@ -28,28 +28,28 @@ import java.time.Period;
 import java.time.Year;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
+import java.util.Objects;
 import java.util.UUID;
-import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 
 public abstract class JsonWriter {
+  private final JsonTypeResolver typeResolver;
   private final boolean writeNullFields;
   private final int maxDepth;
   private int depth;
 
-  JsonWriter(boolean writeNullFields) {
-    this(writeNullFields, ForyJson.DEFAULT_MAX_DEPTH);
+  JsonWriter(JsonConfig config, JsonTypeResolver typeResolver) {
+    this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
+    writeNullFields = config.writeNullFields();
+    maxDepth = config.maxDepth();
   }
 
-  JsonWriter(JsonConfig config) {
-    this(config.writeNullFields(), config.maxDepth());
-  }
-
-  JsonWriter(boolean writeNullFields, int maxDepth) {
-    this.writeNullFields = writeNullFields;
-    this.maxDepth = maxDepth;
+  /** Returns the resolver owned by this writer for custom codecs that resolve dynamic child types. */
+  public final JsonTypeResolver typeResolver() {
+    return typeResolver;
   }
 
   public final boolean writeNullFields() {

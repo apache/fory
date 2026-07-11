@@ -26,37 +26,21 @@ import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.meta.JsonFieldInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.util.record.RecordUtils;
 
 final class JsonGeneratedCodecBuilder extends CodecBuilder {
   private final String generatedClassName;
-  private final JsonFieldInfo[] properties;
-  private final JsonCodecPath path;
-  private final boolean record;
-  private final JsonCodegen codegen;
 
-  JsonGeneratedCodecBuilder(
-      JsonCodegen codegen,
-      String generatedPackage,
-      String generatedClassName,
-      Class<?> type,
-      JsonFieldInfo[] properties,
-      JsonCodecPath path,
-      boolean record) {
+  JsonGeneratedCodecBuilder(String generatedPackage, String generatedClassName, Class<?> type) {
     super(new CodegenContext(), TypeRef.of(type));
-    this.codegen = codegen;
     this.generatedClassName = generatedClassName;
-    this.properties = properties;
-    this.path = path;
-    this.record = record;
     ctx.setPackage(generatedPackage);
     ctx.setClassName(generatedClassName);
     ctx.setClassModifiers("final");
-    ctx.addImports(JsonFieldInfo.class, JsonTypeResolver.class);
-    String[] generatedMethodNames = {"object", "value", "writer", "reader", "typeResolver"};
+    ctx.addImports(JsonFieldInfo.class);
+    String[] generatedMethodNames = {"object", "value", "writer", "reader"};
     for (String name : generatedMethodNames) {
       if (!ctx.containName(name)) {
         ctx.reserveName(name);
@@ -75,11 +59,7 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
 
   @Override
   public String genCode() {
-    if (path.writer()) {
-      return new JsonWriterCodegen(codegen)
-          .genWriterCode(this, beanClass, properties, path == JsonCodecPath.UTF8_WRITER);
-    }
-    return new JsonReaderCodegen(codegen).genReaderCode(this, beanClass, properties, path, record);
+    return ctx.genCode();
   }
 
   @Override

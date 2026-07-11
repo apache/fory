@@ -34,13 +34,14 @@ import java.time.Year;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
+import java.util.Objects;
 import java.util.UUID;
-import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 
 public abstract class JsonReader {
   private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
@@ -108,6 +109,7 @@ public abstract class JsonReader {
     1.0f, 10.0f, 100.0f, 1_000.0f, 10_000.0f, 100_000.0f, 1_000_000.0f, 10_000_000.0f
   };
 
+  private final JsonTypeResolver typeResolver;
   protected int position;
   private final int maxDepth;
   private int depth;
@@ -116,12 +118,14 @@ public abstract class JsonReader {
   // cold owner so the first precision-sensitive scalar cannot allocate on the numeric hot path.
   private final byte[] decimalBoundaryDigits = new byte[DECIMAL_BOUNDARY_DIGITS];
 
-  protected JsonReader() {
-    this.maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
+  protected JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
+    this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
+    maxDepth = config.maxDepth();
   }
 
-  protected JsonReader(JsonConfig config) {
-    this.maxDepth = config.maxDepth();
+  /** Returns the resolver owned by this reader for custom codecs that resolve dynamic child types. */
+  public final JsonTypeResolver typeResolver() {
+    return typeResolver;
   }
 
   protected abstract int length();

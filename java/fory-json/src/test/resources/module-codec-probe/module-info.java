@@ -17,16 +17,8 @@
  * under the License.
  */
 
-package org.apache.fory.json.codegen;
+module fory.json.codec.probe {
+  requires org.apache.fory.json;
 
-enum JsonCodecPath {
-  STRING_WRITER,
-  UTF8_WRITER,
-  LATIN1_READER,
-  UTF16_READER,
-  UTF8_READER;
-
-  boolean writer() {
-    return this == STRING_WRITER || this == UTF8_WRITER;
-  }
+  exports probe;
 }

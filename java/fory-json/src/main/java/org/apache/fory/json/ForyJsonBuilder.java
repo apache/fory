@@ -72,7 +72,7 @@ public final class ForyJsonBuilder {
   }
 
   /** Registers a custom JSON codec for {@code type}. */
-  public <T> ForyJsonBuilder registerCodec(Class<T> type, JsonCodec codec) {
+  public <T> ForyJsonBuilder registerCodec(Class<T> type, JsonCodec<T> codec) {
     codecRegistry.register(type, codec);
     return this;
   }

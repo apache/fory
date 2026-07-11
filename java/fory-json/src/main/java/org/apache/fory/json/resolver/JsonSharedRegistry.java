@@ -99,7 +99,7 @@ public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
 
   private final CodecRegistry customCodecs;
-  private final IdentityHashMap<Class<?>, JsonCodec> exactCodecs;
+  private final IdentityHashMap<Class<?>, JsonCodec<?>> exactCodecs;
   private final Set<String> defaultExactCodecNames;
   private final Set<String> customCodecNames;
   private final JsonTypeChecker typeChecker;
@@ -127,13 +127,13 @@ public final class JsonSharedRegistry {
     customCodecNames = customCodecs.classNames();
   }
 
-  public JsonCodec createCodec(
+  public JsonCodec<?> createCodec(
       Class<?> rawType, TypeRef<?> typeRef, JsonTypeResolver localResolver) {
-    JsonCodec customCodec = customCodecs.get(rawType);
+    JsonCodec<?> customCodec = customCodecs.get(rawType);
     if (customCodec != null) {
       return customCodec;
     }
-    JsonCodec codec = exactCodecs.get(rawType);
+    JsonCodec<?> codec = exactCodecs.get(rawType);
     if (codec != null) {
       return codec;
     }
@@ -331,7 +331,7 @@ public final class JsonSharedRegistry {
         String.format("Class %s is forbidden for Fory JSON serialization.", className));
   }
 
-  private static Set<String> classNames(Map<Class<?>, JsonCodec> codecs) {
+  private static Set<String> classNames(Map<Class<?>, JsonCodec<?>> codecs) {
     Set<String> names = new HashSet<>(codecs.size());
     for (Class<?> type : codecs.keySet()) {
       names.add(type.getName());
@@ -346,22 +346,22 @@ public final class JsonSharedRegistry {
     exactCodecs.put(Number.class, ScalarCodecs.NumberCodec.INSTANCE);
     exactCodecs.put(String.class, ScalarCodecs.StringCodec.INSTANCE);
     exactCodecs.put(CharSequence.class, ScalarCodecs.CharSequenceCodec.INSTANCE);
-    exactCodecs.put(boolean.class, ScalarCodecs.BooleanCodec.INSTANCE);
-    exactCodecs.put(Boolean.class, ScalarCodecs.BooleanCodec.INSTANCE);
-    exactCodecs.put(int.class, ScalarCodecs.IntCodec.INSTANCE);
-    exactCodecs.put(Integer.class, ScalarCodecs.IntCodec.INSTANCE);
-    exactCodecs.put(long.class, ScalarCodecs.LongCodec.INSTANCE);
-    exactCodecs.put(Long.class, ScalarCodecs.LongCodec.INSTANCE);
-    exactCodecs.put(short.class, ScalarCodecs.ShortCodec.INSTANCE);
-    exactCodecs.put(Short.class, ScalarCodecs.ShortCodec.INSTANCE);
-    exactCodecs.put(byte.class, ScalarCodecs.ByteCodec.INSTANCE);
-    exactCodecs.put(Byte.class, ScalarCodecs.ByteCodec.INSTANCE);
-    exactCodecs.put(char.class, ScalarCodecs.CharCodec.INSTANCE);
-    exactCodecs.put(Character.class, ScalarCodecs.CharCodec.INSTANCE);
-    exactCodecs.put(float.class, ScalarCodecs.FloatCodec.INSTANCE);
-    exactCodecs.put(Float.class, ScalarCodecs.FloatCodec.INSTANCE);
-    exactCodecs.put(double.class, ScalarCodecs.DoubleCodec.INSTANCE);
-    exactCodecs.put(Double.class, ScalarCodecs.DoubleCodec.INSTANCE);
+    exactCodecs.put(boolean.class, ScalarCodecs.BooleanCodec.PRIMITIVE);
+    exactCodecs.put(Boolean.class, ScalarCodecs.BooleanCodec.BOXED);
+    exactCodecs.put(int.class, ScalarCodecs.IntCodec.PRIMITIVE);
+    exactCodecs.put(Integer.class, ScalarCodecs.IntCodec.BOXED);
+    exactCodecs.put(long.class, ScalarCodecs.LongCodec.PRIMITIVE);
+    exactCodecs.put(Long.class, ScalarCodecs.LongCodec.BOXED);
+    exactCodecs.put(short.class, ScalarCodecs.ShortCodec.PRIMITIVE);
+    exactCodecs.put(Short.class, ScalarCodecs.ShortCodec.BOXED);
+    exactCodecs.put(byte.class, ScalarCodecs.ByteCodec.PRIMITIVE);
+    exactCodecs.put(Byte.class, ScalarCodecs.ByteCodec.BOXED);
+    exactCodecs.put(char.class, ScalarCodecs.CharCodec.PRIMITIVE);
+    exactCodecs.put(Character.class, ScalarCodecs.CharCodec.BOXED);
+    exactCodecs.put(float.class, ScalarCodecs.FloatCodec.PRIMITIVE);
+    exactCodecs.put(Float.class, ScalarCodecs.FloatCodec.BOXED);
+    exactCodecs.put(double.class, ScalarCodecs.DoubleCodec.PRIMITIVE);
+    exactCodecs.put(Double.class, ScalarCodecs.DoubleCodec.BOXED);
     exactCodecs.put(BigInteger.class, ScalarCodecs.BigIntegerCodec.INSTANCE);
     exactCodecs.put(BigDecimal.class, ScalarCodecs.BigDecimalCodec.INSTANCE);
     exactCodecs.put(Float16.class, ScalarCodecs.Float16Codec.INSTANCE);

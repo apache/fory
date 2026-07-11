@@ -36,6 +36,7 @@ import java.util.UUID;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
@@ -114,19 +115,12 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   private boolean latin1Output;
   private int position;
 
-  public StringJsonWriter(boolean writeNullFields) {
-    this(writeNullFields, new byte[512]);
+  public StringJsonWriter(JsonConfig config, JsonTypeResolver typeResolver) {
+    this(config, typeResolver, new byte[512]);
   }
 
-  public StringJsonWriter(boolean writeNullFields, byte[] buffer) {
-    super(writeNullFields);
-    this.buffer = initialBuffer(buffer);
-    scratch = new byte[this.buffer.length];
-    decimalBuilder = newDecimalBuilder();
-  }
-
-  public StringJsonWriter(JsonConfig config, byte[] buffer) {
-    super(config);
+  public StringJsonWriter(JsonConfig config, JsonTypeResolver typeResolver, byte[] buffer) {
+    super(config, typeResolver);
     this.buffer = initialBuffer(buffer);
     scratch = new byte[this.buffer.length];
     decimalBuilder = newDecimalBuilder();

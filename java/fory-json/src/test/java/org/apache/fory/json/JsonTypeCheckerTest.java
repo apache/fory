@@ -40,7 +40,6 @@ import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.CodecRegistry;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonTypeInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
@@ -48,7 +47,8 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonTypeCheckerTest extends ForyJsonTestModels {
-  private static final JsonCodec NULL_CODEC = new NullCodec();
+  private static final JsonCodec<String> STRING_NULL_CODEC = new NullCodec<>();
+  private static final JsonCodec<Integer> INTEGER_NULL_CODEC = new NullCodec<>();
 
   @Factory(dataProvider = "codegen")
   public JsonTypeCheckerTest(boolean codegen) {
@@ -100,7 +100,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void customExactUsesChecker() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(String.class, NULL_CODEC)
+            .registerCodec(String.class, STRING_NULL_CODEC)
             .withTypeChecker((className, context) -> !className.equals(String.class.getName()))
             .build();
     assertThrows(InsecureException.class, () -> json.toJson("value"));
@@ -110,7 +110,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void customPrimitiveUsesChecker() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(int.class, NULL_CODEC)
+            .registerCodec(int.class, INTEGER_NULL_CODEC)
             .withTypeChecker((className, context) -> !className.equals(int.class.getName()))
             .build();
     assertThrows(InsecureException.class, () -> json.fromJson("1", int.class));
@@ -208,7 +208,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void collectionScalarChecked() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(Integer.class, NULL_CODEC)
+            .registerCodec(Integer.class, INTEGER_NULL_CODEC)
             .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
             .build();
     assertThrows(
@@ -219,7 +219,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void mapScalarChecked() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(Integer.class, NULL_CODEC)
+            .registerCodec(Integer.class, INTEGER_NULL_CODEC)
             .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
             .build();
     assertThrows(
@@ -297,34 +297,31 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
     public String name;
   }
 
-  private static final class NullCodec implements JsonCodec {
+  private static final class NullCodec<T> implements JsonCodec<T> {
     @Override
-    public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
+    public void writeString(StringJsonWriter writer, T value) {
       writer.writeNull();
     }
 
     @Override
-    public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, T value) {
       writer.writeNull();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public T readLatin1(Latin1JsonReader reader) {
       reader.skipValue();
       return null;
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public T readUtf16(Utf16JsonReader reader) {
       reader.skipValue();
       return null;
     }
 
     @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public T readUtf8(Utf8JsonReader reader) {
       reader.skipValue();
       return null;
     }

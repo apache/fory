@@ -19,10 +19,14 @@
 
 package org.apache.fory.json.codec;
 
-/** Composite JSON codec implemented by handwritten and user-registered codecs. */
-public interface JsonCodec
-    extends StringWriterCodec,
-        Utf8WriterCodec,
-        Latin1ReaderCodec,
-        Utf16ReaderCodec,
-        Utf8ReaderCodec {}
+/**
+ * Composite JSON codec implemented by handwritten and user-registered codecs.
+ *
+ * <p>Each capability consumes or writes the complete value, including its null representation.
+ */
+public interface JsonCodec<T>
+    extends StringWriterCodec<T>,
+        Utf8WriterCodec<T>,
+        Latin1ReaderCodec<T>,
+        Utf16ReaderCodec<T>,
+        Utf8ReaderCodec<T> {}

@@ -21,6 +21,7 @@ package org.apache.fory.json;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
@@ -31,13 +32,12 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.fory.json.codec.Latin1ObjectReaderCodec;
+import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
-import org.apache.fory.json.codec.StringObjectWriterCodec;
 import org.apache.fory.json.codec.StringWriterCodec;
-import org.apache.fory.json.codec.Utf16ObjectReaderCodec;
-import org.apache.fory.json.codec.Utf8ObjectReaderCodec;
-import org.apache.fory.json.codec.Utf8ObjectWriterCodec;
+import org.apache.fory.json.codec.Utf16ReaderCodec;
+import org.apache.fory.json.codec.Utf8ReaderCodec;
+import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.data.RecursiveParent;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonTypeInfo;
@@ -57,13 +57,13 @@ public class JsonAsyncCompilationTest {
   public void capabilitiesCompileLazily() throws Exception {
     ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
     JsonTypeResolver resolver = resolver(json);
-    ObjectCodec owner = resolver.getObjectCodec(AsyncChild.class);
+    ObjectCodec<AsyncChild> owner = resolver.getObjectCodec(AsyncChild.class);
     JsonTypeInfo info = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
     assertAllOwner(info, owner);
 
     AsyncChild value = child("root", 1);
     assertEquals(json.toJson(value), "{\"id\":1,\"name\":\"root\"}");
-    assertTrue(info.stringWriter() != owner);
+    assertNotSame(info.stringWriter(), owner);
     assertSame(info.utf8Writer(), owner);
     assertSame(info.latin1Reader(), owner);
     assertSame(info.utf16Reader(), owner);
@@ -72,25 +72,25 @@ public class JsonAsyncCompilationTest {
     assertEquals(
         new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
         "{\"id\":1,\"name\":\"root\"}");
-    assertTrue(info.utf8Writer() != owner);
+    assertNotSame(info.utf8Writer(), owner);
     assertEquals(json.fromJson("{\"id\":2,\"name\":\"latin\"}", AsyncChild.class).id, 2);
     if (StringSerializer.isBytesBackedString()) {
-      assertTrue(info.latin1Reader() != owner);
+      assertNotSame(info.latin1Reader(), owner);
       assertSame(info.utf16Reader(), owner);
     } else {
       assertSame(info.latin1Reader(), owner);
-      assertTrue(info.utf16Reader() != owner);
+      assertNotSame(info.utf16Reader(), owner);
       resolver.latin1Reader(owner);
-      assertTrue(info.latin1Reader() != owner);
+      assertNotSame(info.latin1Reader(), owner);
     }
     assertEquals(json.fromJson("{\"id\":3,\"name\":\"\u4f60\"}", AsyncChild.class).id, 3);
-    assertTrue(info.utf16Reader() != owner);
+    assertNotSame(info.utf16Reader(), owner);
     assertEquals(
         json.fromJson(
                 "{\"id\":4,\"name\":\"utf8\"}".getBytes(StandardCharsets.UTF_8), AsyncChild.class)
             .id,
         4);
-    assertTrue(info.utf8Reader() != owner);
+    assertNotSame(info.utf8Reader(), owner);
     assertSame(resolver.getObjectCodec(AsyncChild.class), owner);
   }
 
@@ -100,11 +100,11 @@ public class JsonAsyncCompilationTest {
     JsonSharedRegistry registry = (JsonSharedRegistry) field(json, "sharedRegistry");
     JsonTypeResolver first = new JsonTypeResolver(registry);
     JsonTypeResolver second = new JsonTypeResolver(registry);
-    ObjectCodec firstOwner = first.getObjectCodec(AsyncChild.class);
-    ObjectCodec secondOwner = second.getObjectCodec(AsyncChild.class);
+    ObjectCodec<AsyncChild> firstOwner = first.getObjectCodec(AsyncChild.class);
+    ObjectCodec<AsyncChild> secondOwner = second.getObjectCodec(AsyncChild.class);
 
-    StringWriterCodec firstWriter = awaitStringWriter(first, firstOwner);
-    StringWriterCodec secondWriter = awaitStringWriter(second, secondOwner);
+    StringWriterCodec<AsyncChild> firstWriter = awaitStringWriter(first, firstOwner);
+    StringWriterCodec<AsyncChild> secondWriter = awaitStringWriter(second, secondOwner);
     assertTrue(firstWriter != firstOwner);
     assertTrue(secondWriter != secondOwner);
     assertTrue(firstWriter != secondWriter);
@@ -158,126 +158,114 @@ public class JsonAsyncCompilationTest {
     assertEquals(json.toJson(value), "{\"id\":1,\"next\":{\"id\":2}}");
 
     JsonTypeResolver resolver = resolver(json);
-    ObjectCodec owner = resolver.getObjectCodec(SelfRecursive.class);
-    StringWriterCodec writer = resolver.stringWriter(owner);
+    ObjectCodec<SelfRecursive> owner = resolver.getObjectCodec(SelfRecursive.class);
+    StringWriterCodec<SelfRecursive> writer = resolver.stringWriter(owner);
     assertTrue(writer != owner);
     for (Field field : writer.getClass().getDeclaredFields()) {
-      assertFalse(field.getType() == StringObjectWriterCodec.class, field.toString());
+      assertFalse(field.getType() == StringWriterCodec.class, field.toString());
     }
   }
 
   @Test
-  public void dependencyOrder() throws Exception {
+  public void independentPublication() throws Exception {
     ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
     JsonTypeResolver resolver = resolver(json);
-    ObjectCodec parent = resolver.getObjectCodec(AsyncParent.class);
-    ObjectCodec child = resolver.getObjectCodec(AsyncChild.class);
+    ObjectCodec<AsyncParent> parent = resolver.getObjectCodec(AsyncParent.class);
+    ObjectCodec<AsyncChild> child = resolver.getObjectCodec(AsyncChild.class);
     JsonTypeInfo childInfo = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
 
     Object parentCapability = resolver.stringWriter(parent);
-    assertGeneratedChild(
-        parentCapability,
-        StringObjectWriterCodec.class,
-        childInfo.stringWriter(),
-        child,
-        2);
+    assertCapabilityFields(parentCapability, StringWriterCodec.class, child, 2);
+    Object childCapability = resolver.stringWriter(child);
+    assertSame(childInfo.stringWriter(), childCapability);
+    assertPublishedChild(
+        parentCapability, StringWriterCodec.class, childCapability, child, 2);
+
     parentCapability = resolver.utf8Writer(parent);
-    assertGeneratedChild(
-        parentCapability,
-        Utf8ObjectWriterCodec.class,
-        childInfo.utf8Writer(),
-        child,
-        2);
+    assertCapabilityFields(parentCapability, Utf8WriterCodec.class, child, 2);
+    childCapability = resolver.utf8Writer(child);
+    assertSame(childInfo.utf8Writer(), childCapability);
+    assertPublishedChild(parentCapability, Utf8WriterCodec.class, childCapability, child, 2);
+
     parentCapability = resolver.latin1Reader(parent);
-    assertGeneratedChild(
-        parentCapability,
-        Latin1ObjectReaderCodec.class,
-        childInfo.latin1Reader(),
-        child,
-        2);
+    assertCapabilityFields(parentCapability, Latin1ReaderCodec.class, child, 2);
+    childCapability = resolver.latin1Reader(child);
+    assertSame(childInfo.latin1Reader(), childCapability);
+    assertPublishedChild(
+        parentCapability, Latin1ReaderCodec.class, childCapability, child, 2);
+
     parentCapability = resolver.utf16Reader(parent);
-    assertGeneratedChild(
-        parentCapability,
-        Utf16ObjectReaderCodec.class,
-        childInfo.utf16Reader(),
-        child,
-        2);
+    assertCapabilityFields(parentCapability, Utf16ReaderCodec.class, child, 2);
+    childCapability = resolver.utf16Reader(child);
+    assertSame(childInfo.utf16Reader(), childCapability);
+    assertPublishedChild(parentCapability, Utf16ReaderCodec.class, childCapability, child, 2);
+
     parentCapability = resolver.utf8Reader(parent);
-    assertGeneratedChild(
-        parentCapability,
-        Utf8ObjectReaderCodec.class,
-        childInfo.utf8Reader(),
-        child,
-        2);
+    assertCapabilityFields(parentCapability, Utf8ReaderCodec.class, child, 2);
+    childCapability = resolver.utf8Reader(child);
+    assertSame(childInfo.utf8Reader(), childCapability);
+    assertPublishedChild(parentCapability, Utf8ReaderCodec.class, childCapability, child, 2);
   }
 
   @Test
-  public void mutualDependencyOrder() throws Exception {
+  public void mutualPublication() throws Exception {
     ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
     JsonTypeResolver resolver = resolver(json);
-    ObjectCodec firstOwner = resolver.getObjectCodec(MutualFirst.class);
-    ObjectCodec secondOwner = resolver.getObjectCodec(MutualSecond.class);
+    ObjectCodec<MutualFirst> firstOwner = resolver.getObjectCodec(MutualFirst.class);
+    ObjectCodec<MutualSecond> secondOwner = resolver.getObjectCodec(MutualSecond.class);
     JsonTypeInfo firstInfo = resolver.getTypeInfo(MutualFirst.class, MutualFirst.class);
     JsonTypeInfo secondInfo = resolver.getTypeInfo(MutualSecond.class, MutualSecond.class);
 
-    resolver.stringWriter(firstOwner);
+    Object first = resolver.stringWriter(firstOwner);
+    assertCapabilityFields(first, StringWriterCodec.class, secondOwner, 1);
+    Object second = resolver.stringWriter(secondOwner);
+    assertSame(secondInfo.stringWriter(), second);
     assertMutualFields(
-        firstInfo.stringWriter(),
-        secondInfo.stringWriter(),
-        StringObjectWriterCodec.class,
-        firstOwner,
-        secondOwner);
-    resolver.utf8Writer(firstOwner);
+        firstInfo.stringWriter(), secondInfo.stringWriter(), StringWriterCodec.class);
+
+    first = resolver.utf8Writer(firstOwner);
+    assertCapabilityFields(first, Utf8WriterCodec.class, secondOwner, 1);
+    second = resolver.utf8Writer(secondOwner);
+    assertSame(secondInfo.utf8Writer(), second);
     assertMutualFields(
-        firstInfo.utf8Writer(),
-        secondInfo.utf8Writer(),
-        Utf8ObjectWriterCodec.class,
-        firstOwner,
-        secondOwner);
-    resolver.latin1Reader(firstOwner);
+        firstInfo.utf8Writer(), secondInfo.utf8Writer(), Utf8WriterCodec.class);
+
+    first = resolver.latin1Reader(firstOwner);
+    assertCapabilityFields(first, Latin1ReaderCodec.class, secondOwner, 1);
+    second = resolver.latin1Reader(secondOwner);
+    assertSame(secondInfo.latin1Reader(), second);
     assertMutualFields(
-        firstInfo.latin1Reader(),
-        secondInfo.latin1Reader(),
-        Latin1ObjectReaderCodec.class,
-        firstOwner,
-        secondOwner);
-    resolver.utf16Reader(firstOwner);
+        firstInfo.latin1Reader(), secondInfo.latin1Reader(), Latin1ReaderCodec.class);
+
+    first = resolver.utf16Reader(firstOwner);
+    assertCapabilityFields(first, Utf16ReaderCodec.class, secondOwner, 1);
+    second = resolver.utf16Reader(secondOwner);
+    assertSame(secondInfo.utf16Reader(), second);
     assertMutualFields(
-        firstInfo.utf16Reader(),
-        secondInfo.utf16Reader(),
-        Utf16ObjectReaderCodec.class,
-        firstOwner,
-        secondOwner);
-    resolver.utf8Reader(firstOwner);
+        firstInfo.utf16Reader(), secondInfo.utf16Reader(), Utf16ReaderCodec.class);
+
+    first = resolver.utf8Reader(firstOwner);
+    assertCapabilityFields(first, Utf8ReaderCodec.class, secondOwner, 1);
+    second = resolver.utf8Reader(secondOwner);
+    assertSame(secondInfo.utf8Reader(), second);
     assertMutualFields(
-        firstInfo.utf8Reader(),
-        secondInfo.utf8Reader(),
-        Utf8ObjectReaderCodec.class,
-        firstOwner,
-        secondOwner);
+        firstInfo.utf8Reader(), secondInfo.utf8Reader(), Utf8ReaderCodec.class);
   }
 
-  private static void assertGeneratedChild(
+  private static void assertPublishedChild(
       Object parent,
       Class<?> fieldType,
       Object child,
-      ObjectCodec childOwner,
+      ObjectCodec<?> childOwner,
       int expectedFields)
       throws Exception {
-    assertFalse(parent instanceof ObjectCodec, parent.getClass().getName());
+    assertFalse(parent instanceof ObjectCodec<?>, parent.getClass().getName());
     assertTrue(child != childOwner, child.getClass().getName());
     assertCapabilityFields(parent, fieldType, child, expectedFields);
   }
 
-  private static void assertMutualFields(
-      Object first,
-      Object second,
-      Class<?> fieldType,
-      ObjectCodec firstOwner,
-      ObjectCodec secondOwner)
+  private static void assertMutualFields(Object first, Object second, Class<?> fieldType)
       throws Exception {
-    assertTrue(first != firstOwner, first.getClass().getName());
-    assertTrue(second != secondOwner, second.getClass().getName());
     assertCapabilityFields(first, fieldType, second, 1);
     assertCapabilityFields(second, fieldType, first, 1);
   }
@@ -295,7 +283,7 @@ public class JsonAsyncCompilationTest {
     assertEquals(count, expectedFields, owner.getClass().getName());
   }
 
-  private static void assertAllOwner(JsonTypeInfo info, ObjectCodec owner) {
+  private static void assertAllOwner(JsonTypeInfo info, ObjectCodec<?> owner) {
     assertSame(info.stringWriter(), owner);
     assertSame(info.utf8Writer(), owner);
     assertSame(info.latin1Reader(), owner);
@@ -303,10 +291,11 @@ public class JsonAsyncCompilationTest {
     assertSame(info.utf8Reader(), owner);
   }
 
-  private static StringWriterCodec awaitStringWriter(JsonTypeResolver resolver, ObjectCodec owner)
+  private static <T> StringWriterCodec<T> awaitStringWriter(
+      JsonTypeResolver resolver, ObjectCodec<T> owner)
       throws InterruptedException {
     for (int i = 0; i < 200; i++) {
-      StringWriterCodec writer = resolver.stringWriter(owner);
+      StringWriterCodec<T> writer = resolver.stringWriter(owner);
       if (writer != owner) {
         return writer;
       }
@@ -324,7 +313,7 @@ public class JsonAsyncCompilationTest {
       json.fromJson(bytes, AsyncParent.class);
       boolean generated = true;
       for (Class<?> type : types) {
-        ObjectCodec owner = resolver.getObjectCodec(type);
+        ObjectCodec<?> owner = resolver.getObjectCodec(type);
         generated &= resolver.getTypeInfo(type, type).utf8Reader() != owner;
       }
       if (generated) {
@@ -341,7 +330,7 @@ public class JsonAsyncCompilationTest {
     Object childReader = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class).utf8Reader();
     int nestedReaders = 0;
     for (Field field : parentReader.getClass().getDeclaredFields()) {
-      if (field.getType() == Utf8ObjectReaderCodec.class) {
+      if (field.getType() == Utf8ReaderCodec.class) {
         field.setAccessible(true);
         assertSame(field.get(parentReader), childReader);
         nestedReaders++;

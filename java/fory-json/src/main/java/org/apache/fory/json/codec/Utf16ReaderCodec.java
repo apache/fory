@@ -19,21 +19,9 @@
 
 package org.apache.fory.json.codec;
 
-import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.reader.Utf16JsonReader;
-import org.apache.fory.json.resolver.JsonTypeInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
 
-/** Reads one resolved Java type through {@link Utf16JsonReader}. */
-public interface Utf16ReaderCodec {
-  Object readUtf16(Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver);
-
-  default void readUtf16Field(
-      Utf16JsonReader reader,
-      Object object,
-      JsonFieldAccessor accessor,
-      JsonTypeInfo typeInfo,
-      JsonTypeResolver resolver) {
-    accessor.putObject(object, readUtf16(reader, typeInfo, resolver));
-  }
+/** Reads one complete resolved Java value, including JSON {@code null}, through {@link Utf16JsonReader}. */
+public interface Utf16ReaderCodec<T> {
+  T readUtf16(Utf16JsonReader reader);
 }

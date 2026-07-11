@@ -19,6 +19,8 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
+import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
@@ -225,12 +227,11 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     long prefix = JsonAsciiToken.prefix(token);
     long suffix = JsonAsciiToken.suffixLong(token);
     long suffixMask = JsonAsciiToken.suffixMask(token.length());
-    Utf8JsonReader utf8 =
-        new Utf8JsonReader((token + "\"apple\"").getBytes(StandardCharsets.UTF_8));
+    Utf8JsonReader utf8 = newUtf8Reader((token + "\"apple\"").getBytes(StandardCharsets.UTF_8));
     assertTrue(utf8.tryReadNextFieldNameToken8(prefix, suffix, suffixMask, token.length()));
     assertEquals(utf8.readNullableStringToken(), "apple");
 
-    Latin1JsonReader latin1 = new Latin1JsonReader(latin1Bytes(token + "\"pear\""));
+    Latin1JsonReader latin1 = newLatin1Reader(latin1Bytes(token + "\"pear\""));
     assertTrue(latin1.tryReadNextFieldNameToken8(prefix, suffix, suffixMask, token.length()));
     assertEquals(latin1.readNullableStringToken(), "pear");
 
@@ -238,20 +239,19 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     long tailPrefix = JsonAsciiToken.prefix(tailToken);
     long tailSuffix = JsonAsciiToken.suffixLong(tailToken);
     long tailSuffixMask = JsonAsciiToken.suffixMask(tailToken.length());
-    Utf8JsonReader tailUtf8 =
-        new Utf8JsonReader((tailToken + "1").getBytes(StandardCharsets.UTF_8));
+    Utf8JsonReader tailUtf8 = newUtf8Reader((tailToken + "1").getBytes(StandardCharsets.UTF_8));
     assertTrue(
         tailUtf8.tryReadNextFieldNameToken8(
             tailPrefix, tailSuffix, tailSuffixMask, tailToken.length()));
     assertEquals(tailUtf8.readIntTokenValue(), 1);
-    Latin1JsonReader tailLatin1 = new Latin1JsonReader(latin1Bytes(tailToken + "2"));
+    Latin1JsonReader tailLatin1 = newLatin1Reader(latin1Bytes(tailToken + "2"));
     assertTrue(
         tailLatin1.tryReadNextFieldNameToken8(
             tailPrefix, tailSuffix, tailSuffixMask, tailToken.length()));
     assertEquals(tailLatin1.readIntTokenValue(), 2);
 
     Utf8JsonReader mismatch =
-        new Utf8JsonReader("\"favoriteSeed\":\"pit\"".getBytes(StandardCharsets.UTF_8));
+        newUtf8Reader("\"favoriteSeed\":\"pit\"".getBytes(StandardCharsets.UTF_8));
     assertFalse(mismatch.tryReadNextFieldNameToken8(prefix, suffix, suffixMask, token.length()));
     assertEquals(mismatch.readFieldNameHash(), JsonFieldNameHash.hash("favoriteSeed"));
     mismatch.expectNextToken(':');

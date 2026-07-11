@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -51,7 +52,9 @@ public final class Jdk25MultiReleaseJarVerifier {
     }
     Path jarPath = Paths.get(args[0]);
     verify(jarPath, Paths.get(args[1]));
-    verifyModulePath(jarPath, Paths.get(args[2]));
+    Path coreJar = Paths.get(args[2]);
+    verifyModulePath(jarPath, coreJar);
+    verifyCustomCodecModule(jarPath, coreJar);
   }
 
   static void verify(Path jarPath, Path sourcesPath) throws Exception {
@@ -108,6 +111,43 @@ public final class Jdk25MultiReleaseJarVerifier {
     command.add("org.apache.fory.json.verify.Jdk25ModulePathProbe");
     Process process = new ProcessBuilder(command).inheritIO().start();
     require(process.waitFor() == 0, "named-module BigDecimal writer probe failed");
+  }
+
+  private static void verifyCustomCodecModule(Path jsonJar, Path coreJar) throws Exception {
+    Path testClasses =
+        Paths.get(
+            Jdk25MultiReleaseJarVerifier.class
+                .getProtectionDomain()
+                .getCodeSource()
+                .getLocation()
+                .toURI());
+    Path sourceRoot = testClasses.resolve("module-codec-probe");
+    Path root = Files.createTempDirectory("fory-json-codec-module");
+    Path classes = root.resolve("classes");
+    Files.createDirectories(classes);
+
+    String modulePath = coreJar + File.pathSeparator + jsonJar;
+    List<String> compile = new ArrayList<>();
+    compile.add(Paths.get(System.getProperty("java.home"), "bin", "javac").toString());
+    compile.add("--module-path");
+    compile.add(modulePath);
+    compile.add("-d");
+    compile.add(classes.toString());
+    compile.add(sourceRoot.resolve("module-info.java").toString());
+    compile.add(sourceRoot.resolve("probe/Probe.java").toString());
+    Process compiler = new ProcessBuilder(compile).inheritIO().start();
+    require(compiler.waitFor() == 0, "named-module custom codec compilation failed");
+
+    List<String> run = new ArrayList<>();
+    run.add(Paths.get(System.getProperty("java.home"), "bin", "java").toString());
+    run.add("--module-path");
+    run.add(modulePath + File.pathSeparator + classes);
+    run.add("--add-opens");
+    run.add("java.base/java.lang.invoke=org.apache.fory.core");
+    run.add("-m");
+    run.add("fory.json.codec.probe/probe.Probe");
+    Process process = new ProcessBuilder(run).inheritIO().start();
+    require(process.waitFor() == 0, "named-module custom codec probe failed");
   }
 
   private static byte[] read(JarFile jar, String name) throws IOException {

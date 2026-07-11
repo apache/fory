@@ -38,16 +38,23 @@ public final class JsonTypeInfo {
   private final JsonFieldKind kind;
   // JsonJITContext orders every installation and dependent-field update. These stay plain fields
   // so established codec calls do not pay volatile or atomic access on the hot path.
-  private StringWriterCodec stringWriter;
-  private Utf8WriterCodec utf8Writer;
-  private Latin1ReaderCodec latin1Reader;
-  private Utf16ReaderCodec utf16Reader;
-  private Utf8ReaderCodec utf8Reader;
+  private StringWriterCodec<Object> stringWriter;
+  private Utf8WriterCodec<Object> utf8Writer;
+  private Latin1ReaderCodec<Object> latin1Reader;
+  private Utf16ReaderCodec<Object> utf16Reader;
+  private Utf8ReaderCodec<Object> utf8Reader;
   private final boolean defaultObjectCodec;
-  private final boolean primitive;
+  private final boolean objectCollectionCodec;
+  private final boolean collectionCreatesArrayList;
 
   JsonTypeInfo(
-      Type type, TypeRef<?> typeRef, Class<?> rawType, JsonFieldKind kind, JsonCodec codec) {
+      Type type,
+      TypeRef<?> typeRef,
+      Class<?> rawType,
+      JsonFieldKind kind,
+      JsonCodec<Object> codec,
+      boolean objectCollectionCodec,
+      boolean collectionCreatesArrayList) {
     this.type = type;
     this.typeRef = typeRef;
     this.rawType = rawType;
@@ -57,8 +64,11 @@ public final class JsonTypeInfo {
     latin1Reader = codec;
     utf16Reader = codec;
     utf8Reader = codec;
-    defaultObjectCodec = codec instanceof ObjectCodec;
-    primitive = rawType.isPrimitive();
+    // Only the raw-class ObjectCodec can be replaced by raw-class generated capabilities.
+    // ParameterizedObjectCodec owns binding-specific field types and must remain the slot owner.
+    defaultObjectCodec = codec.getClass() == ObjectCodec.class;
+    this.objectCollectionCodec = objectCollectionCodec;
+    this.collectionCreatesArrayList = collectionCreatesArrayList;
   }
 
   public Type type() {
@@ -77,43 +87,43 @@ public final class JsonTypeInfo {
     return kind;
   }
 
-  public StringWriterCodec stringWriter() {
+  public StringWriterCodec<Object> stringWriter() {
     return stringWriter;
   }
 
-  public Utf8WriterCodec utf8Writer() {
+  public Utf8WriterCodec<Object> utf8Writer() {
     return utf8Writer;
   }
 
-  public Latin1ReaderCodec latin1Reader() {
+  public Latin1ReaderCodec<Object> latin1Reader() {
     return latin1Reader;
   }
 
-  public Utf16ReaderCodec utf16Reader() {
+  public Utf16ReaderCodec<Object> utf16Reader() {
     return utf16Reader;
   }
 
-  public Utf8ReaderCodec utf8Reader() {
+  public Utf8ReaderCodec<Object> utf8Reader() {
     return utf8Reader;
   }
 
-  void setStringWriter(StringWriterCodec stringWriter) {
+  void setStringWriter(StringWriterCodec<Object> stringWriter) {
     this.stringWriter = stringWriter;
   }
 
-  void setUtf8Writer(Utf8WriterCodec utf8Writer) {
+  void setUtf8Writer(Utf8WriterCodec<Object> utf8Writer) {
     this.utf8Writer = utf8Writer;
   }
 
-  void setLatin1Reader(Latin1ReaderCodec latin1Reader) {
+  void setLatin1Reader(Latin1ReaderCodec<Object> latin1Reader) {
     this.latin1Reader = latin1Reader;
   }
 
-  void setUtf16Reader(Utf16ReaderCodec utf16Reader) {
+  void setUtf16Reader(Utf16ReaderCodec<Object> utf16Reader) {
     this.utf16Reader = utf16Reader;
   }
 
-  void setUtf8Reader(Utf8ReaderCodec utf8Reader) {
+  void setUtf8Reader(Utf8ReaderCodec<Object> utf8Reader) {
     this.utf8Reader = utf8Reader;
   }
 
@@ -121,7 +131,12 @@ public final class JsonTypeInfo {
     return defaultObjectCodec;
   }
 
-  public boolean primitive() {
-    return primitive;
+  public boolean usesObjectCollectionCodec() {
+    return objectCollectionCodec;
   }
+
+  public boolean collectionCreatesArrayList() {
+    return collectionCreatesArrayList;
+  }
+
 }

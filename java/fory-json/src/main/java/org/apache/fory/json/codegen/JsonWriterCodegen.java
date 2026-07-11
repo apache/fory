@@ -41,18 +41,15 @@ import org.apache.fory.codegen.ExpressionOptimizer;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
-import org.apache.fory.json.codec.StringObjectWriterCodec;
 import org.apache.fory.json.codec.StringWriterCodec;
-import org.apache.fory.json.codec.Utf8ObjectWriterCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
-import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 
-final class JsonWriterCodegen {
+abstract class JsonWriterCodegen {
   private static final int MIN_STRING_SPLIT_MEMBERS = 10;
   private static final int MIN_UTF8_SPLIT_MEMBERS = 12;
   // Keep each dense member helper as an independent C2 compilation unit. Smaller groups are
@@ -61,7 +58,7 @@ final class JsonWriterCodegen {
   private static final int MEMBER_GROUP_SIZE = 16;
   private static final int INLINE_TAIL_MEMBERS = 4;
 
-  private final JsonCodegen codegen;
+  final JsonCodegen codegen;
   private final boolean writeNullFields;
   private Class<?> ownerType;
   private boolean inlineObjectCollections;
@@ -71,19 +68,74 @@ final class JsonWriterCodegen {
     this.writeNullFields = codegen.writeNullFields;
   }
 
-  private Class<?> codecFieldType(JsonFieldInfo property, boolean utf8) {
-    if (JsonCodegen.writesObjectCollectionDirectly(property)) {
-      return utf8 ? Utf8ObjectWriterCodec.class : StringObjectWriterCodec.class;
-    }
-    return codegen.writerFieldType(property.writeTypeInfo(), utf8);
-  }
+  abstract Class<?> codecFieldType(JsonFieldInfo property);
+
+  abstract Class<?> writerType();
+
+  abstract Class<?> codecArrayType();
+
+  abstract Class<?> objectWriterType();
+
+  abstract String writeMethod();
+
+  abstract String membersMethod();
+
+  abstract String objectCollectionMethod();
+
+  abstract int splitMemberThreshold();
+
+  abstract StringPrefixFields prefixFields(JsonFieldInfo[] properties, boolean objectStartFused);
+
+  abstract void addPrefixFields(
+      CodegenContext ctx, JsonFieldInfo property, int id, StringPrefixFields fields);
+
+  abstract void addPrefixAssignments(
+      Expression.ListExpression expressions,
+      Expression property,
+      JsonFieldInfo field,
+      int id,
+      StringPrefixFields fields);
+
+  abstract Reference writerRef();
+
+  abstract Expression writeObjectStartPrimitive(
+      JsonFieldInfo property, Expression value, Expression writer);
+
+  abstract Expression writeNumberField(
+      JsonFieldInfo property,
+      int id,
+      Expression value,
+      boolean longValue,
+      boolean commaKnown,
+      Expression index,
+      Expression writer);
+
+  abstract Expression writeStringField(
+      JsonFieldInfo property,
+      int id,
+      Expression value,
+      boolean commaKnown,
+      Expression index,
+      Expression writer);
+
+  abstract Expression writeFieldName(
+      JsonFieldInfo property, int id, boolean commaKnown, Expression index, Expression writer);
+
+  abstract Expression booleanFieldValue(
+      int id, Expression value, boolean commaKnown, Expression index);
+
+  abstract Expression enumFieldValue(
+      int id, Expression value, boolean commaKnown, Expression index);
+
+  abstract Expression utf16EnumFieldValue(
+      int id, Expression value, boolean commaKnown, Expression index);
+
+  abstract Expression writeExactScalar(JsonFieldInfo property, Expression value, Expression writer);
+
+  abstract Expression writeExactArray(JsonFieldInfo property, Expression value, Expression writer);
 
   private static boolean usesWriteCodec(JsonFieldInfo property) {
     return JsonCodegen.usesWriteCodec(property);
-  }
-
-  private static Reference typeResolverRef() {
-    return new Reference("typeResolver", TypeRef.of(JsonTypeResolver.class));
   }
 
   private static Reference fieldRef(String name, Class<?> type) {
@@ -122,80 +174,54 @@ final class JsonWriterCodegen {
   }
 
   String genWriterCode(
-      JsonGeneratedCodecBuilder builder, Class<?> type, JsonFieldInfo[] properties, boolean utf8) {
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonFieldInfo[] properties) {
     ownerType = type;
     CodegenContext ctx = builder.context();
-    ctx.addImports(StringJsonWriter.class, Utf8JsonWriter.class);
-    ctx.implementsInterfaces(
-        ctx.type(utf8 ? Utf8ObjectWriterCodec.class : StringObjectWriterCodec.class));
+    ctx.addImports(writerType());
+    ctx.implementsInterfaces(JsonCodegen.generatedCodecType(ctx, objectWriterType()));
     boolean objectStartFused = canFuseObjectStart(properties);
-    StringPrefixFields stringPrefixFields =
-        utf8 ? null : stringPrefixFields(properties, objectStartFused);
+    StringPrefixFields prefixFields = prefixFields(properties, objectStartFused);
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
       if (usesWriteInfo(property)) {
         ctx.addField(JsonFieldInfo.class, "wp" + i);
       }
       if (storesWriteCodec(property)) {
-        ctx.addField(codecFieldType(property, utf8), "w" + i);
+        ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(property)), "w" + i);
       }
       if (usesPrefix(property)) {
-        if (utf8) {
-          ctx.addField(byte[].class, "u" + i);
-          ctx.addField(byte[].class, "uc" + i);
-        } else {
-          ctx.addField(byte[].class, "s" + i);
-          ctx.addField(byte[].class, "sc" + i);
-          if (stringPrefixFields.name[i]) {
-            ctx.addField(byte[].class, "s16" + i);
-          }
-          if (stringPrefixFields.comma[i]) {
-            ctx.addField(byte[].class, "sc16" + i);
-          }
-        }
+        addPrefixFields(ctx, property, i, prefixFields);
       }
     }
-    Class<?> writerType = utf8 ? Utf8JsonWriter.class : StringJsonWriter.class;
-    Class<?> codecArrayType = utf8 ? Utf8WriterCodec[].class : StringWriterCodec[].class;
     addGeneratedConstructor(
         ctx,
-        writerConstructorExpression(properties, utf8, stringPrefixFields),
+        writerConstructorExpression(properties, prefixFields),
         JsonFieldInfo[].class,
         "properties",
-        codecArrayType,
+        JsonCodegen.generatedCodecArrayType(ctx, codecArrayType()),
         "codecs");
+    ctx.clearExprState();
+    Code.ExprCode body =
+        writeExpression(builder, type, properties, objectStartFused).genCode(ctx);
+    String bodyCode = body.code();
+    bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
     ctx.addMethod(
         "@Override public final",
-        utf8 ? "writeUtf8" : "writeString",
+        writeMethod(),
         "if (value == null) {\n"
             + "  writer.writeNull();\n"
             + "  return;\n"
             + "}\n"
-            + (utf8 ? "writeUtf8NonNull" : "writeStringNonNull")
-            + "(writer, value, typeResolver);",
+            + bodyCode,
         void.class,
-        writerType,
+        writerType(),
         "writer",
         Object.class,
-        "value",
-        JsonTypeResolver.class,
-        "typeResolver");
-    addGeneratedMethod(
-        ctx,
-        "@Override public final",
-        utf8 ? "writeUtf8NonNull" : "writeStringNonNull",
-        writeExpression(builder, type, properties, utf8, objectStartFused),
-        void.class,
-        writerType,
-        "writer",
-        Object.class,
-        "value",
-        JsonTypeResolver.class,
-        "typeResolver");
+        "value");
     return ctx.genCode();
   }
 
-  private StringPrefixFields stringPrefixFields(
+  final StringPrefixFields stringPrefixFields(
       JsonFieldInfo[] properties, boolean objectStartFused) {
     StringPrefixFields fields = new StringPrefixFields(properties.length);
     boolean commaKnown = objectStartFused;
@@ -251,12 +277,10 @@ final class JsonWriterCodegen {
   }
 
   private Expression writerConstructorExpression(
-      JsonFieldInfo[] properties, boolean utf8, StringPrefixFields stringPrefixFields) {
+      JsonFieldInfo[] properties, StringPrefixFields prefixFields) {
     Expression.ListExpression expressions = new Expression.ListExpression();
     Reference propertiesRef = new Reference("properties", TypeRef.of(JsonFieldInfo[].class));
-    Reference codecsRef =
-        new Reference(
-            "codecs", TypeRef.of(utf8 ? Utf8WriterCodec[].class : StringWriterCodec[].class));
+    Reference codecsRef = new Reference("codecs", TypeRef.of(codecArrayType()));
     for (int i = 0; i < properties.length; i++) {
       Expression id = Expression.Literal.ofInt(i);
       Expression property = new Expression.ArrayValue(propertiesRef, id);
@@ -266,7 +290,7 @@ final class JsonWriterCodegen {
                 new Reference("this.wp" + i, TypeRef.of(JsonFieldInfo.class)), property));
       }
       if (storesWriteCodec(properties[i])) {
-        Class<?> codecType = codecFieldType(properties[i], utf8);
+        Class<?> codecType = codecFieldType(properties[i]);
         expressions.add(
             new Expression.Assign(
                 new Reference("this.w" + i, TypeRef.of(codecType)),
@@ -274,45 +298,7 @@ final class JsonWriterCodegen {
                     new Expression.ArrayValue(codecsRef, id), TypeRef.of(codecType))));
       }
       if (usesPrefix(properties[i])) {
-        if (utf8) {
-          expressions.add(
-              new Expression.Assign(
-                  new Reference("this.u" + i, TypeRef.of(byte[].class)),
-                  new Expression.Invoke(property, "utf8NamePrefix", TypeRef.of(byte[].class))
-                      .inline()));
-          expressions.add(
-              new Expression.Assign(
-                  new Reference("this.uc" + i, TypeRef.of(byte[].class)),
-                  new Expression.Invoke(property, "utf8CommaNamePrefix", TypeRef.of(byte[].class))
-                      .inline()));
-        } else {
-          expressions.add(
-              new Expression.Assign(
-                  new Reference("this.s" + i, TypeRef.of(byte[].class)),
-                  new Expression.Invoke(property, "stringNamePrefix", TypeRef.of(byte[].class))
-                      .inline()));
-          expressions.add(
-              new Expression.Assign(
-                  new Reference("this.sc" + i, TypeRef.of(byte[].class)),
-                  new Expression.Invoke(property, "stringCommaNamePrefix", TypeRef.of(byte[].class))
-                      .inline()));
-          if (stringPrefixFields.name[i]) {
-            expressions.add(
-                new Expression.Assign(
-                    new Reference("this.s16" + i, TypeRef.of(byte[].class)),
-                    new Expression.Invoke(
-                            property, "stringUtf16NamePrefix", TypeRef.of(byte[].class))
-                        .inline()));
-          }
-          if (stringPrefixFields.comma[i]) {
-            expressions.add(
-                new Expression.Assign(
-                    new Reference("this.sc16" + i, TypeRef.of(byte[].class)),
-                    new Expression.Invoke(
-                            property, "stringUtf16CommaNamePrefix", TypeRef.of(byte[].class))
-                        .inline()));
-          }
-        }
+        addPrefixAssignments(expressions, property, properties[i], i, prefixFields);
       }
     }
     return expressions;
@@ -322,15 +308,13 @@ final class JsonWriterCodegen {
       JsonGeneratedCodecBuilder builder,
       Class<?> type,
       JsonFieldInfo[] properties,
-      boolean utf8,
       boolean objectStartFused) {
     Expression object =
         new Expression.Variable(
             "object",
             new Expression.Cast(
                 new Reference("value", TypeRef.of(Object.class)), TypeRef.of(type)));
-    Reference writer = writerRef(utf8);
-    Reference typeResolver = typeResolverRef();
+    Reference writer = writerRef();
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(object);
     Expression index = null;
@@ -340,8 +324,7 @@ final class JsonWriterCodegen {
       expressions.add(index);
     }
     boolean commaKnown = objectStartFused;
-    boolean splitMembers =
-        properties.length >= (utf8 ? MIN_UTF8_SPLIT_MEMBERS : MIN_STRING_SPLIT_MEMBERS);
+    boolean splitMembers = properties.length >= splitMemberThreshold();
     inlineObjectCollections = splitMembers;
     List<Expression> memberGroup = splitMembers ? new ArrayList<>(MEMBER_GROUP_SIZE) : null;
     for (int i = 0; i < properties.length; i++) {
@@ -349,20 +332,18 @@ final class JsonWriterCodegen {
       if (objectStartFused && i == 0) {
         member =
             writeObjectStartPrimitive(
-                properties[i], builder.fieldValue(properties[i], object), utf8, writer);
+                properties[i], builder.fieldValue(properties[i], object), writer);
       } else {
-        member =
-            writeProp(
-                builder, properties[i], i, utf8, commaKnown, index, object, writer, typeResolver);
+        member = writeProp(builder, properties[i], i, commaKnown, index, object, writer);
       }
       if (splitMembers && commaKnown) {
         memberGroup.add(member);
         if (memberGroup.size() == MEMBER_GROUP_SIZE) {
-          addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver, utf8);
+          addMemberGroup(builder, expressions, memberGroup, object, writer);
         }
       } else {
         if (splitMembers) {
-          addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver, utf8);
+          addMemberGroup(builder, expressions, memberGroup, object, writer);
         }
         expressions.add(member);
       }
@@ -371,31 +352,27 @@ final class JsonWriterCodegen {
       }
     }
     if (splitMembers) {
-      addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver, utf8, true);
+      addMemberGroup(builder, expressions, memberGroup, object, writer, true);
     }
     expressions.add(new Expression.Invoke(writer, "writeObjectEnd"));
     return expressions;
   }
 
-  private static void addMemberGroup(
+  private void addMemberGroup(
       JsonGeneratedCodecBuilder builder,
       Expression.ListExpression expressions,
       List<Expression> memberGroup,
       Expression object,
-      Reference writer,
-      Reference typeResolver,
-      boolean utf8) {
-    addMemberGroup(builder, expressions, memberGroup, object, writer, typeResolver, utf8, false);
+      Reference writer) {
+    addMemberGroup(builder, expressions, memberGroup, object, writer, false);
   }
 
-  private static void addMemberGroup(
+  private void addMemberGroup(
       JsonGeneratedCodecBuilder builder,
       Expression.ListExpression expressions,
       List<Expression> memberGroup,
       Expression object,
       Reference writer,
-      Reference typeResolver,
-      boolean utf8,
       boolean inlineSmallTail) {
     if (memberGroup.isEmpty()) {
       return;
@@ -410,13 +387,12 @@ final class JsonWriterCodegen {
     LinkedHashSet<Expression> cutPoints = new LinkedHashSet<>();
     cutPoints.add(object);
     cutPoints.add(writer);
-    cutPoints.add(typeResolver);
     expressions.add(
         ExpressionOptimizer.invokeGenerated(
             builder.context(),
             cutPoints,
             new Expression.ListExpression(new ArrayList<>(memberGroup)),
-            utf8 ? "writeUtf8Members" : "writeStringMembers",
+            membersMethod(),
             false));
     memberGroup.clear();
   }
@@ -436,65 +412,14 @@ final class JsonWriterCodegen {
     }
   }
 
-  private static Expression writeObjectStartPrimitive(
-      JsonFieldInfo property, Expression value, boolean utf8, Expression writer) {
-    switch (property.writeKind()) {
-      case BYTE:
-      case SHORT:
-      case INT:
-        if (utf8 && canPackPrefix(property, false)) {
-          return new Expression.Invoke(
-              writer, "writeObjectIntField", packedPrefixArgs(property, false, value));
-        }
-        if (!utf8) {
-          if (canPackStringUtf16Prefix(property, false)) {
-            return new Expression.Invoke(
-                writer, "writeObjectIntField", stringPackedPrefixArgs(property, 0, false, value));
-          }
-          return new Expression.Invoke(
-              writer,
-              "writeObjectIntField",
-              prefixRef(false, false, 0),
-              utf16PrefixRef(false, 0),
-              value);
-        }
-        return new Expression.Invoke(
-            writer, "writeObjectIntField", prefixRef(utf8, false, 0), value);
-      case LONG:
-        if (utf8 && canPackPrefix(property, false)) {
-          return new Expression.Invoke(
-              writer, "writeObjectLongField", packedPrefixArgs(property, false, value));
-        }
-        if (!utf8) {
-          if (canPackStringUtf16Prefix(property, false)) {
-            return new Expression.Invoke(
-                writer, "writeObjectLongField", stringPackedPrefixArgs(property, 0, false, value));
-          }
-          return new Expression.Invoke(
-              writer,
-              "writeObjectLongField",
-              prefixRef(false, false, 0),
-              utf16PrefixRef(false, 0),
-              value);
-        }
-        return new Expression.Invoke(
-            writer, "writeObjectLongField", prefixRef(utf8, false, 0), value);
-      default:
-        throw new ForyJsonException(
-            "Unsupported generated object-start kind " + property.writeKind());
-    }
-  }
-
   private Expression writeProp(
       JsonGeneratedCodecBuilder builder,
       JsonFieldInfo property,
       int id,
-      boolean utf8,
       boolean commaKnown,
       Expression index,
       Expression object,
-      Expression writer,
-      Expression typeResolver) {
+      Expression writer) {
     Class<?> rawType = property.writeRawType();
     if (rawType.isPrimitive()) {
       Expression fieldValue = builder.fieldValue(property, object);
@@ -504,42 +429,54 @@ final class JsonWriterCodegen {
                 "v" + id, valueOf(TypeRef.of(rawType).wrap(), inline(fieldValue)));
         return new Expression.ListExpression(
             value,
-            writeFieldName(property, id, utf8, commaKnown, index, writer),
-            writeCodec(property, id, value, utf8, writer, typeResolver));
+            writeFieldName(property, id, commaKnown, index, writer),
+            writeCodec(property, id, value, writer));
       }
-      return writePrimitive(property, id, fieldValue, utf8, commaKnown, index, writer);
+      return writePrimitive(property, id, fieldValue, commaKnown, index, writer);
     }
     Expression value =
         new Expression.Variable(
             "v" + id, cast(inline(builder.fieldValue(property, object)), TypeRef.of(rawType)));
     Expression nullValue = new Expression.Null(TypeRef.of(rawType), false);
     if (writeNullFields) {
+      JsonFieldKind kind = property.writeKind();
+      boolean onlyCodec =
+          kind == JsonFieldKind.MAP
+              || kind == JsonFieldKind.ARRAY && writeExactArray(property, value, writer) == null
+              || kind == JsonFieldKind.OBJECT && writeExactScalar(property, value, writer) == null
+              || kind == JsonFieldKind.COLLECTION
+                  && !JsonCodegen.writesStringCollectionDirectly(property)
+                  && !JsonCodegen.writesObjectCollectionDirectly(property);
+      if (onlyCodec) {
+        return new Expression.ListExpression(
+            value,
+            writeFieldName(property, id, commaKnown, index, writer),
+            writeCodec(property, id, value, writer));
+      }
       if (isPrefixValue(property.writeKind())) {
         return new Expression.ListExpression(
             value,
             new Expression.If(
                 eq(value, nullValue),
                 new Expression.ListExpression(
-                    writeFieldName(property, id, utf8, commaKnown, index, writer),
+                    writeFieldName(property, id, commaKnown, index, writer),
                     new Expression.Invoke(writer, "writeNull")),
-                writeValue(
-                    builder, property, id, value, utf8, commaKnown, index, writer, typeResolver)));
+                writeValue(builder, property, id, value, commaKnown, index, writer)));
       }
       return new Expression.ListExpression(
           value,
-          writeFieldName(property, id, utf8, commaKnown, index, writer),
+          writeFieldName(property, id, commaKnown, index, writer),
           new Expression.If(
               eq(value, nullValue),
               new Expression.Invoke(writer, "writeNull"),
-              writeValue(builder, property, id, value, utf8, true, index, writer, typeResolver)));
+              writeValue(builder, property, id, value, true, index, writer)));
     }
     Expression write =
         isPrefixValue(property.writeKind())
-            ? writeValue(
-                builder, property, id, value, utf8, commaKnown, index, writer, typeResolver)
+            ? writeValue(builder, property, id, value, commaKnown, index, writer)
             : new Expression.ListExpression(
-                writeFieldName(property, id, utf8, commaKnown, index, writer),
-                writeValue(builder, property, id, value, utf8, true, index, writer, typeResolver));
+                writeFieldName(property, id, commaKnown, index, writer),
+                writeValue(builder, property, id, value, true, index, writer));
     return new Expression.ListExpression(value, new Expression.If(ne(value, nullValue), write));
   }
 
@@ -547,185 +484,24 @@ final class JsonWriterCodegen {
       JsonFieldInfo property,
       int id,
       Expression value,
-      boolean utf8,
       boolean commaKnown,
       Expression index,
       Expression writer) {
     switch (property.writeKind()) {
       case BOOLEAN:
         return writeRawFieldValue(
-            commaKnown, index, booleanFieldValue(id, value, utf8, commaKnown, index), writer);
+            commaKnown, index, booleanFieldValue(id, value, commaKnown, index), writer);
       case BYTE:
       case SHORT:
       case INT:
-        return writeNumberField(property, id, value, false, utf8, commaKnown, index, writer);
+        return writeNumberField(property, id, value, false, commaKnown, index, writer);
       case LONG:
-        return writeNumberField(property, id, value, true, utf8, commaKnown, index, writer);
+        return writeNumberField(property, id, value, true, commaKnown, index, writer);
       default:
         return new Expression.ListExpression(
-            writeFieldName(property, id, utf8, commaKnown, index, writer),
+            writeFieldName(property, id, commaKnown, index, writer),
             writePrimitiveScalar(property.writeKind(), value, writer));
     }
-  }
-
-  private static Expression writeNumberField(
-      JsonFieldInfo property,
-      int id,
-      Expression value,
-      boolean longValue,
-      boolean utf8,
-      boolean commaKnown,
-      Expression index,
-      Expression writer) {
-    String writerMethod = longValue ? "writeLongField" : "writeIntField";
-    if (commaKnown) {
-      if (utf8 && canPackPrefix(property, true)) {
-        return new Expression.Invoke(writer, writerMethod, packedPrefixArgs(property, true, value));
-      }
-      if (!utf8) {
-        if (canPackStringUtf16Prefix(property, true)) {
-          return new Expression.Invoke(
-              writer, writerMethod, stringPackedPrefixArgs(property, id, true, value));
-        }
-        return new Expression.Invoke(
-            writer, writerMethod, prefixRef(false, true, id), utf16PrefixRef(true, id), value);
-      }
-      return new Expression.Invoke(writer, writerMethod, prefixRef(utf8, true, id), value);
-    }
-    if (utf8 && canPackSinglePrefix(property, false) && canPackSinglePrefix(property, true)) {
-      return new Expression.ListExpression(
-          new Expression.Invoke(
-              writer, writerMethod, packedDynamicPrefixArgs(property, index, value)),
-          increment(index));
-    }
-    Expression.ListExpression expressions =
-        new Expression.ListExpression(
-            utf8
-                ? new Expression.Invoke(
-                    writer,
-                    writerMethod,
-                    prefixRef(true, false, id),
-                    prefixRef(true, true, id),
-                    index,
-                    value)
-                : new Expression.Invoke(
-                    writer,
-                    writerMethod,
-                    prefixRef(false, false, id),
-                    prefixRef(false, true, id),
-                    utf16PrefixRef(false, id),
-                    utf16PrefixRef(true, id),
-                    index,
-                    value));
-    expressions.add(increment(index));
-    return expressions;
-  }
-
-  private static Expression writeStringField(
-      JsonFieldInfo property,
-      int id,
-      Expression value,
-      boolean utf8,
-      boolean commaKnown,
-      Expression index,
-      Expression writer) {
-    if (commaKnown) {
-      if (utf8 && canPackPrefix(property, true)) {
-        return new Expression.Invoke(
-            writer, "writeStringField", packedPrefixArgs(property, true, value));
-      }
-      if (!utf8) {
-        if (canPackStringUtf16Prefix(property, true)) {
-          return new Expression.Invoke(
-              writer, "writeStringField", stringPackedPrefixArgs(property, id, true, value));
-        }
-        return new Expression.Invoke(
-            writer,
-            "writeStringField",
-            prefixRef(false, true, id),
-            utf16PrefixRef(true, id),
-            value);
-      }
-      return new Expression.Invoke(writer, "writeStringField", prefixRef(utf8, true, id), value);
-    }
-    if (utf8 && canPackSinglePrefix(property, false) && canPackSinglePrefix(property, true)) {
-      Expression.ListExpression expressions =
-          new Expression.ListExpression(
-              new Expression.Invoke(
-                  writer, "writeStringField", packedDynamicPrefixArgs(property, index, value)));
-      expressions.add(increment(index));
-      return expressions;
-    }
-    Expression.ListExpression expressions =
-        new Expression.ListExpression(
-            utf8
-                ? new Expression.Invoke(
-                    writer,
-                    "writeStringField",
-                    prefixRef(true, false, id),
-                    prefixRef(true, true, id),
-                    index,
-                    value)
-                : new Expression.Invoke(
-                    writer,
-                    "writeStringField",
-                    prefixRef(false, false, id),
-                    prefixRef(false, true, id),
-                    utf16PrefixRef(false, id),
-                    utf16PrefixRef(true, id),
-                    index,
-                    value));
-    expressions.add(increment(index));
-    return expressions;
-  }
-
-  private static Expression writeFieldName(
-      JsonFieldInfo property,
-      int id,
-      boolean utf8,
-      boolean commaKnown,
-      Expression index,
-      Expression writer) {
-    if (commaKnown && utf8 && canPackPrefix(property, true)) {
-      return new Expression.Invoke(writer, "writeRawValue", packedPrefixArgs(property, true));
-    }
-    if (!utf8 && commaKnown) {
-      if (canPackStringUtf16Prefix(property, true)) {
-        return new Expression.Invoke(
-            writer, "writeRawValue", stringPackedPrefixArgs(property, id, true));
-      }
-      return new Expression.Invoke(
-          writer, "writeRawValue", prefixRef(false, true, id), utf16PrefixRef(true, id));
-    }
-    if (!utf8) {
-      Expression.ListExpression expressions =
-          new Expression.ListExpression(
-              new Expression.Invoke(
-                  writer,
-                  "writeRawValue",
-                  prefixRef(false, false, id),
-                  prefixRef(false, true, id),
-                  utf16PrefixRef(false, id),
-                  utf16PrefixRef(true, id),
-                  index));
-      expressions.add(increment(index));
-      return expressions;
-    }
-    Expression prefix =
-        commaKnown
-            ? prefixRef(utf8, true, id)
-            : new Expression.Ternary(
-                eq(index, Expression.Literal.ofInt(0)),
-                prefixRef(utf8, false, id),
-                prefixRef(utf8, true, id),
-                true,
-                TypeRef.of(byte[].class));
-    Expression.ListExpression expressions =
-        new Expression.ListExpression(new Expression.Invoke(writer, "writeRawValue", prefix));
-    if (!commaKnown) {
-      expressions.add(increment(index));
-    }
-    return expressions;
   }
 
   private Expression writeValue(
@@ -733,11 +509,9 @@ final class JsonWriterCodegen {
       JsonFieldInfo property,
       int id,
       Expression value,
-      boolean utf8,
       boolean commaKnown,
       Expression index,
-      Expression writer,
-      Expression typeResolver) {
+      Expression writer) {
     JsonFieldKind kind = property.writeKind();
     switch (kind) {
       case BOOLEAN:
@@ -747,7 +521,6 @@ final class JsonWriterCodegen {
             booleanFieldValue(
                 id,
                 new Expression.Invoke(value, "booleanValue", TypeRef.of(boolean.class)).inline(),
-                utf8,
                 commaKnown,
                 index),
             writer);
@@ -759,7 +532,6 @@ final class JsonWriterCodegen {
             id,
             new Expression.Invoke(value, "intValue", TypeRef.of(int.class)).inline(),
             false,
-            utf8,
             commaKnown,
             index,
             writer);
@@ -769,43 +541,40 @@ final class JsonWriterCodegen {
             id,
             new Expression.Invoke(value, "longValue", TypeRef.of(long.class)).inline(),
             true,
-            utf8,
             commaKnown,
             index,
             writer);
       case STRING:
-        return writeStringField(property, id, value, utf8, commaKnown, index, writer);
+        return writeStringField(property, id, value, commaKnown, index, writer);
       case ENUM:
         return writeRawFieldValue(
             commaKnown,
             index,
-            enumFieldValue(id, value, utf8, commaKnown, index),
-            utf8 ? null : stringUtf16EnumFieldValue(id, value, commaKnown, index),
+            enumFieldValue(id, value, commaKnown, index),
+            utf16EnumFieldValue(id, value, commaKnown, index),
             writer);
       case FLOAT:
       case DOUBLE:
       case CHAR:
         return writeScalar(kind, value, writer);
       case ARRAY:
-        Expression array = writeExactUtf8Array(property, value, utf8, writer);
-        return array == null ? writeCodec(property, id, value, utf8, writer, typeResolver) : array;
+        Expression array = writeExactArray(property, value, writer);
+        return array == null ? writeCodec(property, id, value, writer) : array;
       case MAP:
-        return writeCodec(property, id, value, utf8, writer, typeResolver);
+        return writeCodec(property, id, value, writer);
       case COLLECTION:
         if (JsonCodegen.writesStringCollectionDirectly(property)) {
-          return writeStringCollection(value, utf8, writer);
+          return writeStringCollection(value, writer);
         }
         if (JsonCodegen.writesObjectCollectionDirectly(property)) {
-          return writeObjectCollection(builder, property, id, value, utf8, writer, typeResolver);
+          return writeObjectCollection(builder, property, id, value, writer);
         }
-        return writeCodec(property, id, value, utf8, writer, typeResolver);
+        return writeCodec(property, id, value, writer);
       case OBJECT:
-        Expression scalar = writeExactUtf8Scalar(property, value, utf8, writer);
-        return scalar == null
-            ? writeCodec(property, id, value, utf8, writer, typeResolver)
-            : scalar;
+        Expression scalar = writeExactScalar(property, value, writer);
+        return scalar == null ? writeCodec(property, id, value, writer) : scalar;
       default:
-        return writeCodec(property, id, value, utf8, writer, typeResolver);
+        return writeCodec(property, id, value, writer);
     }
   }
 
@@ -847,7 +616,7 @@ final class JsonWriterCodegen {
     byte[] prefix =
         comma ? property.stringUtf16CommaNamePrefix() : property.stringUtf16NamePrefix();
     Expression[] args = new Expression[6 + extraArgs.length];
-    args[0] = prefixRef(false, comma, id);
+    args[0] = fieldRef((comma ? "sc" : "s") + id, byte[].class);
     args[1] = Expression.Literal.ofLong(packedPrefixWord(prefix, 0));
     args[2] = Expression.Literal.ofLong(packedPrefixWord(prefix, Long.BYTES));
     args[3] = Expression.Literal.ofLong(packedPrefixWord(prefix, Long.BYTES * 2));
@@ -898,28 +667,6 @@ final class JsonWriterCodegen {
     return word;
   }
 
-  private static Expression booleanFieldValue(
-      int id, Expression value, boolean utf8, boolean commaKnown, Expression index) {
-    return new Expression.Invoke(
-            fieldRef("wp" + id, JsonFieldInfo.class),
-            utf8 ? "utf8BooleanFieldValue" : "stringBooleanFieldValue",
-            TypeRef.of(byte[].class),
-            value,
-            commaFlag(commaKnown, index))
-        .inline();
-  }
-
-  private static Expression enumFieldValue(
-      int id, Expression value, boolean utf8, boolean commaKnown, Expression index) {
-    return new Expression.Invoke(
-            fieldRef("wp" + id, JsonFieldInfo.class),
-            utf8 ? "utf8EnumFieldValue" : "stringEnumFieldValue",
-            TypeRef.of(byte[].class),
-            value,
-            commaFlag(commaKnown, index))
-        .inline();
-  }
-
   private static Expression stringUtf16EnumFieldValue(
       int id, Expression value, boolean commaKnown, Expression index) {
     return new Expression.Invoke(
@@ -932,27 +679,13 @@ final class JsonWriterCodegen {
   }
 
   private Expression writeCodec(
-      JsonFieldInfo property,
-      int id,
-      Expression value,
-      boolean utf8,
-      Expression writer,
-      Expression typeResolver) {
+      JsonFieldInfo property, int id, Expression value, Expression writer) {
     boolean object = property.writeTypeInfo().usesDefaultObjectCodec();
     Expression codec =
         object && property.writeRawType() == ownerType
-            ? new Reference(
-                "this",
-                TypeRef.of(utf8 ? Utf8ObjectWriterCodec.class : StringObjectWriterCodec.class))
-            : fieldRef("w" + id, codecFieldType(property, utf8));
-    return new Expression.Invoke(
-        codec,
-        utf8
-            ? (object ? "writeUtf8NonNull" : "writeUtf8")
-            : (object ? "writeStringNonNull" : "writeString"),
-        writer,
-        value,
-        typeResolver);
+            ? new Reference("this", TypeRef.of(objectWriterType()))
+            : fieldRef("w" + id, codecFieldType(property));
+    return new Expression.Invoke(codec, writeMethod(), writer, value);
   }
 
   private boolean storesWriteCodec(JsonFieldInfo property) {
@@ -969,11 +702,8 @@ final class JsonWriterCodegen {
       JsonFieldInfo property,
       int id,
       Expression value,
-      boolean utf8,
-      Expression writer,
-      Expression typeResolver) {
-    TypeRef<?> codecType =
-        TypeRef.of(utf8 ? Utf8ObjectWriterCodec.class : StringObjectWriterCodec.class);
+      Expression writer) {
+    TypeRef<?> codecType = TypeRef.of(objectWriterType());
     Expression codec =
         property.writeElementRawType() == ownerType
             ? new Reference("this", codecType)
@@ -993,9 +723,7 @@ final class JsonWriterCodegen {
                         new Expression.Invoke(
                             arrayList, "get", TypeRef.of(Object.class), true, index),
                         codec,
-                        utf8,
-                        writer,
-                        typeResolver)));
+                        writer)));
     Expression collection =
         new Expression.Variable(
             "collection", new Expression.Cast(value, TypeRef.of(Collection.class)));
@@ -1006,9 +734,7 @@ final class JsonWriterCodegen {
                 collection,
                 TypeRef.of(Object.class),
                 true,
-                (index, element) ->
-                    writeObjectCollectionElement(
-                        index, element, codec, utf8, writer, typeResolver)));
+                (index, element) -> writeObjectCollectionElement(index, element, codec, writer)));
     Expression exactArrayList =
         eq(
             new Expression.Invoke(value, "getClass", TypeRef.of(Class.class)).inline(),
@@ -1024,77 +750,19 @@ final class JsonWriterCodegen {
     LinkedHashSet<Expression> cutPoints = new LinkedHashSet<>();
     cutPoints.add(value);
     cutPoints.add(writer);
-    cutPoints.add(typeResolver);
     return ExpressionOptimizer.invokeGenerated(
-        builder.context(),
-        cutPoints,
-        body,
-        utf8 ? "writeUtf8ObjectCollection" : "writeStringObjectCollection",
-        false);
+        builder.context(), cutPoints, body, objectCollectionMethod(), false);
   }
 
-  private static Expression writeObjectCollectionElement(
-      Expression index,
-      Expression element,
-      Expression codec,
-      boolean utf8,
-      Expression writer,
-      Expression typeResolver) {
+  private Expression writeObjectCollectionElement(
+      Expression index, Expression element, Expression codec, Expression writer) {
     return new Expression.ListExpression(
         element,
         new Expression.Invoke(writer, "writeComma", index),
-        new Expression.If(
-            org.apache.fory.codegen.ExpressionUtils.isNull(element),
-            new Expression.Invoke(writer, "writeNull"),
-            new Expression.Invoke(
-                codec,
-                utf8 ? "writeUtf8NonNull" : "writeStringNonNull",
-                writer,
-                element,
-                typeResolver)));
+        new Expression.Invoke(codec, writeMethod(), writer, element));
   }
 
-  private static Expression writeExactUtf8Scalar(
-      JsonFieldInfo property, Expression value, boolean utf8, Expression writer) {
-    if (!utf8) {
-      return null;
-    }
-    Class<?> rawType = property.writeRawType();
-    Object codec = property.writeTypeInfo().utf8Writer();
-    String writerMethod;
-    if (rawType == UUID.class && codec == ScalarCodecs.UuidCodec.INSTANCE) {
-      writerMethod = "writeUuid";
-    } else if (rawType == LocalDate.class && codec == ScalarCodecs.LocalDateCodec.INSTANCE) {
-      writerMethod = "writeLocalDate";
-    } else if (rawType == OffsetDateTime.class
-        && codec == ScalarCodecs.OffsetDateTimeCodec.INSTANCE) {
-      writerMethod = "writeOffsetDateTime";
-    } else if (rawType == BigDecimal.class && codec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
-      writerMethod = "writeBigDecimal";
-    } else {
-      return null;
-    }
-    return new Expression.Invoke(writer, writerMethod, value);
-  }
-
-  private static Expression writeExactUtf8Array(
-      JsonFieldInfo property, Expression value, boolean utf8, Expression writer) {
-    if (!utf8) {
-      return null;
-    }
-    Class<?> rawType = property.writeRawType();
-    Class<?> codecType = property.writeTypeInfo().utf8Writer().getClass();
-    if (rawType == String[].class && codecType == ArrayCodec.StringArrayCodec.class) {
-      return new Expression.Invoke(writer, "writeStringArray", value);
-    }
-    if (rawType == long[].class && codecType == ArrayCodec.LongArrayCodec.class) {
-      return new Expression.Invoke(writer, "writeLongArray", value);
-    }
-    return null;
-  }
-
-  private static Expression writeStringCollection(
-      Expression value, boolean utf8, Expression writer) {
+  private static Expression writeStringCollection(Expression value, Expression writer) {
     return new Expression.Invoke(writer, "writeStringCollection", value);
   }
 
@@ -1133,16 +801,6 @@ final class JsonWriterCodegen {
     }
   }
 
-  private static Reference writerRef(boolean utf8) {
-    return new Reference(
-        "writer", TypeRef.of(utf8 ? Utf8JsonWriter.class : StringJsonWriter.class));
-  }
-
-  private static Reference prefixRef(boolean utf8, boolean comma, int id) {
-    String prefix = utf8 ? (comma ? "uc" : "u") : (comma ? "sc" : "s");
-    return fieldRef(prefix + id, byte[].class);
-  }
-
   private static Reference utf16PrefixRef(boolean comma, int id) {
     return fieldRef((comma ? "sc16" : "s16") + id, byte[].class);
   }
@@ -1163,5 +821,511 @@ final class JsonWriterCodegen {
         || kind == JsonFieldKind.LONG
         || kind == JsonFieldKind.STRING
         || kind == JsonFieldKind.ENUM;
+  }
+
+  static final class StringGenerator extends JsonWriterCodegen {
+    StringGenerator(JsonCodegen codegen) {
+      super(codegen);
+    }
+
+    @Override
+    Class<?> codecFieldType(JsonFieldInfo property) {
+      if (JsonCodegen.writesObjectCollectionDirectly(property)) {
+        return StringWriterCodec.class;
+      }
+      return codegen.stringWriterFieldType(property.writeTypeInfo());
+    }
+
+    @Override
+    Class<?> writerType() {
+      return StringJsonWriter.class;
+    }
+
+    @Override
+    Class<?> codecArrayType() {
+      return StringWriterCodec[].class;
+    }
+
+    @Override
+    Class<?> objectWriterType() {
+      return StringWriterCodec.class;
+    }
+
+    @Override
+    String writeMethod() {
+      return "writeString";
+    }
+
+    @Override
+    String membersMethod() {
+      return "writeStringMembers";
+    }
+
+    @Override
+    String objectCollectionMethod() {
+      return "writeStringObjectCollection";
+    }
+
+    @Override
+    int splitMemberThreshold() {
+      return MIN_STRING_SPLIT_MEMBERS;
+    }
+
+    @Override
+    StringPrefixFields prefixFields(JsonFieldInfo[] properties, boolean objectStartFused) {
+      return stringPrefixFields(properties, objectStartFused);
+    }
+
+    @Override
+    void addPrefixFields(
+        CodegenContext ctx, JsonFieldInfo property, int id, StringPrefixFields fields) {
+      ctx.addField(byte[].class, "s" + id);
+      ctx.addField(byte[].class, "sc" + id);
+      if (fields.name[id]) {
+        ctx.addField(byte[].class, "s16" + id);
+      }
+      if (fields.comma[id]) {
+        ctx.addField(byte[].class, "sc16" + id);
+      }
+    }
+
+    @Override
+    void addPrefixAssignments(
+        Expression.ListExpression expressions,
+        Expression property,
+        JsonFieldInfo field,
+        int id,
+        StringPrefixFields fields) {
+      expressions.add(
+          new Expression.Assign(
+              stringPrefixRef(false, id),
+              new Expression.Invoke(property, "stringNamePrefix", TypeRef.of(byte[].class))
+                  .inline()));
+      expressions.add(
+          new Expression.Assign(
+              stringPrefixRef(true, id),
+              new Expression.Invoke(property, "stringCommaNamePrefix", TypeRef.of(byte[].class))
+                  .inline()));
+      if (fields.name[id]) {
+        expressions.add(
+            new Expression.Assign(
+                utf16PrefixRef(false, id),
+                new Expression.Invoke(property, "stringUtf16NamePrefix", TypeRef.of(byte[].class))
+                    .inline()));
+      }
+      if (fields.comma[id]) {
+        expressions.add(
+            new Expression.Assign(
+                utf16PrefixRef(true, id),
+                new Expression.Invoke(
+                        property, "stringUtf16CommaNamePrefix", TypeRef.of(byte[].class))
+                    .inline()));
+      }
+    }
+
+    @Override
+    Reference writerRef() {
+      return new Reference("writer", TypeRef.of(StringJsonWriter.class));
+    }
+
+    @Override
+    Expression writeObjectStartPrimitive(
+        JsonFieldInfo property, Expression value, Expression writer) {
+      String method;
+      switch (property.writeKind()) {
+        case BYTE:
+        case SHORT:
+        case INT:
+          method = "writeObjectIntField";
+          break;
+        case LONG:
+          method = "writeObjectLongField";
+          break;
+        default:
+          throw new ForyJsonException(
+              "Unsupported generated object-start kind " + property.writeKind());
+      }
+      if (canPackStringUtf16Prefix(property, false)) {
+        return new Expression.Invoke(
+            writer, method, stringPackedPrefixArgs(property, 0, false, value));
+      }
+      return new Expression.Invoke(
+          writer, method, stringPrefixRef(false, 0), utf16PrefixRef(false, 0), value);
+    }
+
+    @Override
+    Expression writeNumberField(
+        JsonFieldInfo property,
+        int id,
+        Expression value,
+        boolean longValue,
+        boolean commaKnown,
+        Expression index,
+        Expression writer) {
+      String method = longValue ? "writeLongField" : "writeIntField";
+      if (commaKnown) {
+        if (canPackStringUtf16Prefix(property, true)) {
+          return new Expression.Invoke(
+              writer, method, stringPackedPrefixArgs(property, id, true, value));
+        }
+        return new Expression.Invoke(
+            writer, method, stringPrefixRef(true, id), utf16PrefixRef(true, id), value);
+      }
+      Expression.ListExpression expressions =
+          new Expression.ListExpression(
+              new Expression.Invoke(
+                  writer,
+                  method,
+                  stringPrefixRef(false, id),
+                  stringPrefixRef(true, id),
+                  utf16PrefixRef(false, id),
+                  utf16PrefixRef(true, id),
+                  index,
+                  value));
+      expressions.add(increment(index));
+      return expressions;
+    }
+
+    @Override
+    Expression writeStringField(
+        JsonFieldInfo property,
+        int id,
+        Expression value,
+        boolean commaKnown,
+        Expression index,
+        Expression writer) {
+      if (commaKnown) {
+        if (canPackStringUtf16Prefix(property, true)) {
+          return new Expression.Invoke(
+              writer, "writeStringField", stringPackedPrefixArgs(property, id, true, value));
+        }
+        return new Expression.Invoke(
+            writer, "writeStringField", stringPrefixRef(true, id), utf16PrefixRef(true, id), value);
+      }
+      Expression.ListExpression expressions =
+          new Expression.ListExpression(
+              new Expression.Invoke(
+                  writer,
+                  "writeStringField",
+                  stringPrefixRef(false, id),
+                  stringPrefixRef(true, id),
+                  utf16PrefixRef(false, id),
+                  utf16PrefixRef(true, id),
+                  index,
+                  value));
+      expressions.add(increment(index));
+      return expressions;
+    }
+
+    @Override
+    Expression writeFieldName(
+        JsonFieldInfo property, int id, boolean commaKnown, Expression index, Expression writer) {
+      if (commaKnown) {
+        if (canPackStringUtf16Prefix(property, true)) {
+          return new Expression.Invoke(
+              writer, "writeRawValue", stringPackedPrefixArgs(property, id, true));
+        }
+        return new Expression.Invoke(
+            writer, "writeRawValue", stringPrefixRef(true, id), utf16PrefixRef(true, id));
+      }
+      Expression.ListExpression expressions =
+          new Expression.ListExpression(
+              new Expression.Invoke(
+                  writer,
+                  "writeRawValue",
+                  stringPrefixRef(false, id),
+                  stringPrefixRef(true, id),
+                  utf16PrefixRef(false, id),
+                  utf16PrefixRef(true, id),
+                  index));
+      expressions.add(increment(index));
+      return expressions;
+    }
+
+    @Override
+    Expression booleanFieldValue(int id, Expression value, boolean commaKnown, Expression index) {
+      return fieldValue(id, "stringBooleanFieldValue", value, commaKnown, index);
+    }
+
+    @Override
+    Expression enumFieldValue(int id, Expression value, boolean commaKnown, Expression index) {
+      return fieldValue(id, "stringEnumFieldValue", value, commaKnown, index);
+    }
+
+    @Override
+    Expression utf16EnumFieldValue(int id, Expression value, boolean commaKnown, Expression index) {
+      return stringUtf16EnumFieldValue(id, value, commaKnown, index);
+    }
+
+    @Override
+    Expression writeExactScalar(JsonFieldInfo property, Expression value, Expression writer) {
+      return null;
+    }
+
+    @Override
+    Expression writeExactArray(JsonFieldInfo property, Expression value, Expression writer) {
+      return null;
+    }
+
+    private static Reference stringPrefixRef(boolean comma, int id) {
+      return fieldRef((comma ? "sc" : "s") + id, byte[].class);
+    }
+  }
+
+  static final class Utf8Generator extends JsonWriterCodegen {
+    Utf8Generator(JsonCodegen codegen) {
+      super(codegen);
+    }
+
+    @Override
+    Class<?> codecFieldType(JsonFieldInfo property) {
+      if (JsonCodegen.writesObjectCollectionDirectly(property)) {
+        return Utf8WriterCodec.class;
+      }
+      return codegen.utf8WriterFieldType(property.writeTypeInfo());
+    }
+
+    @Override
+    Class<?> writerType() {
+      return Utf8JsonWriter.class;
+    }
+
+    @Override
+    Class<?> codecArrayType() {
+      return Utf8WriterCodec[].class;
+    }
+
+    @Override
+    Class<?> objectWriterType() {
+      return Utf8WriterCodec.class;
+    }
+
+    @Override
+    String writeMethod() {
+      return "writeUtf8";
+    }
+
+    @Override
+    String membersMethod() {
+      return "writeUtf8Members";
+    }
+
+    @Override
+    String objectCollectionMethod() {
+      return "writeUtf8ObjectCollection";
+    }
+
+    @Override
+    int splitMemberThreshold() {
+      return MIN_UTF8_SPLIT_MEMBERS;
+    }
+
+    @Override
+    StringPrefixFields prefixFields(JsonFieldInfo[] properties, boolean objectStartFused) {
+      return null;
+    }
+
+    @Override
+    void addPrefixFields(
+        CodegenContext ctx, JsonFieldInfo property, int id, StringPrefixFields fields) {
+      ctx.addField(byte[].class, "u" + id);
+      ctx.addField(byte[].class, "uc" + id);
+    }
+
+    @Override
+    void addPrefixAssignments(
+        Expression.ListExpression expressions,
+        Expression property,
+        JsonFieldInfo field,
+        int id,
+        StringPrefixFields fields) {
+      expressions.add(
+          new Expression.Assign(
+              utf8PrefixRef(false, id),
+              new Expression.Invoke(property, "utf8NamePrefix", TypeRef.of(byte[].class))
+                  .inline()));
+      expressions.add(
+          new Expression.Assign(
+              utf8PrefixRef(true, id),
+              new Expression.Invoke(property, "utf8CommaNamePrefix", TypeRef.of(byte[].class))
+                  .inline()));
+    }
+
+    @Override
+    Reference writerRef() {
+      return new Reference("writer", TypeRef.of(Utf8JsonWriter.class));
+    }
+
+    @Override
+    Expression writeObjectStartPrimitive(
+        JsonFieldInfo property, Expression value, Expression writer) {
+      String method;
+      switch (property.writeKind()) {
+        case BYTE:
+        case SHORT:
+        case INT:
+          method = "writeObjectIntField";
+          break;
+        case LONG:
+          method = "writeObjectLongField";
+          break;
+        default:
+          throw new ForyJsonException(
+              "Unsupported generated object-start kind " + property.writeKind());
+      }
+      if (canPackPrefix(property, false)) {
+        return new Expression.Invoke(writer, method, packedPrefixArgs(property, false, value));
+      }
+      return new Expression.Invoke(writer, method, utf8PrefixRef(false, 0), value);
+    }
+
+    @Override
+    Expression writeNumberField(
+        JsonFieldInfo property,
+        int id,
+        Expression value,
+        boolean longValue,
+        boolean commaKnown,
+        Expression index,
+        Expression writer) {
+      String method = longValue ? "writeLongField" : "writeIntField";
+      if (commaKnown) {
+        if (canPackPrefix(property, true)) {
+          return new Expression.Invoke(writer, method, packedPrefixArgs(property, true, value));
+        }
+        return new Expression.Invoke(writer, method, utf8PrefixRef(true, id), value);
+      }
+      if (canPackSinglePrefix(property, false) && canPackSinglePrefix(property, true)) {
+        return new Expression.ListExpression(
+            new Expression.Invoke(writer, method, packedDynamicPrefixArgs(property, index, value)),
+            increment(index));
+      }
+      Expression.ListExpression expressions =
+          new Expression.ListExpression(
+              new Expression.Invoke(
+                  writer, method, utf8PrefixRef(false, id), utf8PrefixRef(true, id), index, value));
+      expressions.add(increment(index));
+      return expressions;
+    }
+
+    @Override
+    Expression writeStringField(
+        JsonFieldInfo property,
+        int id,
+        Expression value,
+        boolean commaKnown,
+        Expression index,
+        Expression writer) {
+      if (commaKnown) {
+        if (canPackPrefix(property, true)) {
+          return new Expression.Invoke(
+              writer, "writeStringField", packedPrefixArgs(property, true, value));
+        }
+        return new Expression.Invoke(writer, "writeStringField", utf8PrefixRef(true, id), value);
+      }
+      if (canPackSinglePrefix(property, false) && canPackSinglePrefix(property, true)) {
+        return new Expression.ListExpression(
+            new Expression.Invoke(
+                writer, "writeStringField", packedDynamicPrefixArgs(property, index, value)),
+            increment(index));
+      }
+      Expression.ListExpression expressions =
+          new Expression.ListExpression(
+              new Expression.Invoke(
+                  writer,
+                  "writeStringField",
+                  utf8PrefixRef(false, id),
+                  utf8PrefixRef(true, id),
+                  index,
+                  value));
+      expressions.add(increment(index));
+      return expressions;
+    }
+
+    @Override
+    Expression writeFieldName(
+        JsonFieldInfo property, int id, boolean commaKnown, Expression index, Expression writer) {
+      if (commaKnown && canPackPrefix(property, true)) {
+        return new Expression.Invoke(writer, "writeRawValue", packedPrefixArgs(property, true));
+      }
+      Expression prefix =
+          commaKnown
+              ? utf8PrefixRef(true, id)
+              : new Expression.Ternary(
+                  eq(index, Expression.Literal.ofInt(0)),
+                  utf8PrefixRef(false, id),
+                  utf8PrefixRef(true, id),
+                  true,
+                  TypeRef.of(byte[].class));
+      Expression.ListExpression expressions =
+          new Expression.ListExpression(new Expression.Invoke(writer, "writeRawValue", prefix));
+      if (!commaKnown) {
+        expressions.add(increment(index));
+      }
+      return expressions;
+    }
+
+    @Override
+    Expression booleanFieldValue(int id, Expression value, boolean commaKnown, Expression index) {
+      return fieldValue(id, "utf8BooleanFieldValue", value, commaKnown, index);
+    }
+
+    @Override
+    Expression enumFieldValue(int id, Expression value, boolean commaKnown, Expression index) {
+      return fieldValue(id, "utf8EnumFieldValue", value, commaKnown, index);
+    }
+
+    @Override
+    Expression utf16EnumFieldValue(int id, Expression value, boolean commaKnown, Expression index) {
+      return null;
+    }
+
+    @Override
+    Expression writeExactScalar(JsonFieldInfo property, Expression value, Expression writer) {
+      Class<?> rawType = property.writeRawType();
+      Object codec = property.writeTypeInfo().utf8Writer();
+      String method;
+      if (rawType == UUID.class && codec == ScalarCodecs.UuidCodec.INSTANCE) {
+        method = "writeUuid";
+      } else if (rawType == LocalDate.class && codec == ScalarCodecs.LocalDateCodec.INSTANCE) {
+        method = "writeLocalDate";
+      } else if (rawType == OffsetDateTime.class
+          && codec == ScalarCodecs.OffsetDateTimeCodec.INSTANCE) {
+        method = "writeOffsetDateTime";
+      } else if (rawType == BigDecimal.class && codec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
+        method = "writeBigDecimal";
+      } else {
+        return null;
+      }
+      return new Expression.Invoke(writer, method, value);
+    }
+
+    @Override
+    Expression writeExactArray(JsonFieldInfo property, Expression value, Expression writer) {
+      Class<?> rawType = property.writeRawType();
+      Class<?> codecType = property.writeTypeInfo().utf8Writer().getClass();
+      if (rawType == String[].class && codecType == ArrayCodec.StringArrayCodec.class) {
+        return new Expression.Invoke(writer, "writeStringArray", value);
+      }
+      if (rawType == long[].class && codecType == ArrayCodec.LongArrayCodec.class) {
+        return new Expression.Invoke(writer, "writeLongArray", value);
+      }
+      return null;
+    }
+
+    private static Reference utf8PrefixRef(boolean comma, int id) {
+      return fieldRef((comma ? "uc" : "u") + id, byte[].class);
+    }
+  }
+
+  private static Expression fieldValue(
+      int id, String method, Expression value, boolean commaKnown, Expression index) {
+    return new Expression.Invoke(
+            fieldRef("wp" + id, JsonFieldInfo.class),
+            method,
+            TypeRef.of(byte[].class),
+            value,
+            commaFlag(commaKnown, index))
+        .inline();
   }
 }

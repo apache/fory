@@ -21,19 +21,17 @@ package org.apache.fory.json.resolver;
 
 import java.lang.reflect.Type;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.codec.CodecUtils;
+import org.apache.fory.json.codec.CollectionCodec.ObjectCollectionCodec;
 import org.apache.fory.json.codec.JsonCodec;
-import org.apache.fory.json.codec.Latin1ObjectReaderCodec;
+import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
-import org.apache.fory.json.codec.StringObjectWriterCodec;
 import org.apache.fory.json.codec.StringWriterCodec;
-import org.apache.fory.json.codec.Utf16ObjectReaderCodec;
-import org.apache.fory.json.codec.Utf8ObjectReaderCodec;
-import org.apache.fory.json.codec.Utf8ObjectWriterCodec;
+import org.apache.fory.json.codec.Utf16ReaderCodec;
+import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.reflect.TypeRef;
@@ -45,7 +43,7 @@ import org.apache.fory.reflect.TypeRef;
  * installation always runs on this state's owning thread through {@link JsonJITContext.LocalState}.
  */
 public final class JsonTypeResolver {
-  private final Map<Class<?>, ObjectCodec> objectCodecs;
+  private final Map<Object, ObjectCodec<?>> objectCodecs;
   private final Map<Object, JsonTypeInfo> typeInfos;
   private final JsonSharedRegistry sharedRegistry;
   private final JsonJITContext.LocalState jitState;
@@ -56,17 +54,24 @@ public final class JsonTypeResolver {
 
   public JsonTypeResolver(JsonSharedRegistry sharedRegistry) {
     this.sharedRegistry = sharedRegistry;
-    objectCodecs = new IdentityHashMap<>();
+    objectCodecs = new HashMap<>();
     typeInfos = new HashMap<>();
     jitState = sharedRegistry.jitContext().newLocalState(this);
   }
 
-  public ObjectCodec getObjectCodec(Class<?> type) {
-    ObjectCodec codec = objectCodecs.get(type);
+  public <T> ObjectCodec<T> getObjectCodec(Class<T> type) {
+    return getObjectCodec(TypeRef.of(type));
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T> ObjectCodec<T> getObjectCodec(TypeRef<T> ownerType) {
+    Class<?> rawType = ownerType.getRawType();
+    Object key = typeInfoKey(ownerType.getType(), rawType);
+    ObjectCodec<?> codec = objectCodecs.get(key);
     if (codec != null) {
-      return codec;
+      return (ObjectCodec<T>) codec;
     }
-    return buildObjectCodec(type);
+    return buildObjectCodec(ownerType, key);
   }
 
   public JsonTypeInfo getTypeInfo(Type declaredType, Class<?> fallback) {
@@ -96,48 +101,53 @@ public final class JsonTypeResolver {
     sharedRegistry.checkSecure(type);
   }
 
-  public StringWriterCodec stringWriter(ObjectCodec codec) {
-    return jitState.stringWriter(codec);
+  @SuppressWarnings("unchecked")
+  public <T> StringWriterCodec<T> stringWriter(ObjectCodec<T> codec) {
+    return (StringWriterCodec<T>) (StringWriterCodec<?>) jitState.stringWriter(codec);
   }
 
-  public Utf8WriterCodec utf8Writer(ObjectCodec codec) {
-    return jitState.utf8Writer(codec);
+  @SuppressWarnings("unchecked")
+  public <T> Utf8WriterCodec<T> utf8Writer(ObjectCodec<T> codec) {
+    return (Utf8WriterCodec<T>) (Utf8WriterCodec<?>) jitState.utf8Writer(codec);
   }
 
-  public Latin1ObjectReaderCodec latin1Reader(ObjectCodec codec) {
-    return jitState.latin1Reader(codec);
+  @SuppressWarnings("unchecked")
+  public <T> Latin1ReaderCodec<T> latin1Reader(ObjectCodec<T> codec) {
+    return (Latin1ReaderCodec<T>) (Latin1ReaderCodec<?>) jitState.latin1Reader(codec);
   }
 
-  public Utf16ObjectReaderCodec utf16Reader(ObjectCodec codec) {
-    return jitState.utf16Reader(codec);
+  @SuppressWarnings("unchecked")
+  public <T> Utf16ReaderCodec<T> utf16Reader(ObjectCodec<T> codec) {
+    return (Utf16ReaderCodec<T>) (Utf16ReaderCodec<?>) jitState.utf16Reader(codec);
   }
 
-  public Utf8ObjectReaderCodec utf8Reader(ObjectCodec codec) {
-    return jitState.utf8Reader(codec);
+  @SuppressWarnings("unchecked")
+  public <T> Utf8ReaderCodec<T> utf8Reader(ObjectCodec<T> codec) {
+    return (Utf8ReaderCodec<T>) (Utf8ReaderCodec<?>) jitState.utf8Reader(codec);
   }
 
-  public void registerStringWriterUpdate(Class<?> type, Consumer<StringWriterCodec> updater) {
+  public void registerStringWriterUpdate(Class<?> type, Consumer<StringWriterCodec<Object>> updater) {
     jitState.registerStringWriterUpdate(type, updater);
   }
 
-  public void registerUtf8WriterUpdate(Class<?> type, Consumer<Utf8WriterCodec> updater) {
+  public void registerUtf8WriterUpdate(Class<?> type, Consumer<Utf8WriterCodec<Object>> updater) {
     jitState.registerUtf8WriterUpdate(type, updater);
   }
 
-  public void registerLatin1ReaderUpdate(Class<?> type, Consumer<Latin1ObjectReaderCodec> updater) {
+  public void registerLatin1ReaderUpdate(Class<?> type, Consumer<Latin1ReaderCodec<Object>> updater) {
     jitState.registerLatin1ReaderUpdate(type, updater);
   }
 
-  public void registerUtf16ReaderUpdate(Class<?> type, Consumer<Utf16ObjectReaderCodec> updater) {
+  public void registerUtf16ReaderUpdate(Class<?> type, Consumer<Utf16ReaderCodec<Object>> updater) {
     jitState.registerUtf16ReaderUpdate(type, updater);
   }
 
-  public void registerUtf8ReaderUpdate(Class<?> type, Consumer<Utf8ObjectReaderCodec> updater) {
+  public void registerUtf8ReaderUpdate(Class<?> type, Consumer<Utf8ReaderCodec<Object>> updater) {
     jitState.registerUtf8ReaderUpdate(type, updater);
   }
 
   @Internal
-  public void installStringWriter(Class<?> type, StringObjectWriterCodec codec) {
+  public void installStringWriter(Class<?> type, StringWriterCodec<Object> codec) {
     for (JsonTypeInfo typeInfo : typeInfos.values()) {
       if (matchesObjectType(typeInfo, type)) {
         typeInfo.setStringWriter(codec);
@@ -146,7 +156,7 @@ public final class JsonTypeResolver {
   }
 
   @Internal
-  public void installUtf8Writer(Class<?> type, Utf8ObjectWriterCodec codec) {
+  public void installUtf8Writer(Class<?> type, Utf8WriterCodec<Object> codec) {
     for (JsonTypeInfo typeInfo : typeInfos.values()) {
       if (matchesObjectType(typeInfo, type)) {
         typeInfo.setUtf8Writer(codec);
@@ -155,7 +165,7 @@ public final class JsonTypeResolver {
   }
 
   @Internal
-  public void installLatin1Reader(Class<?> type, Latin1ObjectReaderCodec codec) {
+  public void installLatin1Reader(Class<?> type, Latin1ReaderCodec<Object> codec) {
     for (JsonTypeInfo typeInfo : typeInfos.values()) {
       if (matchesObjectType(typeInfo, type)) {
         typeInfo.setLatin1Reader(codec);
@@ -164,7 +174,7 @@ public final class JsonTypeResolver {
   }
 
   @Internal
-  public void installUtf16Reader(Class<?> type, Utf16ObjectReaderCodec codec) {
+  public void installUtf16Reader(Class<?> type, Utf16ReaderCodec<Object> codec) {
     for (JsonTypeInfo typeInfo : typeInfos.values()) {
       if (matchesObjectType(typeInfo, type)) {
         typeInfo.setUtf16Reader(codec);
@@ -173,7 +183,7 @@ public final class JsonTypeResolver {
   }
 
   @Internal
-  public void installUtf8Reader(Class<?> type, Utf8ObjectReaderCodec codec) {
+  public void installUtf8Reader(Class<?> type, Utf8ReaderCodec<Object> codec) {
     for (JsonTypeInfo typeInfo : typeInfos.values()) {
       if (matchesObjectType(typeInfo, type)) {
         typeInfo.setUtf8Reader(codec);
@@ -181,20 +191,24 @@ public final class JsonTypeResolver {
     }
   }
 
-  private ObjectCodec buildObjectCodec(Class<?> type) {
-    ObjectCodec cached = objectCodecs.get(type);
+  @SuppressWarnings("unchecked")
+  private <T> ObjectCodec<T> buildObjectCodec(TypeRef<T> ownerType, Object key) {
+    ObjectCodec<?> cached = objectCodecs.get(key);
     if (cached != null) {
-      return cached;
+      return (ObjectCodec<T>) cached;
     }
+    Class<?> type = ownerType.getRawType();
     sharedRegistry.checkSecure(type);
-    ObjectCodec codec = ObjectCodec.build(type, sharedRegistry.propertyDiscoveryEnabled());
-    // Resolve recursive fields against this stable interpreted metadata owner.
-    objectCodecs.put(type, codec);
+    ObjectCodec<T> codec =
+        ObjectCodec.build(ownerType, sharedRegistry.propertyDiscoveryEnabled());
+    // Publish the complete declared-type owner before resolving fields so recursive parameterized
+    // bindings resolve back to the same field table rather than the raw-class binding.
+    objectCodecs.put(key, codec);
     try {
       codec.resolveTypes(this);
       return codec;
     } catch (RuntimeException | Error e) {
-      objectCodecs.remove(type, codec);
+      objectCodecs.remove(key, codec);
       throw e;
     }
   }
@@ -202,12 +216,11 @@ public final class JsonTypeResolver {
   private JsonTypeInfo buildTypeInfo(Class<?> rawType, Type declaredType) {
     sharedRegistry.checkSecure(rawType);
     TypeRef<?> typeRef = typeRef(declaredType, rawType);
-    JsonCodec codec = sharedRegistry.createCodec(rawType, typeRef, this);
+    JsonCodec<?> codec = sharedRegistry.createCodec(rawType, typeRef, this);
     if (codec == null) {
-      codec = getObjectCodec(rawType);
+      codec = getObjectCodec(typeRef);
     }
-    JsonTypeInfo typeInfo =
-        new JsonTypeInfo(declaredType, typeRef, rawType, sharedRegistry.kind(rawType), codec);
+    JsonTypeInfo typeInfo = newTypeInfo(declaredType, typeRef, rawType, codec);
     bindInstalled(typeInfo);
     return typeInfo;
   }
@@ -215,15 +228,14 @@ public final class JsonTypeResolver {
   private JsonTypeInfo buildRuntimeTypeInfo(Class<?> rawType) {
     sharedRegistry.checkSecure(rawType);
     TypeRef<?> typeRef = TypeRef.of(rawType);
-    JsonCodec codec =
+    JsonCodec<?> codec =
         rawType == Object.class
             ? getObjectCodec(Object.class)
             : sharedRegistry.createCodec(rawType, typeRef, this);
     if (codec == null) {
       codec = getObjectCodec(rawType);
     }
-    JsonTypeInfo typeInfo =
-        new JsonTypeInfo(rawType, typeRef, rawType, sharedRegistry.kind(rawType), codec);
+    JsonTypeInfo typeInfo = newTypeInfo(rawType, typeRef, rawType, codec);
     bindInstalled(typeInfo);
     return typeInfo;
   }
@@ -233,26 +245,41 @@ public final class JsonTypeResolver {
       return;
     }
     Class<?> type = typeInfo.rawType();
-    StringObjectWriterCodec stringWriter = jitState.installedStringWriter(type);
+    StringWriterCodec<Object> stringWriter = jitState.installedStringWriter(type);
     if (stringWriter != null) {
       typeInfo.setStringWriter(stringWriter);
     }
-    Utf8ObjectWriterCodec utf8Writer = jitState.installedUtf8Writer(type);
+    Utf8WriterCodec<Object> utf8Writer = jitState.installedUtf8Writer(type);
     if (utf8Writer != null) {
       typeInfo.setUtf8Writer(utf8Writer);
     }
-    Latin1ObjectReaderCodec latin1Reader = jitState.installedLatin1Reader(type);
+    Latin1ReaderCodec<Object> latin1Reader = jitState.installedLatin1Reader(type);
     if (latin1Reader != null) {
       typeInfo.setLatin1Reader(latin1Reader);
     }
-    Utf16ObjectReaderCodec utf16Reader = jitState.installedUtf16Reader(type);
+    Utf16ReaderCodec<Object> utf16Reader = jitState.installedUtf16Reader(type);
     if (utf16Reader != null) {
       typeInfo.setUtf16Reader(utf16Reader);
     }
-    Utf8ObjectReaderCodec utf8Reader = jitState.installedUtf8Reader(type);
+    Utf8ReaderCodec<Object> utf8Reader = jitState.installedUtf8Reader(type);
     if (utf8Reader != null) {
       typeInfo.setUtf8Reader(utf8Reader);
     }
+  }
+
+  private JsonTypeInfo newTypeInfo(
+      Type type, TypeRef<?> typeRef, Class<?> rawType, JsonCodec<?> codec) {
+    boolean objectCollectionCodec = codec.getClass() == ObjectCollectionCodec.class;
+    boolean collectionCreatesArrayList =
+        objectCollectionCodec && ((ObjectCollectionCodec) codec).createsArrayList();
+    return new JsonTypeInfo(
+        type,
+        typeRef,
+        rawType,
+        sharedRegistry.kind(rawType),
+        bindCodec(codec),
+        objectCollectionCodec,
+        collectionCreatesArrayList);
   }
 
   private static boolean matchesObjectType(JsonTypeInfo typeInfo, Class<?> type) {
@@ -268,5 +295,13 @@ public final class JsonTypeResolver {
       return TypeRef.of(rawType);
     }
     return TypeRef.of(declaredType);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static JsonCodec<Object> bindCodec(JsonCodec<?> codec) {
+    // The resolver has already matched the codec to this binding's declared type. JsonTypeInfo is
+    // deliberately heterogeneous, so erase that proven relation once instead of casting in every
+    // root, field, container, and generated hot call.
+    return (JsonCodec<Object>) codec;
   }
 }
