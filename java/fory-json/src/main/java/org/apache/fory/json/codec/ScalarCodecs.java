@@ -2662,8 +2662,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicIntegerArrayCodec
-      implements JsonCodec<AtomicIntegerArray> {
+  public static final class AtomicIntegerArrayCodec implements JsonCodec<AtomicIntegerArray> {
     public static final AtomicIntegerArrayCodec INSTANCE = new AtomicIntegerArrayCodec();
 
     @Override

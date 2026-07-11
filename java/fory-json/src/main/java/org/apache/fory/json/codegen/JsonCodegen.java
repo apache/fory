@@ -407,12 +407,14 @@ public final class JsonCodegen {
     return usesWriteCodec(property) && typeInfo.usesDefaultObjectCodec() ? typeInfo : null;
   }
 
-  private static StringWriterCodec<Object> stringWriter(JsonFieldInfo property, JsonTypeResolver resolver) {
+  private static StringWriterCodec<Object> stringWriter(
+      JsonFieldInfo property, JsonTypeResolver resolver) {
     JsonTypeInfo typeInfo = writeObjectTypeInfo(property, resolver);
     return typeInfo == null ? property.writeTypeInfo().stringWriter() : typeInfo.stringWriter();
   }
 
-  private static Utf8WriterCodec<Object> utf8Writer(JsonFieldInfo property, JsonTypeResolver resolver) {
+  private static Utf8WriterCodec<Object> utf8Writer(
+      JsonFieldInfo property, JsonTypeResolver resolver) {
     JsonTypeInfo typeInfo = writeObjectTypeInfo(property, resolver);
     return typeInfo == null ? property.writeTypeInfo().utf8Writer() : typeInfo.utf8Writer();
   }
@@ -469,9 +471,7 @@ public final class JsonCodegen {
   }
 
   private static void collectLatin1Readers(
-      Class<?> type,
-      JsonFieldInfo[] properties,
-      Latin1ReaderCodec<Object>[] codecs) {
+      Class<?> type, JsonFieldInfo[] properties, Latin1ReaderCodec<Object>[] codecs) {
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
       if (storesReadCodec(property)) {
@@ -485,9 +485,7 @@ public final class JsonCodegen {
   }
 
   private static void collectUtf16Readers(
-      Class<?> type,
-      JsonFieldInfo[] properties,
-      Utf16ReaderCodec<Object>[] codecs) {
+      Class<?> type, JsonFieldInfo[] properties, Utf16ReaderCodec<Object>[] codecs) {
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
       if (storesReadCodec(property)) {
@@ -501,9 +499,7 @@ public final class JsonCodegen {
   }
 
   private static void collectUtf8Readers(
-      Class<?> type,
-      JsonFieldInfo[] properties,
-      Utf8ReaderCodec<Object>[] codecs) {
+      Class<?> type, JsonFieldInfo[] properties, Utf8ReaderCodec<Object>[] codecs) {
     for (int i = 0; i < properties.length; i++) {
       JsonFieldInfo property = properties[i];
       if (storesReadCodec(property)) {
@@ -806,9 +802,7 @@ public final class JsonCodegen {
         if (AndroidSupport.IS_ANDROID) {
           androidConstructor =
               codecClass.getDeclaredConstructor(
-                  ObjectCodec.class,
-                  JsonFieldInfo[].class,
-                  Latin1ReaderCodec[].class);
+                  ObjectCodec.class, JsonFieldInfo[].class, Latin1ReaderCodec[].class);
           androidConstructor.setAccessible(true);
           constructor = null;
         } else {
@@ -831,16 +825,13 @@ public final class JsonCodegen {
 
     @SuppressWarnings("unchecked")
     private Latin1ReaderCodec<Object> newCodec(
-        ObjectCodec<?> owner,
-        JsonFieldInfo[] properties,
-        Latin1ReaderCodec<Object>[] codecs) {
+        ObjectCodec<?> owner, JsonFieldInfo[] properties, Latin1ReaderCodec<Object>[] codecs) {
       try {
         if (AndroidSupport.IS_ANDROID) {
           return (Latin1ReaderCodec<Object>)
               androidConstructor.newInstance(owner, properties, codecs);
         }
-        return (Latin1ReaderCodec<Object>)
-            constructor.invoke(owner, properties, codecs);
+        return (Latin1ReaderCodec<Object>) constructor.invoke(owner, properties, codecs);
       } catch (Throwable e) {
         throw new ForyJsonException("Cannot instantiate generated JSON Latin1 reader", e);
       }
@@ -857,9 +848,7 @@ public final class JsonCodegen {
         if (AndroidSupport.IS_ANDROID) {
           androidConstructor =
               codecClass.getDeclaredConstructor(
-                  ObjectCodec.class,
-                  JsonFieldInfo[].class,
-                  Utf16ReaderCodec[].class);
+                  ObjectCodec.class, JsonFieldInfo[].class, Utf16ReaderCodec[].class);
           androidConstructor.setAccessible(true);
           constructor = null;
         } else {
@@ -882,16 +871,13 @@ public final class JsonCodegen {
 
     @SuppressWarnings("unchecked")
     private Utf16ReaderCodec<Object> newCodec(
-        ObjectCodec<?> owner,
-        JsonFieldInfo[] properties,
-        Utf16ReaderCodec<Object>[] codecs) {
+        ObjectCodec<?> owner, JsonFieldInfo[] properties, Utf16ReaderCodec<Object>[] codecs) {
       try {
         if (AndroidSupport.IS_ANDROID) {
           return (Utf16ReaderCodec<Object>)
               androidConstructor.newInstance(owner, properties, codecs);
         }
-        return (Utf16ReaderCodec<Object>)
-            constructor.invoke(owner, properties, codecs);
+        return (Utf16ReaderCodec<Object>) constructor.invoke(owner, properties, codecs);
       } catch (Throwable e) {
         throw new ForyJsonException("Cannot instantiate generated JSON UTF16 reader", e);
       }
@@ -908,9 +894,7 @@ public final class JsonCodegen {
         if (AndroidSupport.IS_ANDROID) {
           androidConstructor =
               codecClass.getDeclaredConstructor(
-                  ObjectCodec.class,
-                  JsonFieldInfo[].class,
-                  Utf8ReaderCodec[].class);
+                  ObjectCodec.class, JsonFieldInfo[].class, Utf8ReaderCodec[].class);
           androidConstructor.setAccessible(true);
           constructor = null;
         } else {
@@ -933,16 +917,13 @@ public final class JsonCodegen {
 
     @SuppressWarnings("unchecked")
     private Utf8ReaderCodec<Object> newCodec(
-        ObjectCodec<?> owner,
-        JsonFieldInfo[] properties,
-        Utf8ReaderCodec<Object>[] codecs) {
+        ObjectCodec<?> owner, JsonFieldInfo[] properties, Utf8ReaderCodec<Object>[] codecs) {
       try {
         if (AndroidSupport.IS_ANDROID) {
           return (Utf8ReaderCodec<Object>)
               androidConstructor.newInstance(owner, properties, codecs);
         }
-        return (Utf8ReaderCodec<Object>)
-            constructor.invoke(owner, properties, codecs);
+        return (Utf8ReaderCodec<Object>) constructor.invoke(owner, properties, codecs);
       } catch (Throwable e) {
         throw new ForyJsonException("Cannot instantiate generated JSON UTF8 reader", e);
       }

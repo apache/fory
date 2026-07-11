@@ -115,8 +115,7 @@ abstract class JsonReaderCodegen {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
       if (JsonCodegen.storesReadCodec(properties[i])) {
-        ctx.addField(
-            JsonCodegen.generatedCodecType(ctx, codecFieldType(properties[i])), "r" + i);
+        ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(properties[i])), "r" + i);
       }
       if (storesReadObjectCodec(type, properties[i])) {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "o" + i);
@@ -140,10 +139,7 @@ abstract class JsonReaderCodegen {
     ctx.addMethod(
         "@Override public final",
         readMethod,
-        "if (reader.tryReadNullToken()) {\n"
-            + "  return null;\n"
-            + "}\n"
-            + bodyCode,
+        "if (reader.tryReadNullToken()) {\n" + "  return null;\n" + "}\n" + bodyCode,
         Object.class,
         readerType,
         "reader");
@@ -1500,8 +1496,9 @@ abstract class JsonReaderCodegen {
       case COLLECTION:
       case ARRAY:
       case MAP:
-      case OBJECT:
         return false;
+      case OBJECT:
+        return property.readRawType().isPrimitive();
       case BYTE:
       case SHORT:
       case CHAR:
@@ -1853,15 +1850,25 @@ abstract class JsonReaderCodegen {
     // The selected capability consumes the complete nullable value. Requesting expression
     // null-state here only emits dead boolean locals around codec calls and bloats hot generated
     // reader methods.
-    return new Expression.Cast(
+    Expression value =
         inline(
             new Expression.Invoke(
                 fieldRef("r" + id, readerCapabilityType()),
                 readObjectMethod(),
                 TypeRef.of(Object.class),
                 false,
-                readerRef())),
-        TypeRef.of(property.readRawType()));
+                readerRef()));
+    if (property.readRawType().isPrimitive()) {
+      value =
+          new Expression.Invoke(
+                  fieldRef("rp" + id, JsonFieldInfo.class),
+                  "requirePrimitive",
+                  TypeRef.of(Object.class),
+                  false,
+                  value)
+              .inline();
+    }
+    return new Expression.Cast(value, TypeRef.of(property.readRawType()));
   }
 
   final Expression readCollectionValue(JsonFieldInfo property, int id) {
@@ -1891,17 +1898,11 @@ abstract class JsonReaderCodegen {
 
   final Expression readObjectValue(Class<?> type, JsonFieldInfo property, int id) {
     Expression codec =
-        property.readRawType() == type
-            ? selfRef()
-            : fieldRef("o" + id, readerCapabilityType());
+        property.readRawType() == type ? selfRef() : fieldRef("o" + id, readerCapabilityType());
     return new Expression.Cast(
         inline(
             new Expression.Invoke(
-                codec,
-                readMethod(),
-                TypeRef.of(Object.class),
-                false,
-                readerRef())),
+                codec, readMethod(), TypeRef.of(Object.class), false, readerRef())),
         TypeRef.of(property.readRawType()));
   }
 

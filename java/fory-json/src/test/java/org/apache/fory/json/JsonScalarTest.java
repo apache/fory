@@ -300,12 +300,19 @@ public class JsonScalarTest extends ForyJsonTestModels {
             + "\"longValue\":5,\"floatValue\":1.5,\"doubleValue\":2.5,\"charValue\":\"x\"}";
     assertPrimitiveFields(json.fromJson(values, PrimitiveFields.class));
     assertPrimitiveFields(
-        json.fromJson(values.replace("}", ",\"text\":\"" + ZH_TEXT + "\"}"), PrimitiveFields.class));
+        json.fromJson(
+            values.replace("}", ",\"text\":\"" + ZH_TEXT + "\"}"), PrimitiveFields.class));
     assertPrimitiveFields(
         json.fromJson(values.getBytes(StandardCharsets.UTF_8), PrimitiveFields.class));
 
     String[] names = {
-      "bool", "byteValue", "shortValue", "intValue", "longValue", "floatValue", "doubleValue",
+      "bool",
+      "byteValue",
+      "shortValue",
+      "intValue",
+      "longValue",
+      "floatValue",
+      "doubleValue",
       "charValue"
     };
     for (String name : names) {
@@ -1525,8 +1532,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     NullOwnedHolder holder = new NullOwnedHolder();
     assertEquals(json.toJson(holder), "{\"value\":\"string-null\"}");
     assertEquals(
-        new String(json.toJsonBytes(holder), StandardCharsets.UTF_8),
-        "{\"value\":\"utf8-null\"}");
+        new String(json.toJsonBytes(holder), StandardCharsets.UTF_8), "{\"value\":\"utf8-null\"}");
 
     String stringMode = StringSerializer.isBytesBackedString() ? "latin1-null" : "utf16-null";
     assertEquals(json.fromJson("null", NullOwnedValue.class).mode, stringMode);
@@ -1534,9 +1540,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
         json.fromJson("null".getBytes(StandardCharsets.UTF_8), NullOwnedValue.class).mode,
         "utf8-null");
     assertEquals(
-        json.fromJson("{\"ignored\":\"\u0100\",\"value\":null}", NullOwnedHolder.class)
-            .value
-            .mode,
+        json.fromJson("{\"ignored\":\"\u0100\",\"value\":null}", NullOwnedHolder.class).value.mode,
         "utf16-null");
 
     NullOwnedContainers containers = new NullOwnedContainers();
@@ -1995,6 +1999,41 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void customPrimitiveNull() {
+    ForyJson json = newJsonBuilder().registerCodec(int.class, NULL_INTEGER_CODEC).build();
+    assertThrows(ForyJsonException.class, () -> json.fromJson("null", int.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("null".getBytes(StandardCharsets.UTF_8), int.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"value\":null}", CustomPrimitiveField.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"ignored\":\"\u0100\",\"value\":null}", CustomPrimitiveField.class));
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            json.fromJson(
+                "{\"value\":null}".getBytes(StandardCharsets.UTF_8), CustomPrimitiveField.class));
+    assertGeneratedWhenSupported(json, CustomPrimitiveField.class);
+
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"value\":null}", CustomPrimitiveSetter.class));
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            json.fromJson("{\"ignored\":\"\u0100\",\"value\":null}", CustomPrimitiveSetter.class));
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            json.fromJson(
+                "{\"value\":null}".getBytes(StandardCharsets.UTF_8), CustomPrimitiveSetter.class));
+    assertGeneratedWhenSupported(json, CustomPrimitiveSetter.class);
+  }
+
+  @Test
   public void customNumericCodecsOwnContainers() {
     ForyJson json =
         newJsonBuilder()
@@ -2180,6 +2219,18 @@ public class JsonScalarTest extends ForyJsonTestModels {
     public double doubleValue;
     public Float floatBoxed;
     public float floatValue;
+  }
+
+  public static final class CustomPrimitiveField {
+    public int value;
+  }
+
+  public static final class CustomPrimitiveSetter {
+    private int stored;
+
+    public void setValue(int value) {
+      stored = value;
+    }
   }
 
   public static final class CustomNumericContainers {

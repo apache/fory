@@ -126,7 +126,8 @@ public final class JsonTypeResolver {
     return (Utf8ReaderCodec<T>) (Utf8ReaderCodec<?>) jitState.utf8Reader(codec);
   }
 
-  public void registerStringWriterUpdate(Class<?> type, Consumer<StringWriterCodec<Object>> updater) {
+  public void registerStringWriterUpdate(
+      Class<?> type, Consumer<StringWriterCodec<Object>> updater) {
     jitState.registerStringWriterUpdate(type, updater);
   }
 
@@ -134,7 +135,8 @@ public final class JsonTypeResolver {
     jitState.registerUtf8WriterUpdate(type, updater);
   }
 
-  public void registerLatin1ReaderUpdate(Class<?> type, Consumer<Latin1ReaderCodec<Object>> updater) {
+  public void registerLatin1ReaderUpdate(
+      Class<?> type, Consumer<Latin1ReaderCodec<Object>> updater) {
     jitState.registerLatin1ReaderUpdate(type, updater);
   }
 
@@ -199,8 +201,7 @@ public final class JsonTypeResolver {
     }
     Class<?> type = ownerType.getRawType();
     sharedRegistry.checkSecure(type);
-    ObjectCodec<T> codec =
-        ObjectCodec.build(ownerType, sharedRegistry.propertyDiscoveryEnabled());
+    ObjectCodec<T> codec = ObjectCodec.build(ownerType, sharedRegistry.propertyDiscoveryEnabled());
     // Publish the complete declared-type owner before resolving fields so recursive parameterized
     // bindings resolve back to the same field table rather than the raw-class binding.
     objectCodecs.put(key, codec);

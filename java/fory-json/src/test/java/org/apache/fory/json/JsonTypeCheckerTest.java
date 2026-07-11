@@ -39,7 +39,6 @@ import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.CodecRegistry;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
-import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
@@ -48,7 +47,6 @@ import org.testng.annotations.Test;
 
 public class JsonTypeCheckerTest extends ForyJsonTestModels {
   private static final JsonCodec<String> STRING_NULL_CODEC = new NullCodec<>();
-  private static final JsonCodec<Integer> INTEGER_NULL_CODEC = new NullCodec<>();
 
   @Factory(dataProvider = "codegen")
   public JsonTypeCheckerTest(boolean codegen) {
@@ -110,7 +108,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void customPrimitiveUsesChecker() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(int.class, INTEGER_NULL_CODEC)
+            .registerCodec(int.class, NULL_INTEGER_CODEC)
             .withTypeChecker((className, context) -> !className.equals(int.class.getName()))
             .build();
     assertThrows(InsecureException.class, () -> json.fromJson("1", int.class));
@@ -208,7 +206,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void collectionScalarChecked() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(Integer.class, INTEGER_NULL_CODEC)
+            .registerCodec(Integer.class, NULL_INTEGER_CODEC)
             .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
             .build();
     assertThrows(
@@ -219,7 +217,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void mapScalarChecked() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(Integer.class, INTEGER_NULL_CODEC)
+            .registerCodec(Integer.class, NULL_INTEGER_CODEC)
             .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
             .build();
     assertThrows(

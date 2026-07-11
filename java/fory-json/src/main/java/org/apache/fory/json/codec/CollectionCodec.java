@@ -974,7 +974,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
     }
 
     private ArrayList<Object> readLatin1ArrayListTail(
-        Latin1JsonReader reader, Latin1ReaderCodec<Object> codec, Object e0, Object e1, Object e2, Object e3) {
+        Latin1JsonReader reader,
+        Latin1ReaderCodec<Object> codec,
+        Object e0,
+        Object e1,
+        Object e2,
+        Object e3) {
       Object e4 = codec.readLatin1(reader);
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
@@ -1002,7 +1007,14 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
     }
 
     private ArrayList<Object> readLatin1ArrayListLongTail(
-        Latin1JsonReader reader, Latin1ReaderCodec<Object> codec, Object e0, Object e1, Object e2, Object e3, Object e4, Object e5) {
+        Latin1JsonReader reader,
+        Latin1ReaderCodec<Object> codec,
+        Object e0,
+        Object e1,
+        Object e2,
+        Object e3,
+        Object e4,
+        Object e5) {
       Object e6 = codec.readLatin1(reader);
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
@@ -1092,7 +1104,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
     }
 
     private ArrayList<Object> readUtf16ArrayListTail(
-        Utf16JsonReader reader, Utf16ReaderCodec<Object> codec, Object e0, Object e1, Object e2, Object e3) {
+        Utf16JsonReader reader,
+        Utf16ReaderCodec<Object> codec,
+        Object e0,
+        Object e1,
+        Object e2,
+        Object e3) {
       Object e4 = codec.readUtf16(reader);
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
@@ -1120,7 +1137,14 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
     }
 
     private ArrayList<Object> readUtf16ArrayListLongTail(
-        Utf16JsonReader reader, Utf16ReaderCodec<Object> codec, Object e0, Object e1, Object e2, Object e3, Object e4, Object e5) {
+        Utf16JsonReader reader,
+        Utf16ReaderCodec<Object> codec,
+        Object e0,
+        Object e1,
+        Object e2,
+        Object e3,
+        Object e4,
+        Object e5) {
       Object e6 = codec.readUtf16(reader);
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
@@ -1210,7 +1234,12 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
     }
 
     private ArrayList<Object> readUtf8ArrayListTail(
-        Utf8JsonReader reader, Utf8ReaderCodec<Object> codec, Object e0, Object e1, Object e2, Object e3) {
+        Utf8JsonReader reader,
+        Utf8ReaderCodec<Object> codec,
+        Object e0,
+        Object e1,
+        Object e2,
+        Object e3) {
       Object e4 = codec.readUtf8(reader);
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
@@ -1238,7 +1267,14 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
     }
 
     private ArrayList<Object> readUtf8ArrayListLongTail(
-        Utf8JsonReader reader, Utf8ReaderCodec<Object> codec, Object e0, Object e1, Object e2, Object e3, Object e4, Object e5) {
+        Utf8JsonReader reader,
+        Utf8ReaderCodec<Object> codec,
+        Object e0,
+        Object e1,
+        Object e2,
+        Object e3,
+        Object e4,
+        Object e5) {
       Object e6 = codec.readUtf8(reader);
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();
@@ -1281,7 +1317,6 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
       reader.exitDepth();
       return list;
     }
-
   }
 
   public static final class StringCollectionCodec extends DirectCollectionCodec {

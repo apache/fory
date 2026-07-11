@@ -278,13 +278,29 @@ public final class ForyJson {
 
   @SuppressWarnings("unchecked")
   private static <T> T castValue(Object value, Class<T> type) {
-    return type.isPrimitive() ? (T) value : type.cast(value);
+    if (!type.isPrimitive()) {
+      return type.cast(value);
+    }
+    if (value == null) {
+      throw primitiveNull(type);
+    }
+    return (T) value;
   }
 
   @SuppressWarnings("unchecked")
   private static <T> T castValue(Object value, TypeRef<T> typeRef) {
     Class<?> rawType = typeRef.getRawType();
-    return rawType.isPrimitive() ? (T) value : (T) rawType.cast(value);
+    if (!rawType.isPrimitive()) {
+      return (T) rawType.cast(value);
+    }
+    if (value == null) {
+      throw primitiveNull(rawType);
+    }
+    return (T) value;
+  }
+
+  private static ForyJsonException primitiveNull(Class<?> type) {
+    return new ForyJsonException("Cannot read null into primitive " + type);
   }
 
   private static final class PooledState {

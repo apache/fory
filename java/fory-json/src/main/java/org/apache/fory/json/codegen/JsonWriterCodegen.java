@@ -201,18 +201,13 @@ abstract class JsonWriterCodegen {
         JsonCodegen.generatedCodecArrayType(ctx, codecArrayType()),
         "codecs");
     ctx.clearExprState();
-    Code.ExprCode body =
-        writeExpression(builder, type, properties, objectStartFused).genCode(ctx);
+    Code.ExprCode body = writeExpression(builder, type, properties, objectStartFused).genCode(ctx);
     String bodyCode = body.code();
     bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
     ctx.addMethod(
         "@Override public final",
         writeMethod(),
-        "if (value == null) {\n"
-            + "  writer.writeNull();\n"
-            + "  return;\n"
-            + "}\n"
-            + bodyCode,
+        "if (value == null) {\n" + "  writer.writeNull();\n" + "  return;\n" + "}\n" + bodyCode,
         void.class,
         writerType(),
         "writer",
@@ -721,7 +716,7 @@ abstract class JsonWriterCodegen {
                     writeObjectCollectionElement(
                         index,
                         new Expression.Invoke(
-                            arrayList, "get", TypeRef.of(Object.class), true, index),
+                            arrayList, "get", TypeRef.of(Object.class), false, index),
                         codec,
                         writer)));
     Expression collection =
@@ -733,7 +728,7 @@ abstract class JsonWriterCodegen {
             new Expression.ForEach(
                 collection,
                 TypeRef.of(Object.class),
-                true,
+                false,
                 (index, element) -> writeObjectCollectionElement(index, element, codec, writer)));
     Expression exactArrayList =
         eq(

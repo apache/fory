@@ -72,13 +72,11 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
       return BoxedShortArrayCodec.INSTANCE;
     } else if (componentType == Byte.class && componentCodec == ScalarCodecs.ByteCodec.BOXED) {
       return BoxedByteArrayCodec.INSTANCE;
-    } else if (componentType == Character.class
-        && componentCodec == ScalarCodecs.CharCodec.BOXED) {
+    } else if (componentType == Character.class && componentCodec == ScalarCodecs.CharCodec.BOXED) {
       return BoxedCharArrayCodec.INSTANCE;
     } else if (componentType == Float.class && componentCodec == ScalarCodecs.FloatCodec.BOXED) {
       return BoxedFloatArrayCodec.INSTANCE;
-    } else if (componentType == Double.class
-        && componentCodec == ScalarCodecs.DoubleCodec.BOXED) {
+    } else if (componentType == Double.class && componentCodec == ScalarCodecs.DoubleCodec.BOXED) {
       return BoxedDoubleArrayCodec.INSTANCE;
     } else if (componentType == String.class
         && componentCodec == ScalarCodecs.StringCodec.INSTANCE) {
@@ -110,7 +108,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeInt(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, int[] value) {
@@ -125,7 +123,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeInt(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public int[] readLatin1(Latin1JsonReader reader) {
@@ -223,7 +221,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeLong(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, long[] value) {
@@ -238,7 +236,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeLong(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public long[] readLatin1(Latin1JsonReader reader) {
@@ -554,7 +552,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeBoolean(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, boolean[] value) {
@@ -569,7 +567,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeBoolean(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public boolean[] readLatin1(Latin1JsonReader reader) {
@@ -667,7 +665,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeInt(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, short[] value) {
@@ -682,7 +680,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeInt(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public short[] readLatin1(Latin1JsonReader reader) {
@@ -780,7 +778,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeInt(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, byte[] value) {
@@ -795,7 +793,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeInt(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public byte[] readLatin1(Latin1JsonReader reader) {
@@ -893,7 +891,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeChar(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, char[] value) {
@@ -908,7 +906,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeChar(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public char[] readLatin1(Latin1JsonReader reader) {
@@ -1006,7 +1004,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeFloat(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, float[] value) {
@@ -1021,7 +1019,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeFloat(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public float[] readLatin1(Latin1JsonReader reader) {
@@ -1116,7 +1114,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeDouble(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, double[] value) {
@@ -1131,7 +1129,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         writer.writeDouble(array[i]);
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public double[] readLatin1(Latin1JsonReader reader) {
@@ -1212,8 +1210,6 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     private StringArrayCodec() {
       super(String.class);
     }
-
-
 
     @Override
     public void writeString(StringJsonWriter writer, String[] value) {
@@ -1886,7 +1882,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Integer[] value) {
@@ -1906,7 +1902,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public Integer[] readLatin1(Latin1JsonReader reader) {
@@ -2009,7 +2005,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Long[] value) {
@@ -2029,7 +2025,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public Long[] readLatin1(Latin1JsonReader reader) {
@@ -2132,7 +2128,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Boolean[] value) {
@@ -2152,7 +2148,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public Boolean[] readLatin1(Latin1JsonReader reader) {
@@ -2255,7 +2251,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Short[] value) {
@@ -2275,7 +2271,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public Short[] readLatin1(Latin1JsonReader reader) {
@@ -2378,7 +2374,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Byte[] value) {
@@ -2398,7 +2394,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public Byte[] readLatin1(Latin1JsonReader reader) {
@@ -2501,7 +2497,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Character[] value) {
@@ -2521,7 +2517,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public Character[] readLatin1(Latin1JsonReader reader) {
@@ -2624,7 +2620,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Float[] value) {
@@ -2644,7 +2640,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public Float[] readLatin1(Latin1JsonReader reader) {
@@ -2744,7 +2740,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, Double[] value) {
@@ -2764,7 +2760,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         }
       }
       writer.writeArrayEnd();
-        }
+    }
 
     @Override
     public Double[] readLatin1(Latin1JsonReader reader) {

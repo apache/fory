@@ -218,8 +218,7 @@ public final class GuavaCodecs {
     }
   }
 
-  private static final class ImmutableIntArrayCodec
-      implements JsonCodec<ImmutableIntArray> {
+  private static final class ImmutableIntArrayCodec implements JsonCodec<ImmutableIntArray> {
     private static final ImmutableIntArrayCodec INSTANCE = new ImmutableIntArrayCodec();
 
     private ImmutableIntArrayCodec() {}

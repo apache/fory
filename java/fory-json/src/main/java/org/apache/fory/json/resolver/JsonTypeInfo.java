@@ -138,5 +138,4 @@ public final class JsonTypeInfo {
   public boolean collectionCreatesArrayList() {
     return collectionCreatesArrayList;
   }
-
 }

@@ -21,7 +21,10 @@ package org.apache.fory.json.codec;
 
 import org.apache.fory.json.reader.Utf8JsonReader;
 
-/** Reads one complete resolved Java value, including JSON {@code null}, through {@link Utf8JsonReader}. */
+/**
+ * Reads one complete resolved Java value, including JSON {@code null}, through {@link
+ * Utf8JsonReader}.
+ */
 public interface Utf8ReaderCodec<T> {
   T readUtf8(Utf8JsonReader reader);
 }

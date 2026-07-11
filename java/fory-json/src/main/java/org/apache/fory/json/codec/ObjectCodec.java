@@ -81,8 +81,7 @@ public class ObjectCodec<T> implements JsonCodec<T> {
     }
   }
 
-  public static <T> ObjectCodec<T> build(
-      TypeRef<T> ownerType, boolean propertyDiscoveryEnabled) {
+  public static <T> ObjectCodec<T> build(TypeRef<T> ownerType, boolean propertyDiscoveryEnabled) {
     Class<?> type = ownerType.getRawType();
     if (type.isInterface()
         || Modifier.isAbstract(type.getModifiers())
@@ -776,6 +775,5 @@ public class ObjectCodec<T> implements JsonCodec<T> {
     public T readUtf8(Utf8JsonReader reader) {
       return reader.tryReadNullToken() ? null : readUtf8Object(reader);
     }
-
   }
 }

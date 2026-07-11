@@ -54,6 +54,7 @@ public final class JsonFieldInfo {
   private static final int KIND_COLLECTION = 12;
   private static final int KIND_MAP = 13;
   private static final int KIND_OBJECT = 14;
+  private static final int KIND_CUSTOM_PRIMITIVE = 15;
   private static final byte[] TRUE_BYTES = "true".getBytes(StandardCharsets.ISO_8859_1);
   private static final byte[] FALSE_BYTES = "false".getBytes(StandardCharsets.ISO_8859_1);
 
@@ -375,13 +376,18 @@ public final class JsonFieldInfo {
         rejectPrimitiveNull(reader);
         readAccessor.putChar(object, reader.readChar());
         return;
+      case KIND_CUSTOM_PRIMITIVE:
+        readAccessor.putObject(
+            object, requirePrimitive(readTypeInfo.latin1Reader().readLatin1(reader)));
+        return;
       default:
         readAccessor.putObject(object, readTypeInfo.latin1Reader().readLatin1(reader));
     }
   }
 
   public Object readLatin1Value(Latin1JsonReader reader) {
-    return readTypeInfo.latin1Reader().readLatin1(reader);
+    Object value = readTypeInfo.latin1Reader().readLatin1(reader);
+    return readPrimitiveKindId == KIND_CUSTOM_PRIMITIVE ? requirePrimitive(value) : value;
   }
 
   public void readUtf16(Utf16JsonReader reader, Object object) {
@@ -418,13 +424,18 @@ public final class JsonFieldInfo {
         rejectPrimitiveNull(reader);
         readAccessor.putChar(object, reader.readChar());
         return;
+      case KIND_CUSTOM_PRIMITIVE:
+        readAccessor.putObject(
+            object, requirePrimitive(readTypeInfo.utf16Reader().readUtf16(reader)));
+        return;
       default:
         readAccessor.putObject(object, readTypeInfo.utf16Reader().readUtf16(reader));
     }
   }
 
   public Object readUtf16Value(Utf16JsonReader reader) {
-    return readTypeInfo.utf16Reader().readUtf16(reader);
+    Object value = readTypeInfo.utf16Reader().readUtf16(reader);
+    return readPrimitiveKindId == KIND_CUSTOM_PRIMITIVE ? requirePrimitive(value) : value;
   }
 
   public void readUtf8(Utf8JsonReader reader, Object object) {
@@ -461,13 +472,27 @@ public final class JsonFieldInfo {
         rejectPrimitiveNull(reader);
         readAccessor.putChar(object, reader.readChar());
         return;
+      case KIND_CUSTOM_PRIMITIVE:
+        readAccessor.putObject(
+            object, requirePrimitive(readTypeInfo.utf8Reader().readUtf8(reader)));
+        return;
       default:
         readAccessor.putObject(object, readTypeInfo.utf8Reader().readUtf8(reader));
     }
   }
 
   public Object readUtf8Value(Utf8JsonReader reader) {
-    return readTypeInfo.utf8Reader().readUtf8(reader);
+    Object value = readTypeInfo.utf8Reader().readUtf8(reader);
+    return readPrimitiveKindId == KIND_CUSTOM_PRIMITIVE ? requirePrimitive(value) : value;
+  }
+
+  // A custom codec may return null, but primitive storage has no nullable representation. Keep
+  // this check at the field owner; built-in primitive fast paths never call it.
+  public Object requirePrimitive(Object value) {
+    if (value == null) {
+      throw primitiveNull();
+    }
+    return value;
   }
 
   private void rejectPrimitiveNull(JsonReader reader) {
@@ -1110,6 +1135,9 @@ public final class JsonFieldInfo {
   private static int primitiveKindId(Class<?> rawType, JsonFieldKind kind) {
     if (rawType == null || !rawType.isPrimitive() || kind == null) {
       return 0;
+    }
+    if (kind == JsonFieldKind.OBJECT) {
+      return KIND_CUSTOM_PRIMITIVE;
     }
     int kindId = kindId(kind);
     return kindId <= KIND_CHAR ? kindId : 0;

@@ -21,7 +21,10 @@ package org.apache.fory.json.codec;
 
 import org.apache.fory.json.reader.Latin1JsonReader;
 
-/** Reads one complete resolved Java value, including JSON {@code null}, through {@link Latin1JsonReader}. */
+/**
+ * Reads one complete resolved Java value, including JSON {@code null}, through {@link
+ * Latin1JsonReader}.
+ */
 public interface Latin1ReaderCodec<T> {
   T readLatin1(Latin1JsonReader reader);
 }

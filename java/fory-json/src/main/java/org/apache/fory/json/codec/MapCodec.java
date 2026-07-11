@@ -262,10 +262,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
     private final JsonTypeInfo valueTypeInfo;
 
     private GenericMapCodec(
-        TypeRef<?> typeRef,
-        MapFactory factory,
-        MapKeyCodec keyCodec,
-        JsonTypeInfo valueTypeInfo) {
+        TypeRef<?> typeRef, MapFactory factory, MapKeyCodec keyCodec, JsonTypeInfo valueTypeInfo) {
       super(typeRef, factory);
       this.keyCodec = keyCodec;
       this.valueTypeInfo = valueTypeInfo;
@@ -592,7 +589,6 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
     }
 
     abstract void writeNumber(JsonWriter writer, Object value);
-
   }
 
   public static final class StringIntMapCodec extends StringNumberMapCodec {

@@ -47,7 +47,9 @@ public abstract class JsonWriter {
     maxDepth = config.maxDepth();
   }
 
-  /** Returns the resolver owned by this writer for custom codecs that resolve dynamic child types. */
+  /**
+   * Returns the resolver owned by this writer for custom codecs that resolve dynamic child types.
+   */
   public final JsonTypeResolver typeResolver() {
     return typeResolver;
   }

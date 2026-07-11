@@ -123,7 +123,9 @@ public abstract class JsonReader {
     maxDepth = config.maxDepth();
   }
 
-  /** Returns the resolver owned by this reader for custom codecs that resolve dynamic child types. */
+  /**
+   * Returns the resolver owned by this reader for custom codecs that resolve dynamic child types.
+   */
   public final JsonTypeResolver typeResolver() {
     return typeResolver;
   }

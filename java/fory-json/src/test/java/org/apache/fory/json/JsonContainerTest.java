@@ -114,8 +114,7 @@ public class JsonContainerTest extends ForyJsonTestModels {
             + "\"values\":[{\"count\":3,\"name\":\"utf8\",\"tags\":[],\"total\":4}]}";
     GenericBox<TokenValues> objects =
         json.fromJson(
-            objectJson.getBytes(StandardCharsets.UTF_8),
-            new TypeRef<GenericBox<TokenValues>>() {});
+            objectJson.getBytes(StandardCharsets.UTF_8), new TypeRef<GenericBox<TokenValues>>() {});
     assertEquals(objects.value.getClass(), TokenValues.class);
     assertEquals(objects.value.name, ZH_TEXT);
     assertEquals(objects.values.get(0).getClass(), TokenValues.class);

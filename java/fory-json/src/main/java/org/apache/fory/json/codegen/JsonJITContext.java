@@ -131,8 +131,10 @@ public final class JsonJITContext {
     private final IdentityHashMap<Class<?>, Latin1ReaderCodec<Object>> latin1Readers;
     private final IdentityHashMap<Class<?>, Utf16ReaderCodec<Object>> utf16Readers;
     private final IdentityHashMap<Class<?>, Utf8ReaderCodec<Object>> utf8Readers;
-    private final IdentityHashMap<Class<?>, List<Consumer<StringWriterCodec<Object>>>> stringWriterUpdates;
-    private final IdentityHashMap<Class<?>, List<Consumer<Utf8WriterCodec<Object>>>> utf8WriterUpdates;
+    private final IdentityHashMap<Class<?>, List<Consumer<StringWriterCodec<Object>>>>
+        stringWriterUpdates;
+    private final IdentityHashMap<Class<?>, List<Consumer<Utf8WriterCodec<Object>>>>
+        utf8WriterUpdates;
     private final IdentityHashMap<Class<?>, List<Consumer<Latin1ReaderCodec<Object>>>>
         latin1ReaderUpdates;
     private final IdentityHashMap<Class<?>, List<Consumer<Utf16ReaderCodec<Object>>>>
@@ -314,7 +316,8 @@ public final class JsonJITContext {
       return installed;
     }
 
-    public void registerStringWriterUpdate(Class<?> type, Consumer<StringWriterCodec<Object>> updater) {
+    public void registerStringWriterUpdate(
+        Class<?> type, Consumer<StringWriterCodec<Object>> updater) {
       StringWriterCodec<Object> installed = stringWriters.get(type);
       if (installed != null) {
         updater.accept(installed);
@@ -342,7 +345,8 @@ public final class JsonJITContext {
       }
     }
 
-    public void registerUtf16ReaderUpdate(Class<?> type, Consumer<Utf16ReaderCodec<Object>> updater) {
+    public void registerUtf16ReaderUpdate(
+        Class<?> type, Consumer<Utf16ReaderCodec<Object>> updater) {
       Utf16ReaderCodec<Object> installed = utf16Readers.get(type);
       if (installed != null) {
         updater.accept(installed);
