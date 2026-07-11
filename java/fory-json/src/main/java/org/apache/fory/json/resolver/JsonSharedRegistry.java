@@ -52,7 +52,6 @@ import java.util.Calendar;
 import java.util.Collection;
 import java.util.Currency;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -60,7 +59,6 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -107,8 +105,6 @@ public final class JsonSharedRegistry {
 
   private final CodecRegistry customCodecs;
   private final IdentityHashMap<Class<?>, JsonCodec<?>> exactCodecs;
-  private final Set<String> defaultExactCodecNames;
-  private final Set<String> customCodecNames;
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
   private final ConcurrentHashMap<String, Boolean> typeCheckCache;
@@ -136,8 +132,6 @@ public final class JsonSharedRegistry {
     asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
     this.compilationService = compilationService;
     registerExactCodecs();
-    defaultExactCodecNames = classNames(exactCodecs);
-    customCodecNames = customCodecs.classNames();
   }
 
   public JsonCodec<?> createCodec(
@@ -269,12 +263,6 @@ public final class JsonSharedRegistry {
     return propertyDiscoveryEnabled;
   }
 
-  void checkSecure(String className) {
-    if (!isSecureName(className)) {
-      throw forbiddenClass(className);
-    }
-  }
-
   void checkSecure(Class<?> type) {
     if (!isSecureType(type)) {
       throw forbiddenClass(type.getName());
@@ -293,16 +281,9 @@ public final class JsonSharedRegistry {
     }
     String className = type.getName();
     DisallowedList.checkNotInDisallowedList(className);
-    return isSecureLeafName(className);
-  }
-
-  private boolean isSecureName(String className) {
-    DisallowedList.checkNotInDisallowedList(className);
-    return isSecureLeafName(className);
-  }
-
-  private boolean isSecureLeafName(String className) {
-    if (defaultExactCodecNames.contains(className) && !customCodecNames.contains(className)) {
+    // Built-in codec exemption follows the same Class identity key as exact codec dispatch. A
+    // same-named class from another loader must still pass the configured checker.
+    if (exactCodecs.containsKey(type) && customCodecs.get(type) == null) {
       return true;
     }
     JsonTypeChecker checker = typeChecker;
@@ -346,14 +327,6 @@ public final class JsonSharedRegistry {
   private static InsecureException forbiddenClass(String className) {
     return new InsecureException(
         String.format("Class %s is forbidden for Fory JSON serialization.", className));
-  }
-
-  private static Set<String> classNames(Map<Class<?>, JsonCodec<?>> codecs) {
-    Set<String> names = new HashSet<>(codecs.size());
-    for (Class<?> type : codecs.keySet()) {
-      names.add(type.getName());
-    }
-    return names;
   }
 
   private void registerExactCodecs() {

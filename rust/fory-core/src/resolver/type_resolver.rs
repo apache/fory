@@ -1283,7 +1283,7 @@ impl TypeResolver {
         let user_type_id_index = self.user_type_id_index.clone();
 
         // Iterate over partial_type_infos and complete them
-        for partial_type_info in self.partial_type_infos.values() {
+        for (_rust_type_id, partial_type_info) in self.partial_type_infos.iter() {
             let harness = &partial_type_info.harness;
             // Call build_type_infos to get all type infos (main + enum variants)
             let type_infos = (harness.build_type_infos)(self)?;

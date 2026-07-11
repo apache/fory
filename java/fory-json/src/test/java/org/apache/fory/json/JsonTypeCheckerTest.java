@@ -25,7 +25,9 @@ import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertThrows;
 
 import java.beans.Expression;
-import java.lang.reflect.InvocationTargetException;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
@@ -37,11 +39,10 @@ import org.apache.fory.json.data.Kind;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.resolver.CodecRegistry;
-import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.type.Float16;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
@@ -115,6 +116,27 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void shadowedDefaultUsesChecker() throws Exception {
+    String className = Float16.class.getName();
+    byte[] classBytes = classBytes(Float16.class);
+    ClassLoader loader =
+        new ClassLoader(null) {
+          @Override
+          protected Class<?> findClass(String name) throws ClassNotFoundException {
+            if (name.equals(className)) {
+              return defineClass(name, classBytes, 0, classBytes.length);
+            }
+            throw new ClassNotFoundException(name);
+          }
+        };
+    Class<?> shadowType = loader.loadClass(className);
+    Object value = shadowType.getMethod("fromBits", short.class).invoke(null, (short) 0);
+    ForyJson json =
+        newJsonBuilder().withTypeChecker((name, context) -> !name.equals(className)).build();
+    assertThrows(InsecureException.class, () -> json.toJson(value));
+  }
+
+  @Test
   public void contextHasNoClass() {
     JsonTypeCheckContext[] seen = new JsonTypeCheckContext[1];
     ForyJson json =
@@ -162,37 +184,6 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
     assertThrows(InsecureException.class, () -> json.toJson(new CheckedBean()));
     assertThrows(InsecureException.class, () -> json.toJson(new CheckedBean()));
     assertEquals(calls.get(), 1);
-  }
-
-  @Test
-  public void cacheCapChecksOverflow() throws Exception {
-    AtomicInteger calls = new AtomicInteger();
-    JsonTypeChecker checker =
-        (className, context) -> {
-          calls.incrementAndGet();
-          return true;
-        };
-    JsonSharedRegistry registry =
-        new JsonSharedRegistry(
-            new JsonConfig(
-                false,
-                false,
-                false,
-                true,
-                ForyJson.DEFAULT_MAX_DEPTH,
-                new CodecRegistry(),
-                checker));
-    Method checkSecure = JsonSharedRegistry.class.getDeclaredMethod("checkSecure", String.class);
-    checkSecure.setAccessible(true);
-    for (int i = 0; i < 8192; i++) {
-      invokeCheck(checkSecure, registry, "example.Type" + i);
-    }
-    assertEquals(calls.get(), 8192);
-    invokeCheck(checkSecure, registry, "example.Overflow");
-    invokeCheck(checkSecure, registry, "example.Overflow");
-    assertEquals(calls.get(), 8194);
-    invokeCheck(checkSecure, registry, "example.Type0");
-    assertEquals(calls.get(), 8194);
   }
 
   @Test
@@ -256,16 +247,19 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
         .build();
   }
 
-  private static void invokeCheck(Method checkSecure, JsonSharedRegistry registry, String name)
-      throws Exception {
-    try {
-      checkSecure.invoke(registry, name);
-    } catch (InvocationTargetException e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof Exception) {
-        throw (Exception) cause;
+  private static byte[] classBytes(Class<?> type) throws IOException {
+    String resource = type.getSimpleName() + ".class";
+    try (InputStream input = type.getResourceAsStream(resource);
+        ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+      if (input == null) {
+        throw new IOException("Missing class resource " + resource);
       }
-      throw e;
+      byte[] buffer = new byte[4096];
+      int length;
+      while ((length = input.read(buffer)) != -1) {
+        output.write(buffer, 0, length);
+      }
+      return output.toByteArray();
     }
   }
 
