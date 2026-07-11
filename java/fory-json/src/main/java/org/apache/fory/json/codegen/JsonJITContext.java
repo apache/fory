@@ -122,9 +122,9 @@ public final class JsonJITContext {
 
   /** Resolver-local state. All methods run on the thread which exclusively borrowed that state. */
   public final class LocalState {
-    // Type paths compile independently. Generated owners retain the current child capability, and
-    // the update lists publish its replacement when that child path is installed. Do not prebuild
-    // dependency graphs here; C2 recompiles after receiver profiles stabilize.
+    // Request each type/path only on its first interpreted entrance. Re-entering the global task
+    // sets from every call keeps JIT scheduling on the hot path while asynchronous compilation is
+    // pending. Generated owners publish replacements through the capability-specific updates below.
     private final JsonTypeResolver resolver;
     private final IdentityHashMap<Class<?>, StringWriterCodec<Object>> stringWriters;
     private final IdentityHashMap<Class<?>, Utf8WriterCodec<Object>> utf8Writers;
@@ -141,6 +141,11 @@ public final class JsonJITContext {
         utf16ReaderUpdates;
     private final IdentityHashMap<Class<?>, List<Consumer<Utf8ReaderCodec<Object>>>>
         utf8ReaderUpdates;
+    private IdentityHashMap<Class<?>, Boolean> requestedStringWriters;
+    private IdentityHashMap<Class<?>, Boolean> requestedUtf8Writers;
+    private IdentityHashMap<Class<?>, Boolean> requestedLatin1Readers;
+    private IdentityHashMap<Class<?>, Boolean> requestedUtf16Readers;
+    private IdentityHashMap<Class<?>, Boolean> requestedUtf8Readers;
 
     private LocalState(JsonTypeResolver resolver) {
       this.resolver = resolver;
@@ -185,17 +190,10 @@ public final class JsonJITContext {
       if (codegen == null || failedStringWriters.contains(type)) {
         return codec;
       }
+      requestStringWriterOnce(codec);
       JsonCodegen.GeneratedStringWriterClass generated = codegen.stringWriterClass(type);
       if (generated == null) {
-        if (!codegen.canCompileWriter(codec)) {
-          failedStringWriters.add(type);
-          return codec;
-        }
-        requestStringWriter(codec);
-        generated = codegen.stringWriterClass(type);
-        if (generated == null) {
-          return codec;
-        }
+        return codec;
       }
       installed = codegen.newStringWriter(codec, resolver, generated);
       stringWriters.put(type, installed);
@@ -213,17 +211,10 @@ public final class JsonJITContext {
       if (codegen == null || failedUtf8Writers.contains(type)) {
         return codec;
       }
+      requestUtf8WriterOnce(codec);
       JsonCodegen.GeneratedUtf8WriterClass generated = codegen.utf8WriterClass(type);
       if (generated == null) {
-        if (!codegen.canCompileWriter(codec)) {
-          failedUtf8Writers.add(type);
-          return codec;
-        }
-        requestUtf8Writer(codec);
-        generated = codegen.utf8WriterClass(type);
-        if (generated == null) {
-          return codec;
-        }
+        return codec;
       }
       installed = codegen.newUtf8Writer(codec, resolver, generated);
       utf8Writers.put(type, installed);
@@ -241,17 +232,10 @@ public final class JsonJITContext {
       if (codegen == null || failedLatin1Readers.contains(type)) {
         return codec;
       }
+      requestLatin1ReaderOnce(codec);
       JsonCodegen.GeneratedLatin1ReaderClass generated = codegen.latin1ReaderClass(type);
       if (generated == null) {
-        if (!codegen.canCompileReader(codec)) {
-          failedLatin1Readers.add(type);
-          return codec;
-        }
-        requestLatin1Reader(codec);
-        generated = codegen.latin1ReaderClass(type);
-        if (generated == null) {
-          return codec;
-        }
+        return codec;
       }
       installed = codegen.newLatin1Reader(codec, resolver, generated);
       latin1Readers.put(type, installed);
@@ -269,17 +253,10 @@ public final class JsonJITContext {
       if (codegen == null || failedUtf16Readers.contains(type)) {
         return codec;
       }
+      requestUtf16ReaderOnce(codec);
       JsonCodegen.GeneratedUtf16ReaderClass generated = codegen.utf16ReaderClass(type);
       if (generated == null) {
-        if (!codegen.canCompileReader(codec)) {
-          failedUtf16Readers.add(type);
-          return codec;
-        }
-        requestUtf16Reader(codec);
-        generated = codegen.utf16ReaderClass(type);
-        if (generated == null) {
-          return codec;
-        }
+        return codec;
       }
       installed = codegen.newUtf16Reader(codec, resolver, generated);
       utf16Readers.put(type, installed);
@@ -297,23 +274,106 @@ public final class JsonJITContext {
       if (codegen == null || failedUtf8Readers.contains(type)) {
         return codec;
       }
+      requestUtf8ReaderOnce(codec);
       JsonCodegen.GeneratedUtf8ReaderClass generated = codegen.utf8ReaderClass(type);
       if (generated == null) {
-        if (!codegen.canCompileReader(codec)) {
-          failedUtf8Readers.add(type);
-          return codec;
-        }
-        requestUtf8Reader(codec);
-        generated = codegen.utf8ReaderClass(type);
-        if (generated == null) {
-          return codec;
-        }
+        return codec;
       }
       installed = codegen.newUtf8Reader(codec, resolver, generated);
       utf8Readers.put(type, installed);
       resolver.installUtf8Reader(type, installed);
       notifyUpdates(utf8ReaderUpdates.remove(type), installed);
       return installed;
+    }
+
+    private void requestStringWriterOnce(ObjectCodec<?> codec) {
+      Class<?> type = codec.type();
+      IdentityHashMap<Class<?>, Boolean> requested = requestedStringWriters;
+      if (requested != null && requested.containsKey(type)) {
+        return;
+      }
+      if (requested == null) {
+        requested = new IdentityHashMap<>();
+        requestedStringWriters = requested;
+      }
+      requested.put(type, Boolean.TRUE);
+      if (codegen.canCompileWriter(codec)) {
+        requestStringWriter(codec);
+      } else {
+        failedStringWriters.add(type);
+      }
+    }
+
+    private void requestUtf8WriterOnce(ObjectCodec<?> codec) {
+      Class<?> type = codec.type();
+      IdentityHashMap<Class<?>, Boolean> requested = requestedUtf8Writers;
+      if (requested != null && requested.containsKey(type)) {
+        return;
+      }
+      if (requested == null) {
+        requested = new IdentityHashMap<>();
+        requestedUtf8Writers = requested;
+      }
+      requested.put(type, Boolean.TRUE);
+      if (codegen.canCompileWriter(codec)) {
+        requestUtf8Writer(codec);
+      } else {
+        failedUtf8Writers.add(type);
+      }
+    }
+
+    private void requestLatin1ReaderOnce(ObjectCodec<?> codec) {
+      Class<?> type = codec.type();
+      IdentityHashMap<Class<?>, Boolean> requested = requestedLatin1Readers;
+      if (requested != null && requested.containsKey(type)) {
+        return;
+      }
+      if (requested == null) {
+        requested = new IdentityHashMap<>();
+        requestedLatin1Readers = requested;
+      }
+      requested.put(type, Boolean.TRUE);
+      if (codegen.canCompileReader(codec)) {
+        requestLatin1Reader(codec);
+      } else {
+        failedLatin1Readers.add(type);
+      }
+    }
+
+    private void requestUtf16ReaderOnce(ObjectCodec<?> codec) {
+      Class<?> type = codec.type();
+      IdentityHashMap<Class<?>, Boolean> requested = requestedUtf16Readers;
+      if (requested != null && requested.containsKey(type)) {
+        return;
+      }
+      if (requested == null) {
+        requested = new IdentityHashMap<>();
+        requestedUtf16Readers = requested;
+      }
+      requested.put(type, Boolean.TRUE);
+      if (codegen.canCompileReader(codec)) {
+        requestUtf16Reader(codec);
+      } else {
+        failedUtf16Readers.add(type);
+      }
+    }
+
+    private void requestUtf8ReaderOnce(ObjectCodec<?> codec) {
+      Class<?> type = codec.type();
+      IdentityHashMap<Class<?>, Boolean> requested = requestedUtf8Readers;
+      if (requested != null && requested.containsKey(type)) {
+        return;
+      }
+      if (requested == null) {
+        requested = new IdentityHashMap<>();
+        requestedUtf8Readers = requested;
+      }
+      requested.put(type, Boolean.TRUE);
+      if (codegen.canCompileReader(codec)) {
+        requestUtf8Reader(codec);
+      } else {
+        failedUtf8Readers.add(type);
+      }
     }
 
     public void registerStringWriterUpdate(
