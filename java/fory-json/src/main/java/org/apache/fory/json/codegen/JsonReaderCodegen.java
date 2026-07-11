@@ -68,9 +68,17 @@ abstract class JsonReaderCodegen {
 
   abstract String readEnumMethod(boolean tokenValueRead, boolean hashFallback);
 
+  final String readEnumMethod(boolean tokenValueRead) {
+    return readEnumMethod(tokenValueRead, false);
+  }
+
   abstract String readObjectMethod();
 
   abstract String readFieldMethod();
+
+  final String readFieldMethod(String readMethod, int start) {
+    return readMethod + "Field" + start;
+  }
 
   abstract String readFieldValueMethod();
 
@@ -669,10 +677,6 @@ abstract class JsonReaderCodegen {
 
   final String readGroupMethod(String readMethod, int start) {
     return readMethod + "Group" + start;
-  }
-
-  final String readFieldMethod(String readMethod, int start) {
-    return readMethod + "Field" + start;
   }
 
   final int readGroupEnd(JsonFieldInfo[] properties, int start) {
@@ -1709,10 +1713,6 @@ abstract class JsonReaderCodegen {
             new Expression.Invoke(
                 codec, readMethod(), TypeRef.of(Object.class), false, readerRef())),
         TypeRef.of(property.readRawType()));
-  }
-
-  final String readEnumMethod(boolean tokenValueRead) {
-    return readEnumMethod(tokenValueRead, false);
   }
 
   static final class Latin1Generator extends JsonReaderCodegen {

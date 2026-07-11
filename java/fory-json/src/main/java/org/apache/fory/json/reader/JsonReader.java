@@ -1074,14 +1074,14 @@ public abstract class JsonReader {
   }
 
   private static long multiplyHigh(long x, long y) {
-    long xLow = x & 0xffff_ffffL;
-    long xHigh = x >>> 32;
-    long yLow = y & 0xffff_ffffL;
-    long yHigh = y >>> 32;
-    long lowProduct = xLow * yLow;
-    long carryProduct = xHigh * yLow + (lowProduct >>> 32);
-    long middle = (carryProduct & 0xffff_ffffL) + xLow * yHigh;
-    return xHigh * yHigh + (carryProduct >>> 32) + (middle >>> 32);
+    long xlo = x & 0xffff_ffffL;
+    long xhi = x >>> 32;
+    long ylo = y & 0xffff_ffffL;
+    long yhi = y >>> 32;
+    long lowProduct = xlo * ylo;
+    long carryProduct = xhi * ylo + (lowProduct >>> 32);
+    long middle = (carryProduct & 0xffff_ffffL) + xlo * yhi;
+    return xhi * yhi + (carryProduct >>> 32) + (middle >>> 32);
   }
 
   protected final double readDoubleFallbackValue(int start) {

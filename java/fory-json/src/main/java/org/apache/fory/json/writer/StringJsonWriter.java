@@ -1739,11 +1739,34 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writeAsciiUtf16NoEnsure(value, length);
   }
 
+  private void writeAsciiUtf16(byte[] source, int length) {
+    ensure(length << 1);
+    writeAsciiUtf16NoEnsure(source, length);
+  }
+
   private void writeAsciiUtf16NoEnsure(String value, int length) {
     byte[] bytes = buffer;
     int pos = position;
     for (int i = 0; i < length; i++) {
       pos = putUtf16Char(bytes, pos, value.charAt(i));
+    }
+    position = pos;
+  }
+
+  private void writeAsciiUtf16NoEnsure(byte[] source, int length) {
+    byte[] target = buffer;
+    int sourceOffset = 0;
+    int pos = position;
+    int bulkEnd = length & ~3;
+    while (sourceOffset < bulkEnd) {
+      long packed = LittleEndian.getInt32(source, sourceOffset) & 0xffff_ffffL;
+      long utf16 = spreadLatin1ToUtf16(packed);
+      LittleEndian.putInt64(target, pos, LITTLE_ENDIAN ? utf16 : utf16 << 8);
+      sourceOffset += 4;
+      pos += 8;
+    }
+    while (sourceOffset < length) {
+      pos = putUtf16Byte(target, pos, source[sourceOffset++]);
     }
     position = pos;
   }
@@ -1831,29 +1854,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     int pos = position;
     for (byte value : bytes) {
       pos = putUtf16Char(target, pos, (char) (value & 0xff));
-    }
-    position = pos;
-  }
-
-  private void writeAsciiUtf16(byte[] source, int length) {
-    ensure(length << 1);
-    writeAsciiUtf16NoEnsure(source, length);
-  }
-
-  private void writeAsciiUtf16NoEnsure(byte[] source, int length) {
-    byte[] target = buffer;
-    int sourceOffset = 0;
-    int pos = position;
-    int bulkEnd = length & ~3;
-    while (sourceOffset < bulkEnd) {
-      long packed = LittleEndian.getInt32(source, sourceOffset) & 0xffff_ffffL;
-      long utf16 = spreadLatin1ToUtf16(packed);
-      LittleEndian.putInt64(target, pos, LITTLE_ENDIAN ? utf16 : utf16 << 8);
-      sourceOffset += 4;
-      pos += 8;
-    }
-    while (sourceOffset < length) {
-      pos = putUtf16Byte(target, pos, source[sourceOffset++]);
     }
     position = pos;
   }
