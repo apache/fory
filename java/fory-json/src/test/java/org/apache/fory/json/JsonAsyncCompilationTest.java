@@ -53,6 +53,7 @@ import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
+import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.data.RecursiveParent;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -239,6 +240,38 @@ public class JsonAsyncCompilationTest {
     assertEquals(controlled.executor.pendingTasks(), 2);
     controlled.executor.runAll();
     assertNotSame(stringWriter(resolver, owner), owner);
+  }
+
+  @Test
+  public void asyncFailureKeepsInterpretedResult() {
+    ControlledExecutor executor = new ControlledExecutor();
+    JsonJITContext context = new JsonJITContext(true, executor);
+    AtomicReference<Throwable> failure = new AtomicReference<>();
+    int result =
+        context.registerJITCallback(
+            () -> 1,
+            () -> {
+              throw new IllegalStateException("compile failure");
+            },
+            new JsonJITContext.JITCallback<Integer>() {
+              @Override
+              public void onSuccess(Integer generated) {
+                fail("Unexpected generated result");
+              }
+
+              @Override
+              public void onFailure(Throwable throwable) {
+                failure.set(throwable);
+              }
+
+              @Override
+              public Object id() {
+                return "failure";
+              }
+            });
+    assertEquals(result, 1);
+    executor.runNext();
+    assertTrue(failure.get() instanceof IllegalStateException);
   }
 
   @Test

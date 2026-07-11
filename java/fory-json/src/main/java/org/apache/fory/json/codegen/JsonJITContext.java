@@ -133,6 +133,8 @@ public final class JsonJITContext {
   }
 
   private <T> void completeFailure(JITCallback<T> callback, Throwable failure) {
+    // The callback owns failure reporting. Resolver callbacks intentionally retain interpreted
+    // capability state after an asynchronous compilation failure.
     try {
       lock();
       callback.onFailure(failure);
@@ -140,7 +142,6 @@ public final class JsonJITContext {
       finishTask();
       unlock();
     }
-    ExceptionUtils.throwException(failure);
   }
 
   private void finishTask() {
