@@ -38,54 +38,64 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     this.componentType = componentType;
   }
 
-  public static ArrayCodec<?> create(Class<?> componentType, JsonTypeResolver resolver) {
+  public static <T> ArrayCodec<T> create(Class<T> arrayType, JsonTypeResolver resolver) {
+    if (!arrayType.isArray()) {
+      throw new ForyJsonException("Unsupported JSON array type " + arrayType);
+    }
+    Class<?> componentType = arrayType.getComponentType();
     JsonTypeInfo componentTypeInfo = resolver.getTypeInfo(componentType, componentType);
     Object componentCodec = componentTypeInfo.stringWriter();
     if (componentType == int.class && componentCodec == ScalarCodecs.IntCodec.PRIMITIVE) {
-      return IntArrayCodec.INSTANCE;
+      return bind(IntArrayCodec.INSTANCE);
     } else if (componentType == long.class && componentCodec == ScalarCodecs.LongCodec.PRIMITIVE) {
-      return LongArrayCodec.INSTANCE;
+      return bind(LongArrayCodec.INSTANCE);
     } else if (componentType == boolean.class
         && componentCodec == ScalarCodecs.BooleanCodec.PRIMITIVE) {
-      return BooleanArrayCodec.INSTANCE;
+      return bind(BooleanArrayCodec.INSTANCE);
     } else if (componentType == short.class
         && componentCodec == ScalarCodecs.ShortCodec.PRIMITIVE) {
-      return ShortArrayCodec.INSTANCE;
+      return bind(ShortArrayCodec.INSTANCE);
     } else if (componentType == byte.class && componentCodec == ScalarCodecs.ByteCodec.PRIMITIVE) {
-      return ByteArrayCodec.INSTANCE;
+      return bind(ByteArrayCodec.INSTANCE);
     } else if (componentType == char.class && componentCodec == ScalarCodecs.CharCodec.PRIMITIVE) {
-      return CharArrayCodec.INSTANCE;
+      return bind(CharArrayCodec.INSTANCE);
     } else if (componentType == float.class
         && componentCodec == ScalarCodecs.FloatCodec.PRIMITIVE) {
-      return FloatArrayCodec.INSTANCE;
+      return bind(FloatArrayCodec.INSTANCE);
     } else if (componentType == double.class
         && componentCodec == ScalarCodecs.DoubleCodec.PRIMITIVE) {
-      return DoubleArrayCodec.INSTANCE;
+      return bind(DoubleArrayCodec.INSTANCE);
     } else if (componentType == Integer.class && componentCodec == ScalarCodecs.IntCodec.BOXED) {
-      return BoxedIntArrayCodec.INSTANCE;
+      return bind(BoxedIntArrayCodec.INSTANCE);
     } else if (componentType == Long.class && componentCodec == ScalarCodecs.LongCodec.BOXED) {
-      return BoxedLongArrayCodec.INSTANCE;
+      return bind(BoxedLongArrayCodec.INSTANCE);
     } else if (componentType == Boolean.class
         && componentCodec == ScalarCodecs.BooleanCodec.BOXED) {
-      return BoxedBooleanArrayCodec.INSTANCE;
+      return bind(BoxedBooleanArrayCodec.INSTANCE);
     } else if (componentType == Short.class && componentCodec == ScalarCodecs.ShortCodec.BOXED) {
-      return BoxedShortArrayCodec.INSTANCE;
+      return bind(BoxedShortArrayCodec.INSTANCE);
     } else if (componentType == Byte.class && componentCodec == ScalarCodecs.ByteCodec.BOXED) {
-      return BoxedByteArrayCodec.INSTANCE;
+      return bind(BoxedByteArrayCodec.INSTANCE);
     } else if (componentType == Character.class && componentCodec == ScalarCodecs.CharCodec.BOXED) {
-      return BoxedCharArrayCodec.INSTANCE;
+      return bind(BoxedCharArrayCodec.INSTANCE);
     } else if (componentType == Float.class && componentCodec == ScalarCodecs.FloatCodec.BOXED) {
-      return BoxedFloatArrayCodec.INSTANCE;
+      return bind(BoxedFloatArrayCodec.INSTANCE);
     } else if (componentType == Double.class && componentCodec == ScalarCodecs.DoubleCodec.BOXED) {
-      return BoxedDoubleArrayCodec.INSTANCE;
+      return bind(BoxedDoubleArrayCodec.INSTANCE);
     } else if (componentType == String.class
         && componentCodec == ScalarCodecs.StringCodec.INSTANCE) {
-      return StringArrayCodec.INSTANCE;
+      return bind(StringArrayCodec.INSTANCE);
     }
     if (componentType.isPrimitive()) {
-      return new CustomPrimitiveArrayCodec(componentType, componentTypeInfo);
+      return new CustomPrimitiveArrayCodec<>(componentType, componentTypeInfo);
     }
-    return new ObjectArrayCodec(componentType, componentTypeInfo);
+    return new ObjectArrayCodec<>(componentType, componentTypeInfo);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T> ArrayCodec<T> bind(ArrayCodec<?> codec) {
+    // The factory has matched the runtime array class to this exact singleton implementation.
+    return (ArrayCodec<T>) codec;
   }
 
   public static final class IntArrayCodec extends ArrayCodec<int[]> {
@@ -1530,7 +1540,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     }
   }
 
-  public static final class ObjectArrayCodec extends ArrayCodec<Object[]> {
+  private static final class ObjectArrayCodec<T> extends ArrayCodec<T> {
     private static final int VALUES_CACHE_DEPTH = 8;
     private static final int INITIAL_VALUES_SIZE = 8;
     private static final int MAX_CACHED_VALUES_SIZE = 1024;
@@ -1546,12 +1556,12 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     }
 
     @Override
-    public void writeString(StringJsonWriter writer, Object[] value) {
+    public void writeString(StringJsonWriter writer, T value) {
       if (value == null) {
         writer.writeNull();
         return;
       }
-      Object[] array = value;
+      Object[] array = (Object[]) value;
       StringWriterCodec<Object> codec = elementTypeInfo.stringWriter();
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -1562,12 +1572,12 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     }
 
     @Override
-    public void writeUtf8(Utf8JsonWriter writer, Object[] value) {
+    public void writeUtf8(Utf8JsonWriter writer, T value) {
       if (value == null) {
         writer.writeNull();
         return;
       }
-      Object[] array = value;
+      Object[] array = (Object[]) value;
       Utf8WriterCodec<Object> codec = elementTypeInfo.utf8Writer();
       writer.writeArrayStart();
       for (int i = 0; i < array.length; i++) {
@@ -1578,7 +1588,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     }
 
     @Override
-    public Object[] readLatin1(Latin1JsonReader reader) {
+    public T readLatin1(Latin1JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -1607,7 +1617,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
             values[size++] = codec.readLatin1(reader);
           } while (reader.consumeNextCommaOrEndArray());
         }
-        Object[] array = (Object[]) Array.newInstance(componentType, size);
+        T array = newArray(size);
         System.arraycopy(values, 0, array, 0, size);
         success = true;
         return array;
@@ -1618,7 +1628,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     }
 
     @Override
-    public Object[] readUtf16(Utf16JsonReader reader) {
+    public T readUtf16(Utf16JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -1647,7 +1657,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
             values[size++] = codec.readUtf16(reader);
           } while (reader.consumeNextCommaOrEndArray());
         }
-        Object[] array = (Object[]) Array.newInstance(componentType, size);
+        T array = newArray(size);
         System.arraycopy(values, 0, array, 0, size);
         success = true;
         return array;
@@ -1658,7 +1668,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     }
 
     @Override
-    public Object[] readUtf8(Utf8JsonReader reader) {
+    public T readUtf8(Utf8JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -1687,7 +1697,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
             values[size++] = codec.readUtf8(reader);
           } while (reader.consumeNextCommaOrEndArray());
         }
-        Object[] array = (Object[]) Array.newInstance(componentType, size);
+        T array = newArray(size);
         System.arraycopy(values, 0, array, 0, size);
         success = true;
         return array;
@@ -1712,9 +1722,15 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
       // Restore the codec recursion depth after the matching cache slot has been handled.
       valuesDepth = depth;
     }
+
+    @SuppressWarnings("unchecked")
+    private T newArray(int size) {
+      // The factory constructs this codec only for reference-array components.
+      return (T) Array.newInstance(componentType, size);
+    }
   }
 
-  private static final class CustomPrimitiveArrayCodec extends ArrayCodec<Object> {
+  private static final class CustomPrimitiveArrayCodec<T> extends ArrayCodec<T> {
     private static final int INITIAL_SIZE = 8;
 
     private final JsonTypeInfo elementTypeInfo;
@@ -1725,7 +1741,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     }
 
     @Override
-    public void writeString(StringJsonWriter writer, Object value) {
+    public void writeString(StringJsonWriter writer, T value) {
       if (value == null) {
         writer.writeNull();
         return;
@@ -1741,7 +1757,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     }
 
     @Override
-    public void writeUtf8(Utf8JsonWriter writer, Object value) {
+    public void writeUtf8(Utf8JsonWriter writer, T value) {
       if (value == null) {
         writer.writeNull();
         return;
@@ -1757,7 +1773,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     }
 
     @Override
-    public Object readLatin1(Latin1JsonReader reader) {
+    public T readLatin1(Latin1JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -1765,7 +1781,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
         reader.exitDepth();
-        return Array.newInstance(componentType, 0);
+        return newArray(0);
       }
       Object values = Array.newInstance(componentType, INITIAL_SIZE);
       int size = 0;
@@ -1779,13 +1795,13 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         Object element = codec.readLatin1(reader);
         putElement(values, size++, element);
       } while (reader.consumeNextCommaOrEndArray());
-      Object result = copyArray(values, size);
+      T result = copyArray(values, size);
       reader.exitDepth();
       return result;
     }
 
     @Override
-    public Object readUtf16(Utf16JsonReader reader) {
+    public T readUtf16(Utf16JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -1793,7 +1809,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
         reader.exitDepth();
-        return Array.newInstance(componentType, 0);
+        return newArray(0);
       }
       Object values = Array.newInstance(componentType, INITIAL_SIZE);
       int size = 0;
@@ -1807,13 +1823,13 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         Object element = codec.readUtf16(reader);
         putElement(values, size++, element);
       } while (reader.consumeNextCommaOrEndArray());
-      Object result = copyArray(values, size);
+      T result = copyArray(values, size);
       reader.exitDepth();
       return result;
     }
 
     @Override
-    public Object readUtf8(Utf8JsonReader reader) {
+    public T readUtf8(Utf8JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -1821,7 +1837,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
       reader.expectNextToken('[');
       if (reader.consumeNextToken(']')) {
         reader.exitDepth();
-        return Array.newInstance(componentType, 0);
+        return newArray(0);
       }
       Object values = Array.newInstance(componentType, INITIAL_SIZE);
       int size = 0;
@@ -1835,7 +1851,7 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
         Object element = codec.readUtf8(reader);
         putElement(values, size++, element);
       } while (reader.consumeNextCommaOrEndArray());
-      Object result = copyArray(values, size);
+      T result = copyArray(values, size);
       reader.exitDepth();
       return result;
     }
@@ -1847,13 +1863,23 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
       Array.set(values, index, element);
     }
 
-    private Object copyArray(Object values, int size) {
+    private T copyArray(Object values, int size) {
       if (size == Array.getLength(values)) {
-        return values;
+        return castArray(values);
       }
-      Object result = Array.newInstance(componentType, size);
+      T result = newArray(size);
       System.arraycopy(values, 0, result, 0, size);
       return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private T newArray(int size) {
+      return (T) Array.newInstance(componentType, size);
+    }
+
+    @SuppressWarnings("unchecked")
+    private T castArray(Object value) {
+      return (T) value;
     }
   }
 

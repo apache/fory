@@ -155,7 +155,7 @@ public final class JsonSharedRegistry {
       return new ScalarCodecs.EnumCodec(rawType);
     }
     if (rawType.isArray()) {
-      return ArrayCodec.create(rawType.getComponentType(), localResolver);
+      return ArrayCodec.create(rawType, localResolver);
     }
     if (rawType == Optional.class) {
       return new ScalarCodecs.OptionalCodec(

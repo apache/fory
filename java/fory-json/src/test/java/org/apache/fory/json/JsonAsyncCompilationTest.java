@@ -39,6 +39,7 @@ import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.data.RecursiveParent;
+import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
@@ -159,6 +160,19 @@ public class JsonAsyncCompilationTest {
 
     JsonTypeResolver resolver = resolver(json);
     ObjectCodec<SelfRecursive> owner = resolver.getObjectCodec(SelfRecursive.class);
+    JsonTypeInfo typeInfo = resolver.getTypeInfo(SelfRecursive.class, SelfRecursive.class);
+    JsonFieldInfo recursiveField = null;
+    for (JsonFieldInfo field : owner.writeFields()) {
+      if (field.name().equals("next")) {
+        recursiveField = field;
+        break;
+      }
+    }
+    if (recursiveField == null) {
+      fail("Missing recursive JSON field");
+    }
+    assertSame(recursiveField.writeTypeInfo(), typeInfo);
+    assertSame(recursiveField.readTypeInfo(), typeInfo);
     StringWriterCodec<SelfRecursive> writer = resolver.stringWriter(owner);
     assertTrue(writer != owner);
     for (Field field : writer.getClass().getDeclaredFields()) {

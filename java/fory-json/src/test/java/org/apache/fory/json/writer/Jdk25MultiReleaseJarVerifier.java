@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -53,6 +54,7 @@ public final class Jdk25MultiReleaseJarVerifier {
     Path jarPath = Paths.get(args[0]);
     verify(jarPath, Paths.get(args[1]));
     Path coreJar = Paths.get(args[2]);
+    verifyCoreModuleExports(coreJar);
     verifyModulePath(jarPath, coreJar);
     verifyCustomCodecModule(jarPath, coreJar);
   }
@@ -86,6 +88,25 @@ public final class Jdk25MultiReleaseJarVerifier {
     require(Modifier.isStatic(modifiers), name + " must be static");
     require(Modifier.isFinal(modifiers), name + " must be final");
     require("java.lang.invoke.VarHandle".equals(field.getType().getName()), name + " type");
+  }
+
+  private static void verifyCoreModuleExports(Path coreJar) throws Exception {
+    String jar = Paths.get(System.getProperty("java.home"), "bin", "jar").toString();
+    String expected = "qualified exports org.apache.fory.platform.internal to org.apache.fory.json";
+    String[] releases = {"9", "16", "25"};
+    for (String release : releases) {
+      Process process =
+          new ProcessBuilder(
+                  jar, "--describe-module", "--file", coreJar.toString(), "--release", release)
+              .redirectErrorStream(true)
+              .start();
+      String output;
+      try (InputStream input = process.getInputStream()) {
+        output = new String(read(input), StandardCharsets.UTF_8);
+      }
+      require(process.waitFor() == 0, "cannot inspect core module descriptor " + release);
+      require(output.contains(expected), "core module descriptor " + release + " lacks export");
+    }
   }
 
   private static void verifyModulePath(Path jsonJar, Path coreJar) throws Exception {
@@ -154,16 +175,18 @@ public final class Jdk25MultiReleaseJarVerifier {
     JarEntry entry = jar.getJarEntry(name);
     require(entry != null, "missing " + name);
     try (InputStream input = jar.getInputStream(entry)) {
-      long size = entry.getSize();
-      ByteArrayOutputStream output =
-          new ByteArrayOutputStream(size > 0 && size <= Integer.MAX_VALUE ? (int) size : 1024);
-      byte[] buffer = new byte[8192];
-      int count;
-      while ((count = input.read(buffer)) >= 0) {
-        output.write(buffer, 0, count);
-      }
-      return output.toByteArray();
+      return read(input);
     }
+  }
+
+  private static byte[] read(InputStream input) throws IOException {
+    ByteArrayOutputStream output = new ByteArrayOutputStream(1024);
+    byte[] buffer = new byte[8192];
+    int count;
+    while ((count = input.read(buffer)) >= 0) {
+      output.write(buffer, 0, count);
+    }
+    return output.toByteArray();
   }
 
   private static void require(boolean condition, String message) {

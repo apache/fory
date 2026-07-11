@@ -82,6 +82,13 @@ public final class JsonTypeResolver {
       return typeInfo;
     }
     typeInfo = buildTypeInfo(rawType, declaredType);
+    JsonTypeInfo recursiveTypeInfo = typeInfos.get(key);
+    if (recursiveTypeInfo != null) {
+      // Object metadata is published before its fields resolve. A recursive field can therefore
+      // create this binding while the outer build is still running; retain that canonical owner so
+      // every recursive field observes later capability installation.
+      return recursiveTypeInfo;
+    }
     typeInfos.put(key, typeInfo);
     return typeInfo;
   }
@@ -93,6 +100,10 @@ public final class JsonTypeResolver {
       return typeInfo;
     }
     typeInfo = buildRuntimeTypeInfo(runtimeType);
+    JsonTypeInfo recursiveTypeInfo = typeInfos.get(key);
+    if (recursiveTypeInfo != null) {
+      return recursiveTypeInfo;
+    }
     typeInfos.put(key, typeInfo);
     return typeInfo;
   }

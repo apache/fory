@@ -52,10 +52,9 @@ import org.apache.fory.reflect.TypeRef;
 abstract class JsonWriterCodegen {
   private static final int MIN_STRING_SPLIT_MEMBERS = 10;
   private static final int MIN_UTF8_SPLIT_MEMBERS = 12;
-  // Keep each dense member helper as an independent C2 compilation unit. Smaller groups are
-  // readily absorbed into the generated entry method and can exhaust its node budget before later
-  // concrete writer fast paths are compiled. The entry method keeps a small tail inline below.
-  private static final int MEMBER_GROUP_SIZE = 16;
+  // Bound field logic in independently compiled generated methods. The entry method keeps a small
+  // tail inline below; wide objects use fewer bounded calls without adding runtime dispatch.
+  private static final int MAX_MEMBERS_PER_METHOD = 16;
   private static final int INLINE_TAIL_MEMBERS = 4;
 
   final JsonCodegen codegen;
@@ -321,7 +320,7 @@ abstract class JsonWriterCodegen {
     boolean commaKnown = objectStartFused;
     boolean splitMembers = properties.length >= splitMemberThreshold();
     inlineObjectCollections = splitMembers;
-    List<Expression> memberGroup = splitMembers ? new ArrayList<>(MEMBER_GROUP_SIZE) : null;
+    List<Expression> memberGroup = splitMembers ? new ArrayList<>(MAX_MEMBERS_PER_METHOD) : null;
     for (int i = 0; i < properties.length; i++) {
       Expression member;
       if (objectStartFused && i == 0) {
@@ -333,7 +332,7 @@ abstract class JsonWriterCodegen {
       }
       if (splitMembers && commaKnown) {
         memberGroup.add(member);
-        if (memberGroup.size() == MEMBER_GROUP_SIZE) {
+        if (memberGroup.size() == MAX_MEMBERS_PER_METHOD) {
           addMemberGroup(builder, expressions, memberGroup, object, writer);
         }
       } else {
