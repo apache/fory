@@ -19,6 +19,8 @@
 
 package org.apache.fory.json.codegen;
 
+import static org.apache.fory.codegen.ExpressionUtils.inline;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import org.apache.fory.builder.CodecBuilder;
@@ -123,6 +125,9 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
   }
 
   Expression setField(JsonFieldInfo property, Expression object, Expression value) {
+    // A parsed member value has one store owner. Keep that expression inline so generated readers
+    // do not add a local store/load pair before the setter, field, or VarHandle write.
+    value = inline(value);
     Method setter = property.readSetter();
     if (setter != null) {
       Class<?> rawType = setter.getParameterTypes()[0];

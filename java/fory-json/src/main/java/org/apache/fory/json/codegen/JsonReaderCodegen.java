@@ -303,7 +303,7 @@ abstract class JsonReaderCodegen {
     expressions.add(
         new Expression.Assign(
             new Reference("this.readTable", TypeRef.of(JsonFieldTable.class)),
-            new Expression.Invoke(owner, "readTable", TypeRef.of(JsonFieldTable.class))));
+            new Expression.Invoke(owner, "readTable", TypeRef.of(JsonFieldTable.class)).inline()));
     if (record) {
       expressions.add(
           new Expression.Assign(new Reference("this.owner", TypeRef.of(ObjectCodec.class)), owner));
@@ -368,9 +368,11 @@ abstract class JsonReaderCodegen {
       expressions.add(returnObject(object, record));
       return expressions;
     }
-    Expression hashes =
-        new Expression.Variable("localFieldHashes", fieldRef("fieldHashes", long[].class));
-    expressions.add(hashes);
+    Expression hashes = fieldRef("fieldHashes", long[].class);
+    if (properties.length > 1) {
+      hashes = new Expression.Variable("localFieldHashes", hashes);
+      expressions.add(hashes);
+    }
     Expression[] skips = new Expression[properties.length];
     for (int i = 1; i < properties.length; i++) {
       skips[i] = new Expression.Variable("skip" + i, Expression.Literal.False);
@@ -732,10 +734,11 @@ abstract class JsonReaderCodegen {
     if (record) {
       return new Expression.Variable(
           "object",
-          new Expression.Invoke(
-              ownerRef(), "newRecordFieldValues", TypeRef.of(Object[].class), false));
+          inline(
+              new Expression.Invoke(
+                  ownerRef(), "newRecordFieldValues", TypeRef.of(Object[].class), false)));
     }
-    return new Expression.Variable("object", builder.newObject());
+    return builder.newObject();
   }
 
   private Expression returnObject(Expression object, boolean record) {
@@ -744,7 +747,9 @@ abstract class JsonReaderCodegen {
       return new Expression.ListExpression(
           exitDepth,
           new Expression.Return(
-              new Expression.Invoke(ownerRef(), "newRecord", TypeRef.of(Object.class), object)));
+              inline(
+                  new Expression.Invoke(
+                      ownerRef(), "newRecord", TypeRef.of(Object.class), object))));
     }
     return new Expression.ListExpression(exitDepth, new Expression.Return(object));
   }
@@ -1651,7 +1656,7 @@ abstract class JsonReaderCodegen {
   }
 
   final Expression assignRecord(Expression object, int id, Expression value) {
-    return new Expression.AssignArrayElem(object, value, Expression.Literal.ofInt(id));
+    return new Expression.AssignArrayElem(object, inline(value), Expression.Literal.ofInt(id));
   }
 
   final Expression box(Class<?> boxedType, Expression value) {

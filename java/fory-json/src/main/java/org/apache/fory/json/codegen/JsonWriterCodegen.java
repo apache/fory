@@ -226,11 +226,12 @@ abstract class JsonWriterCodegen {
       bodyCode = "this." + objectMethod + "(writer, (" + ctx.type(type) + ") value);\n";
     } else {
       ctx.clearExprState();
-      Expression object =
-          new Expression.Variable(
-              "object",
+      Expression castObject =
+          inline(
               new Expression.Cast(
                   new Reference("value", TypeRef.of(Object.class)), TypeRef.of(type)));
+      Expression object =
+          properties.length <= 1 ? castObject : new Expression.Variable("object", castObject);
       Code.ExprCode body =
           writeExpression(builder, properties, objectStartFused, object).genCode(ctx);
       bodyCode = body.code();
@@ -401,12 +402,20 @@ abstract class JsonWriterCodegen {
           value == null ? null : tryWriteObjectStartString(first, value, writer);
       if (fusedStart != null) {
         expressions.add(value);
-        expressions.add(index);
+        boolean hasRemainingProperties = properties.length > 1;
+        if (hasRemainingProperties) {
+          expressions.add(index);
+        }
+        Expression present = fusedStart;
+        if (hasRemainingProperties) {
+          present =
+              new Expression.ListExpression(
+                  fusedStart, new Expression.Assign(index, Expression.Literal.ofInt(1)));
+        }
         expressions.add(
             new Expression.If(
                 ne(value, new Expression.Null(TypeRef.of(String.class), false)),
-                new Expression.ListExpression(
-                    fusedStart, new Expression.Assign(index, Expression.Literal.ofInt(1))),
+                present,
                 new Expression.Invoke(writer, "writeObjectStart")));
         firstProperty = 1;
       } else {
@@ -422,7 +431,7 @@ abstract class JsonWriterCodegen {
       if (objectStartFused && i == 0) {
         member =
             writeObjectStartPrimitive(
-                properties[i], builder.fieldValue(properties[i], object), writer);
+                properties[i], inline(builder.fieldValue(properties[i], object)), writer);
       } else {
         member = writeProp(builder, properties[i], i, commaKnown, index, object, writer);
       }
@@ -512,11 +521,11 @@ abstract class JsonWriterCodegen {
       Expression writer) {
     Class<?> rawType = property.writeRawType();
     if (rawType.isPrimitive()) {
-      Expression fieldValue = builder.fieldValue(property, object);
+      // Primitive members cannot be null and this path consumes the access once. Nullable
+      // references stay cached below because their null check and write must share one value.
+      Expression fieldValue = inline(builder.fieldValue(property, object));
       if (property.writeKind() == JsonFieldKind.OBJECT) {
-        Expression value =
-            new Expression.Variable(
-                "v" + id, valueOf(TypeRef.of(rawType).wrap(), inline(fieldValue)));
+        Expression value = inline(valueOf(TypeRef.of(rawType).wrap(), fieldValue));
         return new Expression.ListExpression(
             value,
             writeFieldName(property, id, commaKnown, index, writer),
