@@ -21,6 +21,7 @@ package org.apache.fory.json;
 
 import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -34,7 +35,15 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 final class JsonTestSupport {
   private static final JsonConfig CONFIG =
       new JsonConfig(
-          false, false, false, true, ForyJson.DEFAULT_MAX_DEPTH, new CodecRegistry(), null);
+          false,
+          false,
+          false,
+          true,
+          ForyJson.DEFAULT_MAX_DEPTH,
+          1,
+          2 * 1024 * 1024,
+          new CodecRegistry(),
+          null);
   private static final JsonSharedRegistry REGISTRY = new JsonSharedRegistry(CONFIG);
   private static final JsonCodec<Object> NULL_CODEC =
       new JsonCodec<Object>() {
@@ -109,11 +118,31 @@ final class JsonTestSupport {
   }
 
   static JsonTypeResolver primaryTypeResolver(ForyJson json) {
+    return (JsonTypeResolver) primaryStateField(json, "typeResolver");
+  }
+
+  static Object primaryStateField(ForyJson json, String name) {
     try {
       AtomicReference<?> primarySlot = (AtomicReference<?>) field(json, "primarySlot");
       Object pooledState = primarySlot.get();
       Object state = field(pooledState, "state");
-      return (JsonTypeResolver) field(state, "typeResolver");
+      return field(state, name);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  static JsonConfig config(ForyJson json) {
+    try {
+      return (JsonConfig) field(json, "config");
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  static int pooledStateCount(ForyJson json) {
+    try {
+      return ((AtomicReferenceArray<?>) field(json, "slots")).length() + 1;
     } catch (ReflectiveOperationException e) {
       throw new AssertionError(e);
     }

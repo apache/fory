@@ -70,15 +70,13 @@ public final class ForyJson {
   private static final int PRIMARY_SLOT = -1;
   private static final int UNPOOLED_SLOT = -2;
   private static final byte[] EMPTY_BYTES = new byte[0];
-  private static final int DEFAULT_POOL_SIZE =
-      Math.max(1, Runtime.getRuntime().availableProcessors() * 4);
 
   /** Default maximum nested JSON object/array depth accepted while reading or writing. */
   public static final int DEFAULT_MAX_DEPTH = 20;
 
   private final JsonConfig config;
   private final JsonSharedRegistry sharedRegistry;
-  private final int poolSize;
+  private final int secondaryPoolSize;
   private final AtomicReference<PooledState> primarySlot;
   private final AtomicReferenceArray<PooledState> slots;
 
@@ -89,11 +87,11 @@ public final class ForyJson {
   ForyJson(JsonConfig config, JsonSharedRegistry sharedRegistry) {
     this.config = config;
     this.sharedRegistry = sharedRegistry;
-    poolSize = DEFAULT_POOL_SIZE;
+    secondaryPoolSize = config.concurrencyLevel() - 1;
     primarySlot =
         new AtomicReference<>(new PooledState(new JsonState(config, sharedRegistry), PRIMARY_SLOT));
-    slots = new AtomicReferenceArray<>(poolSize);
-    for (int i = 0; i < poolSize; i++) {
+    slots = new AtomicReferenceArray<>(secondaryPoolSize);
+    for (int i = 0; i < secondaryPoolSize; i++) {
       slots.set(i, new PooledState(new JsonState(config, sharedRegistry), i));
     }
   }
@@ -290,6 +288,9 @@ public final class ForyJson {
     if (entry != null && primarySlot.compareAndSet(entry, null)) {
       return entry;
     }
+    if (secondaryPoolSize == 0) {
+      return new PooledState(new JsonState(config, sharedRegistry), UNPOOLED_SLOT);
+    }
     int slotIndex = slotIndexForCurrentThread();
     entry = tryBorrowPreferredSlots(slotIndex);
     if (entry != null) {
@@ -318,16 +319,16 @@ public final class ForyJson {
       }
     }
     int index = slotIndex + 1;
-    if (index == poolSize) {
+    if (index == secondaryPoolSize) {
       index = 0;
     }
-    for (int i = 1; i < poolSize; i++) {
+    for (int i = 1; i < secondaryPoolSize; i++) {
       entry = tryBorrowSlot(index);
       if (entry != null) {
         return entry;
       }
       index++;
-      if (index == poolSize) {
+      if (index == secondaryPoolSize) {
         index = 0;
       }
     }
@@ -339,7 +340,8 @@ public final class ForyJson {
   }
 
   private int slotIndexForCurrentThread() {
-    return Math.floorMod(spread(System.identityHashCode(Thread.currentThread())), poolSize);
+    return Math.floorMod(
+        spread(System.identityHashCode(Thread.currentThread())), secondaryPoolSize);
   }
 
   private static int spread(int hash) {

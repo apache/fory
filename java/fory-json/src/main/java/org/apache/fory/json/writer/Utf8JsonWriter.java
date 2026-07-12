@@ -47,7 +47,7 @@ import org.apache.fory.serializer.StringSerializer;
  * <p>Primitive numbers, field tokens, Latin1 strings, and UTF16 strings write directly to the
  * buffer; Unicode strings validate surrogate pairs while encoding. {@link #toJsonBytes()} returns a
  * detached copy, while {@link #writeTo(OutputStream)} writes the active range without closing or
- * flushing the destination. Reset retains at most 64 KiB for reuse.
+ * flushing the destination. Reset applies the configured retained-buffer limit.
  *
  * <p>Finite float and double spelling comes from the JDK formatter, directly when available and
  * through a retained {@link StringBuilder} otherwise. Compact {@link BigDecimal} values are emitted
@@ -57,8 +57,6 @@ import org.apache.fory.serializer.StringSerializer;
  * values.
  */
 public final class Utf8JsonWriter extends JsonWriter implements Appendable {
-  // Pooled writers should retain medium buffers to avoid reallocating common JSON outputs.
-  private static final int RETAINED_CAPACITY = 64 * 1024;
   private static final byte[] MIN_INT_BYTES =
       "-2147483648".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final byte[] MIN_LONG_BYTES =
@@ -116,6 +114,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   private byte[] buffer;
   private final StringBuilder decimalBuilder;
+  private final int bufferSizeLimitBytes;
   private int position;
 
   public Utf8JsonWriter(JsonConfig config, JsonTypeResolver typeResolver) {
@@ -125,14 +124,15 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   public Utf8JsonWriter(JsonConfig config, JsonTypeResolver typeResolver, byte[] buffer) {
     super(config, typeResolver);
     this.buffer = buffer;
+    bufferSizeLimitBytes = config.bufferSizeLimitBytes();
     decimalBuilder = newDecimalBuilder();
   }
 
   @Override
   public void reset() {
     super.reset();
-    if (buffer.length > RETAINED_CAPACITY) {
-      buffer = new byte[RETAINED_CAPACITY];
+    if (buffer.length > bufferSizeLimitBytes) {
+      buffer = new byte[bufferSizeLimitBytes];
     }
     position = 0;
   }

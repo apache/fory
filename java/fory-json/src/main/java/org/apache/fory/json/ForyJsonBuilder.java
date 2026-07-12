@@ -32,9 +32,10 @@ import org.apache.fory.json.resolver.CodecRegistry;
  * path-specific replacements are installed, not codec semantics.
  *
  * <p>Defaults omit null object fields, enable code generation and asynchronous compilation, use
- * JavaBean property discovery, allow a nesting depth of 20, and install no custom type checker.
- * Field mode disables getter and setter discovery but continues to discover eligible instance
- * fields across the class hierarchy.
+ * JavaBean property discovery, allow a nesting depth of 20, use twice the available processors as
+ * the pooled-state concurrency level, retain writer buffers up to 2 MiB, and install no custom type
+ * checker. Field mode disables getter and setter discovery but continues to discover eligible
+ * instance fields across the class hierarchy.
  */
 public final class ForyJsonBuilder {
   private boolean writeNullFields;
@@ -42,6 +43,8 @@ public final class ForyJsonBuilder {
   private boolean asyncCompilationEnabled = true;
   private boolean propertyDiscoveryEnabled = true;
   private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
+  private int concurrencyLevel = Math.max(1, Runtime.getRuntime().availableProcessors() * 2);
+  private int bufferSizeLimitBytes = 2 * 1024 * 1024;
   private JsonTypeChecker typeChecker;
   private final CodecRegistry codecRegistry = new CodecRegistry();
 
@@ -84,6 +87,29 @@ public final class ForyJsonBuilder {
     return this;
   }
 
+  /** Sets the number of reusable execution states available to concurrent root operations. */
+  public ForyJsonBuilder withConcurrencyLevel(int concurrencyLevel) {
+    if (concurrencyLevel < 1) {
+      throw new IllegalArgumentException("concurrencyLevel must be positive");
+    }
+    this.concurrencyLevel = concurrencyLevel;
+    return this;
+  }
+
+  /**
+   * Sets the maximum byte-buffer capacity retained by each pooled String and UTF-8 writer.
+   *
+   * <p>This bounds reusable writer storage after a root operation; it does not limit JSON output
+   * size.
+   */
+  public ForyJsonBuilder withBufferSizeLimitBytes(int bufferSizeLimitBytes) {
+    if (bufferSizeLimitBytes < 1) {
+      throw new IllegalArgumentException("bufferSizeLimitBytes must be positive");
+    }
+    this.bufferSizeLimitBytes = bufferSizeLimitBytes;
+    return this;
+  }
+
   /**
    * Registers an exact custom JSON codec for {@code type}, replacing an earlier registration.
    *
@@ -116,6 +142,8 @@ public final class ForyJsonBuilder {
             asyncCompilationEnabled,
             propertyDiscoveryEnabled,
             maxDepth,
+            concurrencyLevel,
+            bufferSizeLimitBytes,
             codecRegistry,
             typeChecker));
   }

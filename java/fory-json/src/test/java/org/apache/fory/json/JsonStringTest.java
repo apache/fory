@@ -22,6 +22,8 @@ package org.apache.fory.json;
 import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
 import static org.apache.fory.json.JsonTestSupport.newStringWriter;
 import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
+import static org.apache.fory.json.JsonTestSupport.pooledStateCount;
+import static org.apache.fory.json.JsonTestSupport.primaryStateField;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
@@ -42,6 +44,7 @@ import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
+import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
 import org.testng.annotations.Test;
@@ -231,15 +234,38 @@ public class JsonStringTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void stringWriterShrinksOnReset() throws Exception {
-    StringJsonWriter writer = newStringWriter(new byte[16]);
-    writer.writeString(repeat('a', 40000) + "你好，Fory");
-    assertTrue(writerBufferLength(writer) > 65536);
-    writer.toJson();
-    writer.reset();
-    assertEquals(writerBufferLength(writer), 65536);
-    writer.writeString("café");
-    assertEquals(writer.toJson(), "\"café\"");
+  public void builderRuntimeLimits() throws Exception {
+    int bufferLimit = 64 * 1024;
+    ForyJson json =
+        ForyJson.builder()
+            .withAsyncCompilation(false)
+            .withConcurrencyLevel(3)
+            .withBufferSizeLimitBytes(bufferLimit)
+            .build();
+    assertEquals(pooledStateCount(json), 3);
+    assertEquals(pooledStateCount(ForyJson.builder().withConcurrencyLevel(1).build()), 1);
+
+    String value = repeat('a', bufferLimit + 1);
+    StringJsonWriter stringWriter = (StringJsonWriter) primaryStateField(json, "stringWriter");
+    stringWriter.writeString(value);
+    assertTrue(writerBufferLength(stringWriter) > bufferLimit);
+    stringWriter.reset();
+    assertEquals(writerBufferLength(stringWriter), bufferLimit);
+
+    Utf8JsonWriter utf8Writer = (Utf8JsonWriter) primaryStateField(json, "utf8Writer");
+    utf8Writer.writeString(value);
+    assertTrue(writerBufferLength(utf8Writer) > bufferLimit);
+    utf8Writer.reset();
+    assertEquals(writerBufferLength(utf8Writer), bufferLimit);
+
+    JsonConfig defaultConfig = JsonTestSupport.config(ForyJson.builder().build());
+    assertEquals(
+        defaultConfig.concurrencyLevel(),
+        Math.max(1, Runtime.getRuntime().availableProcessors() * 2));
+    assertEquals(defaultConfig.bufferSizeLimitBytes(), 2 * 1024 * 1024);
+    assertThrows(IllegalArgumentException.class, () -> ForyJson.builder().withConcurrencyLevel(0));
+    assertThrows(
+        IllegalArgumentException.class, () -> ForyJson.builder().withBufferSizeLimitBytes(0));
   }
 
   @Test(dataProvider = "enableCodegen")
@@ -495,8 +521,8 @@ public class JsonStringTest extends ForyJsonTestModels {
         () -> json.fromJson("\"" + Character.toString('\uD800') + "\"", String.class));
   }
 
-  private static int writerBufferLength(StringJsonWriter writer) throws Exception {
-    Field field = StringJsonWriter.class.getDeclaredField("buffer");
+  private static int writerBufferLength(Object writer) throws Exception {
+    Field field = writer.getClass().getDeclaredField("buffer");
     field.setAccessible(true);
     return ((byte[]) field.get(writer)).length;
   }

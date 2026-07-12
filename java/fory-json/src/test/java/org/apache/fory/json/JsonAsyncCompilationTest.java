@@ -745,7 +745,8 @@ public class JsonAsyncCompilationTest {
 
   private static ControlledJson controlledJson(CodecRegistry codecs) throws Exception {
     JsonConfig config =
-        new JsonConfig(false, true, true, true, ForyJson.DEFAULT_MAX_DEPTH, codecs, null);
+        new JsonConfig(
+            false, true, true, true, ForyJson.DEFAULT_MAX_DEPTH, 1, 2 * 1024 * 1024, codecs, null);
     ControlledExecutor executor = new ControlledExecutor();
     Constructor<JsonSharedRegistry> constructor =
         JsonSharedRegistry.class.getDeclaredConstructor(JsonConfig.class, ExecutorService.class);

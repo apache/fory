@@ -54,15 +54,13 @@ import org.apache.fory.serializer.StringSerializer;
  * <p>Finite float and double spelling comes from the JDK formatter, directly when available and
  * through a retained {@link StringBuilder} otherwise. Compact {@link BigDecimal} values are emitted
  * directly with JDK-compatible spelling; inflated values and out-of-long {@link BigInteger} values
- * use canonical JDK text on the cold arbitrary-precision path. Reset caps retained buffers at 64
- * KiB. The {@link Appendable} methods emit escaped string content without adding surrounding quotes
- * and are used by formatter-owned quoted values.
+ * use canonical JDK text on the cold arbitrary-precision path. Reset applies the configured
+ * retained-buffer limit. The {@link Appendable} methods emit escaped string content without adding
+ * surrounding quotes and are used by formatter-owned quoted values.
  */
 public final class StringJsonWriter extends JsonWriter implements Appendable {
   private static final byte LATIN1 = 0;
   private static final byte UTF16 = 1;
-  // Pooled writers should retain medium buffers to avoid reallocating common JSON outputs.
-  private static final int RETAINED_CAPACITY = 64 * 1024;
   private static final byte[] MIN_INT_BYTES = "-2147483648".getBytes(StandardCharsets.ISO_8859_1);
   private static final byte[] MIN_LONG_BYTES =
       "-9223372036854775808".getBytes(StandardCharsets.ISO_8859_1);
@@ -127,6 +125,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
   // runtime that does not expose the direct UTF16 formatter.
   private byte[] scratch;
   private final StringBuilder decimalBuilder;
+  private final int bufferSizeLimitBytes;
   private byte coder;
   private byte nextCoder;
   private boolean latin1Output;
@@ -140,17 +139,18 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     super(config, typeResolver);
     this.buffer = initialBuffer(buffer);
     scratch = new byte[this.buffer.length];
+    bufferSizeLimitBytes = config.bufferSizeLimitBytes();
     decimalBuilder = newDecimalBuilder();
   }
 
   @Override
   public void reset() {
     super.reset();
-    if (buffer.length > RETAINED_CAPACITY) {
-      buffer = new byte[RETAINED_CAPACITY];
+    if (buffer.length > bufferSizeLimitBytes) {
+      buffer = new byte[bufferSizeLimitBytes];
     }
-    if (scratch.length > RETAINED_CAPACITY) {
-      scratch = new byte[RETAINED_CAPACITY];
+    if (scratch.length > bufferSizeLimitBytes) {
+      scratch = new byte[bufferSizeLimitBytes];
     }
     coder = nextCoder;
     latin1Output = coder == UTF16;
