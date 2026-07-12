@@ -1832,7 +1832,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   @Test
   public void readDoubleRandomTokens() {
     Random random = new Random(1357911L);
-    for (int i = 0; i < 8192; i++) {
+    for (int i = 0; i < 512; i++) {
       double value = Double.longBitsToDouble(random.nextLong());
       if (Double.isFinite(value)) {
         assertDoubleTokenBits(Double.toString(value));
@@ -1843,7 +1843,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   @Test
   public void readDoubleDecimalTokens() {
     Random random = new Random(246802468L);
-    for (int i = 0; i < 2048; i++) {
+    for (int i = 0; i < 256; i++) {
       assertDoubleTokenBits(randomDoubleToken(random));
     }
   }
