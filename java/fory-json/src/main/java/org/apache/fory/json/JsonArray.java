@@ -22,7 +22,13 @@ package org.apache.fory.json;
 import java.util.ArrayList;
 import java.util.Collection;
 
-/** Mutable JSON array container for dynamic JSON values. */
+/**
+ * Canonical mutable representation of a JSON array parsed through the dynamic {@code Object} codec.
+ *
+ * <p>Elements use natural JSON mappings: strings, booleans, numbers, {@code null}, nested {@link
+ * JsonArray} values, and nested {@link JsonObject} values. Typed collection targets continue to use
+ * their requested Java collection type; this class owns only untyped JSON-array materialization.
+ */
 public final class JsonArray extends ArrayList<Object> {
   public JsonArray() {
     // JSON input has no trusted array size; start from zero to avoid default capacity

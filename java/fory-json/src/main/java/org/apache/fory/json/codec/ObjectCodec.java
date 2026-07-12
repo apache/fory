@@ -47,6 +47,22 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.util.record.RecordInfo;
 import org.apache.fory.util.record.RecordUtils;
 
+/**
+ * Reflection-backed semantic codec and metadata owner for one Java object type.
+ *
+ * <p>Construction discovers eligible fields and JavaBean properties, applies directional expose and
+ * ignore rules, resolves generic member types against the owner {@link TypeRef}, and builds
+ * separate ordered read and write field arrays. Class-valued fields and properties are never JSON
+ * members; applying {@code @Expose} to a Class field is rejected because exposure cannot grant
+ * class-loading authority. Records retain constructor metadata and field defaults; ordinary objects
+ * retain an allocation strategy plus field or accessor sinks.
+ *
+ * <p>This codec is the interpreted implementation and the semantic fallback. Only an exact
+ * raw-class instance of this class is eligible for generated capability replacement. Parameterized
+ * object codecs retain binding-specific member types and remain the owner of all five slots.
+ * Generated code may replace paths independently, but it is built from this codec's immutable field
+ * metadata and preserves the same null, unknown-field, record, and member-discovery semantics.
+ */
 public class ObjectCodec<T> implements JsonCodec<T> {
   protected final Class<?> type;
   protected final JsonFieldInfo[] writeFields;

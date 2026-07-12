@@ -94,11 +94,19 @@ import org.apache.fory.type.Float16;
 import org.apache.fory.type.TypeUtils;
 
 /**
- * Shared JSON codec registry used by all local resolvers for one {@code ForyJson}.
+ * Shared codec definitions and cold caches for all local resolvers of one {@code ForyJson}.
  *
- * <p>The registry shares codec definitions and generated classes through {@link JsonCodegen}. It
- * creates a separate generic {@link JsonJITContext} for each resolver; JIT locks and callbacks are
- * never shared across pooled JSON states.
+ * <p>This owner snapshots custom codecs, registers exact built-in codecs, classifies field kinds,
+ * applies class-name security checks, and selects the semantic codec family for a resolved type.
+ * Default exact codecs bypass the user checker because their behavior is fixed and does not create
+ * object metadata; a custom binding for the same class restores normal checking. The disallow list
+ * is always applied before the user checker.
+ *
+ * <p>Accepted type-check results are cached by class name up to a bounded 8192-entry shared cache.
+ * Once full, new names are checked on every resolution rather than growing attacker-controlled
+ * state. Generated classes are shared through one {@link JsonCodegen}; generated instances,
+ * ordinary type bindings, JIT locks, and callbacks remain resolver-local. A fresh generic {@link
+ * JsonJITContext} is therefore created for every pooled JSON state.
  */
 public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;

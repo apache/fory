@@ -24,7 +24,15 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import org.apache.fory.reflect.FieldAccessor;
 
-/** Reads BigDecimal's stored representation without invoking overridable accessors. */
+/**
+ * JDK 8-24 access to the base {@link BigDecimal} compact coefficient, inflated coefficient, and
+ * scale fields.
+ *
+ * <p>Concrete writers use direct field access to distinguish allocation-free compact output from
+ * canonical inflated fallback and to avoid invoking subtype overrides. If access is unavailable,
+ * exact base values may use {@link BigDecimal#scale()}, while inflated subtypes are rejected rather
+ * than trusted as raw JSON numbers.
+ */
 final class BigDecimalFields {
   static final long INFLATED = Long.MIN_VALUE;
   private static final FieldAccessor INT_COMPACT = fieldAccessor("intCompact", long.class);

@@ -32,13 +32,21 @@ import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.Preconditions;
 
 /**
- * Resolver-local asynchronous JIT callback context.
+ * Generic resolver-local lock and completion-notification context for generated code.
  *
  * <p>This class deliberately has the same owner model as Fory core's JIT context. It knows nothing
  * about JSON readers, writers, capabilities, generated classes, or resolver metadata. A root graph
  * and its completion callbacks use the same local lock. The JIT action runs outside that lock;
- * success reacquires it before invoking the owner's publication callback and its registered notify
- * callbacks.
+ * success reacquires it before invoking the resolver-owned publication callback and then registered
+ * parent notifications. Synchronous mode uses the callback map only to break recursive compilation
+ * of the same identifier.
+ *
+ * <p>{@link JITCallback#id()} correlates active child notifications; it is not a task-request or
+ * deduplication key. Every asynchronous registration submits its action and owns its completion
+ * callback. Duplicate actions converge on {@link JsonCodegen}'s shared generated-class cache, then
+ * may construct and install equivalent resolver-local instances. This is intentional: generated
+ * class compilation is single-flight, while resolver-local subscribers, construction, publication,
+ * and generated parent-field updates are not deduplicated.
  */
 @Internal
 public final class JsonJITContext {
@@ -83,6 +91,8 @@ public final class JsonJITContext {
           callbacks.remove(id);
         }
       }
+      // Do not skip registration when this ID is already present. JsonCodegen single-flights class
+      // compilation, while every local registration must retain its own publication callback.
       callbacks.computeIfAbsent(callback.id(), ignored -> new ArrayList<>());
       numRunningTasks++;
       ExecutorService service = compilationService;

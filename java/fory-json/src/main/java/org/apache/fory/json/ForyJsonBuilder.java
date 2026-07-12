@@ -22,7 +22,20 @@ package org.apache.fory.json;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
 
-/** Builder for {@link ForyJson}. */
+/**
+ * Configures and creates an immutable, thread-safe {@link ForyJson} facade.
+ *
+ * <p>The builder owns mutable registration state. {@link #build()} snapshots that registry through
+ * the created JSON runtime, so later builder registrations do not mutate an existing runtime.
+ * Generated object codecs are independently compiled for the concrete String writer, UTF-8 writer,
+ * Latin1 reader, UTF16 reader, and UTF-8 reader paths; asynchronous compilation controls when those
+ * path-specific replacements are installed, not codec semantics.
+ *
+ * <p>Defaults omit null object fields, enable code generation and asynchronous compilation, use
+ * JavaBean property discovery, allow a nesting depth of 20, and install no custom type checker.
+ * Field mode disables getter and setter discovery but continues to discover eligible instance
+ * fields across the class hierarchy.
+ */
 public final class ForyJsonBuilder {
   private boolean writeNullFields;
   private boolean codegenEnabled = true;
@@ -71,7 +84,13 @@ public final class ForyJsonBuilder {
     return this;
   }
 
-  /** Registers a custom JSON codec for {@code type}. */
+  /**
+   * Registers an exact custom JSON codec for {@code type}, replacing an earlier registration.
+   *
+   * <p>The same codec instance may be called concurrently by pooled JSON states and must therefore
+   * be thread-safe. Building snapshots the registration map, although the registered codec objects
+   * themselves are intentionally shared.
+   */
   public <T> ForyJsonBuilder registerCodec(Class<T> type, JsonCodec<T> codec) {
     codecRegistry.register(type, codec);
     return this;
@@ -88,6 +107,7 @@ public final class ForyJsonBuilder {
     return this;
   }
 
+  /** Builds a JSON runtime from the current builder state. */
   public ForyJson build() {
     return new ForyJson(
         new JsonConfig(

@@ -33,6 +33,18 @@ import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
 
+/**
+ * JSON reader for Java String input represented as UTF16 code units.
+ *
+ * <p>On compact-string JVMs, a UTF16-coded String is read through its borrowed native byte storage.
+ * On char-backed JVMs the public facade copies characters once into a reusable native-layout byte
+ * mirror, retaining the original String for result slicing. Direct character access remains
+ * available when no byte mirror exists. Returned values never retain the reusable decode buffer.
+ *
+ * <p>This concrete owner implements UTF16 token probes, packed digit parsing, string decoding, and
+ * field hashing. {@link #clear()} releases both borrowed representations and bounds the retained
+ * decode workspace before the pooled state is reused.
+ */
 public final class Utf16JsonReader extends JsonReader {
   private static final int INITIAL_STRING_DECODE_BUFFER_SIZE = 1024;
   private static final int RETAINED_STRING_DECODE_BUFFER_SIZE = 8192;
@@ -92,6 +104,13 @@ public final class Utf16JsonReader extends JsonReader {
     return this;
   }
 
+  /**
+   * Resets this reader with a String and its exact native-layout UTF16 byte mirror.
+   *
+   * <p>The caller owns creating the mirror. Its first {@code input.length() * 2} bytes must encode
+   * the same UTF16 code units in the layout used by {@link StringSerializer}; this method validates
+   * capacity but does not compare the mirror on the hot setup path.
+   */
   public Utf16JsonReader reset(String input, byte[] bytes) {
     int length = input.length();
     if (length > (Integer.MAX_VALUE >>> 1)) {

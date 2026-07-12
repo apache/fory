@@ -19,6 +19,12 @@
 
 package org.apache.fory.json.meta;
 
+/**
+ * Semantic field families used to select interpreted and generated JSON operations.
+ *
+ * <p>The kind is resolved once from the declared Java type. It is not a wire type identifier and is
+ * never read from untrusted JSON input.
+ */
 public enum JsonFieldKind {
   BOOLEAN,
   BYTE,

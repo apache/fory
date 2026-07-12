@@ -43,6 +43,26 @@ import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 
+/**
+ * Representation-neutral JSON cursor and common scalar parsing owner.
+ *
+ * <p>The base class retains the resolver used by dynamic codecs, the current code-unit position,
+ * configured and current container depth, a reusable ASCII token view, and a fixed workspace for
+ * exact floating-point boundary correction. Concrete readers own input storage, string decoding,
+ * field-name probes, and direct primitive numeric fast paths for their representation.
+ *
+ * <p>Primitive {@code int}, {@code long}, {@code float}, and {@code double} parsing does not
+ * materialize a String or arbitrary-precision number. Precision-sensitive floating input uses the
+ * reusable boundary workspace. The internal length and scale limits apply only when constructing
+ * {@link BigInteger} or {@link BigDecimal}; raw number text, primitive scans, and skipped values do
+ * not inherit that resource policy.
+ *
+ * <p>Readers are mutable and confined to one borrowed {@code ForyJson} state. Concrete reset
+ * methods borrow an input and reset the cursor and depth; {@code clear()} detaches that input
+ * before the state returns to the pool. A failed nested parse may leave depth nonzero because the
+ * root cleanup resets it; nested codec paths intentionally avoid cleanup-only {@code try/finally}
+ * regions.
+ */
 public abstract class JsonReader {
   private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;

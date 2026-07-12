@@ -19,6 +19,14 @@
 
 package org.apache.fory.json.meta;
 
+/**
+ * Incremental field-name hash shared by all concrete readers and metadata lookup tables.
+ *
+ * <p>Nonzero Latin1 names of at most eight bytes use their packed bytes as a collision-free fast
+ * value. All other names use the same FNV-style incremental hash while decoding. {@link
+ * JsonFieldTable} rejects metadata collisions up front, so a successful runtime hash lookup can
+ * return the canonical field without allocating or comparing a decoded String.
+ */
 public final class JsonFieldNameHash {
   public static final long MAGIC_HASH_CODE = 0xcbf29ce484222325L;
   public static final long MAGIC_PRIME = 0x100000001b3L;

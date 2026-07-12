@@ -84,6 +84,20 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Float16;
 
+/**
+ * Exact semantic codecs for scalar, temporal, atomic, optional, buffer, and enum JSON mappings.
+ *
+ * <p>Primitive and boxed codecs are distinct where JSON {@code null} semantics differ. Exact
+ * built-in instances also identify direct array, collection, map, field, and generated-code paths;
+ * replacing one with a custom codec intentionally disables those built-in shortcuts. The dynamic
+ * {@code Object} codec maps arrays and objects to {@link org.apache.fory.json.JsonArray} and {@link
+ * org.apache.fory.json.JsonObject}, and dispatches writes through the active writer's resolver.
+ *
+ * <p>Arbitrary-precision resource guards remain owned by reader construction of {@link BigInteger}
+ * and {@link BigDecimal}. Primitive numeric readers retain their direct overflow and IEEE-754
+ * parsing behavior. Java time codecs use their documented string grammar and do not accept numeric
+ * decimal timestamps.
+ */
 public final class ScalarCodecs {
   private static final DateTimeFormatter YEAR_MONTH_FORMATTER =
       DateTimeFormatter.ofPattern("uuuu-MM");

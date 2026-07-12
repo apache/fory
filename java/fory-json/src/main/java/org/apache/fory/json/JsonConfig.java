@@ -25,7 +25,16 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.json.resolver.CodecRegistry;
 
-/** Immutable build-time configuration for one {@link ForyJson} instance. */
+/**
+ * Build configuration used to create all pooled states of one {@link ForyJson} instance.
+ *
+ * <p>Scalar settings are fixed at construction. The codec registry is builder-owned mutable input
+ * and is copied immediately by the runtime's shared registry; the JSON runtime never mutates it.
+ * The type checker uses identity semantics because checker instances may carry different user
+ * policy despite sharing a class. {@link #getCodegenHash()} identifies only settings that can
+ * change generated source; runtime-only settings such as depth and asynchronous scheduling do not
+ * fragment generated class names.
+ */
 public final class JsonConfig {
   private final boolean writeNullFields;
   private final boolean codegenEnabled;
@@ -124,6 +133,8 @@ public final class JsonConfig {
   private static final AtomicInteger COUNTER = new AtomicInteger(0);
 
   // Equal generated source inputs share one map entry, following core generated-code naming model.
+  // This process-wide map retains only immutable configuration text and integers, never user
+  // classes, codec instances, class loaders, or generated classes.
   private static final ConcurrentMap<CodegenKey, Integer> CODEGEN_ID_MAP =
       new ConcurrentHashMap<>();
 

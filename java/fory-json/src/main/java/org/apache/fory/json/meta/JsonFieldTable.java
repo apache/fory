@@ -21,6 +21,15 @@ package org.apache.fory.json.meta;
 
 import org.apache.fory.json.ForyJsonException;
 
+/**
+ * Immutable open-addressed lookup table for readable object fields.
+ *
+ * <p>The table is built at a low load factor during object metadata construction and stores both
+ * the field object and its ordered read index. Concrete readers probe by the hash computed while
+ * reading the member name, avoiding String materialization. Hash collisions between declared fields
+ * are rejected during construction because runtime lookup deliberately performs no secondary name
+ * comparison.
+ */
 public final class JsonFieldTable {
   private final String[] tableNames;
   private final long[] tableHashes;

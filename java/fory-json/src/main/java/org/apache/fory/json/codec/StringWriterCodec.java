@@ -22,8 +22,11 @@ package org.apache.fory.json.codec;
 import org.apache.fory.json.writer.StringJsonWriter;
 
 /**
- * Writes one complete resolved Java value, including {@code null}, through {@link
- * StringJsonWriter}.
+ * Writes one complete resolved Java value, including {@code null}, through the concrete {@link
+ * StringJsonWriter} path.
+ *
+ * <p>The active writer retains its {@code JsonTypeResolver}; implementations resolve dynamic child
+ * types from the writer instead of receiving a resolver argument on this hot call.
  */
 public interface StringWriterCodec<T> {
   void writeString(StringJsonWriter writer, T value);

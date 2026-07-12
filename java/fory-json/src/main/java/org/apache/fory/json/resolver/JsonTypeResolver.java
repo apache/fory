@@ -55,6 +55,12 @@ import org.apache.fory.reflect.TypeRef;
  * know any JSON capability, codec, generated class, or field metadata. Compilation failure leaves
  * the interpreted capability in its {@link JsonTypeInfo} slot; no parallel requested or failure
  * state is retained, so a later operation may retry compilation.
+ *
+ * <p>{@code typeInfos} owns declared and parameterized bindings. {@code objectCodecs} breaks
+ * recursive object-metadata construction by publishing the complete object owner before resolving
+ * its fields. {@code objectTypeInfos} contains only canonical raw-class default-object bindings and
+ * is the direct publication index for generated capabilities; custom, parameterized, container,
+ * scalar, and dynamic bindings never enter it.
  */
 public final class JsonTypeResolver {
   private final Map<Object, ObjectCodec<?>> objectCodecs;
@@ -429,6 +435,11 @@ public final class JsonTypeResolver {
     return childFields;
   }
 
+  // All five publication paths follow the same order under the local JIT lock: construct the
+  // resolver-local instance, resolve every replaceable child Field, register child notifications,
+  // then write the canonical JsonTypeInfo slot. Construction and field lookup are the fallible
+  // phase. Publication is deterministic ordinary field assignment and is never modeled as a
+  // transaction or rolled back; a failure there is a generated-code invariant violation.
   private void publishStringWriter(ObjectCodec<Object> owner, Class<?> generated) {
     requireJITLock();
     StringWriterCodec<Object> codec = newStringWriter(owner, generated);
@@ -469,6 +480,10 @@ public final class JsonTypeResolver {
     objectTypeInfo(owner).setUtf8Reader(codec);
   }
 
+  // A generated parent captures the current child slot during construction. If a child task is
+  // active, notification updates only the matching concrete field after the child slot is
+  // published. If no task is active, onNotifyMissed installs the already-current slot immediately.
+  // The callback list is notification state, not a resolver dependency graph or task-dedup map.
   private void registerStringWriterCallbacks(
       StringWriterCodec<Object> parent, ObjectCodec<?> owner, Field[] fields) {
     if (fields == null) {

@@ -34,6 +34,18 @@ import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
 
+/**
+ * JSON reader for Latin1 byte input and compact Latin1 Java Strings.
+ *
+ * <p>The reader borrows its input. JSON syntax is ASCII and can be compared directly as signed
+ * bytes; string content and field-name hashing convert bytes to unsigned Latin1 values. Unescaped
+ * and escaped strings are copied into result-owned storage, so returned values never retain the
+ * input or the reusable decode buffer.
+ *
+ * <p>This concrete owner implements representation-specific token probes, packed digit parsing,
+ * string decoding, and field hashing. {@link #clear()} releases the input reference and bounds the
+ * retained decode workspace before the owning pooled state is reused.
+ */
 public final class Latin1JsonReader extends JsonReader {
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final int INITIAL_STRING_DECODE_BUFFER_SIZE = 1024;

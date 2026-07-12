@@ -35,6 +35,21 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 
+/**
+ * Representation-neutral JSON emission contract and writer operation state.
+ *
+ * <p>The base owner retains the resolver used by dynamic codecs, the null-field setting, and
+ * configured and current container depth. Concrete writers own output storage and all direct
+ * representation-specific scalar, string, field-token, temporal, and arbitrary-precision output. In
+ * particular, this base class does not retain big-number scratch state or emit digits through
+ * virtual callbacks.
+ *
+ * <p>Writers are mutable and confined to one borrowed {@code ForyJson} state. A failed root write
+ * is discarded and {@link #reset()} restores depth before reuse; nested codecs intentionally do not
+ * add {@code try/finally} solely to decrement depth on an operation that already failed. Methods
+ * accepting preformatted number text require a valid ASCII JSON number and copy it without
+ * reparsing.
+ */
 public abstract class JsonWriter {
   private final JsonTypeResolver typeResolver;
   private final boolean writeNullFields;

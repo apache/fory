@@ -22,7 +22,11 @@ package org.apache.fory.json.codec;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
 /**
- * Writes one complete resolved Java value, including {@code null}, through {@link Utf8JsonWriter}.
+ * Writes one complete resolved Java value, including {@code null}, through the concrete {@link
+ * Utf8JsonWriter} path.
+ *
+ * <p>The active writer retains its {@code JsonTypeResolver}; implementations resolve dynamic child
+ * types from the writer instead of receiving a resolver argument on this hot call.
  */
 public interface Utf8WriterCodec<T> {
   void writeUtf8(Utf8JsonWriter writer, T value);

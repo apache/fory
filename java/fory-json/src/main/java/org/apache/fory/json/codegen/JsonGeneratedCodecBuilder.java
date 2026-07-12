@@ -30,6 +30,15 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.util.record.RecordUtils;
 
+/**
+ * Common field-access and source-class builder for one concrete generated JSON capability.
+ *
+ * <p>Each compiler entry creates a fresh builder with a concrete generated class name. Reader or
+ * writer generators select the implemented narrow capability directly; this class does not carry a
+ * path enum or dispatch between modes. It reuses Fory core's field access and object-construction
+ * expressions so Janino erasure remains confined to generated source without changing handwritten
+ * codec generics.
+ */
 final class JsonGeneratedCodecBuilder extends CodecBuilder {
   private final String generatedClassName;
 

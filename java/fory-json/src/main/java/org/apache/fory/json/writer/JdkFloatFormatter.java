@@ -27,7 +27,14 @@ import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 
-/** Exact JDK float formatter access for JSON number output without materializing a String. */
+/**
+ * Accesses the JDK's exact shortest-decimal {@code float} formatter without materializing a String.
+ *
+ * <p>Supported OpenJDK runtimes expose cached LATIN1 and UTF16 formatter handles that write
+ * directly into a concrete writer buffer. A missing internal formatter, Android, or native image
+ * returns {@code -1}; the writer then reuses its own {@link StringBuilder}, whose append operation
+ * still delegates decimal rounding and spelling to the JDK.
+ */
 final class JdkFloatFormatter {
   static final int MAX_CHARS = 16;
   private static final MethodHandle PUT_DECIMAL_LATIN1 = loadPutDecimal("LATIN1");

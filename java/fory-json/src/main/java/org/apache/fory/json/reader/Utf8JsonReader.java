@@ -34,6 +34,18 @@ import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
 
+/**
+ * JSON reader for borrowed UTF-8 byte arrays.
+ *
+ * <p>ASCII syntax, field-name probes, and primitive numbers operate directly on bytes. Unicode
+ * string and field-name paths decode and validate UTF-8, including continuation bytes, overlong
+ * forms, surrogate encodings, and the Unicode code-point range. Returned Strings own their storage
+ * and never retain the input or reusable decode buffer.
+ *
+ * <p>This concrete owner implements UTF-8 token probes, packed digit parsing, string decoding, and
+ * field hashing. {@link #clear()} releases the input and bounds the retained decode workspace
+ * before the owning pooled state is reused.
+ */
 public final class Utf8JsonReader extends JsonReader {
   private static final byte[] EMPTY_BYTES = new byte[0];
   private static final int INITIAL_STRING_DECODE_BUFFER_SIZE = 1024;
@@ -1395,6 +1407,8 @@ public final class Utf8JsonReader extends JsonReader {
 
   @Override
   protected char charAt(int index) {
+    // Base grammar fallbacks call charAt only for ASCII JSON syntax and number text. Unicode string
+    // content is decoded and validated by this concrete reader's overridden string/hash paths.
     return (char) (input[index] & 0xFF);
   }
 

@@ -36,14 +36,32 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.StringSerializer;
 
 /**
- * Thread-safe public facade for Fory JSON serialization and parsing.
+ * Thread-safe facade for serializing Java values to JSON and parsing JSON into Java values.
  *
- * <p>Each pooled state owns one resolver-local JIT lock. A root operation holds that lock from root
- * type resolution through completion of its codec graph, so asynchronous generated-capability
- * installation cannot mutate ordinary resolver or generated child fields midway through the graph.
- * Different pooled states use different locks and remain concurrent. Completed writer-buffer
- * materialization or output, writer reset, and reader clear run after JIT unlock; only reset and
- * clear must finish before the clean state returns to the pool.
+ * <p>One instance shares its {@link JsonConfig configuration}, custom and built-in codec
+ * definitions, type-check results, and generated classes. Mutable execution state is not shared:
+ * each pooled {@code JsonState} owns one {@link JsonTypeResolver}, one writer for each output form,
+ * and one reader for each input representation. A state is borrowed by only one root operation at a
+ * time, so reader positions, writer buffers, resolver caches, and ordinary generated-codec fields
+ * need no per-value synchronization.
+ *
+ * <p>A root operation holds its resolver-local JIT lock from root type resolution through
+ * completion of the codec graph. Asynchronous generated-capability installation therefore cannot
+ * replace a {@link JsonTypeInfo} slot or a generated parent child field midway through that graph.
+ * Different pooled states use different locks and remain concurrent. Writer output materialization,
+ * writer reset, and reader clear happen after JIT unlock; reset or clear completes before the state
+ * is returned to the pool.
+ *
+ * <p>String input preserves its concrete representation path: compact Latin1 strings use {@link
+ * Latin1JsonReader}, compact UTF16 strings use {@link Utf16JsonReader}, and char-backed strings are
+ * converted once to reusable UTF16 bytes. UTF-8 byte input always uses {@link Utf8JsonReader}. This
+ * path selection is observable by custom codecs and is therefore not interchangeable even when a
+ * Latin1 string contains only ASCII.
+ *
+ * <p>The facade has no close lifecycle. Contended operations borrow another pooled state or create
+ * a temporary unpooled state instead of serializing all callers through one root lock. Java {@code
+ * null} writes as JSON {@code null}; JSON {@code null} returns {@code null} for reference targets
+ * and is rejected for primitive root targets.
  */
 public final class ForyJson {
   private static final int PREFERRED_SLOT_RETRIES = 2;
@@ -80,10 +98,12 @@ public final class ForyJson {
     }
   }
 
+  /** Returns a builder initialized with the documented default configuration. */
   public static ForyJsonBuilder builder() {
     return new ForyJsonBuilder();
   }
 
+  /** Serializes {@code value} as one complete JSON document backed by a detached String. */
   public String toJson(Object value) {
     PooledState entry = acquire();
     JsonState state = entry.state;
@@ -110,6 +130,7 @@ public final class ForyJson {
     }
   }
 
+  /** Serializes {@code value} as one complete JSON document in a detached UTF-8 byte array. */
   public byte[] toJsonBytes(Object value) {
     PooledState entry = acquire();
     JsonState state = entry.state;
@@ -136,7 +157,12 @@ public final class ForyJson {
     }
   }
 
-  /** Serializes {@code value} as UTF-8 JSON to {@code output}. */
+  /**
+   * Serializes {@code value} as UTF-8 JSON to {@code output}.
+   *
+   * <p>The complete document is buffered before one write to the stream. This method neither
+   * flushes nor closes the caller-owned stream.
+   */
   public void writeJsonTo(Object value, OutputStream output) {
     Objects.requireNonNull(output, "output");
     PooledState entry = acquire();
@@ -164,6 +190,10 @@ public final class ForyJson {
     }
   }
 
+  /**
+   * Parses exactly one JSON value from {@code json} using {@code type} as its declared Java type.
+   * Trailing non-whitespace content is rejected.
+   */
   public <T> T fromJson(String json, Class<T> type) {
     PooledState entry = acquire();
     JsonState state = entry.state;
@@ -183,7 +213,10 @@ public final class ForyJson {
     }
   }
 
-  /** Parses JSON using a generic type captured by {@link TypeRef}. */
+  /**
+   * Parses exactly one JSON value using a generic type captured by {@link TypeRef}. Trailing
+   * non-whitespace content is rejected.
+   */
   public <T> T fromJson(String json, TypeRef<T> typeRef) {
     PooledState entry = acquire();
     JsonState state = entry.state;
@@ -204,6 +237,10 @@ public final class ForyJson {
     }
   }
 
+  /**
+   * Parses exactly one UTF-8 JSON value from {@code bytes} using {@code type} as its declared Java
+   * type. Trailing non-whitespace content is rejected.
+   */
   public <T> T fromJson(byte[] bytes, Class<T> type) {
     PooledState entry = acquire();
     JsonState state = entry.state;
@@ -223,7 +260,10 @@ public final class ForyJson {
     }
   }
 
-  /** Parses UTF-8 JSON bytes using a generic type captured by {@link TypeRef}. */
+  /**
+   * Parses exactly one UTF-8 JSON value using a generic type captured by {@link TypeRef}. Trailing
+   * non-whitespace content is rejected.
+   */
   public <T> T fromJson(byte[] bytes, TypeRef<T> typeRef) {
     PooledState entry = acquire();
     JsonState state = entry.state;
@@ -372,6 +412,7 @@ public final class ForyJson {
     return new ForyJsonException("Cannot read null into primitive " + type);
   }
 
+  /** Associates a reusable state with the slot to which it may be returned. */
   private static final class PooledState {
     private final JsonState state;
     private final int homeIndex;
@@ -382,6 +423,14 @@ public final class ForyJson {
     }
   }
 
+  /**
+   * Complete mutable execution state for one borrowed root operation.
+   *
+   * <p>The resolver is constructed first and retained by all five readers and writers. Codecs
+   * obtain dynamic child bindings from the active reader or writer instead of receiving a resolver
+   * through every capability call. The last-root cache is state-local and only avoids repeated
+   * resolver lookup for an identical declared type and fallback pair.
+   */
   private static final class JsonState {
     private final JsonTypeResolver typeResolver;
     private final Utf8JsonWriter utf8Writer;

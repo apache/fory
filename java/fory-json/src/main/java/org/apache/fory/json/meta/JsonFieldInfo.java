@@ -39,6 +39,21 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.reflect.TypeRef;
 
+/**
+ * Immutable member metadata shared by interpreted and generated object codecs.
+ *
+ * <p>One instance describes the independently resolved write source and read sink for a JSON
+ * member: reflected field or accessor, declared and raw type, semantic kind, and interpreted
+ * accessor. Construction also precomputes escaped field-name prefixes, enum tokens, boolean tokens,
+ * and the field-name hash for all concrete reader and writer representations. This moves encoding
+ * and classification out of per-object and per-field hot paths.
+ *
+ * <p>{@link #resolveTypes(JsonTypeResolver)} installs the resolved read and write {@link
+ * JsonTypeInfo} bindings after recursive object metadata has been published. Those bindings are the
+ * only mutable lifecycle phase; generated instances capture the current concrete child capability
+ * under the resolver-local JIT lock and receive later child replacements through resolver
+ * callbacks.
+ */
 public final class JsonFieldInfo {
   private static final int KIND_BOOLEAN = 1;
   private static final int KIND_BYTE = 2;

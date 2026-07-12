@@ -21,6 +21,13 @@ package org.apache.fory.json.writer;
 
 import java.math.BigInteger;
 
+/**
+ * Stateless decimal digit arithmetic shared by concrete writer implementations.
+ *
+ * <p>Digit-count methods accept non-negative magnitudes and use a bit-length estimate followed by
+ * one exact power-of-ten comparison. The helper owns no writer state, buffer, callback, or
+ * arbitrary-precision output loop.
+ */
 final class BigNumberDigits {
   // Packed 1-3 digit stores write one four-byte word; concrete writers reserve this tail once.
   static final int PACKED_WRITE_SLACK = 3;

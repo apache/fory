@@ -26,19 +26,26 @@ import org.apache.fory.exception.InsecureException;
  *
  * <p>Implementations must be thread-safe. Fory JSON invokes the checker from shared resolver and
  * codec setup paths and does not synchronize around user checker state. The class name is passed as
- * a string so future class-name materialization paths can run policy before loading a class.
+ * a String so class-name materialization paths can apply policy without requiring a second API.
  *
  * <p>Classes served by default built-in exact JSON codecs do not invoke the configured checker
- * unless a custom codec is registered for the same class.
+ * unless a custom codec is registered for the same class. Arrays are checked through their ultimate
+ * component type, and enum constant-specific subclasses are normalized to their enclosing enum.
+ * Fory's disallow list always runs before this callback and cannot be bypassed by a built-in or
+ * custom codec.
+ *
+ * <p>Decisions are shared by class name across the runtime's pooled states and cached up to a
+ * bounded number of distinct names. Once the cache is full, new names invoke the checker each time
+ * rather than growing untrusted state.
  */
 @FunctionalInterface
 public interface JsonTypeChecker {
   /**
    * Returns whether {@code className} is allowed for Fory JSON serialization or parsing.
    *
-   * @param className full Java class name
+   * @param className binary Java class name returned by {@link Class#getName()}
    * @param context checker context owned by the {@link ForyJson} instance
-   * @return true when the class name is allowed
+   * @return true when the class name is allowed; false causes an {@link InsecureException}
    * @throws InsecureException if the implementation rejects the class name by throwing instead of
    *     returning false
    */

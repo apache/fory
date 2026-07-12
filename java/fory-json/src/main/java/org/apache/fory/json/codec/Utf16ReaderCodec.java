@@ -22,8 +22,11 @@ package org.apache.fory.json.codec;
 import org.apache.fory.json.reader.Utf16JsonReader;
 
 /**
- * Reads one complete resolved Java value, including JSON {@code null}, through {@link
- * Utf16JsonReader}.
+ * Reads one complete resolved Java value, including JSON {@code null}, through the concrete {@link
+ * Utf16JsonReader} path.
+ *
+ * <p>The reader retains its resolver and the resolved capability already owns its declared type;
+ * neither resolver nor {@code JsonTypeInfo} is passed through this hot call.
  */
 public interface Utf16ReaderCodec<T> {
   T readUtf16(Utf16JsonReader reader);

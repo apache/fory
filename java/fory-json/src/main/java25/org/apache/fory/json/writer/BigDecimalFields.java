@@ -24,7 +24,14 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import org.apache.fory.platform.internal._JDKAccess;
 
-/** Reads BigDecimal's stored representation through constant VarHandles that C2 can inline. */
+/**
+ * JDK 25+ access to {@link BigDecimal}'s stored representation through static-final {@link
+ * VarHandle} values that C2 can treat as constants.
+ *
+ * <p>This multi-release owner keeps private-field lookup out of writer hot paths and contains no
+ * dependency on the JDK 8-24 field-access implementation. If lookup is unavailable, exact base
+ * values may use {@link BigDecimal#scale()}, while inflated subtypes are rejected.
+ */
 final class BigDecimalFields {
   static final long INFLATED = Long.MIN_VALUE;
   private static final VarHandle INT_COMPACT = fieldHandle("intCompact", long.class);

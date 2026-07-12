@@ -56,6 +56,21 @@ import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 
+/**
+ * Codec family for declared Java collection types.
+ *
+ * <p>{@link #create(Class, TypeRef, JsonTypeResolver)} consumes the declared {@link TypeRef} during
+ * cold construction, resolves the element binding once, and selects a direct scalar specialization
+ * when the exact built-in element codec permits it. Runtime codecs retain only the collection
+ * factory and resolved element state required by their loops; they do not retain the construction
+ * {@code TypeRef}. Generic and object-element codecs load one concrete child capability for the
+ * active representation before iterating.
+ *
+ * <p>The collection factory owns the requested concrete collection shape and any immutable finish
+ * conversion. Readers start with un-sized storage because a JSON array provides no trusted element
+ * count. Dynamic {@code Object} arrays are materialized as {@link JsonArray}, while typed targets
+ * use their selected factory.
+ */
 public abstract class CollectionCodec<T extends Collection<?>> implements JsonCodec<T> {
   private static final Class<?> UNTYPED_COLLECTION = ArrayList.class;
 

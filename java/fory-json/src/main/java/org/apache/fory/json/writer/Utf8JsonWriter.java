@@ -41,6 +41,21 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.serializer.StringSerializer;
 
+/**
+ * Concrete writer that emits UTF-8 JSON directly into an owned byte buffer.
+ *
+ * <p>Primitive numbers, field tokens, Latin1 strings, and UTF16 strings write directly to the
+ * buffer; Unicode strings validate surrogate pairs while encoding. {@link #toJsonBytes()} returns a
+ * detached copy, while {@link #writeTo(OutputStream)} writes the active range without closing or
+ * flushing the destination. Reset retains at most 64 KiB for reuse.
+ *
+ * <p>Finite float and double spelling comes from the JDK formatter, directly when available and
+ * through a retained {@link StringBuilder} otherwise. Compact {@link BigDecimal} values are emitted
+ * directly with JDK-compatible spelling; inflated values and out-of-long {@link BigInteger} values
+ * use canonical JDK text on the cold arbitrary-precision path. The {@link Appendable} methods emit
+ * escaped string content without adding surrounding quotes and are used by formatter-owned quoted
+ * values.
+ */
 public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   // Pooled writers should retain medium buffers to avoid reallocating common JSON outputs.
   private static final int RETAINED_CAPACITY = 64 * 1024;

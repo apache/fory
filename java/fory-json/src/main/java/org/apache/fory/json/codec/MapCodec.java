@@ -47,6 +47,20 @@ import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 
+/**
+ * Codec family for declared Java map types and JSON object member-name conversion.
+ *
+ * <p>The factory consumes the declared {@link TypeRef} during cold construction, resolves key and
+ * value semantics once, and retains only a {@link MapFactory}, a key codec when needed, and the
+ * resolved value {@link JsonTypeInfo}. JSON object keys are strings on the wire, so {@link
+ * MapKeyCodec} owns the supported string, enum, and numeric name conversions. Value loops select
+ * one concrete reader or writer capability for the active representation rather than resolving a
+ * binding for every entry.
+ *
+ * <p>Readers do not preallocate from input because JSON has no trusted member count. Dynamic {@code
+ * Object} values use insertion-ordered {@link JsonObject}; typed targets use the selected map
+ * factory and optional immutable finish conversion.
+ */
 public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   private static final Class<?> UNTYPED_MAP = LinkedHashMap.class;
 
@@ -895,6 +909,13 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
     }
   }
 
+  /**
+   * Converts a declared Java map key to and from a JSON object member name.
+   *
+   * <p>Implementations are selected once while constructing the map codec. Numeric and enum
+   * implementations override reader operations where the concrete reader can parse or hash the
+   * member name directly, avoiding an intermediate String on typed map hot paths.
+   */
   public interface MapKeyCodec {
     MapKeyCodec STRING =
         new MapKeyCodec() {

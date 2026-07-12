@@ -41,6 +41,23 @@ import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
 
+/**
+ * Concrete writer that builds a Java compact-string byte representation directly.
+ *
+ * <p>The writer owns a mutable byte buffer, its current LATIN1 or UTF16 coder, and one alternate
+ * buffer used for coder widening or formatter staging. Each number or string entry dispatches to a
+ * coder-specific output loop once; digit loops do not repeatedly branch on coder. {@link #toJson()}
+ * detaches an exact byte array, optionally compresses UTF16 ASCII/Latin1 output, and constructs the
+ * result String without exposing pooled storage. The result coder seeds the next reset to avoid
+ * repeated widening for stable workloads.
+ *
+ * <p>Finite float and double spelling comes from the JDK formatter, directly when available and
+ * through a retained {@link StringBuilder} otherwise. Compact {@link BigDecimal} values are emitted
+ * directly with JDK-compatible spelling; inflated values and out-of-long {@link BigInteger} values
+ * use canonical JDK text on the cold arbitrary-precision path. Reset caps retained buffers at 64
+ * KiB. The {@link Appendable} methods emit escaped string content without adding surrounding quotes
+ * and are used by formatter-owned quoted values.
+ */
 public final class StringJsonWriter extends JsonWriter implements Appendable {
   private static final byte LATIN1 = 0;
   private static final byte UTF16 = 1;

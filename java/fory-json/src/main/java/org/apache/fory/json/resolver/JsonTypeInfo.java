@@ -35,8 +35,14 @@ import org.apache.fory.json.meta.JsonFieldKind;
  * <p>The five capability fields are deliberately ordinary fields. A resolver-local JIT lock covers
  * every root graph operation and every generated capability installation, so lock release and the
  * next root acquisition publish slot changes without adding volatile reads to established codec
- * dispatch. Only exact raw-class {@link ObjectCodec} bindings may receive generated replacements;
- * custom and parameterized bindings retain their original semantic owner.
+ * dispatch. These five fields are the sole installed capability state; there are no parallel
+ * per-path maps to reconcile on the hot path.
+ *
+ * <p>Only the canonical exact raw-class {@link ObjectCodec} binding may receive generated
+ * replacements. Custom codecs, parameterized object bindings, containers, scalars, and dynamic
+ * {@code Object} bindings retain their original semantic owner. One generated class may implement
+ * more than one capability when its code is genuinely shared, but installation still occurs per
+ * slot and each slot is independently lazy.
  */
 public final class JsonTypeInfo {
   private final Type type;

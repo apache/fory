@@ -29,7 +29,13 @@ import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
-/** Optional SQL JSON codecs loaded only through class-name based registration. */
+/**
+ * Optional codecs for {@code java.sql} date/time values represented as epoch milliseconds.
+ *
+ * <p>SQL classes are discovered by name so the main codec registry does not acquire mandatory
+ * descriptors for an optional module. Each available class receives an exact codec whose cached
+ * {@code long} constructor owns reconstruction; subclasses are not accepted through this mapping.
+ */
 public final class SqlJsonCodecs {
   private static final String SQL_DATE = "java.sql.Date";
   private static final String SQL_TIME = "java.sql.Time";

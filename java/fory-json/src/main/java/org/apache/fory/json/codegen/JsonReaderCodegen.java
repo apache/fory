@@ -42,6 +42,16 @@ import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.reflect.TypeRef;
 
+/**
+ * Shared generation mechanics for concrete Latin1, UTF16, and UTF-8 object-reader capabilities.
+ *
+ * <p>The three nested generators own representation-specific token, field-name, enum, and direct
+ * value expressions. This base shares only source-construction algorithms after the concrete reader
+ * is selected; it is not a runtime reader mode. Generated readers retain immutable field lookup
+ * metadata and concrete child capability fields, avoiding per-field resolver lookup. Wide objects
+ * split generated methods to bound compiler size while preserving a single nullable capability
+ * entry for each representation.
+ */
 abstract class JsonReaderCodegen {
   private static final int MIN_SPLIT_READ_FIELDS = 8;
   private static final int READ_FIELD_GROUP_SIZE = 2;

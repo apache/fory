@@ -20,9 +20,16 @@
 package org.apache.fory.json.codec;
 
 /**
- * Composite JSON codec implemented by handwritten and user-registered codecs.
+ * Typed semantic codec composed from the five concrete JSON input and output capabilities.
+ *
+ * <p>Built-in and user-registered codecs implement this complete interface because one codec owns
+ * the Java type's semantics for every representation. Generated object specializations implement
+ * only the narrow capability they accelerate and are installed independently in the corresponding
+ * {@link org.apache.fory.json.resolver.JsonTypeInfo} slot.
  *
  * <p>Each capability consumes or writes the complete value, including its null representation.
+ * There is no secondary non-null codec protocol; field omission belongs to object-field handling,
+ * while primitive null rejection belongs to the primitive codec or primitive field owner.
  */
 public interface JsonCodec<T>
     extends StringWriterCodec<T>,

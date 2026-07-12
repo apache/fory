@@ -31,6 +31,15 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
+/**
+ * Codec family for Java primitive, boxed, String, and object arrays.
+ *
+ * <p>The factory resolves the component binding once and selects a direct specialized codec when
+ * the exact built-in component codec is active. Custom primitive codecs and reference components
+ * retain one resolved {@link JsonTypeInfo}; array loops load the concrete capability once per root
+ * operation rather than resolving a codec per element. Each concrete reader owns array allocation
+ * and growth because JSON carries no trusted element count.
+ */
 public abstract class ArrayCodec<T> implements JsonCodec<T> {
   final Class<?> componentType;
 

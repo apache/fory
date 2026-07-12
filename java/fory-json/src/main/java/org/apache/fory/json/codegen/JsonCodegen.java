@@ -40,6 +40,19 @@ import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 
+/**
+ * Shared generated-class owner for the five concrete object-codec capabilities.
+ *
+ * <p>One instance belongs to one {@link org.apache.fory.json.resolver.JsonSharedRegistry}. Separate
+ * concurrent caches single-flight one generated class per Java type and capability, so using only
+ * one input or output representation never generates the other paths. Expression construction,
+ * source generation, and Janino compilation happen without a resolver-local JIT lock.
+ *
+ * <p>This class owns classes only. Resolver-local generated instances, child capability capture,
+ * {@link JsonTypeInfo} slot installation, and generated parent-field updates belong to {@link
+ * org.apache.fory.json.resolver.JsonTypeResolver}. The raw types emitted for Janino stop at the
+ * generated source and constructor boundary; handwritten runtime capability APIs remain generic.
+ */
 public final class JsonCodegen {
   private static final Map<String, Map<String, Integer>> ID_GENERATOR = new ConcurrentHashMap<>();
 
@@ -55,7 +68,8 @@ public final class JsonCodegen {
 
   static String generatedCodecType(CodegenContext ctx, Class<?> codecType) {
     // Janino-generated serializers use erased types, matching Fory core code generation. Runtime
-    // construction binds the instance to the typed Object capability once on the cold path.
+    // construction binds the instance to the typed Object capability once on the cold path. Do not
+    // spread this source-language limitation into handwritten generic capability APIs.
     return ctx.type(codecType);
   }
 

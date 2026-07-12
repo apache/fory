@@ -38,7 +38,15 @@ import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
-/** Declared public Guava JSON type codecs and factories. */
+/**
+ * Optional codecs and collection factories for supported Guava immutable value types.
+ *
+ * <p>The outer class performs availability and class-name checks without initializing direct Guava
+ * descriptors. All references to Guava API classes live in the nested {@code Direct} owner, so a
+ * runtime without Guava can initialize Fory JSON normally. Immutable collections are read into a
+ * mutable intermediate owned by the selected collection or map factory and converted exactly once
+ * when parsing completes.
+ */
 public final class GuavaCodecs {
   private static final String IMMUTABLE_BI_MAP = "com.google.common.collect.ImmutableBiMap";
   private static final String IMMUTABLE_INT_ARRAY =

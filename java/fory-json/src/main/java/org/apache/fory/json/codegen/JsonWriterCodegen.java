@@ -48,6 +48,15 @@ import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 
+/**
+ * Shared generation mechanics for concrete String and UTF-8 object-writer capabilities.
+ *
+ * <p>The nested generators own representation-specific field prefixes, scalar stores, and child
+ * capability types. This base shares source-construction algorithms only after the concrete writer
+ * is selected; it is not a runtime output mode. Generated writers retain precomputed field tokens
+ * and concrete child capabilities, fuse safe object prefixes, and split wide objects into bounded
+ * methods to protect compiler and inlining budgets without adding per-field dispatch.
+ */
 abstract class JsonWriterCodegen {
   private static final int MIN_STRING_SPLIT_MEMBERS = 10;
   private static final int MIN_UTF8_SPLIT_MEMBERS = 12;
