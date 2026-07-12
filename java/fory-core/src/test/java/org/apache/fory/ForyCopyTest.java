@@ -462,6 +462,7 @@ public class ForyCopyTest extends ForyTestBase {
 
     Fory fory = Fory.builder()
             .withLanguage(Language.JAVA)
+            .withRefCopy(true)
             .requireClassRegistration(false)
             .build();
     Package pkg = String.class.getPackage();
