@@ -50,11 +50,9 @@ import org.apache.fory.reflect.TypeRef;
 public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   private static final Class<?> UNTYPED_MAP = LinkedHashMap.class;
 
-  private final TypeRef<?> typeRef;
   private final MapFactory factory;
 
-  MapCodec(TypeRef<?> typeRef, MapFactory factory) {
-    this.typeRef = typeRef;
+  MapCodec(MapFactory factory) {
     this.factory = factory;
   }
 
@@ -71,47 +69,43 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
     Object valueCodec = valueTypeInfo.stringWriter();
     if (keyRawType == String.class) {
       if (valueCodec == ScalarCodecs.StringCodec.INSTANCE) {
-        return new StringStringMapCodec(typeRef, factory);
+        return new StringStringMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.BooleanCodec.BOXED) {
-        return new StringBooleanMapCodec(typeRef, factory);
+        return new StringBooleanMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.IntCodec.BOXED) {
-        return new StringIntMapCodec(typeRef, factory);
+        return new StringIntMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.LongCodec.BOXED) {
-        return new StringLongMapCodec(typeRef, factory);
+        return new StringLongMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.ShortCodec.BOXED) {
-        return new StringShortMapCodec(typeRef, factory);
+        return new StringShortMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.ByteCodec.BOXED) {
-        return new StringByteMapCodec(typeRef, factory);
+        return new StringByteMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.FloatCodec.BOXED) {
-        return new StringFloatMapCodec(typeRef, factory);
+        return new StringFloatMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.DoubleCodec.BOXED) {
-        return new StringDoubleMapCodec(typeRef, factory);
+        return new StringDoubleMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.BigIntegerCodec.INSTANCE) {
-        return new StringBigIntegerMapCodec(typeRef, factory);
+        return new StringBigIntegerMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
-        return new StringBigDecimalMapCodec(typeRef, factory);
+        return new StringBigDecimalMapCodec(factory);
       }
     }
     if (keyRawType == Object.class) {
-      return new GenericMapCodec(typeRef, factory, MapKeyCodec.OBJECT, valueTypeInfo);
+      return new GenericMapCodec(factory, MapKeyCodec.OBJECT, valueTypeInfo);
     }
     if (valueCodec == ScalarCodecs.StringCodec.INSTANCE && isNumericKey(keyRawType)) {
-      return new NumberStringMapCodec(typeRef, factory, MapKeyCodec.of(keyRawType));
+      return new NumberStringMapCodec(factory, MapKeyCodec.of(keyRawType));
     }
-    return new GenericMapCodec(typeRef, factory, MapKeyCodec.of(keyRawType), valueTypeInfo);
-  }
-
-  final TypeRef<?> typeRef() {
-    return typeRef;
+    return new GenericMapCodec(factory, MapKeyCodec.of(keyRawType), valueTypeInfo);
   }
 
   static Map<Object, Object> readUntyped(Latin1JsonReader reader) {
@@ -261,9 +255,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
     private final MapKeyCodec keyCodec;
     private final JsonTypeInfo valueTypeInfo;
 
-    private GenericMapCodec(
-        TypeRef<?> typeRef, MapFactory factory, MapKeyCodec keyCodec, JsonTypeInfo valueTypeInfo) {
-      super(typeRef, factory);
+    private GenericMapCodec(MapFactory factory, MapKeyCodec keyCodec, JsonTypeInfo valueTypeInfo) {
+      super(factory);
       this.keyCodec = keyCodec;
       this.valueTypeInfo = valueTypeInfo;
     }
@@ -367,8 +360,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public abstract static class StringKeyMapCodec extends MapCodec<Map<?, ?>> {
-    StringKeyMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    StringKeyMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -440,8 +433,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public static final class StringStringMapCodec extends StringKeyMapCodec {
-    private StringStringMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringStringMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     private void writeMap(JsonWriter writer, Object value) {
@@ -495,8 +488,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public static final class StringBooleanMapCodec extends StringKeyMapCodec {
-    private StringBooleanMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringBooleanMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     private void writeMap(JsonWriter writer, Object value) {
@@ -550,8 +543,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public abstract static class StringNumberMapCodec extends StringKeyMapCodec {
-    StringNumberMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    StringNumberMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     private void writeMap(JsonWriter writer, Object value) {
@@ -592,8 +585,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public static final class StringIntMapCodec extends StringNumberMapCodec {
-    private StringIntMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringIntMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -618,8 +611,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public static final class StringLongMapCodec extends StringNumberMapCodec {
-    private StringLongMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringLongMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -644,8 +637,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public static final class StringShortMapCodec extends StringNumberMapCodec {
-    private StringShortMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringShortMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -670,8 +663,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public static final class StringByteMapCodec extends StringNumberMapCodec {
-    private StringByteMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringByteMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -696,8 +689,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public static final class StringFloatMapCodec extends StringNumberMapCodec {
-    private StringFloatMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringFloatMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -722,8 +715,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public static final class StringDoubleMapCodec extends StringNumberMapCodec {
-    private StringDoubleMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringDoubleMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -748,8 +741,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public static final class StringBigIntegerMapCodec extends StringNumberMapCodec {
-    private StringBigIntegerMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringBigIntegerMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -774,8 +767,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   }
 
   public static final class StringBigDecimalMapCodec extends StringNumberMapCodec {
-    private StringBigDecimalMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringBigDecimalMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -802,8 +795,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   public static final class NumberStringMapCodec extends MapCodec<Map<?, ?>> {
     private final MapKeyCodec keyCodec;
 
-    private NumberStringMapCodec(TypeRef<?> typeRef, MapFactory factory, MapKeyCodec keyCodec) {
-      super(typeRef, factory);
+    private NumberStringMapCodec(MapFactory factory, MapKeyCodec keyCodec) {
+      super(factory);
       this.keyCodec = keyCodec;
     }
 

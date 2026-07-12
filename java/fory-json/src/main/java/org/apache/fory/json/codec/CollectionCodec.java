@@ -59,12 +59,10 @@ import org.apache.fory.reflect.TypeRef;
 public abstract class CollectionCodec<T extends Collection<?>> implements JsonCodec<T> {
   private static final Class<?> UNTYPED_COLLECTION = ArrayList.class;
 
-  private final TypeRef<?> typeRef;
   private final CollectionFactory factory;
   private final boolean createsArrayList;
 
-  CollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-    this.typeRef = typeRef;
+  CollectionCodec(CollectionFactory factory) {
     this.factory = factory;
     this.createsArrayList = factory.createsArrayList();
   }
@@ -78,43 +76,39 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
     JsonTypeInfo elementTypeInfo = resolver.getTypeInfo(elementType, elementRawType);
     Object elementCodec = elementTypeInfo.stringWriter();
     if (elementCodec == ScalarCodecs.StringCodec.INSTANCE) {
-      return new StringCollectionCodec(typeRef, factory);
+      return new StringCollectionCodec(factory);
     }
     if (elementCodec == ScalarCodecs.BooleanCodec.BOXED) {
-      return new BooleanCollectionCodec(typeRef, factory);
+      return new BooleanCollectionCodec(factory);
     }
     if (elementCodec == ScalarCodecs.IntCodec.BOXED) {
-      return new IntCollectionCodec(typeRef, factory);
+      return new IntCollectionCodec(factory);
     }
     if (elementCodec == ScalarCodecs.LongCodec.BOXED) {
-      return new LongCollectionCodec(typeRef, factory);
+      return new LongCollectionCodec(factory);
     }
     if (elementCodec == ScalarCodecs.ShortCodec.BOXED) {
-      return new ShortCollectionCodec(typeRef, factory);
+      return new ShortCollectionCodec(factory);
     }
     if (elementCodec == ScalarCodecs.ByteCodec.BOXED) {
-      return new ByteCollectionCodec(typeRef, factory);
+      return new ByteCollectionCodec(factory);
     }
     if (elementCodec == ScalarCodecs.FloatCodec.BOXED) {
-      return new FloatCollectionCodec(typeRef, factory);
+      return new FloatCollectionCodec(factory);
     }
     if (elementCodec == ScalarCodecs.DoubleCodec.BOXED) {
-      return new DoubleCollectionCodec(typeRef, factory);
+      return new DoubleCollectionCodec(factory);
     }
     if (elementCodec == ScalarCodecs.BigIntegerCodec.INSTANCE) {
-      return new BigIntegerCollectionCodec(typeRef, factory);
+      return new BigIntegerCollectionCodec(factory);
     }
     if (elementCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
-      return new BigDecimalCollectionCodec(typeRef, factory);
+      return new BigDecimalCollectionCodec(factory);
     }
     if (elementTypeInfo.usesDefaultObjectCodec()) {
-      return new ObjectCollectionCodec(typeRef, factory, elementTypeInfo);
+      return new ObjectCollectionCodec(factory, elementTypeInfo);
     }
-    return new GenericCollectionCodec(typeRef, factory, elementTypeInfo);
-  }
-
-  final TypeRef<?> typeRef() {
-    return typeRef;
+    return new GenericCollectionCodec(factory, elementTypeInfo);
   }
 
   static Collection<Object> readUntyped(Latin1JsonReader reader) {
@@ -288,8 +282,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public abstract static class DirectCollectionCodec extends CollectionCodec<Collection<?>> {
-    DirectCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    DirectCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -713,9 +707,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   public static final class GenericCollectionCodec extends CollectionCodec<Collection<?>> {
     private final JsonTypeInfo elementTypeInfo;
 
-    private GenericCollectionCodec(
-        TypeRef<?> typeRef, CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(typeRef, factory);
+    private GenericCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory);
       this.elementTypeInfo = elementTypeInfo;
     }
 
@@ -809,9 +802,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   public static final class ObjectCollectionCodec extends CollectionCodec<Collection<?>> {
     private final JsonTypeInfo elementTypeInfo;
 
-    private ObjectCollectionCodec(
-        TypeRef<?> typeRef, CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
-      super(typeRef, factory);
+    private ObjectCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      super(factory);
       this.elementTypeInfo = elementTypeInfo;
     }
 
@@ -1320,8 +1312,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public static final class StringCollectionCodec extends DirectCollectionCodec {
-    private StringCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    private StringCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -1369,8 +1361,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public static final class BooleanCollectionCodec extends DirectCollectionCodec {
-    private BooleanCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    private BooleanCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -1428,8 +1420,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public abstract static class NumberCollectionCodec extends DirectCollectionCodec {
-    NumberCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    NumberCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -1474,8 +1466,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public static final class IntCollectionCodec extends NumberCollectionCodec {
-    private IntCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    private IntCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -1500,8 +1492,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public static final class LongCollectionCodec extends NumberCollectionCodec {
-    private LongCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    private LongCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -1526,8 +1518,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public static final class ShortCollectionCodec extends NumberCollectionCodec {
-    private ShortCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    private ShortCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -1552,8 +1544,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public static final class ByteCollectionCodec extends NumberCollectionCodec {
-    private ByteCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    private ByteCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -1578,8 +1570,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public static final class FloatCollectionCodec extends NumberCollectionCodec {
-    private FloatCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    private FloatCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -1604,8 +1596,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public static final class DoubleCollectionCodec extends NumberCollectionCodec {
-    private DoubleCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    private DoubleCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -1630,8 +1622,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public static final class BigIntegerCollectionCodec extends NumberCollectionCodec {
-    private BigIntegerCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    private BigIntegerCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -1656,8 +1648,8 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
   }
 
   public static final class BigDecimalCollectionCodec extends NumberCollectionCodec {
-    private BigDecimalCollectionCodec(TypeRef<?> typeRef, CollectionFactory factory) {
-      super(typeRef, factory);
+    private BigDecimalCollectionCodec(CollectionFactory factory) {
+      super(factory);
     }
 
     @Override

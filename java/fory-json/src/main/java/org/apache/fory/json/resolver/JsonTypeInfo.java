@@ -28,7 +28,6 @@ import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldKind;
-import org.apache.fory.reflect.TypeRef;
 
 /**
  * JSON type binding resolved and owned by {@link JsonTypeResolver}.
@@ -41,7 +40,6 @@ import org.apache.fory.reflect.TypeRef;
  */
 public final class JsonTypeInfo {
   private final Type type;
-  private final TypeRef<?> typeRef;
   private final Class<?> rawType;
   private final JsonFieldKind kind;
   private StringWriterCodec<Object> stringWriter;
@@ -51,14 +49,8 @@ public final class JsonTypeInfo {
   private Utf8ReaderCodec<Object> utf8Reader;
   private final boolean defaultObjectCodec;
 
-  JsonTypeInfo(
-      Type type,
-      TypeRef<?> typeRef,
-      Class<?> rawType,
-      JsonFieldKind kind,
-      JsonCodec<Object> codec) {
+  JsonTypeInfo(Type type, Class<?> rawType, JsonFieldKind kind, JsonCodec<Object> codec) {
     this.type = type;
-    this.typeRef = typeRef;
     this.rawType = rawType;
     this.kind = kind;
     stringWriter = codec;
@@ -73,10 +65,6 @@ public final class JsonTypeInfo {
 
   public Type type() {
     return type;
-  }
-
-  public TypeRef<?> typeRef() {
-    return typeRef;
   }
 
   public Class<?> rawType() {

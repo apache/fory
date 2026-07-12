@@ -87,11 +87,6 @@ public final class JsonTypeResolver {
     jitContext.unlock();
   }
 
-  @Internal
-  public boolean jitLockedByCurrentThread() {
-    return jitContext.lockedByCurrentThread();
-  }
-
   public <T> ObjectCodec<T> getObjectCodec(Class<T> type) {
     return getObjectCodec(TypeRef.of(type));
   }
@@ -647,7 +642,7 @@ public final class JsonTypeResolver {
     if (codec == null) {
       codec = getObjectCodec(typeRef);
     }
-    return newTypeInfo(declaredType, typeRef, rawType, codec);
+    return newTypeInfo(declaredType, rawType, codec);
   }
 
   private JsonTypeInfo buildRuntimeTypeInfo(Class<?> rawType) {
@@ -655,17 +650,16 @@ public final class JsonTypeResolver {
     TypeRef<?> typeRef = TypeRef.of(rawType);
     JsonCodec<?> codec =
         rawType == Object.class
-            ? getObjectCodec(Object.class)
+            ? getObjectCodec(typeRef)
             : sharedRegistry.createCodec(rawType, typeRef, this);
     if (codec == null) {
-      codec = getObjectCodec(rawType);
+      codec = getObjectCodec(typeRef);
     }
-    return newTypeInfo(rawType, typeRef, rawType, codec);
+    return newTypeInfo(rawType, rawType, codec);
   }
 
-  private JsonTypeInfo newTypeInfo(
-      Type type, TypeRef<?> typeRef, Class<?> rawType, JsonCodec<?> codec) {
-    return new JsonTypeInfo(type, typeRef, rawType, sharedRegistry.kind(rawType), bindCodec(codec));
+  private JsonTypeInfo newTypeInfo(Type type, Class<?> rawType, JsonCodec<?> codec) {
+    return new JsonTypeInfo(type, rawType, sharedRegistry.kind(rawType), bindCodec(codec));
   }
 
   private void registerObjectTypeInfo(JsonTypeInfo typeInfo) {
