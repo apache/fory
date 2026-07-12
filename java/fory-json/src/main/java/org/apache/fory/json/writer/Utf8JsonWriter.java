@@ -562,7 +562,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeIntNoEnsure(value);
   }
 
-  public void writeObjectIntField(byte[] namePrefix, int value) {
+  public void writeObjectStartWithIntField(byte[] namePrefix, int value) {
     enterDepth();
     ensure(namePrefix.length + 12);
     buffer[position++] = (byte) '{';
@@ -570,7 +570,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeIntNoEnsure(value);
   }
 
-  public void writeObjectIntField(long prefix0, long prefix1, int prefixLength, int value) {
+  public void writeObjectStartWithIntField(
+      long prefix0, long prefix1, int prefixLength, int value) {
     enterDepth();
     ensurePackedPrefix(prefixLength, 12);
     buffer[position++] = (byte) '{';
@@ -595,7 +596,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeLongNoEnsure(value);
   }
 
-  public void writeObjectLongField(byte[] namePrefix, long value) {
+  public void writeObjectStartWithLongField(byte[] namePrefix, long value) {
     enterDepth();
     ensure(namePrefix.length + 21);
     buffer[position++] = (byte) '{';
@@ -603,7 +604,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeLongNoEnsure(value);
   }
 
-  public void writeObjectLongField(long prefix0, long prefix1, int prefixLength, long value) {
+  public void writeObjectStartWithLongField(
+      long prefix0, long prefix1, int prefixLength, long value) {
     enterDepth();
     ensurePackedPrefix(prefixLength, 21);
     buffer[position++] = (byte) '{';
@@ -611,7 +613,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeLongNoEnsure(value);
   }
 
-  public void writeObjectStringField(long prefix0, long prefix1, int prefixLength, String value) {
+  public void writeObjectStartWithStringField(
+      long prefix0, long prefix1, int prefixLength, String value) {
     enterDepth();
     writeStringField(prefix0, prefix1, prefixLength, value);
   }

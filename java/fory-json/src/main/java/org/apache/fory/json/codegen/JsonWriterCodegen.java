@@ -966,10 +966,10 @@ abstract class JsonWriterCodegen {
         case BYTE:
         case SHORT:
         case INT:
-          method = "writeObjectIntField";
+          method = "writeObjectStartWithIntField";
           break;
         case LONG:
-          method = "writeObjectLongField";
+          method = "writeObjectStartWithLongField";
           break;
         default:
           throw new ForyJsonException(
@@ -1199,10 +1199,10 @@ abstract class JsonWriterCodegen {
         case BYTE:
         case SHORT:
         case INT:
-          method = "writeObjectIntField";
+          method = "writeObjectStartWithIntField";
           break;
         case LONG:
-          method = "writeObjectLongField";
+          method = "writeObjectStartWithLongField";
           break;
         default:
           throw new ForyJsonException(
@@ -1221,7 +1221,7 @@ abstract class JsonWriterCodegen {
         return null;
       }
       return new Expression.Invoke(
-          writer, "writeObjectStringField", objectPackedPrefixArgs(property, value));
+          writer, "writeObjectStartWithStringField", objectPackedPrefixArgs(property, value));
     }
 
     private static boolean canPackObjectStartString(JsonFieldInfo property) {
