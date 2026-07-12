@@ -105,6 +105,9 @@ abstract class JsonWriterCodegen {
   abstract Expression writeObjectStartPrimitive(
       JsonFieldInfo property, Expression value, Expression writer);
 
+  abstract Expression tryWriteObjectStartString(
+      JsonFieldInfo property, Expression value, Expression writer);
+
   abstract Expression writeNumberField(
       JsonFieldInfo property,
       int id,
@@ -337,15 +340,36 @@ abstract class JsonWriterCodegen {
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(object);
     Expression index = null;
+    int firstProperty = 0;
     if (!objectStartFused) {
-      expressions.add(new Expression.Invoke(writer, "writeObjectStart"));
       index = new Expression.Variable("index", Expression.Literal.ofInt(0));
-      expressions.add(index);
+      JsonFieldInfo first = properties.length == 0 ? null : properties[0];
+      Expression value =
+          first != null && !writeNullFields && first.writeKind() == JsonFieldKind.STRING
+              ? new Expression.Variable(
+                  "v0", cast(inline(builder.fieldValue(first, object)), TypeRef.of(String.class)))
+              : null;
+      Expression fusedStart =
+          value == null ? null : tryWriteObjectStartString(first, value, writer);
+      if (fusedStart != null) {
+        expressions.add(value);
+        expressions.add(index);
+        expressions.add(
+            new Expression.If(
+                ne(value, new Expression.Null(TypeRef.of(String.class), false)),
+                new Expression.ListExpression(
+                    fusedStart, new Expression.Assign(index, Expression.Literal.ofInt(1))),
+                new Expression.Invoke(writer, "writeObjectStart")));
+        firstProperty = 1;
+      } else {
+        expressions.add(new Expression.Invoke(writer, "writeObjectStart"));
+        expressions.add(index);
+      }
     }
     boolean commaKnown = objectStartFused;
     boolean splitMembers = properties.length >= splitMemberThreshold();
     List<Expression> memberGroup = splitMembers ? new ArrayList<>(MAX_MEMBERS_PER_METHOD) : null;
-    for (int i = 0; i < properties.length; i++) {
+    for (int i = firstProperty; i < properties.length; i++) {
       Expression member;
       if (objectStartFused && i == 0) {
         member =
@@ -624,6 +648,19 @@ abstract class JsonWriterCodegen {
     return args;
   }
 
+  private static Expression[] objectPackedPrefixArgs(JsonFieldInfo property, Expression value) {
+    byte[] namePrefix = property.utf8NamePrefix();
+    byte[] prefix = new byte[namePrefix.length + 1];
+    prefix[0] = '{';
+    System.arraycopy(namePrefix, 0, prefix, 1, namePrefix.length);
+    return new Expression[] {
+      Expression.Literal.ofLong(packedPrefixWord(prefix, 0)),
+      Expression.Literal.ofLong(packedPrefixWord(prefix, Long.BYTES)),
+      Expression.Literal.ofInt(prefix.length),
+      value
+    };
+  }
+
   private static Expression[] stringPackedPrefixArgs(
       JsonFieldInfo property, int id, boolean comma, Expression... extraArgs) {
     byte[] prefix =
@@ -891,6 +928,12 @@ abstract class JsonWriterCodegen {
     }
 
     @Override
+    Expression tryWriteObjectStartString(
+        JsonFieldInfo property, Expression value, Expression writer) {
+      return null;
+    }
+
+    @Override
     Expression writeNumberField(
         JsonFieldInfo property,
         int id,
@@ -1106,6 +1149,16 @@ abstract class JsonWriterCodegen {
         return new Expression.Invoke(writer, method, packedPrefixArgs(property, false, value));
       }
       return new Expression.Invoke(writer, method, utf8PrefixRef(false, 0), value);
+    }
+
+    @Override
+    Expression tryWriteObjectStartString(
+        JsonFieldInfo property, Expression value, Expression writer) {
+      if (property.utf8NamePrefix().length >= Long.BYTES * 2) {
+        return null;
+      }
+      return new Expression.Invoke(
+          writer, "writeObjectStringField", objectPackedPrefixArgs(property, value));
     }
 
     @Override

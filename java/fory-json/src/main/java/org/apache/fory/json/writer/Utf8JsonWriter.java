@@ -611,6 +611,11 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeLongNoEnsure(value);
   }
 
+  public void writeObjectStringField(long prefix0, long prefix1, int prefixLength, String value) {
+    enterDepth();
+    writeStringField(prefix0, prefix1, prefixLength, value);
+  }
+
   public void writeStringField(byte[] namePrefix, byte[] commaNamePrefix, int index, String value) {
     byte[] prefix = index == 0 ? namePrefix : commaNamePrefix;
     writeStringField(prefix, value);
