@@ -1500,7 +1500,7 @@ public class ClassResolver extends TypeResolver {
       }
       if (config.checkJdkClassSerializable()) {
         if (cls.getName().startsWith("java") && !Serializable.class.isAssignableFrom(cls)) {
-            return NonSerializableSerializer.class;
+          return NonSerializableSerializer.class;
         }
       }
       if (ScalaTypes.SCALA_AVAILABLE && ReflectionUtils.isScalaSingletonObject(cls)) {
@@ -1513,8 +1513,6 @@ public class ClassResolver extends TypeResolver {
         }
       }
       if (isCollection(cls)) {
-        // Serializer of common collection such as ArrayList/LinkedList should be registered
-        // already.
         serializerClass = ChildContainerSerializers.getCollectionSerializerClass(cls);
         if (serializerClass != null) {
           return serializerClass;
