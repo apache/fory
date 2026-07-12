@@ -34,21 +34,18 @@ import org.apache.fory.resolver.TypeResolver;
  * differ deliberately.
  */
 public final class NonSerializableSerializer<T> extends AbstractObjectSerializer<T> {
-  public NonSerializableSerializer(TypeResolver typeResolver, Class<T> type) {
-
-      super(typeResolver, type);
-  }
+  public NonSerializableSerializer(TypeResolver typeResolver, Class<T> type) { super(typeResolver, type); }
 
 
   @Override
   public void write(WriteContext writeContext, T value) {
-      throw new UnsupportedOperationException(
-              String.format("Class %s doesn't support serialization.", type.getName()));
+    throw new UnsupportedOperationException(
+      String.format("Class %s doesn't support serialization.", type.getName()));
   }
 
   @Override
   public T read(ReadContext readContext) {
-      throw new UnsupportedOperationException(
-              String.format("Class %s doesn't support serialization.", type.getName()));
+    throw new UnsupportedOperationException(
+      String.format("Class %s doesn't support serialization.", type.getName()));
   }
 }

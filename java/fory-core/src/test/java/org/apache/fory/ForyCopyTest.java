@@ -460,33 +460,23 @@ public class ForyCopyTest extends ForyTestBase {
 
   @Test
   public void testCopyNonSerializableJdkClass() {
-      Fory fory =
-              Fory.builder()
-                      .withLanguage(Language.JAVA)
-                      .requireClassRegistration(false)
-                      .build();
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
       Class<? extends Serializer> serializerClass =
-              fory.getTypeResolver().getSerializerClass(java.lang.Package.class);
+        fory.getTypeResolver().getSerializerClass(java.lang.Package.class);
       Assert.assertSame(serializerClass, NonSerializableSerializer.class);
   }
 
 
   @Test
   public void testSerializeNonSerializableJdkClassStillThrows() {
-      // Serializing anon-serializable JDK class must still throw, just deferred to write time.
-
-      Fory fory = Fory.builder()
-              .withLanguage(Language.JAVA)
-              .withRefCopy(true)
-              .requireClassRegistration(false)
-              .build();
-      try {
-          fory.serialize(String.class.getPackage());
-          Assert.fail("Expected serialization of java.lang.Package to fail");
-      } catch (SerializationException e) {
-          Assert.assertTrue(e.getCause() instanceof UnsupportedOperationException);
-          Assert.assertTrue(e.getMessage().contains("doesn't support serialization"));
-      }
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).withRefCopy(true).requireClassRegistration(false).build();
+    try {
+      fory.serialize(String.class.getPackage());
+      Assert.fail("Expected serialization of java.lang.Package to fail");
+    } catch (SerializationException e) {
+      Assert.assertTrue(e.getCause() instanceof UnsupportedOperationException);
+      Assert.assertTrue(e.getMessage().contains("doesn't support serialization"));
+    }
   }
 
 }
