@@ -2208,11 +2208,17 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     return ch > 0x1F && ch != '"' && ch != '\\';
   }
 
+  // Keep the exact uncommon fallback outside these per-word predicates. Folding it back in makes
+  // the standalone predicates too large for C2 to inline into the compact-string writers.
   private static boolean isJsonAsciiWord(long word) {
     long notBackslash = ((word ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS;
     if ((notBackslash & (word + ASCII_GT_QUOTE_OFFSET)) == HIGH_BITS) {
       return true;
     }
+    return isJsonAsciiWordFallback(word, notBackslash);
+  }
+
+  private static boolean isJsonAsciiWordFallback(long word, long notBackslash) {
     return (((word + ASCII_CONTROL_OFFSET) & ~word) & HIGH_BITS) == HIGH_BITS
         && (((word ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS) == HIGH_BITS
         && notBackslash == HIGH_BITS;
@@ -2229,6 +2235,10 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         == HIGH_BITS) {
       return true;
     }
+    return isJsonAsciiWordsFallback(word0, word1, notBackslash);
+  }
+
+  private static boolean isJsonAsciiWordsFallback(long word0, long word1, long notBackslash) {
     return ((word0 + ASCII_CONTROL_OFFSET)
             & (word1 + ASCII_CONTROL_OFFSET)
             & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
@@ -2242,6 +2252,10 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     if ((notBackslash & (word + INT_ASCII_GT_QUOTE_OFFSET)) == INT_HIGH_BITS) {
       return true;
     }
+    return isJsonAsciiIntFallback(word, notBackslash);
+  }
+
+  private static boolean isJsonAsciiIntFallback(int word, int notBackslash) {
     return (((word + INT_ASCII_CONTROL_OFFSET) & ~word) & INT_HIGH_BITS) == INT_HIGH_BITS
         && (((word ^ INT_QUOTE_BYTES_COMPLEMENT) + INT_ONE_BYTES) & INT_HIGH_BITS) == INT_HIGH_BITS
         && notBackslash == INT_HIGH_BITS;
