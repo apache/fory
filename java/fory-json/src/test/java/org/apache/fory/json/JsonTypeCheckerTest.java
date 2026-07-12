@@ -49,7 +49,7 @@ import org.testng.annotations.Test;
 public class JsonTypeCheckerTest extends ForyJsonTestModels {
   private static final JsonCodec<String> STRING_NULL_CODEC = new NullCodec<>();
 
-  @Factory(dataProvider = "codegen")
+  @Factory(dataProvider = "enableCodegen")
   public JsonTypeCheckerTest(boolean codegen) {
     super(codegen);
   }

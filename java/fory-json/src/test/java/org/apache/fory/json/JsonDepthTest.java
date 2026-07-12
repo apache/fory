@@ -32,7 +32,7 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonDepthTest extends ForyJsonTestModels {
-  @Factory(dataProvider = "codegen")
+  @Factory(dataProvider = "enableCodegen")
   public JsonDepthTest(boolean codegen) {
     super(codegen);
   }

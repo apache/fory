@@ -44,7 +44,7 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonObjectTest extends ForyJsonTestModels {
-  @Factory(dataProvider = "codegen")
+  @Factory(dataProvider = "enableCodegen")
   public JsonObjectTest(boolean codegen) {
     super(codegen);
   }

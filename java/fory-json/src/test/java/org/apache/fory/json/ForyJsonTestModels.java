@@ -102,21 +102,33 @@ public abstract class ForyJsonTestModels {
   protected static final String EU_TEXT = JsonTestData.EU_TEXT;
   private final boolean codegen;
 
+  protected ForyJsonTestModels() {
+    this(false);
+  }
+
   protected ForyJsonTestModels(boolean codegen) {
     this.codegen = codegen;
   }
 
-  @DataProvider(name = "codegen")
-  public static Object[][] codegen() {
+  @DataProvider
+  public static Object[][] enableCodegen() {
     return new Object[][] {{false}, {true}};
   }
 
   protected final ForyJsonBuilder newJsonBuilder() {
+    return newJsonBuilder(codegen);
+  }
+
+  protected final ForyJsonBuilder newJsonBuilder(boolean codegen) {
     return ForyJson.builder().withCodegen(codegen).withAsyncCompilation(false);
   }
 
   protected final ForyJson newJson() {
     return newJsonBuilder().build();
+  }
+
+  protected final ForyJson newJson(boolean codegen) {
+    return newJsonBuilder(codegen).build();
   }
 
   protected final boolean codegenEnabled() {
@@ -330,6 +342,10 @@ public abstract class ForyJsonTestModels {
   }
 
   protected final void assertGeneratedWhenSupported(ForyJson json, Class<?> type) {
+    assertGeneratedWhenSupported(json, type, codegen);
+  }
+
+  protected final void assertGeneratedWhenSupported(ForyJson json, Class<?> type, boolean codegen) {
     assertEquals(hasGeneratedCapability(json, type), codegen);
   }
 

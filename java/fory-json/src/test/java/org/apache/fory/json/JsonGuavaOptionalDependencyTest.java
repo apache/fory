@@ -37,7 +37,7 @@ import org.testng.annotations.Test;
 public class JsonGuavaOptionalDependencyTest extends ForyJsonTestModels {
   private static final String RESULT = "RESULT:ok";
 
-  @Factory(dataProvider = "codegen")
+  @Factory(dataProvider = "enableCodegen")
   public JsonGuavaOptionalDependencyTest(boolean codegen) {
     super(codegen);
   }

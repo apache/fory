@@ -49,7 +49,7 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonGeneratedCodecTest extends ForyJsonTestModels {
-  @Factory(dataProvider = "codegen")
+  @Factory(dataProvider = "enableCodegen")
   public JsonGeneratedCodecTest(boolean codegen) {
     super(codegen);
   }
