@@ -19,7 +19,9 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.nullCodec;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertThrows;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -30,7 +32,7 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonRecordTest extends ForyJsonTestModels {
-  @Factory(dataProvider = "codegen")
+  @Factory(dataProvider = "enableCodegen")
   public JsonRecordTest(boolean codegen) {
     super(codegen);
   }
@@ -68,5 +70,26 @@ public class JsonRecordTest extends ForyJsonTestModels {
     assertEquals(type.getMethod("name").invoke(missing), "missing");
     assertEquals(type.getMethod("tags").invoke(missing), null);
     assertEquals(type.getMethod("child").invoke(missing), null);
+  }
+
+  @Test
+  public void customPrimitiveNull() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 17) {
+      throw new SkipException("Java record test requires JDK 17+");
+    }
+    Class<?> type =
+        compileRecordClass(
+            "JsonPrimitiveRecord",
+            "package org.apache.fory.json.records;\n"
+                + "public record JsonPrimitiveRecord(int value) {}\n");
+    ForyJson json = newJsonBuilder().registerCodec(int.class, nullCodec()).build();
+    assertThrows(ForyJsonException.class, () -> json.fromJson("{\"value\":null}", type));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"ignored\":\"\u0100\",\"value\":null}", type));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"value\":null}".getBytes(StandardCharsets.UTF_8), type));
+    assertGeneratedWhenSupported(json, type);
   }
 }

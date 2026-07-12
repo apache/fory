@@ -19,33 +19,56 @@
 
 package org.apache.fory.json.resolver;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Type;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
 import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
-import org.apache.fory.json.codec.BaseObjectCodec;
+import org.apache.fory.annotation.Internal;
+import org.apache.fory.collection.IdentityMap;
+import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
-import org.apache.fory.json.codegen.JsonCodegen.GeneratedObjectCodecClasses;
+import org.apache.fory.json.codec.StringWriterCodec;
+import org.apache.fory.json.codec.Utf16ReaderCodec;
+import org.apache.fory.json.codec.Utf8ReaderCodec;
+import org.apache.fory.json.codec.Utf8WriterCodec;
+import org.apache.fory.json.codegen.JsonCodegen;
 import org.apache.fory.json.codegen.JsonJITContext;
+import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.internal._JDKAccess;
+import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 
 /**
- * Local JSON type dispatcher and cache used by one borrowed {@code ForyJson} state at a time.
+ * Local JSON type dispatcher used exclusively by one borrowed {@code ForyJson} state at a time.
  *
- * <p>This cache is limited to schema/static metadata such as resolved codecs and object layouts.
- * Runtime JSON values, including non-enumerated string or number values/tokens, must stay uncached.
+ * <p>This class corresponds to Fory core's {@code ClassResolver}: it owns terminal capabilities,
+ * generated codec construction, capability-slot publication, and generated parent child-field
+ * callbacks. Root codec execution and completion callbacks use the same resolver-local JIT lock.
+ * {@link JsonJITContext} only orders generic JIT and notify callbacks under that lock; it does not
+ * know any JSON capability, codec, generated class, or field metadata. Compilation failure leaves
+ * the interpreted capability in its {@link JsonTypeInfo} slot; no parallel requested or failure
+ * state is retained, so a later operation may retry compilation.
+ *
+ * <p>{@code typeInfos} owns declared and parameterized bindings. {@code objectCodecs} breaks
+ * recursive object-metadata construction by publishing the complete object owner before resolving
+ * its fields. {@code objectTypeInfos} contains only canonical raw-class default-object bindings and
+ * is the direct publication index for generated capabilities; custom, parameterized, container,
+ * scalar, and dynamic bindings never enter it.
  */
 public final class JsonTypeResolver {
-  private final Map<Class<?>, BaseObjectCodec> objectCodecs;
+  private final Map<Object, ObjectCodec<?>> objectCodecs;
   private final Map<Object, JsonTypeInfo> typeInfos;
   private final JsonSharedRegistry sharedRegistry;
-  private final Set<Class<?>> installingCodecs;
+  private final JsonCodegen codegen;
+  private final JsonJITContext jitContext;
+  private final IdentityMap<Class<?>, JsonTypeInfo> objectTypeInfos;
 
   private enum RuntimeObjectKey {
     INSTANCE
@@ -53,31 +76,36 @@ public final class JsonTypeResolver {
 
   public JsonTypeResolver(JsonSharedRegistry sharedRegistry) {
     this.sharedRegistry = sharedRegistry;
-    if (sharedRegistry.asyncCompilationEnabled()) {
-      objectCodecs = new ConcurrentHashMap<>();
-      typeInfos = new ConcurrentHashMap<>();
-    } else {
-      objectCodecs = new IdentityHashMap<>();
-      typeInfos = new HashMap<>();
-    }
-    installingCodecs = Collections.newSetFromMap(new ConcurrentHashMap<Class<?>, Boolean>());
+    objectCodecs = new HashMap<>();
+    typeInfos = new HashMap<>();
+    codegen = sharedRegistry.codegen();
+    jitContext = sharedRegistry.newJITContext();
+    objectTypeInfos = new IdentityMap<>();
   }
 
-  public BaseObjectCodec getObjectCodec(Class<?> type) {
-    BaseObjectCodec codec = objectCodecs.get(type);
+  @Internal
+  public void lockJIT() {
+    jitContext.lock();
+  }
+
+  @Internal
+  public void unlockJIT() {
+    jitContext.unlock();
+  }
+
+  public <T> ObjectCodec<T> getObjectCodec(Class<T> type) {
+    return getObjectCodec(TypeRef.of(type));
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T> ObjectCodec<T> getObjectCodec(TypeRef<T> ownerType) {
+    Class<?> rawType = ownerType.getRawType();
+    Object key = typeInfoKey(ownerType.getType(), rawType);
+    ObjectCodec<?> codec = objectCodecs.get(key);
     if (codec != null) {
-      return generatedCodecIfReady(type, codec);
+      return (ObjectCodec<T>) codec;
     }
-    try {
-      sharedRegistry.jitContext().lock();
-      codec = objectCodecs.get(type);
-      if (codec != null) {
-        return generatedCodecIfReady(type, codec);
-      }
-      return buildObjectCodec(type);
-    } finally {
-      sharedRegistry.jitContext().unlock();
-    }
+    return buildObjectCodec(ownerType, key);
   }
 
   public JsonTypeInfo getTypeInfo(Type declaredType, Class<?> fallback) {
@@ -87,16 +115,17 @@ public final class JsonTypeResolver {
     if (typeInfo != null) {
       return typeInfo;
     }
-    try {
-      sharedRegistry.jitContext().lock();
-      typeInfo = typeInfos.get(key);
-      if (typeInfo != null) {
-        return typeInfo;
-      }
-      return buildTypeInfo(key, rawType, declaredType);
-    } finally {
-      sharedRegistry.jitContext().unlock();
+    typeInfo = buildTypeInfo(rawType, declaredType);
+    JsonTypeInfo recursiveTypeInfo = typeInfos.get(key);
+    if (recursiveTypeInfo != null) {
+      // Object metadata is published before its fields resolve. A recursive field can therefore
+      // create this binding while the outer build is still running; retain that canonical owner so
+      // every recursive field observes later capability installation.
+      return recursiveTypeInfo;
     }
+    typeInfos.put(key, typeInfo);
+    registerObjectTypeInfo(typeInfo);
+    return typeInfo;
   }
 
   public JsonTypeInfo getRuntimeTypeInfo(Class<?> runtimeType) {
@@ -105,224 +134,706 @@ public final class JsonTypeResolver {
     if (typeInfo != null) {
       return typeInfo;
     }
-    try {
-      sharedRegistry.jitContext().lock();
-      typeInfo = typeInfos.get(key);
-      if (typeInfo != null) {
-        return typeInfo;
-      }
-      return buildRuntimeTypeInfo(key, runtimeType);
-    } finally {
-      sharedRegistry.jitContext().unlock();
+    typeInfo = buildRuntimeTypeInfo(runtimeType);
+    JsonTypeInfo recursiveTypeInfo = typeInfos.get(key);
+    if (recursiveTypeInfo != null) {
+      return recursiveTypeInfo;
     }
+    typeInfos.put(key, typeInfo);
+    registerObjectTypeInfo(typeInfo);
+    return typeInfo;
   }
 
   public void checkSecure(Class<?> type) {
     sharedRegistry.checkSecure(type);
   }
 
-  private BaseObjectCodec buildObjectCodec(Class<?> type) {
-    BaseObjectCodec cached = objectCodecs.get(type);
-    if (cached != null) {
-      return cached;
-    }
-    sharedRegistry.checkSecure(type);
-    ObjectCodec codec = BaseObjectCodec.build(type, sharedRegistry.propertyDiscoveryEnabled());
-    // Codegen may ask for nested object metadata that points back to this type.
-    // Publishing before compiling keeps recursive ownership in this resolver cache.
-    objectCodecs.put(type, codec);
-    try {
-      codec.resolveTypes(this);
-      BaseObjectCodec compiled =
-          sharedRegistry.compileObject(
-              codec,
-              this,
-              new JsonJITContext.ObjectJITCallback<GeneratedObjectCodecClasses>() {
-                @Override
-                public void onSuccess(GeneratedObjectCodecClasses result) {
-                  BaseObjectCodec generated = newGeneratedCodec(codec, result);
-                  if (generated != null) {
-                    setObjectCodec(type, generated);
-                  }
-                }
-
-                @Override
-                public Object id() {
-                  return type;
-                }
-              });
-      if (compiled != null && compiled != codec) {
-        setObjectCodec(type, compiled);
-        return compiled;
-      }
+  @SuppressWarnings("unchecked")
+  public <T> StringWriterCodec<T> stringWriter(ObjectCodec<T> codec) {
+    requireJITLock();
+    ObjectCodec<Object> owner = erase(codec);
+    JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
+    if (typeInfo == null) {
       return codec;
-    } catch (RuntimeException | Error e) {
-      objectCodecs.remove(type, codec);
-      throw e;
+    }
+    StringWriterCodec<Object> installed = typeInfo.stringWriter();
+    if (installed == owner && codegen != null && codegen.canCompileWriter(owner)) {
+      jitContext.registerJITCallback(
+          () -> owner.getClass(),
+          () -> codegen.compileStringWriter(owner),
+          new JsonJITContext.JITCallback<Class<?>>() {
+            @Override
+            public void onSuccess(Class<?> generated) {
+              publishStringWriter(owner, generated);
+            }
+
+            @Override
+            public void onFailure(Throwable failure) {}
+
+            @Override
+            public Object id() {
+              return codegen.stringWriterJITId(owner.type());
+            }
+          });
+      installed = typeInfo.stringWriter();
+    }
+    return (StringWriterCodec<T>) installed;
+  }
+
+  @SuppressWarnings("unchecked")
+  public <T> Utf8WriterCodec<T> utf8Writer(ObjectCodec<T> codec) {
+    requireJITLock();
+    ObjectCodec<Object> owner = erase(codec);
+    JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
+    if (typeInfo == null) {
+      return codec;
+    }
+    Utf8WriterCodec<Object> installed = typeInfo.utf8Writer();
+    if (installed == owner && codegen != null && codegen.canCompileWriter(owner)) {
+      jitContext.registerJITCallback(
+          () -> owner.getClass(),
+          () -> codegen.compileUtf8Writer(owner),
+          new JsonJITContext.JITCallback<Class<?>>() {
+            @Override
+            public void onSuccess(Class<?> generated) {
+              publishUtf8Writer(owner, generated);
+            }
+
+            @Override
+            public void onFailure(Throwable failure) {}
+
+            @Override
+            public Object id() {
+              return codegen.utf8WriterJITId(owner.type());
+            }
+          });
+      installed = typeInfo.utf8Writer();
+    }
+    return (Utf8WriterCodec<T>) installed;
+  }
+
+  @SuppressWarnings("unchecked")
+  public <T> Latin1ReaderCodec<T> latin1Reader(ObjectCodec<T> codec) {
+    requireJITLock();
+    ObjectCodec<Object> owner = erase(codec);
+    JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
+    if (typeInfo == null) {
+      return codec;
+    }
+    Latin1ReaderCodec<Object> installed = typeInfo.latin1Reader();
+    if (installed == owner && codegen != null && codegen.canCompileReader(owner)) {
+      jitContext.registerJITCallback(
+          () -> owner.getClass(),
+          () -> codegen.compileLatin1Reader(owner),
+          new JsonJITContext.JITCallback<Class<?>>() {
+            @Override
+            public void onSuccess(Class<?> generated) {
+              publishLatin1Reader(owner, generated);
+            }
+
+            @Override
+            public void onFailure(Throwable failure) {}
+
+            @Override
+            public Object id() {
+              return codegen.latin1ReaderJITId(owner.type());
+            }
+          });
+      installed = typeInfo.latin1Reader();
+    }
+    return (Latin1ReaderCodec<T>) installed;
+  }
+
+  @SuppressWarnings("unchecked")
+  public <T> Utf16ReaderCodec<T> utf16Reader(ObjectCodec<T> codec) {
+    requireJITLock();
+    ObjectCodec<Object> owner = erase(codec);
+    JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
+    if (typeInfo == null) {
+      return codec;
+    }
+    Utf16ReaderCodec<Object> installed = typeInfo.utf16Reader();
+    if (installed == owner && codegen != null && codegen.canCompileReader(owner)) {
+      jitContext.registerJITCallback(
+          () -> owner.getClass(),
+          () -> codegen.compileUtf16Reader(owner),
+          new JsonJITContext.JITCallback<Class<?>>() {
+            @Override
+            public void onSuccess(Class<?> generated) {
+              publishUtf16Reader(owner, generated);
+            }
+
+            @Override
+            public void onFailure(Throwable failure) {}
+
+            @Override
+            public Object id() {
+              return codegen.utf16ReaderJITId(owner.type());
+            }
+          });
+      installed = typeInfo.utf16Reader();
+    }
+    return (Utf16ReaderCodec<T>) installed;
+  }
+
+  @SuppressWarnings("unchecked")
+  public <T> Utf8ReaderCodec<T> utf8Reader(ObjectCodec<T> codec) {
+    requireJITLock();
+    ObjectCodec<Object> owner = erase(codec);
+    JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
+    if (typeInfo == null) {
+      return codec;
+    }
+    Utf8ReaderCodec<Object> installed = typeInfo.utf8Reader();
+    if (installed == owner && codegen != null && codegen.canCompileReader(owner)) {
+      jitContext.registerJITCallback(
+          () -> owner.getClass(),
+          () -> codegen.compileUtf8Reader(owner),
+          new JsonJITContext.JITCallback<Class<?>>() {
+            @Override
+            public void onSuccess(Class<?> generated) {
+              publishUtf8Reader(owner, generated);
+            }
+
+            @Override
+            public void onFailure(Throwable failure) {}
+
+            @Override
+            public Object id() {
+              return codegen.utf8ReaderJITId(owner.type());
+            }
+          });
+      installed = typeInfo.utf8Reader();
+    }
+    return (Utf8ReaderCodec<T>) installed;
+  }
+
+  @SuppressWarnings("unchecked")
+  private StringWriterCodec<Object> newStringWriter(ObjectCodec<?> owner, Class<?> generatedClass) {
+    JsonFieldInfo[] fields = owner.writeFields();
+    StringWriterCodec<Object>[] codecs =
+        (StringWriterCodec<Object>[]) new StringWriterCodec<?>[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      JsonFieldInfo field = fields[i];
+      if (JsonCodegen.usesWriteCodec(field)) {
+        JsonTypeInfo typeInfo = field.writeTypeInfo();
+        StringWriterCodec<Object> codec = typeInfo.stringWriter();
+        if (JsonCodegen.writeNestedType(field) != null
+            && typeInfo.rawType() != owner.type()
+            && codec instanceof ObjectCodec) {
+          codec = stringWriter((ObjectCodec<Object>) codec);
+        }
+        codecs[i] = codec;
+      }
+    }
+    return instantiateStringWriter(generatedClass, fields, codecs);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Utf8WriterCodec<Object> newUtf8Writer(ObjectCodec<?> owner, Class<?> generatedClass) {
+    JsonFieldInfo[] fields = owner.writeFields();
+    Utf8WriterCodec<Object>[] codecs =
+        (Utf8WriterCodec<Object>[]) new Utf8WriterCodec<?>[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      JsonFieldInfo field = fields[i];
+      if (JsonCodegen.usesWriteCodec(field)) {
+        JsonTypeInfo typeInfo = field.writeTypeInfo();
+        Utf8WriterCodec<Object> codec = typeInfo.utf8Writer();
+        if (JsonCodegen.writeNestedType(field) != null
+            && typeInfo.rawType() != owner.type()
+            && codec instanceof ObjectCodec) {
+          codec = utf8Writer((ObjectCodec<Object>) codec);
+        }
+        codecs[i] = codec;
+      }
+    }
+    return instantiateUtf8Writer(generatedClass, fields, codecs);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Latin1ReaderCodec<Object> newLatin1Reader(ObjectCodec<?> owner, Class<?> generatedClass) {
+    JsonFieldInfo[] fields = owner.readFields();
+    Latin1ReaderCodec<Object>[] codecs =
+        (Latin1ReaderCodec<Object>[]) new Latin1ReaderCodec<?>[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      JsonFieldInfo field = fields[i];
+      JsonTypeInfo typeInfo = field.readTypeInfo();
+      if (JsonCodegen.usesReadCodec(field)) {
+        codecs[i] = typeInfo.latin1Reader();
+      } else if (JsonCodegen.readNestedType(field) != null && field.readRawType() != owner.type()) {
+        Latin1ReaderCodec<Object> codec = typeInfo.latin1Reader();
+        codecs[i] =
+            codec instanceof ObjectCodec ? latin1Reader((ObjectCodec<Object>) codec) : codec;
+      }
+    }
+    return instantiateLatin1Reader(generatedClass, owner, fields, codecs);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Utf16ReaderCodec<Object> newUtf16Reader(ObjectCodec<?> owner, Class<?> generatedClass) {
+    JsonFieldInfo[] fields = owner.readFields();
+    Utf16ReaderCodec<Object>[] codecs =
+        (Utf16ReaderCodec<Object>[]) new Utf16ReaderCodec<?>[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      JsonFieldInfo field = fields[i];
+      JsonTypeInfo typeInfo = field.readTypeInfo();
+      if (JsonCodegen.usesReadCodec(field)) {
+        codecs[i] = typeInfo.utf16Reader();
+      } else if (JsonCodegen.readNestedType(field) != null && field.readRawType() != owner.type()) {
+        Utf16ReaderCodec<Object> codec = typeInfo.utf16Reader();
+        codecs[i] = codec instanceof ObjectCodec ? utf16Reader((ObjectCodec<Object>) codec) : codec;
+      }
+    }
+    return instantiateUtf16Reader(generatedClass, owner, fields, codecs);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Utf8ReaderCodec<Object> newUtf8Reader(ObjectCodec<?> owner, Class<?> generatedClass) {
+    JsonFieldInfo[] fields = owner.readFields();
+    Utf8ReaderCodec<Object>[] codecs =
+        (Utf8ReaderCodec<Object>[]) new Utf8ReaderCodec<?>[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      JsonFieldInfo field = fields[i];
+      JsonTypeInfo typeInfo = field.readTypeInfo();
+      if (JsonCodegen.usesReadCodec(field)) {
+        codecs[i] = typeInfo.utf8Reader();
+      } else if (JsonCodegen.readNestedType(field) != null && field.readRawType() != owner.type()) {
+        Utf8ReaderCodec<Object> codec = typeInfo.utf8Reader();
+        codecs[i] = codec instanceof ObjectCodec ? utf8Reader((ObjectCodec<Object>) codec) : codec;
+      }
+    }
+    return instantiateUtf8Reader(generatedClass, owner, fields, codecs);
+  }
+
+  private Field[] writerChildFields(Object parent, ObjectCodec<?> owner) {
+    Field[] childFields = null;
+    JsonFieldInfo[] fields = owner.writeFields();
+    for (int i = 0; i < fields.length; i++) {
+      Class<?> nestedType = JsonCodegen.writeNestedType(fields[i]);
+      if (nestedType != null && nestedType != owner.type()) {
+        if (childFields == null) {
+          childFields = new Field[fields.length];
+        }
+        childFields[i] = ReflectionUtils.getField(parent.getClass(), "w" + i);
+      }
+    }
+    return childFields;
+  }
+
+  private Field[] readerChildFields(Object parent, ObjectCodec<?> owner) {
+    Field[] childFields = null;
+    JsonFieldInfo[] fields = owner.readFields();
+    for (int i = 0; i < fields.length; i++) {
+      Class<?> nestedType = JsonCodegen.readNestedType(fields[i]);
+      if (nestedType != null && nestedType != owner.type()) {
+        if (childFields == null) {
+          childFields = new Field[fields.length];
+        }
+        childFields[i] = ReflectionUtils.getField(parent.getClass(), "o" + i);
+      }
+    }
+    return childFields;
+  }
+
+  // All five publication paths follow the same order under the local JIT lock: construct the
+  // resolver-local instance, resolve every replaceable child Field, register child notifications,
+  // then write the canonical JsonTypeInfo slot. Construction and field lookup are the fallible
+  // phase. Publication is deterministic ordinary field assignment and is never modeled as a
+  // transaction or rolled back; a failure there is a generated-code invariant violation.
+  private void publishStringWriter(ObjectCodec<Object> owner, Class<?> generated) {
+    requireJITLock();
+    StringWriterCodec<Object> codec = newStringWriter(owner, generated);
+    Field[] childFields = writerChildFields(codec, owner);
+    registerStringWriterCallbacks(codec, owner, childFields);
+    objectTypeInfo(owner).setStringWriter(codec);
+  }
+
+  private void publishUtf8Writer(ObjectCodec<Object> owner, Class<?> generated) {
+    requireJITLock();
+    Utf8WriterCodec<Object> codec = newUtf8Writer(owner, generated);
+    Field[] childFields = writerChildFields(codec, owner);
+    registerUtf8WriterCallbacks(codec, owner, childFields);
+    objectTypeInfo(owner).setUtf8Writer(codec);
+  }
+
+  private void publishLatin1Reader(ObjectCodec<Object> owner, Class<?> generated) {
+    requireJITLock();
+    Latin1ReaderCodec<Object> codec = newLatin1Reader(owner, generated);
+    Field[] childFields = readerChildFields(codec, owner);
+    registerLatin1ReaderCallbacks(codec, owner, childFields);
+    objectTypeInfo(owner).setLatin1Reader(codec);
+  }
+
+  private void publishUtf16Reader(ObjectCodec<Object> owner, Class<?> generated) {
+    requireJITLock();
+    Utf16ReaderCodec<Object> codec = newUtf16Reader(owner, generated);
+    Field[] childFields = readerChildFields(codec, owner);
+    registerUtf16ReaderCallbacks(codec, owner, childFields);
+    objectTypeInfo(owner).setUtf16Reader(codec);
+  }
+
+  private void publishUtf8Reader(ObjectCodec<Object> owner, Class<?> generated) {
+    requireJITLock();
+    Utf8ReaderCodec<Object> codec = newUtf8Reader(owner, generated);
+    Field[] childFields = readerChildFields(codec, owner);
+    registerUtf8ReaderCallbacks(codec, owner, childFields);
+    objectTypeInfo(owner).setUtf8Reader(codec);
+  }
+
+  // A generated parent captures the current child slot during construction. If a child task is
+  // active, notification updates only the matching concrete field after the child slot is
+  // published. If no task is active, onNotifyMissed installs the already-current slot immediately.
+  // The callback list is notification state, not a resolver dependency graph or task-dedup map.
+  private void registerStringWriterCallbacks(
+      StringWriterCodec<Object> parent, ObjectCodec<?> owner, Field[] fields) {
+    if (fields == null) {
+      return;
+    }
+    JsonFieldInfo[] properties = owner.writeFields();
+    for (int i = 0; i < fields.length; i++) {
+      Field field = fields[i];
+      if (field != null) {
+        JsonTypeInfo child = properties[i].writeTypeInfo();
+        jitContext.registerJITNotifyCallback(
+            codegen.stringWriterJITId(child.rawType()),
+            new JsonJITContext.NotifyCallback() {
+              @Override
+              public void onNotifyResult(Object result) {
+                StringWriterCodec<Object> codec = child.stringWriter();
+                checkGeneratedClass(result, codec);
+                ReflectionUtils.setObjectFieldValue(parent, field, codec);
+              }
+
+              @Override
+              public void onNotifyMissed() {
+                ReflectionUtils.setObjectFieldValue(parent, field, child.stringWriter());
+              }
+            });
+      }
     }
   }
 
-  private JsonTypeInfo buildTypeInfo(Object key, Class<?> rawType, Type declaredType) {
-    JsonTypeInfo cached = typeInfos.get(key);
-    if (cached != null) {
-      return cached;
+  private void registerUtf8WriterCallbacks(
+      Utf8WriterCodec<Object> parent, ObjectCodec<?> owner, Field[] fields) {
+    if (fields == null) {
+      return;
     }
-    JsonTypeInfo typeInfo = buildTypeInfo(rawType, declaredType);
-    typeInfos.put(key, typeInfo);
-    return typeInfo;
+    JsonFieldInfo[] properties = owner.writeFields();
+    for (int i = 0; i < fields.length; i++) {
+      Field field = fields[i];
+      if (field != null) {
+        JsonTypeInfo child = properties[i].writeTypeInfo();
+        jitContext.registerJITNotifyCallback(
+            codegen.utf8WriterJITId(child.rawType()),
+            new JsonJITContext.NotifyCallback() {
+              @Override
+              public void onNotifyResult(Object result) {
+                Utf8WriterCodec<Object> codec = child.utf8Writer();
+                checkGeneratedClass(result, codec);
+                ReflectionUtils.setObjectFieldValue(parent, field, codec);
+              }
+
+              @Override
+              public void onNotifyMissed() {
+                ReflectionUtils.setObjectFieldValue(parent, field, child.utf8Writer());
+              }
+            });
+      }
+    }
+  }
+
+  private void registerLatin1ReaderCallbacks(
+      Latin1ReaderCodec<Object> parent, ObjectCodec<?> owner, Field[] fields) {
+    if (fields == null) {
+      return;
+    }
+    JsonFieldInfo[] properties = owner.readFields();
+    for (int i = 0; i < fields.length; i++) {
+      Field field = fields[i];
+      if (field != null) {
+        JsonTypeInfo child = properties[i].readTypeInfo();
+        jitContext.registerJITNotifyCallback(
+            codegen.latin1ReaderJITId(child.rawType()),
+            new JsonJITContext.NotifyCallback() {
+              @Override
+              public void onNotifyResult(Object result) {
+                Latin1ReaderCodec<Object> codec = child.latin1Reader();
+                checkGeneratedClass(result, codec);
+                ReflectionUtils.setObjectFieldValue(parent, field, codec);
+              }
+
+              @Override
+              public void onNotifyMissed() {
+                ReflectionUtils.setObjectFieldValue(parent, field, child.latin1Reader());
+              }
+            });
+      }
+    }
+  }
+
+  private void registerUtf16ReaderCallbacks(
+      Utf16ReaderCodec<Object> parent, ObjectCodec<?> owner, Field[] fields) {
+    if (fields == null) {
+      return;
+    }
+    JsonFieldInfo[] properties = owner.readFields();
+    for (int i = 0; i < fields.length; i++) {
+      Field field = fields[i];
+      if (field != null) {
+        JsonTypeInfo child = properties[i].readTypeInfo();
+        jitContext.registerJITNotifyCallback(
+            codegen.utf16ReaderJITId(child.rawType()),
+            new JsonJITContext.NotifyCallback() {
+              @Override
+              public void onNotifyResult(Object result) {
+                Utf16ReaderCodec<Object> codec = child.utf16Reader();
+                checkGeneratedClass(result, codec);
+                ReflectionUtils.setObjectFieldValue(parent, field, codec);
+              }
+
+              @Override
+              public void onNotifyMissed() {
+                ReflectionUtils.setObjectFieldValue(parent, field, child.utf16Reader());
+              }
+            });
+      }
+    }
+  }
+
+  private void registerUtf8ReaderCallbacks(
+      Utf8ReaderCodec<Object> parent, ObjectCodec<?> owner, Field[] fields) {
+    if (fields == null) {
+      return;
+    }
+    JsonFieldInfo[] properties = owner.readFields();
+    for (int i = 0; i < fields.length; i++) {
+      Field field = fields[i];
+      if (field != null) {
+        JsonTypeInfo child = properties[i].readTypeInfo();
+        jitContext.registerJITNotifyCallback(
+            codegen.utf8ReaderJITId(child.rawType()),
+            new JsonJITContext.NotifyCallback() {
+              @Override
+              public void onNotifyResult(Object result) {
+                Utf8ReaderCodec<Object> codec = child.utf8Reader();
+                checkGeneratedClass(result, codec);
+                ReflectionUtils.setObjectFieldValue(parent, field, codec);
+              }
+
+              @Override
+              public void onNotifyMissed() {
+                ReflectionUtils.setObjectFieldValue(parent, field, child.utf8Reader());
+              }
+            });
+      }
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T> ObjectCodec<T> buildObjectCodec(TypeRef<T> ownerType, Object key) {
+    ObjectCodec<?> cached = objectCodecs.get(key);
+    if (cached != null) {
+      return (ObjectCodec<T>) cached;
+    }
+    Class<?> type = ownerType.getRawType();
+    sharedRegistry.checkSecure(type);
+    ObjectCodec<T> codec = ObjectCodec.build(ownerType, sharedRegistry.propertyDiscoveryEnabled());
+    // Publish the complete declared-type owner before resolving fields so recursive parameterized
+    // bindings resolve back to the same field table rather than the raw-class binding.
+    objectCodecs.put(key, codec);
+    try {
+      codec.resolveTypes(this);
+      return codec;
+    } catch (RuntimeException | Error e) {
+      objectCodecs.remove(key, codec);
+      throw e;
+    }
   }
 
   private JsonTypeInfo buildTypeInfo(Class<?> rawType, Type declaredType) {
     sharedRegistry.checkSecure(rawType);
     TypeRef<?> typeRef = typeRef(declaredType, rawType);
-    JsonCodec codec = sharedRegistry.createCodec(rawType, typeRef, this);
+    JsonCodec<?> codec = sharedRegistry.createCodec(rawType, typeRef, this);
     if (codec == null) {
-      codec = getObjectCodec(rawType);
+      codec = getObjectCodec(typeRef);
     }
-    JsonTypeInfo typeInfo =
-        new JsonTypeInfo(declaredType, typeRef, rawType, sharedRegistry.kind(rawType), codec);
-    registerCodecUpdate(typeInfo, codec);
-    return typeInfo;
+    return newTypeInfo(declaredType, rawType, codec);
   }
 
-  private JsonTypeInfo buildRuntimeTypeInfo(Object key, Class<?> rawType) {
-    JsonTypeInfo cached = typeInfos.get(key);
-    if (cached != null) {
-      return cached;
-    }
+  private JsonTypeInfo buildRuntimeTypeInfo(Class<?> rawType) {
     sharedRegistry.checkSecure(rawType);
     TypeRef<?> typeRef = TypeRef.of(rawType);
-    JsonCodec codec =
+    JsonCodec<?> codec =
         rawType == Object.class
-            ? getObjectCodec(Object.class)
+            ? getObjectCodec(typeRef)
             : sharedRegistry.createCodec(rawType, typeRef, this);
     if (codec == null) {
-      codec = getObjectCodec(rawType);
+      codec = getObjectCodec(typeRef);
     }
-    JsonTypeInfo typeInfo =
-        new JsonTypeInfo(rawType, typeRef, rawType, sharedRegistry.kind(rawType), codec);
-    registerCodecUpdate(typeInfo, codec);
-    typeInfos.put(key, typeInfo);
+    return newTypeInfo(rawType, rawType, codec);
+  }
+
+  private JsonTypeInfo newTypeInfo(Type type, Class<?> rawType, JsonCodec<?> codec) {
+    return new JsonTypeInfo(type, rawType, sharedRegistry.kind(rawType), bindCodec(codec));
+  }
+
+  private void registerObjectTypeInfo(JsonTypeInfo typeInfo) {
+    if (typeInfo.usesDefaultObjectCodec()
+        && typeInfo.type() instanceof Class
+        && typeInfo.rawType() != Object.class) {
+      objectTypeInfos.put(typeInfo.rawType(), typeInfo);
+    }
+  }
+
+  private JsonTypeInfo objectTypeInfo(ObjectCodec<?> owner) {
+    JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
+    if (typeInfo == null) {
+      throw new IllegalStateException(
+          "Missing canonical JSON object type info for " + owner.type());
+    }
     return typeInfo;
   }
 
-  public void registerJITNotifyCallback(JsonCodec currentCodec, Consumer<JsonCodec> updater) {
-    if (!(currentCodec instanceof BaseObjectCodec)) {
-      return;
-    }
-    BaseObjectCodec objectCodec = (BaseObjectCodec) currentCodec;
-    Class<?> type = objectCodec.type();
-    if (!sharedRegistry.hasJITResult(type)) {
-      BaseObjectCodec latest = generatedCodecIfReady(type, objectCodec);
-      if (latest != objectCodec) {
-        updater.accept(latest);
-      }
-      return;
-    }
-    sharedRegistry.registerJITNotifyCallback(
-        type,
-        new JsonJITContext.NotifyCallback() {
-          @Override
-          public void onNotifyResult(Object result) {
-            BaseObjectCodec latest = generatedCodecIfReady(type, objectCodec);
-            if (latest != objectCodec) {
-              updater.accept(latest);
-              return;
-            }
-            if (result instanceof GeneratedObjectCodecClasses
-                && objectCodec instanceof ObjectCodec) {
-              BaseObjectCodec generated =
-                  newGeneratedCodec(
-                      (ObjectCodec) objectCodec, (GeneratedObjectCodecClasses) result);
-              if (generated != null) {
-                setObjectCodec(type, generated);
-                updater.accept(generated);
-                return;
-              }
-            }
-            onNotifyMissed();
-          }
-
-          @Override
-          public void onNotifyMissed() {
-            BaseObjectCodec latest = getObjectCodec(type);
-            if (latest != objectCodec) {
-              updater.accept(latest);
-            }
-          }
-        });
-  }
-
-  private void registerCodecUpdate(JsonTypeInfo typeInfo, JsonCodec codec) {
-    registerJITNotifyCallback(codec, typeInfo::setCodec);
-  }
-
-  private void setObjectCodec(Class<?> type, BaseObjectCodec codec) {
-    objectCodecs.put(type, codec);
-    if (type == Object.class) {
-      JsonTypeInfo runtimeTypeInfo = typeInfos.get(RuntimeObjectKey.INSTANCE);
-      if (runtimeTypeInfo != null) {
-        runtimeTypeInfo.setCodec(codec);
-      }
-      return;
-    }
-    JsonTypeInfo typeInfo = typeInfos.get(type);
-    if (typeInfo != null) {
-      typeInfo.setCodec(codec);
+  private static void checkGeneratedClass(Object result, Object codec) {
+    if (codec.getClass() != result) {
+      throw new IllegalStateException(
+          "Generated JSON callback does not match installed capability");
     }
   }
 
-  private BaseObjectCodec newGeneratedCodec(
-      ObjectCodec codec, GeneratedObjectCodecClasses classes) {
-    Class<?> type = codec.type();
-    // Generated codec construction may request a recursive object codec. Keep the current
-    // interpreter until the outer generated codec is installed and its pending callbacks run.
-    if (!installingCodecs.add(type)) {
-      return codec;
-    }
+  @SuppressWarnings("unchecked")
+  private static StringWriterCodec<Object> instantiateStringWriter(
+      Class<?> type, JsonFieldInfo[] fields, StringWriterCodec<Object>[] codecs) {
     try {
-      return sharedRegistry.newGeneratedCodec(codec, this, classes);
-    } finally {
-      installingCodecs.remove(type);
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            type.getDeclaredConstructor(JsonFieldInfo[].class, StringWriterCodec[].class);
+        constructor.setAccessible(true);
+        return (StringWriterCodec<Object>) constructor.newInstance(fields, codecs);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(
+                  type,
+                  MethodType.methodType(
+                      void.class, JsonFieldInfo[].class, StringWriterCodec[].class));
+      return (StringWriterCodec<Object>) constructor.invoke(fields, codecs);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON String writer", e);
     }
   }
 
-  private BaseObjectCodec generatedCodecIfReady(Class<?> type, BaseObjectCodec codec) {
-    if (!(codec instanceof ObjectCodec)) {
-      return codec;
-    }
-    if (installingCodecs.contains(type)) {
-      return codec;
-    }
-    GeneratedObjectCodecClasses classes = sharedRegistry.generatedClasses(type);
-    if (classes == null) {
-      return codec;
-    }
-    if (!sharedRegistry.jitContext().lockedByCurrentThread()) {
-      try {
-        sharedRegistry.jitContext().lock();
-        return generatedCodecIfReady(type, codec);
-      } finally {
-        sharedRegistry.jitContext().unlock();
+  @SuppressWarnings("unchecked")
+  private static Utf8WriterCodec<Object> instantiateUtf8Writer(
+      Class<?> type, JsonFieldInfo[] fields, Utf8WriterCodec<Object>[] codecs) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            type.getDeclaredConstructor(JsonFieldInfo[].class, Utf8WriterCodec[].class);
+        constructor.setAccessible(true);
+        return (Utf8WriterCodec<Object>) constructor.newInstance(fields, codecs);
       }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(
+                  type,
+                  MethodType.methodType(
+                      void.class, JsonFieldInfo[].class, Utf8WriterCodec[].class));
+      return (Utf8WriterCodec<Object>) constructor.invoke(fields, codecs);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON UTF8 writer", e);
     }
-    BaseObjectCodec latest = objectCodecs.get(type);
-    if (latest != null && latest != codec) {
-      return latest;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Latin1ReaderCodec<Object> instantiateLatin1Reader(
+      Class<?> type,
+      ObjectCodec<?> owner,
+      JsonFieldInfo[] fields,
+      Latin1ReaderCodec<Object>[] codecs) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            type.getDeclaredConstructor(
+                ObjectCodec.class, JsonFieldInfo[].class, Latin1ReaderCodec[].class);
+        constructor.setAccessible(true);
+        return (Latin1ReaderCodec<Object>) constructor.newInstance(owner, fields, codecs);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(
+                  type,
+                  MethodType.methodType(
+                      void.class,
+                      ObjectCodec.class,
+                      JsonFieldInfo[].class,
+                      Latin1ReaderCodec[].class));
+      return (Latin1ReaderCodec<Object>) constructor.invoke(owner, fields, codecs);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON Latin1 reader", e);
     }
-    BaseObjectCodec generated = newGeneratedCodec((ObjectCodec) codec, classes);
-    if (generated != null) {
-      setObjectCodec(type, generated);
-      return generated;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Utf16ReaderCodec<Object> instantiateUtf16Reader(
+      Class<?> type,
+      ObjectCodec<?> owner,
+      JsonFieldInfo[] fields,
+      Utf16ReaderCodec<Object>[] codecs) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            type.getDeclaredConstructor(
+                ObjectCodec.class, JsonFieldInfo[].class, Utf16ReaderCodec[].class);
+        constructor.setAccessible(true);
+        return (Utf16ReaderCodec<Object>) constructor.newInstance(owner, fields, codecs);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(
+                  type,
+                  MethodType.methodType(
+                      void.class,
+                      ObjectCodec.class,
+                      JsonFieldInfo[].class,
+                      Utf16ReaderCodec[].class));
+      return (Utf16ReaderCodec<Object>) constructor.invoke(owner, fields, codecs);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON UTF16 reader", e);
     }
-    return codec;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Utf8ReaderCodec<Object> instantiateUtf8Reader(
+      Class<?> type,
+      ObjectCodec<?> owner,
+      JsonFieldInfo[] fields,
+      Utf8ReaderCodec<Object>[] codecs) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            type.getDeclaredConstructor(
+                ObjectCodec.class, JsonFieldInfo[].class, Utf8ReaderCodec[].class);
+        constructor.setAccessible(true);
+        return (Utf8ReaderCodec<Object>) constructor.newInstance(owner, fields, codecs);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(
+                  type,
+                  MethodType.methodType(
+                      void.class,
+                      ObjectCodec.class,
+                      JsonFieldInfo[].class,
+                      Utf8ReaderCodec[].class));
+      return (Utf8ReaderCodec<Object>) constructor.invoke(owner, fields, codecs);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON UTF8 reader", e);
+    }
   }
 
   private static Object typeInfoKey(Type declaredType, Class<?> rawType) {
-    if (declaredType instanceof Class) {
-      return rawType;
-    }
-    return declaredType;
+    return declaredType instanceof Class ? rawType : declaredType;
   }
 
   private static TypeRef<?> typeRef(Type declaredType, Class<?> rawType) {
@@ -330,5 +841,24 @@ public final class JsonTypeResolver {
       return TypeRef.of(rawType);
     }
     return TypeRef.of(declaredType);
+  }
+
+  private void requireJITLock() {
+    if (!jitContext.lockedByCurrentThread()) {
+      throw new IllegalStateException("JSON resolver access requires the local JIT lock");
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static ObjectCodec<Object> erase(ObjectCodec<?> codec) {
+    return (ObjectCodec<Object>) codec;
+  }
+
+  @SuppressWarnings("unchecked")
+  private static JsonCodec<Object> bindCodec(JsonCodec<?> codec) {
+    // The resolver has already matched the codec to this binding's declared type. JsonTypeInfo is
+    // deliberately heterogeneous, so erase that proven relation once instead of casting in every
+    // root, field, container, and generated hot call.
+    return (JsonCodec<Object>) codec;
   }
 }

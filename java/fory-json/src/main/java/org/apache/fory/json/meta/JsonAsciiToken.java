@@ -19,6 +19,13 @@
 
 package org.apache.fory.json.meta;
 
+/**
+ * Packs short Latin1 JSON tokens into little-endian integer words for generated comparisons.
+ *
+ * <p>Packing is metadata construction work. Readers compare the prefix and optional suffix directly
+ * against their concrete input representation, avoiding temporary Strings. Zero bytes are excluded
+ * so packed zero remains available to represent an absent or unusable token.
+ */
 public final class JsonAsciiToken {
   private static final int MAX_SUFFIX_LENGTH = 3;
   private static final int MAX_LONG_SUFFIX_LENGTH = Long.BYTES;

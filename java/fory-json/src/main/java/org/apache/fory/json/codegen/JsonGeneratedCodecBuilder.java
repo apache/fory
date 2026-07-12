@@ -25,44 +25,31 @@ import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.json.ForyJsonException;
-import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.util.record.RecordUtils;
 
+/**
+ * Common field-access and source-class builder for one concrete generated JSON capability.
+ *
+ * <p>Each compiler entry creates a fresh builder with a concrete generated class name. Reader or
+ * writer generators select the implemented narrow capability directly; this class does not carry a
+ * path enum or dispatch between modes. It reuses Fory core's field access and object-construction
+ * expressions so Janino erasure remains confined to generated source without changing handwritten
+ * codec generics.
+ */
 final class JsonGeneratedCodecBuilder extends CodecBuilder {
   private final String generatedClassName;
-  private final JsonFieldInfo[] properties;
-  private final boolean utf8;
-  private final boolean writer;
-  private final boolean record;
-  private final JsonCodegen codegen;
 
-  JsonGeneratedCodecBuilder(
-      JsonCodegen codegen,
-      String generatedPackage,
-      String generatedClassName,
-      Class<?> type,
-      JsonFieldInfo[] properties,
-      boolean utf8,
-      boolean writer,
-      boolean record) {
+  JsonGeneratedCodecBuilder(String generatedPackage, String generatedClassName, Class<?> type) {
     super(new CodegenContext(), TypeRef.of(type));
-    this.codegen = codegen;
     this.generatedClassName = generatedClassName;
-    this.properties = properties;
-    this.utf8 = utf8;
-    this.writer = writer;
-    this.record = record;
     ctx.setPackage(generatedPackage);
     ctx.setClassName(generatedClassName);
     ctx.setClassModifiers("final");
-    ctx.addImports(JsonFieldInfo.class, JsonCodec.class, JsonTypeResolver.class);
-    String[] generatedMethodNames = {
-      "object", "value", "writer", "reader", "owner", "typeResolver"
-    };
+    ctx.addImports(JsonFieldInfo.class);
+    String[] generatedMethodNames = {"object", "value", "writer", "reader"};
     for (String name : generatedMethodNames) {
       if (!ctx.containName(name)) {
         ctx.reserveName(name);
@@ -81,9 +68,7 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
 
   @Override
   public String genCode() {
-    return writer
-        ? new JsonWriterCodegen(codegen).genWriterCode(this, beanClass, properties, utf8)
-        : new JsonReaderCodegen(codegen).genReaderCode(this, beanClass, properties, record);
+    return ctx.genCode();
   }
 
   @Override

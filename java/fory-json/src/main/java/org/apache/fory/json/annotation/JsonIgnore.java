@@ -24,7 +24,13 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-/** Ignores a public JSON field for reading, writing, or both directions. */
+/**
+ * Excludes an eligible Java field from JSON reading, writing, or both directions.
+ *
+ * <p>Field and property discovery remains owned by the object codec. This annotation changes the
+ * selected field's direction flags; it does not create a second member, rename a property, or alter
+ * the semantics of an independently discovered getter or setter.
+ */
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
 public @interface JsonIgnore {

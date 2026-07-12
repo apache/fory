@@ -32,13 +32,21 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.fory.json.ForyJsonException;
-import org.apache.fory.json.reader.JsonReader;
-import org.apache.fory.json.resolver.JsonTypeInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
-import org.apache.fory.json.writer.JsonWriter;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.reader.Utf16JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
-/** Declared public Guava JSON type codecs and factories. */
+/**
+ * Optional codecs and collection factories for supported Guava immutable value types.
+ *
+ * <p>The outer class performs availability and class-name checks without initializing direct Guava
+ * descriptors. All references to Guava API classes live in the nested {@code Direct} owner, so a
+ * runtime without Guava can initialize Fory JSON normally. Immutable collections are read into a
+ * mutable intermediate owned by the selected collection or map factory and converted exactly once
+ * when parsing completes.
+ */
 public final class GuavaCodecs {
   private static final String IMMUTABLE_BI_MAP = "com.google.common.collect.ImmutableBiMap";
   private static final String IMMUTABLE_INT_ARRAY =
@@ -62,7 +70,7 @@ public final class GuavaCodecs {
 
   private GuavaCodecs() {}
 
-  public static void registerExactCodecs(Map<Class<?>, JsonCodec> exactCodecs) {
+  public static void registerExactCodecs(Map<Class<?>, JsonCodec<?>> exactCodecs) {
     if (IMMUTABLE_INT_ARRAY_AVAILABLE) {
       Direct.registerExactCodecs(exactCodecs);
     }
@@ -132,7 +140,7 @@ public final class GuavaCodecs {
   private static final class Direct {
     private Direct() {}
 
-    private static void registerExactCodecs(Map<Class<?>, JsonCodec> exactCodecs) {
+    private static void registerExactCodecs(Map<Class<?>, JsonCodec<?>> exactCodecs) {
       exactCodecs.put(ImmutableIntArray.class, ImmutableIntArrayCodec.INSTANCE);
     }
 
@@ -147,7 +155,7 @@ public final class GuavaCodecs {
         }
 
         @Override
-        public Object finish(Collection<Object> collection) {
+        public Collection<?> finish(Collection<Object> collection) {
           return copyImmutableCollection(rawType, collection);
         }
       };
@@ -164,7 +172,7 @@ public final class GuavaCodecs {
         }
 
         @Override
-        public Object finish(Map<Object, Object> map) {
+        public Map<?, ?> finish(Map<Object, Object> map) {
           return copyImmutableMap(rawType, map);
         }
       };
@@ -182,7 +190,8 @@ public final class GuavaCodecs {
           || rawType == ImmutableSortedMap.class;
     }
 
-    private static Object copyImmutableCollection(Class<?> rawType, Collection<Object> collection) {
+    private static Collection<?> copyImmutableCollection(
+        Class<?> rawType, Collection<Object> collection) {
       try {
         if (rawType == ImmutableList.class) {
           return ImmutableList.copyOf(collection);
@@ -199,7 +208,7 @@ public final class GuavaCodecs {
       throw new ForyJsonException("Unsupported JSON collection type " + rawType);
     }
 
-    private static Object copyImmutableMap(Class<?> rawType, Map<Object, Object> map) {
+    private static Map<?, ?> copyImmutableMap(Class<?> rawType, Map<Object, Object> map) {
       try {
         if (rawType == ImmutableMap.class) {
           return ImmutableMap.copyOf(map);
@@ -217,28 +226,18 @@ public final class GuavaCodecs {
     }
   }
 
-  private static final class ImmutableIntArrayCodec extends AbstractJsonCodec {
+  private static final class ImmutableIntArrayCodec implements JsonCodec<ImmutableIntArray> {
     private static final ImmutableIntArrayCodec INSTANCE = new ImmutableIntArrayCodec();
 
     private ImmutableIntArrayCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeInts(writer, value);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeInts(writer, value);
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return copyOf(readInts(reader));
-    }
-
-    private void writeInts(JsonWriter writer, Object value) {
-      ImmutableIntArray values = (ImmutableIntArray) value;
+    public void writeString(StringJsonWriter writer, ImmutableIntArray value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      ImmutableIntArray values = value;
       int length = values.length();
       writer.writeArrayStart();
       for (int i = 0; i < length; i++) {
@@ -248,7 +247,38 @@ public final class GuavaCodecs {
       writer.writeArrayEnd();
     }
 
-    private Object copyOf(int[] values) {
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, ImmutableIntArray value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      ImmutableIntArray values = value;
+      int length = values.length();
+      writer.writeArrayStart();
+      for (int i = 0; i < length; i++) {
+        writer.writeComma(i);
+        writer.writeInt(values.get(i));
+      }
+      writer.writeArrayEnd();
+    }
+
+    @Override
+    public ImmutableIntArray readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : copyOf(readInts(reader));
+    }
+
+    @Override
+    public ImmutableIntArray readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : copyOf(readInts(reader));
+    }
+
+    @Override
+    public ImmutableIntArray readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : copyOf(readInts(reader));
+    }
+
+    private ImmutableIntArray copyOf(int[] values) {
       try {
         return ImmutableIntArray.copyOf(values);
       } catch (RuntimeException e) {
@@ -256,7 +286,53 @@ public final class GuavaCodecs {
       }
     }
 
-    private static int[] readInts(JsonReader reader) {
+    private static int[] readInts(Latin1JsonReader reader) {
+      reader.enterDepth();
+      reader.expect('[');
+      if (reader.consume(']')) {
+        reader.exitDepth();
+        return new int[0];
+      }
+      int[] values = new int[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNull()) {
+          throw new ForyJsonException("Cannot read null into ImmutableIntArray element");
+        }
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readInt();
+      } while (reader.consume(','));
+      reader.expect(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    private static int[] readInts(Utf16JsonReader reader) {
+      reader.enterDepth();
+      reader.expect('[');
+      if (reader.consume(']')) {
+        reader.exitDepth();
+        return new int[0];
+      }
+      int[] values = new int[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNull()) {
+          throw new ForyJsonException("Cannot read null into ImmutableIntArray element");
+        }
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readInt();
+      } while (reader.consume(','));
+      reader.expect(']');
+      reader.exitDepth();
+      return Arrays.copyOf(values, size);
+    }
+
+    private static int[] readInts(Utf8JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {

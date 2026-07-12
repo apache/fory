@@ -17,10 +17,27 @@
  * under the License.
  */
 
-package org.apache.fory.json.writer;
+package org.apache.fory.json;
 
-import org.apache.fory.json.resolver.JsonTypeResolver;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
-public interface Utf8ObjectWriter {
-  void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver typeResolver);
+/**
+ * Canonical mutable representation of a JSON object parsed through the dynamic {@code Object}
+ * codec.
+ *
+ * <p>Keys are JSON member names and insertion order is retained. Values use natural JSON mappings:
+ * strings, booleans, numbers, {@code null}, nested {@link JsonArray} values, and nested {@link
+ * JsonObject} values. Typed map targets continue to use their requested Java map type.
+ */
+public final class JsonObject extends LinkedHashMap<String, Object> {
+  public JsonObject() {
+    // JSON input has no trusted object size; start from zero to avoid default capacity
+    // amplification for many tiny objects.
+    super(0);
+  }
+
+  public JsonObject(Map<String, ?> values) {
+    super(values);
+  }
 }

@@ -19,17 +19,32 @@
 
 package org.apache.fory.json.reader;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
 
+/**
+ * JSON reader for Java String input represented as UTF16 code units.
+ *
+ * <p>On compact-string JVMs, a UTF16-coded String is read through its borrowed native byte storage.
+ * On char-backed JVMs the public facade copies characters once into a reusable native-layout byte
+ * mirror, retaining the original String for result slicing. Direct character access remains
+ * available when no byte mirror exists. Returned values never retain the reusable decode buffer.
+ *
+ * <p>This concrete owner implements UTF16 token probes, packed digit parsing, string decoding, and
+ * field hashing. {@link #clear()} releases both borrowed representations and bounds the retained
+ * decode workspace before the pooled state is reused.
+ */
 public final class Utf16JsonReader extends JsonReader {
   private static final int INITIAL_STRING_DECODE_BUFFER_SIZE = 1024;
   private static final int RETAINED_STRING_DECODE_BUFFER_SIZE = 8192;
@@ -49,18 +64,24 @@ public final class Utf16JsonReader extends JsonReader {
   private static final long UTF16_NON_LATIN_BYTES = 0xFF00FF00FF00FF00L;
   private static final long UTF16_SURROGATE_MASK = 0xf800f800f800f800L;
   private static final long UTF16_SURROGATE_PREFIX = 0xd800d800d800d800L;
+  private static final long LONG_MAX_DIV_10 = Long.MAX_VALUE / 10;
+  private static final int LONG_MAX_MOD_10 = (int) (Long.MAX_VALUE % 10);
+  private static final long LONG_MAX_DIV_100 = Long.MAX_VALUE / 100;
+  private static final int LONG_MAX_MOD_100 = (int) (Long.MAX_VALUE % 100);
   private String input;
   private byte[] bytes;
   private int length;
   private byte[] stringDecodeBuffer = new byte[INITIAL_STRING_DECODE_BUFFER_SIZE];
 
-  public Utf16JsonReader() {
+  public Utf16JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
+    super(config, typeResolver);
     input = "";
     bytes = null;
     length = 0;
   }
 
-  public Utf16JsonReader(String input) {
+  public Utf16JsonReader(JsonConfig config, JsonTypeResolver typeResolver, String input) {
+    this(config, typeResolver);
     reset(input);
   }
 
@@ -72,16 +93,25 @@ public final class Utf16JsonReader extends JsonReader {
         bytes = StringSerializer.getStringBytes(input);
         length = bytes.length >>> 1;
         position = 0;
+        reset();
         return this;
       }
     }
     bytes = null;
     length = input.length();
     position = 0;
+    reset();
     return this;
   }
 
-  public Utf16JsonReader resetUtf16Bytes(String input, byte[] bytes) {
+  /**
+   * Resets this reader with a String and its exact native-layout UTF16 byte mirror.
+   *
+   * <p>The caller owns creating the mirror. Its first {@code input.length() * 2} bytes must encode
+   * the same UTF16 code units in the layout used by {@link StringSerializer}; this method validates
+   * capacity but does not compare the mirror on the hot setup path.
+   */
+  public Utf16JsonReader reset(String input, byte[] bytes) {
     int length = input.length();
     if (length > (Integer.MAX_VALUE >>> 1)) {
       throw new IllegalArgumentException("String is too large");
@@ -93,10 +123,12 @@ public final class Utf16JsonReader extends JsonReader {
     this.bytes = bytes;
     this.length = length;
     position = 0;
+    reset();
     return this;
   }
 
   public void clear() {
+    reset();
     input = "";
     bytes = null;
     length = 0;
@@ -448,7 +480,7 @@ public final class Utf16JsonReader extends JsonReader {
         break;
       }
       int digit = ch - '0';
-      if (result > (Long.MAX_VALUE - digit) / 10) {
+      if (result > LONG_MAX_DIV_10 || (result == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
         position = offset;
         throw error("Long overflow");
       }
@@ -496,6 +528,639 @@ public final class Utf16JsonReader extends JsonReader {
     }
     rejectFractionOrExponentFast();
     return result;
+  }
+
+  @Override
+  public BigDecimal readBigDecimal() {
+    skipWhitespaceFast();
+    return readBigDecimalToken();
+  }
+
+  private BigDecimal readBigDecimalToken() {
+    int offset = position;
+    int start = offset;
+    int inputLength = length;
+    if (offset >= inputLength) {
+      return readBigDecimalFallback(start);
+    }
+    char ch = charAtFast(offset);
+    if (ch == '-') {
+      return readSignedBigDecimalToken(start);
+    }
+    long unscaled = 0;
+    int scale = 0;
+    if (ch == '0') {
+      position = ++offset;
+      rejectLeadingDigitFast();
+    } else if (ch >= '1' && ch <= '9') {
+      do {
+        int digit = ch - '0';
+        if (unscaled > LONG_MAX_DIV_10
+            || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        offset++;
+        if (offset >= inputLength) {
+          break;
+        }
+        ch = charAtFast(offset);
+      } while (ch >= '0' && ch <= '9');
+    } else {
+      return readBigDecimalFallback(start);
+    }
+    if (offset < inputLength && charAtFast(offset) == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset < inputLength) {
+        ch = charAtFast(offset);
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        int digit = ch - '0';
+        if (unscaled > LONG_MAX_DIV_10
+            || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        scale++;
+        offset++;
+      }
+      if (offset == fractionStart) {
+        return readBigDecimalFallback(start);
+      }
+    }
+    if (offset < inputLength) {
+      ch = charAtFast(offset);
+      if (ch == 'e' || ch == 'E') {
+        return readBigDecimalExponentValue(false, unscaled, scale, offset);
+      }
+    }
+    position = offset;
+    if (scale > MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
+    return BigDecimal.valueOf(unscaled, scale);
+  }
+
+  private BigDecimal readSignedBigDecimalToken(int start) {
+    int offset = start + 1;
+    int inputLength = length;
+    if (offset >= inputLength) {
+      return readBigDecimalFallback(start);
+    }
+    char ch = charAtFast(offset);
+    long unscaled = 0;
+    int scale = 0;
+    if (ch == '0') {
+      position = ++offset;
+      rejectLeadingDigitFast();
+    } else if (ch >= '1' && ch <= '9') {
+      do {
+        int digit = ch - '0';
+        if (unscaled > LONG_MAX_DIV_10
+            || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        offset++;
+        if (offset >= inputLength) {
+          break;
+        }
+        ch = charAtFast(offset);
+      } while (ch >= '0' && ch <= '9');
+    } else {
+      return readBigDecimalFallback(start);
+    }
+    if (offset < inputLength && charAtFast(offset) == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset < inputLength) {
+        ch = charAtFast(offset);
+        if (ch < '0' || ch > '9') {
+          break;
+        }
+        int digit = ch - '0';
+        if (unscaled > LONG_MAX_DIV_10
+            || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          return readBigDecimalFallback(start);
+        }
+        unscaled = unscaled * 10 + digit;
+        scale++;
+        offset++;
+      }
+      if (offset == fractionStart) {
+        return readBigDecimalFallback(start);
+      }
+    }
+    if (offset < inputLength) {
+      ch = charAtFast(offset);
+      if (ch == 'e' || ch == 'E') {
+        return readBigDecimalExponentValue(true, unscaled, scale, offset);
+      }
+    }
+    position = offset;
+    if (scale > MAX_BIG_DECIMAL_SCALE) {
+      throwBigDecimalScaleExceeded();
+    }
+    return BigDecimal.valueOf(-unscaled, scale);
+  }
+
+  @Override
+  public double readDouble() {
+    skipWhitespaceFast();
+    return readDoubleToken();
+  }
+
+  public double readNextDoubleValue() {
+    if (position < length) {
+      char ch = charAtFast(position);
+      if (ch > ' ' || !isWhitespace(ch)) {
+        return readDoubleToken();
+      }
+    }
+    return readDouble();
+  }
+
+  public double readDoubleTokenValue() {
+    return readDoubleToken();
+  }
+
+  @Override
+  public float readFloat() {
+    skipWhitespaceFast();
+    return readFloatToken();
+  }
+
+  public float readNextFloatValue() {
+    if (position < length) {
+      char ch = charAtFast(position);
+      if (ch > ' ' || !isWhitespace(ch)) {
+        return readFloatToken();
+      }
+    }
+    return readFloat();
+  }
+
+  public float readFloatTokenValue() {
+    return readFloatToken();
+  }
+
+  private double readDoubleToken() {
+    int offset = position;
+    int inputLength = length;
+    if (offset >= inputLength) {
+      return readDoubleFallback(offset);
+    }
+    char ch = charAtFast(offset);
+    if (ch == '-') {
+      return readSignedDoubleToken(offset);
+    }
+    return readPositiveDoubleToken(offset, inputLength, ch);
+  }
+
+  private float readFloatToken() {
+    int offset = position;
+    int inputLength = length;
+    if (offset >= inputLength) {
+      return readFloatFallback(offset);
+    }
+    char ch = charAtFast(offset);
+    if (ch == '-') {
+      return readSignedFloatToken(offset);
+    }
+    return readPositiveFloatToken(offset, inputLength, ch);
+  }
+
+  private float readPositiveFloatToken(int offset, int inputLength, char ch) {
+    int start = offset;
+    long unscaled = 0;
+    if (ch == '0') {
+      offset++;
+      if (offset < inputLength) {
+        ch = charAtFast(offset);
+        if (ch >= '0' && ch <= '9') {
+          return readFloatFallback(start);
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      unscaled = ch - '0';
+      offset++;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readFloatFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readFloatFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          offset++;
+        }
+      }
+    } else {
+      return readFloatFallback(start);
+    }
+    return readPositiveFloatTail(offset, inputLength, start, unscaled);
+  }
+
+  private float readSignedFloatToken(int start) {
+    int offset = start + 1;
+    int inputLength = length;
+    if (offset >= inputLength) {
+      return readFloatFallback(start);
+    }
+    char ch = charAtFast(offset);
+    long unscaled = 0;
+    if (ch == '0') {
+      offset++;
+      if (offset < inputLength) {
+        ch = charAtFast(offset);
+        if (ch >= '0' && ch <= '9') {
+          return readFloatFallback(start);
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      unscaled = ch - '0';
+      offset++;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readFloatFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readFloatFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          offset++;
+        }
+      }
+    } else {
+      return readFloatFallback(start);
+    }
+    return readSignedFloatTail(offset, inputLength, start, unscaled);
+  }
+
+  private float readPositiveFloatTail(int offset, int inputLength, int start, long unscaled) {
+    int scale = 0;
+    if (offset < inputLength && charAtFast(offset) == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readFloatFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        scale += 2;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readFloatFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          scale++;
+          offset++;
+        }
+      }
+      if (offset == fractionStart) {
+        return readFloatFallback(start);
+      }
+    }
+    return finishFloatToken(offset, inputLength, start, unscaled, scale);
+  }
+
+  private float readSignedFloatTail(int offset, int inputLength, int start, long unscaled) {
+    int scale = 0;
+    if (offset < inputLength && charAtFast(offset) == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readFloatFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        scale += 2;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readFloatFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          scale++;
+          offset++;
+        }
+      }
+      if (offset == fractionStart) {
+        return readFloatFallback(start);
+      }
+    }
+    return finishSignedFloatToken(offset, inputLength, start, unscaled, scale);
+  }
+
+  private float finishFloatToken(int offset, int inputLength, int start, long unscaled, int scale) {
+    if (offset < inputLength) {
+      char ch = charAtFast(offset);
+      if (ch == 'e' || ch == 'E') {
+        return readFloatExponentValue(false, unscaled, scale, start, offset);
+      }
+    }
+    position = offset;
+    if (!canUseFastFloat(unscaled, scale)) {
+      if (canUseCompactFloat(scale)) {
+        return compactFloatValue(false, unscaled, scale);
+      }
+      return readScannedFloatValue(false, unscaled, scale, start, offset);
+    }
+    return fastFloatValue(unscaled, scale);
+  }
+
+  private float finishSignedFloatToken(
+      int offset, int inputLength, int start, long unscaled, int scale) {
+    if (offset < inputLength) {
+      char ch = charAtFast(offset);
+      if (ch == 'e' || ch == 'E') {
+        return readFloatExponentValue(true, unscaled, scale, start, offset);
+      }
+    }
+    position = offset;
+    if (unscaled == 0) {
+      return -0.0f;
+    }
+    if (!canUseFastFloat(unscaled, scale)) {
+      if (canUseCompactFloat(scale)) {
+        return compactFloatValue(true, unscaled, scale);
+      }
+      return readScannedFloatValue(true, unscaled, scale, start, offset);
+    }
+    return -fastFloatValue(unscaled, scale);
+  }
+
+  private float readFloatFallback(int start) {
+    return readFloatFallbackValue(start);
+  }
+
+  private double readPositiveDoubleToken(int offset, int inputLength, char ch) {
+    int start = offset;
+    long unscaled = 0;
+    if (ch == '0') {
+      offset++;
+      if (offset < inputLength) {
+        ch = charAtFast(offset);
+        if (ch >= '0' && ch <= '9') {
+          return readDoubleFallback(start);
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      unscaled = ch - '0';
+      offset++;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          offset++;
+        }
+      }
+    } else {
+      return readDoubleFallback(start);
+    }
+    return readPositiveDoubleTail(offset, inputLength, start, unscaled);
+  }
+
+  private double readSignedDoubleToken(int start) {
+    int offset = start + 1;
+    int inputLength = length;
+    if (offset >= inputLength) {
+      return readDoubleFallback(start);
+    }
+    char ch = charAtFast(offset);
+    long unscaled = 0;
+    if (ch == '0') {
+      offset++;
+      if (offset < inputLength) {
+        ch = charAtFast(offset);
+        if (ch >= '0' && ch <= '9') {
+          return readDoubleFallback(start);
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      unscaled = ch - '0';
+      offset++;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          offset++;
+        }
+      }
+    } else {
+      return readDoubleFallback(start);
+    }
+    return readSignedDoubleTail(offset, inputLength, start, unscaled);
+  }
+
+  private double readPositiveDoubleTail(int offset, int inputLength, int start, long unscaled) {
+    int scale = 0;
+    if (offset < inputLength && charAtFast(offset) == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        scale += 2;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          scale++;
+          offset++;
+        }
+      }
+      if (offset == fractionStart) {
+        return readDoubleFallback(start);
+      }
+    }
+    return finishDoubleToken(offset, inputLength, start, unscaled, scale);
+  }
+
+  private double readSignedDoubleTail(int offset, int inputLength, int start, long unscaled) {
+    int scale = 0;
+    if (offset < inputLength && charAtFast(offset) == '.') {
+      offset++;
+      int fractionStart = offset;
+      while (offset + 1 < inputLength) {
+        int high = charAtFast(offset) - '0';
+        int low = charAtFast(offset + 1) - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (unscaled > LONG_MAX_DIV_100
+            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        scale += 2;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = charAtFast(offset) - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (unscaled > LONG_MAX_DIV_10
+              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          scale++;
+          offset++;
+        }
+      }
+      if (offset == fractionStart) {
+        return readDoubleFallback(start);
+      }
+    }
+    return finishSignedDoubleToken(offset, inputLength, start, unscaled, scale);
+  }
+
+  private double finishDoubleToken(
+      int offset, int inputLength, int start, long unscaled, int scale) {
+    if (offset < inputLength) {
+      char ch = charAtFast(offset);
+      if (ch == 'e' || ch == 'E') {
+        return readDoubleExponentValue(false, unscaled, scale, start, offset);
+      }
+    }
+    position = offset;
+    if (!canUseFastDouble(unscaled, scale)) {
+      if (canUseCompactDouble(scale)) {
+        return compactDoubleValue(false, unscaled, scale);
+      }
+      return readScannedDoubleValue(false, unscaled, scale, start, offset);
+    }
+    return fastDoubleValue(unscaled, scale);
+  }
+
+  private double finishSignedDoubleToken(
+      int offset, int inputLength, int start, long unscaled, int scale) {
+    if (offset < inputLength) {
+      char ch = charAtFast(offset);
+      if (ch == 'e' || ch == 'E') {
+        return readDoubleExponentValue(true, unscaled, scale, start, offset);
+      }
+    }
+    position = offset;
+    if (unscaled == 0) {
+      return -0.0d;
+    }
+    if (!canUseFastDouble(unscaled, scale)) {
+      if (canUseCompactDouble(scale)) {
+        return compactDoubleValue(true, unscaled, scale);
+      }
+      return readScannedDoubleValue(true, unscaled, scale, start, offset);
+    }
+    return -fastDoubleValue(unscaled, scale);
+  }
+
+  private double readDoubleFallback(int start) {
+    return readDoubleFallbackValue(start);
   }
 
   @Override
@@ -791,7 +1456,10 @@ public final class Utf16JsonReader extends JsonReader {
       position = stop + 1;
       // Preserve Java compact-string invariants: a LATIN1-representable token must keep the JDK's
       // normal LATIN1 representation, otherwise equality/hash behavior can differ for map/set keys.
-      return nonLatin ? newUtf16String(localBytes, start, stop) : input.substring(start, stop);
+      if (nonLatin) {
+        return newUtf16String(localBytes, start, stop);
+      }
+      return input.substring(start, stop);
     }
     if (ch == '\\') {
       position = stop + 1;
@@ -819,7 +1487,7 @@ public final class Utf16JsonReader extends JsonReader {
     return (word & mask & UTF16_NON_LATIN_BYTES) != 0;
   }
 
-  private static String newUtf16String(byte[] localBytes, int start, int stop) {
+  private String newUtf16String(byte[] localBytes, int start, int stop) {
     byte[] valueBytes = new byte[(stop - start) << 1];
     System.arraycopy(localBytes, start << 1, valueBytes, 0, valueBytes.length);
     return StringSerializer.newUtf16StringZeroCopy(valueBytes);
@@ -1142,8 +1810,11 @@ public final class Utf16JsonReader extends JsonReader {
         while (fractionEnd < inputLength && isDigit(charAtFast(fractionEnd))) {
           fractionEnd++;
         }
-        if (fractionEnd == fractionStart || fractionEnd - fractionStart > 9) {
+        if (fractionEnd == fractionStart) {
           throw new IllegalArgumentException();
+        }
+        if (fractionEnd - fractionStart > 9) {
+          throw error("OffsetDateTime fractional seconds exceed nanosecond precision");
         }
         nano = parseNano(fractionStart, fractionEnd);
         index = fractionEnd;

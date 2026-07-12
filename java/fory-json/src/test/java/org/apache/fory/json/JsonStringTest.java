@@ -19,6 +19,11 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
+import static org.apache.fory.json.JsonTestSupport.newStringWriter;
+import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
+import static org.apache.fory.json.JsonTestSupport.pooledStateCount;
+import static org.apache.fory.json.JsonTestSupport.primaryStateField;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
@@ -39,20 +44,15 @@ import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
+import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
-import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonStringTest extends ForyJsonTestModels {
-  @Factory(dataProvider = "codegen")
-  public JsonStringTest(boolean codegen) {
-    super(codegen);
-  }
-
-  @Test
-  public void escapeStrings() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void escapeStrings(boolean codegen) {
+    ForyJson json = newJson(codegen);
     PublicFields fields = new PublicFields();
     fields.name = "a\n\"b\"\\\u1234";
     String stringExpected = "{\"active\":true,\"id\":7,\"name\":\"a\\n\\\"b\\\"\\\\\u1234\"}";
@@ -60,9 +60,9 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(json.fromJson(stringExpected, PublicFields.class).name, fields.name);
   }
 
-  @Test
-  public void writeUtf16StringText() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeUtf16StringText(boolean codegen) {
+    ForyJson json = newJson(codegen);
     UnicodeValues values = new UnicodeValues();
     String expected =
         "{\"first\":\"\u1234\",\"second\":\"music \uD834\uDD1E\","
@@ -79,7 +79,7 @@ public class JsonStringTest extends ForyJsonTestModels {
     String input = "\"music \uD834\uDD1E\"";
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
-    Utf16JsonReader reader = new Utf16JsonReader().resetUtf16Bytes(input, bytes);
+    Utf16JsonReader reader = newUtf16Reader().reset(input, bytes);
     assertEquals(reader.readString(), "music \uD834\uDD1E");
     reader.finish();
   }
@@ -159,9 +159,9 @@ public class JsonStringTest extends ForyJsonTestModels {
     spaced.finish();
   }
 
-  @Test
-  public void writeUtf16Char() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeUtf16Char(boolean codegen) {
+    ForyJson json = newJson(codegen);
     CharValue value = new CharValue();
     value.value = '\u1234';
     assertEquals(json.toJson(value), "{\"value\":\"\u1234\"}");
@@ -169,9 +169,9 @@ public class JsonStringTest extends ForyJsonTestModels {
         new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"value\":\"\u1234\"}");
   }
 
-  @Test
-  public void writeNonLatin1Matrix() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeNonLatin1Matrix(boolean codegen) {
+    ForyJson json = newJson(codegen);
     UnicodeMatrix value = new UnicodeMatrix();
     String expected = unicodeMatrixJson();
     assertEquals(json.toJson(value), expected);
@@ -187,16 +187,16 @@ public class JsonStringTest extends ForyJsonTestModels {
         SUPPLEMENTARY_TEXT);
   }
 
-  @Test
-  public void writeReadZhEuStrings() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeReadZhEuStrings(boolean codegen) {
+    ForyJson json = newJson(codegen);
     assertTextRoundTrip(json, ZH_TEXT);
     assertTextRoundTrip(json, EU_TEXT);
   }
 
   @Test
   public void stringWriterResetAfterMaterialize() {
-    StringJsonWriter writer = new StringJsonWriter(false, new byte[16]);
+    StringJsonWriter writer = newStringWriter(new byte[16]);
     writer.writeString("你好，Fory");
     String utf16Json = writer.toJson();
     writer.reset();
@@ -212,7 +212,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void stringWriterLatin1AfterUtf16() {
-    StringJsonWriter writer = new StringJsonWriter(false, new byte[16]);
+    StringJsonWriter writer = newStringWriter(new byte[16]);
     writer.writeArrayStart();
     writer.writeStringElement(0, "你好");
     writer.writeStringElement(1, "http://example.com/keynote.jpg");
@@ -225,7 +225,7 @@ public class JsonStringTest extends ForyJsonTestModels {
 
   @Test
   public void stringWriterUtf16Escapes() {
-    StringJsonWriter writer = new StringJsonWriter(false, new byte[16]);
+    StringJsonWriter writer = newStringWriter(new byte[16]);
     writer.writeArrayStart();
     writer.writeStringElement(0, "你好");
     writer.writeStringElement(1, "前缀\"\\\\\n\u1234");
@@ -234,20 +234,43 @@ public class JsonStringTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void stringWriterShrinksOnReset() throws Exception {
-    StringJsonWriter writer = new StringJsonWriter(false, new byte[16]);
-    writer.writeString(repeat('a', 40000) + "你好，Fory");
-    assertTrue(writerBufferLength(writer) > 65536);
-    writer.toJson();
-    writer.reset();
-    assertEquals(writerBufferLength(writer), 65536);
-    writer.writeString("café");
-    assertEquals(writer.toJson(), "\"café\"");
+  public void builderRuntimeLimits() throws Exception {
+    int bufferLimit = 64 * 1024;
+    ForyJson json =
+        ForyJson.builder()
+            .withAsyncCompilation(false)
+            .withConcurrencyLevel(3)
+            .withBufferSizeLimitBytes(bufferLimit)
+            .build();
+    assertEquals(pooledStateCount(json), 3);
+    assertEquals(pooledStateCount(ForyJson.builder().withConcurrencyLevel(1).build()), 1);
+
+    String value = repeat('a', bufferLimit + 1);
+    StringJsonWriter stringWriter = (StringJsonWriter) primaryStateField(json, "stringWriter");
+    stringWriter.writeString(value);
+    assertTrue(writerBufferLength(stringWriter) > bufferLimit);
+    stringWriter.reset();
+    assertEquals(writerBufferLength(stringWriter), bufferLimit);
+
+    Utf8JsonWriter utf8Writer = (Utf8JsonWriter) primaryStateField(json, "utf8Writer");
+    utf8Writer.writeString(value);
+    assertTrue(writerBufferLength(utf8Writer) > bufferLimit);
+    utf8Writer.reset();
+    assertEquals(writerBufferLength(utf8Writer), bufferLimit);
+
+    JsonConfig defaultConfig = JsonTestSupport.config(ForyJson.builder().build());
+    assertEquals(
+        defaultConfig.concurrencyLevel(),
+        Math.max(1, Runtime.getRuntime().availableProcessors() * 2));
+    assertEquals(defaultConfig.bufferSizeLimitBytes(), 2 * 1024 * 1024);
+    assertThrows(IllegalArgumentException.class, () -> ForyJson.builder().withConcurrencyLevel(0));
+    assertThrows(
+        IllegalArgumentException.class, () -> ForyJson.builder().withBufferSizeLimitBytes(0));
   }
 
-  @Test
-  public void readStringInputLayouts() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void readStringInputLayouts(boolean codegen) {
+    ForyJson json = newJson(codegen);
     String latin1Json = "{\"active\":true,\"id\":7,\"name\":\"café\"}";
     String utf16Json = "{\"active\":true,\"id\":7,\"name\":\"你好，Fory\"}";
     if (StringSerializer.isBytesBackedString()) {
@@ -260,9 +283,9 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(json.fromJson("\"你好，Fory\"", String.class), ZH_TEXT);
   }
 
-  @Test
-  public void readStringInputEscapes() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void readStringInputEscapes(boolean codegen) {
+    ForyJson json = newJson(codegen);
 
     String asciiEscaped = json.fromJson("\"line\\n\\r\\t\\b\\f\\\\\\\"\\/end\"", String.class);
     String latin1Escaped = json.fromJson("\"caf\\u00E9\"", String.class);
@@ -301,7 +324,7 @@ public class JsonStringTest extends ForyJsonTestModels {
     String latin1Input = "\"" + repeat('a', 9000) + "\\n\"";
     if (StringSerializer.isBytesBackedString()
         && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(latin1Input))) {
-      Latin1JsonReader latin1Reader = new Latin1JsonReader(latin1Input);
+      Latin1JsonReader latin1Reader = newLatin1Reader(latin1Input);
       assertEquals(latin1Reader.readString(), repeat('a', 9000) + "\n");
       assertTrue(readerBufferLength(latin1Reader) > 8192);
       latin1Reader.clear();
@@ -309,16 +332,16 @@ public class JsonStringTest extends ForyJsonTestModels {
     }
 
     String utf16Input = "\"中文" + repeat('b', 9000) + "\\n\"";
-    Utf16JsonReader utf16Reader = new Utf16JsonReader(utf16Input);
+    Utf16JsonReader utf16Reader = newUtf16Reader(utf16Input);
     assertEquals(utf16Reader.readString(), "中文" + repeat('b', 9000) + "\n");
     assertTrue(readerBufferLength(utf16Reader) > 8192);
     utf16Reader.clear();
     assertEquals(readerBufferLength(utf16Reader), 8192);
   }
 
-  @Test
-  public void readUnicodeFieldNames() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void readUnicodeFieldNames(boolean codegen) {
+    ForyJson json = newJson(codegen);
     String direct = "{\"café\":\"" + EU_TEXT + "\",\"你好\":\"" + ZH_TEXT + "\"}";
     String escaped = "{\"caf\\u00e9\":\"" + EU_TEXT + "\",\"\\u4f60\\u597d\":\"" + ZH_TEXT + "\"}";
     UnicodeFieldNames directValue = json.fromJson(direct, UnicodeFieldNames.class);
@@ -333,9 +356,9 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(bytesValue.你好, ZH_TEXT);
   }
 
-  @Test
-  public void readUnicodeEnum() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void readUnicodeEnum(boolean codegen) {
+    ForyJson json = newJson(codegen);
     String direct = "{\"kind\":\"你好\"}";
     String escaped = "{\"kind\":\"\\u4f60\\u597d\"}";
     String asciiDirect = "{\"kind\":\"FAST\"}";
@@ -355,9 +378,9 @@ public class JsonStringTest extends ForyJsonTestModels {
         json.fromJson(asciiEscaped.getBytes(StandardCharsets.UTF_8), Nested.class).kind, Kind.FAST);
   }
 
-  @Test
-  public void writeLatin1NonAsciiBytes() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeLatin1NonAsciiBytes(boolean codegen) {
+    ForyJson json = newJson(codegen);
     PublicFields fields = new PublicFields();
     fields.name = "caf\u00e9";
     assertEquals(json.toJson(fields), "{\"active\":true,\"id\":7,\"name\":\"caf\u00e9\"}");
@@ -371,27 +394,27 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(json.fromJson(json.toJsonBytes(fields), PublicFields.class).name, fields.name);
   }
 
-  @Test
-  public void rejectSurrogateChar() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void rejectSurrogateChar(boolean codegen) {
+    ForyJson json = newJson(codegen);
     CharValue value = new CharValue();
     value.value = '\uD800';
     assertThrows(ForyJsonException.class, () -> json.toJson(value));
     assertThrows(ForyJsonException.class, () -> json.toJsonBytes(value));
   }
 
-  @Test
-  public void rejectSurrogateString() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void rejectSurrogateString(boolean codegen) {
+    ForyJson json = newJson(codegen);
     PublicFields fields = new PublicFields();
     fields.name = "\uD800";
     assertThrows(ForyJsonException.class, () -> json.toJson(fields));
     assertThrows(ForyJsonException.class, () -> json.toJsonBytes(fields));
   }
 
-  @Test
-  public void writeSurrogatePair() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeSurrogatePair(boolean codegen) {
+    ForyJson json = newJson(codegen);
     PublicFields fields = new PublicFields();
     fields.name = "a\uD83D\uDE00";
     String stringExpected = "{\"active\":true,\"id\":7,\"name\":\"a\uD83D\uDE00\"}";
@@ -417,6 +440,34 @@ public class JsonStringTest extends ForyJsonTestModels {
     String expected = "\"" + repeat('b', 24) + "\\n\"";
     assertEquals(json.toJson(escaped), expected);
     assertEquals(new String(json.toJsonBytes(escaped), StandardCharsets.UTF_8), expected);
+
+    String escaped20 = repeat('c', 7) + "\"" + repeat('c', 7) + "\\" + repeat('c', 3) + "\n";
+    String expected20 =
+        "\"" + repeat('c', 7) + "\\\"" + repeat('c', 7) + "\\\\" + repeat('c', 3) + "\\n\"";
+    assertEquals(json.toJson(escaped20), expected20);
+    assertEquals(new String(json.toJsonBytes(escaped20), StandardCharsets.UTF_8), expected20);
+
+    String escaped30 =
+        repeat('d', 7)
+            + "\u00e9"
+            + repeat('d', 7)
+            + "\""
+            + repeat('d', 7)
+            + "\\"
+            + repeat('d', 5)
+            + "\n";
+    String expected30 =
+        "\""
+            + repeat('d', 7)
+            + "\u00e9"
+            + repeat('d', 7)
+            + "\\\""
+            + repeat('d', 7)
+            + "\\\\"
+            + repeat('d', 5)
+            + "\\n\"";
+    assertEquals(json.toJson(escaped30), expected30);
+    assertEquals(new String(json.toJsonBytes(escaped30), StandardCharsets.UTF_8), expected30);
   }
 
   @Test
@@ -498,8 +549,8 @@ public class JsonStringTest extends ForyJsonTestModels {
         () -> json.fromJson("\"" + Character.toString('\uD800') + "\"", String.class));
   }
 
-  private static int writerBufferLength(StringJsonWriter writer) throws Exception {
-    Field field = StringJsonWriter.class.getDeclaredField("buffer");
+  private static int writerBufferLength(Object writer) throws Exception {
+    Field field = writer.getClass().getDeclaredField("buffer");
     field.setAccessible(true);
     return ((byte[]) field.get(writer)).length;
   }
@@ -529,7 +580,7 @@ public class JsonStringTest extends ForyJsonTestModels {
   private static Utf16JsonReader utf16Reader(String input) {
     byte[] bytes = new byte[input.length() << 1];
     StringSerializer.copyStringCharsToBytes(input, bytes);
-    return new Utf16JsonReader().resetUtf16Bytes(input, bytes);
+    return newUtf16Reader().reset(input, bytes);
   }
 
   private static long packedNameMask(int length) {

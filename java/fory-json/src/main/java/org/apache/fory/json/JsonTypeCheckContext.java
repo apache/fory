@@ -19,7 +19,14 @@
 
 package org.apache.fory.json;
 
-/** Context passed to {@link JsonTypeChecker}. */
+/**
+ * Runtime-owned context passed to {@link JsonTypeChecker}.
+ *
+ * <p>The context is intentionally empty today. It reserves a stable extension point for exposing
+ * read-only Fory JSON configuration without changing the checker signature. The class name is not
+ * duplicated here because {@link JsonTypeChecker#checkType(String, JsonTypeCheckContext)} receives
+ * it directly before any future name-based class loading.
+ */
 public final class JsonTypeCheckContext {
   JsonTypeCheckContext() {}
 }

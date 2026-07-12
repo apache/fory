@@ -28,6 +28,14 @@ import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.FieldAccessor;
 
+/**
+ * Uniform interpreted object-member access for fields, getters, and setters.
+ *
+ * <p>Field members delegate to Fory core's typed {@link FieldAccessor}. Method members cache a
+ * trusted {@code MethodHandle} on the JVM and retain reflective invocation only for Android. Typed
+ * primitive methods let interpreted object codecs avoid boxing for field-backed access, while
+ * generated codecs consume the original field or method metadata and emit direct expressions.
+ */
 public abstract class JsonFieldAccessor {
   public Object getObject(Object target) {
     throw new UnsupportedOperationException();

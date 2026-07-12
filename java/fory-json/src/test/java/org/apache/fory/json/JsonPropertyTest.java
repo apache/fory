@@ -39,7 +39,7 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonPropertyTest extends ForyJsonTestModels {
-  @Factory(dataProvider = "codegen")
+  @Factory(dataProvider = "enableCodegen")
   public JsonPropertyTest(boolean codegen) {
     super(codegen);
   }

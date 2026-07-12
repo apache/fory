@@ -50,6 +50,8 @@ import org.apache.fory.json.data.PrivateFields;
 import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.data.UnicodeMatrix;
+import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.FieldAccessor;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
@@ -64,21 +66,33 @@ public abstract class ForyJsonTestModels {
   protected static final String EU_TEXT = JsonTestData.EU_TEXT;
   private final boolean codegen;
 
+  protected ForyJsonTestModels() {
+    this(false);
+  }
+
   protected ForyJsonTestModels(boolean codegen) {
     this.codegen = codegen;
   }
 
-  @DataProvider(name = "codegen")
-  public static Object[][] codegen() {
+  @DataProvider
+  public static Object[][] enableCodegen() {
     return new Object[][] {{false}, {true}};
   }
 
   protected final ForyJsonBuilder newJsonBuilder() {
+    return newJsonBuilder(codegen);
+  }
+
+  protected final ForyJsonBuilder newJsonBuilder(boolean codegen) {
     return ForyJson.builder().withCodegen(codegen).withAsyncCompilation(false);
   }
 
   protected final ForyJson newJson() {
     return newJsonBuilder().build();
+  }
+
+  protected final ForyJson newJson(boolean codegen) {
+    return newJsonBuilder(codegen).build();
   }
 
   protected final boolean codegenEnabled() {
@@ -292,7 +306,27 @@ public abstract class ForyJsonTestModels {
   }
 
   protected final void assertGeneratedWhenSupported(ForyJson json, Class<?> type) {
-    assertEquals(json.hasGeneratedWriter(type), codegen);
+    assertGeneratedWhenSupported(json, type, codegen);
+  }
+
+  protected final void assertGeneratedWhenSupported(ForyJson json, Class<?> type, boolean codegen) {
+    assertEquals(hasGeneratedCapability(json, type), codegen);
+  }
+
+  protected static boolean hasGeneratedCapability(ForyJson json, Class<?> type) {
+    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
+    resolver.lockJIT();
+    try {
+      JsonTypeInfo info = resolver.getTypeInfo(type, type);
+      Object owner = resolver.getObjectCodec(type);
+      return info.stringWriter() != owner
+          || info.utf8Writer() != owner
+          || info.latin1Reader() != owner
+          || info.utf16Reader() != owner
+          || info.utf8Reader() != owner;
+    } finally {
+      resolver.unlockJIT();
+    }
   }
 
   protected static String repeat(char ch, int length) {

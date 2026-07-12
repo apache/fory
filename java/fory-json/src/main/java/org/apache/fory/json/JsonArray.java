@@ -17,11 +17,26 @@
  * under the License.
  */
 
-package org.apache.fory.json.reader;
+package org.apache.fory.json;
 
-import org.apache.fory.json.codec.BaseObjectCodec;
-import org.apache.fory.json.resolver.JsonTypeResolver;
+import java.util.ArrayList;
+import java.util.Collection;
 
-public interface Latin1ObjectReader {
-  Object readLatin1(Latin1JsonReader reader, BaseObjectCodec owner, JsonTypeResolver typeResolver);
+/**
+ * Canonical mutable representation of a JSON array parsed through the dynamic {@code Object} codec.
+ *
+ * <p>Elements use natural JSON mappings: strings, booleans, numbers, {@code null}, nested {@link
+ * JsonArray} values, and nested {@link JsonObject} values. Typed collection targets continue to use
+ * their requested Java collection type; this class owns only untyped JSON-array materialization.
+ */
+public final class JsonArray extends ArrayList<Object> {
+  public JsonArray() {
+    // JSON input has no trusted array size; start from zero to avoid default capacity
+    // amplification for many tiny arrays.
+    super(0);
+  }
+
+  public JsonArray(Collection<?> values) {
+    super(values);
+  }
 }

@@ -52,7 +52,6 @@ import java.util.Calendar;
 import java.util.Collection;
 import java.util.Currency;
 import java.util.Date;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -60,10 +59,10 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
@@ -78,17 +77,14 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.JsonTypeCheckContext;
 import org.apache.fory.json.JsonTypeChecker;
 import org.apache.fory.json.codec.ArrayCodec;
-import org.apache.fory.json.codec.BaseObjectCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.GuavaCodecs;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.MapCodec;
-import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
-import org.apache.fory.json.codegen.JsonCodegen.GeneratedObjectCodecClasses;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.reflect.TypeRef;
@@ -97,23 +93,40 @@ import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Float16;
 import org.apache.fory.type.TypeUtils;
 
-/** Shared JSON codec registry used by all local resolvers for one {@code ForyJson}. */
+/**
+ * Shared codec definitions and cold caches for all local resolvers of one {@code ForyJson}.
+ *
+ * <p>This owner snapshots custom codecs, registers exact built-in codecs, classifies field kinds,
+ * applies class-name security checks, and selects the semantic codec family for a resolved type.
+ * Default exact codecs bypass the user checker because their behavior is fixed and does not create
+ * object metadata; a custom binding for the same class restores normal checking. The disallow list
+ * is always applied before the user checker.
+ *
+ * <p>Accepted type-check results are cached by class name up to a bounded 8192-entry shared cache.
+ * Once full, new names are checked on every resolution rather than growing attacker-controlled
+ * state. Generated classes are shared through one {@link JsonCodegen}; generated instances,
+ * ordinary type bindings, JIT locks, and callbacks remain resolver-local. A fresh generic {@link
+ * JsonJITContext} is therefore created for every pooled JSON state.
+ */
 public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
 
   private final CodecRegistry customCodecs;
-  private final IdentityHashMap<Class<?>, JsonCodec> exactCodecs;
-  private final Set<String> defaultExactCodecNames;
-  private final Set<String> customCodecNames;
+  private final IdentityHashMap<Class<?>, JsonCodec<?>> exactCodecs;
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
   private final ConcurrentHashMap<String, Boolean> typeCheckCache;
   private final Object typeCheckCacheLock;
   private final JsonCodegen codegen;
-  private final JsonJITContext jitContext;
+  private final boolean asyncCompilationEnabled;
+  private final ExecutorService compilationService;
   private final boolean propertyDiscoveryEnabled;
 
   public JsonSharedRegistry(JsonConfig config) {
+    this(config, null);
+  }
+
+  JsonSharedRegistry(JsonConfig config, ExecutorService compilationService) {
     this.customCodecs = config.codecRegistry().copy();
     typeChecker = config.typeChecker();
     typeCheckContext = config.typeCheckContext();
@@ -122,21 +135,20 @@ public final class JsonSharedRegistry {
     this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
     exactCodecs = new IdentityHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
-    jitContext = new JsonJITContext(codegenEnabled && config.asyncCompilationEnabled());
     codegen =
         codegenEnabled ? new JsonCodegen(config.writeNullFields(), config.getCodegenHash()) : null;
+    asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
+    this.compilationService = compilationService;
     registerExactCodecs();
-    defaultExactCodecNames = classNames(exactCodecs);
-    customCodecNames = customCodecs.classNames();
   }
 
-  public JsonCodec createCodec(
+  public JsonCodec<?> createCodec(
       Class<?> rawType, TypeRef<?> typeRef, JsonTypeResolver localResolver) {
-    JsonCodec customCodec = customCodecs.get(rawType);
+    JsonCodec<?> customCodec = customCodecs.get(rawType);
     if (customCodec != null) {
       return customCodec;
     }
-    JsonCodec codec = exactCodecs.get(rawType);
+    JsonCodec<?> codec = exactCodecs.get(rawType);
     if (codec != null) {
       return codec;
     }
@@ -148,6 +160,9 @@ public final class JsonSharedRegistry {
         || InetSocketAddress.class.isAssignableFrom(rawType)) {
       throw new ForyJsonException("Unsupported JSON type " + rawType);
     }
+    if (URL.class.isAssignableFrom(rawType)) {
+      throw new ForyJsonException("Unsupported JSON type " + rawType);
+    }
     if (Number.class.isAssignableFrom(rawType) || CharSequence.class.isAssignableFrom(rawType)) {
       throw new ForyJsonException("Unsupported JSON type " + rawType);
     }
@@ -155,7 +170,7 @@ public final class JsonSharedRegistry {
       return new ScalarCodecs.EnumCodec(rawType);
     }
     if (rawType.isArray()) {
-      return ArrayCodec.create(rawType.getComponentType(), localResolver);
+      return ArrayCodec.create(rawType, localResolver);
     }
     if (rawType == Optional.class) {
       return new ScalarCodecs.OptionalCodec(
@@ -197,6 +212,11 @@ public final class JsonSharedRegistry {
   }
 
   public JsonFieldKind kind(Class<?> type) {
+    // A registered codec owns the full representation. Resolve that choice before object metadata
+    // and codegen specialize fields so generated and interpreted paths cannot bypass the codec.
+    if (customCodecs.get(type) != null) {
+      return JsonFieldKind.OBJECT;
+    }
     if (type == boolean.class || type == Boolean.class) {
       return JsonFieldKind.BOOLEAN;
     }
@@ -239,57 +259,16 @@ public final class JsonSharedRegistry {
     return JsonFieldKind.OBJECT;
   }
 
-  public BaseObjectCodec compileObject(
-      ObjectCodec codec,
-      JsonTypeResolver localResolver,
-      JsonJITContext.ObjectJITCallback<GeneratedObjectCodecClasses> callback) {
-    if (codegen == null || !codegen.canCompile(codec)) {
-      return null;
-    }
-    GeneratedObjectCodecClasses classes = codegen.generatedClasses(codec.type());
-    if (classes == null) {
-      classes =
-          jitContext.registerObjectJITCallback(
-              () -> null,
-              () -> jitContext.asyncVisitJson(this, ignored -> codegen.compileClasses(codec)),
-              callback);
-    }
-    return classes == null ? null : codegen.newCodec(codec, localResolver, classes);
+  JsonJITContext newJITContext() {
+    return new JsonJITContext(asyncCompilationEnabled, compilationService);
   }
 
-  BaseObjectCodec newGeneratedCodec(
-      ObjectCodec codec, JsonTypeResolver resolver, GeneratedObjectCodecClasses classes) {
-    return codegen.newCodec(codec, resolver, classes);
-  }
-
-  GeneratedObjectCodecClasses generatedClasses(Class<?> type) {
-    return codegen == null ? null : codegen.generatedClasses(type);
-  }
-
-  JsonJITContext jitContext() {
-    return jitContext;
-  }
-
-  boolean hasJITResult(Object id) {
-    return jitContext.hasJITResult(id);
-  }
-
-  boolean asyncCompilationEnabled() {
-    return jitContext.asyncCompilationEnabled();
-  }
-
-  void registerJITNotifyCallback(Object id, JsonJITContext.NotifyCallback callback) {
-    jitContext.registerJITNotifyCallback(id, callback);
+  JsonCodegen codegen() {
+    return codegen;
   }
 
   boolean propertyDiscoveryEnabled() {
     return propertyDiscoveryEnabled;
-  }
-
-  void checkSecure(String className) {
-    if (!isSecureName(className)) {
-      throw forbiddenClass(className);
-    }
   }
 
   void checkSecure(Class<?> type) {
@@ -310,16 +289,9 @@ public final class JsonSharedRegistry {
     }
     String className = type.getName();
     DisallowedList.checkNotInDisallowedList(className);
-    return isSecureLeafName(className);
-  }
-
-  private boolean isSecureName(String className) {
-    DisallowedList.checkNotInDisallowedList(className);
-    return isSecureLeafName(className);
-  }
-
-  private boolean isSecureLeafName(String className) {
-    if (defaultExactCodecNames.contains(className) && !customCodecNames.contains(className)) {
+    // Built-in codec exemption follows the same Class identity key as exact codec dispatch. A
+    // same-named class from another loader must still pass the configured checker.
+    if (exactCodecs.containsKey(type) && customCodecs.get(type) == null) {
       return true;
     }
     JsonTypeChecker checker = typeChecker;
@@ -365,14 +337,6 @@ public final class JsonSharedRegistry {
         String.format("Class %s is forbidden for Fory JSON serialization.", className));
   }
 
-  private static Set<String> classNames(Map<Class<?>, JsonCodec> codecs) {
-    Set<String> names = new HashSet<>(codecs.size());
-    for (Class<?> type : codecs.keySet()) {
-      names.add(type.getName());
-    }
-    return names;
-  }
-
   private void registerExactCodecs() {
     exactCodecs.put(Object.class, ScalarCodecs.NaturalCodec.INSTANCE);
     exactCodecs.put(void.class, ScalarCodecs.VoidCodec.INSTANCE);
@@ -380,22 +344,22 @@ public final class JsonSharedRegistry {
     exactCodecs.put(Number.class, ScalarCodecs.NumberCodec.INSTANCE);
     exactCodecs.put(String.class, ScalarCodecs.StringCodec.INSTANCE);
     exactCodecs.put(CharSequence.class, ScalarCodecs.CharSequenceCodec.INSTANCE);
-    exactCodecs.put(boolean.class, ScalarCodecs.BooleanCodec.INSTANCE);
-    exactCodecs.put(Boolean.class, ScalarCodecs.BooleanCodec.INSTANCE);
-    exactCodecs.put(int.class, ScalarCodecs.IntCodec.INSTANCE);
-    exactCodecs.put(Integer.class, ScalarCodecs.IntCodec.INSTANCE);
-    exactCodecs.put(long.class, ScalarCodecs.LongCodec.INSTANCE);
-    exactCodecs.put(Long.class, ScalarCodecs.LongCodec.INSTANCE);
-    exactCodecs.put(short.class, ScalarCodecs.ShortCodec.INSTANCE);
-    exactCodecs.put(Short.class, ScalarCodecs.ShortCodec.INSTANCE);
-    exactCodecs.put(byte.class, ScalarCodecs.ByteCodec.INSTANCE);
-    exactCodecs.put(Byte.class, ScalarCodecs.ByteCodec.INSTANCE);
-    exactCodecs.put(char.class, ScalarCodecs.CharCodec.INSTANCE);
-    exactCodecs.put(Character.class, ScalarCodecs.CharCodec.INSTANCE);
-    exactCodecs.put(float.class, ScalarCodecs.FloatCodec.INSTANCE);
-    exactCodecs.put(Float.class, ScalarCodecs.FloatCodec.INSTANCE);
-    exactCodecs.put(double.class, ScalarCodecs.DoubleCodec.INSTANCE);
-    exactCodecs.put(Double.class, ScalarCodecs.DoubleCodec.INSTANCE);
+    exactCodecs.put(boolean.class, ScalarCodecs.BooleanCodec.PRIMITIVE);
+    exactCodecs.put(Boolean.class, ScalarCodecs.BooleanCodec.BOXED);
+    exactCodecs.put(int.class, ScalarCodecs.IntCodec.PRIMITIVE);
+    exactCodecs.put(Integer.class, ScalarCodecs.IntCodec.BOXED);
+    exactCodecs.put(long.class, ScalarCodecs.LongCodec.PRIMITIVE);
+    exactCodecs.put(Long.class, ScalarCodecs.LongCodec.BOXED);
+    exactCodecs.put(short.class, ScalarCodecs.ShortCodec.PRIMITIVE);
+    exactCodecs.put(Short.class, ScalarCodecs.ShortCodec.BOXED);
+    exactCodecs.put(byte.class, ScalarCodecs.ByteCodec.PRIMITIVE);
+    exactCodecs.put(Byte.class, ScalarCodecs.ByteCodec.BOXED);
+    exactCodecs.put(char.class, ScalarCodecs.CharCodec.PRIMITIVE);
+    exactCodecs.put(Character.class, ScalarCodecs.CharCodec.BOXED);
+    exactCodecs.put(float.class, ScalarCodecs.FloatCodec.PRIMITIVE);
+    exactCodecs.put(Float.class, ScalarCodecs.FloatCodec.BOXED);
+    exactCodecs.put(double.class, ScalarCodecs.DoubleCodec.PRIMITIVE);
+    exactCodecs.put(Double.class, ScalarCodecs.DoubleCodec.BOXED);
     exactCodecs.put(BigInteger.class, ScalarCodecs.BigIntegerCodec.INSTANCE);
     exactCodecs.put(BigDecimal.class, ScalarCodecs.BigDecimalCodec.INSTANCE);
     exactCodecs.put(Float16.class, ScalarCodecs.Float16Codec.INSTANCE);
@@ -411,7 +375,6 @@ public final class JsonSharedRegistry {
     exactCodecs.put(Currency.class, ScalarCodecs.CurrencyCodec.INSTANCE);
     exactCodecs.put(File.class, ScalarCodecs.FileCodec.INSTANCE);
     exactCodecs.put(URI.class, ScalarCodecs.UriCodec.INSTANCE);
-    exactCodecs.put(URL.class, ScalarCodecs.UrlCodec.INSTANCE);
     exactCodecs.put(Path.class, ScalarCodecs.PathCodec.INSTANCE);
     exactCodecs.put(Pattern.class, ScalarCodecs.PatternCodec.INSTANCE);
     exactCodecs.put(UUID.class, ScalarCodecs.UuidCodec.INSTANCE);

@@ -19,14 +19,14 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.nullCodec;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertThrows;
 
 import java.beans.Expression;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -34,22 +34,15 @@ import org.apache.fory.annotation.Expose;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.data.Kind;
-import org.apache.fory.json.reader.JsonReader;
-import org.apache.fory.json.resolver.CodecRegistry;
-import org.apache.fory.json.resolver.JsonSharedRegistry;
-import org.apache.fory.json.resolver.JsonTypeInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
-import org.apache.fory.json.writer.JsonWriter;
-import org.apache.fory.json.writer.StringJsonWriter;
-import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.type.Float16;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonTypeCheckerTest extends ForyJsonTestModels {
-  private static final JsonCodec NULL_CODEC = new NullCodec();
+  private static final JsonCodec<String> STRING_NULL_CODEC = nullCodec();
 
-  @Factory(dataProvider = "codegen")
+  @Factory(dataProvider = "enableCodegen")
   public JsonTypeCheckerTest(boolean codegen) {
     super(codegen);
   }
@@ -99,7 +92,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void customExactUsesChecker() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(String.class, NULL_CODEC)
+            .registerCodec(String.class, STRING_NULL_CODEC)
             .withTypeChecker((className, context) -> !className.equals(String.class.getName()))
             .build();
     assertThrows(InsecureException.class, () -> json.toJson("value"));
@@ -109,28 +102,31 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void customPrimitiveUsesChecker() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(int.class, NULL_CODEC)
+            .registerCodec(int.class, nullCodec())
             .withTypeChecker((className, context) -> !className.equals(int.class.getName()))
             .build();
     assertThrows(InsecureException.class, () -> json.fromJson("1", int.class));
   }
 
   @Test
-  public void contextHasNoClass() {
-    JsonTypeCheckContext[] seen = new JsonTypeCheckContext[1];
+  public void shadowedDefaultUsesChecker() throws Exception {
+    String className = Float16.class.getName();
+    byte[] classBytes = classBytes(Float16.class);
+    ClassLoader loader =
+        new ClassLoader(null) {
+          @Override
+          protected Class<?> findClass(String name) throws ClassNotFoundException {
+            if (name.equals(className)) {
+              return defineClass(name, classBytes, 0, classBytes.length);
+            }
+            throw new ClassNotFoundException(name);
+          }
+        };
+    Class<?> shadowType = loader.loadClass(className);
+    Object value = shadowType.getMethod("fromBits", short.class).invoke(null, (short) 0);
     ForyJson json =
-        newJsonBuilder()
-            .withTypeChecker(
-                (className, context) -> {
-                  seen[0] = context;
-                  return true;
-                })
-            .build();
-    json.toJson(new CheckedBean());
-    assertNotNull(seen[0]);
-    for (Method method : JsonTypeCheckContext.class.getDeclaredMethods()) {
-      assertNotSame(method.getReturnType(), Class.class);
-    }
+        newJsonBuilder().withTypeChecker((name, context) -> !name.equals(className)).build();
+    assertThrows(InsecureException.class, () -> json.toJson(value));
   }
 
   @Test
@@ -166,37 +162,6 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void cacheCapChecksOverflow() throws Exception {
-    AtomicInteger calls = new AtomicInteger();
-    JsonTypeChecker checker =
-        (className, context) -> {
-          calls.incrementAndGet();
-          return true;
-        };
-    JsonSharedRegistry registry =
-        new JsonSharedRegistry(
-            new JsonConfig(
-                false,
-                false,
-                false,
-                true,
-                ForyJson.DEFAULT_MAX_DEPTH,
-                new CodecRegistry(),
-                checker));
-    Method checkSecure = JsonSharedRegistry.class.getDeclaredMethod("checkSecure", String.class);
-    checkSecure.setAccessible(true);
-    for (int i = 0; i < 8192; i++) {
-      invokeCheck(checkSecure, registry, "example.Type" + i);
-    }
-    assertEquals(calls.get(), 8192);
-    invokeCheck(checkSecure, registry, "example.Overflow");
-    invokeCheck(checkSecure, registry, "example.Overflow");
-    assertEquals(calls.get(), 8194);
-    invokeCheck(checkSecure, registry, "example.Type0");
-    assertEquals(calls.get(), 8194);
-  }
-
-  @Test
   public void nestedFieldRejected() {
     ForyJson json = rejectingJson(RejectedValue.class);
     assertThrows(
@@ -207,7 +172,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void collectionScalarChecked() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(Integer.class, NULL_CODEC)
+            .registerCodec(Integer.class, nullCodec())
             .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
             .build();
     assertThrows(
@@ -218,7 +183,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void mapScalarChecked() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(Integer.class, NULL_CODEC)
+            .registerCodec(Integer.class, nullCodec())
             .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
             .build();
     assertThrows(
@@ -242,9 +207,12 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void classExposeSkipped() {
+  public void classExposeRejected() {
     ForyJson json = rejectingJson(Class.class);
-    assertEquals(json.toJson(new ExposedClassMember()), "{\"id\":7}");
+    assertThrows(ForyJsonException.class, () -> json.toJson(new ExposedClassMember()));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"type\":\"java.lang.String\"}", ExposedClassMember.class));
   }
 
   private ForyJson rejectingJson(Class<?> rejectedType) {
@@ -254,16 +222,19 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
         .build();
   }
 
-  private static void invokeCheck(Method checkSecure, JsonSharedRegistry registry, String name)
-      throws Exception {
-    try {
-      checkSecure.invoke(registry, name);
-    } catch (InvocationTargetException e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof Exception) {
-        throw (Exception) cause;
+  private static byte[] classBytes(Class<?> type) throws IOException {
+    String resource = type.getSimpleName() + ".class";
+    try (InputStream input = type.getResourceAsStream(resource);
+        ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+      if (input == null) {
+        throw new IOException("Missing class resource " + resource);
       }
-      throw e;
+      byte[] buffer = new byte[4096];
+      int length;
+      while ((length = input.read(buffer)) != -1) {
+        output.write(buffer, 0, length);
+      }
+      return output.toByteArray();
     }
   }
 
@@ -289,29 +260,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
 
   public static final class ExposedClassMember {
     @Expose public Class<?> type = String.class;
-    public int id = 7;
-  }
-
-  private static final class NullCodec implements JsonCodec {
-    @Override
-    public void write(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNull();
-    }
-
-    @Override
-    public void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNull();
-    }
-
-    @Override
-    public void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNull();
-    }
-
-    @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.skipValue();
-      return null;
-    }
+    public int id;
+    public String name;
   }
 }

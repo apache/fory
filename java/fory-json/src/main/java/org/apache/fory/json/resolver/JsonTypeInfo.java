@@ -21,34 +21,56 @@ package org.apache.fory.json.resolver;
 
 import java.lang.reflect.Type;
 import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.Latin1ReaderCodec;
+import org.apache.fory.json.codec.ObjectCodec;
+import org.apache.fory.json.codec.StringWriterCodec;
+import org.apache.fory.json.codec.Utf16ReaderCodec;
+import org.apache.fory.json.codec.Utf8ReaderCodec;
+import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldKind;
-import org.apache.fory.reflect.TypeRef;
 
-/** JSON type binding resolved and owned by {@link JsonTypeResolver}. */
+/**
+ * JSON type binding resolved and owned by {@link JsonTypeResolver}.
+ *
+ * <p>The five capability fields are deliberately ordinary fields. A resolver-local JIT lock covers
+ * every root graph operation and every generated capability installation, so lock release and the
+ * next root acquisition publish slot changes without adding volatile reads to established codec
+ * dispatch. These five fields are the sole installed capability state; there are no parallel
+ * per-path maps to reconcile on the hot path.
+ *
+ * <p>Only the canonical exact raw-class {@link ObjectCodec} binding may receive generated
+ * replacements. Custom codecs, parameterized object bindings, containers, scalars, and dynamic
+ * {@code Object} bindings retain their original semantic owner. One generated class may implement
+ * more than one capability when its code is genuinely shared, but installation still occurs per
+ * slot and each slot is independently lazy.
+ */
 public final class JsonTypeInfo {
   private final Type type;
-  private final TypeRef<?> typeRef;
   private final Class<?> rawType;
   private final JsonFieldKind kind;
-  private JsonCodec codec;
-  private final boolean primitive;
+  private StringWriterCodec<Object> stringWriter;
+  private Utf8WriterCodec<Object> utf8Writer;
+  private Latin1ReaderCodec<Object> latin1Reader;
+  private Utf16ReaderCodec<Object> utf16Reader;
+  private Utf8ReaderCodec<Object> utf8Reader;
+  private final boolean defaultObjectCodec;
 
-  JsonTypeInfo(
-      Type type, TypeRef<?> typeRef, Class<?> rawType, JsonFieldKind kind, JsonCodec codec) {
+  JsonTypeInfo(Type type, Class<?> rawType, JsonFieldKind kind, JsonCodec<Object> codec) {
     this.type = type;
-    this.typeRef = typeRef;
     this.rawType = rawType;
     this.kind = kind;
-    this.codec = codec;
-    primitive = rawType.isPrimitive();
+    stringWriter = codec;
+    utf8Writer = codec;
+    latin1Reader = codec;
+    utf16Reader = codec;
+    utf8Reader = codec;
+    // Only the raw-class ObjectCodec can be replaced by raw-class generated capabilities.
+    // ParameterizedObjectCodec owns binding-specific field types and must remain the slot owner.
+    defaultObjectCodec = codec.getClass() == ObjectCodec.class;
   }
 
   public Type type() {
     return type;
-  }
-
-  public TypeRef<?> typeRef() {
-    return typeRef;
   }
 
   public Class<?> rawType() {
@@ -59,15 +81,47 @@ public final class JsonTypeInfo {
     return kind;
   }
 
-  public JsonCodec codec() {
-    return codec;
+  public StringWriterCodec<Object> stringWriter() {
+    return stringWriter;
   }
 
-  void setCodec(JsonCodec codec) {
-    this.codec = codec;
+  public Utf8WriterCodec<Object> utf8Writer() {
+    return utf8Writer;
   }
 
-  public boolean primitive() {
-    return primitive;
+  public Latin1ReaderCodec<Object> latin1Reader() {
+    return latin1Reader;
+  }
+
+  public Utf16ReaderCodec<Object> utf16Reader() {
+    return utf16Reader;
+  }
+
+  public Utf8ReaderCodec<Object> utf8Reader() {
+    return utf8Reader;
+  }
+
+  void setStringWriter(StringWriterCodec<Object> stringWriter) {
+    this.stringWriter = stringWriter;
+  }
+
+  void setUtf8Writer(Utf8WriterCodec<Object> utf8Writer) {
+    this.utf8Writer = utf8Writer;
+  }
+
+  void setLatin1Reader(Latin1ReaderCodec<Object> latin1Reader) {
+    this.latin1Reader = latin1Reader;
+  }
+
+  void setUtf16Reader(Utf16ReaderCodec<Object> utf16Reader) {
+    this.utf16Reader = utf16Reader;
+  }
+
+  void setUtf8Reader(Utf8ReaderCodec<Object> utf8Reader) {
+    this.utf8Reader = utf8Reader;
+  }
+
+  public boolean usesDefaultObjectCodec() {
+    return defaultObjectCodec;
   }
 }

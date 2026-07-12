@@ -19,47 +19,21 @@
 
 package org.apache.fory.json.codec;
 
-import org.apache.fory.json.meta.JsonFieldAccessor;
-import org.apache.fory.json.reader.JsonReader;
-import org.apache.fory.json.reader.Latin1JsonReader;
-import org.apache.fory.json.reader.Utf16JsonReader;
-import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.resolver.JsonTypeInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
-import org.apache.fory.json.writer.JsonWriter;
-import org.apache.fory.json.writer.StringJsonWriter;
-import org.apache.fory.json.writer.Utf8JsonWriter;
-
-/** JSON read/write behavior for one resolved Java type binding. */
-public interface JsonCodec {
-  void write(JsonWriter writer, Object value, JsonTypeResolver resolver);
-
-  void writeString(StringJsonWriter writer, Object value, JsonTypeResolver resolver);
-
-  void writeUtf8(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver);
-
-  Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver);
-
-  default Object readLatin1(
-      Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-    return read(reader, typeInfo, resolver);
-  }
-
-  default Object readUtf16(
-      Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-    return read(reader, typeInfo, resolver);
-  }
-
-  default Object readUtf8(Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-    return read(reader, typeInfo, resolver);
-  }
-
-  default void readField(
-      JsonReader reader,
-      Object object,
-      JsonFieldAccessor accessor,
-      JsonTypeInfo typeInfo,
-      JsonTypeResolver resolver) {
-    accessor.putObject(object, read(reader, typeInfo, resolver));
-  }
-}
+/**
+ * Typed semantic codec composed from the five concrete JSON input and output capabilities.
+ *
+ * <p>Built-in and user-registered codecs implement this complete interface because one codec owns
+ * the Java type's semantics for every representation. Generated object specializations implement
+ * only the narrow capability they accelerate and are installed independently in the corresponding
+ * {@link org.apache.fory.json.resolver.JsonTypeInfo} slot.
+ *
+ * <p>Each capability consumes or writes the complete value, including its null representation.
+ * There is no secondary non-null codec protocol; field omission belongs to object-field handling,
+ * while primitive null rejection belongs to the primitive codec or primitive field owner.
+ */
+public interface JsonCodec<T>
+    extends StringWriterCodec<T>,
+        Utf8WriterCodec<T>,
+        Latin1ReaderCodec<T>,
+        Utf16ReaderCodec<T>,
+        Utf8ReaderCodec<T> {}

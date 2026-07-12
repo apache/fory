@@ -28,18 +28,69 @@ import java.time.Period;
 import java.time.Year;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
+import java.util.Objects;
 import java.util.UUID;
+import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 
+/**
+ * Representation-neutral JSON emission contract and writer operation state.
+ *
+ * <p>The base owner retains the resolver used by dynamic codecs, the null-field setting, and
+ * configured and current container depth. Concrete writers own output storage and all direct
+ * representation-specific scalar, string, field-token, temporal, and arbitrary-precision output. In
+ * particular, this base class does not retain big-number scratch state or emit digits through
+ * virtual callbacks.
+ *
+ * <p>Writers are mutable and confined to one borrowed {@code ForyJson} state. A failed root write
+ * is discarded and {@link #reset()} restores depth before reuse; nested codecs intentionally do not
+ * add {@code try/finally} solely to decrement depth on an operation that already failed. Methods
+ * accepting preformatted number text require a valid ASCII JSON number and copy it without
+ * reparsing.
+ */
 public abstract class JsonWriter {
+  private final JsonTypeResolver typeResolver;
   private final boolean writeNullFields;
+  private final int maxDepth;
+  private int depth;
 
-  JsonWriter(boolean writeNullFields) {
-    this.writeNullFields = writeNullFields;
+  JsonWriter(JsonConfig config, JsonTypeResolver typeResolver) {
+    this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
+    writeNullFields = config.writeNullFields();
+    maxDepth = config.maxDepth();
+  }
+
+  /**
+   * Returns the resolver owned by this writer for custom codecs that resolve dynamic child types.
+   */
+  public final JsonTypeResolver typeResolver() {
+    return typeResolver;
   }
 
   public final boolean writeNullFields() {
     return writeNullFields;
+  }
+
+  public void reset() {
+    depth = 0;
+  }
+
+  protected final void enterDepth() {
+    int nextDepth = depth + 1;
+    if (nextDepth > maxDepth) {
+      throwDepthExceeded(maxDepth);
+    }
+    depth = nextDepth;
+  }
+
+  protected final void exitDepth() {
+    depth--;
+  }
+
+  private static void throwDepthExceeded(int maxDepth) {
+    throw new ForyJsonException("JSON max depth " + maxDepth + " exceeded");
   }
 
   public abstract void writeNull();
@@ -64,12 +115,16 @@ public abstract class JsonWriter {
     writeString(value.toString());
   }
 
-  public void writeBigInteger(BigInteger value) {
-    writeNumber(value.toString());
-  }
+  // Concrete writers own compact BigDecimal formatting and canonical arbitrary-precision text
+  // copying. BigInteger values outside long range use the JDK conversion, whose recursive large
+  // magnitude algorithm avoids the repeated quotient/remainder allocation of a local chunk loop.
+  public abstract void writeBigInteger(BigInteger value);
 
-  public void writeBigDecimal(BigDecimal value) {
-    writeNumber(value.toString());
+  public abstract void writeBigDecimal(BigDecimal value);
+
+  protected static void throwUnsupportedBigNumber(Class<?> type) {
+    throw new ForyJsonException(
+        "Unsupported JSON big-number subtype " + type + "; register an explicit codec");
   }
 
   public void writeUuid(UUID value) {

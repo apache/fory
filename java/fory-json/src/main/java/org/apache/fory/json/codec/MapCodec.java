@@ -34,7 +34,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.json.ForyJsonException;
-import org.apache.fory.json.JSONObject;
+import org.apache.fory.json.JsonObject;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -47,77 +47,132 @@ import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 
-public abstract class MapCodec extends AbstractJsonCodec {
+/**
+ * Codec family for declared Java map types and JSON object member-name conversion.
+ *
+ * <p>The factory consumes the declared {@link TypeRef} during cold construction, resolves key and
+ * value semantics once, and retains only a {@link MapFactory}, a key codec when needed, and the
+ * resolved value {@link JsonTypeInfo}. JSON object keys are strings on the wire, so {@link
+ * MapKeyCodec} owns the supported string, enum, and numeric name conversions. Value loops select
+ * one concrete reader or writer capability for the active representation rather than resolving a
+ * binding for every entry.
+ *
+ * <p>Readers do not preallocate from input because JSON has no trusted member count. Dynamic {@code
+ * Object} values use insertion-ordered {@link JsonObject}; typed targets use the selected map
+ * factory and optional immutable finish conversion.
+ */
+public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
   private static final Class<?> UNTYPED_MAP = LinkedHashMap.class;
 
-  private final TypeRef<?> typeRef;
   private final MapFactory factory;
 
-  MapCodec(TypeRef<?> typeRef, MapFactory factory) {
-    this.typeRef = typeRef;
+  MapCodec(MapFactory factory) {
     this.factory = factory;
   }
 
-  public static MapCodec create(Class<?> rawType, TypeRef<?> typeRef, JsonTypeResolver resolver) {
+  public static MapCodec<?> create(
+      Class<?> rawType, TypeRef<?> typeRef, JsonTypeResolver resolver) {
     Tuple2<TypeRef<?>, TypeRef<?>> keyValueTypeRefs = CodecUtils.mapKeyValueTypeRefs(typeRef);
     Type keyType = keyValueTypeRefs.f0.getType();
     Class<?> keyRawType = CodecUtils.rawType(keyType, Object.class);
     Type valueType = keyValueTypeRefs.f1.getType();
     Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
     resolver.checkSecure(keyRawType);
-    resolver.checkSecure(valueRawType);
     MapFactory factory = mapFactory(rawType, keyRawType);
+    JsonTypeInfo valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+    Object valueCodec = valueTypeInfo.stringWriter();
     if (keyRawType == String.class) {
-      if (valueRawType == String.class) {
-        return new StringStringMapCodec(typeRef, factory);
+      if (valueCodec == ScalarCodecs.StringCodec.INSTANCE) {
+        return new StringStringMapCodec(factory);
       }
-      if (valueRawType == Boolean.class || valueRawType == boolean.class) {
-        return new StringBooleanMapCodec(typeRef, factory);
+      if (valueCodec == ScalarCodecs.BooleanCodec.BOXED) {
+        return new StringBooleanMapCodec(factory);
       }
-      if (valueRawType == Integer.class || valueRawType == int.class) {
-        return new StringIntMapCodec(typeRef, factory);
+      if (valueCodec == ScalarCodecs.IntCodec.BOXED) {
+        return new StringIntMapCodec(factory);
       }
-      if (valueRawType == Long.class || valueRawType == long.class) {
-        return new StringLongMapCodec(typeRef, factory);
+      if (valueCodec == ScalarCodecs.LongCodec.BOXED) {
+        return new StringLongMapCodec(factory);
       }
-      if (valueRawType == Short.class || valueRawType == short.class) {
-        return new StringShortMapCodec(typeRef, factory);
+      if (valueCodec == ScalarCodecs.ShortCodec.BOXED) {
+        return new StringShortMapCodec(factory);
       }
-      if (valueRawType == Byte.class || valueRawType == byte.class) {
-        return new StringByteMapCodec(typeRef, factory);
+      if (valueCodec == ScalarCodecs.ByteCodec.BOXED) {
+        return new StringByteMapCodec(factory);
       }
-      if (valueRawType == Float.class || valueRawType == float.class) {
-        return new StringFloatMapCodec(typeRef, factory);
+      if (valueCodec == ScalarCodecs.FloatCodec.BOXED) {
+        return new StringFloatMapCodec(factory);
       }
-      if (valueRawType == Double.class || valueRawType == double.class) {
-        return new StringDoubleMapCodec(typeRef, factory);
+      if (valueCodec == ScalarCodecs.DoubleCodec.BOXED) {
+        return new StringDoubleMapCodec(factory);
       }
-      if (valueRawType == BigInteger.class) {
-        return new StringBigIntegerMapCodec(typeRef, factory);
+      if (valueCodec == ScalarCodecs.BigIntegerCodec.INSTANCE) {
+        return new StringBigIntegerMapCodec(factory);
       }
-      if (valueRawType == BigDecimal.class) {
-        return new StringBigDecimalMapCodec(typeRef, factory);
+      if (valueCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
+        return new StringBigDecimalMapCodec(factory);
       }
     }
     if (keyRawType == Object.class) {
-      return new GenericMapCodec(
-          typeRef, factory, MapKeyCodec.OBJECT, valueType, valueRawType, resolver);
+      return new GenericMapCodec(factory, MapKeyCodec.OBJECT, valueTypeInfo);
     }
-    if (valueRawType == String.class && isNumericKey(keyRawType)) {
-      return new NumberStringMapCodec(typeRef, factory, MapKeyCodec.of(keyRawType));
+    if (valueCodec == ScalarCodecs.StringCodec.INSTANCE && isNumericKey(keyRawType)) {
+      return new NumberStringMapCodec(factory, MapKeyCodec.of(keyRawType));
     }
-    return new GenericMapCodec(
-        typeRef, factory, MapKeyCodec.of(keyRawType), valueType, valueRawType, resolver);
+    return new GenericMapCodec(factory, MapKeyCodec.of(keyRawType), valueTypeInfo);
   }
 
-  final TypeRef<?> typeRef() {
-    return typeRef;
+  static Map<Object, Object> readUntyped(Latin1JsonReader reader) {
+    JsonTypeInfo valueInfo = reader.typeResolver().getTypeInfo(Object.class, Object.class);
+    Map<Object, Object> map = (Map<Object, Object>) (Map<?, ?>) new JsonObject();
+    Latin1ReaderCodec<Object> codec = valueInfo.latin1Reader();
+    reader.enterDepth();
+    reader.expectNextToken('{');
+    if (!reader.consumeNextToken('}')) {
+      do {
+        Object key = MapKeyCodec.STRING.readName(reader);
+        reader.expectNextToken(':');
+        map.put(key, codec.readLatin1(reader));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken('}');
+    }
+    reader.exitDepth();
+    return map;
   }
 
-  static Map<Object, Object> readUntyped(JsonReader reader, JsonTypeResolver resolver) {
-    JsonTypeInfo valueInfo = resolver.getTypeInfo(Object.class, Object.class);
-    Map<Object, Object> map = (Map<Object, Object>) (Map<?, ?>) new JSONObject();
-    readGeneric(reader, map, MapKeyCodec.STRING, valueInfo, valueInfo.codec(), resolver);
+  static Map<Object, Object> readUntyped(Utf16JsonReader reader) {
+    JsonTypeInfo valueInfo = reader.typeResolver().getTypeInfo(Object.class, Object.class);
+    Map<Object, Object> map = (Map<Object, Object>) (Map<?, ?>) new JsonObject();
+    Utf16ReaderCodec<Object> codec = valueInfo.utf16Reader();
+    reader.enterDepth();
+    reader.expectNextToken('{');
+    if (!reader.consumeNextToken('}')) {
+      do {
+        Object key = MapKeyCodec.STRING.readName(reader);
+        reader.expectNextToken(':');
+        map.put(key, codec.readUtf16(reader));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken('}');
+    }
+    reader.exitDepth();
+    return map;
+  }
+
+  static Map<Object, Object> readUntyped(Utf8JsonReader reader) {
+    JsonTypeInfo valueInfo = reader.typeResolver().getTypeInfo(Object.class, Object.class);
+    Map<Object, Object> map = (Map<Object, Object>) (Map<?, ?>) new JsonObject();
+    Utf8ReaderCodec<Object> codec = valueInfo.utf8Reader();
+    reader.enterDepth();
+    reader.expectNextToken('{');
+    if (!reader.consumeNextToken('}')) {
+      do {
+        Object key = MapKeyCodec.STRING.readName(reader);
+        reader.expectNextToken(':');
+        map.put(key, codec.readUtf8(reader));
+      } while (reader.consumeNextToken(','));
+      reader.expectNextToken('}');
+    }
+    reader.exitDepth();
     return map;
   }
 
@@ -125,32 +180,12 @@ public abstract class MapCodec extends AbstractJsonCodec {
     return factory.newMap();
   }
 
-  final Object finishMap(Map<Object, Object> map) {
+  final Map<?, ?> finishMap(Map<Object, Object> map) {
     return factory.finish(map);
   }
 
   private static void writeKey(JsonWriter writer, Object key, MapKeyCodec keyCodec) {
     keyCodec.writeName(writer, key);
-  }
-
-  private static void readGeneric(
-      JsonReader reader,
-      Map<Object, Object> map,
-      MapKeyCodec keyCodec,
-      JsonTypeInfo valueInfo,
-      JsonCodec valueCodec,
-      JsonTypeResolver resolver) {
-    reader.enterDepth();
-    reader.expect('{');
-    if (!reader.consume('}')) {
-      do {
-        Object key = keyCodec.readName(reader);
-        reader.expect(':');
-        map.put(key, valueCodec.read(reader, valueInfo, resolver));
-      } while (reader.consume(','));
-      reader.expect('}');
-    }
-    reader.exitDepth();
   }
 
   @SuppressWarnings("unchecked")
@@ -162,8 +197,8 @@ public abstract class MapCodec extends AbstractJsonCodec {
     if (guavaFactory != null) {
       return guavaFactory;
     }
-    if (rawType == JSONObject.class) {
-      return () -> (Map<Object, Object>) (Map<?, ?>) new JSONObject();
+    if (rawType == JsonObject.class) {
+      return () -> (Map<Object, Object>) (Map<?, ?>) new JsonObject();
     }
     if (rawType == EnumMap.class) {
       if (!keyRawType.isEnum()) {
@@ -225,68 +260,126 @@ public abstract class MapCodec extends AbstractJsonCodec {
   interface MapFactory {
     Map<Object, Object> newMap();
 
-    default Object finish(Map<Object, Object> map) {
+    default Map<?, ?> finish(Map<Object, Object> map) {
       return map;
     }
   }
 
-  public static final class GenericMapCodec extends MapCodec {
+  public static final class GenericMapCodec extends MapCodec<Map<?, ?>> {
     private final MapKeyCodec keyCodec;
     private final JsonTypeInfo valueTypeInfo;
-    private JsonCodec valueCodec;
 
-    private GenericMapCodec(
-        TypeRef<?> typeRef,
-        MapFactory factory,
-        MapKeyCodec keyCodec,
-        Type valueType,
-        Class<?> valueRawType,
-        JsonTypeResolver resolver) {
-      super(typeRef, factory);
+    private GenericMapCodec(MapFactory factory, MapKeyCodec keyCodec, JsonTypeInfo valueTypeInfo) {
+      super(factory);
       this.keyCodec = keyCodec;
-      valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
-      valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
+      this.valueTypeInfo = valueTypeInfo;
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    public void writeString(StringJsonWriter writer, Map<?, ?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      StringWriterCodec<Object> codec = valueTypeInfo.stringWriter();
       writer.writeObjectStart();
       int index = 0;
-      for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
+      for (Map.Entry<?, ?> entry : value.entrySet()) {
         writer.writeComma(index++);
         writeKey(writer, entry.getKey(), keyCodec);
-        valueCodec.write(writer, entry.getValue(), resolver);
+        codec.writeString(writer, entry.getValue());
       }
       writer.writeObjectEnd();
     }
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
+    public void writeUtf8(Utf8JsonWriter writer, Map<?, ?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      Utf8WriterCodec<Object> codec = valueTypeInfo.utf8Writer();
+      writer.writeObjectStart();
+      int index = 0;
+      for (Map.Entry<?, ?> entry : value.entrySet()) {
+        writer.writeComma(index++);
+        writeKey(writer, entry.getKey(), keyCodec);
+        codec.writeUtf8(writer, entry.getValue());
+      }
+      writer.writeObjectEnd();
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Map<?, ?> readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
       Map<Object, Object> map = newMap();
-      readGeneric(reader, map, keyCodec, valueTypeInfo, valueCodec, resolver);
+      Latin1ReaderCodec<Object> codec = valueTypeInfo.latin1Reader();
+      reader.expectNextToken('{');
+      if (!reader.consumeNextToken('}')) {
+        do {
+          Object key = keyCodec.readName(reader);
+          reader.expectNextToken(':');
+          map.put(key, codec.readLatin1(reader));
+        } while (reader.consumeNextToken(','));
+        reader.expectNextToken('}');
+      }
+      reader.exitDepth();
+      return finishMap(map);
+    }
+
+    @Override
+    public Map<?, ?> readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      Map<Object, Object> map = newMap();
+      Utf16ReaderCodec<Object> codec = valueTypeInfo.utf16Reader();
+      reader.expectNextToken('{');
+      if (!reader.consumeNextToken('}')) {
+        do {
+          Object key = keyCodec.readName(reader);
+          reader.expectNextToken(':');
+          map.put(key, codec.readUtf16(reader));
+        } while (reader.consumeNextToken(','));
+        reader.expectNextToken('}');
+      }
+      reader.exitDepth();
+      return finishMap(map);
+    }
+
+    @Override
+    public Map<?, ?> readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      Map<Object, Object> map = newMap();
+      Utf8ReaderCodec<Object> codec = valueTypeInfo.utf8Reader();
+      reader.expectNextToken('{');
+      if (!reader.consumeNextToken('}')) {
+        do {
+          Object key = keyCodec.readName(reader);
+          reader.expectNextToken(':');
+          map.put(key, codec.readUtf8(reader));
+        } while (reader.consumeNextToken(','));
+        reader.expectNextToken('}');
+      }
+      reader.exitDepth();
       return finishMap(map);
     }
   }
 
-  public abstract static class StringKeyMapCodec extends MapCodec {
-    StringKeyMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+  public abstract static class StringKeyMapCodec extends MapCodec<Map<?, ?>> {
+    StringKeyMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
-    public final Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public final Map<?, ?> readLatin1(Latin1JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -297,7 +390,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         do {
           String key = reader.readString();
           reader.expectNextToken(':');
-          map.put(key, reader.tryReadNullToken() ? null : readLatin1Value(reader));
+          map.put(key, readLatin1Value(reader));
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
@@ -306,8 +399,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public final Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public final Map<?, ?> readUtf16(Utf16JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -318,7 +410,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         do {
           String key = reader.readString();
           reader.expectNextToken(':');
-          map.put(key, reader.tryReadNullToken() ? null : readUtf16Value(reader));
+          map.put(key, readUtf16Value(reader));
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
@@ -327,8 +419,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public final Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public final Map<?, ?> readUtf8(Utf8JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -339,7 +430,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         do {
           String key = reader.readString();
           reader.expectNextToken(':');
-          map.put(key, reader.tryReadNullToken() ? null : readUtf8Value(reader));
+          map.put(key, readUtf8Value(reader));
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
@@ -347,6 +438,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
       return finishMap(map);
     }
 
+    // Each scalar specialization owns the complete map value, including JSON null.
     abstract Object readLatin1Value(Latin1JsonReader reader);
 
     abstract Object readUtf16Value(Utf16JsonReader reader);
@@ -355,12 +447,11 @@ public abstract class MapCodec extends AbstractJsonCodec {
   }
 
   public static final class StringStringMapCodec extends StringKeyMapCodec {
-    private StringStringMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringStringMapCodec(MapFactory factory) {
+      super(factory);
     }
 
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    private void writeMap(JsonWriter writer, Object value) {
       writer.writeObjectStart();
       int index = 0;
       for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
@@ -377,55 +468,45 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      Map<Object, Object> map = newMap();
-      reader.expect('{');
-      if (!reader.consume('}')) {
-        do {
-          String key = reader.readString();
-          reader.expect(':');
-          map.put(key, reader.tryReadNull() ? null : reader.readString());
-        } while (reader.consume(','));
-        reader.expect('}');
+    public void writeString(StringJsonWriter writer, Map<?, ?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
       }
-      reader.exitDepth();
-      return finishMap(map);
+      writeMap(writer, value);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Map<?, ?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      writeMap(writer, value);
     }
 
     @Override
     Object readLatin1Value(Latin1JsonReader reader) {
-      return reader.readString();
+      return reader.readNullableString();
     }
 
     @Override
     Object readUtf16Value(Utf16JsonReader reader) {
-      return reader.readString();
+      return reader.readNullableString();
     }
 
     @Override
     Object readUtf8Value(Utf8JsonReader reader) {
-      return reader.readString();
+      return reader.readNullableString();
     }
   }
 
   public static final class StringBooleanMapCodec extends StringKeyMapCodec {
-    private StringBooleanMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringBooleanMapCodec(MapFactory factory) {
+      super(factory);
     }
 
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    private void writeMap(JsonWriter writer, Object value) {
       writer.writeObjectStart();
       int index = 0;
       for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
@@ -442,55 +523,45 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      Map<Object, Object> map = newMap();
-      reader.expect('{');
-      if (!reader.consume('}')) {
-        do {
-          String key = reader.readString();
-          reader.expect(':');
-          map.put(key, reader.tryReadNull() ? null : reader.readBoolean());
-        } while (reader.consume(','));
-        reader.expect('}');
+    public void writeString(StringJsonWriter writer, Map<?, ?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
       }
-      reader.exitDepth();
-      return finishMap(map);
+      writeMap(writer, value);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Map<?, ?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      writeMap(writer, value);
     }
 
     @Override
     Object readLatin1Value(Latin1JsonReader reader) {
-      return reader.readBooleanValue();
+      return reader.tryReadNullToken() ? null : reader.readBooleanValue();
     }
 
     @Override
     Object readUtf16Value(Utf16JsonReader reader) {
-      return reader.readBooleanValue();
+      return reader.tryReadNullToken() ? null : reader.readBooleanValue();
     }
 
     @Override
     Object readUtf8Value(Utf8JsonReader reader) {
-      return reader.readBooleanValue();
+      return reader.tryReadNullToken() ? null : reader.readBooleanValue();
     }
   }
 
   public abstract static class StringNumberMapCodec extends StringKeyMapCodec {
-    StringNumberMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    StringNumberMapCodec(MapFactory factory) {
+      super(factory);
     }
 
-    @Override
-    final void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    private void writeMap(JsonWriter writer, Object value) {
       writer.writeObjectStart();
       int index = 0;
       for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
@@ -507,68 +578,29 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    final void writeStringNonNull(
-        StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
-    }
-
-    @Override
-    final void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
-    }
-
-    @Override
-    final Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      Map<Object, Object> map = newMap();
-      reader.expect('{');
-      if (!reader.consume('}')) {
-        do {
-          String key = reader.readString();
-          reader.expect(':');
-          map.put(key, reader.tryReadNull() ? null : readNumber(reader));
-        } while (reader.consume(','));
-        reader.expect('}');
+    public final void writeString(StringJsonWriter writer, Map<?, ?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
       }
-      reader.exitDepth();
-      return finishMap(map);
+      writeMap(writer, value);
+    }
+
+    @Override
+    public final void writeUtf8(Utf8JsonWriter writer, Map<?, ?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      writeMap(writer, value);
     }
 
     abstract void writeNumber(JsonWriter writer, Object value);
-
-    abstract Object readNumber(JsonReader reader);
-
-    Object readLatin1Number(Latin1JsonReader reader) {
-      return readNumber(reader);
-    }
-
-    Object readUtf16Number(Utf16JsonReader reader) {
-      return readNumber(reader);
-    }
-
-    Object readUtf8Number(Utf8JsonReader reader) {
-      return readNumber(reader);
-    }
-
-    @Override
-    final Object readLatin1Value(Latin1JsonReader reader) {
-      return readLatin1Number(reader);
-    }
-
-    @Override
-    final Object readUtf16Value(Utf16JsonReader reader) {
-      return readUtf16Number(reader);
-    }
-
-    @Override
-    final Object readUtf8Value(Utf8JsonReader reader) {
-      return readUtf8Number(reader);
-    }
   }
 
   public static final class StringIntMapCodec extends StringNumberMapCodec {
-    private StringIntMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringIntMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -577,29 +609,24 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNumber(JsonReader reader) {
-      return reader.readInt();
+    Object readLatin1Value(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIntValue();
     }
 
     @Override
-    Object readLatin1Number(Latin1JsonReader reader) {
-      return reader.readIntValue();
+    Object readUtf16Value(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIntValue();
     }
 
     @Override
-    Object readUtf16Number(Utf16JsonReader reader) {
-      return reader.readIntValue();
-    }
-
-    @Override
-    Object readUtf8Number(Utf8JsonReader reader) {
-      return reader.readIntValue();
+    Object readUtf8Value(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIntValue();
     }
   }
 
   public static final class StringLongMapCodec extends StringNumberMapCodec {
-    private StringLongMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringLongMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -608,29 +635,24 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNumber(JsonReader reader) {
-      return reader.readLong();
+    Object readLatin1Value(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readLongValue();
     }
 
     @Override
-    Object readLatin1Number(Latin1JsonReader reader) {
-      return reader.readLongValue();
+    Object readUtf16Value(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readLongValue();
     }
 
     @Override
-    Object readUtf16Number(Utf16JsonReader reader) {
-      return reader.readLongValue();
-    }
-
-    @Override
-    Object readUtf8Number(Utf8JsonReader reader) {
-      return reader.readLongValue();
+    Object readUtf8Value(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readLongValue();
     }
   }
 
   public static final class StringShortMapCodec extends StringNumberMapCodec {
-    private StringShortMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringShortMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -639,29 +661,24 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNumber(JsonReader reader) {
-      return readShort(reader.readInt());
+    Object readLatin1Value(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readShort(reader.readIntValue());
     }
 
     @Override
-    Object readLatin1Number(Latin1JsonReader reader) {
-      return readShort(reader.readIntValue());
+    Object readUtf16Value(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readShort(reader.readIntValue());
     }
 
     @Override
-    Object readUtf16Number(Utf16JsonReader reader) {
-      return readShort(reader.readIntValue());
-    }
-
-    @Override
-    Object readUtf8Number(Utf8JsonReader reader) {
-      return readShort(reader.readIntValue());
+    Object readUtf8Value(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readShort(reader.readIntValue());
     }
   }
 
   public static final class StringByteMapCodec extends StringNumberMapCodec {
-    private StringByteMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringByteMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -670,29 +687,24 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNumber(JsonReader reader) {
-      return readByte(reader.readInt());
+    Object readLatin1Value(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readByte(reader.readIntValue());
     }
 
     @Override
-    Object readLatin1Number(Latin1JsonReader reader) {
-      return readByte(reader.readIntValue());
+    Object readUtf16Value(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readByte(reader.readIntValue());
     }
 
     @Override
-    Object readUtf16Number(Utf16JsonReader reader) {
-      return readByte(reader.readIntValue());
-    }
-
-    @Override
-    Object readUtf8Number(Utf8JsonReader reader) {
-      return readByte(reader.readIntValue());
+    Object readUtf8Value(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readByte(reader.readIntValue());
     }
   }
 
   public static final class StringFloatMapCodec extends StringNumberMapCodec {
-    private StringFloatMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringFloatMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -701,14 +713,24 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNumber(JsonReader reader) {
-      return reader.readFloat();
+    Object readLatin1Value(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readFloatTokenValue();
+    }
+
+    @Override
+    Object readUtf16Value(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readFloatTokenValue();
+    }
+
+    @Override
+    Object readUtf8Value(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readFloatTokenValue();
     }
   }
 
   public static final class StringDoubleMapCodec extends StringNumberMapCodec {
-    private StringDoubleMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringDoubleMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -717,53 +739,82 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    Object readNumber(JsonReader reader) {
-      return reader.readDouble();
+    Object readLatin1Value(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readDoubleTokenValue();
+    }
+
+    @Override
+    Object readUtf16Value(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readDoubleTokenValue();
+    }
+
+    @Override
+    Object readUtf8Value(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readDoubleTokenValue();
     }
   }
 
   public static final class StringBigIntegerMapCodec extends StringNumberMapCodec {
-    private StringBigIntegerMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringBigIntegerMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
     void writeNumber(JsonWriter writer, Object value) {
-      writer.writeNumber(value.toString());
+      writer.writeBigInteger((BigInteger) value);
     }
 
     @Override
-    Object readNumber(JsonReader reader) {
-      return new BigInteger(reader.readNumberAsString());
+    Object readLatin1Value(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigInteger();
+    }
+
+    @Override
+    Object readUtf16Value(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigInteger();
+    }
+
+    @Override
+    Object readUtf8Value(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigInteger();
     }
   }
 
   public static final class StringBigDecimalMapCodec extends StringNumberMapCodec {
-    private StringBigDecimalMapCodec(TypeRef<?> typeRef, MapFactory factory) {
-      super(typeRef, factory);
+    private StringBigDecimalMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
     void writeNumber(JsonWriter writer, Object value) {
-      writer.writeNumber(value.toString());
+      writer.writeBigDecimal((BigDecimal) value);
     }
 
     @Override
-    Object readNumber(JsonReader reader) {
-      return reader.readBigDecimal();
+    Object readLatin1Value(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigDecimal();
+    }
+
+    @Override
+    Object readUtf16Value(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigDecimal();
+    }
+
+    @Override
+    Object readUtf8Value(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigDecimal();
     }
   }
 
-  public static final class NumberStringMapCodec extends MapCodec {
+  public static final class NumberStringMapCodec extends MapCodec<Map<?, ?>> {
     private final MapKeyCodec keyCodec;
 
-    private NumberStringMapCodec(TypeRef<?> typeRef, MapFactory factory, MapKeyCodec keyCodec) {
-      super(typeRef, factory);
+    private NumberStringMapCodec(MapFactory factory, MapKeyCodec keyCodec) {
+      super(factory);
       this.keyCodec = keyCodec;
     }
 
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
+    private void writeMap(JsonWriter writer, Object value) {
       writer.writeObjectStart();
       int index = 0;
       for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
@@ -780,35 +831,25 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      reader.enterDepth();
-      Map<Object, Object> map = newMap();
-      reader.expect('{');
-      if (!reader.consume('}')) {
-        do {
-          Object key = keyCodec.readName(reader);
-          reader.expect(':');
-          map.put(key, reader.tryReadNull() ? null : reader.readString());
-        } while (reader.consume(','));
-        reader.expect('}');
+    public void writeString(StringJsonWriter writer, Map<?, ?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
       }
-      reader.exitDepth();
-      return finishMap(map);
+      writeMap(writer, value);
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, Map<?, ?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      writeMap(writer, value);
+    }
+
+    @Override
+    public Map<?, ?> readLatin1(Latin1JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -819,7 +860,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         do {
           Object key = keyCodec.readName(reader);
           reader.expectNextToken(':');
-          map.put(key, reader.tryReadNullToken() ? null : reader.readString());
+          map.put(key, reader.readNullableString());
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
@@ -828,8 +869,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Map<?, ?> readUtf16(Utf16JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -840,7 +880,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         do {
           Object key = keyCodec.readName(reader);
           reader.expectNextToken(':');
-          map.put(key, reader.tryReadNullToken() ? null : reader.readString());
+          map.put(key, reader.readNullableString());
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
@@ -849,8 +889,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
 
     @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Map<?, ?> readUtf8(Utf8JsonReader reader) {
       if (reader.tryReadNullToken()) {
         return null;
       }
@@ -861,7 +900,7 @@ public abstract class MapCodec extends AbstractJsonCodec {
         do {
           Object key = keyCodec.readName(reader);
           reader.expectNextToken(':');
-          map.put(key, reader.tryReadNullToken() ? null : reader.readString());
+          map.put(key, reader.readNullableString());
         } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
@@ -870,6 +909,13 @@ public abstract class MapCodec extends AbstractJsonCodec {
     }
   }
 
+  /**
+   * Converts a declared Java map key to and from a JSON object member name.
+   *
+   * <p>Implementations are selected once while constructing the map codec. Numeric and enum
+   * implementations override reader operations where the concrete reader can parse or hash the
+   * member name directly, avoiding an intermediate String on typed map hot paths.
+   */
   public interface MapKeyCodec {
     MapKeyCodec STRING =
         new MapKeyCodec() {

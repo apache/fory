@@ -17,11 +17,8 @@
  * under the License.
  */
 
-package org.apache.fory.json.reader;
+module fory.json.codec.probe {
+  requires org.apache.fory.json;
 
-import org.apache.fory.json.codec.BaseObjectCodec;
-import org.apache.fory.json.resolver.JsonTypeResolver;
-
-public interface Utf8ObjectReader {
-  Object readUtf8(Utf8JsonReader reader, BaseObjectCodec owner, JsonTypeResolver typeResolver);
+  exports probe;
 }

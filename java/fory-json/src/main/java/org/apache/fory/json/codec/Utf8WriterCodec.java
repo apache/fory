@@ -17,20 +17,17 @@
  * under the License.
  */
 
-package org.apache.fory.json;
+package org.apache.fory.json.codec;
 
-import java.util.ArrayList;
-import java.util.Collection;
+import org.apache.fory.json.writer.Utf8JsonWriter;
 
-/** Mutable JSON array container for dynamic JSON values. */
-public final class JSONArray extends ArrayList<Object> {
-  public JSONArray() {
-    // JSON input has no trusted array size; start from zero to avoid default capacity
-    // amplification for many tiny arrays.
-    super(0);
-  }
-
-  public JSONArray(Collection<?> values) {
-    super(values);
-  }
+/**
+ * Writes one complete resolved Java value, including {@code null}, through the concrete {@link
+ * Utf8JsonWriter} path.
+ *
+ * <p>The active writer retains its {@code JsonTypeResolver}; implementations resolve dynamic child
+ * types from the writer instead of receiving a resolver argument on this hot call.
+ */
+public interface Utf8WriterCodec<T> {
+  void writeUtf8(Utf8JsonWriter writer, T value);
 }

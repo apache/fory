@@ -6,9 +6,16 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 
 - Run all Maven commands from within `java/`.
 - Changes under `java/` must pass code style checks and tests.
+- If tests already passed and the only later change is Maven Spotless formatting, do not rerun
+  tests solely because of that formatting pass. Verify formatting with `spotless:check` and inspect
+  the diff/status instead.
 - Fory Java requires JDK `17+`.
 - Run Java `spotless` with JDK `21+`. If the current runtime is lower than 21, export `JAVA_HOME` to a JDK 21 installation before running `mvn spotless:check` or `mvn spotless:apply`.
 - `fory-core` targets Java 8 bytecode and `fory-format` targets Java 11 bytecode. Do not use newer APIs in those modules.
+- `fory-json` must not depend on or reference `jdk.incubator.vector`, including production and
+  multi-release sources, module descriptors, Maven wiring, and optional runtime paths.
+- JDK25 `fory-json` wide array access must use static-final VarHandles. Do not restore or benchmark
+  Unsafe as a production optimization alternative.
 - Do not use wildcard imports.
 - Import config and annotation types instead of fully qualifying enum constants or annotation
   values; use qualified names only when a real name conflict requires it.

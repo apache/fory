@@ -35,13 +35,28 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.UUID;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.serializer.StringSerializer;
 
+/**
+ * Concrete writer that emits UTF-8 JSON directly into an owned byte buffer.
+ *
+ * <p>Primitive numbers, field tokens, Latin1 strings, and UTF16 strings write directly to the
+ * buffer; Unicode strings validate surrogate pairs while encoding. {@link #toJsonBytes()} returns a
+ * detached copy, while {@link #writeTo(OutputStream)} writes the active range without closing or
+ * flushing the destination. Reset applies the configured retained-buffer limit.
+ *
+ * <p>Finite float and double spelling comes from the JDK formatter, directly when available and
+ * through a retained {@link StringBuilder} otherwise. Compact {@link BigDecimal} values are emitted
+ * directly with JDK-compatible spelling; inflated values and out-of-long {@link BigInteger} values
+ * use canonical JDK text on the cold arbitrary-precision path. The {@link Appendable} methods emit
+ * escaped string content without adding surrounding quotes and are used by formatter-owned quoted
+ * values.
+ */
 public final class Utf8JsonWriter extends JsonWriter implements Appendable {
-  // Pooled writers should retain medium buffers to avoid reallocating common JSON outputs.
-  private static final int RETAINED_CAPACITY = 64 * 1024;
   private static final byte[] MIN_INT_BYTES =
       "-2147483648".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final byte[] MIN_LONG_BYTES =
@@ -98,20 +113,26 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private byte[] buffer;
+  private final StringBuilder decimalBuilder;
+  private final int bufferSizeLimitBytes;
   private int position;
 
-  public Utf8JsonWriter(boolean writeNullFields) {
-    this(writeNullFields, new byte[512]);
+  public Utf8JsonWriter(JsonConfig config, JsonTypeResolver typeResolver) {
+    this(config, typeResolver, new byte[512]);
   }
 
-  public Utf8JsonWriter(boolean writeNullFields, byte[] buffer) {
-    super(writeNullFields);
+  public Utf8JsonWriter(JsonConfig config, JsonTypeResolver typeResolver, byte[] buffer) {
+    super(config, typeResolver);
     this.buffer = buffer;
+    bufferSizeLimitBytes = config.bufferSizeLimitBytes();
+    decimalBuilder = newDecimalBuilder();
   }
 
+  @Override
   public void reset() {
-    if (buffer.length > RETAINED_CAPACITY) {
-      buffer = new byte[RETAINED_CAPACITY];
+    super.reset();
+    if (buffer.length > bufferSizeLimitBytes) {
+      buffer = new byte[bufferSizeLimitBytes];
     }
     position = 0;
   }
@@ -164,7 +185,15 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       writeNonFiniteFloat(value);
       return;
     }
-    writeAsciiNumber(Float.toString(value));
+    ensure(JdkFloatFormatter.MAX_CHARS);
+    int newPosition = JdkFloatFormatter.write(buffer, position, value);
+    if (newPosition >= 0) {
+      position = newPosition;
+      return;
+    }
+    StringBuilder builder = decimalBuilder;
+    JdkFloatFormatter.appendTo(value, builder);
+    writeDecimalBuilder(builder);
   }
 
   @Override
@@ -173,18 +202,58 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       writeNonFiniteDouble(value);
       return;
     }
-    ensure(24);
+    ensure(JdkDoubleFormatter.MAX_CHARS);
     int newPosition = JdkDoubleFormatter.write(buffer, position, value);
     if (newPosition >= 0) {
       position = newPosition;
       return;
     }
-    writeAsciiNumber(Double.toString(value));
+    StringBuilder builder = decimalBuilder;
+    JdkDoubleFormatter.appendTo(value, builder);
+    writeDecimalBuilder(builder);
+  }
+
+  private static StringBuilder newDecimalBuilder() {
+    return JdkFloatFormatter.isAvailable() && JdkDoubleFormatter.isAvailable()
+        ? null
+        : new StringBuilder(JdkDoubleFormatter.MAX_CHARS);
+  }
+
+  private void writeDecimalBuilder(StringBuilder builder) {
+    int length = builder.length();
+    byte[] bytes = buffer;
+    int pos = position;
+    for (int i = 0; i < length; i++) {
+      bytes[pos++] = (byte) builder.charAt(i);
+    }
+    position = pos;
   }
 
   @Override
   public void writeNumber(String value) {
     writeAsciiNumber(value);
+  }
+
+  @Override
+  public void writeBigInteger(BigInteger value) {
+    if (value.getClass() != BigInteger.class) {
+      throwUnsupportedBigNumber(value.getClass());
+    }
+    if (BigNumberDigits.fitsLong(value)) {
+      writeLong(value.longValue());
+      return;
+    }
+    writeBigNumberText(value.toString());
+  }
+
+  @Override
+  public void writeBigDecimal(BigDecimal value) {
+    long compact = BigDecimalFields.compactValue(value);
+    if (BigDecimalFields.isCompact(compact)) {
+      writeCompactBigDecimal(compact, BigDecimalFields.scale(value));
+      return;
+    }
+    writeInflatedBigDecimal(value);
   }
 
   @Override
@@ -221,28 +290,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       return;
     }
     writeStringChars(value);
-  }
-
-  @Override
-  public void writeBigInteger(BigInteger value) {
-    try {
-      writeLong(value.longValueExact());
-    } catch (ArithmeticException e) {
-      writeNumber(value.toString());
-    }
-  }
-
-  @Override
-  public void writeBigDecimal(BigDecimal value) {
-    if (value.scale() == 0) {
-      try {
-        writeLong(value.longValueExact());
-        return;
-      } catch (ArithmeticException e) {
-        // Fall through to BigDecimal's canonical string form for large values.
-      }
-    }
-    writeNumber(value.toString());
   }
 
   @Override
@@ -516,6 +563,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectIntField(byte[] namePrefix, int value) {
+    enterDepth();
     ensure(namePrefix.length + 12);
     buffer[position++] = (byte) '{';
     writeRawNoEnsure(namePrefix);
@@ -523,6 +571,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectIntField(long prefix0, long prefix1, int prefixLength, int value) {
+    enterDepth();
     ensurePackedPrefix(prefixLength, 12);
     buffer[position++] = (byte) '{';
     writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
@@ -547,6 +596,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectLongField(byte[] namePrefix, long value) {
+    enterDepth();
     ensure(namePrefix.length + 21);
     buffer[position++] = (byte) '{';
     writeRawNoEnsure(namePrefix);
@@ -554,6 +604,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeObjectLongField(long prefix0, long prefix1, int prefixLength, long value) {
+    enterDepth();
     ensurePackedPrefix(prefixLength, 21);
     buffer[position++] = (byte) '{';
     writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
@@ -676,6 +727,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeLongArray(long[] values) {
+    enterDepth();
     ensure(2);
     buffer[position++] = '[';
     int length = values.length;
@@ -698,6 +750,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       }
     }
     buffer[position++] = ']';
+    exitDepth();
   }
 
   public void writeStringElement(int index, String value) {
@@ -762,22 +815,26 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeObjectStart() {
+    enterDepth();
     writeByteRaw((byte) '{');
   }
 
   @Override
   public void writeObjectEnd() {
     writeByteRaw((byte) '}');
+    exitDepth();
   }
 
   @Override
   public void writeArrayStart() {
+    enterDepth();
     writeByteRaw((byte) '[');
   }
 
   @Override
   public void writeArrayEnd() {
     writeByteRaw((byte) ']');
+    exitDepth();
   }
 
   @Override
@@ -826,7 +883,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     for (; i < upperBound; i += 16) {
       long word0 = LittleEndian.getInt64(value, i);
       long word1 = LittleEndian.getInt64(value, i + 8);
-      if (!isJsonAsciiWord(word0) || !isJsonAsciiWord(word1)) {
+      if (!isJsonAsciiWords(word0, word1)) {
         return false;
       }
     }
@@ -994,10 +1051,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     long word2 = LittleEndian.getInt64(value, 16);
     int tailOffset = length - Long.BYTES;
     long tail = LittleEndian.getInt64(value, tailOffset);
-    if (!isJsonAsciiWord(word0)
-        || !isJsonAsciiWord(word1)
-        || !isJsonAsciiWord(word2)
-        || !isJsonAsciiWord(tail)) {
+    if (!isJsonAsciiWords(word0, word1, word2, tail)) {
       position = start;
       return false;
     }
@@ -1020,7 +1074,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     long word1 = LittleEndian.getInt64(value, 8);
     int tailOffset = length - Long.BYTES;
     long tail = LittleEndian.getInt64(value, tailOffset);
-    if (!isJsonAsciiWord(word0) || !isJsonAsciiWord(word1) || !isJsonAsciiWord(tail)) {
+    if (!isJsonAsciiWords(word0, word1, tail)) {
       position = start;
       return false;
     }
@@ -1340,14 +1394,42 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private void writeAsciiNumber(String value) {
+    int length = value.length();
+    ensure(length);
+    writeAsciiNumberNoEnsure(value, length);
+  }
+
+  private void writeBigNumberText(String value) {
+    int length = value.length();
+    ensureNumberChars(length);
+    writeAsciiNumberNoEnsure(value, length);
+  }
+
+  private void writeInflatedBigDecimal(BigDecimal value) {
+    if (value.getClass() == BigDecimal.class) {
+      writeBigNumberText(value.toString());
+      return;
+    }
+    // Never invoke overridable numeric methods on a subtype. Rebuild the canonical JDK value from
+    // BigDecimal's base fields on this cold path.
+    if (!BigDecimalFields.canReadInflatedValue()) {
+      throwUnsupportedBigNumber(value.getClass());
+    }
+    BigDecimal canonical =
+        new BigDecimal(BigDecimalFields.inflatedValue(value), BigDecimalFields.scale(value));
+    writeBigNumberText(canonical.toString());
+  }
+
+  private void writeAsciiNumberNoEnsure(String value, int length) {
     if (STRING_BYTES_BACKED) {
       byte[] bytes = StringSerializer.getStringBytes(value);
-      if (bytes.length == value.length()) {
-        writeRaw(bytes);
+      if (bytes.length == length) {
+        System.arraycopy(bytes, 0, buffer, position, length);
+        position += length;
         return;
       }
     }
-    writeAscii(value);
+    writeAsciiNoEnsure(value);
   }
 
   private void writeNonFiniteFloat(float value) {
@@ -1373,6 +1455,111 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private void writeRawNoEnsure(byte[] bytes) {
     System.arraycopy(bytes, 0, buffer, position, bytes.length);
     position += bytes.length;
+  }
+
+  // Keep the complete compact-decimal layout in this concrete-writer method. Splitting its
+  // branches into small helpers lets C2 inline the whole formatter into generated object writers,
+  // exhausting their node budget and slowing unrelated fields.
+  private void writeCompactBigDecimal(long unscaled, int scale) {
+    if (scale == 0) {
+      writeLong(unscaled);
+      return;
+    }
+    boolean negative = unscaled < 0;
+    if (negative) {
+      unscaled = -unscaled;
+    }
+    int precision = BigNumberDigits.digitCount(unscaled);
+    long adjustedExponent = (long) precision - scale - 1L;
+    boolean plain = scale >= 0 && adjustedExponent >= -6;
+    long point = (long) precision - scale;
+    long outputChars;
+    if (plain) {
+      outputChars = point <= 0 ? 2L - point + precision : precision + 1L;
+    } else {
+      long magnitude = adjustedExponent < 0 ? -adjustedExponent : adjustedExponent;
+      outputChars =
+          (long) precision + (precision == 1 ? 0 : 1) + 2 + BigNumberDigits.digitCount(magnitude);
+    }
+    outputChars += negative ? 1 : 0;
+    ensureNumberChars(outputChars + BigNumberDigits.PACKED_WRITE_SLACK);
+    if (negative) {
+      buffer[position++] = (byte) '-';
+    }
+    if (plain) {
+      if (point <= 0) {
+        byte[] bytes = buffer;
+        int pos = position;
+        bytes[pos++] = (byte) '0';
+        bytes[pos++] = (byte) '.';
+        long zeroes = -point;
+        while (zeroes-- > 0) {
+          bytes[pos++] = (byte) '0';
+        }
+        position = pos;
+        writePaddedCompactDigits(unscaled, precision);
+        return;
+      }
+      long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[scale];
+      long integer = unscaled / divisor;
+      long fraction = unscaled - integer * divisor;
+      writePaddedCompactDigits(integer, (int) point);
+      buffer[position++] = (byte) '.';
+      writePaddedCompactDigits(fraction, scale);
+      return;
+    }
+    if (precision == 1) {
+      writePositiveLongNoEnsure(unscaled);
+    } else {
+      long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[precision - 1];
+      int first = (int) (unscaled / divisor);
+      long rest = unscaled - first * divisor;
+      byte[] bytes = buffer;
+      int pos = position;
+      bytes[pos++] = (byte) ('0' + first);
+      bytes[pos++] = (byte) '.';
+      position = pos;
+      writePaddedCompactDigits(rest, precision - 1);
+    }
+    byte[] bytes = buffer;
+    int pos = position;
+    bytes[pos++] = (byte) 'E';
+    if (adjustedExponent >= 0) {
+      bytes[pos++] = (byte) '+';
+    }
+    position = pos;
+    writeLongNoEnsure(adjustedExponent);
+  }
+
+  private void writePaddedCompactDigits(long value, int digits) {
+    if (digits <= 9) {
+      position = writePaddedDigits(buffer, position, (int) value, digits);
+      return;
+    }
+    long high = value / 1_000_000_000L;
+    int low = (int) (value - high * 1_000_000_000L);
+    byte[] bytes = buffer;
+    int pos = position;
+    if (digits <= 18) {
+      pos = writePaddedDigits(bytes, pos, (int) high, digits - 9);
+    } else {
+      int top = (int) (high / 1_000_000_000L);
+      int middle = (int) (high - (long) top * 1_000_000_000L);
+      pos = writePaddedDigits(bytes, pos, top, 1);
+      pos = writePadded9(bytes, pos, middle);
+    }
+    position = writePadded9(bytes, pos, low);
+  }
+
+  private void ensureNumberChars(long chars) {
+    if (chars > Integer.MAX_VALUE - position) {
+      throwNumberOutputTooLarge();
+    }
+    ensure((int) chars);
+  }
+
+  private static void throwNumberOutputTooLarge() {
+    throw new ForyJsonException("JSON number output too large");
   }
 
   private void writePackedRawNoEnsure(long prefix0, long prefix1, int prefixLength) {
@@ -1404,10 +1591,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private void grow(int minCapacity) {
-    int newCapacity = buffer.length << 1;
-    while (newCapacity < minCapacity) {
-      newCapacity <<= 1;
-    }
+    int capacity = buffer.length;
+    int expanded = capacity + Math.max(capacity, 1);
+    int newCapacity = expanded >= minCapacity && expanded > 0 ? expanded : minCapacity;
     buffer = Arrays.copyOf(buffer, newCapacity);
   }
 
@@ -1434,6 +1620,75 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     return (((word + ASCII_CONTROL_OFFSET) & ~word) & HIGH_BITS) == HIGH_BITS
         && (((word ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS) == HIGH_BITS
         && notBackslashMask == HIGH_BITS;
+  }
+
+  // Aggregate every exact rejection mask before branching. Splitting this back into per-word
+  // calls adds one common-path branch for each eight bytes written.
+  private static boolean isJsonAsciiWords(long word0, long word1) {
+    long notBackslashMask =
+        ((word0 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & HIGH_BITS;
+    if ((notBackslashMask & (word0 + ASCII_GT_QUOTE_OFFSET) & (word1 + ASCII_GT_QUOTE_OFFSET))
+        == HIGH_BITS) {
+      return true;
+    }
+    return ((word0 + ASCII_CONTROL_OFFSET)
+            & (word1 + ASCII_CONTROL_OFFSET)
+            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & notBackslashMask)
+        == HIGH_BITS;
+  }
+
+  private static boolean isJsonAsciiWords(long word0, long word1, long word2) {
+    long notBackslashMask =
+        ((word0 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word2 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & HIGH_BITS;
+    if ((notBackslashMask
+            & (word0 + ASCII_GT_QUOTE_OFFSET)
+            & (word1 + ASCII_GT_QUOTE_OFFSET)
+            & (word2 + ASCII_GT_QUOTE_OFFSET))
+        == HIGH_BITS) {
+      return true;
+    }
+    return ((word0 + ASCII_CONTROL_OFFSET)
+            & (word1 + ASCII_CONTROL_OFFSET)
+            & (word2 + ASCII_CONTROL_OFFSET)
+            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word2 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & notBackslashMask)
+        == HIGH_BITS;
+  }
+
+  private static boolean isJsonAsciiWords(long word0, long word1, long word2, long word3) {
+    long notBackslashMask =
+        ((word0 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word2 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word3 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & HIGH_BITS;
+    if ((notBackslashMask
+            & (word0 + ASCII_GT_QUOTE_OFFSET)
+            & (word1 + ASCII_GT_QUOTE_OFFSET)
+            & (word2 + ASCII_GT_QUOTE_OFFSET)
+            & (word3 + ASCII_GT_QUOTE_OFFSET))
+        == HIGH_BITS) {
+      return true;
+    }
+    return ((word0 + ASCII_CONTROL_OFFSET)
+            & (word1 + ASCII_CONTROL_OFFSET)
+            & (word2 + ASCII_CONTROL_OFFSET)
+            & (word3 + ASCII_CONTROL_OFFSET)
+            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word2 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word3 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & notBackslashMask)
+        == HIGH_BITS;
   }
 
   private static boolean isJsonAsciiInt(int word) {
@@ -1538,6 +1793,20 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     int high = divide10000(value);
     int low = value - high * 10000;
     return writePadded8(bytes, pos, high, low);
+  }
+
+  private static int writePadded9(byte[] bytes, int pos, int value) {
+    int high = value / 100_000_000;
+    bytes[pos++] = (byte) ('0' + high);
+    return writePadded8Digits(bytes, pos, value - high * 100_000_000);
+  }
+
+  private static int writePaddedDigits(byte[] bytes, int pos, int value, int digits) {
+    int zeroes = digits - BigNumberDigits.digitCount(value);
+    while (zeroes-- > 0) {
+      bytes[pos++] = (byte) '0';
+    }
+    return writePositiveInt(bytes, pos, value);
   }
 
   private static int writeHex(byte[] bytes, int pos, long value, int shift, int count) {

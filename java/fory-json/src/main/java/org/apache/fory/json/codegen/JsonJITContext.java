@@ -26,86 +26,87 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.function.Function;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.codegen.CodeGenerator;
-import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.Preconditions;
 
-/** Coordinates asynchronous JSON object-codec compilation and generated-result publication. */
+/**
+ * Generic resolver-local lock and completion-notification context for generated code.
+ *
+ * <p>This class deliberately has the same owner model as Fory core's JIT context. It knows nothing
+ * about JSON readers, writers, capabilities, generated classes, or resolver metadata. A root graph
+ * and its completion callbacks use the same local lock. The JIT action runs outside that lock;
+ * success reacquires it before invoking the resolver-owned publication callback and then registered
+ * parent notifications. Synchronous mode uses the callback map only to break recursive compilation
+ * of the same identifier.
+ *
+ * <p>{@link JITCallback#id()} correlates active child notifications; it is not a task-request or
+ * deduplication key. Every asynchronous registration submits its action and owns its completion
+ * callback. Duplicate actions converge on {@link JsonCodegen}'s shared generated-class cache, then
+ * may construct and install equivalent resolver-local instances. This is intentional: generated
+ * class compilation is single-flight, while resolver-local subscribers, construction, publication,
+ * and generated parent-field updates are not deduplicated.
+ */
+@Internal
 public final class JsonJITContext {
   private final boolean asyncCompilationEnabled;
+  private final ExecutorService compilationService;
   private final ReentrantLock jitLock;
-  private int jsonVisitState;
-  private final Map<Object, List<NotifyCallback>> hasJITResult;
+  private final Map<Object, List<NotifyCallback>> callbacks;
+  private int numRunningTasks;
 
-  public JsonJITContext(boolean asyncCompilationEnabled) {
+  @Internal
+  public JsonJITContext(boolean asyncCompilationEnabled, ExecutorService compilationService) {
     this.asyncCompilationEnabled = asyncCompilationEnabled;
+    this.compilationService = compilationService;
     jitLock = new ReentrantLock(true);
-    hasJITResult = new HashMap<>();
-  }
-
-  public boolean asyncCompilationEnabled() {
-    return asyncCompilationEnabled;
+    callbacks = new HashMap<>();
   }
 
   @Internal
-  public <T> T registerObjectJITCallback(
-      Callable<T> interpreterModeAction, Callable<T> jitAction, ObjectJITCallback<T> callback) {
+  public <T> T registerJITCallback(
+      Callable<T> interpretedAction, Callable<T> jitAction, JITCallback<T> callback) {
     try {
       lock();
-      Object id = callback.id();
-      if (asyncCompilationEnabled && !isAsyncVisitingJson()) {
-        List<NotifyCallback> callbacks = hasJITResult.get(id);
-        if (callbacks != null) {
-          callbacks.add(
-              new NotifyCallback() {
-                @Override
-                @SuppressWarnings("unchecked")
-                public void onNotifyResult(Object result) {
-                  callback.onSuccess((T) result);
-                }
-
-                @Override
-                public void onNotifyMissed() {}
-              });
-          return interpreterModeAction.call();
+      if (!asyncCompilationEnabled) {
+        Object id = callback.id();
+        if (callbacks.containsKey(id)) {
+          return interpretedAction.call();
         }
-        hasJITResult.put(id, new ArrayList<>());
-        ExecutorService compilationService = CodeGenerator.getCompilationService();
-        compilationService.execute(
-            () -> {
-              try {
-                T result = jitAction.call();
-                try {
-                  lock();
-                  // Keep this entry visible while the owner callback installs generated codecs.
-                  // Recursive codec construction can subscribe nested fields for the same type.
-                  List<NotifyCallback> notifyCallbacks = hasJITResult.get(id);
-                  callback.onSuccess(result);
-                  if (notifyCallbacks != null) {
-                    for (int i = 0; i < notifyCallbacks.size(); i++) {
-                      notifyCallbacks.get(i).onNotifyResult(result);
-                    }
-                  }
-                  hasJITResult.remove(id);
-                } finally {
-                  unlock();
-                }
-              } catch (Throwable t) {
-                try {
-                  lock();
-                  hasJITResult.remove(id);
-                  callback.onFailure(t);
-                } finally {
-                  unlock();
-                }
-              }
-            });
-        return interpreterModeAction.call();
+        callbacks.put(id, new ArrayList<>());
+        try {
+          T result = jitAction.call();
+          callback.onSuccess(result);
+          List<NotifyCallback> notifyCallbacks = callbacks.get(id);
+          for (int i = 0; i < notifyCallbacks.size(); i++) {
+            notifyCallbacks.get(i).onNotifyResult(result);
+          }
+          return result;
+        } catch (Throwable t) {
+          callback.onFailure(t);
+          ExceptionUtils.throwException(t);
+          throw new IllegalStateException("unreachable");
+        } finally {
+          callbacks.remove(id);
+        }
       }
-      return jitAction.call();
+      // Do not skip registration when this ID is already present. JsonCodegen single-flights class
+      // compilation, while every local registration must retain its own publication callback.
+      callbacks.computeIfAbsent(callback.id(), ignored -> new ArrayList<>());
+      numRunningTasks++;
+      ExecutorService service = compilationService;
+      if (service == null) {
+        service = CodeGenerator.getCompilationService();
+      }
+      try {
+        service.execute(() -> runJITAction(jitAction, callback));
+      } catch (Throwable t) {
+        finishTask();
+        callback.onFailure(t);
+        ExceptionUtils.throwException(t);
+      }
+      return interpretedAction.call();
     } catch (Exception e) {
       ExceptionUtils.throwException(e);
       throw new IllegalStateException("unreachable");
@@ -114,50 +115,62 @@ public final class JsonJITContext {
     }
   }
 
-  public void registerJITNotifyCallback(Object id, NotifyCallback notifyCallback) {
+  private <T> void runJITAction(Callable<T> jitAction, JITCallback<T> callback) {
+    T result;
+    try {
+      result = jitAction.call();
+    } catch (Throwable t) {
+      completeFailure(callback, t);
+      return;
+    }
+    completeSuccess(callback, result);
+  }
+
+  private <T> void completeSuccess(JITCallback<T> callback, T result) {
+    try {
+      lock();
+      callback.onSuccess(result);
+      List<NotifyCallback> notifyCallbacks = callbacks.get(callback.id());
+      if (notifyCallbacks != null) {
+        for (int i = 0; i < notifyCallbacks.size(); i++) {
+          notifyCallbacks.get(i).onNotifyResult(result);
+        }
+      }
+    } finally {
+      finishTask();
+      unlock();
+    }
+  }
+
+  private <T> void completeFailure(JITCallback<T> callback, Throwable failure) {
+    // The callback owns failure reporting. Resolver callbacks intentionally retain interpreted
+    // capability state after an asynchronous compilation failure.
+    try {
+      lock();
+      callback.onFailure(failure);
+    } finally {
+      finishTask();
+      unlock();
+    }
+  }
+
+  private void finishTask() {
+    numRunningTasks--;
+    if (numRunningTasks == 0) {
+      callbacks.clear();
+    }
+  }
+
+  public void registerJITNotifyCallback(Object id, NotifyCallback callback) {
     Preconditions.checkNotNull(id);
     try {
       lock();
-      List<NotifyCallback> notifyCallbacks = hasJITResult.get(id);
+      List<NotifyCallback> notifyCallbacks = callbacks.get(id);
       if (notifyCallbacks == null) {
-        notifyCallback.onNotifyMissed();
+        callback.onNotifyMissed();
       } else {
-        notifyCallbacks.add(notifyCallback);
+        notifyCallbacks.add(callback);
       }
-    } finally {
-      unlock();
-    }
-  }
-
-  @Internal
-  public <T> T asyncVisitJson(
-      JsonSharedRegistry sharedRegistry, Function<JsonSharedRegistry, T> function) {
-    try {
-      lock();
-      jsonVisitState++;
-      return function.apply(sharedRegistry);
-    } finally {
-      jsonVisitState--;
-      unlock();
-    }
-  }
-
-  private boolean isAsyncVisitingJson() {
-    if (asyncCompilationEnabled) {
-      try {
-        lock();
-        return jsonVisitState != 0;
-      } finally {
-        unlock();
-      }
-    }
-    return false;
-  }
-
-  public boolean hasJITResult(Object key) {
-    try {
-      lock();
-      return hasJITResult.get(key) != null;
     } finally {
       unlock();
     }
@@ -171,11 +184,6 @@ public final class JsonJITContext {
   }
 
   @Internal
-  public boolean lockedByCurrentThread() {
-    return !asyncCompilationEnabled || jitLock.isHeldByCurrentThread();
-  }
-
-  @Internal
   public void unlock() {
     if (asyncCompilationEnabled) {
       jitLock.unlock();
@@ -183,12 +191,16 @@ public final class JsonJITContext {
   }
 
   @Internal
-  public interface ObjectJITCallback<T> {
+  public boolean lockedByCurrentThread() {
+    return !asyncCompilationEnabled || jitLock.isHeldByCurrentThread();
+  }
+
+  @Internal
+  public interface JITCallback<T> {
     void onSuccess(T result);
 
-    default void onFailure(Throwable e) {
-      e.printStackTrace();
-      ExceptionUtils.throwException(e);
+    default void onFailure(Throwable failure) {
+      ExceptionUtils.throwException(failure);
     }
 
     Object id();

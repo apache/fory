@@ -17,20 +17,17 @@
  * under the License.
  */
 
-package org.apache.fory.json;
+package org.apache.fory.json.codec;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import org.apache.fory.json.reader.Utf8JsonReader;
 
-/** Mutable JSON object container for dynamic JSON values. */
-public final class JSONObject extends LinkedHashMap<String, Object> {
-  public JSONObject() {
-    // JSON input has no trusted object size; start from zero to avoid default capacity
-    // amplification for many tiny objects.
-    super(0);
-  }
-
-  public JSONObject(Map<String, ?> values) {
-    super(values);
-  }
+/**
+ * Reads one complete resolved Java value, including JSON {@code null}, through the concrete {@link
+ * Utf8JsonReader} path.
+ *
+ * <p>The reader retains its resolver and the resolved capability already owns its declared type;
+ * neither resolver nor {@code JsonTypeInfo} is passed through this hot call.
+ */
+public interface Utf8ReaderCodec<T> {
+  T readUtf8(Utf8JsonReader reader);
 }

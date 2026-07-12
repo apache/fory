@@ -22,13 +22,11 @@ package org.apache.fory.json.codec;
 import java.io.File;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.URL;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -52,7 +50,6 @@ import java.time.chrono.MinguoDate;
 import java.time.chrono.ThaiBuddhistChronology;
 import java.time.chrono.ThaiBuddhistDate;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalAccessor;
 import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Calendar;
@@ -76,60 +73,117 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.regex.Pattern;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.meta.JsonAsciiToken;
-import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldNameHash;
-import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
-import org.apache.fory.json.writer.JsonWriter;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Float16;
 
+/**
+ * Exact semantic codecs for scalar, temporal, atomic, optional, buffer, and enum JSON mappings.
+ *
+ * <p>Primitive and boxed codecs are distinct where JSON {@code null} semantics differ. Exact
+ * built-in instances also identify direct array, collection, map, field, and generated-code paths;
+ * replacing one with a custom codec intentionally disables those built-in shortcuts. The dynamic
+ * {@code Object} codec maps arrays and objects to {@link org.apache.fory.json.JsonArray} and {@link
+ * org.apache.fory.json.JsonObject}, and dispatches writes through the active writer's resolver.
+ *
+ * <p>Arbitrary-precision resource guards remain owned by reader construction of {@link BigInteger}
+ * and {@link BigDecimal}. Primitive numeric readers retain their direct overflow and IEEE-754
+ * parsing behavior. Java time codecs use their documented string grammar and do not accept numeric
+ * decimal timestamps.
+ */
 public final class ScalarCodecs {
   private static final DateTimeFormatter YEAR_MONTH_FORMATTER =
       DateTimeFormatter.ofPattern("uuuu-MM");
   private static final DateTimeFormatter MONTH_DAY_FORMATTER =
       DateTimeFormatter.ofPattern("--MM-dd");
+  private static final DateTimeFormatter HIJRAH_DATE_FORMATTER =
+      DateTimeFormatter.ISO_LOCAL_DATE.withChronology(HijrahChronology.INSTANCE);
+  private static final DateTimeFormatter JAPANESE_DATE_FORMATTER =
+      DateTimeFormatter.ISO_LOCAL_DATE.withChronology(JapaneseChronology.INSTANCE);
+  private static final DateTimeFormatter MINGUO_DATE_FORMATTER =
+      DateTimeFormatter.ISO_LOCAL_DATE.withChronology(MinguoChronology.INSTANCE);
+  private static final DateTimeFormatter THAI_BUDDHIST_DATE_FORMATTER =
+      DateTimeFormatter.ISO_LOCAL_DATE.withChronology(ThaiBuddhistChronology.INSTANCE);
 
   private ScalarCodecs() {}
 
-  public static final class NaturalCodec extends AbstractJsonCodec {
+  public static final class NaturalCodec implements JsonCodec<Object> {
     public static final NaturalCodec INSTANCE = new NaturalCodec();
 
     private NaturalCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      JsonTypeInfo typeInfo = resolver.getRuntimeTypeInfo(value.getClass());
-      typeInfo.codec().write(writer, value, resolver);
+    public void writeString(StringJsonWriter writer, Object value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      JsonTypeInfo typeInfo = writer.typeResolver().getRuntimeTypeInfo(value.getClass());
+      typeInfo.stringWriter().writeString(writer, value);
     }
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      JsonTypeInfo typeInfo = resolver.getRuntimeTypeInfo(value.getClass());
-      typeInfo.codec().writeString(writer, value, resolver);
+    public void writeUtf8(Utf8JsonWriter writer, Object value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      JsonTypeInfo typeInfo = writer.typeResolver().getRuntimeTypeInfo(value.getClass());
+      typeInfo.utf8Writer().writeUtf8(writer, value);
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      JsonTypeInfo typeInfo = resolver.getRuntimeTypeInfo(value.getClass());
-      typeInfo.codec().writeUtf8(writer, value, resolver);
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Object readLatin1(Latin1JsonReader reader) {
       char token = reader.peekToken();
       if (token == '"') {
         return reader.readString();
       } else if (token == '{') {
-        return MapCodec.readUntyped(reader, resolver);
+        return MapCodec.readUntyped(reader);
       } else if (token == '[') {
-        return CollectionCodec.readUntyped(reader, resolver);
+        return CollectionCodec.readUntyped(reader);
+      } else if (token == 't' || token == 'f') {
+        return reader.readBoolean();
+      } else if (token == 'n') {
+        reader.readNull();
+        return null;
+      }
+      return reader.readNumber();
+    }
+
+    @Override
+    public Object readUtf16(Utf16JsonReader reader) {
+      char token = reader.peekToken();
+      if (token == '"') {
+        return reader.readString();
+      } else if (token == '{') {
+        return MapCodec.readUntyped(reader);
+      } else if (token == '[') {
+        return CollectionCodec.readUntyped(reader);
+      } else if (token == 't' || token == 'f') {
+        return reader.readBoolean();
+      } else if (token == 'n') {
+        reader.readNull();
+        return null;
+      }
+      return reader.readNumber();
+    }
+
+    @Override
+    public Object readUtf8(Utf8JsonReader reader) {
+      char token = reader.peekToken();
+      if (token == '"') {
+        return reader.readString();
+      } else if (token == '{') {
+        return MapCodec.readUntyped(reader);
+      } else if (token == '[') {
+        return CollectionCodec.readUntyped(reader);
       } else if (token == 't' || token == 'f') {
         return reader.readBoolean();
       } else if (token == 'n') {
@@ -140,481 +194,633 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class StringCodec extends AbstractJsonCodec {
+  public static final class StringCodec implements JsonCodec<String> {
     public static final StringCodec INSTANCE = new StringCodec();
 
     private StringCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString((String) value);
+    public void writeString(StringJsonWriter writer, String value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value);
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString((String) value);
+    public void writeUtf8(Utf8JsonWriter writer, String value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value);
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return reader.readString();
+    public String readLatin1(Latin1JsonReader reader) {
+      return reader.readNullableString();
+    }
+
+    @Override
+    public String readUtf16(Utf16JsonReader reader) {
+      return reader.readNullableString();
+    }
+
+    @Override
+    public String readUtf8(Utf8JsonReader reader) {
+      return reader.readNullableString();
     }
   }
 
-  public static final class CharSequenceCodec extends AbstractJsonCodec {
+  public static final class CharSequenceCodec implements JsonCodec<CharSequence> {
     public static final CharSequenceCodec INSTANCE = new CharSequenceCodec();
 
     private CharSequenceCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString((CharSequence) value);
+    public void writeString(StringJsonWriter writer, CharSequence value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value);
+      }
     }
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString((CharSequence) value);
+    public void writeUtf8(Utf8JsonWriter writer, CharSequence value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value);
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString((CharSequence) value);
+    public CharSequence readLatin1(Latin1JsonReader reader) {
+      return reader.readNullableString();
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return reader.readCharSequence();
+    public CharSequence readUtf16(Utf16JsonReader reader) {
+      return reader.readNullableString();
+    }
+
+    @Override
+    public CharSequence readUtf8(Utf8JsonReader reader) {
+      return reader.readNullableString();
     }
   }
 
-  public static final class VoidCodec extends AbstractJsonCodec {
+  public static final class VoidCodec implements JsonCodec<Void> {
     public static final VoidCodec INSTANCE = new VoidCodec();
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public void writeString(StringJsonWriter writer, Void value) {
+      writer.writeNull();
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Void value) {
+      writer.writeNull();
+    }
+
+    @Override
+    public Void readLatin1(Latin1JsonReader reader) {
       reader.readNull();
       return null;
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNull();
+    public Void readUtf16(Utf16JsonReader reader) {
+      reader.readNull();
+      return null;
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNull();
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Void readUtf8(Utf8JsonReader reader) {
       reader.readNull();
       return null;
     }
   }
 
-  public static final class BooleanCodec extends AbstractJsonCodec {
-    public static final BooleanCodec INSTANCE = new BooleanCodec();
+  public static final class BooleanCodec implements JsonCodec<Boolean> {
+    public static final BooleanCodec PRIMITIVE = new BooleanCodec(true);
+    public static final BooleanCodec BOXED = new BooleanCodec(false);
+    private final boolean primitive;
 
-    private BooleanCodec() {}
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeBoolean((Boolean) value);
+    private BooleanCodec(boolean primitive) {
+      this.primitive = primitive;
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeBoolean((Boolean) value);
+    public void writeString(StringJsonWriter writer, Boolean value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeBoolean(value);
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, Boolean value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeBoolean(value);
+      }
+    }
+
+    @Override
+    public Boolean readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(boolean.class) : null;
+      }
       return reader.readBoolean();
     }
 
     @Override
-    public void readField(
-        JsonReader reader,
-        Object object,
-        JsonFieldAccessor accessor,
-        JsonTypeInfo typeInfo,
-        JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
-      } else if (typeInfo.primitive()) {
-        accessor.putBoolean(object, reader.readBoolean());
-      } else {
-        accessor.putObject(object, reader.readBoolean());
+    public Boolean readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(boolean.class) : null;
       }
+      return reader.readBoolean();
+    }
+
+    @Override
+    public Boolean readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(boolean.class) : null;
+      }
+      return reader.readBoolean();
     }
   }
 
-  public static final class IntCodec extends AbstractJsonCodec {
-    public static final IntCodec INSTANCE = new IntCodec();
+  public static final class IntCodec implements JsonCodec<Integer> {
+    public static final IntCodec PRIMITIVE = new IntCodec(true);
+    public static final IntCodec BOXED = new IntCodec(false);
+    private final boolean primitive;
 
-    private IntCodec() {}
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeInt((Integer) value);
+    private IntCodec(boolean primitive) {
+      this.primitive = primitive;
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeInt((Integer) value);
+    public void writeString(StringJsonWriter writer, Integer value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeInt(value);
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, Integer value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeInt(value);
+      }
+    }
+
+    @Override
+    public Integer readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(int.class) : null;
+      }
       return reader.readInt();
     }
 
     @Override
-    public void readField(
-        JsonReader reader,
-        Object object,
-        JsonFieldAccessor accessor,
-        JsonTypeInfo typeInfo,
-        JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
-      } else if (typeInfo.primitive()) {
-        accessor.putInt(object, reader.readInt());
-      } else {
-        accessor.putObject(object, reader.readInt());
+    public Integer readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(int.class) : null;
       }
+      return reader.readInt();
+    }
+
+    @Override
+    public Integer readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(int.class) : null;
+      }
+      return reader.readInt();
     }
   }
 
-  public static final class LongCodec extends AbstractJsonCodec {
-    public static final LongCodec INSTANCE = new LongCodec();
+  public static final class LongCodec implements JsonCodec<Long> {
+    public static final LongCodec PRIMITIVE = new LongCodec(true);
+    public static final LongCodec BOXED = new LongCodec(false);
+    private final boolean primitive;
 
-    private LongCodec() {}
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLong((Long) value);
+    private LongCodec(boolean primitive) {
+      this.primitive = primitive;
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLong((Long) value);
+    public void writeString(StringJsonWriter writer, Long value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLong(value);
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, Long value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLong(value);
+      }
+    }
+
+    @Override
+    public Long readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(long.class) : null;
+      }
       return reader.readLong();
     }
 
     @Override
-    public void readField(
-        JsonReader reader,
-        Object object,
-        JsonFieldAccessor accessor,
-        JsonTypeInfo typeInfo,
-        JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
-      } else if (typeInfo.primitive()) {
-        accessor.putLong(object, reader.readLong());
-      } else {
-        accessor.putObject(object, reader.readLong());
+    public Long readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(long.class) : null;
       }
+      return reader.readLong();
+    }
+
+    @Override
+    public Long readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(long.class) : null;
+      }
+      return reader.readLong();
     }
   }
 
-  public static final class ShortCodec extends AbstractJsonCodec {
-    public static final ShortCodec INSTANCE = new ShortCodec();
+  public static final class ShortCodec implements JsonCodec<Short> {
+    public static final ShortCodec PRIMITIVE = new ShortCodec(true);
+    public static final ShortCodec BOXED = new ShortCodec(false);
+    private final boolean primitive;
 
-    private ShortCodec() {}
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeInt(((Short) value).intValue());
+    private ShortCodec(boolean primitive) {
+      this.primitive = primitive;
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeInt(((Short) value).intValue());
+    public void writeString(StringJsonWriter writer, Short value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeInt(value.intValue());
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      int value = reader.readInt();
+    public void writeUtf8(Utf8JsonWriter writer, Short value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeInt(value.intValue());
+      }
+    }
+
+    @Override
+    public Short readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(short.class) : null;
+      }
+      return checkedShort(reader.readInt());
+    }
+
+    @Override
+    public Short readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(short.class) : null;
+      }
+      return checkedShort(reader.readInt());
+    }
+
+    @Override
+    public Short readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(short.class) : null;
+      }
+      return checkedShort(reader.readInt());
+    }
+
+    private static short checkedShort(int value) {
       if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
         throw new ForyJsonException("Short overflow");
       }
       return (short) value;
     }
-
-    @Override
-    public void readField(
-        JsonReader reader,
-        Object object,
-        JsonFieldAccessor accessor,
-        JsonTypeInfo typeInfo,
-        JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
-      } else if (typeInfo.primitive()) {
-        int value = reader.readInt();
-        if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
-          throw new ForyJsonException("Short overflow");
-        }
-        accessor.putShort(object, (short) value);
-      } else {
-        int value = reader.readInt();
-        if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
-          throw new ForyJsonException("Short overflow");
-        }
-        accessor.putObject(object, (short) value);
-      }
-    }
   }
 
-  public static final class ByteCodec extends AbstractJsonCodec {
-    public static final ByteCodec INSTANCE = new ByteCodec();
+  public static final class ByteCodec implements JsonCodec<Byte> {
+    public static final ByteCodec PRIMITIVE = new ByteCodec(true);
+    public static final ByteCodec BOXED = new ByteCodec(false);
+    private final boolean primitive;
 
-    private ByteCodec() {}
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeInt(((Byte) value).intValue());
+    private ByteCodec(boolean primitive) {
+      this.primitive = primitive;
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeInt(((Byte) value).intValue());
+    public void writeString(StringJsonWriter writer, Byte value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeInt(value.intValue());
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      int value = reader.readInt();
+    public void writeUtf8(Utf8JsonWriter writer, Byte value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeInt(value.intValue());
+      }
+    }
+
+    @Override
+    public Byte readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(byte.class) : null;
+      }
+      return checkedByte(reader.readInt());
+    }
+
+    @Override
+    public Byte readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(byte.class) : null;
+      }
+      return checkedByte(reader.readInt());
+    }
+
+    @Override
+    public Byte readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(byte.class) : null;
+      }
+      return checkedByte(reader.readInt());
+    }
+
+    private static byte checkedByte(int value) {
       if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
         throw new ForyJsonException("Byte overflow");
       }
       return (byte) value;
     }
-
-    @Override
-    public void readField(
-        JsonReader reader,
-        Object object,
-        JsonFieldAccessor accessor,
-        JsonTypeInfo typeInfo,
-        JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
-      } else if (typeInfo.primitive()) {
-        int value = reader.readInt();
-        if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
-          throw new ForyJsonException("Byte overflow");
-        }
-        accessor.putByte(object, (byte) value);
-      } else {
-        int value = reader.readInt();
-        if (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE) {
-          throw new ForyJsonException("Byte overflow");
-        }
-        accessor.putObject(object, (byte) value);
-      }
-    }
   }
 
-  public static final class FloatCodec extends AbstractJsonCodec {
-    public static final FloatCodec INSTANCE = new FloatCodec();
+  public static final class FloatCodec implements JsonCodec<Float> {
+    public static final FloatCodec PRIMITIVE = new FloatCodec(true);
+    public static final FloatCodec BOXED = new FloatCodec(false);
+    private final boolean primitive;
 
-    private FloatCodec() {}
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeFloat((Float) value);
+    private FloatCodec(boolean primitive) {
+      this.primitive = primitive;
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeFloat((Float) value);
+    public void writeString(StringJsonWriter writer, Float value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeFloat(value);
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, Float value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeFloat(value);
+      }
+    }
+
+    @Override
+    public Float readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(float.class) : null;
+      }
       return reader.readFloat();
     }
 
     @Override
-    public void readField(
-        JsonReader reader,
-        Object object,
-        JsonFieldAccessor accessor,
-        JsonTypeInfo typeInfo,
-        JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
-      } else if (typeInfo.primitive()) {
-        accessor.putFloat(object, reader.readFloat());
-      } else {
-        accessor.putObject(object, reader.readFloat());
+    public Float readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(float.class) : null;
       }
+      return reader.readFloat();
+    }
+
+    @Override
+    public Float readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(float.class) : null;
+      }
+      return reader.readFloat();
     }
   }
 
-  public static final class DoubleCodec extends AbstractJsonCodec {
-    public static final DoubleCodec INSTANCE = new DoubleCodec();
+  public static final class DoubleCodec implements JsonCodec<Double> {
+    public static final DoubleCodec PRIMITIVE = new DoubleCodec(true);
+    public static final DoubleCodec BOXED = new DoubleCodec(false);
+    private final boolean primitive;
 
-    private DoubleCodec() {}
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeDouble((Double) value);
+    private DoubleCodec(boolean primitive) {
+      this.primitive = primitive;
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeDouble((Double) value);
+    public void writeString(StringJsonWriter writer, Double value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeDouble(value);
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, Double value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeDouble(value);
+      }
+    }
+
+    @Override
+    public Double readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(double.class) : null;
+      }
       return reader.readDouble();
     }
 
     @Override
-    public void readField(
-        JsonReader reader,
-        Object object,
-        JsonFieldAccessor accessor,
-        JsonTypeInfo typeInfo,
-        JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
-      } else if (typeInfo.primitive()) {
-        accessor.putDouble(object, reader.readDouble());
-      } else {
-        accessor.putObject(object, reader.readDouble());
+    public Double readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(double.class) : null;
       }
+      return reader.readDouble();
+    }
+
+    @Override
+    public Double readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(double.class) : null;
+      }
+      return reader.readDouble();
     }
   }
 
-  public static final class CharCodec extends AbstractJsonCodec {
-    public static final CharCodec INSTANCE = new CharCodec();
+  public static final class CharCodec implements JsonCodec<Character> {
+    public static final CharCodec PRIMITIVE = new CharCodec(true);
+    public static final CharCodec BOXED = new CharCodec(false);
+    private final boolean primitive;
 
-    private CharCodec() {}
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeChar((Character) value);
+    private CharCodec(boolean primitive) {
+      this.primitive = primitive;
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeChar((Character) value);
+    public void writeString(StringJsonWriter writer, Character value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeChar(value);
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public void writeUtf8(Utf8JsonWriter writer, Character value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeChar(value);
+      }
+    }
+
+    @Override
+    public Character readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(char.class) : null;
+      }
       return reader.readChar();
     }
 
     @Override
-    public void readField(
-        JsonReader reader,
-        Object object,
-        JsonFieldAccessor accessor,
-        JsonTypeInfo typeInfo,
-        JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        readFieldDefault(reader, object, accessor, typeInfo, resolver);
-      } else {
-        char value = (Character) readNonNull(reader, typeInfo, resolver);
-        if (typeInfo.primitive()) {
-          accessor.putChar(object, value);
-        } else {
-          accessor.putObject(object, value);
-        }
+    public Character readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(char.class) : null;
       }
-    }
-  }
-
-  public abstract static class StringValueCodec extends AbstractJsonCodec {
-    @Override
-    final void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(toJsonString(value));
+      return reader.readChar();
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(toJsonString(value));
-    }
-
-    @Override
-    final Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return readStringValue(reader.readString(), typeInfo);
-    }
-
-    final Object readStringValue(String value, JsonTypeInfo typeInfo) {
-      try {
-        return fromJsonString(value);
-      } catch (ForyJsonException e) {
-        throw e;
-      } catch (RuntimeException e) {
-        throw new ForyJsonException(
-            "Invalid " + typeInfo.rawType().getName() + " JSON string: " + value, e);
+    public Character readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return primitive ? primitiveNull(char.class) : null;
       }
+      return reader.readChar();
     }
-
-    abstract String toJsonString(Object value);
-
-    abstract Object fromJsonString(String value);
   }
 
-  public abstract static class NumberValueCodec extends AbstractJsonCodec {
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNumber(toJsonNumber(value));
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeNumber(toJsonNumber(value));
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return fromJsonNumber(reader.readNumberAsString());
-    }
-
-    abstract String toJsonNumber(Object value);
-
-    abstract Object fromJsonNumber(String value);
+  private static <T> T primitiveNull(Class<?> type) {
+    throw new ForyJsonException("Cannot read null into primitive " + type);
   }
 
-  public static final class NumberCodec extends AbstractJsonCodec {
+  private static ForyJsonException invalidString(
+      Class<?> type, String value, RuntimeException cause) {
+    if (cause instanceof ForyJsonException) {
+      return (ForyJsonException) cause;
+    }
+    return new ForyJsonException("Invalid " + type.getName() + " JSON string: " + value, cause);
+  }
+
+  public static final class NumberCodec implements JsonCodec<Number> {
     public static final NumberCodec INSTANCE = new NumberCodec();
 
     private NumberCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNumberValue(writer, (Number) value);
+    public void writeString(StringJsonWriter writer, Number value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writeNumberValue(writer, value);
+      }
     }
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNumberValue(writer, (Number) value);
+    public void writeUtf8(Utf8JsonWriter writer, Number value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writeNumberValue(writer, value);
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNumberValue(writer, (Number) value);
+    public Number readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      return reader.peekToken() == '"' ? reader.readDouble() : reader.readNumber();
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return reader.readNumber();
+    public Number readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      return reader.peekToken() == '"' ? reader.readDouble() : reader.readNumber();
     }
 
-    private static void writeNumberValue(JsonWriter writer, Number value) {
+    @Override
+    public Number readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      return reader.peekToken() == '"' ? reader.readDouble() : reader.readNumber();
+    }
+
+    private static void writeNumberValue(StringJsonWriter writer, Number value) {
+      Class<?> type = value.getClass();
+      if (type == Integer.class) {
+        writer.writeInt(value.intValue());
+      } else if (type == Long.class) {
+        writer.writeLong(value.longValue());
+      } else if (type == Short.class || type == Byte.class) {
+        writer.writeInt(value.intValue());
+      } else if (type == Float.class) {
+        writer.writeFloat(value.floatValue());
+      } else if (type == Double.class) {
+        writer.writeDouble(value.doubleValue());
+      } else if (type == BigInteger.class) {
+        writer.writeBigInteger((BigInteger) value);
+      } else if (type == BigDecimal.class) {
+        writer.writeBigDecimal((BigDecimal) value);
+      } else if (type == AtomicInteger.class) {
+        writer.writeInt(((AtomicInteger) value).get());
+      } else if (type == AtomicLong.class) {
+        writer.writeLong(((AtomicLong) value).get());
+      } else if (type == Float16.class || type == BFloat16.class) {
+        writer.writeFloat(value.floatValue());
+      } else {
+        throw new ForyJsonException("Unsupported JSON number type " + type);
+      }
+    }
+
+    private static void writeNumberValue(Utf8JsonWriter writer, Number value) {
       Class<?> type = value.getClass();
       if (type == Integer.class) {
         writer.writeInt(value.intValue());
@@ -642,161 +848,167 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class BigIntegerCodec extends NumberValueCodec {
+  public static final class BigIntegerCodec implements JsonCodec<BigInteger> {
     public static final BigIntegerCodec INSTANCE = new BigIntegerCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeBigInteger((BigInteger) value);
+    public void writeString(StringJsonWriter writer, BigInteger value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeBigInteger(value);
+      }
     }
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeBigInteger((BigInteger) value);
+    public void writeUtf8(Utf8JsonWriter writer, BigInteger value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeBigInteger(value);
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeBigInteger((BigInteger) value);
+    public BigInteger readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigInteger();
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return reader.readBigInteger();
+    public BigInteger readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigInteger();
     }
 
     @Override
-    String toJsonNumber(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    Object fromJsonNumber(String value) {
-      return new BigInteger(value);
+    public BigInteger readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigInteger();
     }
   }
 
-  public static final class BigDecimalCodec extends NumberValueCodec {
+  public static final class BigDecimalCodec implements JsonCodec<BigDecimal> {
     public static final BigDecimalCodec INSTANCE = new BigDecimalCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeBigDecimal((BigDecimal) value);
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeBigDecimal((BigDecimal) value);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeBigDecimal((BigDecimal) value);
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return reader.readBigDecimal();
-    }
-
-    @Override
-    String toJsonNumber(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    Object fromJsonNumber(String value) {
-      return new BigDecimal(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, BigDecimal value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeBigDecimal(value);
       }
-      return reader.readBigDecimal();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, BigDecimal value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeBigDecimal(value);
       }
-      return reader.readBigDecimal();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readBigDecimal();
+    public BigDecimal readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigDecimal();
+    }
+
+    @Override
+    public BigDecimal readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigDecimal();
+    }
+
+    @Override
+    public BigDecimal readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readBigDecimal();
     }
   }
 
-  public static final class Float16Codec extends AbstractJsonCodec {
+  public static final class Float16Codec implements JsonCodec<Float16> {
     public static final Float16Codec INSTANCE = new Float16Codec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeFloat(((Float16) value).floatValue());
+    public void writeString(StringJsonWriter writer, Float16 value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeFloat(value.floatValue());
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeFloat(((Float16) value).floatValue());
+    public void writeUtf8(Utf8JsonWriter writer, Float16 value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeFloat(value.floatValue());
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return Float16.valueOf(reader.readFloat());
+    public Float16 readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : Float16.valueOf(reader.readFloat());
+    }
+
+    @Override
+    public Float16 readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : Float16.valueOf(reader.readFloat());
+    }
+
+    @Override
+    public Float16 readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : Float16.valueOf(reader.readFloat());
     }
   }
 
-  public static final class BFloat16Codec extends AbstractJsonCodec {
+  public static final class BFloat16Codec implements JsonCodec<BFloat16> {
     public static final BFloat16Codec INSTANCE = new BFloat16Codec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeFloat(((BFloat16) value).floatValue());
+    public void writeString(StringJsonWriter writer, BFloat16 value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeFloat(value.floatValue());
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeFloat(((BFloat16) value).floatValue());
+    public void writeUtf8(Utf8JsonWriter writer, BFloat16 value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeFloat(value.floatValue());
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return BFloat16.valueOf(reader.readFloat());
+    public BFloat16 readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : BFloat16.valueOf(reader.readFloat());
+    }
+
+    @Override
+    public BFloat16 readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : BFloat16.valueOf(reader.readFloat());
+    }
+
+    @Override
+    public BFloat16 readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : BFloat16.valueOf(reader.readFloat());
     }
   }
 
-  public static final class BitSetCodec extends AbstractJsonCodec {
+  public static final class BitSetCodec implements JsonCodec<BitSet> {
     public static final BitSetCodec INSTANCE = new BitSetCodec();
 
     private BitSetCodec() {}
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeBitSet(writer, (BitSet) value);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeBitSet(writer, (BitSet) value);
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return readBitSet(reader);
-    }
-
-    private static void writeBitSet(JsonWriter writer, BitSet value) {
-      long[] words = value.toLongArray();
+    public void writeString(StringJsonWriter writer, BitSet value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      BitSet bitSet = value;
+      long[] words = bitSet.toLongArray();
       writer.writeArrayStart();
       for (int i = 0; i < words.length; i++) {
         writer.writeComma(i);
@@ -805,1295 +1017,1684 @@ public final class ScalarCodecs {
       writer.writeArrayEnd();
     }
 
-    private static BitSet readBitSet(JsonReader reader) {
-      reader.enterDepth();
-      try {
-        reader.expect('[');
-        long[] words = new long[4];
-        int size = 0;
-        if (!reader.consume(']')) {
-          do {
-            if (size == words.length) {
-              words = Arrays.copyOf(words, words.length << 1);
-            }
-            words[size++] = reader.readLong();
-          } while (reader.consume(','));
-          reader.expect(']');
-        }
-        if (size != words.length) {
-          words = Arrays.copyOf(words, size);
-        }
-        return BitSet.valueOf(words);
-      } finally {
-        reader.exitDepth();
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, BitSet value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
       }
+      BitSet bitSet = value;
+      long[] words = bitSet.toLongArray();
+      writer.writeArrayStart();
+      for (int i = 0; i < words.length; i++) {
+        writer.writeComma(i);
+        writer.writeLong(words[i]);
+      }
+      writer.writeArrayEnd();
+    }
+
+    @Override
+    public BitSet readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readBitSet(reader);
+    }
+
+    @Override
+    public BitSet readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readBitSet(reader);
+    }
+
+    @Override
+    public BitSet readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readBitSet(reader);
+    }
+
+    private static BitSet readBitSet(Latin1JsonReader reader) {
+      reader.enterDepth();
+      reader.expect('[');
+      long[] words = new long[4];
+      int size = 0;
+      if (!reader.consume(']')) {
+        do {
+          if (size == words.length) {
+            words = Arrays.copyOf(words, words.length << 1);
+          }
+          words[size++] = reader.readLong();
+        } while (reader.consume(','));
+        reader.expect(']');
+      }
+      if (size != words.length) {
+        words = Arrays.copyOf(words, size);
+      }
+      BitSet bitSet = BitSet.valueOf(words);
+      reader.exitDepth();
+      return bitSet;
+    }
+
+    private static BitSet readBitSet(Utf16JsonReader reader) {
+      reader.enterDepth();
+      reader.expect('[');
+      long[] words = new long[4];
+      int size = 0;
+      if (!reader.consume(']')) {
+        do {
+          if (size == words.length) {
+            words = Arrays.copyOf(words, words.length << 1);
+          }
+          words[size++] = reader.readLong();
+        } while (reader.consume(','));
+        reader.expect(']');
+      }
+      if (size != words.length) {
+        words = Arrays.copyOf(words, size);
+      }
+      BitSet bitSet = BitSet.valueOf(words);
+      reader.exitDepth();
+      return bitSet;
+    }
+
+    private static BitSet readBitSet(Utf8JsonReader reader) {
+      reader.enterDepth();
+      reader.expect('[');
+      long[] words = new long[4];
+      int size = 0;
+      if (!reader.consume(']')) {
+        do {
+          if (size == words.length) {
+            words = Arrays.copyOf(words, words.length << 1);
+          }
+          words[size++] = reader.readLong();
+        } while (reader.consume(','));
+        reader.expect(']');
+      }
+      if (size != words.length) {
+        words = Arrays.copyOf(words, size);
+      }
+      BitSet bitSet = BitSet.valueOf(words);
+      reader.exitDepth();
+      return bitSet;
     }
   }
 
-  public static final class StringBuilderCodec extends StringValueCodec {
+  public static final class StringBuilderCodec implements JsonCodec<StringBuilder> {
     public static final StringBuilderCodec INSTANCE = new StringBuilderCodec();
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString((StringBuilder) value);
+    public void writeString(StringJsonWriter writer, StringBuilder value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value);
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString((StringBuilder) value);
+    public void writeUtf8(Utf8JsonWriter writer, StringBuilder value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value);
+      }
     }
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
+    public StringBuilder readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : new StringBuilder(value);
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return new StringBuilder(value);
+    public StringBuilder readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : new StringBuilder(value);
+    }
+
+    @Override
+    public StringBuilder readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : new StringBuilder(value);
     }
   }
 
-  public static final class StringBufferCodec extends StringValueCodec {
+  public static final class StringBufferCodec implements JsonCodec<StringBuffer> {
     public static final StringBufferCodec INSTANCE = new StringBufferCodec();
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString((StringBuffer) value);
+    public void writeString(StringJsonWriter writer, StringBuffer value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value);
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString((StringBuffer) value);
+    public void writeUtf8(Utf8JsonWriter writer, StringBuffer value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value);
+      }
     }
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
+    public StringBuffer readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : new StringBuffer(value);
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return new StringBuffer(value);
+    public StringBuffer readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : new StringBuffer(value);
+    }
+
+    @Override
+    public StringBuffer readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : new StringBuffer(value);
     }
   }
 
-  public static final class FileCodec extends StringValueCodec {
+  public static final class FileCodec implements JsonCodec<File> {
     public static final FileCodec INSTANCE = new FileCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return ((File) value).getPath();
+    public void writeString(StringJsonWriter writer, File value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.getPath());
+      }
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return new File(value);
+    public void writeUtf8(Utf8JsonWriter writer, File value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.getPath());
+      }
+    }
+
+    @Override
+    public File readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : new File(value);
+    }
+
+    @Override
+    public File readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : new File(value);
+    }
+
+    @Override
+    public File readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : new File(value);
     }
   }
 
-  public static final class PathCodec extends StringValueCodec {
+  public static final class PathCodec implements JsonCodec<Path> {
     public static final PathCodec INSTANCE = new PathCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
+    public void writeString(StringJsonWriter writer, Path value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.toString());
+      }
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return Paths.get(value);
+    public void writeUtf8(Utf8JsonWriter writer, Path value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.toString());
+      }
+    }
+
+    @Override
+    public Path readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Paths.get(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Path.class, value, e);
+      }
+    }
+
+    @Override
+    public Path readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Paths.get(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Path.class, value, e);
+      }
+    }
+
+    @Override
+    public Path readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Paths.get(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Path.class, value, e);
+      }
     }
   }
 
-  public static final class CurrencyCodec extends StringValueCodec {
+  public static final class CurrencyCodec implements JsonCodec<Currency> {
     public static final CurrencyCodec INSTANCE = new CurrencyCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return ((Currency) value).getCurrencyCode();
+    public void writeString(StringJsonWriter writer, Currency value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.getCurrencyCode());
+      }
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return Currency.getInstance(value);
+    public void writeUtf8(Utf8JsonWriter writer, Currency value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.getCurrencyCode());
+      }
+    }
+
+    @Override
+    public Currency readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Currency.getInstance(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Currency.class, value, e);
+      }
+    }
+
+    @Override
+    public Currency readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Currency.getInstance(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Currency.class, value, e);
+      }
+    }
+
+    @Override
+    public Currency readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Currency.getInstance(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Currency.class, value, e);
+      }
     }
   }
 
-  public static final class UriCodec extends StringValueCodec {
+  public static final class UriCodec implements JsonCodec<URI> {
     public static final UriCodec INSTANCE = new UriCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
+    public void writeString(StringJsonWriter writer, URI value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.toString());
+      }
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return URI.create(value);
-    }
-  }
-
-  public static final class UrlCodec extends StringValueCodec {
-    public static final UrlCodec INSTANCE = new UrlCodec();
-
-    @Override
-    String toJsonString(Object value) {
-      return value.toString();
+    public void writeUtf8(Utf8JsonWriter writer, URI value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.toString());
+      }
     }
 
     @Override
-    Object fromJsonString(String value) {
+    public URI readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
       try {
-        return new URL(value);
-      } catch (MalformedURLException e) {
-        throw new ForyJsonException("Invalid URL " + value, e);
+        return URI.create(value);
+      } catch (RuntimeException e) {
+        throw invalidString(URI.class, value, e);
+      }
+    }
+
+    @Override
+    public URI readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return URI.create(value);
+      } catch (RuntimeException e) {
+        throw invalidString(URI.class, value, e);
+      }
+    }
+
+    @Override
+    public URI readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return URI.create(value);
+      } catch (RuntimeException e) {
+        throw invalidString(URI.class, value, e);
       }
     }
   }
 
-  public static final class PatternCodec extends StringValueCodec {
+  public static final class PatternCodec implements JsonCodec<Pattern> {
     public static final PatternCodec INSTANCE = new PatternCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return ((Pattern) value).pattern();
+    public void writeString(StringJsonWriter writer, Pattern value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.pattern());
+      }
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return Pattern.compile(value);
+    public void writeUtf8(Utf8JsonWriter writer, Pattern value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.pattern());
+      }
+    }
+
+    @Override
+    public Pattern readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Pattern.compile(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Pattern.class, value, e);
+      }
+    }
+
+    @Override
+    public Pattern readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Pattern.compile(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Pattern.class, value, e);
+      }
+    }
+
+    @Override
+    public Pattern readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Pattern.compile(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Pattern.class, value, e);
+      }
     }
   }
 
-  public static final class UuidCodec extends StringValueCodec {
+  public static final class UuidCodec implements JsonCodec<UUID> {
     public static final UuidCodec INSTANCE = new UuidCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeUuid((UUID) value);
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeUuid((UUID) value);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return UUID.fromString(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, UUID value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeUuid(value);
       }
-      return reader.readUuid();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, UUID value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeUuid(value);
       }
-      return reader.readUuid();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readUuid();
+    public UUID readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readUuid();
+    }
+
+    @Override
+    public UUID readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readUuid();
+    }
+
+    @Override
+    public UUID readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readUuid();
     }
   }
 
-  public static final class LocaleCodec extends StringValueCodec {
+  public static final class LocaleCodec implements JsonCodec<Locale> {
     public static final LocaleCodec INSTANCE = new LocaleCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return ((Locale) value).toLanguageTag();
+    public void writeString(StringJsonWriter writer, Locale value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.toLanguageTag());
+      }
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return Locale.forLanguageTag(value);
+    public void writeUtf8(Utf8JsonWriter writer, Locale value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.toLanguageTag());
+      }
+    }
+
+    @Override
+    public Locale readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : Locale.forLanguageTag(value);
+    }
+
+    @Override
+    public Locale readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : Locale.forLanguageTag(value);
+    }
+
+    @Override
+    public Locale readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : Locale.forLanguageTag(value);
     }
   }
 
-  public static final class CharsetCodec extends StringValueCodec {
+  public static final class CharsetCodec implements JsonCodec<Charset> {
     public static final CharsetCodec INSTANCE = new CharsetCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return ((Charset) value).name();
+    public void writeString(StringJsonWriter writer, Charset value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.name());
+      }
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return Charset.forName(value);
+    public void writeUtf8(Utf8JsonWriter writer, Charset value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.name());
+      }
+    }
+
+    @Override
+    public Charset readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Charset.forName(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Charset.class, value, e);
+      }
+    }
+
+    @Override
+    public Charset readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Charset.forName(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Charset.class, value, e);
+      }
+    }
+
+    @Override
+    public Charset readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return Charset.forName(value);
+      } catch (RuntimeException e) {
+        throw invalidString(Charset.class, value, e);
+      }
     }
   }
 
-  public static final class DateCodec extends AbstractJsonCodec {
+  public static final class DateCodec implements JsonCodec<Date> {
     public static final DateCodec INSTANCE = new DateCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLong(((Date) value).getTime());
+    public void writeString(StringJsonWriter writer, Date value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLong(value.getTime());
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLong(((Date) value).getTime());
+    public void writeUtf8(Utf8JsonWriter writer, Date value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLong(value.getTime());
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return new Date(reader.readLong());
+    public Date readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new Date(reader.readLong());
+    }
+
+    @Override
+    public Date readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new Date(reader.readLong());
+    }
+
+    @Override
+    public Date readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new Date(reader.readLong());
     }
   }
 
-  public static final class CalendarCodec extends AbstractJsonCodec {
+  public static final class CalendarCodec implements JsonCodec<Calendar> {
     public static final CalendarCodec INSTANCE = new CalendarCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLong(((Calendar) value).getTimeInMillis());
+    public void writeString(StringJsonWriter writer, Calendar value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLong(value.getTimeInMillis());
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLong(((Calendar) value).getTimeInMillis());
+    public void writeUtf8(Utf8JsonWriter writer, Calendar value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLong(value.getTimeInMillis());
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public Calendar readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : calendar(reader.readLong());
+    }
+
+    @Override
+    public Calendar readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : calendar(reader.readLong());
+    }
+
+    @Override
+    public Calendar readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : calendar(reader.readLong());
+    }
+
+    private static Calendar calendar(long millis) {
       Calendar calendar = new GregorianCalendar();
-      calendar.setTimeInMillis(reader.readLong());
+      calendar.setTimeInMillis(millis);
       return calendar;
     }
   }
 
-  public static final class TimeZoneCodec extends StringValueCodec {
+  public static final class TimeZoneCodec implements JsonCodec<TimeZone> {
     public static final TimeZoneCodec INSTANCE = new TimeZoneCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return ((TimeZone) value).getID();
+    public void writeString(StringJsonWriter writer, TimeZone value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.getID());
+      }
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return TimeZone.getTimeZone(value);
+    public void writeUtf8(Utf8JsonWriter writer, TimeZone value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.getID());
+      }
+    }
+
+    @Override
+    public TimeZone readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : TimeZone.getTimeZone(value);
+    }
+
+    @Override
+    public TimeZone readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : TimeZone.getTimeZone(value);
+    }
+
+    @Override
+    public TimeZone readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      return value == null ? null : TimeZone.getTimeZone(value);
     }
   }
 
-  public static final class LocalDateCodec extends StringValueCodec {
+  public static final class LocalDateCodec implements JsonCodec<LocalDate> {
     public static final LocalDateCodec INSTANCE = new LocalDateCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLocalDate((LocalDate) value);
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLocalDate((LocalDate) value);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return parseIsoLocalDate(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, LocalDate value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLocalDate(value);
       }
-      return reader.readIsoLocalDate();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, LocalDate value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLocalDate(value);
       }
-      return reader.readIsoLocalDate();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readIsoLocalDate();
+    public LocalDate readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoLocalDate();
+    }
+
+    @Override
+    public LocalDate readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoLocalDate();
+    }
+
+    @Override
+    public LocalDate readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoLocalDate();
     }
   }
 
-  public static final class LocalTimeCodec extends StringValueCodec {
+  public static final class LocalTimeCodec implements JsonCodec<LocalTime> {
     public static final LocalTimeCodec INSTANCE = new LocalTimeCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((LocalTime) value, DateTimeFormatter.ISO_LOCAL_TIME);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((LocalTime) value, DateTimeFormatter.ISO_LOCAL_TIME);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return LocalTime.parse(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, LocalTime value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, DateTimeFormatter.ISO_LOCAL_TIME);
       }
-      return reader.readIsoLocalTime();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, LocalTime value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, DateTimeFormatter.ISO_LOCAL_TIME);
       }
-      return reader.readIsoLocalTime();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readIsoLocalTime();
+    public LocalTime readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoLocalTime();
+    }
+
+    @Override
+    public LocalTime readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoLocalTime();
+    }
+
+    @Override
+    public LocalTime readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoLocalTime();
     }
   }
 
-  public static final class LocalDateTimeCodec extends StringValueCodec {
+  public static final class LocalDateTimeCodec implements JsonCodec<LocalDateTime> {
     public static final LocalDateTimeCodec INSTANCE = new LocalDateTimeCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((LocalDateTime) value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((LocalDateTime) value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return LocalDateTime.parse(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, LocalDateTime value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
       }
-      return reader.readIsoLocalDateTime();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, LocalDateTime value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
       }
-      return reader.readIsoLocalDateTime();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readIsoLocalDateTime();
+    public LocalDateTime readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoLocalDateTime();
+    }
+
+    @Override
+    public LocalDateTime readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoLocalDateTime();
+    }
+
+    @Override
+    public LocalDateTime readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoLocalDateTime();
     }
   }
 
-  public static final class InstantCodec extends StringValueCodec {
+  public static final class InstantCodec implements JsonCodec<Instant> {
     public static final InstantCodec INSTANCE = new InstantCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((Instant) value, DateTimeFormatter.ISO_INSTANT);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((Instant) value, DateTimeFormatter.ISO_INSTANT);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return Instant.parse(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, Instant value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, DateTimeFormatter.ISO_INSTANT);
       }
-      return reader.readIsoInstant();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, Instant value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, DateTimeFormatter.ISO_INSTANT);
       }
-      return reader.readIsoInstant();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readIsoInstant();
+    public Instant readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoInstant();
+    }
+
+    @Override
+    public Instant readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoInstant();
+    }
+
+    @Override
+    public Instant readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoInstant();
     }
   }
 
-  public static final class DurationCodec extends StringValueCodec {
+  public static final class DurationCodec implements JsonCodec<Duration> {
     public static final DurationCodec INSTANCE = new DurationCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeDuration((Duration) value);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeDuration((Duration) value);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return Duration.parse(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, Duration value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeDuration(value);
       }
-      return reader.readDuration();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, Duration value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeDuration(value);
       }
-      return reader.readDuration();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readDuration();
+    public Duration readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readDuration();
+    }
+
+    @Override
+    public Duration readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readDuration();
+    }
+
+    @Override
+    public Duration readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readDuration();
     }
   }
 
-  public static final class ZoneOffsetCodec extends StringValueCodec {
+  public static final class ZoneOffsetCodec implements JsonCodec<ZoneOffset> {
     public static final ZoneOffsetCodec INSTANCE = new ZoneOffsetCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(((ZoneOffset) value).getId());
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(((ZoneOffset) value).getId());
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return ZoneOffset.of(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, ZoneOffset value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.getId());
       }
-      return reader.readZoneOffset();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, ZoneOffset value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.getId());
       }
-      return reader.readZoneOffset();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readZoneOffset();
+    public ZoneOffset readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readZoneOffset();
+    }
+
+    @Override
+    public ZoneOffset readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readZoneOffset();
+    }
+
+    @Override
+    public ZoneOffset readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readZoneOffset();
     }
   }
 
-  public static final class ZoneIdCodec extends StringValueCodec {
+  public static final class ZoneIdCodec implements JsonCodec<ZoneId> {
     public static final ZoneIdCodec INSTANCE = new ZoneIdCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return ((ZoneId) value).getId();
+    public void writeString(StringJsonWriter writer, ZoneId value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.getId());
+      }
     }
 
     @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(((ZoneId) value).getId());
+    public void writeUtf8(Utf8JsonWriter writer, ZoneId value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.getId());
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(((ZoneId) value).getId());
+    public ZoneId readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return ZoneId.of(value);
+      } catch (RuntimeException e) {
+        throw invalidString(ZoneId.class, value, e);
+      }
     }
 
     @Override
-    Object fromJsonString(String value) {
-      return ZoneId.of(value);
+    public ZoneId readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return ZoneId.of(value);
+      } catch (RuntimeException e) {
+        throw invalidString(ZoneId.class, value, e);
+      }
+    }
+
+    @Override
+    public ZoneId readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return ZoneId.of(value);
+      } catch (RuntimeException e) {
+        throw invalidString(ZoneId.class, value, e);
+      }
     }
   }
 
-  public static final class ZonedDateTimeCodec extends StringValueCodec {
+  public static final class ZonedDateTimeCodec implements JsonCodec<ZonedDateTime> {
     public static final ZonedDateTimeCodec INSTANCE = new ZonedDateTimeCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((ZonedDateTime) value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((ZonedDateTime) value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return ZonedDateTime.parse(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, ZonedDateTime value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
       }
-      return reader.readZonedDateTime();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, ZonedDateTime value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, DateTimeFormatter.ISO_ZONED_DATE_TIME);
       }
-      return reader.readZonedDateTime();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readZonedDateTime();
+    public ZonedDateTime readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readZonedDateTime();
+    }
+
+    @Override
+    public ZonedDateTime readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readZonedDateTime();
+    }
+
+    @Override
+    public ZonedDateTime readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readZonedDateTime();
     }
   }
 
-  public static final class YearCodec extends StringValueCodec {
+  public static final class YearCodec implements JsonCodec<Year> {
     public static final YearCodec INSTANCE = new YearCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeYear((Year) value);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeYear((Year) value);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return JsonReader.parseYearValue(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, Year value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeYear(value);
       }
-      return reader.readYear();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, Year value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeYear(value);
       }
-      return reader.readYear();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readYear();
+    public Year readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readYear();
+    }
+
+    @Override
+    public Year readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readYear();
+    }
+
+    @Override
+    public Year readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readYear();
     }
   }
 
-  public static final class YearMonthCodec extends StringValueCodec {
+  public static final class YearMonthCodec implements JsonCodec<YearMonth> {
     public static final YearMonthCodec INSTANCE = new YearMonthCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((YearMonth) value, YEAR_MONTH_FORMATTER);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((YearMonth) value, YEAR_MONTH_FORMATTER);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return YearMonth.parse(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, YearMonth value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, YEAR_MONTH_FORMATTER);
       }
-      return reader.readYearMonth();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, YearMonth value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, YEAR_MONTH_FORMATTER);
       }
-      return reader.readYearMonth();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readYearMonth();
+    public YearMonth readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readYearMonth();
+    }
+
+    @Override
+    public YearMonth readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readYearMonth();
+    }
+
+    @Override
+    public YearMonth readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readYearMonth();
     }
   }
 
-  public static final class MonthDayCodec extends StringValueCodec {
+  public static final class MonthDayCodec implements JsonCodec<MonthDay> {
     public static final MonthDayCodec INSTANCE = new MonthDayCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((MonthDay) value, MONTH_DAY_FORMATTER);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((MonthDay) value, MONTH_DAY_FORMATTER);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return MonthDay.parse(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, MonthDay value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, MONTH_DAY_FORMATTER);
       }
-      return reader.readMonthDay();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, MonthDay value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, MONTH_DAY_FORMATTER);
       }
-      return reader.readMonthDay();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readMonthDay();
+    public MonthDay readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readMonthDay();
+    }
+
+    @Override
+    public MonthDay readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readMonthDay();
+    }
+
+    @Override
+    public MonthDay readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readMonthDay();
     }
   }
 
-  public static final class PeriodCodec extends StringValueCodec {
+  public static final class PeriodCodec implements JsonCodec<Period> {
     public static final PeriodCodec INSTANCE = new PeriodCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writePeriod((Period) value);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writePeriod((Period) value);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return Period.parse(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, Period value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writePeriod(value);
       }
-      return reader.readPeriod();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, Period value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writePeriod(value);
       }
-      return reader.readPeriod();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readPeriod();
+    public Period readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readPeriod();
+    }
+
+    @Override
+    public Period readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readPeriod();
+    }
+
+    @Override
+    public Period readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readPeriod();
     }
   }
 
-  public static final class OffsetTimeCodec extends StringValueCodec {
+  public static final class OffsetTimeCodec implements JsonCodec<OffsetTime> {
     public static final OffsetTimeCodec INSTANCE = new OffsetTimeCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((OffsetTime) value, DateTimeFormatter.ISO_OFFSET_TIME);
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeTemporal((OffsetTime) value, DateTimeFormatter.ISO_OFFSET_TIME);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return OffsetTime.parse(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, OffsetTime value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, DateTimeFormatter.ISO_OFFSET_TIME);
       }
-      return reader.readOffsetTime();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, OffsetTime value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeTemporal(value, DateTimeFormatter.ISO_OFFSET_TIME);
       }
-      return reader.readOffsetTime();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readOffsetTime();
+    public OffsetTime readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readOffsetTime();
+    }
+
+    @Override
+    public OffsetTime readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readOffsetTime();
+    }
+
+    @Override
+    public OffsetTime readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readOffsetTime();
     }
   }
 
-  public static final class OffsetDateTimeCodec extends StringValueCodec {
+  public static final class OffsetDateTimeCodec implements JsonCodec<OffsetDateTime> {
     public static final OffsetDateTimeCodec INSTANCE = new OffsetDateTimeCodec();
 
     @Override
-    String toJsonString(Object value) {
-      return value.toString();
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeOffsetDateTime((OffsetDateTime) value);
-    }
-
-    @Override
-    void writeStringNonNull(StringJsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeOffsetDateTime((OffsetDateTime) value);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      return parseIsoOffsetDateTime(value);
-    }
-
-    @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, OffsetDateTime value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeOffsetDateTime(value);
       }
-      return reader.readIsoOffsetDateTime();
     }
 
     @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, OffsetDateTime value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeOffsetDateTime(value);
       }
-      return reader.readIsoOffsetDateTime();
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return reader.readIsoOffsetDateTime();
+    public OffsetDateTime readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoOffsetDateTime();
+    }
+
+    @Override
+    public OffsetDateTime readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoOffsetDateTime();
+    }
+
+    @Override
+    public OffsetDateTime readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : reader.readIsoOffsetDateTime();
     }
   }
 
-  private abstract static class ChronoDateCodec extends StringValueCodec {
-    private final DateTimeFormatter formatter;
-    private final String typeName;
-
-    ChronoDateCodec(DateTimeFormatter formatter, String typeName) {
-      this.formatter = formatter;
-      this.typeName = typeName;
-    }
-
-    @Override
-    String toJsonString(Object value) {
-      return formatter.format((TemporalAccessor) value);
-    }
-
-    @Override
-    Object fromJsonString(String value) {
-      try {
-        return fromParsed(formatter.parse(value));
-      } catch (DateTimeException e) {
-        throw new ForyJsonException("Invalid " + typeName + " JSON string: " + value, e);
-      }
-    }
-
-    abstract Object fromParsed(TemporalAccessor value);
-  }
-
-  public static final class HijrahDateCodec extends ChronoDateCodec {
+  public static final class HijrahDateCodec implements JsonCodec<HijrahDate> {
     public static final HijrahDateCodec INSTANCE = new HijrahDateCodec();
 
-    private HijrahDateCodec() {
-      super(
-          DateTimeFormatter.ISO_LOCAL_DATE.withChronology(HijrahChronology.INSTANCE),
-          HijrahDate.class.getName());
+    @Override
+    public void writeString(StringJsonWriter writer, HijrahDate value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(HIJRAH_DATE_FORMATTER.format(value));
+      }
     }
 
     @Override
-    Object fromParsed(TemporalAccessor value) {
-      return HijrahDate.from(value);
+    public void writeUtf8(Utf8JsonWriter writer, HijrahDate value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(HIJRAH_DATE_FORMATTER.format(value));
+      }
+    }
+
+    @Override
+    public HijrahDate readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return HijrahDate.from(HIJRAH_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(HijrahDate.class, value, e);
+      }
+    }
+
+    @Override
+    public HijrahDate readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return HijrahDate.from(HIJRAH_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(HijrahDate.class, value, e);
+      }
+    }
+
+    @Override
+    public HijrahDate readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return HijrahDate.from(HIJRAH_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(HijrahDate.class, value, e);
+      }
     }
   }
 
-  public static final class JapaneseDateCodec extends ChronoDateCodec {
+  public static final class JapaneseDateCodec implements JsonCodec<JapaneseDate> {
     public static final JapaneseDateCodec INSTANCE = new JapaneseDateCodec();
 
-    private JapaneseDateCodec() {
-      super(
-          DateTimeFormatter.ISO_LOCAL_DATE.withChronology(JapaneseChronology.INSTANCE),
-          JapaneseDate.class.getName());
+    @Override
+    public void writeString(StringJsonWriter writer, JapaneseDate value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(JAPANESE_DATE_FORMATTER.format(value));
+      }
     }
 
     @Override
-    Object fromParsed(TemporalAccessor value) {
-      return JapaneseDate.from(value);
+    public void writeUtf8(Utf8JsonWriter writer, JapaneseDate value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(JAPANESE_DATE_FORMATTER.format(value));
+      }
+    }
+
+    @Override
+    public JapaneseDate readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return JapaneseDate.from(JAPANESE_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(JapaneseDate.class, value, e);
+      }
+    }
+
+    @Override
+    public JapaneseDate readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return JapaneseDate.from(JAPANESE_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(JapaneseDate.class, value, e);
+      }
+    }
+
+    @Override
+    public JapaneseDate readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return JapaneseDate.from(JAPANESE_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(JapaneseDate.class, value, e);
+      }
     }
   }
 
-  public static final class MinguoDateCodec extends ChronoDateCodec {
+  public static final class MinguoDateCodec implements JsonCodec<MinguoDate> {
     public static final MinguoDateCodec INSTANCE = new MinguoDateCodec();
 
-    private MinguoDateCodec() {
-      super(
-          DateTimeFormatter.ISO_LOCAL_DATE.withChronology(MinguoChronology.INSTANCE),
-          MinguoDate.class.getName());
+    @Override
+    public void writeString(StringJsonWriter writer, MinguoDate value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(MINGUO_DATE_FORMATTER.format(value));
+      }
     }
 
     @Override
-    Object fromParsed(TemporalAccessor value) {
-      return MinguoDate.from(value);
+    public void writeUtf8(Utf8JsonWriter writer, MinguoDate value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(MINGUO_DATE_FORMATTER.format(value));
+      }
+    }
+
+    @Override
+    public MinguoDate readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return MinguoDate.from(MINGUO_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(MinguoDate.class, value, e);
+      }
+    }
+
+    @Override
+    public MinguoDate readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return MinguoDate.from(MINGUO_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(MinguoDate.class, value, e);
+      }
+    }
+
+    @Override
+    public MinguoDate readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return MinguoDate.from(MINGUO_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(MinguoDate.class, value, e);
+      }
     }
   }
 
-  public static final class ThaiBuddhistDateCodec extends ChronoDateCodec {
+  public static final class ThaiBuddhistDateCodec implements JsonCodec<ThaiBuddhistDate> {
     public static final ThaiBuddhistDateCodec INSTANCE = new ThaiBuddhistDateCodec();
 
-    private ThaiBuddhistDateCodec() {
-      super(
-          DateTimeFormatter.ISO_LOCAL_DATE.withChronology(ThaiBuddhistChronology.INSTANCE),
-          ThaiBuddhistDate.class.getName());
+    @Override
+    public void writeString(StringJsonWriter writer, ThaiBuddhistDate value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(THAI_BUDDHIST_DATE_FORMATTER.format(value));
+      }
     }
 
     @Override
-    Object fromParsed(TemporalAccessor value) {
-      return ThaiBuddhistDate.from(value);
+    public void writeUtf8(Utf8JsonWriter writer, ThaiBuddhistDate value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(THAI_BUDDHIST_DATE_FORMATTER.format(value));
+      }
     }
-  }
 
-  private static LocalDate parseIsoLocalDate(String value) {
-    int length = value.length();
-    if (length >= 10
-        && (length == 10 || value.charAt(10) == 'T')
-        && value.charAt(4) == '-'
-        && value.charAt(7) == '-') {
+    @Override
+    public ThaiBuddhistDate readLatin1(Latin1JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
       try {
-        return LocalDate.of(parse4(value, 0), parse2(value, 5), parse2(value, 8));
+        return ThaiBuddhistDate.from(THAI_BUDDHIST_DATE_FORMATTER.parse(value));
       } catch (RuntimeException e) {
-        if (length > 10 && value.charAt(10) == 'T') {
-          return LocalDate.parse(value.substring(0, 10));
-        }
-        return LocalDate.parse(value);
+        throw invalidString(ThaiBuddhistDate.class, value, e);
       }
     }
-    return LocalDate.parse(value);
-  }
 
-  private static OffsetDateTime parseIsoOffsetDateTime(String value) {
-    try {
-      // java.time emits these ISO forms, and parsing them directly avoids DateTimeFormatter's
-      // parsed-field maps on JSON scalar hot paths. Uncommon forms still use the JDK parser.
-      return parseIsoOffsetDateTimeFast(value);
-    } catch (RuntimeException e) {
-      return OffsetDateTime.parse(value);
-    }
-  }
-
-  private static OffsetDateTime parseIsoOffsetDateTimeFast(String value) {
-    int length = value.length();
-    if (length < 17
-        || value.charAt(4) != '-'
-        || value.charAt(7) != '-'
-        || value.charAt(10) != 'T'
-        || value.charAt(13) != ':') {
-      throw new IllegalArgumentException();
-    }
-    int year = parse4(value, 0);
-    int month = parse2(value, 5);
-    int day = parse2(value, 8);
-    int hour = parse2(value, 11);
-    int minute = parse2(value, 14);
-    int second = 0;
-    int nano = 0;
-    int index = 16;
-    if (index < length && value.charAt(index) == ':') {
-      second = parse2(value, index + 1);
-      index += 3;
-      if (index < length && value.charAt(index) == '.') {
-        int fractionStart = index + 1;
-        int fractionEnd = fractionStart;
-        while (fractionEnd < length && isDigit(value.charAt(fractionEnd))) {
-          fractionEnd++;
-        }
-        if (fractionEnd == fractionStart || fractionEnd - fractionStart > 9) {
-          throw new IllegalArgumentException();
-        }
-        nano = parseNano(value, fractionStart, fractionEnd);
-        index = fractionEnd;
+    @Override
+    public ThaiBuddhistDate readUtf16(Utf16JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
+      }
+      try {
+        return ThaiBuddhistDate.from(THAI_BUDDHIST_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(ThaiBuddhistDate.class, value, e);
       }
     }
-    int offsetSeconds = parseOffsetSeconds(value, index);
-    return OffsetDateTime.of(
-        year, month, day, hour, minute, second, nano, ZoneOffset.ofTotalSeconds(offsetSeconds));
-  }
 
-  private static int parseOffsetSeconds(String value, int index) {
-    int length = value.length();
-    char offset = value.charAt(index);
-    if (offset == 'Z') {
-      if (index + 1 != length) {
-        throw new IllegalArgumentException();
+    @Override
+    public ThaiBuddhistDate readUtf8(Utf8JsonReader reader) {
+      String value = reader.readNullableString();
+      if (value == null) {
+        return null;
       }
-      return 0;
-    }
-    if (offset != '+' && offset != '-') {
-      throw new IllegalArgumentException();
-    }
-    if (index + 6 > length || value.charAt(index + 3) != ':') {
-      throw new IllegalArgumentException();
-    }
-    int hour = parse2(value, index + 1);
-    int minute = parse2(value, index + 4);
-    int second = 0;
-    int end = index + 6;
-    if (end < length) {
-      if (end + 3 != length || value.charAt(end) != ':') {
-        throw new IllegalArgumentException();
+      try {
+        return ThaiBuddhistDate.from(THAI_BUDDHIST_DATE_FORMATTER.parse(value));
+      } catch (RuntimeException e) {
+        throw invalidString(ThaiBuddhistDate.class, value, e);
       }
-      second = parse2(value, end + 1);
     }
-    int total = hour * 3600 + minute * 60 + second;
-    return offset == '-' ? -total : total;
   }
 
-  private static int parseNano(String value, int start, int end) {
-    int nano = 0;
-    for (int i = start; i < end; i++) {
-      nano = nano * 10 + value.charAt(i) - '0';
-    }
-    for (int i = end - start; i < 9; i++) {
-      nano *= 10;
-    }
-    return nano;
-  }
-
-  private static int parse4(String value, int index) {
-    return parse2(value, index) * 100 + parse2(value, index + 2);
-  }
-
-  private static int parse2(String value, int index) {
-    int high = value.charAt(index) - '0';
-    int low = value.charAt(index + 1) - '0';
-    if (high < 0 || high > 9 || low < 0 || low > 9) {
-      throw new IllegalArgumentException();
-    }
-    return high * 10 + low;
-  }
-
-  private static boolean isDigit(char c) {
-    return c >= '0' && c <= '9';
-  }
-
-  public static final class AtomicBooleanCodec extends AbstractJsonCodec {
+  public static final class AtomicBooleanCodec implements JsonCodec<AtomicBoolean> {
     public static final AtomicBooleanCodec INSTANCE = new AtomicBooleanCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeBoolean(((AtomicBoolean) value).get());
+    public void writeString(StringJsonWriter writer, AtomicBoolean value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeBoolean(value.get());
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeBoolean(((AtomicBoolean) value).get());
+    public void writeUtf8(Utf8JsonWriter writer, AtomicBoolean value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeBoolean(value.get());
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return new AtomicBoolean(reader.readBoolean());
+    public AtomicBoolean readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AtomicBoolean(reader.readBoolean());
+    }
+
+    @Override
+    public AtomicBoolean readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AtomicBoolean(reader.readBoolean());
+    }
+
+    @Override
+    public AtomicBoolean readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AtomicBoolean(reader.readBoolean());
     }
   }
 
-  public static final class AtomicIntegerCodec extends AbstractJsonCodec {
+  public static final class AtomicIntegerCodec implements JsonCodec<AtomicInteger> {
     public static final AtomicIntegerCodec INSTANCE = new AtomicIntegerCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeInt(((AtomicInteger) value).get());
+    public void writeString(StringJsonWriter writer, AtomicInteger value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeInt(value.get());
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeInt(((AtomicInteger) value).get());
+    public void writeUtf8(Utf8JsonWriter writer, AtomicInteger value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeInt(value.get());
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return new AtomicInteger(reader.readInt());
+    public AtomicInteger readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AtomicInteger(reader.readInt());
+    }
+
+    @Override
+    public AtomicInteger readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AtomicInteger(reader.readInt());
+    }
+
+    @Override
+    public AtomicInteger readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AtomicInteger(reader.readInt());
     }
   }
 
-  public static final class AtomicLongCodec extends AbstractJsonCodec {
+  public static final class AtomicLongCodec implements JsonCodec<AtomicLong> {
     public static final AtomicLongCodec INSTANCE = new AtomicLongCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLong(((AtomicLong) value).get());
+    public void writeString(StringJsonWriter writer, AtomicLong value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLong(value.get());
+      }
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeLong(((AtomicLong) value).get());
+    public void writeUtf8(Utf8JsonWriter writer, AtomicLong value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeLong(value.get());
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return new AtomicLong(reader.readLong());
+    public AtomicLong readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AtomicLong(reader.readLong());
+    }
+
+    @Override
+    public AtomicLong readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AtomicLong(reader.readLong());
+    }
+
+    @Override
+    public AtomicLong readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AtomicLong(reader.readLong());
     }
   }
 
-  public static final class AtomicReferenceCodec extends AbstractJsonCodec {
+  public static final class AtomicReferenceCodec implements JsonCodec<AtomicReference<?>> {
     private final JsonTypeInfo valueTypeInfo;
-    private JsonCodec valueCodec;
 
     public AtomicReferenceCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
-      valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
     }
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      Object value =
-          reader.peekNull()
-              ? readNullValue(reader)
-              : valueCodec.read(reader, valueTypeInfo, resolver);
-      return new AtomicReference<>(value);
+    public void writeString(StringJsonWriter writer, AtomicReference<?> value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        valueTypeInfo.stringWriter().writeString(writer, value.get());
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return new AtomicReference<>(valueCodec.read(reader, valueTypeInfo, resolver));
+    public void writeUtf8(Utf8JsonWriter writer, AtomicReference<?> value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        valueTypeInfo.utf8Writer().writeUtf8(writer, value.get());
+      }
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      valueCodec.write(writer, ((AtomicReference<?>) value).get(), resolver);
+    public AtomicReference<?> readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return new AtomicReference<>();
+      }
+      return new AtomicReference<>(valueTypeInfo.latin1Reader().readLatin1(reader));
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      valueCodec.writeUtf8(writer, ((AtomicReference<?>) value).get(), resolver);
+    public AtomicReference<?> readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return new AtomicReference<>();
+      }
+      return new AtomicReference<>(valueTypeInfo.utf16Reader().readUtf16(reader));
+    }
+
+    @Override
+    public AtomicReference<?> readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return new AtomicReference<>();
+      }
+      return new AtomicReference<>(valueTypeInfo.utf8Reader().readUtf8(reader));
     }
   }
 
-  public static final class AtomicIntegerArrayCodec extends AbstractJsonCodec {
+  public static final class AtomicIntegerArrayCodec implements JsonCodec<AtomicIntegerArray> {
     public static final AtomicIntegerArrayCodec INSTANCE = new AtomicIntegerArrayCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      AtomicIntegerArray array = (AtomicIntegerArray) value;
+    public void writeString(StringJsonWriter writer, AtomicIntegerArray value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      AtomicIntegerArray array = value;
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
@@ -2103,8 +2704,12 @@ public final class ScalarCodecs {
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      AtomicIntegerArray array = (AtomicIntegerArray) value;
+    public void writeUtf8(Utf8JsonWriter writer, AtomicIntegerArray value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      AtomicIntegerArray array = value;
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
@@ -2114,7 +2719,67 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public AtomicIntegerArray readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readArray(reader);
+    }
+
+    @Override
+    public AtomicIntegerArray readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readArray(reader);
+    }
+
+    @Override
+    public AtomicIntegerArray readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readArray(reader);
+    }
+
+    private static AtomicIntegerArray readArray(Latin1JsonReader reader) {
+      reader.enterDepth();
+      reader.expect('[');
+      if (reader.consume(']')) {
+        reader.exitDepth();
+        return new AtomicIntegerArray(0);
+      }
+      int[] values = new int[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNull()) {
+          throw new ForyJsonException("Cannot read null into AtomicIntegerArray element");
+        }
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readInt();
+      } while (reader.consume(','));
+      reader.expect(']');
+      reader.exitDepth();
+      return new AtomicIntegerArray(Arrays.copyOf(values, size));
+    }
+
+    private static AtomicIntegerArray readArray(Utf16JsonReader reader) {
+      reader.enterDepth();
+      reader.expect('[');
+      if (reader.consume(']')) {
+        reader.exitDepth();
+        return new AtomicIntegerArray(0);
+      }
+      int[] values = new int[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNull()) {
+          throw new ForyJsonException("Cannot read null into AtomicIntegerArray element");
+        }
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readInt();
+      } while (reader.consume(','));
+      reader.expect(']');
+      reader.exitDepth();
+      return new AtomicIntegerArray(Arrays.copyOf(values, size));
+    }
+
+    private static AtomicIntegerArray readArray(Utf8JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -2138,12 +2803,16 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicLongArrayCodec extends AbstractJsonCodec {
+  public static final class AtomicLongArrayCodec implements JsonCodec<AtomicLongArray> {
     public static final AtomicLongArrayCodec INSTANCE = new AtomicLongArrayCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      AtomicLongArray array = (AtomicLongArray) value;
+    public void writeString(StringJsonWriter writer, AtomicLongArray value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      AtomicLongArray array = value;
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
@@ -2153,8 +2822,12 @@ public final class ScalarCodecs {
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      AtomicLongArray array = (AtomicLongArray) value;
+    public void writeUtf8(Utf8JsonWriter writer, AtomicLongArray value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      AtomicLongArray array = value;
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
@@ -2164,7 +2837,67 @@ public final class ScalarCodecs {
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public AtomicLongArray readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readArray(reader);
+    }
+
+    @Override
+    public AtomicLongArray readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readArray(reader);
+    }
+
+    @Override
+    public AtomicLongArray readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readArray(reader);
+    }
+
+    private static AtomicLongArray readArray(Latin1JsonReader reader) {
+      reader.enterDepth();
+      reader.expect('[');
+      if (reader.consume(']')) {
+        reader.exitDepth();
+        return new AtomicLongArray(0);
+      }
+      long[] values = new long[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNull()) {
+          throw new ForyJsonException("Cannot read null into AtomicLongArray element");
+        }
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readLong();
+      } while (reader.consume(','));
+      reader.expect(']');
+      reader.exitDepth();
+      return new AtomicLongArray(Arrays.copyOf(values, size));
+    }
+
+    private static AtomicLongArray readArray(Utf16JsonReader reader) {
+      reader.enterDepth();
+      reader.expect('[');
+      if (reader.consume(']')) {
+        reader.exitDepth();
+        return new AtomicLongArray(0);
+      }
+      long[] values = new long[8];
+      int size = 0;
+      do {
+        if (reader.tryReadNull()) {
+          throw new ForyJsonException("Cannot read null into AtomicLongArray element");
+        }
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = reader.readLong();
+      } while (reader.consume(','));
+      reader.expect(']');
+      reader.exitDepth();
+      return new AtomicLongArray(Arrays.copyOf(values, size));
+    }
+
+    private static AtomicLongArray readArray(Utf8JsonReader reader) {
       reader.enterDepth();
       reader.expect('[');
       if (reader.consume(']')) {
@@ -2188,44 +2921,107 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicReferenceArrayCodec extends AbstractJsonCodec {
+  public static final class AtomicReferenceArrayCodec
+      implements JsonCodec<AtomicReferenceArray<?>> {
     private final JsonTypeInfo valueTypeInfo;
-    private JsonCodec valueCodec;
 
     public AtomicReferenceArrayCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
-      valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      AtomicReferenceArray<?> array = (AtomicReferenceArray<?>) value;
+    public void writeString(StringJsonWriter writer, AtomicReferenceArray<?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      AtomicReferenceArray<?> array = value;
+      StringWriterCodec<Object> codec = valueTypeInfo.stringWriter();
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
-        valueCodec.write(writer, array.get(i), resolver);
+        codec.writeString(writer, array.get(i));
       }
       writer.writeArrayEnd();
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      AtomicReferenceArray<?> array = (AtomicReferenceArray<?>) value;
+    public void writeUtf8(Utf8JsonWriter writer, AtomicReferenceArray<?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      AtomicReferenceArray<?> array = value;
+      Utf8WriterCodec<Object> codec = valueTypeInfo.utf8Writer();
       writer.writeArrayStart();
       for (int i = 0, length = array.length(); i < length; i++) {
         writer.writeComma(i);
-        valueCodec.writeUtf8(writer, array.get(i), resolver);
+        codec.writeUtf8(writer, array.get(i));
       }
       writer.writeArrayEnd();
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public AtomicReferenceArray<?> readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken()
+          ? null
+          : readAtomicReferenceArray(reader, valueTypeInfo.latin1Reader());
+    }
+
+    @Override
+    public AtomicReferenceArray<?> readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
       reader.enterDepth();
-      reader.expect('[');
-      if (reader.consume(']')) {
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new AtomicReferenceArray<>(0);
+      }
+      Object[] values = new Object[8];
+      int size = 0;
+      Utf16ReaderCodec<Object> codec = valueTypeInfo.utf16Reader();
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = codec.readUtf16(reader);
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
+    }
+
+    @Override
+    public AtomicReferenceArray<?> readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return null;
+      }
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
+        reader.exitDepth();
+        return new AtomicReferenceArray<>(0);
+      }
+      Object[] values = new Object[8];
+      int size = 0;
+      Utf8ReaderCodec<Object> codec = valueTypeInfo.utf8Reader();
+      do {
+        if (size == values.length) {
+          values = Arrays.copyOf(values, values.length << 1);
+        }
+        values[size++] = codec.readUtf8(reader);
+      } while (reader.consumeNextCommaOrEndArray());
+      reader.exitDepth();
+      return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
+    }
+
+    private AtomicReferenceArray<?> readAtomicReferenceArray(
+        Latin1JsonReader reader, Latin1ReaderCodec<Object> codec) {
+      reader.enterDepth();
+      reader.expectNextToken('[');
+      if (reader.consumeNextToken(']')) {
         reader.exitDepth();
         return new AtomicReferenceArray<>(0);
       }
@@ -2235,75 +3031,84 @@ public final class ScalarCodecs {
         if (size == values.length) {
           values = Arrays.copyOf(values, values.length << 1);
         }
-        values[size++] = valueCodec.read(reader, valueTypeInfo, resolver);
-      } while (reader.consume(','));
-      reader.expect(']');
+        values[size++] = codec.readLatin1(reader);
+      } while (reader.consumeNextCommaOrEndArray());
       reader.exitDepth();
       return new AtomicReferenceArray<>(Arrays.copyOf(values, size));
     }
   }
 
-  public static final class OptionalCodec extends AbstractJsonCodec {
+  public static final class OptionalCodec implements JsonCodec<Optional<?>> {
     private final JsonTypeInfo valueTypeInfo;
-    private JsonCodec valueCodec;
 
     public OptionalCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
       valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
-      valueCodec = valueTypeInfo.codec();
-      resolver.registerJITNotifyCallback(valueCodec, codec -> valueCodec = codec);
     }
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        reader.readNull();
+    public void writeString(StringJsonWriter writer, Optional<?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      Optional<?> optional = value;
+      if (optional.isPresent()) {
+        valueTypeInfo.stringWriter().writeString(writer, optional.get());
+      } else {
+        writer.writeNull();
+      }
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Optional<?> value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      Optional<?> optional = value;
+      if (optional.isPresent()) {
+        valueTypeInfo.utf8Writer().writeUtf8(writer, optional.get());
+      } else {
+        writer.writeNull();
+      }
+    }
+
+    @Override
+    public Optional<?> readLatin1(Latin1JsonReader reader) {
+      if (reader.tryReadNullToken()) {
         return Optional.empty();
       }
-      return Optional.ofNullable(valueCodec.read(reader, valueTypeInfo, resolver));
+      return Optional.ofNullable(valueTypeInfo.latin1Reader().readLatin1(reader));
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return Optional.ofNullable(valueCodec.read(reader, valueTypeInfo, resolver));
-    }
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      Optional<?> optional = (Optional<?>) value;
-      if (optional.isPresent()) {
-        valueCodec.write(writer, optional.get(), resolver);
-      } else {
-        writer.writeNull();
+    public Optional<?> readUtf16(Utf16JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return Optional.empty();
       }
+      return Optional.ofNullable(valueTypeInfo.utf16Reader().readUtf16(reader));
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      Optional<?> optional = (Optional<?>) value;
-      if (optional.isPresent()) {
-        valueCodec.writeUtf8(writer, optional.get(), resolver);
-      } else {
-        writer.writeNull();
+    public Optional<?> readUtf8(Utf8JsonReader reader) {
+      if (reader.tryReadNullToken()) {
+        return Optional.empty();
       }
+      return Optional.ofNullable(valueTypeInfo.utf8Reader().readUtf8(reader));
     }
   }
 
-  public static final class OptionalIntCodec extends AbstractJsonCodec {
+  public static final class OptionalIntCodec implements JsonCodec<OptionalInt> {
     public static final OptionalIntCodec INSTANCE = new OptionalIntCodec();
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        reader.readNull();
-        return OptionalInt.empty();
+    public void writeString(StringJsonWriter writer, OptionalInt value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
       }
-      return OptionalInt.of(reader.readInt());
-    }
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      OptionalInt optional = (OptionalInt) value;
+      OptionalInt optional = value;
       if (optional.isPresent()) {
         writer.writeInt(optional.getAsInt());
       } else {
@@ -2312,31 +3117,45 @@ public final class ScalarCodecs {
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
+    public void writeUtf8(Utf8JsonWriter writer, OptionalInt value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      OptionalInt optional = value;
+      if (optional.isPresent()) {
+        writer.writeInt(optional.getAsInt());
+      } else {
+        writer.writeNull();
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return OptionalInt.of(reader.readInt());
+    public OptionalInt readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? OptionalInt.empty() : OptionalInt.of(reader.readInt());
+    }
+
+    @Override
+    public OptionalInt readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? OptionalInt.empty() : OptionalInt.of(reader.readInt());
+    }
+
+    @Override
+    public OptionalInt readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? OptionalInt.empty() : OptionalInt.of(reader.readInt());
     }
   }
 
-  public static final class OptionalLongCodec extends AbstractJsonCodec {
+  public static final class OptionalLongCodec implements JsonCodec<OptionalLong> {
     public static final OptionalLongCodec INSTANCE = new OptionalLongCodec();
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        reader.readNull();
-        return OptionalLong.empty();
+    public void writeString(StringJsonWriter writer, OptionalLong value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
       }
-      return OptionalLong.of(reader.readLong());
-    }
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      OptionalLong optional = (OptionalLong) value;
+      OptionalLong optional = value;
       if (optional.isPresent()) {
         writer.writeLong(optional.getAsLong());
       } else {
@@ -2345,31 +3164,45 @@ public final class ScalarCodecs {
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
+    public void writeUtf8(Utf8JsonWriter writer, OptionalLong value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      OptionalLong optional = value;
+      if (optional.isPresent()) {
+        writer.writeLong(optional.getAsLong());
+      } else {
+        writer.writeNull();
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return OptionalLong.of(reader.readLong());
+    public OptionalLong readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? OptionalLong.empty() : OptionalLong.of(reader.readLong());
+    }
+
+    @Override
+    public OptionalLong readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? OptionalLong.empty() : OptionalLong.of(reader.readLong());
+    }
+
+    @Override
+    public OptionalLong readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? OptionalLong.empty() : OptionalLong.of(reader.readLong());
     }
   }
 
-  public static final class OptionalDoubleCodec extends AbstractJsonCodec {
+  public static final class OptionalDoubleCodec implements JsonCodec<OptionalDouble> {
     public static final OptionalDoubleCodec INSTANCE = new OptionalDoubleCodec();
 
     @Override
-    public Object read(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.peekNull()) {
-        reader.readNull();
-        return OptionalDouble.empty();
+    public void writeString(StringJsonWriter writer, OptionalDouble value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
       }
-      return OptionalDouble.of(reader.readDouble());
-    }
-
-    @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      OptionalDouble optional = (OptionalDouble) value;
+      OptionalDouble optional = value;
       if (optional.isPresent()) {
         writer.writeDouble(optional.getAsDouble());
       } else {
@@ -2378,31 +3211,92 @@ public final class ScalarCodecs {
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeNonNull(writer, value, resolver);
+    public void writeUtf8(Utf8JsonWriter writer, OptionalDouble value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      OptionalDouble optional = value;
+      if (optional.isPresent()) {
+        writer.writeDouble(optional.getAsDouble());
+      } else {
+        writer.writeNull();
+      }
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return OptionalDouble.of(reader.readDouble());
+    public OptionalDouble readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken()
+          ? OptionalDouble.empty()
+          : OptionalDouble.of(reader.readDouble());
+    }
+
+    @Override
+    public OptionalDouble readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken()
+          ? OptionalDouble.empty()
+          : OptionalDouble.of(reader.readDouble());
+    }
+
+    @Override
+    public OptionalDouble readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken()
+          ? OptionalDouble.empty()
+          : OptionalDouble.of(reader.readDouble());
     }
   }
 
-  public static final class ByteBufferCodec extends AbstractJsonCodec {
+  public static final class ByteBufferCodec implements JsonCodec<ByteBuffer> {
     public static final ByteBufferCodec INSTANCE = new ByteBufferCodec();
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeBuffer(writer, (ByteBuffer) value);
+    public void writeString(StringJsonWriter writer, ByteBuffer value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      ByteBuffer buffer = value.duplicate();
+      writer.writeArrayStart();
+      int index = 0;
+      while (buffer.hasRemaining()) {
+        writer.writeComma(index++);
+        writer.writeInt(buffer.get());
+      }
+      writer.writeArrayEnd();
     }
 
     @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writeBuffer(writer, (ByteBuffer) value);
+    public void writeUtf8(Utf8JsonWriter writer, ByteBuffer value) {
+      if (value == null) {
+        writer.writeNull();
+        return;
+      }
+      ByteBuffer buffer = value.duplicate();
+      writer.writeArrayStart();
+      int index = 0;
+      while (buffer.hasRemaining()) {
+        writer.writeComma(index++);
+        writer.writeInt(buffer.get());
+      }
+      writer.writeArrayEnd();
     }
 
     @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
+    public ByteBuffer readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readBuffer(reader);
+    }
+
+    @Override
+    public ByteBuffer readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readBuffer(reader);
+    }
+
+    @Override
+    public ByteBuffer readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : readBuffer(reader);
+    }
+
+    private static ByteBuffer readBuffer(Latin1JsonReader reader) {
       reader.enterDepth();
       byte[] bytes = new byte[16];
       int size = 0;
@@ -2424,19 +3318,52 @@ public final class ScalarCodecs {
       return ByteBuffer.wrap(Arrays.copyOf(bytes, size));
     }
 
-    private void writeBuffer(JsonWriter writer, ByteBuffer value) {
-      ByteBuffer buffer = value.duplicate();
-      writer.writeArrayStart();
-      int index = 0;
-      while (buffer.hasRemaining()) {
-        writer.writeComma(index++);
-        writer.writeInt(buffer.get());
+    private static ByteBuffer readBuffer(Utf16JsonReader reader) {
+      reader.enterDepth();
+      byte[] bytes = new byte[16];
+      int size = 0;
+      reader.expect('[');
+      if (!reader.consume(']')) {
+        do {
+          if (size == bytes.length) {
+            bytes = Arrays.copyOf(bytes, size << 1);
+          }
+          int value = reader.readInt();
+          if (value < Byte.MIN_VALUE || value > 255) {
+            throw new ForyJsonException("ByteBuffer element out of byte range: " + value);
+          }
+          bytes[size++] = (byte) value;
+        } while (reader.consume(','));
+        reader.expect(']');
       }
-      writer.writeArrayEnd();
+      reader.exitDepth();
+      return ByteBuffer.wrap(Arrays.copyOf(bytes, size));
+    }
+
+    private static ByteBuffer readBuffer(Utf8JsonReader reader) {
+      reader.enterDepth();
+      byte[] bytes = new byte[16];
+      int size = 0;
+      reader.expect('[');
+      if (!reader.consume(']')) {
+        do {
+          if (size == bytes.length) {
+            bytes = Arrays.copyOf(bytes, size << 1);
+          }
+          int value = reader.readInt();
+          if (value < Byte.MIN_VALUE || value > 255) {
+            throw new ForyJsonException("ByteBuffer element out of byte range: " + value);
+          }
+          bytes[size++] = (byte) value;
+        } while (reader.consume(','));
+        reader.expect(']');
+      }
+      reader.exitDepth();
+      return ByteBuffer.wrap(Arrays.copyOf(bytes, size));
     }
   }
 
-  public static final class EnumCodec extends AbstractJsonCodec {
+  public static final class EnumCodec implements JsonCodec<Enum<?>> {
     private final Class<?> type;
     private final long[] nameHashes;
     private final long[] tokenPrefixes;
@@ -2481,44 +3408,36 @@ public final class ScalarCodecs {
     }
 
     @Override
-    void writeNonNull(JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(((Enum<?>) value).name());
-    }
-
-    @Override
-    void writeUtf8NonNull(Utf8JsonWriter writer, Object value, JsonTypeResolver resolver) {
-      writer.writeString(((Enum<?>) value).name());
-    }
-
-    @Override
-    public Object readLatin1(
-        Latin1JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeString(StringJsonWriter writer, Enum<?> value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.name());
       }
-      return readLatin1Enum(reader);
     }
 
     @Override
-    public Object readUtf16(
-        Utf16JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
+    public void writeUtf8(Utf8JsonWriter writer, Enum<?> value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.name());
       }
-      return readUtf16Enum(reader);
     }
 
     @Override
-    public Object readUtf8(
-        Utf8JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      if (reader.tryReadNullToken()) {
-        return null;
-      }
-      return readUtf8Enum(reader);
+    public Enum<?> readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : (Enum<?>) readLatin1Enum(reader);
     }
 
-    public Object readEnum(JsonReader reader) {
-      return enumValue(reader.readStringHash());
+    @Override
+    public Enum<?> readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : (Enum<?>) readUtf16Enum(reader);
+    }
+
+    @Override
+    public Enum<?> readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : (Enum<?>) readUtf8Enum(reader);
     }
 
     public Object readLatin1Enum(Latin1JsonReader reader) {
@@ -2575,11 +3494,6 @@ public final class ScalarCodecs {
 
     public Object readUtf8EnumHashToken(Utf8JsonReader reader) {
       return enumValue(reader.readPackedStringHashTokenValue());
-    }
-
-    @Override
-    Object readNonNull(JsonReader reader, JsonTypeInfo typeInfo, JsonTypeResolver resolver) {
-      return readEnum(reader);
     }
 
     private Enum<?> enumValue(long nameHash) {
@@ -2653,10 +3567,5 @@ public final class ScalarCodecs {
       }
       return null;
     }
-  }
-
-  private static Object readNullValue(JsonReader reader) {
-    reader.readNull();
-    return null;
   }
 }

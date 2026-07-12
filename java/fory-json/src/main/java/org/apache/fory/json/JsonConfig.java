@@ -25,13 +25,25 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.json.resolver.CodecRegistry;
 
-/** Immutable build-time configuration for one {@link ForyJson} instance. */
+/**
+ * Build configuration used to create all pooled states of one {@link ForyJson} instance.
+ *
+ * <p>Scalar settings are fixed at construction. The codec registry is builder-owned mutable input
+ * and is copied immediately by the runtime's shared registry; the JSON runtime never mutates it.
+ * The type checker uses identity semantics because checker instances may carry different user
+ * policy despite sharing a class. {@link #getCodegenHash()} identifies only settings that can
+ * change generated source; runtime-only settings such as depth and asynchronous scheduling do not
+ * fragment generated class names. Concurrency and retained writer-buffer limits are also
+ * runtime-only and do not fragment generated class names.
+ */
 public final class JsonConfig {
   private final boolean writeNullFields;
   private final boolean codegenEnabled;
   private final boolean asyncCompilationEnabled;
   private final boolean propertyDiscoveryEnabled;
   private final int maxDepth;
+  private final int concurrencyLevel;
+  private final int bufferSizeLimitBytes;
   private final CodecRegistry codecRegistry;
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
@@ -45,6 +57,8 @@ public final class JsonConfig {
       boolean asyncCompilationEnabled,
       boolean propertyDiscoveryEnabled,
       int maxDepth,
+      int concurrencyLevel,
+      int bufferSizeLimitBytes,
       CodecRegistry codecRegistry,
       JsonTypeChecker typeChecker) {
     this.writeNullFields = writeNullFields;
@@ -52,6 +66,8 @@ public final class JsonConfig {
     this.asyncCompilationEnabled = asyncCompilationEnabled;
     this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
     this.maxDepth = maxDepth;
+    this.concurrencyLevel = concurrencyLevel;
+    this.bufferSizeLimitBytes = bufferSizeLimitBytes;
     this.codecRegistry = codecRegistry;
     this.typeChecker = typeChecker;
     typeCheckContext = new JsonTypeCheckContext();
@@ -77,6 +93,14 @@ public final class JsonConfig {
 
   public int maxDepth() {
     return maxDepth;
+  }
+
+  public int concurrencyLevel() {
+    return concurrencyLevel;
+  }
+
+  public int bufferSizeLimitBytes() {
+    return bufferSizeLimitBytes;
   }
 
   public CodecRegistry codecRegistry() {
@@ -105,6 +129,8 @@ public final class JsonConfig {
         && asyncCompilationEnabled == that.asyncCompilationEnabled
         && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
         && maxDepth == that.maxDepth
+        && concurrencyLevel == that.concurrencyLevel
+        && bufferSizeLimitBytes == that.bufferSizeLimitBytes
         && typeChecker == that.typeChecker
         && Objects.equals(codecRegistryKey, that.codecRegistryKey);
   }
@@ -116,6 +142,8 @@ public final class JsonConfig {
     result = 31 * result + Boolean.hashCode(asyncCompilationEnabled);
     result = 31 * result + Boolean.hashCode(propertyDiscoveryEnabled);
     result = 31 * result + maxDepth;
+    result = 31 * result + concurrencyLevel;
+    result = 31 * result + bufferSizeLimitBytes;
     result = 31 * result + System.identityHashCode(typeChecker);
     result = 31 * result + codecRegistryKey.hashCode();
     return result;
@@ -124,6 +152,8 @@ public final class JsonConfig {
   private static final AtomicInteger COUNTER = new AtomicInteger(0);
 
   // Equal generated source inputs share one map entry, following core generated-code naming model.
+  // This process-wide map retains only immutable configuration text and integers, never user
+  // classes, codec instances, class loaders, or generated classes.
   private static final ConcurrentMap<CodegenKey, Integer> CODEGEN_ID_MAP =
       new ConcurrentHashMap<>();
 

@@ -17,11 +17,17 @@
  * under the License.
  */
 
-package org.apache.fory.json.reader;
+package org.apache.fory.json.codec;
 
-import org.apache.fory.json.codec.BaseObjectCodec;
-import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.json.writer.StringJsonWriter;
 
-public interface Utf16ObjectReader {
-  Object readUtf16(Utf16JsonReader reader, BaseObjectCodec owner, JsonTypeResolver typeResolver);
+/**
+ * Writes one complete resolved Java value, including {@code null}, through the concrete {@link
+ * StringJsonWriter} path.
+ *
+ * <p>The active writer retains its {@code JsonTypeResolver}; implementations resolve dynamic child
+ * types from the writer instead of receiving a resolver argument on this hot call.
+ */
+public interface StringWriterCodec<T> {
+  void writeString(StringJsonWriter writer, T value);
 }
