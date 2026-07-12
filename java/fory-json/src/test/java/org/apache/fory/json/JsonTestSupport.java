@@ -19,6 +19,9 @@
 
 package org.apache.fory.json;
 
+import java.lang.reflect.Field;
+import java.util.concurrent.atomic.AtomicReference;
+import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -33,6 +36,36 @@ final class JsonTestSupport {
       new JsonConfig(
           false, false, false, true, ForyJson.DEFAULT_MAX_DEPTH, new CodecRegistry(), null);
   private static final JsonSharedRegistry REGISTRY = new JsonSharedRegistry(CONFIG);
+  private static final JsonCodec<Object> NULL_CODEC =
+      new JsonCodec<Object>() {
+        @Override
+        public void writeString(StringJsonWriter writer, Object value) {
+          writer.writeNull();
+        }
+
+        @Override
+        public void writeUtf8(Utf8JsonWriter writer, Object value) {
+          writer.writeNull();
+        }
+
+        @Override
+        public Object readLatin1(Latin1JsonReader reader) {
+          reader.skipValue();
+          return null;
+        }
+
+        @Override
+        public Object readUtf16(Utf16JsonReader reader) {
+          reader.skipValue();
+          return null;
+        }
+
+        @Override
+        public Object readUtf8(Utf8JsonReader reader) {
+          reader.skipValue();
+          return null;
+        }
+      };
 
   static Utf8JsonWriter newUtf8Writer() {
     return new Utf8JsonWriter(CONFIG, newResolver());
@@ -70,8 +103,30 @@ final class JsonTestSupport {
     return new Utf16JsonReader(CONFIG, newResolver(), input);
   }
 
+  @SuppressWarnings("unchecked")
+  static <T> JsonCodec<T> nullCodec() {
+    return (JsonCodec<T>) NULL_CODEC;
+  }
+
+  static JsonTypeResolver primaryTypeResolver(ForyJson json) {
+    try {
+      AtomicReference<?> primarySlot = (AtomicReference<?>) field(json, "primarySlot");
+      Object pooledState = primarySlot.get();
+      Object state = field(pooledState, "state");
+      return (JsonTypeResolver) field(state, "typeResolver");
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
   private static JsonTypeResolver newResolver() {
     return new JsonTypeResolver(REGISTRY);
+  }
+
+  private static Object field(Object owner, String name) throws ReflectiveOperationException {
+    Field field = owner.getClass().getDeclaredField(name);
+    field.setAccessible(true);
+    return field.get(owner);
   }
 
   private JsonTestSupport() {}

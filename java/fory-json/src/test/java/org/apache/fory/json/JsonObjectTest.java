@@ -32,7 +32,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.apache.fory.json.data.BoxedScalars;
 import org.apache.fory.json.data.DeclaredParentField;
 import org.apache.fory.json.data.DirectionalIgnore;
 import org.apache.fory.json.data.FirstIntField;
@@ -47,15 +46,6 @@ public class JsonObjectTest extends ForyJsonTestModels {
   @Factory(dataProvider = "enableCodegen")
   public JsonObjectTest(boolean codegen) {
     super(codegen);
-  }
-
-  @Test
-  public void writePublicFields() {
-    ForyJson json = newJson();
-    assertEquals(json.toJson(new PublicFields()), "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
-    assertEquals(
-        new String(json.toJsonBytes(new PublicFields()), StandardCharsets.UTF_8),
-        "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
   }
 
   @Test
@@ -134,28 +124,31 @@ public class JsonObjectTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void useGeneratedWriter() {
+  public void publicFieldPaths() {
     ForyJson json = newJson();
-    assertEquals(json.toJson(new PublicFields()), "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
-    assertGeneratedWhenSupported(json, PublicFields.class);
-  }
+    String expected = "{\"active\":true,\"id\":7,\"name\":\"fory\"}";
+    assertEquals(json.toJson(new PublicFields()), expected);
+    assertEquals(
+        new String(json.toJsonBytes(new PublicFields()), StandardCharsets.UTF_8), expected);
 
-  @Test
-  public void generatedWriterSetting() {
-    ForyJson json = newJson();
-    assertEquals(json.toJson(new PublicFields()), "{\"active\":true,\"id\":7,\"name\":\"fory\"}");
-    PublicFields fields =
-        json.fromJson("{\"active\":false,\"id\":8,\"name\":\"json\"}", PublicFields.class);
-    assertEquals(fields.active, false);
-    assertEquals(fields.id, 8);
-    assertEquals(fields.name, "json");
-    BoxedScalars scalars =
+    PublicFields latin1 = json.fromJson(expected, PublicFields.class);
+    assertEquals(latin1.active, true);
+    assertEquals(latin1.id, 7);
+    assertEquals(latin1.name, "fory");
+
+    PublicFields utf16 =
         json.fromJson(
-            "{\"bool\":true,\"byteValue\":2,\"charValue\":\"x\",\"doubleValue\":2.5,"
-                + "\"floatValue\":1.5,\"intValue\":4,\"longValue\":5,\"shortValue\":3}",
-            BoxedScalars.class);
-    assertEquals(scalars.byteValue, Byte.valueOf((byte) 2));
-    assertEquals(scalars.shortValue, Short.valueOf((short) 3));
+            "{\"ignored\":\"" + ZH_TEXT + "\",\"active\":false,\"id\":8,\"name\":\"json\"}",
+            PublicFields.class);
+    assertEquals(utf16.active, false);
+    assertEquals(utf16.id, 8);
+    assertEquals(utf16.name, "json");
+
+    PublicFields utf8 =
+        json.fromJson(expected.getBytes(StandardCharsets.UTF_8), PublicFields.class);
+    assertEquals(utf8.active, true);
+    assertEquals(utf8.id, 7);
+    assertEquals(utf8.name, "fory");
     assertGeneratedWhenSupported(json, PublicFields.class);
   }
 

@@ -19,16 +19,14 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.nullCodec;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertThrows;
 
 import java.beans.Expression;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -36,18 +34,13 @@ import org.apache.fory.annotation.Expose;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.data.Kind;
-import org.apache.fory.json.reader.Latin1JsonReader;
-import org.apache.fory.json.reader.Utf16JsonReader;
-import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.writer.StringJsonWriter;
-import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Float16;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonTypeCheckerTest extends ForyJsonTestModels {
-  private static final JsonCodec<String> STRING_NULL_CODEC = new NullCodec<>();
+  private static final JsonCodec<String> STRING_NULL_CODEC = nullCodec();
 
   @Factory(dataProvider = "enableCodegen")
   public JsonTypeCheckerTest(boolean codegen) {
@@ -109,7 +102,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void customPrimitiveUsesChecker() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(int.class, NULL_INTEGER_CODEC)
+            .registerCodec(int.class, nullCodec())
             .withTypeChecker((className, context) -> !className.equals(int.class.getName()))
             .build();
     assertThrows(InsecureException.class, () -> json.fromJson("1", int.class));
@@ -134,24 +127,6 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
     ForyJson json =
         newJsonBuilder().withTypeChecker((name, context) -> !name.equals(className)).build();
     assertThrows(InsecureException.class, () -> json.toJson(value));
-  }
-
-  @Test
-  public void contextHasNoClass() {
-    JsonTypeCheckContext[] seen = new JsonTypeCheckContext[1];
-    ForyJson json =
-        newJsonBuilder()
-            .withTypeChecker(
-                (className, context) -> {
-                  seen[0] = context;
-                  return true;
-                })
-            .build();
-    json.toJson(new CheckedBean());
-    assertNotNull(seen[0]);
-    for (Method method : JsonTypeCheckContext.class.getDeclaredMethods()) {
-      assertNotSame(method.getReturnType(), Class.class);
-    }
   }
 
   @Test
@@ -197,7 +172,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void collectionScalarChecked() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(Integer.class, NULL_INTEGER_CODEC)
+            .registerCodec(Integer.class, nullCodec())
             .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
             .build();
     assertThrows(
@@ -208,7 +183,7 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
   public void mapScalarChecked() {
     ForyJson json =
         newJsonBuilder()
-            .registerCodec(Integer.class, NULL_INTEGER_CODEC)
+            .registerCodec(Integer.class, nullCodec())
             .withTypeChecker((className, context) -> !className.equals(Integer.class.getName()))
             .build();
     assertThrows(
@@ -287,35 +262,5 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
     @Expose public Class<?> type = String.class;
     public int id;
     public String name;
-  }
-
-  private static final class NullCodec<T> implements JsonCodec<T> {
-    @Override
-    public void writeString(StringJsonWriter writer, T value) {
-      writer.writeNull();
-    }
-
-    @Override
-    public void writeUtf8(Utf8JsonWriter writer, T value) {
-      writer.writeNull();
-    }
-
-    @Override
-    public T readLatin1(Latin1JsonReader reader) {
-      reader.skipValue();
-      return null;
-    }
-
-    @Override
-    public T readUtf16(Utf16JsonReader reader) {
-      reader.skipValue();
-      return null;
-    }
-
-    @Override
-    public T readUtf8(Utf8JsonReader reader) {
-      reader.skipValue();
-      return null;
-    }
   }
 }

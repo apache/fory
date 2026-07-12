@@ -19,6 +19,7 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.nullCodec;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
@@ -81,7 +82,7 @@ public class JsonRecordTest extends ForyJsonTestModels {
             "JsonPrimitiveRecord",
             "package org.apache.fory.json.records;\n"
                 + "public record JsonPrimitiveRecord(int value) {}\n");
-    ForyJson json = newJsonBuilder().registerCodec(int.class, NULL_INTEGER_CODEC).build();
+    ForyJson json = newJsonBuilder().registerCodec(int.class, nullCodec()).build();
     assertThrows(ForyJsonException.class, () -> json.fromJson("{\"value\":null}", type));
     assertThrows(
         ForyJsonException.class,

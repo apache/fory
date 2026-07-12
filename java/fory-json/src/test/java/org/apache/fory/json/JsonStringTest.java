@@ -44,18 +44,12 @@ import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.serializer.StringSerializer;
-import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonStringTest extends ForyJsonTestModels {
-  @Factory(dataProvider = "enableCodegen")
-  public JsonStringTest(boolean codegen) {
-    super(codegen);
-  }
-
-  @Test
-  public void escapeStrings() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void escapeStrings(boolean codegen) {
+    ForyJson json = newJson(codegen);
     PublicFields fields = new PublicFields();
     fields.name = "a\n\"b\"\\\u1234";
     String stringExpected = "{\"active\":true,\"id\":7,\"name\":\"a\\n\\\"b\\\"\\\\\u1234\"}";
@@ -63,9 +57,9 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(json.fromJson(stringExpected, PublicFields.class).name, fields.name);
   }
 
-  @Test
-  public void writeUtf16StringText() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeUtf16StringText(boolean codegen) {
+    ForyJson json = newJson(codegen);
     UnicodeValues values = new UnicodeValues();
     String expected =
         "{\"first\":\"\u1234\",\"second\":\"music \uD834\uDD1E\","
@@ -162,9 +156,9 @@ public class JsonStringTest extends ForyJsonTestModels {
     spaced.finish();
   }
 
-  @Test
-  public void writeUtf16Char() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeUtf16Char(boolean codegen) {
+    ForyJson json = newJson(codegen);
     CharValue value = new CharValue();
     value.value = '\u1234';
     assertEquals(json.toJson(value), "{\"value\":\"\u1234\"}");
@@ -172,9 +166,9 @@ public class JsonStringTest extends ForyJsonTestModels {
         new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"value\":\"\u1234\"}");
   }
 
-  @Test
-  public void writeNonLatin1Matrix() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeNonLatin1Matrix(boolean codegen) {
+    ForyJson json = newJson(codegen);
     UnicodeMatrix value = new UnicodeMatrix();
     String expected = unicodeMatrixJson();
     assertEquals(json.toJson(value), expected);
@@ -190,9 +184,9 @@ public class JsonStringTest extends ForyJsonTestModels {
         SUPPLEMENTARY_TEXT);
   }
 
-  @Test
-  public void writeReadZhEuStrings() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeReadZhEuStrings(boolean codegen) {
+    ForyJson json = newJson(codegen);
     assertTextRoundTrip(json, ZH_TEXT);
     assertTextRoundTrip(json, EU_TEXT);
   }
@@ -248,9 +242,9 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(writer.toJson(), "\"café\"");
   }
 
-  @Test
-  public void readStringInputLayouts() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void readStringInputLayouts(boolean codegen) {
+    ForyJson json = newJson(codegen);
     String latin1Json = "{\"active\":true,\"id\":7,\"name\":\"café\"}";
     String utf16Json = "{\"active\":true,\"id\":7,\"name\":\"你好，Fory\"}";
     if (StringSerializer.isBytesBackedString()) {
@@ -263,9 +257,9 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(json.fromJson("\"你好，Fory\"", String.class), ZH_TEXT);
   }
 
-  @Test
-  public void readStringInputEscapes() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void readStringInputEscapes(boolean codegen) {
+    ForyJson json = newJson(codegen);
 
     String asciiEscaped = json.fromJson("\"line\\n\\r\\t\\b\\f\\\\\\\"\\/end\"", String.class);
     String latin1Escaped = json.fromJson("\"caf\\u00E9\"", String.class);
@@ -319,9 +313,9 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(readerBufferLength(utf16Reader), 8192);
   }
 
-  @Test
-  public void readUnicodeFieldNames() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void readUnicodeFieldNames(boolean codegen) {
+    ForyJson json = newJson(codegen);
     String direct = "{\"café\":\"" + EU_TEXT + "\",\"你好\":\"" + ZH_TEXT + "\"}";
     String escaped = "{\"caf\\u00e9\":\"" + EU_TEXT + "\",\"\\u4f60\\u597d\":\"" + ZH_TEXT + "\"}";
     UnicodeFieldNames directValue = json.fromJson(direct, UnicodeFieldNames.class);
@@ -336,9 +330,9 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(bytesValue.你好, ZH_TEXT);
   }
 
-  @Test
-  public void readUnicodeEnum() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void readUnicodeEnum(boolean codegen) {
+    ForyJson json = newJson(codegen);
     String direct = "{\"kind\":\"你好\"}";
     String escaped = "{\"kind\":\"\\u4f60\\u597d\"}";
     String asciiDirect = "{\"kind\":\"FAST\"}";
@@ -358,9 +352,9 @@ public class JsonStringTest extends ForyJsonTestModels {
         json.fromJson(asciiEscaped.getBytes(StandardCharsets.UTF_8), Nested.class).kind, Kind.FAST);
   }
 
-  @Test
-  public void writeLatin1NonAsciiBytes() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeLatin1NonAsciiBytes(boolean codegen) {
+    ForyJson json = newJson(codegen);
     PublicFields fields = new PublicFields();
     fields.name = "caf\u00e9";
     assertEquals(json.toJson(fields), "{\"active\":true,\"id\":7,\"name\":\"caf\u00e9\"}");
@@ -374,27 +368,27 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(json.fromJson(json.toJsonBytes(fields), PublicFields.class).name, fields.name);
   }
 
-  @Test
-  public void rejectSurrogateChar() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void rejectSurrogateChar(boolean codegen) {
+    ForyJson json = newJson(codegen);
     CharValue value = new CharValue();
     value.value = '\uD800';
     assertThrows(ForyJsonException.class, () -> json.toJson(value));
     assertThrows(ForyJsonException.class, () -> json.toJsonBytes(value));
   }
 
-  @Test
-  public void rejectSurrogateString() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void rejectSurrogateString(boolean codegen) {
+    ForyJson json = newJson(codegen);
     PublicFields fields = new PublicFields();
     fields.name = "\uD800";
     assertThrows(ForyJsonException.class, () -> json.toJson(fields));
     assertThrows(ForyJsonException.class, () -> json.toJsonBytes(fields));
   }
 
-  @Test
-  public void writeSurrogatePair() {
-    ForyJson json = newJson();
+  @Test(dataProvider = "enableCodegen")
+  public void writeSurrogatePair(boolean codegen) {
+    ForyJson json = newJson(codegen);
     PublicFields fields = new PublicFields();
     fields.name = "a\uD83D\uDE00";
     String stringExpected = "{\"active\":true,\"id\":7,\"name\":\"a\uD83D\uDE00\"}";

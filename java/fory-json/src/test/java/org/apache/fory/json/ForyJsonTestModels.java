@@ -40,7 +40,6 @@ import java.util.List;
 import java.util.Map;
 import javax.tools.JavaCompiler;
 import javax.tools.ToolProvider;
-import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.data.FastContainers;
 import org.apache.fory.json.data.GeneratedCollectionFields;
 import org.apache.fory.json.data.JsonTestData;
@@ -51,48 +50,13 @@ import org.apache.fory.json.data.PrivateFields;
 import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.json.data.TokenValues;
 import org.apache.fory.json.data.UnicodeMatrix;
-import org.apache.fory.json.reader.Latin1JsonReader;
-import org.apache.fory.json.reader.Utf16JsonReader;
-import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
-import org.apache.fory.json.writer.StringJsonWriter;
-import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.FieldAccessor;
 import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 
 public abstract class ForyJsonTestModels {
-  protected static final JsonCodec<Integer> NULL_INTEGER_CODEC =
-      new JsonCodec<Integer>() {
-        @Override
-        public void writeString(StringJsonWriter writer, Integer value) {
-          writer.writeNull();
-        }
-
-        @Override
-        public void writeUtf8(Utf8JsonWriter writer, Integer value) {
-          writer.writeNull();
-        }
-
-        @Override
-        public Integer readLatin1(Latin1JsonReader reader) {
-          reader.skipValue();
-          return null;
-        }
-
-        @Override
-        public Integer readUtf16(Utf16JsonReader reader) {
-          reader.skipValue();
-          return null;
-        }
-
-        @Override
-        public Integer readUtf8(Utf8JsonReader reader) {
-          reader.skipValue();
-          return null;
-        }
-      };
   protected static final String TWO_BYTE_TEXT = JsonTestData.TWO_BYTE_TEXT;
   protected static final String THREE_BYTE_TEXT = JsonTestData.THREE_BYTE_TEXT;
   protected static final String SUPPLEMENTARY_TEXT = JsonTestData.SUPPLEMENTARY_TEXT;
@@ -350,31 +314,18 @@ public abstract class ForyJsonTestModels {
   }
 
   protected static boolean hasGeneratedCapability(ForyJson json, Class<?> type) {
+    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
+    resolver.lockJIT();
     try {
-      Field primarySlotField = ForyJson.class.getDeclaredField("primarySlot");
-      primarySlotField.setAccessible(true);
-      Object pooledState =
-          ((java.util.concurrent.atomic.AtomicReference<?>) primarySlotField.get(json)).get();
-      Field stateField = pooledState.getClass().getDeclaredField("state");
-      stateField.setAccessible(true);
-      Object state = stateField.get(pooledState);
-      Field resolverField = state.getClass().getDeclaredField("typeResolver");
-      resolverField.setAccessible(true);
-      JsonTypeResolver resolver = (JsonTypeResolver) resolverField.get(state);
-      resolver.lockJIT();
-      try {
-        JsonTypeInfo info = resolver.getTypeInfo(type, type);
-        Object owner = resolver.getObjectCodec(type);
-        return info.stringWriter() != owner
-            || info.utf8Writer() != owner
-            || info.latin1Reader() != owner
-            || info.utf16Reader() != owner
-            || info.utf8Reader() != owner;
-      } finally {
-        resolver.unlockJIT();
-      }
-    } catch (ReflectiveOperationException e) {
-      throw new AssertionError(e);
+      JsonTypeInfo info = resolver.getTypeInfo(type, type);
+      Object owner = resolver.getObjectCodec(type);
+      return info.stringWriter() != owner
+          || info.utf8Writer() != owner
+          || info.latin1Reader() != owner
+          || info.utf16Reader() != owner
+          || info.utf8Reader() != owner;
+    } finally {
+      resolver.unlockJIT();
     }
   }
 

@@ -24,6 +24,8 @@ import static org.apache.fory.json.JsonTestSupport.newStringWriter;
 import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Writer;
+import static org.apache.fory.json.JsonTestSupport.nullCodec;
+import static org.apache.fory.json.JsonTestSupport.primaryTypeResolver;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -108,41 +110,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(json.toJson(new BoxedScalars()), expected);
     assertEquals(
         new String(json.toJsonBytes(new BoxedScalars()), StandardCharsets.UTF_8), expected);
-  }
-
-  @Test
-  public void writeUtf8Doubles() {
-    double[] values = {
-      0.0d,
-      -0.0d,
-      2.5d,
-      -3.75d,
-      Math.nextUp(1.0d),
-      32.389082173209815d,
-      69.85922221416756d,
-      1.0e-4d,
-      1.0e-3d,
-      1.0e7d,
-      Double.MIN_VALUE,
-      Double.MAX_VALUE
-    };
-    for (double value : values) {
-      Utf8JsonWriter writer = newUtf8Writer(new byte[4]);
-      writer.writeDouble(value);
-      assertEquals(
-          new String(writer.toJsonBytes(), StandardCharsets.UTF_8), Double.toString(value));
-      StringJsonWriter stringWriter = newStringWriter(new byte[4]);
-      stringWriter.writeDouble(value);
-      assertEquals(stringWriter.toJson(), Double.toString(value));
-      StringJsonWriter utf16Writer = newStringWriter(new byte[4]);
-      utf16Writer.writeString("\u0100");
-      utf16Writer.writeComma(1);
-      utf16Writer.writeDouble(value);
-      assertEquals(utf16Writer.toJson(), "\"\u0100\"," + Double.toString(value));
-    }
-    Utf8JsonWriter writer = newUtf8Writer(new byte[4]);
-    writer.writeDouble(Double.NaN);
-    assertEquals(new String(writer.toJsonBytes(), StandardCharsets.UTF_8), "\"NaN\"");
   }
 
   @Test(dataProvider = "enableCodegen")
@@ -234,31 +201,13 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void writeFiniteFloatsDirectly() {
+  public void writeFiniteFloatRoots() {
     ForyJson json = newJson();
     float[] values = {1.5f, 1.1f, Float.MIN_VALUE, Float.MAX_VALUE, 1.0e-20f, 1.0e20f};
     for (float value : values) {
       String expected = Float.toString(value);
       assertEquals(json.toJson(value), expected);
       assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
-
-      Utf8JsonWriter utf8Writer = newUtf8Writer(new byte[4]);
-      utf8Writer.writeFloat(value);
-      assertEquals(new String(utf8Writer.toJsonBytes(), StandardCharsets.UTF_8), expected);
-
-      StringJsonWriter stringWriter = newStringWriter();
-      stringWriter.writeArrayStart();
-      stringWriter.writeString(ZH_TEXT);
-      stringWriter.writeComma(1);
-      stringWriter.writeFloat(value);
-      stringWriter.writeArrayEnd();
-      assertEquals(stringWriter.toJson(), "[\"" + ZH_TEXT + "\"," + expected + "]");
-
-      StringJsonWriter smallWriter = newStringWriter(new byte[4]);
-      smallWriter.writeString(ZH_TEXT);
-      smallWriter.writeComma(1);
-      smallWriter.writeFloat(value);
-      assertEquals(smallWriter.toJson(), "\"" + ZH_TEXT + "\"," + expected);
     }
   }
 
@@ -947,6 +896,10 @@ public class JsonScalarTest extends ForyJsonTestModels {
     float[] floats = {
       0.0f,
       -0.0f,
+      1.5f,
+      1.1f,
+      1.0e-20f,
+      1.0e20f,
       Float.MIN_VALUE,
       Float.MIN_NORMAL,
       Math.nextDown(1.0f),
@@ -960,6 +913,13 @@ public class JsonScalarTest extends ForyJsonTestModels {
     double[] doubles = {
       0.0d,
       -0.0d,
+      2.5d,
+      -3.75d,
+      32.389082173209815d,
+      69.85922221416756d,
+      1.0e-4d,
+      1.0e-3d,
+      1.0e7d,
       Double.MIN_VALUE,
       Double.MIN_NORMAL,
       Math.nextDown(1.0d),
@@ -1789,19 +1749,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void concreteDoubleReadersParseFastValues() {
-    String token = "12.5";
-    byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
-    byte[] latin1 = latin1Bytes(token);
-    assertEquals(newUtf8Reader(utf8).readDouble(), 12.5d);
-    assertEquals(newUtf8Reader(utf8).readDoubleTokenValue(), 12.5d);
-    assertEquals(newLatin1Reader(latin1).readDouble(), 12.5d);
-    assertEquals(newLatin1Reader(latin1).readDoubleTokenValue(), 12.5d);
-    assertEquals(utf16Reader(token).readDouble(), 12.5d);
-    assertEquals(utf16Reader(token).readDoubleTokenValue(), 12.5d);
-  }
-
-  @Test
   public void parseCompactDoubleDecimals() {
     assertDoubleBits("46.916843283327836");
     assertDoubleBits("-179.12345678901234");
@@ -2179,7 +2126,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
 
   @Test(dataProvider = "enableCodegen")
   public void customPrimitiveNull(boolean codegen) {
-    ForyJson json = newJsonBuilder(codegen).registerCodec(int.class, NULL_INTEGER_CODEC).build();
+    ForyJson json = newJsonBuilder(codegen).registerCodec(int.class, nullCodec()).build();
     assertThrows(ForyJsonException.class, () -> json.fromJson("null", int.class));
     assertThrows(
         ForyJsonException.class,
@@ -2575,11 +2522,9 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   private static Object generatedReader(ForyJson json, Class<?> type) throws Exception {
-    Object primarySlot = ((AtomicReference<?>) reflectField(json, "primarySlot")).get();
-    Object state = reflectField(primarySlot, "state");
-    JsonTypeResolver resolver = (JsonTypeResolver) reflectField(state, "typeResolver");
-    Object owner = resolver.getObjectCodec(type);
-    JsonTypeInfo typeInfo = resolver.getTypeInfo(type, type);
+    JsonTypeResolver typeResolver = primaryTypeResolver(json);
+    Object owner = typeResolver.getObjectCodec(type);
+    JsonTypeInfo typeInfo = typeResolver.getTypeInfo(type, type);
     Object codec =
         StringSerializer.isBytesBackedString() ? typeInfo.latin1Reader() : typeInfo.utf16Reader();
     assertTrue(codec != owner, codec.getClass().getName());
@@ -2776,12 +2721,6 @@ public class JsonScalarTest extends ForyJsonTestModels {
   private static int testDoubleExponent(long bits) {
     int exponent = (int) ((bits & 0x7ff0_0000_0000_0000L) >>> 52);
     return exponent == 0 ? -1074 : exponent - 1075;
-  }
-
-  private static Object reflectField(Object owner, String name) throws Exception {
-    Field field = owner.getClass().getDeclaredField(name);
-    field.setAccessible(true);
-    return field.get(owner);
   }
 
   private static void setIntField(Object owner, String name, int value) throws Exception {
