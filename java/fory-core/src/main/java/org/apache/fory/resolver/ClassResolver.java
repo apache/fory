@@ -1500,8 +1500,6 @@ public class ClassResolver extends TypeResolver {
       }
       if (config.checkJdkClassSerializable()) {
         if (cls.getName().startsWith("java") && !Serializable.class.isAssignableFrom(cls)) {
-            // Route to a serializer that still refuses binary serialization (write/read throw) but
-            // supports field copy via AbstractObjectSerializer
             return NonSerializableSerializer.class;
         }
       }
