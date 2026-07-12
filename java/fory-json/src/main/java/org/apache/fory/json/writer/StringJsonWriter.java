@@ -1279,7 +1279,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     for (; i < upperBound; i += 16) {
       long word0 = LittleEndian.getInt64(value, i);
       long word1 = LittleEndian.getInt64(value, i + 8);
-      if (!isJsonAsciiWord(word0) || !isJsonAsciiWord(word1)) {
+      if (!isJsonAsciiWords(word0, word1)) {
         break;
       }
       LittleEndian.putInt64(bytes, pos, word0);
@@ -2216,6 +2216,25 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     return (((word + ASCII_CONTROL_OFFSET) & ~word) & HIGH_BITS) == HIGH_BITS
         && (((word ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS) == HIGH_BITS
         && notBackslash == HIGH_BITS;
+  }
+
+  // Aggregate every exact rejection mask before branching. Splitting this back into per-word
+  // calls adds one common-path branch for each eight bytes written.
+  private static boolean isJsonAsciiWords(long word0, long word1) {
+    long notBackslash =
+        ((word0 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
+            & HIGH_BITS;
+    if ((notBackslash & (word0 + ASCII_GT_QUOTE_OFFSET) & (word1 + ASCII_GT_QUOTE_OFFSET))
+        == HIGH_BITS) {
+      return true;
+    }
+    return ((word0 + ASCII_CONTROL_OFFSET)
+            & (word1 + ASCII_CONTROL_OFFSET)
+            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & notBackslash)
+        == HIGH_BITS;
   }
 
   private static boolean isJsonAsciiInt(int word) {

@@ -440,6 +440,34 @@ public class JsonStringTest extends ForyJsonTestModels {
     String expected = "\"" + repeat('b', 24) + "\\n\"";
     assertEquals(json.toJson(escaped), expected);
     assertEquals(new String(json.toJsonBytes(escaped), StandardCharsets.UTF_8), expected);
+
+    String escaped20 = repeat('c', 7) + "\"" + repeat('c', 7) + "\\" + repeat('c', 3) + "\n";
+    String expected20 =
+        "\"" + repeat('c', 7) + "\\\"" + repeat('c', 7) + "\\\\" + repeat('c', 3) + "\\n\"";
+    assertEquals(json.toJson(escaped20), expected20);
+    assertEquals(new String(json.toJsonBytes(escaped20), StandardCharsets.UTF_8), expected20);
+
+    String escaped30 =
+        repeat('d', 7)
+            + "\u00e9"
+            + repeat('d', 7)
+            + "\""
+            + repeat('d', 7)
+            + "\\"
+            + repeat('d', 5)
+            + "\n";
+    String expected30 =
+        "\""
+            + repeat('d', 7)
+            + "\u00e9"
+            + repeat('d', 7)
+            + "\\\""
+            + repeat('d', 7)
+            + "\\\\"
+            + repeat('d', 5)
+            + "\\n\"";
+    assertEquals(json.toJson(escaped30), expected30);
+    assertEquals(new String(json.toJsonBytes(escaped30), StandardCharsets.UTF_8), expected30);
   }
 
   @Test
