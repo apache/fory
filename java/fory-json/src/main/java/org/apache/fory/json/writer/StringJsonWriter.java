@@ -2215,10 +2215,11 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     if ((notBackslash & (word + ASCII_GT_QUOTE_OFFSET)) == HIGH_BITS) {
       return true;
     }
-    return isJsonAsciiWordFallback(word, notBackslash);
+    return isJsonAsciiWordFallback(word);
   }
 
-  private static boolean isJsonAsciiWordFallback(long word, long notBackslash) {
+  private static boolean isJsonAsciiWordFallback(long word) {
+    long notBackslash = ((word ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS;
     return (((word + ASCII_CONTROL_OFFSET) & ~word) & HIGH_BITS) == HIGH_BITS
         && (((word ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS) == HIGH_BITS
         && notBackslash == HIGH_BITS;
