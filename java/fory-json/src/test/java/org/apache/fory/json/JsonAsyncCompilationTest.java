@@ -141,6 +141,17 @@ public class JsonAsyncCompilationTest {
         4);
     JsonTypeResolver resolver = primaryTypeResolver(json);
     ObjectCodec<AsyncCreator> owner = resolver.getObjectCodec(AsyncCreator.class);
+    if (!StringSerializer.isBytesBackedString()) {
+      // Java 8 strings are char-backed, so public String reads select the UTF-16 reader and cannot
+      // request Latin-1 compilation. Explicitly request that cold capability to keep this test's
+      // coverage of every asynchronously installed codec independent of the JDK string layout.
+      resolver.lockJIT();
+      try {
+        assertSame(resolver.latin1Reader(owner), owner);
+      } finally {
+        resolver.unlockJIT();
+      }
+    }
     controlled.executor.runAll();
     JsonTypeInfo info = resolver.getTypeInfo(AsyncCreator.class, AsyncCreator.class);
     assertNotSame(info.stringWriter(), owner);

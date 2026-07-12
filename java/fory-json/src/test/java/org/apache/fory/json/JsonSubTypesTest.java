@@ -143,7 +143,9 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
   @Test
   public void scannerRestoresCursor() {
     JsonSubtypeScanInfo info = new JsonSubtypeScanInfo("kind", new String[] {"circle"});
-    assertScannerRestored(newLatin1Reader("{\"kind\":\"circle\",\"radius\":1}"), info);
+    assertScannerRestored(
+        newLatin1Reader("{\"kind\":\"circle\",\"radius\":1}".getBytes(StandardCharsets.ISO_8859_1)),
+        info);
     assertScannerRestored(newUtf16Reader("{\"kind\":\"circle\",\"radius\":1}"), info);
     assertScannerRestored(
         newUtf8Reader("{\"kind\":\"circle\",\"radius\":1}".getBytes(StandardCharsets.UTF_8)), info);
@@ -170,7 +172,8 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
                 .getBytes(StandardCharsets.UTF_8)),
         supplementaryInfo);
     JsonSubtypeScanInfo latin = new JsonSubtypeScanInfo("type", new String[] {"café"});
-    assertScannerRestored(newLatin1Reader("{\"type\":\"café\"}"), latin);
+    assertScannerRestored(
+        newLatin1Reader("{\"type\":\"café\"}".getBytes(StandardCharsets.ISO_8859_1)), latin);
 
     byte[] invalidUtf8 = "{\"kind\":\"x\"}".getBytes(StandardCharsets.UTF_8);
     invalidUtf8[9] = (byte) 0xc0;
