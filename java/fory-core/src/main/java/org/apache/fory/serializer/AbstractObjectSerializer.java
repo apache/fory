@@ -207,6 +207,18 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     return null;
   }
 
+  protected final void skipField(ReadContext readContext, SerializationFieldInfo remoteFieldInfo) {
+    // A remote-only struct can have a synthetic UnknownStruct descriptor while registered type
+    // dispatch still materializes its concrete local class. Generated compatible readers must use
+    // this untyped path so consuming the field never inserts a cast to the synthetic type.
+    FieldSkipper.skipField(
+        readContext,
+        typeResolver,
+        readContext.getRefReader(),
+        remoteFieldInfo,
+        readContext.getBuffer());
+  }
+
   /**
    * Write field value to buffer by reading from the object via fieldAccessor. Handles primitive
    * types, unsigned/compressed numbers, and common types like String with optimized fast paths.

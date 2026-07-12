@@ -343,6 +343,9 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
   protected Expression deserializeField(
       Expression buffer, Descriptor descriptor, Function<Expression, Expression> callback) {
     FieldConverter<?> converter = descriptor.getFieldConverter();
+    if (shouldSkipField(descriptor)) {
+      return skipField(descriptor);
+    }
     if (converter == null) {
       return super.deserializeField(buffer, descriptor, callback);
     }
@@ -351,6 +354,36 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
         targetValue != null,
         "Unsupported compatible scalar converter target " + FieldConverters.toType(converter));
     return new Expression.ListExpression(targetValue, callback.apply(targetValue));
+  }
+
+  @Override
+  protected Expression deserializeGroupForRecord(
+      List<Descriptor> group, Expression bean, Expression buffer) {
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    for (Descriptor descriptor : group) {
+      if (shouldSkipField(descriptor)) {
+        expressions.add(skipField(descriptor));
+        continue;
+      }
+      TypeRef<?> castTypeRef = readValueTypeRef(descriptor);
+      Expression value = deserializeField(buffer, descriptor, expression -> expression);
+      expressions.add(setFieldValue(bean, descriptor, tryInlineCast(value, castTypeRef)));
+    }
+    return expressions;
+  }
+
+  private boolean shouldSkipField(Descriptor descriptor) {
+    return descriptor.getField() == null
+        && descriptor.getFieldConverter() == null
+        && !descriptor.getRawType().isPrimitive();
+  }
+
+  private Expression skipField(Descriptor descriptor) {
+    return new Expression.Invoke(
+        new Expression.Reference("this", TypeRef.of(GeneratedCompatibleSerializer.class), false),
+        "skipField",
+        readContextRef(),
+        remoteFieldInfo(descriptor));
   }
 
   @Override
