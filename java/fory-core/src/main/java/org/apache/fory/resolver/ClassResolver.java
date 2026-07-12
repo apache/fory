@@ -116,6 +116,7 @@ import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.BufferSerializers;
+import org.apache.fory.serializer.CodegenSerializer.LazyInitBeanSerializer;
 import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.CopyOnlyObjectSerializer;
 import org.apache.fory.serializer.EnumSerializer;
@@ -127,7 +128,6 @@ import org.apache.fory.serializer.JdkProxySerializer;
 import org.apache.fory.serializer.LambdaSerializer;
 import org.apache.fory.serializer.LocaleSerializer;
 import org.apache.fory.serializer.NonSerializableSerializer;
-import org.apache.fory.serializer.CodegenSerializer.LazyInitBeanSerializer;
 import org.apache.fory.serializer.NoneSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.OptionalSerializers;
@@ -1499,7 +1499,7 @@ public class ClassResolver extends TypeResolver {
         }
       }
       if (config.checkJdkClassSerializable()) {
-        if (cls.getName().startsWith("java") && !Serializable.class.isAssignableFrom(cls)){
+        if (cls.getName().startsWith("java") && !Serializable.class.isAssignableFrom(cls)) {
             // Route to a serializer that still refuses binary serialization (write/read throw) but
             // supports field copy via AbstractObjectSerializer
             return NonSerializableSerializer.class;
