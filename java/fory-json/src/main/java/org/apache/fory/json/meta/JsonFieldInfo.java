@@ -97,6 +97,10 @@ public final class JsonFieldInfo {
   private final byte[] stringUtf16CommaNamePrefix;
   private final byte[] utf8NamePrefix;
   private final byte[] utf8CommaNamePrefix;
+  private final long utf8NamePrefixWord0;
+  private final long utf8NamePrefixWord1;
+  private final long utf8CommaNamePrefixWord0;
+  private final long utf8CommaNamePrefixWord1;
   private final byte[][] stringEnumValues;
   private final byte[][] stringElementEnumValues;
   private final byte[][] stringEnumNameValues;
@@ -165,6 +169,10 @@ public final class JsonFieldInfo {
     stringUtf16CommaNamePrefix = toUtf16Bytes(stringCommaNamePrefix);
     utf8NamePrefix = utf8Prefix.getBytes(StandardCharsets.UTF_8);
     utf8CommaNamePrefix = ("," + utf8Prefix).getBytes(StandardCharsets.UTF_8);
+    utf8NamePrefixWord0 = packedPrefixWord(utf8NamePrefix, 0);
+    utf8NamePrefixWord1 = packedPrefixWord(utf8NamePrefix, Long.BYTES);
+    utf8CommaNamePrefixWord0 = packedPrefixWord(utf8CommaNamePrefix, 0);
+    utf8CommaNamePrefixWord1 = packedPrefixWord(utf8CommaNamePrefix, Long.BYTES);
     stringEnumValues = writeKind == JsonFieldKind.ENUM ? stringEnumValues(writeRawType) : null;
     stringEnumNameValues =
         writeKind == JsonFieldKind.ENUM ? fieldValues(stringNamePrefix, stringEnumValues) : null;
@@ -994,8 +1002,21 @@ public final class JsonFieldInfo {
     if (value == null) {
       writer.writeFieldName(this, index);
       writer.writeNull();
+    } else if (index == 0) {
+      // Keep interpreted packable fields on the same concrete writer entry as generated codecs.
+      // A separate byte-array entry leaves the packed encoder cold until generated parents compile,
+      // allowing C2 to copy the complete encoder graph into those parents instead.
+      if (utf8NamePrefix.length <= Long.BYTES * 2) {
+        writer.writeStringField(
+            utf8NamePrefixWord0, utf8NamePrefixWord1, utf8NamePrefix.length, value);
+      } else {
+        writer.writeStringField(utf8NamePrefix, value);
+      }
+    } else if (utf8CommaNamePrefix.length <= Long.BYTES * 2) {
+      writer.writeStringField(
+          utf8CommaNamePrefixWord0, utf8CommaNamePrefixWord1, utf8CommaNamePrefix.length, value);
     } else {
-      writer.writeStringField(utf8NamePrefix, utf8CommaNamePrefix, index, value);
+      writer.writeStringField(utf8CommaNamePrefix, value);
     }
     return true;
   }
@@ -1192,5 +1213,14 @@ public final class JsonFieldInfo {
       }
     }
     return utf16;
+  }
+
+  private static long packedPrefixWord(byte[] prefix, int offset) {
+    long word = 0;
+    int end = Math.min(prefix.length, offset + Long.BYTES);
+    for (int i = offset; i < end; i++) {
+      word |= (prefix[i] & 0xffL) << ((i - offset) << 3);
+    }
+    return word;
   }
 }

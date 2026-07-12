@@ -657,25 +657,25 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writeIntUtf16NoEnsure(value);
   }
 
-  public void writeObjectIntField(byte[] namePrefix, int value) {
+  public void writeObjectStartWithIntField(byte[] namePrefix, int value) {
     enterDepth();
     if (coder == LATIN1) {
-      writeObjectIntFieldLatin1(namePrefix, value);
+      writeObjectStartWithIntFieldLatin1(namePrefix, value);
       return;
     }
-    writeObjectIntFieldUtf16(namePrefix, value);
+    writeObjectStartWithIntFieldUtf16(namePrefix, value);
   }
 
-  public void writeObjectIntField(byte[] namePrefix, byte[] utf16NamePrefix, int value) {
+  public void writeObjectStartWithIntField(byte[] namePrefix, byte[] utf16NamePrefix, int value) {
     enterDepth();
     if (coder == LATIN1) {
-      writeObjectIntFieldLatin1(namePrefix, value);
+      writeObjectStartWithIntFieldLatin1(namePrefix, value);
       return;
     }
-    writeObjectIntFieldUtf16Value(utf16NamePrefix, value);
+    writeObjectStartWithIntFieldUtf16Value(utf16NamePrefix, value);
   }
 
-  public void writeObjectIntField(
+  public void writeObjectStartWithIntField(
       byte[] namePrefix,
       long utf16Prefix0,
       long utf16Prefix1,
@@ -685,35 +685,35 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       int value) {
     enterDepth();
     if (coder == LATIN1) {
-      writeObjectIntFieldLatin1(namePrefix, value);
+      writeObjectStartWithIntFieldLatin1(namePrefix, value);
       return;
     }
-    writeObjectIntFieldUtf16Packed(
+    writeObjectStartWithIntFieldUtf16Packed(
         utf16Prefix0, utf16Prefix1, utf16Prefix2, utf16Prefix3, utf16PrefixLength, value);
   }
 
-  private void writeObjectIntFieldLatin1(byte[] namePrefix, int value) {
+  private void writeObjectStartWithIntFieldLatin1(byte[] namePrefix, int value) {
     ensure(namePrefix.length + 12);
     buffer[position++] = (byte) '{';
     writeRawLatin1NoEnsure(namePrefix);
     writeIntNoEnsure(value);
   }
 
-  private void writeObjectIntFieldUtf16(byte[] namePrefix, int value) {
+  private void writeObjectStartWithIntFieldUtf16(byte[] namePrefix, int value) {
     ensure(((namePrefix.length + 1) << 1) + 22);
     writeUtf16ByteNoEnsure((byte) '{');
     writeRawUtf16NoEnsure(namePrefix);
     writeIntUtf16NoEnsure(value);
   }
 
-  private void writeObjectIntFieldUtf16Value(byte[] utf16NamePrefix, int value) {
+  private void writeObjectStartWithIntFieldUtf16Value(byte[] utf16NamePrefix, int value) {
     ensure(utf16NamePrefix.length + 24);
     writeUtf16ByteNoEnsure((byte) '{');
     writeRawUtf16ValueNoEnsure(utf16NamePrefix);
     writeIntUtf16NoEnsure(value);
   }
 
-  private void writeObjectIntFieldUtf16Packed(
+  private void writeObjectStartWithIntFieldUtf16Packed(
       long utf16Prefix0,
       long utf16Prefix1,
       long utf16Prefix2,
@@ -809,25 +809,25 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writeLongUtf16NoEnsure(value);
   }
 
-  public void writeObjectLongField(byte[] namePrefix, long value) {
+  public void writeObjectStartWithLongField(byte[] namePrefix, long value) {
     enterDepth();
     if (coder == LATIN1) {
-      writeObjectLongFieldLatin1(namePrefix, value);
+      writeObjectStartWithLongFieldLatin1(namePrefix, value);
       return;
     }
-    writeObjectLongFieldUtf16(namePrefix, value);
+    writeObjectStartWithLongFieldUtf16(namePrefix, value);
   }
 
-  public void writeObjectLongField(byte[] namePrefix, byte[] utf16NamePrefix, long value) {
+  public void writeObjectStartWithLongField(byte[] namePrefix, byte[] utf16NamePrefix, long value) {
     enterDepth();
     if (coder == LATIN1) {
-      writeObjectLongFieldLatin1(namePrefix, value);
+      writeObjectStartWithLongFieldLatin1(namePrefix, value);
       return;
     }
-    writeObjectLongFieldUtf16Value(utf16NamePrefix, value);
+    writeObjectStartWithLongFieldUtf16Value(utf16NamePrefix, value);
   }
 
-  public void writeObjectLongField(
+  public void writeObjectStartWithLongField(
       byte[] namePrefix,
       long utf16Prefix0,
       long utf16Prefix1,
@@ -837,35 +837,35 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       long value) {
     enterDepth();
     if (coder == LATIN1) {
-      writeObjectLongFieldLatin1(namePrefix, value);
+      writeObjectStartWithLongFieldLatin1(namePrefix, value);
       return;
     }
-    writeObjectLongFieldUtf16Packed(
+    writeObjectStartWithLongFieldUtf16Packed(
         utf16Prefix0, utf16Prefix1, utf16Prefix2, utf16Prefix3, utf16PrefixLength, value);
   }
 
-  private void writeObjectLongFieldLatin1(byte[] namePrefix, long value) {
+  private void writeObjectStartWithLongFieldLatin1(byte[] namePrefix, long value) {
     ensure(namePrefix.length + 21);
     buffer[position++] = (byte) '{';
     writeRawLatin1NoEnsure(namePrefix);
     writeLongNoEnsure(value);
   }
 
-  private void writeObjectLongFieldUtf16(byte[] namePrefix, long value) {
+  private void writeObjectStartWithLongFieldUtf16(byte[] namePrefix, long value) {
     ensure(((namePrefix.length + 1) << 1) + 40);
     writeUtf16ByteNoEnsure((byte) '{');
     writeRawUtf16NoEnsure(namePrefix);
     writeLongUtf16NoEnsure(value);
   }
 
-  private void writeObjectLongFieldUtf16Value(byte[] utf16NamePrefix, long value) {
+  private void writeObjectStartWithLongFieldUtf16Value(byte[] utf16NamePrefix, long value) {
     ensure(utf16NamePrefix.length + 42);
     writeUtf16ByteNoEnsure((byte) '{');
     writeRawUtf16ValueNoEnsure(utf16NamePrefix);
     writeLongUtf16NoEnsure(value);
   }
 
-  private void writeObjectLongFieldUtf16Packed(
+  private void writeObjectStartWithLongFieldUtf16Packed(
       long utf16Prefix0,
       long utf16Prefix1,
       long utf16Prefix2,
@@ -2208,11 +2208,18 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     return ch > 0x1F && ch != '"' && ch != '\\';
   }
 
+  // Keep the exact uncommon fallback outside these per-word predicates. Folding it back in makes
+  // the standalone predicates too large for C2 to inline into the compact-string writers.
   private static boolean isJsonAsciiWord(long word) {
     long notBackslash = ((word ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS;
     if ((notBackslash & (word + ASCII_GT_QUOTE_OFFSET)) == HIGH_BITS) {
       return true;
     }
+    return isJsonAsciiWordFallback(word);
+  }
+
+  private static boolean isJsonAsciiWordFallback(long word) {
+    long notBackslash = ((word ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS;
     return (((word + ASCII_CONTROL_OFFSET) & ~word) & HIGH_BITS) == HIGH_BITS
         && (((word ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS) == HIGH_BITS
         && notBackslash == HIGH_BITS;
@@ -2229,6 +2236,10 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
         == HIGH_BITS) {
       return true;
     }
+    return isJsonAsciiWordsFallback(word0, word1, notBackslash);
+  }
+
+  private static boolean isJsonAsciiWordsFallback(long word0, long word1, long notBackslash) {
     return ((word0 + ASCII_CONTROL_OFFSET)
             & (word1 + ASCII_CONTROL_OFFSET)
             & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
@@ -2242,6 +2253,10 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     if ((notBackslash & (word + INT_ASCII_GT_QUOTE_OFFSET)) == INT_HIGH_BITS) {
       return true;
     }
+    return isJsonAsciiIntFallback(word, notBackslash);
+  }
+
+  private static boolean isJsonAsciiIntFallback(int word, int notBackslash) {
     return (((word + INT_ASCII_CONTROL_OFFSET) & ~word) & INT_HIGH_BITS) == INT_HIGH_BITS
         && (((word ^ INT_QUOTE_BYTES_COMPLEMENT) + INT_ONE_BYTES) & INT_HIGH_BITS) == INT_HIGH_BITS
         && notBackslash == INT_HIGH_BITS;

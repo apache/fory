@@ -562,7 +562,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeIntNoEnsure(value);
   }
 
-  public void writeObjectIntField(byte[] namePrefix, int value) {
+  public void writeObjectStartWithIntField(byte[] namePrefix, int value) {
     enterDepth();
     ensure(namePrefix.length + 12);
     buffer[position++] = (byte) '{';
@@ -570,7 +570,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeIntNoEnsure(value);
   }
 
-  public void writeObjectIntField(long prefix0, long prefix1, int prefixLength, int value) {
+  public void writeObjectStartWithIntField(
+      long prefix0, long prefix1, int prefixLength, int value) {
     enterDepth();
     ensurePackedPrefix(prefixLength, 12);
     buffer[position++] = (byte) '{';
@@ -595,7 +596,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeLongNoEnsure(value);
   }
 
-  public void writeObjectLongField(byte[] namePrefix, long value) {
+  public void writeObjectStartWithLongField(byte[] namePrefix, long value) {
     enterDepth();
     ensure(namePrefix.length + 21);
     buffer[position++] = (byte) '{';
@@ -603,12 +604,19 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeLongNoEnsure(value);
   }
 
-  public void writeObjectLongField(long prefix0, long prefix1, int prefixLength, long value) {
+  public void writeObjectStartWithLongField(
+      long prefix0, long prefix1, int prefixLength, long value) {
     enterDepth();
     ensurePackedPrefix(prefixLength, 21);
     buffer[position++] = (byte) '{';
     writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
     writeLongNoEnsure(value);
+  }
+
+  public void writeObjectStartWithStringField(
+      long prefix0, long prefix1, int prefixLength, String value) {
+    enterDepth();
+    writeStringField(prefix0, prefix1, prefixLength, value);
   }
 
   public void writeStringField(byte[] namePrefix, byte[] commaNamePrefix, int index, String value) {
@@ -1610,6 +1618,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     return ch > 0x1F && ch < 0x80 && ch != '"' && ch != '\\';
   }
 
+  // Keep the exact uncommon fallback outside these per-word predicates. Folding it back in makes
+  // the standalone predicates too large for C2 to inline into the short-string writers.
   private static boolean isJsonAsciiWord(long word) {
     long notBackslashMask = ((word ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS;
     // Common unescaped bytes are greater than '"' and not '\\'. The fallback keeps the exact
@@ -1617,6 +1627,11 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     if ((notBackslashMask & (word + ASCII_GT_QUOTE_OFFSET)) == HIGH_BITS) {
       return true;
     }
+    return isJsonAsciiWordFallback(word);
+  }
+
+  private static boolean isJsonAsciiWordFallback(long word) {
+    long notBackslashMask = ((word ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS;
     return (((word + ASCII_CONTROL_OFFSET) & ~word) & HIGH_BITS) == HIGH_BITS
         && (((word ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES) & HIGH_BITS) == HIGH_BITS
         && notBackslashMask == HIGH_BITS;
@@ -1633,12 +1648,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         == HIGH_BITS) {
       return true;
     }
-    return ((word0 + ASCII_CONTROL_OFFSET)
-            & (word1 + ASCII_CONTROL_OFFSET)
-            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & notBackslashMask)
-        == HIGH_BITS;
+    return isJsonAsciiWordsFallback(word0, word1, notBackslashMask);
   }
 
   private static boolean isJsonAsciiWords(long word0, long word1, long word2) {
@@ -1654,14 +1664,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         == HIGH_BITS) {
       return true;
     }
-    return ((word0 + ASCII_CONTROL_OFFSET)
-            & (word1 + ASCII_CONTROL_OFFSET)
-            & (word2 + ASCII_CONTROL_OFFSET)
-            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & ((word2 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & notBackslashMask)
-        == HIGH_BITS;
+    return isJsonAsciiWordsFallback(word0, word1, word2, notBackslashMask);
   }
 
   private static boolean isJsonAsciiWords(long word0, long word1, long word2, long word3) {
@@ -1679,6 +1682,32 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         == HIGH_BITS) {
       return true;
     }
+    return isJsonAsciiWordsFallback(word0, word1, word2, word3, notBackslashMask);
+  }
+
+  private static boolean isJsonAsciiWordsFallback(long word0, long word1, long notBackslashMask) {
+    return ((word0 + ASCII_CONTROL_OFFSET)
+            & (word1 + ASCII_CONTROL_OFFSET)
+            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & notBackslashMask)
+        == HIGH_BITS;
+  }
+
+  private static boolean isJsonAsciiWordsFallback(
+      long word0, long word1, long word2, long notBackslashMask) {
+    return ((word0 + ASCII_CONTROL_OFFSET)
+            & (word1 + ASCII_CONTROL_OFFSET)
+            & (word2 + ASCII_CONTROL_OFFSET)
+            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word2 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & notBackslashMask)
+        == HIGH_BITS;
+  }
+
+  private static boolean isJsonAsciiWordsFallback(
+      long word0, long word1, long word2, long word3, long notBackslashMask) {
     return ((word0 + ASCII_CONTROL_OFFSET)
             & (word1 + ASCII_CONTROL_OFFSET)
             & (word2 + ASCII_CONTROL_OFFSET)
@@ -1697,6 +1726,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     if ((notBackslashMask & (word + INT_ASCII_GT_QUOTE_OFFSET)) == INT_HIGH_BITS) {
       return true;
     }
+    return isJsonAsciiIntFallback(word, notBackslashMask);
+  }
+
+  private static boolean isJsonAsciiIntFallback(int word, int notBackslashMask) {
     return (((word + INT_ASCII_CONTROL_OFFSET) & ~word) & INT_HIGH_BITS) == INT_HIGH_BITS
         && (((word ^ INT_QUOTE_BYTES_COMPLEMENT) + INT_ONE_BYTES) & INT_HIGH_BITS) == INT_HIGH_BITS
         && notBackslashMask == INT_HIGH_BITS;
@@ -1708,6 +1741,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     if ((notBackslashMask & (word + SHORT_ASCII_GT_QUOTE_OFFSET)) == SHORT_HIGH_BITS) {
       return true;
     }
+    return isJsonAsciiShortFallback(word, notBackslashMask);
+  }
+
+  private static boolean isJsonAsciiShortFallback(int word, int notBackslashMask) {
     return (((word + SHORT_ASCII_CONTROL_OFFSET) & ~word) & SHORT_HIGH_BITS) == SHORT_HIGH_BITS
         && (((word ^ SHORT_QUOTE_BYTES_COMPLEMENT) + SHORT_ONE_BYTES) & SHORT_HIGH_BITS)
             == SHORT_HIGH_BITS
