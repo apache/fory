@@ -310,7 +310,7 @@ abstract class JsonReaderCodegen {
         .append(" value;\ntry {\n  value = ")
         .append(expression)
         .append(";\n")
-        .append("} catch (Exception e) {\n  throw owner.creatorFailure(e);\n}\n");
+        .append("} catch (Throwable e) {\n  throw owner.creatorFailure(e);\n}\n");
     if (executable instanceof Method) {
       body.append("return (").append(typeName).append(") owner.requireCreatorResult(value);");
     } else {

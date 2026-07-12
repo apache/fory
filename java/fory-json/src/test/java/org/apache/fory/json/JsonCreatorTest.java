@@ -126,6 +126,22 @@ public class JsonCreatorTest extends ForyJsonTestModels {
     }
   }
 
+  @Test
+  public void wrapCreatorThrowable() {
+    try {
+      newJson().fromJson("{\"id\":1}", ThrowableFactory.class);
+      fail("Expected creator failure");
+    } catch (ForyJsonException e) {
+      assertEquals(e.getCause().getClass(), Throwable.class);
+      assertEquals(e.getCause().getMessage(), "creator throwable");
+    }
+  }
+
+  @Test
+  public void propagateCreatorError() {
+    assertThrows(AssertionError.class, () -> newJson().fromJson("{\"id\":1}", ErrorFactory.class));
+  }
+
   public static final class User {
     public final long id;
     public final String name;
@@ -272,6 +288,32 @@ public class JsonCreatorTest extends ForyJsonTestModels {
     @JsonCreator
     public static CheckedFactory create(@JsonProperty("id") int id) throws Exception {
       throw new Exception("creator failure");
+    }
+  }
+
+  public static final class ThrowableFactory {
+    public final int id;
+
+    private ThrowableFactory(int id) {
+      this.id = id;
+    }
+
+    @JsonCreator
+    public static ThrowableFactory create(@JsonProperty("id") int id) throws Throwable {
+      throw new Throwable("creator throwable");
+    }
+  }
+
+  public static final class ErrorFactory {
+    public final int id;
+
+    private ErrorFactory(int id) {
+      this.id = id;
+    }
+
+    @JsonCreator
+    public static ErrorFactory create(@JsonProperty("id") int id) {
+      throw new AssertionError("creator error");
     }
   }
 }

@@ -528,7 +528,10 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
   }
 
   @Internal
-  public final ForyJsonException creatorFailure(Exception cause) {
+  public final ForyJsonException creatorFailure(Throwable cause) {
+    if (cause instanceof Error) {
+      throw (Error) cause;
+    }
     return new ForyJsonException("JSON creator failed for " + type.getName(), cause);
   }
 
