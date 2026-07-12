@@ -184,6 +184,7 @@ public class JsonPropertyTest extends ForyJsonTestModels {
     assertThrows(
         ForyJsonException.class,
         () -> newJsonBuilder().withFieldMode(true).build().toJson(new IneligibleAnnotation()));
+    assertThrows(ForyJsonException.class, () -> newJson().toJson(new InheritedInvalidMethod()));
   }
 
   public static final class AnnotatedProperties {
@@ -195,6 +196,15 @@ public class JsonPropertyTest extends ForyJsonTestModels {
 
     public String userName = "alice";
   }
+
+  public interface InvalidPropertyMethod {
+    @JsonProperty("value")
+    default int compute(int value) {
+      return value;
+    }
+  }
+
+  public static final class InheritedInvalidMethod implements InvalidPropertyMethod {}
 
   public static final class NamingExamples {
     public int URL2Value = 1;

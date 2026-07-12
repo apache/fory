@@ -75,18 +75,19 @@ public final class JsonCreatorFieldInfo {
   }
 
   public Object readLatin1(Latin1JsonReader reader) {
-    return requirePrimitive(typeInfo.latin1Reader().readLatin1(reader));
+    return requirePrimitive(typeInfo.latin1Reader().readLatin1(reader), rawType);
   }
 
   public Object readUtf16(Utf16JsonReader reader) {
-    return requirePrimitive(typeInfo.utf16Reader().readUtf16(reader));
+    return requirePrimitive(typeInfo.utf16Reader().readUtf16(reader), rawType);
   }
 
   public Object readUtf8(Utf8JsonReader reader) {
-    return requirePrimitive(typeInfo.utf8Reader().readUtf8(reader));
+    return requirePrimitive(typeInfo.utf8Reader().readUtf8(reader), rawType);
   }
 
-  private Object requirePrimitive(Object value) {
+  /** Enforces the shared interpreted/generated null contract for a primitive creator argument. */
+  public static Object requirePrimitive(Object value, Class<?> rawType) {
     if (value == null && rawType.isPrimitive()) {
       throw new ForyJsonException("Cannot read null into primitive creator parameter " + rawType);
     }

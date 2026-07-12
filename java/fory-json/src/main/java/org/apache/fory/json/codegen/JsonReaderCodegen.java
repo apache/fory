@@ -358,13 +358,22 @@ abstract class JsonReaderCodegen {
   private Expression readCreatorValue(JsonCreatorFieldInfo field, int id) {
     Class<?> type = field.rawType();
     if (!isDirectCreatorPrimitive(field)) {
-      return new Expression.Cast(
+      Expression value =
           new Expression.Invoke(
               fieldRef("r" + id, readerCapabilityType()),
               readMethod(),
               TypeRef.of(Object.class),
-              readerRef()),
-          TypeRef.of(type));
+              readerRef());
+      if (type.isPrimitive()) {
+        value =
+            new Expression.StaticInvoke(
+                JsonCreatorFieldInfo.class,
+                "requirePrimitive",
+                TypeRef.of(Object.class),
+                value,
+                Expression.Literal.ofClass(type));
+      }
+      return new Expression.Cast(value, TypeRef.of(type));
     }
     if (type == boolean.class) {
       return readBooleanExpr();

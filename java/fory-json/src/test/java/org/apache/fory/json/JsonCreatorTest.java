@@ -19,6 +19,7 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.nullCodec;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.fail;
@@ -69,6 +70,29 @@ public class JsonCreatorTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void customPrimitiveNullRejected() {
+    ForyJson json = newJsonBuilder().registerCodec(int.class, nullCodec()).build();
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"id\":null}", CustomPrimitiveCreator.class));
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            json.fromJson(
+                "{\"id\":null}".getBytes(StandardCharsets.UTF_8), CustomPrimitiveCreator.class));
+  }
+
+  @Test
+  public void packagePrivateOwner() {
+    ForyJson json = newJson();
+    assertEquals(json.fromJson("{\"id\":3}", PackagePrivateCreator.class).id, 3);
+    assertEquals(
+        json.fromJson("{\"id\":4}".getBytes(StandardCharsets.UTF_8), PackagePrivateCreator.class)
+            .id,
+        4);
+  }
+
+  @Test
   public void rejectInvalidCreators() {
     ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.fromJson("{\"id\":1}", Multiple.class));
@@ -78,6 +102,7 @@ public class JsonCreatorTest extends ForyJsonTestModels {
     assertThrows(ForyJsonException.class, () -> json.fromJson("{\"id\":1}", NullFactory.class));
     assertThrows(
         ForyJsonException.class, () -> json.fromJson("{\"input\":1}", CreatorOnlyInclude.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("{\"id\":1}", DeadProperty.class));
   }
 
   @Test
@@ -109,6 +134,24 @@ public class JsonCreatorTest extends ForyJsonTestModels {
     public User(long id, String name) {
       this.id = id;
       this.name = name;
+    }
+  }
+
+  public static final class CustomPrimitiveCreator {
+    public final int id;
+
+    @JsonCreator({"id"})
+    public CustomPrimitiveCreator(int id) {
+      this.id = id;
+    }
+  }
+
+  static final class PackagePrivateCreator {
+    public final int id;
+
+    @JsonCreator({"id"})
+    public PackagePrivateCreator(int id) {
+      this.id = id;
     }
   }
 
@@ -190,6 +233,18 @@ public class JsonCreatorTest extends ForyJsonTestModels {
         @JsonProperty(value = "input", include = JsonProperty.Include.ALWAYS) int id) {
       return new CreatorOnlyInclude(id);
     }
+  }
+
+  public static final class DeadProperty {
+    public final int id;
+
+    @JsonCreator({"id"})
+    public DeadProperty(int id) {
+      this.id = id;
+    }
+
+    @JsonProperty("unused")
+    public void setUnused(String value) {}
   }
 
   public static final class CountingFactory {

@@ -156,6 +156,10 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
           throw new ForyJsonException(
               "JSON inclusion policy requires a write source for property " + builder.name);
         }
+        if (!builder.creatorBound && builder.hasConfiguration()) {
+          throw new ForyJsonException(
+              "JSON property configuration is outside the creator read schema for " + builder.name);
+        }
         continue;
       }
       JsonFieldInfo field =
@@ -452,6 +456,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
               + " parameter "
               + parameterIndex);
     }
+    builder.creatorBound = true;
   }
 
   private static void rejectCreatorHashCollisions(JsonCreatorFieldInfo[] fields) {
@@ -914,18 +919,30 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         if (!method.isAnnotationPresent(JsonProperty.class)) {
           continue;
         }
-        if (!propertyDiscoveryEnabled
-            || !isEligibleAccessor(method)
-            || record && !isRecordAccessor(type, method)) {
-          throw new ForyJsonException("@JsonProperty is not supported on JSON method: " + method);
-        }
-        if (record) {
-          continue;
-        }
-        if (getterPropertyName(method) == null && setterPropertyName(method) == null) {
-          throw new ForyJsonException("@JsonProperty requires a JSON getter or setter: " + method);
-        }
+        validatePropertyMethod(type, method, propertyDiscoveryEnabled, record);
       }
+    }
+    // Class.getMethods() is the accessor-discovery surface and includes inherited interface
+    // methods, while the class-hierarchy scan above deliberately includes non-public declarations.
+    // Validate annotated interface declarations here so no method considered by discovery can
+    // become a silent no-op merely because its declaring type is outside the class hierarchy.
+    for (Method method : type.getMethods()) {
+      if (method.getDeclaringClass().isInterface()
+          && method.isAnnotationPresent(JsonProperty.class)) {
+        validatePropertyMethod(type, method, propertyDiscoveryEnabled, record);
+      }
+    }
+  }
+
+  private static void validatePropertyMethod(
+      Class<?> type, Method method, boolean propertyDiscoveryEnabled, boolean record) {
+    if (!propertyDiscoveryEnabled
+        || !isEligibleAccessor(method)
+        || record && !isRecordAccessor(type, method)) {
+      throw new ForyJsonException("@JsonProperty is not supported on JSON method: " + method);
+    }
+    if (!record && getterPropertyName(method) == null && setterPropertyName(method) == null) {
+      throw new ForyJsonException("@JsonProperty requires a JSON getter or setter: " + method);
     }
   }
 
@@ -1025,6 +1042,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     private AnnotatedElement explicitNameSource;
     private JsonProperty.Include explicitInclude = JsonProperty.Include.DEFAULT;
     private AnnotatedElement explicitIncludeSource;
+    private boolean creatorBound;
 
     private FieldBuilder(String name) {
       this.name = name;

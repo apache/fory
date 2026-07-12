@@ -19,6 +19,8 @@
 
 package org.apache.fory.json.meta;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.InvocationTargetException;
@@ -27,6 +29,8 @@ import java.util.Arrays;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 
 /**
  * Immutable construction metadata for one property-based {@code JsonCreator}.
@@ -41,6 +45,7 @@ public final class JsonCreatorInfo {
   private final JsonCreatorFieldInfo[] fields;
   private final Object[] defaults;
   private final long[] hashes;
+  private final MethodHandle invoker;
 
   public JsonCreatorInfo(
       Class<?> ownerType, Executable executable, JsonCreatorFieldInfo[] fields, Object[] defaults) {
@@ -48,6 +53,7 @@ public final class JsonCreatorInfo {
     this.executable = executable;
     this.fields = fields;
     this.defaults = defaults;
+    invoker = buildInvoker(ownerType, executable, fields.length);
     hashes = new long[fields.length];
     for (int i = 0; i < fields.length; i++) {
       hashes[i] = fields[i].nameHash();
@@ -84,6 +90,9 @@ public final class JsonCreatorInfo {
   }
 
   public Object create(Object[] arguments) {
+    if (invoker != null) {
+      return invoke(arguments);
+    }
     try {
       Object value;
       if (executable instanceof Constructor) {
@@ -91,11 +100,7 @@ public final class JsonCreatorInfo {
       } else {
         value = ((Method) executable).invoke(null, arguments);
       }
-      if (value == null || value.getClass() != ownerType) {
-        throw new ForyJsonException(
-            "JSON creator must return an exact non-null " + ownerType.getName());
-      }
-      return value;
+      return requireResult(value);
     } catch (InstantiationException | IllegalAccessException e) {
       throw new ForyJsonException("Failed to invoke JSON creator for " + ownerType.getName(), e);
     } catch (InvocationTargetException e) {
@@ -104,6 +109,51 @@ public final class JsonCreatorInfo {
         throw (Error) cause;
       }
       throw new ForyJsonException("JSON creator failed for " + ownerType.getName(), cause);
+    }
+  }
+
+  private Object invoke(Object[] arguments) {
+    Object value;
+    try {
+      value = (Object) invoker.invokeExact(arguments);
+    } catch (Throwable cause) {
+      if (cause instanceof Error) {
+        throw (Error) cause;
+      }
+      throw new ForyJsonException("JSON creator failed for " + ownerType.getName(), cause);
+    }
+    return requireResult(value);
+  }
+
+  private Object requireResult(Object value) {
+    if (value == null || value.getClass() != ownerType) {
+      throw new ForyJsonException(
+          "JSON creator must return an exact non-null " + ownerType.getName());
+    }
+    return value;
+  }
+
+  private static MethodHandle buildInvoker(
+      Class<?> ownerType, Executable executable, int parameterCount) {
+    if (AndroidSupport.IS_ANDROID) {
+      // Android has no supported trusted MethodHandle lookup. Creator shape validation guarantees
+      // a public executable; accessibility is needed only when its declaring class is non-public.
+      executable.setAccessible(true);
+      return null;
+    }
+    try {
+      MethodHandle target =
+          executable instanceof Constructor
+              ? _JDKAccess._trustedLookup(ownerType)
+                  .unreflectConstructor((Constructor<?>) executable)
+              : _JDKAccess._trustedLookup(ownerType).unreflect((Method) executable);
+      // The interpreted reader already owns one trusted fixed-size argument array. Spread that
+      // exact array into the creator without a second carrier or per-call reflective access check.
+      return target
+          .asSpreader(Object[].class, parameterCount)
+          .asType(MethodType.methodType(Object.class, Object[].class));
+    } catch (IllegalAccessException e) {
+      throw new ForyJsonException("Cannot access JSON creator for " + ownerType.getName(), e);
     }
   }
 }
