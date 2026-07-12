@@ -1651,15 +1651,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     return isJsonAsciiWordsFallback(word0, word1, notBackslashMask);
   }
 
-  private static boolean isJsonAsciiWordsFallback(long word0, long word1, long notBackslashMask) {
-    return ((word0 + ASCII_CONTROL_OFFSET)
-            & (word1 + ASCII_CONTROL_OFFSET)
-            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & notBackslashMask)
-        == HIGH_BITS;
-  }
-
   private static boolean isJsonAsciiWords(long word0, long word1, long word2) {
     long notBackslashMask =
         ((word0 ^ BACKSLASH_BYTES_COMPLEMENT) + ONE_BYTES)
@@ -1674,18 +1665,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       return true;
     }
     return isJsonAsciiWordsFallback(word0, word1, word2, notBackslashMask);
-  }
-
-  private static boolean isJsonAsciiWordsFallback(
-      long word0, long word1, long word2, long notBackslashMask) {
-    return ((word0 + ASCII_CONTROL_OFFSET)
-            & (word1 + ASCII_CONTROL_OFFSET)
-            & (word2 + ASCII_CONTROL_OFFSET)
-            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & ((word2 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
-            & notBackslashMask)
-        == HIGH_BITS;
   }
 
   private static boolean isJsonAsciiWords(long word0, long word1, long word2, long word3) {
@@ -1704,6 +1683,27 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       return true;
     }
     return isJsonAsciiWordsFallback(word0, word1, word2, word3, notBackslashMask);
+  }
+
+  private static boolean isJsonAsciiWordsFallback(long word0, long word1, long notBackslashMask) {
+    return ((word0 + ASCII_CONTROL_OFFSET)
+            & (word1 + ASCII_CONTROL_OFFSET)
+            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & notBackslashMask)
+        == HIGH_BITS;
+  }
+
+  private static boolean isJsonAsciiWordsFallback(
+      long word0, long word1, long word2, long notBackslashMask) {
+    return ((word0 + ASCII_CONTROL_OFFSET)
+            & (word1 + ASCII_CONTROL_OFFSET)
+            & (word2 + ASCII_CONTROL_OFFSET)
+            & ((word0 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word1 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & ((word2 ^ QUOTE_BYTES_COMPLEMENT) + ONE_BYTES)
+            & notBackslashMask)
+        == HIGH_BITS;
   }
 
   private static boolean isJsonAsciiWordsFallback(

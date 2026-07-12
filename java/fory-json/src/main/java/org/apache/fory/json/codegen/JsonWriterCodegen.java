@@ -23,7 +23,6 @@ import static org.apache.fory.codegen.ExpressionUtils.add;
 import static org.apache.fory.codegen.ExpressionUtils.cast;
 import static org.apache.fory.codegen.ExpressionUtils.eq;
 import static org.apache.fory.codegen.ExpressionUtils.inline;
-import static org.apache.fory.codegen.ExpressionUtils.valueOf;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -525,11 +524,9 @@ abstract class JsonWriterCodegen {
       // references stay cached below because their null check and write must share one value.
       Expression fieldValue = inline(builder.fieldValue(property, object));
       if (property.writeKind() == JsonFieldKind.OBJECT) {
-        Expression value = inline(valueOf(TypeRef.of(rawType).wrap(), fieldValue));
         return new Expression.ListExpression(
-            value,
             writeFieldName(property, id, commaKnown, index, writer),
-            writeCodec(property, id, value, writer));
+            writeCodec(property, id, fieldValue, writer));
       }
       return writePrimitive(property, id, fieldValue, commaKnown, index, writer);
     }

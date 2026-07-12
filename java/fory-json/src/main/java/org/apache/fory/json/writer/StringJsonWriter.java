@@ -666,8 +666,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writeObjectStartWithIntFieldUtf16(namePrefix, value);
   }
 
-  public void writeObjectStartWithIntField(
-      byte[] namePrefix, byte[] utf16NamePrefix, int value) {
+  public void writeObjectStartWithIntField(byte[] namePrefix, byte[] utf16NamePrefix, int value) {
     enterDepth();
     if (coder == LATIN1) {
       writeObjectStartWithIntFieldLatin1(namePrefix, value);
@@ -819,8 +818,7 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writeObjectStartWithLongFieldUtf16(namePrefix, value);
   }
 
-  public void writeObjectStartWithLongField(
-      byte[] namePrefix, byte[] utf16NamePrefix, long value) {
+  public void writeObjectStartWithLongField(byte[] namePrefix, byte[] utf16NamePrefix, long value) {
     enterDepth();
     if (coder == LATIN1) {
       writeObjectStartWithLongFieldLatin1(namePrefix, value);
