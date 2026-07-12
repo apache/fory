@@ -303,6 +303,34 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
+  public void rolledBackSubtypeTasksStayIsolated() throws Exception {
+    ControlledJson controlled = controlledJson();
+    JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
+    resolver.lockJIT();
+    ObjectCodec<RollbackCircle> replacementOwner;
+    JsonTypeInfo replacement;
+    try {
+      expectThrows(
+          ForyJsonException.class,
+          () -> resolver.getTypeInfo(BrokenShape.class, BrokenShape.class));
+      assertEquals(controlled.executor.pendingTasks(), 2);
+      replacementOwner = resolver.getObjectCodec(RollbackCircle.class);
+      replacement = resolver.getTypeInfo(RollbackCircle.class, RollbackCircle.class);
+      assertSame(replacement.stringWriter(), replacementOwner);
+      assertSame(replacement.utf8Writer(), replacementOwner);
+    } finally {
+      resolver.unlockJIT();
+    }
+
+    // The failed subtype transaction owned the queued member-writer requests. Their callbacks may
+    // finish, but they must target the removed slots captured by those requests rather than the
+    // replacement generation now registered for the same class.
+    controlled.executor.runAll();
+    assertSame(replacement.stringWriter(), replacementOwner);
+    assertSame(replacement.utf8Writer(), replacementOwner);
+  }
+
+  @Test
   public void asyncFailureKeepsInterpretedResult() {
     ControlledExecutor executor = new ControlledExecutor();
     JsonJITContext context = new JsonJITContext(true, executor);
@@ -1036,6 +1064,22 @@ public class JsonAsyncCompilationTest {
     private AsyncCircle(int radius) {
       this.radius = radius;
     }
+  }
+
+  @JsonSubTypes(
+      property = "kind",
+      value = {
+        @JsonSubTypes.Type(value = RollbackCircle.class, name = "circle"),
+        @JsonSubTypes.Type(value = CollidingSubtype.class, name = "collision")
+      })
+  public interface BrokenShape {}
+
+  public static final class RollbackCircle implements BrokenShape {
+    public int radius;
+  }
+
+  public static final class CollidingSubtype implements BrokenShape {
+    public String kind;
   }
 
   public static final class AsyncParent {

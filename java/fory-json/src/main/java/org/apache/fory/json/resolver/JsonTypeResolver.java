@@ -215,7 +215,7 @@ public final class JsonTypeResolver {
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
-              publishStringWriter(owner, generated);
+              publishStringWriter(owner, typeInfo, generated);
             }
 
             @Override
@@ -247,7 +247,7 @@ public final class JsonTypeResolver {
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
-              publishUtf8Writer(owner, generated);
+              publishUtf8Writer(owner, typeInfo, generated);
             }
 
             @Override
@@ -281,7 +281,7 @@ public final class JsonTypeResolver {
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
-              publishStringWriter(owner, generated);
+              publishStringWriter(owner, typeInfo, generated);
             }
 
             @Override
@@ -315,7 +315,7 @@ public final class JsonTypeResolver {
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
-              publishUtf8Writer(owner, generated);
+              publishUtf8Writer(owner, typeInfo, generated);
             }
 
             @Override
@@ -347,7 +347,7 @@ public final class JsonTypeResolver {
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
-              publishLatin1Reader(owner, generated);
+              publishLatin1Reader(owner, typeInfo, generated);
             }
 
             @Override
@@ -379,7 +379,7 @@ public final class JsonTypeResolver {
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
-              publishUtf16Reader(owner, generated);
+              publishUtf16Reader(owner, typeInfo, generated);
             }
 
             @Override
@@ -411,7 +411,7 @@ public final class JsonTypeResolver {
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
-              publishUtf8Reader(owner, generated);
+              publishUtf8Reader(owner, typeInfo, generated);
             }
 
             @Override
@@ -600,12 +600,16 @@ public final class JsonTypeResolver {
 
   // Publication runs under the local JIT lock: construct the resolver-local instance, resolve
   // every replaceable child Field, register child notifications, then write the canonical
-  // JsonTypeInfo slot. Construction and field lookup are the fallible phase. Publication is
-  // deterministic ordinary field assignment and is never modeled as a transaction or rolled back;
-  // a failure there is a generated-code invariant violation.
-  private void publishStringWriter(ObjectCodec<Object> owner, Class<?> generated) {
+  // JsonTypeInfo slot captured when the compilation request is created. Capturing that exact slot
+  // is required because a failed closed-subtype transaction can remove its provisional metadata
+  // and later build a new canonical slot for the same class before an old async task completes.
+  // The old task may refine only its now-unreachable slot; a type lookup here would let it corrupt
+  // the replacement generation. Construction and field lookup are the fallible phase. Publication
+  // is deterministic ordinary field assignment and is never modeled as a transaction or rolled
+  // back; a failure there is a generated-code invariant violation.
+  private void publishStringWriter(
+      ObjectCodec<Object> owner, JsonTypeInfo typeInfo, Class<?> generated) {
     requireJITLock();
-    JsonTypeInfo typeInfo = objectTypeInfo(owner);
     StringWriterCodec<Object> current = typeInfo.stringWriter();
     // Inline subtype member writers refine the complete-writer capability in the same canonical
     // slot. A concurrently compiled complete writer must never downgrade that refinement when its
@@ -622,9 +626,9 @@ public final class JsonTypeResolver {
     typeInfo.setStringWriter(codec);
   }
 
-  private void publishUtf8Writer(ObjectCodec<Object> owner, Class<?> generated) {
+  private void publishUtf8Writer(
+      ObjectCodec<Object> owner, JsonTypeInfo typeInfo, Class<?> generated) {
     requireJITLock();
-    JsonTypeInfo typeInfo = objectTypeInfo(owner);
     Utf8WriterCodec<Object> current = typeInfo.utf8Writer();
     if (!Utf8ObjectWriter.class.isAssignableFrom(generated)
         && current != owner
@@ -637,28 +641,31 @@ public final class JsonTypeResolver {
     typeInfo.setUtf8Writer(codec);
   }
 
-  private void publishLatin1Reader(ObjectCodec<Object> owner, Class<?> generated) {
+  private void publishLatin1Reader(
+      ObjectCodec<Object> owner, JsonTypeInfo typeInfo, Class<?> generated) {
     requireJITLock();
     Latin1ReaderCodec<Object> codec = newLatin1Reader(owner, generated);
     Field[] childFields = readerChildFields(codec, owner);
     registerLatin1ReaderCallbacks(codec, owner, childFields);
-    objectTypeInfo(owner).setLatin1Reader(codec);
+    typeInfo.setLatin1Reader(codec);
   }
 
-  private void publishUtf16Reader(ObjectCodec<Object> owner, Class<?> generated) {
+  private void publishUtf16Reader(
+      ObjectCodec<Object> owner, JsonTypeInfo typeInfo, Class<?> generated) {
     requireJITLock();
     Utf16ReaderCodec<Object> codec = newUtf16Reader(owner, generated);
     Field[] childFields = readerChildFields(codec, owner);
     registerUtf16ReaderCallbacks(codec, owner, childFields);
-    objectTypeInfo(owner).setUtf16Reader(codec);
+    typeInfo.setUtf16Reader(codec);
   }
 
-  private void publishUtf8Reader(ObjectCodec<Object> owner, Class<?> generated) {
+  private void publishUtf8Reader(
+      ObjectCodec<Object> owner, JsonTypeInfo typeInfo, Class<?> generated) {
     requireJITLock();
     Utf8ReaderCodec<Object> codec = newUtf8Reader(owner, generated);
     Field[] childFields = readerChildFields(codec, owner);
     registerUtf8ReaderCallbacks(codec, owner, childFields);
-    objectTypeInfo(owner).setUtf8Reader(codec);
+    typeInfo.setUtf8Reader(codec);
   }
 
   // A generated parent captures the current child slot during construction. If a child task is
@@ -873,15 +880,6 @@ public final class JsonTypeResolver {
         && typeInfo.rawType() != Object.class) {
       objectTypeInfos.put(typeInfo.rawType(), typeInfo);
     }
-  }
-
-  private JsonTypeInfo objectTypeInfo(ObjectCodec<?> owner) {
-    JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
-    if (typeInfo == null) {
-      throw new IllegalStateException(
-          "Missing canonical JSON object type info for " + owner.type());
-    }
-    return typeInfo;
   }
 
   private static void checkGeneratedClass(Object result, Object codec) {
