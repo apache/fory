@@ -35,8 +35,10 @@ import org.apache.fory.resolver.TypeResolver;
  */
 public final class NonSerializableSerializer<T> extends AbstractObjectSerializer<T> {
   public NonSerializableSerializer(TypeResolver typeResolver, Class<T> type) {
+
       super(typeResolver, type);
   }
+
 
   @Override
   public void write(WriteContext writeContext, T value) {

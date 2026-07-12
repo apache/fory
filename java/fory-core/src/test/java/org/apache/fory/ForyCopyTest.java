@@ -88,6 +88,7 @@ import org.apache.fory.exception.SerializationException;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.EnumSerializerTest;
 import org.apache.fory.serializer.EnumSerializerTest.EnumFoo;
+import org.apache.fory.serializer.NonSerializableSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.collection.ChildContainerSerializersTest.ChildArrayDeque;
 import org.apache.fory.serializer.collection.SynchronizedSerializersTest;
@@ -458,17 +459,15 @@ public class ForyCopyTest extends ForyTestBase {
   }
 
   @Test
-  public void testCopyNonSerializableJdkClass(){
-
-    Fory fory = Fory.builder()
-            .withLanguage(Language.JAVA)
-            .withRefCopy(true)
-            .requireClassRegistration(false)
-            .build();
-    Package pkg = String.class.getPackage();
-    Package copy = fory.copy(pkg);
-    Assert.assertNotNull(copy);
-    Assert.assertEquals(copy.getName(), pkg.getName());
+  public void testCopyNonSerializableJdkClass() {
+      Fory fory =
+              Fory.builder()
+                      .withLanguage(Language.JAVA)
+                      .requireClassRegistration(false)
+                      .build();
+      Class<? extends Serializer> serializerClass =
+              fory.getTypeResolver().getSerializerClass(java.lang.Package.class);
+      Assert.assertSame(serializerClass, NonSerializableSerializer.class);
   }
 
 
