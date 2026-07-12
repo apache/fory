@@ -158,7 +158,7 @@ public final class Utf8JsonReader extends JsonReader {
         cursor = (int) (decoded >>> 32);
         codePoint = (int) decoded;
       }
-      if (Character.isHighSurrogate((char) codePoint)) {
+      if (codePoint <= 0xffff && Character.isHighSurrogate((char) codePoint)) {
         if (latin1) {
           hash = JsonFieldNameHash.hashPacked(value, decodedLength);
           latin1 = false;

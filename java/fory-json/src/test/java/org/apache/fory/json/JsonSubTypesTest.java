@@ -159,6 +159,16 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     assertScannerRestored(newUtf16Reader("{\"类型\":\"圆😀\",\"值\":1}"), unicode);
     assertScannerRestored(
         newUtf8Reader("{\"类型\":\"圆😀\",\"值\":1}".getBytes(StandardCharsets.UTF_8)), unicode);
+    // U+1D800 is a valid supplementary code point whose low 16 bits are a high-surrogate value.
+    // UTF-8 scanning must classify the decoded code point before narrowing it to char.
+    String supplementary = new String(Character.toChars(0x1d800));
+    JsonSubtypeScanInfo supplementaryInfo =
+        new JsonSubtypeScanInfo(supplementary, new String[] {supplementary});
+    assertScannerRestored(
+        newUtf8Reader(
+            ("{\"" + supplementary + "\":\"" + supplementary + "\"}")
+                .getBytes(StandardCharsets.UTF_8)),
+        supplementaryInfo);
     JsonSubtypeScanInfo latin = new JsonSubtypeScanInfo("type", new String[] {"café"});
     assertScannerRestored(newLatin1Reader("{\"type\":\"café\"}"), latin);
 
