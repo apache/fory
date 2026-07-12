@@ -30,11 +30,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.jar.Attributes;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
+import java.util.stream.Stream;
 
 /** Verifies the packaged JDK25 BigDecimal field-access implementation. */
 public final class Jdk25MultiReleaseJarVerifier {
@@ -145,31 +147,55 @@ public final class Jdk25MultiReleaseJarVerifier {
                 .toURI());
     Path sourceRoot = testClasses.resolve("module-codec-probe");
     Path root = Files.createTempDirectory("fory-json-codec-module");
-    Path classes = root.resolve("classes");
-    Files.createDirectories(classes);
+    Throwable failure = null;
+    try {
+      Path classes = root.resolve("classes");
+      Files.createDirectories(classes);
 
-    String modulePath = coreJar + File.pathSeparator + jsonJar;
-    List<String> compile = new ArrayList<>();
-    compile.add(Paths.get(System.getProperty("java.home"), "bin", "javac").toString());
-    compile.add("--module-path");
-    compile.add(modulePath);
-    compile.add("-d");
-    compile.add(classes.toString());
-    compile.add(sourceRoot.resolve("module-info.java").toString());
-    compile.add(sourceRoot.resolve("probe/Probe.java").toString());
-    Process compiler = new ProcessBuilder(compile).inheritIO().start();
-    require(compiler.waitFor() == 0, "named-module custom codec compilation failed");
+      String modulePath = coreJar + File.pathSeparator + jsonJar;
+      List<String> compile = new ArrayList<>();
+      compile.add(Paths.get(System.getProperty("java.home"), "bin", "javac").toString());
+      compile.add("--module-path");
+      compile.add(modulePath);
+      compile.add("-d");
+      compile.add(classes.toString());
+      compile.add(sourceRoot.resolve("module-info.java").toString());
+      compile.add(sourceRoot.resolve("probe/Probe.java").toString());
+      Process compiler = new ProcessBuilder(compile).inheritIO().start();
+      require(compiler.waitFor() == 0, "named-module custom codec compilation failed");
 
-    List<String> run = new ArrayList<>();
-    run.add(Paths.get(System.getProperty("java.home"), "bin", "java").toString());
-    run.add("--module-path");
-    run.add(modulePath + File.pathSeparator + classes);
-    run.add("--add-opens");
-    run.add("java.base/java.lang.invoke=org.apache.fory.core");
-    run.add("-m");
-    run.add("fory.json.codec.probe/probe.Probe");
-    Process process = new ProcessBuilder(run).inheritIO().start();
-    require(process.waitFor() == 0, "named-module custom codec probe failed");
+      List<String> run = new ArrayList<>();
+      run.add(Paths.get(System.getProperty("java.home"), "bin", "java").toString());
+      run.add("--module-path");
+      run.add(modulePath + File.pathSeparator + classes);
+      run.add("--add-opens");
+      run.add("java.base/java.lang.invoke=org.apache.fory.core");
+      run.add("-m");
+      run.add("fory.json.codec.probe/probe.Probe");
+      Process process = new ProcessBuilder(run).inheritIO().start();
+      require(process.waitFor() == 0, "named-module custom codec probe failed");
+    } catch (Throwable t) {
+      failure = t;
+      throw t;
+    } finally {
+      try {
+        deleteTree(root);
+      } catch (Throwable cleanupFailure) {
+        if (failure == null) {
+          throw cleanupFailure;
+        }
+        failure.addSuppressed(cleanupFailure);
+      }
+    }
+  }
+
+  private static void deleteTree(Path root) throws IOException {
+    try (Stream<Path> paths = Files.walk(root)) {
+      Path[] entries = paths.sorted(Comparator.reverseOrder()).toArray(Path[]::new);
+      for (Path entry : entries) {
+        Files.deleteIfExists(entry);
+      }
+    }
   }
 
   private static byte[] read(JarFile jar, String name) throws IOException {
