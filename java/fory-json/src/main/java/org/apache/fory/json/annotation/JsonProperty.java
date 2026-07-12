@@ -55,7 +55,9 @@ public @interface JsonProperty {
    * Returns the null-inclusion policy for this property.
    *
    * <p>The policy affects writing only. A non-default policy is invalid when the logical property
-   * has no write source, including creator-only input properties.
+   * has no write source, including creator-only input properties. Primitive properties are always
+   * written because their Java value cannot be null, but conflicting primitive declarations are
+   * still rejected during logical-property normalization.
    */
   Include include() default Include.DEFAULT;
 

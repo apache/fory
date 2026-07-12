@@ -36,7 +36,10 @@ import java.lang.annotation.Target;
  *
  * <p>The default representation writes an inline discriminator property as the first object member.
  * Wrapper-object mode instead writes one outer member whose name is the subtype name and whose
- * value is the complete subtype representation.
+ * value is the complete subtype representation. Serialization accepts only an exact runtime class
+ * present in the table; subclasses of listed entries are not accepted implicitly. Inline mode
+ * requires the ordinary object representation so its members can follow the discriminator, while
+ * wrapper mode permits an exact custom codec for a subtype.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
@@ -73,7 +76,8 @@ public @interface JsonSubTypes {
      *
      * <p>This form permits an API module to describe implementations without a compile-time
      * dependency on their JAR. The fixed class loader configured on {@code ForyJsonBuilder}
-     * resolves the name without class initialization.
+     * resolves the name without class initialization. Resolution is table-eager: the complete
+     * finite table must validate before any entry is published.
      */
     String className() default "";
 
