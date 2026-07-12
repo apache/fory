@@ -1835,7 +1835,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     for (int i = 0; i < 8192; i++) {
       double value = Double.longBitsToDouble(random.nextLong());
       if (Double.isFinite(value)) {
-        assertDoubleBits(Double.toString(value));
+        assertDoubleTokenBits(Double.toString(value));
       }
     }
   }
@@ -1844,7 +1844,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   public void readDoubleDecimalTokens() {
     Random random = new Random(246802468L);
     for (int i = 0; i < 2048; i++) {
-      assertDoubleBits(randomDoubleToken(random));
+      assertDoubleTokenBits(randomDoubleToken(random));
     }
   }
 
@@ -1874,7 +1874,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
       long low = ((long) exponent << 52) | fraction;
       for (int units = -1; units <= 1; units++) {
         String token = doubleBoundaryToken(low, low + 1, units);
-        assertDoubleBits((exponent & 1) == 0 ? token : "-" + token);
+        assertDoubleTokenBits((exponent & 1) == 0 ? token : "-" + token);
       }
     }
     for (long low :
@@ -1882,7 +1882,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
           0L, 1L, 0x000f_ffff_ffff_ffffL, 0x0010_0000_0000_0000L, 0x7fef_ffff_ffff_ffffL
         }) {
       for (int units = -1; units <= 1; units++) {
-        assertDoubleBits(doubleBoundaryToken(low, low + 1, units));
+        assertDoubleTokenBits(doubleBoundaryToken(low, low + 1, units));
       }
     }
   }
@@ -2562,6 +2562,16 @@ public class JsonScalarTest extends ForyJsonTestModels {
     assertEquals(
         Double.doubleToRawLongBits(newLatin1Reader(latin1).readDoubleTokenValue()), expected);
     assertEquals(Double.doubleToRawLongBits(utf16Reader(token).readDouble()), expected);
+    assertEquals(Double.doubleToRawLongBits(utf16Reader(token).readDoubleTokenValue()), expected);
+  }
+
+  private static void assertDoubleTokenBits(String token) {
+    long expected = Double.doubleToRawLongBits(Double.parseDouble(token));
+    byte[] utf8 = token.getBytes(StandardCharsets.UTF_8);
+    byte[] latin1 = latin1Bytes(token);
+    assertEquals(Double.doubleToRawLongBits(newUtf8Reader(utf8).readDoubleTokenValue()), expected);
+    assertEquals(
+        Double.doubleToRawLongBits(newLatin1Reader(latin1).readDoubleTokenValue()), expected);
     assertEquals(Double.doubleToRawLongBits(utf16Reader(token).readDoubleTokenValue()), expected);
   }
 
