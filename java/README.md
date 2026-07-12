@@ -45,12 +45,13 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 
 ## Modules
 
-| Module              | Description                           | Maven Artifact                    |
-| ------------------- | ------------------------------------- | --------------------------------- |
-| **fory-core**       | Core serialization engine             | `org.apache.fory:fory-core`       |
-| **fory-format**     | Row format and Apache Arrow support   | `org.apache.fory:fory-format`     |
-| **fory-extensions** | Protobuf support and meta compression | `org.apache.fory:fory-extensions` |
-| **fory-test-core**  | Testing utilities and data generators | `org.apache.fory:fory-test-core`  |
+| Module                               | Description                           | Maven Artifact                    |
+| ------------------------------------ | ------------------------------------- | --------------------------------- |
+| **fory-core**                        | Core serialization engine             | `org.apache.fory:fory-core`       |
+| **fory-format**                      | Row format and Apache Arrow support   | `org.apache.fory:fory-format`     |
+| [**fory-json**](fory-json/README.md) | JSON serialization and parsing        | `org.apache.fory:fory-json`       |
+| **fory-extensions**                  | Protobuf support and meta compression | `org.apache.fory:fory-extensions` |
+| **fory-test-core**                   | Testing utilities and data generators | `org.apache.fory:fory-test-core`  |
 
 ## Installation
 

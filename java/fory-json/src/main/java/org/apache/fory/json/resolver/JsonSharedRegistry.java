@@ -20,6 +20,7 @@
 package org.apache.fory.json.resolver;
 
 import java.io.File;
+import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -52,6 +53,7 @@ import java.util.Calendar;
 import java.util.Collection;
 import java.util.Currency;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -59,6 +61,7 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
+import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -76,6 +79,8 @@ import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.JsonTypeCheckContext;
 import org.apache.fory.json.JsonTypeChecker;
+import org.apache.fory.json.PropertyNamingStrategy;
+import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
@@ -87,6 +92,7 @@ import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonFieldKind;
+import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.DisallowedList;
 import org.apache.fory.type.BFloat16;
@@ -121,6 +127,10 @@ public final class JsonSharedRegistry {
   private final boolean asyncCompilationEnabled;
   private final ExecutorService compilationService;
   private final boolean propertyDiscoveryEnabled;
+  private final PropertyNamingStrategy propertyNamingStrategy;
+  private final boolean writeNullFields;
+  private final ClassLoader classLoader;
+  private final IdentityHashMap<Class<?>, JsonSubTypesInfo> subTypesCache;
 
   public JsonSharedRegistry(JsonConfig config) {
     this(config, null);
@@ -133,10 +143,13 @@ public final class JsonSharedRegistry {
     typeCheckCache = typeChecker == null ? null : new ConcurrentHashMap<>();
     typeCheckCacheLock = typeChecker == null ? null : new Object();
     this.propertyDiscoveryEnabled = config.propertyDiscoveryEnabled();
+    propertyNamingStrategy = config.propertyNamingStrategy();
+    writeNullFields = config.writeNullFields();
+    classLoader = config.classLoader();
     exactCodecs = new IdentityHashMap<>();
+    subTypesCache = new IdentityHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
-    codegen =
-        codegenEnabled ? new JsonCodegen(config.writeNullFields(), config.getCodegenHash()) : null;
+    codegen = codegenEnabled ? new JsonCodegen(config.getCodegenHash(), classLoader) : null;
     asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
     this.compilationService = compilationService;
     registerExactCodecs();
@@ -269,6 +282,205 @@ public final class JsonSharedRegistry {
 
   boolean propertyDiscoveryEnabled() {
     return propertyDiscoveryEnabled;
+  }
+
+  PropertyNamingStrategy propertyNamingStrategy() {
+    return propertyNamingStrategy;
+  }
+
+  boolean writeNullFields() {
+    return writeNullFields;
+  }
+
+  ClassLoader classLoader() {
+    return classLoader;
+  }
+
+  boolean hasCustomCodec(Class<?> type) {
+    return customCodecs.get(type) != null;
+  }
+
+  JsonSubTypesInfo subTypesInfo(Class<?> baseType) {
+    JsonSubTypes annotation = baseType.getDeclaredAnnotation(JsonSubTypes.class);
+    if (annotation == null) {
+      return null;
+    }
+    synchronized (subTypesCache) {
+      JsonSubTypesInfo cached = subTypesCache.get(baseType);
+      if (cached != null) {
+        return cached;
+      }
+      JsonSubTypesInfo resolved = buildSubTypesInfo(baseType, annotation);
+      subTypesCache.put(baseType, resolved);
+      return resolved;
+    }
+  }
+
+  private JsonSubTypesInfo buildSubTypesInfo(Class<?> baseType, JsonSubTypes annotation) {
+    if (!baseType.isInterface() && !Modifier.isAbstract(baseType.getModifiers())) {
+      throw new ForyJsonException(
+          "@JsonSubTypes requires an interface or abstract type " + baseType);
+    }
+    boolean wrapperObject = annotation.wrapperObject();
+    String property = annotation.property();
+    if (wrapperObject ? !property.isEmpty() : property.isEmpty()) {
+      throw new ForyJsonException(
+          wrapperObject
+              ? "Wrapper-object @JsonSubTypes must not declare property"
+              : "Inline @JsonSubTypes requires a discriminator property");
+    }
+    if (!wrapperObject) {
+      validateJsonName(property, "subtype discriminator");
+    }
+    JsonSubTypes.Type[] entries = annotation.value();
+    if (entries.length == 0) {
+      throw new ForyJsonException("@JsonSubTypes must declare at least one subtype");
+    }
+    String[] names = new String[entries.length];
+    String[] classNames = new String[entries.length];
+    boolean hasStringEntry = false;
+    Set<String> logicalNames = new HashSet<>();
+    Set<Long> logicalHashes = new HashSet<>();
+    for (int i = 0; i < entries.length; i++) {
+      JsonSubTypes.Type entry = entries[i];
+      String name = entry.name();
+      validateJsonName(name, "subtype");
+      if (!logicalNames.add(name)) {
+        throw new ForyJsonException("Invalid or duplicate JSON subtype name " + name);
+      }
+      long hash = org.apache.fory.json.meta.JsonFieldNameHash.hash(name);
+      if (!logicalHashes.add(Long.valueOf(hash))) {
+        throw new ForyJsonException("JSON subtype name hash collision for " + name);
+      }
+      names[i] = name;
+      boolean literal = entry.value() != Void.class;
+      boolean byName = !entry.className().isEmpty();
+      if (literal == byName) {
+        throw new ForyJsonException(
+            "JSON subtype must declare exactly one of value or className for " + name);
+      }
+      if (byName) {
+        validateBinaryName(entry.className());
+        classNames[i] = entry.className();
+        hasStringEntry = true;
+      }
+    }
+    if (hasStringEntry && GraalvmSupport.isGraalRuntime()) {
+      throw new ForyJsonException(
+          "GraalVM native image requires build-time Fory codegen for @JsonSubTypes className entries on "
+              + baseType.getName());
+    }
+    for (String className : classNames) {
+      if (className != null) {
+        checkSecureName(className);
+      }
+    }
+    if (hasStringEntry) {
+      Class<?> loadedBase = loadClass(baseType.getName());
+      if (loadedBase != baseType) {
+        throw new ForyJsonException(
+            "Configured class loader resolves a different subtype base " + baseType.getName());
+      }
+    }
+    Class<?>[] classes = new Class<?>[entries.length];
+    Set<Class<?>> classIdentities = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+    Set<String> binaryNames = new HashSet<>();
+    for (int i = 0; i < entries.length; i++) {
+      Class<?> subtype = classNames[i] == null ? entries[i].value() : loadExactClass(classNames[i]);
+      checkSubtypeSecure(subtype);
+      int modifiers = subtype.getModifiers();
+      if (subtype == Void.class
+          || subtype.isPrimitive()
+          || subtype.isArray()
+          || subtype.isInterface()
+          || Modifier.isAbstract(modifiers)
+          || !baseType.isAssignableFrom(subtype)) {
+        throw new ForyJsonException(
+            "Invalid closed JSON subtype " + subtype.getName() + " for " + baseType.getName());
+      }
+      if (!classIdentities.add(subtype) || !binaryNames.add(subtype.getName())) {
+        throw new ForyJsonException("Duplicate closed JSON subtype " + subtype.getName());
+      }
+      classes[i] = subtype;
+    }
+    return new JsonSubTypesInfo(wrapperObject, property, classes, names);
+  }
+
+  private void checkSecureName(String className) {
+    DisallowedList.checkNotInDisallowedList(className);
+    JsonTypeChecker checker = typeChecker;
+    if (checker != null && !checkType(className, checker)) {
+      throw forbiddenClass(className);
+    }
+  }
+
+  private void checkSubtypeSecure(Class<?> type) {
+    DisallowedList.checkNotInDisallowedList(type.getName());
+    JsonTypeChecker checker = typeChecker;
+    if (checker != null && !checkType(type.getName(), checker)) {
+      throw forbiddenClass(type.getName());
+    }
+  }
+
+  private Class<?> loadExactClass(String className) {
+    Class<?> type = loadClass(className);
+    if (!type.getName().equals(className)) {
+      throw new ForyJsonException("Subtype binary name mismatch for " + className);
+    }
+    return type;
+  }
+
+  private Class<?> loadClass(String className) {
+    try {
+      return Class.forName(className, false, classLoader);
+    } catch (ClassNotFoundException | LinkageError e) {
+      throw new ForyJsonException("Cannot resolve closed JSON subtype " + className, e);
+    }
+  }
+
+  private static void validateBinaryName(String className) {
+    if (className.isEmpty()
+        || !className.equals(className.trim())
+        || className.startsWith(".")
+        || className.endsWith(".")
+        || className.contains("..")
+        || className.indexOf('[') >= 0
+        || className.indexOf(']') >= 0
+        || className.indexOf(';') >= 0
+        || className.indexOf('/') >= 0
+        || className.indexOf('\\') >= 0
+        || className.equals("void")
+        || className.equals("boolean")
+        || className.equals("byte")
+        || className.equals("short")
+        || className.equals("char")
+        || className.equals("int")
+        || className.equals("long")
+        || className.equals("float")
+        || className.equals("double")) {
+      throw new ForyJsonException("Invalid JSON subtype binary name " + className);
+    }
+    for (int i = 0; i < className.length(); i++) {
+      if (Character.isWhitespace(className.charAt(i))) {
+        throw new ForyJsonException("Invalid JSON subtype binary name " + className);
+      }
+    }
+  }
+
+  private static void validateJsonName(String value, String role) {
+    if (value.isEmpty()) {
+      throw new ForyJsonException("JSON " + role + " name must not be empty");
+    }
+    for (int i = 0; i < value.length(); i++) {
+      char ch = value.charAt(i);
+      if (Character.isHighSurrogate(ch)) {
+        if (++i >= value.length() || !Character.isLowSurrogate(value.charAt(i))) {
+          throw new ForyJsonException("Unpaired surrogate in JSON " + role + " name");
+        }
+      } else if (Character.isLowSurrogate(ch)) {
+        throw new ForyJsonException("Unpaired surrogate in JSON " + role + " name");
+      }
+    }
   }
 
   void checkSecure(Class<?> type) {

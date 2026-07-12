@@ -48,9 +48,12 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
+import org.apache.fory.json.codec.StringObjectWriter;
 import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
@@ -118,6 +121,34 @@ public class JsonAsyncCompilationTest {
         4);
     assertNotSame(info.utf8Reader(), owner);
     assertSame(resolver.getObjectCodec(AsyncChild.class), owner);
+  }
+
+  @Test
+  public void creatorCapabilitiesInstall() throws Exception {
+    ControlledJson controlled = controlledJson();
+    ForyJson json = controlled.json;
+    AsyncCreator value = new AsyncCreator(1, "root");
+    assertEquals(json.toJson(value), "{\"id\":1,\"name\":\"root\"}");
+    assertEquals(
+        new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
+        "{\"id\":1,\"name\":\"root\"}");
+    assertEquals(json.fromJson("{\"id\":2,\"name\":\"latin\"}", AsyncCreator.class).id, 2);
+    assertEquals(json.fromJson("{\"id\":3,\"name\":\"你好\"}", AsyncCreator.class).id, 3);
+    assertEquals(
+        json.fromJson(
+                "{\"id\":4,\"name\":\"utf8\"}".getBytes(StandardCharsets.UTF_8), AsyncCreator.class)
+            .id,
+        4);
+    JsonTypeResolver resolver = primaryTypeResolver(json);
+    ObjectCodec<AsyncCreator> owner = resolver.getObjectCodec(AsyncCreator.class);
+    controlled.executor.runAll();
+    JsonTypeInfo info = resolver.getTypeInfo(AsyncCreator.class, AsyncCreator.class);
+    assertNotSame(info.stringWriter(), owner);
+    assertNotSame(info.utf8Writer(), owner);
+    assertNotSame(info.latin1Reader(), owner);
+    assertNotSame(info.utf16Reader(), owner);
+    assertNotSame(info.utf8Reader(), owner);
+    assertEquals(json.fromJson("{\"name\":\"again\",\"id\":5}", AsyncCreator.class).id, 5);
   }
 
   @Test
@@ -242,6 +273,33 @@ public class JsonAsyncCompilationTest {
     assertEquals(controlled.executor.pendingTasks(), 2);
     controlled.executor.runAll();
     assertNotSame(stringWriter(resolver, owner), owner);
+  }
+
+  @Test
+  public void subtypeWriterRefinementWins() throws Exception {
+    ControlledJson controlled = controlledJson();
+    JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
+    ObjectCodec<AsyncCircle> owner;
+    JsonTypeInfo child;
+    resolver.lockJIT();
+    try {
+      resolver.getTypeInfo(AsyncShape.class, AsyncShape.class);
+      owner = resolver.getObjectCodec(AsyncCircle.class);
+      child = resolver.getTypeInfo(AsyncCircle.class, AsyncCircle.class);
+      assertSame(resolver.stringWriter(owner), owner);
+    } finally {
+      resolver.unlockJIT();
+    }
+
+    // The subtype table queues its member writers first and the ordinary complete writer last.
+    // Completing all tasks proves that the later ordinary callback cannot downgrade the slot.
+    assertEquals(controlled.executor.pendingTasks(), 3);
+    controlled.executor.runAll();
+    assertTrue(child.stringWriter() instanceof StringObjectWriter);
+    assertNotSame(child.stringWriter(), owner);
+    assertEquals(
+        controlled.json.toJson(new AsyncCircle(3), AsyncShape.class),
+        "{\"kind\":\"circle\",\"radius\":3}");
   }
 
   @Test
@@ -746,7 +804,17 @@ public class JsonAsyncCompilationTest {
   private static ControlledJson controlledJson(CodecRegistry codecs) throws Exception {
     JsonConfig config =
         new JsonConfig(
-            false, true, true, true, ForyJson.DEFAULT_MAX_DEPTH, 1, 2 * 1024 * 1024, codecs, null);
+            false,
+            true,
+            true,
+            true,
+            PropertyNamingStrategy.IDENTITY,
+            JsonAsyncCompilationTest.class.getClassLoader(),
+            ForyJson.DEFAULT_MAX_DEPTH,
+            1,
+            2 * 1024 * 1024,
+            codecs,
+            null);
     ControlledExecutor executor = new ControlledExecutor();
     Constructor<JsonSharedRegistry> constructor =
         JsonSharedRegistry.class.getDeclaredConstructor(JsonConfig.class, ExecutorService.class);
@@ -955,10 +1023,36 @@ public class JsonAsyncCompilationTest {
     return child;
   }
 
+  @JsonSubTypes(
+      property = "kind",
+      value = {@JsonSubTypes.Type(value = AsyncCircle.class, name = "circle")})
+  public interface AsyncShape {}
+
+  public static final class AsyncCircle implements AsyncShape {
+    public int radius;
+
+    public AsyncCircle() {}
+
+    private AsyncCircle(int radius) {
+      this.radius = radius;
+    }
+  }
+
   public static final class AsyncParent {
     public AsyncChild child;
     public Map<String, AsyncChild> children;
     public List<AsyncChild> list;
+  }
+
+  public static final class AsyncCreator {
+    public final int id;
+    public final String name;
+
+    @JsonCreator({"id", "name"})
+    public AsyncCreator(int id, String name) {
+      this.id = id;
+      this.name = name;
+    }
   }
 
   public static final class AsyncChild {

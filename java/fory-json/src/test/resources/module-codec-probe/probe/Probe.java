@@ -21,6 +21,8 @@ package probe;
 
 import java.nio.charset.StandardCharsets;
 import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.PropertyNamingStrategy;
+import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -48,11 +50,16 @@ public final class Probe {
                         "\"utf8\"".getBytes(StandardCharsets.UTF_8), Value.class)
                     .text));
 
-    ForyJson generated = ForyJson.builder().withAsyncCompilation(false).build();
+    ForyJson generated =
+        ForyJson.builder()
+            .withAsyncCompilation(false)
+            .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
+            .build();
     Pojo pojo = new Pojo();
     pojo.id = 7;
     pojo.name = "latin";
     require("{\"id\":7,\"name\":\"latin\"}".equals(generated.toJson(pojo)));
+    require("{\"id\":7,\"name\":\"latin\"}".equals(generated.toJson(pojo, Pojo.class)));
     require(
         "{\"id\":7,\"name\":\"latin\"}"
             .equals(new String(generated.toJsonBytes(pojo), StandardCharsets.UTF_8)));
@@ -76,6 +83,7 @@ public final class Probe {
   }
 
   public static final class Pojo {
+    @JsonProperty("id")
     public int id;
     public String name;
 

@@ -39,7 +39,9 @@ import org.apache.fory.codegen.ExpressionOptimizer;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
+import org.apache.fory.json.codec.StringObjectWriter;
 import org.apache.fory.json.codec.StringWriterCodec;
+import org.apache.fory.json.codec.Utf8ObjectWriter;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
@@ -65,12 +67,10 @@ abstract class JsonWriterCodegen {
   private static final int INLINE_TAIL_MEMBERS = 4;
 
   final JsonCodegen codegen;
-  private final boolean writeNullFields;
   private Class<?> ownerType;
 
   JsonWriterCodegen(JsonCodegen codegen) {
     this.codegen = codegen;
-    this.writeNullFields = codegen.writeNullFields;
   }
 
   abstract Class<?> codecFieldType(JsonFieldInfo property);
@@ -80,6 +80,8 @@ abstract class JsonWriterCodegen {
   abstract Class<?> codecArrayType();
 
   abstract Class<?> objectWriterType();
+
+  abstract Class<?> completeWriterType();
 
   abstract String writeMethod();
 
@@ -180,11 +182,16 @@ abstract class JsonWriterCodegen {
   }
 
   String genWriterCode(
-      JsonGeneratedCodecBuilder builder, Class<?> type, JsonFieldInfo[] properties) {
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonFieldInfo[] properties,
+      boolean objectMembers) {
     ownerType = type;
     CodegenContext ctx = builder.context();
     ctx.addImports(writerType());
-    ctx.implementsInterfaces(JsonCodegen.generatedCodecType(ctx, objectWriterType()));
+    ctx.implementsInterfaces(
+        JsonCodegen.generatedCodecType(
+            ctx, objectMembers ? objectWriterType() : completeWriterType()));
     boolean objectStartFused = canFuseObjectStart(properties);
     PrefixFields prefixFields = prefixFields(properties, objectStartFused);
     for (int i = 0; i < properties.length; i++) {
@@ -245,7 +252,56 @@ abstract class JsonWriterCodegen {
         "writer",
         Object.class,
         "value");
+    if (objectMembers) {
+      ctx.clearExprState();
+      Expression memberObject =
+          inline(
+              new Expression.Cast(
+                  new Reference("value", TypeRef.of(Object.class)), TypeRef.of(type)));
+      Expression memberValue =
+          properties.length <= 1 ? memberObject : new Expression.Variable("object", memberObject);
+      Code.ExprCode membersBody =
+          writeMembersExpression(builder, properties, memberValue).genCode(ctx);
+      String membersCode = membersBody.code();
+      membersCode = membersCode == null ? "" : ctx.optimizeMethodCode(membersCode);
+      ctx.addMethod(
+          "@Override public final",
+          membersMethod(),
+          membersCode,
+          void.class,
+          writerType(),
+          "writer",
+          Object.class,
+          "value",
+          int.class,
+          "written");
+    }
     return ctx.genCode();
+  }
+
+  private Expression writeMembersExpression(
+      JsonGeneratedCodecBuilder builder, JsonFieldInfo[] properties, Expression object) {
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    expressions.add(object);
+    Expression index = new Reference("written", TypeRef.of(int.class));
+    Reference writer = writerRef();
+    boolean splitMembers = properties.length >= splitMemberThreshold();
+    List<Expression> group = splitMembers ? new ArrayList<>(MAX_MEMBERS_PER_METHOD) : null;
+    for (int i = 0; i < properties.length; i++) {
+      Expression member = writeProp(builder, properties[i], i, true, index, object, writer);
+      if (splitMembers) {
+        group.add(member);
+        if (group.size() == MAX_MEMBERS_PER_METHOD) {
+          addMemberGroup(builder, expressions, group, object, writer);
+        }
+      } else {
+        expressions.add(member);
+      }
+    }
+    if (splitMembers) {
+      addMemberGroup(builder, expressions, group, object, writer, true);
+    }
+    return expressions;
   }
 
   final PrefixFields stringPrefixFields(JsonFieldInfo[] properties, boolean objectStartFused) {
@@ -262,7 +318,7 @@ abstract class JsonWriterCodegen {
           markStringUtf16PrefixField(property, commaKnown, fields, i);
         }
       }
-      if (writeNullFields || property.writeRawType().isPrimitive()) {
+      if (property.writeNull()) {
         commaKnown = true;
       }
     }
@@ -289,7 +345,7 @@ abstract class JsonWriterCodegen {
       if (usesPrefix(property)) {
         if (i == 0
             && !objectStartFused
-            && !writeNullFields
+            && !property.writeNull()
             && Utf8Generator.canPackObjectStartString(property)) {
           // The generated first-field branch consumes neither ordinary prefix field.
         } else if (objectStartFused && i == 0) {
@@ -307,7 +363,7 @@ abstract class JsonWriterCodegen {
           fields.comma[i] = true;
         }
       }
-      if (writeNullFields || property.writeRawType().isPrimitive()) {
+      if (property.writeNull()) {
         commaKnown = true;
       }
     }
@@ -315,7 +371,7 @@ abstract class JsonWriterCodegen {
   }
 
   private boolean canUsePackedDynamicPrefix(JsonFieldInfo property) {
-    if (writeNullFields && !property.writeRawType().isPrimitive()) {
+    if (property.writeNull() && !property.writeRawType().isPrimitive()) {
       return false;
     }
     switch (property.writeKind()) {
@@ -343,7 +399,7 @@ abstract class JsonWriterCodegen {
   private boolean usesPrefix(JsonFieldInfo property) {
     JsonFieldKind kind = property.writeKind();
     return kind != JsonFieldKind.BOOLEAN && kind != JsonFieldKind.ENUM
-        || writeNullFields && !property.writeRawType().isPrimitive();
+        || property.writeNull() && !property.writeRawType().isPrimitive();
   }
 
   private static boolean usesWriteInfo(JsonFieldInfo property) {
@@ -393,7 +449,7 @@ abstract class JsonWriterCodegen {
       index = new Expression.Variable("index", Expression.Literal.ofInt(0));
       JsonFieldInfo first = properties.length == 0 ? null : properties[0];
       Expression value =
-          first != null && !writeNullFields && first.writeKind() == JsonFieldKind.STRING
+          first != null && !first.writeNull() && first.writeKind() == JsonFieldKind.STRING
               ? new Expression.Variable(
                   "v0", cast(inline(builder.fieldValue(first, object)), TypeRef.of(String.class)))
               : null;
@@ -445,7 +501,7 @@ abstract class JsonWriterCodegen {
         }
         expressions.add(member);
       }
-      if (writeNullFields || properties[i].writeRawType().isPrimitive()) {
+      if (properties[i].writeNull()) {
         commaKnown = true;
       }
     }
@@ -534,7 +590,7 @@ abstract class JsonWriterCodegen {
         new Expression.Variable(
             "v" + id, cast(inline(builder.fieldValue(property, object)), TypeRef.of(rawType)));
     Expression nullValue = new Expression.Null(TypeRef.of(rawType), false);
-    if (writeNullFields) {
+    if (property.writeNull()) {
       JsonFieldKind kind = property.writeKind();
       boolean onlyCodec =
           kind == JsonFieldKind.MAP
@@ -787,7 +843,7 @@ abstract class JsonWriterCodegen {
     boolean object = property.writeTypeInfo().usesDefaultObjectCodec();
     Expression codec =
         object && property.writeRawType() == ownerType
-            ? new Reference("this", TypeRef.of(objectWriterType()))
+            ? new Reference("this", TypeRef.of(completeWriterType()))
             : fieldRef("w" + id, codecFieldType(property));
     return new Expression.Invoke(codec, writeMethod(), writer, value);
   }
@@ -881,6 +937,11 @@ abstract class JsonWriterCodegen {
 
     @Override
     Class<?> objectWriterType() {
+      return StringObjectWriter.class;
+    }
+
+    @Override
+    Class<?> completeWriterType() {
       return StringWriterCodec.class;
     }
 
@@ -1127,6 +1188,11 @@ abstract class JsonWriterCodegen {
 
     @Override
     Class<?> objectWriterType() {
+      return Utf8ObjectWriter.class;
+    }
+
+    @Override
+    Class<?> completeWriterType() {
       return Utf8WriterCodec.class;
     }
 

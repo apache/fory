@@ -183,27 +183,36 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     ForyJson first = newJson(codegen);
     ForyJson second = newJson(codegen);
     ForyJson writeNullFields = newJsonBuilder(codegen).writeNullFields(true).build();
+    ForyJson snakeCase =
+        newJsonBuilder(codegen)
+            .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
+            .build();
     first.toJsonBytes(new PublicFields());
     second.toJsonBytes(new PublicFields());
     writeNullFields.toJsonBytes(new PublicFields());
+    snakeCase.toJsonBytes(new PublicFields());
     if (!codegen) {
       assertFalse(hasGeneratedCapability(first, PublicFields.class));
       assertFalse(hasGeneratedCapability(second, PublicFields.class));
       assertFalse(hasGeneratedCapability(writeNullFields, PublicFields.class));
+      assertFalse(hasGeneratedCapability(snakeCase, PublicFields.class));
       return;
     }
 
     Class<?> firstCodecClass = generatedCodecClass(first, PublicFields.class);
     Class<?> secondCodecClass = generatedCodecClass(second, PublicFields.class);
     Class<?> writeNullCodecClass = generatedCodecClass(writeNullFields, PublicFields.class);
+    Class<?> snakeCaseCodecClass = generatedCodecClass(snakeCase, PublicFields.class);
     assertEquals(firstCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
     assertEquals(
         secondCodecClass.getPackage().getName(), PublicFields.class.getPackage().getName());
     assertGeneratedName(firstCodecClass, PublicFields.class, "Utf8Writer");
     assertGeneratedName(secondCodecClass, PublicFields.class, "Utf8Writer");
     assertGeneratedName(writeNullCodecClass, PublicFields.class, "Utf8Writer");
+    assertGeneratedName(snakeCaseCodecClass, PublicFields.class, "Utf8Writer");
     assertEquals(generatedId(secondCodecClass), generatedId(firstCodecClass));
     assertNotEquals(generatedId(writeNullCodecClass), generatedId(firstCodecClass));
+    assertNotEquals(generatedId(snakeCaseCodecClass), generatedId(firstCodecClass));
   }
 
   @Test

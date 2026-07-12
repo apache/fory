@@ -30,7 +30,6 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.fory.annotation.Expose;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.data.Kind;
@@ -206,15 +205,6 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
     assertEquals(json.toJson(value), "{}");
   }
 
-  @Test
-  public void classExposeRejected() {
-    ForyJson json = rejectingJson(Class.class);
-    assertThrows(ForyJsonException.class, () -> json.toJson(new ExposedClassMember()));
-    assertThrows(
-        ForyJsonException.class,
-        () -> json.fromJson("{\"type\":\"java.lang.String\"}", ExposedClassMember.class));
-  }
-
   private ForyJson rejectingJson(Class<?> rejectedType) {
     String rejectedName = rejectedType.getName();
     return newJsonBuilder()
@@ -256,11 +246,5 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
     public void setModelClass(Class<?> modelClass) {
       throw new AssertionError("Class setter should be ignored");
     }
-  }
-
-  public static final class ExposedClassMember {
-    @Expose public Class<?> type = String.class;
-    public int id;
-    public String name;
   }
 }

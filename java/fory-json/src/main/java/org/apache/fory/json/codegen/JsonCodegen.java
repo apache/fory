@@ -56,12 +56,13 @@ import org.apache.fory.json.resolver.JsonTypeInfo;
 public final class JsonCodegen {
   private static final Map<String, Map<String, Integer>> ID_GENERATOR = new ConcurrentHashMap<>();
 
-  final boolean writeNullFields;
   private final int codegenHash;
   private final CodeGenerator codeGenerator;
   private final ClassLoader jsonLoader;
   private final Map<Class<?>, Class<?>> stringWriterClasses = new ConcurrentHashMap<>();
   private final Map<Class<?>, Class<?>> utf8WriterClasses = new ConcurrentHashMap<>();
+  private final Map<Class<?>, Class<?>> stringObjectWriterClasses = new ConcurrentHashMap<>();
+  private final Map<Class<?>, Class<?>> utf8ObjectWriterClasses = new ConcurrentHashMap<>();
   private final Map<Class<?>, Class<?>> latin1ReaderClasses = new ConcurrentHashMap<>();
   private final Map<Class<?>, Class<?>> utf16ReaderClasses = new ConcurrentHashMap<>();
   private final Map<Class<?>, Class<?>> utf8ReaderClasses = new ConcurrentHashMap<>();
@@ -77,10 +78,9 @@ public final class JsonCodegen {
     return ctx.type(arrayType);
   }
 
-  public JsonCodegen(boolean writeNullFields, int codegenHash) {
-    this.writeNullFields = writeNullFields;
+  public JsonCodegen(int codegenHash, ClassLoader jsonLoader) {
     this.codegenHash = codegenHash;
-    jsonLoader = JsonCodegen.class.getClassLoader();
+    this.jsonLoader = jsonLoader;
     codeGenerator = new CodeGenerator(jsonLoader);
   }
 
@@ -113,6 +113,24 @@ public final class JsonCodegen {
       return null;
     }
     return utf8WriterClasses.computeIfAbsent(codec.type(), ignored -> buildUtf8Writer(codec));
+  }
+
+  @Internal
+  public Class<?> compileStringObjectWriter(ObjectCodec<?> codec) {
+    if (!canCompileWriter(codec)) {
+      return null;
+    }
+    return stringObjectWriterClasses.computeIfAbsent(
+        codec.type(), ignored -> buildStringWriter(codec, true));
+  }
+
+  @Internal
+  public Class<?> compileUtf8ObjectWriter(ObjectCodec<?> codec) {
+    if (!canCompileWriter(codec)) {
+      return null;
+    }
+    return utf8ObjectWriterClasses.computeIfAbsent(
+        codec.type(), ignored -> buildUtf8Writer(codec, true));
   }
 
   @Internal
@@ -150,6 +168,16 @@ public final class JsonCodegen {
   }
 
   @Internal
+  public String stringObjectWriterJITId(Class<?> type) {
+    return jitId(type, "StringObjectWriter");
+  }
+
+  @Internal
+  public String utf8ObjectWriterJITId(Class<?> type) {
+    return jitId(type, "Utf8ObjectWriter");
+  }
+
+  @Internal
   public String latin1ReaderJITId(Class<?> type) {
     return jitId(type, "Latin1Reader");
   }
@@ -169,25 +197,34 @@ public final class JsonCodegen {
   }
 
   private Class<?> buildStringWriter(ObjectCodec<?> codec) {
+    return buildStringWriter(codec, false);
+  }
+
+  private Class<?> buildStringWriter(ObjectCodec<?> codec, boolean objectMembers) {
     Class<?> type = codec.type();
     String generatedPackage = CodeGenerator.getPackage(type);
-    String className = className(type, "StringWriter");
+    String className = className(type, objectMembers ? "StringObjectWriter" : "StringWriter");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
     String code =
         new JsonWriterCodegen.StringGenerator(this)
-            .genWriterCode(builder, type, codec.writeFields());
+            .genWriterCode(builder, type, codec.writeFields(), objectMembers);
     return compileCodecClass(generatedPackage, className, code);
   }
 
   private Class<?> buildUtf8Writer(ObjectCodec<?> codec) {
+    return buildUtf8Writer(codec, false);
+  }
+
+  private Class<?> buildUtf8Writer(ObjectCodec<?> codec, boolean objectMembers) {
     Class<?> type = codec.type();
     String generatedPackage = CodeGenerator.getPackage(type);
-    String className = className(type, "Utf8Writer");
+    String className = className(type, objectMembers ? "Utf8ObjectWriter" : "Utf8Writer");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
     String code =
-        new JsonWriterCodegen.Utf8Generator(this).genWriterCode(builder, type, codec.writeFields());
+        new JsonWriterCodegen.Utf8Generator(this)
+            .genWriterCode(builder, type, codec.writeFields(), objectMembers);
     return compileCodecClass(generatedPackage, className, code);
   }
 
@@ -199,7 +236,8 @@ public final class JsonCodegen {
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
     String code =
         new JsonReaderCodegen.Latin1Generator(this)
-            .genReaderCode(builder, type, codec.readFields(), codec.isRecord());
+            .genReaderCode(
+                builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo());
     return compileCodecClass(generatedPackage, className, code);
   }
 
@@ -211,7 +249,8 @@ public final class JsonCodegen {
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
     String code =
         new JsonReaderCodegen.Utf16Generator(this)
-            .genReaderCode(builder, type, codec.readFields(), codec.isRecord());
+            .genReaderCode(
+                builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo());
     return compileCodecClass(generatedPackage, className, code);
   }
 
@@ -223,7 +262,8 @@ public final class JsonCodegen {
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
     String code =
         new JsonReaderCodegen.Utf8Generator(this)
-            .genReaderCode(builder, type, codec.readFields(), codec.isRecord());
+            .genReaderCode(
+                builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo());
     return compileCodecClass(generatedPackage, className, code);
   }
 

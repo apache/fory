@@ -22,6 +22,7 @@ package org.apache.fory.json;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
+import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.data.BeanProperties.BooleanBean;
 import org.apache.fory.json.data.BeanProperties.ConflictingTypesBean;
 import org.apache.fory.json.data.BeanProperties.DuplicateGetterBean;
@@ -133,5 +134,110 @@ public class JsonPropertyTest extends ForyJsonTestModels {
     FinalFieldBean value = json.fromJson("{\"id\":9,\"name\":\"json\"}", FinalFieldBean.class);
     assertEquals(value.id, 1);
     assertEquals(value.name, "json");
+  }
+
+  @Test
+  public void propertyAnnotationAndNaming() {
+    ForyJson json =
+        newJsonBuilder()
+            .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
+            .build();
+    AnnotatedProperties value = new AnnotatedProperties();
+    assertEquals(
+        json.toJson(value),
+        "{\"always_null\":null,\"URL_value\":\"fixed\",\"user_name\":\"alice\"}");
+    AnnotatedProperties decoded =
+        json.fromJson(
+            "{\"URL_value\":\"changed\",\"always_null\":null,\"user_name\":\"bob\"}",
+            AnnotatedProperties.class);
+    assertEquals(decoded.userName, "bob");
+    assertEquals(decoded.fixedName, "changed");
+  }
+
+  @Test
+  public void namingExamples() {
+    ForyJson json =
+        newJsonBuilder()
+            .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
+            .build();
+    assertEquals(
+        json.toJson(new NamingExamples()),
+        "{\"url2_value\":1,\"url_value\":1,\"already_snake\":1,\"user_url\":1,"
+            + "\"v2_api_client\":1,\"version2_fa\":1,\"x1_value\":1}");
+  }
+
+  @Test
+  public void rejectAnnotationConflicts() {
+    ForyJson json = newJson();
+    assertThrows(ForyJsonException.class, () -> json.toJson(new NameConflict()));
+    assertThrows(ForyJsonException.class, () -> json.toJson(new IncludeConflict()));
+    assertThrows(ForyJsonException.class, () -> json.toJson(new ReadOnlyInclude()));
+    assertThrows(
+        NullPointerException.class, () -> ForyJson.builder().withPropertyNamingStrategy(null));
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            newJsonBuilder()
+                .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
+                .build()
+                .toJson(new CanonicalNameConflict()));
+    assertThrows(
+        ForyJsonException.class,
+        () -> newJsonBuilder().withFieldMode(true).build().toJson(new IneligibleAnnotation()));
+  }
+
+  public static final class AnnotatedProperties {
+    @JsonProperty(include = JsonProperty.Include.ALWAYS)
+    public String alwaysNull;
+
+    @JsonProperty("URL_value")
+    public String fixedName = "fixed";
+
+    public String userName = "alice";
+  }
+
+  public static final class NamingExamples {
+    public int URL2Value = 1;
+    public int URLValue = 1;
+    public int already_snake = 1;
+    public int userURL = 1;
+    public int v2APIClient = 1;
+    public int version2FA = 1;
+    public int x1Value = 1;
+  }
+
+  public static final class NameConflict {
+    @JsonProperty("left")
+    private String value;
+
+    @JsonProperty("right")
+    public String getValue() {
+      return value;
+    }
+  }
+
+  public static final class IncludeConflict {
+    @JsonProperty(include = JsonProperty.Include.ALWAYS)
+    private String value;
+
+    @JsonProperty(include = JsonProperty.Include.NON_NULL)
+    public String getValue() {
+      return value;
+    }
+  }
+
+  public static final class ReadOnlyInclude {
+    @JsonProperty(include = JsonProperty.Include.ALWAYS)
+    public void setValue(String value) {}
+  }
+
+  public static final class CanonicalNameConflict {
+    public String userName;
+    public String user_name;
+  }
+
+  public static final class IneligibleAnnotation {
+    @JsonProperty("value")
+    public transient String value;
   }
 }

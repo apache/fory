@@ -28,6 +28,7 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
@@ -78,6 +79,235 @@ public final class Utf16JsonReader extends JsonReader {
     input = "";
     bytes = null;
     length = 0;
+  }
+
+  @Override
+  protected int scanStringEnd(int start) {
+    if (start >= length || charAtFast(start) != '"') {
+      throw errorAt("Expected string", start);
+    }
+    int cursor = start + 1;
+    if (LITTLE_ENDIAN && bytes != null) {
+      int wordEnd = length - 4;
+      while (cursor <= wordEnd) {
+        long word = LittleEndian.getInt64(bytes, cursor << 1);
+        long stopMask = utf16StringStopMask(word, word & UTF16_NON_LATIN_BYTES);
+        if (stopMask == 0) {
+          cursor += 4;
+          continue;
+        }
+        cursor += Long.numberOfTrailingZeros(stopMask) >>> 4;
+        char ch = charAtFast(cursor);
+        if (ch == '"') {
+          return cursor + 1;
+        }
+        if (ch < 0x20) {
+          throw errorAt("Control character in string", cursor);
+        }
+        if (ch == '\\') {
+          cursor = scanEscape(cursor);
+        } else if (Character.isHighSurrogate(ch)) {
+          cursor = scanRawSurrogate(cursor);
+        } else if (Character.isLowSurrogate(ch)) {
+          throw errorAt("Unpaired low surrogate in string", cursor);
+        } else {
+          cursor++;
+        }
+      }
+    }
+    while (cursor < length) {
+      char ch = charAtFast(cursor);
+      if (ch == '"') {
+        return cursor + 1;
+      }
+      if (ch < 0x20) {
+        throw errorAt("Control character in string", cursor);
+      }
+      if (ch == '\\') {
+        cursor = scanEscape(cursor);
+      } else if (Character.isHighSurrogate(ch)) {
+        cursor = scanRawSurrogate(cursor);
+      } else if (Character.isLowSurrogate(ch)) {
+        throw errorAt("Unpaired low surrogate in string", cursor);
+      } else {
+        cursor++;
+      }
+    }
+    throw errorAt("Unterminated string", cursor);
+  }
+
+  @Override
+  protected long scanStringHash(int start, int end) {
+    long hash = JsonFieldNameHash.MAGIC_HASH_CODE;
+    long value = 0;
+    int decodedLength = 0;
+    boolean latin1 = true;
+    int cursor = start + 1;
+    int limit = end - 1;
+    while (cursor < limit) {
+      char ch = charAtFast(cursor++);
+      if (ch == '\\') {
+        char escaped = charAtFast(cursor++);
+        if (escaped == 'u') {
+          ch = scanUnicodeEscape(cursor);
+          cursor += 4;
+        } else {
+          ch = scanSimpleEscape(escaped, cursor - 1);
+        }
+      }
+      if (Character.isHighSurrogate(ch)) {
+        if (latin1) {
+          hash = JsonFieldNameHash.hashPacked(value, decodedLength);
+          latin1 = false;
+        }
+        hash = JsonFieldNameHash.update(hash, ch);
+        decodedLength++;
+        char low;
+        if (cursor < limit && charAtFast(cursor) == '\\') {
+          cursor += 2;
+          low = scanUnicodeEscape(cursor);
+          cursor += 4;
+        } else {
+          low = charAtFast(cursor++);
+        }
+        hash = JsonFieldNameHash.update(hash, low);
+        decodedLength++;
+      } else if (latin1 && ch <= 0xff && ch != 0 && decodedLength < Long.BYTES) {
+        value = JsonFieldNameHash.value(value, decodedLength++, ch);
+      } else {
+        if (latin1) {
+          hash = JsonFieldNameHash.hashPacked(value, decodedLength);
+          latin1 = false;
+        }
+        hash = JsonFieldNameHash.update(hash, ch);
+        decodedLength++;
+      }
+    }
+    return JsonFieldNameHash.finish(hash, value, decodedLength, latin1);
+  }
+
+  @Override
+  protected boolean matchesScannedString(int start, int end, String expected) {
+    int cursor = start + 1;
+    int limit = end - 1;
+    int index = 0;
+    boolean matches = true;
+    while (cursor < limit) {
+      char ch = charAtFast(cursor++);
+      if (ch == '\\') {
+        char escaped = charAtFast(cursor++);
+        if (escaped == 'u') {
+          ch = scanUnicodeEscape(cursor);
+          cursor += 4;
+        } else {
+          ch = scanSimpleEscape(escaped, cursor - 1);
+        }
+        matches &= index < expected.length() && expected.charAt(index++) == ch;
+        if (Character.isHighSurrogate(ch)) {
+          cursor += 2;
+          char low = scanUnicodeEscape(cursor);
+          cursor += 4;
+          matches &= index < expected.length() && expected.charAt(index++) == low;
+        }
+        continue;
+      }
+      matches &= index < expected.length() && expected.charAt(index++) == ch;
+      if (Character.isHighSurrogate(ch)) {
+        char low = charAtFast(cursor++);
+        matches &= index < expected.length() && expected.charAt(index++) == low;
+      }
+    }
+    return matches && index == expected.length();
+  }
+
+  private int scanEscape(int slash) {
+    int cursor = slash + 1;
+    if (cursor >= length) {
+      throw errorAt("Unterminated escape", slash);
+    }
+    char escaped = charAtFast(cursor++);
+    if (escaped != 'u') {
+      scanSimpleEscape(escaped, cursor - 1);
+      return cursor;
+    }
+    char ch = scanUnicodeEscape(cursor);
+    cursor += 4;
+    if (Character.isHighSurrogate(ch)) {
+      if (cursor + 6 > length || charAtFast(cursor) != '\\' || charAtFast(cursor + 1) != 'u') {
+        throw errorAt("Unpaired high surrogate escape", slash);
+      }
+      char low = scanUnicodeEscape(cursor + 2);
+      if (!Character.isLowSurrogate(low)) {
+        throw errorAt("Unpaired high surrogate escape", slash);
+      }
+      return cursor + 6;
+    }
+    if (Character.isLowSurrogate(ch)) {
+      throw errorAt("Unpaired low surrogate escape", slash);
+    }
+    return cursor;
+  }
+
+  private int scanRawSurrogate(int cursor) {
+    if (cursor + 1 >= length || !Character.isLowSurrogate(charAtFast(cursor + 1))) {
+      throw errorAt("Unpaired high surrogate in string", cursor);
+    }
+    return cursor + 2;
+  }
+
+  private char scanUnicodeEscape(int offset) {
+    if (offset > length - 4) {
+      throw errorAt("Incomplete unicode escape", offset);
+    }
+    int value = 0;
+    for (int i = 0; i < 4; i++) {
+      char ch = charAtFast(offset + i);
+      int digit;
+      if (ch >= '0' && ch <= '9') {
+        digit = ch - '0';
+      } else {
+        char lower = (char) (ch | 0x20);
+        if (lower < 'a' || lower > 'f') {
+          throw errorAt("Invalid unicode escape", offset + i);
+        }
+        digit = lower - 'a' + 10;
+      }
+      value = (value << 4) | digit;
+    }
+    return (char) value;
+  }
+
+  private char scanSimpleEscape(char escaped, int offset) {
+    switch (escaped) {
+      case '"':
+      case '\\':
+      case '/':
+        return escaped;
+      case 'b':
+        return '\b';
+      case 'f':
+        return '\f';
+      case 'n':
+        return '\n';
+      case 'r':
+        return '\r';
+      case 't':
+        return '\t';
+      default:
+        throw errorAt("Invalid escape", offset);
+    }
+  }
+
+  @Override
+  public int readSubtypeName(JsonSubtypeScanInfo info) {
+    skipWhitespaceFast();
+    int start = position;
+    int candidate = info.nameIndex(readStringHash());
+    int end = position;
+    if (candidate < 0 || !matchesScannedString(start, end, info.name(candidate))) {
+      throw error("Unknown JSON subtype name");
+    }
+    return candidate;
   }
 
   public Utf16JsonReader(JsonConfig config, JsonTypeResolver typeResolver, String input) {

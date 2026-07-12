@@ -76,6 +76,21 @@ public class JsonObjectTest extends ForyJsonTestModels {
     assertThrows(ForyJsonException.class, () -> json.writeJsonTo(new PublicFields(), failing));
   }
 
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  @Test
+  public void typedWriteValidation() {
+    ForyJson json = newJson();
+    assertEquals(json.toJson(7, int.class), "7");
+    assertEquals(new String(json.toJsonBytes(7, int.class), StandardCharsets.UTF_8), "7");
+    assertThrows(IllegalArgumentException.class, () -> json.toJson(null, int.class));
+    assertThrows(IllegalArgumentException.class, () -> json.toJson("x", (Class) Integer.class));
+    assertThrows(IllegalArgumentException.class, () -> json.toJson(null, void.class));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> json.toJson(new PublicFields(), (Class<PublicFields>) null));
+    assertThrows(NullPointerException.class, () -> json.writeJsonTo(7, int.class, null));
+  }
+
   @Test
   public void writeFirstIntGenerated() {
     ForyJson json = newJson();

@@ -52,13 +52,11 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
  */
 public abstract class JsonWriter {
   private final JsonTypeResolver typeResolver;
-  private final boolean writeNullFields;
   private final int maxDepth;
   private int depth;
 
   JsonWriter(JsonConfig config, JsonTypeResolver typeResolver) {
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
-    writeNullFields = config.writeNullFields();
     maxDepth = config.maxDepth();
   }
 
@@ -67,10 +65,6 @@ public abstract class JsonWriter {
    */
   public final JsonTypeResolver typeResolver() {
     return typeResolver;
-  }
-
-  public final boolean writeNullFields() {
-    return writeNullFields;
   }
 
   public void reset() {
