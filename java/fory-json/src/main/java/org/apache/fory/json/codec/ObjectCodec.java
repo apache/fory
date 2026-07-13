@@ -1257,7 +1257,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
   }
 
   private static String translateName(String name, PropertyNamingStrategy strategy) {
-    if (strategy == PropertyNamingStrategy.IDENTITY) {
+    if (strategy == PropertyNamingStrategy.LOWER_CAMEL_CASE) {
       return name;
     }
     StringBuilder builder = new StringBuilder(name.length() + 4);

@@ -33,18 +33,18 @@ import org.apache.fory.json.resolver.CodecRegistry;
  * path-specific replacements are installed, not codec semantics.
  *
  * <p>Defaults omit null object fields, enable code generation and asynchronous compilation, use
- * JavaBean property discovery, use {@link PropertyNamingStrategy#IDENTITY}, snapshot the current
- * thread context class loader, allow a nesting depth of 20, use twice the available processors as
- * the pooled-state concurrency level, retain writer buffers up to 2 MiB, and install no custom type
- * checker. Field mode disables getter and setter discovery but continues to discover eligible
- * instance fields across the class hierarchy.
+ * JavaBean property discovery, use {@link PropertyNamingStrategy#LOWER_CAMEL_CASE}, snapshot the
+ * current thread context class loader, allow a nesting depth of 20, use twice the available
+ * processors as the pooled-state concurrency level, retain writer buffers up to 2 MiB, and install
+ * no custom type checker. Field mode disables getter and setter discovery but continues to discover
+ * eligible instance fields across the class hierarchy.
  */
 public final class ForyJsonBuilder {
   private boolean writeNullFields;
   private boolean codegenEnabled = true;
   private boolean asyncCompilationEnabled = true;
   private boolean propertyDiscoveryEnabled = true;
-  private PropertyNamingStrategy propertyNamingStrategy = PropertyNamingStrategy.IDENTITY;
+  private PropertyNamingStrategy propertyNamingStrategy = PropertyNamingStrategy.LOWER_CAMEL_CASE;
   private ClassLoader classLoader;
   private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
   private int concurrencyLevel = Math.max(1, Runtime.getRuntime().availableProcessors() * 2);
@@ -91,8 +91,8 @@ public final class ForyJsonBuilder {
   /**
    * Sets the naming strategy applied to logical properties without an explicit JSON name.
    *
-   * <p>The default is {@link PropertyNamingStrategy#IDENTITY}. A non-empty {@code JsonProperty}
-   * value is already a JSON name and bypasses the strategy.
+   * <p>The default is {@link PropertyNamingStrategy#LOWER_CAMEL_CASE}. A non-empty {@code
+   * JsonProperty} value is already a JSON name and bypasses the strategy.
    *
    * @throws NullPointerException if {@code propertyNamingStrategy} is null
    */

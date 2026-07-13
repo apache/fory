@@ -185,7 +185,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     ForyJson writeNullFields = newJsonBuilder(codegen).writeNullFields(true).build();
     ForyJson snakeCase =
         newJsonBuilder(codegen)
-            .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
+            .withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE)
             .build();
     first.toJsonBytes(new PublicFields());
     second.toJsonBytes(new PublicFields());

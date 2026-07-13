@@ -847,7 +847,7 @@ public class JsonAsyncCompilationTest {
             true,
             true,
             true,
-            PropertyNamingStrategy.IDENTITY,
+            PropertyNamingStrategy.LOWER_CAMEL_CASE,
             JsonAsyncCompilationTest.class.getClassLoader(),
             ForyJson.DEFAULT_MAX_DEPTH,
             1,

@@ -285,7 +285,7 @@ are rejected.
 | `withCodegen`                | `true`                                       | Generated object codecs                                |
 | `withAsyncCompilation`       | `true`                                       | Asynchronous generated-code compilation                |
 | `withFieldMode`              | `false`                                      | Field-only discovery when true                         |
-| `withPropertyNamingStrategy` | `IDENTITY`                                   | Naming of properties without explicit names            |
+| `withPropertyNamingStrategy` | `LOWER_CAMEL_CASE`                           | Naming of properties without explicit names            |
 | `withClassLoader`            | Snapshotted context loader, then Fory loader | Resolve annotation subtype class names                 |
 | `maxDepth`                   | `20`                                         | Maximum nested object/array depth                      |
 | `withConcurrencyLevel`       | `max(1, 2 * processors)`                     | Reusable operation-state count                         |
@@ -336,13 +336,14 @@ names or non-default policies fail. Two properties cannot normalize to the same 
 ```java
 ForyJson json =
     ForyJson.builder()
-        .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
+        .withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE)
         .build();
 ```
 
-The default is `IDENTITY`. Lower snake case maps `userName` to `user_name`, `URLValue` to
-`url_value`, and `version2FA` to `version2_fa`. Explicit `JsonProperty` names, parameter-local
-creator names, and subtype discriminator properties bypass the strategy.
+The default `LOWER_CAMEL_CASE` preserves the discovered Java logical property name. `SNAKE_CASE`
+maps `userName` to `user_name`, `URLValue` to `url_value`, and `version2FA` to `version2_fa`.
+Explicit `JsonProperty` names, parameter-local creator names, and subtype discriminator properties
+bypass the strategy.
 
 ### `JsonIgnore`
 

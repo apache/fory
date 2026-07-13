@@ -339,7 +339,7 @@ original key type. Null map keys are rejected.
 | `withCodegen(boolean)`                 | `true`                                                   | Enable generated object codecs                                       |
 | `withAsyncCompilation(boolean)`        | `true`                                                   | Compile generated codecs asynchronously                              |
 | `withFieldMode(boolean)`               | `false`                                                  | When true, discover fields without getters/setters                   |
-| `withPropertyNamingStrategy(strategy)` | `IDENTITY`                                               | Name properties without an explicit `JsonProperty` name              |
+| `withPropertyNamingStrategy(strategy)` | `LOWER_CAMEL_CASE`                                       | Name properties without an explicit `JsonProperty` name              |
 | `withClassLoader(loader)`              | Snapshotted thread context loader, then Fory JSON loader | Resolve annotation-declared subtype class names                      |
 | `maxDepth(int)`                        | `20`                                                     | Maximum nested object/array depth for reads and writes               |
 | `withConcurrencyLevel(int)`            | `max(1, 2 * processors)`                                 | Number of reusable concurrent operation states                       |
@@ -407,11 +407,12 @@ import org.apache.fory.json.PropertyNamingStrategy;
 
 ForyJson json =
     ForyJson.builder()
-        .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
+        .withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE)
         .build();
 ```
 
-The default is `IDENTITY`. `LOWER_SNAKE_CASE` handles acronym and digit boundaries, for example:
+The default `LOWER_CAMEL_CASE` preserves the discovered Java logical property name. `SNAKE_CASE`
+handles acronym and digit boundaries, for example:
 
 - `userName` becomes `user_name`;
 - `URLValue` becomes `url_value`;

@@ -22,7 +22,7 @@ package org.apache.fory.json;
 /** Defines the closed set of Java-logical-name to JSON-name transformations. */
 public enum PropertyNamingStrategy {
   /** Preserve the Java logical property name exactly. */
-  IDENTITY,
+  LOWER_CAMEL_CASE,
   /**
    * Convert camel-case words to lower snake case.
    *
@@ -32,5 +32,5 @@ public enum PropertyNamingStrategy {
    * conversion is performed by Unicode code point. An explicit non-empty {@code JsonProperty} value
    * bypasses this transformation.
    */
-  LOWER_SNAKE_CASE
+  SNAKE_CASE
 }

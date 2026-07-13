@@ -107,9 +107,7 @@ public class JsonRecordTest extends ForyJsonTestModels {
                 + "String displayName) {}\n");
     Object value = type.getConstructor(int.class, String.class).newInstance(7, "alice");
     ForyJson json =
-        newJsonBuilder()
-            .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
-            .build();
+        newJsonBuilder().withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE).build();
     String text = "{\"user_id\":7,\"display_name\":\"alice\"}";
     assertEquals(json.toJson(value), text);
     Object decoded = json.fromJson(text, type);

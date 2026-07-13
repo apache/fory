@@ -139,9 +139,7 @@ public class JsonPropertyTest extends ForyJsonTestModels {
   @Test
   public void propertyAnnotationAndNaming() {
     ForyJson json =
-        newJsonBuilder()
-            .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
-            .build();
+        newJsonBuilder().withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE).build();
     AnnotatedProperties value = new AnnotatedProperties();
     assertEquals(
         json.toJson(value),
@@ -157,9 +155,7 @@ public class JsonPropertyTest extends ForyJsonTestModels {
   @Test
   public void namingExamples() {
     ForyJson json =
-        newJsonBuilder()
-            .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
-            .build();
+        newJsonBuilder().withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE).build();
     assertEquals(
         json.toJson(new NamingExamples()),
         "{\"url2_value\":1,\"url_value\":1,\"already_snake\":1,\"user_url\":1,"
@@ -178,7 +174,7 @@ public class JsonPropertyTest extends ForyJsonTestModels {
         ForyJsonException.class,
         () ->
             newJsonBuilder()
-                .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
+                .withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE)
                 .build()
                 .toJson(new CanonicalNameConflict()));
     assertThrows(

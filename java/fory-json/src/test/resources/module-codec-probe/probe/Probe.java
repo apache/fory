@@ -53,7 +53,7 @@ public final class Probe {
     ForyJson generated =
         ForyJson.builder()
             .withAsyncCompilation(false)
-            .withPropertyNamingStrategy(PropertyNamingStrategy.LOWER_SNAKE_CASE)
+            .withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE)
             .build();
     Pojo pojo = new Pojo();
     pojo.id = 7;
