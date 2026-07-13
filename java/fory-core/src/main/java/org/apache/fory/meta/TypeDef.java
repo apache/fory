@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.CompatibleCodecBuilder;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.exception.DeserializationException;
@@ -325,6 +326,15 @@ public class TypeDef implements Serializable {
   /** Decode an encoded class definition. */
   public static TypeDef readTypeDef(TypeResolver resolver, byte[] encoded) {
     return readTypeDef(resolver, MemoryBuffer.fromByteArray(encoded));
+  }
+
+  /** Decode a native class definition whose root class was already resolved by the caller. */
+  @Internal
+  public static TypeDef readTypeDef(
+      ClassResolver resolver, byte[] encoded, Class<?> expectedRootClass) {
+    MemoryBuffer buffer = MemoryBuffer.fromByteArray(encoded);
+    return NativeTypeDefDecoder.decodeTypeDef(
+        resolver, buffer, buffer.readInt64(), expectedRootClass);
   }
 
   /** Read class definition from buffer. */

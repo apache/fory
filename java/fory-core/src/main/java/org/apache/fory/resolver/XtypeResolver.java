@@ -204,6 +204,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void register(Class<?> type) {
+    checkRegisterAllowed(type);
     while (containsUserTypeId(xtypeIdGenerator)) {
       xtypeIdGenerator++;
     }
@@ -212,7 +213,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void register(Class<?> type, long userTypeId) {
-    checkRegisterAllowed();
+    checkRegisterAllowed(type);
     int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
         !containsUserTypeId(checkedUserTypeId), "Type id %s has been registered", userTypeId);
@@ -265,7 +266,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void register(Class<?> type, String namespace, String typeName) {
-    checkRegisterAllowed();
+    checkRegisterAllowed(type);
     Preconditions.checkArgument(
         !typeName.isEmpty() && !typeName.contains("."),
         "Type name %s must be non-empty and must not contain `.` when namespace is provided",
@@ -360,7 +361,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void registerUnion(Class<?> type, long userTypeId, Serializer<?> serializer) {
-    checkRegisterAllowed();
+    checkRegisterAllowed(type);
     Preconditions.checkNotNull(serializer);
     int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
@@ -383,7 +384,7 @@ public class XtypeResolver extends TypeResolver {
   @Override
   public void registerUnion(
       Class<?> type, String namespace, String typeName, Serializer<?> serializer) {
-    checkRegisterAllowed();
+    checkRegisterAllowed(type);
     Preconditions.checkNotNull(serializer);
     Preconditions.checkArgument(
         !typeName.isEmpty() && !typeName.contains("."),
@@ -406,7 +407,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void registerEnum(Class<?> type, long userTypeId, Serializer<?> serializer) {
-    checkRegisterAllowed();
+    checkRegisterAllowed(type);
     Preconditions.checkNotNull(serializer);
     int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
@@ -428,7 +429,7 @@ public class XtypeResolver extends TypeResolver {
   @Override
   public void registerEnum(
       Class<?> type, String namespace, String typeName, Serializer<?> serializer) {
-    checkRegisterAllowed();
+    checkRegisterAllowed(type);
     Preconditions.checkNotNull(serializer);
     if (namespace == null) {
       namespace = "";
@@ -464,6 +465,7 @@ public class XtypeResolver extends TypeResolver {
    */
   @Internal
   public void registerForyType(Class<?> type, Serializer serializer, int typeId) {
+    checkRegisterAllowed(type);
     Preconditions.checkArgument(typeId < MAX_TYPE_ID, "Too big type id %s", typeId);
     register(
         type,
@@ -514,12 +516,12 @@ public class XtypeResolver extends TypeResolver {
   }
 
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
-    checkRegisterAllowed();
+    checkRegisterAllowed(type);
     registerSerializer(type, newSerializer(type, serializerClass));
   }
 
   public void registerSerializer(Class<?> type, Serializer<?> serializer) {
-    checkRegisterAllowed();
+    checkRegisterAllowed(type);
     TypeInfo typeInfo = checkClassRegistration(type);
     checkSerializerRegistration(type, serializer.getClass());
     boolean localOverride = typeInfo.serializer != null;
@@ -568,7 +570,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void registerInternalSerializer(Class<?> type, Serializer<?> serializer) {
-    checkRegisterAllowed();
+    checkRegisterAllowed(type);
     Class<?> unwrapped = TypeUtils.unwrap(type);
     if (unwrapped == char.class
         || unwrapped == void.class

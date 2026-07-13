@@ -180,7 +180,8 @@ the value you are copying.
 
 ## Class Registration
 
-If class registration is required, register copied classes before calling `copy`.
+If class registration is required, register runtime types for which Fory must select a copy
+serializer before calling `copy`.
 
 ```java
 import org.apache.fory.Fory;
@@ -198,8 +199,9 @@ public class Example {
 }
 ```
 
-This follows the same registration rules as other Fory operations: if the Fory instance requires class
-registration, copied concrete types must be registered first.
+`copy` operates on an already materialized local object graph. Serializer-specific copy logic may
+reconstruct nested local classes without applying class registration or `TypeChecker` to every
+nested type. Do not use `copy` as a class-policy filter for a local object graph.
 
 ## Thread-Safe Copy
 

@@ -238,6 +238,19 @@ public abstract class TypeResolver {
     }
   }
 
+  protected final void checkRegisterAllowed(Class<?> type) {
+    checkRegisterAllowed();
+    Class<?> componentType = TypeUtils.getComponentIfArray(type);
+    DisallowedList.checkNotInDisallowedList(componentType.getName());
+    TypeChecker checker = extRegistry.typeChecker;
+    if (checker instanceof AllowListChecker
+        && (((AllowListChecker) checker).isDisallowed(type.getName())
+            || ((AllowListChecker) checker).isDisallowed(componentType.getName()))) {
+      throw new InsecureException(
+          String.format("Class %s is forbidden for registration.", type.getName()));
+    }
+  }
+
   /**
    * Registers a class with an auto-assigned user ID.
    *
@@ -265,19 +278,19 @@ public abstract class TypeResolver {
 
   /** Registers a class by name with an auto-assigned user ID. */
   public void register(String className) {
-    register(loadClass(className));
+    register(loadClassFromLoader(className));
   }
 
   /** Registers a class by name with a user-specified ID. */
   public void register(String className, long classId) {
-    register(loadClass(className), classId);
+    register(loadClassFromLoader(className), classId);
   }
 
   /**
    * Registers a class by name with a namespace and type name. The type name must not contain `.`.
    */
   public void register(String className, String namespace, String typeName) {
-    register(loadClass(className), namespace, typeName);
+    register(loadClassFromLoader(className), namespace, typeName);
   }
 
   /**
@@ -292,10 +305,17 @@ public abstract class TypeResolver {
   public final void registerRuntimeTypeAlias(Class<?> runtimeType, Class<?> canonicalType) {
     Preconditions.checkNotNull(runtimeType, "runtimeType");
     Preconditions.checkNotNull(canonicalType, "canonicalType");
+    checkRegisterAllowed(runtimeType);
+    if (runtimeType != canonicalType) {
+      checkRegisterAllowed(canonicalType);
+    }
+    Preconditions.checkArgument(
+        isRegistered(canonicalType),
+        "Canonical type must be registered before registering a runtime type alias: "
+            + canonicalType.getName());
     if (runtimeType == canonicalType) {
       return;
     }
-    checkRegisterAllowed();
     TypeInfo canonicalInfo = classInfoMap.get(canonicalType);
     Preconditions.checkArgument(
         canonicalInfo != null,
@@ -1431,24 +1451,58 @@ public abstract class TypeResolver {
     return loadClass(className, isEnum, arrayDims, config.deserializeUnknownClass());
   }
 
-  final Class<?> loadClass(String className) {
+  @Internal
+  public Class<?> loadClass(String className) {
     return loadClass(className, false, -1, false);
   }
 
   final Class<?> loadClass(
       String className, boolean isEnum, int arrayDims, boolean deserializeUnknownClass) {
-    // Remote TypeDef/TypeMeta paths reach class materialization through this owner. Keep
-    // name-level checks before Class.forName so rejected metadata cannot force arbitrary class
-    // loading.
-    if (!checkType(className)) {
-      throw new InsecureException(
-          String.format("Class %s is forbidden for serialization.", className));
-    }
-    DisallowedList.checkNotInDisallowedList(className);
-    Class<?> cls = extRegistry.registeredClasses.get(className);
+    Class<?> cls = findRegisteredClass(className);
     if (cls != null) {
       return cls;
     }
+    boolean isArray = arrayDims > 0 || className.startsWith("[");
+    int dimensions =
+        isArray ? (arrayDims > 0 ? arrayDims : TypeUtils.getArrayDimensions(className)) : 0;
+    String componentName = isArray ? arrayComponentName(className) : className;
+    if (componentName != null) {
+      DisallowedList.checkNotInDisallowedList(componentName);
+    }
+    if (!config.requireClassRegistration()) {
+      if (!checkType(className)) {
+        throw new InsecureException(
+            String.format("Class %s is forbidden for deserialization.", className));
+      }
+    }
+    if (dimensions > 6) {
+      throw new InsecureException(
+          String.format("Array class %s must be registered when dimensions exceed 6.", className));
+    }
+    if (config.requireClassRegistration()
+        && (!isArray
+            || (componentName != null
+                && findRegisteredClass(componentName) == null
+                && !isCachedClassName(componentName)))) {
+      if (deserializeUnknownClass) {
+        return UnknownClass.getUnknowClass(className, isEnum, dimensions, metaContextShareEnabled);
+      }
+      throw new InsecureException(String.format("Class %s is not registered.", className));
+    }
+    try {
+      return loadClassFromLoader(className);
+    } catch (IllegalStateException e) {
+      if (deserializeUnknownClass) {
+        if (!config.suppressClassRegistrationWarnings()) {
+          LOG.warnOnce(e.getMessage());
+        }
+        return UnknownClass.getUnknowClass(className, isEnum, dimensions, metaContextShareEnabled);
+      }
+      throw e;
+    }
+  }
+
+  protected final Class<?> loadClassFromLoader(String className) {
     try {
       return Class.forName(className, false, extRegistry.classLoader);
     } catch (ClassNotFoundException e) {
@@ -1459,15 +1513,37 @@ public abstract class TypeResolver {
             String.format(
                 "Class %s not found from classloaders [%s, %s]",
                 className, extRegistry.classLoader, Thread.currentThread().getContextClassLoader());
-        if (deserializeUnknownClass) {
-          if (!config.suppressClassRegistrationWarnings()) {
-            LOG.warnOnce(msg);
-          }
-          return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
-        }
         throw new IllegalStateException(msg, ex);
       }
     }
+  }
+
+  private Class<?> findRegisteredClass(String className) {
+    Class<?> registeredClass = extRegistry.registeredClasses.get(className);
+    if (registeredClass != null) {
+      return registeredClass;
+    }
+    for (Map.Entry<Class<?>, TypeInfo> entry : classInfoMap.iterable()) {
+      Class<?> type = entry.getKey();
+      if (type.getName().equals(className)
+          && extRegistry.registeredClasses.inverse().get(type) != null) {
+        return type;
+      }
+    }
+    return null;
+  }
+
+  protected boolean isCachedClassName(String className) {
+    return false;
+  }
+
+  private static String arrayComponentName(String className) {
+    int dimensions = TypeUtils.getArrayDimensions(className);
+    char componentType = className.charAt(dimensions);
+    if (componentType == 'L') {
+      return className.substring(dimensions + 1, className.length() - 1);
+    }
+    return null;
   }
 
   public abstract <T> Serializer<T> getSerializer(Class<T> cls);
@@ -2253,8 +2329,8 @@ public abstract class TypeResolver {
   public void setTypeChecker(TypeChecker typeChecker) {
     sharedRegistry.clearCheckerCache();
     extRegistry.typeChecker = typeChecker == null ? DEFAULT_TYPE_CHECKER : typeChecker;
-    if (extRegistry.typeChecker instanceof AllowListChecker && this instanceof ClassResolver) {
-      ((AllowListChecker) extRegistry.typeChecker).addListener((ClassResolver) this);
+    if (extRegistry.typeChecker instanceof AllowListChecker) {
+      ((AllowListChecker) extRegistry.typeChecker).addListener(this);
     }
   }
 
@@ -2275,14 +2351,6 @@ public abstract class TypeResolver {
 
   final void clearCheckerCache() {
     sharedRegistry.clearCheckerCache();
-  }
-
-  final void clearCheckerCacheForClass(String className) {
-    sharedRegistry.clearCheckerCacheForClass(className);
-  }
-
-  final void clearCheckerCacheForPrefix(String prefix) {
-    sharedRegistry.clearCheckerCacheForPrefix(prefix);
   }
 
   public void registerSerializerFactory(SerializerFactory serializerFactory) {

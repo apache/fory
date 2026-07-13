@@ -198,25 +198,19 @@ public class SerializedLambdaSerializer extends Serializer {
 
   private Class<?> loadCapturingClass(String className, boolean checkClass) {
     String binaryClassName = className.replace('/', '.');
+    if (checkClass) {
+      // Deserialization owns an input class name; copy owns an already materialized local lambda.
+      return typeResolver.loadClass(binaryClassName);
+    }
     try {
-      return loadCapturingClass(binaryClassName, typeResolver.getClassLoader(), checkClass);
+      return Class.forName(binaryClassName, false, typeResolver.getClassLoader());
     } catch (ClassNotFoundException e) {
       try {
-        return loadCapturingClass(
-            binaryClassName, Thread.currentThread().getContextClassLoader(), checkClass);
+        return Class.forName(
+            binaryClassName, false, Thread.currentThread().getContextClassLoader());
       } catch (ClassNotFoundException ex) {
         throw new RuntimeException("Can't load capturing class " + binaryClassName, ex);
       }
     }
-  }
-
-  private Class<?> loadCapturingClass(String className, ClassLoader classLoader, boolean checkClass)
-      throws ClassNotFoundException {
-    Class<?> cls = Class.forName(className, false, classLoader);
-    if (checkClass) {
-      // JDK SerializedLambda readResolve invokes restoration code on the capturing class.
-      typeResolver.checkClassForDeserialization(cls);
-    }
-    return cls;
   }
 }

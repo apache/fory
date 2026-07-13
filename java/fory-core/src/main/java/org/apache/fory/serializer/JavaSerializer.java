@@ -129,7 +129,7 @@ public class JavaSerializer extends Serializer<Object> {
       }
       try (ObjectInputStream input =
           new ClassLoaderObjectInputStream(
-              typeResolver, new ByteArrayInputStream(bytes.toByteArray()))) {
+              typeResolver.getClassLoader(), new ByteArrayInputStream(bytes.toByteArray()))) {
         return input.readObject();
       }
     } catch (IOException | ClassNotFoundException e) {

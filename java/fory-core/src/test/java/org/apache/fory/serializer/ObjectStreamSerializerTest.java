@@ -1242,6 +1242,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .withCodegen(false)
+            .withMetaShare(true)
             .withCompatible(false)
             .build();
     writerFory.register(HierarchyChildDefault.class);
@@ -1254,12 +1255,15 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
             .withXlang(false)
             .withRefTracking(true)
             .withCodegen(false)
+            .withMetaShare(true)
             .withCompatible(false)
             .build();
     readerFory.register(HierarchyChildDefault.class);
     readerFory.registerSerializer(
         HierarchyChildDefault.class,
         new ObjectStreamSerializer(readerFory.getTypeResolver(), HierarchyChildDefault.class));
+    writerFory.setMetaWriteContext(new MetaWriteContext());
+    readerFory.setMetaReadContext(new MetaReadContext());
 
     HierarchyChildDefault obj = new HierarchyChildDefault("parent", "child", 42);
     HierarchyChildDefault result =
@@ -1379,7 +1383,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatibleModeProvider")
-  public void testObjectStreamExactLocalTypeDefChecksTypeChecker(boolean compatible) {
+  public void testObjectStreamUsesRegisteredLocalType(boolean compatible) {
     ForyBuilder builder =
         Fory.builder()
             .withXlang(false)
@@ -1408,7 +1412,9 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
             (resolver, className) -> !className.equals(MixedSerializationClass.class.getName()));
     readerFory.setMetaReadContext(new MetaReadContext());
 
-    Assert.assertThrows(InsecureException.class, () -> readerFory.deserialize(bytes));
+    MixedSerializationClass result = (MixedSerializationClass) readerFory.deserialize(bytes);
+    assertEquals(result.name, "blocked");
+    assertEquals(result.value, 11);
   }
 
   // ==================== Default Value Tests ====================

@@ -282,7 +282,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         // Matching layers are accepted by the registered root object type; requiring each
         // serializable superclass to be registered would make normal ObjectStream hierarchy reads
         // unusable. Sender-only layers are checked below before their data is skipped.
-        Class<?> currentClass = classResolver.readClassInternalUnchecked(readContext);
+        Class<?> currentClass = classResolver.readClassInternal(readContext, type);
 
         // Find the matching local slot for sender's class
         SlotInfo matchedSlot = null;
@@ -315,7 +315,6 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
         if (matchedSlot == null) {
           // Sender has a layer that receiver doesn't have - read TypeDef and skip the data
-          classResolver.checkClassForDeserialization(currentClass);
           skipUnknownLayerData(readContext, currentClass);
           continue;
         }
@@ -558,17 +557,18 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
   private TypeInfo readLayerTypeDef(
       TypeResolver typeResolver, MemoryBuffer buffer, Class<?> cls, long typeDefId) {
+    // readClassInternal already accepted this class as a local root hierarchy layer or resolved a
+    // sender-only name through the checked loader. Rechecking here would require each local
+    // serializable superclass to be registered separately.
     byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefId);
     TypeDef localTypeDef = typeResolver.getTypeDef(cls, false);
     TypeDef typeDef;
     if (Arrays.equals(encoded, localTypeDef.getEncoded())) {
-      // Exact local bytes only avoid remote schema counting/parsing. They still select the
-      // target class serializer, so the class must pass the active deserialization policy.
-      typeResolver.checkClassForDeserialization(cls);
       typeDef = localTypeDef;
     } else {
-      typeResolver.checkClassForDeserialization(cls);
-      typeDef = typeResolver.cacheRemoteTypeDef(TypeDef.readTypeDef(typeResolver, encoded));
+      typeDef =
+          typeResolver.cacheRemoteTypeDef(
+              TypeDef.readTypeDef((ClassResolver) typeResolver, encoded, cls));
     }
     TypeInfo typeInfo = new TypeInfo(cls, typeDef);
     typeDefIdToTypeInfo.put(typeDefId, typeInfo);

@@ -394,11 +394,13 @@ Metadata readers should:
 - For Java metadata paths, keep name-level checks such as `TypeChecker` and the
   disallowed-class list before `Class.forName` by routing remote class-name
   loading through the existing `TypeResolver.loadClass` owner. Do not bypass
-  that owner with direct class loading from TypeDef or TypeMeta names. Other
-  deserialization checks that require a materialized `Class<?>`, such as
-  post-load class policy checks, remain after loading; do not move them earlier
-  or replace them with string-only approximations that change registration,
-  dynamic-loading, or unknown-type semantics.
+  that owner with direct class loading from TypeDef or TypeMeta names. A rejected
+  input name must not cause class loading. Preserve registration, dynamic-loading,
+  and unknown-type semantics while moving this decision before loading.
+- Pass a complete input array descriptor to `TypeChecker`. Input may derive up
+  to six array dimensions from an accepted component class. Higher-dimensional
+  arrays require exact registration so input cannot make the JVM derive an
+  unbounded family of array classes.
 - Reset or release metadata state at the correct root-operation boundary.
 
 A class-resolution cache reachable from untrusted deserialization may publish

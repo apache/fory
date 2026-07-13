@@ -47,6 +47,7 @@ import org.apache.fory.collection.UInt32List;
 import org.apache.fory.collection.UInt64List;
 import org.apache.fory.collection.UInt8List;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -1116,15 +1117,37 @@ public class FieldTypes {
       }
       TypeRef<?> componentTypeRef = componentType.toTypeToken(classResolver, declared);
       Class<?> componentRawType = componentTypeRef.getRawType();
-      if (UnknownClass.class.isAssignableFrom(componentRawType)) {
+      int totalDimensions =
+          dimensions + (componentRawType.isArray() ? getArrayDimensions(componentRawType) : 0);
+      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(componentRawType))) {
+        if (totalDimensions > 6) {
+          throw new InsecureException("Input-derived arrays cannot exceed 6 dimensions.");
+        }
         return TypeRef.of(
-            UnknownClass.getUnknowClass(componentType instanceof EnumFieldType, dimensions, true),
+            UnknownClass.getUnknowClass(
+                componentType instanceof EnumFieldType, totalDimensions, true),
             typeExtMeta(typeId, nullable, trackingRef, declared));
       } else {
         return TypeRef.of(
-            Array.newInstance(componentRawType, new int[dimensions]).getClass(),
+            classResolver.loadClass(arrayDescriptor(componentRawType, dimensions)),
             typeExtMeta(typeId, nullable, trackingRef, declared));
       }
+    }
+
+    private static String arrayDescriptor(Class<?> componentType, int dimensions) {
+      StringBuilder builder = new StringBuilder(dimensions + componentType.getName().length() + 2);
+      for (int i = 0; i < dimensions; i++) {
+        builder.append('[');
+      }
+      if (componentType.isArray()) {
+        return builder.append(componentType.getName()).toString();
+      }
+      if (!componentType.isPrimitive()) {
+        return builder.append('L').append(componentType.getName()).append(';').toString();
+      }
+      return builder
+          .append(Array.newInstance(componentType, 0).getClass().getName().charAt(1))
+          .toString();
     }
 
     @Override

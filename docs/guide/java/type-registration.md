@@ -44,6 +44,17 @@ Register classes and custom serializers before the first top-level `serialize`, 
 `copy` call on a `Fory` instance. Fory freezes registration at that point so serializer lookups can use
 the finalized registration state.
 
+In Java native mode, calling `registerSerializer(...)` explicitly also trusts that exact class for
+class-registration checks, but does not assign it a numeric type ID. Serializers selected or
+generated automatically do not register the class.
+
+Interfaces follow the same rule as classes: register an interface before accepting it from an
+untrusted class token or proxy descriptor. There is no automatic allowance for collection or
+functional interfaces.
+
+For input array descriptors, Fory can derive up to six dimensions from an accepted component
+class. Arrays with more dimensions must be registered as the exact array class.
+
 Internal type IDs 0-32 are reserved for built-in xlang types. Java native built-ins start at
 `Types.NONE + 1`, and user IDs are encoded as `(user_id << 8) | internal_type_id`.
 
@@ -67,7 +78,7 @@ serialized size.
 
 ### Type Checker
 
-If you invoke `ForyBuilder#requireClassRegistration(false)` to disable class registration check, you can configure `org.apache.fory.resolver.TypeChecker` by `ForyBuilder#withTypeChecker` or `TypeResolver#setTypeChecker` to control which classes are allowed for serialization.
+If you invoke `ForyBuilder#requireClassRegistration(false)` to disable class registration check, you can configure `org.apache.fory.resolver.TypeChecker` by `ForyBuilder#withTypeChecker` or `TypeResolver#setTypeChecker` to control which classes are allowed for serialization and deserialization. Array inputs are passed to the checker as complete JVM descriptors.
 
 For example, you can allow classes started with `org.example.*`:
 
@@ -85,6 +96,7 @@ Fory provides a `org.apache.fory.resolver.AllowListChecker` which is an allowed/
 ```java
 AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.STRICT);
 checker.allowClass("org.example.*");
+checker.disallowClass("org.example.internal.*");
 ThreadSafeFory fory = Fory.builder().withXlang(false)
   .requireClassRegistration(false)
   .withTypeChecker(checker)
@@ -95,6 +107,11 @@ ThreadSafeFory fory = Fory.builder().withXlang(false)
 generic startup warning emitted when class registration is disabled without any checker. You can
 still use `TypeResolver#setTypeChecker` or `ThreadSafeFory#setTypeChecker` later if you need to
 replace the checker after build time.
+
+Configure `disallowClass(...)` and `disallowClasses(...)` during registration setup, before the first
+top-level operation. Disallow entries are rejected after registration is frozen or after a matching
+class has cached type information. To apply a different disallow list later, create a new Fory
+instance.
 
 ## Limit Max Deserialization Depth
 

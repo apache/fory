@@ -368,7 +368,7 @@ public final class ForyBuilder {
    * responsible for security risks if you disable this option. If you disable this option, you can
    * configure {@link org.apache.fory.resolver.TypeChecker} by {@link #withTypeChecker(TypeChecker)}
    * or {@link org.apache.fory.resolver.TypeResolver#setTypeChecker} to control which classes are
-   * allowed being serialized.
+   * allowed for serialization and deserialization.
    */
   public ForyBuilder requireClassRegistration(boolean requireClassRegistration) {
     this.requireClassRegistration = requireClassRegistration;

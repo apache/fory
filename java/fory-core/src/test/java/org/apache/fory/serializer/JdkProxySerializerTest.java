@@ -100,6 +100,8 @@ public class JdkProxySerializerTest extends ForyTestBase {
             .withCompatible(false)
             .build();
     fory.register(TestInvocationHandler.class);
+    fory.register(Function.class);
+    fory.register(Serializable.class);
     Function function =
         (Function)
             Proxy.newProxyInstance(
@@ -134,8 +136,7 @@ public class JdkProxySerializerTest extends ForyTestBase {
             .withCompatible(false)
             .build();
     reader.register(TestInvocationHandler.class);
-    TestInterface deserializedFunction = (TestInterface) reader.deserialize(bytes);
-    assertEquals(deserializedFunction.test(), 1);
+    assertThrows(InsecureException.class, () -> reader.deserialize(bytes));
   }
 
   @Test

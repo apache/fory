@@ -84,7 +84,13 @@ public class TypeDefTest extends ForyTestBase {
 
   @Test
   public void testTypeDefSerialization() throws NoSuchFieldException {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     {
       TypeDef typeDef =
           TypeDef.buildTypeDef(
@@ -133,7 +139,13 @@ public class TypeDefTest extends ForyTestBase {
 
   @Test
   public void testDuplicateFieldsClass() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     {
       TypeDef typeDef =
           TypeDef.buildTypeDef(
@@ -154,7 +166,13 @@ public class TypeDefTest extends ForyTestBase {
 
   @Test
   public void testContainerClass() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     List<Field> fields = ReflectionUtils.getFields(ContainerClass.class, true);
     TypeDef typeDef =
         TypeDef.buildTypeDef((ClassResolver) fory.getTypeResolver(), ContainerClass.class, fields);

@@ -299,24 +299,42 @@ public class SerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testDefaultSafeClassTokens() {
-    Fory fory =
+  public void testRegisteredClassTokens() {
+    Class<?>[] interfaces = {
+      Serializable.class,
+      Externalizable.class,
+      Function.class,
+      Collection.class,
+      List.class,
+      Set.class,
+      Map.class,
+      SortedMap.class,
+      SortedSet.class,
+      TestClassTokenInterface.class,
+      TestDefaultClassTokenInterface.class
+    };
+    Fory unregisteredFory =
         Fory.builder()
             .withXlang(false)
             .requireClassRegistration(true)
             .withCompatible(false)
             .build();
-    assertSame(serDe(fory, Serializable.class), Serializable.class);
-    assertSame(serDe(fory, Externalizable.class), Externalizable.class);
-    assertSame(serDe(fory, Function.class), Function.class);
-    assertSame(serDe(fory, Collection.class), Collection.class);
-    assertSame(serDe(fory, List.class), List.class);
-    assertSame(serDe(fory, Set.class), Set.class);
-    assertSame(serDe(fory, Map.class), Map.class);
-    assertSame(serDe(fory, SortedMap.class), SortedMap.class);
-    assertSame(serDe(fory, SortedSet.class), SortedSet.class);
-    assertSame(serDe(fory, TestClassTokenInterface.class), TestClassTokenInterface.class);
-    assertThrows(InsecureException.class, () -> serDe(fory, TestDefaultClassTokenInterface.class));
+    for (Class<?> type : interfaces) {
+      assertThrows(InsecureException.class, () -> serDe(unregisteredFory, type));
+    }
+
+    Fory registeredFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    for (Class<?> type : interfaces) {
+      registeredFory.register(type);
+    }
+    for (Class<?> type : interfaces) {
+      assertSame(serDe(registeredFory, type), type);
+    }
   }
 
   @Test

@@ -103,6 +103,11 @@ class NativeTypeDefDecoder {
   }
 
   public static TypeDef decodeTypeDef(ClassResolver resolver, MemoryBuffer buffer, long id) {
+    return decodeTypeDef(resolver, buffer, id, null);
+  }
+
+  static TypeDef decodeTypeDef(
+      ClassResolver resolver, MemoryBuffer buffer, long id, Class<?> expectedRootClass) {
     Tuple2<byte[], byte[]> decoded = decodeTypeDefBuf(buffer, resolver, id);
     MemoryBuffer typeDefBuf = MemoryBuffer.fromByteArray(decoded.f0);
     int bodyHeader = typeDefBuf.readByte() & 0xff;
@@ -159,7 +164,18 @@ class NativeTypeDefDecoder {
         String typeName = readTypeName(typeDefBuf);
         ClassSpec decodedSpec = Encoders.decodePkgAndClass(pkg, typeName);
         className = decodedSpec.entireClassName;
-        if (resolver.isRegisteredByName(className)) {
+        if (i == numClasses - 1
+            && expectedRootClass != null
+            && className.equals(expectedRootClass.getName())) {
+          // ObjectStream has already resolved this exact hierarchy layer from its registered local
+          // root or through the checked loader. Other metadata class names still use normal checks.
+          classSpec =
+              new ClassSpec(
+                  expectedRootClass,
+                  rootTypeId,
+                  resolver.getUserTypeIdForTypeDef(expectedRootClass));
+          currentClass = expectedRootClass;
+        } else if (resolver.isRegisteredByName(className)) {
           Class<?> cls = resolver.getRegisteredClass(className);
           className = cls.getName();
           int typeId = i == numClasses - 1 ? rootTypeId : resolver.getTypeIdForTypeDef(cls);

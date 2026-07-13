@@ -21,18 +21,16 @@ package org.apache.fory.resolver;
 
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import javax.annotation.concurrent.ThreadSafe;
-import org.apache.fory.config.Config;
-import org.apache.fory.context.ReadContext;
-import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
-import org.apache.fory.serializer.Serializer;
+import org.apache.fory.type.TypeUtils;
 
 /** White/black list based class checker. */
 @ThreadSafe
@@ -55,7 +53,7 @@ public class AllowListChecker implements TypeChecker {
   private final Set<String> allowListPrefix;
   private final Set<String> disallowList;
   private final Set<String> disallowListPrefix;
-  private final transient WeakHashMap<ClassResolver, Boolean> listeners;
+  private final transient WeakHashMap<TypeResolver, Boolean> listeners;
   private final transient ReadWriteLock lock;
 
   public AllowListChecker() {
@@ -103,25 +101,27 @@ public class AllowListChecker implements TypeChecker {
       case WARN:
         if (containsPrefix(disallowList, disallowListPrefix, className)) {
           throw new InsecureException(
-              String.format("Class %s is forbidden for serialization.", className));
+              String.format(
+                  "Class %s is forbidden for serialization or deserialization.", className));
         }
         if (!containsPrefix(allowList, allowListPrefix, className)) {
           LOG.warnOnce(
               "Class {} not in allow list, please check whether objects of this class "
-                  + "are allowed for serialization.",
+                  + "are allowed for serialization or deserialization.",
               className);
         }
         return true;
       case STRICT:
         if (containsPrefix(disallowList, disallowListPrefix, className)) {
           throw new InsecureException(
-              String.format("Class %s is forbidden for serialization.", className));
+              String.format(
+                  "Class %s is forbidden for serialization or deserialization.", className));
         }
         if (!containsPrefix(allowList, allowListPrefix, className)) {
           throw new InsecureException(
               String.format(
-                  "Class %s isn't in allow list for serialization. If this class is allowed for "
-                      + "serialization, please add it to allow list by AllowListChecker#addAllowClass",
+                  "Class %s isn't in the allow list for serialization or deserialization. If this "
+                      + "class is allowed, add it with AllowListChecker#allowClass",
                   className));
         }
         return true;
@@ -181,30 +181,38 @@ public class AllowListChecker implements TypeChecker {
   }
 
   /**
-   * Add class to disallow list.
+   * Add a class to the disallow list during registration setup. This method fails after
+   * registration is frozen or the matching class has cached type information.
    *
    * @param classNameOrPrefix class name or class name prefix ends with *.
    */
   public void disallowClass(String classNameOrPrefix) {
     try {
       lock.writeLock().lock();
+      checkCanDisallow(classNameOrPrefix);
       disallow(classNameOrPrefix);
+      clearCheckerCache();
     } finally {
       lock.writeLock().unlock();
     }
   }
 
   /**
-   * Add classes to disallow list.
+   * Add classes to the disallow list during registration setup. All entries are checked before the
+   * disallow list is changed.
    *
    * @param classNamesOrPrefixes class names or name prefixes ends with *.
    */
   public void disallowClasses(Collection<String> classNamesOrPrefixes) {
     try {
       lock.writeLock().lock();
-      for (String prefix : classNamesOrPrefixes) {
-        disallow(prefix);
+      for (String classNameOrPrefix : classNamesOrPrefixes) {
+        checkCanDisallow(classNameOrPrefix);
       }
+      for (String classNameOrPrefix : classNamesOrPrefixes) {
+        disallow(classNameOrPrefix);
+      }
+      clearCheckerCache();
     } finally {
       lock.writeLock().unlock();
     }
@@ -214,65 +222,54 @@ public class AllowListChecker implements TypeChecker {
     if (classNameOrPrefix.endsWith("*")) {
       String prefix = classNameOrPrefix.substring(0, classNameOrPrefix.length() - 1);
       disallowListPrefix.add(prefix);
-      for (ClassResolver classResolver : listeners.keySet()) {
-        classResolver.clearCheckerCacheForPrefix(prefix);
-        try {
-          classResolver.getJITContext().lock();
-          // clear serializer may throw NullPointerException for field serialization.
-          classResolver.setSerializers(prefix, DisallowSerializer.class);
-        } finally {
-          classResolver.getJITContext().unlock();
-        }
-      }
     } else {
       disallowList.add(classNameOrPrefix);
-      for (ClassResolver classResolver : listeners.keySet()) {
-        classResolver.clearCheckerCacheForClass(classNameOrPrefix);
-        try {
-          classResolver.getJITContext().lock();
-          // clear serializer may throw NullPointerException for field serialization.
-          classResolver.setSerializer(classNameOrPrefix, DisallowSerializer.class);
-        } finally {
-          classResolver.getJITContext().unlock();
-        }
-      }
     }
   }
 
-  /**
-   * Add listener to in response to disallow list. So if object of a class is serialized before,
-   * future serialization will be refused.
-   */
-  public void addListener(ClassResolver classResolver) {
+  void addListener(TypeResolver resolver) {
     try {
       lock.writeLock().lock();
-      listeners.put(classResolver, true);
+      listeners.put(resolver, true);
     } finally {
       lock.writeLock().unlock();
     }
   }
 
-  private void clearCheckerCache() {
-    for (ClassResolver classResolver : listeners.keySet()) {
-      classResolver.clearCheckerCache();
+  boolean isDisallowed(String className) {
+    try {
+      lock.readLock().lock();
+      return checkLevel != CheckLevel.DISABLE
+          && containsPrefix(disallowList, disallowListPrefix, className);
+    } finally {
+      lock.readLock().unlock();
     }
   }
 
-  @SuppressWarnings({"rawtypes", "unchecked"})
-  private static class DisallowSerializer extends Serializer {
-
-    public DisallowSerializer(Config config, Class type) {
-      super(config, type);
+  private void checkCanDisallow(String classNameOrPrefix) {
+    boolean prefix = classNameOrPrefix.endsWith("*");
+    String className =
+        prefix ? classNameOrPrefix.substring(0, classNameOrPrefix.length() - 1) : classNameOrPrefix;
+    for (TypeResolver resolver : listeners.keySet()) {
+      if (resolver.isRegistrationFinished()) {
+        throw new IllegalStateException("Classes cannot be disallowed after registration.");
+      }
+      for (Map.Entry<Class<?>, TypeInfo> entry : resolver.classInfoMap.iterable()) {
+        Class<?> type = entry.getKey();
+        String cachedName = type.getName();
+        String componentName = TypeUtils.getComponentIfArray(type).getName();
+        if ((prefix ? cachedName.startsWith(className) : cachedName.equals(className))
+            || (prefix ? componentName.startsWith(className) : componentName.equals(className))) {
+          throw new IllegalStateException(
+              String.format("Class %s already has cached type information.", cachedName));
+        }
+      }
     }
+  }
 
-    @Override
-    public void write(WriteContext writeContext, Object value) {
-      throw new InsecureException(String.format("Class %s not allowed for serialization.", type));
-    }
-
-    @Override
-    public Object read(ReadContext readContext) {
-      throw new InsecureException(String.format("Class %s not allowed for serialization.", type));
+  private void clearCheckerCache() {
+    for (TypeResolver resolver : listeners.keySet()) {
+      resolver.clearCheckerCache();
     }
   }
 }
