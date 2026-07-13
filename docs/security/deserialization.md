@@ -127,6 +127,12 @@ The following patterns are not vulnerabilities by default:
   read error.
 - Reading an encoded body before later shape validation when the operation
   ultimately returns an error and does not create a security-invariant failure.
+- Materializing an array whose component is an interface already allowed as a
+  class token. Allocating the reference array does not instantiate or execute
+  the interface, and every non-null element must still pass the active policy
+  for its concrete type. Treat this as security-relevant only if the array path
+  bypasses that concrete element check, invokes a policy-forbidden callback, or
+  violates a runtime-safety or resource invariant owned by Fory.
 
 Fory may still reject malformed forms for specification strictness or
 interoperability. That validation should be added only when it is required by
