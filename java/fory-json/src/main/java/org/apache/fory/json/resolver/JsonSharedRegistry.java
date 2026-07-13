@@ -87,6 +87,7 @@ import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.GuavaCodecs;
 import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.MapCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;

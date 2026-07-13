@@ -17,36 +17,36 @@
  * under the License.
  */
 
-package org.apache.fory.json.resolver;
+package org.apache.fory.json.codec;
 
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
-import org.apache.fory.json.codec.JsonCodec;
-import org.apache.fory.json.codec.ObjectCodec;
-import org.apache.fory.json.codec.StringObjectWriter;
-import org.apache.fory.json.codec.StringWriterCodec;
-import org.apache.fory.json.codec.Utf8ObjectWriter;
-import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
 /**
  * Resolver-local closed subtype dispatcher whose branch slots follow child JsonTypeInfo updates.
  */
+@Internal
 @SuppressWarnings("unchecked")
-final class ClosedSubtypeCodec implements JsonCodec<Object> {
+public final class ClosedSubtypeCodec implements JsonCodec<Object> {
   private final Class<?> baseType;
   private final JsonSubTypesInfo definition;
   private final JsonTypeInfo[] children;
   private final ObjectCodec<Object>[] objectCodecs;
 
-  ClosedSubtypeCodec(Class<?> baseType, JsonSubTypesInfo definition) {
+  /** Creates an unresolved resolver-local dispatcher shell for a validated subtype definition. */
+  @Internal
+  public ClosedSubtypeCodec(Class<?> baseType, JsonSubTypesInfo definition) {
     this.baseType = baseType;
     this.definition = definition;
     children = new JsonTypeInfo[definition.classes.length];
@@ -56,7 +56,15 @@ final class ClosedSubtypeCodec implements JsonCodec<Object> {
             : null;
   }
 
-  void resolve(JsonTypeResolver resolver) {
+  /**
+   * Resolves every finite subtype branch after this dispatcher's base-type shell is published.
+   *
+   * <p>Publishing first is required because child metadata can recursively resolve the base type.
+   * The caller must hold the resolver's JIT lock, and the resolver owns rollback if this method
+   * fails.
+   */
+  @Internal
+  public void resolve(JsonTypeResolver resolver) {
     for (int i = 0; i < children.length; i++) {
       Class<?> subtype = definition.classes[i];
       JsonTypeInfo child = resolver.getTypeInfo(subtype, subtype);

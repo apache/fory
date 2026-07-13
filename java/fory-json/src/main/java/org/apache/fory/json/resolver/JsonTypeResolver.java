@@ -32,8 +32,10 @@ import java.util.Set;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.StringObjectWriter;
@@ -263,8 +265,14 @@ public final class JsonTypeResolver {
     return (Utf8WriterCodec<T>) installed;
   }
 
+  /**
+   * Returns the current String member writer and requests JIT refinement when available.
+   *
+   * <p>The caller must hold this resolver's JIT lock.
+   */
+  @Internal
   @SuppressWarnings("unchecked")
-  <T> StringObjectWriter<T> stringObjectWriter(ObjectCodec<T> codec) {
+  public <T> StringObjectWriter<T> stringObjectWriter(ObjectCodec<T> codec) {
     requireJITLock();
     ObjectCodec<Object> owner = erase(codec);
     JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
@@ -297,8 +305,14 @@ public final class JsonTypeResolver {
     return installed instanceof StringObjectWriter ? (StringObjectWriter<T>) installed : codec;
   }
 
+  /**
+   * Returns the current UTF-8 member writer and requests JIT refinement when available.
+   *
+   * <p>The caller must hold this resolver's JIT lock.
+   */
+  @Internal
   @SuppressWarnings("unchecked")
-  <T> Utf8ObjectWriter<T> utf8ObjectWriter(ObjectCodec<T> codec) {
+  public <T> Utf8ObjectWriter<T> utf8ObjectWriter(ObjectCodec<T> codec) {
     requireJITLock();
     ObjectCodec<Object> owner = erase(codec);
     JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());

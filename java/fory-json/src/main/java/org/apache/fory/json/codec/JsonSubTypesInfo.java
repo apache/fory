@@ -17,16 +17,18 @@
  * under the License.
  */
 
-package org.apache.fory.json.resolver;
+package org.apache.fory.json.codec;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.writer.JsonStringEscaper;
 
 /** Shared, fully validated closed-subtype definition for one ForyJson runtime. */
-final class JsonSubTypesInfo {
+@Internal
+public final class JsonSubTypesInfo {
   final Inclusion inclusion;
   final Class<?>[] classes;
   final JsonSubtypeScanInfo scanInfo;
@@ -37,7 +39,14 @@ final class JsonSubTypesInfo {
   final byte[][] stringUtf16SubtypePrefixes;
   final byte[][] utf8SubtypePrefixes;
 
-  JsonSubTypesInfo(Inclusion inclusion, String property, Class<?>[] classes, String[] names) {
+  /**
+   * Creates codec metadata from fully validated arrays owned by the shared JSON registry.
+   *
+   * <p>The registry supplies fresh arrays and must not mutate them after construction.
+   */
+  @Internal
+  public JsonSubTypesInfo(
+      Inclusion inclusion, String property, Class<?>[] classes, String[] names) {
     this.inclusion = inclusion;
     this.classes = classes;
     scanInfo = new JsonSubtypeScanInfo(property, names);
