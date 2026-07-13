@@ -122,6 +122,10 @@ public class JsonPropertyOrderTest extends ForyJsonTestModels {
     assertEquals(json.toJson(new InheritedChild()), "{\"child\":3,\"a\":1,\"b\":2}");
     assertEquals(json.toJson(new OverrideInvalidChild()), "{\"b\":2,\"a\":1}");
     assertEquals(json.toJson(new InterfaceOrderImpl()), "{\"a\":1,\"b\":2}");
+    assertGeneratedWhenSupported(json, WholeChild.class);
+    assertGeneratedWhenSupported(json, InheritedChild.class);
+    assertGeneratedWhenSupported(json, OverrideInvalidChild.class);
+    assertGeneratedWhenSupported(json, InterfaceOrderImpl.class);
   }
 
   @Test

@@ -79,7 +79,7 @@ public @interface JsonProperty {
    */
   Include include() default Include.DEFAULT;
 
-  /** Null-inclusion policies supported by Fory JSON version 1. */
+  /** Null-inclusion policies supported by Fory JSON. */
   enum Include {
     /** Inherit the runtime's {@code writeNullFields} setting. */
     DEFAULT,
