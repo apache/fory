@@ -21,7 +21,7 @@ package org.apache.fory.json.meta;
 
 import org.apache.fory.annotation.Internal;
 
-/** Immutable metadata used by representation-specific inline-discriminator scanners. */
+/** Immutable metadata for inline-discriminator scans and wrapper logical-name lookup. */
 @Internal
 public final class JsonSubtypeScanInfo {
   private final String property;

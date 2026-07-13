@@ -167,11 +167,11 @@ If no loader is configured, `build()` snapshots the current thread context class
 back to the loader that defined `ForyJson`. JSON input never supplies a class name and cannot expand
 the declared table.
 
-Wrapper-object mode is explicit:
+Wrapper-object inclusion is explicit:
 
 ```java
 @JsonSubTypes(
-    wrapperObject = true,
+    inclusion = JsonSubTypes.Inclusion.WRAPPER_OBJECT,
     value = {@JsonSubTypes.Type(value = Circle.class, name = "circle")})
 public interface Shape {}
 ```
@@ -180,8 +180,24 @@ public interface Shape {}
 { "circle": { "radius": 2 } }
 ```
 
-Inline mode requires ordinary object subtypes because it writes their members inside one object.
-Wrapper mode permits any subtype representation, including an exact custom codec.
+Wrapper-array inclusion stores the same logical name and complete subtype value as exactly two
+array elements:
+
+```java
+@JsonSubTypes(
+    inclusion = JsonSubTypes.Inclusion.WRAPPER_ARRAY,
+    value = {@JsonSubTypes.Type(value = Circle.class, name = "circle")})
+public interface Shape {}
+```
+
+```json
+["circle", { "radius": 2 }]
+```
+
+`PROPERTY` inclusion requires a non-empty `property`; both wrapper inclusions require it to remain
+empty. Property inclusion requires ordinary object subtypes because it writes their members inside
+one object. Both wrapper inclusions permit any subtype representation, including an exact custom
+codec. Readers accept only the configured shape.
 
 ## Declared-type writes
 

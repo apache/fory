@@ -20,6 +20,7 @@
 package org.apache.fory.json.resolver;
 
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.StringObjectWriter;
@@ -50,16 +51,16 @@ final class ClosedSubtypeCodec implements JsonCodec<Object> {
     this.definition = definition;
     children = new JsonTypeInfo[definition.classes.length];
     objectCodecs =
-        definition.wrapperObject
-            ? null
-            : (ObjectCodec<Object>[]) new ObjectCodec<?>[children.length];
+        definition.inclusion == Inclusion.PROPERTY
+            ? (ObjectCodec<Object>[]) new ObjectCodec<?>[children.length]
+            : null;
   }
 
   void resolve(JsonTypeResolver resolver) {
     for (int i = 0; i < children.length; i++) {
       Class<?> subtype = definition.classes[i];
       JsonTypeInfo child = resolver.getTypeInfo(subtype, subtype);
-      if (!definition.wrapperObject) {
+      if (definition.inclusion == Inclusion.PROPERTY) {
         if (!child.usesDefaultObjectCodec()) {
           throw new ForyJsonException(
               "Inline JSON subtype requires the default object representation: " + subtype);
@@ -84,19 +85,27 @@ final class ClosedSubtypeCodec implements JsonCodec<Object> {
       return;
     }
     int index = requireSubtype(value.getClass());
-    if (definition.wrapperObject) {
+    if (definition.inclusion == Inclusion.PROPERTY) {
       writer.writeObjectStart();
       writer.writeRawValue(
-          definition.stringNamePrefixes[index], definition.stringUtf16NamePrefixes[index]);
+          definition.stringSubtypePrefixes[index], definition.stringUtf16SubtypePrefixes[index]);
+      stringObjectWriter(index).writeStringMembers(writer, value, 1);
+      writer.writeObjectEnd();
+      return;
+    }
+    if (definition.inclusion == Inclusion.WRAPPER_OBJECT) {
+      writer.writeObjectStart();
+      writer.writeRawValue(
+          definition.stringSubtypePrefixes[index], definition.stringUtf16SubtypePrefixes[index]);
       children[index].stringWriter().writeString(writer, value);
       writer.writeObjectEnd();
       return;
     }
-    writer.writeObjectStart();
+    writer.writeArrayStart();
     writer.writeRawValue(
-        definition.stringDiscriminators[index], definition.stringUtf16Discriminators[index]);
-    stringObjectWriter(index).writeStringMembers(writer, value, 1);
-    writer.writeObjectEnd();
+        definition.stringSubtypePrefixes[index], definition.stringUtf16SubtypePrefixes[index]);
+    children[index].stringWriter().writeString(writer, value);
+    writer.writeArrayEnd();
   }
 
   @Override
@@ -106,17 +115,24 @@ final class ClosedSubtypeCodec implements JsonCodec<Object> {
       return;
     }
     int index = requireSubtype(value.getClass());
-    if (definition.wrapperObject) {
+    if (definition.inclusion == Inclusion.PROPERTY) {
       writer.writeObjectStart();
-      writer.writeRawValue(definition.utf8NamePrefixes[index]);
+      writer.writeRawValue(definition.utf8SubtypePrefixes[index]);
+      utf8ObjectWriter(index).writeUtf8Members(writer, value, 1);
+      writer.writeObjectEnd();
+      return;
+    }
+    if (definition.inclusion == Inclusion.WRAPPER_OBJECT) {
+      writer.writeObjectStart();
+      writer.writeRawValue(definition.utf8SubtypePrefixes[index]);
       children[index].utf8Writer().writeUtf8(writer, value);
       writer.writeObjectEnd();
       return;
     }
-    writer.writeObjectStart();
-    writer.writeRawValue(definition.utf8Discriminators[index]);
-    utf8ObjectWriter(index).writeUtf8Members(writer, value, 1);
-    writer.writeObjectEnd();
+    writer.writeArrayStart();
+    writer.writeRawValue(definition.utf8SubtypePrefixes[index]);
+    children[index].utf8Writer().writeUtf8(writer, value);
+    writer.writeArrayEnd();
   }
 
   @Override
@@ -124,16 +140,25 @@ final class ClosedSubtypeCodec implements JsonCodec<Object> {
     if (reader.tryReadNullToken()) {
       return null;
     }
-    if (!definition.wrapperObject) {
+    if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
       return children[index].latin1Reader().readLatin1(reader);
     }
     reader.enterDepth();
-    reader.expect('{');
-    int index = reader.readSubtypeName(definition.scanInfo);
-    reader.expect(':');
-    Object value = children[index].latin1Reader().readLatin1(reader);
-    reader.expect('}');
+    Object value;
+    if (definition.inclusion == Inclusion.WRAPPER_OBJECT) {
+      reader.expect('{');
+      int index = reader.readSubtypeName(definition.scanInfo);
+      reader.expect(':');
+      value = children[index].latin1Reader().readLatin1(reader);
+      reader.expect('}');
+    } else {
+      reader.expect('[');
+      int index = reader.readSubtypeName(definition.scanInfo);
+      reader.expect(',');
+      value = children[index].latin1Reader().readLatin1(reader);
+      reader.expect(']');
+    }
     reader.exitDepth();
     return value;
   }
@@ -143,16 +168,25 @@ final class ClosedSubtypeCodec implements JsonCodec<Object> {
     if (reader.tryReadNullToken()) {
       return null;
     }
-    if (!definition.wrapperObject) {
+    if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
       return children[index].utf16Reader().readUtf16(reader);
     }
     reader.enterDepth();
-    reader.expect('{');
-    int index = reader.readSubtypeName(definition.scanInfo);
-    reader.expect(':');
-    Object value = children[index].utf16Reader().readUtf16(reader);
-    reader.expect('}');
+    Object value;
+    if (definition.inclusion == Inclusion.WRAPPER_OBJECT) {
+      reader.expect('{');
+      int index = reader.readSubtypeName(definition.scanInfo);
+      reader.expect(':');
+      value = children[index].utf16Reader().readUtf16(reader);
+      reader.expect('}');
+    } else {
+      reader.expect('[');
+      int index = reader.readSubtypeName(definition.scanInfo);
+      reader.expect(',');
+      value = children[index].utf16Reader().readUtf16(reader);
+      reader.expect(']');
+    }
     reader.exitDepth();
     return value;
   }
@@ -162,16 +196,25 @@ final class ClosedSubtypeCodec implements JsonCodec<Object> {
     if (reader.tryReadNullToken()) {
       return null;
     }
-    if (!definition.wrapperObject) {
+    if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
       return children[index].utf8Reader().readUtf8(reader);
     }
     reader.enterDepth();
-    reader.expect('{');
-    int index = reader.readSubtypeName(definition.scanInfo);
-    reader.expect(':');
-    Object value = children[index].utf8Reader().readUtf8(reader);
-    reader.expect('}');
+    Object value;
+    if (definition.inclusion == Inclusion.WRAPPER_OBJECT) {
+      reader.expect('{');
+      int index = reader.readSubtypeName(definition.scanInfo);
+      reader.expect(':');
+      value = children[index].utf8Reader().readUtf8(reader);
+      reader.expect('}');
+    } else {
+      reader.expect('[');
+      int index = reader.readSubtypeName(definition.scanInfo);
+      reader.expect(',');
+      value = children[index].utf8Reader().readUtf8(reader);
+      reader.expect(']');
+    }
     reader.exitDepth();
     return value;
   }

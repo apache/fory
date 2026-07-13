@@ -32,11 +32,18 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.fory.json.annotation.JsonSubTypes;
+import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
+import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.reader.Utf16JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
+import org.apache.fory.json.writer.StringJsonWriter;
+import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
@@ -98,8 +105,99 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     Wrapped value = new WrappedValue("x");
     String text = json.toJson(value, Wrapped.class);
     assertEquals(text, "{\"value\":{\"text\":\"x\"}}");
+    assertEquals(new String(json.toJsonBytes(value, Wrapped.class), StandardCharsets.UTF_8), text);
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    json.writeJsonTo(value, Wrapped.class, output);
+    assertEquals(new String(output.toByteArray(), StandardCharsets.UTF_8), text);
+
     Wrapped decoded = json.fromJson(text, Wrapped.class);
     assertEquals(((WrappedValue) decoded).text, "x");
+    Wrapped utf16 = json.fromJson("{\"value\":{\"text\":\"\u4f60\u597d\"}}", Wrapped.class);
+    assertEquals(((WrappedValue) utf16).text, "\u4f60\u597d");
+    Wrapped utf8 = json.fromJson(text.getBytes(StandardCharsets.UTF_8), Wrapped.class);
+    assertEquals(((WrappedValue) utf8).text, "x");
+    assertEquals(json.toJson(null, Wrapped.class), "null");
+    assertEquals(json.fromJson("null", Wrapped.class), null);
+  }
+
+  @Test
+  public void wrapperObjectCustomCodec() {
+    ForyJson json =
+        newJsonBuilder().registerCodec(WrappedValue.class, new WrappedValueCodec()).build();
+    Wrapped value = new WrappedValue("x");
+    assertEquals(json.toJson(value, Wrapped.class), "{\"value\":\"x\"}");
+    assertEquals(
+        new String(json.toJsonBytes(value, Wrapped.class), StandardCharsets.UTF_8),
+        "{\"value\":\"x\"}");
+    assertEquals(((WrappedValue) json.fromJson("{\"value\":\"y\"}", Wrapped.class)).text, "y");
+    assertEquals(
+        ((WrappedValue)
+                json.fromJson("{\"value\":\"z\"}".getBytes(StandardCharsets.UTF_8), Wrapped.class))
+            .text,
+        "z");
+  }
+
+  @Test
+  public void wrapperArray() {
+    ForyJson json = newJson();
+    ArrayWrapped value = new ArrayWrappedValue("x");
+    String text = json.toJson(value, ArrayWrapped.class);
+    assertEquals(text, "[\"value\",{\"text\":\"x\"}]");
+    assertEquals(
+        new String(json.toJsonBytes(value, ArrayWrapped.class), StandardCharsets.UTF_8), text);
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    json.writeJsonTo(value, ArrayWrapped.class, output);
+    assertEquals(new String(output.toByteArray(), StandardCharsets.UTF_8), text);
+
+    ArrayWrapped decoded = json.fromJson(text, ArrayWrapped.class);
+    assertEquals(((ArrayWrappedValue) decoded).text, "x");
+    ArrayWrapped utf16 =
+        json.fromJson("[\"value\",{\"text\":\"\u4f60\u597d\"}]", ArrayWrapped.class);
+    assertEquals(((ArrayWrappedValue) utf16).text, "\u4f60\u597d");
+    ArrayWrapped utf8 = json.fromJson(text.getBytes(StandardCharsets.UTF_8), ArrayWrapped.class);
+    assertEquals(((ArrayWrappedValue) utf8).text, "x");
+    assertEquals(json.toJson(null, ArrayWrapped.class), "null");
+    assertEquals(json.fromJson("null", ArrayWrapped.class), null);
+  }
+
+  @Test
+  public void wrapperArrayCustomCodec() {
+    ForyJson json =
+        newJsonBuilder()
+            .registerCodec(ArrayWrappedValue.class, new ArrayWrappedValueCodec())
+            .build();
+    ArrayWrapped value = new ArrayWrappedValue("x");
+    assertEquals(json.toJson(value, ArrayWrapped.class), "[\"value\",\"x\"]");
+    assertEquals(
+        new String(json.toJsonBytes(value, ArrayWrapped.class), StandardCharsets.UTF_8),
+        "[\"value\",\"x\"]");
+    assertEquals(
+        ((ArrayWrappedValue) json.fromJson("[\"value\",\"y\"]", ArrayWrapped.class)).text, "y");
+    assertEquals(
+        ((ArrayWrappedValue)
+                json.fromJson(
+                    "[\"value\",\"z\"]".getBytes(StandardCharsets.UTF_8), ArrayWrapped.class))
+            .text,
+        "z");
+  }
+
+  @Test
+  public void rejectMalformedWrapperArray() {
+    ForyJson json = newJson();
+    assertThrows(ForyJsonException.class, () -> json.fromJson("{}", ArrayWrapped.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("[]", ArrayWrapped.class));
+    assertThrows(
+        ForyJsonException.class, () -> json.fromJson("[1,{\"text\":\"x\"}]", ArrayWrapped.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("[\"unknown\",{\"text\":\"x\"}]", ArrayWrapped.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("[\"value\"]", ArrayWrapped.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("[\"value\",{\"text\":\"x\"},0]", ArrayWrapped.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("[\"value\",{\"text\":\"x\"}", ArrayWrapped.class));
   }
 
   @Test
@@ -198,6 +296,9 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     assertThrows(ForyJsonException.class, () -> json.fromJson("{}", DuplicateNames.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("{}", BothReferences.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("{}", MissingReference.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("{}", MissingProperty.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("{}", ObjectWithProperty.class));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("{}", ArrayWithProperty.class));
     assertThrows(
         ForyJsonException.class,
         () -> json.fromJson("{\"kind\":\"value\",\"x\":1}", CollidingBase.class));
@@ -219,9 +320,18 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
   public interface Shape {}
 
   @JsonSubTypes(
-      wrapperObject = true,
+      inclusion = Inclusion.WRAPPER_OBJECT,
       value = {@JsonSubTypes.Type(value = WrappedValue.class, name = "value")})
   public interface Wrapped {}
+
+  @JsonSubTypes(
+      inclusion = Inclusion.WRAPPER_ARRAY,
+      value = {
+        @JsonSubTypes.Type(
+            className = "org.apache.fory.json.JsonSubTypesTest$ArrayWrappedValue",
+            name = "value")
+      })
+  public interface ArrayWrapped {}
 
   public static final class Circle implements Shape {
     public int radius;
@@ -252,6 +362,70 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
 
     WrappedValue(String text) {
       this.text = text;
+    }
+  }
+
+  private static final class WrappedValueCodec implements JsonCodec<WrappedValue> {
+    @Override
+    public void writeString(StringJsonWriter writer, WrappedValue value) {
+      writer.writeString(value.text);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, WrappedValue value) {
+      writer.writeString(value.text);
+    }
+
+    @Override
+    public WrappedValue readLatin1(Latin1JsonReader reader) {
+      return new WrappedValue(reader.readString());
+    }
+
+    @Override
+    public WrappedValue readUtf16(Utf16JsonReader reader) {
+      return new WrappedValue(reader.readString());
+    }
+
+    @Override
+    public WrappedValue readUtf8(Utf8JsonReader reader) {
+      return new WrappedValue(reader.readString());
+    }
+  }
+
+  public static final class ArrayWrappedValue implements ArrayWrapped {
+    public String text;
+
+    public ArrayWrappedValue() {}
+
+    ArrayWrappedValue(String text) {
+      this.text = text;
+    }
+  }
+
+  private static final class ArrayWrappedValueCodec implements JsonCodec<ArrayWrappedValue> {
+    @Override
+    public void writeString(StringJsonWriter writer, ArrayWrappedValue value) {
+      writer.writeString(value.text);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, ArrayWrappedValue value) {
+      writer.writeString(value.text);
+    }
+
+    @Override
+    public ArrayWrappedValue readLatin1(Latin1JsonReader reader) {
+      return new ArrayWrappedValue(reader.readString());
+    }
+
+    @Override
+    public ArrayWrappedValue readUtf16(Utf16JsonReader reader) {
+      return new ArrayWrappedValue(reader.readString());
+    }
+
+    @Override
+    public ArrayWrappedValue readUtf8(Utf8JsonReader reader) {
+      return new ArrayWrappedValue(reader.readString());
     }
   }
 
@@ -294,6 +468,27 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
       property = "kind",
       value = {@JsonSubTypes.Type(name = "missing")})
   public interface MissingReference {}
+
+  @JsonSubTypes(value = {@JsonSubTypes.Type(value = MissingPropertyValue.class, name = "value")})
+  public interface MissingProperty {}
+
+  public static final class MissingPropertyValue implements MissingProperty {}
+
+  @JsonSubTypes(
+      inclusion = Inclusion.WRAPPER_OBJECT,
+      property = "kind",
+      value = {@JsonSubTypes.Type(value = ObjectWithPropertyValue.class, name = "value")})
+  public interface ObjectWithProperty {}
+
+  public static final class ObjectWithPropertyValue implements ObjectWithProperty {}
+
+  @JsonSubTypes(
+      inclusion = Inclusion.WRAPPER_ARRAY,
+      property = "kind",
+      value = {@JsonSubTypes.Type(value = ArrayWithPropertyValue.class, name = "value")})
+  public interface ArrayWithProperty {}
+
+  public static final class ArrayWithPropertyValue implements ArrayWithProperty {}
 
   @JsonSubTypes(
       property = "kind",

@@ -81,6 +81,7 @@ import org.apache.fory.json.JsonTypeCheckContext;
 import org.apache.fory.json.JsonTypeChecker;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonSubTypes;
+import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
@@ -321,16 +322,15 @@ public final class JsonSharedRegistry {
       throw new ForyJsonException(
           "@JsonSubTypes requires an interface or abstract type " + baseType);
     }
-    boolean wrapperObject = annotation.wrapperObject();
+    Inclusion inclusion = annotation.inclusion();
     String property = annotation.property();
-    if (wrapperObject ? !property.isEmpty() : property.isEmpty()) {
-      throw new ForyJsonException(
-          wrapperObject
-              ? "Wrapper-object @JsonSubTypes must not declare property"
-              : "Inline @JsonSubTypes requires a discriminator property");
-    }
-    if (!wrapperObject) {
+    if (inclusion == Inclusion.PROPERTY) {
+      if (property.isEmpty()) {
+        throw new ForyJsonException("PROPERTY @JsonSubTypes requires a discriminator property");
+      }
       validateJsonName(property, "subtype discriminator");
+    } else if (!property.isEmpty()) {
+      throw new ForyJsonException(inclusion + " @JsonSubTypes must not declare property");
     }
     JsonSubTypes.Type[] entries = annotation.value();
     if (entries.length == 0) {
@@ -403,7 +403,7 @@ public final class JsonSharedRegistry {
       }
       classes[i] = subtype;
     }
-    return new JsonSubTypesInfo(wrapperObject, property, classes, names);
+    return new JsonSubTypesInfo(inclusion, property, classes, names);
   }
 
   private void checkSecureName(String className) {

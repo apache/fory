@@ -34,30 +34,50 @@ import java.lang.annotation.Target;
  * used, including assignability, concreteness, duplicate-name, security, and type-checker rules.
  * Runtime registration and open subtype discovery are intentionally unsupported.
  *
- * <p>The default representation writes an inline discriminator property as the first object member.
- * Wrapper-object mode instead writes one outer member whose name is the subtype name and whose
- * value is the complete subtype representation. Serialization accepts only an exact runtime class
- * present in the table; subclasses of listed entries are not accepted implicitly. Inline mode
- * requires the ordinary object representation so its members can follow the discriminator, while
- * wrapper mode permits an exact custom codec for a subtype.
+ * <p>{@link Inclusion#PROPERTY} is the default representation and writes an inline discriminator
+ * property as the first object member. {@link Inclusion#WRAPPER_OBJECT} writes one outer member
+ * whose name is the subtype name. {@link Inclusion#WRAPPER_ARRAY} writes the subtype name and value
+ * as a two-element array. Both wrapper modes delegate the complete subtype representation.
+ * Serialization accepts only an exact runtime class present in the table; subclasses of listed
+ * entries are not accepted implicitly. Property inclusion requires the ordinary object
+ * representation so its members can follow the discriminator, while wrapper inclusions permit an
+ * exact custom codec for a subtype. A null base value is encoded as plain JSON {@code null}
+ * regardless of the selected inclusion.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface JsonSubTypes {
-  /** Returns whether the logical subtype name is encoded as an outer wrapper object. */
-  boolean wrapperObject() default false;
+  /** Returns the complete closed subtype table. */
+  Type[] value();
 
   /**
-   * Returns the inline discriminator property name.
+   * Returns the wire shape used to combine the logical subtype name with its value.
    *
-   * <p>This must be non-empty in inline mode and empty in wrapper-object mode. The name is already
-   * a JSON name and is not transformed by the property naming strategy.
+   * <p>The default is {@link Inclusion#PROPERTY}. Readers accept only the configured shape; they do
+   * not attempt the other inclusions as compatibility fallbacks.
+   */
+  Inclusion inclusion() default Inclusion.PROPERTY;
+
+  /**
+   * Returns the discriminator property name used by {@link Inclusion#PROPERTY}.
+   *
+   * <p>This must be non-empty for property inclusion and empty for both wrapper inclusions. The
+   * name is already a JSON name and is not transformed by the property naming strategy.
    */
   String property() default "";
 
-  /** Returns the complete closed subtype table. */
-  Type[] value();
+  /** Selects the closed wire shape for subtype names and values. */
+  enum Inclusion {
+    /** Writes the logical name as the first property of the subtype object. */
+    PROPERTY,
+
+    /** Writes exactly one outer object member as {@code {"logicalName": subtypeValue}}. */
+    WRAPPER_OBJECT,
+
+    /** Writes exactly two array elements as {@code ["logicalName", subtypeValue]}. */
+    WRAPPER_ARRAY
+  }
 
   /** Declares one logical subtype name and exactly one Java subtype reference. */
   @Documented
