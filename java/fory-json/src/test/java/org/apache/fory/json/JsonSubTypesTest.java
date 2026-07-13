@@ -31,6 +31,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.codec.JsonCodec;
@@ -93,7 +94,8 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     ForyJson json = newJson();
     Shape value = new Rectangle(3, 4);
     String text = json.toJson(value, Shape.class);
-    assertEquals(text, "{\"kind\":\"rectangle\",\"height\":4,\"width\":3}");
+    assertEquals(text, "{\"kind\":\"rectangle\",\"width\":3,\"height\":4}");
+    assertEquals(new String(json.toJsonBytes(value, Shape.class), StandardCharsets.UTF_8), text);
     Shape decoded = json.fromJson(text, Shape.class);
     assertEquals(((Rectangle) decoded).width, 3);
     assertEquals(((Rectangle) decoded).height, 4);
@@ -206,7 +208,7 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     List<Shape> values = Arrays.asList(new Circle(2), new Rectangle(3, 4));
     TypeRef<List<Shape>> type = new TypeRef<List<Shape>>() {};
     String expected =
-        "[{\"kind\":\"circle\",\"radius\":2},{\"kind\":\"rectangle\",\"height\":4,\"width\":3}]";
+        "[{\"kind\":\"circle\",\"radius\":2},{\"kind\":\"rectangle\",\"width\":3,\"height\":4}]";
     assertEquals(json.toJson(values, type), expected);
     assertEquals(new String(json.toJsonBytes(values, type), StandardCharsets.UTF_8), expected);
     ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -343,6 +345,7 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     }
   }
 
+  @JsonPropertyOrder({"width", "height"})
   public static final class Rectangle implements Shape {
     public int height;
     public int width;

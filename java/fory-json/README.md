@@ -355,7 +355,7 @@ Builder mutation after `build()` does not modify an existing `ForyJson` runtime.
 
 ## JSON annotations
 
-Fory JSON defines four annotations in `org.apache.fory.json.annotation`. They are Fory JSON APIs,
+Fory JSON defines five annotations in `org.apache.fory.json.annotation`. They are Fory JSON APIs,
 not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
 ### `JsonProperty`
@@ -372,6 +372,9 @@ public final class User {
 
   @JsonProperty(include = JsonProperty.Include.ALWAYS)
   private String displayName;
+
+  @JsonProperty(index = 10)
+  private String email;
 
   public long getId() {
     return id;
@@ -390,12 +393,48 @@ Version 1 supports three inclusion values:
 - `NON_NULL`: omit a null value.
 
 Inclusion affects writing only. A non-default inclusion is invalid for a creator-only property with
-no write source. Repeating the same declaration is allowed; conflicting explicit names or
+no write source. Repeating the same declaration is allowed; conflicting explicit names, indexes, or
 non-default inclusion policies within one logical property are rejected. Two properties that
 normalize to the same final JSON name are also rejected.
 
+`index` controls relative serialization order. Indexed properties are written in ascending index
+order before unindexed properties. Indexes start at zero, may contain gaps, and must be unique among
+writable properties. `-1` means unspecified; lower values are invalid. An index on a setter-only,
+creator-only, or write-ignored property is invalid.
+
 `NON_EMPTY`, aliases, formatting, annotation-selected codecs, and independent read/write names are
 not supported.
+
+### `JsonPropertyOrder`
+
+`JsonPropertyOrder` defines a named serialization prefix. Remaining indexed properties follow in
+ascending index order, then unindexed properties keep their existing relative order:
+
+```java
+import org.apache.fory.json.annotation.JsonPropertyOrder;
+
+@JsonPropertyOrder({"id", "display_name"})
+public final class User {
+  @JsonProperty(index = 20)
+  public String name;
+
+  @JsonProperty(value = "display_name", index = 10)
+  public String displayName;
+
+  public long id;
+  public int age;
+}
+```
+
+The output order is `id`, `display_name`, `name`, then `age`. Order entries match the final JSON
+name first and the Java logical property name second. The list must be non-empty and contain unique
+writable properties; empty, unknown, and duplicate entries fail when object metadata is built.
+
+A subclass declaration replaces its superclass declaration as a whole. If the subclass has no
+declaration, the nearest superclass declaration is used and resolved against the subclass
+properties. Interface declarations are not considered. Ordering affects serialization only;
+deserialization remains name-based, and codec-owned protocol metadata such as subtype discriminators
+is emitted before user properties.
 
 ### Property naming strategy
 
