@@ -92,4 +92,26 @@ public class JsonRecordTest extends ForyJsonTestModels {
         () -> json.fromJson("{\"value\":null}".getBytes(StandardCharsets.UTF_8), type));
     assertGeneratedWhenSupported(json, type);
   }
+
+  @Test
+  public void renamedRecordComponent() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 17) {
+      throw new SkipException("Java record test requires JDK 17+");
+    }
+    Class<?> type =
+        compileRecordClass(
+            "JsonRenamedRecord",
+            "package org.apache.fory.json.records;\n"
+                + "import org.apache.fory.json.annotation.JsonProperty;\n"
+                + "public record JsonRenamedRecord(@JsonProperty(\"user_id\") int id, "
+                + "String displayName) {}\n");
+    Object value = type.getConstructor(int.class, String.class).newInstance(7, "alice");
+    ForyJson json =
+        newJsonBuilder().withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE).build();
+    String text = "{\"user_id\":7,\"display_name\":\"alice\"}";
+    assertEquals(json.toJson(value), text);
+    Object decoded = json.fromJson(text, type);
+    assertEquals(type.getMethod("id").invoke(decoded), Integer.valueOf(7));
+    assertEquals(type.getMethod("displayName").invoke(decoded), "alice");
+  }
 }

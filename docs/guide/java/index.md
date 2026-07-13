@@ -21,6 +21,9 @@ license: |
 
 Apache Fory™ provides blazingly fast Java object serialization with JIT compilation and zero-copy techniques. Java supports both xlang mode and native mode. Xlang mode is the default cross-language wire format and uses compatible schema evolution. Native mode is the Java-only wire format for same-language object serialization, JDK serialization replacement behavior, framework replacement, and Java-native object graph features.
 
+Fory also provides a separate [JSON codec](json-support.md) for interoperable text payloads. JSON is
+not the native or xlang binary protocol and has its own object-mapping annotations and limits.
+
 ## Features
 
 ### High Performance
@@ -249,5 +252,6 @@ ThreadSafeFory threadLocalFory = Fory.builder()
 - [Custom Serializers](custom-serializers.md) - Implement custom serializers
 - [Xlang Serialization](xlang-serialization.md) - Serialize data for other languages
 - [Native Serialization](native-serialization.md) - Java-only serialization features
+- [JSON Support](json-support.md) - Complete Fory JSON user guide
 - [Static Generated Serializers](static-generated-serializers.md) - Annotation-processor static generated serializers for `@ForyStruct`
 - [GraalVM Support](graalvm-support.md) - Build-time serializer compilation for native images

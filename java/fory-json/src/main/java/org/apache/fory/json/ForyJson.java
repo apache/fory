@@ -20,7 +20,11 @@
 package org.apache.fory.json;
 
 import java.io.OutputStream;
+import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
@@ -128,6 +132,33 @@ public final class ForyJson {
     }
   }
 
+  /**
+   * Serializes {@code value} using {@code declaredType}'s codec rather than runtime-type dispatch.
+   *
+   * <p>This overload is required when the declared type owns a closed {@code JsonSubTypes} table. A
+   * non-null value must be assignable to the declared type. Primitive declarations accept only
+   * their exact boxed carrier and reject null; {@code void} is never a JSON value type.
+   */
+  public <T> String toJson(T value, Class<T> declaredType) {
+    requireDeclaredType(declaredType);
+    validateWriteValue(value, declaredType);
+    return toJsonDeclared(value, declaredType, declaredType);
+  }
+
+  /**
+   * Serializes {@code value} using the generic codec captured by {@code declaredType}.
+   *
+   * <p>An explicit declared type controls the complete root schema, including closed subtype
+   * metadata inside generic containers. A non-null value must be assignable to its raw type.
+   */
+  public <T> String toJson(T value, TypeRef<T> declaredType) {
+    requireDeclaredType(declaredType);
+    validateDeclaredType(declaredType.getType());
+    Class<?> rawType = declaredType.getRawType();
+    validateWriteValue(value, rawType);
+    return toJsonDeclared(value, declaredType.getType(), rawType);
+  }
+
   /** Serializes {@code value} as one complete JSON document in a detached UTF-8 byte array. */
   public byte[] toJsonBytes(Object value) {
     PooledState entry = acquire();
@@ -153,6 +184,22 @@ public final class ForyJson {
         release(entry);
       }
     }
+  }
+
+  /** Serializes {@code value} as UTF-8 using {@code declaredType}'s codec. */
+  public <T> byte[] toJsonBytes(T value, Class<T> declaredType) {
+    requireDeclaredType(declaredType);
+    validateWriteValue(value, declaredType);
+    return toJsonBytesDeclared(value, declaredType, declaredType);
+  }
+
+  /** Serializes {@code value} as UTF-8 using the generic codec captured by {@code declaredType}. */
+  public <T> byte[] toJsonBytes(T value, TypeRef<T> declaredType) {
+    requireDeclaredType(declaredType);
+    validateDeclaredType(declaredType.getType());
+    Class<?> rawType = declaredType.getRawType();
+    validateWriteValue(value, rawType);
+    return toJsonBytesDeclared(value, declaredType.getType(), rawType);
   }
 
   /**
@@ -184,6 +231,162 @@ public final class ForyJson {
         writer.reset();
       } finally {
         release(entry);
+      }
+    }
+  }
+
+  /**
+   * Writes UTF-8 JSON using {@code declaredType}'s codec without flushing or closing {@code
+   * output}.
+   */
+  public <T> void writeJsonTo(T value, Class<T> declaredType, OutputStream output) {
+    requireDeclaredType(declaredType);
+    validateWriteValue(value, declaredType);
+    writeJsonDeclared(value, declaredType, declaredType, output);
+  }
+
+  /**
+   * Writes UTF-8 JSON using the generic codec captured by {@code declaredType}, without flushing or
+   * closing {@code output}.
+   */
+  public <T> void writeJsonTo(T value, TypeRef<T> declaredType, OutputStream output) {
+    requireDeclaredType(declaredType);
+    validateDeclaredType(declaredType.getType());
+    Class<?> rawType = declaredType.getRawType();
+    validateWriteValue(value, rawType);
+    writeJsonDeclared(value, declaredType.getType(), rawType, output);
+  }
+
+  private String toJsonDeclared(Object value, Type type, Class<?> fallback) {
+    PooledState entry = acquire();
+    JsonState state = entry.state;
+    StringJsonWriter writer = state.stringWriter;
+    try {
+      state.typeResolver.lockJIT();
+      try {
+        state.rootTypeInfo(type, fallback).stringWriter().writeString(writer, value);
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
+      return writer.toJson();
+    } finally {
+      try {
+        writer.reset();
+      } finally {
+        release(entry);
+      }
+    }
+  }
+
+  private byte[] toJsonBytesDeclared(Object value, Type type, Class<?> fallback) {
+    PooledState entry = acquire();
+    JsonState state = entry.state;
+    Utf8JsonWriter writer = state.utf8Writer;
+    try {
+      state.typeResolver.lockJIT();
+      try {
+        state.rootTypeInfo(type, fallback).utf8Writer().writeUtf8(writer, value);
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
+      return writer.toJsonBytes();
+    } finally {
+      try {
+        writer.reset();
+      } finally {
+        release(entry);
+      }
+    }
+  }
+
+  private void writeJsonDeclared(Object value, Type type, Class<?> fallback, OutputStream output) {
+    Objects.requireNonNull(output, "output");
+    PooledState entry = acquire();
+    JsonState state = entry.state;
+    Utf8JsonWriter writer = state.utf8Writer;
+    try {
+      state.typeResolver.lockJIT();
+      try {
+        state.rootTypeInfo(type, fallback).utf8Writer().writeUtf8(writer, value);
+      } finally {
+        state.typeResolver.unlockJIT();
+      }
+      writer.writeTo(output);
+    } finally {
+      try {
+        writer.reset();
+      } finally {
+        release(entry);
+      }
+    }
+  }
+
+  private static void validateWriteValue(Object value, Class<?> declaredType) {
+    if (declaredType == void.class || declaredType == Void.class) {
+      throw new IllegalArgumentException("void is not a JSON value type");
+    }
+    if (declaredType.isPrimitive()) {
+      if (value == null) {
+        throw new IllegalArgumentException("Cannot write null as primitive " + declaredType);
+      }
+      Class<?> carrier = primitiveCarrier(declaredType);
+      if (value.getClass() != carrier) {
+        throw new IllegalArgumentException(
+            "Value type " + value.getClass() + " does not match primitive " + declaredType);
+      }
+    } else if (value != null && !declaredType.isInstance(value)) {
+      throw new IllegalArgumentException(
+          "Value type " + value.getClass() + " is not assignable to " + declaredType);
+    }
+  }
+
+  private static void requireDeclaredType(Object declaredType) {
+    if (declaredType == null) {
+      throw new IllegalArgumentException("declaredType must not be null");
+    }
+  }
+
+  private static Class<?> primitiveCarrier(Class<?> type) {
+    if (type == boolean.class) {
+      return Boolean.class;
+    }
+    if (type == byte.class) {
+      return Byte.class;
+    }
+    if (type == short.class) {
+      return Short.class;
+    }
+    if (type == int.class) {
+      return Integer.class;
+    }
+    if (type == long.class) {
+      return Long.class;
+    }
+    if (type == float.class) {
+      return Float.class;
+    }
+    if (type == double.class) {
+      return Double.class;
+    }
+    return Character.class;
+  }
+
+  private static void validateDeclaredType(Type type) {
+    if (type instanceof TypeVariable || type instanceof WildcardType) {
+      throw new IllegalArgumentException("Typed JSON writes require a fully bound type: " + type);
+    }
+    if (type instanceof GenericArrayType) {
+      validateDeclaredType(((GenericArrayType) type).getGenericComponentType());
+      return;
+    }
+    if (type instanceof ParameterizedType) {
+      ParameterizedType parameterized = (ParameterizedType) type;
+      Type owner = parameterized.getOwnerType();
+      if (owner != null) {
+        validateDeclaredType(owner);
+      }
+      for (Type argument : parameterized.getActualTypeArguments()) {
+        validateDeclaredType(argument);
       }
     }
   }

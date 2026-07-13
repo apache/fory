@@ -269,7 +269,10 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   `BaseFory.registerConstructor(...)`. Java parameter names, `-parameters`, and
   `@ConstructorProperties` are not a Fory object-creation contract. Runtime serializers for
   ordinary classes must create an empty instance through `TypeResolver.getObjectInstantiator(Class)` and
-  set fields; records and source-generated Kotlin serializers are the constructor-owned paths.
+  set fields; records and source-generated Kotlin serializers are the constructor-owned paths. The
+  narrow exception is Fory JSON's explicit property-based `@JsonCreator`, whose complete read schema
+  is annotation-declared and whose generated readers call the selected public constructor or static
+  factory directly.
 - Source-generated constructor serializers must own their constructor metadata at generation time
   and call constructors directly. They must not depend on runtime `ObjectInstantiator` constructor-field
   metadata or varargs constructor calls.

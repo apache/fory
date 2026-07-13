@@ -39,6 +39,8 @@ final class JsonTestSupport {
           false,
           false,
           true,
+          PropertyNamingStrategy.LOWER_CAMEL_CASE,
+          JsonTestSupport.class.getClassLoader(),
           ForyJson.DEFAULT_MAX_DEPTH,
           1,
           2 * 1024 * 1024,

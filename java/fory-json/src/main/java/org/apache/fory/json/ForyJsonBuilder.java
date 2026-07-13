@@ -19,6 +19,7 @@
 
 package org.apache.fory.json;
 
+import java.util.Objects;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
 
@@ -32,16 +33,19 @@ import org.apache.fory.json.resolver.CodecRegistry;
  * path-specific replacements are installed, not codec semantics.
  *
  * <p>Defaults omit null object fields, enable code generation and asynchronous compilation, use
- * JavaBean property discovery, allow a nesting depth of 20, use twice the available processors as
- * the pooled-state concurrency level, retain writer buffers up to 2 MiB, and install no custom type
- * checker. Field mode disables getter and setter discovery but continues to discover eligible
- * instance fields across the class hierarchy.
+ * JavaBean property discovery, use {@link PropertyNamingStrategy#LOWER_CAMEL_CASE}, snapshot the
+ * current thread context class loader, allow a nesting depth of 20, use twice the available
+ * processors as the pooled-state concurrency level, retain writer buffers up to 2 MiB, and install
+ * no custom type checker. Field mode disables getter and setter discovery but continues to discover
+ * eligible instance fields across the class hierarchy.
  */
 public final class ForyJsonBuilder {
   private boolean writeNullFields;
   private boolean codegenEnabled = true;
   private boolean asyncCompilationEnabled = true;
   private boolean propertyDiscoveryEnabled = true;
+  private PropertyNamingStrategy propertyNamingStrategy = PropertyNamingStrategy.LOWER_CAMEL_CASE;
+  private ClassLoader classLoader;
   private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
   private int concurrencyLevel = Math.max(1, Runtime.getRuntime().availableProcessors() * 2);
   private int bufferSizeLimitBytes = 2 * 1024 * 1024;
@@ -50,7 +54,13 @@ public final class ForyJsonBuilder {
 
   ForyJsonBuilder() {}
 
-  /** Writes object fields with null values when enabled. */
+  /**
+   * Sets the default null-inclusion policy for object properties.
+   *
+   * <p>This setting applies only when a logical property's merged {@code JsonProperty.include}
+   * value is {@code DEFAULT}. {@code ALWAYS} and {@code NON_NULL} override it. Exact custom codecs
+   * own their complete representation and do not observe this property-selection setting.
+   */
   public ForyJsonBuilder writeNullFields(boolean writeNullFields) {
     this.writeNullFields = writeNullFields;
     return this;
@@ -75,6 +85,34 @@ public final class ForyJsonBuilder {
    */
   public ForyJsonBuilder withFieldMode(boolean fieldMode) {
     this.propertyDiscoveryEnabled = !fieldMode;
+    return this;
+  }
+
+  /**
+   * Sets the naming strategy applied to logical properties without an explicit JSON name.
+   *
+   * <p>The default is {@link PropertyNamingStrategy#LOWER_CAMEL_CASE}. A non-empty {@code
+   * JsonProperty} value is already a JSON name and bypasses the strategy.
+   *
+   * @throws NullPointerException if {@code propertyNamingStrategy} is null
+   */
+  public ForyJsonBuilder withPropertyNamingStrategy(PropertyNamingStrategy propertyNamingStrategy) {
+    this.propertyNamingStrategy =
+        Objects.requireNonNull(propertyNamingStrategy, "propertyNamingStrategy");
+    return this;
+  }
+
+  /**
+   * Sets the fixed class loader used to resolve {@code JsonSubTypes.Type.className} entries.
+   *
+   * <p>If this method is not called, {@link #build()} snapshots the calling thread's context class
+   * loader and falls back to the loader that defined {@link ForyJson} when the context loader is
+   * null. The resulting runtime never consults a changing thread context loader.
+   *
+   * @throws NullPointerException if {@code classLoader} is null
+   */
+  public ForyJsonBuilder withClassLoader(ClassLoader classLoader) {
+    this.classLoader = Objects.requireNonNull(classLoader, "classLoader");
     return this;
   }
 
@@ -135,12 +173,21 @@ public final class ForyJsonBuilder {
 
   /** Builds a JSON runtime from the current builder state. */
   public ForyJson build() {
+    ClassLoader fixedClassLoader = classLoader;
+    if (fixedClassLoader == null) {
+      fixedClassLoader = Thread.currentThread().getContextClassLoader();
+      if (fixedClassLoader == null) {
+        fixedClassLoader = ForyJson.class.getClassLoader();
+      }
+    }
     return new ForyJson(
         new JsonConfig(
             writeNullFields,
             codegenEnabled,
             asyncCompilationEnabled,
             propertyDiscoveryEnabled,
+            propertyNamingStrategy,
+            fixedClassLoader,
             maxDepth,
             concurrencyLevel,
             bufferSizeLimitBytes,

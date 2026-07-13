@@ -41,6 +41,7 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 
 /**
@@ -133,6 +134,95 @@ public abstract class JsonReader {
   protected int position;
   private final int maxDepth;
   private int depth;
+
+  /**
+   * Scans one complete object for a closed-subtype string discriminator without consuming input.
+   *
+   * <p>The concrete representation owner validates the complete object before returning. Position
+   * and depth are restored on success and on every failure, so subtype construction starts from the
+   * original cursor and malformed input cannot publish an object before its trailing syntax is
+   * checked.
+   */
+  public final int scanObjectStringField(JsonSubtypeScanInfo info) {
+    int savedPosition = position;
+    int savedDepth = depth;
+    try {
+      int scanDepth = 1;
+      checkScanDepth(savedDepth, scanDepth, savedPosition);
+      int cursor = scanWhitespace(savedPosition);
+      if (cursor >= length() || charAt(cursor) != '{') {
+        throw errorAt("Expected '{'", cursor);
+      }
+      cursor = scanWhitespace(cursor + 1);
+      int found = -1;
+      if (cursor < length() && charAt(cursor) == '}') {
+        throw errorAt("Missing JSON subtype discriminator", cursor);
+      }
+      while (true) {
+        int fieldStart = cursor;
+        int fieldEnd = scanStringEnd(fieldStart);
+        long fieldHash = scanStringHash(fieldStart, fieldEnd);
+        cursor = scanWhitespace(fieldEnd);
+        if (cursor >= length() || charAt(cursor) != ':') {
+          throw errorAt("Expected ':'", cursor);
+        }
+        cursor = scanWhitespace(cursor + 1);
+        if (fieldHash == info.propertyHash()
+            && matchesScannedString(fieldStart, fieldEnd, info.property())) {
+          if (found >= 0) {
+            throw errorAt("Duplicate JSON subtype discriminator", fieldStart);
+          }
+          if (cursor >= length() || charAt(cursor) != '"') {
+            throw errorAt("JSON subtype discriminator must be a string", cursor);
+          }
+          int valueStart = cursor;
+          int valueEnd = scanStringEnd(valueStart);
+          int candidate = info.nameIndex(scanStringHash(valueStart, valueEnd));
+          if (candidate < 0 || !matchesScannedString(valueStart, valueEnd, info.name(candidate))) {
+            throw errorAt("Unknown JSON subtype discriminator", valueStart);
+          }
+          found = candidate;
+          cursor = valueEnd;
+        } else {
+          cursor = scanValue(cursor, savedDepth, scanDepth);
+        }
+        cursor = scanWhitespace(cursor);
+        if (cursor >= length()) {
+          throw errorAt("Expected ',' or '}'", cursor);
+        }
+        char separator = charAt(cursor++);
+        if (separator == '}') {
+          break;
+        }
+        if (separator != ',') {
+          throw errorAt("Expected ',' or '}'", cursor - 1);
+        }
+        cursor = scanWhitespace(cursor);
+        if (cursor < length() && charAt(cursor) == '}') {
+          throw errorAt("Expected object field", cursor);
+        }
+      }
+      if (found < 0) {
+        throw errorAt("Missing JSON subtype discriminator", cursor - 1);
+      }
+      return found;
+    } finally {
+      // Scan helpers use only offsets, but restoring here keeps this entry's invariant explicit and
+      // prevents a future representation-specific optimization from leaking reader state.
+      position = savedPosition;
+      depth = savedDepth;
+    }
+  }
+
+  protected abstract int scanStringEnd(int start);
+
+  protected abstract long scanStringHash(int start, int end);
+
+  protected abstract boolean matchesScannedString(int start, int end, String expected);
+
+  /** Reads one subtype name from a fixed validated table without materializing a String. */
+  public abstract int readSubtypeName(JsonSubtypeScanInfo info);
+
   private final AsciiStringView asciiStringView = new AsciiStringView(this);
   // Primitive floating fallback reuses this exact-boundary workspace. Reader construction is the
   // cold owner so the first precision-sensitive scalar cannot allocate on the numeric hot path.
@@ -2127,7 +2217,9 @@ public abstract class JsonReader {
     }
     char ch = charAt(position);
     if (ch == '"') {
-      readString();
+      // Unknown values are validation-only. Hashing validates the complete escaped string without
+      // materializing storage that no object can own.
+      readStringHash();
     } else if (ch == '{') {
       skipObject();
     } else if (ch == '[') {
@@ -2139,7 +2231,29 @@ public abstract class JsonReader {
     } else if (startsWith("null")) {
       position += 4;
     } else {
-      readNumberAsString();
+      skipNumberToken();
+    }
+  }
+
+  private void skipNumberToken() {
+    int start = position;
+    if (position < length() && charAt(position) == '-') {
+      position++;
+    }
+    readIntegerDigits();
+    if (position < length() && charAt(position) == '.') {
+      position++;
+      readDigits();
+    }
+    if (position < length() && (charAt(position) == 'e' || charAt(position) == 'E')) {
+      position++;
+      if (position < length() && (charAt(position) == '+' || charAt(position) == '-')) {
+        position++;
+      }
+      readDigits();
+    }
+    if (start == position) {
+      throw error("Expected number");
     }
   }
 
@@ -2152,6 +2266,179 @@ public abstract class JsonReader {
 
   protected final ForyJsonException error(String message) {
     return new ForyJsonException(message + " at JSON position " + position);
+  }
+
+  protected final ForyJsonException errorAt(String message, int offset) {
+    return new ForyJsonException(message + " at JSON position " + offset);
+  }
+
+  private int scanWhitespace(int cursor) {
+    int inputLength = length();
+    while (cursor < inputLength) {
+      char ch = charAt(cursor);
+      if (ch != ' ' && ch != '\n' && ch != '\r' && ch != '\t') {
+        break;
+      }
+      cursor++;
+    }
+    return cursor;
+  }
+
+  private int scanValue(int cursor, int savedDepth, int scanDepth) {
+    cursor = scanWhitespace(cursor);
+    if (cursor >= length()) {
+      throw errorAt("Expected value", cursor);
+    }
+    char ch = charAt(cursor);
+    if (ch == '"') {
+      return scanStringEnd(cursor);
+    }
+    if (ch == '{') {
+      return scanObject(cursor, savedDepth, scanDepth + 1);
+    }
+    if (ch == '[') {
+      return scanArray(cursor, savedDepth, scanDepth + 1);
+    }
+    if (ch == 't') {
+      return scanLiteral(cursor, "true");
+    }
+    if (ch == 'f') {
+      return scanLiteral(cursor, "false");
+    }
+    if (ch == 'n') {
+      return scanLiteral(cursor, "null");
+    }
+    return scanNumber(cursor);
+  }
+
+  private int scanObject(int cursor, int savedDepth, int scanDepth) {
+    checkScanDepth(savedDepth, scanDepth, cursor);
+    cursor = scanWhitespace(cursor + 1);
+    if (cursor < length() && charAt(cursor) == '}') {
+      return cursor + 1;
+    }
+    while (true) {
+      cursor = scanStringEnd(cursor);
+      cursor = scanWhitespace(cursor);
+      if (cursor >= length() || charAt(cursor) != ':') {
+        throw errorAt("Expected ':'", cursor);
+      }
+      cursor = scanValue(cursor + 1, savedDepth, scanDepth);
+      cursor = scanWhitespace(cursor);
+      if (cursor >= length()) {
+        throw errorAt("Expected ',' or '}'", cursor);
+      }
+      char separator = charAt(cursor++);
+      if (separator == '}') {
+        return cursor;
+      }
+      if (separator != ',') {
+        throw errorAt("Expected ',' or '}'", cursor - 1);
+      }
+      cursor = scanWhitespace(cursor);
+      if (cursor < length() && charAt(cursor) == '}') {
+        throw errorAt("Expected object field", cursor);
+      }
+    }
+  }
+
+  private int scanArray(int cursor, int savedDepth, int scanDepth) {
+    checkScanDepth(savedDepth, scanDepth, cursor);
+    cursor = scanWhitespace(cursor + 1);
+    if (cursor < length() && charAt(cursor) == ']') {
+      return cursor + 1;
+    }
+    while (true) {
+      cursor = scanValue(cursor, savedDepth, scanDepth);
+      cursor = scanWhitespace(cursor);
+      if (cursor >= length()) {
+        throw errorAt("Expected ',' or ']'", cursor);
+      }
+      char separator = charAt(cursor++);
+      if (separator == ']') {
+        return cursor;
+      }
+      if (separator != ',') {
+        throw errorAt("Expected ',' or ']'", cursor - 1);
+      }
+      cursor = scanWhitespace(cursor);
+      if (cursor < length() && charAt(cursor) == ']') {
+        throw errorAt("Expected array value", cursor);
+      }
+    }
+  }
+
+  private int scanLiteral(int cursor, String literal) {
+    int end = cursor + literal.length();
+    if (end > length()) {
+      throw errorAt("Expected '" + literal + "'", cursor);
+    }
+    for (int i = 0; i < literal.length(); i++) {
+      if (charAt(cursor + i) != literal.charAt(i)) {
+        throw errorAt("Expected '" + literal + "'", cursor);
+      }
+    }
+    return end;
+  }
+
+  private int scanNumber(int cursor) {
+    int inputLength = length();
+    int start = cursor;
+    if (cursor < inputLength && charAt(cursor) == '-') {
+      cursor++;
+    }
+    if (cursor >= inputLength) {
+      throw errorAt("Expected digit", cursor);
+    }
+    char ch = charAt(cursor);
+    if (ch == '0') {
+      cursor++;
+      if (cursor < inputLength) {
+        ch = charAt(cursor);
+        if (ch >= '0' && ch <= '9') {
+          throw errorAt("Leading zero in number", cursor);
+        }
+      }
+    } else if (ch >= '1' && ch <= '9') {
+      do {
+        cursor++;
+      } while (cursor < inputLength && charAt(cursor) >= '0' && charAt(cursor) <= '9');
+    } else {
+      throw errorAt("Expected digit", cursor);
+    }
+    if (cursor < inputLength && charAt(cursor) == '.') {
+      cursor++;
+      int digits = cursor;
+      while (cursor < inputLength && charAt(cursor) >= '0' && charAt(cursor) <= '9') {
+        cursor++;
+      }
+      if (cursor == digits) {
+        throw errorAt("Expected digit", cursor);
+      }
+    }
+    if (cursor < inputLength && (charAt(cursor) == 'e' || charAt(cursor) == 'E')) {
+      cursor++;
+      if (cursor < inputLength && (charAt(cursor) == '+' || charAt(cursor) == '-')) {
+        cursor++;
+      }
+      int digits = cursor;
+      while (cursor < inputLength && charAt(cursor) >= '0' && charAt(cursor) <= '9') {
+        cursor++;
+      }
+      if (cursor == digits) {
+        throw errorAt("Expected digit", cursor);
+      }
+    }
+    if (cursor == start) {
+      throw errorAt("Expected number", cursor);
+    }
+    return cursor;
+  }
+
+  private void checkScanDepth(int savedDepth, int scanDepth, int cursor) {
+    if (scanDepth > maxDepth - savedDepth) {
+      throw errorAt("JSON max depth " + maxDepth + " exceeded", cursor);
+    }
   }
 
   private ForyJsonException numberError(int offset, String message) {

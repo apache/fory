@@ -70,6 +70,7 @@ public final class JsonFieldInfo {
   private static final int KIND_MAP = 13;
   private static final int KIND_OBJECT = 14;
   private static final int KIND_CUSTOM_PRIMITIVE = 15;
+  private static final int WRITE_NULL_MASK = Integer.MIN_VALUE;
   private static final byte[] TRUE_BYTES = "true".getBytes(StandardCharsets.ISO_8859_1);
   private static final byte[] FALSE_BYTES = "false".getBytes(StandardCharsets.ISO_8859_1);
 
@@ -124,12 +125,13 @@ public final class JsonFieldInfo {
   private final byte[] utf8FalseNameToken;
   private final byte[] utf8FalseCommaToken;
   private final long nameHash;
-  private int readIndex = -1;
+  private int readIndexAndWriteNull;
   private JsonTypeInfo writeTypeInfo;
   private JsonTypeInfo readTypeInfo;
 
   public JsonFieldInfo(
       String name,
+      boolean writeNull,
       Field writeField,
       Method writeGetter,
       Field readField,
@@ -138,6 +140,11 @@ public final class JsonFieldInfo {
       JsonFieldAccessor readAccessor,
       TypeRef<?> ownerType) {
     this.name = name;
+    // The write-null decision and read index are both immutable after ObjectCodec construction.
+    // Packing the flag into the unused sign bit keeps JsonFieldInfo at its established object size
+    // and preserves the offsets of hot enum/token metadata. Read schemas are bounded by Java array
+    // indexes, so the remaining 31 bits cover every representable property table.
+    readIndexAndWriteNull = writeNull ? WRITE_NULL_MASK : 0;
     nameHash = JsonFieldNameHash.hash(name);
     this.writeField = writeField;
     this.writeGetter = writeGetter;
@@ -236,6 +243,11 @@ public final class JsonFieldInfo {
 
   public long nameHash() {
     return nameHash;
+  }
+
+  /** Returns the normalized null-write decision consumed by interpreted and generated writers. */
+  public boolean writeNull() {
+    return readIndexAndWriteNull < 0;
   }
 
   public Field writeField() {
@@ -522,11 +534,11 @@ public final class JsonFieldInfo {
   }
 
   public int readIndex() {
-    return readIndex;
+    return readIndexAndWriteNull & Integer.MAX_VALUE;
   }
 
   public void setReadIndex(int readIndex) {
-    this.readIndex = readIndex;
+    readIndexAndWriteNull = (readIndexAndWriteNull & WRITE_NULL_MASK) | readIndex;
   }
 
   public JsonTypeInfo writeTypeInfo() {
@@ -760,7 +772,7 @@ public final class JsonFieldInfo {
 
   private boolean writeStringObject(StringJsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     writer.writeFieldName(this, index);
@@ -770,7 +782,7 @@ public final class JsonFieldInfo {
 
   private boolean writeStringScalar(StringJsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     if (value == null) {
@@ -810,7 +822,7 @@ public final class JsonFieldInfo {
 
   private boolean writeUtf8Scalar(Utf8JsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     if (value == null) {
@@ -846,7 +858,7 @@ public final class JsonFieldInfo {
 
   private boolean writeStringText(StringJsonWriter writer, Object object, int index) {
     String value = (String) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     if (value == null) {
@@ -860,7 +872,7 @@ public final class JsonFieldInfo {
 
   private boolean writeStringEnum(StringJsonWriter writer, Object object, int index) {
     Enum<?> value = (Enum<?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     if (value == null) {
@@ -875,7 +887,7 @@ public final class JsonFieldInfo {
 
   private boolean writeStringArray(StringJsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     // Field metadata owns omission only. Once present, the registered codec owns null semantics.
@@ -886,7 +898,7 @@ public final class JsonFieldInfo {
 
   private boolean writeStringCollection(StringJsonWriter writer, Object object, int index) {
     Collection<?> value = (Collection<?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     writer.writeFieldName(this, index);
@@ -896,7 +908,7 @@ public final class JsonFieldInfo {
 
   private boolean writeStringMap(StringJsonWriter writer, Object object, int index) {
     Map<?, ?> value = (Map<?, ?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     writer.writeFieldName(this, index);
@@ -906,7 +918,7 @@ public final class JsonFieldInfo {
 
   private boolean writeStringPojo(StringJsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     writer.writeFieldName(this, index);
@@ -986,7 +998,7 @@ public final class JsonFieldInfo {
 
   private boolean writeUtf8Object(Utf8JsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     writer.writeFieldName(this, index);
@@ -996,7 +1008,7 @@ public final class JsonFieldInfo {
 
   private boolean writeUtf8String(Utf8JsonWriter writer, Object object, int index) {
     String value = (String) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     if (value == null) {
@@ -1023,7 +1035,7 @@ public final class JsonFieldInfo {
 
   private boolean writeUtf8Enum(Utf8JsonWriter writer, Object object, int index) {
     Enum<?> value = (Enum<?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     if (value == null) {
@@ -1037,7 +1049,7 @@ public final class JsonFieldInfo {
 
   private boolean writeUtf8Array(Utf8JsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     // Field metadata owns omission only. Once present, the registered codec owns null semantics.
@@ -1048,7 +1060,7 @@ public final class JsonFieldInfo {
 
   private boolean writeUtf8Collection(Utf8JsonWriter writer, Object object, int index) {
     Collection<?> value = (Collection<?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     writer.writeFieldName(this, index);
@@ -1058,7 +1070,7 @@ public final class JsonFieldInfo {
 
   private boolean writeUtf8Map(Utf8JsonWriter writer, Object object, int index) {
     Map<?, ?> value = (Map<?, ?>) writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     writer.writeFieldName(this, index);
@@ -1068,7 +1080,7 @@ public final class JsonFieldInfo {
 
   private boolean writeUtf8Pojo(Utf8JsonWriter writer, Object object, int index) {
     Object value = writeAccessor.getObject(object);
-    if (value == null && !writer.writeNullFields()) {
+    if (value == null && !writeNull()) {
       return false;
     }
     writer.writeFieldName(this, index);

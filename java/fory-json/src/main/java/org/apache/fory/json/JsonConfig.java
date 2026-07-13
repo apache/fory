@@ -41,6 +41,8 @@ public final class JsonConfig {
   private final boolean codegenEnabled;
   private final boolean asyncCompilationEnabled;
   private final boolean propertyDiscoveryEnabled;
+  private final PropertyNamingStrategy propertyNamingStrategy;
+  private final ClassLoader classLoader;
   private final int maxDepth;
   private final int concurrencyLevel;
   private final int bufferSizeLimitBytes;
@@ -56,6 +58,8 @@ public final class JsonConfig {
       boolean codegenEnabled,
       boolean asyncCompilationEnabled,
       boolean propertyDiscoveryEnabled,
+      PropertyNamingStrategy propertyNamingStrategy,
+      ClassLoader classLoader,
       int maxDepth,
       int concurrencyLevel,
       int bufferSizeLimitBytes,
@@ -65,6 +69,9 @@ public final class JsonConfig {
     this.codegenEnabled = codegenEnabled;
     this.asyncCompilationEnabled = asyncCompilationEnabled;
     this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
+    this.propertyNamingStrategy =
+        Objects.requireNonNull(propertyNamingStrategy, "propertyNamingStrategy");
+    this.classLoader = Objects.requireNonNull(classLoader, "classLoader");
     this.maxDepth = maxDepth;
     this.concurrencyLevel = concurrencyLevel;
     this.bufferSizeLimitBytes = bufferSizeLimitBytes;
@@ -72,7 +79,9 @@ public final class JsonConfig {
     this.typeChecker = typeChecker;
     typeCheckContext = new JsonTypeCheckContext();
     codecRegistryKey = codecRegistry.codegenKey();
-    codegenKey = new CodegenKey(writeNullFields, propertyDiscoveryEnabled, codecRegistryKey);
+    codegenKey =
+        new CodegenKey(
+            writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
   }
 
   public boolean writeNullFields() {
@@ -89,6 +98,16 @@ public final class JsonConfig {
 
   public boolean propertyDiscoveryEnabled() {
     return propertyDiscoveryEnabled;
+  }
+
+  /** Returns the fixed property naming strategy used by this runtime. */
+  public PropertyNamingStrategy propertyNamingStrategy() {
+    return propertyNamingStrategy;
+  }
+
+  /** Returns the fixed loader used to resolve annotation-declared subtype class names. */
+  public ClassLoader classLoader() {
+    return classLoader;
   }
 
   public int maxDepth() {
@@ -128,6 +147,8 @@ public final class JsonConfig {
         && codegenEnabled == that.codegenEnabled
         && asyncCompilationEnabled == that.asyncCompilationEnabled
         && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
+        && propertyNamingStrategy == that.propertyNamingStrategy
+        && classLoader == that.classLoader
         && maxDepth == that.maxDepth
         && concurrencyLevel == that.concurrencyLevel
         && bufferSizeLimitBytes == that.bufferSizeLimitBytes
@@ -141,6 +162,8 @@ public final class JsonConfig {
     result = 31 * result + Boolean.hashCode(codegenEnabled);
     result = 31 * result + Boolean.hashCode(asyncCompilationEnabled);
     result = 31 * result + Boolean.hashCode(propertyDiscoveryEnabled);
+    result = 31 * result + propertyNamingStrategy.hashCode();
+    result = 31 * result + System.identityHashCode(classLoader);
     result = 31 * result + maxDepth;
     result = 31 * result + concurrencyLevel;
     result = 31 * result + bufferSizeLimitBytes;
@@ -167,12 +190,17 @@ public final class JsonConfig {
   private static final class CodegenKey {
     private final boolean writeNullFields;
     private final boolean propertyDiscoveryEnabled;
+    private final PropertyNamingStrategy propertyNamingStrategy;
     private final String codecRegistryKey;
 
     private CodegenKey(
-        boolean writeNullFields, boolean propertyDiscoveryEnabled, String codecRegistryKey) {
+        boolean writeNullFields,
+        boolean propertyDiscoveryEnabled,
+        PropertyNamingStrategy propertyNamingStrategy,
+        String codecRegistryKey) {
       this.writeNullFields = writeNullFields;
       this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
+      this.propertyNamingStrategy = propertyNamingStrategy;
       this.codecRegistryKey = codecRegistryKey;
     }
 
@@ -187,12 +215,14 @@ public final class JsonConfig {
       CodegenKey that = (CodegenKey) other;
       return writeNullFields == that.writeNullFields
           && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
+          && propertyNamingStrategy == that.propertyNamingStrategy
           && Objects.equals(codecRegistryKey, that.codecRegistryKey);
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(writeNullFields, propertyDiscoveryEnabled, codecRegistryKey);
+      return Objects.hash(
+          writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
     }
   }
 }

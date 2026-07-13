@@ -19,18 +19,21 @@
 
 package org.apache.fory.json.annotation;
 
+import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Excludes an eligible Java field from JSON reading, writing, or both directions.
+ * Excludes one field-backed logical property from JSON reading, writing, or both directions.
  *
- * <p>Field and property discovery remains owned by the object codec. This annotation changes the
- * selected field's direction flags; it does not create a second member, rename a property, or alter
- * the semantics of an independently discovered getter or setter.
+ * <p>An eligible backing field, getter, and setter with the same Java property name form one
+ * logical property. This field annotation removes the selected direction from that complete
+ * property, so a same-named accessor cannot restore it. The annotation does not make an otherwise
+ * ineligible field or accessor eligible and cannot be overridden by {@link JsonProperty}.
  */
+@Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
 public @interface JsonIgnore {

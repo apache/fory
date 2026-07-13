@@ -29,6 +29,7 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
@@ -71,6 +72,8 @@ public final class Utf8JsonReader extends JsonReader {
   private static final long ASCII_ZEROES = 0x3030_3030_3030_3030L;
   private static final long ASCII_NINES = 0x3939_3939_3939_3939L;
   private static final long ASCII_HIGH_BITS = 0x8080_8080_8080_8080L;
+  // Little-endian packed ASCII bytes for "null".
+  private static final int NULL_LITERAL = 0x6C6C756E;
 
   // JSON syntax bytes are ASCII, so hot token checks can compare signed bytes directly.
   // UTF-8 string decoding must keep unsigned byte conversion for non-ASCII content.
@@ -80,6 +83,287 @@ public final class Utf8JsonReader extends JsonReader {
   public Utf8JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
     super(config, typeResolver);
     input = EMPTY_BYTES;
+  }
+
+  @Override
+  protected int scanStringEnd(int start) {
+    int inputLength = input.length;
+    if (start >= inputLength || input[start] != '"') {
+      throw errorAt("Expected string", start);
+    }
+    int cursor = start + 1;
+    int wordEnd = inputLength - Long.BYTES;
+    while (cursor <= wordEnd) {
+      long stopMask = stringStopMask(LittleEndian.getInt64(input, cursor));
+      if (stopMask == 0) {
+        cursor += Long.BYTES;
+        continue;
+      }
+      cursor += Long.numberOfTrailingZeros(stopMask) >>> 3;
+      int raw = input[cursor] & 0xff;
+      if (raw == '"') {
+        return cursor + 1;
+      }
+      if (raw < 0x20) {
+        throw errorAt("Control character in string", cursor);
+      }
+      if (raw == '\\') {
+        cursor = scanEscape(cursor, inputLength);
+      } else {
+        cursor = (int) (scanUtf8CodePoint(cursor) >>> 32);
+      }
+    }
+    while (cursor < inputLength) {
+      int raw = input[cursor] & 0xff;
+      if (raw == '"') {
+        return cursor + 1;
+      }
+      if (raw < 0x20) {
+        throw errorAt("Control character in string", cursor);
+      }
+      if (raw == '\\') {
+        cursor = scanEscape(cursor, inputLength);
+      } else if (raw < 0x80) {
+        cursor++;
+      } else {
+        cursor = (int) (scanUtf8CodePoint(cursor) >>> 32);
+      }
+    }
+    throw errorAt("Unterminated string", cursor);
+  }
+
+  @Override
+  protected long scanStringHash(int start, int end) {
+    long hash = JsonFieldNameHash.MAGIC_HASH_CODE;
+    long value = 0;
+    int decodedLength = 0;
+    boolean latin1 = true;
+    int cursor = start + 1;
+    int limit = end - 1;
+    while (cursor < limit) {
+      int raw = input[cursor] & 0xff;
+      int codePoint;
+      if (raw == '\\') {
+        int escaped = input[cursor + 1] & 0xff;
+        cursor += 2;
+        if (escaped == 'u') {
+          codePoint = scanUnicodeEscape(cursor);
+          cursor += 4;
+        } else {
+          codePoint = scanSimpleEscape(escaped, cursor - 1);
+        }
+      } else if (raw < 0x80) {
+        codePoint = raw;
+        cursor++;
+      } else {
+        long decoded = scanUtf8CodePoint(cursor);
+        cursor = (int) (decoded >>> 32);
+        codePoint = (int) decoded;
+      }
+      if (codePoint <= 0xffff && Character.isHighSurrogate((char) codePoint)) {
+        if (latin1) {
+          hash = JsonFieldNameHash.hashPacked(value, decodedLength);
+          latin1 = false;
+        }
+        hash = JsonFieldNameHash.update(hash, (char) codePoint);
+        decodedLength++;
+        cursor += 2;
+        char low = scanUnicodeEscape(cursor);
+        cursor += 4;
+        hash = JsonFieldNameHash.update(hash, low);
+        decodedLength++;
+      } else if (codePoint <= 0xffff) {
+        char ch = (char) codePoint;
+        if (latin1 && ch <= 0xff && ch != 0 && decodedLength < Long.BYTES) {
+          value = JsonFieldNameHash.value(value, decodedLength++, ch);
+        } else {
+          if (latin1) {
+            hash = JsonFieldNameHash.hashPacked(value, decodedLength);
+            latin1 = false;
+          }
+          hash = JsonFieldNameHash.update(hash, ch);
+          decodedLength++;
+        }
+      } else {
+        if (latin1) {
+          hash = JsonFieldNameHash.hashPacked(value, decodedLength);
+          latin1 = false;
+        }
+        hash = JsonFieldNameHash.update(hash, Character.highSurrogate(codePoint));
+        hash = JsonFieldNameHash.update(hash, Character.lowSurrogate(codePoint));
+        decodedLength += 2;
+      }
+    }
+    return JsonFieldNameHash.finish(hash, value, decodedLength, latin1);
+  }
+
+  @Override
+  protected boolean matchesScannedString(int start, int end, String expected) {
+    int cursor = start + 1;
+    int limit = end - 1;
+    int index = 0;
+    boolean matches = true;
+    while (cursor < limit) {
+      int raw = input[cursor] & 0xff;
+      if (raw == '\\') {
+        int escapedByte = input[cursor + 1] & 0xff;
+        cursor += 2;
+        char escaped;
+        if (escapedByte == 'u') {
+          escaped = scanUnicodeEscape(cursor);
+          cursor += 4;
+        } else {
+          escaped = scanSimpleEscape(escapedByte, cursor - 1);
+        }
+        matches &= index < expected.length() && expected.charAt(index++) == escaped;
+        if (Character.isHighSurrogate(escaped)) {
+          cursor += 2;
+          char low = scanUnicodeEscape(cursor);
+          cursor += 4;
+          matches &= index < expected.length() && expected.charAt(index++) == low;
+        }
+        continue;
+      }
+      int codePoint;
+      if (raw < 0x80) {
+        codePoint = raw;
+        cursor++;
+      } else {
+        long decoded = scanUtf8CodePoint(cursor);
+        cursor = (int) (decoded >>> 32);
+        codePoint = (int) decoded;
+      }
+      if (codePoint <= 0xffff) {
+        matches &= index < expected.length() && expected.charAt(index++) == (char) codePoint;
+      } else {
+        char high = Character.highSurrogate(codePoint);
+        char low = Character.lowSurrogate(codePoint);
+        matches &= index < expected.length() && expected.charAt(index++) == high;
+        matches &= index < expected.length() && expected.charAt(index++) == low;
+      }
+    }
+    return matches && index == expected.length();
+  }
+
+  private int scanEscape(int slash, int inputLength) {
+    int cursor = slash + 1;
+    if (cursor >= inputLength) {
+      throw errorAt("Unterminated escape", slash);
+    }
+    int escaped = input[cursor++] & 0xff;
+    if (escaped != 'u') {
+      scanSimpleEscape(escaped, cursor - 1);
+      return cursor;
+    }
+    char ch = scanUnicodeEscape(cursor);
+    cursor += 4;
+    if (Character.isHighSurrogate(ch)) {
+      if (cursor + 6 > inputLength || input[cursor] != '\\' || input[cursor + 1] != 'u') {
+        throw errorAt("Unpaired high surrogate escape", slash);
+      }
+      char low = scanUnicodeEscape(cursor + 2);
+      if (!Character.isLowSurrogate(low)) {
+        throw errorAt("Unpaired high surrogate escape", slash);
+      }
+      return cursor + 6;
+    }
+    if (Character.isLowSurrogate(ch)) {
+      throw errorAt("Unpaired low surrogate escape", slash);
+    }
+    return cursor;
+  }
+
+  private long scanUtf8CodePoint(int offset) {
+    int first = input[offset] & 0xff;
+    int count;
+    int codePoint;
+    int minimum;
+    if ((first & 0xe0) == 0xc0) {
+      count = 2;
+      codePoint = first & 0x1f;
+      minimum = 0x80;
+    } else if ((first & 0xf0) == 0xe0) {
+      count = 3;
+      codePoint = first & 0x0f;
+      minimum = 0x800;
+    } else if ((first & 0xf8) == 0xf0) {
+      count = 4;
+      codePoint = first & 0x07;
+      minimum = 0x10000;
+    } else {
+      throw errorAt("Invalid UTF-8 sequence", offset);
+    }
+    if (offset > input.length - count) {
+      throw errorAt("Incomplete UTF-8 sequence", offset);
+    }
+    for (int i = 1; i < count; i++) {
+      int continuation = input[offset + i] & 0xff;
+      if ((continuation & 0xc0) != 0x80) {
+        throw errorAt("Invalid UTF-8 continuation byte", offset + i);
+      }
+      codePoint = (codePoint << 6) | (continuation & 0x3f);
+    }
+    if (codePoint < minimum
+        || codePoint > 0x10ffff
+        || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+      throw errorAt("Invalid UTF-8 sequence", offset);
+    }
+    return ((long) (offset + count) << 32) | codePoint;
+  }
+
+  private char scanUnicodeEscape(int offset) {
+    if (offset > input.length - 4) {
+      throw errorAt("Incomplete unicode escape", offset);
+    }
+    int value = 0;
+    for (int i = 0; i < 4; i++) {
+      int ch = input[offset + i] & 0xff;
+      int digit;
+      if (ch >= '0' && ch <= '9') {
+        digit = ch - '0';
+      } else {
+        int lower = ch | 0x20;
+        if (lower < 'a' || lower > 'f') {
+          throw errorAt("Invalid unicode escape", offset + i);
+        }
+        digit = lower - 'a' + 10;
+      }
+      value = (value << 4) | digit;
+    }
+    return (char) value;
+  }
+
+  private char scanSimpleEscape(int escaped, int offset) {
+    switch (escaped) {
+      case '"':
+      case '\\':
+      case '/':
+        return (char) escaped;
+      case 'b':
+        return '\b';
+      case 'f':
+        return '\f';
+      case 'n':
+        return '\n';
+      case 'r':
+        return '\r';
+      case 't':
+        return '\t';
+      default:
+        throw errorAt("Invalid escape", offset);
+    }
+  }
+
+  @Override
+  public int readSubtypeName(JsonSubtypeScanInfo info) {
+    skipWhitespaceFast();
+    int start = position;
+    int candidate = info.nameIndex(readStringHash());
+    int end = position;
+    if (candidate < 0 || !matchesScannedString(start, end, info.name(candidate))) {
+      throw error("Unknown JSON subtype name");
+    }
+    return candidate;
   }
 
   public Utf8JsonReader(JsonConfig config, JsonTypeResolver typeResolver, byte[] input) {
@@ -231,11 +515,7 @@ public final class Utf8JsonReader extends JsonReader {
   private boolean tryReadNullLiteral() {
     byte[] bytes = input;
     int offset = position;
-    if (offset + 3 < bytes.length
-        && bytes[offset] == 'n'
-        && bytes[offset + 1] == 'u'
-        && bytes[offset + 2] == 'l'
-        && bytes[offset + 3] == 'l') {
+    if (offset + 3 < bytes.length && LittleEndian.getInt32(bytes, offset) == NULL_LITERAL) {
       position = offset + 4;
       return true;
     }
@@ -1444,14 +1724,19 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public String readNullableStringToken() {
-    if (position < input.length) {
-      int ch = input[position];
-      if (ch == '"') {
-        return readStringToken();
-      }
-      if (ch == 'n' && tryReadNullLiteral()) {
-        return null;
-      }
+    // Token callers have already handled whitespace. Keep the overwhelmingly common string case
+    // to one byte check; only a possible null or malformed token enters the cold classifier.
+    byte[] bytes = input;
+    int offset = position;
+    if (offset < bytes.length && bytes[offset] == '"') {
+      return readStringToken();
+    }
+    return readNullableStringTokenSlow();
+  }
+
+  private String readNullableStringTokenSlow() {
+    if (tryReadNullLiteral()) {
+      return null;
     }
     return readStringToken();
   }

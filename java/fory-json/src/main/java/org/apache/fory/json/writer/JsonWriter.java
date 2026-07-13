@@ -38,11 +38,10 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
 /**
  * Representation-neutral JSON emission contract and writer operation state.
  *
- * <p>The base owner retains the resolver used by dynamic codecs, the null-field setting, and
- * configured and current container depth. Concrete writers own output storage and all direct
- * representation-specific scalar, string, field-token, temporal, and arbitrary-precision output. In
- * particular, this base class does not retain big-number scratch state or emit digits through
- * virtual callbacks.
+ * <p>The base owner retains the resolver used by dynamic codecs and configured and current
+ * container depth. Concrete writers own output storage and all direct representation-specific
+ * scalar, string, field-token, temporal, and arbitrary-precision output. In particular, this base
+ * class does not retain big-number scratch state or emit digits through virtual callbacks.
  *
  * <p>Writers are mutable and confined to one borrowed {@code ForyJson} state. A failed root write
  * is discarded and {@link #reset()} restores depth before reuse; nested codecs intentionally do not
@@ -52,13 +51,11 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
  */
 public abstract class JsonWriter {
   private final JsonTypeResolver typeResolver;
-  private final boolean writeNullFields;
   private final int maxDepth;
   private int depth;
 
   JsonWriter(JsonConfig config, JsonTypeResolver typeResolver) {
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
-    writeNullFields = config.writeNullFields();
     maxDepth = config.maxDepth();
   }
 
@@ -67,10 +64,6 @@ public abstract class JsonWriter {
    */
   public final JsonTypeResolver typeResolver() {
     return typeResolver;
-  }
-
-  public final boolean writeNullFields() {
-    return writeNullFields;
   }
 
   public void reset() {
