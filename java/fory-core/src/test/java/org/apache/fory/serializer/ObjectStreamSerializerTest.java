@@ -45,14 +45,17 @@ import java.util.concurrent.ConcurrentHashMap;
 import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.TestUtils;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
+import org.apache.fory.collection.ObjectMap;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
@@ -1291,6 +1294,19 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     public String child;
   }
 
+  public static class LayerNameCacheWriter extends LayerEvolutionChild {
+    private String name = "test";
+    private int value = 42;
+
+    private void writeObject(ObjectOutputStream s) throws IOException {
+      s.defaultWriteObject();
+    }
+
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+      s.defaultReadObject();
+    }
+  }
+
   @Test
   public void testLayerEvolution() throws Exception {
     String packageName = getClass().getPackage().getName();
@@ -1362,6 +1378,48 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     assertEquals(result.base, "base");
     assertEquals(result.child, "child");
     assertEquals(result.noDataCalled, true);
+  }
+
+  @Test
+  public void testLayerNameCacheBound() {
+    Assert.assertTrue(ClassResolver.requireJavaSerialization(LayerNameCacheWriter.class));
+    Assert.assertTrue(ClassResolver.requireJavaSerialization(SingleLayerClass.class));
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    writer.register(LayerNameCacheWriter.class);
+    writer.registerSerializer(
+        LayerNameCacheWriter.class,
+        new ObjectStreamSerializer(writer.getTypeResolver(), LayerNameCacheWriter.class));
+    writer.setMetaWriteContext(new MetaWriteContext());
+
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    reader.register(SingleLayerClass.class);
+    ObjectStreamSerializer readerSerializer =
+        new ObjectStreamSerializer(reader.getTypeResolver(), SingleLayerClass.class);
+    reader.registerSerializer(SingleLayerClass.class, readerSerializer);
+    reader.setMetaReadContext(new MetaReadContext());
+
+    byte[] bytes = writer.serialize(new LayerNameCacheWriter());
+    SingleLayerClass result = (SingleLayerClass) reader.deserialize(bytes);
+    assertEquals(result, new SingleLayerClass("test", 42));
+    ObjectMap<?, ?> cache = TestUtils.getFieldValue(readerSerializer, "layerClassNameCache");
+    assertEquals(cache.size, 2);
+
+    reader.setMetaReadContext(new MetaReadContext());
+    result = (SingleLayerClass) reader.deserialize(bytes);
+    assertEquals(result, new SingleLayerClass("test", 42));
+    assertEquals(cache.size, 2);
   }
 
   @Test

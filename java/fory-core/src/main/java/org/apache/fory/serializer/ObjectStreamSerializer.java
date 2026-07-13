@@ -49,6 +49,7 @@ import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.ObjectArray;
 import org.apache.fory.collection.ObjectIntMap;
+import org.apache.fory.collection.ObjectMap;
 import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.MetaReadContext;
@@ -71,6 +72,7 @@ import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeNameBytes;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
 import org.apache.fory.type.Descriptor;
@@ -98,6 +100,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
   private static final Logger LOG = LoggerFactory.getLogger(ObjectStreamSerializer.class);
 
   private final SlotInfo[] slotsInfos;
+  private final ObjectMap<TypeNameBytes, String> layerClassNameCache;
   // Instance-level cache: TypeDef ID -> TypeInfo (shared across all slots).
   private final LongMap<TypeInfo> typeDefIdToTypeInfo = new LongMap<>(4, 0.4f);
 
@@ -216,6 +219,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     }
     Collections.reverse(slotsInfoList);
     slotsInfos = slotsInfoList.toArray(new SlotInfo[0]);
+    layerClassNameCache = new ObjectMap<>(slotsInfos.length * 2, 0.5f);
   }
 
   @Override
@@ -351,11 +355,22 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     if ((header & 0b1) != 0) {
       MetaStringReader metaStringReader = readContext.getMetaStringReader();
       EncodedMetaString packageBytes = metaStringReader.readMetaStringWithFlag(buffer, header);
-      EncodedMetaString classNameBytes = metaStringReader.readMetaString(buffer);
-      return Encoders.decodePkgAndClass(
-              packageBytes.decode(Encoders.PACKAGE_DECODER),
-              classNameBytes.decode(Encoders.TYPE_NAME_DECODER))
-          .entireClassName;
+      EncodedMetaString simpleClassNameBytes = metaStringReader.readMetaString(buffer);
+      TypeNameBytes typeNameBytes = new TypeNameBytes(packageBytes, simpleClassNameBytes);
+      String className = layerClassNameCache.get(typeNameBytes);
+      if (className == null) {
+        className =
+            Encoders.decodePkgAndClass(
+                    packageBytes.decode(Encoders.PACKAGE_DECODER),
+                    simpleClassNameBytes.decode(Encoders.TYPE_NAME_DECODER))
+                .entireClassName;
+        // Sender layer names are untrusted. Keep repeated-name decoding fast without letting
+        // distinct names retain unbounded state on this long-lived serializer.
+        if (layerClassNameCache.size < slotsInfos.length * 2) {
+          layerClassNameCache.put(typeNameBytes, className);
+        }
+      }
+      return className;
     }
     int typeId = header >>> 1;
     int userTypeId = Types.isUserTypeRegisteredById(typeId) ? buffer.readVarUInt32() : -1;
