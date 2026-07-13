@@ -21,12 +21,12 @@ package org.apache.fory.resolver;
 
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import javax.annotation.concurrent.ThreadSafe;
+import org.apache.fory.collection.Tuple2;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -78,12 +78,7 @@ public class AllowListChecker implements TypeChecker {
     try {
       lock.writeLock().lock();
       if (this.checkLevel == CheckLevel.DISABLE && checkLevel != CheckLevel.DISABLE) {
-        for (String className : disallowList) {
-          checkCanDisallow(className);
-        }
-        for (String prefix : disallowListPrefix) {
-          checkCanDisallow(prefix + "*");
-        }
+        checkRegistrationOpen();
       }
       this.checkLevel = checkLevel;
       clearCheckerCache();
@@ -109,14 +104,9 @@ public class AllowListChecker implements TypeChecker {
     boolean disallowed = containsPrefix(disallowList, disallowListPrefix, className);
     boolean allowed = containsPrefix(allowList, allowListPrefix, className);
     if (className.startsWith("[")) {
-      int dimensions = 0;
-      while (dimensions < className.length() && className.charAt(dimensions) == '[') {
-        dimensions++;
-      }
-      if (dimensions < className.length()
-          && className.charAt(dimensions) == 'L'
-          && className.endsWith(";")) {
-        String componentName = className.substring(dimensions + 1, className.length() - 1);
+      Tuple2<String, Integer> componentInfo = TypeUtils.getArrayComponentInfo(className);
+      String componentName = componentInfo.f0;
+      if (componentName != null) {
         disallowed |= containsPrefix(disallowList, disallowListPrefix, componentName);
         allowed |= containsPrefix(allowList, allowListPrefix, componentName);
       }
@@ -207,15 +197,14 @@ public class AllowListChecker implements TypeChecker {
   }
 
   /**
-   * Add a class to the disallow list during registration setup. This method fails after
-   * registration is frozen or the matching class has cached type information.
+   * Add a class to the disallow list during registration setup.
    *
    * @param classNameOrPrefix class name or class name prefix ends with *.
    */
   public void disallowClass(String classNameOrPrefix) {
     try {
       lock.writeLock().lock();
-      checkCanDisallow(classNameOrPrefix);
+      checkRegistrationOpen();
       disallow(classNameOrPrefix);
       clearCheckerCache();
     } finally {
@@ -224,17 +213,14 @@ public class AllowListChecker implements TypeChecker {
   }
 
   /**
-   * Add classes to the disallow list during registration setup. All entries are checked before the
-   * disallow list is changed.
+   * Add classes to the disallow list during registration setup.
    *
    * @param classNamesOrPrefixes class names or name prefixes ends with *.
    */
   public void disallowClasses(Collection<String> classNamesOrPrefixes) {
     try {
       lock.writeLock().lock();
-      for (String classNameOrPrefix : classNamesOrPrefixes) {
-        checkCanDisallow(classNameOrPrefix);
-      }
+      checkRegistrationOpen();
       for (String classNameOrPrefix : classNamesOrPrefixes) {
         disallow(classNameOrPrefix);
       }
@@ -261,66 +247,16 @@ public class AllowListChecker implements TypeChecker {
         throw new IllegalStateException(
             "A checker with disallow entries cannot be installed after registration.");
       }
-      if (checkLevel != CheckLevel.DISABLE) {
-        for (String className : disallowList) {
-          if (resolver.hasCachedTypeInfo(className, false)) {
-            throw new InsecureException(
-                String.format("Class %s is forbidden for registration.", className));
-          }
-        }
-        for (String prefix : disallowListPrefix) {
-          if (resolver.hasCachedTypeInfo(prefix, true)) {
-            throw new InsecureException(
-                String.format("Class prefix %s is forbidden for registration.", prefix));
-          }
-        }
-        for (Map.Entry<Class<?>, TypeInfo> entry : resolver.classInfoMap.iterable()) {
-          Class<?> type = entry.getKey();
-          Class<?> componentType = TypeUtils.getComponentIfArray(type);
-          if (containsPrefix(disallowList, disallowListPrefix, type.getName())
-              || containsPrefix(disallowList, disallowListPrefix, componentType.getName())) {
-            throw new InsecureException(
-                String.format("Class %s is forbidden for registration.", type.getName()));
-          }
-        }
-      }
       listeners.put(resolver, true);
     } finally {
       lock.writeLock().unlock();
     }
   }
 
-  boolean isDisallowed(String className) {
-    try {
-      lock.readLock().lock();
-      return checkLevel != CheckLevel.DISABLE
-          && containsPrefix(disallowList, disallowListPrefix, className);
-    } finally {
-      lock.readLock().unlock();
-    }
-  }
-
-  private void checkCanDisallow(String classNameOrPrefix) {
-    boolean prefix = classNameOrPrefix.endsWith("*");
-    String className =
-        prefix ? classNameOrPrefix.substring(0, classNameOrPrefix.length() - 1) : classNameOrPrefix;
+  private void checkRegistrationOpen() {
     for (TypeResolver resolver : listeners.keySet()) {
       if (resolver.isRegistrationFinished()) {
         throw new IllegalStateException("Classes cannot be disallowed after registration.");
-      }
-      if (resolver.hasCachedTypeInfo(className, prefix)) {
-        throw new IllegalStateException(
-            String.format("Class %s already has cached type information.", className));
-      }
-      for (Map.Entry<Class<?>, TypeInfo> entry : resolver.classInfoMap.iterable()) {
-        Class<?> type = entry.getKey();
-        String cachedName = type.getName();
-        String componentName = TypeUtils.getComponentIfArray(type).getName();
-        if ((prefix ? cachedName.startsWith(className) : cachedName.equals(className))
-            || (prefix ? componentName.startsWith(className) : componentName.equals(className))) {
-          throw new IllegalStateException(
-              String.format("Class %s already has cached type information.", cachedName));
-        }
       }
     }
   }

@@ -482,7 +482,7 @@ public class TypeUtils {
 
   public static int getArrayDimensions(String className) {
     int dimension = 0;
-    while (className.charAt(dimension) == '[') {
+    while (dimension < className.length() && className.charAt(dimension) == '[') {
       dimension++;
     }
     return dimension;
@@ -520,6 +520,32 @@ public class TypeUtils {
       t = t.getComponentType();
     }
     return Tuple2.of(t, dimension);
+  }
+
+  /**
+   * Returns the component and dimensions of a JVM array class descriptor. Reference arrays use the
+   * component class name and primitive arrays use their descriptor code. The component is null when
+   * the descriptor is malformed.
+   */
+  public static Tuple2<String, Integer> getArrayComponentInfo(String className) {
+    Preconditions.checkArgument(className.startsWith("["));
+    int dimensions = getArrayDimensions(className);
+    if (dimensions == className.length()) {
+      return Tuple2.of(null, dimensions);
+    }
+    int componentIndex = dimensions;
+    if (className.charAt(componentIndex) == 'L') {
+      if (componentIndex + 2 >= className.length() || !className.endsWith(";")) {
+        return Tuple2.of(null, dimensions);
+      }
+      return Tuple2.of(className.substring(componentIndex + 1, className.length() - 1), dimensions);
+    }
+    if (componentIndex + 1 != className.length()) {
+      return Tuple2.of(null, dimensions);
+    }
+    char descriptor = className.charAt(componentIndex);
+    String component = "ZBCSIJFD".indexOf(descriptor) >= 0 ? String.valueOf(descriptor) : null;
+    return Tuple2.of(component, dimensions);
   }
 
   /** Returns s string that represents array type declaration of type. */

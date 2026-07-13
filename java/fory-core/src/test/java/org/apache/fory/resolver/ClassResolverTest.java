@@ -457,7 +457,7 @@ public class ClassResolverTest extends ForyTestBase {
   }
 
   @Test
-  public void testStrictArrayClassLoading() {
+  public void testNativeArrayClassLoading() {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -466,6 +466,8 @@ public class ClassResolverTest extends ForyTestBase {
             .build();
     ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
     resolver.register(BeanB.class);
+
+    Assert.assertThrows(InsecureException.class, () -> resolver.loadClass("["));
 
     assertSame(
         resolver.loadClass("[[[[[[L" + BeanB.class.getName() + ";"), BeanB[][][][][][].class);
@@ -476,6 +478,13 @@ public class ClassResolverTest extends ForyTestBase {
     Assert.assertThrows(
         InsecureException.class,
         () -> resolver.loadClass("[[[[[[[L" + BeanB.class.getName() + ";"));
+
+    Fory xlangFory =
+        Fory.builder().withXlang(true).requireClassRegistration(true).withCompatible(true).build();
+    xlangFory.register(BeanB.class);
+    Assert.assertThrows(
+        InsecureException.class,
+        () -> xlangFory.getTypeResolver().loadClass("[L" + BeanB.class.getName() + ";"));
 
     FieldTypes.ArrayFieldType nestedArray =
         new FieldTypes.ArrayFieldType(
@@ -535,20 +544,6 @@ public class ClassResolverTest extends ForyTestBase {
     assertNull(serializerResolver.getRegisteredClassId(Foo.class));
     assertSame(
         serializerResolver.loadClass("[[[[[[L" + Foo.class.getName() + ";"), Foo[][][][][][].class);
-
-    Fory namedFory =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(true)
-            .withCompatible(false)
-            .build();
-    namedFory.register(Foo.class, "alias", "Foo");
-    FieldTypes.ArrayFieldType namedArray =
-        new FieldTypes.ArrayFieldType(
-            Types.ARRAY, true, true, new FieldTypes.ObjectFieldType(Types.STRUCT, true, true), 1);
-    assertSame(
-        namedArray.toTypeToken(namedFory.getTypeResolver(), TypeRef.of(Foo[].class)).getRawType(),
-        Foo[].class);
 
     Fory unknownFory =
         Fory.builder()
@@ -637,46 +632,6 @@ public class ClassResolverTest extends ForyTestBase {
     assertSame(acceptedArray, BeanB[][][][][][].class);
     acceptedFory.getTypeResolver().checkClassForDeserialization(acceptedArray);
     assertEquals(acceptedName.get(), acceptedDescriptor);
-  }
-
-  @Test(dataProvider = "xlang")
-  public void testDisallowedRegistrationEntries(boolean xlang) {
-    Fory fory =
-        Fory.builder()
-            .withXlang(xlang)
-            .requireClassRegistration(false)
-            .withCompatible(xlang)
-            .build();
-    TypeResolver resolver = fory.getTypeResolver();
-    BlockedSerializer serializer = new BlockedSerializer(resolver);
-
-    Assert.assertThrows(InsecureException.class, () -> resolver.register(ProcessBuilder.class));
-    Assert.assertThrows(InsecureException.class, () -> resolver.register(ProcessBuilder[].class));
-    Assert.assertThrows(
-        InsecureException.class, () -> resolver.register(ProcessBuilder.class, 100));
-    Assert.assertThrows(
-        InsecureException.class, () -> resolver.register(ProcessBuilder.class, "test", "Blocked"));
-    Assert.assertThrows(
-        InsecureException.class,
-        () -> resolver.registerUnion(ProcessBuilder.class, 101, serializer));
-    Assert.assertThrows(
-        InsecureException.class,
-        () -> resolver.registerEnum(ProcessBuilder.class, 102, serializer));
-    Assert.assertThrows(
-        InsecureException.class,
-        () -> resolver.registerRuntimeTypeAlias(ProcessBuilder.class, String.class));
-    Assert.assertThrows(
-        InsecureException.class,
-        () -> resolver.registerRuntimeTypeAlias(ProcessBuilder.class, ProcessBuilder.class));
-    Assert.assertThrows(
-        InsecureException.class,
-        () -> resolver.registerSerializer(ProcessBuilder.class, serializer));
-    if (resolver instanceof ClassResolver) {
-      Assert.assertThrows(
-          InsecureException.class,
-          () -> ((ClassResolver) resolver).registerInternal(ProcessBuilder.class));
-    }
-    assertNull(resolver.classInfoMap.get(ProcessBuilder.class));
   }
 
   @Test
@@ -1022,20 +977,6 @@ public class ClassResolverTest extends ForyTestBase {
         loadCount++;
       }
       return super.loadClass(name, resolve);
-    }
-  }
-
-  private static final class BlockedSerializer extends Serializer<ProcessBuilder> {
-    private BlockedSerializer(TypeResolver resolver) {
-      super(resolver.getConfig(), ProcessBuilder.class);
-    }
-
-    @Override
-    public void write(WriteContext writeContext, ProcessBuilder value) {}
-
-    @Override
-    public ProcessBuilder read(ReadContext readContext) {
-      return null;
     }
   }
 

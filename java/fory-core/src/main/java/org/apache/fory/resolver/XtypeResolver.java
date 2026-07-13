@@ -212,7 +212,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void register(Class<?> type, long userTypeId) {
-    checkRegisterAllowed(type);
+    checkRegisterAllowed();
     int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
         !containsUserTypeId(checkedUserTypeId), "Type id %s has been registered", userTypeId);
@@ -265,12 +265,11 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void register(Class<?> type, String namespace, String typeName) {
-    checkRegisterAllowed(type);
+    checkRegisterAllowed();
     Preconditions.checkArgument(
         !typeName.isEmpty() && !typeName.contains("."),
         "Type name %s must be non-empty and must not contain `.` when namespace is provided",
         typeName);
-    checkRegisterNameAllowed(qualifiedName(namespace, typeName));
     TypeInfo typeInfo = classInfoMap.get(type);
     Serializer<?> serializer = null;
     if (typeInfo != null) {
@@ -361,7 +360,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void registerUnion(Class<?> type, long userTypeId, Serializer<?> serializer) {
-    checkRegisterAllowed(type);
+    checkRegisterAllowed();
     Preconditions.checkNotNull(serializer);
     int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
@@ -384,13 +383,12 @@ public class XtypeResolver extends TypeResolver {
   @Override
   public void registerUnion(
       Class<?> type, String namespace, String typeName, Serializer<?> serializer) {
-    checkRegisterAllowed(type);
+    checkRegisterAllowed();
     Preconditions.checkNotNull(serializer);
     Preconditions.checkArgument(
         !typeName.isEmpty() && !typeName.contains("."),
         "Type name %s must be non-empty and must not contain `.` when namespace is provided",
         typeName);
-    checkRegisterNameAllowed(qualifiedName(namespace, typeName));
     TypeInfo typeInfo = classInfoMap.get(type);
     if (typeInfo != null && typeInfo.typeName != null) {
       String prevNamespace = typeInfo.decodeNamespace();
@@ -408,7 +406,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void registerEnum(Class<?> type, long userTypeId, Serializer<?> serializer) {
-    checkRegisterAllowed(type);
+    checkRegisterAllowed();
     Preconditions.checkNotNull(serializer);
     int checkedUserTypeId = toUserTypeId(userTypeId);
     Preconditions.checkArgument(
@@ -430,7 +428,7 @@ public class XtypeResolver extends TypeResolver {
   @Override
   public void registerEnum(
       Class<?> type, String namespace, String typeName, Serializer<?> serializer) {
-    checkRegisterAllowed(type);
+    checkRegisterAllowed();
     Preconditions.checkNotNull(serializer);
     if (namespace == null) {
       namespace = "";
@@ -439,7 +437,6 @@ public class XtypeResolver extends TypeResolver {
         !typeName.isEmpty() && !typeName.contains("."),
         "Type name %s must be non-empty and must not contain `.` when namespace is provided",
         typeName);
-    checkRegisterNameAllowed(qualifiedName(namespace, typeName));
     TypeInfo typeInfo = classInfoMap.get(type);
     if (typeInfo != null && typeInfo.typeName != null) {
       String prevNamespace = typeInfo.decodeNamespace();
@@ -517,12 +514,12 @@ public class XtypeResolver extends TypeResolver {
   }
 
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
-    checkRegisterAllowed(type);
+    checkRegisterAllowed();
     registerSerializer(type, newSerializer(type, serializerClass));
   }
 
   public void registerSerializer(Class<?> type, Serializer<?> serializer) {
-    checkRegisterAllowed(type);
+    checkRegisterAllowed();
     TypeInfo typeInfo = checkClassRegistration(type);
     checkSerializerRegistration(type, serializer.getClass());
     boolean localOverride = typeInfo.serializer != null;
@@ -1380,21 +1377,6 @@ public class XtypeResolver extends TypeResolver {
     }
     compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
     return typeInfo;
-  }
-
-  @Override
-  boolean hasCachedTypeInfo(String className, boolean prefix) {
-    for (Map.Entry<TypeNameBytes, TypeInfo> entry : compositeClassNameBytes2TypeInfo.iterable()) {
-      TypeInfo typeInfo = entry.getValue();
-      if (typeInfo.namespace == null || typeInfo.typeName == null) {
-        continue;
-      }
-      String cachedName = qualifiedName(typeInfo.decodeNamespace(), typeInfo.decodeTypeName());
-      if (prefix ? cachedName.startsWith(className) : cachedName.equals(className)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   @Override

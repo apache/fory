@@ -238,28 +238,6 @@ public abstract class TypeResolver {
     }
   }
 
-  protected final void checkRegisterAllowed(Class<?> type) {
-    checkRegisterAllowed();
-    Class<?> componentType = TypeUtils.getComponentIfArray(type);
-    DisallowedList.checkNotInDisallowedList(componentType.getName());
-    TypeChecker checker = extRegistry.typeChecker;
-    if (checker instanceof AllowListChecker
-        && (((AllowListChecker) checker).isDisallowed(type.getName())
-            || ((AllowListChecker) checker).isDisallowed(componentType.getName()))) {
-      throw new InsecureException(
-          String.format("Class %s is forbidden for registration.", type.getName()));
-    }
-  }
-
-  protected final void checkRegisterNameAllowed(String registeredName) {
-    TypeChecker checker = extRegistry.typeChecker;
-    if (checker instanceof AllowListChecker
-        && ((AllowListChecker) checker).isDisallowed(registeredName)) {
-      throw new InsecureException(
-          String.format("Class name %s is forbidden for registration.", registeredName));
-    }
-  }
-
   /**
    * Registers a class with an auto-assigned user ID.
    *
@@ -314,10 +292,10 @@ public abstract class TypeResolver {
   public final void registerRuntimeTypeAlias(Class<?> runtimeType, Class<?> canonicalType) {
     Preconditions.checkNotNull(runtimeType, "runtimeType");
     Preconditions.checkNotNull(canonicalType, "canonicalType");
-    checkRegisterAllowed(runtimeType);
     if (runtimeType == canonicalType) {
       return;
     }
+    checkRegisterAllowed();
     TypeInfo canonicalInfo = classInfoMap.get(canonicalType);
     Preconditions.checkArgument(
         canonicalInfo != null,
@@ -1466,33 +1444,17 @@ public abstract class TypeResolver {
     if (cls != null) {
       return cls;
     }
-    boolean isArray = arrayDims > 0 || className.startsWith("[");
-    int dimensions =
-        isArray ? (arrayDims > 0 ? arrayDims : TypeUtils.getArrayDimensions(className)) : 0;
-    String componentName = isArray ? arrayComponentName(className) : className;
-    if (componentName != null) {
-      DisallowedList.checkNotInDisallowedList(componentName);
-    }
-    if (!config.requireClassRegistration()) {
-      if (!checkType(className)) {
-        throw new InsecureException(
-            String.format("Class %s is forbidden for deserialization.", className));
-      }
-    }
-    if (dimensions > 6) {
-      throw new InsecureException(
-          String.format("Array class %s must be registered when dimensions exceed 6.", className));
-    }
-    if (config.requireClassRegistration()
-        && (!isArray
-            || (componentName != null
-                && extRegistry.registeredClasses.get(componentName) == null
-                && !isCachedClassName(componentName)))) {
+    if (config.requireClassRegistration()) {
       if (deserializeUnknownClass) {
-        return UnknownClass.getUnknowClass(className, isEnum, dimensions, metaContextShareEnabled);
+        return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
       }
       throw new InsecureException(String.format("Class %s is not registered.", className));
     }
+    if (!checkType(className)) {
+      throw new InsecureException(
+          String.format("Class %s is forbidden for deserialization.", className));
+    }
+    DisallowedList.checkNotInDisallowedList(className);
     try {
       return loadClassFromLoader(className);
     } catch (IllegalStateException e) {
@@ -1500,7 +1462,7 @@ public abstract class TypeResolver {
         if (!config.suppressClassRegistrationWarnings()) {
           LOG.warnOnce(e.getMessage());
         }
-        return UnknownClass.getUnknowClass(className, isEnum, dimensions, metaContextShareEnabled);
+        return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
       }
       throw e;
     }
@@ -1520,21 +1482,6 @@ public abstract class TypeResolver {
         throw new IllegalStateException(msg, ex);
       }
     }
-  }
-
-  protected boolean isCachedClassName(String className) {
-    return false;
-  }
-
-  abstract boolean hasCachedTypeInfo(String className, boolean prefix);
-
-  private static String arrayComponentName(String className) {
-    int dimensions = TypeUtils.getArrayDimensions(className);
-    char componentType = className.charAt(dimensions);
-    if (componentType == 'L') {
-      return className.substring(dimensions + 1, className.length() - 1);
-    }
-    return null;
   }
 
   public abstract <T> Serializer<T> getSerializer(Class<T> cls);

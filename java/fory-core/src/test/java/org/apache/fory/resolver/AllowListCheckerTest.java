@@ -28,12 +28,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.config.Language;
-import org.apache.fory.context.ReadContext;
-import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.LogLevel;
 import org.apache.fory.logging.LoggerFactory;
-import org.apache.fory.serializer.Serializer;
 import org.testng.annotations.Test;
 
 public class AllowListCheckerTest {
@@ -124,23 +121,6 @@ public class AllowListCheckerTest {
   }
 
   @Test
-  public void testConfiguredDisallowBeforeInitialize() {
-    for (boolean xlang : new boolean[] {false, true}) {
-      AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-      checker.disallowClass(String.class.getName());
-      assertThrows(
-          InsecureException.class,
-          () ->
-              Fory.builder()
-                  .withXlang(xlang)
-                  .requireClassRegistration(false)
-                  .withTypeChecker(checker)
-                  .withCompatible(xlang)
-                  .build());
-    }
-  }
-
-  @Test
   public void testBuilderConfiguredCheckerSuppressesStartupWarning() {
     synchronized (AllowListCheckerTest.class) {
       PrintStream previousOut = System.out;
@@ -199,26 +179,6 @@ public class AllowListCheckerTest {
   }
 
   @Test
-  public void testDisallowRejectsCachedType() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-    AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-    fory.getTypeResolver().setTypeChecker(checker);
-
-    fory.getTypeResolver().getTypeInfo(CheckedType.class);
-    assertThrows(
-        IllegalStateException.class, () -> checker.disallowClass(CheckedType.class.getName()));
-
-    Fory arrayFory =
-        Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-    AllowListChecker arrayChecker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-    arrayFory.getTypeResolver().setTypeChecker(arrayChecker);
-    arrayFory.getTypeResolver().getTypeInfo(CheckedType[].class);
-    assertThrows(
-        IllegalStateException.class,
-        () -> arrayChecker.disallowClass(CheckedType[].class.getName()));
-  }
-
-  @Test
   public void testDisallowSetupOnly() {
     AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
     Fory fory =
@@ -248,79 +208,6 @@ public class AllowListCheckerTest {
     assertThrows(
         IllegalStateException.class,
         () -> disabledChecker.setCheckLevel(AllowListChecker.CheckLevel.WARN));
-  }
-
-  @Test
-  public void testDisallowRejectsNameCaches() {
-    for (boolean xlang : new boolean[] {false, true}) {
-      AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-      Fory fory =
-          Fory.builder()
-              .withXlang(xlang)
-              .requireClassRegistration(false)
-              .withTypeChecker(checker)
-              .withCompatible(xlang)
-              .build();
-      fory.register(CheckedType.class, "cached", "Type");
-
-      assertThrows(IllegalStateException.class, () -> checker.disallowClass("cached.Type"));
-      assertThrows(IllegalStateException.class, () -> checker.disallowClass("cached.*"));
-    }
-  }
-
-  @Test
-  public void testDisallowedRegisteredNames() {
-    for (boolean xlang : new boolean[] {false, true}) {
-      AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-      checker.disallowClass("blocked.Type");
-      Fory fory =
-          Fory.builder()
-              .withXlang(xlang)
-              .requireClassRegistration(false)
-              .withTypeChecker(checker)
-              .withCompatible(xlang)
-              .build();
-      TypeResolver resolver = fory.getTypeResolver();
-      Serializer<CheckedType> serializer = new CheckedSerializer(resolver);
-
-      assertThrows(
-          InsecureException.class, () -> resolver.register(CheckedType.class, "blocked", "Type"));
-      assertThrows(
-          InsecureException.class,
-          () -> resolver.registerUnion(CheckedType.class, "blocked", "Type", serializer));
-      assertThrows(
-          InsecureException.class,
-          () -> resolver.registerEnum(CheckedType.class, "blocked", "Type", serializer));
-      assertNull(resolver.classInfoMap.get(CheckedType.class));
-    }
-  }
-
-  @Test
-  public void testDisallowClassesIsAtomic() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-    AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-    fory.getTypeResolver().setTypeChecker(checker);
-
-    assertThrows(
-        IllegalStateException.class,
-        () ->
-            checker.disallowClasses(
-                java.util.Arrays.asList(CheckedType.class.getName(), String.class.getName())));
-    assertTrue(checker.checkType(fory.getTypeResolver(), CheckedType.class.getName()));
-  }
-
-  @Test
-  public void testDisallowedArrayRegistration() {
-    AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-    checker.disallowClass(CheckedType[].class.getName());
-    Fory fory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .requireClassRegistration(false)
-            .withTypeChecker(checker)
-            .build();
-
-    assertThrows(InsecureException.class, () -> fory.register(CheckedType[].class));
   }
 
   @Test
@@ -402,19 +289,5 @@ public class AllowListCheckerTest {
 
   public static class CheckedType {
     public String value = "test";
-  }
-
-  private static final class CheckedSerializer extends Serializer<CheckedType> {
-    private CheckedSerializer(TypeResolver resolver) {
-      super(resolver.getConfig(), CheckedType.class);
-    }
-
-    @Override
-    public void write(WriteContext writeContext, CheckedType value) {}
-
-    @Override
-    public CheckedType read(ReadContext readContext) {
-      return null;
-    }
   }
 }

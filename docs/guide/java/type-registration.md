@@ -112,9 +112,8 @@ still use `TypeResolver#setTypeChecker` or `ThreadSafeFory#setTypeChecker` later
 replace the checker after build time.
 
 Configure `disallowClass(...)` and `disallowClasses(...)` during registration setup, before the first
-top-level operation. Disallow entries are rejected after registration is frozen or after a matching
-class has cached type information. To apply a different disallow list later, create a new Fory
-instance.
+top-level operation. Disallow entries are rejected after registration is frozen. To apply a
+different disallow list later, create a new Fory instance.
 
 ## Limit Max Deserialization Depth
 
