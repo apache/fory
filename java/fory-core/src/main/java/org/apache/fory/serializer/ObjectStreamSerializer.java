@@ -540,7 +540,9 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     TypeInfo typeInfo;
     if (isRef) {
       // Reference to previously read TypeInfo
-      typeInfo = getMetaReadTypeInfo(metaReadContext, index);
+      typeInfo =
+          getMetaReadTypeInfo(
+              (ClassResolver) typeResolver, metaReadContext, index, senderClassName);
     } else {
       // New TypeDef in stream, with optimized reuse by validated TypeDef header.
       long typeDefId = buffer.readInt64();
@@ -563,13 +565,30 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     skipSerializer.skipFields(readContext);
   }
 
-  private static TypeInfo getMetaReadTypeInfo(MetaReadContext metaReadContext, int index) {
+  private static TypeInfo getMetaReadTypeInfo(
+      ClassResolver classResolver, MetaReadContext metaReadContext, int index, String className) {
     if (index < 0 || index >= metaReadContext.readTypeInfos.size) {
       throw new ForyException("Invalid layer metadata reference id " + index);
     }
     TypeInfo typeInfo = metaReadContext.readTypeInfos.get(index);
     if (typeInfo == null) {
       throw new ForyException("Invalid layer metadata reference id " + index);
+    }
+    return checkLayerTypeInfo(classResolver, typeInfo, className);
+  }
+
+  private static TypeInfo checkLayerTypeInfo(
+      ClassResolver classResolver, TypeInfo typeInfo, String className) {
+    TypeDef typeDef = typeInfo.getTypeDef();
+    Class<?> type = typeInfo.getType();
+    // A local TypeDef keeps Class.getName() even when its encoded root uses a custom registered
+    // name. ObjectStream matches that wire name against the local slot registration.
+    String registeredName = type == null ? null : classResolver.getRegisteredName(type);
+    boolean localTypeDef = typeDef != null && typeDef.getClassSpec().type == type;
+    if (typeDef == null
+        || (!className.equals(typeDef.getClassName())
+            && !(localTypeDef && className.equals(registeredName)))) {
+      throw new ForyException("Layer " + className + " does not match its TypeDef");
     }
     return typeInfo;
   }
@@ -582,6 +601,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       long typeDefId) {
     TypeInfo typeInfo = typeDefIdToTypeInfo.get(typeDefId);
     if (typeInfo != null) {
+      checkLayerTypeInfo((ClassResolver) typeResolver, typeInfo, className);
       TypeDef.skipTypeDef(buffer, typeDefId);
       return typeInfo;
     }
@@ -1021,7 +1041,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       int index = indexMarker >>> 1;
       if (isRef) {
         // Reference to previously read TypeInfo
-        return getMetaReadTypeInfo(metaReadContext, index);
+        return getMetaReadTypeInfo((ClassResolver) typeResolver, metaReadContext, index, className);
       } else {
         // New TypeDef in stream, with optimized reuse by validated TypeDef header.
         long typeDefId = buffer.readInt64();

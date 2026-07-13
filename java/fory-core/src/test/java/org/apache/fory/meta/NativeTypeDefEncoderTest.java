@@ -30,7 +30,6 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.exception.DeserializationException;
-import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.serializer.ObjectStreamSerializer;
@@ -115,11 +114,15 @@ public class NativeTypeDefEncoderTest {
             .withCompatible(false)
             .build();
     namedReader.register(ExpectedType.class, "alias", "ExpectedType");
-    Assert.assertThrows(
-        InsecureException.class,
-        () ->
-            TypeDef.readTypeDef(
-                (ClassResolver) namedReader.getTypeResolver(), rawTypeDef, "alias.ExpectedType"));
+    DeserializationException mismatch =
+        Assert.expectThrows(
+            DeserializationException.class,
+            () ->
+                TypeDef.readTypeDef(
+                    (ClassResolver) namedReader.getTypeResolver(),
+                    rawTypeDef,
+                    "alias.ExpectedType"));
+    Assert.assertTrue(mismatch.getMessage().contains("does not match layer"));
     Fory namedWriter =
         Fory.builder()
             .withXlang(false)
@@ -148,9 +151,31 @@ public class NativeTypeDefEncoderTest {
             ExpectedType.class.getName());
     Assert.assertEquals(unresolved.getClassSpec().entireClassName, ExpectedType.class.getName());
     Assert.assertNull(unresolved.getClassSpec().type);
+
+    Fory idResolver =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    idResolver.register(ExpectedType.class, 100);
+    idResolver.register(OtherExpectedType.class, 101);
+    byte[] idTypeDef =
+        TypeDef.buildTypeDef(idResolver.getTypeResolver(), OtherExpectedType.class).getEncoded();
+    Assert.assertThrows(
+        DeserializationException.class,
+        () ->
+            TypeDef.readTypeDef(
+                (ClassResolver) idResolver.getTypeResolver(),
+                idTypeDef,
+                ExpectedType.class.getName()));
   }
 
   public static class ExpectedType implements Serializable {
+    private int value;
+  }
+
+  public static class OtherExpectedType implements Serializable {
     private int value;
   }
 

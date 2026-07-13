@@ -57,6 +57,7 @@ import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.SharedRegistry;
+import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
 import org.apache.fory.serializer.otherpkg.PackageNoArgParent;
@@ -1430,6 +1431,90 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     result = (SingleLayerClass) reader.deserialize(bytes);
     assertEquals(result, new SingleLayerClass("test", 42));
     assertEquals(cache.size, 2);
+  }
+
+  @Test
+  public void testLayerTypeInfoName() {
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    writer.register(SingleLayerClass.class);
+    writer.registerSerializer(
+        SingleLayerClass.class,
+        new ObjectStreamSerializer(writer.getTypeResolver(), SingleLayerClass.class));
+    MetaWriteContext metaWriteContext = new MetaWriteContext();
+    writer.setMetaWriteContext(metaWriteContext);
+    byte[] fullTypeDef = writer.serialize(new SingleLayerClass("value", 1));
+    writer.setMetaWriteContext(metaWriteContext);
+    byte[] typeDefReference = writer.serialize(new SingleLayerClass("value", 1));
+
+    Fory referenceReader =
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    referenceReader.register(SingleLayerClass.class);
+    referenceReader.register(MixedSerializationClass.class);
+    referenceReader.registerSerializer(
+        SingleLayerClass.class,
+        new ObjectStreamSerializer(referenceReader.getTypeResolver(), SingleLayerClass.class));
+    TypeInfo wrongTypeInfo =
+        new TypeInfo(
+            MixedSerializationClass.class,
+            referenceReader.getTypeResolver().getTypeDef(MixedSerializationClass.class, false));
+    MetaReadContext metaReadContext = new MetaReadContext();
+    referenceReader.setMetaReadContext(metaReadContext);
+    referenceReader.deserialize(fullTypeDef);
+    assertEquals(metaReadContext.readTypeInfos.size, 1);
+    metaReadContext.readTypeInfos.set(0, wrongTypeInfo);
+    referenceReader.setMetaReadContext(metaReadContext);
+    ForyException referenceError =
+        Assert.expectThrows(
+            ForyException.class, () -> referenceReader.deserialize(typeDefReference));
+    Assert.assertTrue(referenceError.getMessage().contains("does not match its TypeDef"));
+  }
+
+  @Test
+  public void testNamedLayerTypeInfoReference() {
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    writer.register(SingleLayerClass.class, "test", "SingleLayer");
+    writer.registerSerializer(
+        SingleLayerClass.class,
+        new ObjectStreamSerializer(writer.getTypeResolver(), SingleLayerClass.class));
+    MetaWriteContext metaWriteContext = new MetaWriteContext();
+    writer.setMetaWriteContext(metaWriteContext);
+    byte[] fullTypeDef = writer.serialize(new SingleLayerClass("first", 1));
+    writer.setMetaWriteContext(metaWriteContext);
+    byte[] typeDefReference = writer.serialize(new SingleLayerClass("second", 2));
+
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    reader.register(SingleLayerClass.class, "test", "SingleLayer");
+    reader.registerSerializer(
+        SingleLayerClass.class,
+        new ObjectStreamSerializer(reader.getTypeResolver(), SingleLayerClass.class));
+    MetaReadContext metaReadContext = new MetaReadContext();
+    reader.setMetaReadContext(metaReadContext);
+    assertEquals(reader.deserialize(fullTypeDef), new SingleLayerClass("first", 1));
+    reader.setMetaReadContext(metaReadContext);
+    assertEquals(reader.deserialize(typeDefReference), new SingleLayerClass("second", 2));
   }
 
   @Test

@@ -61,7 +61,7 @@ public class TypeUtilsTest {
   }
 
   @Test
-  public void arrayClassNameTest() {
+  public void testArrayClassName() {
     assertEquals(TypeUtils.arrayClassName(String.class, 2), String[][].class.getName());
     assertEquals(TypeUtils.arrayClassName(int.class, 2), int[][].class.getName());
     assertEquals(TypeUtils.arrayClassName(String[].class, 2), String[][][].class.getName());
