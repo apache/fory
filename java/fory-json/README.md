@@ -360,8 +360,9 @@ not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
 ### `JsonProperty`
 
-`JsonProperty` configures the canonical name and null inclusion of one complete logical property.
-An annotation on a field, getter, or setter applies to the merged field/getter/setter group.
+`JsonProperty` configures the canonical name, serialization index, and null inclusion of one
+complete logical property. An annotation on a field, getter, or setter applies to the merged
+field/getter/setter group.
 
 ```java
 import org.apache.fory.json.annotation.JsonProperty;
@@ -386,7 +387,7 @@ public final class User {
 }
 ```
 
-Version 1 supports three inclusion values:
+The supported inclusion values are:
 
 - `DEFAULT`: use `ForyJsonBuilder.writeNullFields`.
 - `ALWAYS`: write the property even when its selected value is null.
@@ -398,9 +399,9 @@ non-default inclusion policies within one logical property are rejected. Two pro
 normalize to the same final JSON name are also rejected.
 
 `index` controls relative serialization order. Indexed properties are written in ascending index
-order before unindexed properties. Indexes start at zero, may contain gaps, and must be unique among
-writable properties. `-1` means unspecified; lower values are invalid. An index on a setter-only,
-creator-only, or write-ignored property is invalid.
+order before unindexed properties. Indexes must be non-negative, may contain gaps, and must be
+unique among writable properties. `-1` means unspecified; lower values are invalid. An index on a
+setter-only, creator-only, or write-ignored property is invalid.
 
 `NON_EMPTY`, aliases, formatting, annotation-selected codecs, and independent read/write names are
 not supported.
@@ -411,6 +412,7 @@ not supported.
 ascending index order, then unindexed properties keep their existing relative order:
 
 ```java
+import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 
 @JsonPropertyOrder({"id", "display_name"})

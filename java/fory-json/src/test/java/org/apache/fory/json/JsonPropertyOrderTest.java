@@ -21,6 +21,8 @@ package org.apache.fory.json;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import java.nio.charset.StandardCharsets;
 import org.apache.fory.json.annotation.JsonCreator;
@@ -127,11 +129,19 @@ public class JsonPropertyOrderTest extends ForyJsonTestModels {
     ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.toJson(new NegativeIndex()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new DuplicateIndex()));
-    assertThrows(ForyJsonException.class, () -> json.toJson(new ConflictingIndex()));
+    ForyJsonException conflict =
+        expectThrows(ForyJsonException.class, () -> json.toJson(new ConflictingIndex()));
+    assertTrue(
+        conflict.getMessage().contains("property value on " + ConflictingIndex.class.getName()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new SetterOnlyIndex()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new WriteIgnoredIndex()));
     assertThrows(
         ForyJsonException.class, () -> json.fromJson("{\"input\":1}", CreatorOnlyIndex.class));
+    ForyJsonException error =
+        expectThrows(
+            ForyJsonException.class, () -> json.fromJson("{\"id\":1}", NegativeCreatorIndex.class));
+    assertTrue(
+        error.getMessage().contains("property id on " + NegativeCreatorIndex.class.getName()));
   }
 
   @Test
@@ -307,6 +317,19 @@ public class JsonPropertyOrderTest extends ForyJsonTestModels {
     @JsonCreator
     public static CreatorOnlyIndex create(@JsonProperty(value = "input", index = 0) int id) {
       return new CreatorOnlyIndex(id);
+    }
+  }
+
+  public static final class NegativeCreatorIndex {
+    public final int id;
+
+    private NegativeCreatorIndex(int id) {
+      this.id = id;
+    }
+
+    @JsonCreator
+    public static NegativeCreatorIndex create(@JsonProperty(value = "id", index = -2) int id) {
+      return new NegativeCreatorIndex(id);
     }
   }
 

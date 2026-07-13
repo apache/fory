@@ -333,9 +333,9 @@ Supported inclusion values are:
 - `NON_NULL`: omit null.
 
 `index` controls relative serialization order. Indexed properties are written in ascending index
-order before unindexed properties. Indexes start at zero, may contain gaps, and must be unique among
-writable properties. `-1` means unspecified; lower values are invalid. An index on a setter-only,
-creator-only, or write-ignored property is invalid.
+order before unindexed properties. Indexes must be non-negative, may contain gaps, and must be
+unique among writable properties. `-1` means unspecified; lower values are invalid. An index on a
+setter-only, creator-only, or write-ignored property is invalid.
 
 Inclusion affects writing only. Identical repeated declarations are allowed; conflicting explicit
 names, indexes, or non-default policies fail. Two properties cannot normalize to the same JSON
