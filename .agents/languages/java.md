@@ -59,6 +59,15 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   names before those name-level checks. Checks that require `Class<?>`,
   including `checkClassForDeserialization`, remain after loading; do not replace
   them with new string-only registration or security checks.
+- Treat exact `registeredClasses` hits as trusted for both ID and name registrations. An exact
+  checked name-cache hit is trusted too. After both exact lookups miss, reader-side class-name
+  resolution must not scan class-keyed state, use inverse registration, or compare
+  `Class.getName()` to infer another accepted name. Writer-side inverse lookup from an already owned
+  local `Class<?>` to its registered ID or name is valid and must not be copied into reader-side
+  miss handling. The only reader-side local-name exception is an unregistered Serializable layer
+  in the already selected ObjectStream root hierarchy; a registered layer must still match its
+  exact published name. Inverse registration may only prevent that local fallback; it must not turn
+  a missed input name into an accepted class.
 - Do not use `instanceof` in Java hot paths, including per-value, per-field, per-element,
   read/write/copy, resolver, serializer, codec, and buffer paths. Choose concrete
   implementations during cold setup or code generation, cache final/static-final shape decisions,

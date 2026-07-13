@@ -204,7 +204,6 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void register(Class<?> type) {
-    checkRegisterAllowed(type);
     while (containsUserTypeId(xtypeIdGenerator)) {
       xtypeIdGenerator++;
     }
@@ -271,6 +270,7 @@ public class XtypeResolver extends TypeResolver {
         !typeName.isEmpty() && !typeName.contains("."),
         "Type name %s must be non-empty and must not contain `.` when namespace is provided",
         typeName);
+    checkRegisterNameAllowed(qualifiedName(namespace, typeName));
     TypeInfo typeInfo = classInfoMap.get(type);
     Serializer<?> serializer = null;
     if (typeInfo != null) {
@@ -390,6 +390,7 @@ public class XtypeResolver extends TypeResolver {
         !typeName.isEmpty() && !typeName.contains("."),
         "Type name %s must be non-empty and must not contain `.` when namespace is provided",
         typeName);
+    checkRegisterNameAllowed(qualifiedName(namespace, typeName));
     TypeInfo typeInfo = classInfoMap.get(type);
     if (typeInfo != null && typeInfo.typeName != null) {
       String prevNamespace = typeInfo.decodeNamespace();
@@ -438,6 +439,7 @@ public class XtypeResolver extends TypeResolver {
         !typeName.isEmpty() && !typeName.contains("."),
         "Type name %s must be non-empty and must not contain `.` when namespace is provided",
         typeName);
+    checkRegisterNameAllowed(qualifiedName(namespace, typeName));
     TypeInfo typeInfo = classInfoMap.get(type);
     if (typeInfo != null && typeInfo.typeName != null) {
       String prevNamespace = typeInfo.decodeNamespace();
@@ -465,7 +467,6 @@ public class XtypeResolver extends TypeResolver {
    */
   @Internal
   public void registerForyType(Class<?> type, Serializer serializer, int typeId) {
-    checkRegisterAllowed(type);
     Preconditions.checkArgument(typeId < MAX_TYPE_ID, "Too big type id %s", typeId);
     register(
         type,
@@ -570,7 +571,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void registerInternalSerializer(Class<?> type, Serializer<?> serializer) {
-    checkRegisterAllowed(type);
+    checkRegisterAllowed();
     Class<?> unwrapped = TypeUtils.unwrap(type);
     if (unwrapped == char.class
         || unwrapped == void.class
@@ -1379,6 +1380,21 @@ public class XtypeResolver extends TypeResolver {
     }
     compositeClassNameBytes2TypeInfo.put(typeNameBytes, typeInfo);
     return typeInfo;
+  }
+
+  @Override
+  boolean hasCachedTypeInfo(String className, boolean prefix) {
+    for (Map.Entry<TypeNameBytes, TypeInfo> entry : compositeClassNameBytes2TypeInfo.iterable()) {
+      TypeInfo typeInfo = entry.getValue();
+      if (typeInfo.namespace == null || typeInfo.typeName == null) {
+        continue;
+      }
+      String cachedName = qualifiedName(typeInfo.decodeNamespace(), typeInfo.decodeTypeName());
+      if (prefix ? cachedName.startsWith(className) : cachedName.equals(className)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override

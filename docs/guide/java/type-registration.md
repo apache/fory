@@ -53,7 +53,8 @@ untrusted class token or proxy descriptor. There is no automatic allowance for c
 functional interfaces.
 
 For input array descriptors, Fory can derive up to six dimensions from an accepted component
-class. Arrays with more dimensions must be registered as the exact array class.
+class. Arrays with more dimensions require an exact full-array registration or an explicitly
+registered serializer for that exact array class.
 
 Internal type IDs 0-32 are reserved for built-in xlang types. Java native built-ins start at
 `Types.NONE + 1`, and user IDs are encoded as `(user_id << 8) | internal_type_id`.
@@ -69,8 +70,7 @@ prefix:
 fory.register(Foo.class, "demo.Foo");
 ```
 
-The registered name is the only name accepted for that type during deserialization. Fory does not
-also accept the Java class name as an implicit alias.
+Registering a custom name does not by itself add the Java class name as another accepted alias.
 
 If there are no duplicate names for types, use a name without a namespace prefix to reduce
 serialized size.

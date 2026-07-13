@@ -279,9 +279,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       ClassResolver classResolver = (ClassResolver) typeResolver;
       TreeMap<Integer, ObjectInputValidation> callbacks = new TreeMap<>(Collections.reverseOrder());
       for (int i = 0; i < numClasses; i++) {
-        // Matching layers are accepted by the registered root object type; requiring each
-        // serializable superclass to be registered would make normal ObjectStream hierarchy reads
-        // unusable. Sender-only layers are checked below before their data is skipped.
+        // Matching local layers are bounded to the selected root's Serializable hierarchy;
+        // sender-only names still pass the normal checks in readClassInternal.
         Class<?> currentClass = classResolver.readClassInternal(readContext, type);
 
         // Find the matching local slot for sender's class

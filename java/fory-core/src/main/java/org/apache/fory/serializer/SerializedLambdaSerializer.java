@@ -200,7 +200,10 @@ public class SerializedLambdaSerializer extends Serializer {
     String binaryClassName = className.replace('/', '.');
     if (checkClass) {
       // Deserialization owns an input class name; copy owns an already materialized local lambda.
-      return typeResolver.loadClass(binaryClassName);
+      Class<?> cls = typeResolver.loadClass(binaryClassName);
+      // JDK SerializedLambda readResolve invokes restoration code on the capturing class.
+      typeResolver.checkClassForDeserialization(cls);
+      return cls;
     }
     try {
       return Class.forName(binaryClassName, false, typeResolver.getClassLoader());

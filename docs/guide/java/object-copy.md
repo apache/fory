@@ -364,8 +364,9 @@ Fix it by either:
 
 ### Registration Errors
 
-If your Fory instance uses `requireClassRegistration(true)`, make sure the copied concrete types are
-registered before calling `copy(...)`.
+If Fory cannot select a copy serializer while class registration is required, register the runtime
+type that starts that serializer path. Nested local classes reconstructed by serializer-specific
+copy logic do not necessarily require separate registration.
 
 ## Related Topics
 

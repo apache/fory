@@ -116,7 +116,9 @@ public class ClassLoaderObjectInputStream extends ObjectInputStream {
   private Class<?> loadCheckedClass(String className)
       throws ClassNotFoundException, InvalidClassException {
     try {
-      return typeResolver.loadClass(className);
+      Class<?> cls = typeResolver.loadClass(className);
+      typeResolver.checkClassForDeserialization(cls);
+      return cls;
     } catch (RuntimeException e) {
       if (e.getCause() instanceof ClassNotFoundException) {
         throw (ClassNotFoundException) e.getCause();

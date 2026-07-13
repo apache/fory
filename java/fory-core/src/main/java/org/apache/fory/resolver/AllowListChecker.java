@@ -77,6 +77,14 @@ public class AllowListChecker implements TypeChecker {
   public void setCheckLevel(CheckLevel checkLevel) {
     try {
       lock.writeLock().lock();
+      if (this.checkLevel == CheckLevel.DISABLE && checkLevel != CheckLevel.DISABLE) {
+        for (String className : disallowList) {
+          checkCanDisallow(className);
+        }
+        for (String prefix : disallowListPrefix) {
+          checkCanDisallow(prefix + "*");
+        }
+      }
       this.checkLevel = checkLevel;
       clearCheckerCache();
     } finally {
@@ -95,16 +103,34 @@ public class AllowListChecker implements TypeChecker {
   }
 
   private boolean check(String className) {
+    if (checkLevel == CheckLevel.DISABLE) {
+      return true;
+    }
+    boolean disallowed = containsPrefix(disallowList, disallowListPrefix, className);
+    boolean allowed = containsPrefix(allowList, allowListPrefix, className);
+    if (className.startsWith("[")) {
+      int dimensions = 0;
+      while (dimensions < className.length() && className.charAt(dimensions) == '[') {
+        dimensions++;
+      }
+      if (dimensions < className.length()
+          && className.charAt(dimensions) == 'L'
+          && className.endsWith(";")) {
+        String componentName = className.substring(dimensions + 1, className.length() - 1);
+        disallowed |= containsPrefix(disallowList, disallowListPrefix, componentName);
+        allowed |= containsPrefix(allowList, allowListPrefix, componentName);
+      }
+    }
     switch (checkLevel) {
       case DISABLE:
         return true;
       case WARN:
-        if (containsPrefix(disallowList, disallowListPrefix, className)) {
+        if (disallowed) {
           throw new InsecureException(
               String.format(
                   "Class %s is forbidden for serialization or deserialization.", className));
         }
-        if (!containsPrefix(allowList, allowListPrefix, className)) {
+        if (!allowed) {
           LOG.warnOnce(
               "Class {} not in allow list, please check whether objects of this class "
                   + "are allowed for serialization or deserialization.",
@@ -112,12 +138,12 @@ public class AllowListChecker implements TypeChecker {
         }
         return true;
       case STRICT:
-        if (containsPrefix(disallowList, disallowListPrefix, className)) {
+        if (disallowed) {
           throw new InsecureException(
               String.format(
                   "Class %s is forbidden for serialization or deserialization.", className));
         }
-        if (!containsPrefix(allowList, allowListPrefix, className)) {
+        if (!allowed) {
           throw new InsecureException(
               String.format(
                   "Class %s isn't in the allow list for serialization or deserialization. If this "
@@ -230,6 +256,34 @@ public class AllowListChecker implements TypeChecker {
   void addListener(TypeResolver resolver) {
     try {
       lock.writeLock().lock();
+      if ((!disallowList.isEmpty() || !disallowListPrefix.isEmpty())
+          && resolver.isRegistrationFinished()) {
+        throw new IllegalStateException(
+            "A checker with disallow entries cannot be installed after registration.");
+      }
+      if (checkLevel != CheckLevel.DISABLE) {
+        for (String className : disallowList) {
+          if (resolver.hasCachedTypeInfo(className, false)) {
+            throw new InsecureException(
+                String.format("Class %s is forbidden for registration.", className));
+          }
+        }
+        for (String prefix : disallowListPrefix) {
+          if (resolver.hasCachedTypeInfo(prefix, true)) {
+            throw new InsecureException(
+                String.format("Class prefix %s is forbidden for registration.", prefix));
+          }
+        }
+        for (Map.Entry<Class<?>, TypeInfo> entry : resolver.classInfoMap.iterable()) {
+          Class<?> type = entry.getKey();
+          Class<?> componentType = TypeUtils.getComponentIfArray(type);
+          if (containsPrefix(disallowList, disallowListPrefix, type.getName())
+              || containsPrefix(disallowList, disallowListPrefix, componentType.getName())) {
+            throw new InsecureException(
+                String.format("Class %s is forbidden for registration.", type.getName()));
+          }
+        }
+      }
       listeners.put(resolver, true);
     } finally {
       lock.writeLock().unlock();
@@ -253,6 +307,10 @@ public class AllowListChecker implements TypeChecker {
     for (TypeResolver resolver : listeners.keySet()) {
       if (resolver.isRegistrationFinished()) {
         throw new IllegalStateException("Classes cannot be disallowed after registration.");
+      }
+      if (resolver.hasCachedTypeInfo(className, prefix)) {
+        throw new IllegalStateException(
+            String.format("Class %s already has cached type information.", className));
       }
       for (Map.Entry<Class<?>, TypeInfo> entry : resolver.classInfoMap.iterable()) {
         Class<?> type = entry.getKey();

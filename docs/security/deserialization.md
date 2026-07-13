@@ -396,24 +396,30 @@ Metadata readers should:
   loading through the existing `TypeResolver.loadClass` owner. Do not bypass
   that owner with direct class loading from TypeDef or TypeMeta names. A rejected
   input name must not cause class loading. Preserve registration, dynamic-loading,
-  and unknown-type semantics while moving this decision before loading.
+  and unknown-type semantics while moving this decision before loading. Checks
+  that require a materialized `Class<?>` remain after loading; do not replace
+  them with string-only approximations.
 - Pass a complete input array descriptor to `TypeChecker`. Input may derive up
   to six array dimensions from an accepted component class. Higher-dimensional
-  arrays require exact registration so input cannot make the JVM derive an
-  unbounded family of array classes.
+  arrays require an exact trusted full-array registration or checked name-cache
+  entry so input cannot make the JVM derive an unbounded family of array classes.
 - Reset or release metadata state at the correct root-operation boundary.
 
 A class-resolution cache reachable from untrusted deserialization may publish
 an entry only from explicit trusted configuration or after the active class
 policy has accepted the resolved class. A cache hit therefore represents an
 already trusted and validated `Class<?>` and should use that cached class
-without repeating class loading or policy checks. Only a cache miss performs
-the applicable class-policy checks and publishes the accepted result. Cache
-entries created for a context-specific result, such as a data-only unknown
-class placeholder, remain limited to contexts where that result is permitted.
-Registered IDs, registered names, and unregistered Java class names are
-separate input identities. A custom registered name must not implicitly accept
-the corresponding `Class.getName()`, or the reverse.
+without repeating class loading or name-level `TypeChecker` work. Only a cache
+miss performs those name-level checks and publishes the accepted result.
+Checks that require the materialized `Class<?>` remain owned by their existing
+caller. Cache entries created for a context-specific result, such as a
+data-only unknown class placeholder, remain limited to contexts where that
+result is permitted.
+Exact registered-name-table hits are trusted for both ID and name registrations,
+and exact checked name-cache hits are trusted. After both exact lookups miss, a
+reader must not infer another accepted name from inverse registration,
+class-keyed state, or `Class.getName()`. A custom registration does not by
+itself publish the Java class name as an additional alias.
 
 Remote metadata that can create persistent read state must be bounded before
 that state is retained. The check is resource control only: it must not change

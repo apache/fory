@@ -251,6 +251,15 @@ public abstract class TypeResolver {
     }
   }
 
+  protected final void checkRegisterNameAllowed(String registeredName) {
+    TypeChecker checker = extRegistry.typeChecker;
+    if (checker instanceof AllowListChecker
+        && ((AllowListChecker) checker).isDisallowed(registeredName)) {
+      throw new InsecureException(
+          String.format("Class name %s is forbidden for registration.", registeredName));
+    }
+  }
+
   /**
    * Registers a class with an auto-assigned user ID.
    *
@@ -306,13 +315,6 @@ public abstract class TypeResolver {
     Preconditions.checkNotNull(runtimeType, "runtimeType");
     Preconditions.checkNotNull(canonicalType, "canonicalType");
     checkRegisterAllowed(runtimeType);
-    if (runtimeType != canonicalType) {
-      checkRegisterAllowed(canonicalType);
-    }
-    Preconditions.checkArgument(
-        isRegistered(canonicalType),
-        "Canonical type must be registered before registering a runtime type alias: "
-            + canonicalType.getName());
     if (runtimeType == canonicalType) {
       return;
     }
@@ -1458,6 +1460,8 @@ public abstract class TypeResolver {
 
   final Class<?> loadClass(
       String className, boolean isEnum, int arrayDims, boolean deserializeUnknownClass) {
+    // Exact registeredClasses hits are trusted for both ID and name registrations; after a miss,
+    // never reverse-map class-keyed state to infer another accepted name.
     Class<?> cls = extRegistry.registeredClasses.get(className);
     if (cls != null) {
       return cls;
@@ -1521,6 +1525,8 @@ public abstract class TypeResolver {
   protected boolean isCachedClassName(String className) {
     return false;
   }
+
+  abstract boolean hasCachedTypeInfo(String className, boolean prefix);
 
   private static String arrayComponentName(String className) {
     int dimensions = TypeUtils.getArrayDimensions(className);
@@ -2312,11 +2318,12 @@ public abstract class TypeResolver {
   }
 
   public void setTypeChecker(TypeChecker typeChecker) {
-    sharedRegistry.clearCheckerCache();
-    extRegistry.typeChecker = typeChecker == null ? DEFAULT_TYPE_CHECKER : typeChecker;
-    if (extRegistry.typeChecker instanceof AllowListChecker) {
-      ((AllowListChecker) extRegistry.typeChecker).addListener(this);
+    TypeChecker newChecker = typeChecker == null ? DEFAULT_TYPE_CHECKER : typeChecker;
+    if (newChecker instanceof AllowListChecker) {
+      ((AllowListChecker) newChecker).addListener(this);
     }
+    sharedRegistry.clearCheckerCache();
+    extRegistry.typeChecker = newChecker;
   }
 
   final boolean checkType(String className) {

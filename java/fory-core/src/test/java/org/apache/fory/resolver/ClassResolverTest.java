@@ -78,10 +78,12 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.longlongpkg.C1;
 import org.apache.fory.resolver.longlongpkg.C2;
 import org.apache.fory.resolver.longlongpkg.C3;
+import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.Shareable;
+import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
@@ -425,8 +427,6 @@ public class ClassResolverTest extends ForyTestBase {
     ClassResolver resolver = (ClassResolver) reader.getTypeResolver();
 
     Assert.assertThrows(
-        InsecureException.class, () -> resolver.getTypeDef(ProcessBuilder.class, true));
-    Assert.assertThrows(
         InsecureException.class, () -> resolver.loadClassForMeta(className, false, -1));
     assertEquals(classLoader.loadCount, 0);
   }
@@ -454,27 +454,6 @@ public class ClassResolverTest extends ForyTestBase {
 
     Assert.assertThrows(InsecureException.class, () -> reader.deserialize(bytes));
     assertEquals(cache.size, cacheSize);
-  }
-
-  @Test
-  public void testRuntimeAliasRequiresRegistration() {
-    Fory fory =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(false)
-            .withCompatible(false)
-            .build();
-    ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
-    resolver.getTypeDef(Foo.class, true);
-
-    Assert.assertThrows(
-        IllegalArgumentException.class,
-        () -> resolver.registerRuntimeTypeAlias(Bar.class, Foo.class));
-    Assert.assertFalse(resolver.isRegistered(Bar.class));
-
-    resolver.register(Foo.class);
-    resolver.registerRuntimeTypeAlias(Bar.class, Foo.class);
-    assertTrue(resolver.isRegistered(Bar.class));
   }
 
   @Test
@@ -521,6 +500,29 @@ public class ClassResolverTest extends ForyTestBase {
         nestedArray.toTypeToken(resolver, TypeRef.of(BeanB[][][][][][][].class)).getRawType(),
         BeanB[][][][][][][].class);
 
+    Fory arraySerializerFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    Class<?> sevenDimensionalArray = Foo[][][][][][][].class;
+    arraySerializerFory.registerSerializer(
+        sevenDimensionalArray,
+        ArraySerializers.newObjectArraySerializer(
+            arraySerializerFory.getTypeResolver(), sevenDimensionalArray));
+    assertSame(
+        arraySerializerFory.getTypeResolver().loadClass(sevenDimensionalArray.getName()),
+        sevenDimensionalArray);
+    Class<?> sevenDimensionalEnumArray = TestNeedToWriteReferenceClass[][][][][][][].class;
+    arraySerializerFory.registerSerializer(
+        sevenDimensionalEnumArray,
+        ArraySerializers.newObjectArraySerializer(
+            arraySerializerFory.getTypeResolver(), sevenDimensionalEnumArray));
+    assertSame(
+        arraySerializerFory.getTypeResolver().loadClass(sevenDimensionalEnumArray.getName()),
+        sevenDimensionalEnumArray);
+
     Fory serializerFory =
         Fory.builder()
             .withXlang(false)
@@ -533,6 +535,20 @@ public class ClassResolverTest extends ForyTestBase {
     assertNull(serializerResolver.getRegisteredClassId(Foo.class));
     assertSame(
         serializerResolver.loadClass("[[[[[[L" + Foo.class.getName() + ";"), Foo[][][][][][].class);
+
+    Fory namedFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    namedFory.register(Foo.class, "alias", "Foo");
+    FieldTypes.ArrayFieldType namedArray =
+        new FieldTypes.ArrayFieldType(
+            Types.ARRAY, true, true, new FieldTypes.ObjectFieldType(Types.STRUCT, true, true), 1);
+    assertSame(
+        namedArray.toTypeToken(namedFory.getTypeResolver(), TypeRef.of(Foo[].class)).getRawType(),
+        Foo[].class);
 
     Fory unknownFory =
         Fory.builder()
@@ -548,6 +564,18 @@ public class ClassResolverTest extends ForyTestBase {
     assertEquals(TypeUtils.getArrayDimensions(unknownArray), 6);
     Assert.assertThrows(
         InsecureException.class, () -> unknownResolver.loadClass(unknownDescriptor));
+
+    FieldTypes.ArrayFieldType nestedUnknownEnum =
+        new FieldTypes.ArrayFieldType(
+            Types.ARRAY,
+            true,
+            true,
+            new FieldTypes.ArrayFieldType(
+                Types.ARRAY, true, true, new FieldTypes.EnumFieldType(true, Types.ENUM, -1), 2),
+            3);
+    Class<?> unknownEnumArray = nestedUnknownEnum.toTypeToken(unknownResolver, null).getRawType();
+    assertEquals(TypeUtils.getArrayDimensions(unknownEnumArray), 5);
+    assertSame(TypeUtils.getArrayComponent(unknownEnumArray), UnknownClass.UnknownEnum.class);
   }
 
   @Test
@@ -574,6 +602,18 @@ public class ClassResolverTest extends ForyTestBase {
     assertEquals(checkedName.get(), descriptor);
     assertEquals(classLoader.loadCount, 0);
 
+    FieldTypes.ArrayFieldType rejectedFieldArray =
+        new FieldTypes.ArrayFieldType(
+            Types.ARRAY, true, true, new FieldTypes.ObjectFieldType(Types.STRUCT, true, true), 7);
+    checkedName.set(null);
+    Assert.assertThrows(
+        InsecureException.class,
+        () ->
+            rejectedFieldArray.toTypeToken(
+                fory.getTypeResolver(), TypeRef.of(BeanB[][][][][][][].class)));
+    assertEquals(checkedName.get(), descriptor);
+    assertEquals(classLoader.loadCount, 0);
+
     String acceptedDescriptor = "[[[[[[L" + BeanB.class.getName() + ";";
     AtomicReference<String> acceptedName = new AtomicReference<>();
     Fory acceptedFory =
@@ -587,7 +627,13 @@ public class ClassResolverTest extends ForyTestBase {
                   return className.equals(acceptedDescriptor);
                 })
             .build();
-    Class<?> acceptedArray = acceptedFory.getTypeResolver().loadClass(acceptedDescriptor);
+    FieldTypes.ArrayFieldType acceptedFieldArray =
+        new FieldTypes.ArrayFieldType(
+            Types.ARRAY, true, true, new FieldTypes.ObjectFieldType(Types.STRUCT, true, true), 6);
+    Class<?> acceptedArray =
+        acceptedFieldArray
+            .toTypeToken(acceptedFory.getTypeResolver(), TypeRef.of(BeanB[][][][][][].class))
+            .getRawType();
     assertSame(acceptedArray, BeanB[][][][][][].class);
     acceptedFory.getTypeResolver().checkClassForDeserialization(acceptedArray);
     assertEquals(acceptedName.get(), acceptedDescriptor);
@@ -625,9 +671,6 @@ public class ClassResolverTest extends ForyTestBase {
     Assert.assertThrows(
         InsecureException.class,
         () -> resolver.registerSerializer(ProcessBuilder.class, serializer));
-    Assert.assertThrows(
-        InsecureException.class,
-        () -> resolver.registerInternalSerializer(ProcessBuilder.class, serializer));
     if (resolver instanceof ClassResolver) {
       Assert.assertThrows(
           InsecureException.class,
@@ -894,7 +937,7 @@ public class ClassResolverTest extends ForyTestBase {
   }
 
   @Test
-  public void testCustomNameIsExclusive() {
+  public void testCustomNameDoesNotAddJavaName() {
     Fory fory =
         Fory.builder()
             .withXlang(false)
@@ -911,6 +954,98 @@ public class ClassResolverTest extends ForyTestBase {
         InsecureException.class, () -> resolver.loadClassForMeta(Foo.class.getName(), false, -1));
     Assert.assertThrows(
         InsecureException.class, () -> resolver.loadClass("[L" + Foo.class.getName() + ";"));
+  }
+
+  @Test
+  public void testIdRegistrationAcceptsJavaName() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
+    resolver.register(Foo.class, 101);
+
+    assertSame(resolver.loadClass(Foo.class.getName()), Foo.class);
+    assertSame(resolver.loadClassForMeta(Foo.class.getName(), false, -1), Foo.class);
+  }
+
+  @Test
+  public void testObjectStreamLocalClassNames() {
+    Fory rawWriter =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    MemoryBuffer childName = writeClassName(rawWriter, SerializableChild.class);
+
+    Fory namedReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    namedReader.register(SerializableChild.class, "alias", "Child");
+    Assert.assertThrows(
+        InsecureException.class,
+        () -> readClassName(namedReader, childName, SerializableChild.class));
+
+    Fory namedWriter =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    namedWriter.register(SerializableChild.class, "alias", "Child");
+    assertSame(
+        readClassName(
+            namedReader,
+            writeClassName(namedWriter, SerializableChild.class),
+            SerializableChild.class),
+        SerializableChild.class);
+
+    Fory idReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    idReader.register(SerializableChild.class, 102);
+    assertSame(
+        readClassName(
+            idReader, writeClassName(rawWriter, SerializableChild.class), SerializableChild.class),
+        SerializableChild.class);
+
+    Fory parentReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    assertSame(
+        readClassName(
+            parentReader,
+            writeClassName(rawWriter, SerializableParent.class),
+            SerializableChild.class),
+        SerializableParent.class);
+
+    Fory checkedParentReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withTypeChecker(
+                (resolver, className) -> !className.equals(SerializableParent.class.getName()))
+            .withCompatible(false)
+            .build();
+    Assert.assertThrows(
+        InsecureException.class,
+        () ->
+            readClassName(
+                checkedParentReader,
+                writeClassName(rawWriter, SerializableParent.class),
+                SerializableChild.class));
   }
 
   @Test
@@ -1117,6 +1252,10 @@ public class ClassResolverTest extends ForyTestBase {
   static class Foo {
     int f1;
   }
+
+  static class SerializableParent implements Serializable {}
+
+  static class SerializableChild extends SerializableParent {}
 
   @Data
   static class IdLimitExt {
@@ -1349,6 +1488,17 @@ public class ClassResolverTest extends ForyTestBase {
     ClassResolver resolver = (ClassResolver) registeredReader.getTypeResolver();
     assertNull(resolver.getRegisteredClassId(Foo.class));
     assertEquals(registeredReader.deserialize(bytes), foo);
+
+    Fory checkedReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withTypeChecker((typeResolver, className) -> !className.equals(Foo.class.getName()))
+            .withCompatible(false)
+            .build();
+    checkedReader.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    assertSame(checkedReader.getTypeResolver().loadClass(Foo.class.getName()), Foo.class);
+    assertEquals(checkedReader.deserialize(bytes), foo);
   }
 
   @Test
@@ -1875,6 +2025,28 @@ public class ClassResolverTest extends ForyTestBase {
       LoggerFactory.setLogLevel(previousLogLevel);
     }
     return out.toString(StandardCharsets.UTF_8.name());
+  }
+
+  private static MemoryBuffer writeClassName(Fory fory, Class<?> type) {
+    MemoryBuffer buffer = MemoryUtils.buffer(64);
+    WriteContext writeContext = fory.getWriteContext();
+    writeContext.prepare(buffer, null);
+    try {
+      ((ClassResolver) fory.getTypeResolver()).writeClassInternal(writeContext, type);
+    } finally {
+      writeContext.reset();
+    }
+    return buffer;
+  }
+
+  private static Class<?> readClassName(Fory fory, MemoryBuffer buffer, Class<?> localType) {
+    ReadContext readContext = fory.getReadContext();
+    readContext.prepare(buffer, null, false);
+    try {
+      return ((ClassResolver) fory.getTypeResolver()).readClassInternal(readContext, localType);
+    } finally {
+      readContext.reset();
+    }
   }
 
   private static void resolveMissingXtype(Fory fory) {

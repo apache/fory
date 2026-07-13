@@ -30,6 +30,7 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.serializer.ObjectStreamSerializer;
@@ -94,6 +95,64 @@ public class NativeTypeDefEncoderTest {
     Assert.assertThrows(
         DeserializationException.class,
         () -> FieldTypes.FieldType.read(buffer, fory.getTypeResolver()));
+  }
+
+  @Test
+  public void testExpectedRootName() {
+    Fory rawWriter =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    byte[] rawTypeDef =
+        TypeDef.buildTypeDef(rawWriter.getTypeResolver(), ExpectedType.class).getEncoded();
+
+    Fory namedReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    namedReader.register(ExpectedType.class, "alias", "ExpectedType");
+    Assert.assertThrows(
+        InsecureException.class,
+        () ->
+            TypeDef.readTypeDef(
+                (ClassResolver) namedReader.getTypeResolver(), rawTypeDef, ExpectedType.class));
+
+    Fory namedWriter =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    namedWriter.register(ExpectedType.class, "alias", "ExpectedType");
+    byte[] namedTypeDef =
+        TypeDef.buildTypeDef(namedWriter.getTypeResolver(), ExpectedType.class).getEncoded();
+    Assert.assertEquals(
+        TypeDef.readTypeDef(
+                (ClassResolver) namedReader.getTypeResolver(), namedTypeDef, ExpectedType.class)
+            .getClassSpec()
+            .type,
+        ExpectedType.class);
+
+    Fory localReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    Assert.assertEquals(
+        TypeDef.readTypeDef(
+                (ClassResolver) localReader.getTypeResolver(), rawTypeDef, ExpectedType.class)
+            .getClassSpec()
+            .type,
+        ExpectedType.class);
+  }
+
+  public static class ExpectedType implements Serializable {
+    private int value;
   }
 
   @Data

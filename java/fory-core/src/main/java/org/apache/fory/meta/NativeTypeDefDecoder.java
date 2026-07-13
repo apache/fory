@@ -164,23 +164,24 @@ class NativeTypeDefDecoder {
         String typeName = readTypeName(typeDefBuf);
         ClassSpec decodedSpec = Encoders.decodePkgAndClass(pkg, typeName);
         className = decodedSpec.entireClassName;
-        if (i == numClasses - 1
+        if (resolver.isRegisteredByName(className)) {
+          Class<?> cls = resolver.getRegisteredClass(className);
+          className = cls.getName();
+          int typeId = i == numClasses - 1 ? rootTypeId : resolver.getTypeIdForTypeDef(cls);
+          classSpec = new ClassSpec(cls, typeId, resolver.getUserTypeIdForTypeDef(cls));
+          currentClass = cls;
+        } else if (i == numClasses - 1
             && expectedRootClass != null
+            && resolver.getRegisteredName(expectedRootClass) == null
             && className.equals(expectedRootClass.getName())) {
-          // ObjectStream has already resolved this exact hierarchy layer from its registered local
-          // root or through the checked loader. Other metadata class names still use normal checks.
+          // ObjectStream may use an unregistered local Serializable layer, but a registered class
+          // must match its exact published name instead of falling back to Class.getName().
           classSpec =
               new ClassSpec(
                   expectedRootClass,
                   rootTypeId,
                   resolver.getUserTypeIdForTypeDef(expectedRootClass));
           currentClass = expectedRootClass;
-        } else if (resolver.isRegisteredByName(className)) {
-          Class<?> cls = resolver.getRegisteredClass(className);
-          className = cls.getName();
-          int typeId = i == numClasses - 1 ? rootTypeId : resolver.getTypeIdForTypeDef(cls);
-          classSpec = new ClassSpec(cls, typeId, resolver.getUserTypeIdForTypeDef(cls));
-          currentClass = cls;
         } else {
           // `loadClassForMeta` keeps name-level checks before Class.forName; do not replace this
           // metadata path with direct class loading from the remote TypeDef name.

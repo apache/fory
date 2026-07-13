@@ -1119,19 +1119,21 @@ public class FieldTypes {
       Class<?> componentRawType = componentTypeRef.getRawType();
       int totalDimensions =
           dimensions + (componentRawType.isArray() ? getArrayDimensions(componentRawType) : 0);
-      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(componentRawType))) {
-        if (totalDimensions > 6) {
-          throw new InsecureException("Input-derived arrays cannot exceed 6 dimensions.");
-        }
-        return TypeRef.of(
-            UnknownClass.getUnknowClass(
-                componentType instanceof EnumFieldType, totalDimensions, true),
-            typeExtMeta(typeId, nullable, trackingRef, declared));
-      } else {
-        return TypeRef.of(
-            classResolver.loadClass(arrayDescriptor(componentRawType, dimensions)),
-            typeExtMeta(typeId, nullable, trackingRef, declared));
+      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(componentRawType))
+          && totalDimensions > 6) {
+        throw new InsecureException("Input-derived arrays cannot exceed 6 dimensions.");
       }
+      Class<?> arrayType;
+      if (classResolver.getConfig().requireClassRegistration() && totalDimensions <= 6) {
+        // The component was already resolved from exact trusted state. Derive only the bounded
+        // array shape here so a custom registration name is not replaced with Class.getName().
+        arrayType = Array.newInstance(componentRawType, new int[dimensions]).getClass();
+      } else {
+        // Non-strict reads must pass the complete descriptor to TypeChecker. Strict arrays above
+        // six dimensions reach loadClass only so an exact array registration can satisfy them.
+        arrayType = classResolver.loadClass(arrayDescriptor(componentRawType, dimensions));
+      }
+      return TypeRef.of(arrayType, typeExtMeta(typeId, nullable, trackingRef, declared));
     }
 
     private static String arrayDescriptor(Class<?> componentType, int dimensions) {
