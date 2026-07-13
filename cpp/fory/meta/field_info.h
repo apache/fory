@@ -598,14 +598,15 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
     using ForyStructType = type;                                               \
     template <typename T>                                                      \
     using ForyFieldType = ::fory::meta::RemoveCVRefT<                          \
-        decltype(std::declval<const T &>().FORY_PROPERTY_ARG_GETTER(arg)())>;  \
+        decltype(::std::declval<const T &>().FORY_PROPERTY_ARG_GETTER(         \
+            arg)())>;                                                          \
     template <typename Obj> static decltype(auto) get(Obj &&obj) {             \
-      return std::forward<Obj>(obj).FORY_PROPERTY_ARG_GETTER(arg)();           \
+      return ::std::forward<Obj>(obj).FORY_PROPERTY_ARG_GETTER(arg)();         \
     }                                                                          \
     template <typename Obj, typename Value>                                    \
     static void set(Obj &&obj, Value &&value) {                                \
-      (void)std::forward<Obj>(obj).FORY_PROPERTY_ARG_SETTER(arg)(              \
-          std::forward<Value>(value));                                         \
+      (void)::std::forward<Obj>(obj).FORY_PROPERTY_ARG_SETTER(arg)(            \
+          ::std::forward<Value>(value));                                       \
     }                                                                          \
   };
 #define FORY_FIELD_INFO_PROPERTY_DECL_FUNC(type, arg)                          \
@@ -632,26 +633,26 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
   (FORY_BASE_NAMES_ARG_IMPL(arg), FORY_PP_EMPTY())
 #define FORY_BASE_NAMES_ARG_IMPL(arg)                                          \
   decltype(::fory::meta::fory_field_info(                                      \
-      std::declval<FORY_BASE_TYPE(arg)>()))::Names,
+      ::std::declval<FORY_BASE_TYPE(arg)>()))::Names,
 
 #define FORY_BASE_PTRS_ARG(arg)                                                \
   FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
   (FORY_BASE_PTRS_ARG_IMPL(arg), FORY_PP_EMPTY())
 #define FORY_BASE_PTRS_ARG_IMPL(arg)                                           \
-  fory::meta::details::wrap_tuple(decltype(::fory::meta::fory_field_info(      \
-      std::declval<FORY_BASE_TYPE(arg)>()))::ptrs()),
+  ::fory::meta::details::wrap_tuple(decltype(::fory::meta::fory_field_info(    \
+      ::std::declval<FORY_BASE_TYPE(arg)>()))::ptrs()),
 
 #define FORY_BASE_CONFIG_ARG(arg)                                              \
   FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
   (FORY_BASE_CONFIG_ARG_IMPL(arg), FORY_PP_EMPTY())
 #define FORY_BASE_CONFIG_ARG_IMPL(arg)                                         \
-  fory::meta::details::wrap_tuple(decltype(::fory::meta::fory_field_info(      \
-      std::declval<FORY_BASE_TYPE(arg)>()))::entries),
+  ::fory::meta::details::wrap_tuple(decltype(::fory::meta::fory_field_info(    \
+      ::std::declval<FORY_BASE_TYPE(arg)>()))::entries),
 
 #define FORY_BASE_SIZE_ADD(arg)                                                \
   FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
   (+decltype(::fory::meta::fory_field_info(                                    \
-       std::declval<FORY_BASE_TYPE(arg)>()))::Size,                            \
+       ::std::declval<FORY_BASE_TYPE(arg)>()))::Size,                          \
    FORY_PP_EMPTY())
 
 #define FORY_FIELD_SIZE_ADD(arg)                                               \
@@ -664,50 +665,50 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
 // issues; keep evaluation inside `ptrs` function instead of field for older
 // toolsets.
 #define FORY_STRUCT_FIELDS(type, unique_id, ...)                               \
-  static_assert(std::is_class_v<type>, "it must be a class type");             \
+  static_assert(::std::is_class_v<type>, "it must be a class type");           \
   struct FORY_PP_CONCAT(ForyFieldInfoDescriptor_, unique_id) {                 \
-    static inline constexpr size_t BaseSize =                                  \
+    static inline constexpr ::std::size_t BaseSize =                           \
         0 FORY_PP_FOREACH(FORY_BASE_SIZE_ADD, __VA_ARGS__);                    \
-    static inline constexpr size_t FieldSize =                                 \
+    static inline constexpr ::std::size_t FieldSize =                          \
         0 FORY_PP_FOREACH(FORY_FIELD_SIZE_ADD, __VA_ARGS__);                   \
-    static inline constexpr size_t Size = BaseSize + FieldSize;                \
-    static inline constexpr std::string_view Name = #type;                     \
+    static inline constexpr ::std::size_t Size = BaseSize + FieldSize;         \
+    static inline constexpr ::std::string_view Name = #type;                   \
     static inline constexpr auto BaseNames =                                   \
-        fory::meta::concat_arrays_from_tuple(                                  \
-            std::tuple{FORY_PP_FOREACH(FORY_BASE_NAMES_ARG, __VA_ARGS__)});    \
-    static inline constexpr std::array<std::string_view, FieldSize>            \
+        ::fory::meta::concat_arrays_from_tuple(                                \
+            ::std::tuple{FORY_PP_FOREACH(FORY_BASE_NAMES_ARG, __VA_ARGS__)});  \
+    static inline constexpr ::std::array<::std::string_view, FieldSize>        \
         FieldNames = {                                                         \
             FORY_PP_FOREACH(FORY_FIELD_INFO_NAMES_FUNC, __VA_ARGS__)};         \
     static inline constexpr auto BaseConfigEntries =                           \
-        fory::meta::concat_tuples_from_tuple(                                  \
-            std::tuple{FORY_PP_FOREACH(FORY_BASE_CONFIG_ARG, __VA_ARGS__)});   \
-    static inline constexpr auto FieldConfigEntries =                          \
-        std::tuple{FORY_PP_FOREACH(FORY_FIELD_INFO_CONFIG_FUNC, __VA_ARGS__)}; \
+        ::fory::meta::concat_tuples_from_tuple(                                \
+            ::std::tuple{FORY_PP_FOREACH(FORY_BASE_CONFIG_ARG, __VA_ARGS__)}); \
+    static inline constexpr auto FieldConfigEntries = ::std::tuple{            \
+        FORY_PP_FOREACH(FORY_FIELD_INFO_CONFIG_FUNC, __VA_ARGS__)};            \
     static constexpr bool has_config = true;                                   \
     static inline constexpr auto entries =                                     \
-        fory::meta::concat_tuples(BaseConfigEntries, FieldConfigEntries);      \
-    using FieldConfigEntriesType = std::decay_t<decltype(entries)>;            \
-    [[maybe_unused]] static constexpr size_t field_count =                     \
-        std::tuple_size_v<FieldConfigEntriesType>;                             \
+        ::fory::meta::concat_tuples(BaseConfigEntries, FieldConfigEntries);    \
+    using FieldConfigEntriesType = ::std::decay_t<decltype(entries)>;          \
+    [[maybe_unused]] static constexpr ::std::size_t field_count =              \
+        ::std::tuple_size_v<FieldConfigEntriesType>;                           \
     static inline constexpr auto Names =                                       \
-        fory::meta::concat_arrays(BaseNames, FieldNames);                      \
-    using BasePtrsType = decltype(fory::meta::concat_tuples_from_tuple(        \
-        std::tuple{FORY_PP_FOREACH(FORY_BASE_PTRS_ARG, __VA_ARGS__)}));        \
+        ::fory::meta::concat_arrays(BaseNames, FieldNames);                    \
+    using BasePtrsType = decltype(::fory::meta::concat_tuples_from_tuple(      \
+        ::std::tuple{FORY_PP_FOREACH(FORY_BASE_PTRS_ARG, __VA_ARGS__)}));      \
     static constexpr BasePtrsType base_ptrs() {                                \
-      return fory::meta::concat_tuples_from_tuple(                             \
-          std::tuple{FORY_PP_FOREACH(FORY_BASE_PTRS_ARG, __VA_ARGS__)});       \
+      return ::fory::meta::concat_tuples_from_tuple(                           \
+          ::std::tuple{FORY_PP_FOREACH(FORY_BASE_PTRS_ARG, __VA_ARGS__)});     \
     }                                                                          \
     FORY_PP_FOREACH_1(FORY_FIELD_INFO_PROPERTY_DECL_FUNC, type, __VA_ARGS__)   \
-    using FieldPtrsType = decltype(std::tuple{                                 \
+    using FieldPtrsType = decltype(::std::tuple{                               \
         FORY_PP_FOREACH_1(FORY_FIELD_INFO_PTRS_FUNC, type, __VA_ARGS__)});     \
     static constexpr FieldPtrsType FieldPtrs() {                               \
-      return std::tuple{                                                       \
+      return ::std::tuple{                                                     \
           FORY_PP_FOREACH_1(FORY_FIELD_INFO_PTRS_FUNC, type, __VA_ARGS__)};    \
     }                                                                          \
-    using PtrsType = decltype(fory::meta::concat_tuples(                       \
-        std::declval<BasePtrsType>(), std::declval<FieldPtrsType>()));         \
+    using PtrsType = decltype(::fory::meta::concat_tuples(                     \
+        ::std::declval<BasePtrsType>(), ::std::declval<FieldPtrsType>()));     \
     static constexpr PtrsType ptrs() {                                         \
-      return fory::meta::concat_tuples(base_ptrs(), FieldPtrs());              \
+      return ::fory::meta::concat_tuples(base_ptrs(), FieldPtrs());            \
     }                                                                          \
     static const PtrsType &ptrs_ref() {                                        \
       static const PtrsType value = ptrs();                                    \
@@ -729,21 +730,21 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
       const ::fory::meta::Identity<type> &) noexcept {                         \
     return FORY_PP_CONCAT(ForyFieldInfoDescriptor_, unique_id){};              \
   }                                                                            \
-  [[maybe_unused]] inline static constexpr std::true_type fory_struct_marker(  \
-      const ::fory::meta::Identity<type> &) noexcept {                         \
+  [[maybe_unused]] inline static constexpr ::std::true_type                    \
+  fory_struct_marker(const ::fory::meta::Identity<type> &) noexcept {          \
     return {};                                                                 \
   }
 
 #define FORY_STRUCT_DETAIL_EMPTY(type, unique_id)                              \
-  static_assert(std::is_class_v<type>, "it must be a class type");             \
+  static_assert(::std::is_class_v<type>, "it must be a class type");           \
   struct FORY_PP_CONCAT(ForyFieldInfoDescriptor_, unique_id) {                 \
-    static inline constexpr size_t Size = 0;                                   \
-    static inline constexpr std::string_view Name = #type;                     \
-    static inline constexpr std::array<std::string_view, Size> Names = {};     \
+    static inline constexpr ::std::size_t Size = 0;                            \
+    static inline constexpr ::std::string_view Name = #type;                   \
+    static inline constexpr ::std::array<::std::string_view, Size> Names = {}; \
     [[maybe_unused]] static constexpr bool has_config = false;                 \
-    [[maybe_unused]] static inline constexpr auto entries = std::tuple{};      \
-    [[maybe_unused]] static constexpr size_t field_count = 0;                  \
-    using PtrsType = decltype(std::tuple{});                                   \
+    [[maybe_unused]] static inline constexpr auto entries = ::std::tuple{};    \
+    [[maybe_unused]] static constexpr ::std::size_t field_count = 0;           \
+    using PtrsType = decltype(::std::tuple{});                                 \
     static constexpr PtrsType ptrs() { return {}; }                            \
     static const PtrsType &ptrs_ref() {                                        \
       static const PtrsType value = ptrs();                                    \
@@ -765,8 +766,8 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
       const ::fory::meta::Identity<type> &) noexcept {                         \
     return FORY_PP_CONCAT(ForyFieldInfoDescriptor_, unique_id){};              \
   }                                                                            \
-  [[maybe_unused]] inline static constexpr std::true_type fory_struct_marker(  \
-      const ::fory::meta::Identity<type> &) noexcept {                         \
+  [[maybe_unused]] inline static constexpr ::std::true_type                    \
+  fory_struct_marker(const ::fory::meta::Identity<type> &) noexcept {          \
     return {};                                                                 \
   }
 
@@ -788,4 +789,4 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
 
 #define FORY_STRUCT_EVOLVING(type, value)                                      \
   template <>                                                                  \
-  struct fory::meta::StructEvolving<type> : std::bool_constant<value> {}
+  struct fory::meta::StructEvolving<type> : ::std::bool_constant<value> {}

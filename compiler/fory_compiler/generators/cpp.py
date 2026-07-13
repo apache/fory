@@ -48,25 +48,25 @@ class CppGenerator(BaseGenerator):
     # Mapping from FDL primitive types to C++ types
     PRIMITIVE_MAP = {
         PrimitiveKind.BOOL: "bool",
-        PrimitiveKind.INT8: "int8_t",
-        PrimitiveKind.INT16: "int16_t",
-        PrimitiveKind.INT32: "int32_t",
-        PrimitiveKind.INT64: "int64_t",
-        PrimitiveKind.UINT8: "uint8_t",
-        PrimitiveKind.UINT16: "uint16_t",
-        PrimitiveKind.UINT32: "uint32_t",
-        PrimitiveKind.UINT64: "uint64_t",
-        PrimitiveKind.FLOAT16: "fory::float16_t",
-        PrimitiveKind.BFLOAT16: "fory::bfloat16_t",
+        PrimitiveKind.INT8: "::int8_t",
+        PrimitiveKind.INT16: "::int16_t",
+        PrimitiveKind.INT32: "::int32_t",
+        PrimitiveKind.INT64: "::int64_t",
+        PrimitiveKind.UINT8: "::uint8_t",
+        PrimitiveKind.UINT16: "::uint16_t",
+        PrimitiveKind.UINT32: "::uint32_t",
+        PrimitiveKind.UINT64: "::uint64_t",
+        PrimitiveKind.FLOAT16: "::fory::float16_t",
+        PrimitiveKind.BFLOAT16: "::fory::bfloat16_t",
         PrimitiveKind.FLOAT32: "float",
         PrimitiveKind.FLOAT64: "double",
-        PrimitiveKind.STRING: "std::string",
-        PrimitiveKind.BYTES: "std::vector<uint8_t>",
-        PrimitiveKind.DECIMAL: "fory::serialization::Decimal",
-        PrimitiveKind.DATE: "fory::serialization::Date",
-        PrimitiveKind.TIMESTAMP: "fory::serialization::Timestamp",
-        PrimitiveKind.DURATION: "fory::serialization::Duration",
-        PrimitiveKind.ANY: "std::any",
+        PrimitiveKind.STRING: "::std::string",
+        PrimitiveKind.BYTES: "::std::vector<::uint8_t>",
+        PrimitiveKind.DECIMAL: "::fory::serialization::Decimal",
+        PrimitiveKind.DATE: "::fory::serialization::Date",
+        PrimitiveKind.TIMESTAMP: "::fory::serialization::Timestamp",
+        PrimitiveKind.DURATION: "::fory::serialization::Duration",
+        PrimitiveKind.ANY: "::std::any",
     }
     NUMERIC_PRIMITIVES = {
         PrimitiveKind.BOOL,
@@ -82,6 +82,227 @@ class CppGenerator(BaseGenerator):
         PrimitiveKind.BFLOAT16,
         PrimitiveKind.FLOAT32,
         PrimitiveKind.FLOAT64,
+    }
+    # Taken from kKeywordList defined in helpers.cc in protobuf C++ compiler.
+    CPP_KEYWORDS = {
+        "NULL",
+        "alignas",
+        "alignof",
+        "and",
+        "and_eq",
+        "asm",
+        "assert",
+        "auto",
+        "bitand",
+        "bitor",
+        "bool",
+        "break",
+        "case",
+        "catch",
+        "char",
+        "class",
+        "compl",
+        "const",
+        "constexpr",
+        "const_cast",
+        "continue",
+        "decltype",
+        "default",
+        "delete",
+        "do",
+        "double",
+        "dynamic_cast",
+        "else",
+        "enum",
+        "explicit",
+        "export",
+        "extern",
+        "false",
+        "float",
+        "for",
+        "friend",
+        "goto",
+        "if",
+        "inline",
+        "int",
+        "long",
+        "mutable",
+        "namespace",
+        "new",
+        "noexcept",
+        "not",
+        "not_eq",
+        "nullptr",
+        "operator",
+        "or",
+        "or_eq",
+        "private",
+        "protected",
+        "public",
+        "register",
+        "reinterpret_cast",
+        "return",
+        "short",
+        "signed",
+        "sizeof",
+        "static",
+        "static_assert",
+        "static_cast",
+        "struct",
+        "switch",
+        "template",
+        "this",
+        "thread_local",
+        "throw",
+        "true",
+        "try",
+        "typedef",
+        "typeid",
+        "typename",
+        "union",
+        "unsigned",
+        "using",
+        "virtual",
+        "void",
+        "volatile",
+        "wchar_t",
+        "while",
+        "xor",
+        "xor_eq",
+        "char8_t",
+        "char16_t",
+        "char32_t",
+        "concept",
+        "consteval",
+        "constinit",
+        "co_await",
+        "co_return",
+        "co_yield",
+        "requires",
+    }
+    # In C++, a non-static data member and a member function cannot have the same unqualified name within the same class.
+    MESSAGE_HELPER_RESERVED_NAMES = {"to_bytes", "from_bytes"}
+    UNION_HELPER_RESERVED_NAMES = {
+        "visit",
+        "to_bytes",
+        "from_bytes",
+        "fory_case_id",
+        "value_",
+    }
+    TOP_LEVEL_TYPE_RESERVED_NAMES = {"detail", "std", "fory", "register_types"}
+    # Generated headers expose these names or namespaces directly at global
+    # scope. They cannot be used for a no-package type or the first package
+    # segment, both of which are emitted at global scope.
+    GLOBAL_NAMESPACE_RESERVED_NAMES = {
+        "abs",
+        "acos",
+        "acosh",
+        "asin",
+        "asinh",
+        "atan",
+        "atan2",
+        "atanh",
+        "cbrt",
+        "ceil",
+        "copysign",
+        "cos",
+        "cosh",
+        "erf",
+        "erfc",
+        "exp",
+        "exp2",
+        "expm1",
+        "fabs",
+        "fdim",
+        "floor",
+        "fma",
+        "fmax",
+        "fmin",
+        "fmod",
+        "fory",
+        "frexp",
+        "hypot",
+        "ilogb",
+        "int8_t",
+        "int16_t",
+        "int32_t",
+        "int64_t",
+        "int_fast8_t",
+        "int_fast16_t",
+        "int_fast32_t",
+        "int_fast64_t",
+        "int_least8_t",
+        "int_least16_t",
+        "int_least32_t",
+        "int_least64_t",
+        "intmax_t",
+        "intptr_t",
+        "ldexp",
+        "lgamma",
+        "log",
+        "log10",
+        "log1p",
+        "log2",
+        "logb",
+        "max_align_t",
+        "modf",
+        "nearbyint",
+        "nextafter",
+        "nexttoward",
+        "nullptr_t",
+        "pow",
+        "ptrdiff_t",
+        "remainder",
+        "remquo",
+        "rint",
+        "round",
+        "scalbln",
+        "scalbn",
+        "sin",
+        "sinh",
+        "size_t",
+        "sqrt",
+        "std",
+        "tan",
+        "tanh",
+        "tgamma",
+        "trunc",
+        "uint8_t",
+        "uint16_t",
+        "uint32_t",
+        "uint64_t",
+        "uint_fast8_t",
+        "uint_fast16_t",
+        "uint_fast32_t",
+        "uint_fast64_t",
+        "uint_least8_t",
+        "uint_least16_t",
+        "uint_least32_t",
+        "uint_least64_t",
+        "uintmax_t",
+        "uintptr_t",
+    }
+    # Fory object-like macros. They expand in every identifier position,
+    # so IDL identifiers should not collide with them.
+    FORY_OBJECT_LIKE_MACRO_NAMES = {
+        "FORY_ALWAYS_INLINE",
+        "FORY_BYTE_SWAP32",
+        "FORY_BYTE_SWAP64",
+        "FORY_FILE_LINE",
+        "FORY_HAS_IMMINTRIN",
+        "FORY_HAS_NEON",
+        "FORY_HAS_RISCV_VECTOR",
+        "FORY_HAS_SSE2",
+        "FORY_LITTLE_ENDIAN",
+        "FORY_NOINLINE",
+        "FORY_NORETURN",
+        "FORY_PP_IS_BASE_TAG_PROBE_FORY_BASE_TAG",
+        "FORY_PP_IS_EMPTY_CASE_0001",
+        "FORY_PP_IS_PROPERTY_TAG_PROBE_FORY_PROPERTY_TAG",
+        "FORY_PP_NOT_0",
+        "FORY_PP_NOT_1",
+        "FORY_PRETTY_FUNCTION",
+        "FORY_TARGET_AVX2_ATTR",
     }
 
     def generate(self) -> List[GeneratedFile]:
@@ -101,9 +322,7 @@ class CppGenerator(BaseGenerator):
 
     def get_namespace(self) -> str:
         """Get the C++ namespace."""
-        if self.package:
-            return self.package.replace(".", "::")
-        return ""
+        return self._namespace_for_package(self.package)
 
     def get_namespaced_type_name(
         self,
@@ -116,6 +335,449 @@ class CppGenerator(BaseGenerator):
         if namespace:
             return f"{namespace}::{qualified_name}"
         return qualified_name
+
+    def sanitize_cpp_identifier(self, normalized: str) -> str:
+        """Escape an already-normalized C++ identifier."""
+        if (
+            normalized in self.CPP_KEYWORDS
+            or normalized in self.FORY_OBJECT_LIKE_MACRO_NAMES
+        ):
+            return f"{normalized}_"
+        return normalized
+
+    def get_type_identifier(self, type_def: object) -> str:
+        """Get the sanitized identifier for a type declaration or reference."""
+        self._ensure_name_caches(self._schema_for_node(type_def))
+        return self._type_identifier_cache[self._cache_key(type_def)]
+
+    def get_field_identifier(self, message: Message, field: Field) -> str:
+        """Get the sanitized accessor base for a field in one message."""
+        self._ensure_name_caches(self._schema_for_node(message))
+        return self._field_identifier_cache[self._cache_key(message)][
+            self._cache_key(field)
+        ]
+
+    def get_field_member_name(self, message: Message, field: Field) -> str:
+        """Get the sanitized private member name for a field in one message."""
+        self._ensure_name_caches(self._schema_for_node(message))
+        return self._field_member_identifier_cache[self._cache_key(message)][
+            self._cache_key(field)
+        ]
+
+    def get_enum_value_identifier(self, enum: Enum, value: object) -> str:
+        """Get the sanitized value name for an enum constant."""
+        self._ensure_name_caches(self._schema_for_node(enum))
+        return self._enum_value_identifier_cache[self._cache_key(enum)][
+            self._cache_key(value)
+        ]
+
+    def get_union_case_identifier(self, union: Union, field: Field) -> str:
+        """Get the sanitized method base for one union case."""
+        self._ensure_name_caches(self._schema_for_node(union))
+        return self._union_case_identifier_cache[self._cache_key(union)][
+            self._cache_key(field)
+        ]
+
+    def get_union_case_enum_value_identifier(self, union: Union, field: Field) -> str:
+        """Get the sanitized enum value name for one union case."""
+        self._ensure_name_caches(self._schema_for_node(union))
+        return self._union_case_enum_value_identifier_cache[self._cache_key(union)][
+            self._cache_key(field)
+        ]
+
+    def _cache_key(self, node: object) -> Tuple[object, ...]:
+        """Get a cache key for an IR node."""
+        # Use the location as the key due to its stability.
+        location = node.location
+        return (
+            type(node).__name__,
+            str(Path(location.file).resolve()),
+            location.line,
+            location.column,
+        )
+
+    def _namespace_for_package(self, package: Optional[str]) -> str:
+        """Get the sanitized C++ namespace for a package."""
+        if not package:
+            return ""
+        if not hasattr(self, "_namespace_identifier_cache"):
+            self._namespace_identifier_cache: Dict[Optional[str], str] = {}
+        if package not in self._namespace_identifier_cache:
+            parts = []
+            for index, part in enumerate(package.split(".")):
+                identifier = self.sanitize_cpp_identifier(part)
+                if index == 0 and identifier in self.GLOBAL_NAMESPACE_RESERVED_NAMES:
+                    identifier = f"{identifier}_"
+                parts.append(identifier)
+            self._namespace_identifier_cache[package] = "::".join(parts)
+        return self._namespace_identifier_cache[package]
+
+    def _package_for_source_file(self, file_path: str) -> Optional[str]:
+        """Get the package name that a file declares."""
+        source_key = str(Path(file_path).resolve())
+        schema_source_key = str(Path(self.schema.source_file).resolve())
+        # `file_path` is the self schema file.
+        if source_key == schema_source_key:
+            return self.schema.package
+        # `file_path` corresponds to an imported schema file.
+        return self.schema.source_packages[source_key]
+
+    def _schema_for_node(self, node: object) -> Schema:
+        """Get the schema an IR node belongs to."""
+        file_path = node.location.file
+        source_key = str(Path(file_path).resolve())
+        # `node` belongs to the self schema.
+        if source_key == str(Path(self.schema.source_file).resolve()):
+            return self.schema
+        # `node` belongs to an imported schema.
+        if not hasattr(self, "_source_schema_cache"):
+            self._source_schema_cache: Dict[str, Schema] = {}
+        if source_key in self._source_schema_cache:
+            return self._source_schema_cache[source_key]
+        enums = [
+            enum
+            for enum in self.schema.enums
+            if str(Path(enum.location.file).resolve()) == source_key
+        ]
+        unions = [
+            union
+            for union in self.schema.unions
+            if str(Path(union.location.file).resolve()) == source_key
+        ]
+        messages = [
+            message
+            for message in self.schema.messages
+            if str(Path(message.location.file).resolve()) == source_key
+        ]
+        if enums or unions or messages:
+            schema = Schema(
+                package=self._package_for_source_file(file_path),
+                enums=enums,
+                messages=messages,
+                unions=unions,
+                source_file=file_path,
+                source_format=self.schema.source_format,
+            )
+            self._source_schema_cache[source_key] = schema
+            return schema
+        raise ValueError(
+            f"C++ generator cannot find source schema for "
+            f"{type(node).__name__} {getattr(node, 'name', '<unnamed>')!r}"
+        )
+
+    def _local_top_level_types(
+        self, schema: Schema
+    ) -> Tuple[List[Enum], List[Union], List[Message]]:
+        """Get top-level types that are declared directly in the schema file."""
+        schema_source_key = str(Path(schema.source_file).resolve())
+        enums = [
+            enum
+            for enum in schema.enums
+            if str(Path(enum.location.file).resolve()) == schema_source_key
+        ]
+        unions = [
+            union
+            for union in schema.unions
+            if str(Path(union.location.file).resolve()) == schema_source_key
+        ]
+        messages = [
+            message
+            for message in schema.messages
+            if str(Path(message.location.file).resolve()) == schema_source_key
+        ]
+        return enums, unions, messages
+
+    def _resolve_message_path(self, schema: Schema, parts: List[str]) -> List[Message]:
+        """Resolve a dotted message path to the concrete message lineage."""
+        lineage: List[Message] = []
+        scope = self._local_top_level_types(schema)[2]
+        for part in parts:
+            match = next((message for message in scope if message.name == part), None)
+            if match is None:
+                return []
+            lineage.append(match)
+            scope = match.nested_messages
+        return lineage
+
+    def _allocate_scoped_identifier(
+        self,
+        normalized_name: str,
+        used_names: Dict[str, str],
+        scope: str,
+        source_name: str,
+        reserved_names: Optional[Set[str]] = None,
+    ) -> str:
+        """Allocate one sanitized identifier inside a single generated scope. Throw error on collision"""
+        escaped = self.sanitize_cpp_identifier(normalized_name)
+        if reserved_names and escaped in reserved_names:
+            escaped = f"{escaped}_"
+        previous_source = used_names.get(escaped)
+        if previous_source is not None:
+            raise ValueError(
+                f"C++ name collision in {scope}: {previous_source!r} and "
+                f"{source_name!r} both map to C++ identifier {escaped!r}"
+            )
+        used_names[escaped] = source_name
+        return escaped
+
+    def _allocate_scoped_type_identifiers(
+        self,
+        type_defs: List[object],
+        scope: str,
+        reserved_names: Optional[Set[str]] = None,
+    ) -> None:
+        """Allocate unique sanitized identifiers for type declarations in the scope and cache the results."""
+        used_names: Dict[str, str] = {}
+        scope_reserved_names = reserved_names or set()
+        for type_def in type_defs:
+            type_reserved_names = scope_reserved_names
+            if isinstance(type_def, Message):
+                type_reserved_names = (
+                    scope_reserved_names | self.MESSAGE_HELPER_RESERVED_NAMES
+                )
+            elif isinstance(type_def, Union):
+                type_reserved_names = (
+                    scope_reserved_names | self.UNION_HELPER_RESERVED_NAMES
+                )
+            self._type_identifier_cache[self._cache_key(type_def)] = (
+                self._allocate_scoped_identifier(
+                    type_def.name,  # Unlike Rust, there is no universal naming conventions (e.g. PascalCase or snake_case) for C++. So pass as it is.
+                    used_names,
+                    scope,
+                    type_def.name,
+                    type_reserved_names,
+                )
+            )
+
+    def _visible_type_identifiers(
+        self, schema: Schema, parent_stack: List[Message]
+    ) -> Set[str]:
+        """Get generated type identifiers visible from the current class scope."""
+        enums, unions, messages = self._local_top_level_types(schema)
+        type_defs: List[object] = list(enums) + list(unions) + list(messages)
+        for message in parent_stack:
+            type_defs.extend(message.nested_enums)
+            type_defs.extend(message.nested_unions)
+            type_defs.extend(message.nested_messages)
+        names: Set[str] = set()
+        for type_def in type_defs:
+            names.add(self._type_identifier_cache[self._cache_key(type_def)])
+        return names
+
+    def _field_generated_member_names(
+        self,
+        field: Field,
+        parent_stack: List[Message],
+        field_name: str,
+        member_name: str,
+    ) -> Set[str]:
+        """Get every class member name generated for one field."""
+        # C++ fields generate a public accessor family plus a private data member
+        # in the same class scope, so all derived names must be checked together.
+        # Rust has no equivalent helper because it emits the field identifier as a
+        # struct field directly instead of generating per-field accessors.
+        names = {field_name, member_name}
+        weak_ref = self.get_field_weak_ref(field)
+        is_message = self.is_message_type(field.field_type, parent_stack)
+        if is_message and (field.ref or weak_ref):
+            names.update(
+                {
+                    f"has_{field_name}",
+                    f"mutable_{field_name}",
+                    f"set_{field_name}",
+                    f"clear_{field_name}",
+                }
+            )
+            return names
+        if is_message:
+            names.update(
+                {
+                    f"has_{field_name}",
+                    f"mutable_{field_name}",
+                    f"clear_{field_name}",
+                }
+            )
+            return names
+        if field.optional:
+            names.add(f"has_{field_name}")
+        is_union = self.is_union_type(field.field_type, parent_stack)
+        is_collection = isinstance(field.field_type, (ListType, ArrayType, MapType))
+        is_bytes = self.is_bytes_field(field)
+        is_string = self.is_string_field(field)
+        if is_string or is_collection or is_bytes or is_union:
+            names.add(f"mutable_{field_name}")
+        if not (is_collection or is_bytes or is_union):
+            names.add(f"set_{field_name}")
+        if field.optional:
+            names.add(f"clear_{field_name}")
+        return names
+
+    def _allocate_scoped_message_identifiers(
+        self, message: Message, parent_stack: Optional[List[Message]] = None
+    ) -> None:
+        """Allocate all scoped names that belong to the message."""
+        lineage = (parent_stack or []) + [message]
+        nested_types: List[object] = (
+            list(message.nested_enums)
+            + list(message.nested_unions)
+            + list(message.nested_messages)
+        )
+        self._allocate_scoped_type_identifiers(
+            nested_types,
+            f"message {message.name} types",
+        )
+        fixed_members = (
+            self.MESSAGE_HELPER_RESERVED_NAMES
+            | self._visible_type_identifiers(self._schema_for_node(message), lineage)
+        )
+        used_members: Dict[str, str] = {
+            name: f"generated helper {name!r}" for name in fixed_members
+        }
+        field_names: Dict[Tuple[object, ...], str] = {}
+        field_members: Dict[Tuple[object, ...], str] = {}
+        for field in message.fields:
+            field_name = self.sanitize_cpp_identifier(self.to_snake_case(field.name))
+            while (
+                self._field_generated_member_names(
+                    field, lineage, field_name, f"{field_name}_"
+                )
+                & fixed_members
+            ):
+                field_name = f"{field_name}_"  # Keep adding a `_` suffix until this is a fresh identifier.
+            member_name = f"{field_name}_"
+            generated_names = self._field_generated_member_names(
+                field, lineage, field_name, member_name
+            )
+            for generated_name in generated_names:
+                previous_source = used_members.get(generated_name)
+                if previous_source is not None:
+                    raise ValueError(
+                        f"C++ name collision in message {message.name} members: "
+                        f"{previous_source!r} and {field.name!r} both map to "
+                        f"C++ identifier {generated_name!r}"
+                    )
+            for generated_name in generated_names:
+                used_members[generated_name] = field.name
+            field_names[self._cache_key(field)] = field_name
+            field_members[self._cache_key(field)] = member_name
+        self._field_identifier_cache[self._cache_key(message)] = field_names
+        self._field_member_identifier_cache[self._cache_key(message)] = field_members
+        for nested_enum in message.nested_enums:
+            self._allocate_scoped_enum_identifiers(nested_enum)
+        for nested_union in message.nested_unions:
+            self._allocate_scoped_union_identifiers(nested_union, lineage)
+        for nested_message in message.nested_messages:
+            self._allocate_scoped_message_identifiers(nested_message, lineage)
+
+    def _allocate_scoped_enum_identifiers(self, enum: Enum) -> None:
+        """Allocate all scoped names that belong to the enum."""
+        used_names: Dict[str, str] = {}
+        allocated: Dict[Tuple[object, ...], str] = {}
+        for value in enum.values:
+            allocated[self._cache_key(value)] = self._allocate_scoped_identifier(
+                self.strip_enum_prefix(enum.name, value.name),
+                used_names,
+                f"enum {enum.name}",
+                value.name,
+            )
+        self._enum_value_identifier_cache[self._cache_key(enum)] = allocated
+
+    def _allocate_scoped_union_identifiers(
+        self, union: Union, parent_stack: Optional[List[Message]] = None
+    ) -> None:
+        """Allocate all scoped names that belong to the union."""
+        lineage = parent_stack or []
+        used_case_values: Dict[str, str] = {}
+        case_values: Dict[Tuple[object, ...], str] = {}
+        for field in union.fields:
+            case_values[self._cache_key(field)] = self._allocate_scoped_identifier(
+                self.to_upper_snake_case(field.name),
+                used_case_values,
+                f"union {union.name} case enum",
+                field.name,
+            )
+        self._union_case_enum_value_identifier_cache[self._cache_key(union)] = (
+            case_values
+        )
+        selector_base = self._get_union_selector_base(union)
+        fixed_members = (
+            self.UNION_HELPER_RESERVED_NAMES
+            | {
+                f"{selector_base}_case",
+                f"{selector_base}_case_id",
+            }
+            | self._visible_type_identifiers(self._schema_for_node(union), lineage)
+        )
+        used_members: Dict[str, str] = {
+            name: f"generated helper {name!r}" for name in fixed_members
+        }
+        case_names: Dict[Tuple[object, ...], str] = {}
+        for field in union.fields:
+            case_name = self.sanitize_cpp_identifier(self.to_snake_case(field.name))
+            while {case_name, f"is_{case_name}", f"as_{case_name}"} & fixed_members:
+                case_name = f"{case_name}_"  # Keep adding a `_` suffix until this is a fresh identifier.
+            generated_names = {case_name, f"is_{case_name}", f"as_{case_name}"}
+            for generated_name in generated_names:
+                previous_source = used_members.get(generated_name)
+                if previous_source is not None:
+                    raise ValueError(
+                        f"C++ name collision in union {union.name} members: "
+                        f"{previous_source!r} and {field.name!r} both map to "
+                        f"C++ identifier {generated_name!r}"
+                    )
+            for generated_name in generated_names:
+                used_members[generated_name] = field.name
+            case_names[self._cache_key(field)] = case_name
+        self._union_case_identifier_cache[self._cache_key(union)] = case_names
+
+    def _get_union_selector_base(self, union: Union) -> str:
+        """Get the union-specific case selector base without helper collisions."""
+        selector_base = self.sanitize_cpp_identifier(self.to_snake_case(union.name))
+        selector_names = {f"{selector_base}_case", f"{selector_base}_case_id"}
+        if selector_names & self.UNION_HELPER_RESERVED_NAMES:
+            selector_base = f"{selector_base}_"
+        return selector_base
+
+    def _ensure_name_caches(self, schema: Schema) -> None:
+        """Construct the naming caches once for a schema file."""
+        if not hasattr(self, "_named_schema_ids"):
+            # Init everything.
+            self._named_schema_ids: Set[int] = set()
+            self._type_identifier_cache: Dict[Tuple[object, ...], str] = {}
+            self._field_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._field_member_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._enum_value_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._union_case_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+            self._union_case_enum_value_identifier_cache: Dict[
+                Tuple[object, ...], Dict[Tuple[object, ...], str]
+            ] = {}
+        schema_id = id(schema)
+        if schema_id in self._named_schema_ids:
+            return
+        enums, unions, messages = self._local_top_level_types(schema)
+        top_level_reserved_names = set(self.TOP_LEVEL_TYPE_RESERVED_NAMES)
+        if not schema.package:
+            top_level_reserved_names.update(self.GLOBAL_NAMESPACE_RESERVED_NAMES)
+        self._allocate_scoped_type_identifiers(
+            list(enums) + list(unions) + list(messages),
+            "top-level C++ types",
+            top_level_reserved_names,
+        )
+        for enum in enums:
+            self._allocate_scoped_enum_identifiers(enum)
+        for union in unions:
+            self._allocate_scoped_union_identifiers(union, [])
+        for message in messages:
+            self._allocate_scoped_message_identifiers(message)
+        self._named_schema_ids.add(schema_id)
 
     def is_imported_type(self, type_def: object) -> bool:
         """Return True if a type definition comes from an imported IDL file."""
@@ -160,9 +822,7 @@ class CppGenerator(BaseGenerator):
         return schema
 
     def _namespace_for_schema(self, schema: Schema) -> str:
-        if schema.package:
-            return schema.package.replace(".", "::")
-        return ""
+        return self._namespace_for_package(schema.package)
 
     def _namespace_for_type(self, type_def: object) -> str:
         location = getattr(type_def, "location", None)
@@ -215,17 +875,19 @@ class CppGenerator(BaseGenerator):
 
     def generate_bytes_methods(self, class_name: str, indent: str) -> List[str]:
         lines: List[str] = []
+        namespace = self.get_namespace()
+        detail = f"::{namespace}::detail" if namespace else "::detail"
         lines.append(
-            f"{indent}fory::Result<std::vector<uint8_t>, fory::Error> to_bytes() const {{"
+            f"{indent}::fory::Result<::std::vector<::uint8_t>, ::fory::Error> to_bytes() const {{"
         )
-        lines.append(f"{indent}  return detail::get_fory().serialize(*this);")
+        lines.append(f"{indent}  return {detail}::get_fory().serialize(*this);")
         lines.append(f"{indent}}}")
         lines.append("")
         lines.append(
-            f"{indent}static fory::Result<{class_name}, fory::Error> from_bytes(const std::vector<uint8_t>& data) {{"
+            f"{indent}static ::fory::Result<{class_name}, ::fory::Error> from_bytes(const ::std::vector<::uint8_t>& data) {{"
         )
         lines.append(
-            f"{indent}  return detail::get_fory().deserialize<{class_name}>(data);"
+            f"{indent}  return {detail}::get_fory().deserialize<{class_name}>(data);"
         )
         lines.append(f"{indent}}}")
         return lines
@@ -238,6 +900,7 @@ class CppGenerator(BaseGenerator):
         union_macros: List[str] = []
         evolving_macros: List[str] = []
         definition_items = self.get_definition_order()
+        self._ensure_name_caches(self.schema)
 
         # Collect includes (including from nested types)
         includes.add("<cstdint>")
@@ -248,6 +911,7 @@ class CppGenerator(BaseGenerator):
         includes.add("<utility>")
         includes.add('"fory/serialization/fory.h"')
         if self.schema_has_unions():
+            includes.add("<cstddef>")  # todo: what's this??
             includes.add("<utility>")
             includes.add("<variant>")
             includes.add("<memory>")
@@ -300,7 +964,7 @@ class CppGenerator(BaseGenerator):
         if self.schema.messages:
             lines.append("")
         lines.append("namespace detail {")
-        lines.append("fory::serialization::ThreadSafeFory& get_fory();")
+        lines.append("::fory::serialization::ThreadSafeFory& get_fory();")
         lines.append("} // namespace detail")
         lines.append("")
 
@@ -401,7 +1065,7 @@ class CppGenerator(BaseGenerator):
         for message in self.schema.messages:
             if self.is_imported_type(message):
                 continue
-            lines.append(f"class {message.name};")
+            lines.append(f"class {self.get_type_identifier(message)};")
 
     def get_definition_order(self) -> List:
         """Return top-level unions/messages in dependency order."""
@@ -515,18 +1179,19 @@ class CppGenerator(BaseGenerator):
 
     def get_enum_value_names(self, enum: Enum) -> List[str]:
         """Get enum value names without the enum prefix."""
-        stripped_names = []
+        value_names = []
         for value in enum.values:
-            stripped_names.append(self.strip_enum_prefix(enum.name, value.name))
-        return stripped_names
+            value_names.append(self.get_enum_value_identifier(enum, value))
+        return value_names
 
     def generate_enum_definition(self, enum: Enum, indent: str = "") -> List[str]:
         """Generate a C++ enum class definition."""
         lines = []
-        lines.append(f"{indent}enum class {enum.name} : int32_t {{")
+        type_name = self.get_type_identifier(enum)
+        lines.append(f"{indent}enum class {type_name} : ::int32_t {{")
         for value in enum.values:
-            stripped_name = self.strip_enum_prefix(enum.name, value.name)
-            lines.append(f"{indent}    {stripped_name} = {value.value},")
+            value_name = self.get_enum_value_identifier(enum, value)
+            lines.append(f"{indent}    {value_name} = {value.value},")
         lines.append(f"{indent}}};")
         return lines
 
@@ -537,7 +1202,7 @@ class CppGenerator(BaseGenerator):
     ) -> str:
         """Generate a FORY_ENUM macro line for an enum."""
         value_names = ", ".join(self.get_enum_value_names(enum))
-        qualified_name = self.get_namespaced_type_name(enum.name, parent_stack)
+        qualified_name = f"::{self.get_namespaced_type_name(enum.name, parent_stack)}"
         return f"FORY_ENUM({qualified_name}, {value_names});"
 
     def resolve_named_type(
@@ -613,9 +1278,6 @@ class CppGenerator(BaseGenerator):
         resolved = self.resolve_named_type(field_type.name, parent_stack)
         return isinstance(resolved, Enum)
 
-    def get_field_member_name(self, field: Field) -> str:
-        return f"{self.to_snake_case(field.name)}_"
-
     def get_field_storage_type(
         self, field: Field, parent_stack: Optional[List[Message]]
     ) -> str:
@@ -636,7 +1298,7 @@ class CppGenerator(BaseGenerator):
                 element_weak_ref,
                 parent_stack,
             )
-            return f"std::unique_ptr<{type_name}>"
+            return f"::std::unique_ptr<{type_name}>"
         return self.generate_type(
             field.field_type,
             (
@@ -689,7 +1351,8 @@ class CppGenerator(BaseGenerator):
     def get_field_eq_expression(
         self, field: Field, parent_stack: Optional[List[Message]]
     ) -> str:
-        member_name = self.get_field_member_name(field)
+        message = parent_stack[-1]
+        member_name = self.get_field_member_name(message, field)
         other_member = f"other.{member_name}"
         if self.is_message_type(
             field.field_type, parent_stack
@@ -826,8 +1489,9 @@ class CppGenerator(BaseGenerator):
         self, field: Field, parent_stack: Optional[List[Message]], indent: str
     ) -> List[str]:
         lines: List[str] = []
-        field_name = self.to_snake_case(field.name)
-        member_name = self.get_field_member_name(field)
+        message = parent_stack[-1]
+        field_name = self.get_field_identifier(message, field)
+        member_name = self.get_field_member_name(message, field)
         value_type = self.get_field_value_type(field, parent_stack)
         weak_ref = self.get_field_weak_ref(field)
         is_union = self.is_union_type(field.field_type, parent_stack)
@@ -858,7 +1522,7 @@ class CppGenerator(BaseGenerator):
             lines.append(f"{indent}}}")
             lines.append("")
             lines.append(f"{indent}void set_{field_name}({value_type} value) {{")
-            lines.append(f"{indent}  {member_name} = std::move(value);")
+            lines.append(f"{indent}  {member_name} = ::std::move(value);")
             lines.append(f"{indent}}}")
             lines.append("")
             lines.append(f"{indent}void clear_{field_name}() {{")
@@ -878,7 +1542,7 @@ class CppGenerator(BaseGenerator):
             lines.append(f"{indent}{value_type}* mutable_{field_name}() {{")
             lines.append(f"{indent}  if (!{member_name}) {{")
             lines.append(
-                f"{indent}    {member_name} = std::make_unique<{value_type}>();"
+                f"{indent}    {member_name} = ::std::make_unique<{value_type}>();"
             )
             lines.append(f"{indent}  }}")
             lines.append(f"{indent}  return {member_name}.get();")
@@ -926,16 +1590,16 @@ class CppGenerator(BaseGenerator):
                 )
                 if field.optional:
                     lines.append(
-                        f"{indent}  {member_name}.emplace(std::forward<Arg>(arg), std::forward<Args>(args)...);"
+                        f"{indent}  {member_name}.emplace(::std::forward<Arg>(arg), ::std::forward<Args>(args)...);"
                     )
                 else:
                     lines.append(
-                        f"{indent}  {member_name} = {value_type}(std::forward<Arg>(arg), std::forward<Args>(args)...);"
+                        f"{indent}  {member_name} = {value_type}(::std::forward<Arg>(arg), ::std::forward<Args>(args)...);"
                     )
                 lines.append(f"{indent}}}")
             else:
                 lines.append(f"{indent}void set_{field_name}({value_type} value) {{")
-                lines.append(f"{indent}  {member_name} = std::move(value);")
+                lines.append(f"{indent}  {member_name} = ::std::move(value);")
                 lines.append(f"{indent}}}")
 
         if field.optional:
@@ -957,7 +1621,7 @@ class CppGenerator(BaseGenerator):
     ) -> List[str]:
         """Generate a C++ class definition with nested types."""
         lines: List[str] = []
-        class_name = message.name
+        class_name = self.get_type_identifier(message)
         lineage = parent_stack + [message]
         body_indent = f"{indent}  "
         field_indent = f"{indent}    "
@@ -1030,12 +1694,12 @@ class CppGenerator(BaseGenerator):
             lines.append(f"{body_indent}private:")
             for field in message.fields:
                 field_type = self.get_field_storage_type(field, lineage)
-                member_name = self.get_field_member_name(field)
+                member_name = self.get_field_member_name(message, field)
                 lines.append(f"{field_indent}{field_type} {member_name};")
             lines.append("")
             lines.append(f"{body_indent}public:")
             field_members = ", ".join(
-                self.get_field_macro_entry(f) for f in message.fields
+                self.get_field_macro_entry(message, f) for f in message.fields
             )
             lines.append(
                 f"{body_indent}FORY_STRUCT({struct_type_name}, {field_members});"
@@ -1044,7 +1708,9 @@ class CppGenerator(BaseGenerator):
             lines.append(f"{body_indent}FORY_STRUCT({struct_type_name});")
 
         if not self.get_effective_evolving(message):
-            qualified_name = self.get_namespaced_type_name(message.name, parent_stack)
+            qualified_name = (
+                f"::{self.get_namespaced_type_name(message.name, parent_stack)}"
+            )
             evolving_macros.append(f"FORY_STRUCT_EVOLVING({qualified_name}, false);")
 
         lines.append(f"{indent}}};")
@@ -1059,8 +1725,22 @@ class CppGenerator(BaseGenerator):
     ) -> List[str]:
         """Generate a C++ union class definition."""
         lines: List[str] = []
-        class_name = union.name
+        class_name = self.get_type_identifier(union)
         body_indent = f"{indent}  "
+        selector_base = self._get_union_selector_base(union)
+        macro_guard = class_name.startswith("FORY_")
+        # Unlike object-like macros that expand everywhere, a function-like macro expands only when followed by `(`.
+        # So a union class name can co-exist with a same-named function-like macro.
+        # Union class names appear in constructor and factory declarations,
+        # so temporarily hide a same-named macro while emitting the class.
+        # e.g. IDL is like
+        # union FORY_CHECK {
+        #   string text = 1
+        # }
+        # but Fory already has `#define FORY_CHECK(condition)`.
+        if macro_guard:
+            lines.append(f'{indent}#pragma push_macro("{class_name}")')
+            lines.append(f"{indent}#undef {class_name}")
 
         case_enum = f"{class_name}Case"
         raw_case_types = [
@@ -1076,16 +1756,16 @@ class CppGenerator(BaseGenerator):
             alias if alias is not None else case_type
             for alias, case_type in zip(case_aliases, raw_case_types)
         ]
-        variant_type = f"std::variant<{', '.join(case_types)}>"
+        variant_type = f"::std::variant<{', '.join(case_types)}>"
 
         comment = self.format_type_id_comment(union, f"{indent}//")
         if comment:
             lines.append(comment)
         lines.append(f"{indent}class {class_name} final {{")
         lines.append(f"{body_indent}public:")
-        lines.append(f"{body_indent}  enum class {case_enum} : uint32_t {{")
+        lines.append(f"{body_indent}  enum class {case_enum} : ::uint32_t {{")
         for field in union.fields:
-            case_name = self.to_upper_snake_case(field.name)
+            case_name = self.get_union_case_enum_value_identifier(union, field)
             lines.append(f"{body_indent}    {case_name} = {field.number},")
         lines.append(f"{body_indent}  }};")
         lines.append("")
@@ -1099,84 +1779,90 @@ class CppGenerator(BaseGenerator):
         lines.append(f"{body_indent}  {class_name}() = default;")
         lines.append("")
 
-        for field, case_type in zip(union.fields, case_types):
-            case_name = self.to_snake_case(field.name)
+        for index, (field, case_type) in enumerate(zip(union.fields, case_types)):
+            case_name = self.get_union_case_identifier(union, field)
             lines.append(
                 f"{body_indent}  static {class_name} {case_name}({case_type} v) {{"
             )
+            # We used to generate `std::in_place_type<T>`, but consider this IDL:
+            # union Foo {
+            #   int32 first = 1;
+            #   int32 second = 2;
+            # }
+            # `std::in_place_type<T>` fails when two union cases map to the
+            # same C++ type because `std::variant<T, T>` cannot select a unique T.
+            # The case index always identifies one alternative, so
+            # `std::in_place_index<I>` supports duplicate payload types.
             lines.append(
-                f"{body_indent}    return {class_name}(std::in_place_type<{case_type}>, std::move(v));"
+                f"{body_indent}    return {class_name}(::std::in_place_index<{index}>, ::std::move(v));"
             )
             lines.append(f"{body_indent}  }}")
             lines.append("")
 
         lines.append(
-            f"{body_indent}  {case_enum} {self.to_snake_case(class_name)}_case() const noexcept {{"
+            f"{body_indent}  {case_enum} {selector_base}_case() const noexcept {{"
         )
-        for i, (field, case_type) in enumerate(zip(union.fields, case_types)):
-            case_name = self.to_upper_snake_case(field.name)
-            if i < len(case_types) - 1:
-                lines.append(
-                    f"{body_indent}    if (std::holds_alternative<{case_type}>(value_)) return {case_enum}::{case_name};"
-                )
-            else:
-                lines.append(f"{body_indent}    return {case_enum}::{case_name};")
-        lines.append(f"{body_indent}  }}")
-        lines.append("")
-
-        lines.append(
-            f"{body_indent}  uint32_t {self.to_snake_case(class_name)}_case_id() const noexcept {{"
-        )
-        lines.append(
-            f"{body_indent}    return static_cast<uint32_t>({self.to_snake_case(class_name)}_case());"
-        )
-        lines.append(f"{body_indent}  }}")
-        lines.append("")
-        lines.append(f"{body_indent}  uint32_t fory_case_id() const noexcept {{")
-        lines.append(
-            f"{body_indent}    return {self.to_snake_case(class_name)}_case_id();"
-        )
-        lines.append(f"{body_indent}  }}")
-        lines.append("")
-
-        for field, case_type in zip(union.fields, case_types):
-            case_snake = self.to_snake_case(field.name)
-            lines.append(f"{body_indent}  bool is_{case_snake}() const noexcept {{")
+        lines.append(f"{body_indent}    switch (value_.index()) {{")
+        for index, field in enumerate(union.fields):
+            case_name = self.get_union_case_enum_value_identifier(union, field)
             lines.append(
-                f"{body_indent}    return std::holds_alternative<{case_type}>(value_);"
+                f"{body_indent}      case {index}: return {case_enum}::{case_name};"
             )
+        default_case = self.get_union_case_enum_value_identifier(union, union.fields[0])
+        lines.append(f"{body_indent}      default: return {case_enum}::{default_case};")
+        lines.append(f"{body_indent}    }}")
+        lines.append(f"{body_indent}  }}")
+        lines.append("")
+
+        lines.append(
+            f"{body_indent}  ::uint32_t {selector_base}_case_id() const noexcept {{"
+        )
+        lines.append(
+            f"{body_indent}    return static_cast<::uint32_t>({selector_base}_case());"
+        )
+        lines.append(f"{body_indent}  }}")
+        lines.append("")
+        lines.append(f"{body_indent}  ::uint32_t fory_case_id() const noexcept {{")
+        lines.append(f"{body_indent}    return {selector_base}_case_id();")
+        lines.append(f"{body_indent}  }}")
+        lines.append("")
+
+        for index, (field, case_type) in enumerate(zip(union.fields, case_types)):
+            case_snake = self.get_union_case_identifier(union, field)
+            lines.append(f"{body_indent}  bool is_{case_snake}() const noexcept {{")
+            lines.append(f"{body_indent}    return value_.index() == {index};")
             lines.append(f"{body_indent}  }}")
             lines.append("")
             lines.append(
                 f"{body_indent}  const {case_type}* as_{case_snake}() const noexcept {{"
             )
-            lines.append(f"{body_indent}    return std::get_if<{case_type}>(&value_);")
+            lines.append(f"{body_indent}    return ::std::get_if<{index}>(&value_);")
             lines.append(f"{body_indent}  }}")
             lines.append("")
             lines.append(f"{body_indent}  {case_type}* as_{case_snake}() noexcept {{")
-            lines.append(f"{body_indent}    return std::get_if<{case_type}>(&value_);")
+            lines.append(f"{body_indent}    return ::std::get_if<{index}>(&value_);")
             lines.append(f"{body_indent}  }}")
             lines.append("")
             lines.append(f"{body_indent}  const {case_type}& {case_snake}() const {{")
-            lines.append(f"{body_indent}    return std::get<{case_type}>(value_);")
+            lines.append(f"{body_indent}    return ::std::get<{index}>(value_);")
             lines.append(f"{body_indent}  }}")
             lines.append("")
             lines.append(f"{body_indent}  {case_type}& {case_snake}() {{")
-            lines.append(f"{body_indent}    return std::get<{case_type}>(value_);")
+            lines.append(f"{body_indent}    return ::std::get<{index}>(value_);")
             lines.append(f"{body_indent}  }}")
             lines.append("")
 
         lines.append(f"{body_indent}  template <class Visitor>")
         lines.append(f"{body_indent}  decltype(auto) visit(Visitor&& vis) const {{")
         lines.append(
-            f"{body_indent}    return std::visit(std::forward<Visitor>(vis), value_);"
+            f"{body_indent}    return ::std::visit(::std::forward<Visitor>(vis), value_);"
         )
         lines.append(f"{body_indent}  }}")
         lines.append("")
         lines.append(f"{body_indent}  template <class Visitor>")
         lines.append(f"{body_indent}  decltype(auto) visit(Visitor&& vis) {{")
         lines.append(
-            f"{body_indent}    return std::visit(std::forward<Visitor>(vis), value_);"
+            f"{body_indent}    return ::std::visit(::std::forward<Visitor>(vis), value_);"
         )
         lines.append(f"{body_indent}  }}")
         lines.append("")
@@ -1195,16 +1881,35 @@ class CppGenerator(BaseGenerator):
         lines.append(f"{body_indent}private:")
         lines.append(f"{body_indent}  {variant_type} value_;")
         lines.append("")
-        lines.append(f"{body_indent}  template <class T, class... Args>")
+        lines.append(f"{body_indent}  template <::std::size_t I, class... Args>")
         lines.append(
-            f"{body_indent}  explicit {class_name}(std::in_place_type_t<T> tag, Args&&... args)"
+            f"{body_indent}  explicit {class_name}(::std::in_place_index_t<I> tag, Args&&... args)"
         )
         lines.append(
-            f"{body_indent}      : value_(tag, std::forward<Args>(args)...) {{}}"
+            f"{body_indent}      : value_(tag, ::std::forward<Args>(args)...) {{}}"
         )
         lines.append(f"{indent}}};")
+        if macro_guard:
+            lines.append(f'{indent}#pragma pop_macro("{class_name}")')
 
         return lines
+
+    def _append_union_metadata_macro(
+        self,
+        lines: List[str],
+        union: Union,
+        macro_name: str,
+        macro_lines: List[str],
+    ) -> None:
+        """Append one union metadata macro with an exact same-name guard."""
+        class_name = self.get_type_identifier(union)
+        macro_guard = class_name.startswith("FORY_") and class_name != macro_name
+        if macro_guard:
+            lines.append(f'#pragma push_macro("{class_name}")')
+            lines.append(f"#undef {class_name}")
+        lines.extend(macro_lines)
+        if macro_guard:
+            lines.append(f'#pragma pop_macro("{class_name}")')
 
     def generate_union_macros(
         self,
@@ -1217,28 +1922,39 @@ class CppGenerator(BaseGenerator):
 
         lines: List[str] = []
         if len(union.fields) <= 16:
-            union_type = self.get_namespaced_type_name(union.name, parent_stack)
-            lines.append(f"FORY_UNION({union_type},")
+            union_type = f"::{self.get_namespaced_type_name(union.name, parent_stack)}"
+            macro_lines = [f"FORY_UNION({union_type},"]
             for index, field in enumerate(union.fields):
                 case_type = self.get_union_case_macro_type(
                     field, union_type, parent_stack
                 )
-                case_ctor = self.to_snake_case(field.name)
+                case_ctor = self.get_union_case_identifier(union, field)
                 meta = self.get_union_field_meta(field)
                 suffix = "," if index + 1 < len(union.fields) else ""
-                lines.append(f"  ({case_ctor}, {case_type}, {meta}){suffix}")
-            lines.append(");")
+                macro_lines.append(f"  ({case_ctor}, {case_type}, {meta}){suffix}")
+            macro_lines.append(");")
+            self._append_union_metadata_macro(lines, union, "FORY_UNION", macro_lines)
             return lines
 
-        union_type = self.get_namespaced_type_name(union.name, parent_stack)
+        union_type = f"::{self.get_namespaced_type_name(union.name, parent_stack)}"
         case_ids = ", ".join(str(field.number) for field in union.fields)
-        lines.append(f"FORY_UNION_IDS({union_type}, {case_ids});")
+        self._append_union_metadata_macro(
+            lines,
+            union,
+            "FORY_UNION_IDS",
+            [f"FORY_UNION_IDS({union_type}, {case_ids});"],
+        )
         for field in union.fields:
             case_type = self.get_union_case_macro_type(field, union_type, parent_stack)
-            case_ctor = self.to_snake_case(field.name)
+            case_ctor = self.get_union_case_identifier(union, field)
             meta = self.get_union_field_meta(field)
-            lines.append(
-                f"FORY_UNION_CASE({union_type}, {field.number}, {case_type}, {union_type}::{case_ctor}, {meta});"
+            self._append_union_metadata_macro(
+                lines,
+                union,
+                "FORY_UNION_CASE",
+                [
+                    f"FORY_UNION_CASE({union_type}, {field.number}, {case_type}, {union_type}::{case_ctor}, {meta});"
+                ],
             )
 
         return lines
@@ -1259,6 +1975,7 @@ class CppGenerator(BaseGenerator):
             False,
             False,
             parent_stack,
+            True,
         )
         # FORY_UNION and FORY_UNION_CASE split macro arguments on commas,
         # so raw template types such as std::unordered_map<K, V> need an alias.
@@ -1340,7 +2057,7 @@ class CppGenerator(BaseGenerator):
             return lines
 
         default_field = union.fields[0]
-        default_ctor = self.to_snake_case(default_field.name)
+        default_ctor = self.get_union_case_identifier(union, default_field)
         default_type = case_types[0]
 
         lines.append("template <>")
@@ -1469,7 +2186,7 @@ class CppGenerator(BaseGenerator):
         lines.append("    }")
         lines.append("    switch (case_id) {")
         for field, case_type in zip(union.fields, case_types):
-            case_ctor = self.to_snake_case(field.name)
+            case_ctor = self.get_union_case_identifier(union, field)
             lines.append(f"    case {field.number}: {{")
             lines.append(
                 f"      auto value = Serializer<{case_type}>::read(ctx, RefMode::Tracking, true);"
@@ -1560,6 +2277,7 @@ class CppGenerator(BaseGenerator):
         weak_ref: bool = False,
         element_weak_ref: bool = False,
         parent_stack: Optional[List[Message]] = None,
+        global_qualify: bool = False,
     ) -> str:
         """Generate C++ type string with package namespace."""
         if isinstance(field_type, PrimitiveType):
@@ -1567,25 +2285,37 @@ class CppGenerator(BaseGenerator):
                 return self.PRIMITIVE_MAP[field_type.kind]
             base_type = self.PRIMITIVE_MAP[field_type.kind]
             if nullable:
-                return f"std::optional<{base_type}>"
+                return f"::std::optional<{base_type}>"
             return base_type
 
         if isinstance(field_type, NamedType):
             type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
-            named_type = self.schema.get_type(field_type.name)
-            if named_type is not None and self.is_imported_type(named_type):
+            named_type = self.resolve_named_type(field_type.name, parent_stack)
+            if named_type is None:
+                named_type = self.schema.get_type(field_type.name)
+            imported = named_type is not None and self.is_imported_type(named_type)
+            if imported:
                 namespace = self._namespace_for_type(named_type)
             else:
                 namespace = self.get_namespace()
-            if namespace:
-                type_name = f"{namespace}::{type_name}"
+            if imported:
+                type_name = (
+                    f"::{namespace}::{type_name}" if namespace else f"::{type_name}"
+                )
+            elif namespace:
+                prefix = f"::{namespace}" if global_qualify else namespace
+                type_name = f"{prefix}::{type_name}"
+            elif global_qualify:
+                type_name = f"::{type_name}"
             if ref:
                 wrapper = (
-                    "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
+                    "::fory::serialization::SharedWeak"
+                    if weak_ref
+                    else "::std::shared_ptr"
                 )
                 type_name = f"{wrapper}<{type_name}>"
             if nullable:
-                type_name = f"std::optional<{type_name}>"
+                type_name = f"::std::optional<{type_name}>"
             return type_name
 
         if isinstance(field_type, ListType):
@@ -1605,15 +2335,18 @@ class CppGenerator(BaseGenerator):
                 effective_element_weak_ref,
                 False,
                 parent_stack,
+                global_qualify,
             )
-            list_type = f"std::vector<{element_type}>"
+            list_type = f"::std::vector<{element_type}>"
             if ref:
                 wrapper = (
-                    "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
+                    "::fory::serialization::SharedWeak"
+                    if weak_ref
+                    else "::std::shared_ptr"
                 )
                 list_type = f"{wrapper}<{list_type}>"
             if nullable:
-                list_type = f"std::optional<{list_type}>"
+                list_type = f"::std::optional<{list_type}>"
             return list_type
 
         if isinstance(field_type, ArrayType):
@@ -1626,20 +2359,31 @@ class CppGenerator(BaseGenerator):
                 False,
                 False,
                 parent_stack,
+                global_qualify,
             )
-            array_type = f"std::vector<{element_type}>"
+            array_type = f"::std::vector<{element_type}>"
             if ref:
                 wrapper = (
-                    "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
+                    "::fory::serialization::SharedWeak"
+                    if weak_ref
+                    else "::std::shared_ptr"
                 )
                 array_type = f"{wrapper}<{array_type}>"
             if nullable:
-                array_type = f"std::optional<{array_type}>"
+                array_type = f"::std::optional<{array_type}>"
             return array_type
 
         if isinstance(field_type, MapType):
             key_type = self.generate_namespaced_type(
-                field_type.key_type, False, False, False, False, parent_stack
+                field_type.key_type,
+                False,
+                False,
+                False,
+                False,
+                False,
+                False,
+                parent_stack,
+                global_qualify,
             )
             value_weak_ref = (
                 self.is_weak_ref(field_type.value_ref_options)
@@ -1655,29 +2399,35 @@ class CppGenerator(BaseGenerator):
                 value_weak_ref,
                 False,
                 parent_stack,
+                global_qualify,
             )
-            map_type = f"std::unordered_map<{key_type}, {value_type}>"
+            map_type = f"::std::unordered_map<{key_type}, {value_type}>"
             if ref:
                 wrapper = (
-                    "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
+                    "::fory::serialization::SharedWeak"
+                    if weak_ref
+                    else "::std::shared_ptr"
                 )
                 map_type = f"{wrapper}<{map_type}>"
             if nullable:
-                map_type = f"std::optional<{map_type}>"
+                map_type = f"::std::optional<{map_type}>"
             return map_type
 
         return "void*"
 
-    def get_field_macro_entry(self, field: Field) -> str:
+    def get_field_macro_entry(self, message: Message, field: Field) -> str:
         """Build one FORY_STRUCT field entry."""
-        return f"({self.get_field_member_name(field)}, {self.get_field_meta(field)})"
+        return (
+            f"({self.get_field_member_name(message, field)}, "
+            f"{self.get_field_meta(field)})"
+        )
 
     def get_field_meta(self, field: Field) -> str:
         """Build FieldMeta expression for a field."""
         if field.tag_id is not None:
-            meta = f"fory::F({field.tag_id})"
+            meta = f"::fory::F({field.tag_id})"
         else:
-            meta = "fory::F()"
+            meta = "::fory::F()"
         is_any = (
             isinstance(field.field_type, PrimitiveType)
             and field.field_type.kind == PrimitiveKind.ANY
@@ -1690,14 +2440,14 @@ class CppGenerator(BaseGenerator):
         if spec:
             if field.optional or field.ref:
                 meta += f".inner({spec})"
-            elif spec.startswith("fory::T::list("):
-                meta += f".list({spec[len('fory::T::list(') : -1]})"
-            elif spec.startswith("fory::T::array("):
-                meta += f".array({spec[len('fory::T::array(') : -1]})"
-            elif spec.startswith("fory::T::set("):
-                meta += f".set({spec[len('fory::T::set(') : -1]})"
-            elif spec.startswith("fory::T::map("):
-                meta += f".map({spec[len('fory::T::map(') : -1]})"
+            elif spec.startswith("::fory::T::list("):
+                meta += f".list({spec[len('::fory::T::list(') : -1]})"
+            elif spec.startswith("::fory::T::array("):
+                meta += f".array({spec[len('::fory::T::array(') : -1]})"
+            elif spec.startswith("::fory::T::set("):
+                meta += f".set({spec[len('::fory::T::set(') : -1]})"
+            elif spec.startswith("::fory::T::map("):
+                meta += f".map({spec[len('::fory::T::map(') : -1]})"
             elif spec.endswith(".fixed()"):
                 meta += ".fixed()"
             elif spec.endswith(".varint()"):
@@ -1708,7 +2458,7 @@ class CppGenerator(BaseGenerator):
 
     def get_union_field_meta(self, field: Field) -> str:
         """Build FieldMeta expression for a union case."""
-        meta = f"fory::F({field.number})"
+        meta = f"::fory::F({field.number})"
         is_any = (
             isinstance(field.field_type, PrimitiveType)
             and field.field_type.kind == PrimitiveKind.ANY
@@ -1721,14 +2471,14 @@ class CppGenerator(BaseGenerator):
         if spec:
             if field.optional or field.ref:
                 meta += f".inner({spec})"
-            elif spec.startswith("fory::T::list("):
-                meta += f".list({spec[len('fory::T::list(') : -1]})"
-            elif spec.startswith("fory::T::array("):
-                meta += f".array({spec[len('fory::T::array(') : -1]})"
-            elif spec.startswith("fory::T::set("):
-                meta += f".set({spec[len('fory::T::set(') : -1]})"
-            elif spec.startswith("fory::T::map("):
-                meta += f".map({spec[len('fory::T::map(') : -1]})"
+            elif spec.startswith("::fory::T::list("):
+                meta += f".list({spec[len('::fory::T::list(') : -1]})"
+            elif spec.startswith("::fory::T::array("):
+                meta += f".array({spec[len('::fory::T::array(') : -1]})"
+            elif spec.startswith("::fory::T::set("):
+                meta += f".set({spec[len('::fory::T::set(') : -1]})"
+            elif spec.startswith("::fory::T::map("):
+                meta += f".map({spec[len('::fory::T::map(') : -1]})"
             elif spec.endswith(".fixed()"):
                 meta += ".fixed()"
             elif spec.endswith(".varint()"):
@@ -1751,7 +2501,7 @@ class CppGenerator(BaseGenerator):
         optional: bool = False,
         ref: bool = False,
     ) -> str:
-        """Return a recursive fory::T spec for generated C++ metadata."""
+        """Return a recursive ::fory::T spec for generated C++ metadata."""
         if isinstance(field_type, PrimitiveType):
             spec = self.get_primitive_type_spec(field_type)
         elif isinstance(field_type, ListType):
@@ -1761,13 +2511,13 @@ class CppGenerator(BaseGenerator):
                 field_type.element_ref,
             )
             if not element:
-                element = "fory::FieldNodeSpec{}"
-            spec = f"fory::T::list({element})"
+                element = "::fory::FieldNodeSpec{}"
+            spec = f"::fory::T::list({element})"
         elif isinstance(field_type, ArrayType):
             element = self.get_array_element_type_spec(field_type.element_type)
             if not element:
-                element = "fory::FieldNodeSpec{}"
-            spec = f"fory::T::array({element})"
+                element = "::fory::FieldNodeSpec{}"
+            spec = f"::fory::T::array({element})"
         elif isinstance(field_type, MapType):
             key = self.get_type_spec(field_type.key_type)
             element = self.get_type_spec(
@@ -1777,36 +2527,36 @@ class CppGenerator(BaseGenerator):
             )
             if key or element:
                 if not key:
-                    key = "fory::FieldNodeSpec{}"
+                    key = "::fory::FieldNodeSpec{}"
                 if not element:
-                    element = "fory::FieldNodeSpec{}"
-                spec = f"fory::T::map({key}, {element})"
+                    element = "::fory::FieldNodeSpec{}"
+                spec = f"::fory::T::map({key}, {element})"
             else:
                 spec = ""
         else:
             spec = ""
 
         if (optional or ref) and spec:
-            return f"fory::T::inner({spec})"
+            return f"::fory::T::inner({spec})"
         return spec
 
     def get_array_element_type_spec(self, field_type: FieldType) -> str:
         if not isinstance(field_type, PrimitiveType):
             return self.get_type_spec(field_type)
         typed = {
-            PrimitiveKind.BOOL: "fory::T::boolean()",
-            PrimitiveKind.INT8: "fory::T::int8()",
-            PrimitiveKind.INT16: "fory::T::int16()",
-            PrimitiveKind.INT32: "fory::T::int32()",
-            PrimitiveKind.INT64: "fory::T::int64()",
-            PrimitiveKind.UINT8: "fory::T::uint8()",
-            PrimitiveKind.UINT16: "fory::T::uint16()",
-            PrimitiveKind.UINT32: "fory::T::uint32()",
-            PrimitiveKind.UINT64: "fory::T::uint64()",
-            PrimitiveKind.FLOAT16: "fory::T::float16()",
-            PrimitiveKind.BFLOAT16: "fory::T::bfloat16()",
-            PrimitiveKind.FLOAT32: "fory::T::float32()",
-            PrimitiveKind.FLOAT64: "fory::T::float64()",
+            PrimitiveKind.BOOL: "::fory::T::boolean()",
+            PrimitiveKind.INT8: "::fory::T::int8()",
+            PrimitiveKind.INT16: "::fory::T::int16()",
+            PrimitiveKind.INT32: "::fory::T::int32()",
+            PrimitiveKind.INT64: "::fory::T::int64()",
+            PrimitiveKind.UINT8: "::fory::T::uint8()",
+            PrimitiveKind.UINT16: "::fory::T::uint16()",
+            PrimitiveKind.UINT32: "::fory::T::uint32()",
+            PrimitiveKind.UINT64: "::fory::T::uint64()",
+            PrimitiveKind.FLOAT16: "::fory::T::float16()",
+            PrimitiveKind.BFLOAT16: "::fory::T::bfloat16()",
+            PrimitiveKind.FLOAT32: "::fory::T::float32()",
+            PrimitiveKind.FLOAT64: "::fory::T::float64()",
         }
         return typed.get(field_type.kind, "")
 
@@ -1814,16 +2564,16 @@ class CppGenerator(BaseGenerator):
         """Return a scalar T-node spec for primitive encoding metadata."""
         kind = field_type.kind
         typed = {
-            PrimitiveKind.BOOL: "fory::T::boolean()",
-            PrimitiveKind.INT8: "fory::T::int8()",
-            PrimitiveKind.INT16: "fory::T::int16()",
-            PrimitiveKind.UINT8: "fory::T::uint8()",
-            PrimitiveKind.UINT16: "fory::T::uint16()",
-            PrimitiveKind.FLOAT16: "fory::T::float16()",
-            PrimitiveKind.BFLOAT16: "fory::T::bfloat16()",
-            PrimitiveKind.FLOAT32: "fory::T::float32()",
-            PrimitiveKind.FLOAT64: "fory::T::float64()",
-            PrimitiveKind.STRING: "fory::T::string()",
+            PrimitiveKind.BOOL: "::fory::T::boolean()",
+            PrimitiveKind.INT8: "::fory::T::int8()",
+            PrimitiveKind.INT16: "::fory::T::int16()",
+            PrimitiveKind.UINT8: "::fory::T::uint8()",
+            PrimitiveKind.UINT16: "::fory::T::uint16()",
+            PrimitiveKind.FLOAT16: "::fory::T::float16()",
+            PrimitiveKind.BFLOAT16: "::fory::T::bfloat16()",
+            PrimitiveKind.FLOAT32: "::fory::T::float32()",
+            PrimitiveKind.FLOAT64: "::fory::T::float64()",
+            PrimitiveKind.STRING: "::fory::T::string()",
         }
         if kind in (
             PrimitiveKind.INT32,
@@ -1832,10 +2582,10 @@ class CppGenerator(BaseGenerator):
             PrimitiveKind.UINT64,
         ):
             base = {
-                PrimitiveKind.INT32: "fory::T::int32()",
-                PrimitiveKind.INT64: "fory::T::int64()",
-                PrimitiveKind.UINT32: "fory::T::uint32()",
-                PrimitiveKind.UINT64: "fory::T::uint64()",
+                PrimitiveKind.INT32: "::fory::T::int32()",
+                PrimitiveKind.INT64: "::fory::T::int64()",
+                PrimitiveKind.UINT32: "::fory::T::uint32()",
+                PrimitiveKind.UINT64: "::fory::T::uint64()",
             }[kind]
             encoding = field_type.encoding_modifier or "varint"
             if encoding == "fixed":
@@ -1862,23 +2612,26 @@ class CppGenerator(BaseGenerator):
                 return self.PRIMITIVE_MAP[field_type.kind]
             base_type = self.PRIMITIVE_MAP[field_type.kind]
             if nullable:
-                return f"std::optional<{base_type}>"
+                return f"::std::optional<{base_type}>"
             return base_type
 
         elif isinstance(field_type, NamedType):
             type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
-            named_type = self.schema.get_type(field_type.name)
+            named_type = self.resolve_named_type(field_type.name, parent_stack)
+            if named_type is None:
+                named_type = self.schema.get_type(field_type.name)
             if named_type is not None and self.is_imported_type(named_type):
                 ns = self._namespace_for_type(named_type)
-                if ns:
-                    type_name = f"{ns}::{type_name}"
+                type_name = f"::{ns}::{type_name}" if ns else f"::{type_name}"
             if ref:
                 wrapper = (
-                    "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
+                    "::fory::serialization::SharedWeak"
+                    if weak_ref
+                    else "::std::shared_ptr"
                 )
                 type_name = f"{wrapper}<{type_name}>"
             if nullable:
-                type_name = f"std::optional<{type_name}>"
+                type_name = f"::std::optional<{type_name}>"
             return type_name
 
         elif isinstance(field_type, ListType):
@@ -1899,14 +2652,16 @@ class CppGenerator(BaseGenerator):
                 False,
                 parent_stack,
             )
-            list_type = f"std::vector<{element_type}>"
+            list_type = f"::std::vector<{element_type}>"
             if ref:
                 wrapper = (
-                    "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
+                    "::fory::serialization::SharedWeak"
+                    if weak_ref
+                    else "::std::shared_ptr"
                 )
                 list_type = f"{wrapper}<{list_type}>"
             if nullable:
-                list_type = f"std::optional<{list_type}>"
+                list_type = f"::std::optional<{list_type}>"
             return list_type
 
         elif isinstance(field_type, ArrayType):
@@ -1920,14 +2675,16 @@ class CppGenerator(BaseGenerator):
                 False,
                 parent_stack,
             )
-            array_type = f"std::vector<{element_type}>"
+            array_type = f"::std::vector<{element_type}>"
             if ref:
                 wrapper = (
-                    "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
+                    "::fory::serialization::SharedWeak"
+                    if weak_ref
+                    else "::std::shared_ptr"
                 )
                 array_type = f"{wrapper}<{array_type}>"
             if nullable:
-                array_type = f"std::optional<{array_type}>"
+                array_type = f"::std::optional<{array_type}>"
             return array_type
 
         elif isinstance(field_type, MapType):
@@ -1949,14 +2706,16 @@ class CppGenerator(BaseGenerator):
                 False,
                 parent_stack,
             )
-            map_type = f"std::unordered_map<{key_type}, {value_type}>"
+            map_type = f"::std::unordered_map<{key_type}, {value_type}>"
             if ref:
                 wrapper = (
-                    "fory::serialization::SharedWeak" if weak_ref else "std::shared_ptr"
+                    "::fory::serialization::SharedWeak"
+                    if weak_ref
+                    else "::std::shared_ptr"
                 )
                 map_type = f"{wrapper}<{map_type}>"
             if nullable:
-                map_type = f"std::optional<{map_type}>"
+                map_type = f"::std::optional<{map_type}>"
             return map_type
 
         return "void*"
@@ -1967,10 +2726,17 @@ class CppGenerator(BaseGenerator):
         parent_stack: List[Message],
     ) -> str:
         """Get the C++ qualified type name for nested types."""
-        if not parent_stack:
-            return type_name
-        prefix = "::".join(parent.name for parent in parent_stack)
-        return f"{prefix}::{type_name}"
+        parts = [self.get_type_identifier(parent) for parent in parent_stack]
+        type_def = None
+        if parent_stack:
+            type_def = parent_stack[-1].get_nested_type(type_name)
+        else:
+            type_def = self.find_top_level_type(type_name)
+        if type_def is not None:
+            parts.append(self.get_type_identifier(type_def))
+        else:
+            parts.append(self.sanitize_cpp_identifier(type_name))
+        return "::".join(parts)
 
     def get_registration_type_name(
         self,
@@ -1989,18 +2755,40 @@ class CppGenerator(BaseGenerator):
         parent_stack: Optional[List[Message]] = None,
     ) -> str:
         """Resolve nested type names to qualified C++ identifiers."""
-        if "." in type_name:
-            return type_name.replace(".", "::")
+        named_type = self.resolve_named_type(type_name, parent_stack)
+        if named_type is None:
+            named_type = self.schema.get_type(type_name)
+        if named_type is None:
+            return "::".join(
+                self.sanitize_cpp_identifier(part) for part in type_name.split(".")
+            )
+
+        type_path = self.schema.resolve_type_name(type_name)
+        if "." in type_path:
+            parts = type_path.split(".")
+            schema = self._schema_for_node(named_type)
+            parent_messages = self._resolve_message_path(schema, parts[:-1])
+            if parent_messages:
+                parents = [
+                    self.get_type_identifier(parent) for parent in parent_messages
+                ]
+            else:
+                parents = [self.sanitize_cpp_identifier(part) for part in parts[:-1]]
+            return "::".join(parents + [self.get_type_identifier(named_type)])
+
+        resolved_name = self.get_type_identifier(named_type)
         if not parent_stack:
-            return type_name
+            return resolved_name
 
         for i in range(len(parent_stack) - 1, -1, -1):
             message = parent_stack[i]
             if message.get_nested_type(type_name) is not None:
-                prefix = "::".join(parent.name for parent in parent_stack[: i + 1])
-                return f"{prefix}::{type_name}"
+                prefix = "::".join(
+                    self.get_type_identifier(parent) for parent in parent_stack[: i + 1]
+                )
+                return f"{prefix}::{resolved_name}"
 
-        return type_name
+        return resolved_name
 
     def collect_includes(
         self,
@@ -2109,7 +2897,7 @@ class CppGenerator(BaseGenerator):
         lines = []
 
         lines.append(
-            "inline void register_types(fory::serialization::BaseFory& fory) {"
+            "inline void register_types(::fory::serialization::BaseFory& fory) {"
         )
 
         # Register enums (top-level)
@@ -2134,15 +2922,15 @@ class CppGenerator(BaseGenerator):
 
         lines.append("")
         lines.append("namespace detail {")
-        lines.append("inline fory::serialization::ThreadSafeFory& get_fory() {")
+        lines.append("inline ::fory::serialization::ThreadSafeFory& get_fory() {")
         lines.append(
-            "  static fory::serialization::ThreadSafeFory fory = "
-            "fory::serialization::Fory::builder().xlang(true).track_ref(true)"
+            "  static ::fory::serialization::ThreadSafeFory fory = "
+            "::fory::serialization::Fory::builder().xlang(true).track_ref(true)"
             ".compatible(true).build_thread_safe();"
         )
         lines.append("  static const bool initialized = []() {")
         for ns in self._collect_imported_namespaces():
-            lines.append(f"    {ns}::register_types(fory);")
+            lines.append(f"    ::{ns}::register_types(fory);")
         lines.append("    register_types(fory);")
         lines.append("    return true;")
         lines.append("  }();")
