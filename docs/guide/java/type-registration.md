@@ -69,6 +69,9 @@ prefix:
 fory.register(Foo.class, "demo.Foo");
 ```
 
+The registered name is the only name accepted for that type during deserialization. Fory does not
+also accept the Java class name as an implicit alias.
+
 If there are no duplicate names for types, use a name without a namespace prefix to reduce
 serialized size.
 

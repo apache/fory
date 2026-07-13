@@ -1458,7 +1458,7 @@ public abstract class TypeResolver {
 
   final Class<?> loadClass(
       String className, boolean isEnum, int arrayDims, boolean deserializeUnknownClass) {
-    Class<?> cls = findRegisteredClass(className);
+    Class<?> cls = extRegistry.registeredClasses.get(className);
     if (cls != null) {
       return cls;
     }
@@ -1482,7 +1482,7 @@ public abstract class TypeResolver {
     if (config.requireClassRegistration()
         && (!isArray
             || (componentName != null
-                && findRegisteredClass(componentName) == null
+                && extRegistry.registeredClasses.get(componentName) == null
                 && !isCachedClassName(componentName)))) {
       if (deserializeUnknownClass) {
         return UnknownClass.getUnknowClass(className, isEnum, dimensions, metaContextShareEnabled);
@@ -1516,21 +1516,6 @@ public abstract class TypeResolver {
         throw new IllegalStateException(msg, ex);
       }
     }
-  }
-
-  private Class<?> findRegisteredClass(String className) {
-    Class<?> registeredClass = extRegistry.registeredClasses.get(className);
-    if (registeredClass != null) {
-      return registeredClass;
-    }
-    for (Map.Entry<Class<?>, TypeInfo> entry : classInfoMap.iterable()) {
-      Class<?> type = entry.getKey();
-      if (type.getName().equals(className)
-          && extRegistry.registeredClasses.inverse().get(type) != null) {
-        return type;
-      }
-    }
-    return null;
   }
 
   protected boolean isCachedClassName(String className) {

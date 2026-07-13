@@ -2249,14 +2249,12 @@ public class ClassResolver extends TypeResolver {
     if (cachedInfo != null) {
       return cachedInfo.type;
     }
-    Class<?> cachedClass = findCachedClass(className);
-    if (cachedClass != null) {
-      return cachedClass;
-    }
     return loadClass(className, isEnum, arrayDims, config.deserializeUnknownClass());
   }
 
   private TypeInfo findCachedTypeInfo(String className) {
+    // A custom registration name is the exclusive input identity for that type. Do not infer the
+    // Java class name from class-keyed resolver state when this exact name misses.
     String pkg = ReflectionUtils.getPackage(className);
     String typeName = ReflectionUtils.getClassNameWithoutPackage(className);
     EncodedMetaString pkgBytes = sharedRegistry.getPackageEncodedMetaString(pkg);
@@ -2278,26 +2276,14 @@ public class ClassResolver extends TypeResolver {
         && !UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cachedInfo.type))) {
       return cachedInfo.type;
     }
-    Class<?> cachedClass = findCachedClass(className);
-    return cachedClass != null ? cachedClass : super.loadClass(className);
-  }
-
-  private Class<?> findCachedClass(String className) {
-    for (Map.Entry<Class<?>, TypeInfo> entry : classInfoMap.iterable()) {
-      Class<?> type = entry.getKey();
-      if (type.getName().equals(className) && isCachedClass(type)) {
-        return type;
-      }
-    }
-    return null;
+    return super.loadClass(className);
   }
 
   @Override
   protected boolean isCachedClassName(String className) {
     TypeInfo cachedInfo = findCachedTypeInfo(className);
     return (cachedInfo != null
-            && !UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cachedInfo.type)))
-        || findCachedClass(className) != null;
+        && !UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cachedInfo.type)));
   }
 
   private boolean isCachedClass(Class<?> type) {

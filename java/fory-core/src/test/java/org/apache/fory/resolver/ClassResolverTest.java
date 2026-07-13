@@ -894,6 +894,26 @@ public class ClassResolverTest extends ForyTestBase {
   }
 
   @Test
+  public void testCustomNameIsExclusive() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
+    resolver.register(Foo.class, "alias", "Foo");
+
+    assertSame(resolver.loadClass("alias.Foo"), Foo.class);
+    assertSame(resolver.loadClassForMeta("alias.Foo", false, -1), Foo.class);
+    Assert.assertThrows(InsecureException.class, () -> resolver.loadClass(Foo.class.getName()));
+    Assert.assertThrows(
+        InsecureException.class, () -> resolver.loadClassForMeta(Foo.class.getName(), false, -1));
+    Assert.assertThrows(
+        InsecureException.class, () -> resolver.loadClass("[L" + Foo.class.getName() + ";"));
+  }
+
+  @Test
   public void testFinishRegisterPublishesAndAdoptsSharedRegistration() {
     ForyBuilder builder =
         Fory.builder().withXlang(false).requireClassRegistration(true).withCompatible(false);

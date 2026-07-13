@@ -411,6 +411,9 @@ without repeating class loading or policy checks. Only a cache miss performs
 the applicable class-policy checks and publishes the accepted result. Cache
 entries created for a context-specific result, such as a data-only unknown
 class placeholder, remain limited to contexts where that result is permitted.
+Registered IDs, registered names, and unregistered Java class names are
+separate input identities. A custom registered name must not implicitly accept
+the corresponding `Class.getName()`, or the reverse.
 
 Remote metadata that can create persistent read state must be bounded before
 that state is retained. The check is resource control only: it must not change
