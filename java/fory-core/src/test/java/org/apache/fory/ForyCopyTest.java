@@ -460,15 +460,21 @@ public class ForyCopyTest extends ForyTestBase {
 
   @Test
   public void testCopyNonSerializableJdkClass() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-      Class<? extends Serializer> serializerClass = fory.getTypeResolver().getSerializerClass(java.lang.Package.class);
-      Assert.assertSame(serializerClass, NonSerializableSerializer.class);
+    Fory fory =
+        Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Class<? extends Serializer> serializerClass =
+        fory.getTypeResolver().getSerializerClass(java.lang.Package.class);
+    Assert.assertSame(serializerClass, NonSerializableSerializer.class);
   }
-
 
   @Test
   public void testSerializeNonSerializableJdkClassStillThrows() {
-    Fory fory = Fory.builder().withLanguage(Language.JAVA).withRefCopy(true).requireClassRegistration(false).build();
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefCopy(true)
+            .requireClassRegistration(false)
+            .build();
     try {
       fory.serialize(String.class.getPackage());
       Assert.fail("Expected serialization of java.lang.Package to fail");
@@ -477,5 +483,4 @@ public class ForyCopyTest extends ForyTestBase {
       Assert.assertTrue(e.getMessage().contains("doesn't support serialization"));
     }
   }
-
 }

@@ -24,28 +24,29 @@ import org.apache.fory.context.WriteContext;
 import org.apache.fory.resolver.TypeResolver;
 
 /**
- * Serializer for non-Serializable JDK classes. Binary serialization is unsupported —
- * {@link #write}/{@link #read} throw {@link UnsupportedOperationException} — while copy
- * reuses {@link AbstractObjectSerializer}'s field-copy implementation.
+ * Serializer for non-Serializable JDK classes. Binary serialization is unsupported — {@link
+ * #write}/{@link #read} throw {@link UnsupportedOperationException} — while copy reuses {@link
+ * AbstractObjectSerializer}'s field-copy implementation.
  *
  * <p>Distinct from {@link CopyOnlyObjectSerializer}, which blocks serialization for
- * registration-security reasons (remediable by registering the class). Here serialization
- * is intrinsically unsupported and not remediable by registration, so the failure semantics
- * differ deliberately.
+ * registration-security reasons (remediable by registering the class). Here serialization is
+ * intrinsically unsupported and not remediable by registration, so the failure semantics differ
+ * deliberately.
  */
 public final class NonSerializableSerializer<T> extends AbstractObjectSerializer<T> {
-  public NonSerializableSerializer(TypeResolver typeResolver, Class<T> type) { super(typeResolver, type); }
-
+  public NonSerializableSerializer(TypeResolver typeResolver, Class<T> type) {
+    super(typeResolver, type);
+  }
 
   @Override
   public void write(WriteContext writeContext, T value) {
     throw new UnsupportedOperationException(
-      String.format("Class %s doesn't support serialization.", type.getName()));
+        String.format("Class %s doesn't support serialization.", type.getName()));
   }
 
   @Override
   public T read(ReadContext readContext) {
     throw new UnsupportedOperationException(
-      String.format("Class %s doesn't support serialization.", type.getName()));
+        String.format("Class %s doesn't support serialization.", type.getName()));
   }
 }
