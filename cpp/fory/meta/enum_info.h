@@ -157,7 +157,7 @@ struct EnumMetadata<Enum, std::enable_if_t<EnumInfo<Enum>::defined>> {
 #define FORY_INTERNAL_ENUM_VALUE_ENTRY(EnumType, value) EnumType::value,
 
 #define FORY_INTERNAL_ENUM_NAME_ENTRY(EnumType, value)                         \
-  std::string_view(FORY_PP_STRINGIFY(EnumType::value)),
+  ::std::string_view(FORY_PP_STRINGIFY(EnumType::value)),
 
 #define FORY_ENUM_DESCRIPTOR_NAME(line)                                        \
   FORY_PP_CONCAT(ForyEnumInfoDescriptor_, line)
@@ -169,16 +169,16 @@ struct EnumMetadata<Enum, std::enable_if_t<EnumInfo<Enum>::defined>> {
   struct FORY_ENUM_DESCRIPTOR_NAME(line) {                                     \
     using Enum = EnumType;                                                     \
     static constexpr bool defined = true;                                      \
-    static constexpr std::size_t size = FORY_PP_NARG(__VA_ARGS__);             \
-    static inline constexpr std::array<Enum, size> values = {                  \
+    static constexpr ::std::size_t size = FORY_PP_NARG(__VA_ARGS__);           \
+    static inline constexpr ::std::array<Enum, size> values = {                \
         FORY_PP_FOREACH_1(FORY_INTERNAL_ENUM_VALUE_ENTRY, EnumType,            \
                           __VA_ARGS__)};                                       \
-    static inline constexpr std::array<std::string_view, size> names = {       \
+    static inline constexpr ::std::array<::std::string_view, size> names = {   \
         FORY_PP_FOREACH_1(FORY_INTERNAL_ENUM_NAME_ENTRY, EnumType,             \
                           __VA_ARGS__)};                                       \
                                                                                \
     static constexpr bool contains(Enum value) {                               \
-      for (std::size_t i = 0; i < size; ++i) {                                 \
+      for (::std::size_t i = 0; i < size; ++i) {                               \
         if (values[i] == value) {                                              \
           return true;                                                         \
         }                                                                      \
@@ -186,8 +186,8 @@ struct EnumMetadata<Enum, std::enable_if_t<EnumInfo<Enum>::defined>> {
       return false;                                                            \
     }                                                                          \
                                                                                \
-    static constexpr std::size_t ordinal(Enum value) {                         \
-      for (std::size_t i = 0; i < size; ++i) {                                 \
+    static constexpr ::std::size_t ordinal(Enum value) {                       \
+      for (::std::size_t i = 0; i < size; ++i) {                               \
         if (values[i] == value) {                                              \
           return i;                                                            \
         }                                                                      \
@@ -195,17 +195,17 @@ struct EnumMetadata<Enum, std::enable_if_t<EnumInfo<Enum>::defined>> {
       return size;                                                             \
     }                                                                          \
                                                                                \
-    static constexpr Enum value_at(std::size_t index) {                        \
+    static constexpr Enum value_at(::std::size_t index) {                      \
       return values[index];                                                    \
     }                                                                          \
                                                                                \
-    static constexpr std::string_view name(Enum value) {                       \
-      for (std::size_t i = 0; i < size; ++i) {                                 \
+    static constexpr ::std::string_view name(Enum value) {                     \
+      for (::std::size_t i = 0; i < size; ++i) {                               \
         if (values[i] == value) {                                              \
           return names[i];                                                     \
         }                                                                      \
       }                                                                        \
-      return std::string_view();                                               \
+      return ::std::string_view();                                             \
     }                                                                          \
   };                                                                           \
   constexpr auto fory_enum_info(::fory::meta::Identity<EnumType>) {            \
