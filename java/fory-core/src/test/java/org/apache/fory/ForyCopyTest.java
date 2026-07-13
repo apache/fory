@@ -460,8 +460,7 @@ public class ForyCopyTest extends ForyTestBase {
 
   @Test
   public void testCopyNonSerializableJdkClass() {
-    Fory fory =
-        Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
     Class<? extends Serializer> serializerClass =
         fory.getTypeResolver().getSerializerClass(java.lang.Package.class);
     Assert.assertSame(serializerClass, NonSerializableSerializer.class);
