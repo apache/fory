@@ -208,6 +208,16 @@ public class AllowListCheckerTest {
     assertThrows(
         IllegalStateException.class,
         () -> disabledChecker.setCheckLevel(AllowListChecker.CheckLevel.WARN));
+
+    AllowListChecker emptyChecker = new AllowListChecker(AllowListChecker.CheckLevel.DISABLE);
+    Fory emptyFory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withTypeChecker(emptyChecker)
+            .build();
+    emptyFory.serialize("value");
+    emptyChecker.setCheckLevel(AllowListChecker.CheckLevel.WARN);
   }
 
   @Test

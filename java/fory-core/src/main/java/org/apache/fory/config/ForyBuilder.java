@@ -379,8 +379,8 @@ public final class ForyBuilder {
   /**
    * Configure a {@link TypeChecker} during build time so it is installed on every Fory instance
    * created by this builder. Unknown input class names are checked when class registration checks
-   * are disabled. {@link org.apache.fory.resolver.AllowListChecker} disallow entries also reject
-   * matching registration attempts during setup.
+   * are disabled. Configure {@link org.apache.fory.resolver.AllowListChecker} disallow entries
+   * before registration is frozen.
    */
   public ForyBuilder withTypeChecker(TypeChecker typeChecker) {
     this.typeChecker = typeChecker;

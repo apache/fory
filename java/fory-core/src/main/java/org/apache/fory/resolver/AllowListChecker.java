@@ -77,7 +77,9 @@ public class AllowListChecker implements TypeChecker {
   public void setCheckLevel(CheckLevel checkLevel) {
     try {
       lock.writeLock().lock();
-      if (this.checkLevel == CheckLevel.DISABLE && checkLevel != CheckLevel.DISABLE) {
+      if (this.checkLevel == CheckLevel.DISABLE
+          && checkLevel != CheckLevel.DISABLE
+          && (!disallowList.isEmpty() || !disallowListPrefix.isEmpty())) {
         checkRegistrationOpen();
       }
       this.checkLevel = checkLevel;
@@ -112,8 +114,6 @@ public class AllowListChecker implements TypeChecker {
       }
     }
     switch (checkLevel) {
-      case DISABLE:
-        return true;
       case WARN:
         if (disallowed) {
           throw new InsecureException(

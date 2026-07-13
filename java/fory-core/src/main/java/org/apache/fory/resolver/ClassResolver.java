@@ -1314,39 +1314,6 @@ public class ClassResolver extends TypeResolver {
     addSerializer(cls, serializer);
   }
 
-  /** Set serializer for class whose name is {@code className}. */
-  public void setSerializer(String className, Class<? extends Serializer> serializer) {
-    for (Map.Entry<Class<?>, TypeInfo> entry : classInfoMap.iterable()) {
-      if (extRegistry.registeredClasses.get(className) != null) {
-        LOG.warnOnce("Skip clear serializer for registered class {}", className);
-        return;
-      }
-      Class<?> cls = entry.getKey();
-      if (cls.getName().equals(className)) {
-        LOG.infoOnce("Clear serializer for class {}.", className);
-        entry.getValue().setSerializer(this, Serializers.newSerializer(this, cls, serializer));
-        clearTypeInfoCache();
-        return;
-      }
-    }
-  }
-
-  /** Set serializer for classes starts with {@code classNamePrefix}. */
-  public void setSerializers(String classNamePrefix, Class<? extends Serializer> serializer) {
-    for (Map.Entry<Class<?>, TypeInfo> entry : classInfoMap.iterable()) {
-      Class<?> cls = entry.getKey();
-      String className = cls.getName();
-      if (extRegistry.registeredClasses.get(className) != null) {
-        continue;
-      }
-      if (className.startsWith(classNamePrefix)) {
-        LOG.infoOnce("Clear serializer for class {}.", className);
-        entry.getValue().setSerializer(this, Serializers.newSerializer(this, cls, serializer));
-        clearTypeInfoCache();
-      }
-    }
-  }
-
   /**
    * Set serializer to avoid circular error when there is a serializer query for fields by {@link
    * #readSharedClassMeta} and {@link #getSerializer(Class)} which access current creating
@@ -2088,9 +2055,8 @@ public class ClassResolver extends TypeResolver {
    * Read a serialized Java class token.
    *
    * <p>For named-class tokens, this method enforces deserialization class policy before returning
-   * the class, including the disallowed list and registration or TypeChecker checks. For registered
-   * type-id tokens, it returns the registered class whose class policy was already checked during
-   * registration.
+   * the class, including the disallowed list and registration or TypeChecker checks. Registered
+   * type-id tokens resolve directly to the explicitly trusted class.
    *
    * <p>Note that the object of the class can be non-serializable. For serializable object, {@link
    * #readTypeInfo(ReadContext)} or {@link #readTypeInfo(ReadContext, TypeInfoHolder)} should be

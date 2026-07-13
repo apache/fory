@@ -92,7 +92,9 @@ public class DisallowedListTest extends ForyTestBase {
               .withCompatible(false)
               .build();
       if (requireClassRegistration) {
-        Assert.assertThrows(InsecureException.class, () -> fory.register(Expression.class));
+        // Explicit registration is trusted configuration; serializer creation still rejects the
+        // hard-disallowed class below.
+        fory.register(Expression.class);
       }
       allFory[i] = fory;
     }
