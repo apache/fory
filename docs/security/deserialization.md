@@ -412,14 +412,15 @@ already trusted and validated `Class<?>` and should use that cached class
 without repeating class loading or name-level `TypeChecker` work. Only a cache
 miss performs those name-level checks and publishes the accepted result.
 Checks that require the materialized `Class<?>` remain owned by their existing
-caller. Cache entries created for a context-specific result, such as a
-data-only unknown class placeholder, remain limited to contexts where that
-result is permitted.
+caller. A cache entry that stores a data-only unknown-class placeholder may
+return that same placeholder on an exact hit, but must not authorize loading the
+original missed wire name.
 Exact registered-name-table hits are trusted for both ID and name registrations,
 and exact checked name-cache hits are trusted. After both exact lookups miss, a
 reader must not infer another accepted name from inverse registration,
-class-keyed state, or `Class.getName()`. A custom registration does not by
-itself publish the Java class name as an additional alias.
+class-keyed state, or `Class.getName()`. A custom-name registration does not by
+itself publish the Java class name as an additional alias; ID registration does
+publish the Java class name.
 
 Remote metadata that can create persistent read state must be bounded before
 that state is retained. The check is resource control only: it must not change

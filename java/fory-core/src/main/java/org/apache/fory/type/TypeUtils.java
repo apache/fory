@@ -548,6 +548,23 @@ public class TypeUtils {
     return Tuple2.of(component, dimensions);
   }
 
+  /** Returns the JVM array class name for the component type and additional dimensions. */
+  public static String arrayClassName(Class<?> componentType, int dimensions) {
+    StringBuilder builder = new StringBuilder(dimensions + componentType.getName().length() + 2);
+    for (int i = 0; i < dimensions; i++) {
+      builder.append('[');
+    }
+    if (componentType.isArray()) {
+      return builder.append(componentType.getName()).toString();
+    }
+    if (!componentType.isPrimitive()) {
+      return builder.append('L').append(componentType.getName()).append(';').toString();
+    }
+    return builder
+        .append(Array.newInstance(componentType, 0).getClass().getName().charAt(1))
+        .toString();
+  }
+
   /** Returns s string that represents array type declaration of type. */
   public static String getArrayType(TypeRef<?> type) {
     return getArrayType(getRawType(type));

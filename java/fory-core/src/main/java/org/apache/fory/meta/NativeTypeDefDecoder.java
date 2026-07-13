@@ -189,7 +189,6 @@ class NativeTypeDefDecoder {
                   rootTypeId,
                   resolver.getUserTypeIdForTypeDef(expectedRootClass));
           classSpec.type = expectedRootClass;
-          currentClass = expectedRootClass;
         } else {
           // `loadClassForMeta` keeps name-level checks before Class.forName; do not replace this
           // metadata path with direct class loading from the remote TypeDef name.
@@ -224,7 +223,10 @@ class NativeTypeDefDecoder {
         }
       }
       if (i == numClasses - 1) {
-        rootClass = currentClass;
+        // ObjectStream supplies the layer identity before decoding this TypeDef. The metadata root
+        // kind describes the sender's serializer, so it need not match the receiver slot or a
+        // sender-only placeholder.
+        rootClass = expectedRootClass == null ? currentClass : null;
         rootClassLayerRegistered = isRegistered;
       }
       List<FieldInfo> fieldInfos = readFieldsInfo(typeDefBuf, resolver, className, numFields);

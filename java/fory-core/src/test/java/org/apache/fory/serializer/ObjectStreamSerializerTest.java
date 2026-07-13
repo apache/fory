@@ -721,10 +721,6 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     copyCheck(fory, testClassObj4);
   }
 
-  // TODO(chaokunyang) add `readObjectNoData` test for class inheritance change.
-  // @Test
-  public void testReadObjectNoData() {}
-
   // ==================== Schema Evolution Tests ====================
 
   @DataProvider
@@ -1280,6 +1276,14 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
 
   public static class LayerEvolutionBase implements Serializable {
     public String base;
+
+    private void writeObject(ObjectOutputStream s) throws IOException {
+      s.defaultWriteObject();
+    }
+
+    private void readObject(ObjectInputStream s) throws IOException, ClassNotFoundException {
+      s.defaultReadObject();
+    }
   }
 
   public static class LayerEvolutionReceiverOnly extends LayerEvolutionBase {
@@ -1322,7 +1326,12 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
                     + "; public class "
                     + classPrefix
                     + "Base implements java.io.Serializable {"
-                    + " public String base; }"),
+                    + " public String base;"
+                    + " private void writeObject(java.io.ObjectOutputStream s)"
+                    + " throws java.io.IOException { s.defaultWriteObject(); }"
+                    + " private void readObject(java.io.ObjectInputStream s)"
+                    + " throws java.io.IOException, ClassNotFoundException {"
+                    + " s.defaultReadObject(); } }"),
             new CompileUnit(
                 packageName,
                 classPrefix + "SenderOnly",
@@ -1347,6 +1356,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
                     + "Child() {"
                     + " base = \"base\"; sender = \"sender\"; child = \"child\"; } }"));
     Class<?> writerType = writerLoader.loadClass(packageName + "." + classPrefix + "Child");
+    Assert.assertTrue(ClassResolver.requireJavaSerialization(LayerEvolutionChild.class));
     Fory writer =
         Fory.builder()
             .withXlang(false)

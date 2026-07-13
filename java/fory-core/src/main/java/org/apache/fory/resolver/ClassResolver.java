@@ -2118,6 +2118,8 @@ public class ClassResolver extends TypeResolver {
       EncodedMetaString packageBytes, EncodedMetaString simpleClassNameBytes) {
     TypeNameBytes typeNameBytes = new TypeNameBytes(packageBytes, simpleClassNameBytes);
     TypeInfo typeInfo = compositeNameBytes2TypeInfo.get(typeNameBytes);
+    // An exact hit returns the stored result, including an UnknownClass placeholder. It must not
+    // re-resolve the missed wire name from class-keyed state or a loader.
     if (typeInfo == null) {
       typeInfo =
           populateBytesToTypeInfo(

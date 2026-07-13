@@ -21,6 +21,7 @@ package org.apache.fory.meta;
 
 import static org.apache.fory.type.TypeUtils.COLLECTION_TYPE;
 import static org.apache.fory.type.TypeUtils.MAP_TYPE;
+import static org.apache.fory.type.TypeUtils.arrayClassName;
 import static org.apache.fory.type.TypeUtils.collectionOf;
 import static org.apache.fory.type.TypeUtils.getArrayComponentInfo;
 import static org.apache.fory.type.TypeUtils.getArrayDimensions;
@@ -1131,25 +1132,9 @@ public class FieldTypes {
       } else {
         // Non-strict reads must pass the complete descriptor to TypeChecker. Strict arrays above
         // six dimensions reach loadClass only so an exact array registration can satisfy them.
-        arrayType = classResolver.loadClass(arrayDescriptor(componentRawType, dimensions));
+        arrayType = classResolver.loadClass(arrayClassName(componentRawType, dimensions));
       }
       return TypeRef.of(arrayType, typeExtMeta(typeId, nullable, trackingRef, declared));
-    }
-
-    private static String arrayDescriptor(Class<?> componentType, int dimensions) {
-      StringBuilder builder = new StringBuilder(dimensions + componentType.getName().length() + 2);
-      for (int i = 0; i < dimensions; i++) {
-        builder.append('[');
-      }
-      if (componentType.isArray()) {
-        return builder.append(componentType.getName()).toString();
-      }
-      if (!componentType.isPrimitive()) {
-        return builder.append('L').append(componentType.getName()).append(';').toString();
-      }
-      return builder
-          .append(Array.newInstance(componentType, 0).getClass().getName().charAt(1))
-          .toString();
     }
 
     @Override

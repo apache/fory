@@ -32,19 +32,19 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.type.TypeUtils;
 
-/** White/black list based class checker. */
+/** Class checker backed by allow and disallow lists. */
 @ThreadSafe
 public class AllowListChecker implements TypeChecker {
   private static final Logger LOG = LoggerFactory.getLogger(AllowListChecker.class);
 
   public enum CheckLevel {
-    /** Disable serialize check for all classes. */
+    /** Disable class-name checks. */
     DISABLE,
 
-    /** Only deny danger classes, warn if other classes are not in allow list. */
+    /** Deny disallowed classes and warn about classes outside the allow list. */
     WARN,
 
-    /** Only allow classes in allow list, deny if other classes are not in allow list. */
+    /** Allow only classes in the allow list. */
     STRICT
   }
 
