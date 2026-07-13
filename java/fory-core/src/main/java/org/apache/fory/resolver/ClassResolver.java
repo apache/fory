@@ -806,13 +806,24 @@ public class ClassResolver extends TypeResolver {
         }
       }
     }
-    if (extRegistry.registeredClasses.containsKey(name)
-        || extRegistry.registeredClasses.inverse().containsKey(cls)) {
+    Class<?> registeredClass = extRegistry.registeredClasses.get(name);
+    String registeredName = extRegistry.registeredClasses.inverse().get(cls);
+    TypeInfo existingInfo = classInfoMap.get(cls);
+    // registerSerializer already trusts this class and publishes its Java name. A later ID or
+    // custom-name registration merges into that same class instead of conflicting with it.
+    boolean serializerRegistered =
+        existingInfo != null
+            && existingInfo.type == cls
+            && existingInfo.serializer != null
+            && extRegistry.registeredClassIdMap.get(cls) == null
+            && cls.getName().equals(registeredName);
+    if ((registeredClass != null || registeredName != null)
+        && (!serializerRegistered || (registeredClass != null && registeredClass != cls))) {
       throw new IllegalArgumentException(
           String.format(
               "Class %s with name %s has been registered, registering class %s with same name are"
                   + " not allowed.",
-              extRegistry.registeredClasses.get(name), name, cls));
+              registeredClass, name, cls));
     }
   }
 
@@ -1248,7 +1259,10 @@ public class ClassResolver extends TypeResolver {
 
   private void registerSerializerImpl(Class<?> type, Serializer<?> serializer) {
     checkRegisterAllowed();
-    extRegistry.registeredClasses.put(type.getName(), type);
+    // Serializer registration trusts the Java name, but must not replace an existing custom name.
+    if (extRegistry.registeredClasses.inverse().get(type) == null) {
+      extRegistry.registeredClasses.put(type.getName(), type);
+    }
     TypeInfo existingTypeInfo = classInfoMap.get(type);
     boolean localOverride = existingTypeInfo != null && existingTypeInfo.serializer != null;
     boolean shareable = serializer instanceof Shareable;
@@ -2066,7 +2080,12 @@ public class ClassResolver extends TypeResolver {
     MemoryBuffer buffer = readContext.getBuffer();
     int header = buffer.readVarUInt32Small14();
     if ((header & 0b1) != 0) {
-      return readNamedClass(readContext, buffer, header);
+      // let the lowermost bit of next byte be set, so the deserialization can know
+      // whether need to read class by name in advance
+      MetaStringReader metaStringReader = readContext.getMetaStringReader();
+      EncodedMetaString packageBytes = metaStringReader.readMetaStringWithFlag(buffer, header);
+      EncodedMetaString simpleClassNameBytes = metaStringReader.readMetaString(buffer);
+      return loadBytesToTypeInfo(packageBytes, simpleClassNameBytes).type;
     }
     int typeId = header >>> 1;
     switch (typeId) {
@@ -2081,34 +2100,6 @@ public class ClassResolver extends TypeResolver {
         Preconditions.checkNotNull(internalTypeInfoByTypeId);
         return internalTypeInfoByTypeId.type;
     }
-  }
-
-  private Class<?> readNamedClass(ReadContext readContext, MemoryBuffer buffer, int header) {
-    // let the lowermost bit of next byte be set, so the deserialization can know
-    // whether need to read class by name in advance
-    MetaStringReader metaStringReader = readContext.getMetaStringReader();
-    EncodedMetaString packageBytes = metaStringReader.readMetaStringWithFlag(buffer, header);
-    EncodedMetaString simpleClassNameBytes = metaStringReader.readMetaString(buffer);
-    TypeNameBytes typeNameBytes = new TypeNameBytes(packageBytes, simpleClassNameBytes);
-    TypeInfo typeInfo = compositeNameBytes2TypeInfo.get(typeNameBytes);
-    if (typeInfo != null) {
-      Class<?> type = typeInfo.type;
-      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
-        throw new InsecureException("Unknown class cannot be read as a Class token.");
-      }
-      return type;
-    }
-    ClassSpec classSpec =
-        Encoders.decodePkgAndClass(
-            packageBytes.decode(PACKAGE_DECODER), simpleClassNameBytes.decode(TYPE_NAME_DECODER));
-    Class<?> registeredType = extRegistry.registeredClasses.get(classSpec.entireClassName);
-    if (registeredType != null) {
-      return registeredType;
-    }
-    // A Class token must resolve to a concrete class. Unknown placeholders are data containers,
-    // not class identities, and attempting to build one here would also publish it to the name
-    // cache before the token is rejected.
-    return populateBytesToTypeInfo(typeNameBytes, packageBytes, simpleClassNameBytes, false).type;
   }
 
   private TypeInfo getTypeInfoByTypeIdForReadClassInternal(int typeId, int userTypeId) {

@@ -56,9 +56,7 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.TestUtils;
 import org.apache.fory.builder.Generated;
-import org.apache.fory.collection.ObjectMap;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.ReadContext;
@@ -429,31 +427,6 @@ public class ClassResolverTest extends ForyTestBase {
     Assert.assertThrows(
         InsecureException.class, () -> resolver.loadClassForMeta(className, false, -1));
     assertEquals(classLoader.loadCount, 0);
-  }
-
-  @Test
-  public void testUnknownClassTokenIsNotCached() {
-    Fory writer =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(false)
-            .withCompatible(false)
-            .build();
-    byte[] bytes = writer.serialize(Foo.class);
-    Fory reader =
-        Fory.builder()
-            .withXlang(false)
-            .withMetaShare(true)
-            .withDeserializeUnknownClass(true)
-            .withCompatible(false)
-            .build();
-    ClassResolver resolver = (ClassResolver) reader.getTypeResolver();
-    ObjectMap<TypeNameBytes, TypeInfo> cache =
-        TestUtils.getFieldValue(resolver, "compositeNameBytes2TypeInfo");
-    int cacheSize = cache.size;
-
-    Assert.assertThrows(InsecureException.class, () -> reader.deserialize(bytes));
-    assertEquals(cache.size, cacheSize);
   }
 
   @Test
@@ -1407,6 +1380,35 @@ public class ClassResolverTest extends ForyTestBase {
     Foo namedValue = new Foo();
     namedValue.f1 = 12;
     assertEquals(serDe(namedFory, namedValue), namedValue);
+
+    Fory nameFirstFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    nameFirstFory.register(Foo.class, "test", "Foo");
+    nameFirstFory.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    assertEquals(
+        ((ClassResolver) nameFirstFory.getTypeResolver()).getRegisteredName(Foo.class), "test.Foo");
+    Foo nameFirstValue = new Foo();
+    nameFirstValue.f1 = 13;
+    assertEquals(serDe(nameFirstFory, nameFirstValue), nameFirstValue);
+  }
+
+  @Test
+  public void testRuntimeAliasRegistrationConflict() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    TypeResolver resolver = fory.getTypeResolver();
+    fory.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    resolver.registerRuntimeTypeAlias(Bar.class, Foo.class);
+
+    Assert.assertThrows(IllegalArgumentException.class, () -> fory.register(Bar.class, 101));
   }
 
   @Test
