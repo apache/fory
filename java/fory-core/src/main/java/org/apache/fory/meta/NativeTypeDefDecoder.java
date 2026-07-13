@@ -103,15 +103,11 @@ class NativeTypeDefDecoder {
   }
 
   public static TypeDef decodeTypeDef(ClassResolver resolver, MemoryBuffer buffer, long id) {
-    return decodeTypeDef(resolver, buffer, id, null, null);
+    return decodeTypeDef(resolver, buffer, id, null);
   }
 
   static TypeDef decodeTypeDef(
-      ClassResolver resolver,
-      MemoryBuffer buffer,
-      long id,
-      String expectedRootName,
-      Class<?> expectedRootClass) {
+      ClassResolver resolver, MemoryBuffer buffer, long id, String rootClassName) {
     Tuple2<byte[], byte[]> decoded = decodeTypeDefBuf(buffer, resolver, id);
     MemoryBuffer typeDefBuf = MemoryBuffer.fromByteArray(decoded.f0);
     int bodyHeader = typeDefBuf.readByte() & 0xff;
@@ -168,18 +164,9 @@ class NativeTypeDefDecoder {
         String typeName = readTypeName(typeDefBuf);
         ClassSpec decodedSpec = Encoders.decodePkgAndClass(pkg, typeName);
         className = decodedSpec.entireClassName;
-        if (resolver.isRegisteredByName(className)) {
-          Class<?> cls = resolver.getRegisteredClass(className);
-          className = cls.getName();
-          int typeId = i == numClasses - 1 ? rootTypeId : resolver.getTypeIdForTypeDef(cls);
-          classSpec = new ClassSpec(cls, typeId, resolver.getUserTypeIdForTypeDef(cls));
-          currentClass = cls;
-        } else if (i == numClasses - 1
-            && expectedRootClass != null
-            && className.equals(expectedRootName)) {
-          // ObjectStream already matched the complete layer wire name. Keep that name in the
-          // TypeDef while using its local slot class, or a data-only placeholder for a sender-only
-          // layer, without resolving the remote root name again.
+        if (i == numClasses - 1 && className.equals(rootClassName)) {
+          // ObjectStream owns this layer identity. Keep the remote name in ClassSpec; the local
+          // slot class or sender-only placeholder belongs to the outer TypeInfo.
           classSpec =
               new ClassSpec(
                   className,
@@ -187,8 +174,13 @@ class NativeTypeDefDecoder {
                   decodedSpec.isArray,
                   decodedSpec.dimension,
                   rootTypeId,
-                  resolver.getUserTypeIdForTypeDef(expectedRootClass));
-          classSpec.type = expectedRootClass;
+                  -1);
+        } else if (resolver.isRegisteredByName(className)) {
+          Class<?> cls = resolver.getRegisteredClass(className);
+          className = cls.getName();
+          int typeId = i == numClasses - 1 ? rootTypeId : resolver.getTypeIdForTypeDef(cls);
+          classSpec = new ClassSpec(cls, typeId, resolver.getUserTypeIdForTypeDef(cls));
+          currentClass = cls;
         } else {
           // `loadClassForMeta` keeps name-level checks before Class.forName; do not replace this
           // metadata path with direct class loading from the remote TypeDef name.
@@ -223,10 +215,9 @@ class NativeTypeDefDecoder {
         }
       }
       if (i == numClasses - 1) {
-        // ObjectStream supplies the layer identity before decoding this TypeDef. The metadata root
-        // kind describes the sender's serializer, so it need not match the receiver slot or a
-        // sender-only placeholder.
-        rootClass = expectedRootClass == null ? currentClass : null;
+        // ObjectStream owns its layer identity and serializer selection, so this decoder has no
+        // local root class against which to validate the metadata kind.
+        rootClass = rootClassName == null ? currentClass : null;
         rootClassLayerRegistered = isRegistered;
       }
       List<FieldInfo> fieldInfos = readFieldsInfo(typeDefBuf, resolver, className, numFields);

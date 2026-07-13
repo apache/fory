@@ -595,23 +595,15 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       Class<?> cls,
       long typeDefId) {
     byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefId);
+    Class<?> resolvedClass = cls == null ? UnknownClass.UnknownStruct.class : cls;
+    TypeDef localTypeDef = cls == null ? null : typeResolver.getTypeDef(cls, false);
     TypeDef typeDef;
-    Class<?> resolvedClass;
-    if (cls != null) {
-      TypeDef localTypeDef = typeResolver.getTypeDef(cls, false);
-      if (Arrays.equals(encoded, localTypeDef.getEncoded())) {
-        typeDef = localTypeDef;
-      } else {
-        typeDef =
-            typeResolver.cacheRemoteTypeDef(
-                TypeDef.readTypeDef((ClassResolver) typeResolver, encoded, className, cls));
-      }
-      resolvedClass = cls;
+    if (localTypeDef != null && Arrays.equals(encoded, localTypeDef.getEncoded())) {
+      typeDef = localTypeDef;
     } else {
-      resolvedClass = UnknownClass.UnknownStruct.class;
       typeDef =
           typeResolver.cacheRemoteTypeDef(
-              TypeDef.readTypeDef((ClassResolver) typeResolver, encoded, className, resolvedClass));
+              TypeDef.readTypeDef((ClassResolver) typeResolver, encoded, className));
     }
     TypeInfo typeInfo = new TypeInfo(resolvedClass, typeDef);
     typeDefIdToTypeInfo.put(typeDefId, typeInfo);
