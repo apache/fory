@@ -64,6 +64,13 @@ Fory policy should reject. This includes bypasses of class or type
 registration, allow-list checkers, strict-mode checks, or language-specific
 deserialization policies.
 
+An application explicitly trusts a class when it registers that class or
+registers a serializer for that class. Both operations are configuration-time
+trust decisions under the class-registration policy. The existence of a
+serializer that Fory discovered, selected, or generated without an explicit
+application registration is serialization mechanics only and does not by
+itself authorize the class.
+
 Disabling registration or dynamic-type checks for trusted data is a caller
 configuration choice. That choice only removes the arbitrary-type materialization
 claim provided by that policy; it does not remove Fory's runtime-safety,
@@ -393,6 +400,15 @@ Metadata readers should:
   or replace them with string-only approximations that change registration,
   dynamic-loading, or unknown-type semantics.
 - Reset or release metadata state at the correct root-operation boundary.
+
+A class-resolution cache reachable from untrusted deserialization may publish
+an entry only from explicit trusted configuration or after the active class
+policy has accepted the resolved class. A cache hit therefore represents an
+already trusted and validated `Class<?>` and should use that cached class
+without repeating class loading or policy checks. Only a cache miss performs
+the applicable class-policy checks and publishes the accepted result. Cache
+entries created for a context-specific result, such as a data-only unknown
+class placeholder, remain limited to contexts where that result is permitted.
 
 Remote metadata that can create persistent read state must be bounded before
 that state is retained. The check is resource control only: it must not change
