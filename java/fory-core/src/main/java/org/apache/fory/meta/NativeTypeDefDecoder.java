@@ -103,11 +103,15 @@ class NativeTypeDefDecoder {
   }
 
   public static TypeDef decodeTypeDef(ClassResolver resolver, MemoryBuffer buffer, long id) {
-    return decodeTypeDef(resolver, buffer, id, null);
+    return decodeTypeDef(resolver, buffer, id, null, null);
   }
 
   static TypeDef decodeTypeDef(
-      ClassResolver resolver, MemoryBuffer buffer, long id, Class<?> expectedRootClass) {
+      ClassResolver resolver,
+      MemoryBuffer buffer,
+      long id,
+      String expectedRootName,
+      Class<?> expectedRootClass) {
     Tuple2<byte[], byte[]> decoded = decodeTypeDefBuf(buffer, resolver, id);
     MemoryBuffer typeDefBuf = MemoryBuffer.fromByteArray(decoded.f0);
     int bodyHeader = typeDefBuf.readByte() & 0xff;
@@ -172,15 +176,19 @@ class NativeTypeDefDecoder {
           currentClass = cls;
         } else if (i == numClasses - 1
             && expectedRootClass != null
-            && resolver.getRegisteredName(expectedRootClass) == null
-            && className.equals(expectedRootClass.getName())) {
-          // ObjectStream may use an unregistered local Serializable layer, but a registered class
-          // must match its exact published name instead of falling back to Class.getName().
+            && className.equals(expectedRootName)) {
+          // ObjectStream already matched the complete layer wire name. Keep that name in the
+          // TypeDef while using its local slot class, or a data-only placeholder for a sender-only
+          // layer, without resolving the remote root name again.
           classSpec =
               new ClassSpec(
-                  expectedRootClass,
+                  className,
+                  decodedSpec.isEnum,
+                  decodedSpec.isArray,
+                  decodedSpec.dimension,
                   rootTypeId,
                   resolver.getUserTypeIdForTypeDef(expectedRootClass));
+          classSpec.type = expectedRootClass;
           currentClass = expectedRootClass;
         } else {
           // `loadClassForMeta` keeps name-level checks before Class.forName; do not replace this

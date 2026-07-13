@@ -34,6 +34,7 @@ import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.serializer.ObjectStreamSerializer;
+import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.MapFields;
 import org.apache.fory.test.bean.Struct;
@@ -98,7 +99,7 @@ public class NativeTypeDefEncoderTest {
   }
 
   @Test
-  public void testExpectedRootName() {
+  public void testExpectedRootIdentity() {
     Fory rawWriter =
         Fory.builder()
             .withXlang(false)
@@ -119,8 +120,10 @@ public class NativeTypeDefEncoderTest {
         InsecureException.class,
         () ->
             TypeDef.readTypeDef(
-                (ClassResolver) namedReader.getTypeResolver(), rawTypeDef, ExpectedType.class));
-
+                (ClassResolver) namedReader.getTypeResolver(),
+                rawTypeDef,
+                "alias.ExpectedType",
+                ExpectedType.class));
     Fory namedWriter =
         Fory.builder()
             .withXlang(false)
@@ -132,7 +135,10 @@ public class NativeTypeDefEncoderTest {
         TypeDef.buildTypeDef(namedWriter.getTypeResolver(), ExpectedType.class).getEncoded();
     Assert.assertEquals(
         TypeDef.readTypeDef(
-                (ClassResolver) namedReader.getTypeResolver(), namedTypeDef, ExpectedType.class)
+                (ClassResolver) namedReader.getTypeResolver(),
+                namedTypeDef,
+                "alias.ExpectedType",
+                ExpectedType.class)
             .getClassSpec()
             .type,
         ExpectedType.class);
@@ -145,10 +151,22 @@ public class NativeTypeDefEncoderTest {
             .build();
     Assert.assertEquals(
         TypeDef.readTypeDef(
-                (ClassResolver) localReader.getTypeResolver(), rawTypeDef, ExpectedType.class)
+                (ClassResolver) localReader.getTypeResolver(),
+                rawTypeDef,
+                ExpectedType.class.getName(),
+                ExpectedType.class)
             .getClassSpec()
             .type,
         ExpectedType.class);
+
+    TypeDef senderOnly =
+        TypeDef.readTypeDef(
+            (ClassResolver) localReader.getTypeResolver(),
+            rawTypeDef,
+            ExpectedType.class.getName(),
+            UnknownClass.UnknownStruct.class);
+    Assert.assertEquals(senderOnly.getClassSpec().entireClassName, ExpectedType.class.getName());
+    Assert.assertEquals(senderOnly.getClassSpec().type, UnknownClass.UnknownStruct.class);
   }
 
   public static class ExpectedType implements Serializable {

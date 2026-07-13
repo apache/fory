@@ -2100,15 +2100,10 @@ public class ClassResolver extends TypeResolver {
    * invoked.
    */
   public Class<?> readClassInternal(ReadContext readContext) {
-    return readClassInternal(readContext, null);
-  }
-
-  @Internal
-  public Class<?> readClassInternal(ReadContext readContext, Class<?> localType) {
     MemoryBuffer buffer = readContext.getBuffer();
     int header = buffer.readVarUInt32Small14();
     if ((header & 0b1) != 0) {
-      return readNamedClass(readContext, buffer, header, localType);
+      return readNamedClass(readContext, buffer, header);
     }
     int typeId = header >>> 1;
     switch (typeId) {
@@ -2125,8 +2120,7 @@ public class ClassResolver extends TypeResolver {
     }
   }
 
-  private Class<?> readNamedClass(
-      ReadContext readContext, MemoryBuffer buffer, int header, Class<?> localType) {
+  private Class<?> readNamedClass(ReadContext readContext, MemoryBuffer buffer, int header) {
     // let the lowermost bit of next byte be set, so the deserialization can know
     // whether need to read class by name in advance
     MetaStringReader metaStringReader = readContext.getMetaStringReader();
@@ -2136,8 +2130,7 @@ public class ClassResolver extends TypeResolver {
     TypeInfo typeInfo = compositeNameBytes2TypeInfo.get(typeNameBytes);
     if (typeInfo != null) {
       Class<?> type = typeInfo.type;
-      if (localType == null
-          && UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
+      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
         throw new InsecureException("Unknown class cannot be read as a Class token.");
       }
       return type;
@@ -2149,38 +2142,10 @@ public class ClassResolver extends TypeResolver {
     if (registeredType != null) {
       return registeredType;
     }
-    if (localType != null) {
-      // ObjectStream may use an unregistered local Serializable parent. A registered type must use
-      // its exact published name and must not fall back to Class.getName() after an exact miss.
-      for (Class<?> type = localType;
-          type != null && Serializable.class.isAssignableFrom(type);
-          type = type.getSuperclass()) {
-        if (extRegistry.registeredClasses.inverse().get(type) == null
-            && type.getName().equals(classSpec.entireClassName)) {
-          DisallowedList.checkNotInDisallowedList(classSpec.entireClassName);
-          if (!config.requireClassRegistration() && !checkType(classSpec.entireClassName)) {
-            throw new InsecureException(
-                String.format(
-                    "Class %s is forbidden for deserialization.", classSpec.entireClassName));
-          }
-          return type;
-        }
-      }
-    }
-    // Only ObjectStream sender-only layers are data-only. A real Class token must resolve to a
-    // concrete class even when unknown-type deserialization is enabled.
-    typeInfo =
-        populateBytesToTypeInfo(
-            typeNameBytes,
-            packageBytes,
-            simpleClassNameBytes,
-            localType != null && config.deserializeUnknownClass());
-    Class<?> type = typeInfo.type;
-    if (localType == null
-        && UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(type))) {
-      throw new InsecureException("Unknown class cannot be read as a Class token.");
-    }
-    return type;
+    // A Class token must resolve to a concrete class. Unknown placeholders are data containers,
+    // not class identities, and attempting to build one here would also publish it to the name
+    // cache before the token is rejected.
+    return populateBytesToTypeInfo(typeNameBytes, packageBytes, simpleClassNameBytes, false).type;
   }
 
   private TypeInfo getTypeInfoByTypeIdForReadClassInternal(int typeId, int userTypeId) {

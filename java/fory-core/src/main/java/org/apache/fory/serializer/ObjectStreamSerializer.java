@@ -52,12 +52,15 @@ import org.apache.fory.collection.ObjectIntMap;
 import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.MetaReadContext;
+import org.apache.fory.context.MetaStringReader;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.meta.EncodedMetaString;
+import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.FieldInfo;
 import org.apache.fory.meta.FieldTypes;
 import org.apache.fory.meta.NativeTypeDefEncoder;
@@ -131,10 +134,11 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
      *
      * @param typeResolver the type resolver
      * @param readContext the context to read TypeDef from
+     * @param className the complete wire name of the layer
      * @return the serializer to use for reading
      */
     CompatibleLayerSerializerBase getReadSerializer(
-        TypeResolver typeResolver, ReadContext readContext);
+        TypeResolver typeResolver, ReadContext readContext, String className);
 
     /**
      * Get the current read serializer (last returned by {@link #getReadSerializer}). This is used
@@ -279,48 +283,35 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       ClassResolver classResolver = (ClassResolver) typeResolver;
       TreeMap<Integer, ObjectInputValidation> callbacks = new TreeMap<>(Collections.reverseOrder());
       for (int i = 0; i < numClasses; i++) {
-        // Matching local layers are bounded to the selected root's Serializable hierarchy;
-        // sender-only names still pass the normal checks in readClassInternal.
-        Class<?> currentClass = classResolver.readClassInternal(readContext, type);
-
-        // Find the matching local slot for sender's class
-        SlotInfo matchedSlot = null;
-        while (slotIndex < slotsInfos.length) {
-          SlotInfo candidateSlot = slotsInfos[slotIndex];
-          if (currentClass == candidateSlot.getCls()) {
-            // Found matching slot
-            matchedSlot = candidateSlot;
-            slotIndex++;
+        String senderClassName = readLayerClassName(readContext, classResolver);
+        int matchedIndex = -1;
+        // The layer header is owned by this serializer. Match its complete wire name only within
+        // the remaining local slots; resolving a named layer as a Class would reject valid
+        // sender-only layers and cannot distinguish them from receiver-only hierarchy changes.
+        for (int j = slotIndex; j < slotsInfos.length; j++) {
+          SlotInfo candidateSlot = slotsInfos[j];
+          String registeredName = classResolver.getRegisteredName(candidateSlot.getCls());
+          String localClassName =
+              registeredName == null ? candidateSlot.getCls().getName() : registeredName;
+          if (senderClassName.equals(localClassName)) {
+            matchedIndex = j;
             break;
-          } else if (currentClass.isAssignableFrom(candidateSlot.getCls())) {
-            // Sender's class is an ancestor of candidate's class but they don't match.
-            // This means sender has a layer (currentClass) that receiver doesn't have.
-            // We'll skip sender's data for this layer below.
-            break;
-          } else {
-            // Receiver has an extra layer that sender doesn't have - call readObjectNoData
-            StreamTypeInfo streamTypeInfo = candidateSlot.getStreamTypeInfo();
-            Method readObjectNoData = streamTypeInfo.readObjectNoData;
-            if (readObjectNoData != null) {
-              if (streamTypeInfo.readObjectNoDataFunc != null) {
-                streamTypeInfo.readObjectNoDataFunc.accept(obj);
-              } else {
-                readObjectNoData.invoke(obj);
-              }
-            }
-            slotIndex++;
           }
         }
 
-        if (matchedSlot == null) {
-          // Sender has a layer that receiver doesn't have - read TypeDef and skip the data
-          skipUnknownLayerData(readContext, currentClass);
+        if (matchedIndex < 0) {
+          // A sender-only layer does not consume a local slot.
+          skipUnknownLayerData(readContext, senderClassName);
           continue;
         }
+        while (slotIndex < matchedIndex) {
+          readObjectNoData(slotsInfos[slotIndex++], obj);
+        }
+        SlotInfo matchedSlot = slotsInfos[slotIndex++];
 
         // Read data for the matched layer - getReadSerializer reads TypeDef from buffer
         // This must be called exactly once per layer to read the TypeDef
-        matchedSlot.getReadSerializer(typeResolver, readContext);
+        matchedSlot.getReadSerializer(typeResolver, readContext, senderClassName);
 
         StreamTypeInfo streamTypeInfo = matchedSlot.getStreamTypeInfo();
         Method readObjectMethod = streamTypeInfo.readObjectMethod;
@@ -339,16 +330,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
       // Handle any remaining receiver-only layers at the end
       while (slotIndex < slotsInfos.length) {
-        SlotInfo remainingSlot = slotsInfos[slotIndex++];
-        StreamTypeInfo streamTypeInfo = remainingSlot.getStreamTypeInfo();
-        Method readObjectNoData = streamTypeInfo.readObjectNoData;
-        if (readObjectNoData != null) {
-          if (streamTypeInfo.readObjectNoDataFunc != null) {
-            streamTypeInfo.readObjectNoDataFunc.accept(obj);
-          } else {
-            readObjectNoData.invoke(obj);
-          }
-        }
+        readObjectNoData(slotsInfos[slotIndex++], obj);
       }
 
       for (ObjectInputValidation validation : callbacks.values()) {
@@ -361,6 +343,41 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       throwSerializationException(type, e);
     }
     return obj;
+  }
+
+  private String readLayerClassName(ReadContext readContext, ClassResolver classResolver) {
+    MemoryBuffer buffer = readContext.getBuffer();
+    int header = buffer.readVarUInt32Small14();
+    if ((header & 0b1) != 0) {
+      MetaStringReader metaStringReader = readContext.getMetaStringReader();
+      EncodedMetaString packageBytes = metaStringReader.readMetaStringWithFlag(buffer, header);
+      EncodedMetaString classNameBytes = metaStringReader.readMetaString(buffer);
+      return Encoders.decodePkgAndClass(
+              packageBytes.decode(Encoders.PACKAGE_DECODER),
+              classNameBytes.decode(Encoders.TYPE_NAME_DECODER))
+          .entireClassName;
+    }
+    int typeId = header >>> 1;
+    int userTypeId = Types.isUserTypeRegisteredById(typeId) ? buffer.readVarUInt32() : -1;
+    Class<?> cls = classResolver.getRegisteredClassByTypeId(typeId, userTypeId);
+    if (cls == null) {
+      throw new ForyException("Type id " + typeId + " is not registered");
+    }
+    return cls.getName();
+  }
+
+  private static void readObjectNoData(SlotInfo slotInfo, Object obj)
+      throws InvocationTargetException, IllegalAccessException {
+    StreamTypeInfo streamTypeInfo = slotInfo.getStreamTypeInfo();
+    Method readObjectNoData = streamTypeInfo.readObjectNoData;
+    if (readObjectNoData == null) {
+      return;
+    }
+    if (streamTypeInfo.readObjectNoDataFunc != null) {
+      streamTypeInfo.readObjectNoDataFunc.accept(obj);
+    } else {
+      readObjectNoData.invoke(obj);
+    }
   }
 
   private void readObjectStreamSlot(
@@ -484,19 +501,16 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
    * evolution when sender's class hierarchy has layers that receiver doesn't have.
    *
    * @param readContext the read context to read from
-   * @param senderClass the class from sender that receiver doesn't have
+   * @param senderClassName the complete wire name of the sender class
    */
-  private void skipUnknownLayerData(ReadContext readContext, Class<?> senderClass) {
+  private void skipUnknownLayerData(ReadContext readContext, String senderClassName) {
     MemoryBuffer buffer = readContext.getBuffer();
-    // For layers without custom writeObject, we can skip using a serializer created from the
-    // TypeDef. Note: For layers with custom writeObject, the sender would have that class
-    // locally, and we'd have a matching slot. This method is only called when sender has a
-    // layer the receiver doesn't have.
+    // Use the layer TypeDef to skip its field encoding without loading the sender class.
 
     if (!typeResolver.getConfig().isMetaShareEnabled()) {
       throw new UnsupportedOperationException(
           "Cannot skip unknown layer data without meta share enabled for class: "
-              + senderClass.getName()
+              + senderClassName
               + ". Schema evolution with removed parent classes requires meta share.");
     }
 
@@ -515,7 +529,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     } else {
       // New TypeDef in stream, with optimized reuse by validated TypeDef header.
       long typeDefId = buffer.readInt64();
-      typeInfo = readLayerTypeInfo(typeResolver, buffer, senderClass, typeDefId);
+      typeInfo = readLayerTypeInfo(typeResolver, buffer, senderClassName, null, typeDefId);
       metaReadContext.readTypeInfos.add(typeInfo);
     }
 
@@ -523,6 +537,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     CompatibleLayerSerializerBase skipSerializer =
         (CompatibleLayerSerializerBase) typeInfo.getSerializer();
     if (skipSerializer == null) {
+      Class<?> senderClass = typeInfo.getType();
       Class<?> layerMarkerClass = LayerMarkerClassGenerator.getOrCreate(senderClass, 0);
       CompatibleLayerSerializer<?> newSerializer =
           new CompatibleLayerSerializer(
@@ -545,31 +560,45 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
   }
 
   private TypeInfo readLayerTypeInfo(
-      TypeResolver typeResolver, MemoryBuffer buffer, Class<?> cls, long typeDefId) {
+      TypeResolver typeResolver,
+      MemoryBuffer buffer,
+      String className,
+      Class<?> cls,
+      long typeDefId) {
     TypeInfo typeInfo = typeDefIdToTypeInfo.get(typeDefId);
     if (typeInfo != null) {
       TypeDef.skipTypeDef(buffer, typeDefId);
       return typeInfo;
     }
-    return readLayerTypeDef(typeResolver, buffer, cls, typeDefId);
+    return readLayerTypeDef(typeResolver, buffer, className, cls, typeDefId);
   }
 
   private TypeInfo readLayerTypeDef(
-      TypeResolver typeResolver, MemoryBuffer buffer, Class<?> cls, long typeDefId) {
-    // readClassInternal already accepted this class as a local root hierarchy layer or resolved a
-    // sender-only name through the checked loader. Rechecking here would require each local
-    // serializable superclass to be registered separately.
+      TypeResolver typeResolver,
+      MemoryBuffer buffer,
+      String className,
+      Class<?> cls,
+      long typeDefId) {
     byte[] encoded = TypeDef.readTypeDefBytes(typeResolver, buffer, typeDefId);
-    TypeDef localTypeDef = typeResolver.getTypeDef(cls, false);
     TypeDef typeDef;
-    if (Arrays.equals(encoded, localTypeDef.getEncoded())) {
-      typeDef = localTypeDef;
+    Class<?> resolvedClass;
+    if (cls != null) {
+      TypeDef localTypeDef = typeResolver.getTypeDef(cls, false);
+      if (Arrays.equals(encoded, localTypeDef.getEncoded())) {
+        typeDef = localTypeDef;
+      } else {
+        typeDef =
+            typeResolver.cacheRemoteTypeDef(
+                TypeDef.readTypeDef((ClassResolver) typeResolver, encoded, className, cls));
+      }
+      resolvedClass = cls;
     } else {
+      resolvedClass = UnknownClass.UnknownStruct.class;
       typeDef =
           typeResolver.cacheRemoteTypeDef(
-              TypeDef.readTypeDef((ClassResolver) typeResolver, encoded, cls));
+              TypeDef.readTypeDef((ClassResolver) typeResolver, encoded, className, resolvedClass));
     }
-    TypeInfo typeInfo = new TypeInfo(cls, typeDef);
+    TypeInfo typeInfo = new TypeInfo(resolvedClass, typeDef);
     typeDefIdToTypeInfo.put(typeDefId, typeInfo);
     return typeInfo;
   }
@@ -937,14 +966,14 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     @Override
     @SuppressWarnings("unchecked")
     public CompatibleLayerSerializerBase getReadSerializer(
-        TypeResolver typeResolver, ReadContext readContext) {
+        TypeResolver typeResolver, ReadContext readContext, String className) {
       CompatibleLayerSerializerBase result;
       if (!typeResolver.getConfig().isMetaShareEnabled()) {
         // Meta share not enabled - use the default slots serializer
         result = slotsSerializer;
       } else {
         // Read TypeInfo from buffer (creates new or returns existing)
-        TypeInfo typeInfo = readLayerTypeInfo(typeResolver, readContext);
+        TypeInfo typeInfo = readLayerTypeInfo(typeResolver, readContext, className);
         if (typeInfo == null) {
           result = slotsSerializer;
         } else {
@@ -973,7 +1002,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       return currentReadSerializer;
     }
 
-    private TypeInfo readLayerTypeInfo(TypeResolver typeResolver, ReadContext readContext) {
+    private TypeInfo readLayerTypeInfo(
+        TypeResolver typeResolver, ReadContext readContext, String className) {
       MemoryBuffer buffer = readContext.getBuffer();
       MetaReadContext metaReadContext = readContext.getMetaReadContext();
       if (metaReadContext == null) {
@@ -989,7 +1019,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         // New TypeDef in stream, with optimized reuse by validated TypeDef header.
         long typeDefId = buffer.readInt64();
         TypeInfo typeInfo =
-            ObjectStreamSerializer.this.readLayerTypeInfo(typeResolver, buffer, cls, typeDefId);
+            ObjectStreamSerializer.this.readLayerTypeInfo(
+                typeResolver, buffer, className, cls, typeDefId);
         metaReadContext.readTypeInfos.add(typeInfo);
         return typeInfo;
       }
@@ -1535,8 +1566,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     private void runDefaultReadObject() throws IOException, ClassNotFoundException {
       MethodHandle defaultReadObjectHandle = slotsInfo.getStreamTypeInfo().defaultReadObjectHandle;
       if (defaultReadObjectHandle == null) {
-        // Read fields using MetaShare serialization (layer meta already read by
-        // getReadSerializer())
+        // Read fields using MetaShare serialization after the slot serializer read layer metadata.
         slotsInfo.getCurrentReadSerializer().readAndSetFields(readContext, targetObject);
         return;
       }

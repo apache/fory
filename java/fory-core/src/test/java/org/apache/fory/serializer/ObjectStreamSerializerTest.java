@@ -45,6 +45,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.codegen.CompileUnit;
+import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
@@ -1271,6 +1273,95 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     assertEquals(result.parentData, "parent");
     assertEquals(result.childData, "child");
     assertEquals(result.childValue, 42);
+  }
+
+  public static class LayerEvolutionBase implements Serializable {
+    public String base;
+  }
+
+  public static class LayerEvolutionReceiverOnly extends LayerEvolutionBase {
+    public transient boolean noDataCalled;
+
+    private void readObjectNoData() {
+      noDataCalled = true;
+    }
+  }
+
+  public static class LayerEvolutionChild extends LayerEvolutionReceiverOnly {
+    public String child;
+  }
+
+  @Test
+  public void testLayerEvolution() throws Exception {
+    String packageName = getClass().getPackage().getName();
+    String classPrefix = "ObjectStreamSerializerTest$LayerEvolution";
+    ClassLoader writerLoader =
+        JaninoUtils.compile(
+            new ClassLoader(null) {},
+            new CompileUnit(
+                packageName,
+                classPrefix + "Base",
+                "package "
+                    + packageName
+                    + "; public class "
+                    + classPrefix
+                    + "Base implements java.io.Serializable {"
+                    + " public String base; }"),
+            new CompileUnit(
+                packageName,
+                classPrefix + "SenderOnly",
+                "package "
+                    + packageName
+                    + "; public class "
+                    + classPrefix
+                    + "SenderOnly extends "
+                    + classPrefix
+                    + "Base { public String sender; }"),
+            new CompileUnit(
+                packageName,
+                classPrefix + "Child",
+                "package "
+                    + packageName
+                    + "; public class "
+                    + classPrefix
+                    + "Child extends "
+                    + classPrefix
+                    + "SenderOnly { public String child; public "
+                    + classPrefix
+                    + "Child() {"
+                    + " base = \"base\"; sender = \"sender\"; child = \"child\"; } }"));
+    Class<?> writerType = writerLoader.loadClass(packageName + "." + classPrefix + "Child");
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .withClassLoader(writerLoader)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    writer.register(writerType);
+    writer.registerSerializer(
+        writerType, new ObjectStreamSerializer(writer.getTypeResolver(), writerType));
+    writer.setMetaWriteContext(new MetaWriteContext());
+    byte[] bytes = writer.serialize(writerType.getConstructor().newInstance());
+
+    Fory reader =
+        Fory.builder()
+            .withXlang(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    reader.register(LayerEvolutionChild.class);
+    reader.registerSerializer(
+        LayerEvolutionChild.class,
+        new ObjectStreamSerializer(reader.getTypeResolver(), LayerEvolutionChild.class));
+    reader.setMetaReadContext(new MetaReadContext());
+
+    LayerEvolutionChild result = (LayerEvolutionChild) reader.deserialize(bytes);
+    assertEquals(result.base, "base");
+    assertEquals(result.child, "child");
+    assertEquals(result.noDataCalled, true);
   }
 
   @Test

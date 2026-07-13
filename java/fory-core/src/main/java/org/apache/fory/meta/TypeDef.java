@@ -328,13 +328,15 @@ public class TypeDef implements Serializable {
     return readTypeDef(resolver, MemoryBuffer.fromByteArray(encoded));
   }
 
-  /** Decode a native class definition whose root class was already resolved by the caller. */
+  /**
+   * Decode a native class definition whose root wire name and local class are owned by the caller.
+   */
   @Internal
   public static TypeDef readTypeDef(
-      ClassResolver resolver, byte[] encoded, Class<?> expectedRootClass) {
+      ClassResolver resolver, byte[] encoded, String rootClassName, Class<?> rootClass) {
     MemoryBuffer buffer = MemoryBuffer.fromByteArray(encoded);
     return NativeTypeDefDecoder.decodeTypeDef(
-        resolver, buffer, buffer.readInt64(), expectedRootClass);
+        resolver, buffer, buffer.readInt64(), rootClassName, rootClass);
   }
 
   /** Read class definition from buffer. */
@@ -514,7 +516,9 @@ public class TypeDef implements Serializable {
 
   private Collection<Descriptor> tryLoadRemoteDescriptors(
       TypeResolver resolver, Class<?> localCls) {
-    if (resolver.isCrossLanguage() || !(resolver instanceof ClassResolver)) {
+    if (resolver.isCrossLanguage()
+        || !(resolver instanceof ClassResolver)
+        || UnknownClass.isUnknowClass(localCls)) {
       return null;
     }
     try {
@@ -536,7 +540,9 @@ public class TypeDef implements Serializable {
 
   private Collection<Descriptor> tryLoadDescriptorsForClassName(
       TypeResolver resolver, String className, Class<?> localCls) {
-    if (resolver.isCrossLanguage() || !(resolver instanceof ClassResolver)) {
+    if (resolver.isCrossLanguage()
+        || !(resolver instanceof ClassResolver)
+        || UnknownClass.isUnknowClass(localCls)) {
       return null;
     }
     try {

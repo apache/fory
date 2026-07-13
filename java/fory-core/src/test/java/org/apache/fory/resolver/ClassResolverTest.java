@@ -972,83 +972,6 @@ public class ClassResolverTest extends ForyTestBase {
   }
 
   @Test
-  public void testObjectStreamLocalClassNames() {
-    Fory rawWriter =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(false)
-            .withCompatible(false)
-            .build();
-    MemoryBuffer childName = writeClassName(rawWriter, SerializableChild.class);
-
-    Fory namedReader =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(true)
-            .withCompatible(false)
-            .build();
-    namedReader.register(SerializableChild.class, "alias", "Child");
-    Assert.assertThrows(
-        InsecureException.class,
-        () -> readClassName(namedReader, childName, SerializableChild.class));
-
-    Fory namedWriter =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(true)
-            .withCompatible(false)
-            .build();
-    namedWriter.register(SerializableChild.class, "alias", "Child");
-    assertSame(
-        readClassName(
-            namedReader,
-            writeClassName(namedWriter, SerializableChild.class),
-            SerializableChild.class),
-        SerializableChild.class);
-
-    Fory idReader =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(true)
-            .withCompatible(false)
-            .build();
-    idReader.register(SerializableChild.class, 102);
-    assertSame(
-        readClassName(
-            idReader, writeClassName(rawWriter, SerializableChild.class), SerializableChild.class),
-        SerializableChild.class);
-
-    Fory parentReader =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(true)
-            .withCompatible(false)
-            .build();
-    assertSame(
-        readClassName(
-            parentReader,
-            writeClassName(rawWriter, SerializableParent.class),
-            SerializableChild.class),
-        SerializableParent.class);
-
-    Fory checkedParentReader =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(false)
-            .withTypeChecker(
-                (resolver, className) -> !className.equals(SerializableParent.class.getName()))
-            .withCompatible(false)
-            .build();
-    Assert.assertThrows(
-        InsecureException.class,
-        () ->
-            readClassName(
-                checkedParentReader,
-                writeClassName(rawWriter, SerializableParent.class),
-                SerializableChild.class));
-  }
-
-  @Test
   public void testFinishRegisterPublishesAndAdoptsSharedRegistration() {
     ForyBuilder builder =
         Fory.builder().withXlang(false).requireClassRegistration(true).withCompatible(false);
@@ -1252,10 +1175,6 @@ public class ClassResolverTest extends ForyTestBase {
   static class Foo {
     int f1;
   }
-
-  static class SerializableParent implements Serializable {}
-
-  static class SerializableChild extends SerializableParent {}
 
   @Data
   static class IdLimitExt {
@@ -2025,28 +1944,6 @@ public class ClassResolverTest extends ForyTestBase {
       LoggerFactory.setLogLevel(previousLogLevel);
     }
     return out.toString(StandardCharsets.UTF_8.name());
-  }
-
-  private static MemoryBuffer writeClassName(Fory fory, Class<?> type) {
-    MemoryBuffer buffer = MemoryUtils.buffer(64);
-    WriteContext writeContext = fory.getWriteContext();
-    writeContext.prepare(buffer, null);
-    try {
-      ((ClassResolver) fory.getTypeResolver()).writeClassInternal(writeContext, type);
-    } finally {
-      writeContext.reset();
-    }
-    return buffer;
-  }
-
-  private static Class<?> readClassName(Fory fory, MemoryBuffer buffer, Class<?> localType) {
-    ReadContext readContext = fory.getReadContext();
-    readContext.prepare(buffer, null, false);
-    try {
-      return ((ClassResolver) fory.getTypeResolver()).readClassInternal(readContext, localType);
-    } finally {
-      readContext.reset();
-    }
   }
 
   private static void resolveMissingXtype(Fory fory) {

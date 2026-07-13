@@ -64,10 +64,12 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   resolution must not scan class-keyed state, use inverse registration, or compare
   `Class.getName()` to infer another accepted name. Writer-side inverse lookup from an already owned
   local `Class<?>` to its registered ID or name is valid and must not be copied into reader-side
-  miss handling. The only reader-side local-name exception is an unregistered Serializable layer
-  in the already selected ObjectStream root hierarchy; a registered layer must still match its
-  exact published name. Inverse registration may only prevent that local fallback; it must not turn
-  a missed input name into an accepted class.
+  miss handling. ObjectStream layer names do not use this reader-side miss path:
+  `ObjectStreamSerializer` owns its layer header and compares the complete wire name directly with
+  the remaining local slots. It resolves registered ID headers through the ID registry, skips
+  unmatched named sender layers as data-only metadata, and does not route layer names through
+  `ClassResolver.readClassInternal`. Inverse registration must not turn a missed input name into an
+  accepted class.
 - Do not use `instanceof` in Java hot paths, including per-value, per-field, per-element,
   read/write/copy, resolver, serializer, codec, and buffer paths. Choose concrete
   implementations during cold setup or code generation, cache final/static-final shape decisions,
