@@ -72,6 +72,8 @@ public final class Utf8JsonReader extends JsonReader {
   private static final long ASCII_ZEROES = 0x3030_3030_3030_3030L;
   private static final long ASCII_NINES = 0x3939_3939_3939_3939L;
   private static final long ASCII_HIGH_BITS = 0x8080_8080_8080_8080L;
+  // Little-endian packed ASCII bytes for "null".
+  private static final int NULL_LITERAL = 0x6C6C756E;
 
   // JSON syntax bytes are ASCII, so hot token checks can compare signed bytes directly.
   // UTF-8 string decoding must keep unsigned byte conversion for non-ASCII content.
@@ -513,11 +515,7 @@ public final class Utf8JsonReader extends JsonReader {
   private boolean tryReadNullLiteral() {
     byte[] bytes = input;
     int offset = position;
-    if (offset + 3 < bytes.length
-        && bytes[offset] == 'n'
-        && bytes[offset + 1] == 'u'
-        && bytes[offset + 2] == 'l'
-        && bytes[offset + 3] == 'l') {
+    if (offset + 3 < bytes.length && LittleEndian.getInt32(bytes, offset) == NULL_LITERAL) {
       position = offset + 4;
       return true;
     }
@@ -1726,14 +1724,19 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   public String readNullableStringToken() {
-    if (position < input.length) {
-      int ch = input[position];
-      if (ch == '"') {
-        return readStringToken();
-      }
-      if (ch == 'n' && tryReadNullLiteral()) {
-        return null;
-      }
+    // Token callers have already handled whitespace. Keep the overwhelmingly common string case
+    // to one byte check; only a possible null or malformed token enters the cold classifier.
+    byte[] bytes = input;
+    int offset = position;
+    if (offset < bytes.length && bytes[offset] == '"') {
+      return readStringToken();
+    }
+    return readNullableStringTokenSlow();
+  }
+
+  private String readNullableStringTokenSlow() {
+    if (tryReadNullLiteral()) {
+      return null;
     }
     return readStringToken();
   }

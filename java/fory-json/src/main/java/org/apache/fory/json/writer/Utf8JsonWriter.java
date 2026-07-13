@@ -934,15 +934,15 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       return writeLatin1String17To24(value, length);
     }
     byte[] bytes = buffer;
-    int start = position;
-    int pos = start;
+    int pos = position;
     bytes[pos++] = (byte) '"';
     // Short compact strings dominate generated JSON writers. Keep the 8-16 byte path exact here;
     // longer short-string bands stay in helpers so this common path remains small.
+    // Position is published only after complete validation, so every false return leaves the
+    // writer cursor unchanged even though scratch bytes may already have been overwritten.
     if (length >= 8) {
       long word = LittleEndian.getInt64(value, 0);
       if (!isJsonAsciiWord(word)) {
-        position = start;
         return false;
       }
       LittleEndian.putInt64(bytes, pos, word);
@@ -951,7 +951,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       if (index + Long.BYTES <= length) {
         long tail = LittleEndian.getInt64(value, index);
         if (!isJsonAsciiWord(tail)) {
-          position = start;
           return false;
         }
         LittleEndian.putInt64(bytes, pos, tail);
@@ -961,7 +960,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       if (index + Integer.BYTES <= length) {
         int tail = LittleEndian.getInt32(value, index);
         if (!isJsonAsciiInt(tail)) {
-          position = start;
           return false;
         }
         LittleEndian.putInt32(bytes, pos, tail);
@@ -971,7 +969,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       if (index + Short.BYTES <= length) {
         int tail = (value[index] & 0xFF) | ((value[index + 1] & 0xFF) << 8);
         if (!isJsonAsciiShort(tail)) {
-          position = start;
           return false;
         }
         bytes[pos] = (byte) tail;
@@ -982,7 +979,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       if (index < length) {
         byte tail = value[index];
         if (!isJsonAsciiByte(tail)) {
-          position = start;
           return false;
         }
         bytes[pos++] = tail;
@@ -999,13 +995,11 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   private boolean writeLatin1String0To7(byte[] value, int length) {
     byte[] bytes = buffer;
-    int start = position;
-    int pos = start;
+    int pos = position;
     bytes[pos++] = (byte) '"';
     if (length >= 4) {
       int word = LittleEndian.getInt32(value, 0);
       if (!isJsonAsciiInt(word)) {
-        position = start;
         return false;
       }
       LittleEndian.putInt32(bytes, pos, word);
@@ -1013,7 +1007,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         int tailOffset = length - Integer.BYTES;
         int tail = LittleEndian.getInt32(value, tailOffset);
         if (!isJsonAsciiInt(tail)) {
-          position = start;
           return false;
         }
         LittleEndian.putInt32(bytes, pos + tailOffset, tail);
@@ -1022,7 +1015,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     } else if (length >= 2) {
       int word = (value[0] & 0xFF) | ((value[1] & 0xFF) << 8);
       if (!isJsonAsciiShort(word)) {
-        position = start;
         return false;
       }
       bytes[pos] = (byte) word;
@@ -1030,7 +1022,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       if (length == 3) {
         byte ch = value[2];
         if (!isJsonAsciiByte(ch)) {
-          position = start;
           return false;
         }
         bytes[pos + 2] = ch;
@@ -1039,7 +1030,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     } else if (length == 1) {
       byte ch = value[0];
       if (!isJsonAsciiByte(ch)) {
-        position = start;
         return false;
       }
       bytes[pos++] = ch;
@@ -1051,8 +1041,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   private boolean writeLatin1String25To31(byte[] value, int length) {
     byte[] bytes = buffer;
-    int start = position;
-    int pos = start;
+    int pos = position;
     bytes[pos++] = (byte) '"';
     long word0 = LittleEndian.getInt64(value, 0);
     long word1 = LittleEndian.getInt64(value, 8);
@@ -1060,7 +1049,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     int tailOffset = length - Long.BYTES;
     long tail = LittleEndian.getInt64(value, tailOffset);
     if (!isJsonAsciiWords(word0, word1, word2, tail)) {
-      position = start;
       return false;
     }
     LittleEndian.putInt64(bytes, pos, word0);
@@ -1075,15 +1063,13 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   private boolean writeLatin1String17To24(byte[] value, int length) {
     byte[] bytes = buffer;
-    int start = position;
-    int pos = start;
+    int pos = position;
     bytes[pos++] = (byte) '"';
     long word0 = LittleEndian.getInt64(value, 0);
     long word1 = LittleEndian.getInt64(value, 8);
     int tailOffset = length - Long.BYTES;
     long tail = LittleEndian.getInt64(value, tailOffset);
     if (!isJsonAsciiWords(word0, word1, tail)) {
-      position = start;
       return false;
     }
     LittleEndian.putInt64(bytes, pos, word0);
@@ -1801,7 +1787,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     } else {
       long top = high / EIGHT_DIGITS;
       int middle = (int) (high - top * EIGHT_DIGITS);
-      pos = writePositiveInt(bytes, pos, (int) top);
+      // A positive long has at most 19 decimal digits, so removing two eight-digit chunks leaves a
+      // top chunk in [1, 922]. Bypass the general int branch tree for this proven three-digit
+      // bound.
+      pos = writeIntUpTo3(bytes, pos, (int) top);
       pos = writePadded8Digits(bytes, pos, middle);
     }
     position = writePadded8Digits(bytes, pos, low);
@@ -1822,7 +1811,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
     int top = divide10000(high);
     int middle = high - top * 10000;
-    pos = writeIntUpTo4(bytes, pos, top);
+    // Integer.MAX_VALUE has ten digits, so removing two four-digit chunks leaves a top chunk in
+    // [1, 21]. Avoid the up-to-four dispatcher for this proven two-digit bound.
+    pos = writeIntUpTo3(bytes, pos, top);
     return writePadded8(bytes, pos, middle, low);
   }
 
@@ -1938,8 +1929,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private static int writePadded8(byte[] bytes, int pos, int high, int low) {
-    long value = (DIGIT_QUADS[high] & 0xFFFFFFFFL) | ((DIGIT_QUADS[low] & 0xFFFFFFFFL) << 32);
-    LittleEndian.putInt64(bytes, pos, value);
+    // Shifting the upper quad discards int-to-long sign extension, so only the lower quad needs a
+    // mask before both packed words are stored together.
+    LittleEndian.putInt64(
+        bytes, pos, (DIGIT_QUADS[high] & 0xFFFFFFFFL) | ((long) DIGIT_QUADS[low] << 32));
     return pos + 8;
   }
 }
