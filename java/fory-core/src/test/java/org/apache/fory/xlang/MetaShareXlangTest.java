@@ -23,11 +23,14 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
@@ -117,6 +120,25 @@ public class MetaShareXlangTest extends ForyTestBase {
   @Data
   static class NestedSetArrayElementField {
     Set<int[]> values;
+  }
+
+  abstract static class InheritedFieldParent {
+    public Map<String, BigDecimal> values = new ConcurrentHashMap<>();
+  }
+
+  static class InheritedFieldChild extends InheritedFieldParent {}
+
+  @Test
+  public void testInheritedField() {
+    for (boolean codegen : new boolean[] {false, true}) {
+      Fory fory = compatibleFory(InheritedFieldChild.class, codegen);
+      InheritedFieldChild value = new InheritedFieldChild();
+      value.values.put("one", BigDecimal.ONE);
+
+      InheritedFieldChild decoded = (InheritedFieldChild) fory.deserialize(fory.serialize(value));
+
+      assertEquals(decoded.values, value.values);
+    }
   }
 
   @Test

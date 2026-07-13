@@ -367,8 +367,24 @@ public class TypeDef implements Serializable {
 
   private List<Descriptor> buildDescriptors(
       TypeResolver resolver, Class<?> cls, Collection<Descriptor> fieldDescriptors) {
+    boolean isXlang = resolver.isCrossLanguage();
     Map<String, Descriptor> descriptorsMap = new HashMap<>();
     Map<Short, Descriptor> fieldIdToDescriptorMap = new HashMap<>();
+    Map<String, Descriptor> xlangNameDescriptors = null;
+
+    if (isXlang) {
+      xlangNameDescriptors = new HashMap<>();
+      // Xlang TypeDef flattens inherited fields and does not encode their Java declaring class.
+      // Reuse the encoder's shadow/collision selection so name-based fields bind by the same
+      // language-neutral identifier on both the schema and local descriptor sides.
+      List<Descriptor> xlangDescriptors =
+          TypeDefEncoder.dropShadowedXlangNameFields(cls, new ArrayList<>(fieldDescriptors));
+      for (Descriptor descriptor : xlangDescriptors) {
+        if (!descriptor.hasForyFieldId()) {
+          xlangNameDescriptors.put(descriptor.getSnakeCaseName(), descriptor);
+        }
+      }
+    }
 
     for (Descriptor descriptor : fieldDescriptors) {
       String fullName = descriptor.getDeclaringClass() + "." + descriptor.getName();
@@ -390,7 +406,6 @@ public class TypeDef implements Serializable {
       }
     }
     List<Descriptor> descriptors = new ArrayList<>(fieldsInfo.size());
-    boolean isXlang = resolver.isCrossLanguage();
     Collection<Descriptor> remoteDescriptors = null;
     Map<String, Descriptor> remoteDescriptorsMap = null;
     Map<Short, Descriptor> remoteFieldIdToDescriptorMap = null;
@@ -400,15 +415,14 @@ public class TypeDef implements Serializable {
       Descriptor descriptor;
       if (fieldInfo.hasFieldId()) {
         descriptor = fieldIdToDescriptorMap.get(fieldInfo.getFieldId());
+      } else if (isXlang) {
+        descriptor =
+            xlangNameDescriptors.get(
+                StringUtils.lowerCamelToLowerUnderscore(fieldInfo.getFieldName()));
       } else {
         String fieldName = fieldInfo.getFieldName();
         String definedClass = fieldInfo.getDefinedClass();
         descriptor = descriptorsMap.get(definedClass + "." + fieldName);
-        if (descriptor == null && isXlang) {
-          descriptor =
-              descriptorsMap.get(
-                  definedClass + "." + StringUtils.lowerCamelToLowerUnderscore(fieldName));
-        }
       }
       boolean remoteOnly = false;
       if (descriptor == null) {
