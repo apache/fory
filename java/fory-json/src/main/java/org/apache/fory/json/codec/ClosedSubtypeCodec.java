@@ -25,6 +25,7 @@ import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -35,6 +36,16 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 
 /**
  * Resolver-local closed subtype dispatcher whose branch slots follow child JsonTypeInfo updates.
+ *
+ * <p>Inline discriminator state belongs to this parent. Any-readable children use parent-local
+ * field tables and generated reader instances so one child can be shared by parents with different
+ * discriminator names without changing the child's canonical metadata. Nested values of the same
+ * child type still use its canonical reader; the derived skip table applies only to the outer
+ * inline object.
+ *
+ * <p>Writing rejects fixed-schema discriminator collisions when branches are resolved, but never
+ * queries an Any Map. Runtime dynamic-key conflicts are owned by the application; probing here
+ * would invoke an Any getter twice and leak parent-specific policy into the child writer.
  */
 @Internal
 @SuppressWarnings("unchecked")
@@ -43,6 +54,10 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
   private final JsonSubTypesInfo definition;
   private final JsonTypeInfo[] children;
   private final ObjectCodec<Object>[] objectCodecs;
+  private JsonFieldTable[] inlineReadTables;
+  private Latin1ReaderCodec<Object>[] inlineLatin1Readers;
+  private Utf16ReaderCodec<Object>[] inlineUtf16Readers;
+  private Utf8ReaderCodec<Object>[] inlineUtf8Readers;
 
   /** Creates an unresolved resolver-local dispatcher shell for a validated subtype definition. */
   @Internal
@@ -76,9 +91,27 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
         ObjectCodec<?> objectCodec = resolver.getObjectCodec(subtype);
         rejectDiscriminatorCollision(objectCodec, definition.scanInfo.property());
         objectCodecs[i] = (ObjectCodec<Object>) objectCodec;
-        // Member-writer generation is requested once while the closed table is resolved. The
-        // child capability slots are the single publication owner, so async completion becomes
-        // visible to this dispatcher without a second cache or a resolver lookup on every value.
+        ObjectCodec.AnyInfo any = objectCodec.anyInfo();
+        if (any != null && (any.readField() != null || any.readSetter() != null)) {
+          if (inlineReadTables == null) {
+            inlineReadTables = new JsonFieldTable[children.length];
+            inlineLatin1Readers = new Latin1ReaderCodec[children.length];
+            inlineUtf16Readers = new Utf16ReaderCodec[children.length];
+            inlineUtf8Readers = new Utf8ReaderCodec[children.length];
+          }
+          JsonFieldTable table =
+              objectCodec.readTable().withSkippedName(definition.scanInfo.property());
+          inlineReadTables[i] = table;
+          // The subtype scan restores the cursor, so the outer child rereads the discriminator and
+          // needs this parent-local skip table. Nested child values must use the canonical table.
+          resolver.resolveInlineAnyReaders(this, i, objectCodec, table);
+        }
+        // Member writing is a parent-neutral child representation: this codec owns the outer
+        // object and discriminator, while the child owns field access, omission, Any placement,
+        // and recursive complete-value writes. Keep its generated capability in the child slot so
+        // multiple bases can share it without duplicating codegen or parent-local writer state.
+        // Readers differ because rereading this parent's discriminator changes field
+        // classification, which is why only the inline Any reader binding above is parent-local.
         resolver.stringObjectWriter(objectCodecs[i]);
         resolver.utf8ObjectWriter(objectCodecs[i]);
       }
@@ -150,6 +183,13 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     }
     if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
+      JsonFieldTable[] tables = inlineReadTables;
+      if (tables != null && tables[index] != null) {
+        Latin1ReaderCodec<Object> codec = inlineLatin1Readers[index];
+        return codec == null
+            ? objectCodecs[index].readLatin1Object(reader, tables[index])
+            : codec.readLatin1(reader);
+      }
       return children[index].latin1Reader().readLatin1(reader);
     }
     reader.enterDepth();
@@ -178,6 +218,13 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     }
     if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
+      JsonFieldTable[] tables = inlineReadTables;
+      if (tables != null && tables[index] != null) {
+        Utf16ReaderCodec<Object> codec = inlineUtf16Readers[index];
+        return codec == null
+            ? objectCodecs[index].readUtf16Object(reader, tables[index])
+            : codec.readUtf16(reader);
+      }
       return children[index].utf16Reader().readUtf16(reader);
     }
     reader.enterDepth();
@@ -206,6 +253,13 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     }
     if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
+      JsonFieldTable[] tables = inlineReadTables;
+      if (tables != null && tables[index] != null) {
+        Utf8ReaderCodec<Object> codec = inlineUtf8Readers[index];
+        return codec == null
+            ? objectCodecs[index].readUtf8Object(reader, tables[index])
+            : codec.readUtf8(reader);
+      }
       return children[index].utf8Reader().readUtf8(reader);
     }
     reader.enterDepth();
@@ -250,7 +304,25 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
         : objectCodecs[index];
   }
 
+  @Internal
+  public void setInlineLatin1Reader(int index, Latin1ReaderCodec<Object> reader) {
+    inlineLatin1Readers[index] = reader;
+  }
+
+  @Internal
+  public void setInlineUtf16Reader(int index, Utf16ReaderCodec<Object> reader) {
+    inlineUtf16Readers[index] = reader;
+  }
+
+  @Internal
+  public void setInlineUtf8Reader(int index, Utf8ReaderCodec<Object> reader) {
+    inlineUtf8Readers[index] = reader;
+  }
+
   private static void rejectDiscriminatorCollision(ObjectCodec<?> codec, String property) {
+    // Only the statically known child schema is validated here. Do not probe Any output: dynamic
+    // discriminator conflicts are application-owned, and invoking its getter here would duplicate
+    // access while leaking this parent's policy into the child writer.
     long hash = org.apache.fory.json.meta.JsonFieldNameHash.hash(property);
     for (JsonFieldInfo field : codec.writeFields()) {
       rejectCollision(field.name(), field.nameHash(), property, hash, codec.type());

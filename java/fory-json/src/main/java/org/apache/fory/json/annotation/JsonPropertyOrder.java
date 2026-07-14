@@ -30,8 +30,11 @@ import java.lang.annotation.Target;
  *
  * <p>Names are matched first against final JSON property names and then against Java logical
  * property names. Unlisted properties with {@link JsonProperty#index()} follow in ascending index
- * order. Remaining unindexed properties are sorted by final JSON name when {@link #alphabetic()} is
- * true, or retain their existing relative order otherwise.
+ * order. A write-enabled {@link JsonAnyProperty} or {@link JsonAnyGetter} participates as one
+ * position identified by its Java logical property name. Remaining unindexed properties and that
+ * position are sorted by final JSON name or Any logical name when {@link #alphabetic()} is true, or
+ * retain their existing relative order otherwise. Dynamic Map entries retain Map iteration order
+ * and cannot be named individually by this annotation.
  *
  * <p>The nearest declaration on the concrete class or one of its superclasses is used. A subclass
  * declaration replaces its superclass declaration as a whole; arrays are never merged. Interface
@@ -45,12 +48,20 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface JsonPropertyOrder {
-  /** Returns the ordered property prefix, or an empty array for alphabetic-only ordering. */
+  /**
+   * Returns the ordered property prefix, or an empty array for alphabetic-only ordering.
+   *
+   * <p>Each name resolves first against final JSON property names and then against Java logical
+   * property names. A write-enabled Any property is resolved only by its Java logical name.
+   */
   String[] value() default {};
 
   /**
-   * Returns whether remaining unindexed properties are sorted by final JSON property name using
-   * natural, case-sensitive {@link String} order.
+   * Returns whether remaining unindexed properties are sorted using natural, case-sensitive {@link
+   * String} order.
+   *
+   * <p>Fixed properties use final JSON names and a write-enabled Any property uses its Java logical
+   * name. Dynamic entries inside an Any Map are never sorted.
    */
   boolean alphabetic() default false;
 }

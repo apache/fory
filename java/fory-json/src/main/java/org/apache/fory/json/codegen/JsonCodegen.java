@@ -32,6 +32,7 @@ import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
+import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
@@ -206,9 +207,13 @@ public final class JsonCodegen {
     String className = className(type, objectMembers ? "StringObjectWriter" : "StringWriter");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    AnyInfo any = codec.anyInfo();
     String code =
-        new JsonWriterCodegen.StringGenerator(this)
-            .genWriterCode(builder, type, codec.writeFields(), objectMembers);
+        any == null || any.writeField() == null && any.writeGetter() == null
+            ? new StringWriterCodegen(this)
+                .genWriterCode(builder, type, codec.writeFields(), objectMembers)
+            : new StringWriterCodegen(this)
+                .genAnyWriterCode(builder, type, codec.writeFields(), any, objectMembers);
     return compileCodecClass(generatedPackage, className, code);
   }
 
@@ -222,9 +227,13 @@ public final class JsonCodegen {
     String className = className(type, objectMembers ? "Utf8ObjectWriter" : "Utf8Writer");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    AnyInfo any = codec.anyInfo();
     String code =
-        new JsonWriterCodegen.Utf8Generator(this)
-            .genWriterCode(builder, type, codec.writeFields(), objectMembers);
+        any == null || any.writeField() == null && any.writeGetter() == null
+            ? new Utf8WriterCodegen(this)
+                .genWriterCode(builder, type, codec.writeFields(), objectMembers)
+            : new Utf8WriterCodegen(this)
+                .genAnyWriterCode(builder, type, codec.writeFields(), any, objectMembers);
     return compileCodecClass(generatedPackage, className, code);
   }
 
@@ -234,10 +243,15 @@ public final class JsonCodegen {
     String className = className(type, "Latin1Reader");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    AnyInfo any = codec.anyInfo();
     String code =
-        new JsonReaderCodegen.Latin1Generator(this)
-            .genReaderCode(
-                builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo());
+        any == null || any.readField() == null && any.readSetter() == null
+            ? new Latin1ReaderCodegen(this)
+                .genReaderCode(
+                    builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo())
+            : new Latin1ReaderCodegen(this)
+                .genAnyReaderCode(
+                    builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo(), any);
     return compileCodecClass(generatedPackage, className, code);
   }
 
@@ -247,10 +261,15 @@ public final class JsonCodegen {
     String className = className(type, "Utf16Reader");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    AnyInfo any = codec.anyInfo();
     String code =
-        new JsonReaderCodegen.Utf16Generator(this)
-            .genReaderCode(
-                builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo());
+        any == null || any.readField() == null && any.readSetter() == null
+            ? new Utf16ReaderCodegen(this)
+                .genReaderCode(
+                    builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo())
+            : new Utf16ReaderCodegen(this)
+                .genAnyReaderCode(
+                    builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo(), any);
     return compileCodecClass(generatedPackage, className, code);
   }
 
@@ -260,10 +279,15 @@ public final class JsonCodegen {
     String className = className(type, "Utf8Reader");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    AnyInfo any = codec.anyInfo();
     String code =
-        new JsonReaderCodegen.Utf8Generator(this)
-            .genReaderCode(
-                builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo());
+        any == null || any.readField() == null && any.readSetter() == null
+            ? new Utf8ReaderCodegen(this)
+                .genReaderCode(
+                    builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo())
+            : new Utf8ReaderCodegen(this)
+                .genAnyReaderCode(
+                    builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo(), any);
     return compileCodecClass(generatedPackage, className, code);
   }
 
@@ -288,7 +312,8 @@ public final class JsonCodegen {
         return false;
       }
     }
-    return true;
+    AnyInfo any = codec.anyInfo();
+    return any == null || canCompileAnyWrite(any);
   }
 
   @Internal
@@ -303,7 +328,41 @@ public final class JsonCodegen {
         return false;
       }
     }
-    return true;
+    AnyInfo any = codec.anyInfo();
+    return any == null || canCompileAnyRead(any, record, codec.creatorInfo() != null);
+  }
+
+  private boolean canCompileAnyWrite(AnyInfo any) {
+    Field field = any.writeField();
+    Method getter = any.writeGetter();
+    if (field == null && getter == null) {
+      return true;
+    }
+    if (getter != null && !canCall(getter)) {
+      return false;
+    }
+    Class<?> mapType = getter == null ? field.getType() : getter.getReturnType();
+    return isVisible(mapType) && isVisible(any.valueRawType());
+  }
+
+  private boolean canCompileAnyRead(AnyInfo any, boolean record, boolean creator) {
+    Field field = any.readField();
+    Method setter = any.readSetter();
+    if (field == null && setter == null) {
+      return true;
+    }
+    // Generated setter calls spell the value type in Java source, so class-loader visibility alone
+    // is insufficient.
+    if (setter != null && (!canCall(setter) || !canCompileType(setter.getParameterTypes()[1]))) {
+      return false;
+    }
+    if (field != null && !isVisible(field.getType())) {
+      return false;
+    }
+    if (setter != null && (record || creator)) {
+      return false;
+    }
+    return isVisible(any.valueRawType());
   }
 
   Class<?> stringWriterFieldType(JsonTypeInfo typeInfo) {
@@ -430,6 +489,31 @@ public final class JsonCodegen {
     return nestedType != null && nestedType != type;
   }
 
+  @Internal
+  public static boolean storesSelfReader(ObjectCodec<?> owner) {
+    AnyInfo any = owner.anyInfo();
+    if (any == null || any.readField() == null && any.readSetter() == null) {
+      return false;
+    }
+    return storesSelfReader(owner.type(), owner.readFields(), owner.creatorInfo() != null, any);
+  }
+
+  static boolean storesSelfReader(
+      Class<?> type, JsonFieldInfo[] properties, boolean creator, AnyInfo any) {
+    if (any.valueRawType() == type && any.valueTypeInfo().usesDefaultObjectCodec()) {
+      return true;
+    }
+    if (creator) {
+      return false;
+    }
+    for (JsonFieldInfo property : properties) {
+      if (readNestedType(property) == type) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private boolean canCompileWrite(JsonFieldInfo property) {
     Field field = property.writeField();
     if (field == null && property.writeGetter() == null) {
@@ -465,12 +549,12 @@ public final class JsonCodegen {
   }
 
   private boolean canCompileType(Class<?> type) {
-    return CodeGenerator.sourcePublicAccessible(type) && isVisible(type);
+    return isPublicSourceType(type) && isVisible(type);
   }
 
   private boolean canCall(Method method) {
     return Modifier.isPublic(method.getModifiers())
-        && CodeGenerator.sourcePublicAccessible(method.getDeclaringClass());
+        && isPublicSourceType(method.getDeclaringClass());
   }
 
   private boolean isVisible(Class<?> type) {
@@ -491,6 +575,10 @@ public final class JsonCodegen {
   }
 
   private static boolean isPublicSourceType(Class<?> type) {
+    // An array Class has no enclosing owner, but generated Java names its component type.
+    while (type.isArray()) {
+      type = type.getComponentType();
+    }
     if (!CodeGenerator.sourcePublicAccessible(type)) {
       return false;
     }

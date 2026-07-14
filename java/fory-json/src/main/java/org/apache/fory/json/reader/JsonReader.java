@@ -36,6 +36,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.Objects;
 import java.util.UUID;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
@@ -245,6 +246,20 @@ public abstract class JsonReader {
   protected abstract char charAt(int index);
 
   public abstract String readString();
+
+  @Internal
+  public final int position() {
+    return position;
+  }
+
+  @Internal
+  public final String materializeFieldName(int start) {
+    int current = position;
+    position = start;
+    String name = readString();
+    position = current;
+    return name;
+  }
 
   public abstract double readDouble();
 

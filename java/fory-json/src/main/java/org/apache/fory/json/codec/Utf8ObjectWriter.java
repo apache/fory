@@ -22,7 +22,10 @@ package org.apache.fory.json.codec;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
-/** UTF-8 object-member refinement used by closed inline subtype writers. */
+/**
+ * UTF-8 counterpart of {@link StringObjectWriter}; the capability is child-owned and contains no
+ * composing-parent or discriminator state.
+ */
 @Internal
 public interface Utf8ObjectWriter<T> extends Utf8WriterCodec<T> {
   /** Writes object members after {@code written} members have already been emitted. */

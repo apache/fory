@@ -23,9 +23,15 @@ import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.writer.StringJsonWriter;
 
 /**
- * Object-representation refinement used by closed inline subtype writers.
+ * Child-owned object-member representation used to compose an object around that child's members.
  *
- * <p>The caller has already written the opening brace and discriminator member. Implementations
+ * <p>This refinement is independent of the composing parent: it receives no discriminator, base
+ * type, subtype index, or reserved name. The child still owns field access, omission, property
+ * order, Any placement, and recursive complete-value writes, so moving member generation into a
+ * parent codec would duplicate those child semantics. Implementations also remain complete {@link
+ * StringWriterCodec} instances for nested and ordinary child values.
+ *
+ * <p>The caller has already written the opening brace and any preceding members. Implementations
  * write only ordinary object members: they must not write null for the object, braces, or depth.
  */
 @Internal

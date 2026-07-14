@@ -19,43 +19,34 @@
 
 package org.apache.fory.json.codec;
 
-import java.lang.reflect.AnnotatedElement;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Executable;
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.PropertyNamingStrategy;
-import org.apache.fory.json.annotation.JsonCreator;
-import org.apache.fory.json.annotation.JsonIgnore;
-import org.apache.fory.json.annotation.JsonProperty;
-import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.ObjectInstantiator;
-import org.apache.fory.reflect.ObjectInstantiators;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.util.record.RecordComponent;
 import org.apache.fory.util.record.RecordInfo;
 import org.apache.fory.util.record.RecordUtils;
 
@@ -87,6 +78,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
   protected final ObjectInstantiator<?> instantiator;
   private final int creationKind;
   private final JsonCreatorInfo creatorInfo;
+  private final AnyInfo anyInfo;
   private final RecordInfo recordInfo;
   private final Object[] recordFieldDefaults;
 
@@ -96,11 +88,17 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       JsonFieldInfo[] readFields,
       String[] readJavaNames,
       JsonCreatorInfo creatorInfo,
+      AnyInfo anyInfo,
+      String[] skippedNames,
       ObjectInstantiator<?> instantiator) {
     this.type = type;
     this.writeFields = writeFields;
     this.readFields = readFields;
-    readTable = new JsonFieldTable(readFields);
+    this.anyInfo = anyInfo;
+    readTable =
+        anyInfo == null
+            ? new JsonFieldTable(readFields)
+            : new JsonFieldTable(readFields, skippedNames);
     this.instantiator = instantiator;
     this.creatorInfo = creatorInfo;
     creationKind = RecordUtils.isRecord(type) ? RECORD : creatorInfo == null ? MUTABLE : CREATOR;
@@ -118,562 +116,40 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
       boolean writeNullFields) {
+    return ObjectCodecBuilder.build(
+        ownerType, propertyDiscoveryEnabled, propertyNamingStrategy, writeNullFields);
+  }
+
+  static <T> ObjectCodec<T> createCodec(
+      TypeRef<T> ownerType,
+      JsonFieldInfo[] writeFields,
+      JsonFieldInfo[] readFields,
+      String[] readJavaNames,
+      JsonCreatorInfo creatorInfo,
+      AnyInfo anyInfo,
+      String[] skippedNames,
+      ObjectInstantiator<?> instantiator) {
     Class<?> type = ownerType.getRawType();
-    if (type.isInterface()
-        || Modifier.isAbstract(type.getModifiers())
-        || type.isPrimitive()
-        || type.isArray()
-        || type.isEnum()) {
-      throw new ForyJsonException("Unsupported JSON object type " + type);
-    }
-    boolean record = RecordUtils.isRecord(type);
-    rejectIneligibleAnnotations(type, propertyDiscoveryEnabled, record);
-    LinkedHashMap<String, FieldBuilder> builders = new LinkedHashMap<>();
-    addFields(type, record, propertyDiscoveryEnabled, builders);
-    if (propertyDiscoveryEnabled && !record) {
-      addAccessors(type, builders);
-    } else if (record) {
-      addRecordAccessors(type, builders);
-    }
-    JsonCreatorInfo creatorInfo =
-        record
-            ? rejectRecordCreator(type)
-            : buildCreatorInfo(type, ownerType, builders, propertyNamingStrategy);
-    JsonPropertyOrder propertyOrder = findPropertyOrder(type);
-    boolean orderWrites = propertyOrder != null || hasIndexedProperty(builders);
-    List<JsonFieldInfo> writes = new ArrayList<>();
-    List<FieldBuilder> writeBuilders = orderWrites ? new ArrayList<>(builders.size()) : null;
-    List<JsonFieldInfo> reads = new ArrayList<>();
-    List<String> readJavaNames = record ? new ArrayList<>() : null;
-    Map<String, FieldBuilder> canonicalNames = new LinkedHashMap<>();
-    Map<Long, String> canonicalHashes = new LinkedHashMap<>();
-    for (FieldBuilder builder : builders.values()) {
-      if (builder.hasIndex() && !builder.hasWriteSource()) {
-        throw new ForyJsonException(
-            "JSON property index requires a write source for property "
-                + builder.name
-                + " on "
-                + type.getName()
-                + " from "
-                + builder.explicitIndexSource);
-      }
-      if (!builder.hasWriteSource() && !builder.hasReadSink()) {
-        if (builder.hasConfiguration()) {
-          throw new ForyJsonException(
-              "JSON property annotation has no readable or writable direction for " + builder.name);
-        }
-        continue;
-      }
-      if (creatorInfo != null && !builder.hasWriteSource()) {
-        if (builder.explicitInclude != JsonProperty.Include.DEFAULT) {
-          throw new ForyJsonException(
-              "JSON inclusion policy requires a write source for property " + builder.name);
-        }
-        if (!builder.creatorBound && builder.hasConfiguration()) {
-          throw new ForyJsonException(
-              "JSON property configuration is outside the creator read schema for " + builder.name);
-        }
-        continue;
-      }
-      JsonFieldInfo field =
-          builder.build(record, ownerType, propertyNamingStrategy, writeNullFields);
-      FieldBuilder priorProperty = canonicalNames.put(field.name(), builder);
-      if (priorProperty != null) {
-        throw new ForyJsonException(
-            "Duplicate canonical JSON property name "
-                + field.name()
-                + " for "
-                + priorProperty.nameDescription(propertyNamingStrategy)
-                + " and "
-                + builder.nameDescription(propertyNamingStrategy)
-                + " on "
-                + type.getName());
-      }
-      if (builder.hasWriteSource()) {
-        writes.add(field);
-        if (writeBuilders != null) {
-          writeBuilders.add(builder);
-        }
-      }
-      if (creatorInfo == null && builder.hasReadSink()) {
-        String priorHashName = canonicalHashes.put(field.nameHash(), field.name());
-        if (priorHashName != null && !priorHashName.equals(field.name())) {
-          throw new ForyJsonException(
-              "JSON property name hash collision between "
-                  + priorHashName
-                  + " and "
-                  + field.name());
-        }
-        reads.add(field);
-        if (record) {
-          readJavaNames.add(builder.name);
-        }
-      }
-    }
-    JsonFieldInfo[] writeArray =
-        writeBuilders == null
-            ? writes.toArray(new JsonFieldInfo[0])
-            : orderWriteFields(type, propertyOrder, writeBuilders, writes);
-    JsonFieldInfo[] readArray = reads.toArray(new JsonFieldInfo[0]);
-    for (int i = 0; i < readArray.length; i++) {
-      readArray[i].setReadIndex(i);
-    }
-    ObjectInstantiator<?> instantiator = ObjectInstantiators.createObjectInstantiator(type);
-    String[] recordNames = record ? readJavaNames.toArray(new String[0]) : null;
     if (ownerType.getType() instanceof Class) {
-      return new ObjectCodec<>(type, writeArray, readArray, recordNames, creatorInfo, instantiator);
+      return new ObjectCodec<>(
+          type,
+          writeFields,
+          readFields,
+          readJavaNames,
+          creatorInfo,
+          anyInfo,
+          skippedNames,
+          instantiator);
     }
     return new ParameterizedObjectCodec<>(
-        type, writeArray, readArray, recordNames, creatorInfo, instantiator);
-  }
-
-  private static JsonPropertyOrder findPropertyOrder(Class<?> type) {
-    for (Class<?> current = type;
-        current != null && current != Object.class;
-        current = current.getSuperclass()) {
-      JsonPropertyOrder order = current.getDeclaredAnnotation(JsonPropertyOrder.class);
-      if (order != null) {
-        return order;
-      }
-    }
-    return null;
-  }
-
-  private static boolean hasIndexedProperty(Map<String, FieldBuilder> builders) {
-    for (FieldBuilder builder : builders.values()) {
-      if (builder.hasIndex()) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static JsonFieldInfo[] orderWriteFields(
-      Class<?> type,
-      JsonPropertyOrder propertyOrder,
-      List<FieldBuilder> builders,
-      List<JsonFieldInfo> fields) {
-    int size = fields.size();
-    assert builders.size() == size;
-    JsonFieldInfo[] ordered = new JsonFieldInfo[size];
-    boolean[] selected = new boolean[size];
-    int outputIndex = 0;
-
-    if (propertyOrder != null) {
-      String[] names = propertyOrder.value();
-      if (names.length == 0 && !propertyOrder.alphabetic()) {
-        throw new ForyJsonException("Empty @JsonPropertyOrder on " + type.getName());
-      }
-      for (String name : names) {
-        if (name.isEmpty()) {
-          throw new ForyJsonException("Empty @JsonPropertyOrder property on " + type.getName());
-        }
-        int propertyIndex = findOrderedProperty(name, builders, fields);
-        if (propertyIndex < 0) {
-          throw new ForyJsonException(
-              "Unknown @JsonPropertyOrder property " + name + " on " + type.getName());
-        }
-        if (selected[propertyIndex]) {
-          throw new ForyJsonException(
-              "Duplicate @JsonPropertyOrder property " + name + " on " + type.getName());
-        }
-        selected[propertyIndex] = true;
-        ordered[outputIndex++] = fields.get(propertyIndex);
-      }
-    }
-
-    int indexedCount = 0;
-    for (FieldBuilder builder : builders) {
-      if (builder.hasIndex()) {
-        indexedCount++;
-      }
-    }
-    if (indexedCount != 0) {
-      long[] indexed = new long[indexedCount];
-      int next = 0;
-      for (int i = 0; i < size; i++) {
-        int index = builders.get(i).explicitIndex;
-        if (index != JsonProperty.INDEX_UNKNOWN) {
-          indexed[next++] = ((long) index << 32) | (i & 0xffffffffL);
-        }
-      }
-      Arrays.sort(indexed);
-      for (int i = 1; i < indexedCount; i++) {
-        int previousIndex = (int) (indexed[i - 1] >>> 32);
-        int index = (int) (indexed[i] >>> 32);
-        if (previousIndex == index) {
-          int previousProperty = (int) indexed[i - 1];
-          int property = (int) indexed[i];
-          throw new ForyJsonException(
-              "Duplicate JSON property index "
-                  + index
-                  + " for "
-                  + builders.get(previousProperty).name
-                  + " from "
-                  + builders.get(previousProperty).explicitIndexSource
-                  + " and "
-                  + builders.get(property).name
-                  + " from "
-                  + builders.get(property).explicitIndexSource
-                  + " on "
-                  + type.getName());
-        }
-      }
-      for (long indexedProperty : indexed) {
-        int propertyIndex = (int) indexedProperty;
-        if (!selected[propertyIndex]) {
-          selected[propertyIndex] = true;
-          ordered[outputIndex++] = fields.get(propertyIndex);
-        }
-      }
-    }
-
-    int unorderedStart = outputIndex;
-    for (int i = 0; i < size; i++) {
-      if (!selected[i]) {
-        ordered[outputIndex++] = fields.get(i);
-      }
-    }
-    if (propertyOrder != null && propertyOrder.alphabetic() && outputIndex - unorderedStart > 1) {
-      Arrays.sort(
-          ordered,
-          unorderedStart,
-          outputIndex,
-          (left, right) -> left.name().compareTo(right.name()));
-    }
-    assert outputIndex == size;
-    return ordered;
-  }
-
-  private static int findOrderedProperty(
-      String name, List<FieldBuilder> builders, List<JsonFieldInfo> fields) {
-    for (int i = 0; i < fields.size(); i++) {
-      if (name.equals(fields.get(i).name())) {
-        return i;
-      }
-    }
-    for (int i = 0; i < builders.size(); i++) {
-      if (name.equals(builders.get(i).name)) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
-  private static void addFields(
-      Class<?> type,
-      boolean record,
-      boolean propertyDiscoveryEnabled,
-      LinkedHashMap<String, FieldBuilder> builders) {
-    List<Class<?>> hierarchy = new ArrayList<>();
-    for (Class<?> current = type;
-        current != null && current != Object.class;
-        current = current.getSuperclass()) {
-      hierarchy.add(current);
-    }
-    for (int i = hierarchy.size() - 1; i >= 0; i--) {
-      Class<?> current = hierarchy.get(i);
-      for (Field field : current.getDeclaredFields()) {
-        int modifiers = field.getModifiers();
-        if (!isEligibleField(field)) {
-          continue;
-        }
-        JsonIgnore ignore = field.getAnnotation(JsonIgnore.class);
-        boolean write = ignore == null || !ignore.ignoreWrite();
-        boolean readAllowed = ignore == null || !ignore.ignoreRead();
-        boolean read = (record || !Modifier.isFinal(modifiers)) && readAllowed;
-        if (!propertyDiscoveryEnabled && !write && !read) {
-          continue;
-        }
-        FieldBuilder builder =
-            builders.computeIfAbsent(field.getName(), name -> new FieldBuilder(name));
-        builder.setField(type, field, write, read, write, readAllowed);
-      }
-    }
-  }
-
-  private static void addAccessors(Class<?> type, LinkedHashMap<String, FieldBuilder> builders) {
-    for (Method method : type.getMethods()) {
-      if (!isEligibleAccessor(method)) {
-        continue;
-      }
-      String propertyName = getterPropertyName(method);
-      if (propertyName != null) {
-        FieldBuilder builder = builders.get(propertyName);
-        if (builder == null) {
-          builder = new FieldBuilder(propertyName);
-          builders.put(propertyName, builder);
-        }
-        builder.setWriteGetter(type, method);
-        continue;
-      }
-      propertyName = setterPropertyName(method);
-      if (propertyName != null) {
-        FieldBuilder builder = builders.get(propertyName);
-        if (builder == null) {
-          builder = new FieldBuilder(propertyName);
-          builders.put(propertyName, builder);
-        }
-        builder.setReadSetter(type, method);
-      }
-    }
-  }
-
-  private static void addRecordAccessors(
-      Class<?> type, LinkedHashMap<String, FieldBuilder> builders) {
-    RecordComponent[] components = RecordUtils.getRecordComponents(type);
-    for (RecordComponent component : components) {
-      FieldBuilder builder = builders.get(component.getName());
-      if (builder == null) {
-        throw new ForyJsonException("Missing JSON record field " + component.getName());
-      }
-      // Record accessors carry component annotations in Java 16+, but field access remains the
-      // optimized read/write owner. The accessor participates only in logical-property annotation
-      // merging and is discarded before hot metadata is published.
-      builder.mergeAnnotation(type, component.getAccessor());
-    }
-  }
-
-  private static JsonCreatorInfo rejectRecordCreator(Class<?> type) {
-    for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-      if (constructor.isAnnotationPresent(JsonCreator.class)) {
-        throw new ForyJsonException("@JsonCreator is not supported on record " + type.getName());
-      }
-    }
-    for (Method method : type.getDeclaredMethods()) {
-      if (method.isAnnotationPresent(JsonCreator.class)) {
-        throw new ForyJsonException("@JsonCreator is not supported on record " + type.getName());
-      }
-    }
-    return null;
-  }
-
-  private static JsonCreatorInfo buildCreatorInfo(
-      Class<?> type,
-      TypeRef<?> ownerType,
-      LinkedHashMap<String, FieldBuilder> builders,
-      PropertyNamingStrategy namingStrategy) {
-    Executable creator = null;
-    JsonCreator annotation = null;
-    for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-      JsonCreator candidate = constructor.getAnnotation(JsonCreator.class);
-      if (candidate != null) {
-        validateCreator(type, constructor);
-        if (creator != null) {
-          throw new ForyJsonException("Multiple @JsonCreator declarations on " + type.getName());
-        }
-        creator = constructor;
-        annotation = candidate;
-      }
-    }
-    for (Method method : type.getDeclaredMethods()) {
-      JsonCreator candidate = method.getAnnotation(JsonCreator.class);
-      if (candidate != null) {
-        validateCreator(type, method);
-        if (creator != null) {
-          throw new ForyJsonException("Multiple @JsonCreator declarations on " + type.getName());
-        }
-        creator = method;
-        annotation = candidate;
-      }
-    }
-    if (creator == null) {
-      return null;
-    }
-
-    Map<String, FieldBuilder> jsonProperties = new LinkedHashMap<>();
-    for (FieldBuilder builder : builders.values()) {
-      if (!builder.hasLogicalMember()) {
-        continue;
-      }
-      String jsonName = builder.jsonName(namingStrategy);
-      FieldBuilder prior = jsonProperties.put(jsonName, builder);
-      if (prior != null) {
-        throw new ForyJsonException(
-            "Duplicate canonical JSON property name "
-                + jsonName
-                + " for "
-                + prior.nameDescription(namingStrategy)
-                + " and "
-                + builder.nameDescription(namingStrategy)
-                + " on "
-                + type.getName());
-      }
-    }
-
-    Type[] parameterTypes = creator.getGenericParameterTypes();
-    Class<?>[] rawTypes = creator.getParameterTypes();
-    Parameter[] parameters = creator.getParameters();
-    JsonCreatorFieldInfo[] fields = new JsonCreatorFieldInfo[parameterTypes.length];
-    String[] propertyNames = annotation.value();
-    if (propertyNames.length != 0) {
-      if (propertyNames.length != parameterTypes.length) {
-        throw new ForyJsonException(
-            "@JsonCreator property count does not match parameter count on " + creator);
-      }
-      Set<String> names = new HashSet<>();
-      for (int i = 0; i < propertyNames.length; i++) {
-        String javaName = propertyNames[i];
-        if (javaName.isEmpty() || !names.add(javaName)) {
-          throw new ForyJsonException("Invalid @JsonCreator property name " + javaName);
-        }
-        if (parameters[i].isAnnotationPresent(JsonProperty.class)) {
-          throw new ForyJsonException(
-              "Property-list @JsonCreator parameters cannot declare @JsonProperty: " + creator);
-        }
-        FieldBuilder builder = builders.get(javaName);
-        if (builder == null || !builder.hasLogicalMember()) {
-          throw new ForyJsonException("Unknown @JsonCreator Java property " + javaName);
-        }
-        bindCreatorType(ownerType, creator, i, parameterTypes[i], builder);
-        if (!builder.creatorReadAllowed()) {
-          throw new ForyJsonException("@JsonCreator property is ignored for reading: " + javaName);
-        }
-        Type resolved = ownerType.resolveType(parameterTypes[i]).getType();
-        fields[i] =
-            new JsonCreatorFieldInfo(builder.jsonName(namingStrategy), i, resolved, rawTypes[i]);
-      }
-    } else {
-      Set<String> names = new HashSet<>();
-      for (int i = 0; i < parameters.length; i++) {
-        JsonProperty property = parameters[i].getAnnotation(JsonProperty.class);
-        if (property == null || property.value().isEmpty()) {
-          throw new ForyJsonException(
-              "Parameter-local @JsonCreator requires a non-empty @JsonProperty on every parameter: "
-                  + creator);
-        }
-        String jsonName = property.value();
-        if (!names.add(jsonName)) {
-          throw new ForyJsonException("Duplicate @JsonCreator JSON property " + jsonName);
-        }
-        FieldBuilder builder = jsonProperties.get(jsonName);
-        if (builder != null) {
-          bindCreatorType(ownerType, creator, i, parameterTypes[i], builder);
-          if (!builder.creatorReadAllowed()) {
-            throw new ForyJsonException(
-                "@JsonCreator property is ignored for reading: " + builder.name);
-          }
-          builder.mergeAnnotation(type, parameters[i]);
-          if (property.include() != JsonProperty.Include.DEFAULT && !builder.hasWriteSource()) {
-            throw new ForyJsonException(
-                "Creator parameter inclusion requires a write source for " + jsonName);
-          }
-        } else {
-          validatePropertyIndex(property.index(), jsonName, type, parameters[i]);
-          if (property.index() != JsonProperty.INDEX_UNKNOWN) {
-            throw new ForyJsonException(
-                "Creator-only property "
-                    + jsonName
-                    + " cannot declare serialization index "
-                    + property.index()
-                    + " on "
-                    + type.getName()
-                    + " from "
-                    + parameters[i]);
-          }
-          if (property.include() != JsonProperty.Include.DEFAULT) {
-            throw new ForyJsonException(
-                "Creator-only property cannot declare an inclusion policy: " + jsonName);
-          }
-        }
-        Type resolved = ownerType.resolveType(parameterTypes[i]).getType();
-        fields[i] = new JsonCreatorFieldInfo(jsonName, i, resolved, rawTypes[i]);
-      }
-    }
-    rejectCreatorHashCollisions(fields);
-    return new JsonCreatorInfo(type, creator, fields, creatorDefaults(rawTypes));
-  }
-
-  private static void validatePropertyIndex(
-      int index, String propertyName, Class<?> type, AnnotatedElement source) {
-    if (index < JsonProperty.INDEX_UNKNOWN) {
-      throw new ForyJsonException(
-          "Invalid JSON property index "
-              + index
-              + " for property "
-              + propertyName
-              + " on "
-              + type.getName()
-              + " from "
-              + source);
-    }
-  }
-
-  private static void validateCreator(Class<?> type, Executable creator) {
-    int modifiers = creator.getModifiers();
-    if (!Modifier.isPublic(modifiers)
-        || creator.isSynthetic()
-        || creator.isVarArgs()
-        || creator.getParameterCount() == 0
-        || creator.getTypeParameters().length != 0) {
-      throw new ForyJsonException("Invalid @JsonCreator executable " + creator);
-    }
-    if (creator instanceof Method) {
-      Method factory = (Method) creator;
-      if (!Modifier.isStatic(modifiers) || factory.isBridge() || factory.getReturnType() != type) {
-        throw new ForyJsonException("Invalid @JsonCreator factory " + factory);
-      }
-    }
-  }
-
-  private static void bindCreatorType(
-      TypeRef<?> ownerType,
-      Executable creator,
-      int parameterIndex,
-      Type parameterType,
-      FieldBuilder builder) {
-    Type resolvedParameter = ownerType.resolveType(parameterType).getType();
-    Type propertyType = builder.logicalType(ownerType);
-    if (!resolvedParameter.equals(propertyType)) {
-      throw new ForyJsonException(
-          "@JsonCreator parameter type "
-              + resolvedParameter
-              + " does not match property "
-              + builder.name
-              + " type "
-              + propertyType
-              + " on "
-              + creator
-              + " parameter "
-              + parameterIndex);
-    }
-    builder.creatorBound = true;
-  }
-
-  private static void rejectCreatorHashCollisions(JsonCreatorFieldInfo[] fields) {
-    Map<Long, String> names = new LinkedHashMap<>();
-    for (JsonCreatorFieldInfo field : fields) {
-      String prior = names.put(field.nameHash(), field.name());
-      if (prior != null) {
-        throw new ForyJsonException(
-            "JSON creator property hash collision between " + prior + " and " + field.name());
-      }
-    }
-  }
-
-  private static Object[] creatorDefaults(Class<?>[] types) {
-    Object[] defaults = new Object[types.length];
-    for (int i = 0; i < types.length; i++) {
-      Class<?> type = types[i];
-      if (type == boolean.class) {
-        defaults[i] = Boolean.FALSE;
-      } else if (type == byte.class) {
-        defaults[i] = Byte.valueOf((byte) 0);
-      } else if (type == short.class) {
-        defaults[i] = Short.valueOf((short) 0);
-      } else if (type == int.class) {
-        defaults[i] = Integer.valueOf(0);
-      } else if (type == long.class) {
-        defaults[i] = Long.valueOf(0L);
-      } else if (type == float.class) {
-        defaults[i] = Float.valueOf(0F);
-      } else if (type == double.class) {
-        defaults[i] = Double.valueOf(0D);
-      } else if (type == char.class) {
-        defaults[i] = Character.valueOf((char) 0);
-      }
-    }
-    return defaults;
+        type,
+        writeFields,
+        readFields,
+        readJavaNames,
+        creatorInfo,
+        anyInfo,
+        skippedNames,
+        instantiator);
   }
 
   public final Class<?> type() {
@@ -698,6 +174,11 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
 
   public final JsonCreatorInfo creatorInfo() {
     return creatorInfo;
+  }
+
+  @Internal
+  public final AnyInfo anyInfo() {
+    return anyInfo;
   }
 
   @Internal
@@ -726,6 +207,9 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     if (creatorInfo != null) {
       creatorInfo.resolveTypes(typeResolver);
     }
+    if (anyInfo != null) {
+      anyInfo.resolveTypes(typeResolver);
+    }
   }
 
   @SuppressWarnings("unchecked")
@@ -745,6 +229,117 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     Object object = instantiator.newInstanceWithArguments(arguments);
     Arrays.fill(recordInfo.getRecordComponents(), null);
     return (T) object;
+  }
+
+  @Internal
+  public final Map<Object, Object> newAnyMap() {
+    return anyInfo.mapCodec.newMap();
+  }
+
+  @Internal
+  public final Map<?, ?> finishAnyMap(Map<Object, Object> map) {
+    return anyInfo.mapCodec.finishMap(map);
+  }
+
+  @Internal
+  public final void putAnyMap(Map<Object, Object> map, String name, Object value) {
+    try {
+      map.put(name, value);
+    } catch (UnsupportedOperationException e) {
+      throw immutableAnyMap(e);
+    }
+  }
+
+  @Internal
+  public final ForyJsonException nullFinalAnyMap() {
+    return new ForyJsonException(
+        "Final @JsonAnyProperty field must hold a mutable Map on " + type.getName());
+  }
+
+  @Internal
+  public final ForyJsonException nullPrimitiveAnyValue() {
+    return new ForyJsonException(
+        "Cannot read null into primitive @JsonAnySetter parameter " + anyInfo.setterValueRawType);
+  }
+
+  @Internal
+  public final ForyJsonException anyAccessorFailure(String memberName, Throwable cause) {
+    return new ForyJsonException(
+        "Cannot access JSON Any member " + memberName + " on " + type.getName(), cause);
+  }
+
+  private ForyJsonException immutableAnyMap(UnsupportedOperationException cause) {
+    return new ForyJsonException(
+        "@JsonAnyProperty field must hold a mutable Map on " + type.getName(), cause);
+  }
+
+  @Internal
+  public final int writeStringAny(
+      StringJsonWriter writer, Map<?, ?> map, StringWriterCodec<Object> codec, int written) {
+    if (map == null) {
+      return written;
+    }
+    for (Map.Entry<?, ?> entry : map.entrySet()) {
+      Object key = entry.getKey();
+      if (key == null || key.getClass() != String.class) {
+        throw invalidAnyKey(key);
+      }
+      String name = (String) key;
+      long hash = JsonFieldNameHash.hash(name);
+      if (reservedAnyHash(hash)) {
+        throw reservedAnyName(name);
+      }
+      writer.writeComma(written);
+      writer.writeFieldName(name);
+      codec.writeString(writer, entry.getValue());
+      written = 1;
+    }
+    return written;
+  }
+
+  @Internal
+  public final int writeUtf8Any(
+      Utf8JsonWriter writer, Map<?, ?> map, Utf8WriterCodec<Object> codec, int written) {
+    if (map == null) {
+      return written;
+    }
+    for (Map.Entry<?, ?> entry : map.entrySet()) {
+      Object key = entry.getKey();
+      if (key == null || key.getClass() != String.class) {
+        throw invalidAnyKey(key);
+      }
+      String name = (String) key;
+      long hash = JsonFieldNameHash.hash(name);
+      if (reservedAnyHash(hash)) {
+        throw reservedAnyName(name);
+      }
+      writer.writeComma(written);
+      writer.writeFieldName(name);
+      codec.writeUtf8(writer, entry.getValue());
+      written = 1;
+    }
+    return written;
+  }
+
+  private boolean reservedAnyHash(long hash) {
+    // These names belong to the child's declared schema and must never be reintroduced through
+    // Any. Inline discriminators are different: their parent codec owns the fixed-schema check and
+    // deliberately leaves runtime Any keys to the application.
+    return readTable.containsHash(hash) || creatorInfo != null && creatorInfo.index(hash) >= 0;
+  }
+
+  private ForyJsonException invalidAnyKey(Object key) {
+    String actualType = key == null ? "null" : key.getClass().getName();
+    return new ForyJsonException(
+        "JSON Any Map key must be an exact String on "
+            + type.getName()
+            + "; actual type is "
+            + actualType);
+  }
+
+  private ForyJsonException reservedAnyName(String name) {
+    return new ForyJsonException(
+        "JSON Any member conflicts with a reserved property on " + type.getName() + ": " + name);
   }
 
   @Override
@@ -775,6 +370,17 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
   // top-level owner. Package access avoids Java 8 synthetic accessors from the nested binding;
   // these methods are not codec entries and must not be used for capability dispatch.
   final T readLatin1Object(Latin1JsonReader reader) {
+    if (anyInfo != null && anyInfo.readEnabled()) {
+      return readLatin1AnyObject(reader, readTable);
+    }
+    return readLatin1FixedObject(reader);
+  }
+
+  final T readLatin1Object(Latin1JsonReader reader, JsonFieldTable table) {
+    return readLatin1AnyObject(reader, table);
+  }
+
+  private T readLatin1FixedObject(Latin1JsonReader reader) {
     reader.enterDepth();
     if (creationKind != MUTABLE) {
       if (creationKind == CREATOR) {
@@ -807,6 +413,17 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
   }
 
   final T readUtf16Object(Utf16JsonReader reader) {
+    if (anyInfo != null && anyInfo.readEnabled()) {
+      return readUtf16AnyObject(reader, readTable);
+    }
+    return readUtf16FixedObject(reader);
+  }
+
+  final T readUtf16Object(Utf16JsonReader reader, JsonFieldTable table) {
+    return readUtf16AnyObject(reader, table);
+  }
+
+  private T readUtf16FixedObject(Utf16JsonReader reader) {
     reader.enterDepth();
     if (creationKind != MUTABLE) {
       if (creationKind == CREATOR) {
@@ -839,6 +456,17 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
   }
 
   final T readUtf8Object(Utf8JsonReader reader) {
+    if (anyInfo != null && anyInfo.readEnabled()) {
+      return readUtf8AnyObject(reader, readTable);
+    }
+    return readUtf8FixedObject(reader);
+  }
+
+  final T readUtf8Object(Utf8JsonReader reader, JsonFieldTable table) {
+    return readUtf8AnyObject(reader, table);
+  }
+
+  private T readUtf8FixedObject(Utf8JsonReader reader) {
     reader.enterDepth();
     if (creationKind != MUTABLE) {
       if (creationKind == CREATOR) {
@@ -904,6 +532,390 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       return null;
     }
     return readUtf8Object(reader);
+  }
+
+  private T readLatin1AnyObject(Latin1JsonReader reader, JsonFieldTable table) {
+    reader.enterDepth();
+    T object;
+    if (creationKind == CREATOR) {
+      object = create(readLatin1AnyCreatorArguments(reader, table));
+    } else if (creationKind == RECORD) {
+      object = readLatin1AnyRecord(reader, table);
+    } else {
+      object = readLatin1AnyMutable(reader, table);
+    }
+    reader.exitDepth();
+    return object;
+  }
+
+  private T readUtf16AnyObject(Utf16JsonReader reader, JsonFieldTable table) {
+    reader.enterDepth();
+    T object;
+    if (creationKind == CREATOR) {
+      object = create(readUtf16AnyCreatorArguments(reader, table));
+    } else if (creationKind == RECORD) {
+      object = readUtf16AnyRecord(reader, table);
+    } else {
+      object = readUtf16AnyMutable(reader, table);
+    }
+    reader.exitDepth();
+    return object;
+  }
+
+  private T readUtf8AnyObject(Utf8JsonReader reader, JsonFieldTable table) {
+    reader.enterDepth();
+    T object;
+    if (creationKind == CREATOR) {
+      object = create(readUtf8AnyCreatorArguments(reader, table));
+    } else if (creationKind == RECORD) {
+      object = readUtf8AnyRecord(reader, table);
+    } else {
+      object = readUtf8AnyMutable(reader, table);
+    }
+    reader.exitDepth();
+    return object;
+  }
+
+  private T readLatin1AnyMutable(Latin1JsonReader reader, JsonFieldTable table) {
+    T object = newInstance();
+    Map<Object, Object> anyMap = null;
+    boolean newMap = false;
+    Latin1ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.latin1Reader();
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int match = table.match(hash);
+        reader.expect(':');
+        if (match >= 0) {
+          readFields[match].readLatin1(reader, object);
+        } else if (match == JsonFieldTable.SKIP) {
+          reader.skipValue();
+        } else {
+          String name = reader.materializeFieldName(start);
+          Object value = anyReader.readLatin1(reader);
+          if (anyInfo.fieldRead()) {
+            if (anyMap == null) {
+              anyMap = anyInfo.readMap(object);
+              if (anyMap == null) {
+                if (anyInfo.finalReadField()) {
+                  throw nullFinalAnyMap();
+                }
+                anyMap = newAnyMap();
+                newMap = true;
+              }
+            }
+            putAnyMap(anyMap, name, value);
+          } else {
+            anyInfo.put(object, name, value);
+          }
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    if (newMap) {
+      anyInfo.setReadMap(object, finishAnyMap(anyMap));
+    }
+    return object;
+  }
+
+  private T readUtf16AnyMutable(Utf16JsonReader reader, JsonFieldTable table) {
+    T object = newInstance();
+    Map<Object, Object> anyMap = null;
+    boolean newMap = false;
+    Utf16ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf16Reader();
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int match = table.match(hash);
+        reader.expect(':');
+        if (match >= 0) {
+          readFields[match].readUtf16(reader, object);
+        } else if (match == JsonFieldTable.SKIP) {
+          reader.skipValue();
+        } else {
+          String name = reader.materializeFieldName(start);
+          Object value = anyReader.readUtf16(reader);
+          if (anyInfo.fieldRead()) {
+            if (anyMap == null) {
+              anyMap = anyInfo.readMap(object);
+              if (anyMap == null) {
+                if (anyInfo.finalReadField()) {
+                  throw nullFinalAnyMap();
+                }
+                anyMap = newAnyMap();
+                newMap = true;
+              }
+            }
+            putAnyMap(anyMap, name, value);
+          } else {
+            anyInfo.put(object, name, value);
+          }
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    if (newMap) {
+      anyInfo.setReadMap(object, finishAnyMap(anyMap));
+    }
+    return object;
+  }
+
+  private T readUtf8AnyMutable(Utf8JsonReader reader, JsonFieldTable table) {
+    T object = newInstance();
+    Map<Object, Object> anyMap = null;
+    boolean newMap = false;
+    Utf8ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf8Reader();
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int match = table.match(hash);
+        reader.expect(':');
+        if (match >= 0) {
+          readFields[match].readUtf8(reader, object);
+        } else if (match == JsonFieldTable.SKIP) {
+          reader.skipValue();
+        } else {
+          String name = reader.materializeFieldName(start);
+          Object value = anyReader.readUtf8(reader);
+          if (anyInfo.fieldRead()) {
+            if (anyMap == null) {
+              anyMap = anyInfo.readMap(object);
+              if (anyMap == null) {
+                if (anyInfo.finalReadField()) {
+                  throw nullFinalAnyMap();
+                }
+                anyMap = newAnyMap();
+                newMap = true;
+              }
+            }
+            putAnyMap(anyMap, name, value);
+          } else {
+            anyInfo.put(object, name, value);
+          }
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    if (newMap) {
+      anyInfo.setReadMap(object, finishAnyMap(anyMap));
+    }
+    return object;
+  }
+
+  private T readLatin1AnyRecord(Latin1JsonReader reader, JsonFieldTable table) {
+    Object[] values = newRecordFieldValues();
+    Map<Object, Object> anyMap = null;
+    Latin1ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.latin1Reader();
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int match = table.match(hash);
+        reader.expect(':');
+        if (match >= 0) {
+          JsonFieldInfo field = readFields[match];
+          values[field.readIndex()] = field.readLatin1Value(reader);
+        } else if (match == JsonFieldTable.SKIP) {
+          reader.skipValue();
+        } else {
+          String name = reader.materializeFieldName(start);
+          Object value = anyReader.readLatin1(reader);
+          if (anyMap == null) {
+            anyMap = newAnyMap();
+          }
+          putAnyMap(anyMap, name, value);
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    if (anyMap != null) {
+      values[anyInfo.constructionIndex] = finishAnyMap(anyMap);
+    }
+    return newRecord(values);
+  }
+
+  private T readUtf16AnyRecord(Utf16JsonReader reader, JsonFieldTable table) {
+    Object[] values = newRecordFieldValues();
+    Map<Object, Object> anyMap = null;
+    Utf16ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf16Reader();
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int match = table.match(hash);
+        reader.expect(':');
+        if (match >= 0) {
+          JsonFieldInfo field = readFields[match];
+          values[field.readIndex()] = field.readUtf16Value(reader);
+        } else if (match == JsonFieldTable.SKIP) {
+          reader.skipValue();
+        } else {
+          String name = reader.materializeFieldName(start);
+          Object value = anyReader.readUtf16(reader);
+          if (anyMap == null) {
+            anyMap = newAnyMap();
+          }
+          putAnyMap(anyMap, name, value);
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    if (anyMap != null) {
+      values[anyInfo.constructionIndex] = finishAnyMap(anyMap);
+    }
+    return newRecord(values);
+  }
+
+  private T readUtf8AnyRecord(Utf8JsonReader reader, JsonFieldTable table) {
+    Object[] values = newRecordFieldValues();
+    Map<Object, Object> anyMap = null;
+    Utf8ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf8Reader();
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int match = table.match(hash);
+        reader.expect(':');
+        if (match >= 0) {
+          JsonFieldInfo field = readFields[match];
+          values[field.readIndex()] = field.readUtf8Value(reader);
+        } else if (match == JsonFieldTable.SKIP) {
+          reader.skipValue();
+        } else {
+          String name = reader.materializeFieldName(start);
+          Object value = anyReader.readUtf8(reader);
+          if (anyMap == null) {
+            anyMap = newAnyMap();
+          }
+          putAnyMap(anyMap, name, value);
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    if (anyMap != null) {
+      values[anyInfo.constructionIndex] = finishAnyMap(anyMap);
+    }
+    return newRecord(values);
+  }
+
+  private Object[] readLatin1AnyCreatorArguments(Latin1JsonReader reader, JsonFieldTable table) {
+    Object[] arguments = creatorInfo.newArguments();
+    JsonCreatorFieldInfo[] fields = creatorInfo.fields();
+    Map<Object, Object> anyMap = null;
+    Latin1ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.latin1Reader();
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int index = creatorInfo.index(hash);
+        reader.expect(':');
+        if (index >= 0) {
+          JsonCreatorFieldInfo field = fields[index];
+          arguments[field.argumentIndex()] = field.readLatin1(reader);
+        } else {
+          int match = table.match(hash);
+          if (match != JsonFieldTable.UNKNOWN) {
+            reader.skipValue();
+          } else {
+            String name = reader.materializeFieldName(start);
+            Object value = anyReader.readLatin1(reader);
+            if (anyMap == null) {
+              anyMap = newAnyMap();
+            }
+            putAnyMap(anyMap, name, value);
+          }
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    if (anyMap != null) {
+      arguments[anyInfo.constructionIndex] = finishAnyMap(anyMap);
+    }
+    return arguments;
+  }
+
+  private Object[] readUtf16AnyCreatorArguments(Utf16JsonReader reader, JsonFieldTable table) {
+    Object[] arguments = creatorInfo.newArguments();
+    JsonCreatorFieldInfo[] fields = creatorInfo.fields();
+    Map<Object, Object> anyMap = null;
+    Utf16ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf16Reader();
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int index = creatorInfo.index(hash);
+        reader.expect(':');
+        if (index >= 0) {
+          JsonCreatorFieldInfo field = fields[index];
+          arguments[field.argumentIndex()] = field.readUtf16(reader);
+        } else {
+          int match = table.match(hash);
+          if (match != JsonFieldTable.UNKNOWN) {
+            reader.skipValue();
+          } else {
+            String name = reader.materializeFieldName(start);
+            Object value = anyReader.readUtf16(reader);
+            if (anyMap == null) {
+              anyMap = newAnyMap();
+            }
+            putAnyMap(anyMap, name, value);
+          }
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    if (anyMap != null) {
+      arguments[anyInfo.constructionIndex] = finishAnyMap(anyMap);
+    }
+    return arguments;
+  }
+
+  private Object[] readUtf8AnyCreatorArguments(Utf8JsonReader reader, JsonFieldTable table) {
+    Object[] arguments = creatorInfo.newArguments();
+    JsonCreatorFieldInfo[] fields = creatorInfo.fields();
+    Map<Object, Object> anyMap = null;
+    Utf8ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf8Reader();
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int index = creatorInfo.index(hash);
+        reader.expect(':');
+        if (index >= 0) {
+          JsonCreatorFieldInfo field = fields[index];
+          arguments[field.argumentIndex()] = field.readUtf8(reader);
+        } else {
+          int match = table.match(hash);
+          if (match != JsonFieldTable.UNKNOWN) {
+            reader.skipValue();
+          } else {
+            String name = reader.materializeFieldName(start);
+            Object value = anyReader.readUtf8(reader);
+            if (anyMap == null) {
+              anyMap = newAnyMap();
+            }
+            putAnyMap(anyMap, name, value);
+          }
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    if (anyMap != null) {
+      arguments[anyInfo.constructionIndex] = finishAnyMap(anyMap);
+    }
+    return arguments;
   }
 
   private T readLatin1Record(Latin1JsonReader reader) {
@@ -1033,6 +1045,14 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
 
   @Override
   public final void writeStringMembers(StringJsonWriter writer, T value, int written) {
+    if (anyInfo != null && anyInfo.writeEnabled()) {
+      writeStringAnyMembers(writer, value, written);
+      return;
+    }
+    writeStringFixedMembers(writer, value, written);
+  }
+
+  private void writeStringFixedMembers(StringJsonWriter writer, T value, int written) {
     JsonFieldInfo[] fields = writeFields;
     int length = fields.length;
     int i = 0;
@@ -1052,6 +1072,24 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
     while (i < length) {
       if (fields[i++].writeString(writer, value, written)) {
+        written++;
+      }
+    }
+  }
+
+  private void writeStringAnyMembers(StringJsonWriter writer, T value, int written) {
+    int anyIndex = anyInfo.writeIndex;
+    JsonFieldInfo[] fields = writeFields;
+    for (int i = 0; i < anyIndex; i++) {
+      if (fields[i].writeString(writer, value, written)) {
+        written++;
+      }
+    }
+    written =
+        writeStringAny(
+            writer, anyInfo.writeMap(value), anyInfo.valueTypeInfo.stringWriter(), written);
+    for (int i = anyIndex; i < fields.length; i++) {
+      if (fields[i].writeString(writer, value, written)) {
         written++;
       }
     }
@@ -1065,6 +1103,14 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
 
   @Override
   public final void writeUtf8Members(Utf8JsonWriter writer, T value, int written) {
+    if (anyInfo != null && anyInfo.writeEnabled()) {
+      writeUtf8AnyMembers(writer, value, written);
+      return;
+    }
+    writeUtf8FixedMembers(writer, value, written);
+  }
+
+  private void writeUtf8FixedMembers(Utf8JsonWriter writer, T value, int written) {
     JsonFieldInfo[] fields = writeFields;
     int length = fields.length;
     int i = 0;
@@ -1089,114 +1135,21 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
   }
 
-  private static void rejectIneligibleAnnotations(
-      Class<?> type, boolean propertyDiscoveryEnabled, boolean record) {
-    for (Class<?> current = type;
-        current != null && current != Object.class;
-        current = current.getSuperclass()) {
-      for (Field field : current.getDeclaredFields()) {
-        if (field.isAnnotationPresent(JsonProperty.class) && !isEligibleField(field)) {
-          throw new ForyJsonException("@JsonProperty is not supported on JSON field: " + field);
-        }
-      }
-      for (Method method : current.getDeclaredMethods()) {
-        if (!method.isAnnotationPresent(JsonProperty.class)) {
-          continue;
-        }
-        validatePropertyMethod(type, method, propertyDiscoveryEnabled, record);
+  private void writeUtf8AnyMembers(Utf8JsonWriter writer, T value, int written) {
+    int anyIndex = anyInfo.writeIndex;
+    JsonFieldInfo[] fields = writeFields;
+    for (int i = 0; i < anyIndex; i++) {
+      if (fields[i].writeUtf8(writer, value, written)) {
+        written++;
       }
     }
-    // Class.getMethods() is the accessor-discovery surface and includes inherited interface
-    // methods, while the class-hierarchy scan above deliberately includes non-public declarations.
-    // Validate annotated interface declarations here so no method considered by discovery can
-    // become a silent no-op merely because its declaring type is outside the class hierarchy.
-    for (Method method : type.getMethods()) {
-      if (method.getDeclaringClass().isInterface()
-          && method.isAnnotationPresent(JsonProperty.class)) {
-        validatePropertyMethod(type, method, propertyDiscoveryEnabled, record);
+    written =
+        writeUtf8Any(writer, anyInfo.writeMap(value), anyInfo.valueTypeInfo.utf8Writer(), written);
+    for (int i = anyIndex; i < fields.length; i++) {
+      if (fields[i].writeUtf8(writer, value, written)) {
+        written++;
       }
     }
-  }
-
-  private static void validatePropertyMethod(
-      Class<?> type, Method method, boolean propertyDiscoveryEnabled, boolean record) {
-    if (!propertyDiscoveryEnabled
-        || !isEligibleAccessor(method)
-        || record && !isRecordAccessor(type, method)) {
-      throw new ForyJsonException("@JsonProperty is not supported on JSON method: " + method);
-    }
-    if (!record && getterPropertyName(method) == null && setterPropertyName(method) == null) {
-      throw new ForyJsonException("@JsonProperty requires a JSON getter or setter: " + method);
-    }
-  }
-
-  private static boolean isRecordAccessor(Class<?> type, Method method) {
-    RecordComponent[] components = RecordUtils.getRecordComponents(type);
-    for (RecordComponent component : components) {
-      if (component.getAccessor().equals(method)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean isEligibleField(Field field) {
-    int modifiers = field.getModifiers();
-    return !Modifier.isStatic(modifiers)
-        && !Modifier.isTransient(modifiers)
-        && field.getType() != Class.class
-        && !field.isSynthetic();
-  }
-
-  private static boolean isEligibleAccessor(Method method) {
-    int modifiers = method.getModifiers();
-    return Modifier.isPublic(modifiers)
-        && !Modifier.isStatic(modifiers)
-        && !method.isSynthetic()
-        && !method.isBridge();
-  }
-
-  private static String getterPropertyName(Method method) {
-    if (method.getParameterCount() != 0
-        || method.getReturnType() == void.class
-        || method.getReturnType() == Class.class) {
-      return null;
-    }
-    String name = method.getName();
-    if (name.equals("getClass")) {
-      return null;
-    }
-    if (name.length() > 3 && name.startsWith("get")) {
-      return decapitalize(name.substring(3));
-    }
-    if (name.length() > 2
-        && name.startsWith("is")
-        && (method.getReturnType() == boolean.class || method.getReturnType() == Boolean.class)) {
-      return decapitalize(name.substring(2));
-    }
-    return null;
-  }
-
-  private static String setterPropertyName(Method method) {
-    if (method.getParameterCount() != 1
-        || method.getReturnType() != void.class
-        || method.getParameterTypes()[0] == Class.class) {
-      return null;
-    }
-    String name = method.getName();
-    if (name.length() > 3 && name.startsWith("set")) {
-      return decapitalize(name.substring(3));
-    }
-    return null;
-  }
-
-  private static String decapitalize(String name) {
-    if (name.length() > 1
-        && Character.isUpperCase(name.charAt(0))
-        && Character.isUpperCase(name.charAt(1))) {
-      return name;
-    }
-    return Character.toLowerCase(name.charAt(0)) + name.substring(1);
   }
 
   private static Object[] recordFieldDefaults(
@@ -1211,294 +1164,163 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return defaults;
   }
 
-  private static final class FieldBuilder {
-    private final String name;
-    private Field field;
-    private boolean fieldWriteAllowed;
-    private boolean fieldReadAllowed;
-    private Field writeField;
-    private Field readField;
-    private Method writeGetter;
-    private Method readSetter;
-    private JsonFieldAccessor writeAccessor;
-    private JsonFieldAccessor readAccessor;
-    private String explicitName;
-    private AnnotatedElement explicitNameSource;
-    private int explicitIndex = JsonProperty.INDEX_UNKNOWN;
-    private AnnotatedElement explicitIndexSource;
-    private JsonProperty.Include explicitInclude = JsonProperty.Include.DEFAULT;
-    private AnnotatedElement explicitIncludeSource;
-    private boolean creatorBound;
+  @Internal
+  public static final class AnyInfo {
+    private final Field writeField;
+    private final Method writeGetter;
+    private final Field readField;
+    private final Method readSetter;
+    private final Class<?> setterValueRawType;
+    private final JsonFieldAccessor writeAccessor;
+    private final JsonFieldAccessor readAccessor;
+    private final MethodHandle setterHandle;
+    private final Type mapType;
+    private final Class<?> mapRawType;
+    private final Type valueType;
+    private final Class<?> valueRawType;
+    private final int writeIndex;
+    private final int constructionIndex;
+    private JsonTypeInfo valueTypeInfo;
+    private MapCodec<?> mapCodec;
 
-    private FieldBuilder(String name) {
-      this.name = name;
-    }
-
-    private void setField(
-        Class<?> type,
-        Field field,
-        boolean writeSource,
-        boolean readSink,
-        boolean writeAllowed,
-        boolean readAllowed) {
-      if (this.field != null) {
-        throw new ForyJsonException("Duplicate JSON field " + name);
-      }
-      this.field = field;
-      fieldWriteAllowed = writeAllowed;
-      fieldReadAllowed = readAllowed;
-      if (writeSource) {
-        writeField = field;
-      }
-      if (readSink) {
-        readField = field;
-      }
-      mergeAnnotation(type, field);
-    }
-
-    private void setWriteGetter(Class<?> type, Method getter) {
-      mergeAnnotation(type, getter);
-      if (field != null && !fieldWriteAllowed) {
-        return;
-      }
-      if (writeGetter != null) {
-        throw new ForyJsonException("Duplicate JSON getter for property " + name);
-      }
-      writeGetter = getter;
-      writeField = null;
-    }
-
-    private void setReadSetter(Class<?> type, Method setter) {
-      mergeAnnotation(type, setter);
-      if (field != null && !fieldReadAllowed) {
-        return;
-      }
-      if (readSetter != null) {
-        throw new ForyJsonException("Duplicate JSON setter for property " + name);
-      }
-      readSetter = setter;
-      readField = null;
-    }
-
-    private boolean hasWriteSource() {
-      return writeGetter != null || writeField != null;
-    }
-
-    private boolean hasReadSink() {
-      return readSetter != null || readField != null;
-    }
-
-    private boolean hasConfiguration() {
-      return explicitName != null
-          || explicitIndex != JsonProperty.INDEX_UNKNOWN
-          || explicitInclude != JsonProperty.Include.DEFAULT;
-    }
-
-    private boolean hasIndex() {
-      return explicitIndex != JsonProperty.INDEX_UNKNOWN;
-    }
-
-    private boolean hasLogicalMember() {
-      return field != null || writeGetter != null || readSetter != null;
-    }
-
-    private boolean creatorReadAllowed() {
-      return field == null || fieldReadAllowed;
-    }
-
-    private String jsonName(PropertyNamingStrategy strategy) {
-      return explicitName == null ? translateName(name, strategy) : explicitName;
-    }
-
-    private String nameDescription(PropertyNamingStrategy strategy) {
-      return explicitName == null
-          ? "Java property " + name + " transformed by " + strategy
-          : "Java property " + name + " explicitly named by " + explicitNameSource;
-    }
-
-    private Type logicalType(TypeRef<?> ownerType) {
-      Type type;
-      if (writeGetter != null) {
-        type = writeGetter.getGenericReturnType();
-      } else if (writeField != null) {
-        type = writeField.getGenericType();
-      } else if (readSetter != null) {
-        type = readSetter.getGenericParameterTypes()[0];
-      } else if (field != null) {
-        // Final fields and ignored ordinary read sinks may still be creator-bound properties.
-        type = field.getGenericType();
-      } else {
-        throw new ForyJsonException("JSON property has no type source " + name);
-      }
-      return ownerType.resolveType(type).getType();
-    }
-
-    private JsonFieldInfo build(
-        boolean record,
-        TypeRef<?> ownerType,
-        PropertyNamingStrategy propertyNamingStrategy,
-        boolean defaultWriteNull) {
-      validateTypes(ownerType);
-      if (explicitInclude != JsonProperty.Include.DEFAULT && !hasWriteSource()) {
-        throw new ForyJsonException(
-            "JSON inclusion policy requires a write source for property " + name);
-      }
-      String jsonName = jsonName(propertyNamingStrategy);
-      if (jsonName.isEmpty()) {
-        throw new ForyJsonException("JSON property name must not be empty for " + name);
-      }
-      Class<?> rawWriteType = hasWriteSource() ? writeRawType() : null;
-      boolean writeNull =
-          rawWriteType != null
-              && (rawWriteType.isPrimitive()
-                  || explicitInclude == JsonProperty.Include.ALWAYS
-                  || explicitInclude == JsonProperty.Include.DEFAULT && defaultWriteNull);
+    AnyInfo(
+        Field writeField,
+        Method writeGetter,
+        Field readField,
+        Method readSetter,
+        Type mapType,
+        Class<?> mapRawType,
+        Type valueType,
+        Class<?> valueRawType,
+        int writeIndex,
+        int constructionIndex) {
+      this.writeField = writeField;
+      this.writeGetter = writeGetter;
+      this.readField = readField;
+      this.readSetter = readSetter;
+      setterValueRawType = readSetter == null ? null : readSetter.getParameterTypes()[1];
       writeAccessor =
           writeGetter != null
               ? JsonFieldAccessor.forGetter(writeGetter)
-              : (writeField == null ? null : JsonFieldAccessor.forField(writeField));
-      readAccessor =
-          readSetter != null
-              ? JsonFieldAccessor.forSetter(readSetter)
-              : (readField == null || record ? null : JsonFieldAccessor.forField(readField));
-      return new JsonFieldInfo(
-          jsonName,
-          writeNull,
-          writeField,
-          writeGetter,
-          readField,
-          readSetter,
-          writeAccessor,
-          readAccessor,
-          ownerType);
+              : writeField == null ? null : JsonFieldAccessor.forField(writeField);
+      readAccessor = readField == null ? null : JsonFieldAccessor.forField(readField);
+      setterHandle =
+          readSetter == null || AndroidSupport.IS_ANDROID ? null : methodHandle(readSetter);
+      if (readSetter != null && AndroidSupport.IS_ANDROID) {
+        readSetter.setAccessible(true);
+      }
+      this.mapType = mapType;
+      this.mapRawType = mapRawType;
+      this.valueType = valueType;
+      this.valueRawType = valueRawType;
+      this.writeIndex = writeIndex;
+      this.constructionIndex = constructionIndex;
     }
 
-    private void mergeAnnotation(Class<?> type, AnnotatedElement source) {
-      JsonProperty property = source.getAnnotation(JsonProperty.class);
-      if (property == null) {
-        return;
-      }
-      int declaredIndex = property.index();
-      validatePropertyIndex(declaredIndex, name, type, source);
-      if (declaredIndex != JsonProperty.INDEX_UNKNOWN) {
-        if (explicitIndex != JsonProperty.INDEX_UNKNOWN && explicitIndex != declaredIndex) {
-          throw new ForyJsonException(
-              "Conflicting JSON property indexes for property "
-                  + name
-                  + " on "
-                  + type.getName()
-                  + ": "
-                  + explicitIndex
-                  + " from "
-                  + explicitIndexSource
-                  + " and "
-                  + declaredIndex
-                  + " from "
-                  + source);
-        }
-        explicitIndex = declaredIndex;
-        if (explicitIndexSource == null) {
-          explicitIndexSource = source;
-        }
-      }
-      String declaredName = property.value();
-      if (!declaredName.isEmpty()) {
-        if (explicitName != null && !explicitName.equals(declaredName)) {
-          throw new ForyJsonException(
-              "Conflicting JSON names for property "
-                  + name
-                  + ": "
-                  + explicitName
-                  + " from "
-                  + explicitNameSource
-                  + " and "
-                  + declaredName
-                  + " from "
-                  + source);
-        }
-        explicitName = declaredName;
-        if (explicitNameSource == null) {
-          explicitNameSource = source;
-        }
-      }
-      JsonProperty.Include declaredInclude = property.include();
-      if (declaredInclude != JsonProperty.Include.DEFAULT) {
-        if (explicitInclude != JsonProperty.Include.DEFAULT && explicitInclude != declaredInclude) {
-          throw new ForyJsonException(
-              "Conflicting JSON inclusion policies for property "
-                  + name
-                  + ": "
-                  + explicitInclude
-                  + " from "
-                  + explicitIncludeSource
-                  + " and "
-                  + declaredInclude
-                  + " from "
-                  + source);
-        }
-        explicitInclude = declaredInclude;
-        if (explicitIncludeSource == null) {
-          explicitIncludeSource = source;
-        }
+    private void resolveTypes(JsonTypeResolver resolver) {
+      valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+      if (readField != null) {
+        mapCodec = MapCodec.create(mapRawType, TypeRef.of(mapType), resolver);
       }
     }
 
-    private void validateTypes(TypeRef<?> ownerType) {
-      Type writeType =
-          writeGetter == null ? fieldType(writeField) : writeGetter.getGenericReturnType();
-      Type readType =
-          readSetter == null ? fieldType(readField) : readSetter.getGenericParameterTypes()[0];
-      if (writeType != null) {
-        writeType = ownerType.resolveType(writeType).getType();
+    public Field writeField() {
+      return writeField;
+    }
+
+    public Method writeGetter() {
+      return writeGetter;
+    }
+
+    public Field readField() {
+      return readField;
+    }
+
+    public Method readSetter() {
+      return readSetter;
+    }
+
+    public Class<?> valueRawType() {
+      return valueRawType;
+    }
+
+    public JsonTypeInfo valueTypeInfo() {
+      return valueTypeInfo;
+    }
+
+    public int writeIndex() {
+      return writeIndex;
+    }
+
+    public int constructionIndex() {
+      return constructionIndex;
+    }
+
+    private boolean writeEnabled() {
+      return writeAccessor != null;
+    }
+
+    private boolean readEnabled() {
+      return readAccessor != null || readSetter != null;
+    }
+
+    private boolean fieldRead() {
+      return readField != null;
+    }
+
+    private boolean finalReadField() {
+      return readField != null && Modifier.isFinal(readField.getModifiers());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<?, ?> writeMap(Object target) {
+      try {
+        return (Map<?, ?>) writeAccessor.getObject(target);
+      } catch (ForyJsonException e) {
+        if (e.getCause() instanceof Error) {
+          throw (Error) e.getCause();
+        }
+        throw e;
       }
-      if (readType != null) {
-        readType = ownerType.resolveType(readType).getType();
-      }
-      if (writeType != null && readType != null && !writeType.equals(readType)) {
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<Object, Object> readMap(Object target) {
+      return (Map<Object, Object>) readAccessor.getObject(target);
+    }
+
+    private void setReadMap(Object target, Map<?, ?> map) {
+      readAccessor.putObject(target, map);
+    }
+
+    private void put(Object target, String name, Object value) {
+      if (value == null && setterValueRawType.isPrimitive()) {
         throw new ForyJsonException(
-            "Conflicting JSON property types for " + name + ": " + writeType + " and " + readType);
+            "Cannot read null into primitive @JsonAnySetter parameter " + setterValueRawType);
+      }
+      try {
+        if (AndroidSupport.IS_ANDROID) {
+          readSetter.invoke(target, name, value);
+        } else {
+          setterHandle.invoke(target, name, value);
+        }
+      } catch (Throwable e) {
+        Throwable cause =
+            e instanceof InvocationTargetException ? ((InvocationTargetException) e).getCause() : e;
+        if (cause instanceof Error) {
+          throw (Error) cause;
+        }
+        throw new ForyJsonException("Cannot invoke @JsonAnySetter " + readSetter, cause);
       }
     }
 
-    private static Type fieldType(Field field) {
-      return field == null ? null : field.getGenericType();
-    }
-
-    private Class<?> writeRawType() {
-      return writeGetter != null ? writeGetter.getReturnType() : writeField.getType();
-    }
-  }
-
-  private static String translateName(String name, PropertyNamingStrategy strategy) {
-    if (strategy == PropertyNamingStrategy.LOWER_CAMEL_CASE) {
-      return name;
-    }
-    StringBuilder builder = new StringBuilder(name.length() + 4);
-    int previous = -1;
-    boolean previousUpper = false;
-    for (int offset = 0; offset < name.length(); ) {
-      int codePoint = name.codePointAt(offset);
-      int width = Character.charCount(codePoint);
-      int nextOffset = offset + width;
-      int next = nextOffset < name.length() ? name.codePointAt(nextOffset) : -1;
-      boolean upper = Character.isUpperCase(codePoint) || Character.isTitleCase(codePoint);
-      boolean previousLower = previous >= 0 && Character.isLowerCase(previous);
-      boolean previousDigit = previous >= 0 && Character.isDigit(previous);
-      boolean nextLower = next >= 0 && Character.isLowerCase(next);
-      if (upper && (previousLower || previousDigit || previousUpper && nextLower)) {
-        builder.append('_');
+    private static MethodHandle methodHandle(Method method) {
+      try {
+        return _JDKAccess._trustedLookup(method.getDeclaringClass()).unreflect(method);
+      } catch (IllegalAccessException e) {
+        throw new ForyJsonException("Cannot access @JsonAnySetter " + method, e);
       }
-      builder.appendCodePoint(Character.toLowerCase(codePoint));
-      if (!Character.isLetterOrDigit(codePoint)) {
-        previous = -1;
-        previousUpper = false;
-      } else {
-        previous = codePoint;
-        previousUpper = upper;
-      }
-      offset = nextOffset;
     }
-    return builder.toString();
   }
 
   /** Owns one parameterized POJO binding whose child types differ from the raw-class binding. */
@@ -1509,8 +1331,18 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         JsonFieldInfo[] readFields,
         String[] readJavaNames,
         JsonCreatorInfo creatorInfo,
+        AnyInfo anyInfo,
+        String[] skippedNames,
         ObjectInstantiator<?> instantiator) {
-      super(type, writeFields, readFields, readJavaNames, creatorInfo, instantiator);
+      super(
+          type,
+          writeFields,
+          readFields,
+          readJavaNames,
+          creatorInfo,
+          anyInfo,
+          skippedNames,
+          instantiator);
     }
 
     @Override
