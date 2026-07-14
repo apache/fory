@@ -30,4 +30,9 @@ import org.apache.fory.json.reader.Utf8JsonReader;
  */
 public interface Utf8ReaderCodec<T> {
   T readUtf8(Utf8JsonReader reader);
+
+  /** Reads an inline object whose discriminator remains visible in the object input. */
+  default T readUtf8(Utf8JsonReader reader, long discriminatorHash) {
+    return readUtf8(reader);
+  }
 }

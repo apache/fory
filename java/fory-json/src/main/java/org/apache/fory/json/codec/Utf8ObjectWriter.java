@@ -27,4 +27,10 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 public interface Utf8ObjectWriter<T> extends Utf8WriterCodec<T> {
   /** Writes object members after {@code written} members have already been emitted. */
   void writeUtf8Members(Utf8JsonWriter writer, T value, int written);
+
+  /** Writes members while reserving the active inline discriminator from dynamic output. */
+  default void writeUtf8Members(
+      Utf8JsonWriter writer, T value, int written, long discriminatorHash) {
+    writeUtf8Members(writer, value, written);
+  }
 }

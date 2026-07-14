@@ -32,4 +32,10 @@ import org.apache.fory.json.writer.StringJsonWriter;
 public interface StringObjectWriter<T> extends StringWriterCodec<T> {
   /** Writes object members after {@code written} members have already been emitted. */
   void writeStringMembers(StringJsonWriter writer, T value, int written);
+
+  /** Writes members while reserving the active inline discriminator from dynamic output. */
+  default void writeStringMembers(
+      StringJsonWriter writer, T value, int written, long discriminatorHash) {
+    writeStringMembers(writer, value, written);
+  }
 }

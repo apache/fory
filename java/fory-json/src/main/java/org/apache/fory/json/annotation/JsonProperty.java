@@ -35,6 +35,10 @@ import java.lang.annotation.Target;
  * are rejected when the object's metadata is built. {@link JsonIgnore} still removes the configured
  * read or write direction and cannot be overridden by this annotation.
  *
+ * <p>This annotation is invalid on a logical property claimed by {@link JsonAnyProperty} or {@link
+ * JsonAnyGetter}, and directly on a {@link JsonAnySetter}. Dynamic members have no fixed JSON name
+ * or fixed-property inclusion policy.
+ *
  * <p>On a {@link JsonCreator} parameter, this annotation supplies the input JSON name in
  * parameter-local creator mode. Creator parameter names are explicit and are never transformed by
  * the configured property naming strategy.

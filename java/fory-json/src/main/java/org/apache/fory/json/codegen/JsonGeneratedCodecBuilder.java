@@ -84,12 +84,18 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
   }
 
   private Descriptor writeDescriptor(JsonFieldInfo property) {
-    Field field = property.writeField();
+    return writeDescriptor(property.writeField());
+  }
+
+  private Descriptor writeDescriptor(Field field) {
     return new Descriptor(field, TypeRef.of(field.getGenericType()), recordReadMethod(field), null);
   }
 
   private Descriptor readDescriptor(JsonFieldInfo property) {
-    Field field = property.readField();
+    return readDescriptor(property.readField());
+  }
+
+  private Descriptor readDescriptor(Field field) {
     return new Descriptor(field, TypeRef.of(field.getGenericType()), null, null);
   }
 
@@ -120,6 +126,10 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
     return getFieldValue(object, writeDescriptor(property));
   }
 
+  Expression anyValue(Field field, Expression object) {
+    return getFieldValue(object, writeDescriptor(field));
+  }
+
   Expression newObject() {
     return newBean();
   }
@@ -146,5 +156,12 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
   Expression setNull(JsonFieldInfo property, Expression object) {
     return setField(
         property, object, new Expression.Null(TypeRef.of(property.readRawType()), false));
+  }
+
+  Expression setAnyField(Field field, Expression object, Expression value) {
+    return setFieldValue(
+        object,
+        readDescriptor(field),
+        tryInlineCast(inline(value), TypeRef.of(field.getGenericType())));
   }
 }

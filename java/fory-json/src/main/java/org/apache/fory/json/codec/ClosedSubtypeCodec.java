@@ -97,7 +97,8 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
       writer.writeObjectStart();
       writer.writeRawValue(
           definition.stringSubtypePrefixes[index], definition.stringUtf16SubtypePrefixes[index]);
-      stringObjectWriter(index).writeStringMembers(writer, value, 1);
+      stringObjectWriter(index)
+          .writeStringMembers(writer, value, 1, definition.scanInfo.propertyHash());
       writer.writeObjectEnd();
       return;
     }
@@ -126,7 +127,8 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     if (definition.inclusion == Inclusion.PROPERTY) {
       writer.writeObjectStart();
       writer.writeRawValue(definition.utf8SubtypePrefixes[index]);
-      utf8ObjectWriter(index).writeUtf8Members(writer, value, 1);
+      utf8ObjectWriter(index)
+          .writeUtf8Members(writer, value, 1, definition.scanInfo.propertyHash());
       writer.writeObjectEnd();
       return;
     }
@@ -150,7 +152,7 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     }
     if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
-      return children[index].latin1Reader().readLatin1(reader);
+      return children[index].latin1Reader().readLatin1(reader, definition.scanInfo.propertyHash());
     }
     reader.enterDepth();
     Object value;
@@ -178,7 +180,7 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     }
     if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
-      return children[index].utf16Reader().readUtf16(reader);
+      return children[index].utf16Reader().readUtf16(reader, definition.scanInfo.propertyHash());
     }
     reader.enterDepth();
     Object value;
@@ -206,7 +208,7 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     }
     if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
-      return children[index].utf8Reader().readUtf8(reader);
+      return children[index].utf8Reader().readUtf8(reader, definition.scanInfo.propertyHash());
     }
     reader.enterDepth();
     Object value;

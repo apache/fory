@@ -30,6 +30,7 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.apache.fory.codegen.Code;
 import org.apache.fory.codegen.CodegenContext;
@@ -38,6 +39,8 @@ import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.codegen.ExpressionOptimizer;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.ArrayCodec;
+import org.apache.fory.json.codec.ObjectCodec;
+import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.StringObjectWriter;
 import org.apache.fory.json.codec.StringWriterCodec;
@@ -86,6 +89,8 @@ abstract class JsonWriterCodegen {
   abstract String writeMethod();
 
   abstract String membersMethod();
+
+  abstract String writeAnyMethod();
 
   abstract int splitMemberThreshold();
 
@@ -277,6 +282,210 @@ abstract class JsonWriterCodegen {
           "written");
     }
     return ctx.genCode();
+  }
+
+  String genAnyWriterCode(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonFieldInfo[] properties,
+      AnyInfo any,
+      boolean objectMembers) {
+    ownerType = type;
+    CodegenContext ctx = builder.context();
+    ctx.addImports(writerType(), ObjectCodec.class, Map.class);
+    ctx.implementsInterfaces(
+        JsonCodegen.generatedCodecType(
+            ctx, objectMembers ? objectWriterType() : completeWriterType()));
+    boolean objectStartFused = any.writeIndex() > 0 && canFuseObjectStart(properties);
+    PrefixFields prefixFields = prefixFields(properties, objectStartFused);
+    addWriterFields(ctx, properties, prefixFields);
+    ctx.addField(ObjectCodec.class, "owner");
+    if (any.writeGetter() != null) {
+      addAnyGetterMethod(ctx, type, any);
+    }
+    boolean storesAnyWriter = storesAnyWriter(any);
+    if (storesAnyWriter) {
+      ctx.addField(JsonCodegen.generatedCodecType(ctx, completeWriterType()), "anyWriter");
+      addGeneratedConstructor(
+          ctx,
+          anyWriterConstructorExpression(properties, prefixFields, true),
+          ObjectCodec.class,
+          "owner",
+          JsonFieldInfo[].class,
+          "properties",
+          JsonCodegen.generatedCodecArrayType(ctx, codecArrayType()),
+          "codecs",
+          JsonCodegen.generatedCodecType(ctx, completeWriterType()),
+          "anyWriter");
+    } else {
+      addGeneratedConstructor(
+          ctx,
+          anyWriterConstructorExpression(properties, prefixFields, false),
+          ObjectCodec.class,
+          "owner",
+          JsonFieldInfo[].class,
+          "properties",
+          JsonCodegen.generatedCodecArrayType(ctx, codecArrayType()),
+          "codecs");
+    }
+
+    String bodyCode;
+    if (properties.length >= splitMemberThreshold()) {
+      String objectMethod = writeMethod() + "AnyObject";
+      addGeneratedMethod(
+          ctx,
+          "private final",
+          objectMethod,
+          writeAnyExpression(
+              builder,
+              properties,
+              any,
+              objectStartFused,
+              new Reference("object", TypeRef.of(type))),
+          void.class,
+          writerType(),
+          "writer",
+          type,
+          "object");
+      bodyCode = "this." + objectMethod + "(writer, (" + ctx.type(type) + ") value);\n";
+    } else {
+      ctx.clearExprState();
+      Expression castObject =
+          inline(
+              new Expression.Cast(
+                  new Reference("value", TypeRef.of(Object.class)), TypeRef.of(type)));
+      Expression object =
+          properties.length <= 1 ? castObject : new Expression.Variable("object", castObject);
+      Code.ExprCode body =
+          writeAnyExpression(builder, properties, any, objectStartFused, object).genCode(ctx);
+      bodyCode = body.code();
+      bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
+    }
+    ctx.addMethod(
+        "@Override public final",
+        writeMethod(),
+        "if (value == null) {\n" + "  writer.writeNull();\n" + "  return;\n" + "}\n" + bodyCode,
+        void.class,
+        writerType(),
+        "writer",
+        Object.class,
+        "value");
+
+    if (objectMembers) {
+      String anyMembersMethod = membersMethod() + "Any";
+      addGeneratedMethod(
+          ctx,
+          "private final",
+          anyMembersMethod,
+          writeAnyMembersExpression(
+              builder,
+              properties,
+              any,
+              new Reference("object", TypeRef.of(type)),
+              new Reference("written", TypeRef.of(int.class)),
+              new Reference("hasDiscriminator", TypeRef.of(boolean.class)),
+              new Reference("discriminatorHash", TypeRef.of(long.class))),
+          void.class,
+          writerType(),
+          "writer",
+          type,
+          "object",
+          int.class,
+          "written",
+          boolean.class,
+          "hasDiscriminator",
+          long.class,
+          "discriminatorHash");
+      String typeName = ctx.type(type);
+      ctx.addMethod(
+          "@Override public final",
+          membersMethod(),
+          "this." + anyMembersMethod + "(writer, (" + typeName + ") value, written, false, 0L);",
+          void.class,
+          writerType(),
+          "writer",
+          Object.class,
+          "value",
+          int.class,
+          "written");
+      ctx.addMethod(
+          "@Override public final",
+          membersMethod(),
+          "this."
+              + anyMembersMethod
+              + "(writer, ("
+              + typeName
+              + ") value, written, true, discriminatorHash);",
+          void.class,
+          writerType(),
+          "writer",
+          Object.class,
+          "value",
+          int.class,
+          "written",
+          long.class,
+          "discriminatorHash");
+    }
+    return ctx.genCode();
+  }
+
+  private void addAnyGetterMethod(CodegenContext ctx, Class<?> type, AnyInfo any) {
+    String methodName = any.writeGetter().getName();
+    ctx.addMethod(
+        "private final",
+        "getAnyMap",
+        "try {\n"
+            + "  return object."
+            + methodName
+            + "();\n"
+            + "} catch (Throwable e) {\n"
+            + "  if (e instanceof Error) {\n"
+            + "    throw (Error) e;\n"
+            + "  }\n"
+            + "  throw owner.anyAccessorFailure(\""
+            + methodName
+            + "\", e);\n"
+            + "}",
+        Map.class,
+        type,
+        "object");
+  }
+
+  private void addWriterFields(
+      CodegenContext ctx, JsonFieldInfo[] properties, PrefixFields prefixFields) {
+    for (int i = 0; i < properties.length; i++) {
+      JsonFieldInfo property = properties[i];
+      if (usesWriteInfo(property)) {
+        ctx.addField(JsonFieldInfo.class, "wp" + i);
+      }
+      if (storesWriteCodec(property)) {
+        ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(property)), "w" + i);
+      }
+      if (usesPrefix(property)) {
+        addPrefixFields(ctx, property, i, prefixFields);
+      }
+    }
+  }
+
+  private Expression anyWriterConstructorExpression(
+      JsonFieldInfo[] properties, PrefixFields prefixFields, boolean storesAnyWriter) {
+    Expression.ListExpression expressions =
+        new Expression.ListExpression(
+            writerConstructorExpression(properties, prefixFields),
+            new Expression.Assign(
+                new Reference("this.owner", TypeRef.of(ObjectCodec.class)),
+                new Reference("owner", TypeRef.of(ObjectCodec.class))));
+    if (storesAnyWriter) {
+      expressions.add(
+          new Expression.Assign(
+              new Reference("this.anyWriter", TypeRef.of(completeWriterType())),
+              new Reference("anyWriter", TypeRef.of(completeWriterType()))));
+    }
+    return expressions;
+  }
+
+  private boolean storesAnyWriter(AnyInfo any) {
+    return !any.valueTypeInfo().usesDefaultObjectCodec() || any.valueRawType() != ownerType;
   }
 
   private Expression writeMembersExpression(
@@ -510,6 +719,188 @@ abstract class JsonWriterCodegen {
     }
     expressions.add(new Expression.Invoke(writer, "writeObjectEnd"));
     return expressions;
+  }
+
+  private Expression writeAnyExpression(
+      JsonGeneratedCodecBuilder builder,
+      JsonFieldInfo[] properties,
+      AnyInfo any,
+      boolean objectStartFused,
+      Expression object) {
+    Reference writer = writerRef();
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    expressions.add(object);
+    Expression written = null;
+    int firstProperty = 0;
+    if (!objectStartFused) {
+      written = new Expression.Variable("written", Expression.Literal.ofInt(0));
+      JsonFieldInfo first = properties.length == 0 ? null : properties[0];
+      Expression value =
+          any.writeIndex() > 0
+                  && first != null
+                  && !first.writeNull()
+                  && first.writeKind() == JsonFieldKind.STRING
+              ? new Expression.Variable(
+                  "v0", cast(inline(builder.fieldValue(first, object)), TypeRef.of(String.class)))
+              : null;
+      Expression fusedStart =
+          value == null ? null : tryWriteObjectStartString(first, value, writer);
+      if (fusedStart != null) {
+        expressions.add(value);
+        expressions.add(written);
+        expressions.add(
+            new Expression.If(
+                ne(value, new Expression.Null(TypeRef.of(String.class), false)),
+                new Expression.ListExpression(
+                    fusedStart, new Expression.Assign(written, Expression.Literal.ofInt(1))),
+                new Expression.Invoke(writer, "writeObjectStart")));
+        firstProperty = 1;
+      } else {
+        expressions.add(new Expression.Invoke(writer, "writeObjectStart"));
+        expressions.add(written);
+      }
+    }
+    boolean commaKnown = objectStartFused;
+    List<Expression> memberGroup =
+        properties.length >= splitMemberThreshold()
+            ? new ArrayList<>(MAX_MEMBERS_PER_METHOD)
+            : null;
+    for (int i = firstProperty; i <= properties.length; i++) {
+      if (i == any.writeIndex()) {
+        flushAnyMemberGroup(builder, expressions, memberGroup, object, writer);
+        Expression state = written == null ? Expression.Literal.ofInt(1) : written;
+        Expression dynamic =
+            writeAny(
+                builder,
+                any,
+                object,
+                state,
+                Expression.Literal.False,
+                Expression.Literal.ofLong(0));
+        expressions.add(
+            commaKnown || written == null ? dynamic : new Expression.Assign(written, dynamic));
+      }
+      if (i == properties.length) {
+        break;
+      }
+      Expression member;
+      if (objectStartFused && i == 0) {
+        member =
+            writeObjectStartPrimitive(
+                properties[i], inline(builder.fieldValue(properties[i], object)), writer);
+      } else {
+        member = writeProp(builder, properties[i], i, commaKnown, written, object, writer);
+      }
+      if (memberGroup != null && commaKnown) {
+        memberGroup.add(member);
+        if (memberGroup.size() == MAX_MEMBERS_PER_METHOD) {
+          addMemberGroup(builder, expressions, memberGroup, object, writer);
+        }
+      } else {
+        flushAnyMemberGroup(builder, expressions, memberGroup, object, writer);
+        expressions.add(member);
+      }
+      if (properties[i].writeNull()) {
+        commaKnown = true;
+      }
+    }
+    if (memberGroup != null) {
+      addMemberGroup(builder, expressions, memberGroup, object, writer, true);
+    }
+    expressions.add(new Expression.Invoke(writer, "writeObjectEnd"));
+    return expressions;
+  }
+
+  private Expression writeAnyMembersExpression(
+      JsonGeneratedCodecBuilder builder,
+      JsonFieldInfo[] properties,
+      AnyInfo any,
+      Expression object,
+      Expression written,
+      Expression hasDiscriminator,
+      Expression discriminatorHash) {
+    Expression.ListExpression expressions = new Expression.ListExpression(object);
+    Reference writer = writerRef();
+    List<Expression> memberGroup =
+        properties.length >= splitMemberThreshold()
+            ? new ArrayList<>(MAX_MEMBERS_PER_METHOD)
+            : null;
+    for (int i = 0; i <= properties.length; i++) {
+      if (i == any.writeIndex()) {
+        flushAnyMemberGroup(builder, expressions, memberGroup, object, writer);
+        expressions.add(
+            new Expression.Assign(
+                written,
+                writeAny(builder, any, object, written, hasDiscriminator, discriminatorHash)));
+      }
+      if (i == properties.length) {
+        break;
+      }
+      Expression member = writeProp(builder, properties[i], i, true, written, object, writer);
+      if (memberGroup == null) {
+        expressions.add(member);
+      } else {
+        memberGroup.add(member);
+        if (memberGroup.size() == MAX_MEMBERS_PER_METHOD) {
+          addMemberGroup(builder, expressions, memberGroup, object, writer);
+        }
+      }
+    }
+    if (memberGroup != null) {
+      addMemberGroup(builder, expressions, memberGroup, object, writer, true);
+    }
+    return expressions;
+  }
+
+  private void flushAnyMemberGroup(
+      JsonGeneratedCodecBuilder builder,
+      Expression.ListExpression expressions,
+      List<Expression> memberGroup,
+      Expression object,
+      Reference writer) {
+    if (memberGroup != null) {
+      addMemberGroup(builder, expressions, memberGroup, object, writer, true);
+    }
+  }
+
+  private Expression writeAny(
+      JsonGeneratedCodecBuilder builder,
+      AnyInfo any,
+      Expression object,
+      Expression written,
+      Expression hasDiscriminator,
+      Expression discriminatorHash) {
+    Expression mapValue;
+    if (any.writeGetter() == null) {
+      mapValue = builder.anyValue(any.writeField(), object);
+    } else {
+      mapValue =
+          new Expression.Invoke(
+              new Reference("this", TypeRef.of(Object.class)),
+              "getAnyMap",
+              "",
+              TypeRef.of(Map.class),
+              false,
+              false,
+              object);
+    }
+    Expression map =
+        new Expression.Variable("anyMap", cast(inline(mapValue), TypeRef.of(Map.class)));
+    return new Expression.ListExpression(
+        map,
+        new Expression.Invoke(
+            fieldRef("owner", ObjectCodec.class),
+            writeAnyMethod(),
+            TypeRef.of(int.class),
+            false,
+            writerRef(),
+            map,
+            storesAnyWriter(any)
+                ? fieldRef("anyWriter", completeWriterType())
+                : new Reference("this", TypeRef.of(completeWriterType())),
+            written,
+            hasDiscriminator,
+            discriminatorHash));
   }
 
   private void addMemberGroup(
@@ -956,6 +1347,11 @@ abstract class JsonWriterCodegen {
     }
 
     @Override
+    String writeAnyMethod() {
+      return "writeStringAny";
+    }
+
+    @Override
     int splitMemberThreshold() {
       return MIN_STRING_SPLIT_MEMBERS;
     }
@@ -1204,6 +1600,11 @@ abstract class JsonWriterCodegen {
     @Override
     String membersMethod() {
       return "writeUtf8Members";
+    }
+
+    @Override
+    String writeAnyMethod() {
+      return "writeUtf8Any";
     }
 
     @Override

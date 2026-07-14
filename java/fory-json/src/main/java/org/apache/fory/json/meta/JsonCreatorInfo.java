@@ -53,7 +53,7 @@ public final class JsonCreatorInfo {
     this.executable = executable;
     this.fields = fields;
     this.defaults = defaults;
-    invoker = buildInvoker(ownerType, executable, fields.length);
+    invoker = buildInvoker(ownerType, executable, executable.getParameterCount());
     hashes = new long[fields.length];
     for (int i = 0; i < fields.length; i++) {
       hashes[i] = fields[i].nameHash();

@@ -95,9 +95,10 @@ public final class JsonExample {
 }
 ```
 
-Unknown input properties are skipped. Null object properties are omitted by default. Default JSON
-property discovery order is not a compatibility contract; use `JsonPropertyOrder` or
-`JsonProperty.index` when emitted property order must be explicit.
+Unknown input properties are skipped unless a read-enabled Any field or any-setter receives them.
+Null object properties are omitted by default. Default JSON property discovery order is not a
+compatibility contract; use `JsonPropertyOrder` or `JsonProperty.index` when emitted property order
+must be explicit.
 
 ## Reading and writing APIs
 
@@ -356,7 +357,7 @@ Builder mutation after `build()` does not modify an existing `ForyJson` runtime.
 
 ## JSON annotations
 
-Fory JSON defines five annotations in `org.apache.fory.json.annotation`. They are Fory JSON APIs,
+Fory JSON defines eight annotations in `org.apache.fory.json.annotation`. They are Fory JSON APIs,
 not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
 ### `JsonProperty`
@@ -405,7 +406,8 @@ unique among writable properties. `-1` means unspecified; lower values are inval
 setter-only, creator-only, or write-ignored property is invalid.
 
 `NON_EMPTY`, aliases, formatting, annotation-selected codecs, and independent read/write names are
-not supported.
+not supported. `JsonProperty` cannot be combined with an Any logical property or declared on a
+`JsonAnySetter`.
 
 ### `JsonPropertyOrder`
 
@@ -446,6 +448,30 @@ no declaration, the nearest superclass declaration is used and resolved against 
 properties. Interface declarations are not considered. Ordering affects serialization only;
 deserialization remains name-based, and subtype discriminators remain before user properties.
 
+A write-enabled `JsonAnyProperty` or `JsonAnyGetter` participates as one position identified by its
+Java logical property name. The position emits all dynamic entries in Map iteration order:
+
+```java
+import java.util.Map;
+import org.apache.fory.json.annotation.JsonAnyProperty;
+import org.apache.fory.json.annotation.JsonPropertyOrder;
+
+@JsonPropertyOrder({"id", "properties", "timestamp"})
+public final class Event {
+  public String id;
+
+  @JsonAnyProperty
+  public Map<String, Object> properties;
+
+  public long timestamp;
+}
+```
+
+If `properties` contains `x` and `y`, output order is `id`, `x`, `y`, then `timestamp`; no member
+named `properties` is written. Naming strategies do not transform the Any ordering name. An
+input-only Any field and `JsonAnySetter` have no write position. Dynamic keys cannot be listed in
+`JsonPropertyOrder`, and alphabetic ordering never sorts entries inside the Map.
+
 ### Property naming strategy
 
 Configure the naming style for logical properties without an explicit non-empty `JsonProperty`
@@ -467,8 +493,8 @@ handles acronym and digit boundaries, for example:
 - `URLValue` becomes `url_value`;
 - `version2FA` becomes `version2_fa`.
 
-A non-empty `@JsonProperty("...")` value, a parameter-local creator name, and a subtype
-discriminator property are already JSON names and are never transformed.
+A non-empty `@JsonProperty("...")` value, a parameter-local creator name, a subtype discriminator
+property, and dynamic Any keys are already JSON names and are never transformed.
 
 ### `JsonIgnore`
 
@@ -484,6 +510,104 @@ private String serverManagedValue;
 
 Both flags default to true. A same-named getter or setter cannot restore an ignored direction, and
 `JsonProperty` cannot override it. Fory core's `Expose` annotation has no effect in Fory JSON.
+
+### Dynamic object members
+
+Use `JsonAnyProperty` when one `Map<String, V>` field should hold otherwise unknown JSON members.
+The Map is flattened into the containing object instead of appearing under the field name:
+
+```java
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.apache.fory.json.annotation.JsonAnyProperty;
+
+public final class Event {
+  public String id;
+
+  @JsonAnyProperty
+  public Map<String, Object> properties = new LinkedHashMap<>();
+}
+```
+
+For `properties` containing `"source" -> "mobile"`, Fory writes
+`{"id":"7","source":"mobile"}`, not a nested `properties` member. Unknown input members are
+inserted into the Map. The field reads and writes by default; `JsonIgnore` may select one direction:
+
+```java
+import org.apache.fory.json.annotation.JsonIgnore;
+
+@JsonAnyProperty
+@JsonIgnore(ignoreRead = true, ignoreWrite = false)
+public Map<String, Object> outputOnly;
+```
+
+During reading, an existing Map is reused. A null non-final field is initialized when the first
+unknown member is encountered. A readable final field must already contain a mutable Map. If no
+unknown member is present, Fory does not initialize a null field.
+
+Use `JsonAnyGetter` and `JsonAnySetter` for method-backed writing and reading:
+
+```java
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.apache.fory.json.annotation.JsonAnyGetter;
+import org.apache.fory.json.annotation.JsonAnySetter;
+
+public final class Event {
+  private final Map<String, Object> properties = new LinkedHashMap<>();
+
+  @JsonAnyGetter
+  public Map<String, Object> getProperties() {
+    return properties;
+  }
+
+  @JsonAnySetter
+  public void putProperty(String name, Object value) {
+    properties.put(name, value);
+  }
+}
+```
+
+An any-getter is a public instance method with no arguments and a `Map<String, V>` return type. An
+any-setter is a public instance method with signature `void method(String, V)`. Either method may be
+used alone. When paired, their resolved value types must match after primitive types are boxed. A
+primitive any-setter value parameter rejects JSON null. An any-setter is not supported on records or
+types that use `JsonCreator`.
+
+A read-enabled `JsonAnyProperty` on a record component supplies that component from unknown input
+members. In property-list `JsonCreator` mode, a read-enabled Any field must correspond to one listed
+creator argument; parameter-local creator mode cannot bind a field annotation. A write-only Any
+field or any-getter cannot occupy a creator argument. If a write-only Any field or any-getter claims
+a record component, that component receives its normal Java default during reading.
+
+An any-getter claims its Java logical property: `getProperties()` and `properties()` both claim
+`properties`. A same-named field, ordinary getter, or ordinary setter is not also mapped as a fixed
+member. Fory does not infer a differently named backing field, so annotate that field with
+`JsonIgnore` if it must not be mapped separately. `JsonAnySetter` has no logical property name and
+does not claim a backing field.
+
+The Any logical name is used only for property grouping and `JsonPropertyOrder`; it is not itself a
+fixed JSON member. An input member with that name is an ordinary dynamic entry rather than a nested
+aggregate, and the same dynamic output key remains valid unless another fixed property or subtype
+discriminator conflicts with it.
+
+One effective type hierarchy may use either one `JsonAnyProperty` field or at most one effective
+`JsonAnyGetter` and one effective `JsonAnySetter`; the forms cannot be mixed. An unannotated method
+override disables an inherited method annotation. Method-backed Any annotations are invalid in
+field mode. `JsonProperty` is invalid on an Any setter and on every member of a logical property
+claimed by an Any field or getter. A same-named field cannot use `JsonIgnore` to suppress an
+any-getter's write direction. Its `ignoreRead` flag also does not disable a separate any-setter.
+
+Dynamic keys are exact JSON member names and retain Map iteration order. A null Map writes no
+members, and a null Map value writes JSON null regardless of fixed-property null settings. Null and
+non-String output keys are rejected. Raw Maps, wildcard or unresolved keys, and non-String key
+types are invalid. Declared fixed members, including members excluded from reading, are not
+delivered to an Any input. An output key is rejected when its Fory field-name hash conflicts with a
+fixed property or inline subtype discriminator; this also covers differently spelled hash
+collisions. Fixed input lookup is also hash-based, so a differently spelled colliding name follows
+the fixed member instead of Any handling. Repeated unknown input names replace the prior Map value,
+while an any-setter is invoked for every occurrence. Escaped input names are decoded before
+delivery.
 
 ### `JsonCreator`
 
@@ -759,7 +883,8 @@ native or xlang protocol when reference identity or cycles are required.
 | Declared write is rejected                | The value is not assignable to the declared type, the type contains a wildcard/type variable, or null was supplied for a primitive                  |
 | Immutable value is not populated          | Use a record, a valid `JsonCreator`, or an exact custom codec                                                                                       |
 | Ordinary object cannot be constructed     | Add a usable no-argument constructor, use a record or `JsonCreator`, or register a custom codec; Android and GraalVM native image are stricter      |
-| Getter/setter annotation fails            | The method is not an eligible public JavaBean accessor, or field mode is enabled                                                                    |
+| Ordinary accessor annotation fails        | The method is not an eligible public JavaBean accessor, or field mode is enabled                                                                    |
+| Any annotation fails                      | Use exactly one field-backed form or one valid method-backed pair with resolved `Map<String, V>` types; method annotations require non-field mode   |
 | Subtype is rejected                       | The base is not declared on the write, the runtime class is not an exact table entry, or the input wire shape differs from the configured inclusion |
 | Collection cannot be read                 | Target a supported interface/common implementation or register a custom codec                                                                       |
 | OutputStream write fails                  | The underlying `IOException` is wrapped as the cause of `ForyJsonException`                                                                         |
