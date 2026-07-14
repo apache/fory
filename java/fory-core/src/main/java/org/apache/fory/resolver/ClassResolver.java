@@ -1657,8 +1657,7 @@ public class ClassResolver extends TypeResolver {
   public TypeInfo getTypeInfo(Class<?> cls) {
     TypeInfo typeInfo = classInfoMap.get(cls);
     if (typeInfo == null || typeInfo.serializer == null) {
-      addSerializer(cls, createSerializer(cls));
-      typeInfo = classInfoMap.get(cls);
+      typeInfo = createTypeInfo(cls);
     }
     return typeInfo;
   }
@@ -1680,8 +1679,7 @@ public class ClassResolver extends TypeResolver {
     if (typeInfo.getType() != cls) {
       typeInfo = classInfoMap.get(cls);
       if (typeInfo == null || typeInfo.serializer == null) {
-        addSerializer(cls, createSerializer(cls));
-        typeInfo = Objects.requireNonNull(classInfoMap.get(cls));
+        typeInfo = createTypeInfo(cls);
       }
       classInfoHolder.typeInfo = typeInfo;
     }
@@ -1718,12 +1716,22 @@ public class ClassResolver extends TypeResolver {
     if (typeInfo.type != cls) {
       typeInfo = classInfoMap.get(cls);
       if (typeInfo == null || typeInfo.serializer == null) {
-        addSerializer(cls, createSerializer(cls));
-        typeInfo = classInfoMap.get(cls);
+        typeInfo = createTypeInfo(cls);
       }
       typeInfoCache[depth] = typeInfo;
     }
     return typeInfo;
+  }
+
+  private TypeInfo createTypeInfo(Class<?> cls) {
+    Class<?> enumClass = cls.getSuperclass();
+    if (enumClass != null && enumClass.isEnum()) {
+      // Enum constants with class bodies have synthetic runtime subclasses. Their wire identity is
+      // the declaring enum, so its registered ID or class name must be used instead of `$1`.
+      return getTypeInfo(enumClass);
+    }
+    addSerializer(cls, createSerializer(cls));
+    return Objects.requireNonNull(classInfoMap.get(cls));
   }
 
   public <T> Serializer<T> createSerializerSafe(Class<T> cls, Supplier<Serializer<T>> func) {
@@ -1761,15 +1769,6 @@ public class ClassResolver extends TypeResolver {
           && !shimDispatcher.contains(cls)
           && !extRegistry.isTypeCheckerSet()) {
         LOG.warnOnce(generateSecurityMsg(cls));
-      }
-    }
-
-    // For enum value classes (anonymous inner classes of abstract enums),
-    // reuse the serializer from the declaring enum class
-    if (!cls.isEnum() && Enum.class.isAssignableFrom(cls) && cls != Enum.class) {
-      Class<?> enclosingClass = cls.getEnclosingClass();
-      if (enclosingClass != null && enclosingClass.isEnum()) {
-        return getSerializer(enclosingClass);
       }
     }
 
@@ -1933,14 +1932,6 @@ public class ClassResolver extends TypeResolver {
         return checkType(cls.getName());
       }
       return isSecure(TypeUtils.getArrayComponent(cls));
-    }
-    // For enum value classes (anonymous inner classes of abstract enums),
-    // check if the declaring enum class is secure
-    if (!cls.isEnum() && Enum.class.isAssignableFrom(cls) && cls != Enum.class) {
-      Class<?> enclosingClass = cls.getEnclosingClass();
-      if (enclosingClass != null && enclosingClass.isEnum()) {
-        return isSecure(enclosingClass);
-      }
     }
     if (config.requireClassRegistration()) {
       return Functions.isLambda(cls)
@@ -2138,7 +2129,9 @@ public class ClassResolver extends TypeResolver {
   protected TypeInfo ensureSerializerForTypeInfo(TypeInfo typeInfo) {
     if (typeInfo.serializer == null) {
       Class<?> cls = typeInfo.type;
-      if (cls != null && (ReflectionUtils.isAbstract(cls) || cls.isInterface())) {
+      // An enum may be abstract when its constants implement abstract methods, but it still uses
+      // EnumSerializer directly.
+      if (cls != null && !cls.isEnum() && (ReflectionUtils.isAbstract(cls) || cls.isInterface())) {
         return typeInfo;
       }
       // Get or create TypeInfo with serializer
@@ -2475,17 +2468,6 @@ public class ClassResolver extends TypeResolver {
               }
               // Then register the array serializer
               createSerializer0(cls);
-            }
-            // For abstract enums, also create and store serializers for enum value classes
-            // so they are available at GraalVM runtime
-            if (cls.isEnum() && GraalvmSupport.isGraalBuildTime()) {
-              for (Object enumConstant : cls.getEnumConstants()) {
-                Class<?> enumValueClass = enumConstant.getClass();
-                if (enumValueClass != cls) {
-                  // Get serializer for the enum value class (will reuse the enum's serializer)
-                  getSerializer(enumValueClass);
-                }
-              }
             }
             if (GraalvmSupport.isGraalBuildTime() && classInfo.serializer != null) {
               getGraalvmClassRegistry()

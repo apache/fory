@@ -74,6 +74,9 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   `DefaultJdkClassAllowList`. `TypeResolver.loadClass` and `ClassResolver.isSecure` must both use
   this single owner. Keep custom `TypeChecker` and fixed disallowed-list checks on their existing
   paths.
+- Enum constants with class bodies have synthetic runtime subclasses, but their TypeInfo, wire
+  class name, registration ID, and serializer belong to the declaring enum. Never register, cache,
+  emit, or reader-resolve the constant subclass as a separate serialized type.
 - Do not use `instanceof` in Java hot paths, including per-value, per-field, per-element,
   read/write/copy, resolver, serializer, codec, and buffer paths. Choose concrete
   implementations during cold setup or code generation, cache final/static-final shape decisions,
