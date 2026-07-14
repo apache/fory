@@ -210,9 +210,9 @@ public final class JsonCodegen {
     AnyInfo any = codec.anyInfo();
     String code =
         any == null || any.writeField() == null && any.writeGetter() == null
-            ? new JsonWriterCodegen.StringGenerator(this)
+            ? new StringWriterCodegen(this)
                 .genWriterCode(builder, type, codec.writeFields(), objectMembers)
-            : new JsonWriterCodegen.StringGenerator(this)
+            : new StringWriterCodegen(this)
                 .genAnyWriterCode(builder, type, codec.writeFields(), any, objectMembers);
     return compileCodecClass(generatedPackage, className, code);
   }
@@ -230,9 +230,9 @@ public final class JsonCodegen {
     AnyInfo any = codec.anyInfo();
     String code =
         any == null || any.writeField() == null && any.writeGetter() == null
-            ? new JsonWriterCodegen.Utf8Generator(this)
+            ? new Utf8WriterCodegen(this)
                 .genWriterCode(builder, type, codec.writeFields(), objectMembers)
-            : new JsonWriterCodegen.Utf8Generator(this)
+            : new Utf8WriterCodegen(this)
                 .genAnyWriterCode(builder, type, codec.writeFields(), any, objectMembers);
     return compileCodecClass(generatedPackage, className, code);
   }
@@ -246,10 +246,10 @@ public final class JsonCodegen {
     AnyInfo any = codec.anyInfo();
     String code =
         any == null || any.readField() == null && any.readSetter() == null
-            ? new JsonReaderCodegen.Latin1Generator(this)
+            ? new Latin1ReaderCodegen(this)
                 .genReaderCode(
                     builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo())
-            : new JsonReaderCodegen.Latin1Generator(this)
+            : new Latin1ReaderCodegen(this)
                 .genAnyReaderCode(
                     builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo(), any);
     return compileCodecClass(generatedPackage, className, code);
@@ -264,10 +264,10 @@ public final class JsonCodegen {
     AnyInfo any = codec.anyInfo();
     String code =
         any == null || any.readField() == null && any.readSetter() == null
-            ? new JsonReaderCodegen.Utf16Generator(this)
+            ? new Utf16ReaderCodegen(this)
                 .genReaderCode(
                     builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo())
-            : new JsonReaderCodegen.Utf16Generator(this)
+            : new Utf16ReaderCodegen(this)
                 .genAnyReaderCode(
                     builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo(), any);
     return compileCodecClass(generatedPackage, className, code);
@@ -282,10 +282,10 @@ public final class JsonCodegen {
     AnyInfo any = codec.anyInfo();
     String code =
         any == null || any.readField() == null && any.readSetter() == null
-            ? new JsonReaderCodegen.Utf8Generator(this)
+            ? new Utf8ReaderCodegen(this)
                 .genReaderCode(
                     builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo())
-            : new JsonReaderCodegen.Utf8Generator(this)
+            : new Utf8ReaderCodegen(this)
                 .genAnyReaderCode(
                     builder, type, codec.readFields(), codec.isRecord(), codec.creatorInfo(), any);
     return compileCodecClass(generatedPackage, className, code);

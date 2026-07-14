@@ -32,21 +32,15 @@ import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.json.codec.CollectionCodec;
-import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.codec.ScalarCodecs;
-import org.apache.fory.json.codec.Utf16ReaderCodec;
-import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.meta.JsonFieldTable;
-import org.apache.fory.json.reader.Latin1JsonReader;
-import org.apache.fory.json.reader.Utf16JsonReader;
-import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.TypeUtils;
@@ -54,7 +48,7 @@ import org.apache.fory.type.TypeUtils;
 /**
  * Shared generation mechanics for concrete Latin1, UTF16, and UTF-8 object-reader capabilities.
  *
- * <p>The three nested generators own representation-specific token, field-name, enum, and direct
+ * <p>The three concrete generators own representation-specific token, field-name, enum, and direct
  * value expressions. This base shares only source-construction algorithms after the concrete reader
  * is selected; it is not a runtime reader mode. Generated readers retain immutable field lookup
  * metadata and concrete child capability fields, avoiding per-field resolver lookup. Wide objects
@@ -2879,237 +2873,5 @@ abstract class JsonReaderCodegen {
             new Expression.Invoke(
                 codec, readMethod(), TypeRef.of(Object.class), false, readerRef())),
         TypeRef.of(property.readRawType()));
-  }
-
-  static final class Latin1Generator extends JsonReaderCodegen {
-    Latin1Generator(JsonCodegen codegen) {
-      super(codegen);
-    }
-
-    @Override
-    Class<?> codecFieldType(JsonFieldInfo property) {
-      return codegen.latin1ReaderFieldType(property.readTypeInfo());
-    }
-
-    @Override
-    Class<?> readerType() {
-      return Latin1JsonReader.class;
-    }
-
-    @Override
-    Class<?> readerCapabilityType() {
-      return Latin1ReaderCodec.class;
-    }
-
-    @Override
-    Class<?> readerArrayType() {
-      return Latin1ReaderCodec[].class;
-    }
-
-    @Override
-    String readMethod() {
-      return "readLatin1";
-    }
-
-    @Override
-    String readEnumMethod(boolean tokenValueRead, boolean hashFallback) {
-      return tokenValueRead
-          ? (hashFallback ? "readLatin1EnumHashToken" : "readLatin1EnumToken")
-          : "readNextLatin1Enum";
-    }
-
-    @Override
-    String readObjectMethod() {
-      return "readLatin1";
-    }
-
-    @Override
-    String readFieldMethod() {
-      return "readLatin1";
-    }
-
-    @Override
-    String readFieldValueMethod() {
-      return "readLatin1Value";
-    }
-
-    @Override
-    boolean isDirectName(String name, boolean tokenValueRead) {
-      return JsonAsciiToken.isLongPackable(fieldNameToken(name));
-    }
-
-    @Override
-    Expression tryReadNextFieldNameColon(JsonFieldInfo property, boolean tokenValueRead) {
-      return tryReadAsciiFieldNameColon(property);
-    }
-
-    @Override
-    Expression readEnumField(
-        JsonGeneratedCodecBuilder builder,
-        JsonFieldInfo property,
-        int id,
-        Expression object,
-        boolean tokenValueRead) {
-      return readAsciiEnumField(builder, property, id, object, tokenValueRead);
-    }
-
-    @Override
-    Reference readerRef() {
-      return new Reference("reader", TypeRef.of(Latin1JsonReader.class));
-    }
-  }
-
-  static final class Utf16Generator extends JsonReaderCodegen {
-    Utf16Generator(JsonCodegen codegen) {
-      super(codegen);
-    }
-
-    @Override
-    Class<?> codecFieldType(JsonFieldInfo property) {
-      return codegen.utf16ReaderFieldType(property.readTypeInfo());
-    }
-
-    @Override
-    Class<?> readerType() {
-      return Utf16JsonReader.class;
-    }
-
-    @Override
-    Class<?> readerCapabilityType() {
-      return Utf16ReaderCodec.class;
-    }
-
-    @Override
-    Class<?> readerArrayType() {
-      return Utf16ReaderCodec[].class;
-    }
-
-    @Override
-    String readMethod() {
-      return "readUtf16";
-    }
-
-    @Override
-    String readEnumMethod(boolean tokenValueRead, boolean hashFallback) {
-      return "readNextUtf16Enum";
-    }
-
-    @Override
-    String readObjectMethod() {
-      return "readUtf16";
-    }
-
-    @Override
-    String readFieldMethod() {
-      return "readUtf16";
-    }
-
-    @Override
-    String readFieldValueMethod() {
-      return "readUtf16Value";
-    }
-
-    @Override
-    boolean isDirectName(String name, boolean tokenValueRead) {
-      return tokenValueRead ? isUtf16FieldNameToken(name) : isPackedName(name);
-    }
-
-    @Override
-    Expression tryReadNextFieldNameColon(JsonFieldInfo property, boolean tokenValueRead) {
-      return tryReadUtf16FieldNameColon(property, tokenValueRead);
-    }
-
-    @Override
-    Expression readEnumField(
-        JsonGeneratedCodecBuilder builder,
-        JsonFieldInfo property,
-        int id,
-        Expression object,
-        boolean tokenValueRead) {
-      return readEnumFallback(builder, property, id, object, tokenValueRead);
-    }
-
-    @Override
-    Reference readerRef() {
-      return new Reference("reader", TypeRef.of(Utf16JsonReader.class));
-    }
-  }
-
-  static final class Utf8Generator extends JsonReaderCodegen {
-    Utf8Generator(JsonCodegen codegen) {
-      super(codegen);
-    }
-
-    @Override
-    Class<?> codecFieldType(JsonFieldInfo property) {
-      return codegen.utf8ReaderFieldType(property.readTypeInfo());
-    }
-
-    @Override
-    Class<?> readerType() {
-      return Utf8JsonReader.class;
-    }
-
-    @Override
-    Class<?> readerCapabilityType() {
-      return Utf8ReaderCodec.class;
-    }
-
-    @Override
-    Class<?> readerArrayType() {
-      return Utf8ReaderCodec[].class;
-    }
-
-    @Override
-    String readMethod() {
-      return "readUtf8";
-    }
-
-    @Override
-    String readEnumMethod(boolean tokenValueRead, boolean hashFallback) {
-      return tokenValueRead
-          ? (hashFallback ? "readUtf8EnumHashToken" : "readUtf8EnumToken")
-          : "readNextUtf8Enum";
-    }
-
-    @Override
-    String readObjectMethod() {
-      return "readUtf8";
-    }
-
-    @Override
-    String readFieldMethod() {
-      return "readUtf8";
-    }
-
-    @Override
-    String readFieldValueMethod() {
-      return "readUtf8Value";
-    }
-
-    @Override
-    boolean isDirectName(String name, boolean tokenValueRead) {
-      return JsonAsciiToken.isLongPackable(fieldNameToken(name));
-    }
-
-    @Override
-    Expression tryReadNextFieldNameColon(JsonFieldInfo property, boolean tokenValueRead) {
-      return tryReadAsciiFieldNameColon(property);
-    }
-
-    @Override
-    Expression readEnumField(
-        JsonGeneratedCodecBuilder builder,
-        JsonFieldInfo property,
-        int id,
-        Expression object,
-        boolean tokenValueRead) {
-      return readAsciiEnumField(builder, property, id, object, tokenValueRead);
-    }
-
-    @Override
-    Reference readerRef() {
-      return new Reference("reader", TypeRef.of(Utf8JsonReader.class));
-    }
   }
 }
