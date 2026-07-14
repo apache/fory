@@ -38,6 +38,19 @@ FORY_CORE_JDK25_ENTRY = (
     "META-INF/versions/25/org/apache/fory/reflect/InstanceFieldAccessors.class"
 )
 FORY_CORE_ACCESSOR = "org.apache.fory.reflect.InstanceFieldAccessors$InstanceAccessor"
+FORY_CORE_FEATURE = "org.apache.fory.platform.ForyGraalVMFeature"
+FORY_CORE_FEATURE_ENTRY = (
+    "META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.class"
+)
+FORY_CORE_FEATURE_SOURCE_ENTRY = (
+    "META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.java"
+)
+FORY_CORE_NATIVE_IMAGE_PROPERTIES = (
+    "META-INF/native-image/org.apache.fory/fory-core/native-image.properties"
+)
+GRAALVM_FEATURE_SERVICE_ENTRY = (
+    "META-INF/services/org.graalvm.nativeimage.hosted.Feature"
+)
 MAVEN_RELEASE_CMD = (
     "mvn -T10 clean deploy --no-transfer-progress -DskipTests -Papache-release"
 )
@@ -361,20 +374,75 @@ def _java_props(output):
 
 def _verify_fory_core_mr_jar():
     jar_path = _fory_core_jar_path()
+    sources_jar_path = _fory_core_jar_path("sources")
     if not os.path.exists(jar_path):
         raise FileNotFoundError(
             f"Missing fory-core release jar: {jar_path}. "
             "Run the Java release before publishing Kotlin or Scala artifacts."
         )
+    if not os.path.exists(sources_jar_path):
+        raise FileNotFoundError(
+            f"Missing fory-core release sources jar: {sources_jar_path}. "
+            "Run the Java release before publishing Kotlin or Scala artifacts."
+        )
     with zipfile.ZipFile(jar_path) as jar:
-        names = set(jar.namelist())
+        names = jar.namelist()
         manifest = jar.read("META-INF/MANIFEST.MF").decode("utf-8")
+        if names.count(FORY_CORE_NATIVE_IMAGE_PROPERTIES) != 1:
+            raise RuntimeError(
+                f"{jar_path} must contain exactly one "
+                f"{FORY_CORE_NATIVE_IMAGE_PROPERTIES}"
+            )
+        native_image_properties = jar.read(FORY_CORE_NATIVE_IMAGE_PROPERTIES).decode(
+            "utf-8"
+        )
     if "Multi-Release: true" not in manifest:
         raise RuntimeError(f"{jar_path} is missing manifest Multi-Release: true")
     if "Build-Jdk-Spec: 25" not in manifest:
         raise RuntimeError(f"{jar_path} was not built with JDK 25")
     if FORY_CORE_JDK25_ENTRY not in names:
         raise RuntimeError(f"{jar_path} is missing {FORY_CORE_JDK25_ENTRY}")
+    feature_entries = [
+        name
+        for name in names
+        if name.endswith("org/apache/fory/platform/ForyGraalVMFeature.class")
+    ]
+    if feature_entries != [FORY_CORE_FEATURE_ENTRY]:
+        raise RuntimeError(
+            f"{jar_path} must contain only the MR17 GraalVM Feature; "
+            f"found {feature_entries}"
+        )
+    feature_service_entries = [
+        name for name in names if name.endswith(GRAALVM_FEATURE_SERVICE_ENTRY)
+    ]
+    if feature_service_entries:
+        raise RuntimeError(
+            f"{jar_path} contains obsolete Feature service metadata: "
+            f"{feature_service_entries}"
+        )
+    feature_options = re.findall(r"--features=[^\s\\]+", native_image_properties)
+    expected_feature_option = f"--features={FORY_CORE_FEATURE}"
+    if feature_options != [expected_feature_option]:
+        raise RuntimeError(
+            f"{FORY_CORE_NATIVE_IMAGE_PROPERTIES} must contain exactly "
+            f"{expected_feature_option}; found {feature_options}"
+        )
+    if "--initialize-at-build-time=" not in native_image_properties:
+        raise RuntimeError(
+            f"{FORY_CORE_NATIVE_IMAGE_PROPERTIES} is missing --initialize-at-build-time"
+        )
+    with zipfile.ZipFile(sources_jar_path) as sources_jar:
+        source_names = sources_jar.namelist()
+    feature_source_entries = [
+        name
+        for name in source_names
+        if name.endswith("org/apache/fory/platform/ForyGraalVMFeature.java")
+    ]
+    if feature_source_entries != [FORY_CORE_FEATURE_SOURCE_ENTRY]:
+        raise RuntimeError(
+            f"{sources_jar_path} must contain only the MR17 GraalVM Feature source; "
+            f"found {feature_source_entries}"
+        )
     javap = subprocess.run(
         [
             _java_tool("javap"),
@@ -384,6 +452,7 @@ def _verify_fory_core_mr_jar():
             jar_path,
             "-p",
             FORY_CORE_ACCESSOR,
+            FORY_CORE_FEATURE,
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -394,17 +463,25 @@ def _verify_fory_core_mr_jar():
         raise RuntimeError(f"{FORY_CORE_ACCESSOR} is not the JDK25 VarHandle class")
     if "sun.misc.Unsafe" in javap.stdout:
         raise RuntimeError(f"{FORY_CORE_ACCESSOR} still exposes sun.misc.Unsafe")
-    logger.info("Verified fory-core Multi-Release JDK25 jar: %s", jar_path)
+    feature_declaration = rf"(?m)^final class {re.escape(FORY_CORE_FEATURE)}\b"
+    if not re.search(feature_declaration, javap.stdout):
+        raise RuntimeError(f"{FORY_CORE_FEATURE} must remain a non-public final class")
+    logger.info(
+        "Verified fory-core Multi-Release release jars: %s, %s",
+        jar_path,
+        sources_jar_path,
+    )
 
 
-def _fory_core_jar_path():
+def _fory_core_jar_path(classifier=None):
     version = _read_java_version()
+    classifier_suffix = f"-{classifier}" if classifier else ""
     return os.path.join(
         PROJECT_ROOT_DIR,
         "java",
         "fory-core",
         "target",
-        f"fory-core-{version}.jar",
+        f"fory-core-{version}{classifier_suffix}.jar",
     )
 
 
@@ -519,7 +596,6 @@ def bump_java_version(new_version):
         "java/fory-json",
         "java/fory-format",
         "java/fory-extensions",
-        "java/fory-graalvm-feature",
         "java/fory-test-core",
         "java/fory-testsuite",
         "java/fory-latest-jdk-tests",

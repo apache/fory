@@ -95,10 +95,17 @@ graalvm_test() {
   mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-testsuite'
   echo "Start to build graalvm native image"
   cd "$ROOT"/integration_tests/graalvm_tests
-  mvn -DskipTests=true --no-transfer-progress -Pnative package
-  echo "Built graalvm native image"
-  echo "Start to run graalvm native image"
+  mvn -DskipTests=true --no-transfer-progress -Pnative clean package
+  echo "Built GraalVM classpath native image"
+  echo "Start to run GraalVM classpath native image"
   ./target/main
+  if [[ "$java_major" -ge 25 ]]; then
+    export JDK_JAVA_OPTIONS="$(jdk25_javac_options)"
+  fi
+  mvn -DskipTests=true --no-transfer-progress -Pnative-module clean package
+  echo "Built GraalVM module-path native image"
+  echo "Start to run GraalVM module-path native image"
+  ./target/main-module
   echo "Execute graalvm tests succeed!"
 }
 

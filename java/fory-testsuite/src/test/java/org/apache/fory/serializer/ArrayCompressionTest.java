@@ -32,7 +32,7 @@ public class ArrayCompressionTest {
   @DataProvider(name = "intArrayData")
   public Object[][] intArrayData() {
     return new Object[][] {
-      // {description, array }
+      // {description, array}
       {"Empty array", new int[] {}},
       {"Small array", new int[] {1, 2, 3}},
       {"Byte range array", createByteRangeArray(1_000)},
@@ -45,7 +45,7 @@ public class ArrayCompressionTest {
   @DataProvider(name = "longArrayData")
   public Object[][] longArrayData() {
     return new Object[][] {
-      // {description, array }
+      // {description, array}
       {"Empty array", new long[] {}},
       {"Small array", new long[] {1L, 2L, 3L}},
       {"Int range array", createIntRangeLongArray(1000)},

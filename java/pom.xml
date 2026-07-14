@@ -126,15 +126,6 @@
       </modules>
     </profile>
     <profile>
-      <id>jdk17-and-higher</id>
-      <activation>
-        <jdk>[17,]</jdk>
-      </activation>
-      <modules>
-        <module>fory-graalvm-feature</module>
-      </modules>
-    </profile>
-    <profile>
       <id>jdk21-and-higher</id>
       <activation>
         <jdk>[21,]</jdk>

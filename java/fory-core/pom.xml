@@ -41,6 +41,7 @@
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
     <fory.mr.classes>${project.build.directory}/multi-release-classes</fory.mr.classes>
     <fory.jdk25.test.classes>${project.build.directory}/jdk25-test-classes</fory.jdk25.test.classes>
+    <maven.source.skip>false</maven.source.skip>
   </properties>
 
   <dependencies>
@@ -145,6 +146,20 @@
       <activation>
         <jdk>[9,)</jdk>
       </activation>
+      <dependencies>
+        <dependency>
+          <groupId>org.graalvm.sdk</groupId>
+          <artifactId>graal-sdk</artifactId>
+          <version>23.1.0</version>
+          <scope>provided</scope>
+        </dependency>
+        <dependency>
+          <groupId>org.graalvm.sdk</groupId>
+          <artifactId>nativeimage</artifactId>
+          <version>23.1.0</version>
+          <scope>provided</scope>
+        </dependency>
+      </dependencies>
       <build>
         <plugins>
           <plugin>
@@ -214,7 +229,7 @@
             <version>3.1.0</version>
             <executions>
               <execution>
-                <id>compile-java16-sources</id>
+                <id>compile-java16-classes</id>
                 <phase>process-classes</phase>
                 <goals>
                   <goal>run</goal>
@@ -223,6 +238,37 @@
                   <target>
                     <delete dir="${fory.mr.classes}/16"/>
                     <mkdir dir="${fory.mr.classes}/16"/>
+                    <javac srcdir="${project.basedir}/src/main/java16"
+                           destdir="${fory.mr.classes}/16"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="org/**/*.java"/>
+                      <classpath>
+                        <path refid="maven.compile.classpath"/>
+                        <pathelement location="${project.build.outputDirectory}"/>
+                      </classpath>
+                      <compilerarg value="--source"/>
+                      <compilerarg value="16"/>
+                      <compilerarg value="--target"/>
+                      <compilerarg value="16"/>
+                      <compilerarg value="--add-modules"/>
+                      <compilerarg value="jdk.incubator.vector"/>
+                      <compilerarg value="-sourcepath"/>
+                      <compilerarg value=""/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>compile-java16-module-info</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
                     <pathconvert property="compile.module.path" refid="maven.compile.classpath"
                                  pathsep="${path.separator}"/>
                     <javac srcdir="${project.basedir}/src/main/java16"
@@ -231,17 +277,15 @@
                            fork="true"
                            executable="${java.home}/bin/javac"
                            debug="true">
-                      <include name="**/*.java"/>
-                      <compilerarg value="--source"/>
-                      <compilerarg value="16"/>
-                      <compilerarg value="--target"/>
+                      <include name="module-info.java"/>
+                      <compilerarg value="--release"/>
                       <compilerarg value="16"/>
                       <compilerarg value="--module-path"/>
                       <compilerarg path="${compile.module.path}"/>
                       <compilerarg value="--add-modules"/>
                       <compilerarg value="jdk.incubator.vector"/>
                       <compilerarg value="--patch-module"/>
-                      <compilerarg value="org.apache.fory.core=${project.build.outputDirectory}"/>
+                      <compilerarg value="org.apache.fory.core=${project.build.outputDirectory}${path.separator}${fory.mr.classes}/16"/>
                     </javac>
                   </target>
                 </configuration>
@@ -252,9 +296,9 @@
       </build>
     </profile>
     <profile>
-      <id>jdk25-multi-release</id>
+      <id>graalvm-feature-java17</id>
       <activation>
-        <jdk>[25,)</jdk>
+        <jdk>[17,)</jdk>
       </activation>
       <build>
         <plugins>
@@ -271,6 +315,148 @@
               </execution>
             </executions>
           </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>compile-java17-feature</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <delete dir="${fory.mr.classes}/17"/>
+                    <mkdir dir="${fory.mr.classes}/17"/>
+                    <javac srcdir="${project.basedir}/src/main/java17"
+                           destdir="${fory.mr.classes}/17"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="org/**/*.java"/>
+                      <classpath>
+                        <path refid="maven.compile.classpath"/>
+                        <pathelement location="${project.build.outputDirectory}"/>
+                      </classpath>
+                      <compilerarg value="--release"/>
+                      <compilerarg value="17"/>
+                      <compilerarg value="-sourcepath"/>
+                      <compilerarg value=""/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>patch-multi-release-source-jar</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <skip>${maven.source.skip}</skip>
+                  <target>
+                    <property
+                        name="multi.release.sources.jar"
+                        value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
+                    <available
+                        file="${multi.release.sources.jar}"
+                        property="multi.release.sources.jar.present"/>
+                    <fail
+                        unless="multi.release.sources.jar.present"
+                        message="Multi-release source patching requires ${multi.release.sources.jar}; run with source-jar generation enabled."/>
+                    <jar destfile="${multi.release.sources.jar}" update="true">
+                      <zipfileset dir="${project.basedir}/src/main/java9" prefix="META-INF/versions/9">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                      <zipfileset dir="${project.basedir}/src/main/java16" prefix="META-INF/versions/16">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                      <zipfileset dir="${project.basedir}/src/main/java17" prefix="META-INF/versions/17">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                      <zipfileset dir="${project.basedir}/src/main/java25" prefix="META-INF/versions/25">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                    </jar>
+                    <property
+                        name="multi.release.sources.check.dir"
+                        value="${project.build.directory}/multi-release-source-check"/>
+                    <delete dir="${multi.release.sources.check.dir}"/>
+                    <mkdir dir="${multi.release.sources.check.dir}"/>
+                    <unzip src="${multi.release.sources.jar}"
+                           dest="${multi.release.sources.check.dir}">
+                      <patternset>
+                        <include name="META-INF/versions/9/module-info.java"/>
+                        <include name="META-INF/versions/16/module-info.java"/>
+                        <include name="META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.java"/>
+                        <include name="META-INF/versions/25/module-info.java"/>
+                      </patternset>
+                    </unzip>
+                    <available
+                        file="${multi.release.sources.check.dir}/META-INF/versions/9/module-info.java"
+                        property="java9.moduleinfo.source.present"/>
+                    <available
+                        file="${multi.release.sources.check.dir}/META-INF/versions/16/module-info.java"
+                        property="java16.moduleinfo.source.present"/>
+                    <available
+                        file="${multi.release.sources.check.dir}/META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.java"
+                        property="java17.feature.source.present"/>
+                    <available
+                        file="${multi.release.sources.check.dir}/META-INF/versions/25/module-info.java"
+                        property="jdk25.moduleinfo.source.present"/>
+                    <fail
+                        unless="java9.moduleinfo.source.present"
+                        message="Java 9 module-info.java source is missing from the source jar."/>
+                    <fail
+                        unless="java16.moduleinfo.source.present"
+                        message="Java 16 module-info.java source is missing from the source jar."/>
+                    <fail
+                        unless="java17.feature.source.present"
+                        message="Java 17 GraalVM Feature source is missing from the source jar."/>
+                    <fail
+                        unless="jdk25.moduleinfo.source.present"
+                        message="JDK25 versioned module-info.java source is missing from the source jar."/>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>verify-graalvm-feature-multi-release-jar</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <skip>${maven.source.skip}</skip>
+                  <target>
+                    <java
+                        classname="org.apache.fory.builder.GraalvmFeatureJarVerifier"
+                        fork="true"
+                        failonerror="true">
+                      <classpath>
+                        <pathelement location="${project.build.testOutputDirectory}"/>
+                        <path refid="maven.test.classpath"/>
+                      </classpath>
+                      <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
+                      <arg value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
+                    </java>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>jdk25-multi-release</id>
+      <activation>
+        <jdk>[25,)</jdk>
+      </activation>
+      <build>
+        <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-antrun-plugin</artifactId>
@@ -384,65 +570,6 @@
                       </classpath>
                       <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
                     </java>
-                  </target>
-                </configuration>
-              </execution>
-              <execution>
-                <id>patch-multi-release-source-jar</id>
-                <phase>package</phase>
-                <goals>
-                  <goal>run</goal>
-                </goals>
-                <configuration>
-                  <target>
-                    <property
-                        name="jdk25.sources.jar"
-                        value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
-                    <available file="${jdk25.sources.jar}" property="jdk25.sources.jar.present"/>
-                    <fail
-                        unless="jdk25.sources.jar.present"
-                        message="Multi-release source patching requires ${jdk25.sources.jar}; run with source-jar generation enabled."/>
-                    <jar destfile="${jdk25.sources.jar}" update="true">
-                      <zipfileset dir="${project.basedir}/src/main/java9" prefix="META-INF/versions/9">
-                        <include name="**/*.java"/>
-                      </zipfileset>
-                      <zipfileset dir="${project.basedir}/src/main/java16" prefix="META-INF/versions/16">
-                        <include name="**/*.java"/>
-                      </zipfileset>
-                      <zipfileset dir="${project.basedir}/src/main/java25" prefix="META-INF/versions/25">
-                        <include name="**/*.java"/>
-                      </zipfileset>
-                    </jar>
-                    <property
-                        name="jdk25.sources.check.dir"
-                        value="${project.build.directory}/jdk25-source-check"/>
-                    <delete dir="${jdk25.sources.check.dir}"/>
-                    <mkdir dir="${jdk25.sources.check.dir}"/>
-                    <unzip src="${jdk25.sources.jar}" dest="${jdk25.sources.check.dir}">
-                      <patternset>
-                        <include name="META-INF/versions/9/module-info.java"/>
-                        <include name="META-INF/versions/16/module-info.java"/>
-                        <include name="META-INF/versions/25/module-info.java"/>
-                      </patternset>
-                    </unzip>
-                    <available
-                        file="${jdk25.sources.check.dir}/META-INF/versions/9/module-info.java"
-                        property="java9.moduleinfo.source.present"/>
-                    <available
-                        file="${jdk25.sources.check.dir}/META-INF/versions/16/module-info.java"
-                        property="java16.moduleinfo.source.present"/>
-                    <available
-                        file="${jdk25.sources.check.dir}/META-INF/versions/25/module-info.java"
-                        property="jdk25.moduleinfo.source.present"/>
-                    <fail
-                        unless="java9.moduleinfo.source.present"
-                        message="Java 9 module-info.java source is missing from the source jar."/>
-                    <fail
-                        unless="java16.moduleinfo.source.present"
-                        message="Java 16 module-info.java source is missing from the source jar."/>
-                    <fail
-                        unless="jdk25.moduleinfo.source.present"
-                        message="JDK25 versioned module-info.java source is missing from the source jar."/>
                   </target>
                 </configuration>
               </execution>

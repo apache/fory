@@ -234,14 +234,28 @@ public final class ForyBuilder {
     return this;
   }
 
-  /** Whether compress int arrays when values are small. */
+  /**
+   * Whether to compress int arrays when values are small.
+   *
+   * <p>When {@link org.apache.fory.serializer.CompressedArraySerializers} is registered, its range
+   * analysis is scalar on JDK 8 through 15. On JDK 16 and later, the multi-release {@code
+   * fory-core} JAR automatically selects the Vector API implementation when {@code
+   * jdk.incubator.vector} is resolved.
+   */
   public ForyBuilder withIntArrayCompressed(boolean intArrayCompressed) {
     this.compressIntArray = intArrayCompressed;
     recordAction(b -> b.withIntArrayCompressed(intArrayCompressed));
     return this;
   }
 
-  /** Whether compress long arrays when values are small. */
+  /**
+   * Whether to compress long arrays when values are small.
+   *
+   * <p>When {@link org.apache.fory.serializer.CompressedArraySerializers} is registered, its range
+   * analysis is scalar on JDK 8 through 15. On JDK 16 and later, the multi-release {@code
+   * fory-core} JAR automatically selects the Vector API implementation when {@code
+   * jdk.incubator.vector} is resolved.
+   */
   public ForyBuilder withLongArrayCompressed(boolean longArrayCompressed) {
     this.compressLongArray = longArrayCompressed;
     recordAction(b -> b.withLongArrayCompressed(longArrayCompressed));

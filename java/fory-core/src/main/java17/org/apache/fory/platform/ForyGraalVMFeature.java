@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.fory.graalvm.feature;
+package org.apache.fory.platform;
 
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
@@ -26,7 +26,6 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.util.record.RecordUtils;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeClassInitialization;
@@ -46,11 +45,9 @@ import org.graalvm.nativeimage.hosted.RuntimeSerialization;
  *   <li>Proxy interfaces for dynamic proxy serialization
  * </ul>
  *
- * <p>Usage: Add to native-image build via META-INF/native-image/.../native-image.properties:
- *
- * <pre>Args = --features=org.apache.fory.graalvm.feature.ForyGraalVMFeature</pre>
+ * <p>The Fory core Native Image configuration activates this feature automatically.
  */
-public class ForyGraalVMFeature implements Feature {
+final class ForyGraalVMFeature implements Feature {
 
   private final Set<Class<?>> processedClasses = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedProxyInterfaces = ConcurrentHashMap.newKeySet();
