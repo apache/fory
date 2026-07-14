@@ -23,6 +23,8 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedArrayType;
 import java.lang.reflect.AnnotatedParameterizedType;
 import java.lang.reflect.AnnotatedType;
+import java.lang.reflect.AnnotatedWildcardType;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
@@ -146,6 +148,11 @@ final class JvmTypeUseMetadata implements TypeUseMetadata.Support {
   }
 
   @Override
+  public Object[] constructorParameterTypeUses(Constructor<?> constructor) {
+    return constructor.getAnnotatedParameterTypes();
+  }
+
+  @Override
   public Object recordComponentTypeUse(RecordComponent component) {
     return component.getTypeUseMetadata();
   }
@@ -155,6 +162,33 @@ final class JvmTypeUseMetadata implements TypeUseMetadata.Support {
     AnnotatedType annotatedType = (AnnotatedType) typeUse;
     if (annotatedType instanceof AnnotatedParameterizedType) {
       return ((AnnotatedParameterizedType) annotatedType).getAnnotatedActualTypeArguments();
+    }
+    return null;
+  }
+
+  @Override
+  public Object arrayComponentTypeUse(Object typeUse) {
+    AnnotatedType annotatedType = (AnnotatedType) typeUse;
+    if (annotatedType instanceof AnnotatedArrayType) {
+      return ((AnnotatedArrayType) annotatedType).getAnnotatedGenericComponentType();
+    }
+    return null;
+  }
+
+  @Override
+  public Object[] wildcardUpperBounds(Object typeUse) {
+    AnnotatedType annotatedType = (AnnotatedType) typeUse;
+    if (annotatedType instanceof AnnotatedWildcardType) {
+      return ((AnnotatedWildcardType) annotatedType).getAnnotatedUpperBounds();
+    }
+    return null;
+  }
+
+  @Override
+  public Object[] wildcardLowerBounds(Object typeUse) {
+    AnnotatedType annotatedType = (AnnotatedType) typeUse;
+    if (annotatedType instanceof AnnotatedWildcardType) {
+      return ((AnnotatedWildcardType) annotatedType).getAnnotatedLowerBounds();
     }
     return null;
   }

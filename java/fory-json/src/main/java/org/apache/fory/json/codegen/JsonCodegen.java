@@ -325,6 +325,9 @@ public final class JsonCodegen {
   }
 
   Class<?> stringWriterFieldType(JsonTypeInfo typeInfo) {
+    if (typeInfo.usesAnnotationCodec()) {
+      return StringWriterCodec.class;
+    }
     if (typeInfo.usesDefaultObjectCodec()) {
       return StringWriterCodec.class;
     }
@@ -337,6 +340,9 @@ public final class JsonCodegen {
   }
 
   Class<?> utf8WriterFieldType(JsonTypeInfo typeInfo) {
+    if (typeInfo.usesAnnotationCodec()) {
+      return Utf8WriterCodec.class;
+    }
     if (typeInfo.usesDefaultObjectCodec()) {
       return Utf8WriterCodec.class;
     }
@@ -349,6 +355,9 @@ public final class JsonCodegen {
   }
 
   Class<?> latin1ReaderFieldType(JsonTypeInfo typeInfo) {
+    if (typeInfo.usesAnnotationCodec()) {
+      return Latin1ReaderCodec.class;
+    }
     if (typeInfo.usesDefaultObjectCodec()) {
       return Latin1ReaderCodec.class;
     }
@@ -360,6 +369,9 @@ public final class JsonCodegen {
   }
 
   Class<?> utf16ReaderFieldType(JsonTypeInfo typeInfo) {
+    if (typeInfo.usesAnnotationCodec()) {
+      return Utf16ReaderCodec.class;
+    }
     if (typeInfo.usesDefaultObjectCodec()) {
       return Utf16ReaderCodec.class;
     }
@@ -371,6 +383,9 @@ public final class JsonCodegen {
   }
 
   Class<?> utf8ReaderFieldType(JsonTypeInfo typeInfo) {
+    if (typeInfo.usesAnnotationCodec()) {
+      return Utf8ReaderCodec.class;
+    }
     if (typeInfo.usesDefaultObjectCodec()) {
       return Utf8ReaderCodec.class;
     }

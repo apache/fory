@@ -36,14 +36,17 @@ public final class JsonCreatorFieldInfo {
   private final int argumentIndex;
   private final Type type;
   private final Class<?> rawType;
+  private final JsonTypeUse typeUse;
   private JsonTypeInfo typeInfo;
 
-  public JsonCreatorFieldInfo(String name, int argumentIndex, Type type, Class<?> rawType) {
+  public JsonCreatorFieldInfo(
+      String name, int argumentIndex, Type type, Class<?> rawType, JsonTypeUse typeUse) {
     this.name = name;
     nameHash = JsonFieldNameHash.hash(name);
     this.argumentIndex = argumentIndex;
     this.type = type;
     this.rawType = rawType;
+    this.typeUse = typeUse;
   }
 
   public String name() {
@@ -71,7 +74,8 @@ public final class JsonCreatorFieldInfo {
   }
 
   public void resolveType(JsonTypeResolver resolver) {
-    typeInfo = resolver.getTypeInfo(type, rawType);
+    typeInfo =
+        typeUse == null ? resolver.getTypeInfo(type, rawType) : resolver.getTypeInfo(typeUse);
   }
 
   public Object readLatin1(Latin1JsonReader reader) {

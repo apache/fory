@@ -71,7 +71,7 @@ import org.apache.fory.reflect.TypeRef;
  * count. Dynamic {@code Object} arrays are materialized as {@link JsonArray}, while typed targets
  * use their selected factory.
  */
-public abstract class CollectionCodec<T extends Collection<?>> implements JsonCodec<T> {
+public abstract class CollectionCodec<T extends Collection<?>> implements JsonValueCodec<T> {
   private static final Class<?> UNTYPED_COLLECTION = ArrayList.class;
 
   private final CollectionFactory factory;
@@ -89,6 +89,17 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonCo
     Class<?> elementRawType = CodecUtils.rawType(elementType, Object.class);
     CollectionFactory factory = collectionFactory(rawType, elementRawType);
     JsonTypeInfo elementTypeInfo = resolver.getTypeInfo(elementType, elementRawType);
+    return create(factory, elementTypeInfo);
+  }
+
+  @Internal
+  public static CollectionCodec<?> create(
+      Class<?> rawType, Class<?> elementRawType, JsonTypeInfo elementTypeInfo) {
+    return create(collectionFactory(rawType, elementRawType), elementTypeInfo);
+  }
+
+  private static CollectionCodec<?> create(
+      CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
     Object elementCodec = elementTypeInfo.stringWriter();
     if (elementCodec == ScalarCodecs.StringCodec.INSTANCE) {
       return new StringCollectionCodec(factory);

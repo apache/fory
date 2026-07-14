@@ -50,6 +50,7 @@ import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
+import org.apache.fory.json.meta.JsonTypeUse;
 import org.apache.fory.reflect.ObjectInstantiator;
 import org.apache.fory.reflect.ObjectInstantiators;
 import org.apache.fory.reflect.TypeRef;
@@ -62,6 +63,7 @@ final class ObjectCodecBuilder {
 
   static <T> ObjectCodec<T> build(
       TypeRef<T> ownerType,
+      JsonTypeUse ownerTypeUse,
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
       boolean writeNullFields) {
@@ -99,7 +101,7 @@ final class ObjectCodecBuilder {
     JsonCreatorInfo creatorInfo =
         record
             ? rejectRecordCreator(type)
-            : buildCreatorInfo(type, ownerType, builders, propertyNamingStrategy);
+            : buildCreatorInfo(type, ownerType, ownerTypeUse, builders, propertyNamingStrategy);
     if (anySetter != null && (record || creatorInfo != null)) {
       throw new ForyJsonException(
           "@JsonAnySetter is not supported on constructor-backed type " + type.getName());
@@ -187,7 +189,7 @@ final class ObjectCodecBuilder {
         continue;
       }
       JsonFieldInfo field =
-          builder.build(record, ownerType, propertyNamingStrategy, writeNullFields);
+          builder.build(record, ownerType, ownerTypeUse, propertyNamingStrategy, writeNullFields);
       if (!hasAny) {
         FieldBuilder priorProperty = canonicalNames.put(field.name(), builder);
         if (priorProperty != null) {
@@ -262,7 +264,8 @@ final class ObjectCodecBuilder {
     }
     AnyInfo anyInfo =
         hasAny
-            ? buildAnyInfo(ownerType, anyBuilder, anySetter, anyWriteIndex, constructionIndex)
+            ? buildAnyInfo(
+                ownerType, ownerTypeUse, anyBuilder, anySetter, anyWriteIndex, constructionIndex)
             : null;
     ObjectInstantiator<?> instantiator = ObjectInstantiators.createObjectInstantiator(type);
     String[] recordNames = record ? readJavaNames.toArray(new String[0]) : null;
@@ -685,6 +688,7 @@ final class ObjectCodecBuilder {
       // optimized read/write owner. The accessor participates only in logical-property annotation
       // merging and is discarded before hot metadata is published.
       builder.mergeAnnotation(type, component.getAccessor());
+      builder.setRecordComponent(component);
     }
   }
 
@@ -705,6 +709,7 @@ final class ObjectCodecBuilder {
   private static JsonCreatorInfo buildCreatorInfo(
       Class<?> type,
       TypeRef<?> ownerType,
+      JsonTypeUse ownerTypeUse,
       LinkedHashMap<String, FieldBuilder> builders,
       PropertyNamingStrategy namingStrategy) {
     Executable creator = null;
@@ -789,8 +794,11 @@ final class ObjectCodecBuilder {
         }
         if (!builder.isAny()) {
           Type resolved = ownerType.resolveType(parameterTypes[i]).getType();
+          JsonTypeUse typeUse =
+              builder.resolveTypeUse(ownerType, ownerTypeUse, "creator property " + javaName);
           fields.add(
-              new JsonCreatorFieldInfo(builder.jsonName(namingStrategy), i, resolved, rawTypes[i]));
+              new JsonCreatorFieldInfo(
+                  builder.jsonName(namingStrategy), i, resolved, rawTypes[i], typeUse));
         }
       }
     } else {
@@ -841,7 +849,19 @@ final class ObjectCodecBuilder {
           }
         }
         Type resolved = ownerType.resolveType(parameterTypes[i]).getType();
-        fields.add(new JsonCreatorFieldInfo(jsonName, i, resolved, rawTypes[i]));
+        JsonTypeUse typeUse;
+        if (builder == null) {
+          typeUse =
+              JsonTypeUse.resolveMember(
+                  ownerType,
+                  ownerTypeUse,
+                  parameterTypes[i],
+                  executableParameterTypeUse(creator, i),
+                  "creator property " + jsonName);
+        } else {
+          typeUse = builder.resolveTypeUse(ownerType, ownerTypeUse, "creator property " + jsonName);
+        }
+        fields.add(new JsonCreatorFieldInfo(jsonName, i, resolved, rawTypes[i], typeUse));
       }
     }
     JsonCreatorFieldInfo[] fieldArray = fields.toArray(new JsonCreatorFieldInfo[0]);
@@ -903,6 +923,13 @@ final class ObjectCodecBuilder {
               + parameterIndex);
     }
     builder.creatorArgumentIndex = parameterIndex;
+    builder.setCreatorType(creator, parameterIndex, parameterType);
+  }
+
+  private static JsonTypeUse executableParameterTypeUse(Executable executable, int parameterIndex) {
+    return executable instanceof Method
+        ? JsonTypeUse.forMethodParameter((Method) executable, parameterIndex)
+        : JsonTypeUse.forConstructorParameter((Constructor<?>) executable, parameterIndex);
   }
 
   private static void rejectCreatorHashCollisions(JsonCreatorFieldInfo[] fields) {
@@ -1117,6 +1144,7 @@ final class ObjectCodecBuilder {
 
   private static AnyInfo buildAnyInfo(
       TypeRef<?> ownerType,
+      JsonTypeUse ownerTypeUse,
       FieldBuilder builder,
       Method anySetter,
       int writeIndex,
@@ -1130,6 +1158,7 @@ final class ObjectCodecBuilder {
     Class<?> mapRawType = null;
     Type valueType = null;
     Class<?> valueRawType = null;
+    JsonTypeUse valueTypeUse = null;
     if (anyField != null || anyGetter != null) {
       Type declaredMapType =
           anyGetter == null ? anyField.getGenericType() : anyGetter.getGenericReturnType();
@@ -1138,6 +1167,23 @@ final class ObjectCodecBuilder {
       valueType = anyMapValueType(mapType, mapRawType, anyField != null ? anyField : anyGetter);
       valueRawType = CodecUtils.rawType(valueType, Object.class);
       validateAnyLogicalTypes(ownerType, builder, mapType);
+      JsonTypeUse mapTypeUse =
+          builder.resolveTypeUse(ownerType, ownerTypeUse, "JSON Any property " + builder.name);
+      if (mapTypeUse != null) {
+        if (mapTypeUse.hasCodec()) {
+          throw new ForyJsonException(
+              "@JsonCodec from "
+                  + mapTypeUse.codecSource()
+                  + " cannot select the flattened JSON Any map");
+        }
+        JsonTypeUse projected =
+            mapTypeUse.projectTo(Map.class, "JSON Any property " + builder.name);
+        projected.argument(0).rejectMapKey("JSON Any property " + builder.name);
+        valueTypeUse = projected.argument(1);
+        if (!valueTypeUse.hasExplicitCodec()) {
+          valueTypeUse = null;
+        }
+      }
     }
     if (anySetter != null) {
       Type setterType = ownerType.resolveType(anySetter.getGenericParameterTypes()[1]).getType();
@@ -1155,6 +1201,25 @@ final class ObjectCodecBuilder {
         valueType = setterType;
         valueRawType = setterRawType;
       }
+      JsonTypeUse setterKeyUse =
+          JsonTypeUse.resolveMember(
+              ownerType,
+              ownerTypeUse,
+              anySetter.getGenericParameterTypes()[0],
+              JsonTypeUse.forMethodParameter(anySetter, 0),
+              "JSON Any setter key");
+      if (setterKeyUse != null) {
+        setterKeyUse.rejectMapKey("JSON Any setter");
+      }
+      JsonTypeUse setterValueUse =
+          JsonTypeUse.resolveMember(
+              ownerType,
+              ownerTypeUse,
+              anySetter.getGenericParameterTypes()[1],
+              JsonTypeUse.forMethodParameter(anySetter, 1),
+              "JSON Any setter value");
+      valueTypeUse =
+          JsonTypeUse.merge(valueTypeUse, setterValueUse, "JSON Any value on " + ownerType);
     }
     return new AnyInfo(
         writeField,
@@ -1165,6 +1230,7 @@ final class ObjectCodecBuilder {
         mapRawType,
         valueType,
         valueRawType,
+        valueTypeUse,
         writeIndex,
         constructionIndex);
   }
@@ -1270,6 +1336,12 @@ final class ObjectCodecBuilder {
     private AnnotatedElement explicitIncludeSource;
     private boolean hasJsonProperty;
     private int creatorArgumentIndex = -1;
+    private JsonTypeUse fieldTypeUse;
+    private JsonTypeUse writeGetterTypeUse;
+    private JsonTypeUse readSetterTypeUse;
+    private RecordComponent recordComponent;
+    private JsonTypeUse creatorTypeUse;
+    private Type creatorType;
 
     private FieldBuilder(String name) {
       this.name = name;
@@ -1286,6 +1358,7 @@ final class ObjectCodecBuilder {
         throw new ForyJsonException("Duplicate JSON field " + name);
       }
       this.field = field;
+      fieldTypeUse = JsonTypeUse.forField(field);
       fieldWriteAllowed = writeAllowed;
       fieldReadAllowed = readAllowed;
       if (writeSource) {
@@ -1305,6 +1378,7 @@ final class ObjectCodecBuilder {
 
     private void setWriteGetter(Class<?> type, Method getter) {
       mergeAnnotation(type, getter);
+      writeGetterTypeUse = JsonTypeUse.forMethodReturn(getter);
       if (field != null && !fieldWriteAllowed) {
         return;
       }
@@ -1317,6 +1391,7 @@ final class ObjectCodecBuilder {
 
     private void setReadSetter(Class<?> type, Method setter) {
       mergeAnnotation(type, setter);
+      readSetterTypeUse = JsonTypeUse.forMethodParameter(setter, 0);
       if (field != null && !fieldReadAllowed) {
         return;
       }
@@ -1329,6 +1404,7 @@ final class ObjectCodecBuilder {
 
     private void setAnyGetter(Class<?> type, Method getter) {
       mergeAnnotation(type, getter);
+      writeGetterTypeUse = JsonTypeUse.forMethodReturn(getter);
       if (field != null && !fieldWriteAllowed) {
         throw new ForyJsonException(
             "@JsonIgnore disables the same-name @JsonAnyGetter on " + getter);
@@ -1412,6 +1488,7 @@ final class ObjectCodecBuilder {
     private JsonFieldInfo build(
         boolean record,
         TypeRef<?> ownerType,
+        JsonTypeUse ownerTypeUse,
         PropertyNamingStrategy propertyNamingStrategy,
         boolean defaultWriteNull) {
       validateTypes(ownerType);
@@ -1437,6 +1514,7 @@ final class ObjectCodecBuilder {
           readSetter != null
               ? JsonFieldAccessor.forSetter(readSetter)
               : (readField == null || record ? null : JsonFieldAccessor.forField(readField));
+      JsonTypeUse typeUse = resolveTypeUse(ownerType, ownerTypeUse, "JSON property " + name);
       return new JsonFieldInfo(
           jsonName,
           writeNull,
@@ -1446,7 +1524,64 @@ final class ObjectCodecBuilder {
           readSetter,
           writeAccessor,
           readAccessor,
-          ownerType);
+          ownerType,
+          typeUse);
+    }
+
+    private void setRecordComponent(RecordComponent component) {
+      recordComponent = component;
+    }
+
+    private void setCreatorType(Executable creator, int parameterIndex, Type parameterType) {
+      creatorType = parameterType;
+      creatorTypeUse = executableParameterTypeUse(creator, parameterIndex);
+    }
+
+    private JsonTypeUse resolveTypeUse(
+        TypeRef<?> ownerType, JsonTypeUse ownerTypeUse, String path) {
+      JsonTypeUse resolved = null;
+      if (field != null) {
+        resolved =
+            JsonTypeUse.resolveMember(
+                ownerType, ownerTypeUse, field.getGenericType(), fieldTypeUse, path + " field");
+      }
+      if (writeGetter != null) {
+        JsonTypeUse getterUse =
+            JsonTypeUse.resolveMember(
+                ownerType,
+                ownerTypeUse,
+                writeGetter.getGenericReturnType(),
+                writeGetterTypeUse,
+                path + " getter");
+        resolved = JsonTypeUse.merge(resolved, getterUse, path);
+      }
+      if (readSetter != null) {
+        JsonTypeUse setterUse =
+            JsonTypeUse.resolveMember(
+                ownerType,
+                ownerTypeUse,
+                readSetter.getGenericParameterTypes()[0],
+                readSetterTypeUse,
+                path + " setter");
+        resolved = JsonTypeUse.merge(resolved, setterUse, path);
+      }
+      if (recordComponent != null) {
+        JsonTypeUse componentUse =
+            JsonTypeUse.resolveMember(
+                ownerType,
+                ownerTypeUse,
+                recordComponent.getGenericType(),
+                JsonTypeUse.forRecordComponent(recordComponent),
+                path + " record component");
+        resolved = JsonTypeUse.merge(resolved, componentUse, path);
+      }
+      if (creatorType != null) {
+        JsonTypeUse parameterUse =
+            JsonTypeUse.resolveMember(
+                ownerType, ownerTypeUse, creatorType, creatorTypeUse, path + " creator parameter");
+        resolved = JsonTypeUse.merge(resolved, parameterUse, path);
+      }
+      return resolved;
     }
 
     private void mergeAnnotation(Class<?> type, AnnotatedElement source) {

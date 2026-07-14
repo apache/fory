@@ -70,7 +70,7 @@ public final class GuavaCodecs {
 
   private GuavaCodecs() {}
 
-  public static void registerExactCodecs(Map<Class<?>, JsonCodec<?>> exactCodecs) {
+  public static void registerExactCodecs(Map<Class<?>, JsonValueCodec<?>> exactCodecs) {
     if (IMMUTABLE_INT_ARRAY_AVAILABLE) {
       Direct.registerExactCodecs(exactCodecs);
     }
@@ -140,7 +140,7 @@ public final class GuavaCodecs {
   private static final class Direct {
     private Direct() {}
 
-    private static void registerExactCodecs(Map<Class<?>, JsonCodec<?>> exactCodecs) {
+    private static void registerExactCodecs(Map<Class<?>, JsonValueCodec<?>> exactCodecs) {
       exactCodecs.put(ImmutableIntArray.class, ImmutableIntArrayCodec.INSTANCE);
     }
 
@@ -226,7 +226,7 @@ public final class GuavaCodecs {
     }
   }
 
-  private static final class ImmutableIntArrayCodec implements JsonCodec<ImmutableIntArray> {
+  private static final class ImmutableIntArrayCodec implements JsonValueCodec<ImmutableIntArray> {
     private static final ImmutableIntArrayCodec INSTANCE = new ImmutableIntArrayCodec();
 
     private ImmutableIntArrayCodec() {}

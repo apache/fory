@@ -19,11 +19,15 @@
 
 package probe;
 
+import closed.ClosedValue;
 import java.nio.charset.StandardCharsets;
+import opened.OpenedValue;
 import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.PropertyNamingStrategy;
+import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonProperty;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -49,6 +53,34 @@ public final class Probe {
                 json.fromJson(
                         "\"utf8\"".getBytes(StandardCharsets.UTF_8), Value.class)
                     .text));
+
+    ForyJson annotated = ForyJson.builder().withAsyncCompilation(false).build();
+    AnnotatedHolder holder = new AnnotatedHolder();
+    holder.value = new AnnotatedValue("annotated");
+    require("{\"value\":\"annotated\"}".equals(annotated.toJson(holder)));
+    require(
+        "{\"value\":\"annotated\"}"
+            .equals(new String(annotated.toJsonBytes(holder), StandardCharsets.UTF_8)));
+    require("latin".equals(annotated.fromJson("{\"value\":\"latin\"}", AnnotatedHolder.class).value.text));
+    require("\u6587".equals(annotated.fromJson("{\"value\":\"\u6587\"}", AnnotatedHolder.class).value.text));
+    require(
+        "utf8"
+            .equals(
+                annotated
+                    .fromJson(
+                        "{\"value\":\"utf8\"}".getBytes(StandardCharsets.UTF_8),
+                        AnnotatedHolder.class)
+                    .value
+                    .text));
+    require("\"opened\"".equals(annotated.toJson(new OpenedValue("opened"))));
+    require("opened".equals(annotated.fromJson("\"opened\"", OpenedValue.class).text));
+    try {
+      annotated.toJson(new ClosedValue("closed"));
+      throw new AssertionError("closed codec package must be rejected");
+    } catch (ForyJsonException expected) {
+      require(expected.getMessage().contains("export or open package closed"));
+      require(ClosedValue.Codec.constructions == 0);
+    }
 
     ForyJson generated =
         ForyJson.builder()
@@ -90,7 +122,57 @@ public final class Probe {
     public Pojo() {}
   }
 
-  private static final class Codec implements JsonCodec<Value> {
+  @JsonCodec(AnnotatedCodec.class)
+  public static final class AnnotatedValue {
+    private final String text;
+
+    private AnnotatedValue(String text) {
+      this.text = text;
+    }
+  }
+
+  public static final class AnnotatedHolder {
+    public AnnotatedValue value;
+
+    public AnnotatedHolder() {}
+  }
+
+  public static final class AnnotatedCodec implements JsonValueCodec<AnnotatedValue> {
+    @Override
+    public void writeString(StringJsonWriter writer, AnnotatedValue value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.text);
+      }
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, AnnotatedValue value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.text);
+      }
+    }
+
+    @Override
+    public AnnotatedValue readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AnnotatedValue(reader.readString());
+    }
+
+    @Override
+    public AnnotatedValue readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AnnotatedValue(reader.readString());
+    }
+
+    @Override
+    public AnnotatedValue readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new AnnotatedValue(reader.readString());
+    }
+  }
+
+  private static final class Codec implements JsonValueCodec<Value> {
     @Override
     public void writeString(StringJsonWriter writer, Value value) {
       require(writer.typeResolver() != null);

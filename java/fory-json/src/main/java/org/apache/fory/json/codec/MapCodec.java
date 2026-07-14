@@ -32,6 +32,7 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonObject;
@@ -61,7 +62,7 @@ import org.apache.fory.reflect.TypeRef;
  * Object} values use insertion-ordered {@link JsonObject}; typed targets use the selected map
  * factory and optional immutable finish conversion.
  */
-public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
+public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T> {
   private static final Class<?> UNTYPED_MAP = LinkedHashMap.class;
 
   private final MapFactory factory;
@@ -77,9 +78,20 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonCodec<T> {
     Class<?> keyRawType = CodecUtils.rawType(keyType, Object.class);
     Type valueType = keyValueTypeRefs.f1.getType();
     Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
-    resolver.checkSecure(keyRawType);
+    resolver.checkMapKeySecure(keyRawType);
     MapFactory factory = mapFactory(rawType, keyRawType);
     JsonTypeInfo valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+    return create(factory, keyRawType, valueTypeInfo);
+  }
+
+  @Internal
+  public static MapCodec<?> create(
+      Class<?> rawType, Class<?> keyRawType, JsonTypeInfo valueTypeInfo) {
+    return create(mapFactory(rawType, keyRawType), keyRawType, valueTypeInfo);
+  }
+
+  private static MapCodec<?> create(
+      MapFactory factory, Class<?> keyRawType, JsonTypeInfo valueTypeInfo) {
     Object valueCodec = valueTypeInfo.stringWriter();
     if (keyRawType == String.class) {
       if (valueCodec == ScalarCodecs.StringCodec.INSTANCE) {

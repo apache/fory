@@ -20,7 +20,7 @@
 package org.apache.fory.json;
 
 import java.util.Objects;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
 
 /**
@@ -155,7 +155,7 @@ public final class ForyJsonBuilder {
    * be thread-safe. Building snapshots the registration map, although the registered codec objects
    * themselves are intentionally shared.
    */
-  public <T> ForyJsonBuilder registerCodec(Class<T> type, JsonCodec<T> codec) {
+  public <T> ForyJsonBuilder registerCodec(Class<T> type, JsonValueCodec<T> codec) {
     codecRegistry.register(type, codec);
     return this;
   }

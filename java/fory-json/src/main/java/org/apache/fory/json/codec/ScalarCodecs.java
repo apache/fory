@@ -71,6 +71,7 @@ import java.util.concurrent.atomic.AtomicLongArray;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.regex.Pattern;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldNameHash;
@@ -114,7 +115,7 @@ public final class ScalarCodecs {
 
   private ScalarCodecs() {}
 
-  public static final class NaturalCodec implements JsonCodec<Object> {
+  public static final class NaturalCodec implements JsonValueCodec<Object> {
     public static final NaturalCodec INSTANCE = new NaturalCodec();
 
     private NaturalCodec() {}
@@ -194,7 +195,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class StringCodec implements JsonCodec<String> {
+  public static final class StringCodec implements JsonValueCodec<String> {
     public static final StringCodec INSTANCE = new StringCodec();
 
     private StringCodec() {}
@@ -233,7 +234,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class CharSequenceCodec implements JsonCodec<CharSequence> {
+  public static final class CharSequenceCodec implements JsonValueCodec<CharSequence> {
     public static final CharSequenceCodec INSTANCE = new CharSequenceCodec();
 
     private CharSequenceCodec() {}
@@ -272,7 +273,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class VoidCodec implements JsonCodec<Void> {
+  public static final class VoidCodec implements JsonValueCodec<Void> {
     public static final VoidCodec INSTANCE = new VoidCodec();
 
     @Override
@@ -304,7 +305,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class BooleanCodec implements JsonCodec<Boolean> {
+  public static final class BooleanCodec implements JsonValueCodec<Boolean> {
     public static final BooleanCodec PRIMITIVE = new BooleanCodec(true);
     public static final BooleanCodec BOXED = new BooleanCodec(false);
     private final boolean primitive;
@@ -356,7 +357,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class IntCodec implements JsonCodec<Integer> {
+  public static final class IntCodec implements JsonValueCodec<Integer> {
     public static final IntCodec PRIMITIVE = new IntCodec(true);
     public static final IntCodec BOXED = new IntCodec(false);
     private final boolean primitive;
@@ -408,7 +409,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class LongCodec implements JsonCodec<Long> {
+  public static final class LongCodec implements JsonValueCodec<Long> {
     public static final LongCodec PRIMITIVE = new LongCodec(true);
     public static final LongCodec BOXED = new LongCodec(false);
     private final boolean primitive;
@@ -460,7 +461,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class ShortCodec implements JsonCodec<Short> {
+  public static final class ShortCodec implements JsonValueCodec<Short> {
     public static final ShortCodec PRIMITIVE = new ShortCodec(true);
     public static final ShortCodec BOXED = new ShortCodec(false);
     private final boolean primitive;
@@ -519,7 +520,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class ByteCodec implements JsonCodec<Byte> {
+  public static final class ByteCodec implements JsonValueCodec<Byte> {
     public static final ByteCodec PRIMITIVE = new ByteCodec(true);
     public static final ByteCodec BOXED = new ByteCodec(false);
     private final boolean primitive;
@@ -578,7 +579,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class FloatCodec implements JsonCodec<Float> {
+  public static final class FloatCodec implements JsonValueCodec<Float> {
     public static final FloatCodec PRIMITIVE = new FloatCodec(true);
     public static final FloatCodec BOXED = new FloatCodec(false);
     private final boolean primitive;
@@ -630,7 +631,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class DoubleCodec implements JsonCodec<Double> {
+  public static final class DoubleCodec implements JsonValueCodec<Double> {
     public static final DoubleCodec PRIMITIVE = new DoubleCodec(true);
     public static final DoubleCodec BOXED = new DoubleCodec(false);
     private final boolean primitive;
@@ -682,7 +683,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class CharCodec implements JsonCodec<Character> {
+  public static final class CharCodec implements JsonValueCodec<Character> {
     public static final CharCodec PRIMITIVE = new CharCodec(true);
     public static final CharCodec BOXED = new CharCodec(false);
     private final boolean primitive;
@@ -746,7 +747,7 @@ public final class ScalarCodecs {
     return new ForyJsonException("Invalid " + type.getName() + " JSON string: " + value, cause);
   }
 
-  public static final class NumberCodec implements JsonCodec<Number> {
+  public static final class NumberCodec implements JsonValueCodec<Number> {
     public static final NumberCodec INSTANCE = new NumberCodec();
 
     private NumberCodec() {}
@@ -848,7 +849,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class BigIntegerCodec implements JsonCodec<BigInteger> {
+  public static final class BigIntegerCodec implements JsonValueCodec<BigInteger> {
     public static final BigIntegerCodec INSTANCE = new BigIntegerCodec();
 
     @Override
@@ -885,7 +886,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class BigDecimalCodec implements JsonCodec<BigDecimal> {
+  public static final class BigDecimalCodec implements JsonValueCodec<BigDecimal> {
     public static final BigDecimalCodec INSTANCE = new BigDecimalCodec();
 
     @Override
@@ -922,7 +923,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class Float16Codec implements JsonCodec<Float16> {
+  public static final class Float16Codec implements JsonValueCodec<Float16> {
     public static final Float16Codec INSTANCE = new Float16Codec();
 
     @Override
@@ -959,7 +960,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class BFloat16Codec implements JsonCodec<BFloat16> {
+  public static final class BFloat16Codec implements JsonValueCodec<BFloat16> {
     public static final BFloat16Codec INSTANCE = new BFloat16Codec();
 
     @Override
@@ -996,7 +997,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class BitSetCodec implements JsonCodec<BitSet> {
+  public static final class BitSetCodec implements JsonValueCodec<BitSet> {
     public static final BitSetCodec INSTANCE = new BitSetCodec();
 
     private BitSetCodec() {}
@@ -1115,7 +1116,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class StringBuilderCodec implements JsonCodec<StringBuilder> {
+  public static final class StringBuilderCodec implements JsonValueCodec<StringBuilder> {
     public static final StringBuilderCodec INSTANCE = new StringBuilderCodec();
 
     @Override
@@ -1155,7 +1156,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class StringBufferCodec implements JsonCodec<StringBuffer> {
+  public static final class StringBufferCodec implements JsonValueCodec<StringBuffer> {
     public static final StringBufferCodec INSTANCE = new StringBufferCodec();
 
     @Override
@@ -1195,7 +1196,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class FileCodec implements JsonCodec<File> {
+  public static final class FileCodec implements JsonValueCodec<File> {
     public static final FileCodec INSTANCE = new FileCodec();
 
     @Override
@@ -1235,7 +1236,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class PathCodec implements JsonCodec<Path> {
+  public static final class PathCodec implements JsonValueCodec<Path> {
     public static final PathCodec INSTANCE = new PathCodec();
 
     @Override
@@ -1296,7 +1297,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class CurrencyCodec implements JsonCodec<Currency> {
+  public static final class CurrencyCodec implements JsonValueCodec<Currency> {
     public static final CurrencyCodec INSTANCE = new CurrencyCodec();
 
     @Override
@@ -1357,7 +1358,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class UriCodec implements JsonCodec<URI> {
+  public static final class UriCodec implements JsonValueCodec<URI> {
     public static final UriCodec INSTANCE = new UriCodec();
 
     @Override
@@ -1418,7 +1419,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class PatternCodec implements JsonCodec<Pattern> {
+  public static final class PatternCodec implements JsonValueCodec<Pattern> {
     public static final PatternCodec INSTANCE = new PatternCodec();
 
     @Override
@@ -1479,7 +1480,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class UuidCodec implements JsonCodec<UUID> {
+  public static final class UuidCodec implements JsonValueCodec<UUID> {
     public static final UuidCodec INSTANCE = new UuidCodec();
 
     @Override
@@ -1516,7 +1517,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class LocaleCodec implements JsonCodec<Locale> {
+  public static final class LocaleCodec implements JsonValueCodec<Locale> {
     public static final LocaleCodec INSTANCE = new LocaleCodec();
 
     @Override
@@ -1556,7 +1557,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class CharsetCodec implements JsonCodec<Charset> {
+  public static final class CharsetCodec implements JsonValueCodec<Charset> {
     public static final CharsetCodec INSTANCE = new CharsetCodec();
 
     @Override
@@ -1617,7 +1618,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class DateCodec implements JsonCodec<Date> {
+  public static final class DateCodec implements JsonValueCodec<Date> {
     public static final DateCodec INSTANCE = new DateCodec();
 
     @Override
@@ -1654,7 +1655,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class CalendarCodec implements JsonCodec<Calendar> {
+  public static final class CalendarCodec implements JsonValueCodec<Calendar> {
     public static final CalendarCodec INSTANCE = new CalendarCodec();
 
     @Override
@@ -1697,7 +1698,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class TimeZoneCodec implements JsonCodec<TimeZone> {
+  public static final class TimeZoneCodec implements JsonValueCodec<TimeZone> {
     public static final TimeZoneCodec INSTANCE = new TimeZoneCodec();
 
     @Override
@@ -1737,7 +1738,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class LocalDateCodec implements JsonCodec<LocalDate> {
+  public static final class LocalDateCodec implements JsonValueCodec<LocalDate> {
     public static final LocalDateCodec INSTANCE = new LocalDateCodec();
 
     @Override
@@ -1774,7 +1775,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class LocalTimeCodec implements JsonCodec<LocalTime> {
+  public static final class LocalTimeCodec implements JsonValueCodec<LocalTime> {
     public static final LocalTimeCodec INSTANCE = new LocalTimeCodec();
 
     @Override
@@ -1811,7 +1812,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class LocalDateTimeCodec implements JsonCodec<LocalDateTime> {
+  public static final class LocalDateTimeCodec implements JsonValueCodec<LocalDateTime> {
     public static final LocalDateTimeCodec INSTANCE = new LocalDateTimeCodec();
 
     @Override
@@ -1848,7 +1849,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class InstantCodec implements JsonCodec<Instant> {
+  public static final class InstantCodec implements JsonValueCodec<Instant> {
     public static final InstantCodec INSTANCE = new InstantCodec();
 
     @Override
@@ -1885,7 +1886,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class DurationCodec implements JsonCodec<Duration> {
+  public static final class DurationCodec implements JsonValueCodec<Duration> {
     public static final DurationCodec INSTANCE = new DurationCodec();
 
     @Override
@@ -1922,7 +1923,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class ZoneOffsetCodec implements JsonCodec<ZoneOffset> {
+  public static final class ZoneOffsetCodec implements JsonValueCodec<ZoneOffset> {
     public static final ZoneOffsetCodec INSTANCE = new ZoneOffsetCodec();
 
     @Override
@@ -1959,7 +1960,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class ZoneIdCodec implements JsonCodec<ZoneId> {
+  public static final class ZoneIdCodec implements JsonValueCodec<ZoneId> {
     public static final ZoneIdCodec INSTANCE = new ZoneIdCodec();
 
     @Override
@@ -2020,7 +2021,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class ZonedDateTimeCodec implements JsonCodec<ZonedDateTime> {
+  public static final class ZonedDateTimeCodec implements JsonValueCodec<ZonedDateTime> {
     public static final ZonedDateTimeCodec INSTANCE = new ZonedDateTimeCodec();
 
     @Override
@@ -2057,7 +2058,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class YearCodec implements JsonCodec<Year> {
+  public static final class YearCodec implements JsonValueCodec<Year> {
     public static final YearCodec INSTANCE = new YearCodec();
 
     @Override
@@ -2094,7 +2095,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class YearMonthCodec implements JsonCodec<YearMonth> {
+  public static final class YearMonthCodec implements JsonValueCodec<YearMonth> {
     public static final YearMonthCodec INSTANCE = new YearMonthCodec();
 
     @Override
@@ -2131,7 +2132,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class MonthDayCodec implements JsonCodec<MonthDay> {
+  public static final class MonthDayCodec implements JsonValueCodec<MonthDay> {
     public static final MonthDayCodec INSTANCE = new MonthDayCodec();
 
     @Override
@@ -2168,7 +2169,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class PeriodCodec implements JsonCodec<Period> {
+  public static final class PeriodCodec implements JsonValueCodec<Period> {
     public static final PeriodCodec INSTANCE = new PeriodCodec();
 
     @Override
@@ -2205,7 +2206,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OffsetTimeCodec implements JsonCodec<OffsetTime> {
+  public static final class OffsetTimeCodec implements JsonValueCodec<OffsetTime> {
     public static final OffsetTimeCodec INSTANCE = new OffsetTimeCodec();
 
     @Override
@@ -2242,7 +2243,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OffsetDateTimeCodec implements JsonCodec<OffsetDateTime> {
+  public static final class OffsetDateTimeCodec implements JsonValueCodec<OffsetDateTime> {
     public static final OffsetDateTimeCodec INSTANCE = new OffsetDateTimeCodec();
 
     @Override
@@ -2279,7 +2280,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class HijrahDateCodec implements JsonCodec<HijrahDate> {
+  public static final class HijrahDateCodec implements JsonValueCodec<HijrahDate> {
     public static final HijrahDateCodec INSTANCE = new HijrahDateCodec();
 
     @Override
@@ -2340,7 +2341,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class JapaneseDateCodec implements JsonCodec<JapaneseDate> {
+  public static final class JapaneseDateCodec implements JsonValueCodec<JapaneseDate> {
     public static final JapaneseDateCodec INSTANCE = new JapaneseDateCodec();
 
     @Override
@@ -2401,7 +2402,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class MinguoDateCodec implements JsonCodec<MinguoDate> {
+  public static final class MinguoDateCodec implements JsonValueCodec<MinguoDate> {
     public static final MinguoDateCodec INSTANCE = new MinguoDateCodec();
 
     @Override
@@ -2462,7 +2463,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class ThaiBuddhistDateCodec implements JsonCodec<ThaiBuddhistDate> {
+  public static final class ThaiBuddhistDateCodec implements JsonValueCodec<ThaiBuddhistDate> {
     public static final ThaiBuddhistDateCodec INSTANCE = new ThaiBuddhistDateCodec();
 
     @Override
@@ -2523,7 +2524,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicBooleanCodec implements JsonCodec<AtomicBoolean> {
+  public static final class AtomicBooleanCodec implements JsonValueCodec<AtomicBoolean> {
     public static final AtomicBooleanCodec INSTANCE = new AtomicBooleanCodec();
 
     @Override
@@ -2560,7 +2561,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicIntegerCodec implements JsonCodec<AtomicInteger> {
+  public static final class AtomicIntegerCodec implements JsonValueCodec<AtomicInteger> {
     public static final AtomicIntegerCodec INSTANCE = new AtomicIntegerCodec();
 
     @Override
@@ -2597,7 +2598,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicLongCodec implements JsonCodec<AtomicLong> {
+  public static final class AtomicLongCodec implements JsonValueCodec<AtomicLong> {
     public static final AtomicLongCodec INSTANCE = new AtomicLongCodec();
 
     @Override
@@ -2634,12 +2635,17 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicReferenceCodec implements JsonCodec<AtomicReference<?>> {
+  public static final class AtomicReferenceCodec implements JsonValueCodec<AtomicReference<?>> {
     private final JsonTypeInfo valueTypeInfo;
 
     public AtomicReferenceCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
-      valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+      this.valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+    }
+
+    @Internal
+    public AtomicReferenceCodec(JsonTypeInfo valueTypeInfo) {
+      this.valueTypeInfo = valueTypeInfo;
     }
 
     @Override
@@ -2685,7 +2691,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicIntegerArrayCodec implements JsonCodec<AtomicIntegerArray> {
+  public static final class AtomicIntegerArrayCodec implements JsonValueCodec<AtomicIntegerArray> {
     public static final AtomicIntegerArrayCodec INSTANCE = new AtomicIntegerArrayCodec();
 
     @Override
@@ -2803,7 +2809,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class AtomicLongArrayCodec implements JsonCodec<AtomicLongArray> {
+  public static final class AtomicLongArrayCodec implements JsonValueCodec<AtomicLongArray> {
     public static final AtomicLongArrayCodec INSTANCE = new AtomicLongArrayCodec();
 
     @Override
@@ -2922,12 +2928,17 @@ public final class ScalarCodecs {
   }
 
   public static final class AtomicReferenceArrayCodec
-      implements JsonCodec<AtomicReferenceArray<?>> {
+      implements JsonValueCodec<AtomicReferenceArray<?>> {
     private final JsonTypeInfo valueTypeInfo;
 
     public AtomicReferenceArrayCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
-      valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+      this.valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+    }
+
+    @Internal
+    public AtomicReferenceArrayCodec(JsonTypeInfo valueTypeInfo) {
+      this.valueTypeInfo = valueTypeInfo;
     }
 
     @Override
@@ -3038,12 +3049,17 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OptionalCodec implements JsonCodec<Optional<?>> {
+  public static final class OptionalCodec implements JsonValueCodec<Optional<?>> {
     private final JsonTypeInfo valueTypeInfo;
 
     public OptionalCodec(java.lang.reflect.Type valueType, JsonTypeResolver resolver) {
       Class<?> valueRawType = CodecUtils.rawType(valueType, Object.class);
-      valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+      this.valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+    }
+
+    @Internal
+    public OptionalCodec(JsonTypeInfo valueTypeInfo) {
+      this.valueTypeInfo = valueTypeInfo;
     }
 
     @Override
@@ -3099,7 +3115,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OptionalIntCodec implements JsonCodec<OptionalInt> {
+  public static final class OptionalIntCodec implements JsonValueCodec<OptionalInt> {
     public static final OptionalIntCodec INSTANCE = new OptionalIntCodec();
 
     @Override
@@ -3146,7 +3162,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OptionalLongCodec implements JsonCodec<OptionalLong> {
+  public static final class OptionalLongCodec implements JsonValueCodec<OptionalLong> {
     public static final OptionalLongCodec INSTANCE = new OptionalLongCodec();
 
     @Override
@@ -3193,7 +3209,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class OptionalDoubleCodec implements JsonCodec<OptionalDouble> {
+  public static final class OptionalDoubleCodec implements JsonValueCodec<OptionalDouble> {
     public static final OptionalDoubleCodec INSTANCE = new OptionalDoubleCodec();
 
     @Override
@@ -3246,7 +3262,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class ByteBufferCodec implements JsonCodec<ByteBuffer> {
+  public static final class ByteBufferCodec implements JsonValueCodec<ByteBuffer> {
     public static final ByteBufferCodec INSTANCE = new ByteBufferCodec();
 
     @Override
@@ -3363,7 +3379,7 @@ public final class ScalarCodecs {
     }
   }
 
-  public static final class EnumCodec implements JsonCodec<Enum<?>> {
+  public static final class EnumCodec implements JsonValueCodec<Enum<?>> {
     private final Class<?> type;
     private final long[] nameHashes;
     private final long[] tokenPrefixes;

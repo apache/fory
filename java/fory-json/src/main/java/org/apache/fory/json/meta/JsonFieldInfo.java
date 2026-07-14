@@ -83,6 +83,7 @@ public final class JsonFieldInfo {
   private final Class<?> writeRawType;
   private final Type readType;
   private final Class<?> readRawType;
+  private final JsonTypeUse typeUse;
   private JsonFieldKind writeKind;
   private JsonFieldKind readKind;
   private int writeKindId;
@@ -138,7 +139,8 @@ public final class JsonFieldInfo {
       Method readSetter,
       JsonFieldAccessor writeAccessor,
       JsonFieldAccessor readAccessor,
-      TypeRef<?> ownerType) {
+      TypeRef<?> ownerType,
+      JsonTypeUse typeUse) {
     this.name = name;
     // The write-null decision and read index are both immutable after ObjectCodec construction.
     // Packing the flag into the unused sign bit keeps JsonFieldInfo at its established object size
@@ -156,6 +158,7 @@ public final class JsonFieldInfo {
     this.writeRawType = semanticRawType(writeType, writeFallback);
     this.readType = resolveType(ownerType, readType(readField, readSetter));
     this.readRawType = semanticRawType(readType, readFallback);
+    this.typeUse = typeUse;
     this.writeAccessor = writeAccessor;
     this.readAccessor = readAccessor;
     writeKind = writeRawType == null ? null : kind(writeRawType);
@@ -343,13 +346,20 @@ public final class JsonFieldInfo {
   }
 
   public void resolveTypes(JsonTypeResolver typeResolver) {
+    JsonTypeInfo resolvedTypeInfo = typeUse == null ? null : typeResolver.getTypeInfo(typeUse);
     if (writeRawType != null) {
-      writeTypeInfo = typeResolver.getTypeInfo(writeType, writeRawType);
+      writeTypeInfo =
+          resolvedTypeInfo == null
+              ? typeResolver.getTypeInfo(writeType, writeRawType)
+              : resolvedTypeInfo;
       writeKind = writeTypeInfo.kind();
       writeKindId = kindId(writeKind);
     }
     if (readRawType != null) {
-      readTypeInfo = typeResolver.getTypeInfo(readType, readRawType);
+      readTypeInfo =
+          resolvedTypeInfo == null
+              ? typeResolver.getTypeInfo(readType, readRawType)
+              : resolvedTypeInfo;
       readKind = readTypeInfo.kind();
       readPrimitiveKindId = primitiveKindId(readRawType, readKind);
     }

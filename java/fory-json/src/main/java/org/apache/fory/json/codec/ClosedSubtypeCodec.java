@@ -49,7 +49,7 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
  */
 @Internal
 @SuppressWarnings("unchecked")
-public final class ClosedSubtypeCodec implements JsonCodec<Object> {
+public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
   private final Class<?> baseType;
   private final JsonSubTypesInfo definition;
   private final JsonTypeInfo[] children;

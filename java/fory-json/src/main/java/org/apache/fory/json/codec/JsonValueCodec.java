@@ -20,18 +20,23 @@
 package org.apache.fory.json.codec;
 
 /**
- * Typed semantic codec composed from the five concrete JSON input and output capabilities.
+ * A streaming codec for one complete JSON value of type {@code T}.
+ *
+ * <p>The codec reads from and writes to Fory JSON's concrete readers and writers directly; it is
+ * not a JSON abstract syntax tree (AST) codec. Each operation owns the complete value, including
+ * its JSON {@code null} representation. There is no secondary non-null codec protocol: field
+ * omission belongs to object-field handling, while primitive null rejection belongs to the
+ * primitive codec or primitive field owner.
+ *
+ * <p>A value codec never handles map keys. Map keys are encoded and decoded by {@link
+ * MapCodec.MapKeyCodec}.
  *
  * <p>Built-in and user-registered codecs implement this complete interface because one codec owns
  * the Java type's semantics for every representation. Generated object specializations implement
  * only the narrow capability they accelerate and are installed independently in the corresponding
  * {@link org.apache.fory.json.resolver.JsonTypeInfo} slot.
- *
- * <p>Each capability consumes or writes the complete value, including its null representation.
- * There is no secondary non-null codec protocol; field omission belongs to object-field handling,
- * while primitive null rejection belongs to the primitive codec or primitive field owner.
  */
-public interface JsonCodec<T>
+public interface JsonValueCodec<T>
     extends StringWriterCodec<T>,
         Utf8WriterCodec<T>,
         Latin1ReaderCodec<T>,

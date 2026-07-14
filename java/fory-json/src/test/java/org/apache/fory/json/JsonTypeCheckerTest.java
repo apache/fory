@@ -27,11 +27,13 @@ import java.beans.Expression;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.exception.InsecureException;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.data.Kind;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Float16;
@@ -39,7 +41,7 @@ import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
 public class JsonTypeCheckerTest extends ForyJsonTestModels {
-  private static final JsonCodec<String> STRING_NULL_CODEC = nullCodec();
+  private static final JsonValueCodec<String> STRING_NULL_CODEC = nullCodec();
 
   @Factory(dataProvider = "enableCodegen")
   public JsonTypeCheckerTest(boolean codegen) {
@@ -95,6 +97,31 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
             .withTypeChecker((className, context) -> !className.equals(String.class.getName()))
             .build();
     assertThrows(InsecureException.class, () -> json.toJson("value"));
+  }
+
+  @Test
+  public void annotatedExactUsesChecker() {
+    CountingStringCodec.CONSTRUCTIONS.set(0);
+    AnnotatedStringHolder value = new AnnotatedStringHolder();
+    ForyJson json = rejectingJson(String.class);
+    assertThrows(InsecureException.class, () -> json.toJson(value));
+    assertEquals(CountingStringCodec.CONSTRUCTIONS.get(), 0);
+  }
+
+  @Test
+  public void mapKeyIgnoresValueCodec() {
+    ForyJson json =
+        newJsonBuilder()
+            .registerCodec(String.class, STRING_NULL_CODEC)
+            .withTypeChecker((className, context) -> !className.equals(String.class.getName()))
+            .build();
+    StringKeyMap value = new StringKeyMap();
+    value.values = new LinkedHashMap<>();
+    value.values.put("key", 1);
+    assertEquals(json.toJson(value), "{\"values\":{\"key\":1}}");
+    assertEquals(
+        json.fromJson("{\"values\":{\"key\":2}}", StringKeyMap.class).values.get("key"),
+        Integer.valueOf(2));
   }
 
   @Test
@@ -234,6 +261,27 @@ public class JsonTypeCheckerTest extends ForyJsonTestModels {
 
   public static final class RejectedHolder {
     public RejectedValue value;
+  }
+
+  public static final class StringKeyMap {
+    public Map<String, Integer> values;
+  }
+
+  public static final class AnnotatedStringHolder {
+    public @JsonCodec(CountingStringCodec.class) String value = "value";
+  }
+
+  public static final class CountingStringCodec extends JsonCodecAnnotationTest.TaggedStringCodec {
+    private static final AtomicInteger CONSTRUCTIONS = new AtomicInteger();
+
+    public CountingStringCodec() {
+      CONSTRUCTIONS.incrementAndGet();
+    }
+
+    @Override
+    protected String tag() {
+      return "checked";
+    }
   }
 
   public static final class ClassMembers {
