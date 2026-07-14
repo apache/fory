@@ -26,16 +26,17 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Defines an explicit serialization prefix for a class's JSON properties.
+ * Defines the serialization order of a class's JSON properties.
  *
  * <p>Names are matched first against final JSON property names and then against Java logical
  * property names. Unlisted properties with {@link JsonProperty#index()} follow in ascending index
- * order, followed by unindexed properties in their existing relative order.
+ * order. Remaining unindexed properties are sorted by final JSON name when {@link #alphabetic()} is
+ * true, or retain their existing relative order otherwise.
  *
  * <p>The nearest declaration on the concrete class or one of its superclasses is used. A subclass
  * declaration replaces its superclass declaration as a whole; arrays are never merged. Interface
- * declarations are not considered. The value must contain at least one unique writable property.
- * Unknown, empty, and duplicate property entries are rejected when object metadata is built.
+ * declarations are not considered. The value may be empty only when alphabetic ordering is enabled.
+ * Unknown, empty-string, and duplicate property entries are rejected when object metadata is built.
  *
  * <p>This annotation affects serialization only. It cannot reorder protocol metadata such as a
  * subtype discriminator.
@@ -44,6 +45,12 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface JsonPropertyOrder {
-  /** Returns the non-empty ordered property prefix. */
-  String[] value();
+  /** Returns the ordered property prefix, or an empty array for alphabetic-only ordering. */
+  String[] value() default {};
+
+  /**
+   * Returns whether remaining unindexed properties are sorted by final JSON property name using
+   * natural, case-sensitive {@link String} order.
+   */
+  boolean alphabetic() default false;
 }

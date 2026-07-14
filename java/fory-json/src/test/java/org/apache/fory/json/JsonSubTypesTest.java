@@ -94,7 +94,7 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     ForyJson json = newJson();
     Shape value = new Rectangle(3, 4);
     String text = json.toJson(value, Shape.class);
-    assertEquals(text, "{\"kind\":\"rectangle\",\"width\":3,\"height\":4}");
+    assertEquals(text, "{\"kind\":\"rectangle\",\"height\":4,\"width\":3}");
     assertEquals(new String(json.toJsonBytes(value, Shape.class), StandardCharsets.UTF_8), text);
     assertInlineWriterCapabilities(json, Rectangle.class);
     Shape decoded = json.fromJson(text, Shape.class);
@@ -209,7 +209,7 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     List<Shape> values = Arrays.asList(new Circle(2), new Rectangle(3, 4));
     TypeRef<List<Shape>> type = new TypeRef<List<Shape>>() {};
     String expected =
-        "[{\"kind\":\"circle\",\"radius\":2},{\"kind\":\"rectangle\",\"width\":3,\"height\":4}]";
+        "[{\"kind\":\"circle\",\"radius\":2},{\"kind\":\"rectangle\",\"height\":4,\"width\":3}]";
     assertEquals(json.toJson(values, type), expected);
     assertEquals(new String(json.toJsonBytes(values, type), StandardCharsets.UTF_8), expected);
     ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -346,7 +346,7 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     }
   }
 
-  @JsonPropertyOrder({"width", "height"})
+  @JsonPropertyOrder(alphabetic = true)
   public static final class Rectangle implements Shape {
     public int height;
     public int width;

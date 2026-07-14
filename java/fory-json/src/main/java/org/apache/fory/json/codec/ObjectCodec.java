@@ -261,7 +261,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
 
     if (propertyOrder != null) {
       String[] names = propertyOrder.value();
-      if (names.length == 0) {
+      if (names.length == 0 && !propertyOrder.alphabetic()) {
         throw new ForyJsonException("Empty @JsonPropertyOrder on " + type.getName());
       }
       for (String name : names) {
@@ -328,10 +328,18 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       }
     }
 
+    int unorderedStart = outputIndex;
     for (int i = 0; i < size; i++) {
       if (!selected[i]) {
         ordered[outputIndex++] = fields.get(i);
       }
+    }
+    if (propertyOrder != null && propertyOrder.alphabetic() && outputIndex - unorderedStart > 1) {
+      Arrays.sort(
+          ordered,
+          unorderedStart,
+          outputIndex,
+          (left, right) -> left.name().compareTo(right.name()));
     }
     assert outputIndex == size;
     return ordered;

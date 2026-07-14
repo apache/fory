@@ -409,14 +409,14 @@ not supported.
 
 ### `JsonPropertyOrder`
 
-`JsonPropertyOrder` defines a named serialization prefix. Remaining indexed properties follow in
-ascending index order, then unindexed properties keep their existing relative order:
+`JsonPropertyOrder` combines a named serialization prefix, property indexes, and final-name
+alphabetic ordering:
 
 ```java
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 
-@JsonPropertyOrder({"id", "display_name"})
+@JsonPropertyOrder(value = {"id", "display_name"}, alphabetic = true)
 public final class User {
   @JsonProperty(index = 20)
   public String name;
@@ -426,15 +426,23 @@ public final class User {
 
   public long id;
   public int age;
+  public String address;
 }
 ```
 
-The output order is `id`, `display_name`, `name`, then `age`. Order entries match the final JSON
-name first and the Java logical property name second. The list must be non-empty and contain unique
-writable properties; empty, unknown, and duplicate entries fail when object metadata is built.
+The output order is `id`, `display_name`, `name`, `address`, then `age`. The named prefix is written
+first, remaining indexed properties follow in ascending index order, and `alphabetic = true` sorts
+the remaining unindexed properties by final JSON name. Without `alphabetic`, those properties keep
+their existing relative order. Use `@JsonPropertyOrder(alphabetic = true)` when no named prefix is
+needed. Alphabetic comparison uses Java's natural, case-sensitive String order and is
+locale-independent.
 
-A subclass declaration replaces its superclass declaration as a whole. If the subclass has no
-declaration, the nearest superclass declaration is used and resolved against the subclass
+Order entries match the final JSON name first and the Java logical property name second. The list
+may be empty only when `alphabetic` is true. Its entries must be non-empty, unique writable
+properties; unknown and duplicate entries fail when object metadata is built.
+
+A subclass declaration replaces both settings from its superclass as a whole. If the subclass has
+no declaration, the nearest superclass declaration is used and resolved against the subclass
 properties. Interface declarations are not considered. Ordering affects serialization only;
 deserialization remains name-based, and subtype discriminators remain before user properties.
 

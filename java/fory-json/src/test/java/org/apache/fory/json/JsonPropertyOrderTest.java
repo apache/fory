@@ -72,6 +72,34 @@ public class JsonPropertyOrderTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void alphabeticOrder() {
+    ForyJson json = newJson();
+    AlphabeticOnly value = json.fromJson("{\"middle\":2,\"z\":1,\"a\":3}", AlphabeticOnly.class);
+    assertEquals(value.z, 1);
+    assertEquals(value.middle, 2);
+    assertEquals(value.renamed, 3);
+    assertEquals(json.toJson(value), "{\"a\":3,\"middle\":2,\"z\":1}");
+    assertEquals(
+        new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
+        "{\"a\":3,\"middle\":2,\"z\":1}");
+    assertGeneratedWhenSupported(json, AlphabeticOnly.class);
+
+    ForyJson snakeCase =
+        newJsonBuilder().withPropertyNamingStrategy(PropertyNamingStrategy.SNAKE_CASE).build();
+    assertEquals(snakeCase.toJson(new AlphabeticNaming()), "{\"account_name\":2,\"zip_code\":1}");
+    assertGeneratedWhenSupported(snakeCase, AlphabeticNaming.class);
+  }
+
+  @Test
+  public void alphabeticPrecedence() {
+    ForyJson json = newJson();
+    assertEquals(
+        json.toJson(new CombinedAlphabeticOrder()),
+        "{\"id\":1,\"email\":\"email\",\"name\":\"name\",\"beta\":\"beta\",\"zeta\":\"zeta\"}");
+    assertGeneratedWhenSupported(json, CombinedAlphabeticOrder.class);
+  }
+
+  @Test
   public void indexOrder() {
     ForyJson json = newJson();
     assertEquals(json.toJson(new IndexedOnly()), "{\"a\":1,\"c\":3,\"b\":2}");
@@ -88,6 +116,16 @@ public class JsonPropertyOrderTest extends ForyJsonTestModels {
     assertEquals(value.name, "alice");
     assertEquals(json.toJson(value), "{\"id\":7,\"name\":\"alice\"}");
     assertGeneratedWhenSupported(json, CreatorOrder.class);
+  }
+
+  @Test
+  public void creatorAlphabetic() {
+    ForyJson json = newJson();
+    AlphabeticCreator value = json.fromJson("{\"a\":2,\"z\":1}", AlphabeticCreator.class);
+    assertEquals(value.z, 1);
+    assertEquals(value.a, 2);
+    assertEquals(json.toJson(value), "{\"a\":2,\"z\":1}");
+    assertGeneratedWhenSupported(json, AlphabeticCreator.class);
   }
 
   @Test
@@ -111,6 +149,27 @@ public class JsonPropertyOrderTest extends ForyJsonTestModels {
     assertGeneratedWhenSupported(json, type);
   }
 
+  @Test
+  public void recordAlphabetic() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 17) {
+      throw new SkipException("Java record test requires JDK 17+");
+    }
+    Class<?> type =
+        compileRecordClass(
+            "JsonAlphabeticRecord",
+            "package org.apache.fory.json.records;\n"
+                + "import org.apache.fory.json.annotation.JsonPropertyOrder;\n"
+                + "@JsonPropertyOrder(alphabetic = true)\n"
+                + "public record JsonAlphabeticRecord(int z, int a) {}\n");
+    Object value = type.getConstructor(int.class, int.class).newInstance(1, 2);
+    ForyJson json = newJson();
+    assertEquals(json.toJson(value), "{\"a\":2,\"z\":1}");
+    Object decoded = json.fromJson("{\"z\":3,\"a\":4}", type);
+    assertEquals(type.getMethod("z").invoke(decoded), Integer.valueOf(3));
+    assertEquals(type.getMethod("a").invoke(decoded), Integer.valueOf(4));
+    assertGeneratedWhenSupported(json, type);
+  }
+
   private static Object jsonRecord(Class<?> type, int b, int a) throws Exception {
     return type.getConstructor(int.class, int.class).newInstance(b, a);
   }
@@ -122,10 +181,14 @@ public class JsonPropertyOrderTest extends ForyJsonTestModels {
     assertEquals(json.toJson(new InheritedChild()), "{\"child\":3,\"a\":1,\"b\":2}");
     assertEquals(json.toJson(new OverrideInvalidChild()), "{\"b\":2,\"a\":1}");
     assertEquals(json.toJson(new InterfaceOrderImpl()), "{\"a\":1,\"b\":2}");
+    assertEquals(json.toJson(new InheritedAlphabeticChild()), "{\"a\":1,\"b\":2,\"c\":3}");
+    assertEquals(json.toJson(new AlphabeticOverrideChild()), "{\"a\":1,\"b\":2}");
     assertGeneratedWhenSupported(json, WholeChild.class);
     assertGeneratedWhenSupported(json, InheritedChild.class);
     assertGeneratedWhenSupported(json, OverrideInvalidChild.class);
     assertGeneratedWhenSupported(json, InterfaceOrderImpl.class);
+    assertGeneratedWhenSupported(json, InheritedAlphabeticChild.class);
+    assertGeneratedWhenSupported(json, AlphabeticOverrideChild.class);
   }
 
   @Test
@@ -188,6 +251,38 @@ public class JsonPropertyOrderTest extends ForyJsonTestModels {
     public int renamed = 1;
   }
 
+  @JsonPropertyOrder(alphabetic = true)
+  public static final class AlphabeticOnly {
+    public int z;
+    public int middle;
+
+    @JsonProperty("a")
+    public int renamed;
+  }
+
+  @JsonPropertyOrder(alphabetic = true)
+  public static final class AlphabeticNaming {
+    public int zipCode = 1;
+    public int accountName = 2;
+  }
+
+  @JsonPropertyOrder(
+      value = {"id"},
+      alphabetic = true)
+  public static final class CombinedAlphabeticOrder {
+    public String zeta = "zeta";
+
+    @JsonProperty(index = 20)
+    public String name = "name";
+
+    public int id = 1;
+
+    @JsonProperty(index = 10)
+    public String email = "email";
+
+    public String beta = "beta";
+  }
+
   public static final class IndexedOnly {
     @JsonProperty(index = 2)
     public int c = 3;
@@ -229,6 +324,22 @@ public class JsonPropertyOrderTest extends ForyJsonTestModels {
         @JsonProperty(value = "id", index = 0) int id,
         @JsonProperty(value = "name", index = 1) String name) {
       return new CreatorOrder(id, name);
+    }
+  }
+
+  @JsonPropertyOrder(alphabetic = true)
+  public static final class AlphabeticCreator {
+    public final int z;
+    public final int a;
+
+    private AlphabeticCreator(int z, int a) {
+      this.z = z;
+      this.a = a;
+    }
+
+    @JsonCreator
+    public static AlphabeticCreator create(@JsonProperty("z") int z, @JsonProperty("a") int a) {
+      return new AlphabeticCreator(z, a);
     }
   }
 
@@ -274,6 +385,21 @@ public class JsonPropertyOrderTest extends ForyJsonTestModels {
 
     @JsonProperty(index = 0)
     public int a = 1;
+  }
+
+  @JsonPropertyOrder(alphabetic = true)
+  public static class AlphabeticParent {
+    public int b = 2;
+    public int a = 1;
+  }
+
+  public static final class InheritedAlphabeticChild extends AlphabeticParent {
+    public int c = 3;
+  }
+
+  @JsonPropertyOrder(alphabetic = true)
+  public static final class AlphabeticOverrideChild extends InvalidOrderParent {
+    public int b = 2;
   }
 
   public static final class NegativeIndex {
