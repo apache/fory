@@ -106,9 +106,12 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
           // needs this parent-local skip table. Nested child values must use the canonical table.
           resolver.resolveInlineAnyReaders(this, i, objectCodec, table);
         }
-        // Member-writer generation is requested once while the closed table is resolved. The
-        // child capability slots are the single publication owner, so async completion becomes
-        // visible to this dispatcher without a second cache or a resolver lookup on every value.
+        // Member writing is a parent-neutral child representation: this codec owns the outer
+        // object and discriminator, while the child owns field access, omission, Any placement,
+        // and recursive complete-value writes. Keep its generated capability in the child slot so
+        // multiple bases can share it without duplicating codegen or parent-local writer state.
+        // Readers differ because rereading this parent's discriminator changes field
+        // classification, which is why only the inline Any reader binding above is parent-local.
         resolver.stringObjectWriter(objectCodecs[i]);
         resolver.utf8ObjectWriter(objectCodecs[i]);
       }

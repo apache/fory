@@ -916,10 +916,11 @@ public final class JsonTypeResolver {
       ObjectCodec<Object> owner, JsonTypeInfo typeInfo, Class<?> generated) {
     requireJITLock();
     StringWriterCodec<Object> current = typeInfo.stringWriter();
-    // Inline subtype member writers refine the complete-writer capability in the same canonical
-    // slot. A concurrently compiled complete writer must never downgrade that refinement when its
-    // callback finishes later. The interpreted owner also implements member writing, so identity
-    // distinguishes it from an installed generated refinement.
+    // A member writer is a parent-independent child refinement and is also a complete writer, so
+    // the canonical child slot can serve ordinary and composed writes. A concurrently compiled
+    // complete-only writer must never downgrade that refinement when its callback finishes later.
+    // The interpreted owner also implements member writing, so identity distinguishes it from an
+    // installed generated refinement.
     if (!StringObjectWriter.class.isAssignableFrom(generated)
         && current != owner
         && current instanceof StringObjectWriter) {
