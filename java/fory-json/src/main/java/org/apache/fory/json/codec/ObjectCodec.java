@@ -546,15 +546,6 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
                 "@JsonCreator property is ignored for reading: " + builder.name);
           }
           builder.mergeAnnotation(type, parameters[i]);
-          if (property.index() != JsonProperty.INDEX_UNKNOWN && !builder.hasWriteSource()) {
-            throw new ForyJsonException(
-                "Creator parameter index requires a write source for property "
-                    + builder.name
-                    + " on "
-                    + type.getName()
-                    + " from "
-                    + parameters[i]);
-          }
           if (property.include() != JsonProperty.Include.DEFAULT && !builder.hasWriteSource()) {
             throw new ForyJsonException(
                 "Creator parameter inclusion requires a write source for " + jsonName);

@@ -95,8 +95,9 @@ public final class JsonExample {
 }
 ```
 
-Unknown input properties are skipped. Null object properties are omitted by default. JSON property
-order is not a compatibility contract; consumers should match names, not textual member order.
+Unknown input properties are skipped. Null object properties are omitted by default. Default JSON
+property discovery order is not a compatibility contract; use `JsonPropertyOrder` or
+`JsonProperty.index` when emitted property order must be explicit.
 
 ## Reading and writing APIs
 
@@ -435,8 +436,7 @@ writable properties; empty, unknown, and duplicate entries fail when object meta
 A subclass declaration replaces its superclass declaration as a whole. If the subclass has no
 declaration, the nearest superclass declaration is used and resolved against the subclass
 properties. Interface declarations are not considered. Ordering affects serialization only;
-deserialization remains name-based, and codec-owned protocol metadata such as subtype discriminators
-is emitted before user properties.
+deserialization remains name-based, and subtype discriminators remain before user properties.
 
 ### Property naming strategy
 
