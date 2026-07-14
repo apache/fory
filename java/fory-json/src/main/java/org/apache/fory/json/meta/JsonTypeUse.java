@@ -39,7 +39,6 @@ import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.platform.AndroidSupport;
-import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.reflect.TypeUseMetadata;
 import org.apache.fory.type.TypeUtils;
@@ -56,8 +55,7 @@ import org.apache.fory.util.record.RecordComponent;
 public final class JsonTypeUse {
   private static final JsonTypeUse[] NO_CHILDREN = new JsonTypeUse[0];
   private static final String[] NO_SOURCES = new String[0];
-  private static final boolean ANNOTATIONS_SUPPORTED =
-      !AndroidSupport.IS_ANDROID && !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE;
+  private static final boolean ANNOTATIONS_SUPPORTED = !AndroidSupport.IS_ANDROID;
 
   private final Type type;
   private final Class<?> rawType;

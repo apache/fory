@@ -254,4 +254,4 @@ ThreadSafeFory threadLocalFory = Fory.builder()
 - [Native Serialization](native-serialization.md) - Java-only serialization features
 - [JSON Support](json-support.md) - Complete Fory JSON user guide
 - [Static Generated Serializers](static-generated-serializers.md) - Annotation-processor static generated serializers for `@ForyStruct`
-- [GraalVM Support](graalvm-support.md) - Build-time serializer compilation for native images
+- [GraalVM Support](graalvm-support.md) - Native Image support for binary serialization and JSON

@@ -38,6 +38,7 @@
   <properties>
     <maven.compiler.source>8</maven.compiler.source>
     <maven.compiler.target>8</maven.compiler.target>
+    <maven.source.skip>false</maven.source.skip>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
     <fory.json.mr.classes>${project.build.directory}/multi-release-classes</fory.json.mr.classes>
     <fory.json.jdk25.test.classes>${project.build.directory}/jdk25-test-classes</fory.json.jdk25.test.classes>
@@ -86,6 +87,20 @@
       <activation>
         <jdk>[9,)</jdk>
       </activation>
+      <dependencies>
+        <dependency>
+          <groupId>org.graalvm.sdk</groupId>
+          <artifactId>graal-sdk</artifactId>
+          <version>23.1.0</version>
+          <scope>provided</scope>
+        </dependency>
+        <dependency>
+          <groupId>org.graalvm.sdk</groupId>
+          <artifactId>nativeimage</artifactId>
+          <version>23.1.0</version>
+          <scope>provided</scope>
+        </dependency>
+      </dependencies>
       <build>
         <plugins>
           <plugin>
@@ -162,9 +177,9 @@
       </build>
     </profile>
     <profile>
-      <id>jdk25-multi-release</id>
+      <id>graalvm-feature-java17</id>
       <activation>
-        <jdk>[25,)</jdk>
+        <jdk>[17,)</jdk>
       </activation>
       <build>
         <plugins>
@@ -181,6 +196,127 @@
               </execution>
             </executions>
           </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <version>3.1.0</version>
+            <executions>
+              <execution>
+                <id>compile-java17-feature</id>
+                <phase>process-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <delete dir="${fory.json.mr.classes}/17"/>
+                    <mkdir dir="${fory.json.mr.classes}/17"/>
+                    <javac srcdir="${project.basedir}/src/main/java17"
+                           destdir="${fory.json.mr.classes}/17"
+                           includeantruntime="false"
+                           fork="true"
+                           executable="${java.home}/bin/javac"
+                           debug="true">
+                      <include name="org/**/*.java"/>
+                      <classpath>
+                        <path refid="maven.compile.classpath"/>
+                        <pathelement location="${project.build.outputDirectory}"/>
+                      </classpath>
+                      <compilerarg value="--release"/>
+                      <compilerarg value="17"/>
+                      <compilerarg value="-sourcepath"/>
+                      <compilerarg value=""/>
+                    </javac>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>inject-java17-feature</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <jar destfile="${project.build.directory}/${project.build.finalName}.jar"
+                         update="true">
+                      <zipfileset dir="${fory.json.mr.classes}/17"
+                                  prefix="META-INF/versions/17"
+                                  includes="**/*.class"/>
+                    </jar>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>patch-multi-release-source-jar</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <skip>${maven.source.skip}</skip>
+                  <target>
+                    <property
+                        name="multi.release.sources.jar"
+                        value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
+                    <available
+                        file="${multi.release.sources.jar}"
+                        property="multi.release.sources.jar.present"/>
+                    <fail
+                        unless="multi.release.sources.jar.present"
+                        message="Multi-release source patching requires ${multi.release.sources.jar}."/>
+                    <jar destfile="${multi.release.sources.jar}" update="true">
+                      <zipfileset dir="${project.basedir}/src/main/java9"
+                                  prefix="META-INF/versions/9">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                      <zipfileset dir="${project.basedir}/src/main/java17"
+                                  prefix="META-INF/versions/17">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                      <zipfileset dir="${project.basedir}/src/main/java25"
+                                  prefix="META-INF/versions/25">
+                        <include name="**/*.java"/>
+                      </zipfileset>
+                    </jar>
+                  </target>
+                </configuration>
+              </execution>
+              <execution>
+                <id>verify-graalvm-feature-jar</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <skip>${maven.source.skip}</skip>
+                  <target>
+                    <java
+                        classname="org.apache.fory.json.ForyJsonGraalVMFeatureJarVerifier"
+                        fork="true"
+                        failonerror="true">
+                      <classpath>
+                        <pathelement location="${project.build.testOutputDirectory}"/>
+                        <path refid="maven.test.classpath"/>
+                      </classpath>
+                      <arg value="${project.build.directory}/${project.build.finalName}.jar"/>
+                      <arg value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
+                    </java>
+                  </target>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>jdk25-multi-release</id>
+      <activation>
+        <jdk>[25,)</jdk>
+      </activation>
+      <build>
+        <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-antrun-plugin</artifactId>
@@ -291,30 +427,6 @@
                       <arg value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
                       <arg value="${fory.core.module.jar}"/>
                     </java>
-                  </target>
-                </configuration>
-              </execution>
-              <execution>
-                <id>patch-jdk25-source-jar</id>
-                <phase>package</phase>
-                <goals>
-                  <goal>run</goal>
-                </goals>
-                <configuration>
-                  <target>
-                    <property
-                        name="jdk25.sources.jar"
-                        value="${project.build.directory}/${project.build.finalName}-sources.jar"/>
-                    <available file="${jdk25.sources.jar}" property="jdk25.sources.jar.present"/>
-                    <fail
-                        unless="jdk25.sources.jar.present"
-                        message="Multi-release source patching requires ${jdk25.sources.jar}."/>
-                    <jar destfile="${jdk25.sources.jar}" update="true">
-                      <zipfileset dir="${project.basedir}/src/main/java25"
-                                  prefix="META-INF/versions/25">
-                        <include name="**/*.java"/>
-                      </zipfileset>
-                    </jar>
                   </target>
                 </configuration>
               </execution>

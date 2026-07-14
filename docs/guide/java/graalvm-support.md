@@ -44,6 +44,49 @@ shapes. Application classes still need to be registered with Fory before seriali
 Fory disables asynchronous serializer compilation in a native image because runtime just-in-time
 compilation is unavailable.
 
+## Fory JSON
+
+Fory JSON uses a separate Native Image workflow. It has no type-registration API and does not
+create a `ForyJson` instance or generate JSON codecs while the image is built. Add `@JsonType` to
+each object model that the native executable reads or writes:
+
+```java
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonType;
+
+@JsonType
+public final class User {
+  public long id;
+  public String name;
+}
+
+public class JsonExample {
+  public static void main(String[] args) {
+    ForyJson json = ForyJson.builder().build();
+    User user = json.fromJson("{\"id\":1,\"name\":\"Ada\"}", User.class);
+    System.out.println(json.toJson(user));
+  }
+}
+```
+
+The `fory-json` artifact activates its Native Image Feature automatically. The Feature registers
+metadata only for annotated classes that are reachable during image analysis. `@JsonType` is not
+inherited, so annotate every concrete runtime model. An annotated base with a class-literal
+`@JsonSubTypes` table registers those listed subtypes automatically. A class referenced only by a
+runtime string is not reachable; `JsonSubTypes.Type.className` is therefore unsupported in a native
+image.
+
+Native execution uses Fory JSON's interpreted object codec. `ForyJson.builder()` automatically
+disables runtime code generation and asynchronous compilation in the native executable, while all
+other builder options retain their normal behavior. Applications can create differently configured
+`ForyJson` instances at runtime and do not need build-time initialization or reflection
+configuration.
+
+Declaration-level, inherited, and nested type-use `@JsonCodec` annotations are supported. An
+annotation codec must have the same public no-argument constructor required on the JVM. In a named
+module, export or open its package to `org.apache.fory.json`. A codec instance supplied through
+`registerCodec` is constructed by the application and needs no annotation-constructor metadata.
+
 ## Basic Usage
 
 ### Create Fory and Register Classes

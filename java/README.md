@@ -366,7 +366,9 @@ java --add-modules=jdk.incubator.vector ...
 
 ### GraalVM Native Image
 
-Fory supports GraalVM native image through code generation, eliminating the need for reflection configuration. Build your native image as follows:
+Fory supports GraalVM Native Image without application reflection configuration. Binary
+serialization generates serializers while the image is built; Fory JSON registers reachable
+`@JsonType` models and uses its interpreted codec path. Build your native image as follows:
 
 ```bash
 # Generate serializers at build time

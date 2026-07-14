@@ -299,10 +299,13 @@ are rejected.
 Depth, concurrency, and retained buffer limits must be positive. The buffer setting does not limit
 output size. Builder changes after `build()` do not mutate an existing runtime.
 
+In a GraalVM native image, runtime code generation and asynchronous compilation are automatically
+disabled. Every other builder option keeps the behavior described above.
+
 ## Annotations
 
 Fory JSON provides `JsonProperty`, `JsonPropertyOrder`, `JsonIgnore`, `JsonAnyProperty`,
-`JsonAnyGetter`, `JsonAnySetter`, `JsonCreator`, `JsonCodec`, and `JsonSubTypes` under
+`JsonAnyGetter`, `JsonAnySetter`, `JsonCreator`, `JsonCodec`, `JsonSubTypes`, and `JsonType` under
 `org.apache.fory.json.annotation`. They are not Jackson, Gson, or Fory binary-protocol annotations.
 
 ```java
@@ -318,7 +321,12 @@ import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonSubTypes;
+import org.apache.fory.json.annotation.JsonType;
 ```
+
+`JsonType` marks a reachable object model for GraalVM Native Image metadata. It has no effect on
+ordinary JVM JSON behavior and is not inherited. See [GraalVM Support](graalvm-support.md) for the
+complete native-image workflow.
 
 ### `JsonProperty`
 
@@ -628,7 +636,8 @@ parent does not admit descendants. The annotation is read from the declared base
 inherited from another annotated base. Null is plain JSON null unless codec precedence selects a
 custom complete-value codec for the declared base, replacing the annotation. Readers accept only
 the configured shape, so changing inclusion is a wire-format change. At GraalVM native-image
-runtime, use class literals instead of `className`.
+runtime, annotate the base with `JsonType` and use class literals instead of `className`. Listed
+class-literal subtypes are registered automatically.
 
 ## Custom codecs
 
@@ -925,10 +934,11 @@ succeed. Returning a plain parent while decoding the child fails with `ForyJsonE
 names the target type, codec class, declaring type, and actual returned type. The actual result,
 not the parent's `final` status or the codec's generic signature, determines validity.
 
-`@JsonCodec` is supported on ordinary JVMs. Android and GraalVM native image ignore both declaration
-and type-use forms, avoiding partial behavior when nested runtime type metadata is unavailable. Use
-exact `registerCodec` registration there. Native-image reflection configuration is not a supported
-way to enable part of this annotation feature.
+`@JsonCodec` is supported on ordinary JVMs and GraalVM native images, including inherited
+declarations and nested type uses. Native models must follow the `JsonType` workflow described in
+[GraalVM Support](graalvm-support.md), which registers the annotation codec's public no-argument
+constructor. Android ignores declaration and type-use forms; use exact `registerCodec`
+registration there.
 
 ## Type validation and untrusted input
 
