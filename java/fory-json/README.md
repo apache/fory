@@ -542,8 +542,10 @@ public Map<String, Object> outputOnly;
 ```
 
 During reading, an existing Map is reused. A null non-final field is initialized when the first
-unknown member is encountered. A readable final field must already contain a mutable Map. If no
-unknown member is present, Fory does not initialize a null field.
+unknown member is encountered. A readable final field on an ordinary mutable object must already
+contain a mutable Map. Records and property-list `JsonCreator` types instead receive the accumulated
+Map through their construction argument. If no unknown member is present, Fory does not initialize
+a null field.
 
 Use `JsonAnyGetter` and `JsonAnySetter` for method-backed writing and reading:
 

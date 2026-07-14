@@ -39,10 +39,12 @@ import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonSubTypes;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.serializer.StringSerializer;
 import org.testng.SkipException;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
@@ -93,11 +95,29 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     PreinitializedAny preinitialized = json.fromJson("{\"x\":1}", PreinitializedAny.class);
     assertTrue(preinitialized.reused());
     assertEquals(preinitialized.properties, Collections.singletonMap("x", 1));
+    assertEquals(json.toJson(preinitialized), "{\"x\":1}");
+    assertEquals(new String(json.toJsonBytes(preinitialized), StandardCharsets.UTF_8), "{\"x\":1}");
+    assertEquals(
+        json.fromJson("{\"键\":2}", PreinitializedAny.class).properties,
+        Collections.singletonMap("键", 2));
+    assertEquals(
+        json.fromJson("{\"byte\":3}".getBytes(StandardCharsets.UTF_8), PreinitializedAny.class)
+            .properties,
+        Collections.singletonMap("byte", 3));
 
     FinalAny finalValue = json.fromJson("{\"x\":1}", FinalAny.class);
     assertEquals(finalValue.properties, Collections.singletonMap("x", 1));
+    assertEquals(json.toJson(finalValue), "{\"x\":1}");
+    assertEquals(new String(json.toJsonBytes(finalValue), StandardCharsets.UTF_8), "{\"x\":1}");
+    assertEquals(
+        json.fromJson("{\"键\":2}", FinalAny.class).properties, Collections.singletonMap("键", 2));
+    assertEquals(
+        json.fromJson("{\"byte\":3}".getBytes(StandardCharsets.UTF_8), FinalAny.class).properties,
+        Collections.singletonMap("byte", 3));
     assertThrows(ForyJsonException.class, () -> json.fromJson("{\"x\":1}", NullFinalAny.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("{\"x\":1}", UnmodifiableAny.class));
+    assertGeneratedCapabilities(json, PreinitializedAny.class);
+    assertGeneratedCapabilities(json, FinalAny.class);
   }
 
   @Test
@@ -107,13 +127,62 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     output.id = 1;
     output.properties.put("x", 2);
     assertEquals(json.toJson(output), "{\"id\":1,\"x\":2}");
+    assertEquals(
+        new String(json.toJsonBytes(output), StandardCharsets.UTF_8), "{\"id\":1,\"x\":2}");
     OutputAny ignored = json.fromJson("{\"id\":3,\"x\":4}", OutputAny.class);
     assertEquals(ignored.id, 3);
     assertTrue(ignored.properties.isEmpty());
+    OutputAny ignoredUtf16 = json.fromJson("{\"id\":5,\"键\":6}", OutputAny.class);
+    assertEquals(ignoredUtf16.id, 5);
+    assertTrue(ignoredUtf16.properties.isEmpty());
+    OutputAny ignoredUtf8 =
+        json.fromJson("{\"id\":7,\"byte\":8}".getBytes(StandardCharsets.UTF_8), OutputAny.class);
+    assertEquals(ignoredUtf8.id, 7);
+    assertTrue(ignoredUtf8.properties.isEmpty());
 
-    InputAny input = json.fromJson("{\"id\":5,\"x\":6}", InputAny.class);
-    assertEquals(input.properties, Collections.singletonMap("x", 6));
-    assertEquals(json.toJson(input), "{\"id\":5}");
+    InputAny input = json.fromJson("{\"id\":9,\"x\":10}", InputAny.class);
+    assertEquals(input.properties, Collections.singletonMap("x", 10));
+    assertEquals(json.toJson(input), "{\"id\":9}");
+    assertEquals(new String(json.toJsonBytes(input), StandardCharsets.UTF_8), "{\"id\":9}");
+    assertEquals(
+        json.fromJson("{\"id\":11,\"键\":12}", InputAny.class).properties,
+        Collections.singletonMap("键", 12));
+    assertEquals(
+        json.fromJson("{\"id\":13,\"byte\":14}".getBytes(StandardCharsets.UTF_8), InputAny.class)
+            .properties,
+        Collections.singletonMap("byte", 14));
+    assertGeneratedCapabilities(json, OutputAny.class);
+    assertGeneratedCapabilities(json, InputAny.class);
+  }
+
+  @Test
+  public void fieldMode() {
+    ForyJson json = newJsonBuilder().withFieldMode(true).build();
+    FieldModeAny value = new FieldModeAny();
+    value.id = 1;
+    value.properties.put("x", 2);
+    assertEquals(json.toJson(value), "{\"id\":1,\"x\":2}");
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"id\":1,\"x\":2}");
+
+    FieldModeAny latin1 = json.fromJson("{\"id\":3,\"ignored\":4,\"x\":5}", FieldModeAny.class);
+    assertEquals(latin1.id, 3);
+    assertEquals(latin1.ignored, 0);
+    assertEquals(latin1.properties, Collections.singletonMap("x", 5));
+    FieldModeAny utf16 = json.fromJson("{\"id\":6,\"ignored\":7,\"键\":8}", FieldModeAny.class);
+    assertEquals(utf16.properties, Collections.singletonMap("键", 8));
+    FieldModeAny utf8 =
+        json.fromJson(
+            "{\"id\":9,\"ignored\":10,\"byte\":11}".getBytes(StandardCharsets.UTF_8),
+            FieldModeAny.class);
+    assertEquals(utf8.properties, Collections.singletonMap("byte", 11));
+    assertGeneratedCapabilities(json, FieldModeAny.class);
+
+    value.properties.clear();
+    value.properties.put("ignored", 12);
+    assertThrows(ForyJsonException.class, () -> json.toJson(value));
+    assertThrows(ForyJsonException.class, () -> json.toJsonBytes(value));
+    assertThrows(ForyJsonException.class, () -> json.toJson(new GetterOnly()));
+    assertThrows(ForyJsonException.class, () -> json.fromJson("{}", SetterOnly.class));
   }
 
   @Test
@@ -211,6 +280,24 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
         ForyJsonException.class,
         () -> json.fromJson("{\"x\":null}", PrimitiveSetterWithGetter.class));
     assertGeneratedCapabilities(json, PrimitiveSetterWithGetter.class);
+
+    OverloadedPrimitiveSetter overloaded =
+        json.fromJson("{\"x\":4}", OverloadedPrimitiveSetter.class);
+    assertEquals(overloaded.storage, Collections.singletonMap("x", 4));
+    assertEquals(overloaded.primitiveCalls, 1);
+    assertEquals(overloaded.boxedCalls, 0);
+    OverloadedPrimitiveSetter overloadedUtf16 =
+        json.fromJson("{\"键\":5}", OverloadedPrimitiveSetter.class);
+    assertEquals(overloadedUtf16.primitiveCalls, 1);
+    assertEquals(overloadedUtf16.boxedCalls, 0);
+    OverloadedPrimitiveSetter overloadedUtf8 =
+        json.fromJson(
+            "{\"byte\":6}".getBytes(StandardCharsets.UTF_8), OverloadedPrimitiveSetter.class);
+    assertEquals(overloadedUtf8.primitiveCalls, 1);
+    assertEquals(overloadedUtf8.boxedCalls, 0);
+    assertEquals(json.toJson(overloaded), "{}");
+    assertEquals(new String(json.toJsonBytes(overloaded), StandardCharsets.UTF_8), "{}");
+    assertGeneratedCapabilities(json, OverloadedPrimitiveSetter.class);
   }
 
   @Test
@@ -662,6 +749,9 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     try {
       Object owner = resolver.getObjectCodec(type);
       JsonTypeInfo info = resolver.getTypeInfo(type, type);
+      if (!StringSerializer.isBytesBackedString()) {
+        resolver.latin1Reader((ObjectCodec<?>) owner);
+      }
       assertGenerated(info.stringWriter(), owner);
       assertGenerated(info.utf8Writer(), owner);
       assertGenerated(info.latin1Reader(), owner);
@@ -781,6 +871,14 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     public Map<String, Integer> properties;
   }
 
+  public static final class FieldModeAny {
+    public int id;
+
+    @JsonIgnore public int ignored;
+
+    @JsonAnyProperty public Map<String, Integer> properties = new LinkedHashMap<>();
+  }
+
   public static final class PrivateAny {
     @JsonAnyProperty private Map<String, Integer> properties;
 
@@ -883,6 +981,23 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
 
     @JsonAnySetter
     public void putProperty(String name, int value) {
+      storage.put(name, value);
+    }
+  }
+
+  public static final class OverloadedPrimitiveSetter {
+    @JsonIgnore private final Map<String, Integer> storage = new LinkedHashMap<>();
+    @JsonIgnore private int primitiveCalls;
+    @JsonIgnore private int boxedCalls;
+
+    @JsonAnySetter
+    public void put(String name, int value) {
+      primitiveCalls++;
+      storage.put(name, value);
+    }
+
+    public void put(String name, Integer value) {
+      boxedCalls++;
       storage.put(name, value);
     }
   }

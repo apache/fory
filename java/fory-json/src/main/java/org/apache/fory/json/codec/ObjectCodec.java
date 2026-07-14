@@ -144,9 +144,9 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       throw new ForyJsonException("Unsupported JSON object type " + type);
     }
     boolean record = RecordUtils.isRecord(type);
-    rejectIneligibleAnnotations(type, propertyDiscoveryEnabled, record);
+    boolean hasAnyField = validateMemberAnnotations(type, propertyDiscoveryEnabled, record);
     LinkedHashMap<String, FieldBuilder> builders = new LinkedHashMap<>();
-    addFields(type, record, propertyDiscoveryEnabled, builders);
+    addFields(type, record, propertyDiscoveryEnabled, hasAnyField, builders);
     if (propertyDiscoveryEnabled && !record) {
       addAccessors(type, builders);
     } else if (record) {
@@ -622,6 +622,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       Class<?> type,
       boolean record,
       boolean propertyDiscoveryEnabled,
+      boolean hasAnyField,
       LinkedHashMap<String, FieldBuilder> builders) {
     List<Class<?>> hierarchy = new ArrayList<>();
     for (Class<?> current = type;
@@ -629,6 +630,9 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         current = current.getSuperclass()) {
       hierarchy.add(current);
     }
+    // Field mode normally drops fully ignored fields. An Any field still needs their logical names
+    // to classify input as skipped and reject conflicting dynamic output.
+    boolean retainIgnoredFields = propertyDiscoveryEnabled || hasAnyField;
     for (int i = hierarchy.size() - 1; i >= 0; i--) {
       Class<?> current = hierarchy.get(i);
       for (Field field : current.getDeclaredFields()) {
@@ -641,7 +645,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         boolean readAllowed = ignore == null || !ignore.ignoreRead();
         boolean any = field.isAnnotationPresent(JsonAnyProperty.class);
         boolean read = (any || record || !Modifier.isFinal(modifiers)) && readAllowed;
-        if (!propertyDiscoveryEnabled && !write && !read && !any) {
+        if (!retainIgnoredFields && !write && !read && !any) {
           continue;
         }
         FieldBuilder builder =
@@ -2100,8 +2104,9 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
   }
 
-  private static void rejectIneligibleAnnotations(
+  private static boolean validateMemberAnnotations(
       Class<?> type, boolean propertyDiscoveryEnabled, boolean record) {
+    boolean hasAnyField = false;
     for (Class<?> current = type;
         current != null && current != Object.class;
         current = current.getSuperclass()) {
@@ -2109,8 +2114,12 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         if (field.isAnnotationPresent(JsonProperty.class) && !isEligibleField(field)) {
           throw new ForyJsonException("@JsonProperty is not supported on JSON field: " + field);
         }
-        if (field.isAnnotationPresent(JsonAnyProperty.class) && !isEligibleField(field)) {
-          throw new ForyJsonException("@JsonAnyProperty is not supported on JSON field: " + field);
+        if (field.isAnnotationPresent(JsonAnyProperty.class)) {
+          if (!isEligibleField(field)) {
+            throw new ForyJsonException(
+                "@JsonAnyProperty is not supported on JSON field: " + field);
+          }
+          hasAnyField = true;
         }
       }
       for (Method method : current.getDeclaredMethods()) {
@@ -2143,6 +2152,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         validatePropertyMethod(type, method, propertyDiscoveryEnabled, record);
       }
     }
+    return hasAnyField;
   }
 
   private static void validateAnyGetter(Method method) {

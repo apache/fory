@@ -44,8 +44,10 @@ import java.lang.annotation.Target;
  *
  * <p>At most one effective field in a type hierarchy may use this annotation. It cannot be mixed
  * with {@link JsonAnyGetter} or {@link JsonAnySetter}, and its resolved key type must be exactly
- * {@link String}. Raw Maps, wildcard or unresolved keys, and other key types are invalid. A final
- * field used for reading must already contain a mutable Map.
+ * {@link String}. Raw Maps, wildcard or unresolved keys, and other key types are invalid. On an
+ * ordinary mutable object, a final field used for reading must already contain a mutable Map.
+ * Records and property-list {@link JsonCreator} types instead receive the accumulated Map through
+ * their construction argument.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

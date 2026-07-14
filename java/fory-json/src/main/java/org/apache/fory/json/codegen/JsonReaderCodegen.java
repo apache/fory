@@ -309,6 +309,11 @@ abstract class JsonReaderCodegen {
     String methodName = setter.getName();
     Class<?> castType = valueType.isPrimitive() ? TypeUtils.boxedType(valueType) : valueType;
     String value = valueType == Object.class ? "value" : "(" + ctx.type(castType) + ") value";
+    if (valueType.isPrimitive()) {
+      // Explicit unboxing prevents a boxed overload from winning over the annotated primitive
+      // setter during generated Java overload resolution.
+      value = "(" + value + ")." + valueType.getName() + "Value()";
+    }
     String nullCheck =
         valueType.isPrimitive()
             ? "if (value == null) {\n  throw owner.nullPrimitiveAnyValue();\n}\n"

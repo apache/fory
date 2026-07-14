@@ -458,7 +458,8 @@ For `properties` containing `"source" -> "mobile"`, the result contains `"source
 beside `id`; no nested `properties` member is written. The field reads and writes by default.
 `JsonIgnore` may select one direction, but it cannot disable both. During reading, Fory reuses an
 existing Map or initializes a null non-final field on the first unknown member. A readable final
-field must already contain a mutable Map.
+field on an ordinary mutable object must already contain a mutable Map. Records and property-list
+`JsonCreator` types instead receive the accumulated Map through their construction argument.
 
 Use `JsonAnyGetter` and `JsonAnySetter` for method-backed writing and reading:
 
