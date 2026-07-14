@@ -41,6 +41,7 @@
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
     <fory.mr.classes>${project.build.directory}/multi-release-classes</fory.mr.classes>
     <fory.jdk25.test.classes>${project.build.directory}/jdk25-test-classes</fory.jdk25.test.classes>
+    <maven.source.skip>false</maven.source.skip>
   </properties>
 
   <dependencies>
@@ -355,6 +356,7 @@
                   <goal>run</goal>
                 </goals>
                 <configuration>
+                  <skip>${maven.source.skip}</skip>
                   <target>
                     <property
                         name="multi.release.sources.jar"
@@ -389,7 +391,7 @@
                       <patternset>
                         <include name="META-INF/versions/9/module-info.java"/>
                         <include name="META-INF/versions/16/module-info.java"/>
-                        <include name="META-INF/versions/17/org/apache/fory/graalvm/feature/ForyGraalVMFeature.java"/>
+                        <include name="META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.java"/>
                         <include name="META-INF/versions/25/module-info.java"/>
                       </patternset>
                     </unzip>
@@ -400,7 +402,7 @@
                         file="${multi.release.sources.check.dir}/META-INF/versions/16/module-info.java"
                         property="java16.moduleinfo.source.present"/>
                     <available
-                        file="${multi.release.sources.check.dir}/META-INF/versions/17/org/apache/fory/graalvm/feature/ForyGraalVMFeature.java"
+                        file="${multi.release.sources.check.dir}/META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.java"
                         property="java17.feature.source.present"/>
                     <available
                         file="${multi.release.sources.check.dir}/META-INF/versions/25/module-info.java"
@@ -427,6 +429,7 @@
                   <goal>run</goal>
                 </goals>
                 <configuration>
+                  <skip>${maven.source.skip}</skip>
                   <target>
                     <java
                         classname="org.apache.fory.builder.GraalvmFeatureJarVerifier"

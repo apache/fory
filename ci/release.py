@@ -38,12 +38,12 @@ FORY_CORE_JDK25_ENTRY = (
     "META-INF/versions/25/org/apache/fory/reflect/InstanceFieldAccessors.class"
 )
 FORY_CORE_ACCESSOR = "org.apache.fory.reflect.InstanceFieldAccessors$InstanceAccessor"
-FORY_CORE_FEATURE = "org.apache.fory.graalvm.feature.ForyGraalVMFeature"
+FORY_CORE_FEATURE = "org.apache.fory.platform.ForyGraalVMFeature"
 FORY_CORE_FEATURE_ENTRY = (
-    "META-INF/versions/17/org/apache/fory/graalvm/feature/ForyGraalVMFeature.class"
+    "META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.class"
 )
 FORY_CORE_FEATURE_SOURCE_ENTRY = (
-    "META-INF/versions/17/org/apache/fory/graalvm/feature/ForyGraalVMFeature.java"
+    "META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.java"
 )
 FORY_CORE_NATIVE_IMAGE_PROPERTIES = (
     "META-INF/native-image/org.apache.fory/fory-core/native-image.properties"
@@ -405,7 +405,7 @@ def _verify_fory_core_mr_jar():
     feature_entries = [
         name
         for name in names
-        if name.endswith("org/apache/fory/graalvm/feature/ForyGraalVMFeature.class")
+        if name.endswith("org/apache/fory/platform/ForyGraalVMFeature.class")
     ]
     if feature_entries != [FORY_CORE_FEATURE_ENTRY]:
         raise RuntimeError(
@@ -436,7 +436,7 @@ def _verify_fory_core_mr_jar():
     feature_source_entries = [
         name
         for name in source_names
-        if name.endswith("org/apache/fory/graalvm/feature/ForyGraalVMFeature.java")
+        if name.endswith("org/apache/fory/platform/ForyGraalVMFeature.java")
     ]
     if feature_source_entries != [FORY_CORE_FEATURE_SOURCE_ENTRY]:
         raise RuntimeError(

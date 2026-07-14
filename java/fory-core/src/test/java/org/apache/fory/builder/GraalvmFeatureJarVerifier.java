@@ -37,14 +37,13 @@ import java.util.jar.Manifest;
 
 /** Verifies the packaged GraalVM Feature and its Native Image activation metadata. */
 public final class GraalvmFeatureJarVerifier {
-  private static final String FEATURE_CLASS_NAME =
-      "org.apache.fory.graalvm.feature.ForyGraalVMFeature";
+  private static final String FEATURE_CLASS_NAME = "org.apache.fory.platform.ForyGraalVMFeature";
   private static final String FEATURE_CLASS_FILE =
-      "org/apache/fory/graalvm/feature/ForyGraalVMFeature.class";
+      "org/apache/fory/platform/ForyGraalVMFeature.class";
   private static final String VERSION_17_FEATURE_CLASS =
       "META-INF/versions/17/" + FEATURE_CLASS_FILE;
   private static final String FEATURE_SOURCE_FILE =
-      "org/apache/fory/graalvm/feature/ForyGraalVMFeature.java";
+      "org/apache/fory/platform/ForyGraalVMFeature.java";
   private static final String VERSION_17_FEATURE_SOURCE =
       "META-INF/versions/17/" + FEATURE_SOURCE_FILE;
   private static final String NATIVE_IMAGE_PROPERTIES =
