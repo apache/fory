@@ -2269,6 +2269,10 @@ public abstract class TypeResolver {
     if (newChecker instanceof AllowListChecker) {
       ((AllowListChecker) newChecker).addListener(this);
     }
+    TypeChecker oldChecker = extRegistry.typeChecker;
+    if (oldChecker != newChecker && oldChecker instanceof AllowListChecker) {
+      ((AllowListChecker) oldChecker).removeListener(this);
+    }
     sharedRegistry.clearCheckerCache();
     extRegistry.typeChecker = newChecker;
   }

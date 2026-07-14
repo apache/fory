@@ -221,6 +221,23 @@ public class AllowListCheckerTest {
   }
 
   @Test
+  public void testCheckerReplacement() {
+    String missingClass = "org.apache.fory.missing.Type";
+    AllowListChecker oldChecker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withTypeChecker(oldChecker)
+            .build();
+    fory.serialize("value");
+
+    fory.getTypeResolver().setTypeChecker(new AllowListChecker(AllowListChecker.CheckLevel.WARN));
+    oldChecker.disallowClass(missingClass);
+    assertThrows(InsecureException.class, () -> oldChecker.checkType(null, missingClass));
+  }
+
+  @Test
   public void testDisallowClearsCheckerCache() {
     AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
     Fory fory =

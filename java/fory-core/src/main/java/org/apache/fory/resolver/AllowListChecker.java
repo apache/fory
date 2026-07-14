@@ -253,6 +253,15 @@ public class AllowListChecker implements TypeChecker {
     }
   }
 
+  void removeListener(TypeResolver resolver) {
+    try {
+      lock.writeLock().lock();
+      listeners.remove(resolver);
+    } finally {
+      lock.writeLock().unlock();
+    }
+  }
+
   private void checkRegistrationOpen() {
     for (TypeResolver resolver : listeners.keySet()) {
       if (resolver.isRegistrationFinished()) {
