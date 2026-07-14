@@ -61,8 +61,14 @@ public final class Probe {
     require(
         "{\"value\":\"annotated\"}"
             .equals(new String(annotated.toJsonBytes(holder), StandardCharsets.UTF_8)));
-    require("latin".equals(annotated.fromJson("{\"value\":\"latin\"}", AnnotatedHolder.class).value.text));
-    require("\u6587".equals(annotated.fromJson("{\"value\":\"\u6587\"}", AnnotatedHolder.class).value.text));
+    require(
+        "latin"
+            .equals(
+                annotated.fromJson("{\"value\":\"latin\"}", AnnotatedHolder.class).value.text));
+    require(
+        "\u6587"
+            .equals(
+                annotated.fromJson("{\"value\":\"\u6587\"}", AnnotatedHolder.class).value.text));
     require(
         "utf8"
             .equals(

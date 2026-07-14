@@ -75,8 +75,10 @@ import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.StringSerializer;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class JsonAsyncCompilationTest {
@@ -652,6 +654,10 @@ public class JsonAsyncCompilationTest {
 
   @Test
   public void annotatedBindingsStayIsolated() throws Exception {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
     assertBindingOrder(false);
     assertBindingOrder(true);
   }

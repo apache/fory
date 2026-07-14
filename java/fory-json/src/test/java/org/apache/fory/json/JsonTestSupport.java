@@ -31,6 +31,7 @@ import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.serializer.StringSerializer;
 
 final class JsonTestSupport {
   private static final JsonConfig CONFIG =
@@ -140,6 +141,13 @@ final class JsonTestSupport {
     } catch (ReflectiveOperationException e) {
       throw new AssertionError(e);
     }
+  }
+
+  static String stringReaderPath(String input) {
+    return StringSerializer.isBytesBackedString()
+            && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(input))
+        ? "latin1"
+        : "utf16";
   }
 
   static int pooledStateCount(ForyJson json) {

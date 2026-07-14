@@ -163,7 +163,10 @@ public class JsonCodecHierarchyTest extends ForyJsonTestModels {
   @Test
   public void inheritedResults() {
     ForyJson json = newJson();
-    assertEquals(json.fromJson("\"latin\"", ReadChild.class).reader, "latin1");
+    String latinJson = "\"latin\"";
+    assertEquals(
+        json.fromJson(latinJson, ReadChild.class).reader,
+        JsonTestSupport.stringReaderPath(latinJson));
     assertEquals(json.fromJson("\"你好\"", ReadChild.class).reader, "utf16");
     assertEquals(
         json.fromJson("\"utf8\"".getBytes(StandardCharsets.UTF_8), ReadChild.class).reader, "utf8");

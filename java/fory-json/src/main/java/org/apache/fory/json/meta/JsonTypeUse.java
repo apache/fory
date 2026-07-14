@@ -525,7 +525,7 @@ public final class JsonTypeUse {
     }
     return new JsonTypeUse(
         type,
-        annotation == null ? null : codecClass(annotation, source, path),
+        annotation == null ? null : readCodecClass(annotation, source, path),
         annotation == null ? NO_SOURCES : new String[] {source + " at " + path},
         arguments,
         component,
@@ -533,7 +533,7 @@ public final class JsonTypeUse {
         lower);
   }
 
-  private static Class<? extends JsonValueCodec<?>> codecClass(
+  private static Class<? extends JsonValueCodec<?>> readCodecClass(
       JsonCodec annotation, String source, String path) {
     try {
       return annotation.value();

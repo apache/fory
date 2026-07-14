@@ -39,7 +39,9 @@ import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.TypeRef;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class JsonTypeUseTest {
@@ -63,6 +65,10 @@ public class JsonTypeUseTest {
 
   @Test
   public void testOwnerSubstitution() throws Exception {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
     JsonTypeUse owner = typeUse("envelope");
     Field value = Envelope.class.getDeclaredField("value");
     assertNull(JsonTypeUse.forField(value));
@@ -76,6 +82,10 @@ public class JsonTypeUseTest {
 
   @Test
   public void testHierarchyProjection() throws Exception {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
     JsonTypeUse values = typeUse("reorderedValues");
     JsonTypeUse collection = values.projectTo(Collection.class, "reorderedValues");
     assertEquals(collection.argumentCount(), 1);

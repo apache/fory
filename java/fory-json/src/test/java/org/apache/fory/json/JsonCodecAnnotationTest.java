@@ -68,7 +68,9 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     String expected = "{\"value\":\"P:x\"}";
     assertEquals(json.toJson(value), expected);
     assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
-    assertEquals(json.fromJson(expected, RepresentationModel.class).value, "latin1:x");
+    assertEquals(
+        json.fromJson(expected, RepresentationModel.class).value,
+        JsonTestSupport.stringReaderPath(expected) + ":x");
     assertEquals(
         json.fromJson("{\"value\":\"P:你好\"}", RepresentationModel.class).value, "utf16:你好");
     assertEquals(
@@ -225,7 +227,15 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     assertEquals(json.toJson(concrete), "{\"value\":[\"A:x\"]}");
     assertEquals(
         json.fromJson("{\"value\":[\"A:y\"]}", ConcreteListModel.class).value, Arrays.asList("y"));
+  }
 
+  @Test
+  public void reorderedCollection() {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
+    ForyJson json = newJson();
     ReorderedListModel reordered = new ReorderedListModel();
     reordered.value = new ReorderedList<>();
     reordered.value.add("x");
@@ -266,6 +276,10 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
 
   @Test
   public void ownerSubstitution() {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
     ForyJson json = newJson();
     EnvelopeOwner owner = new EnvelopeOwner();
     owner.envelope = new Envelope<>();
@@ -274,7 +288,11 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     assertEquals(
         json.fromJson("{\"envelope\":{\"value\":\"A:y\"}}", EnvelopeOwner.class).envelope.value,
         "y");
+  }
 
+  @Test
+  public void equalOwnerCodec() {
+    ForyJson json = newJson();
     EqualEnvelopeOwner equal = new EqualEnvelopeOwner();
     equal.envelope = new AnnotatedEnvelope<>();
     equal.envelope.value = "x";
@@ -287,12 +305,20 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void ownerFailures() {
+  public void ownerConflict() {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
     assertFailure(
         () -> newJson().toJson(new ConflictingEnvelopeOwner()),
         "Conflicting @JsonCodec values",
         AStringCodec.class.getName(),
         BStringCodec.class.getName());
+  }
+
+  @Test
+  public void rawOwnerFailure() {
     assertFailure(
         () -> newJson().toJson(new RawEnvelopeOwner()),
         "does not resolve to one concrete target",

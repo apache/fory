@@ -30,6 +30,7 @@ import java.lang.annotation.Target;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.util.List;
+import org.apache.fory.platform.JdkVersion;
 import org.testng.annotations.Test;
 
 public class TypeUseMetadataTest {
@@ -88,7 +89,14 @@ public class TypeUseMetadataTest {
     Object[] lowerBounds = TypeUseMetadata.wildcardLowerBounds(lowerWildcard);
     assertEquals(lowerBounds.length, 1);
     assertMarker(lowerBounds[0], "lower");
-    assertEquals(TypeUseMetadata.wildcardUpperBounds(lowerWildcard).length, 1);
+    Object[] implicitUpperBounds = TypeUseMetadata.wildcardUpperBounds(lowerWildcard);
+    if (JdkVersion.MAJOR_VERSION == 8) {
+      // JDK 8 omits the implicit Object upper bound for ? super T.
+      assertEquals(implicitUpperBounds.length, 0);
+    } else {
+      assertEquals(implicitUpperBounds.length, 1);
+      assertEquals(TypeUseMetadata.typeRef(implicitUpperBounds[0]).getRawType(), Object.class);
+    }
 
     assertNull(TypeUseMetadata.wildcardUpperBounds(lowerBounds[0]));
     assertNull(TypeUseMetadata.wildcardLowerBounds(lowerBounds[0]));
