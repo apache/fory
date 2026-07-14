@@ -498,7 +498,7 @@ not be mapped separately. An any-setter has no logical property name and does no
 
 The logical name is used only for grouping and `JsonPropertyOrder`; it is not a fixed JSON member.
 An input member with that name is a dynamic entry rather than a nested aggregate. The same output
-key remains valid unless another fixed property or subtype discriminator conflicts with it.
+key remains valid unless another fixed property conflicts with it.
 
 One effective type hierarchy may use either one Any field or up to one any-getter and one
 any-setter. Field-backed and method-backed forms cannot be mixed, and method annotations are invalid
@@ -511,11 +511,13 @@ Dynamic keys are emitted unchanged in Map iteration order. A null Map emits noth
 Map value emits JSON null regardless of fixed-property null settings. Null and non-String output
 keys are rejected. Raw Maps, wildcard or unresolved keys, and non-String key types are invalid.
 Declared fixed members, including members excluded from reading, are not delivered to an Any
-input. Output keys whose Fory field-name hash conflicts with a fixed property or inline subtype
-discriminator are rejected, including differently spelled hash collisions. Repeated unknown names
-replace the Map value; an any-setter is called for every occurrence. Fixed input lookup is also
-hash-based, so a differently spelled colliding name follows the fixed member instead of Any
-handling. Escaped input names are decoded before delivery.
+input. Output keys whose Fory field-name hash conflicts with a fixed property are rejected,
+including differently spelled hash collisions. Fory does not inspect an Any Map for an inline
+subtype discriminator key; such a key emits a duplicate JSON member, so applications must keep
+dynamic keys distinct from the active discriminator. Repeated unknown names replace the Map value;
+an any-setter is called for every occurrence. Fixed input lookup is also hash-based, so a
+differently spelled colliding name follows the fixed member instead of Any handling. Escaped input
+names are decoded before delivery.
 
 ### `JsonCreator`
 

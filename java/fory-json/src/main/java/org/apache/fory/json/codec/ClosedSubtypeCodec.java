@@ -25,6 +25,7 @@ import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -43,6 +44,10 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
   private final JsonSubTypesInfo definition;
   private final JsonTypeInfo[] children;
   private final ObjectCodec<Object>[] objectCodecs;
+  private JsonFieldTable[] inlineReadTables;
+  private Latin1ReaderCodec<Object>[] inlineLatin1Readers;
+  private Utf16ReaderCodec<Object>[] inlineUtf16Readers;
+  private Utf8ReaderCodec<Object>[] inlineUtf8Readers;
 
   /** Creates an unresolved resolver-local dispatcher shell for a validated subtype definition. */
   @Internal
@@ -76,6 +81,19 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
         ObjectCodec<?> objectCodec = resolver.getObjectCodec(subtype);
         rejectDiscriminatorCollision(objectCodec, definition.scanInfo.property());
         objectCodecs[i] = (ObjectCodec<Object>) objectCodec;
+        ObjectCodec.AnyInfo any = objectCodec.anyInfo();
+        if (any != null && (any.readField() != null || any.readSetter() != null)) {
+          if (inlineReadTables == null) {
+            inlineReadTables = new JsonFieldTable[children.length];
+            inlineLatin1Readers = new Latin1ReaderCodec[children.length];
+            inlineUtf16Readers = new Utf16ReaderCodec[children.length];
+            inlineUtf8Readers = new Utf8ReaderCodec[children.length];
+          }
+          JsonFieldTable table =
+              objectCodec.readTable().withSkippedName(definition.scanInfo.property());
+          inlineReadTables[i] = table;
+          resolver.resolveInlineAnyReaders(this, i, objectCodec, table);
+        }
         // Member-writer generation is requested once while the closed table is resolved. The
         // child capability slots are the single publication owner, so async completion becomes
         // visible to this dispatcher without a second cache or a resolver lookup on every value.
@@ -97,8 +115,7 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
       writer.writeObjectStart();
       writer.writeRawValue(
           definition.stringSubtypePrefixes[index], definition.stringUtf16SubtypePrefixes[index]);
-      stringObjectWriter(index)
-          .writeStringMembers(writer, value, 1, definition.scanInfo.propertyHash());
+      stringObjectWriter(index).writeStringMembers(writer, value, 1);
       writer.writeObjectEnd();
       return;
     }
@@ -127,8 +144,7 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     if (definition.inclusion == Inclusion.PROPERTY) {
       writer.writeObjectStart();
       writer.writeRawValue(definition.utf8SubtypePrefixes[index]);
-      utf8ObjectWriter(index)
-          .writeUtf8Members(writer, value, 1, definition.scanInfo.propertyHash());
+      utf8ObjectWriter(index).writeUtf8Members(writer, value, 1);
       writer.writeObjectEnd();
       return;
     }
@@ -152,7 +168,14 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     }
     if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
-      return children[index].latin1Reader().readLatin1(reader, definition.scanInfo.propertyHash());
+      JsonFieldTable[] tables = inlineReadTables;
+      if (tables != null && tables[index] != null) {
+        Latin1ReaderCodec<Object> codec = inlineLatin1Readers[index];
+        return codec == null
+            ? objectCodecs[index].readLatin1Object(reader, tables[index])
+            : codec.readLatin1(reader);
+      }
+      return children[index].latin1Reader().readLatin1(reader);
     }
     reader.enterDepth();
     Object value;
@@ -180,7 +203,14 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     }
     if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
-      return children[index].utf16Reader().readUtf16(reader, definition.scanInfo.propertyHash());
+      JsonFieldTable[] tables = inlineReadTables;
+      if (tables != null && tables[index] != null) {
+        Utf16ReaderCodec<Object> codec = inlineUtf16Readers[index];
+        return codec == null
+            ? objectCodecs[index].readUtf16Object(reader, tables[index])
+            : codec.readUtf16(reader);
+      }
+      return children[index].utf16Reader().readUtf16(reader);
     }
     reader.enterDepth();
     Object value;
@@ -208,7 +238,14 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     }
     if (definition.inclusion == Inclusion.PROPERTY) {
       int index = reader.scanObjectStringField(definition.scanInfo);
-      return children[index].utf8Reader().readUtf8(reader, definition.scanInfo.propertyHash());
+      JsonFieldTable[] tables = inlineReadTables;
+      if (tables != null && tables[index] != null) {
+        Utf8ReaderCodec<Object> codec = inlineUtf8Readers[index];
+        return codec == null
+            ? objectCodecs[index].readUtf8Object(reader, tables[index])
+            : codec.readUtf8(reader);
+      }
+      return children[index].utf8Reader().readUtf8(reader);
     }
     reader.enterDepth();
     Object value;
@@ -250,6 +287,21 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     return writer instanceof Utf8ObjectWriter
         ? (Utf8ObjectWriter<Object>) writer
         : objectCodecs[index];
+  }
+
+  @Internal
+  public void setInlineLatin1Reader(int index, Latin1ReaderCodec<Object> reader) {
+    inlineLatin1Readers[index] = reader;
+  }
+
+  @Internal
+  public void setInlineUtf16Reader(int index, Utf16ReaderCodec<Object> reader) {
+    inlineUtf16Readers[index] = reader;
+  }
+
+  @Internal
+  public void setInlineUtf8Reader(int index, Utf8ReaderCodec<Object> reader) {
+    inlineUtf8Readers[index] = reader;
   }
 
   private static void rejectDiscriminatorCollision(ObjectCodec<?> codec, String property) {

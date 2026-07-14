@@ -37,6 +37,7 @@ import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -48,8 +49,10 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonSubTypes;
+import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
@@ -121,6 +124,37 @@ public class JsonAsyncCompilationTest {
         4);
     assertNotSame(info.utf8Reader(), owner);
     assertSame(resolver.getObjectCodec(AsyncChild.class), owner);
+  }
+
+  @Test
+  public void inlineAnyReadersInstall() throws Exception {
+    ControlledJson controlled = controlledJson();
+    ForyJson json = controlled.json;
+    AsyncInlineChild initial =
+        (AsyncInlineChild) json.fromJson("{\"kind\":\"child\",\"x\":1}", AsyncInlineShape.class);
+    assertEquals(initial.properties, Collections.singletonMap("x", 1));
+
+    controlled.executor.runAll();
+    JsonTypeResolver resolver = primaryTypeResolver(json);
+    ClosedSubtypeCodec codec =
+        (ClosedSubtypeCodec)
+            resolver.getTypeInfo(AsyncInlineShape.class, AsyncInlineShape.class).latin1Reader();
+    assertNotNull(((Object[]) field(codec, "inlineLatin1Readers"))[0]);
+    assertNotNull(((Object[]) field(codec, "inlineUtf16Readers"))[0]);
+    assertNotNull(((Object[]) field(codec, "inlineUtf8Readers"))[0]);
+
+    AsyncInlineChild latin1 =
+        (AsyncInlineChild) json.fromJson("{\"x\":2,\"kind\":\"child\"}", AsyncInlineShape.class);
+    assertEquals(latin1.properties, Collections.singletonMap("x", 2));
+    AsyncInlineChild utf16 =
+        (AsyncInlineChild) json.fromJson("{\"键\":3,\"kind\":\"child\"}", AsyncInlineShape.class);
+    assertEquals(utf16.properties, Collections.singletonMap("键", 3));
+    AsyncInlineChild utf8 =
+        (AsyncInlineChild)
+            json.fromJson(
+                "{\"kind\":\"child\",\"byte\":4}".getBytes(StandardCharsets.UTF_8),
+                AsyncInlineShape.class);
+    assertEquals(utf8.properties, Collections.singletonMap("byte", 4));
   }
 
   @Test
@@ -1075,6 +1109,15 @@ public class JsonAsyncCompilationTest {
     private AsyncCircle(int radius) {
       this.radius = radius;
     }
+  }
+
+  @JsonSubTypes(
+      property = "kind",
+      value = {@JsonSubTypes.Type(value = AsyncInlineChild.class, name = "child")})
+  public interface AsyncInlineShape {}
+
+  public static final class AsyncInlineChild implements AsyncInlineShape {
+    @JsonAnyProperty public Map<String, Integer> properties;
   }
 
   @JsonSubTypes(

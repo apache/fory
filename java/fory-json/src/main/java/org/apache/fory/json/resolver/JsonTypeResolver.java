@@ -50,6 +50,7 @@ import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -442,6 +443,121 @@ public final class JsonTypeResolver {
     return (Utf8ReaderCodec<T>) installed;
   }
 
+  @Internal
+  public void resolveInlineAnyReaders(
+      ClosedSubtypeCodec parent, int index, ObjectCodec<?> codec, JsonFieldTable readTable) {
+    requireJITLock();
+    ObjectCodec<Object> owner = erase(codec);
+    JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
+    if (typeInfo == null || codegen == null || !codegen.canCompileReader(owner)) {
+      return;
+    }
+    resolveInlineLatin1Reader(parent, index, owner, typeInfo, readTable);
+    resolveInlineUtf16Reader(parent, index, owner, typeInfo, readTable);
+    resolveInlineUtf8Reader(parent, index, owner, typeInfo, readTable);
+  }
+
+  private void resolveInlineLatin1Reader(
+      ClosedSubtypeCodec parent,
+      int index,
+      ObjectCodec<Object> owner,
+      JsonTypeInfo typeInfo,
+      JsonFieldTable readTable) {
+    Latin1ReaderCodec<Object> current = latin1Reader(owner);
+    if (current != owner) {
+      parent.setInlineLatin1Reader(
+          index, newInlineLatin1Reader(owner, current.getClass(), readTable));
+      return;
+    }
+    jitContext.registerJITNotifyCallback(
+        codegen.latin1ReaderJITId(owner.type()),
+        new JsonJITContext.NotifyCallback() {
+          @Override
+          public void onNotifyResult(Object result) {
+            Latin1ReaderCodec<Object> installed = typeInfo.latin1Reader();
+            checkGeneratedClass(result, installed);
+            parent.setInlineLatin1Reader(
+                index, newInlineLatin1Reader(owner, (Class<?>) result, readTable));
+          }
+
+          @Override
+          public void onNotifyMissed() {
+            Latin1ReaderCodec<Object> installed = typeInfo.latin1Reader();
+            if (installed != owner) {
+              parent.setInlineLatin1Reader(
+                  index, newInlineLatin1Reader(owner, installed.getClass(), readTable));
+            }
+          }
+        });
+  }
+
+  private void resolveInlineUtf16Reader(
+      ClosedSubtypeCodec parent,
+      int index,
+      ObjectCodec<Object> owner,
+      JsonTypeInfo typeInfo,
+      JsonFieldTable readTable) {
+    Utf16ReaderCodec<Object> current = utf16Reader(owner);
+    if (current != owner) {
+      parent.setInlineUtf16Reader(
+          index, newInlineUtf16Reader(owner, current.getClass(), readTable));
+      return;
+    }
+    jitContext.registerJITNotifyCallback(
+        codegen.utf16ReaderJITId(owner.type()),
+        new JsonJITContext.NotifyCallback() {
+          @Override
+          public void onNotifyResult(Object result) {
+            Utf16ReaderCodec<Object> installed = typeInfo.utf16Reader();
+            checkGeneratedClass(result, installed);
+            parent.setInlineUtf16Reader(
+                index, newInlineUtf16Reader(owner, (Class<?>) result, readTable));
+          }
+
+          @Override
+          public void onNotifyMissed() {
+            Utf16ReaderCodec<Object> installed = typeInfo.utf16Reader();
+            if (installed != owner) {
+              parent.setInlineUtf16Reader(
+                  index, newInlineUtf16Reader(owner, installed.getClass(), readTable));
+            }
+          }
+        });
+  }
+
+  private void resolveInlineUtf8Reader(
+      ClosedSubtypeCodec parent,
+      int index,
+      ObjectCodec<Object> owner,
+      JsonTypeInfo typeInfo,
+      JsonFieldTable readTable) {
+    Utf8ReaderCodec<Object> current = utf8Reader(owner);
+    if (current != owner) {
+      parent.setInlineUtf8Reader(index, newInlineUtf8Reader(owner, current.getClass(), readTable));
+      return;
+    }
+    jitContext.registerJITNotifyCallback(
+        codegen.utf8ReaderJITId(owner.type()),
+        new JsonJITContext.NotifyCallback() {
+          @Override
+          public void onNotifyResult(Object result) {
+            Utf8ReaderCodec<Object> installed = typeInfo.utf8Reader();
+            checkGeneratedClass(result, installed);
+            parent.setInlineUtf8Reader(
+                index, newInlineUtf8Reader(owner, (Class<?>) result, readTable));
+          }
+
+          @Override
+          public void onNotifyMissed() {
+            Utf8ReaderCodec<Object> installed = typeInfo.utf8Reader();
+            if (installed != owner) {
+              parent.setInlineUtf8Reader(
+                  index, newInlineUtf8Reader(owner, installed.getClass(), readTable));
+            }
+          }
+        });
+  }
+
   @SuppressWarnings("unchecked")
   private StringWriterCodec<Object> newStringWriter(ObjectCodec<?> owner, Class<?> generatedClass) {
     JsonFieldInfo[] fields = owner.writeFields();
@@ -512,6 +628,12 @@ public final class JsonTypeResolver {
 
   @SuppressWarnings("unchecked")
   private Latin1ReaderCodec<Object> newLatin1Reader(ObjectCodec<?> owner, Class<?> generatedClass) {
+    return newLatin1Reader(owner, generatedClass, owner.readTable());
+  }
+
+  @SuppressWarnings("unchecked")
+  private Latin1ReaderCodec<Object> newLatin1Reader(
+      ObjectCodec<?> owner, Class<?> generatedClass, JsonFieldTable readTable) {
     JsonFieldInfo[] fields = owner.readFields();
     JsonCreatorInfo creator = owner.creatorInfo();
     if (creator != null) {
@@ -526,7 +648,7 @@ public final class JsonTypeResolver {
         return instantiateLatin1Reader(generatedClass, owner, fields, codecs);
       }
       if (!storesAnyCodec(owner, any)) {
-        return instantiateAnyLatin1Reader(generatedClass, owner, fields, codecs);
+        return instantiateAnyLatin1Reader(generatedClass, owner, readTable, fields, codecs);
       }
       Latin1ReaderCodec<Object> anyCodec = any.valueTypeInfo().latin1Reader();
       if (any.valueTypeInfo().usesDefaultObjectCodec()
@@ -534,7 +656,7 @@ public final class JsonTypeResolver {
           && anyCodec instanceof ObjectCodec) {
         anyCodec = latin1Reader((ObjectCodec<Object>) anyCodec);
       }
-      return instantiateAnyLatin1Reader(generatedClass, owner, fields, codecs, anyCodec);
+      return instantiateAnyLatin1Reader(generatedClass, owner, readTable, fields, codecs, anyCodec);
     }
     Latin1ReaderCodec<Object>[] codecs =
         (Latin1ReaderCodec<Object>[]) new Latin1ReaderCodec<?>[fields.length];
@@ -554,7 +676,7 @@ public final class JsonTypeResolver {
       return instantiateLatin1Reader(generatedClass, owner, fields, codecs);
     }
     if (!storesAnyCodec(owner, any)) {
-      return instantiateAnyLatin1Reader(generatedClass, owner, fields, codecs);
+      return instantiateAnyLatin1Reader(generatedClass, owner, readTable, fields, codecs);
     }
     Latin1ReaderCodec<Object> anyCodec = any.valueTypeInfo().latin1Reader();
     if (any.valueTypeInfo().usesDefaultObjectCodec()
@@ -562,11 +684,17 @@ public final class JsonTypeResolver {
         && anyCodec instanceof ObjectCodec) {
       anyCodec = latin1Reader((ObjectCodec<Object>) anyCodec);
     }
-    return instantiateAnyLatin1Reader(generatedClass, owner, fields, codecs, anyCodec);
+    return instantiateAnyLatin1Reader(generatedClass, owner, readTable, fields, codecs, anyCodec);
   }
 
   @SuppressWarnings("unchecked")
   private Utf16ReaderCodec<Object> newUtf16Reader(ObjectCodec<?> owner, Class<?> generatedClass) {
+    return newUtf16Reader(owner, generatedClass, owner.readTable());
+  }
+
+  @SuppressWarnings("unchecked")
+  private Utf16ReaderCodec<Object> newUtf16Reader(
+      ObjectCodec<?> owner, Class<?> generatedClass, JsonFieldTable readTable) {
     JsonFieldInfo[] fields = owner.readFields();
     JsonCreatorInfo creator = owner.creatorInfo();
     if (creator != null) {
@@ -581,7 +709,7 @@ public final class JsonTypeResolver {
         return instantiateUtf16Reader(generatedClass, owner, fields, codecs);
       }
       if (!storesAnyCodec(owner, any)) {
-        return instantiateAnyUtf16Reader(generatedClass, owner, fields, codecs);
+        return instantiateAnyUtf16Reader(generatedClass, owner, readTable, fields, codecs);
       }
       Utf16ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf16Reader();
       if (any.valueTypeInfo().usesDefaultObjectCodec()
@@ -589,7 +717,7 @@ public final class JsonTypeResolver {
           && anyCodec instanceof ObjectCodec) {
         anyCodec = utf16Reader((ObjectCodec<Object>) anyCodec);
       }
-      return instantiateAnyUtf16Reader(generatedClass, owner, fields, codecs, anyCodec);
+      return instantiateAnyUtf16Reader(generatedClass, owner, readTable, fields, codecs, anyCodec);
     }
     Utf16ReaderCodec<Object>[] codecs =
         (Utf16ReaderCodec<Object>[]) new Utf16ReaderCodec<?>[fields.length];
@@ -608,7 +736,7 @@ public final class JsonTypeResolver {
       return instantiateUtf16Reader(generatedClass, owner, fields, codecs);
     }
     if (!storesAnyCodec(owner, any)) {
-      return instantiateAnyUtf16Reader(generatedClass, owner, fields, codecs);
+      return instantiateAnyUtf16Reader(generatedClass, owner, readTable, fields, codecs);
     }
     Utf16ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf16Reader();
     if (any.valueTypeInfo().usesDefaultObjectCodec()
@@ -616,11 +744,17 @@ public final class JsonTypeResolver {
         && anyCodec instanceof ObjectCodec) {
       anyCodec = utf16Reader((ObjectCodec<Object>) anyCodec);
     }
-    return instantiateAnyUtf16Reader(generatedClass, owner, fields, codecs, anyCodec);
+    return instantiateAnyUtf16Reader(generatedClass, owner, readTable, fields, codecs, anyCodec);
   }
 
   @SuppressWarnings("unchecked")
   private Utf8ReaderCodec<Object> newUtf8Reader(ObjectCodec<?> owner, Class<?> generatedClass) {
+    return newUtf8Reader(owner, generatedClass, owner.readTable());
+  }
+
+  @SuppressWarnings("unchecked")
+  private Utf8ReaderCodec<Object> newUtf8Reader(
+      ObjectCodec<?> owner, Class<?> generatedClass, JsonFieldTable readTable) {
     JsonFieldInfo[] fields = owner.readFields();
     JsonCreatorInfo creator = owner.creatorInfo();
     if (creator != null) {
@@ -635,7 +769,7 @@ public final class JsonTypeResolver {
         return instantiateUtf8Reader(generatedClass, owner, fields, codecs);
       }
       if (!storesAnyCodec(owner, any)) {
-        return instantiateAnyUtf8Reader(generatedClass, owner, fields, codecs);
+        return instantiateAnyUtf8Reader(generatedClass, owner, readTable, fields, codecs);
       }
       Utf8ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf8Reader();
       if (any.valueTypeInfo().usesDefaultObjectCodec()
@@ -643,7 +777,7 @@ public final class JsonTypeResolver {
           && anyCodec instanceof ObjectCodec) {
         anyCodec = utf8Reader((ObjectCodec<Object>) anyCodec);
       }
-      return instantiateAnyUtf8Reader(generatedClass, owner, fields, codecs, anyCodec);
+      return instantiateAnyUtf8Reader(generatedClass, owner, readTable, fields, codecs, anyCodec);
     }
     Utf8ReaderCodec<Object>[] codecs =
         (Utf8ReaderCodec<Object>[]) new Utf8ReaderCodec<?>[fields.length];
@@ -662,7 +796,7 @@ public final class JsonTypeResolver {
       return instantiateUtf8Reader(generatedClass, owner, fields, codecs);
     }
     if (!storesAnyCodec(owner, any)) {
-      return instantiateAnyUtf8Reader(generatedClass, owner, fields, codecs);
+      return instantiateAnyUtf8Reader(generatedClass, owner, readTable, fields, codecs);
     }
     Utf8ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf8Reader();
     if (any.valueTypeInfo().usesDefaultObjectCodec()
@@ -670,7 +804,34 @@ public final class JsonTypeResolver {
         && anyCodec instanceof ObjectCodec) {
       anyCodec = utf8Reader((ObjectCodec<Object>) anyCodec);
     }
-    return instantiateAnyUtf8Reader(generatedClass, owner, fields, codecs, anyCodec);
+    return instantiateAnyUtf8Reader(generatedClass, owner, readTable, fields, codecs, anyCodec);
+  }
+
+  private Latin1ReaderCodec<Object> newInlineLatin1Reader(
+      ObjectCodec<Object> owner, Class<?> generatedClass, JsonFieldTable readTable) {
+    Latin1ReaderCodec<Object> codec = newLatin1Reader(owner, generatedClass, readTable);
+    Field[] childFields = readerChildFields(codec, owner);
+    registerLatin1ReaderCallbacks(codec, owner, childFields);
+    registerLatin1AnyReaderCallback(codec, owner);
+    return codec;
+  }
+
+  private Utf16ReaderCodec<Object> newInlineUtf16Reader(
+      ObjectCodec<Object> owner, Class<?> generatedClass, JsonFieldTable readTable) {
+    Utf16ReaderCodec<Object> codec = newUtf16Reader(owner, generatedClass, readTable);
+    Field[] childFields = readerChildFields(codec, owner);
+    registerUtf16ReaderCallbacks(codec, owner, childFields);
+    registerUtf16AnyReaderCallback(codec, owner);
+    return codec;
+  }
+
+  private Utf8ReaderCodec<Object> newInlineUtf8Reader(
+      ObjectCodec<Object> owner, Class<?> generatedClass, JsonFieldTable readTable) {
+    Utf8ReaderCodec<Object> codec = newUtf8Reader(owner, generatedClass, readTable);
+    Field[] childFields = readerChildFields(codec, owner);
+    registerUtf8ReaderCallbacks(codec, owner, childFields);
+    registerUtf8AnyReaderCallback(codec, owner);
+    return codec;
   }
 
   private static boolean storesAnyCodec(ObjectCodec<?> owner, AnyInfo any) {
@@ -1364,15 +1525,20 @@ public final class JsonTypeResolver {
   private static Latin1ReaderCodec<Object> instantiateAnyLatin1Reader(
       Class<?> type,
       ObjectCodec<?> owner,
+      JsonFieldTable readTable,
       JsonFieldInfo[] fields,
       Latin1ReaderCodec<Object>[] codecs) {
     try {
       if (AndroidSupport.IS_ANDROID) {
         Constructor<?> constructor =
             type.getDeclaredConstructor(
-                ObjectCodec.class, JsonFieldInfo[].class, Latin1ReaderCodec[].class);
+                ObjectCodec.class,
+                JsonFieldTable.class,
+                JsonFieldInfo[].class,
+                Latin1ReaderCodec[].class);
         constructor.setAccessible(true);
-        return (Latin1ReaderCodec<Object>) constructor.newInstance(owner, fields, codecs);
+        return (Latin1ReaderCodec<Object>)
+            constructor.newInstance(owner, readTable, fields, codecs);
       }
       MethodHandle constructor =
           _JDKAccess._trustedLookup(type)
@@ -1381,9 +1547,10 @@ public final class JsonTypeResolver {
                   MethodType.methodType(
                       void.class,
                       ObjectCodec.class,
+                      JsonFieldTable.class,
                       JsonFieldInfo[].class,
                       Latin1ReaderCodec[].class));
-      return (Latin1ReaderCodec<Object>) constructor.invoke(owner, fields, codecs);
+      return (Latin1ReaderCodec<Object>) constructor.invoke(owner, readTable, fields, codecs);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot instantiate generated JSON Any Latin1 reader", e);
     }
@@ -1393,6 +1560,7 @@ public final class JsonTypeResolver {
   private static Latin1ReaderCodec<Object> instantiateAnyLatin1Reader(
       Class<?> type,
       ObjectCodec<?> owner,
+      JsonFieldTable readTable,
       JsonFieldInfo[] fields,
       Latin1ReaderCodec<Object>[] codecs,
       Latin1ReaderCodec<Object> anyCodec) {
@@ -1401,11 +1569,13 @@ public final class JsonTypeResolver {
         Constructor<?> constructor =
             type.getDeclaredConstructor(
                 ObjectCodec.class,
+                JsonFieldTable.class,
                 JsonFieldInfo[].class,
                 Latin1ReaderCodec[].class,
                 Latin1ReaderCodec.class);
         constructor.setAccessible(true);
-        return (Latin1ReaderCodec<Object>) constructor.newInstance(owner, fields, codecs, anyCodec);
+        return (Latin1ReaderCodec<Object>)
+            constructor.newInstance(owner, readTable, fields, codecs, anyCodec);
       }
       MethodHandle constructor =
           _JDKAccess._trustedLookup(type)
@@ -1414,10 +1584,12 @@ public final class JsonTypeResolver {
                   MethodType.methodType(
                       void.class,
                       ObjectCodec.class,
+                      JsonFieldTable.class,
                       JsonFieldInfo[].class,
                       Latin1ReaderCodec[].class,
                       Latin1ReaderCodec.class));
-      return (Latin1ReaderCodec<Object>) constructor.invoke(owner, fields, codecs, anyCodec);
+      return (Latin1ReaderCodec<Object>)
+          constructor.invoke(owner, readTable, fields, codecs, anyCodec);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot instantiate generated JSON Any Latin1 reader", e);
     }
@@ -1456,15 +1628,19 @@ public final class JsonTypeResolver {
   private static Utf16ReaderCodec<Object> instantiateAnyUtf16Reader(
       Class<?> type,
       ObjectCodec<?> owner,
+      JsonFieldTable readTable,
       JsonFieldInfo[] fields,
       Utf16ReaderCodec<Object>[] codecs) {
     try {
       if (AndroidSupport.IS_ANDROID) {
         Constructor<?> constructor =
             type.getDeclaredConstructor(
-                ObjectCodec.class, JsonFieldInfo[].class, Utf16ReaderCodec[].class);
+                ObjectCodec.class,
+                JsonFieldTable.class,
+                JsonFieldInfo[].class,
+                Utf16ReaderCodec[].class);
         constructor.setAccessible(true);
-        return (Utf16ReaderCodec<Object>) constructor.newInstance(owner, fields, codecs);
+        return (Utf16ReaderCodec<Object>) constructor.newInstance(owner, readTable, fields, codecs);
       }
       MethodHandle constructor =
           _JDKAccess._trustedLookup(type)
@@ -1473,9 +1649,10 @@ public final class JsonTypeResolver {
                   MethodType.methodType(
                       void.class,
                       ObjectCodec.class,
+                      JsonFieldTable.class,
                       JsonFieldInfo[].class,
                       Utf16ReaderCodec[].class));
-      return (Utf16ReaderCodec<Object>) constructor.invoke(owner, fields, codecs);
+      return (Utf16ReaderCodec<Object>) constructor.invoke(owner, readTable, fields, codecs);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot instantiate generated JSON Any UTF16 reader", e);
     }
@@ -1485,6 +1662,7 @@ public final class JsonTypeResolver {
   private static Utf16ReaderCodec<Object> instantiateAnyUtf16Reader(
       Class<?> type,
       ObjectCodec<?> owner,
+      JsonFieldTable readTable,
       JsonFieldInfo[] fields,
       Utf16ReaderCodec<Object>[] codecs,
       Utf16ReaderCodec<Object> anyCodec) {
@@ -1493,11 +1671,13 @@ public final class JsonTypeResolver {
         Constructor<?> constructor =
             type.getDeclaredConstructor(
                 ObjectCodec.class,
+                JsonFieldTable.class,
                 JsonFieldInfo[].class,
                 Utf16ReaderCodec[].class,
                 Utf16ReaderCodec.class);
         constructor.setAccessible(true);
-        return (Utf16ReaderCodec<Object>) constructor.newInstance(owner, fields, codecs, anyCodec);
+        return (Utf16ReaderCodec<Object>)
+            constructor.newInstance(owner, readTable, fields, codecs, anyCodec);
       }
       MethodHandle constructor =
           _JDKAccess._trustedLookup(type)
@@ -1506,10 +1686,12 @@ public final class JsonTypeResolver {
                   MethodType.methodType(
                       void.class,
                       ObjectCodec.class,
+                      JsonFieldTable.class,
                       JsonFieldInfo[].class,
                       Utf16ReaderCodec[].class,
                       Utf16ReaderCodec.class));
-      return (Utf16ReaderCodec<Object>) constructor.invoke(owner, fields, codecs, anyCodec);
+      return (Utf16ReaderCodec<Object>)
+          constructor.invoke(owner, readTable, fields, codecs, anyCodec);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot instantiate generated JSON Any UTF16 reader", e);
     }
@@ -1548,15 +1730,19 @@ public final class JsonTypeResolver {
   private static Utf8ReaderCodec<Object> instantiateAnyUtf8Reader(
       Class<?> type,
       ObjectCodec<?> owner,
+      JsonFieldTable readTable,
       JsonFieldInfo[] fields,
       Utf8ReaderCodec<Object>[] codecs) {
     try {
       if (AndroidSupport.IS_ANDROID) {
         Constructor<?> constructor =
             type.getDeclaredConstructor(
-                ObjectCodec.class, JsonFieldInfo[].class, Utf8ReaderCodec[].class);
+                ObjectCodec.class,
+                JsonFieldTable.class,
+                JsonFieldInfo[].class,
+                Utf8ReaderCodec[].class);
         constructor.setAccessible(true);
-        return (Utf8ReaderCodec<Object>) constructor.newInstance(owner, fields, codecs);
+        return (Utf8ReaderCodec<Object>) constructor.newInstance(owner, readTable, fields, codecs);
       }
       MethodHandle constructor =
           _JDKAccess._trustedLookup(type)
@@ -1565,9 +1751,10 @@ public final class JsonTypeResolver {
                   MethodType.methodType(
                       void.class,
                       ObjectCodec.class,
+                      JsonFieldTable.class,
                       JsonFieldInfo[].class,
                       Utf8ReaderCodec[].class));
-      return (Utf8ReaderCodec<Object>) constructor.invoke(owner, fields, codecs);
+      return (Utf8ReaderCodec<Object>) constructor.invoke(owner, readTable, fields, codecs);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot instantiate generated JSON Any UTF8 reader", e);
     }
@@ -1577,6 +1764,7 @@ public final class JsonTypeResolver {
   private static Utf8ReaderCodec<Object> instantiateAnyUtf8Reader(
       Class<?> type,
       ObjectCodec<?> owner,
+      JsonFieldTable readTable,
       JsonFieldInfo[] fields,
       Utf8ReaderCodec<Object>[] codecs,
       Utf8ReaderCodec<Object> anyCodec) {
@@ -1585,11 +1773,13 @@ public final class JsonTypeResolver {
         Constructor<?> constructor =
             type.getDeclaredConstructor(
                 ObjectCodec.class,
+                JsonFieldTable.class,
                 JsonFieldInfo[].class,
                 Utf8ReaderCodec[].class,
                 Utf8ReaderCodec.class);
         constructor.setAccessible(true);
-        return (Utf8ReaderCodec<Object>) constructor.newInstance(owner, fields, codecs, anyCodec);
+        return (Utf8ReaderCodec<Object>)
+            constructor.newInstance(owner, readTable, fields, codecs, anyCodec);
       }
       MethodHandle constructor =
           _JDKAccess._trustedLookup(type)
@@ -1598,10 +1788,12 @@ public final class JsonTypeResolver {
                   MethodType.methodType(
                       void.class,
                       ObjectCodec.class,
+                      JsonFieldTable.class,
                       JsonFieldInfo[].class,
                       Utf8ReaderCodec[].class,
                       Utf8ReaderCodec.class));
-      return (Utf8ReaderCodec<Object>) constructor.invoke(owner, fields, codecs, anyCodec);
+      return (Utf8ReaderCodec<Object>)
+          constructor.invoke(owner, readTable, fields, codecs, anyCodec);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot instantiate generated JSON Any UTF8 reader", e);
     }

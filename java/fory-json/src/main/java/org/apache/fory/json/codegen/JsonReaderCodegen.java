@@ -221,6 +221,8 @@ abstract class JsonReaderCodegen {
           readerConstructorExpression(type, properties, record),
           ObjectCodec.class,
           "owner",
+          JsonFieldTable.class,
+          "readTable",
           JsonFieldInfo[].class,
           "properties",
           JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
@@ -233,6 +235,8 @@ abstract class JsonReaderCodegen {
           readerConstructorExpression(type, properties, record),
           ObjectCodec.class,
           "owner",
+          JsonFieldTable.class,
+          "readTable",
           JsonFieldInfo[].class,
           "properties",
           JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
@@ -245,20 +249,6 @@ abstract class JsonReaderCodegen {
         fastReadExpression(builder, readMethod, slowMethod, type, properties, record),
         Object.class,
         concreteReaderType,
-        "reader",
-        boolean.class,
-        "hasDiscriminator",
-        long.class,
-        "discriminatorHash");
-    ctx.addMethod(
-        "@Override public final",
-        readMethod,
-        "if (reader.tryReadNullToken()) {\n  return null;\n}\n"
-            + "return this."
-            + anyReadMethod
-            + "(reader, false, 0L);",
-        Object.class,
-        concreteReaderType,
         "reader");
     ctx.addMethod(
         "@Override public final",
@@ -266,12 +256,10 @@ abstract class JsonReaderCodegen {
         "if (reader.tryReadNullToken()) {\n  return null;\n}\n"
             + "return this."
             + anyReadMethod
-            + "(reader, true, discriminatorHash);",
+            + "(reader);",
         Object.class,
         concreteReaderType,
-        "reader",
-        long.class,
-        "discriminatorHash");
+        "reader");
     addFastReadGroupMethods(
         ctx, builder, readMethod, slowMethod, concreteReaderType, type, properties, record);
     addReadFieldMethods(ctx, builder, readMethod, concreteReaderType, type, properties, record);
@@ -415,6 +403,8 @@ abstract class JsonReaderCodegen {
           creatorConstructorExpression(fields),
           ObjectCodec.class,
           "owner",
+          JsonFieldTable.class,
+          "readTable",
           JsonFieldInfo[].class,
           "properties",
           JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
@@ -427,6 +417,8 @@ abstract class JsonReaderCodegen {
           creatorConstructorExpression(fields),
           ObjectCodec.class,
           "owner",
+          JsonFieldTable.class,
+          "readTable",
           JsonFieldInfo[].class,
           "properties",
           JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
@@ -440,20 +432,6 @@ abstract class JsonReaderCodegen {
         anyCreatorReadExpression(type, creatorInfo),
         Object.class,
         concreteReaderType,
-        "reader",
-        boolean.class,
-        "hasDiscriminator",
-        long.class,
-        "discriminatorHash");
-    ctx.addMethod(
-        "@Override public final",
-        readMethod,
-        "if (reader.tryReadNullToken()) {\n  return null;\n}\n"
-            + "return this."
-            + anyReadMethod
-            + "(reader, false, 0L);",
-        Object.class,
-        concreteReaderType,
         "reader");
     ctx.addMethod(
         "@Override public final",
@@ -461,12 +439,10 @@ abstract class JsonReaderCodegen {
         "if (reader.tryReadNullToken()) {\n  return null;\n}\n"
             + "return this."
             + anyReadMethod
-            + "(reader, true, discriminatorHash);",
+            + "(reader);",
         Object.class,
         concreteReaderType,
-        "reader",
-        long.class,
-        "discriminatorHash");
+        "reader");
     return ctx.genCode();
   }
 
@@ -555,10 +531,7 @@ abstract class JsonReaderCodegen {
             new Expression.Invoke(readTableRef(), "match", TypeRef.of(int.class), true, hash)
                 .inline());
     Expression skip = new Expression.Invoke(readerRef(), "skipValue");
-    Expression reserved =
-        new Expression.LogicalOr(
-            eq(match, Expression.Literal.ofInt(JsonFieldTable.SKIP)),
-            new Expression.LogicalAnd(hasDiscriminatorRef(), eq(hash, discriminatorHashRef())));
+    Expression reserved = eq(match, Expression.Literal.ofInt(JsonFieldTable.SKIP));
     Expression name =
         new Expression.Variable(
             "anyName",
@@ -635,8 +608,7 @@ abstract class JsonReaderCodegen {
       expressions.add(
           new Expression.Assign(
               new Reference("this.readTable", TypeRef.of(JsonFieldTable.class)),
-              new Expression.Invoke(owner, "readTable", TypeRef.of(JsonFieldTable.class))
-                  .inline()));
+              new Reference("readTable", TypeRef.of(JsonFieldTable.class))));
       if (storesAnyReader(ownerType)) {
         expressions.add(
             new Expression.Assign(
@@ -883,11 +855,7 @@ abstract class JsonReaderCodegen {
             long[].class,
             "fieldHashes",
             Map.class,
-            "anyMap",
-            boolean.class,
-            "hasDiscriminator",
-            long.class,
-            "discriminatorHash");
+            "anyMap");
       }
       start = end;
     }
@@ -984,11 +952,7 @@ abstract class JsonReaderCodegen {
         int.class,
         "expectedIndex",
         Map.class,
-        "anyMap",
-        boolean.class,
-        "hasDiscriminator",
-        long.class,
-        "discriminatorHash");
+        "anyMap");
     addGeneratedMethod(
         ctx,
         "final",
@@ -1008,11 +972,7 @@ abstract class JsonReaderCodegen {
         int.class,
         "firstFieldStart",
         Map.class,
-        "anyMap",
-        boolean.class,
-        "hasDiscriminator",
-        long.class,
-        "discriminatorHash");
+        "anyMap");
   }
 
   private void addGeneratedMethod(
@@ -1044,10 +1004,13 @@ abstract class JsonReaderCodegen {
     Reference propertiesRef = new Reference("properties", TypeRef.of(JsonFieldInfo[].class));
     Reference codecsRef = new Reference("codecs", TypeRef.of(readerArrayType()));
     Reference owner = new Reference("owner", TypeRef.of(ObjectCodec.class));
+    Expression table =
+        any == null
+            ? new Expression.Invoke(owner, "readTable", TypeRef.of(JsonFieldTable.class)).inline()
+            : new Reference("readTable", TypeRef.of(JsonFieldTable.class));
     expressions.add(
         new Expression.Assign(
-            new Reference("this.readTable", TypeRef.of(JsonFieldTable.class)),
-            new Expression.Invoke(owner, "readTable", TypeRef.of(JsonFieldTable.class)).inline()));
+            new Reference("this.readTable", TypeRef.of(JsonFieldTable.class)), table));
     if (record || any != null) {
       expressions.add(
           new Expression.Assign(new Reference("this.owner", TypeRef.of(ObjectCodec.class)), owner));
@@ -1227,9 +1190,7 @@ abstract class JsonReaderCodegen {
         readerRef(),
         object,
         hashes,
-        anyMapRef(),
-        hasDiscriminatorRef(),
-        discriminatorHashRef());
+        anyMapRef());
   }
 
   private Expression anyMap(JsonGeneratedCodecBuilder builder, Expression object, boolean record) {
@@ -1997,11 +1958,7 @@ abstract class JsonReaderCodegen {
       Expression anyMapCreated,
       boolean record) {
     Expression skip = new Expression.Invoke(readerRef(), "skipValue");
-    Expression reserved =
-        new Expression.LogicalOr(
-            eq(fieldIndex, Expression.Literal.ofInt(JsonFieldTable.SKIP)),
-            new Expression.LogicalAnd(
-                hasDiscriminatorRef(), eq(fieldHash, discriminatorHashRef())));
+    Expression reserved = eq(fieldIndex, Expression.Literal.ofInt(JsonFieldTable.SKIP));
     Expression name =
         new Expression.Variable(
             "anyName",
@@ -2397,9 +2354,7 @@ abstract class JsonReaderCodegen {
             readerRefForCall(),
             object,
             expectedIndex,
-            anyMapRef(),
-            hasDiscriminatorRef(),
-            discriminatorHashRef());
+            anyMapRef());
       }
       return new Expression.Invoke(
           new Reference("this", TypeRef.of(Object.class)),
@@ -2414,9 +2369,7 @@ abstract class JsonReaderCodegen {
           firstFieldIndex,
           firstFieldHash,
           firstFieldStart,
-          anyMapRef(),
-          hasDiscriminatorRef(),
-          discriminatorHashRef());
+          anyMapRef());
     }
     if (firstFieldIndex == null) {
       return new Expression.Invoke(
@@ -2451,14 +2404,6 @@ abstract class JsonReaderCodegen {
     return any.readField() == null
         ? new Expression.Null(TypeRef.of(Map.class), false)
         : new Reference("anyMap", TypeRef.of(Map.class));
-  }
-
-  private Reference hasDiscriminatorRef() {
-    return new Reference("hasDiscriminator", TypeRef.of(boolean.class));
-  }
-
-  private Reference discriminatorHashRef() {
-    return new Reference("discriminatorHash", TypeRef.of(long.class));
   }
 
   final Expression arrayValue(Expression array, int index) {

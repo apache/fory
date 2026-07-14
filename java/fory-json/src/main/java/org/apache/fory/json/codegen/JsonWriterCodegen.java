@@ -382,25 +382,19 @@ abstract class JsonWriterCodegen {
               properties,
               any,
               new Reference("object", TypeRef.of(type)),
-              new Reference("written", TypeRef.of(int.class)),
-              new Reference("hasDiscriminator", TypeRef.of(boolean.class)),
-              new Reference("discriminatorHash", TypeRef.of(long.class))),
+              new Reference("written", TypeRef.of(int.class))),
           void.class,
           writerType(),
           "writer",
           type,
           "object",
           int.class,
-          "written",
-          boolean.class,
-          "hasDiscriminator",
-          long.class,
-          "discriminatorHash");
+          "written");
       String typeName = ctx.type(type);
       ctx.addMethod(
           "@Override public final",
           membersMethod(),
-          "this." + anyMembersMethod + "(writer, (" + typeName + ") value, written, false, 0L);",
+          "this." + anyMembersMethod + "(writer, (" + typeName + ") value, written);",
           void.class,
           writerType(),
           "writer",
@@ -408,23 +402,6 @@ abstract class JsonWriterCodegen {
           "value",
           int.class,
           "written");
-      ctx.addMethod(
-          "@Override public final",
-          membersMethod(),
-          "this."
-              + anyMembersMethod
-              + "(writer, ("
-              + typeName
-              + ") value, written, true, discriminatorHash);",
-          void.class,
-          writerType(),
-          "writer",
-          Object.class,
-          "value",
-          int.class,
-          "written",
-          long.class,
-          "discriminatorHash");
     }
     return ctx.genCode();
   }
@@ -769,14 +746,7 @@ abstract class JsonWriterCodegen {
       if (i == any.writeIndex()) {
         flushAnyMemberGroup(builder, expressions, memberGroup, object, writer);
         Expression state = written == null ? Expression.Literal.ofInt(1) : written;
-        Expression dynamic =
-            writeAny(
-                builder,
-                any,
-                object,
-                state,
-                Expression.Literal.False,
-                Expression.Literal.ofLong(0));
+        Expression dynamic = writeAny(builder, any, object, state);
         expressions.add(
             commaKnown || written == null ? dynamic : new Expression.Assign(written, dynamic));
       }
@@ -816,9 +786,7 @@ abstract class JsonWriterCodegen {
       JsonFieldInfo[] properties,
       AnyInfo any,
       Expression object,
-      Expression written,
-      Expression hasDiscriminator,
-      Expression discriminatorHash) {
+      Expression written) {
     Expression.ListExpression expressions = new Expression.ListExpression(object);
     Reference writer = writerRef();
     List<Expression> memberGroup =
@@ -828,10 +796,7 @@ abstract class JsonWriterCodegen {
     for (int i = 0; i <= properties.length; i++) {
       if (i == any.writeIndex()) {
         flushAnyMemberGroup(builder, expressions, memberGroup, object, writer);
-        expressions.add(
-            new Expression.Assign(
-                written,
-                writeAny(builder, any, object, written, hasDiscriminator, discriminatorHash)));
+        expressions.add(new Expression.Assign(written, writeAny(builder, any, object, written)));
       }
       if (i == properties.length) {
         break;
@@ -864,12 +829,7 @@ abstract class JsonWriterCodegen {
   }
 
   private Expression writeAny(
-      JsonGeneratedCodecBuilder builder,
-      AnyInfo any,
-      Expression object,
-      Expression written,
-      Expression hasDiscriminator,
-      Expression discriminatorHash) {
+      JsonGeneratedCodecBuilder builder, AnyInfo any, Expression object, Expression written) {
     Expression mapValue;
     if (any.writeGetter() == null) {
       mapValue = builder.anyValue(any.writeField(), object);
@@ -898,9 +858,7 @@ abstract class JsonWriterCodegen {
             storesAnyWriter(any)
                 ? fieldRef("anyWriter", completeWriterType())
                 : new Reference("this", TypeRef.of(completeWriterType())),
-            written,
-            hasDiscriminator,
-            discriminatorHash));
+            written));
   }
 
   private void addMemberGroup(

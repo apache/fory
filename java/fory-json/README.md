@@ -590,8 +590,8 @@ does not claim a backing field.
 
 The Any logical name is used only for property grouping and `JsonPropertyOrder`; it is not itself a
 fixed JSON member. An input member with that name is an ordinary dynamic entry rather than a nested
-aggregate, and the same dynamic output key remains valid unless another fixed property or subtype
-discriminator conflicts with it.
+aggregate, and the same dynamic output key remains valid unless another fixed property conflicts
+with it.
 
 One effective type hierarchy may use either one `JsonAnyProperty` field or at most one effective
 `JsonAnyGetter` and one effective `JsonAnySetter`; the forms cannot be mixed. An unannotated method
@@ -605,11 +605,12 @@ members, and a null Map value writes JSON null regardless of fixed-property null
 non-String output keys are rejected. Raw Maps, wildcard or unresolved keys, and non-String key
 types are invalid. Declared fixed members, including members excluded from reading, are not
 delivered to an Any input. An output key is rejected when its Fory field-name hash conflicts with a
-fixed property or inline subtype discriminator; this also covers differently spelled hash
-collisions. Fixed input lookup is also hash-based, so a differently spelled colliding name follows
-the fixed member instead of Any handling. Repeated unknown input names replace the prior Map value,
-while an any-setter is invoked for every occurrence. Escaped input names are decoded before
-delivery.
+fixed property; this also covers differently spelled hash collisions. Fory does not inspect an Any
+Map for an inline subtype discriminator key. Such a key writes a duplicate JSON member, so
+applications must keep dynamic keys distinct from the active discriminator. Fixed input lookup is
+also hash-based, so a differently spelled colliding name follows the fixed member instead of Any
+handling. Repeated unknown input names replace the prior Map value, while an any-setter is invoked
+for every occurrence. Escaped input names are decoded before delivery.
 
 ### `JsonCreator`
 

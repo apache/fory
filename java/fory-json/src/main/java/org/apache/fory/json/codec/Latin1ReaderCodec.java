@@ -30,9 +30,4 @@ import org.apache.fory.json.reader.Latin1JsonReader;
  */
 public interface Latin1ReaderCodec<T> {
   T readLatin1(Latin1JsonReader reader);
-
-  /** Reads an inline object whose discriminator remains visible in the object input. */
-  default T readLatin1(Latin1JsonReader reader, long discriminatorHash) {
-    return readLatin1(reader);
-  }
 }

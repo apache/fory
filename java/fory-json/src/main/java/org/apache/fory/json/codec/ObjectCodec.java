@@ -1138,12 +1138,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
 
   @Internal
   public final int writeStringAny(
-      StringJsonWriter writer,
-      Map<?, ?> map,
-      StringWriterCodec<Object> codec,
-      int written,
-      boolean hasDiscriminator,
-      long discriminatorHash) {
+      StringJsonWriter writer, Map<?, ?> map, StringWriterCodec<Object> codec, int written) {
     if (map == null) {
       return written;
     }
@@ -1154,7 +1149,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       }
       String name = (String) key;
       long hash = JsonFieldNameHash.hash(name);
-      if (reservedAnyHash(hash, hasDiscriminator, discriminatorHash)) {
+      if (reservedAnyHash(hash)) {
         throw reservedAnyName(name);
       }
       writer.writeComma(written);
@@ -1167,12 +1162,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
 
   @Internal
   public final int writeUtf8Any(
-      Utf8JsonWriter writer,
-      Map<?, ?> map,
-      Utf8WriterCodec<Object> codec,
-      int written,
-      boolean hasDiscriminator,
-      long discriminatorHash) {
+      Utf8JsonWriter writer, Map<?, ?> map, Utf8WriterCodec<Object> codec, int written) {
     if (map == null) {
       return written;
     }
@@ -1183,7 +1173,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       }
       String name = (String) key;
       long hash = JsonFieldNameHash.hash(name);
-      if (reservedAnyHash(hash, hasDiscriminator, discriminatorHash)) {
+      if (reservedAnyHash(hash)) {
         throw reservedAnyName(name);
       }
       writer.writeComma(written);
@@ -1194,10 +1184,8 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return written;
   }
 
-  private boolean reservedAnyHash(long hash, boolean hasDiscriminator, long discriminatorHash) {
-    return readTable.containsHash(hash)
-        || creatorInfo != null && creatorInfo.index(hash) >= 0
-        || hasDiscriminator && hash == discriminatorHash;
+  private boolean reservedAnyHash(long hash) {
+    return readTable.containsHash(hash) || creatorInfo != null && creatorInfo.index(hash) >= 0;
   }
 
   private ForyJsonException invalidAnyKey(Object key) {
@@ -1241,12 +1229,15 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
   // Raw and parameterized bindings share the same interpreted object algorithms inside this
   // top-level owner. Package access avoids Java 8 synthetic accessors from the nested binding;
   // these methods are not codec entries and must not be used for capability dispatch.
-  final T readLatin1Object(
-      Latin1JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  final T readLatin1Object(Latin1JsonReader reader) {
     if (anyInfo != null && anyInfo.readEnabled()) {
-      return readLatin1AnyObject(reader, hasDiscriminator, discriminatorHash);
+      return readLatin1AnyObject(reader, readTable);
     }
     return readLatin1FixedObject(reader);
+  }
+
+  final T readLatin1Object(Latin1JsonReader reader, JsonFieldTable table) {
+    return readLatin1AnyObject(reader, table);
   }
 
   private T readLatin1FixedObject(Latin1JsonReader reader) {
@@ -1281,12 +1272,15 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return object;
   }
 
-  final T readUtf16Object(
-      Utf16JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  final T readUtf16Object(Utf16JsonReader reader) {
     if (anyInfo != null && anyInfo.readEnabled()) {
-      return readUtf16AnyObject(reader, hasDiscriminator, discriminatorHash);
+      return readUtf16AnyObject(reader, readTable);
     }
     return readUtf16FixedObject(reader);
+  }
+
+  final T readUtf16Object(Utf16JsonReader reader, JsonFieldTable table) {
+    return readUtf16AnyObject(reader, table);
   }
 
   private T readUtf16FixedObject(Utf16JsonReader reader) {
@@ -1321,11 +1315,15 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return object;
   }
 
-  final T readUtf8Object(Utf8JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  final T readUtf8Object(Utf8JsonReader reader) {
     if (anyInfo != null && anyInfo.readEnabled()) {
-      return readUtf8AnyObject(reader, hasDiscriminator, discriminatorHash);
+      return readUtf8AnyObject(reader, readTable);
     }
     return readUtf8FixedObject(reader);
+  }
+
+  final T readUtf8Object(Utf8JsonReader reader, JsonFieldTable table) {
+    return readUtf8AnyObject(reader, table);
   }
 
   private T readUtf8FixedObject(Utf8JsonReader reader) {
@@ -1369,19 +1367,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     if (reader.tryReadNullToken()) {
       return null;
     }
-    return readLatin1Object(reader, false, 0L);
-  }
-
-  @Override
-  public T readLatin1(Latin1JsonReader reader, long discriminatorHash) {
-    Latin1ReaderCodec<T> codec = reader.typeResolver().latin1Reader(this);
-    if (codec != this) {
-      return codec.readLatin1(reader, discriminatorHash);
-    }
-    if (reader.tryReadNullToken()) {
-      return null;
-    }
-    return readLatin1Object(reader, true, discriminatorHash);
+    return readLatin1Object(reader);
   }
 
   @Override
@@ -1393,19 +1379,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     if (reader.tryReadNullToken()) {
       return null;
     }
-    return readUtf16Object(reader, false, 0L);
-  }
-
-  @Override
-  public T readUtf16(Utf16JsonReader reader, long discriminatorHash) {
-    Utf16ReaderCodec<T> codec = reader.typeResolver().utf16Reader(this);
-    if (codec != this) {
-      return codec.readUtf16(reader, discriminatorHash);
-    }
-    if (reader.tryReadNullToken()) {
-      return null;
-    }
-    return readUtf16Object(reader, true, discriminatorHash);
+    return readUtf16Object(reader);
   }
 
   @Override
@@ -1417,68 +1391,52 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     if (reader.tryReadNullToken()) {
       return null;
     }
-    return readUtf8Object(reader, false, 0L);
+    return readUtf8Object(reader);
   }
 
-  @Override
-  public T readUtf8(Utf8JsonReader reader, long discriminatorHash) {
-    Utf8ReaderCodec<T> codec = reader.typeResolver().utf8Reader(this);
-    if (codec != this) {
-      return codec.readUtf8(reader, discriminatorHash);
-    }
-    if (reader.tryReadNullToken()) {
-      return null;
-    }
-    return readUtf8Object(reader, true, discriminatorHash);
-  }
-
-  private T readLatin1AnyObject(
-      Latin1JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private T readLatin1AnyObject(Latin1JsonReader reader, JsonFieldTable table) {
     reader.enterDepth();
     T object;
     if (creationKind == CREATOR) {
-      object = create(readLatin1AnyCreatorArguments(reader, hasDiscriminator, discriminatorHash));
+      object = create(readLatin1AnyCreatorArguments(reader, table));
     } else if (creationKind == RECORD) {
-      object = readLatin1AnyRecord(reader, hasDiscriminator, discriminatorHash);
+      object = readLatin1AnyRecord(reader, table);
     } else {
-      object = readLatin1AnyMutable(reader, hasDiscriminator, discriminatorHash);
+      object = readLatin1AnyMutable(reader, table);
     }
     reader.exitDepth();
     return object;
   }
 
-  private T readUtf16AnyObject(
-      Utf16JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private T readUtf16AnyObject(Utf16JsonReader reader, JsonFieldTable table) {
     reader.enterDepth();
     T object;
     if (creationKind == CREATOR) {
-      object = create(readUtf16AnyCreatorArguments(reader, hasDiscriminator, discriminatorHash));
+      object = create(readUtf16AnyCreatorArguments(reader, table));
     } else if (creationKind == RECORD) {
-      object = readUtf16AnyRecord(reader, hasDiscriminator, discriminatorHash);
+      object = readUtf16AnyRecord(reader, table);
     } else {
-      object = readUtf16AnyMutable(reader, hasDiscriminator, discriminatorHash);
+      object = readUtf16AnyMutable(reader, table);
     }
     reader.exitDepth();
     return object;
   }
 
-  private T readUtf8AnyObject(
-      Utf8JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private T readUtf8AnyObject(Utf8JsonReader reader, JsonFieldTable table) {
     reader.enterDepth();
     T object;
     if (creationKind == CREATOR) {
-      object = create(readUtf8AnyCreatorArguments(reader, hasDiscriminator, discriminatorHash));
+      object = create(readUtf8AnyCreatorArguments(reader, table));
     } else if (creationKind == RECORD) {
-      object = readUtf8AnyRecord(reader, hasDiscriminator, discriminatorHash);
+      object = readUtf8AnyRecord(reader, table);
     } else {
-      object = readUtf8AnyMutable(reader, hasDiscriminator, discriminatorHash);
+      object = readUtf8AnyMutable(reader, table);
     }
     reader.exitDepth();
     return object;
   }
 
-  private T readLatin1AnyMutable(
-      Latin1JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private T readLatin1AnyMutable(Latin1JsonReader reader, JsonFieldTable table) {
     T object = newInstance();
     Map<Object, Object> anyMap = null;
     boolean newMap = false;
@@ -1488,11 +1446,11 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       do {
         int start = reader.position();
         long hash = reader.readFieldNameHash();
-        int match = readTable.match(hash);
+        int match = table.match(hash);
         reader.expect(':');
         if (match >= 0) {
           readFields[match].readLatin1(reader, object);
-        } else if (match == JsonFieldTable.SKIP || hasDiscriminator && hash == discriminatorHash) {
+        } else if (match == JsonFieldTable.SKIP) {
           reader.skipValue();
         } else {
           String name = reader.materializeFieldName(start);
@@ -1522,8 +1480,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return object;
   }
 
-  private T readUtf16AnyMutable(
-      Utf16JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private T readUtf16AnyMutable(Utf16JsonReader reader, JsonFieldTable table) {
     T object = newInstance();
     Map<Object, Object> anyMap = null;
     boolean newMap = false;
@@ -1533,11 +1490,11 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       do {
         int start = reader.position();
         long hash = reader.readFieldNameHash();
-        int match = readTable.match(hash);
+        int match = table.match(hash);
         reader.expect(':');
         if (match >= 0) {
           readFields[match].readUtf16(reader, object);
-        } else if (match == JsonFieldTable.SKIP || hasDiscriminator && hash == discriminatorHash) {
+        } else if (match == JsonFieldTable.SKIP) {
           reader.skipValue();
         } else {
           String name = reader.materializeFieldName(start);
@@ -1567,8 +1524,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return object;
   }
 
-  private T readUtf8AnyMutable(
-      Utf8JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private T readUtf8AnyMutable(Utf8JsonReader reader, JsonFieldTable table) {
     T object = newInstance();
     Map<Object, Object> anyMap = null;
     boolean newMap = false;
@@ -1578,11 +1534,11 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       do {
         int start = reader.position();
         long hash = reader.readFieldNameHash();
-        int match = readTable.match(hash);
+        int match = table.match(hash);
         reader.expect(':');
         if (match >= 0) {
           readFields[match].readUtf8(reader, object);
-        } else if (match == JsonFieldTable.SKIP || hasDiscriminator && hash == discriminatorHash) {
+        } else if (match == JsonFieldTable.SKIP) {
           reader.skipValue();
         } else {
           String name = reader.materializeFieldName(start);
@@ -1612,8 +1568,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return object;
   }
 
-  private T readLatin1AnyRecord(
-      Latin1JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private T readLatin1AnyRecord(Latin1JsonReader reader, JsonFieldTable table) {
     Object[] values = newRecordFieldValues();
     Map<Object, Object> anyMap = null;
     Latin1ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.latin1Reader();
@@ -1622,12 +1577,12 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       do {
         int start = reader.position();
         long hash = reader.readFieldNameHash();
-        int match = readTable.match(hash);
+        int match = table.match(hash);
         reader.expect(':');
         if (match >= 0) {
           JsonFieldInfo field = readFields[match];
           values[field.readIndex()] = field.readLatin1Value(reader);
-        } else if (match == JsonFieldTable.SKIP || hasDiscriminator && hash == discriminatorHash) {
+        } else if (match == JsonFieldTable.SKIP) {
           reader.skipValue();
         } else {
           String name = reader.materializeFieldName(start);
@@ -1646,8 +1601,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return newRecord(values);
   }
 
-  private T readUtf16AnyRecord(
-      Utf16JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private T readUtf16AnyRecord(Utf16JsonReader reader, JsonFieldTable table) {
     Object[] values = newRecordFieldValues();
     Map<Object, Object> anyMap = null;
     Utf16ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf16Reader();
@@ -1656,12 +1610,12 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       do {
         int start = reader.position();
         long hash = reader.readFieldNameHash();
-        int match = readTable.match(hash);
+        int match = table.match(hash);
         reader.expect(':');
         if (match >= 0) {
           JsonFieldInfo field = readFields[match];
           values[field.readIndex()] = field.readUtf16Value(reader);
-        } else if (match == JsonFieldTable.SKIP || hasDiscriminator && hash == discriminatorHash) {
+        } else if (match == JsonFieldTable.SKIP) {
           reader.skipValue();
         } else {
           String name = reader.materializeFieldName(start);
@@ -1680,8 +1634,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return newRecord(values);
   }
 
-  private T readUtf8AnyRecord(
-      Utf8JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private T readUtf8AnyRecord(Utf8JsonReader reader, JsonFieldTable table) {
     Object[] values = newRecordFieldValues();
     Map<Object, Object> anyMap = null;
     Utf8ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf8Reader();
@@ -1690,12 +1643,12 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       do {
         int start = reader.position();
         long hash = reader.readFieldNameHash();
-        int match = readTable.match(hash);
+        int match = table.match(hash);
         reader.expect(':');
         if (match >= 0) {
           JsonFieldInfo field = readFields[match];
           values[field.readIndex()] = field.readUtf8Value(reader);
-        } else if (match == JsonFieldTable.SKIP || hasDiscriminator && hash == discriminatorHash) {
+        } else if (match == JsonFieldTable.SKIP) {
           reader.skipValue();
         } else {
           String name = reader.materializeFieldName(start);
@@ -1714,8 +1667,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return newRecord(values);
   }
 
-  private Object[] readLatin1AnyCreatorArguments(
-      Latin1JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private Object[] readLatin1AnyCreatorArguments(Latin1JsonReader reader, JsonFieldTable table) {
     Object[] arguments = creatorInfo.newArguments();
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
     Map<Object, Object> anyMap = null;
@@ -1731,8 +1683,8 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
           JsonCreatorFieldInfo field = fields[index];
           arguments[field.argumentIndex()] = field.readLatin1(reader);
         } else {
-          int match = readTable.match(hash);
-          if (match != JsonFieldTable.UNKNOWN || hasDiscriminator && hash == discriminatorHash) {
+          int match = table.match(hash);
+          if (match != JsonFieldTable.UNKNOWN) {
             reader.skipValue();
           } else {
             String name = reader.materializeFieldName(start);
@@ -1752,8 +1704,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return arguments;
   }
 
-  private Object[] readUtf16AnyCreatorArguments(
-      Utf16JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private Object[] readUtf16AnyCreatorArguments(Utf16JsonReader reader, JsonFieldTable table) {
     Object[] arguments = creatorInfo.newArguments();
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
     Map<Object, Object> anyMap = null;
@@ -1769,8 +1720,8 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
           JsonCreatorFieldInfo field = fields[index];
           arguments[field.argumentIndex()] = field.readUtf16(reader);
         } else {
-          int match = readTable.match(hash);
-          if (match != JsonFieldTable.UNKNOWN || hasDiscriminator && hash == discriminatorHash) {
+          int match = table.match(hash);
+          if (match != JsonFieldTable.UNKNOWN) {
             reader.skipValue();
           } else {
             String name = reader.materializeFieldName(start);
@@ -1790,8 +1741,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     return arguments;
   }
 
-  private Object[] readUtf8AnyCreatorArguments(
-      Utf8JsonReader reader, boolean hasDiscriminator, long discriminatorHash) {
+  private Object[] readUtf8AnyCreatorArguments(Utf8JsonReader reader, JsonFieldTable table) {
     Object[] arguments = creatorInfo.newArguments();
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
     Map<Object, Object> anyMap = null;
@@ -1807,8 +1757,8 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
           JsonCreatorFieldInfo field = fields[index];
           arguments[field.argumentIndex()] = field.readUtf8(reader);
         } else {
-          int match = readTable.match(hash);
-          if (match != JsonFieldTable.UNKNOWN || hasDiscriminator && hash == discriminatorHash) {
+          int match = table.match(hash);
+          if (match != JsonFieldTable.UNKNOWN) {
             reader.skipValue();
           } else {
             String name = reader.materializeFieldName(start);
@@ -1955,17 +1905,8 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
 
   @Override
   public final void writeStringMembers(StringJsonWriter writer, T value, int written) {
-    writeStringMembers(writer, value, written, false, 0L);
-  }
-
-  private void writeStringMembers(
-      StringJsonWriter writer,
-      T value,
-      int written,
-      boolean hasDiscriminator,
-      long discriminatorHash) {
     if (anyInfo != null && anyInfo.writeEnabled()) {
-      writeStringAnyMembers(writer, value, written, hasDiscriminator, discriminatorHash);
+      writeStringAnyMembers(writer, value, written);
       return;
     }
     writeStringFixedMembers(writer, value, written);
@@ -1996,18 +1937,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
   }
 
-  @Override
-  public final void writeStringMembers(
-      StringJsonWriter writer, T value, int written, long discriminatorHash) {
-    writeStringMembers(writer, value, written, true, discriminatorHash);
-  }
-
-  private void writeStringAnyMembers(
-      StringJsonWriter writer,
-      T value,
-      int written,
-      boolean hasDiscriminator,
-      long discriminatorHash) {
+  private void writeStringAnyMembers(StringJsonWriter writer, T value, int written) {
     int anyIndex = anyInfo.writeIndex;
     JsonFieldInfo[] fields = writeFields;
     for (int i = 0; i < anyIndex; i++) {
@@ -2017,12 +1947,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
     written =
         writeStringAny(
-            writer,
-            anyInfo.writeMap(value),
-            anyInfo.valueTypeInfo.stringWriter(),
-            written,
-            hasDiscriminator,
-            discriminatorHash);
+            writer, anyInfo.writeMap(value), anyInfo.valueTypeInfo.stringWriter(), written);
     for (int i = anyIndex; i < fields.length; i++) {
       if (fields[i].writeString(writer, value, written)) {
         written++;
@@ -2038,17 +1963,8 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
 
   @Override
   public final void writeUtf8Members(Utf8JsonWriter writer, T value, int written) {
-    writeUtf8Members(writer, value, written, false, 0L);
-  }
-
-  private void writeUtf8Members(
-      Utf8JsonWriter writer,
-      T value,
-      int written,
-      boolean hasDiscriminator,
-      long discriminatorHash) {
     if (anyInfo != null && anyInfo.writeEnabled()) {
-      writeUtf8AnyMembers(writer, value, written, hasDiscriminator, discriminatorHash);
+      writeUtf8AnyMembers(writer, value, written);
       return;
     }
     writeUtf8FixedMembers(writer, value, written);
@@ -2079,18 +1995,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
   }
 
-  @Override
-  public final void writeUtf8Members(
-      Utf8JsonWriter writer, T value, int written, long discriminatorHash) {
-    writeUtf8Members(writer, value, written, true, discriminatorHash);
-  }
-
-  private void writeUtf8AnyMembers(
-      Utf8JsonWriter writer,
-      T value,
-      int written,
-      boolean hasDiscriminator,
-      long discriminatorHash) {
+  private void writeUtf8AnyMembers(Utf8JsonWriter writer, T value, int written) {
     int anyIndex = anyInfo.writeIndex;
     JsonFieldInfo[] fields = writeFields;
     for (int i = 0; i < anyIndex; i++) {
@@ -2099,13 +2004,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       }
     }
     written =
-        writeUtf8Any(
-            writer,
-            anyInfo.writeMap(value),
-            anyInfo.valueTypeInfo.utf8Writer(),
-            written,
-            hasDiscriminator,
-            discriminatorHash);
+        writeUtf8Any(writer, anyInfo.writeMap(value), anyInfo.valueTypeInfo.utf8Writer(), written);
     for (int i = anyIndex; i < fields.length; i++) {
       if (fields[i].writeUtf8(writer, value, written)) {
         written++;
@@ -2946,32 +2845,17 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
 
     @Override
     public T readLatin1(Latin1JsonReader reader) {
-      return reader.tryReadNullToken() ? null : readLatin1Object(reader, false, 0L);
-    }
-
-    @Override
-    public T readLatin1(Latin1JsonReader reader, long discriminatorHash) {
-      return reader.tryReadNullToken() ? null : readLatin1Object(reader, true, discriminatorHash);
+      return reader.tryReadNullToken() ? null : readLatin1Object(reader);
     }
 
     @Override
     public T readUtf16(Utf16JsonReader reader) {
-      return reader.tryReadNullToken() ? null : readUtf16Object(reader, false, 0L);
-    }
-
-    @Override
-    public T readUtf16(Utf16JsonReader reader, long discriminatorHash) {
-      return reader.tryReadNullToken() ? null : readUtf16Object(reader, true, discriminatorHash);
+      return reader.tryReadNullToken() ? null : readUtf16Object(reader);
     }
 
     @Override
     public T readUtf8(Utf8JsonReader reader) {
-      return reader.tryReadNullToken() ? null : readUtf8Object(reader, false, 0L);
-    }
-
-    @Override
-    public T readUtf8(Utf8JsonReader reader, long discriminatorHash) {
-      return reader.tryReadNullToken() ? null : readUtf8Object(reader, true, discriminatorHash);
+      return reader.tryReadNullToken() ? null : readUtf8Object(reader);
     }
   }
 }

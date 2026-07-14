@@ -700,13 +700,14 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
         expected);
 
     ExtensibleShape decoded =
-        json.fromJson("{\"k\\u0069nd\":\"circle\",\"radius\":4,\"x\":5}", ExtensibleShape.class);
+        json.fromJson(
+            "{\"radius\":4,\"k\\u0069nd\":\"circle\",\"secret\":8,\"x\":5}", ExtensibleShape.class);
     ExtensibleCircle circle = (ExtensibleCircle) decoded;
     assertEquals(circle.radius, 4);
     assertEquals(circle.properties, Collections.singletonMap("x", 5));
     ExtensibleCircle utf16 =
         (ExtensibleCircle)
-            json.fromJson("{\"kind\":\"circle\",\"radius\":6,\"键\":7}", ExtensibleShape.class);
+            json.fromJson("{\"radius\":6,\"键\":7,\"kind\":\"circle\"}", ExtensibleShape.class);
     assertEquals(utf16.properties, Collections.singletonMap("键", 7));
     ExtensibleCircle utf8 =
         (ExtensibleCircle)
@@ -714,8 +715,50 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     assertEquals(utf8.properties, Collections.singletonMap("color", 3));
 
     value.properties.put("kind", 6);
-    assertThrows(ForyJsonException.class, () -> json.toJson(value, ExtensibleShape.class));
+    String duplicate = "{\"kind\":\"circle\",\"radius\":2,\"color\":3,\"kind\":6}";
+    assertEquals(json.toJson(value, ExtensibleShape.class), duplicate);
+    assertEquals(
+        new String(json.toJsonBytes(value, ExtensibleShape.class), StandardCharsets.UTF_8),
+        duplicate);
     assertGeneratedCapabilities(json, ExtensibleCircle.class);
+  }
+
+  @Test
+  public void inlineAnySetter() {
+    ForyJson json = newJson();
+    MethodCircle value =
+        (MethodCircle)
+            json.fromJson("{\"x\":1,\"kind\":\"method\",\"y\":2}", ExtensibleShape.class);
+    assertEquals(value.storage, linkedMap("x", 1, "y", 2));
+    assertEquals(value.calls, 2);
+    assertGeneratedCapabilities(json, MethodCircle.class);
+  }
+
+  @Test
+  public void inlineCreator() {
+    ForyJson json = newJson();
+    CreatorCircle value =
+        (CreatorCircle)
+            json.fromJson("{\"radius\":1,\"kind\":\"creator\",\"x\":2}", ExtensibleShape.class);
+    assertEquals(value.radius, 1);
+    assertEquals(value.properties, Collections.singletonMap("x", 2));
+    assertGeneratedCapabilities(json, CreatorCircle.class);
+  }
+
+  @Test
+  public void scopedInlineTables() {
+    ForyJson json = newJson();
+    SharedCircle byKind =
+        (SharedCircle) json.fromJson("{\"kind\":\"shared\",\"type\":1,\"x\":2}", KindShape.class);
+    assertEquals(byKind.properties, linkedMap("type", 1, "x", 2));
+
+    SharedCircle byType =
+        (SharedCircle) json.fromJson("{\"kind\":3,\"type\":\"shared\",\"y\":4}", TypeShape.class);
+    assertEquals(byType.properties, linkedMap("kind", 3, "y", 4));
+
+    SharedCircle direct = json.fromJson("{\"kind\":5,\"type\":6}", SharedCircle.class);
+    assertEquals(direct.properties, linkedMap("kind", 5, "type", 6));
+    assertGeneratedCapabilities(json, SharedCircle.class);
   }
 
   @Test
@@ -1290,12 +1333,58 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
 
   @JsonSubTypes(
       property = "kind",
-      value = {@JsonSubTypes.Type(value = ExtensibleCircle.class, name = "circle")})
+      value = {
+        @JsonSubTypes.Type(value = ExtensibleCircle.class, name = "circle"),
+        @JsonSubTypes.Type(value = MethodCircle.class, name = "method"),
+        @JsonSubTypes.Type(value = CreatorCircle.class, name = "creator")
+      })
   public interface ExtensibleShape {}
 
   public static final class ExtensibleCircle implements ExtensibleShape {
     public int radius;
+    @JsonIgnore public int secret;
     @JsonAnyProperty public Map<String, Integer> properties = new LinkedHashMap<>();
+  }
+
+  public static final class MethodCircle implements ExtensibleShape {
+    @JsonIgnore private final Map<String, Integer> storage = new LinkedHashMap<>();
+    @JsonIgnore private int calls;
+
+    @JsonAnyGetter
+    public Map<String, Integer> properties() {
+      return storage;
+    }
+
+    @JsonAnySetter
+    public void put(String name, Integer value) {
+      calls++;
+      storage.put(name, value);
+    }
+  }
+
+  public static final class CreatorCircle implements ExtensibleShape {
+    public final int radius;
+    @JsonAnyProperty public final Map<String, Integer> properties;
+
+    @JsonCreator({"radius", "properties"})
+    public CreatorCircle(int radius, Map<String, Integer> properties) {
+      this.radius = radius;
+      this.properties = properties;
+    }
+  }
+
+  @JsonSubTypes(
+      property = "kind",
+      value = {@JsonSubTypes.Type(value = SharedCircle.class, name = "shared")})
+  public interface KindShape {}
+
+  @JsonSubTypes(
+      property = "type",
+      value = {@JsonSubTypes.Type(value = SharedCircle.class, name = "shared")})
+  public interface TypeShape {}
+
+  public static final class SharedCircle implements KindShape, TypeShape {
+    @JsonAnyProperty public Map<String, Integer> properties;
   }
 
   public static final class ThrowingGetter {

@@ -19,6 +19,7 @@
 
 package org.apache.fory.json.meta;
 
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 
 /**
@@ -78,6 +79,62 @@ public final class JsonFieldTable {
     for (String name : skippedNames) {
       putSkip(name);
     }
+  }
+
+  private JsonFieldTable(JsonFieldTable source, String skippedName) {
+    tableNames = source.tableNames;
+    tableHashes = source.tableHashes;
+    tableFields = source.tableFields;
+    tableIndexes = source.tableIndexes;
+    tableMask = source.tableMask;
+    int skipCount = 1;
+    if (source.skipNames != null) {
+      for (String name : source.skipNames) {
+        if (name != null) {
+          skipCount++;
+        }
+      }
+    }
+    int skipTableSize = 1;
+    while (skipTableSize < skipCount * 4) {
+      skipTableSize <<= 1;
+    }
+    skipNames = new String[skipTableSize];
+    skipHashes = new long[skipTableSize];
+    skipMask = skipTableSize - 1;
+    if (source.skipNames != null) {
+      for (String name : source.skipNames) {
+        if (name != null) {
+          putSkip(name);
+        }
+      }
+    }
+    putSkip(skippedName);
+  }
+
+  /** Returns an immutable table that additionally classifies {@code name} as skipped. */
+  @Internal
+  public JsonFieldTable withSkippedName(String name) {
+    long hash = JsonFieldNameHash.hash(name);
+    JsonFieldInfo field = get(hash);
+    if (field != null) {
+      throw new ForyJsonException(
+          "JSON field hash collision between " + field.name() + " and " + name);
+    }
+    if (skipNames != null) {
+      int index = index(hash, skipMask);
+      while (skipNames[index] != null) {
+        if (skipHashes[index] == hash) {
+          if (skipNames[index].equals(name)) {
+            return this;
+          }
+          throw new ForyJsonException(
+              "JSON field hash collision between " + skipNames[index] + " and " + name);
+        }
+        index = (index + 1) & skipMask;
+      }
+    }
+    return new JsonFieldTable(this, name);
   }
 
   public JsonFieldInfo get(long hash) {

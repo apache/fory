@@ -30,9 +30,4 @@ import org.apache.fory.json.reader.Utf16JsonReader;
  */
 public interface Utf16ReaderCodec<T> {
   T readUtf16(Utf16JsonReader reader);
-
-  /** Reads an inline object whose discriminator remains visible in the object input. */
-  default T readUtf16(Utf16JsonReader reader, long discriminatorHash) {
-    return readUtf16(reader);
-  }
 }
