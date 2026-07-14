@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.CompatibleCodecBuilder;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.exception.DeserializationException;
@@ -335,6 +336,13 @@ public class TypeDef implements Serializable {
     return NativeTypeDefDecoder.decodeTypeDef((ClassResolver) resolver, buffer, header);
   }
 
+  /** Decode a native class definition without resolving its root class. */
+  @Internal
+  public static TypeDef readTypeDefWithoutRootClass(ClassResolver resolver, byte[] encoded) {
+    MemoryBuffer buffer = MemoryBuffer.fromByteArray(encoded);
+    return NativeTypeDefDecoder.decodeTypeDef(resolver, buffer, buffer.readInt64(), false);
+  }
+
   /** Read encoded class definition bytes from buffer. */
   public static byte[] readTypeDefBytes(TypeResolver resolver, MemoryBuffer buffer, long header) {
     if (resolver.isCrossLanguage()) {
@@ -504,7 +512,9 @@ public class TypeDef implements Serializable {
 
   private Collection<Descriptor> tryLoadRemoteDescriptors(
       TypeResolver resolver, Class<?> localCls) {
-    if (resolver.isCrossLanguage() || !(resolver instanceof ClassResolver)) {
+    if (resolver.isCrossLanguage()
+        || !(resolver instanceof ClassResolver)
+        || UnknownClass.isUnknowClass(localCls)) {
       return null;
     }
     try {
@@ -526,7 +536,9 @@ public class TypeDef implements Serializable {
 
   private Collection<Descriptor> tryLoadDescriptorsForClassName(
       TypeResolver resolver, String className, Class<?> localCls) {
-    if (resolver.isCrossLanguage() || !(resolver instanceof ClassResolver)) {
+    if (resolver.isCrossLanguage()
+        || !(resolver instanceof ClassResolver)
+        || UnknownClass.isUnknowClass(localCls)) {
       return null;
     }
     try {

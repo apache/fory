@@ -206,14 +206,6 @@ public final class SharedRegistry {
     acceptedTypeCheckerClasses.clear();
   }
 
-  void clearCheckerCacheForClass(String className) {
-    acceptedTypeCheckerClasses.remove(className);
-  }
-
-  void clearCheckerCacheForPrefix(String prefix) {
-    acceptedTypeCheckerClasses.keySet().removeIf(className -> className.startsWith(prefix));
-  }
-
   TypeDef getOrCreateTypeDef(TypeDef typeDef) {
     long id = typeDef.getId();
     TypeDef existing = typeDefById.get(id);

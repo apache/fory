@@ -482,7 +482,7 @@ public class TypeUtils {
 
   public static int getArrayDimensions(String className) {
     int dimension = 0;
-    while (className.charAt(dimension) == '[') {
+    while (dimension < className.length() && className.charAt(dimension) == '[') {
       dimension++;
     }
     return dimension;
@@ -520,6 +520,49 @@ public class TypeUtils {
       t = t.getComponentType();
     }
     return Tuple2.of(t, dimension);
+  }
+
+  /**
+   * Returns the component and dimensions of a JVM array class descriptor. Reference arrays use the
+   * component class name and primitive arrays use their descriptor code. The component is null when
+   * the descriptor is malformed.
+   */
+  public static Tuple2<String, Integer> getArrayComponentInfo(String className) {
+    Preconditions.checkArgument(className.startsWith("["));
+    int dimensions = getArrayDimensions(className);
+    if (dimensions == className.length()) {
+      return Tuple2.of(null, dimensions);
+    }
+    int componentIndex = dimensions;
+    if (className.charAt(componentIndex) == 'L') {
+      if (componentIndex + 2 >= className.length() || !className.endsWith(";")) {
+        return Tuple2.of(null, dimensions);
+      }
+      return Tuple2.of(className.substring(componentIndex + 1, className.length() - 1), dimensions);
+    }
+    if (componentIndex + 1 != className.length()) {
+      return Tuple2.of(null, dimensions);
+    }
+    char descriptor = className.charAt(componentIndex);
+    String component = "ZBCSIJFD".indexOf(descriptor) >= 0 ? String.valueOf(descriptor) : null;
+    return Tuple2.of(component, dimensions);
+  }
+
+  /** Returns the JVM array class name for the component type and additional dimensions. */
+  public static String arrayClassName(Class<?> componentType, int dimensions) {
+    StringBuilder builder = new StringBuilder(dimensions + componentType.getName().length() + 2);
+    for (int i = 0; i < dimensions; i++) {
+      builder.append('[');
+    }
+    if (componentType.isArray()) {
+      return builder.append(componentType.getName()).toString();
+    }
+    if (!componentType.isPrimitive()) {
+      return builder.append('L').append(componentType.getName()).append(';').toString();
+    }
+    return builder
+        .append(Array.newInstance(componentType, 0).getClass().getName().charAt(1))
+        .toString();
   }
 
   /** Returns s string that represents array type declaration of type. */

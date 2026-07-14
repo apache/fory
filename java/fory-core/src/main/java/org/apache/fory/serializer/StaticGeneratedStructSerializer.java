@@ -655,15 +655,10 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
     if (className.equals(type.getName())) {
       return type;
     }
-    ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
     try {
-      return Class.forName(className, false, contextClassLoader);
-    } catch (ClassNotFoundException | LinkageError e) {
-      try {
-        return Class.forName(className, false, type.getClassLoader());
-      } catch (ClassNotFoundException | LinkageError ignored) {
-        return type;
-      }
+      return typeResolver.loadClass(className);
+    } catch (IllegalStateException | LinkageError e) {
+      return type;
     }
   }
 

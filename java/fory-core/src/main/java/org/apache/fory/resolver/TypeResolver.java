@@ -265,19 +265,19 @@ public abstract class TypeResolver {
 
   /** Registers a class by name with an auto-assigned user ID. */
   public void register(String className) {
-    register(loadClass(className));
+    register(loadClassFromLoader(className));
   }
 
   /** Registers a class by name with a user-specified ID. */
   public void register(String className, long classId) {
-    register(loadClass(className), classId);
+    register(loadClassFromLoader(className), classId);
   }
 
   /**
    * Registers a class by name with a namespace and type name. The type name must not contain `.`.
    */
   public void register(String className, String namespace, String typeName) {
-    register(loadClass(className), namespace, typeName);
+    register(loadClassFromLoader(className), namespace, typeName);
   }
 
   /**
@@ -1431,24 +1431,44 @@ public abstract class TypeResolver {
     return loadClass(className, isEnum, arrayDims, config.deserializeUnknownClass());
   }
 
-  final Class<?> loadClass(String className) {
+  @Internal
+  public Class<?> loadClass(String className) {
     return loadClass(className, false, -1, false);
   }
 
   final Class<?> loadClass(
       String className, boolean isEnum, int arrayDims, boolean deserializeUnknownClass) {
-    // Remote TypeDef/TypeMeta paths reach class materialization through this owner. Keep
-    // name-level checks before Class.forName so rejected metadata cannot force arbitrary class
-    // loading.
-    if (!checkType(className)) {
-      throw new InsecureException(
-          String.format("Class %s is forbidden for serialization.", className));
-    }
-    DisallowedList.checkNotInDisallowedList(className);
+    // Exact registeredClasses hits are trusted for both ID and name registrations; after a miss,
+    // never reverse-map class-keyed state to infer another accepted name.
     Class<?> cls = extRegistry.registeredClasses.get(className);
     if (cls != null) {
       return cls;
     }
+    if (config.requireClassRegistration() && !DefaultJdkClassAllowList.contains(className)) {
+      if (deserializeUnknownClass) {
+        return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
+      }
+      throw new InsecureException(String.format("Class %s is not registered.", className));
+    }
+    if (!checkType(className)) {
+      throw new InsecureException(
+          String.format("Class %s is forbidden for deserialization.", className));
+    }
+    DisallowedList.checkNotInDisallowedList(className);
+    try {
+      return loadClassFromLoader(className);
+    } catch (IllegalStateException e) {
+      if (deserializeUnknownClass) {
+        if (!config.suppressClassRegistrationWarnings()) {
+          LOG.warnOnce(e.getMessage());
+        }
+        return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
+      }
+      throw e;
+    }
+  }
+
+  protected final Class<?> loadClassFromLoader(String className) {
     try {
       return Class.forName(className, false, extRegistry.classLoader);
     } catch (ClassNotFoundException e) {
@@ -1459,12 +1479,6 @@ public abstract class TypeResolver {
             String.format(
                 "Class %s not found from classloaders [%s, %s]",
                 className, extRegistry.classLoader, Thread.currentThread().getContextClassLoader());
-        if (deserializeUnknownClass) {
-          if (!config.suppressClassRegistrationWarnings()) {
-            LOG.warnOnce(msg);
-          }
-          return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
-        }
         throw new IllegalStateException(msg, ex);
       }
     }
@@ -2251,11 +2265,16 @@ public abstract class TypeResolver {
   }
 
   public void setTypeChecker(TypeChecker typeChecker) {
-    sharedRegistry.clearCheckerCache();
-    extRegistry.typeChecker = typeChecker == null ? DEFAULT_TYPE_CHECKER : typeChecker;
-    if (extRegistry.typeChecker instanceof AllowListChecker && this instanceof ClassResolver) {
-      ((AllowListChecker) extRegistry.typeChecker).addListener((ClassResolver) this);
+    TypeChecker newChecker = typeChecker == null ? DEFAULT_TYPE_CHECKER : typeChecker;
+    if (newChecker instanceof AllowListChecker) {
+      ((AllowListChecker) newChecker).addListener(this);
     }
+    TypeChecker oldChecker = extRegistry.typeChecker;
+    if (oldChecker != newChecker && oldChecker instanceof AllowListChecker) {
+      ((AllowListChecker) oldChecker).removeListener(this);
+    }
+    sharedRegistry.clearCheckerCache();
+    extRegistry.typeChecker = newChecker;
   }
 
   final boolean checkType(String className) {
@@ -2275,14 +2294,6 @@ public abstract class TypeResolver {
 
   final void clearCheckerCache() {
     sharedRegistry.clearCheckerCache();
-  }
-
-  final void clearCheckerCacheForClass(String className) {
-    sharedRegistry.clearCheckerCacheForClass(className);
-  }
-
-  final void clearCheckerCacheForPrefix(String prefix) {
-    sharedRegistry.clearCheckerCacheForPrefix(prefix);
   }
 
   public void registerSerializerFactory(SerializerFactory serializerFactory) {

@@ -26,27 +26,61 @@ import static org.testng.Assert.assertTrue;
 
 import java.io.Externalizable;
 import java.io.Serializable;
+import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
+import java.sql.Connection;
+import java.time.chrono.ChronoLocalDate;
+import java.time.chrono.ChronoLocalDateTime;
+import java.time.chrono.ChronoZonedDateTime;
+import java.time.chrono.Era;
+import java.time.temporal.Temporal;
+import java.time.temporal.TemporalAccessor;
+import java.time.temporal.TemporalAmount;
+import java.time.temporal.TemporalUnit;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Currency;
+import java.util.Deque;
+import java.util.Enumeration;
+import java.util.Formattable;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
+import java.util.NavigableMap;
+import java.util.NavigableSet;
+import java.util.PrimitiveIterator;
+import java.util.Queue;
+import java.util.RandomAccess;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
+import java.util.Spliterator;
 import java.util.UUID;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.BaseStream;
+import java.util.stream.Collector;
+import java.util.stream.DoubleStream;
+import java.util.stream.IntStream;
+import java.util.stream.LongStream;
+import java.util.stream.Stream;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.ForyBuilder;
@@ -299,24 +333,104 @@ public class SerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testDefaultSafeClassTokens() {
-    Fory fory =
+  public void testClassTokens() {
+    Class<?>[] safeInterfaces = {
+      Serializable.class,
+      CharSequence.class,
+      Cloneable.class,
+      Comparable.class,
+      Iterable.class,
+      Runnable.class,
+      ChronoLocalDate.class,
+      ChronoLocalDateTime.class,
+      ChronoZonedDateTime.class,
+      Era.class,
+      Temporal.class,
+      TemporalAccessor.class,
+      TemporalAmount.class,
+      TemporalUnit.class,
+      Iterator.class,
+      ListIterator.class,
+      Collection.class,
+      List.class,
+      Set.class,
+      Map.class,
+      Map.Entry.class,
+      Queue.class,
+      Deque.class,
+      SortedSet.class,
+      NavigableSet.class,
+      SortedMap.class,
+      NavigableMap.class,
+      Comparator.class,
+      Enumeration.class,
+      Formattable.class,
+      PrimitiveIterator.class,
+      PrimitiveIterator.OfDouble.class,
+      PrimitiveIterator.OfInt.class,
+      PrimitiveIterator.OfLong.class,
+      RandomAccess.class,
+      Spliterator.class,
+      Spliterator.OfPrimitive.class,
+      Spliterator.OfDouble.class,
+      Spliterator.OfInt.class,
+      Spliterator.OfLong.class,
+      BlockingDeque.class,
+      BlockingQueue.class,
+      Callable.class,
+      ConcurrentMap.class,
+      ConcurrentNavigableMap.class,
+      TransferQueue.class,
+      BaseStream.class,
+      Stream.class,
+      DoubleStream.class,
+      IntStream.class,
+      LongStream.class,
+      Collector.class,
+      Function.class
+    };
+    Class<?>[] registeredInterfaces = {
+      Externalizable.class,
+      Type.class,
+      Connection.class,
+      TestClassTokenInterface.class,
+      TestDefaultClassTokenInterface.class
+    };
+    Fory unregisteredFory =
         Fory.builder()
             .withXlang(false)
             .requireClassRegistration(true)
             .withCompatible(false)
             .build();
-    assertSame(serDe(fory, Serializable.class), Serializable.class);
-    assertSame(serDe(fory, Externalizable.class), Externalizable.class);
-    assertSame(serDe(fory, Function.class), Function.class);
-    assertSame(serDe(fory, Collection.class), Collection.class);
-    assertSame(serDe(fory, List.class), List.class);
-    assertSame(serDe(fory, Set.class), Set.class);
-    assertSame(serDe(fory, Map.class), Map.class);
-    assertSame(serDe(fory, SortedMap.class), SortedMap.class);
-    assertSame(serDe(fory, SortedSet.class), SortedSet.class);
-    assertSame(serDe(fory, TestClassTokenInterface.class), TestClassTokenInterface.class);
-    assertThrows(InsecureException.class, () -> serDe(fory, TestDefaultClassTokenInterface.class));
+    for (Class<?> type : safeInterfaces) {
+      assertTrue(type.isInterface());
+      assertSame(serDe(unregisteredFory, type), type);
+    }
+    for (Class<?> type : registeredInterfaces) {
+      assertThrows(InsecureException.class, () -> serDe(unregisteredFory, type));
+    }
+
+    Fory checkedFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withTypeChecker((resolver, className) -> !className.equals(Collection.class.getName()))
+            .withCompatible(false)
+            .build();
+    assertThrows(InsecureException.class, () -> serDe(checkedFory, Collection.class));
+
+    Fory registeredFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    for (Class<?> type : registeredInterfaces) {
+      registeredFory.register(type);
+    }
+    for (Class<?> type : registeredInterfaces) {
+      assertSame(serDe(registeredFory, type), type);
+    }
   }
 
   @Test

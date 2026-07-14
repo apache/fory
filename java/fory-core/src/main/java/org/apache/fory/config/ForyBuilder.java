@@ -368,7 +368,7 @@ public final class ForyBuilder {
    * responsible for security risks if you disable this option. If you disable this option, you can
    * configure {@link org.apache.fory.resolver.TypeChecker} by {@link #withTypeChecker(TypeChecker)}
    * or {@link org.apache.fory.resolver.TypeResolver#setTypeChecker} to control which classes are
-   * allowed being serialized.
+   * allowed for serialization and deserialization.
    */
   public ForyBuilder requireClassRegistration(boolean requireClassRegistration) {
     this.requireClassRegistration = requireClassRegistration;
@@ -378,8 +378,9 @@ public final class ForyBuilder {
 
   /**
    * Configure a {@link TypeChecker} during build time so it is installed on every Fory instance
-   * created by this builder. This checker is only consulted for unknown class names when class
-   * registration checks are disabled.
+   * created by this builder. Unknown input class names are checked when class registration checks
+   * are disabled. Configure {@link org.apache.fory.resolver.AllowListChecker} disallow entries
+   * before registration is frozen.
    */
   public ForyBuilder withTypeChecker(TypeChecker typeChecker) {
     this.typeChecker = typeChecker;

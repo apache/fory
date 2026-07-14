@@ -64,6 +64,13 @@ Fory policy should reject. This includes bypasses of class or type
 registration, allow-list checkers, strict-mode checks, or language-specific
 deserialization policies.
 
+An application explicitly trusts a class when it registers that class or
+registers a serializer for that class. Both operations are configuration-time
+trust decisions under the class-registration policy. The existence of a
+serializer that Fory discovered, selected, or generated without an explicit
+application registration is serialization mechanics only and does not by
+itself authorize the class.
+
 Disabling registration or dynamic-type checks for trusted data is a caller
 configuration choice. That choice only removes the arbitrary-type materialization
 claim provided by that policy; it does not remove Fory's runtime-safety,
@@ -127,6 +134,12 @@ The following patterns are not vulnerabilities by default:
   read error.
 - Reading an encoded body before later shape validation when the operation
   ultimately returns an error and does not create a security-invariant failure.
+- Materializing an array whose component is an interface already allowed as a
+  class token. Allocating the reference array does not instantiate or execute
+  the interface, and every non-null element must still pass the active policy
+  for its concrete type. Treat this as security-relevant only if the array path
+  bypasses that concrete element check, invokes a policy-forbidden callback, or
+  violates a runtime-safety or resource invariant owned by Fory.
 
 Fory may still reject malformed forms for specification strictness or
 interoperability. That validation should be added only when it is required by
@@ -381,12 +394,33 @@ Metadata readers should:
 - For Java metadata paths, keep name-level checks such as `TypeChecker` and the
   disallowed-class list before `Class.forName` by routing remote class-name
   loading through the existing `TypeResolver.loadClass` owner. Do not bypass
-  that owner with direct class loading from TypeDef or TypeMeta names. Other
-  deserialization checks that require a materialized `Class<?>`, such as
-  post-load class policy checks, remain after loading; do not move them earlier
-  or replace them with string-only approximations that change registration,
-  dynamic-loading, or unknown-type semantics.
+  that owner with direct class loading from TypeDef or TypeMeta names. A rejected
+  input name must not cause class loading. Preserve registration, dynamic-loading,
+  and unknown-type semantics while moving this decision before loading. Checks
+  that require a materialized `Class<?>` remain after loading; do not replace
+  them with string-only approximations.
+- Pass a complete input array descriptor to `TypeChecker`. Input may derive up
+  to six array dimensions from an accepted component class. Higher-dimensional
+  arrays require an exact trusted full-array registration or checked name-cache
+  entry so input cannot make the JVM derive an unbounded family of array classes.
 - Reset or release metadata state at the correct root-operation boundary.
+
+A class-resolution cache reachable from untrusted deserialization may publish
+an entry only from explicit trusted configuration or after the active class
+policy has accepted the resolved class. A cache hit therefore represents an
+already trusted and validated `Class<?>` and should use that cached class
+without repeating class loading or name-level `TypeChecker` work. Only a cache
+miss performs those name-level checks and publishes the accepted result.
+Checks that require the materialized `Class<?>` remain owned by their existing
+caller. A cache entry that stores a data-only unknown-class placeholder may
+return that same placeholder on an exact hit, but must not authorize loading the
+original missed wire name.
+Exact registered-name-table hits are trusted for both ID and name registrations,
+and exact checked name-cache hits are trusted. After both exact lookups miss, a
+reader must not infer another accepted name from inverse registration,
+class-keyed state, or `Class.getName()`. A custom-name registration does not by
+itself publish the Java class name as an additional alias; ID registration does
+publish the Java class name.
 
 Remote metadata that can create persistent read state must be bounded before
 that state is retained. The check is resource control only: it must not change

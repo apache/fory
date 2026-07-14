@@ -61,6 +61,13 @@ public class TypeUtilsTest {
   }
 
   @Test
+  public void testArrayClassName() {
+    assertEquals(TypeUtils.arrayClassName(String.class, 2), String[][].class.getName());
+    assertEquals(TypeUtils.arrayClassName(int.class, 2), int[][].class.getName());
+    assertEquals(TypeUtils.arrayClassName(String[].class, 2), String[][][].class.getName());
+  }
+
+  @Test
   public void getElementTypeTest() throws NoSuchMethodException, NoSuchFieldException {
     TypeRef typeRef = Descriptor.getDescriptorsMap(BeanA.class).get("doubleList").getTypeRef();
 

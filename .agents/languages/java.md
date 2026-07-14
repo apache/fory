@@ -59,6 +59,24 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   names before those name-level checks. Checks that require `Class<?>`,
   including `checkClassForDeserialization`, remain after loading; do not replace
   them with new string-only registration or security checks.
+- Treat exact `registeredClasses` hits as trusted for both ID and name registrations. An exact
+  checked name-cache hit is trusted too. After both exact lookups miss, reader-side class-name
+  resolution must not scan class-keyed state, use inverse registration, or compare
+  `Class.getName()` to infer another accepted name. Writer-side inverse lookup from an already owned
+  local `Class<?>` to its registered ID or name is valid and must not be copied into reader-side
+  miss handling. ObjectStream layer names do not use this reader-side miss path:
+  `ObjectStreamSerializer` owns its layer header and compares the complete wire name directly with
+  the remaining local slots. It resolves registered ID headers through the ID registry, skips
+  unmatched named sender layers as data-only metadata, and does not route layer names through
+  `ClassResolver.readClassInternal`. Inverse registration must not turn a missed input name into an
+  accepted class.
+- Keep JDK interface names that do not require explicit registration in
+  `DefaultJdkClassAllowList`. `TypeResolver.loadClass` and `ClassResolver.isSecure` must both use
+  this single owner. Keep custom `TypeChecker` and fixed disallowed-list checks on their existing
+  paths.
+- Enum constants with class bodies have synthetic runtime subclasses, but their TypeInfo, wire
+  class name, registration ID, and serializer belong to the declaring enum. Never register, cache,
+  emit, or reader-resolve the constant subclass as a separate serialized type.
 - Do not use `instanceof` in Java hot paths, including per-value, per-field, per-element,
   read/write/copy, resolver, serializer, codec, and buffer paths. Choose concrete
   implementations during cold setup or code generation, cache final/static-final shape decisions,

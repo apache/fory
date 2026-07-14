@@ -21,6 +21,7 @@ package org.apache.fory.meta;
 
 import static org.apache.fory.type.TypeUtils.COLLECTION_TYPE;
 import static org.apache.fory.type.TypeUtils.MAP_TYPE;
+import static org.apache.fory.type.TypeUtils.arrayClassName;
 import static org.apache.fory.type.TypeUtils.collectionOf;
 import static org.apache.fory.type.TypeUtils.getArrayComponentInfo;
 import static org.apache.fory.type.TypeUtils.getArrayDimensions;
@@ -47,6 +48,7 @@ import org.apache.fory.collection.UInt32List;
 import org.apache.fory.collection.UInt64List;
 import org.apache.fory.collection.UInt8List;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -1116,15 +1118,23 @@ public class FieldTypes {
       }
       TypeRef<?> componentTypeRef = componentType.toTypeToken(classResolver, declared);
       Class<?> componentRawType = componentTypeRef.getRawType();
-      if (UnknownClass.class.isAssignableFrom(componentRawType)) {
-        return TypeRef.of(
-            UnknownClass.getUnknowClass(componentType instanceof EnumFieldType, dimensions, true),
-            typeExtMeta(typeId, nullable, trackingRef, declared));
-      } else {
-        return TypeRef.of(
-            Array.newInstance(componentRawType, new int[dimensions]).getClass(),
-            typeExtMeta(typeId, nullable, trackingRef, declared));
+      int totalDimensions =
+          dimensions + (componentRawType.isArray() ? getArrayDimensions(componentRawType) : 0);
+      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(componentRawType))
+          && totalDimensions > 6) {
+        throw new InsecureException("Input-derived arrays cannot exceed 6 dimensions.");
       }
+      Class<?> arrayType;
+      if (classResolver.getConfig().requireClassRegistration() && totalDimensions <= 6) {
+        // The component was already resolved from exact trusted state. Derive only the bounded
+        // array shape here so a custom registration name is not replaced with Class.getName().
+        arrayType = Array.newInstance(componentRawType, new int[dimensions]).getClass();
+      } else {
+        // Non-strict reads must pass the complete descriptor to TypeChecker. Strict arrays above
+        // six dimensions reach loadClass only so an exact array registration can satisfy them.
+        arrayType = classResolver.loadClass(arrayClassName(componentRawType, dimensions));
+      }
+      return TypeRef.of(arrayType, typeExtMeta(typeId, nullable, trackingRef, declared));
     }
 
     @Override

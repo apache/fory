@@ -26,27 +26,25 @@ import java.util.WeakHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import javax.annotation.concurrent.ThreadSafe;
-import org.apache.fory.config.Config;
-import org.apache.fory.context.ReadContext;
-import org.apache.fory.context.WriteContext;
+import org.apache.fory.collection.Tuple2;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
-import org.apache.fory.serializer.Serializer;
+import org.apache.fory.type.TypeUtils;
 
-/** White/black list based class checker. */
+/** Class checker backed by allow and disallow lists. */
 @ThreadSafe
 public class AllowListChecker implements TypeChecker {
   private static final Logger LOG = LoggerFactory.getLogger(AllowListChecker.class);
 
   public enum CheckLevel {
-    /** Disable serialize check for all classes. */
+    /** Disable class-name checks. */
     DISABLE,
 
-    /** Only deny danger classes, warn if other classes are not in allow list. */
+    /** Deny disallowed classes and warn about classes outside the allow list. */
     WARN,
 
-    /** Only allow classes in allow list, deny if other classes are not in allow list. */
+    /** Allow only classes in the allow list. */
     STRICT
   }
 
@@ -55,7 +53,7 @@ public class AllowListChecker implements TypeChecker {
   private final Set<String> allowListPrefix;
   private final Set<String> disallowList;
   private final Set<String> disallowListPrefix;
-  private final transient WeakHashMap<ClassResolver, Boolean> listeners;
+  private final transient WeakHashMap<TypeResolver, Boolean> listeners;
   private final transient ReadWriteLock lock;
 
   public AllowListChecker() {
@@ -79,6 +77,11 @@ public class AllowListChecker implements TypeChecker {
   public void setCheckLevel(CheckLevel checkLevel) {
     try {
       lock.writeLock().lock();
+      if (this.checkLevel == CheckLevel.DISABLE
+          && checkLevel != CheckLevel.DISABLE
+          && (!disallowList.isEmpty() || !disallowListPrefix.isEmpty())) {
+        checkRegistrationOpen();
+      }
       this.checkLevel = checkLevel;
       clearCheckerCache();
     } finally {
@@ -97,31 +100,44 @@ public class AllowListChecker implements TypeChecker {
   }
 
   private boolean check(String className) {
+    if (checkLevel == CheckLevel.DISABLE) {
+      return true;
+    }
+    boolean disallowed = containsPrefix(disallowList, disallowListPrefix, className);
+    boolean allowed = containsPrefix(allowList, allowListPrefix, className);
+    if (className.startsWith("[")) {
+      Tuple2<String, Integer> componentInfo = TypeUtils.getArrayComponentInfo(className);
+      String componentName = componentInfo.f0;
+      if (componentName != null) {
+        disallowed |= containsPrefix(disallowList, disallowListPrefix, componentName);
+        allowed |= containsPrefix(allowList, allowListPrefix, componentName);
+      }
+    }
     switch (checkLevel) {
-      case DISABLE:
-        return true;
       case WARN:
-        if (containsPrefix(disallowList, disallowListPrefix, className)) {
+        if (disallowed) {
           throw new InsecureException(
-              String.format("Class %s is forbidden for serialization.", className));
+              String.format(
+                  "Class %s is forbidden for serialization or deserialization.", className));
         }
-        if (!containsPrefix(allowList, allowListPrefix, className)) {
+        if (!allowed) {
           LOG.warnOnce(
               "Class {} not in allow list, please check whether objects of this class "
-                  + "are allowed for serialization.",
+                  + "are allowed for serialization or deserialization.",
               className);
         }
         return true;
       case STRICT:
-        if (containsPrefix(disallowList, disallowListPrefix, className)) {
-          throw new InsecureException(
-              String.format("Class %s is forbidden for serialization.", className));
-        }
-        if (!containsPrefix(allowList, allowListPrefix, className)) {
+        if (disallowed) {
           throw new InsecureException(
               String.format(
-                  "Class %s isn't in allow list for serialization. If this class is allowed for "
-                      + "serialization, please add it to allow list by AllowListChecker#addAllowClass",
+                  "Class %s is forbidden for serialization or deserialization.", className));
+        }
+        if (!allowed) {
+          throw new InsecureException(
+              String.format(
+                  "Class %s isn't in the allow list for serialization or deserialization. If this "
+                      + "class is allowed, add it with AllowListChecker#allowClass",
                   className));
         }
         return true;
@@ -181,30 +197,34 @@ public class AllowListChecker implements TypeChecker {
   }
 
   /**
-   * Add class to disallow list.
+   * Add a class to the disallow list during registration setup.
    *
    * @param classNameOrPrefix class name or class name prefix ends with *.
    */
   public void disallowClass(String classNameOrPrefix) {
     try {
       lock.writeLock().lock();
+      checkRegistrationOpen();
       disallow(classNameOrPrefix);
+      clearCheckerCache();
     } finally {
       lock.writeLock().unlock();
     }
   }
 
   /**
-   * Add classes to disallow list.
+   * Add classes to the disallow list during registration setup.
    *
    * @param classNamesOrPrefixes class names or name prefixes ends with *.
    */
   public void disallowClasses(Collection<String> classNamesOrPrefixes) {
     try {
       lock.writeLock().lock();
-      for (String prefix : classNamesOrPrefixes) {
-        disallow(prefix);
+      checkRegistrationOpen();
+      for (String classNameOrPrefix : classNamesOrPrefixes) {
+        disallow(classNameOrPrefix);
       }
+      clearCheckerCache();
     } finally {
       lock.writeLock().unlock();
     }
@@ -214,65 +234,45 @@ public class AllowListChecker implements TypeChecker {
     if (classNameOrPrefix.endsWith("*")) {
       String prefix = classNameOrPrefix.substring(0, classNameOrPrefix.length() - 1);
       disallowListPrefix.add(prefix);
-      for (ClassResolver classResolver : listeners.keySet()) {
-        classResolver.clearCheckerCacheForPrefix(prefix);
-        try {
-          classResolver.getJITContext().lock();
-          // clear serializer may throw NullPointerException for field serialization.
-          classResolver.setSerializers(prefix, DisallowSerializer.class);
-        } finally {
-          classResolver.getJITContext().unlock();
-        }
-      }
     } else {
       disallowList.add(classNameOrPrefix);
-      for (ClassResolver classResolver : listeners.keySet()) {
-        classResolver.clearCheckerCacheForClass(classNameOrPrefix);
-        try {
-          classResolver.getJITContext().lock();
-          // clear serializer may throw NullPointerException for field serialization.
-          classResolver.setSerializer(classNameOrPrefix, DisallowSerializer.class);
-        } finally {
-          classResolver.getJITContext().unlock();
-        }
-      }
     }
   }
 
-  /**
-   * Add listener to in response to disallow list. So if object of a class is serialized before,
-   * future serialization will be refused.
-   */
-  public void addListener(ClassResolver classResolver) {
+  void addListener(TypeResolver resolver) {
     try {
       lock.writeLock().lock();
-      listeners.put(classResolver, true);
+      if ((!disallowList.isEmpty() || !disallowListPrefix.isEmpty())
+          && resolver.isRegistrationFinished()) {
+        throw new IllegalStateException(
+            "A checker with disallow entries cannot be installed after registration.");
+      }
+      listeners.put(resolver, true);
     } finally {
       lock.writeLock().unlock();
     }
   }
 
-  private void clearCheckerCache() {
-    for (ClassResolver classResolver : listeners.keySet()) {
-      classResolver.clearCheckerCache();
+  void removeListener(TypeResolver resolver) {
+    try {
+      lock.writeLock().lock();
+      listeners.remove(resolver);
+    } finally {
+      lock.writeLock().unlock();
     }
   }
 
-  @SuppressWarnings({"rawtypes", "unchecked"})
-  private static class DisallowSerializer extends Serializer {
-
-    public DisallowSerializer(Config config, Class type) {
-      super(config, type);
+  private void checkRegistrationOpen() {
+    for (TypeResolver resolver : listeners.keySet()) {
+      if (resolver.isRegistrationFinished()) {
+        throw new IllegalStateException("Classes cannot be disallowed after registration.");
+      }
     }
+  }
 
-    @Override
-    public void write(WriteContext writeContext, Object value) {
-      throw new InsecureException(String.format("Class %s not allowed for serialization.", type));
-    }
-
-    @Override
-    public Object read(ReadContext readContext) {
-      throw new InsecureException(String.format("Class %s not allowed for serialization.", type));
+  private void clearCheckerCache() {
+    for (TypeResolver resolver : listeners.keySet()) {
+      resolver.clearCheckerCache();
     }
   }
 }

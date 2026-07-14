@@ -49,6 +49,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -69,15 +70,18 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.meta.EncodedMetaString;
 import org.apache.fory.meta.Encoders;
+import org.apache.fory.meta.FieldTypes;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.longlongpkg.C1;
 import org.apache.fory.resolver.longlongpkg.C2;
 import org.apache.fory.resolver.longlongpkg.C3;
+import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.Shareable;
+import org.apache.fory.serializer.UnknownClass;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
@@ -426,6 +430,184 @@ public class ClassResolverTest extends ForyTestBase {
   }
 
   @Test
+  public void testNativeArrayClassLoading() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
+    resolver.register(BeanB.class);
+
+    Assert.assertThrows(InsecureException.class, () -> resolver.loadClass("["));
+
+    assertSame(
+        resolver.loadClass("[[[[[[L" + BeanB.class.getName() + ";"), BeanB[][][][][][].class);
+    resolver.register(Interface1.class);
+    assertSame(
+        resolver.loadClass("[[[[[[L" + Interface1.class.getName() + ";"),
+        Interface1[][][][][][].class);
+    Assert.assertThrows(
+        InsecureException.class,
+        () -> resolver.loadClass("[[[[[[[L" + BeanB.class.getName() + ";"));
+
+    Fory xlangFory =
+        Fory.builder().withXlang(true).requireClassRegistration(true).withCompatible(true).build();
+    xlangFory.register(BeanB.class);
+    Assert.assertThrows(
+        InsecureException.class,
+        () -> xlangFory.getTypeResolver().loadClass("[L" + BeanB.class.getName() + ";"));
+
+    FieldTypes.ArrayFieldType nestedArray =
+        new FieldTypes.ArrayFieldType(
+            Types.ARRAY,
+            true,
+            true,
+            new FieldTypes.ArrayFieldType(
+                Types.ARRAY,
+                true,
+                true,
+                new FieldTypes.ObjectFieldType(Types.STRUCT, true, true),
+                3),
+            4);
+    Assert.assertThrows(
+        InsecureException.class,
+        () -> nestedArray.toTypeToken(resolver, TypeRef.of(BeanB[][][][][][][].class)));
+
+    resolver.register(BeanB[][][][][][][].class);
+    assertSame(
+        resolver.loadClass("[[[[[[[L" + BeanB.class.getName() + ";"), BeanB[][][][][][][].class);
+    assertSame(
+        nestedArray.toTypeToken(resolver, TypeRef.of(BeanB[][][][][][][].class)).getRawType(),
+        BeanB[][][][][][][].class);
+
+    Fory arraySerializerFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    Class<?> sevenDimensionalArray = Foo[][][][][][][].class;
+    arraySerializerFory.registerSerializer(
+        sevenDimensionalArray,
+        ArraySerializers.newObjectArraySerializer(
+            arraySerializerFory.getTypeResolver(), sevenDimensionalArray));
+    assertSame(
+        arraySerializerFory.getTypeResolver().loadClass(sevenDimensionalArray.getName()),
+        sevenDimensionalArray);
+    Class<?> sevenDimensionalEnumArray = TestNeedToWriteReferenceClass[][][][][][][].class;
+    arraySerializerFory.registerSerializer(
+        sevenDimensionalEnumArray,
+        ArraySerializers.newObjectArraySerializer(
+            arraySerializerFory.getTypeResolver(), sevenDimensionalEnumArray));
+    assertSame(
+        arraySerializerFory.getTypeResolver().loadClass(sevenDimensionalEnumArray.getName()),
+        sevenDimensionalEnumArray);
+
+    Fory serializerFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    serializerFory.registerSerializer(
+        Foo.class, typeResolver -> new FooCustomSerializer(typeResolver, Foo.class));
+    ClassResolver serializerResolver = (ClassResolver) serializerFory.getTypeResolver();
+    assertNull(serializerResolver.getRegisteredClassId(Foo.class));
+    assertSame(
+        serializerResolver.loadClass("[[[[[[L" + Foo.class.getName() + ";"), Foo[][][][][][].class);
+
+    Fory unknownFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .withMetaShare(true)
+            .withDeserializeUnknownClass(true)
+            .build();
+    ClassResolver unknownResolver = (ClassResolver) unknownFory.getTypeResolver();
+    String unknownDescriptor = "[[[[[[Lmissing.Type;";
+    Class<?> unknownArray = unknownResolver.loadClassForMeta(unknownDescriptor, false, 6);
+    assertEquals(TypeUtils.getArrayDimensions(unknownArray), 6);
+    Assert.assertThrows(
+        InsecureException.class, () -> unknownResolver.loadClass(unknownDescriptor));
+
+    FieldTypes.ArrayFieldType nestedUnknownEnum =
+        new FieldTypes.ArrayFieldType(
+            Types.ARRAY,
+            true,
+            true,
+            new FieldTypes.ArrayFieldType(
+                Types.ARRAY, true, true, new FieldTypes.EnumFieldType(true, Types.ENUM, -1), 2),
+            3);
+    Class<?> unknownEnumArray = nestedUnknownEnum.toTypeToken(unknownResolver, null).getRawType();
+    assertEquals(TypeUtils.getArrayDimensions(unknownEnumArray), 5);
+    assertSame(TypeUtils.getArrayComponent(unknownEnumArray), UnknownClass.UnknownEnum.class);
+  }
+
+  @Test
+  public void testArrayCheckerUsesDescriptor() {
+    String descriptor = "[[[[[[[L" + BeanB.class.getName() + ";";
+    CountingClassLoader classLoader =
+        new CountingClassLoader(ClassResolverTest.class.getClassLoader(), BeanB.class.getName());
+    AtomicReference<String> checkedName = new AtomicReference<>();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .withClassLoader(classLoader)
+            .withTypeChecker(
+                (resolver, className) -> {
+                  checkedName.set(className);
+                  return false;
+                })
+            .build();
+
+    Assert.assertThrows(
+        InsecureException.class, () -> fory.getTypeResolver().loadClass(descriptor));
+    assertEquals(checkedName.get(), descriptor);
+    assertEquals(classLoader.loadCount, 0);
+
+    FieldTypes.ArrayFieldType rejectedFieldArray =
+        new FieldTypes.ArrayFieldType(
+            Types.ARRAY, true, true, new FieldTypes.ObjectFieldType(Types.STRUCT, true, true), 7);
+    checkedName.set(null);
+    Assert.assertThrows(
+        InsecureException.class,
+        () ->
+            rejectedFieldArray.toTypeToken(
+                fory.getTypeResolver(), TypeRef.of(BeanB[][][][][][][].class)));
+    assertEquals(checkedName.get(), descriptor);
+    assertEquals(classLoader.loadCount, 0);
+
+    String acceptedDescriptor = "[[[[[[L" + BeanB.class.getName() + ";";
+    AtomicReference<String> acceptedName = new AtomicReference<>();
+    Fory acceptedFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .withTypeChecker(
+                (resolver, className) -> {
+                  acceptedName.set(className);
+                  return className.equals(acceptedDescriptor);
+                })
+            .build();
+    FieldTypes.ArrayFieldType acceptedFieldArray =
+        new FieldTypes.ArrayFieldType(
+            Types.ARRAY, true, true, new FieldTypes.ObjectFieldType(Types.STRUCT, true, true), 6);
+    Class<?> acceptedArray =
+        acceptedFieldArray
+            .toTypeToken(acceptedFory.getTypeResolver(), TypeRef.of(BeanB[][][][][][].class))
+            .getRawType();
+    assertSame(acceptedArray, BeanB[][][][][][].class);
+    acceptedFory.getTypeResolver().checkClassForDeserialization(acceptedArray);
+    assertEquals(acceptedName.get(), acceptedDescriptor);
+  }
+
+  @Test
   public void testRemoteSchemaVersionLimitByType() {
     ForyBuilder builder =
         Fory.builder()
@@ -680,6 +862,41 @@ public class ClassResolverTest extends ForyTestBase {
     classResolver.register(C1.class, "ns", "C1");
 
     assertEquals(sharedRegistry.metaStringMap.size() - before, 2);
+  }
+
+  @Test
+  public void testCustomNameDoesNotAddJavaName() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
+    resolver.register(Foo.class, "alias", "Foo");
+
+    assertSame(resolver.loadClass("alias.Foo"), Foo.class);
+    assertSame(resolver.loadClassForMeta("alias.Foo", false, -1), Foo.class);
+    Assert.assertThrows(InsecureException.class, () -> resolver.loadClass(Foo.class.getName()));
+    Assert.assertThrows(
+        InsecureException.class, () -> resolver.loadClassForMeta(Foo.class.getName(), false, -1));
+    Assert.assertThrows(
+        InsecureException.class, () -> resolver.loadClass("[L" + Foo.class.getName() + ";"));
+  }
+
+  @Test
+  public void testIdRegistrationAcceptsJavaName() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    ClassResolver resolver = (ClassResolver) fory.getTypeResolver();
+    resolver.register(Foo.class, 101);
+
+    assertSame(resolver.loadClass(Foo.class.getName()), Foo.class);
+    assertSame(resolver.loadClassForMeta(Foo.class.getName(), false, -1), Foo.class);
   }
 
   @Test
@@ -1071,6 +1288,127 @@ public class ClassResolverTest extends ForyTestBase {
     Assert.assertEquals(foo, serDe(fory, foo));
     Assert.assertEquals(
         fory.getTypeResolver().getSerializer(foo.getClass()).getClass(), FooCustomSerializer.class);
+  }
+
+  @Test
+  public void testSerializerRegistrationTrustsClass() {
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    writer.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    Foo foo = new Foo();
+    foo.f1 = 100;
+    byte[] bytes = writer.serialize(foo);
+
+    Fory unregisteredReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    Assert.assertThrows(InsecureException.class, () -> unregisteredReader.deserialize(bytes));
+
+    Fory registeredReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    registeredReader.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    ClassResolver resolver = (ClassResolver) registeredReader.getTypeResolver();
+    assertNull(resolver.getRegisteredClassId(Foo.class));
+    assertEquals(registeredReader.deserialize(bytes), foo);
+
+    Fory checkedReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withTypeChecker((typeResolver, className) -> !className.equals(Foo.class.getName()))
+            .withCompatible(false)
+            .build();
+    checkedReader.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    assertSame(checkedReader.getTypeResolver().loadClass(Foo.class.getName()), Foo.class);
+    assertEquals(checkedReader.deserialize(bytes), foo);
+  }
+
+  @Test
+  public void testAutomaticSerializerDoesNotTrustClass() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withTypeChecker((resolver, className) -> !className.equals(Foo.class.getName()))
+            .withCompatible(false)
+            .build();
+
+    fory.getTypeResolver().getSerializer(Foo.class);
+    Assert.assertThrows(
+        InsecureException.class, () -> fory.getTypeResolver().loadClass(Foo.class.getName()));
+  }
+
+  @Test
+  public void testSerializerFirstRegistration() {
+    Fory idFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    idFory.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    idFory.register(Foo.class, 101);
+    assertSame(
+        idFory.getTypeResolver().getSerializer(Foo.class).getClass(), FooCustomSerializer.class);
+    assertEquals(idFory.getTypeResolver().getTypeInfo(Foo.class).getTypeId(), Types.EXT);
+    Foo idValue = new Foo();
+    idValue.f1 = 11;
+    assertEquals(serDe(idFory, idValue), idValue);
+
+    Fory namedFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    namedFory.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    namedFory.register(Foo.class, "test", "Foo");
+    assertSame(
+        namedFory.getTypeResolver().getSerializer(Foo.class).getClass(), FooCustomSerializer.class);
+    assertEquals(namedFory.getTypeResolver().getTypeInfo(Foo.class).getTypeId(), Types.NAMED_EXT);
+    Foo namedValue = new Foo();
+    namedValue.f1 = 12;
+    assertEquals(serDe(namedFory, namedValue), namedValue);
+
+    Fory nameFirstFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    nameFirstFory.register(Foo.class, "test", "Foo");
+    nameFirstFory.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    assertEquals(
+        ((ClassResolver) nameFirstFory.getTypeResolver()).getRegisteredName(Foo.class), "test.Foo");
+    Foo nameFirstValue = new Foo();
+    nameFirstValue.f1 = 13;
+    assertEquals(serDe(nameFirstFory, nameFirstValue), nameFirstValue);
+  }
+
+  @Test
+  public void testRuntimeAliasRegistrationConflict() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    TypeResolver resolver = fory.getTypeResolver();
+    fory.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    resolver.registerRuntimeTypeAlias(Bar.class, Foo.class);
+
+    Assert.assertThrows(IllegalArgumentException.class, () -> fory.register(Bar.class, 101));
   }
 
   @Test

@@ -123,9 +123,14 @@ public class LambdaSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withCompatible(false)
             .build();
-    Fory reader = Fory.builder().withXlang(false).withCompatible(false).build();
+    CountingClassLoader classLoader =
+        new CountingClassLoader(
+            LambdaSerializerTest.class.getClassLoader(), LambdaSerializerTest.class.getName());
+    Fory reader =
+        Fory.builder().withXlang(false).withCompatible(false).withClassLoader(classLoader).build();
     byte[] bytes = writer.serialize(extractSerializedLambda(function));
     Assert.assertThrows(InsecureException.class, () -> reader.deserialize(bytes));
+    assertEquals(classLoader.loadCount, 0);
   }
 
   @Test(dataProvider = "foryCopyConfig")
@@ -143,9 +148,54 @@ public class LambdaSerializerTest extends ForyTestBase {
     assertEquals(newFunc.apply(10), Integer.valueOf(17));
   }
 
+  @Test
+  public void testStrictSerializedLambdaCopy() throws Exception {
+    int delta = 7;
+    Function<Integer, Integer> function =
+        (Serializable & Function<Integer, Integer>) (x) -> x + delta;
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withRefCopy(true)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    SerializedLambda serializedLambda = extractSerializedLambda(function);
+
+    SerializedLambda copied = (SerializedLambda) fory.copy((Object) serializedLambda);
+    assertEquals(copied.getCapturedArg(0), Integer.valueOf(delta));
+
+    Fory writer =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    byte[] bytes = writer.serialize(serializedLambda);
+    Assert.assertThrows(InsecureException.class, () -> fory.deserialize(bytes));
+  }
+
   private SerializedLambda extractSerializedLambda(Object function) throws Exception {
     Method writeReplace = function.getClass().getDeclaredMethod("writeReplace");
     writeReplace.setAccessible(true);
     return (SerializedLambda) writeReplace.invoke(function);
+  }
+
+  private static final class CountingClassLoader extends ClassLoader {
+    private final String countedClassName;
+    private int loadCount;
+
+    private CountingClassLoader(ClassLoader parent, String countedClassName) {
+      super(parent);
+      this.countedClassName = countedClassName;
+    }
+
+    @Override
+    protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+      if (countedClassName.equals(name)) {
+        loadCount++;
+      }
+      return super.loadClass(name, resolve);
+    }
   }
 }
