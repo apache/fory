@@ -70,8 +70,6 @@ prefix:
 fory.register(Foo.class, "demo.Foo");
 ```
 
-Registering a custom name does not by itself add the Java class name as another accepted alias.
-
 If there are no duplicate names for types, use a name without a namespace prefix to reduce
 serialized size.
 
