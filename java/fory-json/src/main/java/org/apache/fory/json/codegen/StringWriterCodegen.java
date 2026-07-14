@@ -23,7 +23,6 @@ import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.json.ForyJsonException;
-import org.apache.fory.json.codec.StringObjectWriter;
 import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.writer.StringJsonWriter;
@@ -52,11 +51,6 @@ final class StringWriterCodegen extends JsonWriterCodegen {
   }
 
   @Override
-  Class<?> objectWriterType() {
-    return StringObjectWriter.class;
-  }
-
-  @Override
   Class<?> completeWriterType() {
     return StringWriterCodec.class;
   }
@@ -67,7 +61,7 @@ final class StringWriterCodegen extends JsonWriterCodegen {
   }
 
   @Override
-  String membersMethod() {
+  String memberGroupMethod() {
     return "writeStringMembers";
   }
 

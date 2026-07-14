@@ -40,9 +40,8 @@ import org.apache.fory.json.meta.JsonFieldKind;
  *
  * <p>Only the canonical exact raw-class {@link ObjectCodec} binding may receive generated
  * replacements. Custom codecs, parameterized object bindings, containers, scalars, and dynamic
- * {@code Object} bindings retain their original semantic owner. One generated class may implement
- * more than one capability when its code is genuinely shared, but installation still occurs per
- * slot and each slot is independently lazy.
+ * {@code Object} bindings retain their original semantic owner. Each complete capability is
+ * installed in its own independently lazy slot.
  */
 public final class JsonTypeInfo {
   private final Type type;

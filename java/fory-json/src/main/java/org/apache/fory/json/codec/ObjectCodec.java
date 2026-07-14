@@ -66,7 +66,7 @@ import org.apache.fory.util.record.RecordUtils;
  * Generated code may replace paths independently, but it is built from this codec's immutable field
  * metadata and preserves the same null, unknown-field, record, and member-discovery semantics.
  */
-public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8ObjectWriter<T> {
+public class ObjectCodec<T> implements JsonCodec<T> {
   private static final int MUTABLE = 0;
   private static final int RECORD = 1;
   private static final int CREATOR = 2;
@@ -1039,20 +1039,39 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
 
   final void writeStringObject(StringJsonWriter writer, T value) {
     writer.writeObjectStart();
-    writeStringMembers(writer, value, 0);
+    writeMembers(writer, value, 0);
     writer.writeObjectEnd();
   }
 
-  @Override
-  public final void writeStringMembers(StringJsonWriter writer, T value, int written) {
-    if (anyInfo != null && anyInfo.writeEnabled()) {
-      writeStringAnyMembers(writer, value, written);
-      return;
-    }
-    writeStringFixedMembers(writer, value, written);
+  final void writeUtf8Object(Utf8JsonWriter writer, T value) {
+    writer.writeObjectStart();
+    writeMembers(writer, value, 0);
+    writer.writeObjectEnd();
   }
 
-  private void writeStringFixedMembers(StringJsonWriter writer, T value, int written) {
+  // ClosedSubtypeCodec owns the open object and discriminator for PROPERTY inclusion. Keep this
+  // interpreted traversal package-local instead of publishing partial-object writing as a child
+  // codec capability; a complete generated writer cannot safely enter an object already in
+  // progress. Only this object layer is interpreted: JsonFieldInfo still writes every nested
+  // complete value through its normal codec entry, where ordinary child code generation remains
+  // active.
+  final void writeMembers(StringJsonWriter writer, T value, int written) {
+    if (anyInfo != null && anyInfo.writeEnabled()) {
+      writeAnyMembers(writer, value, written);
+      return;
+    }
+    writeFixedMembers(writer, value, written);
+  }
+
+  final void writeMembers(Utf8JsonWriter writer, T value, int written) {
+    if (anyInfo != null && anyInfo.writeEnabled()) {
+      writeAnyMembers(writer, value, written);
+      return;
+    }
+    writeFixedMembers(writer, value, written);
+  }
+
+  private void writeFixedMembers(StringJsonWriter writer, T value, int written) {
     JsonFieldInfo[] fields = writeFields;
     int length = fields.length;
     int i = 0;
@@ -1077,7 +1096,32 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
   }
 
-  private void writeStringAnyMembers(StringJsonWriter writer, T value, int written) {
+  private void writeFixedMembers(Utf8JsonWriter writer, T value, int written) {
+    JsonFieldInfo[] fields = writeFields;
+    int length = fields.length;
+    int i = 0;
+    while (i + 4 <= length) {
+      if (fields[i++].writeUtf8(writer, value, written)) {
+        written++;
+      }
+      if (fields[i++].writeUtf8(writer, value, written)) {
+        written++;
+      }
+      if (fields[i++].writeUtf8(writer, value, written)) {
+        written++;
+      }
+      if (fields[i++].writeUtf8(writer, value, written)) {
+        written++;
+      }
+    }
+    while (i < length) {
+      if (fields[i++].writeUtf8(writer, value, written)) {
+        written++;
+      }
+    }
+  }
+
+  private void writeAnyMembers(StringJsonWriter writer, T value, int written) {
     int anyIndex = anyInfo.writeIndex;
     JsonFieldInfo[] fields = writeFields;
     for (int i = 0; i < anyIndex; i++) {
@@ -1095,47 +1139,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
   }
 
-  final void writeUtf8Object(Utf8JsonWriter writer, T value) {
-    writer.writeObjectStart();
-    writeUtf8Members(writer, value, 0);
-    writer.writeObjectEnd();
-  }
-
-  @Override
-  public final void writeUtf8Members(Utf8JsonWriter writer, T value, int written) {
-    if (anyInfo != null && anyInfo.writeEnabled()) {
-      writeUtf8AnyMembers(writer, value, written);
-      return;
-    }
-    writeUtf8FixedMembers(writer, value, written);
-  }
-
-  private void writeUtf8FixedMembers(Utf8JsonWriter writer, T value, int written) {
-    JsonFieldInfo[] fields = writeFields;
-    int length = fields.length;
-    int i = 0;
-    while (i + 4 <= length) {
-      if (fields[i++].writeUtf8(writer, value, written)) {
-        written++;
-      }
-      if (fields[i++].writeUtf8(writer, value, written)) {
-        written++;
-      }
-      if (fields[i++].writeUtf8(writer, value, written)) {
-        written++;
-      }
-      if (fields[i++].writeUtf8(writer, value, written)) {
-        written++;
-      }
-    }
-    while (i < length) {
-      if (fields[i++].writeUtf8(writer, value, written)) {
-        written++;
-      }
-    }
-  }
-
-  private void writeUtf8AnyMembers(Utf8JsonWriter writer, T value, int written) {
+  private void writeAnyMembers(Utf8JsonWriter writer, T value, int written) {
     int anyIndex = anyInfo.writeIndex;
     JsonFieldInfo[] fields = writeFields;
     for (int i = 0; i < anyIndex; i++) {

@@ -106,14 +106,6 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
           // needs this parent-local skip table. Nested child values must use the canonical table.
           resolver.resolveInlineAnyReaders(this, i, objectCodec, table);
         }
-        // Member writing is a parent-neutral child representation: this codec owns the outer
-        // object and discriminator, while the child owns field access, omission, Any placement,
-        // and recursive complete-value writes. Keep its generated capability in the child slot so
-        // multiple bases can share it without duplicating codegen or parent-local writer state.
-        // Readers differ because rereading this parent's discriminator changes field
-        // classification, which is why only the inline Any reader binding above is parent-local.
-        resolver.stringObjectWriter(objectCodecs[i]);
-        resolver.utf8ObjectWriter(objectCodecs[i]);
       }
       children[i] = child;
     }
@@ -130,7 +122,7 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
       writer.writeObjectStart();
       writer.writeRawValue(
           definition.stringSubtypePrefixes[index], definition.stringUtf16SubtypePrefixes[index]);
-      stringObjectWriter(index).writeStringMembers(writer, value, 1);
+      objectCodecs[index].writeMembers(writer, value, 1);
       writer.writeObjectEnd();
       return;
     }
@@ -159,7 +151,7 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
     if (definition.inclusion == Inclusion.PROPERTY) {
       writer.writeObjectStart();
       writer.writeRawValue(definition.utf8SubtypePrefixes[index]);
-      utf8ObjectWriter(index).writeUtf8Members(writer, value, 1);
+      objectCodecs[index].writeMembers(writer, value, 1);
       writer.writeObjectEnd();
       return;
     }
@@ -288,20 +280,6 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
           "Runtime type " + runtimeType.getName() + " is not a declared subtype of " + baseType);
     }
     return index;
-  }
-
-  private StringObjectWriter<Object> stringObjectWriter(int index) {
-    StringWriterCodec<Object> writer = children[index].stringWriter();
-    return writer instanceof StringObjectWriter
-        ? (StringObjectWriter<Object>) writer
-        : objectCodecs[index];
-  }
-
-  private Utf8ObjectWriter<Object> utf8ObjectWriter(int index) {
-    Utf8WriterCodec<Object> writer = children[index].utf8Writer();
-    return writer instanceof Utf8ObjectWriter
-        ? (Utf8ObjectWriter<Object>) writer
-        : objectCodecs[index];
   }
 
   @Internal

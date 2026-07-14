@@ -35,10 +35,8 @@ import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
-import org.apache.fory.json.codec.StringObjectWriter;
 import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.codec.Utf16ReaderCodec;
-import org.apache.fory.json.codec.Utf8ObjectWriter;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.codegen.JsonCodegen;
@@ -259,86 +257,6 @@ public final class JsonTypeResolver {
       installed = typeInfo.utf8Writer();
     }
     return (Utf8WriterCodec<T>) installed;
-  }
-
-  /**
-   * Returns the current String member writer and requests JIT refinement when available.
-   *
-   * <p>The caller must hold this resolver's JIT lock.
-   */
-  @Internal
-  @SuppressWarnings("unchecked")
-  public <T> StringObjectWriter<T> stringObjectWriter(ObjectCodec<T> codec) {
-    requireJITLock();
-    ObjectCodec<Object> owner = erase(codec);
-    JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
-    if (typeInfo == null) {
-      return codec;
-    }
-    StringWriterCodec<Object> installed = typeInfo.stringWriter();
-    if ((installed == owner || !(installed instanceof StringObjectWriter))
-        && codegen != null
-        && codegen.canCompileWriter(owner)) {
-      jitContext.registerJITCallback(
-          () -> owner.getClass(),
-          () -> codegen.compileStringObjectWriter(owner),
-          new JsonJITContext.JITCallback<Class<?>>() {
-            @Override
-            public void onSuccess(Class<?> generated) {
-              publishStringWriter(owner, typeInfo, generated);
-            }
-
-            @Override
-            public void onFailure(Throwable failure) {}
-
-            @Override
-            public Object id() {
-              return codegen.stringObjectWriterJITId(owner.type());
-            }
-          });
-      installed = typeInfo.stringWriter();
-    }
-    return installed instanceof StringObjectWriter ? (StringObjectWriter<T>) installed : codec;
-  }
-
-  /**
-   * Returns the current UTF-8 member writer and requests JIT refinement when available.
-   *
-   * <p>The caller must hold this resolver's JIT lock.
-   */
-  @Internal
-  @SuppressWarnings("unchecked")
-  public <T> Utf8ObjectWriter<T> utf8ObjectWriter(ObjectCodec<T> codec) {
-    requireJITLock();
-    ObjectCodec<Object> owner = erase(codec);
-    JsonTypeInfo typeInfo = objectTypeInfos.get(owner.type());
-    if (typeInfo == null) {
-      return codec;
-    }
-    Utf8WriterCodec<Object> installed = typeInfo.utf8Writer();
-    if ((installed == owner || !(installed instanceof Utf8ObjectWriter))
-        && codegen != null
-        && codegen.canCompileWriter(owner)) {
-      jitContext.registerJITCallback(
-          () -> owner.getClass(),
-          () -> codegen.compileUtf8ObjectWriter(owner),
-          new JsonJITContext.JITCallback<Class<?>>() {
-            @Override
-            public void onSuccess(Class<?> generated) {
-              publishUtf8Writer(owner, typeInfo, generated);
-            }
-
-            @Override
-            public void onFailure(Throwable failure) {}
-
-            @Override
-            public Object id() {
-              return codegen.utf8ObjectWriterJITId(owner.type());
-            }
-          });
-      installed = typeInfo.utf8Writer();
-    }
-    return installed instanceof Utf8ObjectWriter ? (Utf8ObjectWriter<T>) installed : codec;
   }
 
   @SuppressWarnings("unchecked")
@@ -931,17 +849,6 @@ public final class JsonTypeResolver {
   private void publishStringWriter(
       ObjectCodec<Object> owner, JsonTypeInfo typeInfo, Class<?> generated) {
     requireJITLock();
-    StringWriterCodec<Object> current = typeInfo.stringWriter();
-    // A member writer is a parent-independent child refinement and is also a complete writer, so
-    // the canonical child slot can serve ordinary and composed writes. A concurrently compiled
-    // complete-only writer must never downgrade that refinement when its callback finishes later.
-    // The interpreted owner also implements member writing, so identity distinguishes it from an
-    // installed generated refinement.
-    if (!StringObjectWriter.class.isAssignableFrom(generated)
-        && current != owner
-        && current instanceof StringObjectWriter) {
-      return;
-    }
     StringWriterCodec<Object> codec = newStringWriter(owner, generated);
     Field[] childFields = writerChildFields(codec, owner);
     registerStringWriterCallbacks(codec, owner, childFields);
@@ -952,12 +859,6 @@ public final class JsonTypeResolver {
   private void publishUtf8Writer(
       ObjectCodec<Object> owner, JsonTypeInfo typeInfo, Class<?> generated) {
     requireJITLock();
-    Utf8WriterCodec<Object> current = typeInfo.utf8Writer();
-    if (!Utf8ObjectWriter.class.isAssignableFrom(generated)
-        && current != owner
-        && current instanceof Utf8ObjectWriter) {
-      return;
-    }
     Utf8WriterCodec<Object> codec = newUtf8Writer(owner, generated);
     Field[] childFields = writerChildFields(codec, owner);
     registerUtf8WriterCallbacks(codec, owner, childFields);
@@ -1015,7 +916,7 @@ public final class JsonTypeResolver {
               @Override
               public void onNotifyResult(Object result) {
                 StringWriterCodec<Object> codec = child.stringWriter();
-                checkGeneratedWriter(result, codec, StringObjectWriter.class);
+                checkGeneratedClass(result, codec);
                 ReflectionUtils.setObjectFieldValue(parent, field, codec);
               }
 
@@ -1044,7 +945,7 @@ public final class JsonTypeResolver {
               @Override
               public void onNotifyResult(Object result) {
                 Utf8WriterCodec<Object> codec = child.utf8Writer();
-                checkGeneratedWriter(result, codec, Utf8ObjectWriter.class);
+                checkGeneratedClass(result, codec);
                 ReflectionUtils.setObjectFieldValue(parent, field, codec);
               }
 
@@ -1155,7 +1056,7 @@ public final class JsonTypeResolver {
           @Override
           public void onNotifyResult(Object result) {
             StringWriterCodec<Object> codec = child.stringWriter();
-            checkGeneratedWriter(result, codec, StringObjectWriter.class);
+            checkGeneratedClass(result, codec);
             ReflectionUtils.setObjectFieldValue(parent, field, codec);
           }
 
@@ -1179,7 +1080,7 @@ public final class JsonTypeResolver {
           @Override
           public void onNotifyResult(Object result) {
             Utf8WriterCodec<Object> codec = child.utf8Writer();
-            checkGeneratedWriter(result, codec, Utf8ObjectWriter.class);
+            checkGeneratedClass(result, codec);
             ReflectionUtils.setObjectFieldValue(parent, field, codec);
           }
 
@@ -1350,13 +1251,6 @@ public final class JsonTypeResolver {
     if (codec.getClass() != result) {
       throw new IllegalStateException(
           "Generated JSON callback does not match installed capability");
-    }
-  }
-
-  private static void checkGeneratedWriter(Object result, Object codec, Class<?> refinement) {
-    if (codec.getClass() != result && !refinement.isInstance(codec)) {
-      throw new IllegalStateException(
-          "Generated JSON callback does not match installed writer capability");
     }
   }
 

@@ -32,9 +32,10 @@ public final class JsonSubTypesInfo {
   final Inclusion inclusion;
   final Class<?>[] classes;
   final JsonSubtypeScanInfo scanInfo;
-  // PROPERTY prefixes contain the complete discriminator member; its member writer receives an
-  // initial count of one and owns the following comma. Wrapper prefixes include ':' or ',' before
-  // the complete subtype value. No writer adds a separate separator branch on the hot path.
+  // PROPERTY prefixes contain the complete discriminator member, so the following ObjectCodec
+  // traversal starts with one member already written and owns the next comma. Wrapper prefixes
+  // include ':' or ',' before the complete subtype value. No writer adds a separate separator
+  // branch on the hot path.
   final byte[][] stringSubtypePrefixes;
   final byte[][] stringUtf16SubtypePrefixes;
   final byte[][] utf8SubtypePrefixes;

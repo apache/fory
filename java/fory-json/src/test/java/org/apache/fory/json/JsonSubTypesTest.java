@@ -23,8 +23,6 @@ import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotSame;
-import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 
 import java.io.ByteArrayOutputStream;
@@ -35,14 +33,11 @@ import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.codec.JsonCodec;
-import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.resolver.JsonTypeInfo;
-import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
@@ -58,45 +53,33 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
   @Test
   public void inlineTypedRoot() {
     ForyJson json = newJson();
-    Shape value = new Circle(2);
+    Circle value = new Circle(2);
+    assertEquals(json.toJson(value, Circle.class), "{\"radius\":2}");
+    assertEquals(
+        new String(json.toJsonBytes(value, Circle.class), StandardCharsets.UTF_8),
+        "{\"radius\":2}");
     String text = json.toJson(value, Shape.class);
     assertEquals(text, "{\"kind\":\"circle\",\"radius\":2}");
     Shape decoded = json.fromJson(text, Shape.class);
     assertEquals(((Circle) decoded).radius, 2);
     assertEquals(new String(json.toJsonBytes(value, Shape.class), StandardCharsets.UTF_8), text);
-    assertInlineWriterCapabilities(json, Circle.class);
     Shape utf16 = json.fromJson("{\"说明\":\"值\",\"radius\":3,\"kind\":\"circle\"}", Shape.class);
     assertEquals(((Circle) utf16).radius, 3);
     Shape utf8 = json.fromJson(text.getBytes(StandardCharsets.UTF_8), Shape.class);
     assertEquals(((Circle) utf8).radius, 2);
   }
 
-  private void assertInlineWriterCapabilities(ForyJson json, Class<?> type) {
-    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
-    resolver.lockJIT();
-    try {
-      JsonTypeInfo info = resolver.getTypeInfo(type, type);
-      ObjectCodec<?> owner = resolver.getObjectCodec(type);
-      if (codegenEnabled()) {
-        assertNotSame(info.stringWriter(), owner);
-        assertNotSame(info.utf8Writer(), owner);
-      } else {
-        assertSame(info.stringWriter(), owner);
-        assertSame(info.utf8Writer(), owner);
-      }
-    } finally {
-      resolver.unlockJIT();
-    }
-  }
-
   @Test
   public void classNameSubtype() {
     ForyJson json = newJson();
-    Shape value = new Rectangle(3, 4);
+    Rectangle value = new Rectangle(3, 4);
+    assertEquals(json.toJson(value, Rectangle.class), "{\"height\":4,\"width\":3}");
+    assertEquals(
+        new String(json.toJsonBytes(value, Rectangle.class), StandardCharsets.UTF_8),
+        "{\"height\":4,\"width\":3}");
     String text = json.toJson(value, Shape.class);
     assertEquals(text, "{\"kind\":\"rectangle\",\"height\":4,\"width\":3}");
     assertEquals(new String(json.toJsonBytes(value, Shape.class), StandardCharsets.UTF_8), text);
-    assertInlineWriterCapabilities(json, Rectangle.class);
     Shape decoded = json.fromJson(text, Shape.class);
     assertEquals(((Rectangle) decoded).width, 3);
     assertEquals(((Rectangle) decoded).height, 4);

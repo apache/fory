@@ -31,7 +31,6 @@ import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
-import org.apache.fory.json.codec.Utf8ObjectWriter;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
@@ -61,11 +60,6 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
   }
 
   @Override
-  Class<?> objectWriterType() {
-    return Utf8ObjectWriter.class;
-  }
-
-  @Override
   Class<?> completeWriterType() {
     return Utf8WriterCodec.class;
   }
@@ -76,7 +70,7 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
   }
 
   @Override
-  String membersMethod() {
+  String memberGroupMethod() {
     return "writeUtf8Members";
   }
 

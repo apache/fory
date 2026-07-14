@@ -68,13 +68,13 @@ abstract class JsonWriterCodegen {
 
   abstract Class<?> codecArrayType();
 
-  abstract Class<?> objectWriterType();
-
   abstract Class<?> completeWriterType();
 
   abstract String writeMethod();
 
-  abstract String membersMethod();
+  // This names private split methods in ordinary complete writers. It is not a partial-object
+  // capability; keep the generated literal stable so unaffected writer source remains identical.
+  abstract String memberGroupMethod();
 
   abstract String writeAnyMethod();
 
@@ -173,16 +173,11 @@ abstract class JsonWriterCodegen {
   }
 
   String genWriterCode(
-      JsonGeneratedCodecBuilder builder,
-      Class<?> type,
-      JsonFieldInfo[] properties,
-      boolean objectMembers) {
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonFieldInfo[] properties) {
     ownerType = type;
     CodegenContext ctx = builder.context();
     ctx.addImports(writerType());
-    ctx.implementsInterfaces(
-        JsonCodegen.generatedCodecType(
-            ctx, objectMembers ? objectWriterType() : completeWriterType()));
+    ctx.implementsInterfaces(JsonCodegen.generatedCodecType(ctx, completeWriterType()));
     boolean objectStartFused = canFuseObjectStart(properties);
     PrefixFields prefixFields = prefixFields(properties, objectStartFused);
     for (int i = 0; i < properties.length; i++) {
@@ -243,45 +238,15 @@ abstract class JsonWriterCodegen {
         "writer",
         Object.class,
         "value");
-    if (objectMembers) {
-      ctx.clearExprState();
-      Expression memberObject =
-          inline(
-              new Expression.Cast(
-                  new Reference("value", TypeRef.of(Object.class)), TypeRef.of(type)));
-      Expression memberValue =
-          properties.length <= 1 ? memberObject : new Expression.Variable("object", memberObject);
-      Code.ExprCode membersBody =
-          writeMembersExpression(builder, properties, memberValue).genCode(ctx);
-      String membersCode = membersBody.code();
-      membersCode = membersCode == null ? "" : ctx.optimizeMethodCode(membersCode);
-      ctx.addMethod(
-          "@Override public final",
-          membersMethod(),
-          membersCode,
-          void.class,
-          writerType(),
-          "writer",
-          Object.class,
-          "value",
-          int.class,
-          "written");
-    }
     return ctx.genCode();
   }
 
   String genAnyWriterCode(
-      JsonGeneratedCodecBuilder builder,
-      Class<?> type,
-      JsonFieldInfo[] properties,
-      AnyInfo any,
-      boolean objectMembers) {
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonFieldInfo[] properties, AnyInfo any) {
     ownerType = type;
     CodegenContext ctx = builder.context();
     ctx.addImports(writerType(), ObjectCodec.class, Map.class);
-    ctx.implementsInterfaces(
-        JsonCodegen.generatedCodecType(
-            ctx, objectMembers ? objectWriterType() : completeWriterType()));
+    ctx.implementsInterfaces(JsonCodegen.generatedCodecType(ctx, completeWriterType()));
     boolean objectStartFused = any.writeIndex() > 0 && canFuseObjectStart(properties);
     PrefixFields prefixFields = prefixFields(properties, objectStartFused);
     addWriterFields(ctx, properties, prefixFields);
@@ -357,38 +322,6 @@ abstract class JsonWriterCodegen {
         Object.class,
         "value");
 
-    if (objectMembers) {
-      String anyMembersMethod = membersMethod() + "Any";
-      addGeneratedMethod(
-          ctx,
-          "private final",
-          anyMembersMethod,
-          writeAnyMembersExpression(
-              builder,
-              properties,
-              any,
-              new Reference("object", TypeRef.of(type)),
-              new Reference("written", TypeRef.of(int.class))),
-          void.class,
-          writerType(),
-          "writer",
-          type,
-          "object",
-          int.class,
-          "written");
-      String typeName = ctx.type(type);
-      ctx.addMethod(
-          "@Override public final",
-          membersMethod(),
-          "this." + anyMembersMethod + "(writer, (" + typeName + ") value, written);",
-          void.class,
-          writerType(),
-          "writer",
-          Object.class,
-          "value",
-          int.class,
-          "written");
-    }
     return ctx.genCode();
   }
 
@@ -449,31 +382,6 @@ abstract class JsonWriterCodegen {
 
   private boolean storesAnyWriter(AnyInfo any) {
     return !any.valueTypeInfo().usesDefaultObjectCodec() || any.valueRawType() != ownerType;
-  }
-
-  private Expression writeMembersExpression(
-      JsonGeneratedCodecBuilder builder, JsonFieldInfo[] properties, Expression object) {
-    Expression.ListExpression expressions = new Expression.ListExpression();
-    expressions.add(object);
-    Expression index = new Reference("written", TypeRef.of(int.class));
-    Reference writer = writerRef();
-    boolean splitMembers = properties.length >= splitMemberThreshold();
-    List<Expression> group = splitMembers ? new ArrayList<>(MAX_MEMBERS_PER_METHOD) : null;
-    for (int i = 0; i < properties.length; i++) {
-      Expression member = writeProp(builder, properties[i], i, true, index, object, writer);
-      if (splitMembers) {
-        group.add(member);
-        if (group.size() == MAX_MEMBERS_PER_METHOD) {
-          addMemberGroup(builder, expressions, group, object, writer);
-        }
-      } else {
-        expressions.add(member);
-      }
-    }
-    if (splitMembers) {
-      addMemberGroup(builder, expressions, group, object, writer, true);
-    }
-    return expressions;
   }
 
   static final class PrefixFields {
@@ -685,42 +593,6 @@ abstract class JsonWriterCodegen {
     return expressions;
   }
 
-  private Expression writeAnyMembersExpression(
-      JsonGeneratedCodecBuilder builder,
-      JsonFieldInfo[] properties,
-      AnyInfo any,
-      Expression object,
-      Expression written) {
-    Expression.ListExpression expressions = new Expression.ListExpression(object);
-    Reference writer = writerRef();
-    List<Expression> memberGroup =
-        properties.length >= splitMemberThreshold()
-            ? new ArrayList<>(MAX_MEMBERS_PER_METHOD)
-            : null;
-    for (int i = 0; i <= properties.length; i++) {
-      if (i == any.writeIndex()) {
-        flushAnyMemberGroup(builder, expressions, memberGroup, object, writer);
-        expressions.add(new Expression.Assign(written, writeAny(builder, any, object, written)));
-      }
-      if (i == properties.length) {
-        break;
-      }
-      Expression member = writeProp(builder, properties[i], i, true, written, object, writer);
-      if (memberGroup == null) {
-        expressions.add(member);
-      } else {
-        memberGroup.add(member);
-        if (memberGroup.size() == MAX_MEMBERS_PER_METHOD) {
-          addMemberGroup(builder, expressions, memberGroup, object, writer);
-        }
-      }
-    }
-    if (memberGroup != null) {
-      addMemberGroup(builder, expressions, memberGroup, object, writer, true);
-    }
-    return expressions;
-  }
-
   private void flushAnyMemberGroup(
       JsonGeneratedCodecBuilder builder,
       Expression.ListExpression expressions,
@@ -799,7 +671,7 @@ abstract class JsonWriterCodegen {
             builder.context(),
             cutPoints,
             new Expression.ListExpression(new ArrayList<>(memberGroup)),
-            membersMethod(),
+            memberGroupMethod(),
             false));
     memberGroup.clear();
   }
