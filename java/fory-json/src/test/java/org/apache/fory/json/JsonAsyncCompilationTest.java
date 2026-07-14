@@ -49,11 +49,13 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.json.annotation.JsonAnyProperty;
+import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.codec.ClosedSubtypeCodec;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.StringWriterCodec;
@@ -63,6 +65,7 @@ import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.data.RecursiveParent;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.meta.JsonTypeUse;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -72,8 +75,10 @@ import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.StringSerializer;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class JsonAsyncCompilationTest {
@@ -349,6 +354,25 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
+  public void rollbackClearsCanonicalOwners() throws Exception {
+    FlakyStringCodec.CONSTRUCTIONS.set(0);
+    ControlledJson controlled = controlledJson();
+    JsonTypeResolver resolver = new JsonTypeResolver(controlled.registry);
+    Field field = JsonTypeResolver.class.getDeclaredField("canonicalObjectTypeInfos");
+    field.setAccessible(true);
+    IdentityMap<?, ?> canonicalOwners = (IdentityMap<?, ?>) field.get(resolver);
+
+    expectThrows(ForyJsonException.class, () -> resolver.getObjectCodec(RollbackAfterSelf.class));
+    assertEquals(canonicalOwners.size, 0);
+
+    ObjectCodec<RollbackAfterSelf> replacement = resolver.getObjectCodec(RollbackAfterSelf.class);
+    JsonTypeInfo replacementInfo =
+        resolver.getTypeInfo(RollbackAfterSelf.class, RollbackAfterSelf.class);
+    assertSame(replacementInfo.stringWriter(), replacement);
+    assertEquals(canonicalOwners.size, 1);
+  }
+
+  @Test
   public void asyncFailureKeepsInterpretedResult() {
     ControlledExecutor executor = new ControlledExecutor();
     JsonJITContext context = new JsonJITContext(true, executor);
@@ -613,7 +637,7 @@ public class JsonAsyncCompilationTest {
     controlled.executor.runNext();
     assertSame(parameterized.utf8Reader(), parameterizedReader);
 
-    JsonCodec<AsyncChild> codec = nullCodec();
+    JsonValueCodec<AsyncChild> codec = nullCodec();
     CodecRegistry codecs = new CodecRegistry();
     codecs.register(AsyncChild.class, codec);
     ControlledJson custom = controlledJson(codecs);
@@ -626,6 +650,83 @@ public class JsonAsyncCompilationTest {
         primaryTypeResolver(custom.json).getTypeInfo(AsyncChild.class, AsyncChild.class);
     assertCapabilities(customInfo, codec);
     assertEquals(custom.executor.submittedTasks(), 0);
+  }
+
+  @Test
+  public void annotatedBindingsStayIsolated() throws Exception {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
+    assertBindingOrder(false);
+    assertBindingOrder(true);
+  }
+
+  private static void assertBindingOrder(boolean annotatedFirst) throws Exception {
+    ControlledJson controlled = controlledJson();
+    JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
+    JsonTypeUse annotatedUse = JsonTypeUse.forField(AsyncBindingOwner.class.getField("annotated"));
+    JsonTypeInfo annotatedInfo;
+    JsonTypeInfo rawInfo;
+    resolver.lockJIT();
+    try {
+      if (annotatedFirst) {
+        annotatedInfo = resolver.getTypeInfo(annotatedUse);
+        rawInfo = resolver.getTypeInfo(GenericAsyncBox.class, GenericAsyncBox.class);
+      } else {
+        rawInfo = resolver.getTypeInfo(GenericAsyncBox.class, GenericAsyncBox.class);
+        annotatedInfo = resolver.getTypeInfo(annotatedUse);
+      }
+      ObjectCodec<?> annotatedOwner = (ObjectCodec<?>) annotatedInfo.stringWriter();
+      ObjectCodec<?> rawOwner = (ObjectCodec<?>) rawInfo.stringWriter();
+      assertNotSame(annotatedOwner, rawOwner);
+      assertSame(resolver.stringWriter(annotatedOwner), annotatedOwner);
+      assertSame(resolver.utf8Writer(annotatedOwner), annotatedOwner);
+      assertSame(resolver.latin1Reader(annotatedOwner), annotatedOwner);
+      assertSame(resolver.utf16Reader(annotatedOwner), annotatedOwner);
+      assertSame(resolver.utf8Reader(annotatedOwner), annotatedOwner);
+      assertSame(resolver.stringWriter(rawOwner), rawOwner);
+      assertSame(resolver.utf8Writer(rawOwner), rawOwner);
+      assertSame(resolver.latin1Reader(rawOwner), rawOwner);
+      assertSame(resolver.utf16Reader(rawOwner), rawOwner);
+      assertSame(resolver.utf8Reader(rawOwner), rawOwner);
+    } finally {
+      resolver.unlockJIT();
+    }
+    controlled.executor.runAll();
+
+    AsyncBindingOwner value = new AsyncBindingOwner();
+    value.raw = new GenericAsyncBox<>();
+    value.raw.value = "raw";
+    value.annotated = new GenericAsyncBox<>();
+    value.annotated.value = "annotated";
+    String expected = "{\"annotated\":{\"value\":\"codec:annotated\"},\"raw\":{\"value\":\"raw\"}}";
+    assertEquals(controlled.json.toJson(value), expected);
+    controlled.executor.runAll();
+    assertEquals(controlled.json.toJson(value), expected);
+    assertEquals(new String(controlled.json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+    controlled.executor.runAll();
+    assertEquals(new String(controlled.json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+    assertEquals(
+        controlled.json.fromJson(expected, AsyncBindingOwner.class).annotated.value, "annotated");
+    controlled.executor.runAll();
+    assertEquals(
+        controlled.json.fromJson(expected, AsyncBindingOwner.class).annotated.value, "annotated");
+    String utf16 = "{\"annotated\":{\"value\":\"codec:你\"},\"raw\":{\"value\":\"raw\"}}";
+    assertEquals(controlled.json.fromJson(utf16, AsyncBindingOwner.class).annotated.value, "你");
+    controlled.executor.runAll();
+    assertEquals(controlled.json.fromJson(utf16, AsyncBindingOwner.class).annotated.value, "你");
+    assertEquals(
+        controlled.json.fromJson(expected.getBytes(StandardCharsets.UTF_8), AsyncBindingOwner.class)
+            .annotated
+            .value,
+        "annotated");
+    controlled.executor.runAll();
+    assertEquals(
+        controlled.json.fromJson(expected.getBytes(StandardCharsets.UTF_8), AsyncBindingOwner.class)
+            .annotated
+            .value,
+        "annotated");
   }
 
   @Test
@@ -980,7 +1081,7 @@ public class JsonAsyncCompilationTest {
     }
   }
 
-  private static final class BlockingCodec implements JsonCodec<BlockingValue> {
+  private static final class BlockingCodec implements JsonValueCodec<BlockingValue> {
     private final CountDownLatch entered;
     private final CountDownLatch release;
 
@@ -1120,9 +1221,68 @@ public class JsonAsyncCompilationTest {
     public T value;
   }
 
+  public static final class AsyncBindingOwner {
+    public GenericAsyncBox<@JsonCodec(AsyncStringCodec.class) String> annotated;
+    public GenericAsyncBox raw;
+  }
+
+  public static final class AsyncStringCodec implements JsonValueCodec<String> {
+    @Override
+    public void writeString(StringJsonWriter writer, String value) {
+      writer.writeString("codec:" + value);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, String value) {
+      writer.writeString("codec:" + value);
+    }
+
+    @Override
+    public String readLatin1(Latin1JsonReader reader) {
+      return read(reader.readString());
+    }
+
+    @Override
+    public String readUtf16(Utf16JsonReader reader) {
+      return read(reader.readString());
+    }
+
+    @Override
+    public String readUtf8(Utf8JsonReader reader) {
+      return read(reader.readString());
+    }
+
+    private static String read(String value) {
+      if (!value.startsWith("codec:")) {
+        throw new ForyJsonException("Missing codec prefix");
+      }
+      return value.substring("codec:".length());
+    }
+  }
+
   public static final class SelfRecursive {
     public int id;
     public SelfRecursive next;
+  }
+
+  public static final class RollbackAfterSelf {
+    public RollbackAfterSelf aSelf;
+    public @JsonCodec(FlakyStringCodec.class) String zValue;
+  }
+
+  public static final class FlakyStringCodec extends JsonCodecAnnotationTest.TaggedStringCodec {
+    private static final AtomicInteger CONSTRUCTIONS = new AtomicInteger();
+
+    public FlakyStringCodec() {
+      if (CONSTRUCTIONS.getAndIncrement() == 0) {
+        throw new IllegalStateException("expected first construction failure");
+      }
+    }
+
+    @Override
+    protected String tag() {
+      return "rollback";
+    }
   }
 
   public static final class MutualFirst {

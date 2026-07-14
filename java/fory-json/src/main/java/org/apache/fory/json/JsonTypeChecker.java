@@ -29,10 +29,10 @@ import org.apache.fory.exception.InsecureException;
  * a String so class-name materialization paths can apply policy without requiring a second API.
  *
  * <p>Classes served by default built-in exact JSON codecs do not invoke the configured checker
- * unless a custom codec is registered for the same class. Arrays are checked through their ultimate
- * component type, and enum constant-specific subclasses are normalized to their enclosing enum.
- * Fory's disallow list always runs before this callback and cannot be bypassed by a built-in or
- * custom codec.
+ * unless a custom codec is registered for the same class or selected by {@code @JsonCodec}. Arrays
+ * are checked through their ultimate component type, and enum constant-specific subclasses are
+ * normalized to their enclosing enum. Fory's disallow list always runs before this callback and
+ * cannot be bypassed by a built-in or custom codec.
  *
  * <p>Decisions are shared by class name across the runtime's pooled states and cached up to a
  * bounded number of distinct names. Once the cache is full, new names invoke the checker each time

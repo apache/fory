@@ -25,11 +25,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.util.Preconditions;
 
 /**
- * Builder-side registry of exact user-supplied {@link JsonCodec} bindings.
+ * Builder-side registry of exact user-supplied {@link JsonValueCodec} bindings.
  *
  * <p>Registration is keyed by class identity and replaces any previous codec for the exact class. A
  * {@link JsonSharedRegistry} receives a copy when a runtime is built, separating later builder
@@ -38,39 +38,39 @@ import org.apache.fory.util.Preconditions;
  * code-generation naming state.
  */
 public final class CodecRegistry {
-  private final ConcurrentMap<Class<?>, JsonCodec<?>> codecs;
+  private final ConcurrentMap<Class<?>, JsonValueCodec<?>> codecs;
 
   public CodecRegistry() {
     codecs = new ConcurrentHashMap<>();
   }
 
-  private CodecRegistry(ConcurrentMap<Class<?>, JsonCodec<?>> codecs) {
+  private CodecRegistry(ConcurrentMap<Class<?>, JsonValueCodec<?>> codecs) {
     this.codecs = codecs;
   }
 
-  public <T> void register(Class<T> type, JsonCodec<T> codec) {
+  public <T> void register(Class<T> type, JsonValueCodec<T> codec) {
     Preconditions.checkNotNull(type);
     Preconditions.checkNotNull(codec);
     codecs.put(type, codec);
   }
 
-  public JsonCodec<?> get(Class<?> type) {
+  public JsonValueCodec<?> get(Class<?> type) {
     return codecs.get(type);
   }
 
   public CodecRegistry copy() {
-    ConcurrentMap<Class<?>, JsonCodec<?>> copied = new ConcurrentHashMap<>(codecs.size());
-    for (Map.Entry<Class<?>, JsonCodec<?>> entry : codecs.entrySet()) {
+    ConcurrentMap<Class<?>, JsonValueCodec<?>> copied = new ConcurrentHashMap<>(codecs.size());
+    for (Map.Entry<Class<?>, JsonValueCodec<?>> entry : codecs.entrySet()) {
       copied.put(entry.getKey(), entry.getValue());
     }
     return new CodecRegistry(copied);
   }
 
   public String codegenKey() {
-    List<Map.Entry<Class<?>, JsonCodec<?>>> entries = new ArrayList<>(codecs.entrySet());
+    List<Map.Entry<Class<?>, JsonValueCodec<?>>> entries = new ArrayList<>(codecs.entrySet());
     entries.sort(Comparator.comparing(entry -> entry.getKey().getName()));
     StringBuilder builder = new StringBuilder(entries.size() * 48);
-    for (Map.Entry<Class<?>, JsonCodec<?>> entry : entries) {
+    for (Map.Entry<Class<?>, JsonValueCodec<?>> entry : entries) {
       builder
           .append(entry.getKey().getName())
           .append('=')

@@ -20,6 +20,7 @@
 package org.apache.fory.reflect;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import org.apache.fory.annotation.Internal;
@@ -54,12 +55,28 @@ public final class TypeUseMetadata {
     return SUPPORT.methodParameterTypeUses(method);
   }
 
+  public static Object[] constructorParameterTypeUses(Constructor<?> constructor) {
+    return SUPPORT.constructorParameterTypeUses(constructor);
+  }
+
   public static Object recordComponentTypeUse(RecordComponent component) {
     return SUPPORT.recordComponentTypeUse(component);
   }
 
   public static Object[] typeUseArguments(Object typeUse) {
     return SUPPORT.typeUseArguments(typeUse);
+  }
+
+  public static Object arrayComponentTypeUse(Object typeUse) {
+    return SUPPORT.arrayComponentTypeUse(typeUse);
+  }
+
+  public static Object[] wildcardUpperBounds(Object typeUse) {
+    return SUPPORT.wildcardUpperBounds(typeUse);
+  }
+
+  public static Object[] wildcardLowerBounds(Object typeUse) {
+    return SUPPORT.wildcardLowerBounds(typeUse);
   }
 
   public static Annotation typeUseAnnotation(Object typeUse, String name) {
@@ -98,9 +115,17 @@ public final class TypeUseMetadata {
 
     Object[] methodParameterTypeUses(Method method);
 
+    Object[] constructorParameterTypeUses(Constructor<?> constructor);
+
     Object recordComponentTypeUse(RecordComponent component);
 
     Object[] typeUseArguments(Object typeUse);
+
+    Object arrayComponentTypeUse(Object typeUse);
+
+    Object[] wildcardUpperBounds(Object typeUse);
+
+    Object[] wildcardLowerBounds(Object typeUse);
 
     Annotation typeUseAnnotation(Object typeUse, String name);
 
@@ -132,12 +157,32 @@ public final class TypeUseMetadata {
     }
 
     @Override
+    public Object[] constructorParameterTypeUses(Constructor<?> constructor) {
+      return null;
+    }
+
+    @Override
     public Object recordComponentTypeUse(RecordComponent component) {
       return null;
     }
 
     @Override
     public Object[] typeUseArguments(Object typeUse) {
+      return null;
+    }
+
+    @Override
+    public Object arrayComponentTypeUse(Object typeUse) {
+      return null;
+    }
+
+    @Override
+    public Object[] wildcardUpperBounds(Object typeUse) {
+      return null;
+    }
+
+    @Override
+    public Object[] wildcardLowerBounds(Object typeUse) {
       return null;
     }
 

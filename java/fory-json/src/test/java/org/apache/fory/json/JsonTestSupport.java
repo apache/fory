@@ -22,7 +22,7 @@ package org.apache.fory.json;
 import java.lang.reflect.Field;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -31,6 +31,7 @@ import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.serializer.StringSerializer;
 
 final class JsonTestSupport {
   private static final JsonConfig CONFIG =
@@ -47,8 +48,8 @@ final class JsonTestSupport {
           new CodecRegistry(),
           null);
   private static final JsonSharedRegistry REGISTRY = new JsonSharedRegistry(CONFIG);
-  private static final JsonCodec<Object> NULL_CODEC =
-      new JsonCodec<Object>() {
+  private static final JsonValueCodec<Object> NULL_CODEC =
+      new JsonValueCodec<Object>() {
         @Override
         public void writeString(StringJsonWriter writer, Object value) {
           writer.writeNull();
@@ -115,8 +116,8 @@ final class JsonTestSupport {
   }
 
   @SuppressWarnings("unchecked")
-  static <T> JsonCodec<T> nullCodec() {
-    return (JsonCodec<T>) NULL_CODEC;
+  static <T> JsonValueCodec<T> nullCodec() {
+    return (JsonValueCodec<T>) NULL_CODEC;
   }
 
   static JsonTypeResolver primaryTypeResolver(ForyJson json) {
@@ -140,6 +141,13 @@ final class JsonTestSupport {
     } catch (ReflectiveOperationException e) {
       throw new AssertionError(e);
     }
+  }
+
+  static String stringReaderPath(String input) {
+    return StringSerializer.isBytesBackedString()
+            && StringSerializer.isLatin1Coder(StringSerializer.getStringCoder(input))
+        ? "latin1"
+        : "utf16";
   }
 
   static int pooledStateCount(ForyJson json) {

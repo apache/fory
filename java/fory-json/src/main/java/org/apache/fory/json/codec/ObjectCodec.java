@@ -36,6 +36,7 @@ import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.json.meta.JsonTypeUse;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -66,7 +67,7 @@ import org.apache.fory.util.record.RecordUtils;
  * Generated code may replace paths independently, but it is built from this codec's immutable field
  * metadata and preserves the same null, unknown-field, record, and member-discovery semantics.
  */
-public class ObjectCodec<T> implements JsonCodec<T> {
+public class ObjectCodec<T> implements JsonValueCodec<T> {
   private static final int MUTABLE = 0;
   private static final int RECORD = 1;
   private static final int CREATOR = 2;
@@ -111,13 +112,25 @@ public class ObjectCodec<T> implements JsonCodec<T> {
     }
   }
 
+  @Internal
   public static <T> ObjectCodec<T> build(
       TypeRef<T> ownerType,
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
       boolean writeNullFields) {
+    return build(
+        ownerType, null, propertyDiscoveryEnabled, propertyNamingStrategy, writeNullFields);
+  }
+
+  @Internal
+  public static <T> ObjectCodec<T> build(
+      TypeRef<T> ownerType,
+      JsonTypeUse ownerTypeUse,
+      boolean propertyDiscoveryEnabled,
+      PropertyNamingStrategy propertyNamingStrategy,
+      boolean writeNullFields) {
     return ObjectCodecBuilder.build(
-        ownerType, propertyDiscoveryEnabled, propertyNamingStrategy, writeNullFields);
+        ownerType, ownerTypeUse, propertyDiscoveryEnabled, propertyNamingStrategy, writeNullFields);
   }
 
   static <T> ObjectCodec<T> createCodec(
@@ -1182,6 +1195,7 @@ public class ObjectCodec<T> implements JsonCodec<T> {
     private final Class<?> mapRawType;
     private final Type valueType;
     private final Class<?> valueRawType;
+    private final JsonTypeUse valueTypeUse;
     private final int writeIndex;
     private final int constructionIndex;
     private JsonTypeInfo valueTypeInfo;
@@ -1196,6 +1210,7 @@ public class ObjectCodec<T> implements JsonCodec<T> {
         Class<?> mapRawType,
         Type valueType,
         Class<?> valueRawType,
+        JsonTypeUse valueTypeUse,
         int writeIndex,
         int constructionIndex) {
       this.writeField = writeField;
@@ -1217,14 +1232,24 @@ public class ObjectCodec<T> implements JsonCodec<T> {
       this.mapRawType = mapRawType;
       this.valueType = valueType;
       this.valueRawType = valueRawType;
+      this.valueTypeUse = valueTypeUse;
       this.writeIndex = writeIndex;
       this.constructionIndex = constructionIndex;
     }
 
     private void resolveTypes(JsonTypeResolver resolver) {
-      valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
+      if (readField != null && valueTypeUse != null) {
+        resolver.checkMapKeySecure(String.class);
+      }
+      valueTypeInfo =
+          valueTypeUse == null
+              ? resolver.getTypeInfo(valueType, valueRawType)
+              : resolver.getTypeInfo(valueTypeUse);
       if (readField != null) {
-        mapCodec = MapCodec.create(mapRawType, TypeRef.of(mapType), resolver);
+        mapCodec =
+            valueTypeUse == null
+                ? MapCodec.create(mapRawType, TypeRef.of(mapType), resolver)
+                : MapCodec.create(mapRawType, String.class, valueTypeInfo);
       }
     }
 

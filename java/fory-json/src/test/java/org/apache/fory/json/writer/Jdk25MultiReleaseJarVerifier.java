@@ -161,6 +161,8 @@ public final class Jdk25MultiReleaseJarVerifier {
       compile.add(classes.toString());
       compile.add(sourceRoot.resolve("module-info.java").toString());
       compile.add(sourceRoot.resolve("probe/Probe.java").toString());
+      compile.add(sourceRoot.resolve("opened/OpenedValue.java").toString());
+      compile.add(sourceRoot.resolve("closed/ClosedValue.java").toString());
       Process compiler = new ProcessBuilder(compile).inheritIO().start();
       require(compiler.waitFor() == 0, "named-module custom codec compilation failed");
 

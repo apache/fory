@@ -20,7 +20,8 @@
 package org.apache.fory.json.resolver;
 
 import java.lang.reflect.Type;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.annotation.Internal;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.StringWriterCodec;
@@ -53,11 +54,22 @@ public final class JsonTypeInfo {
   private Utf16ReaderCodec<Object> utf16Reader;
   private Utf8ReaderCodec<Object> utf8Reader;
   private final boolean defaultObjectCodec;
+  private final boolean annotationCodec;
 
-  JsonTypeInfo(Type type, Class<?> rawType, JsonFieldKind kind, JsonCodec<Object> codec) {
+  JsonTypeInfo(Type type, Class<?> rawType, JsonFieldKind kind, JsonValueCodec<Object> codec) {
+    this(type, rawType, kind, codec, false);
+  }
+
+  JsonTypeInfo(
+      Type type,
+      Class<?> rawType,
+      JsonFieldKind kind,
+      JsonValueCodec<Object> codec,
+      boolean annotationCodec) {
     this.type = type;
     this.rawType = rawType;
     this.kind = kind;
+    this.annotationCodec = annotationCodec;
     stringWriter = codec;
     utf8Writer = codec;
     latin1Reader = codec;
@@ -122,5 +134,10 @@ public final class JsonTypeInfo {
 
   public boolean usesDefaultObjectCodec() {
     return defaultObjectCodec;
+  }
+
+  @Internal
+  public boolean usesAnnotationCodec() {
+    return annotationCodec;
   }
 }

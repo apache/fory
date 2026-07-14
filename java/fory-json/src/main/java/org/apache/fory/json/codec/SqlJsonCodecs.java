@@ -43,13 +43,14 @@ public final class SqlJsonCodecs {
 
   private SqlJsonCodecs() {}
 
-  public static void register(IdentityHashMap<Class<?>, JsonCodec<?>> codecs) {
+  public static void register(IdentityHashMap<Class<?>, JsonValueCodec<?>> codecs) {
     register(codecs, SQL_DATE);
     register(codecs, SQL_TIME);
     register(codecs, SQL_TIMESTAMP);
   }
 
-  private static void register(IdentityHashMap<Class<?>, JsonCodec<?>> codecs, String className) {
+  private static void register(
+      IdentityHashMap<Class<?>, JsonValueCodec<?>> codecs, String className) {
     Class<? extends Date> type = loadClass(className);
     if (type != null) {
       codecs.put(type, new SqlMillisCodec<>(type));
@@ -65,7 +66,7 @@ public final class SqlJsonCodecs {
     }
   }
 
-  private static final class SqlMillisCodec<T extends Date> implements JsonCodec<T> {
+  private static final class SqlMillisCodec<T extends Date> implements JsonValueCodec<T> {
     private final Constructor<T> constructor;
 
     private SqlMillisCodec(Class<T> type) {

@@ -21,4 +21,5 @@ module fory.json.codec.probe {
   requires org.apache.fory.json;
 
   exports probe;
+  opens opened to org.apache.fory.json;
 }

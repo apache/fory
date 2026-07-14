@@ -20,6 +20,8 @@
 package org.apache.fory.json.resolver;
 
 import java.io.File;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -48,13 +50,19 @@ import java.time.chrono.HijrahDate;
 import java.time.chrono.JapaneseDate;
 import java.time.chrono.MinguoDate;
 import java.time.chrono.ThaiBuddhistDate;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Calendar;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Currency;
 import java.util.Date;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -80,20 +88,23 @@ import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.JsonTypeCheckContext;
 import org.apache.fory.json.JsonTypeChecker;
 import org.apache.fory.json.PropertyNamingStrategy;
+import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.GuavaCodecs;
-import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.JsonSubTypesInfo;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
 import org.apache.fory.json.codegen.JsonJITContext;
 import org.apache.fory.json.meta.JsonFieldKind;
+import org.apache.fory.json.meta.JsonTypeUse;
+import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.DisallowedList;
@@ -118,9 +129,22 @@ import org.apache.fory.type.TypeUtils;
  */
 public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
+  private static final boolean CODEC_ANNOTATIONS_ENABLED =
+      !AndroidSupport.IS_ANDROID && !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE;
+  private static final Comparator<DeclarationCandidate> DECLARATION_ORDER =
+      new Comparator<DeclarationCandidate>() {
+        @Override
+        public int compare(DeclarationCandidate left, DeclarationCandidate right) {
+          int result = left.declarationType.getName().compareTo(right.declarationType.getName());
+          if (result != 0) {
+            return result;
+          }
+          return left.codecClass.getName().compareTo(right.codecClass.getName());
+        }
+      };
 
   private final CodecRegistry customCodecs;
-  private final IdentityHashMap<Class<?>, JsonCodec<?>> exactCodecs;
+  private final IdentityHashMap<Class<?>, JsonValueCodec<?>> exactCodecs;
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
   private final ConcurrentHashMap<String, Boolean> typeCheckCache;
@@ -133,6 +157,10 @@ public final class JsonSharedRegistry {
   private final boolean writeNullFields;
   private final ClassLoader classLoader;
   private final IdentityHashMap<Class<?>, JsonSubTypesInfo> subTypesCache;
+  private final IdentityHashMap<Class<?>, JsonCodecDeclaration> codecDeclarations;
+  private final Set<Class<?>> typesWithoutCodecDeclaration;
+  private final ConcurrentHashMap<Class<? extends JsonValueCodec<?>>, JsonValueCodec<?>>
+      annotationCodecs;
 
   public JsonSharedRegistry(JsonConfig config) {
     this(config, null);
@@ -150,6 +178,10 @@ public final class JsonSharedRegistry {
     classLoader = config.classLoader();
     exactCodecs = new IdentityHashMap<>();
     subTypesCache = new IdentityHashMap<>();
+    codecDeclarations = new IdentityHashMap<>();
+    typesWithoutCodecDeclaration =
+        Collections.newSetFromMap(new IdentityHashMap<Class<?>, Boolean>());
+    annotationCodecs = new ConcurrentHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
     codegen = codegenEnabled ? new JsonCodegen(config.getCodegenHash(), classLoader) : null;
     asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
@@ -157,13 +189,13 @@ public final class JsonSharedRegistry {
     registerExactCodecs();
   }
 
-  public JsonCodec<?> createCodec(
+  public JsonValueCodec<?> createCodec(
       Class<?> rawType, TypeRef<?> typeRef, JsonTypeResolver localResolver) {
-    JsonCodec<?> customCodec = customCodecs.get(rawType);
+    JsonValueCodec<?> customCodec = customCodecs.get(rawType);
     if (customCodec != null) {
       return customCodec;
     }
-    JsonCodec<?> codec = exactCodecs.get(rawType);
+    JsonValueCodec<?> codec = exactCodecs.get(rawType);
     if (codec != null) {
       return codec;
     }
@@ -224,6 +256,42 @@ public final class JsonSharedRegistry {
       return MapCodec.create(rawType, typeRef, localResolver);
     }
     return null;
+  }
+
+  JsonValueCodec<?> createCodec(JsonTypeUse typeUse, JsonTypeResolver localResolver) {
+    Class<?> rawType = typeUse.rawType();
+    if (rawType.isArray()) {
+      JsonTypeUse component = typeUse.arrayComponent();
+      return ArrayCodec.create(rawType, localResolver.getTypeInfo(component));
+    }
+    if (rawType == Optional.class) {
+      return new ScalarCodecs.OptionalCodec(localResolver.getTypeInfo(typeUse.argument(0)));
+    }
+    if (rawType == AtomicReference.class) {
+      return new ScalarCodecs.AtomicReferenceCodec(localResolver.getTypeInfo(typeUse.argument(0)));
+    }
+    if (rawType == AtomicReferenceArray.class) {
+      return new ScalarCodecs.AtomicReferenceArrayCodec(
+          localResolver.getTypeInfo(typeUse.argument(0)));
+    }
+    if (Collection.class.isAssignableFrom(rawType)) {
+      JsonTypeUse collection = typeUse.projectTo(Collection.class, rawType.getTypeName());
+      JsonTypeUse element = collection.argument(0);
+      return CollectionCodec.create(rawType, element.rawType(), localResolver.getTypeInfo(element));
+    }
+    if (Map.class.isAssignableFrom(rawType)) {
+      JsonTypeUse map = typeUse.projectTo(Map.class, rawType.getTypeName());
+      JsonTypeUse key = map.argument(0);
+      key.rejectMapKey(rawType.getTypeName());
+      localResolver.checkMapKeySecure(key.rawType());
+      JsonTypeUse value = map.argument(1);
+      return MapCodec.create(rawType, key.rawType(), localResolver.getTypeInfo(value));
+    }
+    JsonValueCodec<?> codec = createCodec(rawType, TypeRef.of(typeUse.type()), localResolver);
+    if (codec != null) {
+      typeUse.rejectExplicitDescendants(rawType.getTypeName());
+    }
+    return codec;
   }
 
   public JsonFieldKind kind(Class<?> type) {
@@ -298,8 +366,229 @@ public final class JsonSharedRegistry {
     return classLoader;
   }
 
-  boolean hasCustomCodec(Class<?> type) {
-    return customCodecs.get(type) != null;
+  JsonValueCodec<?> customCodec(Class<?> type) {
+    return customCodecs.get(type);
+  }
+
+  JsonCodecDeclaration codecDeclaration(Class<?> targetType) {
+    if (!CODEC_ANNOTATIONS_ENABLED || targetType.isAnnotation()) {
+      return null;
+    }
+    synchronized (codecDeclarations) {
+      JsonCodecDeclaration cached = codecDeclarations.get(targetType);
+      if (cached != null) {
+        return cached;
+      }
+      if (typesWithoutCodecDeclaration.contains(targetType)) {
+        return null;
+      }
+      JsonCodecDeclaration resolved = resolveCodecDeclaration(targetType);
+      if (resolved == null) {
+        typesWithoutCodecDeclaration.add(targetType);
+      } else {
+        codecDeclarations.put(targetType, resolved);
+      }
+      return resolved;
+    }
+  }
+
+  JsonValueCodec<?> annotationCodec(
+      Class<?> targetType, Class<? extends JsonValueCodec<?>> codecClass) {
+    checkCustomSecure(targetType);
+    return annotationCodecs.computeIfAbsent(codecClass, JsonSharedRegistry::newAnnotationCodec);
+  }
+
+  private JsonCodecDeclaration resolveCodecDeclaration(Class<?> targetType) {
+    DeclarationCandidate direct = declaredCodec(targetType);
+    if (direct != null) {
+      return new JsonCodecDeclaration(direct.codecClass, new Class<?>[] {targetType}, false);
+    }
+    List<DeclarationCandidate> candidates = inheritedCodecCandidates(targetType);
+    if (candidates.isEmpty()) {
+      return null;
+    }
+    List<DeclarationCandidate> frontier = mostSpecificDeclarations(candidates);
+    Collections.sort(frontier, DECLARATION_ORDER);
+    Class<? extends JsonValueCodec<?>> codecClass = frontier.get(0).codecClass;
+    for (int i = 1; i < frontier.size(); i++) {
+      if (frontier.get(i).codecClass != codecClass) {
+        throw inheritedCodecConflict(targetType, frontier);
+      }
+    }
+    Class<?>[] origins = new Class<?>[frontier.size()];
+    for (int i = 0; i < frontier.size(); i++) {
+      origins[i] = frontier.get(i).declarationType;
+    }
+    return new JsonCodecDeclaration(codecClass, origins, true);
+  }
+
+  private static List<DeclarationCandidate> inheritedCodecCandidates(Class<?> targetType) {
+    List<DeclarationCandidate> candidates = new ArrayList<>();
+    Set<Class<?>> visited = Collections.newSetFromMap(new IdentityHashMap<Class<?>, Boolean>());
+    Deque<Class<?>> pending = new ArrayDeque<>();
+    addParents(targetType, pending);
+    while (!pending.isEmpty()) {
+      Class<?> current = pending.removeFirst();
+      if (!visited.add(current)) {
+        continue;
+      }
+      if (!current.isAnnotation()) {
+        DeclarationCandidate candidate = declaredCodec(current);
+        if (candidate != null) {
+          candidates.add(candidate);
+        }
+      }
+      addParents(current, pending);
+    }
+    return candidates;
+  }
+
+  private static void addParents(Class<?> type, Deque<Class<?>> pending) {
+    Class<?> superclass = type.getSuperclass();
+    if (superclass != null) {
+      pending.addLast(superclass);
+    }
+    Class<?>[] interfaces = type.getInterfaces();
+    for (Class<?> interfaceType : interfaces) {
+      pending.addLast(interfaceType);
+    }
+  }
+
+  private static List<DeclarationCandidate> mostSpecificDeclarations(
+      List<DeclarationCandidate> candidates) {
+    List<DeclarationCandidate> frontier = new ArrayList<>(candidates.size());
+    for (DeclarationCandidate candidate : candidates) {
+      boolean dominated = false;
+      for (DeclarationCandidate other : candidates) {
+        if (candidate.declarationType != other.declarationType
+            && candidate.declarationType.isAssignableFrom(other.declarationType)) {
+          dominated = true;
+          break;
+        }
+      }
+      if (!dominated) {
+        frontier.add(candidate);
+      }
+    }
+    return frontier;
+  }
+
+  private static DeclarationCandidate declaredCodec(Class<?> declarationType) {
+    JsonCodec annotation;
+    try {
+      annotation = declarationType.getDeclaredAnnotation(JsonCodec.class);
+    } catch (RuntimeException | LinkageError e) {
+      throw new ForyJsonException(
+          "Cannot read @JsonCodec declared on " + declarationType.getName(), e);
+    }
+    if (annotation == null) {
+      return null;
+    }
+    try {
+      return new DeclarationCandidate(declarationType, annotation.value());
+    } catch (RuntimeException | LinkageError e) {
+      throw new ForyJsonException(
+          "Cannot resolve @JsonCodec declared on " + declarationType.getName(), e);
+    }
+  }
+
+  private static ForyJsonException inheritedCodecConflict(
+      Class<?> targetType, List<DeclarationCandidate> frontier) {
+    StringBuilder message =
+        new StringBuilder("Conflicting inherited @JsonCodec declarations for ")
+            .append(targetType.getName())
+            .append(':');
+    for (DeclarationCandidate candidate : frontier) {
+      message
+          .append(' ')
+          .append(candidate.declarationType.getName())
+          .append(" -> ")
+          .append(candidate.codecClass.getName())
+          .append(';');
+    }
+    message
+        .append(" declare @JsonCodec on ")
+        .append(targetType.getName())
+        .append(", annotate the current type use, or register an exact codec for ")
+        .append(targetType.getName())
+        .append(".");
+    return new ForyJsonException(message.toString());
+  }
+
+  private static JsonValueCodec<?> newAnnotationCodec(
+      Class<? extends JsonValueCodec<?>> codecClass) {
+    validateCodecClass(codecClass);
+    Constructor<? extends JsonValueCodec<?>> constructor;
+    try {
+      constructor = codecClass.getConstructor();
+    } catch (NoSuchMethodException e) {
+      throw invalidCodecClass(codecClass, "must have a public no-argument constructor", e);
+    } catch (SecurityException e) {
+      throw inaccessibleCodecClass(codecClass, e);
+    } catch (LinkageError e) {
+      throw invalidCodecClass(codecClass, "constructor cannot be inspected", e);
+    }
+    try {
+      return constructor.newInstance();
+    } catch (IllegalAccessException e) {
+      // A public constructor in an exported package is directly invocable. A package that is only
+      // opened to Fory requires access elevation; a closed package fails before application code
+      // can run.
+      try {
+        constructor.setAccessible(true);
+        return constructor.newInstance();
+      } catch (InvocationTargetException retryFailure) {
+        throw invalidCodecClass(codecClass, "constructor failed", retryFailure.getCause());
+      } catch (ReflectiveOperationException | LinkageError | RuntimeException retryFailure) {
+        throw inaccessibleCodecClass(codecClass, retryFailure);
+      }
+    } catch (InvocationTargetException e) {
+      throw invalidCodecClass(codecClass, "constructor failed", e.getCause());
+    } catch (ReflectiveOperationException | LinkageError e) {
+      throw invalidCodecClass(codecClass, "cannot be constructed", e);
+    } catch (RuntimeException e) {
+      throw invalidCodecClass(codecClass, "cannot be constructed", e);
+    }
+  }
+
+  private static void validateCodecClass(Class<? extends JsonValueCodec<?>> codecClass) {
+    int modifiers = codecClass.getModifiers();
+    if (!Modifier.isPublic(modifiers)) {
+      throw invalidCodecClass(codecClass, "must be public", null);
+    }
+    if (codecClass.isInterface() || Modifier.isAbstract(modifiers)) {
+      throw invalidCodecClass(codecClass, "must be concrete", null);
+    }
+    if (codecClass.getEnclosingClass() != null
+        && (!codecClass.isMemberClass() || !Modifier.isStatic(modifiers))) {
+      throw invalidCodecClass(codecClass, "must be top-level or a static nested class", null);
+    }
+    for (Class<?> enclosing = codecClass.getEnclosingClass();
+        enclosing != null;
+        enclosing = enclosing.getEnclosingClass()) {
+      if (!Modifier.isPublic(enclosing.getModifiers())) {
+        throw invalidCodecClass(codecClass, "must be enclosed only by public classes", null);
+      }
+    }
+  }
+
+  private static ForyJsonException inaccessibleCodecClass(
+      Class<? extends JsonValueCodec<?>> codecClass, Throwable cause) {
+    Package codecPackage = codecClass.getPackage();
+    String packageName = codecPackage == null ? "the unnamed package" : codecPackage.getName();
+    return new ForyJsonException(
+        "Cannot access the public no-argument constructor of JSON codec "
+            + codecClass.getName()
+            + "; export or open package "
+            + packageName
+            + " to module org.apache.fory.json.",
+        cause);
+  }
+
+  private static ForyJsonException invalidCodecClass(
+      Class<? extends JsonValueCodec<?>> codecClass, String reason, Throwable cause) {
+    String message = "JSON codec " + codecClass.getName() + ' ' + reason + '.';
+    return cause == null ? new ForyJsonException(message) : new ForyJsonException(message, cause);
   }
 
   JsonSubTypesInfo subTypesInfo(Class<?> baseType) {
@@ -485,7 +774,20 @@ public final class JsonSharedRegistry {
   }
 
   void checkSecure(Class<?> type) {
-    if (!isSecureType(type)) {
+    boolean secure = customCodecs.get(type) == null ? isSecureType(type) : isCustomSecureType(type);
+    if (!secure) {
+      throw forbiddenClass(type.getName());
+    }
+  }
+
+  void checkCustomSecure(Class<?> type) {
+    if (!isCustomSecureType(type)) {
+      throw forbiddenClass(type.getName());
+    }
+  }
+
+  void checkMapKeySecure(Class<?> type) {
+    if (!isMapKeySecureType(type)) {
       throw forbiddenClass(type.getName());
     }
   }
@@ -512,6 +814,37 @@ public final class JsonSharedRegistry {
       return true;
     }
     return checkType(className, checker);
+  }
+
+  private boolean isCustomSecureType(Class<?> type) {
+    if (type.isArray()) {
+      return isCustomSecureType(TypeUtils.getArrayComponent(type));
+    }
+    if (!type.isEnum() && Enum.class.isAssignableFrom(type) && type != Enum.class) {
+      Class<?> enclosingClass = type.getEnclosingClass();
+      if (enclosingClass != null && enclosingClass.isEnum()) {
+        return isCustomSecureType(enclosingClass);
+      }
+    }
+    String className = type.getName();
+    DisallowedList.checkNotInDisallowedList(className);
+    JsonTypeChecker checker = typeChecker;
+    return checker == null || checkType(className, checker);
+  }
+
+  private boolean isMapKeySecureType(Class<?> type) {
+    if (type.isArray()) {
+      return isMapKeySecureType(TypeUtils.getArrayComponent(type));
+    }
+    String className = type.getName();
+    DisallowedList.checkNotInDisallowedList(className);
+    // A JsonValueCodec registration has no authority over a map-key occurrence. Preserve the
+    // ordinary exact built-in exemption even when the same raw class has a registered value codec.
+    if (exactCodecs.containsKey(type)) {
+      return true;
+    }
+    JsonTypeChecker checker = typeChecker;
+    return checker == null || checkType(className, checker);
   }
 
   private boolean checkType(String className, JsonTypeChecker checker) {
@@ -620,5 +953,16 @@ public final class JsonSharedRegistry {
     exactCodecs.put(OptionalDouble.class, ScalarCodecs.OptionalDoubleCodec.INSTANCE);
     exactCodecs.put(ByteBuffer.class, ScalarCodecs.ByteBufferCodec.INSTANCE);
     GuavaCodecs.registerExactCodecs(exactCodecs);
+  }
+
+  private static final class DeclarationCandidate {
+    private final Class<?> declarationType;
+    private final Class<? extends JsonValueCodec<?>> codecClass;
+
+    private DeclarationCandidate(
+        Class<?> declarationType, Class<? extends JsonValueCodec<?>> codecClass) {
+      this.declarationType = declarationType;
+      this.codecClass = codecClass;
+    }
   }
 }

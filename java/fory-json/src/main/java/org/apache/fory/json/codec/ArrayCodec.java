@@ -21,6 +21,7 @@ package org.apache.fory.json.codec;
 
 import java.lang.reflect.Array;
 import java.util.Arrays;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -40,7 +41,7 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
  * operation rather than resolving a codec per element. Each concrete reader owns array allocation
  * and growth because JSON carries no trusted element count.
  */
-public abstract class ArrayCodec<T> implements JsonCodec<T> {
+public abstract class ArrayCodec<T> implements JsonValueCodec<T> {
   final Class<?> componentType;
 
   ArrayCodec(Class<?> componentType) {
@@ -53,6 +54,15 @@ public abstract class ArrayCodec<T> implements JsonCodec<T> {
     }
     Class<?> componentType = arrayType.getComponentType();
     JsonTypeInfo componentTypeInfo = resolver.getTypeInfo(componentType, componentType);
+    return create(arrayType, componentTypeInfo);
+  }
+
+  @Internal
+  public static <T> ArrayCodec<T> create(Class<T> arrayType, JsonTypeInfo componentTypeInfo) {
+    if (!arrayType.isArray()) {
+      throw new ForyJsonException("Unsupported JSON array type " + arrayType);
+    }
+    Class<?> componentType = arrayType.getComponentType();
     Object componentCodec = componentTypeInfo.stringWriter();
     if (componentType == int.class && componentCodec == ScalarCodecs.IntCodec.PRIMITIVE) {
       return bind(IntArrayCodec.INSTANCE);

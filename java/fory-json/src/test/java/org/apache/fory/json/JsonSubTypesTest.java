@@ -32,7 +32,7 @@ import java.util.List;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -352,7 +352,7 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     }
   }
 
-  private static final class WrappedValueCodec implements JsonCodec<WrappedValue> {
+  private static final class WrappedValueCodec implements JsonValueCodec<WrappedValue> {
     @Override
     public void writeString(StringJsonWriter writer, WrappedValue value) {
       writer.writeString(value.text);
@@ -389,7 +389,7 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     }
   }
 
-  private static final class ArrayWrappedValueCodec implements JsonCodec<ArrayWrappedValue> {
+  private static final class ArrayWrappedValueCodec implements JsonValueCodec<ArrayWrappedValue> {
     @Override
     public void writeString(StringJsonWriter writer, ArrayWrappedValue value) {
       writer.writeString(value.text);

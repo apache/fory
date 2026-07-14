@@ -556,7 +556,7 @@ public final class ForyJson {
       byte coder = StringSerializer.getStringCoder(json);
       if (StringSerializer.isLatin1Coder(coder)) {
         // Keep String input on its reader owner even when ASCII Latin1 bytes match UTF-8;
-        // custom JsonCodec implementations can observe readLatin1/readUtf16 dispatch.
+        // custom JsonValueCodec implementations can observe readLatin1/readUtf16 dispatch.
         return readLatin1Value(state.latin1Reader(json), type, fallback, state);
       }
       if (StringSerializer.isUtf16Coder(coder)) {

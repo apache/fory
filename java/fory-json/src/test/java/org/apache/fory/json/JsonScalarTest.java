@@ -77,7 +77,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.fory.json.codec.JsonCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.data.BoxedScalars;
 import org.apache.fory.json.data.CoreScalarFields;
 import org.apache.fory.json.data.JsonTestData;
@@ -2739,7 +2739,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     field.setInt(owner, value);
   }
 
-  private static final class UrlStringCodec implements JsonCodec<URL> {
+  private static final class UrlStringCodec implements JsonValueCodec<URL> {
     @Override
     public void writeString(StringJsonWriter writer, URL value) {
       if (value == null) {
@@ -2797,7 +2797,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     public Map<String, NullOwnedValue> map;
   }
 
-  private static final class NullOwnedValueCodec implements JsonCodec<NullOwnedValue> {
+  private static final class NullOwnedValueCodec implements JsonValueCodec<NullOwnedValue> {
     @Override
     public void writeString(StringJsonWriter writer, NullOwnedValue value) {
       writer.writeString(value == null ? "string-null" : value.mode);
@@ -2833,7 +2833,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
   }
 
-  private static final class ModeAwareCodec implements JsonCodec<ModeAwareValue> {
+  private static final class ModeAwareCodec implements JsonValueCodec<ModeAwareValue> {
     @Override
     public void writeString(StringJsonWriter writer, ModeAwareValue value) {
       writer.writeNull();
@@ -2863,7 +2863,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
   }
 
-  private static final class TaggedNumberCodec<T extends Number> implements JsonCodec<T> {
+  private static final class TaggedNumberCodec<T extends Number> implements JsonValueCodec<T> {
     private final String token;
     private final T decoded;
 
@@ -2901,7 +2901,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
     }
   }
 
-  private static final class TaggedStringCodec implements JsonCodec<String> {
+  private static final class TaggedStringCodec implements JsonValueCodec<String> {
     private final String token;
     private final String decoded;
 
