@@ -21,9 +21,8 @@ license: |
 
 This page covers in-memory Java object graph copying with `Fory#copy(Object)`.
 
-`Fory.copy` is a deep-copy operation for Java object graphs. It does not serialize to bytes first.
-Instead, it uses Fory's type system and serializers to create a copied object graph in
-memory.
+`Fory.copy` creates a deep copy of a Java object graph in memory. It does not produce serialized
+output.
 
 ## When to Use Object Copy
 
@@ -38,13 +37,13 @@ Typical use cases:
 
 Use serialization instead when you need bytes for transport, storage, or cross-process exchange.
 
-| Operation                | `Fory.copy`         | `serialize` / `deserialize`               |
-| ------------------------ | ------------------- | ----------------------------------------- |
-| Result                   | Java object graph   | Binary payload plus reconstructed objects |
-| Main use                 | In-memory deep copy | Transport, persistence, interoperability  |
-| Copy ref option          | `withRefCopy(...)`  | `withRefTracking(...)`                    |
-| Cross-language payload   | No                  | Yes, in xlang mode                        |
-| Intermediate byte buffer | No                  | Yes                                       |
+| Operation              | `Fory.copy`         | `serialize` / `deserialize`              |
+| ---------------------- | ------------------- | ---------------------------------------- |
+| Result                 | Java object graph   | Binary data or a reconstructed object    |
+| Main use               | In-memory deep copy | Transport, persistence, interoperability |
+| Reference option       | `withRefCopy(...)`  | `withRefTracking(...)`                   |
+| Cross-language support | No                  | Yes, in xlang mode                       |
+| Uses serialized data   | No                  | Yes                                      |
 
 ## Quick Start
 
@@ -75,8 +74,8 @@ The most important copy option is `ForyBuilder#withRefCopy(boolean)`.
 
 ### `withRefCopy(true)`
 
-This is the safe default for general object graphs. Shared references remain shared in the copied
-graph, and circular references can be copied correctly.
+This is the recommended setting for general object graphs. Shared references remain shared in the
+copied graph, and circular references can be copied correctly.
 
 ```java
 import org.apache.fory.Fory;
@@ -180,8 +179,8 @@ the value you are copying.
 
 ## Class Registration
 
-If class registration is required, register runtime types for which Fory must select a copy
-serializer before calling `copy`.
+When class registration is enabled, register application classes before copying their object
+graphs.
 
 ```java
 import org.apache.fory.Fory;
@@ -198,10 +197,6 @@ public class Example {
   }
 }
 ```
-
-`copy` operates on an already materialized local object graph. Serializer-specific copy logic may
-reconstruct nested local classes without applying class registration or `TypeChecker` to every
-nested type. Do not use `copy` as a class-policy filter for a local object graph.
 
 ## Thread-Safe Copy
 
@@ -237,9 +232,7 @@ Fory already provides copy support for many common Java platform types, includin
 - Java time and date/time values
 - Beans, records, and nested object graphs
 
-If Fory already knows how to serialize a mutable type, it may still need an explicit copy
-implementation in that serializer. For mutable serializers, the default `Serializer.copy(...)`
-throws `UnsupportedOperationException` unless the serializer overrides it.
+Custom serializers for mutable types must implement `Serializer.copy(...)` to support object copy.
 
 ## Custom Copy with `ForyCopyable`
 
@@ -324,7 +317,7 @@ Use this approach when copy behavior belongs with a serializer rather than the d
   shared references
 - Treat `withRefCopy(false)` as a performance optimization for tree-like data, not as a default
 - Test custom copy implementations with both shared-reference and cyclic graphs
-- Keep mutable custom serializer copy paths explicit and do not rely on fallback behavior
+- Implement `Serializer.copy(...)` for every mutable type that uses a custom serializer
 
 ## Troubleshooting
 
@@ -355,7 +348,7 @@ Fory fory = Fory.builder().withXlang(false)
 
 ### `Copy for ... is not supported`
 
-This means the mutable serializer for that type does not implement `copy(...)`.
+This means object copy is not implemented for that type.
 
 Fix it by either:
 
