@@ -36,12 +36,19 @@ import org.apache.fory.util.ArrayCompressionUtils;
 import org.apache.fory.util.PrimitiveArrayCompressionType;
 
 /**
- * Compressed array serializers with optional Java 16+ Vector API acceleration.
+ * Compressed serializers for {@code int[]} and {@code long[]} values that fit in narrower primitive
+ * types.
  *
  * <p>To use these serializers, simply call {@code CompressedArraySerializers.register(fory)} on
  * your Fory instance. These will override the default array serializers for {@code int[]} and
  * {@code long[]} arrays with compressed versions that can significantly reduce serialization size
  * when arrays contain values that fit in smaller primitive types.
+ *
+ * <p>Fory selects the range-analysis implementation automatically. JDK 8 through 15 use the scalar
+ * implementation, while JDK 16 and later use the Vector API implementation from the multi-release
+ * {@code fory-core} JAR. Applications running on JDK 16 or later must resolve the incubator module
+ * with {@code --add-modules=jdk.incubator.vector}. Registration and the serialized format are
+ * identical on every JDK.
  */
 public final class CompressedArraySerializers {
 
@@ -66,7 +73,8 @@ public final class CompressedArraySerializers {
    *
    * <pre>{@code
    * Fory fory = Fory.builder().withXlang(false)
-   *     .withConfig(Config.compressIntArray(true).compressLongArray(true))
+   *     .withIntArrayCompressed(true)
+   *     .withLongArrayCompressed(true)
    *     .build();
    * CompressedArraySerializers.registerSerializers(fory);
    * }</pre>
@@ -104,9 +112,10 @@ public final class CompressedArraySerializers {
    *
    * <pre>{@code
    * ThreadSafeFory fory = Fory.builder().withXlang(false)
-   *     .withConfig(Config.compressIntArray(true).compressLongArray(true))
+   *     .withIntArrayCompressed(true)
+   *     .withLongArrayCompressed(true)
    *     .buildThreadSafeFory();
-   * CompressedArraySerializers.registerSerializers(fory);
+   * CompressedArraySerializers.registerIfEnabled(fory);
    * }</pre>
    *
    * @param fory the ThreadSafeFory instance to register serializers with
@@ -118,9 +127,9 @@ public final class CompressedArraySerializers {
   /**
    * Register compressed array serializers with the given Fory instance.
    *
-   * <p>This will replace the default {@code int[]} and {@code long[]} serializers with compressed
-   * versions that use the Java 16+ Vector API for analysis and can serialize arrays more
-   * efficiently when values fit in smaller data types.
+   * <p>This replaces the default {@code int[]} and {@code long[]} serializers with compressed
+   * versions. Range analysis is scalar on JDK 8 through 15 and automatically uses the Vector API on
+   * JDK 16 and later when {@code jdk.incubator.vector} is resolved.
    *
    * @param fory the Fory instance to register serializers with
    */

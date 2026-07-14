@@ -122,7 +122,7 @@ public class ArrayCompressionUtilsTest {
   }
 
   @Test
-  public void testLargeArraysWithSIMD() {
+  public void testLargeArrays() {
     Random random = new Random(42);
 
     // Test large array that compresses to bytes
@@ -154,7 +154,7 @@ public class ArrayCompressionUtilsTest {
   }
 
   @Test
-  public void testLargeLongArraysWithSIMD() {
+  public void testLargeLongArrays() {
     Random random = new Random(42);
 
     // Test large array that compresses to ints

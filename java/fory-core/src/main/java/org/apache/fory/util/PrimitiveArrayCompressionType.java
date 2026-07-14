@@ -24,6 +24,10 @@ package org.apache.fory.util;
  *
  * <p>Defines the available compression strategies for reducing the size of primitive arrays by
  * detecting when values can be stored with a narrower primitive type.
+ *
+ * <p>Compression detection uses the scalar implementation on JDK 8 through 15. JDK 16 and later
+ * automatically use the Vector API implementation from the multi-release {@code fory-core} JAR;
+ * applications must resolve {@code jdk.incubator.vector} when starting on those JDKs.
  */
 public enum PrimitiveArrayCompressionType {
   /** No compression applied. */

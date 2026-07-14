@@ -338,12 +338,12 @@ Foo deserializedFoo = encoder.fromRow(binaryRow);
 
 See the [Java row-format guide](../docs/guide/java/row-format.md) for more details.
 
-### Array Compression (Java 16+)
+### Array Compression
 
-Use SIMD-accelerated compression for integer and long arrays to reduce memory usage when array elements have small values:
+Use width compression for integer and long arrays to reduce serialized size when array elements have small values. JDK 8 through 15 use scalar range analysis; JDK 16 and later automatically select the Vector API implementation from the multi-release JAR.
 
 ```java
-import org.apache.fory.simd.*;
+import org.apache.fory.serializer.CompressedArraySerializers;
 
 Fory fory = Fory.builder().withXlang(false)
   .withIntArrayCompressed(true)
@@ -356,6 +356,12 @@ CompressedArraySerializers.registerSerializers(fory);
 // Arrays with small values are automatically compressed
 int[] data = new int[1000000];
 byte[] bytes = fory.serialize(data);
+```
+
+On JDK 16 or later, resolve the incubator Vector API module when starting the application:
+
+```bash
+java --add-modules=jdk.incubator.vector ...
 ```
 
 ### GraalVM Native Image
@@ -426,7 +432,7 @@ mvn -T16 checkstyle:check
 4. **Use native mode**: For Java-only payloads, use `withXlang(false)`. Native mode reduces type metadata overhead and supports more Java-native types not available in xlang mode
 5. **Warm Up**: Allow JIT compilation to complete before benchmarking
 6. **Register Classes**: Class registration reduces metadata overhead
-7. **Use SIMD**: Enable array compression on Java 16+ for numeric arrays
+7. **Compress numeric arrays**: Enable array compression when numeric array values usually fit in narrower primitive types
 
 ## Contributing
 

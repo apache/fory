@@ -19,13 +19,8 @@
 
 package org.apache.fory.util;
 
-import jdk.incubator.vector.IntVector;
-import jdk.incubator.vector.LongVector;
-import jdk.incubator.vector.VectorOperators;
-import jdk.incubator.vector.VectorSpecies;
-
 /**
- * Vector API implementation of primitive-array width compression for JDK 16 and later.
+ * Utility methods for primitive-array width compression.
  *
  * <p>The compressed array serializers use these helpers when every value in a primitive array fits
  * in a narrower primitive type:
@@ -36,16 +31,15 @@ import jdk.incubator.vector.VectorSpecies;
  *   <li>{@code long[]} to {@code int[]} when all values are in int range.
  * </ul>
  *
- * <p>The multi-release {@code fory-core} JAR selects this implementation automatically on JDK 16
- * and later; applications must resolve the incubator module with {@code
- * --add-modules=jdk.incubator.vector}. Earlier JDKs use the scalar base implementation with the
- * same API, compression decisions, and serialized format.
+ * <p>This base implementation performs scalar range analysis on JDK 8 through 15. On JDK 16 and
+ * later, the multi-release {@code fory-core} JAR automatically replaces this class with the Vector
+ * API implementation; applications must resolve the incubator module with {@code
+ * --add-modules=jdk.incubator.vector}. Both implementations expose the same API, make identical
+ * compression decisions, and use the same serialized format.
  */
 public final class ArrayCompressionUtils {
   // Minimum array size to justify compression analysis and the compressed payload marker overhead.
   static final int MIN_COMPRESSION_SIZE = 1 << 9;
-  private static final VectorSpecies<Integer> INT_SPECIES = IntVector.SPECIES_PREFERRED;
-  private static final VectorSpecies<Long> LONG_SPECIES = LongVector.SPECIES_PREFERRED;
 
   private ArrayCompressionUtils() {}
 
@@ -66,43 +60,20 @@ public final class ArrayCompressionUtils {
     }
     boolean canCompressToByte = true;
     boolean canCompressToShort = true;
-    int i = 0;
-    int upperBound = INT_SPECIES.loopBound(array.length);
-
-    // Vector loop: test each lane against the target primitive ranges and stop checking a narrower
-    // representation once any lane exceeds its range.
-    for (; i < upperBound && (canCompressToByte || canCompressToShort); i += INT_SPECIES.length()) {
-      IntVector vector = IntVector.fromArray(INT_SPECIES, array, i);
-      if (canCompressToByte) {
-        if (vector.compare(VectorOperators.GT, Byte.MAX_VALUE).anyTrue()
-            || vector.compare(VectorOperators.LT, Byte.MIN_VALUE).anyTrue()) {
-          canCompressToByte = false;
-        }
-      }
-      if (canCompressToShort) {
-        if (vector.compare(VectorOperators.GT, Short.MAX_VALUE).anyTrue()
-            || vector.compare(VectorOperators.LT, Short.MIN_VALUE).anyTrue()) {
-          canCompressToShort = false;
-        }
-      }
-    }
-
-    // Scalar tail for elements that do not fill a complete vector.
-    for (; i < array.length && (canCompressToByte || canCompressToShort); i++) {
-      int value = array[i];
+    for (int value : array) {
       if (canCompressToByte && (value < Byte.MIN_VALUE || value > Byte.MAX_VALUE)) {
         canCompressToByte = false;
       }
       if (value < Short.MIN_VALUE || value > Short.MAX_VALUE) {
         canCompressToShort = false;
       }
+      if (!canCompressToByte && !canCompressToShort) {
+        return PrimitiveArrayCompressionType.NONE;
+      }
     }
-    if (canCompressToByte) {
-      return PrimitiveArrayCompressionType.INT_TO_BYTE;
-    }
-    return canCompressToShort
-        ? PrimitiveArrayCompressionType.INT_TO_SHORT
-        : PrimitiveArrayCompressionType.NONE;
+    return canCompressToByte
+        ? PrimitiveArrayCompressionType.INT_TO_BYTE
+        : PrimitiveArrayCompressionType.INT_TO_SHORT;
   }
 
   /**
@@ -120,22 +91,8 @@ public final class ArrayCompressionUtils {
     if (array.length < MIN_COMPRESSION_SIZE) {
       return PrimitiveArrayCompressionType.NONE;
     }
-    int i = 0;
-    int upperBound = LONG_SPECIES.loopBound(array.length);
-
-    // Vector loop: any lane outside int range means long-to-int compression is not safe.
-    for (; i < upperBound; i += LONG_SPECIES.length()) {
-      LongVector vector = LongVector.fromArray(LONG_SPECIES, array, i);
-      if (vector.compare(VectorOperators.GT, Integer.MAX_VALUE).anyTrue()
-          || vector.compare(VectorOperators.LT, Integer.MIN_VALUE).anyTrue()) {
-        return PrimitiveArrayCompressionType.NONE;
-      }
-    }
-
-    // Scalar tail for elements that do not fill a complete vector.
-    for (; i < array.length; i++) {
-      long value = array[i];
-      if (value > Integer.MAX_VALUE || value < Integer.MIN_VALUE) {
+    for (long value : array) {
+      if (value < Integer.MIN_VALUE || value > Integer.MAX_VALUE) {
         return PrimitiveArrayCompressionType.NONE;
       }
     }
