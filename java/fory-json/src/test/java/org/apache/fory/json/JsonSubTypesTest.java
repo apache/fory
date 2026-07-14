@@ -348,8 +348,8 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
 
   @JsonPropertyOrder(alphabetic = true)
   public static final class Rectangle implements Shape {
-    public int height;
     public int width;
+    public int height;
 
     public Rectangle() {}
 
