@@ -27,6 +27,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -98,11 +99,14 @@ public class RecordUtils {
   private static final ClassValueCache<RecordComponent[]> recordComponentsCache =
       ClassValueCache.newClassKeyCache(32);
 
-  private static final ClassValueCache<Object[]> recordComponentGettersCache =
-      ClassValueCache.newClassKeyCache(32);
-
   private static final ClassValueCache<Tuple2<Constructor, MethodHandle>> ctrCache =
       ClassValueCache.newClassKeyCache(32);
+
+  // This holder must remain in fory-core's Native Image build-time initialization list. Its cache
+  // stores getter functions created during analysis because Native Image cannot create them later.
+  private static final class NativeImageRecordGetters {
+    private static final ClassValueCache<Object[]> CACHE = ClassValueCache.newClassKeyCache(32);
+  }
 
   /**
    * Returns {@code true} if and only if this class is a record class.
@@ -138,7 +142,7 @@ public class RecordUtils {
     if (GET_RECORD_COMPONENTS == null) {
       return null;
     }
-    if (GraalvmSupport.isGraalBuildTime()) {
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && GraalvmSupport.isGraalBuildTime()) {
       // Annotated type values can be JDK annotation proxies, which Native Image must not persist in
       // the image heap. Keep only the runtime-required getter functions and let build-time codegen
       // consume transient component metadata.
@@ -151,8 +155,10 @@ public class RecordUtils {
   /** Prepares record getter functions during Native Image hosted analysis. */
   @Internal
   public static void prepareRecordComponentGetters(Class<?> cls) {
-    if (GET_RECORD_COMPONENTS != null && !AndroidSupport.IS_ANDROID) {
-      recordComponentGettersCache.get(cls, () -> buildRecordComponentGetters(cls));
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE
+        && GET_RECORD_COMPONENTS != null
+        && !AndroidSupport.IS_ANDROID) {
+      NativeImageRecordGetters.CACHE.get(cls, () -> buildRecordComponentGetters(cls));
     }
   }
 
@@ -174,7 +180,7 @@ public class RecordUtils {
       Object[] components = (Object[]) GET_RECORD_COMPONENTS.invoke(type);
       Object[] preparedGetters =
           GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE
-              ? recordComponentGettersCache.getIfPresent(type)
+              ? NativeImageRecordGetters.CACHE.getIfPresent(type)
               : null;
       MethodHandles.Lookup lookup =
           AndroidSupport.IS_ANDROID || preparedGetters != null
@@ -233,10 +239,12 @@ public class RecordUtils {
   }
 
   private static Tuple2<Constructor, MethodHandle> getRecordConstructorUncached(Class<?> type) {
-    Class<?>[] paramTypes = getRecordComponentTypes(type);
-    if (paramTypes == null) {
+    RecordComponent[] components = RecordUtils.getRecordComponents(type);
+    if (components == null) {
       return null;
     }
+    Class<?>[] paramTypes =
+        Arrays.stream(components).map(RecordComponent::getType).toArray(Class<?>[]::new);
     Constructor constructor;
     try {
       constructor = type.getDeclaredConstructor(paramTypes);
@@ -262,25 +270,6 @@ public class RecordUtils {
       }
     } else {
       return Tuple2.of(constructor, null);
-    }
-  }
-
-  private static Class<?>[] getRecordComponentTypes(Class<?> type) {
-    if (GET_RECORD_COMPONENTS == null) {
-      return null;
-    }
-    try {
-      Object[] components = (Object[]) GET_RECORD_COMPONENTS.invoke(type);
-      if (components == null) {
-        return null;
-      }
-      Class<?>[] types = new Class<?>[components.length];
-      for (int i = 0; i < components.length; i++) {
-        types[i] = (Class<?>) GET_TYPE.invoke(components[i]);
-      }
-      return types;
-    } catch (IllegalAccessException | InvocationTargetException e) {
-      throw new RuntimeException(e);
     }
   }
 

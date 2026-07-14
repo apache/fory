@@ -52,6 +52,8 @@ public final class GraalvmFeatureJarVerifier {
       "META-INF/services/org.graalvm.nativeimage.hosted.Feature";
   private static final String FEATURE_OPTION = "--features=" + FEATURE_CLASS_NAME;
   private static final String INITIALIZATION_OPTION = "--initialize-at-build-time=";
+  private static final String RECORD_GETTERS =
+      "org.apache.fory.util.record.RecordUtils$NativeImageRecordGetters";
 
   private GraalvmFeatureJarVerifier() {}
 
@@ -92,6 +94,9 @@ public final class GraalvmFeatureJarVerifier {
       check(
           properties.contains(INITIALIZATION_OPTION),
           "Build-time initialization option is missing");
+      check(
+          properties.contains(RECORD_GETTERS),
+          "Native Image record getter cache must initialize at build time");
     }
   }
 

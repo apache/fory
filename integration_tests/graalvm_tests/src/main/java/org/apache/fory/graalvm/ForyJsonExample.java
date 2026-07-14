@@ -19,6 +19,8 @@
 
 package org.apache.fory.graalvm;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.sql.Date;
 import java.sql.Time;
@@ -53,6 +55,9 @@ public final class ForyJsonExample {
     testConfigurations();
     testCodecs();
     testSubtypes();
+    testContainerRoots();
+    testGenericProperties();
+    testBigDecimal();
     testSqlTypes();
     System.out.println("Fory JSON succeed");
   }
@@ -167,6 +172,36 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(((Circle) decoded).radius == 9);
   }
 
+  private static void testContainerRoots() {
+    ForyJson json = ForyJson.builder().build();
+    StringList list = json.fromJson("[\"first\",\"second\"]", StringList.class);
+    Preconditions.checkArgument(list.equals(List.of("first", "second")));
+    StringMap map = json.fromJson("{\"key\":\"value\"}", StringMap.class);
+    Preconditions.checkArgument(map.equals(Map.of("key", "value")));
+  }
+
+  private static void testGenericProperties() {
+    ForyJson json = ForyJson.builder().build();
+    GenericModel value =
+        json.fromJson("{\"values\":[{\"id\":13,\"name\":\"generic\"}]}", GenericModel.class);
+    Object values = value.getValues();
+    Preconditions.checkArgument(
+        values.getClass().getName().equals(ForyJsonExample.class.getName() + "$ChildList"));
+    Child child = (Child) ((List<?>) values).get(0);
+    Preconditions.checkArgument(child.id == 13);
+    Preconditions.checkArgument(child.name.equals("generic"));
+  }
+
+  private static void testBigDecimal() {
+    ForyJson json = ForyJson.builder().build();
+    BigDecimalHolder value = new BigDecimalHolder();
+    value.value = new BigDecimalSubtype("12345678901234567890.125");
+    String expected = "{\"value\":12345678901234567890.125}";
+    Preconditions.checkArgument(json.toJson(value).equals(expected));
+    Preconditions.checkArgument(
+        new String(json.toJsonBytes(value), StandardCharsets.UTF_8).equals(expected));
+  }
+
   private static void testSqlTypes() {
     ForyJson json = ForyJson.builder().build();
     SqlValues value = new SqlValues();
@@ -179,12 +214,70 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(decoded.timestamp.getTime() == 3_000L);
   }
 
-  @JsonType
   public static class Parent {
     private int inheritedId = 10;
 
     int inheritedId() {
       return inheritedId;
+    }
+  }
+
+  public static final class StringList extends ArrayList<String> {
+    public StringList() {}
+  }
+
+  public static final class StringMap extends HashMap<String, String> {
+    public StringMap() {}
+  }
+
+  public abstract static class GenericProperty<T> {
+    private Object value;
+
+    @SuppressWarnings("unchecked")
+    public T getValues() {
+      return (T) value;
+    }
+
+    public void setValues(T value) {
+      this.value = value;
+    }
+  }
+
+  @JsonType
+  public static final class GenericModel extends GenericProperty<ChildList> {}
+
+  public static final class ChildList extends ArrayList<Child> {
+    public ChildList() {}
+  }
+
+  @JsonType
+  public static final class BigDecimalHolder {
+    public BigDecimal value;
+  }
+
+  private static final class BigDecimalSubtype extends BigDecimal {
+    private BigDecimalSubtype(String value) {
+      super(value);
+    }
+
+    @Override
+    public String toString() {
+      throw new AssertionError("BigDecimal subtype toString must not be invoked");
+    }
+
+    @Override
+    public BigInteger unscaledValue() {
+      throw new AssertionError("BigDecimal subtype unscaledValue must not be invoked");
+    }
+
+    @Override
+    public int scale() {
+      throw new AssertionError("BigDecimal subtype scale must not be invoked");
+    }
+
+    @Override
+    public BigDecimal negate() {
+      throw new AssertionError("BigDecimal subtype negate must not be invoked");
     }
   }
 

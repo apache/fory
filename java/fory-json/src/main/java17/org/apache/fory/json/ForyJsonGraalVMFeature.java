@@ -26,6 +26,7 @@ import java.lang.reflect.AnnotatedTypeVariable;
 import java.lang.reflect.AnnotatedWildcardType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
@@ -33,6 +34,9 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -45,6 +49,7 @@ import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.reflect.TypeRef;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
 
@@ -77,15 +82,19 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   @Override
   public void duringAnalysis(DuringAnalysisAccess access) {
+    if (!reachableTypes.contains(ForyJson.class)) {
+      return;
+    }
     boolean changed = false;
     for (Class<?> type : reachableTypes) {
       if (processedReachableTypes.add(type)) {
+        changed |= registerContainer(type);
         changed |= registerDeclarations(type);
         if (type.getDeclaredAnnotation(JsonType.class) != null) {
           changed |= registerModel(access, type);
         }
         if (type == ForyJson.class) {
-          registerSqlTypes(access);
+          registerBuiltInTypes(access);
           changed = true;
         }
       }
@@ -113,6 +122,7 @@ final class ForyJsonGraalVMFeature implements Feature {
   }
 
   private void registerModelHierarchy(BeforeAnalysisAccess access, Class<?> type) {
+    TypeRef<?> ownerType = TypeRef.of(type);
     for (Class<?> current = type;
         current != null && current != Object.class;
         current = current.getSuperclass()) {
@@ -122,45 +132,42 @@ final class ForyJsonGraalVMFeature implements Feature {
             access.registerAsUnsafeAccessed(field);
           }
           registerAnnotatedType(field.getAnnotatedType());
+          registerResolvedType(ownerType.resolveType(field.getGenericType()).getType());
         }
       }
       for (Constructor<?> constructor : current.getDeclaredConstructors()) {
         if (constructor.isAnnotationPresent(JsonCreator.class)) {
           registerParameterTypes(constructor.getParameters());
+          registerResolvedParameterTypes(ownerType, constructor.getParameters());
         }
       }
     }
     for (Method method : type.getMethods()) {
       registerMethodTypes(method);
+      registerResolvedMethodTypes(ownerType, method);
     }
     if (type.isRecord()) {
       for (RecordComponent component : type.getRecordComponents()) {
         registerAnnotatedType(component.getAnnotatedType());
+        registerResolvedType(ownerType.resolveType(component.getGenericType()).getType());
       }
     }
   }
 
   private boolean registerDeclarations(Class<?> type) {
-    Set<Class<?>> visited = Collections.newSetFromMap(new IdentityHashMap<>());
-    return registerDeclarations(type, visited);
-  }
-
-  private boolean registerDeclarations(Class<?> type, Set<Class<?>> visited) {
-    if (type == null || type == Object.class || !visited.add(type)) {
+    if (type == null || type == Object.class || !processedDeclarations.add(type)) {
       return false;
     }
     boolean changed = false;
-    if (processedDeclarations.add(type)) {
-      JsonCodec annotation = type.getDeclaredAnnotation(JsonCodec.class);
-      if (annotation != null) {
-        RuntimeReflection.register(type);
-        registerCodec(annotation.value());
-        changed = true;
-      }
+    JsonCodec annotation = type.getDeclaredAnnotation(JsonCodec.class);
+    if (annotation != null) {
+      RuntimeReflection.register(type);
+      registerCodec(annotation.value());
+      changed = true;
     }
-    changed |= registerDeclarations(type.getSuperclass(), visited);
+    changed |= registerDeclarations(type.getSuperclass());
     for (Class<?> interfaceType : type.getInterfaces()) {
-      changed |= registerDeclarations(interfaceType, visited);
+      changed |= registerDeclarations(interfaceType);
     }
     return changed;
   }
@@ -173,6 +180,56 @@ final class ForyJsonGraalVMFeature implements Feature {
   private void registerParameterTypes(Parameter[] parameters) {
     for (Parameter parameter : parameters) {
       registerAnnotatedType(parameter.getAnnotatedType());
+    }
+  }
+
+  private void registerResolvedMethodTypes(TypeRef<?> ownerType, Method method) {
+    registerResolvedType(ownerType.resolveType(method.getGenericReturnType()).getType());
+    for (Type parameterType : method.getGenericParameterTypes()) {
+      registerResolvedType(ownerType.resolveType(parameterType).getType());
+    }
+  }
+
+  private void registerResolvedParameterTypes(TypeRef<?> ownerType, Parameter[] parameters) {
+    for (Parameter parameter : parameters) {
+      registerResolvedType(ownerType.resolveType(parameter.getParameterizedType()).getType());
+    }
+  }
+
+  private void registerResolvedType(Type type) {
+    Set<TypeVariable<?>> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
+    registerResolvedType(type, visiting);
+  }
+
+  private void registerResolvedType(Type type, Set<TypeVariable<?>> visiting) {
+    if (type == null) {
+      return;
+    }
+    registerContainer(type);
+    if (type instanceof ParameterizedType) {
+      ParameterizedType parameterizedType = (ParameterizedType) type;
+      registerResolvedType(parameterizedType.getOwnerType(), visiting);
+      for (Type argument : parameterizedType.getActualTypeArguments()) {
+        registerResolvedType(argument, visiting);
+      }
+    } else if (type instanceof GenericArrayType) {
+      registerResolvedType(((GenericArrayType) type).getGenericComponentType(), visiting);
+    } else if (type instanceof WildcardType) {
+      WildcardType wildcardType = (WildcardType) type;
+      registerResolvedTypes(wildcardType.getUpperBounds(), visiting);
+      registerResolvedTypes(wildcardType.getLowerBounds(), visiting);
+    } else if (type instanceof TypeVariable<?>) {
+      TypeVariable<?> variable = (TypeVariable<?>) type;
+      if (visiting.add(variable)) {
+        registerResolvedTypes(variable.getBounds(), visiting);
+        visiting.remove(variable);
+      }
+    }
+  }
+
+  private void registerResolvedTypes(Type[] types, Set<TypeVariable<?>> visiting) {
+    for (Type type : types) {
+      registerResolvedType(type, visiting);
     }
   }
 
@@ -232,7 +289,7 @@ final class ForyJsonGraalVMFeature implements Feature {
     }
   }
 
-  private void registerContainer(Type type) {
+  private boolean registerContainer(Type type) {
     Class<?> rawType = null;
     if (type instanceof Class<?>) {
       rawType = (Class<?>) type;
@@ -247,13 +304,15 @@ final class ForyJsonGraalVMFeature implements Feature {
         || Modifier.isAbstract(rawType.getModifiers())
         || (!Collection.class.isAssignableFrom(rawType) && !Map.class.isAssignableFrom(rawType))
         || !processedContainers.add(rawType)) {
-      return;
+      return false;
     }
     try {
       RuntimeReflection.register(rawType.getConstructor());
+      return true;
     } catch (NoSuchMethodException ignored) {
       // CollectionCodec and MapCodec preserve the same runtime failure for a concrete container
       // without a public no-argument constructor.
+      return false;
     }
   }
 
@@ -281,6 +340,32 @@ final class ForyJsonGraalVMFeature implements Feature {
           throw new IllegalStateException("Missing Fory JSON SQL constructor for " + className, e);
         }
       }
+    }
+  }
+
+  private void registerBuiltInTypes(DuringAnalysisAccess access) {
+    registerSqlTypes(access);
+    registerBigDecimalFields(access);
+  }
+
+  private void registerBigDecimalFields(BeforeAnalysisAccess access) {
+    registerBigDecimalField(access, "intCompact", long.class);
+    registerBigDecimalField(access, "intVal", BigInteger.class);
+    registerBigDecimalField(access, "scale", int.class);
+  }
+
+  private void registerBigDecimalField(
+      BeforeAnalysisAccess access, String fieldName, Class<?> fieldType) {
+    try {
+      Field field = BigDecimal.class.getDeclaredField(fieldName);
+      if (field.getType() == fieldType) {
+        RuntimeReflection.register(field);
+        if (Runtime.version().feature() <= 24) {
+          access.registerAsUnsafeAccessed(field);
+        }
+      }
+    } catch (NoSuchFieldException ignored) {
+      // BigDecimalFields preserves its public-JDK fallback if a future JDK changes this layout.
     }
   }
 
