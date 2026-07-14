@@ -1936,7 +1936,15 @@ abstract class JsonReaderCodegen {
       Expression fieldIndex,
       boolean record) {
     return fieldSwitchRange(
-        builder, type, properties, start, end, object, fieldIndex, null, null, null, record);
+        builder,
+        type,
+        properties,
+        start,
+        end,
+        object,
+        fieldIndex,
+        new Expression.Invoke(readerRef(), "skipValue"),
+        record);
   }
 
   private Expression fieldSwitchRange(
@@ -1951,6 +1959,24 @@ abstract class JsonReaderCodegen {
       Expression fieldStart,
       Expression anyMapCreated,
       boolean record) {
+    Expression unknown =
+        any == null
+            ? new Expression.Invoke(readerRef(), "skipValue")
+            : readUnknown(object, fieldIndex, fieldHash, fieldStart, anyMapCreated, record);
+    return fieldSwitchRange(
+        builder, type, properties, start, end, object, fieldIndex, unknown, record);
+  }
+
+  private Expression fieldSwitchRange(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonFieldInfo[] properties,
+      int start,
+      int end,
+      Expression object,
+      Expression fieldIndex,
+      Expression unknown,
+      boolean record) {
     Expression.Switch.Case[] cases = new Expression.Switch.Case[end - start];
     for (int i = start; i < end; i++) {
       cases[i - start] =
@@ -1960,12 +1986,7 @@ abstract class JsonReaderCodegen {
                   readField(builder, type, properties[i], i, object, record, false),
                   new Expression.Break()));
     }
-    return new Expression.Switch(
-        fieldIndex,
-        cases,
-        any == null
-            ? new Expression.Invoke(readerRef(), "skipValue")
-            : readUnknown(object, fieldIndex, fieldHash, fieldStart, anyMapCreated, record));
+    return new Expression.Switch(fieldIndex, cases, unknown);
   }
 
   private Expression readUnknown(

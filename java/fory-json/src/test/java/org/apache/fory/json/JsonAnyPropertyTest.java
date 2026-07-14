@@ -225,6 +225,24 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void genericBridgeMethods() {
+    ForyJson json = newJson();
+    BridgeAny value = new BridgeAny();
+    value.storage.put("x", 1);
+    assertEquals(json.toJson(value), "{\"x\":1}");
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"x\":1}");
+
+    BridgeAny decoded = json.fromJson("{\"y\":2}", BridgeAny.class);
+    assertEquals(decoded.storage, Collections.singletonMap("y", 2));
+    assertEquals(
+        json.fromJson("{\"键\":3}", BridgeAny.class).storage, Collections.singletonMap("键", 3));
+    assertEquals(
+        json.fromJson("{\"byte\":4}".getBytes(StandardCharsets.UTF_8), BridgeAny.class).storage,
+        Collections.singletonMap("byte", 4));
+    assertGeneratedCapabilities(json, BridgeAny.class);
+  }
+
+  @Test
   public void independentMethods() {
     ForyJson json = newJson();
     GetterOnly getter = new GetterOnly();
@@ -359,6 +377,41 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
         new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
         "{\"before\":1,\"second\":2,\"third\":3,\"after\":4}");
     assertGeneratedWriters(json, OrderedAny.class);
+  }
+
+  @Test
+  public void wideCodegenPaths() {
+    ForyJson json = newJson();
+    WideAny value = new WideAny();
+    setWideFields(value);
+    value.properties.put("x", 100);
+    value.properties.put("y", 101);
+    String expected =
+        "{\"f0\":0,\"f1\":1,\"f2\":2,\"f3\":3,\"f4\":4,\"f5\":5,"
+            + "\"x\":100,\"y\":101,"
+            + "\"f6\":6,\"f7\":7,\"f8\":8,\"f9\":9,\"f10\":10,\"f11\":11}";
+    assertEquals(json.toJson(value), expected);
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+
+    String latin1 =
+        "{\"before\":100,\"f0\":0,\"f1\":1,\"f2\":2,\"f3\":3,\"f4\":4,\"f5\":5,"
+            + "\"middle\":101,\"f6\":6,\"f7\":7,\"f8\":8,\"f9\":9,\"f10\":10,"
+            + "\"f11\":11,\"after\":102}";
+    assertWide(json.fromJson(latin1, WideAny.class), "before", "middle", "after");
+
+    String utf16 =
+        "{\"前\":100,\"f0\":0,\"f1\":1,\"f2\":2,\"f3\":3,\"f4\":4,\"f5\":5,"
+            + "\"中\":101,\"f6\":6,\"f7\":7,\"f8\":8,\"f9\":9,\"f10\":10,"
+            + "\"f11\":11,\"后\":102}";
+    assertWide(json.fromJson(utf16, WideAny.class), "前", "中", "后");
+
+    String utf8 =
+        "{\"字首\":100,\"f0\":0,\"f1\":1,\"f2\":2,\"f3\":3,\"f4\":4,\"f5\":5,"
+            + "\"字中\":101,\"f6\":6,\"f7\":7,\"f8\":8,\"f9\":9,\"f10\":10,"
+            + "\"f11\":11,\"字尾\":102}";
+    assertWide(
+        json.fromJson(utf8.getBytes(StandardCharsets.UTF_8), WideAny.class), "字首", "字中", "字尾");
+    assertGeneratedCapabilities(json, WideAny.class);
   }
 
   @Test
@@ -825,6 +878,41 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     return map;
   }
 
+  private static void setWideFields(WideAny value) {
+    value.f0 = 0;
+    value.f1 = 1;
+    value.f2 = 2;
+    value.f3 = 3;
+    value.f4 = 4;
+    value.f5 = 5;
+    value.f6 = 6;
+    value.f7 = 7;
+    value.f8 = 8;
+    value.f9 = 9;
+    value.f10 = 10;
+    value.f11 = 11;
+  }
+
+  private static void assertWide(WideAny value, String first, String middle, String last) {
+    assertEquals(value.f0, 0);
+    assertEquals(value.f1, 1);
+    assertEquals(value.f2, 2);
+    assertEquals(value.f3, 3);
+    assertEquals(value.f4, 4);
+    assertEquals(value.f5, 5);
+    assertEquals(value.f6, 6);
+    assertEquals(value.f7, 7);
+    assertEquals(value.f8, 8);
+    assertEquals(value.f9, 9);
+    assertEquals(value.f10, 10);
+    assertEquals(value.f11, 11);
+    LinkedHashMap<String, Integer> properties = new LinkedHashMap<>();
+    properties.put(first, 100);
+    properties.put(middle, 101);
+    properties.put(last, 102);
+    assertEquals(value.properties, properties);
+  }
+
   public static class MutableAny {
     public int id;
 
@@ -912,6 +1000,31 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     public void putProperty(String name, Integer value) {
       calls++;
       properties.put(name, value);
+    }
+  }
+
+  public interface GetterContract<T> {
+    T getProperties();
+  }
+
+  public interface SetterContract<T> {
+    void putProperty(String name, T value);
+  }
+
+  public static final class BridgeAny
+      implements GetterContract<Map<String, Integer>>, SetterContract<Integer> {
+    @JsonIgnore private final Map<String, Integer> storage = new LinkedHashMap<>();
+
+    @Override
+    @JsonAnyGetter
+    public Map<String, Integer> getProperties() {
+      return storage;
+    }
+
+    @Override
+    @JsonAnySetter
+    public void putProperty(String name, Integer value) {
+      storage.put(name, value);
     }
   }
 
@@ -1040,6 +1153,37 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     public int before;
     @JsonAnyProperty public Map<String, Integer> properties = new LinkedHashMap<>();
     public int after;
+  }
+
+  @JsonPropertyOrder({
+    "f0",
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5",
+    "properties",
+    "f6",
+    "f7",
+    "f8",
+    "f9",
+    "f10",
+    "f11"
+  })
+  public static final class WideAny {
+    public int f0;
+    public int f1;
+    public int f2;
+    public int f3;
+    public int f4;
+    public int f5;
+    @JsonAnyProperty public Map<String, Integer> properties = new LinkedHashMap<>();
+    public int f6;
+    public int f7;
+    public int f8;
+    public int f9;
+    public int f10;
+    public int f11;
   }
 
   @JsonPropertyOrder({"properties", "id"})

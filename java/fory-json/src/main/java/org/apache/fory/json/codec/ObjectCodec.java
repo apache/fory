@@ -147,12 +147,10 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     boolean hasAnyField = validateMemberAnnotations(type, propertyDiscoveryEnabled, record);
     LinkedHashMap<String, FieldBuilder> builders = new LinkedHashMap<>();
     addFields(type, record, propertyDiscoveryEnabled, hasAnyField, builders);
-    if (propertyDiscoveryEnabled && !record) {
-      addAccessors(type, builders);
-    } else if (record) {
+    if (record) {
       addRecordAccessors(type, builders);
     }
-    Method anySetter = addAnyMethods(type, propertyDiscoveryEnabled, builders);
+    Method anySetter = addJsonMethods(type, propertyDiscoveryEnabled, record, builders);
     FieldBuilder anyBuilder = findAnyBuilder(type, builders);
     if (anyBuilder != null && anyBuilder.anyField != null) {
       if (anyBuilder.anyGetter != null || anySetter != null) {
@@ -655,9 +653,48 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
   }
 
-  private static void addAccessors(Class<?> type, LinkedHashMap<String, FieldBuilder> builders) {
+  private static Method addJsonMethods(
+      Class<?> type,
+      boolean propertyDiscoveryEnabled,
+      boolean record,
+      LinkedHashMap<String, FieldBuilder> builders) {
+    Method anyGetter = null;
+    Method anySetter = null;
     for (Method method : type.getMethods()) {
-      if (!isEligibleAccessor(method)) {
+      // javac copies runtime annotations to generic bridge methods. Those generated methods do not
+      // own JSON declarations and processing them would reject an otherwise valid concrete method.
+      if (method.isSynthetic() || method.isBridge()) {
+        continue;
+      }
+      if (method.getDeclaringClass().isInterface()
+          && method.isAnnotationPresent(JsonProperty.class)) {
+        validatePropertyMethod(type, method, propertyDiscoveryEnabled, record);
+      }
+      JsonAnyGetter getter = method.getAnnotation(JsonAnyGetter.class);
+      JsonAnySetter setter = method.getAnnotation(JsonAnySetter.class);
+      if (getter != null || setter != null) {
+        if (!propertyDiscoveryEnabled) {
+          throw new ForyJsonException(
+              "JSON Any method annotations require property discovery: " + method);
+        }
+        if (getter != null && setter != null) {
+          throw new ForyJsonException("Conflicting JSON Any method annotations on " + method);
+        }
+        if (getter != null) {
+          validateAnyGetter(method);
+          if (anyGetter != null) {
+            throw new ForyJsonException("Multiple @JsonAnyGetter methods on " + type.getName());
+          }
+          anyGetter = method;
+        } else {
+          validateAnySetter(method);
+          if (anySetter != null) {
+            throw new ForyJsonException("Multiple @JsonAnySetter methods on " + type.getName());
+          }
+          anySetter = method;
+        }
+      }
+      if (!propertyDiscoveryEnabled || record || !isEligibleAccessor(method)) {
         continue;
       }
       String propertyName = getterPropertyName(method);
@@ -680,45 +717,17 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         builder.setReadSetter(type, method);
       }
     }
-  }
-
-  private static Method addAnyMethods(
-      Class<?> type,
-      boolean propertyDiscoveryEnabled,
-      LinkedHashMap<String, FieldBuilder> builders) {
-    Method anySetter = null;
-    for (Method method : type.getMethods()) {
-      JsonAnyGetter getter = method.getAnnotation(JsonAnyGetter.class);
-      JsonAnySetter setter = method.getAnnotation(JsonAnySetter.class);
-      if (getter == null && setter == null) {
-        continue;
+    if (anyGetter != null) {
+      String propertyName = getterPropertyName(anyGetter);
+      if (propertyName == null) {
+        propertyName = anyGetter.getName();
       }
-      if (!propertyDiscoveryEnabled) {
-        throw new ForyJsonException(
-            "JSON Any method annotations require property discovery: " + method);
+      FieldBuilder builder = builders.get(propertyName);
+      if (builder == null) {
+        builder = new FieldBuilder(propertyName);
+        builders.put(propertyName, builder);
       }
-      if (getter != null && setter != null) {
-        throw new ForyJsonException("Conflicting JSON Any method annotations on " + method);
-      }
-      if (getter != null) {
-        validateAnyGetter(method);
-        String propertyName = getterPropertyName(method);
-        if (propertyName == null) {
-          propertyName = method.getName();
-        }
-        FieldBuilder builder = builders.get(propertyName);
-        if (builder == null) {
-          builder = new FieldBuilder(propertyName);
-          builders.put(propertyName, builder);
-        }
-        builder.setAnyGetter(type, method);
-      } else {
-        validateAnySetter(method);
-        if (anySetter != null) {
-          throw new ForyJsonException("Multiple @JsonAnySetter methods on " + type.getName());
-        }
-        anySetter = method;
-      }
+      builder.setAnyGetter(type, anyGetter);
     }
     return anySetter;
   }
@@ -2123,6 +2132,9 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         }
       }
       for (Method method : current.getDeclaredMethods()) {
+        if (method.isSynthetic() || method.isBridge()) {
+          continue;
+        }
         if (method.isAnnotationPresent(JsonProperty.class)) {
           validatePropertyMethod(type, method, propertyDiscoveryEnabled, record);
         }
@@ -2140,16 +2152,6 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
           }
           validateAnySetter(method);
         }
-      }
-    }
-    // Class.getMethods() is the accessor-discovery surface and includes inherited interface
-    // methods, while the class-hierarchy scan above deliberately includes non-public declarations.
-    // Validate annotated interface declarations here so no method considered by discovery can
-    // become a silent no-op merely because its declaring type is outside the class hierarchy.
-    for (Method method : type.getMethods()) {
-      if (method.getDeclaringClass().isInterface()
-          && method.isAnnotationPresent(JsonProperty.class)) {
-        validatePropertyMethod(type, method, propertyDiscoveryEnabled, record);
       }
     }
     return hasAnyField;
