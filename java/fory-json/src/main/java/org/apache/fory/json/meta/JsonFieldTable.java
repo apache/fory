@@ -173,6 +173,11 @@ public final class JsonFieldTable {
     }
   }
 
+  private static int index(long hash, int mask) {
+    long spread = hash ^ (hash >>> 32);
+    return ((int) spread) & mask;
+  }
+
   @Internal
   public int match(long hash) {
     int fieldIndex = index(hash);
@@ -186,11 +191,6 @@ public final class JsonFieldTable {
   @Internal
   public boolean containsHash(long hash) {
     return index(hash) >= 0 || containsSkip(hash);
-  }
-
-  private static int index(long hash, int mask) {
-    long spread = hash ^ (hash >>> 32);
-    return ((int) spread) & mask;
   }
 
   private void put(JsonFieldInfo field, int fieldIndex) {
