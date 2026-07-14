@@ -49,10 +49,11 @@ call. Later registration attempts are rejected.
 
 `registerSerializer(Foo.class, ...)` is sufficient to use `Foo` when class registration is enabled.
 Use `registerSerializerAndType(Foo.class, ...)` when you also want Fory to assign a numeric type ID.
-Common JDK collection, iterator, stream, functional, and concurrent-collection interfaces do not
-require explicit registration. This includes `Serializable`, `Iterable`, `Iterator`, `Collection`,
-`List`, `Set`, `Map`, `Comparator`, `Spliterator`, `Stream`, `Collector`, their standard subinterfaces,
-and types in the `java.util.function` package.
+A fixed set of common JDK interfaces does not require explicit registration. This includes
+`Serializable`, `CharSequence`, `Comparable`, `Cloneable`, `Runnable`, `Callable`, common time and
+collection interfaces, `Comparator`, `Spliterator`, `Stream`, `Collector`, and types in the
+`java.util.function` package. Concrete implementation classes still follow the normal registration
+rules.
 
 ### Register by Name
 

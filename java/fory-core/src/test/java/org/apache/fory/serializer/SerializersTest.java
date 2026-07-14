@@ -26,18 +26,29 @@ import static org.testng.Assert.assertTrue;
 
 import java.io.Externalizable;
 import java.io.Serializable;
+import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.MathContext;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
+import java.sql.Connection;
+import java.time.chrono.ChronoLocalDate;
+import java.time.chrono.ChronoLocalDateTime;
+import java.time.chrono.ChronoZonedDateTime;
+import java.time.chrono.Era;
+import java.time.temporal.Temporal;
+import java.time.temporal.TemporalAccessor;
+import java.time.temporal.TemporalAmount;
+import java.time.temporal.TemporalUnit;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Currency;
 import java.util.Deque;
 import java.util.Enumeration;
+import java.util.Formattable;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
@@ -54,6 +65,7 @@ import java.util.Spliterator;
 import java.util.UUID;
 import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.TransferQueue;
@@ -324,7 +336,19 @@ public class SerializersTest extends ForyTestBase {
   public void testClassTokens() {
     Class<?>[] safeInterfaces = {
       Serializable.class,
+      CharSequence.class,
+      Cloneable.class,
+      Comparable.class,
       Iterable.class,
+      Runnable.class,
+      ChronoLocalDate.class,
+      ChronoLocalDateTime.class,
+      ChronoZonedDateTime.class,
+      Era.class,
+      Temporal.class,
+      TemporalAccessor.class,
+      TemporalAmount.class,
+      TemporalUnit.class,
       Iterator.class,
       ListIterator.class,
       Collection.class,
@@ -340,6 +364,7 @@ public class SerializersTest extends ForyTestBase {
       NavigableMap.class,
       Comparator.class,
       Enumeration.class,
+      Formattable.class,
       PrimitiveIterator.class,
       PrimitiveIterator.OfDouble.class,
       PrimitiveIterator.OfInt.class,
@@ -352,6 +377,7 @@ public class SerializersTest extends ForyTestBase {
       Spliterator.OfLong.class,
       BlockingDeque.class,
       BlockingQueue.class,
+      Callable.class,
       ConcurrentMap.class,
       ConcurrentNavigableMap.class,
       TransferQueue.class,
@@ -364,7 +390,11 @@ public class SerializersTest extends ForyTestBase {
       Function.class
     };
     Class<?>[] registeredInterfaces = {
-      Externalizable.class, TestClassTokenInterface.class, TestDefaultClassTokenInterface.class
+      Externalizable.class,
+      Type.class,
+      Connection.class,
+      TestClassTokenInterface.class,
+      TestDefaultClassTokenInterface.class
     };
     Fory unregisteredFory =
         Fory.builder()
@@ -373,6 +403,7 @@ public class SerializersTest extends ForyTestBase {
             .withCompatible(false)
             .build();
     for (Class<?> type : safeInterfaces) {
+      assertTrue(type.isInterface());
       assertSame(serDe(unregisteredFory, type), type);
     }
     for (Class<?> type : registeredInterfaces) {

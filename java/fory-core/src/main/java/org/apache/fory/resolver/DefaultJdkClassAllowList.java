@@ -28,7 +28,22 @@ final class DefaultJdkClassAllowList {
 
   static {
     CLASS_NAMES.add("java.io.Serializable");
+
+    CLASS_NAMES.add("java.lang.CharSequence");
+    CLASS_NAMES.add("java.lang.Cloneable");
+    CLASS_NAMES.add("java.lang.Comparable");
     CLASS_NAMES.add("java.lang.Iterable");
+    CLASS_NAMES.add("java.lang.Runnable");
+
+    CLASS_NAMES.add("java.time.chrono.ChronoLocalDate");
+    CLASS_NAMES.add("java.time.chrono.ChronoLocalDateTime");
+    CLASS_NAMES.add("java.time.chrono.ChronoZonedDateTime");
+    CLASS_NAMES.add("java.time.chrono.Era");
+    CLASS_NAMES.add("java.time.temporal.Temporal");
+    CLASS_NAMES.add("java.time.temporal.TemporalAccessor");
+    CLASS_NAMES.add("java.time.temporal.TemporalAmount");
+    CLASS_NAMES.add("java.time.temporal.TemporalUnit");
+
     CLASS_NAMES.add("java.util.Iterator");
     CLASS_NAMES.add("java.util.ListIterator");
     CLASS_NAMES.add("java.util.Collection");
@@ -44,6 +59,7 @@ final class DefaultJdkClassAllowList {
     CLASS_NAMES.add("java.util.NavigableMap");
     CLASS_NAMES.add("java.util.Comparator");
     CLASS_NAMES.add("java.util.Enumeration");
+    CLASS_NAMES.add("java.util.Formattable");
     CLASS_NAMES.add("java.util.PrimitiveIterator");
     CLASS_NAMES.add("java.util.PrimitiveIterator$OfDouble");
     CLASS_NAMES.add("java.util.PrimitiveIterator$OfInt");
@@ -56,6 +72,7 @@ final class DefaultJdkClassAllowList {
     CLASS_NAMES.add("java.util.Spliterator$OfLong");
     CLASS_NAMES.add("java.util.concurrent.BlockingDeque");
     CLASS_NAMES.add("java.util.concurrent.BlockingQueue");
+    CLASS_NAMES.add("java.util.concurrent.Callable");
     CLASS_NAMES.add("java.util.concurrent.ConcurrentMap");
     CLASS_NAMES.add("java.util.concurrent.ConcurrentNavigableMap");
     CLASS_NAMES.add("java.util.concurrent.TransferQueue");
