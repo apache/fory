@@ -362,12 +362,6 @@ Fix it by either:
 - Implementing `ForyCopyable<T>` on the class, or
 - Overriding `Serializer.copy(CopyContext, T)` in the registered serializer
 
-### Registration Errors
-
-If Fory cannot select a copy serializer while class registration is required, register the runtime
-type that starts that serializer path. Nested local classes reconstructed by serializer-specific
-copy logic do not necessarily require separate registration.
-
 ## Related Topics
 
 - [Basic Serialization](basic-serialization.md) - Fory instance creation and core APIs
