@@ -34,19 +34,41 @@ import java.net.URISyntaxException;
 import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Currency;
+import java.util.Deque;
+import java.util.Enumeration;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
+import java.util.NavigableMap;
+import java.util.NavigableSet;
+import java.util.PrimitiveIterator;
+import java.util.Queue;
+import java.util.RandomAccess;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.SortedSet;
+import java.util.Spliterator;
 import java.util.UUID;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentNavigableMap;
+import java.util.concurrent.TransferQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.BaseStream;
+import java.util.stream.Collector;
+import java.util.stream.DoubleStream;
+import java.util.stream.IntStream;
+import java.util.stream.LongStream;
+import java.util.stream.Stream;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.ForyBuilder;
@@ -299,19 +321,50 @@ public class SerializersTest extends ForyTestBase {
   }
 
   @Test
-  public void testRegisteredClassTokens() {
-    Class<?>[] interfaces = {
+  public void testClassTokens() {
+    Class<?>[] safeInterfaces = {
       Serializable.class,
-      Externalizable.class,
-      Function.class,
+      Iterable.class,
+      Iterator.class,
+      ListIterator.class,
       Collection.class,
       List.class,
       Set.class,
       Map.class,
-      SortedMap.class,
+      Map.Entry.class,
+      Queue.class,
+      Deque.class,
       SortedSet.class,
-      TestClassTokenInterface.class,
-      TestDefaultClassTokenInterface.class
+      NavigableSet.class,
+      SortedMap.class,
+      NavigableMap.class,
+      Comparator.class,
+      Enumeration.class,
+      PrimitiveIterator.class,
+      PrimitiveIterator.OfDouble.class,
+      PrimitiveIterator.OfInt.class,
+      PrimitiveIterator.OfLong.class,
+      RandomAccess.class,
+      Spliterator.class,
+      Spliterator.OfPrimitive.class,
+      Spliterator.OfDouble.class,
+      Spliterator.OfInt.class,
+      Spliterator.OfLong.class,
+      BlockingDeque.class,
+      BlockingQueue.class,
+      ConcurrentMap.class,
+      ConcurrentNavigableMap.class,
+      TransferQueue.class,
+      BaseStream.class,
+      Stream.class,
+      DoubleStream.class,
+      IntStream.class,
+      LongStream.class,
+      Collector.class,
+      Function.class
+    };
+    Class<?>[] registeredInterfaces = {
+      Externalizable.class, TestClassTokenInterface.class, TestDefaultClassTokenInterface.class
     };
     Fory unregisteredFory =
         Fory.builder()
@@ -319,9 +372,21 @@ public class SerializersTest extends ForyTestBase {
             .requireClassRegistration(true)
             .withCompatible(false)
             .build();
-    for (Class<?> type : interfaces) {
+    for (Class<?> type : safeInterfaces) {
+      assertSame(serDe(unregisteredFory, type), type);
+    }
+    for (Class<?> type : registeredInterfaces) {
       assertThrows(InsecureException.class, () -> serDe(unregisteredFory, type));
     }
+
+    Fory checkedFory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withTypeChecker((resolver, className) -> !className.equals(Collection.class.getName()))
+            .withCompatible(false)
+            .build();
+    assertThrows(InsecureException.class, () -> serDe(checkedFory, Collection.class));
 
     Fory registeredFory =
         Fory.builder()
@@ -329,10 +394,10 @@ public class SerializersTest extends ForyTestBase {
             .requireClassRegistration(true)
             .withCompatible(false)
             .build();
-    for (Class<?> type : interfaces) {
+    for (Class<?> type : registeredInterfaces) {
       registeredFory.register(type);
     }
-    for (Class<?> type : interfaces) {
+    for (Class<?> type : registeredInterfaces) {
       assertSame(serDe(registeredFory, type), type);
     }
   }

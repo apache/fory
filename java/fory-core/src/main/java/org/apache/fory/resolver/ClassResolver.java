@@ -1925,6 +1925,9 @@ public class ClassResolver extends TypeResolver {
         || shimDispatcher.contains(cls)) {
       return true;
     }
+    if (config.requireClassRegistration() && DefaultJdkClassAllowList.contains(cls.getName())) {
+      return true;
+    }
     if (cls.isArray()) {
       if (!config.requireClassRegistration()) {
         return checkType(cls.getName());

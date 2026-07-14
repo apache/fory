@@ -51,6 +51,7 @@ public class TypeDefEncoderTest {
             .withCompatible(false)
             .build();
     Class<TestFieldsOrderClass1> type = TestFieldsOrderClass1.class;
+    fory.register(type);
     ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
     List<FieldInfo> fieldsInfo = buildFieldsInfo(classResolver, type);
     MemoryBuffer buffer =

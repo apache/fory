@@ -70,6 +70,10 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   unmatched named sender layers as data-only metadata, and does not route layer names through
   `ClassResolver.readClassInternal`. Inverse registration must not turn a missed input name into an
   accepted class.
+- Keep JDK interface names that do not require explicit registration in
+  `DefaultJdkClassAllowList`. `TypeResolver.loadClass` and `ClassResolver.isSecure` must both use
+  this single owner. Keep custom `TypeChecker` and fixed disallowed-list checks on their existing
+  paths.
 - Do not use `instanceof` in Java hot paths, including per-value, per-field, per-element,
   read/write/copy, resolver, serializer, codec, and buffer paths. Choose concrete
   implementations during cold setup or code generation, cache final/static-final shape decisions,

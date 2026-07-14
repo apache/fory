@@ -100,8 +100,6 @@ public class JdkProxySerializerTest extends ForyTestBase {
             .withCompatible(false)
             .build();
     fory.register(TestInvocationHandler.class);
-    fory.register(Function.class);
-    fory.register(Serializable.class);
     Function function =
         (Function)
             Proxy.newProxyInstance(

@@ -1444,7 +1444,7 @@ public abstract class TypeResolver {
     if (cls != null) {
       return cls;
     }
-    if (config.requireClassRegistration()) {
+    if (config.requireClassRegistration() && !DefaultJdkClassAllowList.contains(className)) {
       if (deserializeUnknownClass) {
         return UnknownClass.getUnknowClass(className, isEnum, arrayDims, metaContextShareEnabled);
       }
