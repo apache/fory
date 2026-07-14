@@ -40,6 +40,7 @@ import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
@@ -62,11 +63,11 @@ import org.apache.fory.util.record.RecordUtils;
  * Reflection-backed semantic codec and metadata owner for one Java object type.
  *
  * <p>Construction discovers eligible fields and JavaBean properties, merges each
- * field/getter/setter group into one logical property, applies its name, inclusion, and directional
- * ignore rules, resolves generic member types against the owner {@link TypeRef}, and builds
- * separate ordered read and write field arrays. Class-valued fields and properties are never JSON
- * members. Records retain constructor metadata and field defaults; ordinary objects retain an
- * allocation strategy plus field or accessor sinks.
+ * field/getter/setter group into one logical property, applies its name, inclusion, serialization
+ * order, and directional ignore rules, resolves generic member types against the owner {@link
+ * TypeRef}, and builds separate read and write field arrays. Class-valued fields and properties are
+ * never JSON members. Records retain constructor metadata and field defaults; ordinary objects
+ * retain an allocation strategy plus field or accessor sinks.
  *
  * <p>This codec is the interpreted implementation and the semantic fallback. Only an exact
  * raw-class instance of this class is eligible for generated capability replacement. Parameterized
@@ -138,12 +139,24 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         record
             ? rejectRecordCreator(type)
             : buildCreatorInfo(type, ownerType, builders, propertyNamingStrategy);
+    JsonPropertyOrder propertyOrder = findPropertyOrder(type);
+    boolean orderWrites = propertyOrder != null || hasIndexedProperty(builders);
     List<JsonFieldInfo> writes = new ArrayList<>();
+    List<FieldBuilder> writeBuilders = orderWrites ? new ArrayList<>(builders.size()) : null;
     List<JsonFieldInfo> reads = new ArrayList<>();
     List<String> readJavaNames = record ? new ArrayList<>() : null;
     Map<String, FieldBuilder> canonicalNames = new LinkedHashMap<>();
     Map<Long, String> canonicalHashes = new LinkedHashMap<>();
     for (FieldBuilder builder : builders.values()) {
+      if (builder.hasIndex() && !builder.hasWriteSource()) {
+        throw new ForyJsonException(
+            "JSON property index requires a write source for property "
+                + builder.name
+                + " on "
+                + type.getName()
+                + " from "
+                + builder.explicitIndexSource);
+      }
       if (!builder.hasWriteSource() && !builder.hasReadSink()) {
         if (builder.hasConfiguration()) {
           throw new ForyJsonException(
@@ -178,6 +191,9 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       }
       if (builder.hasWriteSource()) {
         writes.add(field);
+        if (writeBuilders != null) {
+          writeBuilders.add(builder);
+        }
       }
       if (creatorInfo == null && builder.hasReadSink()) {
         String priorHashName = canonicalHashes.put(field.nameHash(), field.name());
@@ -194,7 +210,10 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         }
       }
     }
-    JsonFieldInfo[] writeArray = writes.toArray(new JsonFieldInfo[0]);
+    JsonFieldInfo[] writeArray =
+        writeBuilders == null
+            ? writes.toArray(new JsonFieldInfo[0])
+            : orderWriteFields(type, propertyOrder, writeBuilders, writes);
     JsonFieldInfo[] readArray = reads.toArray(new JsonFieldInfo[0]);
     for (int i = 0; i < readArray.length; i++) {
       readArray[i].setReadIndex(i);
@@ -206,6 +225,139 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
     return new ParameterizedObjectCodec<>(
         type, writeArray, readArray, recordNames, creatorInfo, instantiator);
+  }
+
+  private static JsonPropertyOrder findPropertyOrder(Class<?> type) {
+    for (Class<?> current = type;
+        current != null && current != Object.class;
+        current = current.getSuperclass()) {
+      JsonPropertyOrder order = current.getDeclaredAnnotation(JsonPropertyOrder.class);
+      if (order != null) {
+        return order;
+      }
+    }
+    return null;
+  }
+
+  private static boolean hasIndexedProperty(Map<String, FieldBuilder> builders) {
+    for (FieldBuilder builder : builders.values()) {
+      if (builder.hasIndex()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static JsonFieldInfo[] orderWriteFields(
+      Class<?> type,
+      JsonPropertyOrder propertyOrder,
+      List<FieldBuilder> builders,
+      List<JsonFieldInfo> fields) {
+    int size = fields.size();
+    assert builders.size() == size;
+    JsonFieldInfo[] ordered = new JsonFieldInfo[size];
+    boolean[] selected = new boolean[size];
+    int outputIndex = 0;
+
+    if (propertyOrder != null) {
+      String[] names = propertyOrder.value();
+      if (names.length == 0 && !propertyOrder.alphabetic()) {
+        throw new ForyJsonException("Empty @JsonPropertyOrder on " + type.getName());
+      }
+      for (String name : names) {
+        if (name.isEmpty()) {
+          throw new ForyJsonException("Empty @JsonPropertyOrder property on " + type.getName());
+        }
+        int propertyIndex = findOrderedProperty(name, builders, fields);
+        if (propertyIndex < 0) {
+          throw new ForyJsonException(
+              "Unknown @JsonPropertyOrder property " + name + " on " + type.getName());
+        }
+        if (selected[propertyIndex]) {
+          throw new ForyJsonException(
+              "Duplicate @JsonPropertyOrder property " + name + " on " + type.getName());
+        }
+        selected[propertyIndex] = true;
+        ordered[outputIndex++] = fields.get(propertyIndex);
+      }
+    }
+
+    int indexedCount = 0;
+    for (FieldBuilder builder : builders) {
+      if (builder.hasIndex()) {
+        indexedCount++;
+      }
+    }
+    if (indexedCount != 0) {
+      long[] indexed = new long[indexedCount];
+      int next = 0;
+      for (int i = 0; i < size; i++) {
+        int index = builders.get(i).explicitIndex;
+        if (index != JsonProperty.INDEX_UNKNOWN) {
+          indexed[next++] = ((long) index << 32) | (i & 0xffffffffL);
+        }
+      }
+      Arrays.sort(indexed);
+      for (int i = 1; i < indexedCount; i++) {
+        int previousIndex = (int) (indexed[i - 1] >>> 32);
+        int index = (int) (indexed[i] >>> 32);
+        if (previousIndex == index) {
+          int previousProperty = (int) indexed[i - 1];
+          int property = (int) indexed[i];
+          throw new ForyJsonException(
+              "Duplicate JSON property index "
+                  + index
+                  + " for "
+                  + builders.get(previousProperty).name
+                  + " from "
+                  + builders.get(previousProperty).explicitIndexSource
+                  + " and "
+                  + builders.get(property).name
+                  + " from "
+                  + builders.get(property).explicitIndexSource
+                  + " on "
+                  + type.getName());
+        }
+      }
+      for (long indexedProperty : indexed) {
+        int propertyIndex = (int) indexedProperty;
+        if (!selected[propertyIndex]) {
+          selected[propertyIndex] = true;
+          ordered[outputIndex++] = fields.get(propertyIndex);
+        }
+      }
+    }
+
+    int unorderedStart = outputIndex;
+    for (int i = 0; i < size; i++) {
+      if (!selected[i]) {
+        ordered[outputIndex++] = fields.get(i);
+      }
+    }
+    if (propertyOrder != null && propertyOrder.alphabetic() && outputIndex - unorderedStart > 1) {
+      Arrays.sort(
+          ordered,
+          unorderedStart,
+          outputIndex,
+          (left, right) -> left.name().compareTo(right.name()));
+    }
+    assert outputIndex == size;
+    return ordered;
+  }
+
+  private static int findOrderedProperty(
+      String name, List<FieldBuilder> builders, List<JsonFieldInfo> fields) {
+    for (int i = 0; i < fields.size(); i++) {
+      if (name.equals(fields.get(i).name())) {
+        return i;
+      }
+    }
+    for (int i = 0; i < builders.size(); i++) {
+      if (name.equals(builders.get(i).name)) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   private static void addFields(
@@ -235,7 +387,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         }
         FieldBuilder builder =
             builders.computeIfAbsent(field.getName(), name -> new FieldBuilder(name));
-        builder.setField(field, write, read, write, readAllowed);
+        builder.setField(type, field, write, read, write, readAllowed);
       }
     }
   }
@@ -252,7 +404,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
           builder = new FieldBuilder(propertyName);
           builders.put(propertyName, builder);
         }
-        builder.setWriteGetter(method);
+        builder.setWriteGetter(type, method);
         continue;
       }
       propertyName = setterPropertyName(method);
@@ -262,7 +414,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
           builder = new FieldBuilder(propertyName);
           builders.put(propertyName, builder);
         }
-        builder.setReadSetter(method);
+        builder.setReadSetter(type, method);
       }
     }
   }
@@ -278,7 +430,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       // Record accessors carry component annotations in Java 16+, but field access remains the
       // optimized read/write owner. The accessor participates only in logical-property annotation
       // merging and is discarded before hot metadata is published.
-      builder.mergeAnnotation(component.getAccessor());
+      builder.mergeAnnotation(type, component.getAccessor());
     }
   }
 
@@ -401,14 +553,28 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
             throw new ForyJsonException(
                 "@JsonCreator property is ignored for reading: " + builder.name);
           }
-          builder.mergeAnnotation(parameters[i]);
+          builder.mergeAnnotation(type, parameters[i]);
           if (property.include() != JsonProperty.Include.DEFAULT && !builder.hasWriteSource()) {
             throw new ForyJsonException(
                 "Creator parameter inclusion requires a write source for " + jsonName);
           }
-        } else if (property.include() != JsonProperty.Include.DEFAULT) {
-          throw new ForyJsonException(
-              "Creator-only property cannot declare an inclusion policy: " + jsonName);
+        } else {
+          validatePropertyIndex(property.index(), jsonName, type, parameters[i]);
+          if (property.index() != JsonProperty.INDEX_UNKNOWN) {
+            throw new ForyJsonException(
+                "Creator-only property "
+                    + jsonName
+                    + " cannot declare serialization index "
+                    + property.index()
+                    + " on "
+                    + type.getName()
+                    + " from "
+                    + parameters[i]);
+          }
+          if (property.include() != JsonProperty.Include.DEFAULT) {
+            throw new ForyJsonException(
+                "Creator-only property cannot declare an inclusion policy: " + jsonName);
+          }
         }
         Type resolved = ownerType.resolveType(parameterTypes[i]).getType();
         fields[i] = new JsonCreatorFieldInfo(jsonName, i, resolved, rawTypes[i]);
@@ -416,6 +582,21 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
     rejectCreatorHashCollisions(fields);
     return new JsonCreatorInfo(type, creator, fields, creatorDefaults(rawTypes));
+  }
+
+  private static void validatePropertyIndex(
+      int index, String propertyName, Class<?> type, AnnotatedElement source) {
+    if (index < JsonProperty.INDEX_UNKNOWN) {
+      throw new ForyJsonException(
+          "Invalid JSON property index "
+              + index
+              + " for property "
+              + propertyName
+              + " on "
+              + type.getName()
+              + " from "
+              + source);
+    }
   }
 
   private static void validateCreator(Class<?> type, Executable creator) {
@@ -1043,6 +1224,8 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     private JsonFieldAccessor readAccessor;
     private String explicitName;
     private AnnotatedElement explicitNameSource;
+    private int explicitIndex = JsonProperty.INDEX_UNKNOWN;
+    private AnnotatedElement explicitIndexSource;
     private JsonProperty.Include explicitInclude = JsonProperty.Include.DEFAULT;
     private AnnotatedElement explicitIncludeSource;
     private boolean creatorBound;
@@ -1052,6 +1235,7 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
 
     private void setField(
+        Class<?> type,
         Field field,
         boolean writeSource,
         boolean readSink,
@@ -1069,11 +1253,11 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       if (readSink) {
         readField = field;
       }
-      mergeAnnotation(field);
+      mergeAnnotation(type, field);
     }
 
-    private void setWriteGetter(Method getter) {
-      mergeAnnotation(getter);
+    private void setWriteGetter(Class<?> type, Method getter) {
+      mergeAnnotation(type, getter);
       if (field != null && !fieldWriteAllowed) {
         return;
       }
@@ -1084,8 +1268,8 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       writeField = null;
     }
 
-    private void setReadSetter(Method setter) {
-      mergeAnnotation(setter);
+    private void setReadSetter(Class<?> type, Method setter) {
+      mergeAnnotation(type, setter);
       if (field != null && !fieldReadAllowed) {
         return;
       }
@@ -1105,7 +1289,13 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
     }
 
     private boolean hasConfiguration() {
-      return explicitName != null || explicitInclude != JsonProperty.Include.DEFAULT;
+      return explicitName != null
+          || explicitIndex != JsonProperty.INDEX_UNKNOWN
+          || explicitInclude != JsonProperty.Include.DEFAULT;
+    }
+
+    private boolean hasIndex() {
+      return explicitIndex != JsonProperty.INDEX_UNKNOWN;
     }
 
     private boolean hasLogicalMember() {
@@ -1183,10 +1373,33 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
           ownerType);
     }
 
-    private void mergeAnnotation(AnnotatedElement source) {
+    private void mergeAnnotation(Class<?> type, AnnotatedElement source) {
       JsonProperty property = source.getAnnotation(JsonProperty.class);
       if (property == null) {
         return;
+      }
+      int declaredIndex = property.index();
+      validatePropertyIndex(declaredIndex, name, type, source);
+      if (declaredIndex != JsonProperty.INDEX_UNKNOWN) {
+        if (explicitIndex != JsonProperty.INDEX_UNKNOWN && explicitIndex != declaredIndex) {
+          throw new ForyJsonException(
+              "Conflicting JSON property indexes for property "
+                  + name
+                  + " on "
+                  + type.getName()
+                  + ": "
+                  + explicitIndex
+                  + " from "
+                  + explicitIndexSource
+                  + " and "
+                  + declaredIndex
+                  + " from "
+                  + source);
+        }
+        explicitIndex = declaredIndex;
+        if (explicitIndexSource == null) {
+          explicitIndexSource = source;
+        }
       }
       String declaredName = property.value();
       if (!declaredName.isEmpty()) {

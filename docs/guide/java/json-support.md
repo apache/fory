@@ -113,8 +113,9 @@ public final class JsonExample {
 }
 ```
 
-Unknown input properties are skipped. Null object properties are omitted by default. JSON member
-order is not a compatibility contract.
+Unknown input properties are skipped. Null object properties are omitted by default. Default JSON
+member discovery order is not a compatibility contract; use `JsonPropertyOrder` or
+`JsonProperty.index` when emitted member order must be explicit.
 
 ## Reading and writing
 
@@ -298,14 +299,16 @@ output size. Builder changes after `build()` do not mutate an existing runtime.
 
 ## Annotations
 
-Fory JSON provides only `JsonProperty`, `JsonIgnore`, `JsonCreator`, and `JsonSubTypes` under
-`org.apache.fory.json.annotation`. They are not Jackson, Gson, or Fory binary-protocol annotations.
+Fory JSON provides `JsonProperty`, `JsonPropertyOrder`, `JsonIgnore`, `JsonCreator`, and
+`JsonSubTypes` under `org.apache.fory.json.annotation`. They are not Jackson, Gson, or Fory
+binary-protocol annotations.
 
 ```java
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonSubTypes;
 ```
 
@@ -319,6 +322,9 @@ private long id;
 
 @JsonProperty(include = JsonProperty.Include.ALWAYS)
 private String displayName;
+
+@JsonProperty(index = 10)
+private String email;
 ```
 
 Supported inclusion values are:
@@ -327,9 +333,59 @@ Supported inclusion values are:
 - `ALWAYS`: include null;
 - `NON_NULL`: omit null.
 
+`index` controls relative serialization order. Indexed properties are written in ascending index
+order before unindexed properties. Indexes must be non-negative, may contain gaps, and must be
+unique among writable properties. `-1` means unspecified; lower values are invalid. An index on a
+setter-only, creator-only, or write-ignored property is invalid.
+
 Inclusion affects writing only. Identical repeated declarations are allowed; conflicting explicit
-names or non-default policies fail. Two properties cannot normalize to the same JSON name.
-`NON_EMPTY`, aliases, formatting, and annotation-selected codecs are unsupported.
+names, indexes, or non-default policies fail. Two properties cannot normalize to the same JSON
+name. `NON_EMPTY`, aliases, formatting, and annotation-selected codecs are unsupported.
+
+### `JsonPropertyOrder`
+
+Use `JsonPropertyOrder` to combine a named prefix, property indexes, and final-name alphabetic
+ordering:
+
+```java
+@JsonPropertyOrder(value = {"id", "display_name"}, alphabetic = true)
+public final class User {
+  @JsonProperty(index = 20)
+  public String name;
+
+  @JsonProperty(value = "display_name", index = 10)
+  public String displayName;
+
+  public long id;
+  public int age;
+  public String address;
+}
+```
+
+The output order is `id`, `display_name`, `name`, `address`, then `age`:
+
+```json
+{ "id": 1, "display_name": "Alice", "name": "alice", "address": "x", "age": 30 }
+```
+
+The named prefix is written first. Remaining indexed properties follow in ascending index order.
+When `alphabetic = true`, remaining unindexed properties are sorted by final JSON name; otherwise
+they keep their existing relative order. Use `@JsonPropertyOrder(alphabetic = true)` when no named
+prefix is needed. Alphabetic comparison uses Java's natural, case-sensitive String order and does
+not depend on the locale.
+
+Order entries match the final JSON name first and the Java logical property name second. This lets
+`display_name` match an explicit `JsonProperty` name while an unannotated `displayName` can still be
+addressed by either `display_name` under `SNAKE_CASE` or its Java name `displayName`.
+
+The list may be empty only when `alphabetic` is true. Its entries must be non-empty, unique writable
+properties; unknown and duplicate entries fail when the object metadata is built. A subclass
+declaration replaces both settings from its superclass as a whole; declarations are not merged. If
+the subclass has no declaration, the nearest superclass declaration is used and resolved against the
+subclass properties. Interface declarations are not considered.
+
+Property order affects serialization only. Deserialization remains name-based and accepts members
+in any order. Subtype discriminators remain before user properties.
 
 ### Naming strategy
 

@@ -95,8 +95,9 @@ public final class JsonExample {
 }
 ```
 
-Unknown input properties are skipped. Null object properties are omitted by default. JSON property
-order is not a compatibility contract; consumers should match names, not textual member order.
+Unknown input properties are skipped. Null object properties are omitted by default. Default JSON
+property discovery order is not a compatibility contract; use `JsonPropertyOrder` or
+`JsonProperty.index` when emitted property order must be explicit.
 
 ## Reading and writing APIs
 
@@ -355,13 +356,14 @@ Builder mutation after `build()` does not modify an existing `ForyJson` runtime.
 
 ## JSON annotations
 
-Fory JSON defines four annotations in `org.apache.fory.json.annotation`. They are Fory JSON APIs,
+Fory JSON defines five annotations in `org.apache.fory.json.annotation`. They are Fory JSON APIs,
 not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
 ### `JsonProperty`
 
-`JsonProperty` configures the canonical name and null inclusion of one complete logical property.
-An annotation on a field, getter, or setter applies to the merged field/getter/setter group.
+`JsonProperty` configures the canonical name, serialization index, and null inclusion of one
+complete logical property. An annotation on a field, getter, or setter applies to the merged
+field/getter/setter group.
 
 ```java
 import org.apache.fory.json.annotation.JsonProperty;
@@ -373,6 +375,9 @@ public final class User {
   @JsonProperty(include = JsonProperty.Include.ALWAYS)
   private String displayName;
 
+  @JsonProperty(index = 10)
+  private String email;
+
   public long getId() {
     return id;
   }
@@ -383,19 +388,63 @@ public final class User {
 }
 ```
 
-Version 1 supports three inclusion values:
+The supported inclusion values are:
 
 - `DEFAULT`: use `ForyJsonBuilder.writeNullFields`.
 - `ALWAYS`: write the property even when its selected value is null.
 - `NON_NULL`: omit a null value.
 
 Inclusion affects writing only. A non-default inclusion is invalid for a creator-only property with
-no write source. Repeating the same declaration is allowed; conflicting explicit names or
+no write source. Repeating the same declaration is allowed; conflicting explicit names, indexes, or
 non-default inclusion policies within one logical property are rejected. Two properties that
 normalize to the same final JSON name are also rejected.
 
+`index` controls relative serialization order. Indexed properties are written in ascending index
+order before unindexed properties. Indexes must be non-negative, may contain gaps, and must be
+unique among writable properties. `-1` means unspecified; lower values are invalid. An index on a
+setter-only, creator-only, or write-ignored property is invalid.
+
 `NON_EMPTY`, aliases, formatting, annotation-selected codecs, and independent read/write names are
 not supported.
+
+### `JsonPropertyOrder`
+
+`JsonPropertyOrder` combines a named serialization prefix, property indexes, and final-name
+alphabetic ordering:
+
+```java
+import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonPropertyOrder;
+
+@JsonPropertyOrder(value = {"id", "display_name"}, alphabetic = true)
+public final class User {
+  @JsonProperty(index = 20)
+  public String name;
+
+  @JsonProperty(value = "display_name", index = 10)
+  public String displayName;
+
+  public long id;
+  public int age;
+  public String address;
+}
+```
+
+The output order is `id`, `display_name`, `name`, `address`, then `age`. The named prefix is written
+first, remaining indexed properties follow in ascending index order, and `alphabetic = true` sorts
+the remaining unindexed properties by final JSON name. Without `alphabetic`, those properties keep
+their existing relative order. Use `@JsonPropertyOrder(alphabetic = true)` when no named prefix is
+needed. Alphabetic comparison uses Java's natural, case-sensitive String order and is
+locale-independent.
+
+Order entries match the final JSON name first and the Java logical property name second. The list
+may be empty only when `alphabetic` is true. Its entries must be non-empty, unique writable
+properties; unknown and duplicate entries fail when object metadata is built.
+
+A subclass declaration replaces both settings from its superclass as a whole. If the subclass has
+no declaration, the nearest superclass declaration is used and resolved against the subclass
+properties. Interface declarations are not considered. Ordering affects serialization only;
+deserialization remains name-based, and subtype discriminators remain before user properties.
 
 ### Property naming strategy
 

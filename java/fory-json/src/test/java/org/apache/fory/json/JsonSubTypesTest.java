@@ -31,6 +31,7 @@ import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.codec.JsonCodec;
@@ -63,19 +64,19 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     Shape decoded = json.fromJson(text, Shape.class);
     assertEquals(((Circle) decoded).radius, 2);
     assertEquals(new String(json.toJsonBytes(value, Shape.class), StandardCharsets.UTF_8), text);
-    assertInlineWriterCapabilities(json);
+    assertInlineWriterCapabilities(json, Circle.class);
     Shape utf16 = json.fromJson("{\"说明\":\"值\",\"radius\":3,\"kind\":\"circle\"}", Shape.class);
     assertEquals(((Circle) utf16).radius, 3);
     Shape utf8 = json.fromJson(text.getBytes(StandardCharsets.UTF_8), Shape.class);
     assertEquals(((Circle) utf8).radius, 2);
   }
 
-  private void assertInlineWriterCapabilities(ForyJson json) {
+  private void assertInlineWriterCapabilities(ForyJson json, Class<?> type) {
     JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
     resolver.lockJIT();
     try {
-      JsonTypeInfo info = resolver.getTypeInfo(Circle.class, Circle.class);
-      ObjectCodec<Circle> owner = resolver.getObjectCodec(Circle.class);
+      JsonTypeInfo info = resolver.getTypeInfo(type, type);
+      ObjectCodec<?> owner = resolver.getObjectCodec(type);
       if (codegenEnabled()) {
         assertNotSame(info.stringWriter(), owner);
         assertNotSame(info.utf8Writer(), owner);
@@ -94,6 +95,8 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     Shape value = new Rectangle(3, 4);
     String text = json.toJson(value, Shape.class);
     assertEquals(text, "{\"kind\":\"rectangle\",\"height\":4,\"width\":3}");
+    assertEquals(new String(json.toJsonBytes(value, Shape.class), StandardCharsets.UTF_8), text);
+    assertInlineWriterCapabilities(json, Rectangle.class);
     Shape decoded = json.fromJson(text, Shape.class);
     assertEquals(((Rectangle) decoded).width, 3);
     assertEquals(((Rectangle) decoded).height, 4);
@@ -343,9 +346,10 @@ public class JsonSubTypesTest extends ForyJsonTestModels {
     }
   }
 
+  @JsonPropertyOrder(alphabetic = true)
   public static final class Rectangle implements Shape {
-    public int height;
     public int width;
+    public int height;
 
     public Rectangle() {}
 

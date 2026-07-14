@@ -26,12 +26,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Configures the canonical JSON name and null-inclusion policy of one logical property.
+ * Configures the canonical JSON name, serialization index, and null-inclusion policy of one logical
+ * property.
  *
  * <p>Fory JSON first groups an eligible field, getter, and setter by their Java property name. An
  * annotation on any one of those members configures the complete logical property. Repeating the
- * same explicit name or inclusion policy is allowed; conflicting non-default declarations are
- * rejected when the object's metadata is built. {@link JsonIgnore} still removes the configured
+ * same explicit name, index, or inclusion policy is allowed; conflicting non-default declarations
+ * are rejected when the object's metadata is built. {@link JsonIgnore} still removes the configured
  * read or write direction and cannot be overridden by this annotation.
  *
  * <p>On a {@link JsonCreator} parameter, this annotation supplies the input JSON name in
@@ -42,6 +43,9 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER})
 public @interface JsonProperty {
+  /** Value indicating that no serialization index is configured. */
+  int INDEX_UNKNOWN = -1;
+
   /**
    * Returns the canonical JSON property name.
    *
@@ -50,6 +54,20 @@ public @interface JsonProperty {
    * parameter-local creator mode.
    */
   String value() default "";
+
+  /**
+   * Returns the relative serialization index of this property.
+   *
+   * <p>Indexed properties not selected by {@link JsonPropertyOrder} are written in ascending index
+   * order before unindexed properties. Values greater than or equal to zero are valid and may have
+   * gaps; values below {@link #INDEX_UNKNOWN} are invalid. Different writable properties must not
+   * use the same index. A non-default index requires a writable field or getter, including when the
+   * annotation is declared on a setter or matching {@link JsonCreator} parameter.
+   *
+   * <p>The index affects serialization order only. It is not a field ID, wire position, array
+   * index, record-component index, or creator-parameter index.
+   */
+  int index() default INDEX_UNKNOWN;
 
   /**
    * Returns the null-inclusion policy for this property.
@@ -61,7 +79,7 @@ public @interface JsonProperty {
    */
   Include include() default Include.DEFAULT;
 
-  /** Null-inclusion policies supported by Fory JSON version 1. */
+  /** Null-inclusion policies supported by Fory JSON. */
   enum Include {
     /** Inherit the runtime's {@code writeNullFields} setting. */
     DEFAULT,
