@@ -23,6 +23,8 @@ module org.apache.fory.core {
 
   requires static java.sql;
   requires static com.google.common;
+  requires static org.graalvm.nativeimage;
+  requires static org.graalvm.sdk;
   requires static org.slf4j;
   requires static jsr305;
   requires static jdk.incubator.vector;

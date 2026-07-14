@@ -17,14 +17,14 @@
  * under the License.
  */
 
-package org.apache.fory.graalvm.feature;
+package org.apache.fory.platform;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
-import org.apache.fory.platform.GraalvmSupport;
 import org.testng.annotations.Test;
 
-public class ForyGraalVMFeatureTest {
+public class GraalvmSupportTest {
 
   public static class PublicNoArgConstructorClass {
     public PublicNoArgConstructorClass() {}
@@ -47,31 +47,15 @@ public class ForyGraalVMFeatureTest {
   }
 
   @Test
-  public void testGetDescription() {
-    ForyGraalVMFeature feature = new ForyGraalVMFeature();
-    assertNotNull(feature.getDescription());
-    assertTrue(feature.getDescription().contains("Fory"));
-  }
-
-  @Test
   public void testNeedReflectionRegisterForCreation() {
-    // Classes with public no-arg constructor don't need reflection registration
     assertFalse(
         GraalvmSupport.needReflectionRegisterForCreation(PublicNoArgConstructorClass.class));
-
-    // Classes with private no-arg constructor need reflection registration.
     assertTrue(
         GraalvmSupport.needReflectionRegisterForCreation(PrivateNoArgConstructorClass.class));
-
-    // Classes without no-arg constructor use the unsafe allocation path.
     assertFalse(GraalvmSupport.needReflectionRegisterForCreation(NoNoArgConstructorClass.class));
-
-    // Abstract classes, interfaces, enums don't need reflection registration
     assertFalse(GraalvmSupport.needReflectionRegisterForCreation(AbstractClass.class));
     assertFalse(GraalvmSupport.needReflectionRegisterForCreation(SampleInterface.class));
     assertFalse(GraalvmSupport.needReflectionRegisterForCreation(SampleEnum.class));
-
-    // Arrays don't need reflection registration
     assertFalse(GraalvmSupport.needReflectionRegisterForCreation(String[].class));
   }
 }

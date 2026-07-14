@@ -5,7 +5,10 @@ Examples and tests for Fory serialization in graalvm native image
 ## Test
 
 ```bash
-mvn -DskipTests=true -Pnative package
+mvn clean -DskipTests=true -Pnative package
+./target/main
+mvn clean -DskipTests=true -Pnative-module package
+./target/main-module
 ```
 
 ## Benchmark
