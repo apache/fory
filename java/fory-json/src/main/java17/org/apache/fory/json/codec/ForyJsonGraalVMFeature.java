@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.fory.json;
+package org.apache.fory.json.codec;
 
 import java.lang.reflect.AnnotatedArrayType;
 import java.lang.reflect.AnnotatedParameterizedType;
@@ -43,11 +43,11 @@ import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
-import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.TypeRef;
 import org.graalvm.nativeimage.hosted.Feature;
@@ -114,7 +114,6 @@ final class ForyJsonGraalVMFeature implements Feature {
     if (!type.isEnum()
         && !Collection.class.isAssignableFrom(type)
         && !Map.class.isAssignableFrom(type)) {
-      RuntimeReflection.register(type.getMethods());
       registerModelHierarchy(access, type);
     }
     registerSubtypes(access, type);
@@ -123,6 +122,7 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   private void registerModelHierarchy(BeforeAnalysisAccess access, Class<?> type) {
     TypeRef<?> ownerType = TypeRef.of(type);
+    boolean record = type.isRecord();
     for (Class<?> current = type;
         current != null && current != Object.class;
         current = current.getSuperclass()) {
@@ -135,18 +135,35 @@ final class ForyJsonGraalVMFeature implements Feature {
           registerResolvedType(ownerType.resolveType(field.getGenericType()).getType());
         }
       }
-      for (Constructor<?> constructor : current.getDeclaredConstructors()) {
-        if (constructor.isAnnotationPresent(JsonCreator.class)) {
-          registerParameterTypes(constructor.getParameters());
-          registerResolvedParameterTypes(ownerType, constructor.getParameters());
+    }
+    for (Method method : type.getMethods()) {
+      if (ObjectCodecBuilder.usesJsonMetadata(method, record)) {
+        if (method.getDeclaringClass().isInterface()) {
+          RuntimeReflection.register(method);
+        }
+        if (ObjectCodecBuilder.usesJsonReturn(method)) {
+          registerAnnotatedType(method.getAnnotatedReturnType());
+          registerResolvedType(ownerType.resolveType(method.getGenericReturnType()).getType());
+        }
+        if (ObjectCodecBuilder.usesJsonParameters(method)) {
+          registerParameterTypes(method.getParameters());
+          registerResolvedParameterTypes(ownerType, method.getParameters());
         }
       }
     }
-    for (Method method : type.getMethods()) {
-      registerMethodTypes(method);
-      registerResolvedMethodTypes(ownerType, method);
+    for (Constructor<?> constructor : type.getDeclaredConstructors()) {
+      if (constructor.isAnnotationPresent(JsonCreator.class)) {
+        registerParameterTypes(constructor.getParameters());
+        registerResolvedParameterTypes(ownerType, constructor.getParameters());
+      }
     }
-    if (type.isRecord()) {
+    for (Method method : type.getDeclaredMethods()) {
+      if (method.isAnnotationPresent(JsonCreator.class)) {
+        registerParameterTypes(method.getParameters());
+        registerResolvedParameterTypes(ownerType, method.getParameters());
+      }
+    }
+    if (record) {
       for (RecordComponent component : type.getRecordComponents()) {
         registerAnnotatedType(component.getAnnotatedType());
         registerResolvedType(ownerType.resolveType(component.getGenericType()).getType());
@@ -172,21 +189,9 @@ final class ForyJsonGraalVMFeature implements Feature {
     return changed;
   }
 
-  private void registerMethodTypes(Method method) {
-    registerAnnotatedType(method.getAnnotatedReturnType());
-    registerParameterTypes(method.getParameters());
-  }
-
   private void registerParameterTypes(Parameter[] parameters) {
     for (Parameter parameter : parameters) {
       registerAnnotatedType(parameter.getAnnotatedType());
-    }
-  }
-
-  private void registerResolvedMethodTypes(TypeRef<?> ownerType, Method method) {
-    registerResolvedType(ownerType.resolveType(method.getGenericReturnType()).getType());
-    for (Type parameterType : method.getGenericParameterTypes()) {
-      registerResolvedType(ownerType.resolveType(parameterType).getType());
     }
   }
 

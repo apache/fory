@@ -379,6 +379,10 @@ public final class ForyJsonExample {
   public static final class ConfigValue {
     public String camelName;
     public String nullValue;
+
+    public @JsonCodec(IgnoredCodec.class) TypeUseValue ignoredCodecMethod() {
+      throw new AssertionError("Non-property methods must not participate in JSON metadata");
+    }
   }
 
   @JsonType
@@ -528,6 +532,15 @@ public final class ForyJsonExample {
 
   public static final class TypeUseCodec extends TextCodec<TypeUseValue> {
     public TypeUseCodec() {}
+
+    @Override
+    protected TypeUseValue create(String text) {
+      return new TypeUseValue(text);
+    }
+  }
+
+  public static final class IgnoredCodec extends TextCodec<TypeUseValue> {
+    private IgnoredCodec(String ignored) {}
 
     @Override
     protected TypeUseValue create(String text) {

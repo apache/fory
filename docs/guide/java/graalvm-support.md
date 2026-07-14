@@ -69,12 +69,14 @@ public class JsonExample {
 }
 ```
 
-The `fory-json` artifact activates its Native Image Feature automatically. The Feature registers
-metadata only for annotated classes that are reachable during image analysis. `@JsonType` is not
-inherited, so annotate every concrete runtime model. An annotated base with a class-literal
-`@JsonSubTypes` table registers those listed subtypes automatically. A class referenced only by a
-runtime string is not reachable; `JsonSubTypes.Type.className` is therefore unsupported in a native
-image.
+The `fory-json` artifact activates its Native Image Feature automatically. Reachable `@JsonType`
+classes gate object-model metadata. `@JsonType` is not inherited, so annotate every concrete runtime
+model. An annotated base with a class-literal `@JsonSubTypes` table registers those listed subtypes
+automatically. Reachable concrete `Collection` and `Map` root types are also supported when they
+have the public no-argument constructor required by Fory JSON. Reachable `@JsonCodec` declarations
+register their codec constructor even when the declaration target is not an object model. A class
+referenced only by a runtime string is not reachable; `JsonSubTypes.Type.className` is therefore
+unsupported in a native image.
 
 Native execution uses Fory JSON's interpreted object codec. `ForyJson.builder()` automatically
 disables runtime code generation and asynchronous compilation in the native executable, while all

@@ -37,13 +37,14 @@ import java.util.jar.Manifest;
 
 /** Verifies the packaged Fory JSON GraalVM Feature and activation metadata. */
 public final class ForyJsonGraalVMFeatureJarVerifier {
-  private static final String FEATURE_CLASS_NAME = "org.apache.fory.json.ForyJsonGraalVMFeature";
+  private static final String FEATURE_CLASS_NAME =
+      "org.apache.fory.json.codec.ForyJsonGraalVMFeature";
   private static final String FEATURE_CLASS_FILE =
-      "org/apache/fory/json/ForyJsonGraalVMFeature.class";
+      "org/apache/fory/json/codec/ForyJsonGraalVMFeature.class";
   private static final String VERSION_17_FEATURE_CLASS =
       "META-INF/versions/17/" + FEATURE_CLASS_FILE;
   private static final String FEATURE_SOURCE_FILE =
-      "org/apache/fory/json/ForyJsonGraalVMFeature.java";
+      "org/apache/fory/json/codec/ForyJsonGraalVMFeature.java";
   private static final String VERSION_17_FEATURE_SOURCE =
       "META-INF/versions/17/" + FEATURE_SOURCE_FILE;
   private static final String NATIVE_IMAGE_PROPERTIES =
