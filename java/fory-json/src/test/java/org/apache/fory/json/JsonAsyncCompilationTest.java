@@ -56,7 +56,6 @@ import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.JsonCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
-import org.apache.fory.json.codec.StringObjectWriter;
 import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
@@ -321,34 +320,7 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
-  public void subtypeWriterRefinementWins() throws Exception {
-    ControlledJson controlled = controlledJson();
-    JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
-    ObjectCodec<AsyncCircle> owner;
-    JsonTypeInfo child;
-    resolver.lockJIT();
-    try {
-      resolver.getTypeInfo(AsyncShape.class, AsyncShape.class);
-      owner = resolver.getObjectCodec(AsyncCircle.class);
-      child = resolver.getTypeInfo(AsyncCircle.class, AsyncCircle.class);
-      assertSame(resolver.stringWriter(owner), owner);
-    } finally {
-      resolver.unlockJIT();
-    }
-
-    // The subtype table queues its member writers first and the ordinary complete writer last.
-    // Completing all tasks proves that the later ordinary callback cannot downgrade the slot.
-    assertEquals(controlled.executor.pendingTasks(), 3);
-    controlled.executor.runAll();
-    assertTrue(child.stringWriter() instanceof StringObjectWriter);
-    assertNotSame(child.stringWriter(), owner);
-    assertEquals(
-        controlled.json.toJson(new AsyncCircle(3), AsyncShape.class),
-        "{\"kind\":\"circle\",\"radius\":3}");
-  }
-
-  @Test
-  public void rolledBackSubtypeTasksStayIsolated() throws Exception {
+  public void rolledBackReaderTasksStayIsolated() throws Exception {
     ControlledJson controlled = controlledJson();
     JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
     resolver.lockJIT();
@@ -358,21 +330,22 @@ public class JsonAsyncCompilationTest {
       expectThrows(
           ForyJsonException.class,
           () -> resolver.getTypeInfo(BrokenShape.class, BrokenShape.class));
-      assertEquals(controlled.executor.pendingTasks(), 2);
+      assertEquals(controlled.executor.pendingTasks(), 3);
       replacementOwner = resolver.getObjectCodec(RollbackCircle.class);
       replacement = resolver.getTypeInfo(RollbackCircle.class, RollbackCircle.class);
-      assertSame(replacement.stringWriter(), replacementOwner);
-      assertSame(replacement.utf8Writer(), replacementOwner);
+      assertSame(replacement.latin1Reader(), replacementOwner);
+      assertSame(replacement.utf16Reader(), replacementOwner);
+      assertSame(replacement.utf8Reader(), replacementOwner);
     } finally {
       resolver.unlockJIT();
     }
 
-    // The failed subtype transaction owned the queued member-writer requests. Their callbacks may
-    // finish, but they must target the removed slots captured by those requests rather than the
-    // replacement generation now registered for the same class.
+    // The failed subtype transaction queued parent-local Any readers against its provisional
+    // slots. Completing those tasks must not mutate the replacement generation for the same class.
     controlled.executor.runAll();
-    assertSame(replacement.stringWriter(), replacementOwner);
-    assertSame(replacement.utf8Writer(), replacementOwner);
+    assertSame(replacement.latin1Reader(), replacementOwner);
+    assertSame(replacement.utf16Reader(), replacementOwner);
+    assertSame(replacement.utf8Reader(), replacementOwner);
   }
 
   @Test
@@ -1098,21 +1071,6 @@ public class JsonAsyncCompilationTest {
 
   @JsonSubTypes(
       property = "kind",
-      value = {@JsonSubTypes.Type(value = AsyncCircle.class, name = "circle")})
-  public interface AsyncShape {}
-
-  public static final class AsyncCircle implements AsyncShape {
-    public int radius;
-
-    public AsyncCircle() {}
-
-    private AsyncCircle(int radius) {
-      this.radius = radius;
-    }
-  }
-
-  @JsonSubTypes(
-      property = "kind",
       value = {@JsonSubTypes.Type(value = AsyncInlineChild.class, name = "child")})
   public interface AsyncInlineShape {}
 
@@ -1129,7 +1087,7 @@ public class JsonAsyncCompilationTest {
   public interface BrokenShape {}
 
   public static final class RollbackCircle implements BrokenShape {
-    public int radius;
+    @JsonAnyProperty public Map<String, Integer> properties;
   }
 
   public static final class CollidingSubtype implements BrokenShape {

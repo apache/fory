@@ -699,6 +699,11 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     ExtensibleCircle value = new ExtensibleCircle();
     value.radius = 2;
     value.properties.put("color", 3);
+    String concrete = "{\"radius\":2,\"color\":3}";
+    assertEquals(json.toJson(value, ExtensibleCircle.class), concrete);
+    assertEquals(
+        new String(json.toJsonBytes(value, ExtensibleCircle.class), StandardCharsets.UTF_8),
+        concrete);
     String expected = "{\"kind\":\"circle\",\"radius\":2,\"color\":3}";
     assertEquals(json.toJson(value, ExtensibleShape.class), expected);
     assertEquals(
@@ -726,7 +731,7 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     assertEquals(
         new String(json.toJsonBytes(value, ExtensibleShape.class), StandardCharsets.UTF_8),
         duplicate);
-    assertGeneratedCapabilities(json, ExtensibleCircle.class);
+    assertGeneratedReaders(json, ExtensibleCircle.class);
   }
 
   @Test
@@ -737,7 +742,7 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
             json.fromJson("{\"x\":1,\"kind\":\"method\",\"y\":2}", ExtensibleShape.class);
     assertEquals(value.storage, linkedMap("x", 1, "y", 2));
     assertEquals(value.calls, 2);
-    assertGeneratedCapabilities(json, MethodCircle.class);
+    assertGeneratedReaders(json, MethodCircle.class);
   }
 
   @Test
@@ -748,7 +753,7 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
             json.fromJson("{\"radius\":1,\"kind\":\"creator\",\"x\":2}", ExtensibleShape.class);
     assertEquals(value.radius, 1);
     assertEquals(value.properties, Collections.singletonMap("x", 2));
-    assertGeneratedCapabilities(json, CreatorCircle.class);
+    assertGeneratedReaders(json, CreatorCircle.class);
   }
 
   @Test
@@ -764,14 +769,14 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
 
     SharedCircle direct = json.fromJson("{\"kind\":5,\"type\":6}", SharedCircle.class);
     assertEquals(direct.properties, linkedMap("kind", 5, "type", 6));
-    assertGeneratedCapabilities(json, SharedCircle.class);
+    assertGeneratedReaders(json, SharedCircle.class);
   }
 
   @Test
   public void inlineRecursiveRead() {
     ForyJson json = newJson();
     json.fromJson("{\"kind\":\"recursive\"}", RecursiveShape.class);
-    assertGeneratedCapabilities(json, RecursiveCircle.class);
+    assertGeneratedReaders(json, RecursiveCircle.class);
 
     RecursiveCircle latin1 =
         (RecursiveCircle)
@@ -928,6 +933,23 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
       JsonTypeInfo info = resolver.getTypeInfo(type, type);
       assertGenerated(info.stringWriter(), owner);
       assertGenerated(info.utf8Writer(), owner);
+    } finally {
+      resolver.unlockJIT();
+    }
+  }
+
+  private void assertGeneratedReaders(ForyJson json, Class<?> type) {
+    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
+    resolver.lockJIT();
+    try {
+      ObjectCodec<?> owner = resolver.getObjectCodec(type);
+      JsonTypeInfo info = resolver.getTypeInfo(type, type);
+      if (!StringSerializer.isBytesBackedString()) {
+        resolver.latin1Reader(owner);
+      }
+      assertGenerated(info.latin1Reader(), owner);
+      assertGenerated(info.utf16Reader(), owner);
+      assertGenerated(info.utf8Reader(), owner);
     } finally {
       resolver.unlockJIT();
     }
