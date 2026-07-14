@@ -103,11 +103,11 @@ class NativeTypeDefDecoder {
   }
 
   public static TypeDef decodeTypeDef(ClassResolver resolver, MemoryBuffer buffer, long id) {
-    return decodeTypeDef(resolver, buffer, id, null);
+    return decodeTypeDef(resolver, buffer, id, true);
   }
 
   static TypeDef decodeTypeDef(
-      ClassResolver resolver, MemoryBuffer buffer, long id, String rootClassName) {
+      ClassResolver resolver, MemoryBuffer buffer, long id, boolean resolveRootClass) {
     Tuple2<byte[], byte[]> decoded = decodeTypeDefBuf(buffer, resolver, id);
     MemoryBuffer typeDefBuf = MemoryBuffer.fromByteArray(decoded.f0);
     int bodyHeader = typeDefBuf.readByte() & 0xff;
@@ -164,9 +164,7 @@ class NativeTypeDefDecoder {
         String typeName = readTypeName(typeDefBuf);
         ClassSpec decodedSpec = Encoders.decodePkgAndClass(pkg, typeName);
         className = decodedSpec.entireClassName;
-        if (i == numClasses - 1 && rootClassName != null) {
-          // Keep the remote name in ClassSpec; the local slot class or sender-only placeholder
-          // belongs to the outer TypeInfo.
+        if (i == numClasses - 1 && !resolveRootClass) {
           classSpec =
               new ClassSpec(
                   className,
@@ -214,16 +212,8 @@ class NativeTypeDefDecoder {
           }
         }
       }
-      // ObjectStream has already selected the layer from its preceding class header. The TypeDef
-      // must describe that same layer regardless of whether it encodes the root by name or ID.
-      if (i == numClasses - 1 && rootClassName != null && !className.equals(rootClassName)) {
-        throw new DeserializationException(
-            "TypeDef root " + className + " does not match layer " + rootClassName);
-      }
       if (i == numClasses - 1) {
-        // ObjectStream owns its layer identity and serializer selection, so this decoder has no
-        // local root class against which to validate the metadata kind.
-        rootClass = rootClassName == null ? currentClass : null;
+        rootClass = resolveRootClass ? currentClass : null;
         rootClassLayerRegistered = isRegistered;
       }
       List<FieldInfo> fieldInfos = readFieldsInfo(typeDefBuf, resolver, className, numFields);

@@ -581,6 +581,12 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       ClassResolver classResolver, TypeInfo typeInfo, String className) {
     TypeDef typeDef = typeInfo.getTypeDef();
     Class<?> type = typeInfo.getType();
+    checkLayerTypeDef(classResolver, typeDef, type, className);
+    return typeInfo;
+  }
+
+  private static void checkLayerTypeDef(
+      ClassResolver classResolver, TypeDef typeDef, Class<?> type, String className) {
     // A local TypeDef keeps Class.getName() even when its encoded root uses a custom registered
     // name. ObjectStream matches that wire name against the local slot registration.
     String registeredName = type == null ? null : classResolver.getRegisteredName(type);
@@ -590,7 +596,6 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
             && !(localTypeDef && className.equals(registeredName)))) {
       throw new ForyException("Layer " + className + " does not match its TypeDef");
     }
-    return typeInfo;
   }
 
   private TypeInfo readLayerTypeInfo(
@@ -621,10 +626,14 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     if (localTypeDef != null && Arrays.equals(encoded, localTypeDef.getEncoded())) {
       typeDef = localTypeDef;
     } else {
-      typeDef =
-          typeResolver.cacheRemoteTypeDef(
-              TypeDef.readTypeDef((ClassResolver) typeResolver, encoded, className));
+      ClassResolver classResolver = (ClassResolver) typeResolver;
+      typeDef = TypeDef.readTypeDefWithoutRootClass(classResolver, encoded);
+      // The layer header is the identity owner. Reject mismatched metadata before publishing it to
+      // the checked remote TypeDef cache.
+      checkLayerTypeDef(classResolver, typeDef, resolvedClass, className);
+      typeDef = typeResolver.cacheRemoteTypeDef(typeDef);
     }
+    checkLayerTypeDef((ClassResolver) typeResolver, typeDef, resolvedClass, className);
     TypeInfo typeInfo = new TypeInfo(resolvedClass, typeDef);
     typeDefIdToTypeInfo.put(typeDefId, typeInfo);
     return typeInfo;

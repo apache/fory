@@ -46,6 +46,7 @@ import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.TestUtils;
+import org.apache.fory.builder.LayerMarkerClassGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.collection.ObjectMap;
@@ -55,6 +56,7 @@ import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.SharedRegistry;
 import org.apache.fory.resolver.TypeInfo;
@@ -1431,6 +1433,47 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     result = (SingleLayerClass) reader.deserialize(bytes);
     assertEquals(result, new SingleLayerClass("test", 42));
     assertEquals(cache.size, 2);
+  }
+
+  @Test
+  public void testLayerTypeDefName() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCodegen(false)
+            .withMetaShare(true)
+            .withCompatible(false)
+            .build();
+    ClassResolver classResolver = (ClassResolver) fory.getTypeResolver();
+    ObjectStreamSerializer serializer =
+        new ObjectStreamSerializer(classResolver, SingleLayerClass.class);
+    TypeDef typeDef = classResolver.getTypeDef(MixedSerializationClass.class, false);
+    CompatibleLayerSerializer<?> layerSerializer =
+        new CompatibleLayerSerializer<>(
+            classResolver,
+            MixedSerializationClass.class,
+            typeDef,
+            LayerMarkerClassGenerator.getOrCreate(MixedSerializationClass.class, 0));
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
+    fory.setMetaWriteContext(new MetaWriteContext());
+    withWriteContext(
+        fory,
+        buffer,
+        writeContext -> {
+          buffer.writeInt16((short) 1);
+          classResolver.writeClassInternal(writeContext, SingleLayerClass.class);
+          layerSerializer.writeLayerClassMeta(writeContext);
+        });
+
+    fory.setMetaReadContext(new MetaReadContext());
+    ForyException error =
+        Assert.expectThrows(
+            ForyException.class, () -> withReadContext(fory, buffer, serializer::read));
+    Assert.assertTrue(error.getMessage().contains("does not match its TypeDef"));
+    ConcurrentHashMap<?, ?> remoteTypeDefs =
+        TestUtils.getFieldValue(classResolver.getSharedRegistry(), "remoteTypeDefById");
+    assertEquals(remoteTypeDefs.size(), 0);
   }
 
   @Test

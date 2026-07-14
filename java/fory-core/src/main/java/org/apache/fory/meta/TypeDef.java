@@ -328,11 +328,11 @@ public class TypeDef implements Serializable {
     return readTypeDef(resolver, MemoryBuffer.fromByteArray(encoded));
   }
 
-  /** Decode a native class definition without resolving the caller-owned root wire name. */
+  /** Decode a native class definition without resolving its root class. */
   @Internal
-  public static TypeDef readTypeDef(ClassResolver resolver, byte[] encoded, String rootClassName) {
+  public static TypeDef readTypeDefWithoutRootClass(ClassResolver resolver, byte[] encoded) {
     MemoryBuffer buffer = MemoryBuffer.fromByteArray(encoded);
-    return NativeTypeDefDecoder.decodeTypeDef(resolver, buffer, buffer.readInt64(), rootClassName);
+    return NativeTypeDefDecoder.decodeTypeDef(resolver, buffer, buffer.readInt64(), false);
   }
 
   /** Read class definition from buffer. */

@@ -97,7 +97,7 @@ public class NativeTypeDefEncoderTest {
   }
 
   @Test
-  public void testExpectedRootName() {
+  public void testUnresolvedRootClass() {
     Fory rawWriter =
         Fory.builder()
             .withXlang(false)
@@ -107,22 +107,6 @@ public class NativeTypeDefEncoderTest {
     byte[] rawTypeDef =
         TypeDef.buildTypeDef(rawWriter.getTypeResolver(), ExpectedType.class).getEncoded();
 
-    Fory namedReader =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(true)
-            .withCompatible(false)
-            .build();
-    namedReader.register(ExpectedType.class, "alias", "ExpectedType");
-    DeserializationException mismatch =
-        Assert.expectThrows(
-            DeserializationException.class,
-            () ->
-                TypeDef.readTypeDef(
-                    (ClassResolver) namedReader.getTypeResolver(),
-                    rawTypeDef,
-                    "alias.ExpectedType"));
-    Assert.assertTrue(mismatch.getMessage().contains("does not match layer"));
     Fory namedWriter =
         Fory.builder()
             .withXlang(false)
@@ -132,9 +116,15 @@ public class NativeTypeDefEncoderTest {
     namedWriter.register(ExpectedType.class, "alias", "ExpectedType");
     byte[] namedTypeDef =
         TypeDef.buildTypeDef(namedWriter.getTypeResolver(), ExpectedType.class).getEncoded();
+    Fory namedReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
     TypeDef namedRoot =
-        TypeDef.readTypeDef(
-            (ClassResolver) namedReader.getTypeResolver(), namedTypeDef, "alias.ExpectedType");
+        TypeDef.readTypeDefWithoutRootClass(
+            (ClassResolver) namedReader.getTypeResolver(), namedTypeDef);
     Assert.assertEquals(namedRoot.getClassSpec().entireClassName, "alias.ExpectedType");
     Assert.assertNull(namedRoot.getClassSpec().type);
 
@@ -145,37 +135,13 @@ public class NativeTypeDefEncoderTest {
             .withCompatible(false)
             .build();
     TypeDef unresolved =
-        TypeDef.readTypeDef(
-            (ClassResolver) localReader.getTypeResolver(),
-            rawTypeDef,
-            ExpectedType.class.getName());
+        TypeDef.readTypeDefWithoutRootClass(
+            (ClassResolver) localReader.getTypeResolver(), rawTypeDef);
     Assert.assertEquals(unresolved.getClassSpec().entireClassName, ExpectedType.class.getName());
     Assert.assertNull(unresolved.getClassSpec().type);
-
-    Fory idResolver =
-        Fory.builder()
-            .withXlang(false)
-            .requireClassRegistration(true)
-            .withCompatible(false)
-            .build();
-    idResolver.register(ExpectedType.class, 100);
-    idResolver.register(OtherExpectedType.class, 101);
-    byte[] idTypeDef =
-        TypeDef.buildTypeDef(idResolver.getTypeResolver(), OtherExpectedType.class).getEncoded();
-    Assert.assertThrows(
-        DeserializationException.class,
-        () ->
-            TypeDef.readTypeDef(
-                (ClassResolver) idResolver.getTypeResolver(),
-                idTypeDef,
-                ExpectedType.class.getName()));
   }
 
   public static class ExpectedType implements Serializable {
-    private int value;
-  }
-
-  public static class OtherExpectedType implements Serializable {
     private int value;
   }
 
