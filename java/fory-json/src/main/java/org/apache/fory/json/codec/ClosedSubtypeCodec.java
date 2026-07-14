@@ -36,6 +36,16 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 
 /**
  * Resolver-local closed subtype dispatcher whose branch slots follow child JsonTypeInfo updates.
+ *
+ * <p>Inline discriminator state belongs to this parent. Any-readable children use parent-local
+ * field tables and generated reader instances so one child can be shared by parents with different
+ * discriminator names without changing the child's canonical metadata. Nested values of the same
+ * child type still use its canonical reader; the derived skip table applies only to the outer
+ * inline object.
+ *
+ * <p>Writing rejects fixed-schema discriminator collisions when branches are resolved, but never
+ * queries an Any Map. Runtime dynamic-key conflicts are owned by the application; probing here
+ * would invoke an Any getter twice and leak parent-specific policy into the child writer.
  */
 @Internal
 @SuppressWarnings("unchecked")
@@ -92,6 +102,8 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
           JsonFieldTable table =
               objectCodec.readTable().withSkippedName(definition.scanInfo.property());
           inlineReadTables[i] = table;
+          // The subtype scan restores the cursor, so the outer child rereads the discriminator and
+          // needs this parent-local skip table. Nested child values must use the canonical table.
           resolver.resolveInlineAnyReaders(this, i, objectCodec, table);
         }
         // Member-writer generation is requested once while the closed table is resolved. The
@@ -305,6 +317,9 @@ public final class ClosedSubtypeCodec implements JsonCodec<Object> {
   }
 
   private static void rejectDiscriminatorCollision(ObjectCodec<?> codec, String property) {
+    // Only the statically known child schema is validated here. Do not probe Any output: dynamic
+    // discriminator conflicts are application-owned, and invoking its getter here would duplicate
+    // access while leaking this parent's policy into the child writer.
     long hash = org.apache.fory.json.meta.JsonFieldNameHash.hash(property);
     for (JsonFieldInfo field : codec.writeFields()) {
       rejectCollision(field.name(), field.nameHash(), property, hash, codec.type());

@@ -40,6 +40,7 @@ import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.codec.ObjectCodec;
+import org.apache.fory.json.inaccessible.HiddenAnySetterParent;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.platform.JdkVersion;
@@ -183,6 +184,11 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     assertThrows(ForyJsonException.class, () -> json.toJsonBytes(value));
     assertThrows(ForyJsonException.class, () -> json.toJson(new GetterOnly()));
     assertThrows(ForyJsonException.class, () -> json.fromJson("{}", SetterOnly.class));
+
+    OverrideAny override = new OverrideAny();
+    override.storage.put("x", 13);
+    assertEquals(json.toJson(override), "{}");
+    assertTrue(json.fromJson("{\"x\":14}", OverrideAny.class).storage.isEmpty());
   }
 
   @Test
@@ -762,6 +768,62 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void inlineRecursiveRead() {
+    ForyJson json = newJson();
+    json.fromJson("{\"kind\":\"recursive\"}", RecursiveShape.class);
+    assertGeneratedCapabilities(json, RecursiveCircle.class);
+
+    RecursiveCircle latin1 =
+        (RecursiveCircle)
+            json.fromJson(
+                "{\"kind\":\"recursive\",\"child\":{\"kind\":{\"marker\":1}},"
+                    + "\"entry\":{\"kind\":{\"marker\":2}}}",
+                RecursiveShape.class);
+    assertRecursiveRead(latin1, "entry", 1, 2);
+
+    RecursiveCircle utf16 =
+        (RecursiveCircle)
+            json.fromJson(
+                "{\"kind\":\"recursive\",\"child\":{\"kind\":{\"marker\":3}},"
+                    + "\"键\":{\"kind\":{\"marker\":4}}}",
+                RecursiveShape.class);
+    assertRecursiveRead(utf16, "键", 3, 4);
+
+    RecursiveCircle utf8 =
+        (RecursiveCircle)
+            json.fromJson(
+                ("{\"kind\":\"recursive\",\"child\":{\"kind\":{\"marker\":5}},"
+                        + "\"byte\":{\"kind\":{\"marker\":6}}}")
+                    .getBytes(StandardCharsets.UTF_8),
+                RecursiveShape.class);
+    assertRecursiveRead(utf8, "byte", 5, 6);
+  }
+
+  @Test
+  public void inaccessibleSetterValue() {
+    ForyJson json = newJson();
+    HiddenSetterChild latin1 = json.fromJson("{\"x\":{\"id\":1}}", HiddenSetterChild.class);
+    assertEquals(latin1.valueId(), 1);
+    HiddenSetterChild utf16 = json.fromJson("{\"键\":{\"id\":2}}", HiddenSetterChild.class);
+    assertEquals(utf16.valueId(), 2);
+    HiddenSetterChild utf8 =
+        json.fromJson(
+            "{\"byte\":{\"id\":3}}".getBytes(StandardCharsets.UTF_8), HiddenSetterChild.class);
+    assertEquals(utf8.valueId(), 3);
+    assertInterpretedReaders(json, HiddenSetterChild.class);
+
+    NestedHiddenSetterChild nested =
+        json.fromJson("{\"x\":{\"id\":4}}", NestedHiddenSetterChild.class);
+    assertEquals(nested.valueId(), 4);
+    assertInterpretedReaders(json, NestedHiddenSetterChild.class);
+
+    NestedHiddenArraySetterChild array =
+        json.fromJson("{\"x\":[{\"id\":5}]}", NestedHiddenArraySetterChild.class);
+    assertEquals(array.valueId(), 5);
+    assertInterpretedReaders(json, NestedHiddenArraySetterChild.class);
+  }
+
+  @Test
   public void accessorFailures() {
     ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.toJson(new ThrowingGetter()));
@@ -884,6 +946,26 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
     } finally {
       resolver.unlockJIT();
     }
+  }
+
+  private static void assertInterpretedReaders(ForyJson json, Class<?> type) {
+    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
+    resolver.lockJIT();
+    try {
+      Object owner = resolver.getObjectCodec(type);
+      JsonTypeInfo info = resolver.getTypeInfo(type, type);
+      assertSame(info.latin1Reader(), owner);
+      assertSame(info.utf16Reader(), owner);
+      assertSame(info.utf8Reader(), owner);
+    } finally {
+      resolver.unlockJIT();
+    }
+  }
+
+  private static void assertRecursiveRead(
+      RecursiveCircle value, String entryName, int childMarker, int entryMarker) {
+    assertEquals(value.child.properties.get("kind").marker, childMarker);
+    assertEquals(value.properties.get(entryName).properties.get("kind").marker, entryMarker);
   }
 
   private void assertGenerated(Object capability, Object owner) {
@@ -1386,6 +1468,25 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
   public static final class SharedCircle implements KindShape, TypeShape {
     @JsonAnyProperty public Map<String, Integer> properties;
   }
+
+  @JsonSubTypes(
+      property = "kind",
+      value = {@JsonSubTypes.Type(value = RecursiveCircle.class, name = "recursive")})
+  public interface RecursiveShape {}
+
+  public static final class RecursiveCircle implements RecursiveShape {
+    public int marker;
+    public RecursiveCircle child;
+    @JsonAnyProperty public Map<String, RecursiveCircle> properties;
+  }
+
+  public static final class HiddenSetterChild extends HiddenAnySetterParent {}
+
+  public static final class NestedHiddenSetterChild
+      extends HiddenAnySetterParent.NestedValueSetter {}
+
+  public static final class NestedHiddenArraySetterChild
+      extends HiddenAnySetterParent.ArrayValueSetter {}
 
   public static final class ThrowingGetter {
     @JsonAnyGetter

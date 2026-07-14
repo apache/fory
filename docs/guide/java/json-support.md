@@ -512,12 +512,14 @@ Map value emits JSON null regardless of fixed-property null settings. Null and n
 keys are rejected. Raw Maps, wildcard or unresolved keys, and non-String key types are invalid.
 Declared fixed members, including members excluded from reading, are not delivered to an Any
 input. Output keys whose Fory field-name hash conflicts with a fixed property are rejected,
-including differently spelled hash collisions. Fory does not inspect an Any Map for an inline
-subtype discriminator key; such a key emits a duplicate JSON member, so applications must keep
-dynamic keys distinct from the active discriminator. Repeated unknown names replace the Map value;
-an any-setter is called for every occurrence. Fixed input lookup is also hash-based, so a
-differently spelled colliding name follows the fixed member instead of Any handling. Escaped input
-names are decoded before delivery.
+including differently spelled hash collisions. Fory does not inspect an Any Map for a key whose
+name or Fory field-name hash conflicts with an inline subtype discriminator. An exact-name output
+key emits a duplicate JSON member; on input, a differently spelled hash collision is classified as
+the discriminator by the child field table. Applications must keep dynamic keys distinct from the
+active discriminator by both name and hash. Repeated unknown names replace the Map value; an
+any-setter is called for every occurrence. Fixed input lookup is also hash-based, so a differently
+spelled colliding name follows the fixed member instead of Any handling. Escaped input names are
+decoded before delivery.
 
 ### `JsonCreator`
 

@@ -72,6 +72,7 @@ abstract class JsonReaderCodegen {
   final JsonCodegen codegen;
   private AnyInfo any;
   private Class<?> ownerType;
+  private boolean storesSelfReader;
 
   JsonReaderCodegen(JsonCodegen codegen) {
     this.codegen = codegen;
@@ -191,6 +192,7 @@ abstract class JsonReaderCodegen {
       AnyInfo any) {
     this.any = any;
     ownerType = type;
+    storesSelfReader = JsonCodegen.storesSelfReader(type, properties, creatorInfo != null, any);
     if (creatorInfo != null) {
       return genAnyCreatorReaderCode(builder, type, creatorInfo);
     }
@@ -204,6 +206,7 @@ abstract class JsonReaderCodegen {
     ctx.addField(JsonFieldTable.class, "readTable");
     ctx.addField(ObjectCodec.class, "owner");
     ctx.addField(long[].class, "fieldHashes");
+    addSelfReaderField(ctx);
     boolean storesAnyReader = storesAnyReader(type);
     if (storesAnyReader) {
       ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "anyReader");
@@ -388,6 +391,7 @@ abstract class JsonReaderCodegen {
     ctx.addField(ObjectCodec.class, "owner");
     ctx.addField(JsonCreatorInfo.class, "creator");
     ctx.addField(JsonFieldTable.class, "readTable");
+    addSelfReaderField(ctx);
     boolean storesAnyReader = storesAnyReader(type);
     if (storesAnyReader) {
       ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "anyReader");
@@ -2061,12 +2065,30 @@ abstract class JsonReaderCodegen {
     return new Reference("this", TypeRef.of(readerCapabilityType()));
   }
 
+  private void addSelfReaderField(CodegenContext ctx) {
+    if (storesSelfReader) {
+      // Canonical readers keep this self-reference. A parent-local inline instance is rewired to
+      // the canonical reader before publication so its derived skip table cannot reach children.
+      ctx.addField(
+          false,
+          JsonCodegen.generatedCodecType(ctx, readerCapabilityType()),
+          "selfReader",
+          selfRef());
+    }
+  }
+
+  private Expression nestedSelfReaderRef() {
+    return storesSelfReader ? fieldRef("selfReader", readerCapabilityType()) : selfRef();
+  }
+
   private boolean storesAnyReader(Class<?> type) {
     return !any.valueTypeInfo().usesDefaultObjectCodec() || any.valueTypeInfo().rawType() != type;
   }
 
   private Expression anyReaderRef() {
-    return storesAnyReader(ownerType) ? fieldRef("anyReader", readerCapabilityType()) : selfRef();
+    return storesAnyReader(ownerType)
+        ? fieldRef("anyReader", readerCapabilityType())
+        : nestedSelfReaderRef();
   }
 
   final Reference fieldRef(String name, Class<?> type) {
@@ -2849,7 +2871,9 @@ abstract class JsonReaderCodegen {
 
   final Expression readObjectValue(Class<?> type, JsonFieldInfo property, int id) {
     Expression codec =
-        property.readRawType() == type ? selfRef() : fieldRef("o" + id, readerCapabilityType());
+        property.readRawType() == type
+            ? nestedSelfReaderRef()
+            : fieldRef("o" + id, readerCapabilityType());
     return new Expression.Cast(
         inline(
             new Expression.Invoke(

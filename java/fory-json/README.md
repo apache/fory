@@ -606,8 +606,10 @@ non-String output keys are rejected. Raw Maps, wildcard or unresolved keys, and 
 types are invalid. Declared fixed members, including members excluded from reading, are not
 delivered to an Any input. An output key is rejected when its Fory field-name hash conflicts with a
 fixed property; this also covers differently spelled hash collisions. Fory does not inspect an Any
-Map for an inline subtype discriminator key. Such a key writes a duplicate JSON member, so
-applications must keep dynamic keys distinct from the active discriminator. Fixed input lookup is
+Map for a key whose name or Fory field-name hash conflicts with an inline subtype discriminator. An
+exact-name output key writes a duplicate JSON member; on input, a differently spelled hash
+collision is classified as the discriminator by the child field table. Applications must keep
+dynamic keys distinct from the active discriminator by both name and hash. Fixed input lookup is
 also hash-based, so a differently spelled colliding name follows the fixed member instead of Any
 handling. Repeated unknown input names replace the prior Map value, while an any-setter is invoked
 for every occurrence. Escaped input names are decoded before delivery.

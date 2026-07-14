@@ -33,8 +33,9 @@ import org.apache.fory.json.ForyJsonException;
  * during construction because runtime lookup deliberately performs no secondary name comparison.
  */
 public final class JsonFieldTable {
-  public static final int UNKNOWN = -1;
-  public static final int SKIP = -2;
+  @Internal public static final int UNKNOWN = -1;
+
+  @Internal public static final int SKIP = -2;
 
   private final String[] tableNames;
   private final long[] tableHashes;
@@ -49,6 +50,7 @@ public final class JsonFieldTable {
     this(readFields, null);
   }
 
+  @Internal
   public JsonFieldTable(JsonFieldInfo[] readFields, String[] skippedNames) {
     int tableSize = 1;
     while (tableSize < readFields.length * 4) {
@@ -171,6 +173,7 @@ public final class JsonFieldTable {
     }
   }
 
+  @Internal
   public int match(long hash) {
     int fieldIndex = index(hash);
     if (fieldIndex >= 0) {
@@ -179,6 +182,8 @@ public final class JsonFieldTable {
     return containsSkip(hash) ? SKIP : UNKNOWN;
   }
 
+  /** Returns whether {@code hash} belongs to the declared child schema reserved from Any input. */
+  @Internal
   public boolean containsHash(long hash) {
     return index(hash) >= 0 || containsSkip(hash);
   }

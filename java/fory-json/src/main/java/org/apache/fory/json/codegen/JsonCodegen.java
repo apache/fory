@@ -351,7 +351,9 @@ public final class JsonCodegen {
     if (field == null && setter == null) {
       return true;
     }
-    if (setter != null && (!canCall(setter) || !isVisible(setter.getParameterTypes()[1]))) {
+    // Generated setter calls spell the value type in Java source, so class-loader visibility alone
+    // is insufficient.
+    if (setter != null && (!canCall(setter) || !canCompileType(setter.getParameterTypes()[1]))) {
       return false;
     }
     if (field != null && !isVisible(field.getType())) {
@@ -487,6 +489,31 @@ public final class JsonCodegen {
     return nestedType != null && nestedType != type;
   }
 
+  @Internal
+  public static boolean storesSelfReader(ObjectCodec<?> owner) {
+    AnyInfo any = owner.anyInfo();
+    if (any == null || any.readField() == null && any.readSetter() == null) {
+      return false;
+    }
+    return storesSelfReader(owner.type(), owner.readFields(), owner.creatorInfo() != null, any);
+  }
+
+  static boolean storesSelfReader(
+      Class<?> type, JsonFieldInfo[] properties, boolean creator, AnyInfo any) {
+    if (any.valueRawType() == type && any.valueTypeInfo().usesDefaultObjectCodec()) {
+      return true;
+    }
+    if (creator) {
+      return false;
+    }
+    for (JsonFieldInfo property : properties) {
+      if (readNestedType(property) == type) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private boolean canCompileWrite(JsonFieldInfo property) {
     Field field = property.writeField();
     if (field == null && property.writeGetter() == null) {
@@ -522,12 +549,12 @@ public final class JsonCodegen {
   }
 
   private boolean canCompileType(Class<?> type) {
-    return CodeGenerator.sourcePublicAccessible(type) && isVisible(type);
+    return isPublicSourceType(type) && isVisible(type);
   }
 
   private boolean canCall(Method method) {
     return Modifier.isPublic(method.getModifiers())
-        && CodeGenerator.sourcePublicAccessible(method.getDeclaringClass());
+        && isPublicSourceType(method.getDeclaringClass());
   }
 
   private boolean isVisible(Class<?> type) {
@@ -548,6 +575,10 @@ public final class JsonCodegen {
   }
 
   private static boolean isPublicSourceType(Class<?> type) {
+    // An array Class has no enclosing owner, but generated Java names its component type.
+    while (type.isArray()) {
+      type = type.getComponentType();
+    }
     if (!CodeGenerator.sourcePublicAccessible(type)) {
       return false;
     }

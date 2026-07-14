@@ -1185,6 +1185,9 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
   }
 
   private boolean reservedAnyHash(long hash) {
+    // These names belong to the child's declared schema and must never be reintroduced through
+    // Any. Inline discriminators are different: their parent codec owns the fixed-schema check and
+    // deliberately leaves runtime Any keys to the application.
     return readTable.containsHash(hash) || creatorInfo != null && creatorInfo.index(hash) >= 0;
   }
 
@@ -2034,6 +2037,11 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
         if (method.isSynthetic() || method.isBridge()) {
           continue;
         }
+        // Validation follows the effective public method set used by property discovery. An
+        // unannotated override removes the inherited JSON declaration from that set.
+        if (isOverridden(type, method)) {
+          continue;
+        }
         if (method.isAnnotationPresent(JsonProperty.class)) {
           validatePropertyMethod(type, method, propertyDiscoveryEnabled, record);
         }
@@ -2054,6 +2062,20 @@ public class ObjectCodec<T> implements JsonCodec<T>, StringObjectWriter<T>, Utf8
       }
     }
     return hasAnyField;
+  }
+
+  private static boolean isOverridden(Class<?> type, Method method) {
+    int modifiers = method.getModifiers();
+    if (method.getDeclaringClass() == type
+        || !Modifier.isPublic(modifiers)
+        || Modifier.isStatic(modifiers)) {
+      return false;
+    }
+    try {
+      return !method.equals(type.getMethod(method.getName(), method.getParameterTypes()));
+    } catch (NoSuchMethodException e) {
+      return false;
+    }
   }
 
   private static void validateAnyGetter(Method method) {
