@@ -579,7 +579,18 @@ public final class JsonCodegen {
     if (any == null || any.readField() == null && any.readSetter() == null) {
       return false;
     }
-    return storesSelfReader(owner.type(), owner.readFields(), owner.creatorInfo() != null, any);
+    if (storesSelfReader(owner.type(), owner.readFields(), owner.creatorInfo() != null, any)) {
+      return true;
+    }
+    JsonUnwrappedInfo unwrapped = owner.unwrappedInfo();
+    if (unwrapped != null) {
+      for (JsonUnwrappedInfo.ReadRoute route : unwrapped.readRoutes()) {
+        if (route.field() != null && readNestedType(route.field()) == owner.type()) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   static boolean storesSelfReader(

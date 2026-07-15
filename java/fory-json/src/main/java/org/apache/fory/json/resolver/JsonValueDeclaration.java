@@ -36,6 +36,7 @@ import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonRawValue;
+import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
@@ -183,6 +184,7 @@ final class JsonValueDeclaration {
     if (field.isAnnotationPresent(JsonCodec.class)
         || field.isAnnotationPresent(JsonBase64.class)
         || field.isAnnotationPresent(JsonAnyProperty.class)
+        || field.isAnnotationPresent(JsonUnwrapped.class)
         || field.isAnnotationPresent(JsonIgnore.class)) {
       throw new ForyJsonException("Conflicting JSON annotations on @JsonValue field " + field);
     }
@@ -203,6 +205,7 @@ final class JsonValueDeclaration {
     if (method.isAnnotationPresent(JsonCodec.class)
         || method.isAnnotationPresent(JsonBase64.class)
         || method.isAnnotationPresent(JsonAnyGetter.class)
+        || method.isAnnotationPresent(JsonUnwrapped.class)
         || method.isAnnotationPresent(JsonIgnore.class)) {
       throw new ForyJsonException("Conflicting JSON annotations on @JsonValue method " + method);
     }

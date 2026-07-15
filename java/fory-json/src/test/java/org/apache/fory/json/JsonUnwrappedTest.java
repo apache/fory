@@ -25,6 +25,8 @@ import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertThrows;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.fory.json.annotation.JsonAnyProperty;
@@ -121,6 +123,12 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     assertThrows(ForyJsonException.class, () -> json.toJson(new MapParent()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new RecursiveParent()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new CollisionParent()));
+    assertThrows(ForyJsonException.class, () -> json.toJson(new ConflictingAnyField()));
+    assertThrows(ForyJsonException.class, () -> json.toJson(new ConflictingValueField()));
+    assertThrows(ForyJsonException.class, () -> json.toJson(new ConflictingValueMethod()));
+    assertThrows(ForyJsonException.class, () -> json.toJson(new IgnoredUnwrappedField()));
+    ForyJson fieldJson = ForyJson.builder().withFieldMode(true).withCodegen(false).build();
+    assertThrows(ForyJsonException.class, () -> fieldJson.toJson(new IgnoredUnwrappedField()));
     assertThrows(
         ForyJsonException.class,
         () -> json.toJson(new DiscriminatorChild(), DiscriminatorParent.class));
@@ -155,6 +163,31 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     assertEquals(type.getMethod("name").invoke(missing), null);
   }
 
+  @Test(dataProvider = "enableCodegen")
+  public void recordConstructionOrder(boolean codegen) throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 17) {
+      throw new SkipException("Java record test requires JDK 17+");
+    }
+    Class<?> type =
+        compileRecordClass(
+            "JsonUnwrappedAnyRecord",
+            "package org.apache.fory.json.records;\n"
+                + "import java.util.Map;\n"
+                + "import org.apache.fory.json.annotation.JsonAnyProperty;\n"
+                + "import org.apache.fory.json.annotation.JsonUnwrapped;\n"
+                + "public record JsonUnwrappedAnyRecord("
+                + "@JsonUnwrapped(prefix=\"n_\") Name name, int id, "
+                + "@JsonAnyProperty Map<String, Integer> extra) {\n"
+                + "  public record Name(String first) {}\n"
+                + "}\n");
+    ForyJson json = newJson(codegen);
+    Object decoded = json.fromJson("{\"unknown\":3,\"id\":2,\"n_first\":\"Ada\"}", type);
+    Object name = type.getMethod("name").invoke(decoded);
+    assertEquals(name.getClass().getMethod("first").invoke(name), "Ada");
+    assertEquals(type.getMethod("id").invoke(decoded), Integer.valueOf(2));
+    assertEquals(type.getMethod("extra").invoke(decoded), Collections.singletonMap("unknown", 3));
+  }
+
   @Test
   public void generatedCapabilities() {
     ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
@@ -168,6 +201,72 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
     assertPerson(json.fromJson(expected, Person.class));
     assertPerson(json.fromJson(expected.getBytes(StandardCharsets.UTF_8), Person.class));
+    resolver.latin1Reader(owner);
+    resolver.utf16Reader(owner);
+
+    assertNotSame(info.stringWriter(), owner);
+    assertNotSame(info.utf8Writer(), owner);
+    assertNotSame(info.latin1Reader(), owner);
+    assertNotSame(info.utf16Reader(), owner);
+    assertNotSame(info.utf8Reader(), owner);
+    assertEquals(
+        Arrays.stream(info.stringWriter().getClass().getDeclaredFields())
+            .anyMatch(field -> field.getName().equals("owner")),
+        false);
+    assertEquals(
+        Arrays.stream(info.utf8Writer().getClass().getDeclaredFields())
+            .anyMatch(field -> field.getName().equals("owner")),
+        false);
+  }
+
+  @Test
+  public void wideGeneratedCapabilities() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 17) {
+      throw new SkipException("Dynamic wide-model test requires JDK 17+");
+    }
+    StringBuilder source =
+        new StringBuilder(
+            "package org.apache.fory.json.records;\n"
+                + "import org.apache.fory.json.annotation.JsonUnwrapped;\n"
+                + "public class WideUnwrappedModel {\n");
+    StringBuilder expected = new StringBuilder("{");
+    for (int i = 0; i < 20; i++) {
+      source.append("  public int d").append(i).append(";\n");
+      if (expected.length() > 1) {
+        expected.append(',');
+      }
+      expected.append("\"d").append(i).append("\":").append(i);
+    }
+    source.append("  @JsonUnwrapped(prefix=\"a_\") public WideChild child;\n");
+    for (int i = 0; i < 40; i++) {
+      if (expected.length() > 1) {
+        expected.append(',');
+      }
+      expected.append("\"a_f").append(i).append("\":").append(i);
+    }
+    for (int i = 20; i < 40; i++) {
+      source.append("  public int d").append(i).append(";\n");
+      expected.append(",\"d").append(i).append("\":").append(i);
+    }
+    source.append("  @JsonUnwrapped(prefix=\"b_\") public WideChild optional;\n");
+    source.append("  public static class WideChild {\n");
+    for (int i = 0; i < 40; i++) {
+      source.append("    public int f").append(i).append(";\n");
+    }
+    source.append("  }\n}\n");
+    expected.append('}');
+    Class<?> type = compileRecordClass("WideUnwrappedModel", source.toString());
+    ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
+    JsonTypeResolver resolver = primaryTypeResolver(json);
+    ObjectCodec<?> owner = resolver.getObjectCodec(type);
+    JsonTypeInfo info = resolver.getTypeInfo(type, type);
+
+    Object value = json.fromJson(expected.toString(), type);
+    assertEquals(json.toJson(value), expected.toString());
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected.toString());
+    assertEquals(
+        json.toJson(json.fromJson(expected.toString().getBytes(StandardCharsets.UTF_8), type)),
+        expected.toString());
     resolver.latin1Reader(owner);
     resolver.utf16Reader(owner);
 
@@ -212,6 +311,10 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     assertEquals(decoded.group.first, "A");
     assertEquals(decoded.group.second, "B");
     assertEquals(FactoryChild.creations, 1);
+
+    OrderPrecedenceParent precedence = new OrderPrecedenceParent();
+    precedence.group = new OrderPrecedenceChild();
+    assertEquals(json.toJson(precedence), "{\"group\":1,\"value\":2}");
   }
 
   @Test(dataProvider = "enableCodegen")
@@ -252,6 +355,12 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     recursive.name = new Name();
     recursive.name.first = "finite";
     assertEquals(json.toJson(recursive), "{\"first\":\"finite\"}");
+
+    RecursiveLeafParent parent =
+        json.fromJson(
+            "{\"v_name\":\"root\",\"v_next\":{\"name\":\"nested\"}}", RecursiveLeafParent.class);
+    assertEquals(parent.child.name, "root");
+    assertEquals(parent.child.next.name, "nested");
   }
 
   @Test(dataProvider = "enableCodegen")
@@ -286,6 +395,14 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     assertEquals(child.id, 16);
     assertEquals(child.name.first, "inline");
     assertEquals(((Number) child.extra.get("dynamic")).intValue(), 17);
+
+    InlineChild recursive =
+        (InlineChild)
+            json.fromJson(
+                "{\"kind\":\"inline\",\"id\":18," + "\"child_nested\":{\"id\":19,\"kind\":20}}",
+                InlineParent.class);
+    assertEquals(recursive.holder.nested.id, 19);
+    assertEquals(((Number) recursive.holder.nested.extra.get("kind")).intValue(), 20);
   }
 
   @Test(dataProvider = "enableCodegen")
@@ -468,6 +585,18 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     }
   }
 
+  @JsonPropertyOrder("group")
+  public static class OrderPrecedenceParent {
+    @JsonUnwrapped public OrderPrecedenceChild group;
+
+    @JsonProperty("group")
+    public int direct = 1;
+  }
+
+  public static class OrderPrecedenceChild {
+    public int value = 2;
+  }
+
   public static class DirectionalParent {
     @JsonUnwrapped(prefix = "v_")
     public DirectionalChild child;
@@ -512,6 +641,36 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     public OrdinaryRecursive next;
   }
 
+  public static class RecursiveLeafParent {
+    @JsonUnwrapped(prefix = "v_")
+    public RecursiveLeaf child;
+  }
+
+  public static class RecursiveLeaf {
+    public String name;
+    public RecursiveLeaf next;
+  }
+
+  public static class ConflictingAnyField {
+    @JsonAnyProperty @JsonUnwrapped public Map<String, Object> values;
+  }
+
+  public static class ConflictingValueField {
+    @JsonValue @JsonUnwrapped public String value;
+  }
+
+  public static class ConflictingValueMethod {
+    @JsonValue
+    @JsonUnwrapped
+    public String value() {
+      return "value";
+    }
+  }
+
+  public static class IgnoredUnwrappedField {
+    @JsonIgnore @JsonUnwrapped public Name name;
+  }
+
   public static class ValueRepresentationParent {
     @JsonUnwrapped(prefix = "v_")
     public ValueRepresentationChild child;
@@ -554,7 +713,14 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     @JsonUnwrapped(prefix = "v_")
     public Name name;
 
+    @JsonUnwrapped(prefix = "child_")
+    public InlineHolder holder;
+
     @JsonAnyProperty public Map<String, Object> extra = new LinkedHashMap<>();
+  }
+
+  public static class InlineHolder {
+    public InlineChild nested;
   }
 
   public static class EscapedParent {

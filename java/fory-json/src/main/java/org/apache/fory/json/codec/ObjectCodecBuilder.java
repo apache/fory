@@ -94,6 +94,10 @@ final class ObjectCodecBuilder {
           "Generated JSON Any setter does not match runtime annotations on " + type.getName());
     }
     FieldBuilder anyBuilder = findAnyBuilder(type, builders);
+    if (anyBuilder != null && anyBuilder.unwrappedAnnotation != null) {
+      throw new ForyJsonException(
+          "@JsonUnwrapped cannot share a JSON Any logical property " + anyBuilder.name);
+    }
     if (anyBuilder != null && anyBuilder.anyField != null) {
       if (anyBuilder.anyGetter != null || anySetter != null) {
         throw new ForyJsonException(
@@ -301,8 +305,10 @@ final class ObjectCodecBuilder {
               : orderWriteFields(type, propertyOrder, writeBuilders, writes);
     }
     JsonFieldInfo[] readArray = reads.toArray(new JsonFieldInfo[0]);
-    for (int i = 0; i < readArray.length; i++) {
-      readArray[i].setReadIndex(i);
+    if (!record || !hasUnwrapped) {
+      for (int i = 0; i < readArray.length; i++) {
+        readArray[i].setReadIndex(i);
+      }
     }
     int constructionIndex = -1;
     if (anyBuilder != null && anyBuilder.anyReadEnabled()) {
@@ -455,16 +461,7 @@ final class ObjectCodecBuilder {
         if (name.isEmpty()) {
           throw new ForyJsonException("Empty @JsonPropertyOrder property on " + type.getName());
         }
-        int match = -1;
-        for (int i = 0; i < size; i++) {
-          if (entries.get(i).matchesOrder(name)) {
-            if (match >= 0) {
-              throw new ForyJsonException(
-                  "Ambiguous @JsonPropertyOrder property " + name + " on " + type.getName());
-            }
-            match = i;
-          }
-        }
+        int match = findUnwrappedWrite(name, entries);
         if (match < 0) {
           throw new ForyJsonException(
               "Unknown @JsonPropertyOrder property " + name + " on " + type.getName());
@@ -559,13 +556,23 @@ final class ObjectCodecBuilder {
       return new UnwrappedWriteBuilder(builder, WriteSpec.any(), null);
     }
 
-    private boolean matchesOrder(String name) {
-      return finalName != null && finalName.equals(name) || builder.name.equals(name);
-    }
-
     private String sortName() {
       return finalName == null ? builder.name : finalName;
     }
+  }
+
+  private static int findUnwrappedWrite(String name, List<UnwrappedWriteBuilder> entries) {
+    for (int i = 0; i < entries.size(); i++) {
+      if (name.equals(entries.get(i).finalName)) {
+        return i;
+      }
+    }
+    for (int i = 0; i < entries.size(); i++) {
+      if (name.equals(entries.get(i).builder.name)) {
+        return i;
+      }
+    }
+    return -1;
   }
 
   private static int orderAnyWriteFields(
@@ -1329,6 +1336,13 @@ final class ObjectCodecBuilder {
           throw new ForyJsonException("@JsonCodec is not supported on JSON field: " + field);
         }
         JsonIgnore ignore = field.getAnnotation(JsonIgnore.class);
+        if (field.isAnnotationPresent(JsonUnwrapped.class)
+            && ignore != null
+            && ignore.ignoreRead()
+            && ignore.ignoreWrite()) {
+          throw new ForyJsonException(
+              "@JsonUnwrapped has no JSON read or write direction: " + field);
+        }
         if (field.isAnnotationPresent(JsonCodec.class)
             && ignore != null
             && ignore.ignoreRead()

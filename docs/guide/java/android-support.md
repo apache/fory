@@ -215,6 +215,7 @@ The following JVM features are not supported on Android:
 - Native-address serialization APIs and native-address `MemoryBuffer` wrapping.
 - Raw unsafe memory copy APIs.
 - `java/fory-format` row-format APIs.
+- Fory JSON Record mapping.
 
 ## ByteBuffer
 
