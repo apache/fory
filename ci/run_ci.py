@@ -319,6 +319,7 @@ def parse_args():
             "windows_java21",
             "integration_tests",
             "graalvm",
+            "graalvm_json_tests",
         ],
         default=None,
         help="Java version to use for testing",
@@ -423,6 +424,8 @@ def parse_args():
                 run_shell_script("windows_java21")
             elif version == "graalvm":
                 run_shell_script("graalvm_test")
+            elif version == "graalvm_json_tests":
+                run_shell_script("graalvm_json_tests")
             else:
                 run_shell_script(f"java{version}")
     elif command == "cpp":

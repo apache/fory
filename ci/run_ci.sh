@@ -79,7 +79,10 @@ install_jdks() {
   done
 }
 
-graalvm_test() {
+run_graalvm_tests() {
+  local main_class="$1"
+  local java_version
+  local java_major
   java_version=$(java -version 2>&1 | awk -F '"' '/version/ {print $2; exit}')
   if [[ "$java_version" == 1.* ]]; then
     java_major=$(echo "$java_version" | cut -d. -f2)
@@ -93,20 +96,28 @@ graalvm_test() {
   fi
   cd "$ROOT"/java
   mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-testsuite'
-  echo "Start to build graalvm native image"
+  echo "Start to build GraalVM native image for $main_class"
   cd "$ROOT"/integration_tests/graalvm_tests
-  mvn -DskipTests=true --no-transfer-progress -Pnative clean package
+  mvn -DmainClass="$main_class" -DskipTests=true --no-transfer-progress -Pnative clean package
   echo "Built GraalVM classpath native image"
   echo "Start to run GraalVM classpath native image"
   ./target/main
   if [[ "$java_major" -ge 25 ]]; then
     export JDK_JAVA_OPTIONS="$(jdk25_javac_options)"
   fi
-  mvn -DskipTests=true --no-transfer-progress -Pnative-module clean package
+  mvn -DmainClass="$main_class" -DskipTests=true --no-transfer-progress -Pnative-module clean package
   echo "Built GraalVM module-path native image"
   echo "Start to run GraalVM module-path native image"
   ./target/main-module
-  echo "Execute graalvm tests succeed!"
+  echo "Execute GraalVM tests for $main_class succeed!"
+}
+
+graalvm_test() {
+  run_graalvm_tests org.apache.fory.graalvm.Main
+}
+
+graalvm_json_tests() {
+  run_graalvm_tests org.apache.fory.graalvm.ForyJsonExample
 }
 
 jdk25_access_options() {
