@@ -109,30 +109,6 @@ final class JavacTypeUseTrees {
     return String.valueOf(defaultValue);
   }
 
-  TypeMirror annotationClassValue(Element owner, Object annotationTree, String name) {
-    Object valueTree = null;
-    for (Object argument : listValue(invoke(annotationTree, "getArguments"))) {
-      Object candidate = argument;
-      if (isInstance("com.sun.source.tree.AssignmentTree", argument)) {
-        Object variable = invoke(argument, "getVariable");
-        if (variable == null || !variable.toString().equals(name)) {
-          continue;
-        }
-        candidate = invoke(argument, "getExpression");
-      }
-      valueTree = candidate;
-      break;
-    }
-    if (valueTree == null || trees == null) {
-      return null;
-    }
-    if (isInstance("com.sun.source.tree.MemberSelectTree", valueTree)
-        && "class".equals(String.valueOf(invoke(valueTree, "getIdentifier")))) {
-      valueTree = invoke(valueTree, "getExpression");
-    }
-    return treeType(owner, valueTree);
-  }
-
   private TypeMirror treeType(Element owner, Object tree) {
     if (trees == null || owner == null || tree == null) {
       return null;
@@ -182,13 +158,6 @@ final class JavacTypeUseTrees {
         return listValue(invoke(tree, "getTypeArguments"));
       }
       return Collections.emptyList();
-    }
-
-    Object wildcardBoundTree() {
-      if (isInstance("com.sun.source.tree.WildcardTree", tree)) {
-        return invoke(tree, "getBound");
-      }
-      return null;
     }
   }
 

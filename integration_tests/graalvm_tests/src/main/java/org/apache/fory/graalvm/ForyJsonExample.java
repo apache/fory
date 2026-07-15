@@ -30,6 +30,10 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonAnyProperty;
@@ -39,6 +43,7 @@ import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -121,27 +126,36 @@ public final class ForyJsonExample {
     CodecModel value = new CodecModel();
     value.direct = new DirectValue("direct");
     value.inherited = new InheritedValue("inherited");
-    value.nested = List.of(new TypeUseValue("nested"));
-    value.array = new TypeUseValue[] {new TypeUseValue("array")};
-    value.mapped = Map.of("key", new TypeUseValue("mapped"));
-    value.property = new TypeUseValue("property");
-    value.declaredField = new TypeUseValue("declared-field");
-    value.declaredProperty = new TypeUseValue("declared-property");
-    value.record = new CodecRecord(new TypeUseValue("record"));
-    value.creator = new CodecCreator(new TypeUseValue("creator"));
-    value.factory = CodecFactory.create(new TypeUseValue("factory"));
+    value.elements = List.of(new CodecValue("element"));
+    value.array = new CodecValue[] {new CodecValue("array")};
+    value.atomicArray =
+        new AtomicReferenceArray<>(new CodecValue[] {new CodecValue("atomic-array")});
+    value.mapped = Map.of(new CodecKey("key"), new CodecValue("mapped"));
+    value.optional = Optional.of(new CodecValue("optional"));
+    value.atomic = new AtomicReference<>(new CodecValue("atomic"));
+    value.extra.put("dynamic", new CodecValue("any"));
+    value.setParameterValue(new CodecValue("parameter"));
+    value.getterValue = new CodecValue("getter");
+    value.record = new CodecRecord(new CodecValue("record"));
+    value.creator = new CodecCreator(new CodecValue("creator"));
+    value.factory = CodecFactory.create(new CodecValue("factory"));
 
     String stringJson = json.toJson(value);
     Preconditions.checkArgument(stringJson.contains("string:direct"));
     Preconditions.checkArgument(stringJson.contains("string:inherited"));
-    Preconditions.checkArgument(stringJson.contains("string:nested"));
+    Preconditions.checkArgument(stringJson.contains("string:element"));
     Preconditions.checkArgument(stringJson.contains("string:array"));
+    Preconditions.checkArgument(stringJson.contains("string:atomic-array"));
+    Preconditions.checkArgument(stringJson.contains("\"key:key\""));
     Preconditions.checkArgument(stringJson.contains("string:mapped"));
-    Preconditions.checkArgument(stringJson.contains("string:declared-field"));
-    Preconditions.checkArgument(stringJson.contains("string:declared-property"));
+    Preconditions.checkArgument(stringJson.contains("string:optional"));
+    Preconditions.checkArgument(stringJson.contains("string:atomic"));
+    Preconditions.checkArgument(stringJson.contains("string:any"));
+    Preconditions.checkArgument(stringJson.contains("string:getter"));
+    Preconditions.checkArgument(stringJson.contains("string:parameter"));
     String utf8Json = new String(json.toJsonBytes(value), StandardCharsets.UTF_8);
     Preconditions.checkArgument(utf8Json.contains("utf8:direct"));
-    Preconditions.checkArgument(utf8Json.contains("utf8:property"));
+    Preconditions.checkArgument(utf8Json.contains("utf8:element"));
 
     DirectValue stringValue = json.fromJson("\"value\"", DirectValue.class);
     DirectValue utf16 = json.fromJson("\"\u4f60\"", DirectValue.class);
@@ -154,12 +168,15 @@ public final class ForyJsonExample {
     CodecModel decoded = json.fromJson(stringJson, CodecModel.class);
     checkStringRead(decoded.direct.text, "string:direct");
     checkStringRead(decoded.inherited.text, "string:inherited");
-    checkStringRead(decoded.nested.get(0).text, "string:nested");
+    checkStringRead(decoded.elements.get(0).text, "string:element");
     checkStringRead(decoded.array[0].text, "string:array");
-    checkStringRead(decoded.mapped.get("key").text, "string:mapped");
-    checkStringRead(decoded.property.text, "string:property");
-    checkStringRead(decoded.declaredField.text, "string:declared-field");
-    checkStringRead(decoded.declaredProperty.text, "string:declared-property");
+    checkStringRead(decoded.atomicArray.get(0).text, "string:atomic-array");
+    checkStringRead(decoded.mapped.get(new CodecKey("key")).text, "string:mapped");
+    checkStringRead(decoded.optional.orElseThrow().text, "string:optional");
+    checkStringRead(decoded.atomic.get().text, "string:atomic");
+    checkStringRead(decoded.extra.get("dynamic").text, "string:any");
+    checkStringRead(decoded.getGetterValue().text, "string:getter");
+    checkStringRead(decoded.getParameterValue().text, "string:parameter");
     checkStringRead(decoded.record.value.text, "string:record");
     checkStringRead(decoded.creator.value.text, "string:creator");
     checkStringRead(decoded.factory.value.text, "string:factory");
@@ -385,44 +402,56 @@ public final class ForyJsonExample {
   public static final class ConfigValue {
     public String camelName;
     public String nullValue;
-
-    public ForyJsonExample.@JsonCodec(IgnoredCodec.class) TypeUseValue ignoredCodecMethod() {
-      throw new AssertionError("Non-property methods must not participate in JSON metadata");
-    }
   }
 
   @JsonType
   public static final class CodecModel {
     public DirectValue direct;
     public InheritedValue inherited;
-    public List<@JsonCodec(TypeUseCodec.class) TypeUseValue> nested = new ArrayList<>();
-    public ForyJsonExample.@JsonCodec(TypeUseCodec.class) TypeUseValue[] array;
-    public Map<String, @JsonCodec(TypeUseCodec.class) TypeUseValue> mapped;
-    private TypeUseValue property;
 
-    @JsonCodec(TypeUseCodec.class)
-    public TypeUseValue declaredField;
+    @JsonCodec(elementCodec = ValueCodec.class)
+    public List<CodecValue> elements = new ArrayList<>();
 
-    private TypeUseValue declaredProperty;
+    @JsonCodec(elementCodec = ValueCodec.class)
+    public CodecValue[] array;
+
+    @JsonCodec(elementCodec = ValueCodec.class)
+    public AtomicReferenceArray<CodecValue> atomicArray;
+
+    @JsonCodec(keyCodec = KeyCodec.class, valueCodec = ValueCodec.class)
+    public Map<CodecKey, CodecValue> mapped;
+
+    @JsonCodec(contentCodec = ValueCodec.class)
+    public Optional<CodecValue> optional;
+
+    @JsonCodec(contentCodec = ValueCodec.class)
+    public AtomicReference<CodecValue> atomic;
+
+    @JsonAnyProperty
+    @JsonCodec(valueCodec = ValueCodec.class)
+    public Map<String, CodecValue> extra = new LinkedHashMap<>();
+
+    private CodecValue getterValue;
+    private CodecValue parameterValue;
     public CodecRecord record;
     public CodecCreator creator;
     public CodecFactory factory;
 
-    public @JsonCodec(TypeUseCodec.class) TypeUseValue getProperty() {
-      return property;
+    @JsonCodec(ValueCodec.class)
+    public CodecValue getGetterValue() {
+      return getterValue;
     }
 
-    public void setProperty(@JsonCodec(TypeUseCodec.class) TypeUseValue property) {
-      this.property = property;
+    public void setGetterValue(CodecValue getterValue) {
+      this.getterValue = getterValue;
     }
 
-    @JsonCodec(TypeUseCodec.class)
-    public TypeUseValue getDeclaredProperty() {
-      return declaredProperty;
+    public CodecValue getParameterValue() {
+      return parameterValue;
     }
 
-    public void setDeclaredProperty(TypeUseValue declaredProperty) {
-      this.declaredProperty = declaredProperty;
+    public void setParameterValue(@JsonCodec(ValueCodec.class) CodecValue parameterValue) {
+      this.parameterValue = parameterValue;
     }
   }
 
@@ -456,10 +485,10 @@ public final class ForyJsonExample {
     }
   }
 
-  public static final class TypeUseValue implements TextValue {
+  public static final class CodecValue implements TextValue {
     private final String text;
 
-    TypeUseValue(String text) {
+    CodecValue(String text) {
       this.text = text;
     }
 
@@ -470,29 +499,29 @@ public final class ForyJsonExample {
   }
 
   @JsonType
-  public record CodecRecord(@JsonCodec(TypeUseCodec.class) TypeUseValue value) {}
+  public record CodecRecord(@JsonCodec(ValueCodec.class) CodecValue value) {}
 
   @JsonType
   public static final class CodecCreator {
-    public final TypeUseValue value;
+    public final CodecValue value;
 
     @JsonCreator
-    public CodecCreator(@JsonProperty("value") @JsonCodec(TypeUseCodec.class) TypeUseValue value) {
+    public CodecCreator(@JsonProperty("value") @JsonCodec(ValueCodec.class) CodecValue value) {
       this.value = value;
     }
   }
 
   @JsonType
   public static final class CodecFactory {
-    public final TypeUseValue value;
+    public final CodecValue value;
 
-    private CodecFactory(TypeUseValue value) {
+    private CodecFactory(CodecValue value) {
       this.value = value;
     }
 
     @JsonCreator
     public static CodecFactory create(
-        @JsonProperty("value") @JsonCodec(TypeUseCodec.class) TypeUseValue value) {
+        @JsonProperty("value") @JsonCodec(ValueCodec.class) CodecValue value) {
       return new CodecFactory(value);
     }
   }
@@ -550,21 +579,44 @@ public final class ForyJsonExample {
     }
   }
 
-  public static final class TypeUseCodec extends TextCodec<TypeUseValue> {
-    public TypeUseCodec() {}
+  public static final class ValueCodec extends TextCodec<CodecValue> {
+    public ValueCodec() {}
 
     @Override
-    protected TypeUseValue create(String text) {
-      return new TypeUseValue(text);
+    protected CodecValue create(String text) {
+      return new CodecValue(text);
     }
   }
 
-  public static final class IgnoredCodec extends TextCodec<TypeUseValue> {
-    private IgnoredCodec(String ignored) {}
+  public static final class CodecKey {
+    private final String text;
+
+    CodecKey(String text) {
+      this.text = text;
+    }
 
     @Override
-    protected TypeUseValue create(String text) {
-      return new TypeUseValue(text);
+    public boolean equals(Object other) {
+      return other instanceof CodecKey && Objects.equals(text, ((CodecKey) other).text);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hashCode(text);
+    }
+  }
+
+  public static final class KeyCodec implements MapKeyCodec {
+    public KeyCodec() {}
+
+    @Override
+    public String toName(Object key) {
+      return "key:" + ((CodecKey) key).text;
+    }
+
+    @Override
+    public Object fromName(String name) {
+      return new CodecKey(name.substring("key:".length()));
     }
   }
 

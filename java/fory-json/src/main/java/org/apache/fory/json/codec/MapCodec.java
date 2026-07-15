@@ -64,6 +64,39 @@ import org.apache.fory.reflect.TypeRef;
  */
 public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T> {
   private static final Class<?> UNTYPED_MAP = LinkedHashMap.class;
+  private static final MapKeyCodec STRING_KEY_CODEC =
+      new MapKeyCodec() {
+        @Override
+        public String toName(Object key) {
+          return (String) key;
+        }
+
+        @Override
+        public Object fromName(String name) {
+          return name;
+        }
+      };
+  private static final MapKeyCodec OBJECT_KEY_CODEC =
+      new MapKeyCodec() {
+        @Override
+        public String toName(Object key) {
+          if (key instanceof String) {
+            return (String) key;
+          }
+          if (key instanceof Number || key instanceof Boolean || key instanceof Character) {
+            return key.toString();
+          }
+          if (key instanceof Enum) {
+            return ((Enum<?>) key).name();
+          }
+          throw new ForyJsonException("Unsupported JSON map key type " + key.getClass());
+        }
+
+        @Override
+        public Object fromName(String name) {
+          return name;
+        }
+      };
 
   private final MapFactory factory;
 
@@ -88,6 +121,15 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   public static MapCodec<?> create(
       Class<?> rawType, Class<?> keyRawType, JsonTypeInfo valueTypeInfo) {
     return create(mapFactory(rawType, keyRawType), keyRawType, valueTypeInfo);
+  }
+
+  @Internal
+  public static MapCodec<?> create(
+      Class<?> rawType, Class<?> keyRawType, JsonTypeInfo valueTypeInfo, MapKeyCodec keyCodec) {
+    return new GenericMapCodec(
+        mapFactory(rawType, keyRawType),
+        new CheckedMapKeyCodec(keyRawType, keyCodec),
+        valueTypeInfo);
   }
 
   private static MapCodec<?> create(
@@ -126,12 +168,12 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       }
     }
     if (keyRawType == Object.class) {
-      return new GenericMapCodec(factory, MapKeyCodec.OBJECT, valueTypeInfo);
+      return new GenericMapCodec(factory, OBJECT_KEY_CODEC, valueTypeInfo);
     }
     if (valueCodec == ScalarCodecs.StringCodec.INSTANCE && isNumericKey(keyRawType)) {
-      return new NumberStringMapCodec(factory, MapKeyCodec.of(keyRawType));
+      return new NumberStringMapCodec(factory, defaultKeyCodec(keyRawType));
     }
-    return new GenericMapCodec(factory, MapKeyCodec.of(keyRawType), valueTypeInfo);
+    return new GenericMapCodec(factory, defaultKeyCodec(keyRawType), valueTypeInfo);
   }
 
   static Map<Object, Object> readUntyped(Latin1JsonReader reader) {
@@ -142,7 +184,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     reader.expectNextToken('{');
     if (!reader.consumeNextToken('}')) {
       do {
-        Object key = MapKeyCodec.STRING.readName(reader);
+        Object key = STRING_KEY_CODEC.readName(reader);
         reader.expectNextToken(':');
         map.put(key, codec.readLatin1(reader));
       } while (reader.consumeNextToken(','));
@@ -160,7 +202,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     reader.expectNextToken('{');
     if (!reader.consumeNextToken('}')) {
       do {
-        Object key = MapKeyCodec.STRING.readName(reader);
+        Object key = STRING_KEY_CODEC.readName(reader);
         reader.expectNextToken(':');
         map.put(key, codec.readUtf16(reader));
       } while (reader.consumeNextToken(','));
@@ -178,7 +220,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     reader.expectNextToken('{');
     if (!reader.consumeNextToken('}')) {
       do {
-        Object key = MapKeyCodec.STRING.readName(reader);
+        Object key = STRING_KEY_CODEC.readName(reader);
         reader.expectNextToken(':');
         map.put(key, codec.readUtf8(reader));
       } while (reader.consumeNextToken(','));
@@ -197,7 +239,35 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   private static void writeKey(JsonWriter writer, Object key, MapKeyCodec keyCodec) {
+    if (key == null) {
+      throw new ForyJsonException("JSON map key cannot be null");
+    }
     keyCodec.writeName(writer, key);
+  }
+
+  private static MapKeyCodec defaultKeyCodec(Class<?> rawType) {
+    if (rawType == String.class) {
+      return STRING_KEY_CODEC;
+    }
+    if (rawType == Object.class) {
+      return OBJECT_KEY_CODEC;
+    }
+    if (rawType.isEnum()) {
+      return new EnumKeyCodec(rawType);
+    }
+    if (rawType == int.class || rawType == Integer.class) {
+      return IntKeyCodec.INSTANCE;
+    }
+    if (rawType == long.class || rawType == Long.class) {
+      return LongKeyCodec.INSTANCE;
+    }
+    if (rawType == short.class || rawType == Short.class) {
+      return ShortKeyCodec.INSTANCE;
+    }
+    if (rawType == byte.class || rawType == Byte.class) {
+      return ByteKeyCodec.INSTANCE;
+    }
+    throw new ForyJsonException("Unsupported JSON map key type " + rawType);
   }
 
   @SuppressWarnings("unchecked")
@@ -921,86 +991,44 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     }
   }
 
-  /**
-   * Converts a declared Java map key to and from a JSON object member name.
-   *
-   * <p>Implementations are selected once while constructing the map codec. Numeric and enum
-   * implementations override reader operations where the concrete reader can parse or hash the
-   * member name directly, avoiding an intermediate String on typed map hot paths.
-   */
-  public interface MapKeyCodec {
-    MapKeyCodec STRING =
-        new MapKeyCodec() {
-          @Override
-          public String toName(Object key) {
-            return (String) key;
-          }
+  private static final class CheckedMapKeyCodec implements MapKeyCodec {
+    private final Class<?> keyType;
+    private final MapKeyCodec delegate;
 
-          @Override
-          public Object fromName(String name) {
-            return name;
-          }
-        };
-    MapKeyCodec OBJECT =
-        new MapKeyCodec() {
-          @Override
-          public String toName(Object key) {
-            if (key == null) {
-              throw new ForyJsonException("JSON map key cannot be null");
-            }
-            if (key instanceof String) {
-              return (String) key;
-            }
-            if (key instanceof Number || key instanceof Boolean || key instanceof Character) {
-              return key.toString();
-            }
-            if (key instanceof Enum) {
-              return ((Enum<?>) key).name();
-            }
-            throw new ForyJsonException("Unsupported JSON map key type " + key.getClass());
-          }
-
-          @Override
-          public Object fromName(String name) {
-            return name;
-          }
-        };
-
-    String toName(Object key);
-
-    Object fromName(String name);
-
-    default void writeName(JsonWriter writer, Object key) {
-      writer.writeFieldName(toName(key));
+    private CheckedMapKeyCodec(Class<?> keyType, MapKeyCodec delegate) {
+      this.keyType = keyType;
+      this.delegate = delegate;
     }
 
-    default Object readName(JsonReader reader) {
-      return fromName(reader.readString());
+    @Override
+    public String toName(Object key) {
+      return delegate.toName(key);
     }
 
-    static MapKeyCodec of(Class<?> rawType) {
-      if (rawType == String.class) {
-        return STRING;
+    @Override
+    public Object fromName(String name) {
+      return checkKey(delegate.fromName(name));
+    }
+
+    @Override
+    public void writeName(JsonWriter writer, Object key) {
+      delegate.writeName(writer, key);
+    }
+
+    @Override
+    public Object readName(JsonReader reader) {
+      return checkKey(delegate.readName(reader));
+    }
+
+    private Object checkKey(Object key) {
+      if (key == null || keyType != Object.class && !keyType.isInstance(key)) {
+        throw new ForyJsonException(
+            "JSON map key codec returned "
+                + (key == null ? "null" : key.getClass().getName())
+                + " for "
+                + keyType.getName());
       }
-      if (rawType == Object.class) {
-        return OBJECT;
-      }
-      if (rawType.isEnum()) {
-        return new EnumKeyCodec(rawType);
-      }
-      if (rawType == int.class || rawType == Integer.class) {
-        return IntKeyCodec.INSTANCE;
-      }
-      if (rawType == long.class || rawType == Long.class) {
-        return LongKeyCodec.INSTANCE;
-      }
-      if (rawType == short.class || rawType == Short.class) {
-        return ShortKeyCodec.INSTANCE;
-      }
-      if (rawType == byte.class || rawType == Byte.class) {
-        return ByteKeyCodec.INSTANCE;
-      }
-      throw new ForyJsonException("Unsupported JSON map key type " + rawType);
+      return key;
     }
   }
 

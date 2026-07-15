@@ -40,8 +40,10 @@ import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -79,21 +81,28 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void propertyMerge() {
+  public void propertyDeclarations() {
     ForyJson json = newJson();
     MergedProperty value = new MergedProperty();
     value.setValue("x");
     assertEquals(json.toJson(value), "{\"value\":\"A:x\"}");
     assertEquals(json.fromJson("{\"value\":\"A:y\"}", MergedProperty.class).getValue(), "y");
+
+    GetterProperty getter = new GetterProperty();
+    getter.setValue("getter");
+    assertEquals(json.toJson(getter), "{\"value\":\"A:getter\"}");
+    assertEquals(json.fromJson("{\"value\":\"A:read\"}", GetterProperty.class).getValue(), "read");
+
+    SetterProperty setter = new SetterProperty();
+    setter.setValue("setter");
+    assertEquals(json.toJson(setter), "{\"value\":\"A:setter\"}");
+    assertEquals(json.fromJson("{\"value\":\"A:read\"}", SetterProperty.class).getValue(), "read");
   }
 
   @Test
   public void propertyConflict() {
-    assertFailure(
-        () -> newJson().toJson(new ConflictingProperty()),
-        "Conflicting @JsonCodec values",
-        AStringCodec.class.getName(),
-        BStringCodec.class.getName());
+    assertFailure(() -> newJson().toJson(new ConflictingProperty()));
+    assertFailure(() -> newJson().toJson(new PartialMapProperty()));
   }
 
   @Test
@@ -120,11 +129,11 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     }
     Class<?> type =
         compileRecordClass(
-            "JsonCodecTypeUseRecord",
+            "JsonCodecDeclarationRecord",
             "package org.apache.fory.json.records;\n"
                 + "import org.apache.fory.json.annotation.JsonCodec;\n"
                 + "import org.apache.fory.json.JsonCodecAnnotationTest.AStringCodec;\n"
-                + "public record JsonCodecTypeUseRecord("
+                + "public record JsonCodecDeclarationRecord("
                 + "@JsonCodec(AStringCodec.class) String value) {}\n");
     Object value = type.getConstructor(String.class).newInstance("x");
     assertEquals(jsonText(newJson(), value), "{\"value\":\"A:x\"}");
@@ -158,16 +167,19 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     method.values.put("x", "three");
     assertEquals(json.toJson(method), "{\"x\":\"A:three\"}");
     assertEquals(json.fromJson("{\"x\":\"A:four\"}", MethodAny.class).values.get("x"), "four");
+
+    ParameterAny parameter = new ParameterAny();
+    parameter.values.put("x", "five");
+    assertEquals(json.toJson(parameter), "{\"x\":\"A:five\"}");
+    assertEquals(json.fromJson("{\"x\":\"A:six\"}", ParameterAny.class).values.get("x"), "six");
   }
 
   @Test
   public void anyRejections() {
-    assertFailure(
-        () -> newJson().toJson(new OuterAny()), "cannot select the flattened JSON Any map");
-    assertFailure(
-        () -> newJson().toJson(new MethodOuterAny()),
-        "@JsonCodec requires an effective ordinary JSON getter");
-    assertFailure(() -> newJson().toJson(new KeyAny()), "map-key subtree");
+    assertFailure(() -> newJson().toJson(new OuterAny()));
+    assertFailure(() -> newJson().toJson(new MethodOuterAny()));
+    assertFailure(() -> newJson().toJson(new KeyAny()));
+    assertFailure(() -> newJson().toJson(new ConflictingAny()));
     assertFailure(
         () -> newJson().toJson(new StaticCodecField()),
         "@JsonCodec is not supported on JSON field");
@@ -225,19 +237,35 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
         json.fromJson("{\"value\":[\"A:a\",\"A:b\"]}", ComponentArray.class).value,
         new String[] {"a", "b"});
 
+    PrimitiveArray primitive = new PrimitiveArray();
+    primitive.value = new int[] {1, 2};
+    assertEquals(json.toJson(primitive), "{\"value\":[1001,1002]}");
+    assertEquals(
+        json.fromJson("{\"value\":[1003,1004]}", PrimitiveArray.class).value, new int[] {3, 4});
+
     MultiArray multi = new MultiArray();
     multi.value = new String[][] {{"x"}};
-    assertEquals(json.toJson(multi), "{\"value\":[[\"A:x\"]]}");
-    assertEquals(json.fromJson("{\"value\":[[\"A:z\"]]}", MultiArray.class).value[0][0], "z");
+    assertEquals(json.toJson(multi), "{\"value\":[\"whole-array\"]}");
+    assertEquals(
+        json.fromJson("{\"value\":[\"whole-array\"]}", MultiArray.class).value[0],
+        new String[] {"whole-array"});
+
+    StringArrayModel generic = new StringArrayModel();
+    generic.value = new String[] {"x"};
+    assertEquals(json.toJson(generic), "{\"value\":[\"A:x\"]}");
+    assertEquals(
+        json.fromJson("{\"value\":[\"A:y\"]}", StringArrayModel.class).value, new String[] {"y"});
   }
 
   @Test
   public void collections() {
     ForyJson json = newJson();
     ListModel list = new ListModel();
-    list.value = Arrays.asList("x");
-    assertEquals(json.toJson(list), "{\"value\":[\"A:x\"]}");
-    assertEquals(json.fromJson("{\"value\":[\"A:y\"]}", ListModel.class).value, Arrays.asList("y"));
+    list.value = Arrays.asList("x", null);
+    assertEquals(json.toJson(list), "{\"value\":[\"A:x\",null]}");
+    assertEquals(
+        json.fromJson("{\"value\":[\"A:y\",null]}", ListModel.class).value,
+        Arrays.asList("y", null));
 
     SetModel set = new SetModel();
     set.value = new LinkedHashSet<>(Arrays.asList("x"));
@@ -260,10 +288,6 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
 
   @Test
   public void reorderedCollection() {
-    if (JdkVersion.MAJOR_VERSION <= 11) {
-      throw new SkipException(
-          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
-    }
     ForyJson json = newJson();
     ReorderedListModel reordered = new ReorderedListModel();
     reordered.value = new ReorderedList<>();
@@ -274,14 +298,41 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void mapValues() {
+  public void maps() {
     ForyJson json = newJson();
+    WholeMap whole = new WholeMap();
+    whole.values.put("x", "ignored");
+    assertEquals(json.toJson(whole), "{\"values\":\"whole-map\"}");
+    assertTrue(json.fromJson("{\"values\":\"whole-map\"}", WholeMap.class).values.isEmpty());
+
     MapModel value = new MapModel();
     value.values.put("x", "one");
     assertEquals(json.toJson(value), "{\"values\":{\"x\":\"A:one\"}}");
     assertEquals(
         json.fromJson("{\"values\":{\"x\":\"A:two\"}}", MapModel.class).values.get("x"), "two");
-    assertFailure(() -> newJson().toJson(new MapKeyModel()), "map-key subtree");
+    MapKeyModel keys = new MapKeyModel();
+    keys.values.put(1, "one");
+    assertEquals(json.toJson(keys), "{\"values\":{\"K:1\":\"one\"}}");
+    assertEquals(
+        json.fromJson("{\"values\":{\"K:2\":\"two\"}}", MapKeyModel.class).values.get(2), "two");
+
+    CombinedMap combined = new CombinedMap();
+    combined.values.put(3, "three");
+    assertEquals(json.toJson(combined), "{\"values\":{\"K:3\":\"A:three\"}}");
+    assertEquals(
+        json.fromJson("{\"values\":{\"K:4\":\"A:four\"}}", CombinedMap.class).values.get(4),
+        "four");
+
+    DirectMapKeyCodec.reset();
+    DirectMapKeyModel direct = new DirectMapKeyModel();
+    direct.values.put(5, "five");
+    assertEquals(json.toJson(direct), "{\"values\":{\"D:5\":\"five\"}}");
+    assertEquals(
+        json.fromJson("{\"values\":{\"D:6\":\"six\"}}", DirectMapKeyModel.class).values.get(6),
+        "six");
+    assertEquals(DirectMapKeyCodec.directWrites, 1);
+    assertEquals(DirectMapKeyCodec.directReads, 1);
+    assertEquals(DirectMapKeyCodec.fallbackCalls, 0);
   }
 
   @Test
@@ -305,53 +356,36 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
 
   @Test
   public void ownerSubstitution() {
-    if (JdkVersion.MAJOR_VERSION <= 11) {
-      throw new SkipException(
-          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
-    }
     ForyJson json = newJson();
     EnvelopeOwner owner = new EnvelopeOwner();
-    owner.envelope = new Envelope<>();
-    owner.envelope.value = "x";
-    assertEquals(json.toJson(owner), "{\"envelope\":{\"value\":\"A:x\"}}");
+    owner.envelope = new AnnotatedEnvelope<>();
+    owner.envelope.values = Arrays.asList("x");
+    assertEquals(json.toJson(owner), "{\"envelope\":{\"values\":[\"A:x\"]}}");
     assertEquals(
-        json.fromJson("{\"envelope\":{\"value\":\"A:y\"}}", EnvelopeOwner.class).envelope.value,
-        "y");
-  }
+        json.fromJson("{\"envelope\":{\"values\":[\"A:y\"]}}", EnvelopeOwner.class).envelope.values,
+        Arrays.asList("y"));
 
-  @Test
-  public void equalOwnerCodec() {
-    ForyJson json = newJson();
-    EqualEnvelopeOwner equal = new EqualEnvelopeOwner();
-    equal.envelope = new AnnotatedEnvelope<>();
-    equal.envelope.value = "x";
-    assertEquals(json.toJson(equal), "{\"envelope\":{\"value\":\"A:x\"}}");
+    FixedListModel fixed = new FixedListModel();
+    fixed.values = new StringList();
+    fixed.values.add("fixed");
+    assertEquals(json.toJson(fixed), "{\"values\":[\"A:fixed\"]}");
     assertEquals(
-        json.fromJson("{\"envelope\":{\"value\":\"A:y\"}}", EqualEnvelopeOwner.class)
-            .envelope
-            .value,
-        "y");
+        json.fromJson("{\"values\":[\"A:value\"]}", FixedListModel.class).values,
+        Arrays.asList("value"));
   }
 
   @Test
-  public void ownerConflict() {
-    if (JdkVersion.MAJOR_VERSION <= 11) {
-      throw new SkipException(
-          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
-    }
+  public void invalidChildren() {
+    assertFailure(() -> newJson().toJson(new RawEnvelopeOwner()));
+    assertFailure(() -> newJson().toJson(new RawCollectionModel()));
+    assertFailure(() -> newJson().toJson(new WildcardCollectionModel()));
+    assertFailure(() -> newJson().toJson(new RawMapModel()));
+    assertFailure(() -> newJson().toJson(new WildcardMapModel()));
+    assertFailure(() -> newJson().toJson(new WildcardContentModel()));
+    assertFailure(() -> newJson().toJson(new IterableModel()));
     assertFailure(
-        () -> newJson().toJson(new ConflictingEnvelopeOwner()),
-        "Conflicting @JsonCodec values",
-        AStringCodec.class.getName(),
-        BStringCodec.class.getName());
-  }
-
-  @Test
-  public void rawOwnerFailure() {
-    assertFailure(
-        () -> newJson().toJson(new RawEnvelopeOwner()),
-        "does not resolve to one concrete target",
-        "AnnotatedEnvelope");
+        () -> newJson().toJson(new GenericArrayModel<>()),
+        "elementCodec requires a concrete direct child type");
   }
 
   @Test
@@ -376,6 +410,21 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     assertEquals(decoded.a, "one");
     assertEquals(decoded.sameA, "two");
     assertEquals(decoded.b, "three");
+
+    ChildCacheModel children = new ChildCacheModel();
+    children.plain = Arrays.asList("plain");
+    children.a = Arrays.asList("one");
+    children.b = Arrays.asList("two");
+    String childText = json.toJson(children);
+    assertTrue(childText.contains("\"a\":[\"A:one\"]"), childText);
+    assertTrue(childText.contains("\"b\":[\"B:two\"]"), childText);
+    assertTrue(childText.contains("\"plain\":[\"plain\"]"), childText);
+    ChildCacheModel restored =
+        json.fromJson(
+            "{\"a\":[\"A:one\"],\"b\":[\"B:two\"],\"plain\":[\"plain\"]}", ChildCacheModel.class);
+    assertEquals(restored.a, Arrays.asList("one"));
+    assertEquals(restored.b, Arrays.asList("two"));
+    assertEquals(restored.plain, Arrays.asList("plain"));
   }
 
   @Test
@@ -406,12 +455,33 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void hiddenDescendants() {
-    assertFailure(() -> newJson().toJson(new HiddenExplicit()), "hides descendant @JsonCodec");
+  public void valueAndChild() {
+    assertFailure(() -> newJson().toJson(new InvalidComposition()));
 
-    HiddenDefault value = new HiddenDefault();
+    WholeContainer value = new WholeContainer();
     value.values = Arrays.asList(new DeclaredValue());
     assertEquals(newJson().toJson(value), "{\"values\":\"whole-default\"}");
+  }
+
+  @Test
+  public void invalidShapes() {
+    assertFailure(() -> newJson().toJson(new EmptyCodec()));
+    assertFailure(() -> newJson().toJson(new WrongShape()));
+    assertFailure(() -> newJson().toJson(new InvalidTypeDeclaration()));
+    assertFailure(() -> newJson().toJson(new InvalidMapKey()));
+    assertFailure(() -> newJson().toJson(new SetterMethodCodec()));
+    assertFailure(() -> newJson().toJson(new UnrelatedParameterCodec()));
+    assertFailure(() -> newJson().toJson(new AnyKeyCodec()));
+    assertFailure(
+        () -> newJsonBuilder().withFieldMode(true).build().toJson(new IgnoredCodecField()),
+        "@JsonCodec has no JSON read or write direction");
+    assertFailure(
+        () -> newJson().toJson(new AtomicArrayContent()),
+        "supports only elementCodec as a child codec");
+    assertFailure(
+        () -> newJson().fromJson("{\"values\":{\"wrong\":\"value\"}}", WrongMapKey.class));
+    assertFailure(
+        () -> newJson().toJson(new NullMapKey()), "JSON map key codec returned a null member name");
   }
 
   private static String jsonText(ForyJson json, Object value) {
@@ -475,6 +545,95 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     @Override
     protected String tag() {
       return "B";
+    }
+  }
+
+  public static class TaggedMapKeyCodec implements MapKeyCodec {
+    @Override
+    public String toName(Object key) {
+      return "K:" + key;
+    }
+
+    @Override
+    public Object fromName(String name) {
+      if (!name.startsWith("K:")) {
+        throw new ForyJsonException("Expected K: map key");
+      }
+      return Integer.valueOf(name.substring(2));
+    }
+  }
+
+  public static class DirectMapKeyCodec implements MapKeyCodec {
+    private static int directWrites;
+    private static int directReads;
+    private static int fallbackCalls;
+
+    static void reset() {
+      directWrites = 0;
+      directReads = 0;
+      fallbackCalls = 0;
+    }
+
+    @Override
+    public String toName(Object key) {
+      fallbackCalls++;
+      return "D:" + key;
+    }
+
+    @Override
+    public Object fromName(String name) {
+      fallbackCalls++;
+      return Integer.valueOf(name.substring(2));
+    }
+
+    @Override
+    public void writeName(JsonWriter writer, Object key) {
+      directWrites++;
+      writer.writeFieldName("D:" + key);
+    }
+
+    @Override
+    public Object readName(JsonReader reader) {
+      directReads++;
+      return Integer.valueOf(reader.readString().substring(2));
+    }
+  }
+
+  public static class NoDefaultMapKeyCodec implements MapKeyCodec {
+    public NoDefaultMapKeyCodec(String ignored) {}
+
+    @Override
+    public String toName(Object key) {
+      return key.toString();
+    }
+
+    @Override
+    public Object fromName(String name) {
+      return Integer.valueOf(name);
+    }
+  }
+
+  public static class WrongMapKeyCodec implements MapKeyCodec {
+    @Override
+    public String toName(Object key) {
+      return key.toString();
+    }
+
+    @Override
+    public Object fromName(String name) {
+      return name;
+    }
+  }
+
+  public static class NullMapKeyCodec implements MapKeyCodec {
+    @Override
+    public String toName(Object key) {
+      return null;
+    }
+
+    @Override
+    public Object fromName(String name) {
+      return Integer.valueOf(name);
     }
   }
 
@@ -765,7 +924,33 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     @JsonCodec(AStringCodec.class)
     private String value;
 
-    public @JsonCodec(AStringCodec.class) String getValue() {
+    @JsonCodec(AStringCodec.class)
+    public String getValue() {
+      return value;
+    }
+
+    public void setValue(@JsonCodec(AStringCodec.class) String value) {
+      this.value = value;
+    }
+  }
+
+  public static class GetterProperty {
+    private String value;
+
+    @JsonCodec(AStringCodec.class)
+    public String getValue() {
+      return value;
+    }
+
+    public void setValue(String value) {
+      this.value = value;
+    }
+  }
+
+  public static class SetterProperty {
+    private String value;
+
+    public String getValue() {
       return value;
     }
 
@@ -778,12 +963,27 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     @JsonCodec(AStringCodec.class)
     private String value;
 
-    public @JsonCodec(BStringCodec.class) String getValue() {
+    @JsonCodec(BStringCodec.class)
+    public String getValue() {
       return value;
     }
 
     public void setValue(@JsonCodec(AStringCodec.class) String value) {
       this.value = value;
+    }
+  }
+
+  public static class PartialMapProperty {
+    @JsonCodec(keyCodec = TaggedMapKeyCodec.class)
+    private Map<Integer, String> values = new LinkedHashMap<>();
+
+    @JsonCodec(valueCodec = AStringCodec.class)
+    public Map<Integer, String> getValues() {
+      return values;
+    }
+
+    public void setValues(Map<Integer, String> values) {
+      this.values = values;
     }
   }
 
@@ -822,14 +1022,16 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
 
   public static class FieldAny {
     @JsonAnyProperty
-    public Map<String, @JsonCodec(AStringCodec.class) String> values = new LinkedHashMap<>();
+    @JsonCodec(valueCodec = AStringCodec.class)
+    public Map<String, String> values = new LinkedHashMap<>();
   }
 
   public static class MethodAny {
     public transient Map<String, String> values = new LinkedHashMap<>();
 
     @JsonAnyGetter
-    public Map<String, @JsonCodec(AStringCodec.class) String> any() {
+    @JsonCodec(valueCodec = AStringCodec.class)
+    public Map<String, String> any() {
       return values;
     }
 
@@ -839,9 +1041,39 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     }
   }
 
+  public static class ParameterAny {
+    public transient Map<String, String> values = new LinkedHashMap<>();
+
+    @JsonAnyGetter
+    public Map<String, String> any() {
+      return values;
+    }
+
+    @JsonAnySetter
+    public void put(String key, @JsonCodec(AStringCodec.class) String value) {
+      values.put(key, value);
+    }
+  }
+
+  public static class ConflictingAny {
+    public transient Map<String, String> values = new LinkedHashMap<>();
+
+    @JsonAnyGetter
+    @JsonCodec(valueCodec = AStringCodec.class)
+    public Map<String, String> any() {
+      return values;
+    }
+
+    @JsonAnySetter
+    public void put(String key, @JsonCodec(BStringCodec.class) String value) {
+      values.put(key, value);
+    }
+  }
+
   public static class OuterAny {
     @JsonAnyProperty
-    public @JsonCodec(WholeMapCodec.class) Map<String, String> values = new LinkedHashMap<>();
+    @JsonCodec(WholeMapCodec.class)
+    public Map<String, String> values = new LinkedHashMap<>();
   }
 
   public static class MethodOuterAny {
@@ -854,7 +1086,8 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
 
   public static class KeyAny {
     @JsonAnyProperty
-    public Map<@JsonCodec(AStringCodec.class) String, String> values = new LinkedHashMap<>();
+    @JsonCodec(keyCodec = TaggedMapKeyCodec.class)
+    public Map<String, String> values = new LinkedHashMap<>();
   }
 
   public static class StaticCodecField {
@@ -915,82 +1148,150 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
   }
 
   public static class WholeArray {
-    public String @JsonCodec(StringArrayCodec.class) [] value;
+    @JsonCodec(StringArrayCodec.class)
+    public String[] value;
   }
 
   public static class ComponentArray {
-    public java.lang.@JsonCodec(AStringCodec.class) String[] value;
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public String[] value;
   }
 
   public static class MultiArray {
-    public java.lang.@JsonCodec(AStringCodec.class) String[][] value;
+    @JsonCodec(elementCodec = StringArrayCodec.class)
+    public String[][] value;
   }
 
+  public static class PrimitiveArray {
+    @JsonCodec(elementCodec = IntCodec.class)
+    public int[] value;
+  }
+
+  public static class GenericArrayModel<T> {
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public T[] value;
+  }
+
+  public static class StringArrayModel extends GenericArrayModel<String> {}
+
   public static class ListModel {
-    public List<@JsonCodec(AStringCodec.class) String> value;
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public List<String> value;
   }
 
   public static class SetModel {
-    public Set<@JsonCodec(AStringCodec.class) String> value;
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public Set<String> value;
   }
 
   public static class CollectionModel {
-    public Collection<@JsonCodec(AStringCodec.class) String> value;
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public Collection<String> value;
   }
 
   public static class ConcreteListModel {
-    public ArrayList<@JsonCodec(AStringCodec.class) String> value;
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public ArrayList<String> value;
   }
 
   public static class ReorderedList<K, V> extends ArrayList<V> {}
 
   public static class ReorderedListModel {
-    public ReorderedList<Integer, @JsonCodec(AStringCodec.class) String> value;
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public ReorderedList<Integer, String> value;
   }
 
   public static class MapModel {
-    public Map<String, @JsonCodec(AStringCodec.class) String> values = new LinkedHashMap<>();
+    @JsonCodec(valueCodec = AStringCodec.class)
+    public Map<String, String> values = new LinkedHashMap<>();
+  }
+
+  public static class WholeMap {
+    @JsonCodec(WholeMapCodec.class)
+    public Map<String, String> values = new LinkedHashMap<>();
   }
 
   public static class MapKeyModel {
-    public Map<@JsonCodec(AStringCodec.class) String, String> values = new LinkedHashMap<>();
+    @JsonCodec(keyCodec = TaggedMapKeyCodec.class)
+    public Map<Integer, String> values = new LinkedHashMap<>();
+  }
+
+  public static class CombinedMap {
+    @JsonCodec(keyCodec = TaggedMapKeyCodec.class, valueCodec = AStringCodec.class)
+    public Map<Integer, String> values = new LinkedHashMap<>();
+  }
+
+  public static class DirectMapKeyModel {
+    @JsonCodec(keyCodec = DirectMapKeyCodec.class)
+    public Map<Integer, String> values = new LinkedHashMap<>();
   }
 
   public static class OptionalModel {
-    public Optional<@JsonCodec(AStringCodec.class) String> value;
+    @JsonCodec(contentCodec = AStringCodec.class)
+    public Optional<String> value;
   }
 
   public static class AtomicModel {
-    public AtomicReference<@JsonCodec(AStringCodec.class) String> value;
+    @JsonCodec(contentCodec = AStringCodec.class)
+    public AtomicReference<String> value;
   }
 
   public static class AtomicArrayModel {
-    public AtomicReferenceArray<@JsonCodec(AStringCodec.class) String> value;
-  }
-
-  public static class Envelope<T> {
-    public T value;
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public AtomicReferenceArray<String> value;
   }
 
   public static class EnvelopeOwner {
-    public Envelope<@JsonCodec(AStringCodec.class) String> envelope;
+    public AnnotatedEnvelope<String> envelope;
   }
 
   public static class AnnotatedEnvelope<T> {
-    public @JsonCodec(AStringCodec.class) T value;
-  }
-
-  public static class EqualEnvelopeOwner {
-    public AnnotatedEnvelope<@JsonCodec(AStringCodec.class) String> envelope;
-  }
-
-  public static class ConflictingEnvelopeOwner {
-    public AnnotatedEnvelope<@JsonCodec(BStringCodec.class) String> envelope;
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public List<T> values;
   }
 
   @SuppressWarnings("rawtypes")
   public static class RawEnvelopeOwner {
-    public AnnotatedEnvelope envelope;
+    public AnnotatedEnvelope envelope = new AnnotatedEnvelope();
+  }
+
+  public static class StringList extends ArrayList<String> {}
+
+  public static class FixedListModel {
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public StringList values;
+  }
+
+  public static class RawCollectionModel {
+    @SuppressWarnings("rawtypes")
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public List values;
+  }
+
+  public static class WildcardCollectionModel {
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public List<?> values;
+  }
+
+  public static class RawMapModel {
+    @SuppressWarnings("rawtypes")
+    @JsonCodec(valueCodec = AStringCodec.class)
+    public Map values;
+  }
+
+  public static class WildcardMapModel {
+    @JsonCodec(valueCodec = AStringCodec.class)
+    public Map<String, ?> values;
+  }
+
+  public static class WildcardContentModel {
+    @JsonCodec(contentCodec = AStringCodec.class)
+    public Optional<?> value;
+  }
+
+  public static class IterableModel {
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public Iterable<String> values;
   }
 
   public static class CacheModel {
@@ -1006,30 +1307,109 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     public String b;
   }
 
+  public static class ChildCacheModel {
+    public List<String> plain;
+
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public List<String> a;
+
+    @JsonCodec(elementCodec = BStringCodec.class)
+    public List<String> b;
+  }
+
   @JsonCodec(DeclaredPrecedenceCodec.class)
   public static class PrecedenceValue {}
 
   public static class InheritedPrecedenceValue extends PrecedenceValue {}
 
   public static class PrecedenceHolder {
-    public @JsonCodec(LocalPrecedenceCodec.class) PrecedenceValue local;
+    @JsonCodec(LocalPrecedenceCodec.class)
+    public PrecedenceValue local;
+
     public PrecedenceValue regular;
   }
 
   public static class InheritedPrecedenceHolder {
-    public @JsonCodec(LocalPrecedenceCodec.class) InheritedPrecedenceValue local;
+    @JsonCodec(LocalPrecedenceCodec.class)
+    public InheritedPrecedenceValue local;
+
     public InheritedPrecedenceValue regular;
   }
 
-  public static class HiddenExplicit {
-    public @JsonCodec(WholeStringListCodec.class) List<@JsonCodec(AStringCodec.class) String>
-        values;
+  public static class InvalidComposition {
+    @JsonCodec(value = WholeStringListCodec.class, elementCodec = AStringCodec.class)
+    public List<String> values;
   }
 
   @JsonCodec(DeclaredValueCodec.class)
   public static class DeclaredValue {}
 
-  public static class HiddenDefault {
-    public @JsonCodec(WholeDeclaredListCodec.class) List<DeclaredValue> values;
+  public static class WholeContainer {
+    @JsonCodec(WholeDeclaredListCodec.class)
+    public List<DeclaredValue> values;
   }
+
+  public static class EmptyCodec {
+    @JsonCodec public String value;
+  }
+
+  public static class WrongShape {
+    @JsonCodec(elementCodec = AStringCodec.class)
+    public String value;
+  }
+
+  public static class InvalidMapKey {
+    @JsonCodec(keyCodec = NoDefaultMapKeyCodec.class)
+    public Map<Integer, String> values = new LinkedHashMap<>();
+  }
+
+  public static class WrongMapKey {
+    @JsonCodec(keyCodec = WrongMapKeyCodec.class)
+    public Map<Integer, String> values = new LinkedHashMap<>();
+  }
+
+  public static class NullMapKey {
+    @JsonCodec(keyCodec = NullMapKeyCodec.class)
+    public Map<Integer, String> values = new LinkedHashMap<>();
+
+    public NullMapKey() {
+      values.put(1, "value");
+    }
+  }
+
+  public static class AtomicArrayContent {
+    @JsonCodec(contentCodec = AStringCodec.class)
+    public AtomicReferenceArray<String> value;
+  }
+
+  public static class IgnoredCodecField {
+    @JsonIgnore
+    @JsonCodec(AStringCodec.class)
+    public String value;
+  }
+
+  public static class SetterMethodCodec {
+    private String value;
+
+    public String getValue() {
+      return value;
+    }
+
+    @JsonCodec(AStringCodec.class)
+    public void setValue(String value) {
+      this.value = value;
+    }
+  }
+
+  public static class UnrelatedParameterCodec {
+    public void accept(@JsonCodec(AStringCodec.class) String value) {}
+  }
+
+  public static class AnyKeyCodec {
+    @JsonAnySetter
+    public void put(@JsonCodec(AStringCodec.class) String key, String value) {}
+  }
+
+  @JsonCodec(elementCodec = AStringCodec.class)
+  public static class InvalidTypeDeclaration {}
 }

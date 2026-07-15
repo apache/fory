@@ -32,7 +32,7 @@
   <artifactId>fory-annotation-processor</artifactId>
 
   <description>
-    Apache Fory annotation processor for static serializers and JSON reflection metadata.
+    Apache Fory annotation processor for static serializers and exact JSON R8 rules.
   </description>
 
   <properties>

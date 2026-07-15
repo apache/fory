@@ -26,6 +26,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Map;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -83,7 +84,7 @@ public final class JsonFieldInfo {
   private final Class<?> writeRawType;
   private final Type readType;
   private final Class<?> readRawType;
-  private final JsonTypeUse typeUse;
+  private final JsonCodec codecAnnotation;
   private JsonFieldKind writeKind;
   private JsonFieldKind readKind;
   private int writeKindId;
@@ -140,7 +141,7 @@ public final class JsonFieldInfo {
       JsonFieldAccessor writeAccessor,
       JsonFieldAccessor readAccessor,
       TypeRef<?> ownerType,
-      JsonTypeUse typeUse) {
+      JsonCodec codecAnnotation) {
     this.name = name;
     // The write-null decision and read index are both immutable after ObjectCodec construction.
     // Packing the flag into the unused sign bit keeps JsonFieldInfo at its established object size
@@ -158,7 +159,7 @@ public final class JsonFieldInfo {
     this.writeRawType = semanticRawType(writeType, writeFallback);
     this.readType = resolveType(ownerType, readType(readField, readSetter));
     this.readRawType = semanticRawType(readType, readFallback);
-    this.typeUse = typeUse;
+    this.codecAnnotation = codecAnnotation;
     this.writeAccessor = writeAccessor;
     this.readAccessor = readAccessor;
     writeKind = writeRawType == null ? null : kind(writeRawType);
@@ -346,7 +347,12 @@ public final class JsonFieldInfo {
   }
 
   public void resolveTypes(JsonTypeResolver typeResolver) {
-    JsonTypeInfo resolvedTypeInfo = typeUse == null ? null : typeResolver.getTypeInfo(typeUse);
+    Type codecType = writeType == null ? readType : writeType;
+    Class<?> codecRawType = writeRawType == null ? readRawType : writeRawType;
+    JsonTypeInfo resolvedTypeInfo =
+        codecAnnotation == null
+            ? null
+            : typeResolver.getTypeInfo(codecType, codecRawType, codecAnnotation);
     if (writeRawType != null) {
       writeTypeInfo =
           resolvedTypeInfo == null

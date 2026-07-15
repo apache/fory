@@ -84,14 +84,19 @@ other builder options retain their normal behavior. Applications can create diff
 `ForyJson` instances at runtime and do not need build-time initialization or reflection
 configuration.
 
-Type, field, effective ordinary getter, inherited, and nested type-use `@JsonCodec` annotations are
-supported. For a field or getter, the declaration is checked first and the root annotated type is
-used only when the declaration is absent. Nested generic arguments and array components remain
-fully supported in a native image.
+Type, field, effective ordinary getter, setter value parameter, and `JsonCreator` parameter
+`@JsonCodec` annotations are supported. The Feature registers every selected complete-value,
+element, content, Map-key, and Map-value codec constructor. This is the same annotation model used
+on the JVM and Android.
 
-`JsonAnyProperty` and `JsonAnyGetter` flatten their Map and have no complete root value, so a field
-or method declaration codec and a root type-use codec are invalid there. A nested codec on the Map
-value remains supported.
+`JsonAnyProperty` and `JsonAnyGetter` flatten their Map into the enclosing object. Use
+`@JsonCodec(valueCodec = ...)` on that field or getter to customize each dynamic value. A second
+`JsonAnySetter` parameter may use the normal configuration for its own value shape.
+
+Child codecs act on one direct level. `elementCodec` supports `Collection`, Java arrays, and
+`AtomicReferenceArray`; `contentCodec` supports `Optional` and `AtomicReference`; `keyCodec` and
+`valueCodec` support Map keys and values. A complete `value` codec cannot be combined with a child
+codec.
 
 An annotation codec must have the same public no-argument constructor required on the JVM. In a
 named module, export or open its package to `org.apache.fory.json`. A codec instance supplied

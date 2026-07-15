@@ -22,13 +22,9 @@ package org.apache.fory.annotation.processing;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.io.IOException;
-import java.lang.reflect.Member;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,22 +40,22 @@ import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
-import org.apache.fory.json.meta.GeneratedJsonCodecMeta;
-import org.apache.fory.json.meta.JsonTypeUse;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class JsonTypeProcessorTest {
+  private static final String RULE_PREFIX = "META-INF/proguard/fory-json-";
+
   @Test
-  public void testUnannotatedType() throws Exception {
+  public void unannotatedType() throws Exception {
     CompilationResult result =
         compile("test.Plain", "package test; public class Plain { int id; }");
     assertTrue(result.success, result.diagnostics());
-    assertFalse(result.hasGeneratedSource("test/Plain_ForyJsonCodecMeta.java"));
-    assertFalse(result.hasGeneratedResource("META-INF/proguard/fory-json-test.Plain.pro"));
+    assertFalse(result.hasGeneratedResource(RULE_PREFIX + "test.Plain.pro"));
   }
 
   @Test
-  public void testPlainJsonType() throws Exception {
+  public void jsonTypeRules() throws Exception {
     CompilationResult result =
         compile(
             "test.Plain",
@@ -72,94 +68,179 @@ public class JsonTypeProcessorTest {
                 + "  public int getId() { return id; }\n"
                 + "}\n");
     assertTrue(result.success, result.diagnostics());
-    assertFalse(result.hasGeneratedSource("test/Plain_ForyJsonCodecMeta.java"));
-    String rules = result.generatedResource("META-INF/proguard/fory-json-test.Plain.pro");
+    String rules = result.generatedResource(RULE_PREFIX + "test.Plain.pro");
     assertTrue(rules.contains("-keepattributes Signature,RuntimeVisibleAnnotations"), rules);
+    assertTrue(rules.contains("RuntimeVisibleParameterAnnotations"), rules);
+    assertTrue(rules.contains("-keepattributes AnnotationDefault"), rules);
     assertTrue(rules.contains("-keepattributes MethodParameters"), rules);
     assertTrue(rules.contains("int id;"), rules);
     assertTrue(rules.contains("int getId();"), rules);
     assertTrue(rules.contains("<init>();"), rules);
     assertTrue(rules.contains("<init>(int);"), rules);
-    assertFalse(rules.contains("_ForyJsonCodecMeta implements"), rules);
   }
 
   @Test
-  public void testNestedMetadata() throws Exception {
-    CompilationResult result = compile("test.Outer_Name", nestedSource());
+  public void codecMemberRules() throws Exception {
+    CompilationResult result = compile("test.CodecModel", codecMemberSource());
     assertTrue(result.success, result.diagnostics());
-    String source =
-        result.generatedSource("test/Outer_Name$Model_With_Underscore_ForyJsonCodecMeta.java");
-    assertTrue(source.contains("implements GeneratedJsonCodecMeta"), source);
-    assertTrue(
-        source.contains("private static final Map<Member, JsonTypeUse[]> TYPE_USES"), source);
-    assertTrue(source.contains("JsonTypeUse.ARRAY_COMPONENT"), source);
-    assertTrue(source.contains("getDeclaredField(\"root\")"), source);
-    assertTrue(source.contains("getDeclaredField(\"values\")"), source);
-    assertTrue(source.contains("getDeclaredMethod(\"getInherited\""), source);
-    assertTrue(source.contains("getDeclaredMethod(\"getInterfaceValue\""), source);
-    assertFalse(source.contains("getSuppressedValues"), source);
-    assertFalse(source.contains("SuppressedCodec"), source);
-    assertTrue(source.contains("test.Outer_Name.Codec.class"), source);
-    assertFalse(source.contains("classForName("), source);
-    assertFalse(source.contains("import java.lang.reflect.*"), source);
-    assertFalse(source.contains("import java.util.*"), source);
-
-    try (URLClassLoader loader = result.classLoader()) {
-      Class<?> metaType =
-          loader.loadClass("test.Outer_Name$Model_With_Underscore_ForyJsonCodecMeta");
-      GeneratedJsonCodecMeta meta =
-          metaType.asSubclass(GeneratedJsonCodecMeta.class).getConstructor().newInstance();
-      Map<Member, JsonTypeUse[]> first = meta.typeUses();
-      Map<Member, JsonTypeUse[]> second = meta.typeUses();
-      assertTrue(first == second);
-      assertTrue(first.size() >= 3, first.toString());
-      JsonTypeUse root = null;
-      for (Map.Entry<Member, JsonTypeUse[]> entry : first.entrySet()) {
-        if (entry.getKey().getName().equals("root")) {
-          root = entry.getValue()[0];
-        }
-      }
-      assertNotNull(root);
-      assertTrue(root.hasCodec());
-      assertThrows(UnsupportedOperationException.class, () -> first.clear());
+    String rules = result.generatedResource(RULE_PREFIX + "test.CodecModel.pro");
+    for (String codec :
+        Arrays.asList(
+            "RootCodec",
+            "CollectionElementCodec",
+            "ArrayElementCodec",
+            "AtomicArrayElementCodec",
+            "ContentCodec",
+            "KeyCodec",
+            "MapValueCodec",
+            "GetterCodec",
+            "SetterCodec",
+            "CreatorCodec",
+            "AnyGetterCodec",
+            "AnySetterCodec")) {
+      assertTrue(rules.contains("class test.CodecModel$" + codec + " { public <init>(); }"), rules);
     }
-
-    String rules =
-        result.generatedResource(
-            "META-INF/proguard/fory-json-test.Outer_Name$Model_With_Underscore.pro");
-    assertTrue(
-        rules.contains(
-            "-keep,allowoptimization class test.Outer_Name$Model_With_Underscore_ForyJsonCodecMeta"),
-        rules);
-    assertTrue(rules.contains("-keepattributes InnerClasses,EnclosingMethod"), rules);
-    assertTrue(rules.contains("allowobfuscation class test.Outer_Name$Codec"), rules);
-    assertFalse(rules.contains("SuppressedCodec"), rules);
+    assertFalse(rules.contains("JsonCodec$NoJsonValueCodec { public <init>(); }"), rules);
+    assertFalse(rules.contains("JsonCodec$NoMapKeyCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("java.lang.String getValue();"), rules);
+    assertTrue(rules.contains("void setValue(java.lang.String);"), rules);
+    assertTrue(rules.contains("<init>(java.lang.String);"), rules);
+    assertTrue(rules.contains("void putExtra(java.lang.String,java.lang.Object);"), rules);
+    assertTrue(rules.contains("class java.util.ArrayList { public <init>(); }"), rules);
+    assertTrue(rules.contains("class java.util.HashMap { public <init>(); }"), rules);
   }
 
   @Test
-  public void testWildcardPath() throws Exception {
+  public void hierarchyRules() throws Exception {
+    CompilationResult result = compile("test.Hierarchy", hierarchySource());
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.Hierarchy.pro");
+    assertTrue(rules.contains("class test.Hierarchy$DeclarationCodec"), rules);
+    assertTrue(rules.contains("class test.Hierarchy$InheritedCodec"), rules);
+    assertTrue(rules.contains("class test.Hierarchy$InterfaceCodec"), rules);
+    assertFalse(rules.contains("class test.Hierarchy$SuppressedCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("class test.Base"), rules);
+    assertTrue(rules.contains("class test.Contract"), rules);
+  }
+
+  @Test
+  public void typeDeclarationCodecRules() throws Exception {
     CompilationResult result =
         compile(
-            "test.WildcardModel",
+            "test.DeclarationModel",
             "package test;\n"
-                + "import java.util.*;\n"
+                + "import java.util.List;\n"
                 + "import org.apache.fory.json.annotation.*;\n"
-                + "@JsonType public class WildcardModel {\n"
-                + "  public List<? extends @JsonCodec(Codec.class) String> values;\n"
-                + codecSource()
+                + "@JsonCodec(DeclarationModel.ShadowedCodec.class) interface BaseContract {}\n"
+                + "@JsonCodec(DeclarationModel.InheritedCodec.class)\n"
+                + "interface ValueContract extends BaseContract {}\n"
+                + "@JsonCodec(DeclarationModel.DirectCodec.class)\n"
+                + "class DirectValue implements ValueContract {}\n"
+                + "class InheritedValue implements ValueContract {}\n"
+                + "@JsonCodec(DeclarationModel.ParameterCodec.class) class ParameterValue {}\n"
+                + "@JsonType public class DeclarationModel {\n"
+                + "  public DirectValue direct;\n"
+                + "  public InheritedValue inherited;\n"
+                + "  public List<DirectValue> nested;\n"
+                + "  @JsonCreator public DeclarationModel(\n"
+                + "      @JsonProperty(\"parameter\") ParameterValue parameter) {}\n"
+                + valueCodecs("DirectCodec", "InheritedCodec", "ParameterCodec", "ShadowedCodec")
                 + "}\n");
     assertTrue(result.success, result.diagnostics());
-    String source = result.generatedSource("test/WildcardModel_ForyJsonCodecMeta.java");
-    assertTrue(source.contains("JsonTypeUse.WILDCARD_UPPER_BOUND"), source);
-    try (URLClassLoader loader = result.classLoader()) {
-      Class<?> metaType = loader.loadClass("test.WildcardModel_ForyJsonCodecMeta");
-      assertThrows(
-          ExceptionInInitializerError.class, () -> metaType.getConstructor().newInstance());
-    }
+    String rules = result.generatedResource(RULE_PREFIX + "test.DeclarationModel.pro");
+    assertTrue(
+        rules.contains("class test.DeclarationModel$DirectCodec { public <init>(); }"), rules);
+    assertTrue(
+        rules.contains("class test.DeclarationModel$InheritedCodec { public <init>(); }"), rules);
+    assertTrue(
+        rules.contains("class test.DeclarationModel$ParameterCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("class test.DirectValue"), rules);
+    assertTrue(rules.contains("class test.ValueContract"), rules);
+    assertTrue(rules.contains("class test.ParameterValue"), rules);
+    assertFalse(
+        rules.contains("class test.DeclarationModel$ShadowedCodec { public <init>(); }"), rules);
+    assertFalse(rules.contains("class test.BaseContract"), rules);
   }
 
   @Test
-  public void testSubtypeAndFallback() throws Exception {
+  public void genericMemberRules() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.GenericRuleModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonCodec(GenericRuleModel.FieldCodec.class) class FieldValue {}\n"
+                + "@JsonCodec(GenericRuleModel.GetterCodec.class) class GetterValue {}\n"
+                + "@JsonCodec(GenericRuleModel.SetterCodec.class) class SetterValue {}\n"
+                + "class GenericBase<F, G, S> {\n"
+                + "  public F field;\n"
+                + "  public G getGetter() { return null; }\n"
+                + "  public void setSetter(S value) {}\n"
+                + "}\n"
+                + "@JsonType public class GenericRuleModel\n"
+                + "    extends GenericBase<FieldValue, GetterValue, SetterValue> {\n"
+                + "  public GenericRuleModel() {}\n"
+                + valueCodecs("FieldCodec", "GetterCodec", "SetterCodec")
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.GenericRuleModel.pro");
+    for (String codec : Arrays.asList("FieldCodec", "GetterCodec", "SetterCodec")) {
+      assertTrue(
+          rules.contains("class test.GenericRuleModel$" + codec + " { public <init>(); }"), rules);
+    }
+    assertTrue(rules.contains("class test.FieldValue"), rules);
+    assertTrue(rules.contains("class test.GetterValue"), rules);
+    assertTrue(rules.contains("class test.SetterValue"), rules);
+  }
+
+  @Test
+  public void validationRules() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.ValidationModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class ValidationBase {\n"
+                + "  @JsonProperty private String getHidden() { return null; }\n"
+                + "}\n"
+                + "@JsonType public class ValidationModel extends ValidationBase {\n"
+                + "  @JsonCodec(InvalidFieldCodec.class) private static String invalid;\n"
+                + "  public void unrelated(@JsonCodec(InvalidParameterCodec.class) String value) {}\n"
+                + "  public ValidationModel() {}\n"
+                + valueCodecs("InvalidFieldCodec", "InvalidParameterCodec")
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.ValidationModel.pro");
+    assertTrue(rules.contains("java.lang.String getHidden();"), rules);
+    assertTrue(rules.contains("java.lang.String invalid;"), rules);
+    assertTrue(rules.contains("void unrelated(java.lang.String);"), rules);
+    assertTrue(rules.contains("class test.ValidationModel$InvalidFieldCodec"), rules);
+    assertTrue(rules.contains("class test.ValidationModel$InvalidParameterCodec"), rules);
+  }
+
+  @Test
+  public void recordRules() throws Exception {
+    assumeRecordSupport();
+    CompilationResult result =
+        compile(
+            "test.CodecRecord",
+            "package test;\n"
+                + "import java.util.List;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public record CodecRecord(\n"
+                + "    @JsonCodec(elementCodec = ElementCodec.class) List<String> values) {\n"
+                + valueCodec("ElementCodec")
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.CodecRecord.pro");
+    assertTrue(rules.contains("java.util.List values;"), rules);
+    assertTrue(rules.contains("java.util.List values();"), rules);
+    assertTrue(rules.contains("<init>(java.util.List);"), rules);
+    assertTrue(rules.contains("class test.CodecRecord$ElementCodec { public <init>(); }"), rules);
+  }
+
+  @Test
+  public void subtypeRules() throws Exception {
     CompilationResult result =
         compile(
             "test.Base",
@@ -171,102 +252,29 @@ public class JsonTypeProcessorTest {
                 + "}) public abstract class Base {}\n"
                 + "class Child extends Base { public int value; }\n");
     assertTrue(result.success, result.diagnostics());
-    assertTrue(result.hasGeneratedResource("META-INF/proguard/fory-json-test.Base.pro"));
-    assertTrue(result.hasGeneratedResource("META-INF/proguard/fory-json-test.Child.pro"));
-    String rules = result.generatedResource("META-INF/proguard/fory-json-test.Base.pro");
+    assertTrue(result.hasGeneratedResource(RULE_PREFIX + "test.Base.pro"));
+    assertTrue(result.hasGeneratedResource(RULE_PREFIX + "test.Child.pro"));
+    String rules = result.generatedResource(RULE_PREFIX + "test.Base.pro");
     assertTrue(rules.contains("-keep,allowoptimization class external.HiddenChild"), rules);
   }
 
   @Test
-  public void testDeclarationCodecRules() throws Exception {
+  public void enumRules() throws Exception {
     CompilationResult result =
         compile(
-            "test.DeclarationModel",
+            "test.Status",
             "package test;\n"
-                + "import org.apache.fory.json.annotation.*;\n"
-                + "@JsonCodec(DeclarationModel.Codec.class) interface Contract {}\n"
-                + "@JsonType public class DeclarationModel implements Contract {\n"
-                + "  private String value;\n"
-                + "  @JsonCodec(Codec.class) public String getValue() { return value; }\n"
-                + codecSource()
-                + "}\n");
+                + "import org.apache.fory.json.annotation.JsonType;\n"
+                + "@JsonType public enum Status { READY, DONE }\n");
     assertTrue(result.success, result.diagnostics());
-    assertFalse(result.hasGeneratedSource("test/DeclarationModel_ForyJsonCodecMeta.java"));
-    String rules =
-        result.generatedResource("META-INF/proguard/fory-json-test.DeclarationModel.pro");
-    assertTrue(rules.contains("allowobfuscation class test.DeclarationModel$Codec"), rules);
-    assertTrue(rules.contains("public <init>();"), rules);
-    assertTrue(rules.contains("-keepattributes InnerClasses,EnclosingMethod"), rules);
+    String rules = result.generatedResource(RULE_PREFIX + "test.Status.pro");
+    assertTrue(rules.contains("test.Status READY;"), rules);
+    assertTrue(rules.contains("test.Status DONE;"), rules);
+    assertFalse(rules.contains("$VALUES"), rules);
   }
 
   @Test
-  public void testInaccessibleCodec() throws Exception {
-    CompilationResult result =
-        compile(
-            "test.HiddenCodecModel",
-            "package test;\n"
-                + "import java.util.*;\n"
-                + "import org.apache.fory.json.annotation.*;\n"
-                + "@JsonType public class HiddenCodecModel {\n"
-                + "  public List<@JsonCodec(Codec.class) String> values;\n"
-                + codecSource()
-                    .replace("public static final class Codec", "private static final class Codec")
-                + "}\n");
-    assertFalse(result.success, result.diagnostics());
-    assertTrue(result.diagnostics().contains("is not accessible from generated metadata"));
-  }
-
-  @Test
-  public void testInaccessibleMember() throws Exception {
-    CompilationResult result =
-        compile(
-            "test.HiddenMemberModel",
-            "package test;\n"
-                + "import org.apache.fory.json.annotation.*;\n"
-                + "public class HiddenMemberModel {\n"
-                + "  private static final class Hidden {}\n"
-                + "  @JsonType public static class Model {\n"
-                + "    public void setValue(@JsonCodec(Codec.class) Hidden value) {}\n"
-                + "  }\n"
-                + codecSource()
-                + "}\n");
-    assertTrue(result.success, result.diagnostics());
-    String source = result.generatedSource("test/HiddenMemberModel$Model_ForyJsonCodecMeta.java");
-    assertTrue(source.contains("classForName(\"test.HiddenMemberModel$Hidden\")"), source);
-    assertTrue(source.contains("test.HiddenMemberModel.Codec.class"), source);
-    String rules =
-        result.generatedResource("META-INF/proguard/fory-json-test.HiddenMemberModel$Model.pro");
-    assertTrue(
-        rules.contains("-keep,allowoptimization class test.HiddenMemberModel$Hidden"), rules);
-  }
-
-  @Test
-  public void testUnrelatedAnnotation() throws Exception {
-    Map<String, String> sources = new LinkedHashMap<>();
-    sources.put(
-        "test.other.JsonCodec",
-        "package test.other;\n"
-            + "import java.lang.annotation.*;\n"
-            + "@Target(ElementType.TYPE_USE) @Retention(RetentionPolicy.RUNTIME)\n"
-            + "public @interface JsonCodec {}\n");
-    sources.put(
-        "test.CollisionModel",
-        "package test;\n"
-            + "import java.util.List;\n"
-            + "import org.apache.fory.json.annotation.JsonType;\n"
-            + "import test.other.JsonCodec;\n"
-            + "@JsonType public class CollisionModel {\n"
-            + "  public List<@JsonCodec String> values;\n"
-            + "}\n");
-    CompilationResult result = compile(sources);
-    assertTrue(result.success, result.diagnostics());
-    assertFalse(result.hasGeneratedSource("test/CollisionModel_ForyJsonCodecMeta.java"));
-    String rules = result.generatedResource("META-INF/proguard/fory-json-test.CollisionModel.pro");
-    assertFalse(rules.contains("test.other.JsonCodec"), rules);
-  }
-
-  @Test
-  public void testIndependentDispatch() throws Exception {
+  public void independentProcessors() throws Exception {
     CompilationResult result =
         compile(
             "test.Both",
@@ -278,96 +286,111 @@ public class JsonTypeProcessorTest {
     assertTrue(result.hasGeneratedSource("test/Both_ForySerializer.java"));
     assertTrue(
         result.hasGeneratedResource("META-INF/proguard/fory-static-generated-test.Both.pro"));
-    assertTrue(result.hasGeneratedResource("META-INF/proguard/fory-json-test.Both.pro"));
+    assertTrue(result.hasGeneratedResource(RULE_PREFIX + "test.Both.pro"));
   }
 
   @Test
-  public void testEnumConstants() throws Exception {
-    CompilationResult result =
-        compile(
-            "test.Status",
-            "package test;\n"
-                + "import org.apache.fory.json.annotation.JsonType;\n"
-                + "@JsonType public enum Status { READY, DONE }\n");
-    assertTrue(result.success, result.diagnostics());
-    String rules = result.generatedResource("META-INF/proguard/fory-json-test.Status.pro");
-    assertTrue(rules.contains("test.Status READY;"), rules);
-    assertTrue(rules.contains("test.Status DONE;"), rules);
-    assertFalse(rules.contains("$VALUES"), rules);
-  }
-
-  @Test
-  public void testValidationMemberRules() throws Exception {
-    CompilationResult result =
-        compile(
-            "test.ValidationModel",
-            "package test;\n"
-                + "import org.apache.fory.json.annotation.*;\n"
-                + "class ValidationBase {\n"
-                + "  @JsonProperty private String getHidden() { return null; }\n"
-                + "}\n"
-                + "@JsonType public class ValidationModel extends ValidationBase {\n"
-                + "  public ValidationModel() {}\n"
-                + "}\n");
-    assertTrue(result.success, result.diagnostics());
-    String rules = result.generatedResource("META-INF/proguard/fory-json-test.ValidationModel.pro");
-    assertTrue(rules.contains("class test.ValidationBase"), rules);
-    assertTrue(rules.contains("java.lang.String getHidden();"), rules);
-  }
-
-  @Test
-  public void testDeterministicOutput() throws Exception {
-    CompilationResult first = compile("test.Outer_Name", nestedSource());
-    CompilationResult second = compile("test.Outer_Name", nestedSource());
+  public void deterministicRules() throws Exception {
+    CompilationResult first = compile("test.CodecModel", codecMemberSource());
+    CompilationResult second = compile("test.CodecModel", codecMemberSource());
     assertTrue(first.success, first.diagnostics());
     assertTrue(second.success, second.diagnostics());
-    String metaPath = "test/Outer_Name$Model_With_Underscore_ForyJsonCodecMeta.java";
-    String rulesPath = "META-INF/proguard/fory-json-test.Outer_Name$Model_With_Underscore.pro";
-    assertEquals(first.generatedSource(metaPath), second.generatedSource(metaPath));
-    assertEquals(first.generatedResource(rulesPath), second.generatedResource(rulesPath));
+    String path = RULE_PREFIX + "test.CodecModel.pro";
+    assertEquals(first.generatedResource(path), second.generatedResource(path));
   }
 
-  private static String nestedSource() {
+  private static String codecMemberSource() {
     return "package test;\n"
         + "import java.util.*;\n"
+        + "import java.util.concurrent.atomic.AtomicReferenceArray;\n"
         + "import org.apache.fory.json.annotation.*;\n"
-        + "public class Outer_Name {\n"
-        + "  public static class CodecBase {\n"
-        + "    public java.lang.@JsonCodec(Codec.class) String root;\n"
-        + "    public List<@JsonCodec(Codec.class) String[]> values;\n"
-        + "    public List<@JsonCodec(Codec.class) String> getInherited() { return null; }\n"
-        + "  }\n"
-        + "  public interface Contract {\n"
-        + "    default List<@JsonCodec(Codec.class) String> getInterfaceValue() { return null; }\n"
-        + "  }\n"
-        + "  public interface Suppressed {\n"
-        + "    List<@JsonCodec(SuppressedCodec.class) String> getSuppressedValues();\n"
-        + "  }\n"
-        + "  @JsonType public static class Model_With_Underscore extends CodecBase implements Contract, Suppressed {\n"
-        + "    public Model_With_Underscore() {}\n"
-        + "    public List<String> getSuppressedValues() { return null; }\n"
-        + "  }\n"
-        + codecSource()
-        + codecSource("SuppressedCodec")
+        + "@JsonType public class CodecModel {\n"
+        + "  @JsonCodec(RootCodec.class) public String root;\n"
+        + "  @JsonCodec(elementCodec = CollectionElementCodec.class) public List<String> list;\n"
+        + "  @JsonCodec(elementCodec = ArrayElementCodec.class) public String[] array;\n"
+        + "  @JsonCodec(elementCodec = AtomicArrayElementCodec.class)\n"
+        + "  public AtomicReferenceArray<String> atomicArray;\n"
+        + "  @JsonCodec(contentCodec = ContentCodec.class) public Optional<String> optional;\n"
+        + "  @JsonCodec(keyCodec = KeyCodec.class, valueCodec = MapValueCodec.class)\n"
+        + "  public Map<String, String> map;\n"
+        + "  public ArrayList<String> concrete;\n"
+        + "  public List<HashMap<String, String>> nestedConcrete;\n"
+        + "  private String value;\n"
+        + "  @JsonCodec(GetterCodec.class) public String getValue() { return value; }\n"
+        + "  public void setValue(@JsonCodec(SetterCodec.class) String value) { this.value = value; }\n"
+        + "  @JsonAnyGetter @JsonCodec(valueCodec = AnyGetterCodec.class)\n"
+        + "  public Map<String, Object> getExtra() { return null; }\n"
+        + "  @JsonAnySetter public void putExtra(\n"
+        + "      String name, @JsonCodec(AnySetterCodec.class) Object value) {}\n"
+        + "  @JsonCreator public CodecModel(\n"
+        + "      @JsonProperty(\"created\") @JsonCodec(CreatorCodec.class) String created) {}\n"
+        + valueCodecs(
+            "RootCodec",
+            "CollectionElementCodec",
+            "ArrayElementCodec",
+            "AtomicArrayElementCodec",
+            "ContentCodec",
+            "MapValueCodec",
+            "GetterCodec",
+            "SetterCodec",
+            "CreatorCodec",
+            "AnyGetterCodec",
+            "AnySetterCodec")
+        + mapKeyCodec("KeyCodec")
         + "}\n";
   }
 
-  private static String codecSource() {
-    return codecSource("Codec");
+  private static String hierarchySource() {
+    return "package test;\n"
+        + "import org.apache.fory.json.annotation.*;\n"
+        + "@JsonCodec(Hierarchy.DeclarationCodec.class) interface Contract {}\n"
+        + "class Base {\n"
+        + "  @JsonCodec(Hierarchy.InheritedCodec.class) public String getInherited() { return null; }\n"
+        + "  @JsonCodec(Hierarchy.SuppressedCodec.class) public String getSuppressed() { return null; }\n"
+        + "}\n"
+        + "interface Extra {\n"
+        + "  @JsonCodec(Hierarchy.InterfaceCodec.class)\n"
+        + "  default String getInterfaceValue() { return null; }\n"
+        + "}\n"
+        + "@JsonType public class Hierarchy extends Base implements Contract, Extra {\n"
+        + "  public Hierarchy() {}\n"
+        + "  @Override public String getSuppressed() { return null; }\n"
+        + valueCodecs("DeclarationCodec", "InheritedCodec", "SuppressedCodec", "InterfaceCodec")
+        + "}\n";
   }
 
-  private static String codecSource(String name) {
+  private static String valueCodecs(String... names) {
+    StringBuilder builder = new StringBuilder();
+    for (String name : names) {
+      builder.append(valueCodec(name));
+    }
+    return builder.toString();
+  }
+
+  private static String valueCodec(String name) {
     return "  public static final class "
         + name
-        + " implements org.apache.fory.json.codec.JsonValueCodec<String> {\n"
+        + " implements org.apache.fory.json.codec.JsonValueCodec<Object> {\n"
         + "    public "
         + name
         + "() {}\n"
-        + "    public void writeString(org.apache.fory.json.writer.StringJsonWriter w, String v) {}\n"
-        + "    public void writeUtf8(org.apache.fory.json.writer.Utf8JsonWriter w, String v) {}\n"
-        + "    public String readLatin1(org.apache.fory.json.reader.Latin1JsonReader r) { return null; }\n"
-        + "    public String readUtf16(org.apache.fory.json.reader.Utf16JsonReader r) { return null; }\n"
-        + "    public String readUtf8(org.apache.fory.json.reader.Utf8JsonReader r) { return null; }\n"
+        + "    public void writeString(org.apache.fory.json.writer.StringJsonWriter w, Object v) {}\n"
+        + "    public void writeUtf8(org.apache.fory.json.writer.Utf8JsonWriter w, Object v) {}\n"
+        + "    public Object readLatin1(org.apache.fory.json.reader.Latin1JsonReader r) { return null; }\n"
+        + "    public Object readUtf16(org.apache.fory.json.reader.Utf16JsonReader r) { return null; }\n"
+        + "    public Object readUtf8(org.apache.fory.json.reader.Utf8JsonReader r) { return null; }\n"
+        + "  }\n";
+  }
+
+  private static String mapKeyCodec(String name) {
+    return "  public static final class "
+        + name
+        + " implements org.apache.fory.json.codec.MapKeyCodec {\n"
+        + "    public "
+        + name
+        + "() {}\n"
+        + "    public String toName(Object key) { return key.toString(); }\n"
+        + "    public Object fromName(String name) { return name; }\n"
         + "  }\n";
   }
 
@@ -415,6 +438,20 @@ public class JsonTypeProcessorTest {
     }
   }
 
+  private static void assumeRecordSupport() {
+    String version = System.getProperty("java.specification.version");
+    if (version.startsWith("1.")) {
+      version = version.substring(2);
+    }
+    int dotIndex = version.indexOf('.');
+    if (dotIndex >= 0) {
+      version = version.substring(0, dotIndex);
+    }
+    if (Integer.parseInt(version) < 16) {
+      throw new SkipException("Record source tests require JDK 16 or newer");
+    }
+  }
+
   private static final class CompilationResult {
     final Path classRoot;
     final Path generatedRoot;
@@ -432,22 +469,12 @@ public class JsonTypeProcessorTest {
       this.diagnostics = new ArrayList<>(diagnostics);
     }
 
-    URLClassLoader classLoader() throws IOException {
-      URL[] urls = {classRoot.toUri().toURL()};
-      return new URLClassLoader(urls, JsonTypeProcessorTest.class.getClassLoader());
-    }
-
     boolean hasGeneratedSource(String relativePath) {
       return Files.exists(generatedRoot.resolve(relativePath));
     }
 
     boolean hasGeneratedResource(String relativePath) {
       return Files.exists(classRoot.resolve(relativePath));
-    }
-
-    String generatedSource(String relativePath) throws IOException {
-      return new String(
-          Files.readAllBytes(generatedRoot.resolve(relativePath)), StandardCharsets.UTF_8);
     }
 
     String generatedResource(String relativePath) throws IOException {

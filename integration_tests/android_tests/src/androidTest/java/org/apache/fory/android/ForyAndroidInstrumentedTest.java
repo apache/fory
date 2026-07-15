@@ -51,11 +51,6 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
-  public void nestedJsonCodecNeedsJsonType() {
-    AndroidJsonScenarios.nestedCodecNeedsJsonType();
-  }
-
-  @Test
   public void generatedJsonCodecs() {
     AndroidJsonScenarios.generatedCodecs();
   }

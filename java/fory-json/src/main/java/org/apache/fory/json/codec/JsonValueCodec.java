@@ -28,8 +28,7 @@ package org.apache.fory.json.codec;
  * omission belongs to object-field handling, while primitive null rejection belongs to the
  * primitive codec or primitive field owner.
  *
- * <p>A value codec never handles map keys. Map keys are encoded and decoded by {@link
- * MapCodec.MapKeyCodec}.
+ * <p>A value codec never handles map keys. Map keys are encoded and decoded by {@link MapKeyCodec}.
  *
  * <p>Built-in and user-registered codecs implement this complete interface because one codec owns
  * the Java type's semantics for every representation. Generated object specializations implement

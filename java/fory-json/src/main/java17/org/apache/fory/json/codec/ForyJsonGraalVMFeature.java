@@ -19,11 +19,6 @@
 
 package org.apache.fory.json.codec;
 
-import java.lang.reflect.AnnotatedArrayType;
-import java.lang.reflect.AnnotatedParameterizedType;
-import java.lang.reflect.AnnotatedType;
-import java.lang.reflect.AnnotatedTypeVariable;
-import java.lang.reflect.AnnotatedWildcardType;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
@@ -31,7 +26,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
@@ -44,8 +38,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.json.ForyJson;
-import org.apache.fory.json.annotation.JsonAnyGetter;
-import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonSubTypes;
@@ -133,11 +125,7 @@ final class ForyJsonGraalVMFeature implements Feature {
           if (!current.isRecord() && Runtime.version().feature() <= 24) {
             access.registerAsUnsafeAccessed(field);
           }
-          if (field.isAnnotationPresent(JsonAnyProperty.class)) {
-            registerNestedType(field.getAnnotatedType());
-          } else {
-            registerMemberType(field.getAnnotation(JsonCodec.class), field.getAnnotatedType());
-          }
+          registerCodecs(field.getDeclaredAnnotation(JsonCodec.class));
           registerResolvedType(ownerType.resolveType(field.getGenericType()).getType());
         }
       }
@@ -148,36 +136,25 @@ final class ForyJsonGraalVMFeature implements Feature {
           RuntimeReflection.register(method);
         }
         if (ObjectCodecBuilder.usesJsonReturn(method)) {
-          if (method.isAnnotationPresent(JsonAnyGetter.class)) {
-            registerNestedType(method.getAnnotatedReturnType());
-          } else {
-            registerMemberType(
-                method.getAnnotation(JsonCodec.class), method.getAnnotatedReturnType());
-          }
+          registerCodecs(method.getDeclaredAnnotation(JsonCodec.class));
           registerResolvedType(ownerType.resolveType(method.getGenericReturnType()).getType());
         }
         if (ObjectCodecBuilder.usesJsonParameters(method)) {
-          registerParameterTypes(method.getParameters());
+          registerParameterCodecs(method.getParameters());
           registerResolvedParameterTypes(ownerType, method.getParameters());
         }
       }
     }
     for (Constructor<?> constructor : type.getDeclaredConstructors()) {
       if (constructor.isAnnotationPresent(JsonCreator.class)) {
-        registerParameterTypes(constructor.getParameters());
+        registerParameterCodecs(constructor.getParameters());
         registerResolvedParameterTypes(ownerType, constructor.getParameters());
       }
     }
     for (Method method : type.getDeclaredMethods()) {
       if (method.isAnnotationPresent(JsonCreator.class)) {
-        registerParameterTypes(method.getParameters());
+        registerParameterCodecs(method.getParameters());
         registerResolvedParameterTypes(ownerType, method.getParameters());
-      }
-    }
-    if (record) {
-      for (RecordComponent component : type.getRecordComponents()) {
-        registerAnnotatedType(component.getAnnotatedType());
-        registerResolvedType(ownerType.resolveType(component.getGenericType()).getType());
       }
     }
   }
@@ -190,7 +167,7 @@ final class ForyJsonGraalVMFeature implements Feature {
     JsonCodec annotation = type.getDeclaredAnnotation(JsonCodec.class);
     if (annotation != null) {
       RuntimeReflection.register(type);
-      registerCodec(annotation.value());
+      registerCodecs(annotation);
       changed = true;
     }
     changed |= registerDeclarations(type.getSuperclass());
@@ -200,9 +177,9 @@ final class ForyJsonGraalVMFeature implements Feature {
     return changed;
   }
 
-  private void registerParameterTypes(Parameter[] parameters) {
+  private void registerParameterCodecs(Parameter[] parameters) {
     for (Parameter parameter : parameters) {
-      registerAnnotatedType(parameter.getAnnotatedType());
+      registerCodecs(parameter.getDeclaredAnnotation(JsonCodec.class));
     }
   }
 
@@ -249,65 +226,22 @@ final class ForyJsonGraalVMFeature implements Feature {
     }
   }
 
-  private void registerAnnotatedType(AnnotatedType type) {
-    Set<TypeVariable<?>> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
-    registerAnnotatedType(type, true, visiting);
-  }
-
-  private void registerMemberType(JsonCodec declaration, AnnotatedType type) {
-    if (declaration != null) {
-      registerCodec(declaration.value());
-    }
-    Set<TypeVariable<?>> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
-    registerAnnotatedType(type, declaration == null, visiting);
-  }
-
-  private void registerNestedType(AnnotatedType type) {
-    Set<TypeVariable<?>> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
-    registerAnnotatedType(type, false, visiting);
-  }
-
-  private void registerAnnotatedType(
-      AnnotatedType type, boolean registerRootCodec, Set<TypeVariable<?>> visiting) {
-    if (type == null) {
+  private void registerCodecs(JsonCodec annotation) {
+    if (annotation == null) {
       return;
     }
-    registerContainer(type.getType());
-    if (registerRootCodec) {
-      JsonCodec annotation = type.getAnnotation(JsonCodec.class);
-      if (annotation != null) {
-        registerCodec(annotation.value());
-      }
-    }
-    if (type instanceof AnnotatedParameterizedType) {
-      AnnotatedParameterizedType parameterizedType = (AnnotatedParameterizedType) type;
-      registerAnnotatedType(parameterizedType.getAnnotatedOwnerType(), true, visiting);
-      for (AnnotatedType argument : parameterizedType.getAnnotatedActualTypeArguments()) {
-        registerAnnotatedType(argument, true, visiting);
-      }
-    } else if (type instanceof AnnotatedArrayType) {
-      registerAnnotatedType(
-          ((AnnotatedArrayType) type).getAnnotatedGenericComponentType(), true, visiting);
-    } else if (type instanceof AnnotatedWildcardType) {
-      AnnotatedWildcardType wildcardType = (AnnotatedWildcardType) type;
-      registerAnnotatedTypes(wildcardType.getAnnotatedUpperBounds(), visiting);
-      registerAnnotatedTypes(wildcardType.getAnnotatedLowerBounds(), visiting);
-    } else if (type instanceof AnnotatedTypeVariable) {
-      TypeVariable<?> variable = (TypeVariable<?>) type.getType();
-      if (visiting.add(variable)) {
-        registerAnnotatedTypes(((AnnotatedTypeVariable) type).getAnnotatedBounds(), visiting);
-        visiting.remove(variable);
-      }
-    }
+    registerCodec(annotation.value());
+    registerCodec(annotation.elementCodec());
+    registerCodec(annotation.contentCodec());
+    registerCodec(annotation.keyCodec());
+    registerCodec(annotation.valueCodec());
   }
 
-  private void registerAnnotatedTypes(AnnotatedType[] types, Set<TypeVariable<?>> visiting) {
-    for (AnnotatedType type : types) {
-      registerAnnotatedType(type, true, visiting);
+  private void registerCodec(Class<?> codecClass) {
+    if (codecClass == JsonCodec.NoJsonValueCodec.class
+        || codecClass == JsonCodec.NoMapKeyCodec.class) {
+      return;
     }
-  }
-
-  private void registerCodec(Class<? extends JsonValueCodec<?>> codecClass) {
     if (!processedCodecs.add(codecClass)) {
       return;
     }

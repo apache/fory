@@ -12,14 +12,12 @@
   public static void manualPlainRules();
   public static void generatedPlainRules();
   public static void manualCodecs();
-  public static void nestedCodecNeedsJsonType();
   public static void generatedCodecs();
 }
 
 # Equivalent user-authored rules for models that deliberately omit @JsonType.
--keepattributes Signature,RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations
--keepattributes RuntimeVisibleParameterAnnotations,RuntimeInvisibleParameterAnnotations
--keepattributes RuntimeVisibleTypeAnnotations,RuntimeInvisibleTypeAnnotations,AnnotationDefault,MethodParameters
+-keepattributes Signature,RuntimeVisibleAnnotations
+-keepattributes RuntimeVisibleParameterAnnotations,AnnotationDefault,MethodParameters
 -keepattributes InnerClasses,EnclosingMethod
 
 -keep,allowoptimization class org.apache.fory.android.ManualPlainJsonModel {
@@ -32,9 +30,19 @@
   public <init>();
   public org.apache.fory.android.ManualJsonModel$DirectValue direct;
   public org.apache.fory.android.ManualJsonModel$MemberValue declaredField;
+  public java.util.List values;
+  public org.apache.fory.android.ManualJsonModel$MemberValue[] array;
+  public java.util.concurrent.atomic.AtomicReferenceArray atomicArray;
+  public java.util.Map byName;
+  public java.util.Optional optional;
+  public java.util.concurrent.atomic.AtomicReference atomic;
+  public java.util.Map extra;
   private org.apache.fory.android.ManualJsonModel$MemberValue declaredProperty;
+  private org.apache.fory.android.ManualJsonModel$MemberValue parameterProperty;
   public org.apache.fory.android.ManualJsonModel$MemberValue getDeclaredProperty();
   public void setDeclaredProperty(org.apache.fory.android.ManualJsonModel$MemberValue);
+  public org.apache.fory.android.ManualJsonModel$MemberValue getParameterProperty();
+  public void setParameterProperty(org.apache.fory.android.ManualJsonModel$MemberValue);
 }
 
 -keep,allowoptimization class org.apache.fory.android.ManualJsonModel$DirectValue
@@ -44,12 +52,6 @@
 -keep,allowoptimization,allowobfuscation class org.apache.fory.android.ManualJsonModel$MemberValueCodec {
   public <init>();
 }
-
--keep,allowoptimization class org.apache.fory.android.ManualNestedModel {
+-keep,allowoptimization,allowobfuscation class org.apache.fory.android.ManualJsonModel$KeyCodec {
   public <init>();
-  public java.util.List values;
-}
--keep,allowoptimization class org.apache.fory.android.ManualNestedModel$NestedValue {
-  public <init>();
-  public java.lang.String text;
 }
