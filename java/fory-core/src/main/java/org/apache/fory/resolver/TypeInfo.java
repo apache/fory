@@ -26,7 +26,9 @@ import org.apache.fory.collection.Tuple2;
 import org.apache.fory.meta.EncodedMetaString;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.TypeDef;
+import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.serializer.ForyExtraFields;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.Types;
 import org.apache.fory.util.function.Functions;
@@ -48,6 +50,8 @@ public class TypeInfo {
   Serializer<?> serializer;
   TypeDef typeDef;
   boolean needToWriteTypeDef;
+  // Non-null only when this type declares a ForyExtraFields sink. Resolved once when the serializer
+  FieldAccessor extraFieldsSinkAccessor;
 
   TypeInfo(
       Class<?> type,
@@ -170,6 +174,15 @@ public class TypeInfo {
   void setSerializer(TypeResolver resolver, Serializer<?> serializer) {
     this.serializer = serializer;
     needToWriteTypeDef = serializer != null && resolver.needToWriteTypeDef(serializer);
+    this.extraFieldsSinkAccessor = type == null ? null : ForyExtraFields.findSinkAccessor(type);
+  }
+
+  public FieldAccessor getExtraFieldsSinkAccessor() {
+    return extraFieldsSinkAccessor;
+  }
+
+  public boolean hasExtraFieldsSink() {
+    return extraFieldsSinkAccessor != null;
   }
 
   public String decodeNamespace() {

@@ -24,12 +24,14 @@ import org.apache.fory.Fory;
 import org.apache.fory.config.Config;
 import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.serializer.BufferObject;
+import org.apache.fory.serializer.ForyExtraFields;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.StringSerializer;
@@ -443,6 +445,58 @@ public final class WriteContext {
   }
 
   /**
+   * If {@code obj} carries a populated {@link ForyExtraFields} sink whose remote {@code TypeDef}
+   * differs from the local type, emits that remote schema header and replays every field (matched
+   * fields from the bean, unmatched fields from the sink) so a downstream peer with the full schema
+   * can recover them, excluded from writeRef(obj,typeinfo) because it is only called by methods
+   * which pass collection objects, and from writeNonRef(obj,typeinfo) which is gated on
+   * useDeclaredTypeInfo && !crossLanguage ie. the path for mononmorphic elements
+   */
+  public boolean tryWriteExtraFieldsSchema(TypeResolver resolver, TypeInfo typeInfo, Object obj) {
+    FieldAccessor sinkAccessor = typeInfo.getExtraFieldsSinkAccessor();
+    if (sinkAccessor == null) {
+      return false;
+    }
+    ForyExtraFields extraField = (ForyExtraFields) sinkAccessor.getObject(obj);
+    if (extraField == null || extraField.getTypeDef() == null) {
+      return false;
+    }
+    long sinkTypeDefId = extraField.getTypeDef().getId();
+    // The object was deserialized under a different (fuller) remote schema. Emit that remote schema
+    // header (from the writer-class TypeInfo) and replay all fields through the reader-class
+    // serializer that captured them, whose field order follows the remote schema.
+    TypeInfo headerTypeInfo = resolver.getTypeInfoByTypeDefId(sinkTypeDefId);
+    if (headerTypeInfo == null) {
+      throw new IllegalStateException(
+          "Cannot re-serialize "
+              + obj.getClass().getName()
+              + " with captured extra fields: this Fory instance does not have the object's original "
+              + "remote schema (TypeDef id "
+              + sinkTypeDefId
+              + ") cached, so it cannot emit the schema header needed to preserve those fields. "
+              + "Replay needs a Fory that has deserialized a payload carrying that schema and still "
+              + "has it cached, ie the instance that produced this object. Each instance "
+              + "retains only a bounded number of distinct remote schemas, so under very high schema "
+              + "churn the schema may not be retained and the captured fields cannot be replayed.");
+    }
+    Serializer<?> replaySerializer =
+        resolver.getExtraFieldsWriteSerializer(obj.getClass(), sinkTypeDefId);
+    if (replaySerializer == null) {
+      throw new IllegalStateException(
+          "Cannot replay captured extra fields on "
+              + obj.getClass()
+              + ": remote TypeDef "
+              + sinkTypeDefId
+              + " has not been read into this class on this Fory instance.");
+    }
+    resolver.writeTypeInfo(this, headerTypeInfo);
+    depth++;
+    ((Serializer<Object>) replaySerializer).write(this, obj);
+    depth--;
+    return true;
+  }
+
+  /**
    * Writes a nullable reference-tracked object together with any required type metadata.
    *
    * <p>If the object was already seen by the current {@link RefWriter}, only a ref header is
@@ -457,6 +511,9 @@ public final class WriteContext {
         depth++;
         typeInfo.getSerializer().write(this, obj);
         depth--;
+        return;
+      }
+      if (typeInfo.hasExtraFieldsSink() && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
         return;
       }
       resolver.writeTypeInfo(this, typeInfo);
@@ -474,6 +531,9 @@ public final class WriteContext {
         depth++;
         typeInfo.getSerializer().write(this, obj);
         depth--;
+        return;
+      }
+      if (typeInfo.hasExtraFieldsSink() && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
         return;
       }
       resolver.writeTypeInfo(this, typeInfo);
@@ -543,16 +603,7 @@ public final class WriteContext {
       return;
     }
     buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
-    TypeResolver resolver = typeResolver;
-    TypeInfo typeInfo = resolver.getTypeInfo(obj.getClass(), rootTypeInfoHolder);
-    if (crossLanguage && typeInfo.getType() == UnknownStruct.class) {
-      depth++;
-      typeInfo.getSerializer().write(this, obj);
-      depth--;
-      return;
-    }
-    resolver.writeTypeInfo(this, typeInfo);
-    writeData(typeInfo, obj);
+    writeNonRef(obj, rootTypeInfoHolder);
   }
 
   /**
@@ -568,6 +619,9 @@ public final class WriteContext {
       depth++;
       typeInfo.getSerializer().write(this, obj);
       depth--;
+      return;
+    }
+    if (typeInfo.hasExtraFieldsSink() && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
       return;
     }
     resolver.writeTypeInfo(this, typeInfo);
@@ -589,6 +643,9 @@ public final class WriteContext {
       depth++;
       typeInfo.getSerializer().write(this, obj);
       depth--;
+      return;
+    }
+    if (typeInfo.hasExtraFieldsSink() && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
       return;
     }
     resolver.writeTypeInfo(this, typeInfo);
