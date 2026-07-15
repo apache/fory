@@ -21,7 +21,6 @@ package org.apache.fory.json.meta;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.platform.AndroidSupport;
@@ -31,10 +30,10 @@ import org.apache.fory.reflect.FieldAccessor;
 /**
  * Uniform interpreted object-member access for fields, getters, and setters.
  *
- * <p>Field members delegate to Fory core's typed {@link FieldAccessor}. Method members cache a
- * trusted {@code MethodHandle} on the JVM and retain reflective invocation only for Android. Typed
- * primitive methods let interpreted object codecs avoid boxing for field-backed access, while
- * generated codecs consume the original field or method metadata and emit direct expressions.
+ * <p>Field members delegate to Fory core's typed {@link FieldAccessor}. JVM method members retain
+ * the raw trusted {@code MethodHandle} invocation path, while Android method members resolve an
+ * exact-shape handle on the cold construction path. Generated codecs consume the original field or
+ * method metadata and emit direct expressions.
  */
 public abstract class JsonFieldAccessor {
   public Object getObject(Object target) {
@@ -129,12 +128,20 @@ public abstract class JsonFieldAccessor {
     return new FieldJsonAccessor(FieldAccessor.createAccessor(field));
   }
 
+  public static JsonFieldAccessor forField(Field field, int accessMask) {
+    return new FieldJsonAccessor(FieldAccessor.createAccessor(field, accessMask));
+  }
+
   public static JsonFieldAccessor forGetter(Method getter) {
-    return new GetterJsonAccessor(getter);
+    return AndroidSupport.IS_ANDROID
+        ? AndroidJsonFieldAccessors.getter(getter)
+        : new GetterJsonAccessor(getter);
   }
 
   public static JsonFieldAccessor forSetter(Method setter) {
-    return new SetterJsonAccessor(setter);
+    return AndroidSupport.IS_ANDROID
+        ? AndroidJsonFieldAccessors.setter(setter)
+        : new SetterJsonAccessor(setter);
   }
 
   private static final class FieldJsonAccessor extends JsonFieldAccessor {
@@ -251,12 +258,7 @@ public abstract class JsonFieldAccessor {
 
     private GetterJsonAccessor(Method getter) {
       this.getter = getter;
-      if (AndroidSupport.IS_ANDROID) {
-        getter.setAccessible(true);
-        getterHandle = null;
-      } else {
-        getterHandle = methodHandle(getter);
-      }
+      getterHandle = methodHandle(getter);
     }
 
     @Override
@@ -267,9 +269,6 @@ public abstract class JsonFieldAccessor {
     @Override
     public Object getObject(Object target) {
       try {
-        if (AndroidSupport.IS_ANDROID) {
-          return getter.invoke(target);
-        }
         return getterHandle.invoke(target);
       } catch (Throwable e) {
         throw accessException(getter, e);
@@ -283,12 +282,7 @@ public abstract class JsonFieldAccessor {
 
     private SetterJsonAccessor(Method setter) {
       this.setter = setter;
-      if (AndroidSupport.IS_ANDROID) {
-        setter.setAccessible(true);
-        setterHandle = null;
-      } else {
-        setterHandle = methodHandle(setter);
-      }
+      setterHandle = methodHandle(setter);
     }
 
     @Override
@@ -299,11 +293,7 @@ public abstract class JsonFieldAccessor {
     @Override
     public void putObject(Object target, Object value) {
       try {
-        if (AndroidSupport.IS_ANDROID) {
-          setter.invoke(target, value);
-        } else {
-          setterHandle.invoke(target, value);
-        }
+        setterHandle.invoke(target, value);
       } catch (Throwable e) {
         throw accessException(setter, e);
       }
@@ -319,8 +309,6 @@ public abstract class JsonFieldAccessor {
   }
 
   private static ForyJsonException accessException(Method method, Throwable e) {
-    Throwable cause =
-        e instanceof InvocationTargetException ? ((InvocationTargetException) e).getCause() : e;
-    return new ForyJsonException("Cannot access JSON property method " + method, cause);
+    return new ForyJsonException("Cannot access JSON property method " + method, e);
   }
 }

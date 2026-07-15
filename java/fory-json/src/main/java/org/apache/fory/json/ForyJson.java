@@ -85,7 +85,7 @@ public final class ForyJson {
   private final AtomicReferenceArray<PooledState> slots;
 
   ForyJson(JsonConfig config) {
-    this(config, new JsonSharedRegistry(config));
+    this(config, JsonSharedRegistry.create(config));
   }
 
   ForyJson(JsonConfig config, JsonSharedRegistry sharedRegistry) {
@@ -649,7 +649,7 @@ public final class ForyJson {
     private JsonTypeInfo lastRootInfo;
 
     private JsonState(JsonConfig config, JsonSharedRegistry sharedRegistry) {
-      typeResolver = new JsonTypeResolver(sharedRegistry);
+      typeResolver = JsonTypeResolver.create(sharedRegistry);
       utf8Writer = new Utf8JsonWriter(config, typeResolver, new byte[INITIAL_BUFFER_SIZE]);
       stringWriter = new StringJsonWriter(config, typeResolver, new byte[INITIAL_BUFFER_SIZE]);
       utf8Reader = new Utf8JsonReader(config, typeResolver);

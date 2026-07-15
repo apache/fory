@@ -20,14 +20,15 @@
 package org.apache.fory.android;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import org.apache.fory.android.json.AndroidJsonRuntimeScenarios;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public class ForyAndroidInstrumentedTest {
   @Test
-  public void androidRuntimeDisablesCodegenAndUnsafeCopies() {
-    AndroidForyRuntimeScenarios.androidRuntimeDisablesCodegenAndUnsafeCopies();
+  public void androidRuntimeConfig() {
+    AndroidForyRuntimeScenarios.androidRuntimeConfig();
   }
 
   @Test
@@ -46,8 +47,8 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
-  public void staticGeneratedSerializerSurvivesReleaseMinification() {
-    AndroidForyRuntimeScenarios.staticGeneratedSerializerSurvivesReleaseMinification();
+  public void staticSerializerAfterR8() {
+    AndroidForyRuntimeScenarios.staticSerializerAfterR8();
   }
 
   @Test
@@ -56,12 +57,38 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
-  public void internalCollectionMapAndSetWrappersRoundTrip() {
-    AndroidForyRuntimeScenarios.internalCollectionMapAndSetWrappersRoundTrip();
+  public void collectionsRoundTrip() {
+    AndroidForyRuntimeScenarios.collectionsRoundTrip();
   }
 
   @Test
-  public void byteBufferStreamChannelAndOutOfBandRoundTrip() throws Exception {
-    AndroidForyRuntimeScenarios.byteBufferStreamChannelAndOutOfBandRoundTrip();
+  public void ioRoundTrip() throws Exception {
+    AndroidForyRuntimeScenarios.ioRoundTrip();
   }
+
+  @Test
+  public void applicationJarAndAarModelsRoundTrip() {
+    AndroidJsonRuntimeScenarios.applicationJarAndAarModelsRoundTrip();
+  }
+
+  @Test
+  public void builderConfigurationsRemainIndependent() {
+    AndroidJsonRuntimeScenarios.builderConfigurationsRemainIndependent();
+  }
+
+  @Test
+  public void primitiveBeanUsesEveryTypedAccessor() {
+    AndroidJsonRuntimeScenarios.primitiveBeanUsesEveryTypedAccessor();
+  }
+
+  @Test
+  public void creatorAnyCodecAndSubtypesRoundTrip() {
+    AndroidJsonRuntimeScenarios.creatorAnyCodecAndSubtypesRoundTrip();
+  }
+
+  @Test
+  public void typeRefAndPrivateStaticTypeSurviveR8() {
+    AndroidJsonRuntimeScenarios.typeRefAndPrivateStaticTypeSurviveR8();
+  }
+
 }

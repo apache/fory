@@ -21,7 +21,6 @@ package org.apache.fory.json.codec;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
@@ -44,12 +43,9 @@ import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
-import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.ObjectInstantiator;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.util.record.RecordInfo;
-import org.apache.fory.util.record.RecordUtils;
 
 /**
  * Reflection-backed semantic codec and metadata owner for one Java object type.
@@ -61,11 +57,11 @@ import org.apache.fory.util.record.RecordUtils;
  * never JSON members. Records retain constructor metadata and field defaults; ordinary objects
  * retain an allocation strategy plus field or accessor sinks.
  *
- * <p>This codec is the interpreted implementation and the semantic fallback. Only an exact
- * raw-class instance of this class is eligible for generated capability replacement. Parameterized
- * object codecs retain binding-specific member types and remain the owner of all five slots.
- * Generated code may replace paths independently, but it is built from this codec's immutable field
- * metadata and preserves the same null, unknown-field, record, and member-discovery semantics.
+ * <p>This codec is the interpreted implementation and the semantic source. Only an exact raw-class
+ * instance of this class is eligible for generated capability replacement. Parameterized object
+ * codecs retain binding-specific member types and remain the owner of all five slots. Generated
+ * code may replace paths independently, but it is built from this codec's immutable field metadata
+ * and preserves the same null, unknown-field, record, and member-discovery semantics.
  */
 public class ObjectCodec<T> implements JsonValueCodec<T> {
   private static final int MUTABLE = 0;
@@ -80,18 +76,18 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   private final int creationKind;
   private final JsonCreatorInfo creatorInfo;
   private final AnyInfo anyInfo;
-  private final RecordInfo recordInfo;
-  private final Object[] recordFieldDefaults;
+  private final RecordConstruction recordConstruction;
+  private final Object[] recordReadDefaults;
 
   private ObjectCodec(
       Class<?> type,
       JsonFieldInfo[] writeFields,
       JsonFieldInfo[] readFields,
-      String[] readJavaNames,
       JsonCreatorInfo creatorInfo,
       AnyInfo anyInfo,
       String[] skippedNames,
-      ObjectInstantiator<?> instantiator) {
+      ObjectInstantiator<?> instantiator,
+      RecordConstruction recordConstruction) {
     this.type = type;
     this.writeFields = writeFields;
     this.readFields = readFields;
@@ -102,13 +98,13 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
             : new JsonFieldTable(readFields, skippedNames);
     this.instantiator = instantiator;
     this.creatorInfo = creatorInfo;
-    creationKind = RecordUtils.isRecord(type) ? RECORD : creatorInfo == null ? MUTABLE : CREATOR;
+    creationKind = recordConstruction != null ? RECORD : creatorInfo == null ? MUTABLE : CREATOR;
     if (creationKind == RECORD) {
-      recordInfo = new RecordInfo(type, Arrays.asList(readJavaNames));
-      recordFieldDefaults = recordFieldDefaults(type, readJavaNames, recordInfo);
+      this.recordConstruction = recordConstruction;
+      recordReadDefaults = recordConstruction.readDefaults;
     } else {
-      recordInfo = null;
-      recordFieldDefaults = null;
+      this.recordConstruction = null;
+      recordReadDefaults = null;
     }
   }
 
@@ -130,39 +126,62 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       PropertyNamingStrategy propertyNamingStrategy,
       boolean writeNullFields) {
     return ObjectCodecBuilder.build(
-        ownerType, ownerTypeUse, propertyDiscoveryEnabled, propertyNamingStrategy, writeNullFields);
+        ownerType,
+        ownerTypeUse,
+        propertyDiscoveryEnabled,
+        propertyNamingStrategy,
+        writeNullFields,
+        null);
+  }
+
+  /** Builds one object codec with generated Android metadata owned by {@code resolver}. */
+  @Internal
+  public static <T> ObjectCodec<T> build(
+      TypeRef<T> ownerType,
+      JsonTypeUse ownerTypeUse,
+      boolean propertyDiscoveryEnabled,
+      PropertyNamingStrategy propertyNamingStrategy,
+      boolean writeNullFields,
+      JsonTypeResolver resolver) {
+    return ObjectCodecBuilder.build(
+        ownerType,
+        ownerTypeUse,
+        propertyDiscoveryEnabled,
+        propertyNamingStrategy,
+        writeNullFields,
+        resolver);
   }
 
   static <T> ObjectCodec<T> createCodec(
       TypeRef<T> ownerType,
       JsonFieldInfo[] writeFields,
       JsonFieldInfo[] readFields,
-      String[] readJavaNames,
       JsonCreatorInfo creatorInfo,
       AnyInfo anyInfo,
       String[] skippedNames,
-      ObjectInstantiator<?> instantiator) {
+      ObjectInstantiator<?> instantiator,
+      RecordConstruction recordConstruction) {
     Class<?> type = ownerType.getRawType();
     if (ownerType.getType() instanceof Class) {
       return new ObjectCodec<>(
           type,
           writeFields,
           readFields,
-          readJavaNames,
           creatorInfo,
           anyInfo,
           skippedNames,
-          instantiator);
+          instantiator,
+          recordConstruction);
     }
     return new ParameterizedObjectCodec<>(
         type,
         writeFields,
         readFields,
-        readJavaNames,
         creatorInfo,
         anyInfo,
         skippedNames,
-        instantiator);
+        instantiator,
+        recordConstruction);
   }
 
   public final Class<?> type() {
@@ -192,6 +211,33 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   @Internal
   public final AnyInfo anyInfo() {
     return anyInfo;
+  }
+
+  /** Returns whether a generated Any reader stores this object's reader for recursive values. */
+  @Internal
+  public final boolean storesSelfReader() {
+    AnyInfo any = anyInfo;
+    return any != null
+        && any.readEnabled()
+        && storesSelfReader(type, readFields, creatorInfo != null, any);
+  }
+
+  /** Returns the recursive-reader storage decision shared by resolver and source generation. */
+  @Internal
+  public static boolean storesSelfReader(
+      Class<?> type, JsonFieldInfo[] fields, boolean creator, AnyInfo any) {
+    if (any.valueRawType() == type && any.valueTypeInfo().usesDefaultObjectCodec()) {
+      return true;
+    }
+    if (creator) {
+      return false;
+    }
+    for (JsonFieldInfo field : fields) {
+      if (field.readNestedType() == type) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Internal
@@ -232,15 +278,22 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
 
   @Internal
   public final Object[] newRecordFieldValues() {
-    return Arrays.copyOf(recordFieldDefaults, recordFieldDefaults.length);
+    return Arrays.copyOf(recordReadDefaults, recordReadDefaults.length);
   }
 
   @Internal
   @SuppressWarnings("unchecked")
   public final T newRecord(Object[] values) {
-    Object[] arguments = RecordUtils.remapping(recordInfo, values);
+    RecordConstruction construction = recordConstruction;
+    int[] componentToRead = construction.componentToRead;
+    Object[] componentDefaults = construction.componentDefaults;
+    Object[] arguments = construction.arguments;
+    for (int i = 0; i < componentToRead.length; i++) {
+      int readIndex = componentToRead[i];
+      arguments[i] = readIndex < 0 ? componentDefaults[i] : values[readIndex];
+    }
     Object object = instantiator.newInstanceWithArguments(arguments);
-    Arrays.fill(recordInfo.getRecordComponents(), null);
+    Arrays.fill(arguments, null);
     return (T) object;
   }
 
@@ -1169,25 +1222,37 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     }
   }
 
-  private static Object[] recordFieldDefaults(
-      Class<?> type, String[] readJavaNames, RecordInfo recordInfo) {
-    Object[] defaults = new Object[readJavaNames.length];
-    Object[] componentDefaults = recordInfo.getRecordComponentsDefaultValues();
-    Map<String, Integer> componentIndexes = RecordUtils.buildFieldToComponentMapping(type);
-    for (int i = 0; i < readJavaNames.length; i++) {
-      Integer componentIndex = componentIndexes.get(readJavaNames[i]);
-      defaults[i] = componentIndex == null ? null : componentDefaults[componentIndex.intValue()];
+  /** Record construction metadata resolved once by the owning codec builder. */
+  static final class RecordConstruction {
+    private final int[] componentToRead;
+    private final Object[] componentDefaults;
+    private final Object[] arguments;
+    private final Object[] readDefaults;
+
+    RecordConstruction(int[] componentToRead, Object[] componentDefaults, int readCount) {
+      if (componentToRead.length != componentDefaults.length) {
+        throw new IllegalArgumentException("Record component metadata length mismatch");
+      }
+      this.componentToRead = componentToRead;
+      this.componentDefaults = componentDefaults;
+      arguments = new Object[componentToRead.length];
+      readDefaults = new Object[readCount];
+      for (int i = 0; i < componentToRead.length; i++) {
+        int readIndex = componentToRead[i];
+        if (readIndex >= 0) {
+          readDefaults[readIndex] = componentDefaults[i];
+        }
+      }
     }
-    return defaults;
   }
 
   @Internal
-  public static final class AnyInfo {
+  public static class AnyInfo {
     private final Field writeField;
     private final Method writeGetter;
     private final Field readField;
     private final Method readSetter;
-    private final Class<?> setterValueRawType;
+    final Class<?> setterValueRawType;
     private final JsonFieldAccessor writeAccessor;
     private final JsonFieldAccessor readAccessor;
     private final MethodHandle setterHandle;
@@ -1223,11 +1288,37 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
               ? JsonFieldAccessor.forGetter(writeGetter)
               : writeField == null ? null : JsonFieldAccessor.forField(writeField);
       readAccessor = readField == null ? null : JsonFieldAccessor.forField(readField);
-      setterHandle =
-          readSetter == null || AndroidSupport.IS_ANDROID ? null : methodHandle(readSetter);
-      if (readSetter != null && AndroidSupport.IS_ANDROID) {
-        readSetter.setAccessible(true);
-      }
+      setterHandle = readSetter == null ? null : methodHandle(readSetter);
+      this.mapType = mapType;
+      this.mapRawType = mapRawType;
+      this.valueType = valueType;
+      this.valueRawType = valueRawType;
+      this.valueTypeUse = valueTypeUse;
+      this.writeIndex = writeIndex;
+      this.constructionIndex = constructionIndex;
+    }
+
+    /** Creates Any metadata from validated generated Android member facts. */
+    @Internal
+    AnyInfo(
+        JsonFieldAccessor writeAccessor,
+        JsonFieldAccessor readAccessor,
+        Class<?> setterValueRawType,
+        Type mapType,
+        Class<?> mapRawType,
+        Type valueType,
+        Class<?> valueRawType,
+        JsonTypeUse valueTypeUse,
+        int writeIndex,
+        int constructionIndex) {
+      writeField = null;
+      writeGetter = null;
+      readField = null;
+      readSetter = null;
+      this.setterValueRawType = setterValueRawType;
+      this.writeAccessor = writeAccessor;
+      this.readAccessor = readAccessor;
+      setterHandle = null;
       this.mapType = mapType;
       this.mapRawType = mapRawType;
       this.valueType = valueType;
@@ -1238,14 +1329,14 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     }
 
     private void resolveTypes(JsonTypeResolver resolver) {
-      if (readField != null && valueTypeUse != null) {
+      if (fieldRead() && valueTypeUse != null) {
         resolver.checkMapKeySecure(String.class);
       }
       valueTypeInfo =
           valueTypeUse == null
               ? resolver.getTypeInfo(valueType, valueRawType)
               : resolver.getTypeInfo(valueTypeUse);
-      if (readField != null) {
+      if (fieldRead()) {
         mapCodec =
             valueTypeUse == null
                 ? MapCodec.create(mapRawType, TypeRef.of(mapType), resolver)
@@ -1285,19 +1376,19 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       return constructionIndex;
     }
 
-    private boolean writeEnabled() {
+    boolean writeEnabled() {
       return writeAccessor != null;
     }
 
-    private boolean readEnabled() {
+    boolean readEnabled() {
       return readAccessor != null || readSetter != null;
     }
 
-    private boolean fieldRead() {
+    boolean fieldRead() {
       return readField != null;
     }
 
-    private boolean finalReadField() {
+    boolean finalReadField() {
       return readField != null && Modifier.isFinal(readField.getModifiers());
     }
 
@@ -1322,20 +1413,14 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       readAccessor.putObject(target, map);
     }
 
-    private void put(Object target, String name, Object value) {
+    void put(Object target, String name, Object value) {
       if (value == null && setterValueRawType.isPrimitive()) {
         throw new ForyJsonException(
             "Cannot read null into primitive @JsonAnySetter parameter " + setterValueRawType);
       }
       try {
-        if (AndroidSupport.IS_ANDROID) {
-          readSetter.invoke(target, name, value);
-        } else {
-          setterHandle.invoke(target, name, value);
-        }
-      } catch (Throwable e) {
-        Throwable cause =
-            e instanceof InvocationTargetException ? ((InvocationTargetException) e).getCause() : e;
+        setterHandle.invoke(target, name, value);
+      } catch (Throwable cause) {
         if (cause instanceof Error) {
           throw (Error) cause;
         }
@@ -1358,20 +1443,20 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
         Class<?> type,
         JsonFieldInfo[] writeFields,
         JsonFieldInfo[] readFields,
-        String[] readJavaNames,
         JsonCreatorInfo creatorInfo,
         AnyInfo anyInfo,
         String[] skippedNames,
-        ObjectInstantiator<?> instantiator) {
+        ObjectInstantiator<?> instantiator,
+        RecordConstruction recordConstruction) {
       super(
           type,
           writeFields,
           readFields,
-          readJavaNames,
           creatorInfo,
           anyInfo,
           skippedNames,
-          instantiator);
+          instantiator,
+          recordConstruction);
     }
 
     @Override

@@ -111,10 +111,6 @@ abstract class JsonReaderCodegen {
 
   abstract Reference readerRef();
 
-  final Class<?> readNestedType(JsonFieldInfo property) {
-    return JsonCodegen.readNestedType(property);
-  }
-
   String genReaderCode(
       JsonGeneratedCodecBuilder builder,
       Class<?> type,
@@ -142,10 +138,10 @@ abstract class JsonReaderCodegen {
       if (usesReadInfo(properties[i])) {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
-      if (JsonCodegen.usesReadCodec(properties[i])) {
+      if (properties[i].usesReadCodec()) {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(properties[i])), "r" + i);
       }
-      if (storesReadObjectCodec(type, properties[i])) {
+      if (properties[i].storesReadObjectCodec(type)) {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "o" + i);
       }
     }
@@ -186,7 +182,7 @@ abstract class JsonReaderCodegen {
       AnyInfo any) {
     this.any = any;
     ownerType = type;
-    storesSelfReader = JsonCodegen.storesSelfReader(type, properties, creatorInfo != null, any);
+    storesSelfReader = ObjectCodec.storesSelfReader(type, properties, creatorInfo != null, any);
     if (creatorInfo != null) {
       return genAnyCreatorReaderCode(builder, type, creatorInfo);
     }
@@ -269,10 +265,10 @@ abstract class JsonReaderCodegen {
       if (usesReadInfo(properties[i])) {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
-      if (JsonCodegen.usesReadCodec(properties[i])) {
+      if (properties[i].usesReadCodec()) {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(properties[i])), "r" + i);
       }
-      if (storesReadObjectCodec(type, properties[i])) {
+      if (properties[i].storesReadObjectCodec(type)) {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "o" + i);
       }
     }
@@ -1043,14 +1039,14 @@ abstract class JsonReaderCodegen {
               hashes,
               new Expression.Invoke(property, "nameHash", TypeRef.of(long.class)).inline(),
               id));
-      if (JsonCodegen.usesReadCodec(properties[i])) {
+      if (properties[i].usesReadCodec()) {
         Class<?> codecType = codecFieldType(properties[i]);
         expressions.add(
             new Expression.Assign(
                 new Reference("this.r" + i, TypeRef.of(codecType)),
                 new Expression.Cast(
                     new Expression.ArrayValue(codecsRef, id), TypeRef.of(codecType))));
-      } else if (storesReadObjectCodec(type, properties[i])) {
+      } else if (properties[i].storesReadObjectCodec(type)) {
         expressions.add(
             new Expression.Assign(
                 new Reference("this.o" + i, TypeRef.of(readerCapabilityType())),
@@ -2450,20 +2446,6 @@ abstract class JsonReaderCodegen {
     return new Expression.Not(expression);
   }
 
-  final boolean usesReadCodec(JsonFieldInfo property) {
-    switch (property.readKind()) {
-      case ENUM:
-      case ARRAY:
-      case COLLECTION:
-      case MAP:
-        return true;
-      case OBJECT:
-        return !usesReadObjectCodec(property);
-      default:
-        return false;
-    }
-  }
-
   final boolean usesReadInfo(JsonFieldInfo property) {
     switch (property.readKind()) {
       case BOOLEAN:
@@ -2485,17 +2467,6 @@ abstract class JsonReaderCodegen {
       default:
         return true;
     }
-  }
-
-  final boolean usesReadObjectCodec(JsonFieldInfo property) {
-    return property.readKind() == JsonFieldKind.OBJECT
-        && property.readRawType() != Object.class
-        && property.readTypeInfo().usesDefaultObjectCodec();
-  }
-
-  final boolean storesReadObjectCodec(Class<?> type, JsonFieldInfo property) {
-    Class<?> nestedType = readNestedType(property);
-    return nestedType != null && nestedType != type;
   }
 
   private Expression readField(

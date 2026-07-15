@@ -20,5 +20,7 @@
 
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- BenchmarkRule grants this permission on every API level before running a benchmark. -->
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
   <application android:label="Fory Android Tests" />
 </manifest>

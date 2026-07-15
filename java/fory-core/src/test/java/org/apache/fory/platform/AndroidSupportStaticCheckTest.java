@@ -85,7 +85,7 @@ public class AndroidSupportStaticCheckTest {
   }
 
   @Test
-  public void testFieldAnnotatedTypeAccessStaysAndroidGated() throws IOException {
+  public void testAnnotatedTypeAccessIsGated() throws IOException {
     Path sourceRoot = Paths.get("src/main/java/org/apache/fory");
     List<String> violations = new ArrayList<>();
     try (Stream<Path> paths = Files.walk(sourceRoot)) {
@@ -120,7 +120,7 @@ public class AndroidSupportStaticCheckTest {
   }
 
   @Test
-  public void testAndroidLoadedRuntimePathsDoNotReferenceAnnotatedType() throws IOException {
+  public void testRuntimePathsAvoidAnnotatedType() throws IOException {
     Path sourceRoot = Paths.get("src/main/java/org/apache/fory");
     List<String> violations = new ArrayList<>();
     try (Stream<Path> paths = Files.walk(sourceRoot)) {
@@ -150,7 +150,7 @@ public class AndroidSupportStaticCheckTest {
   }
 
   @Test
-  public void testScalaDefaultValuesDoNotUseTrustedLookupOnAndroid() throws IOException {
+  public void testScalaDefaultsAvoidTrustedLookup() throws IOException {
     Path sourcePath = Paths.get("src/main/java/org/apache/fory/util/DefaultValueUtils.java");
     String source = new String(Files.readAllBytes(sourcePath), StandardCharsets.UTF_8);
     List<String> violations = new ArrayList<>();
@@ -169,5 +169,49 @@ public class AndroidSupportStaticCheckTest {
     assertTrue(
         ANDROID_REFLECTIVE_SCALA_DEFAULT_INVOKE.matcher(source).find(),
         "Android Scala default values must invoke default methods through direct reflection");
+  }
+
+  @Test
+  public void testAndroidExactInvocationOwners() throws IOException {
+    Path reflectRoot = Paths.get("src/main/java/org/apache/fory/reflect");
+    String fields = source(reflectRoot.resolve("InstanceFieldAccessors.java"));
+    String androidFields = section(fields, "class AndroidAccessor", "class InstanceAccessor");
+    assertTrue(androidFields.contains("invokeExact"));
+    assertTrue(!androidFields.contains("field.get("));
+    assertTrue(!androidFields.contains("field.set("));
+    assertTrue(!fields.contains("class ReflectionAccessor"));
+
+    String records = source(reflectRoot.resolve("RecordFieldAccessors.java"));
+    String androidRecords =
+        section(records, "class AndroidRecordFieldAccessor", "class ReflectiveRecordFieldAccessor");
+    assertTrue(androidRecords.contains("invokeExact"));
+    assertTrue(!androidRecords.contains("accessor.invoke("));
+
+    String instantiators = source(reflectRoot.resolve("ObjectInstantiators.java"));
+    String noArg =
+        section(
+            instantiators,
+            "class AndroidNoArgCtrInstantiator",
+            "class UnsupportedObjectInstantiator");
+    String record =
+        section(
+            instantiators,
+            "class AndroidRecordObjectInstantiator",
+            "private static <T> Constructor<T> androidConstructor");
+    assertTrue(noArg.contains("constructor.newInstance(EMPTY_ARGUMENTS)"));
+    assertTrue(record.contains("constructor.newInstance(arguments)"));
+    assertTrue(!noArg.contains("MethodHandle"));
+    assertTrue(!record.contains("MethodHandle"));
+  }
+
+  private static String source(Path path) throws IOException {
+    return new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+  }
+
+  private static String section(String source, String startMarker, String endMarker) {
+    int start = source.indexOf(startMarker);
+    int end = source.indexOf(endMarker, start);
+    assertTrue(start >= 0 && end > start, "Missing source section " + startMarker);
+    return source.substring(start, end);
   }
 }

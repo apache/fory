@@ -982,7 +982,7 @@ public class JsonAsyncCompilationTest {
 
   private static boolean asyncCompilationEnabled(ForyJson json) throws Exception {
     Object jitContext = field(primaryTypeResolver(json), "jitContext");
-    return (boolean) field(jitContext, "asyncCompilationEnabled");
+    return jitContext != null && (boolean) field(jitContext, "asyncCompilationEnabled");
   }
 
   private static Object field(Object owner, String name) throws Exception {

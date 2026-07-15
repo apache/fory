@@ -31,12 +31,15 @@ public final class AndroidSupport {
   private AndroidSupport() {}
 
   private static boolean isAndroid() {
+    if ("Dalvik".equals(System.getProperty("java.vm.name", ""))
+        || System.getProperty("java.runtime.name", "").contains("Android")) {
+      return true;
+    }
     String androidEnabled = System.getenv(ANDROID_ENABLED_ENV);
     if (androidEnabled != null && !androidEnabled.isEmpty()) {
       return parseAndroidEnabled(androidEnabled);
     }
-    return "Dalvik".equals(System.getProperty("java.vm.name", ""))
-        || System.getProperty("java.runtime.name", "").contains("Android");
+    return false;
   }
 
   private static boolean parseAndroidEnabled(String value) {

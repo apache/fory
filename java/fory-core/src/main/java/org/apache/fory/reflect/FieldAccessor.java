@@ -21,11 +21,21 @@ package org.apache.fory.reflect;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.record.RecordUtils;
 
 /** Field accessor for primitive types and object types. */
 public abstract class FieldAccessor {
+  /** Build only field read state. */
+  @Internal public static final int READ_ACCESS = 1;
+
+  /** Build only field write state. */
+  @Internal public static final int WRITE_ACCESS = 2;
+
+  /** Build field read and write state. */
+  @Internal public static final int READ_WRITE_ACCESS = READ_ACCESS | WRITE_ACCESS;
+
   private static final int BOOLEAN_ACCESS = 1;
   private static final int BYTE_ACCESS = 2;
   private static final int CHAR_ACCESS = 3;
@@ -218,5 +228,25 @@ public abstract class FieldAccessor {
       return RecordFieldAccessors.createAccessor(field);
     }
     return InstanceFieldAccessors.createAccessor(field);
+  }
+
+  /**
+   * Creates an accessor with only the state needed for the selected directions.
+   *
+   * <p>This is used by generated metadata paths which select read and write candidates before
+   * resolving an inaccessible field. It prevents read-only and write-only properties from resolving
+   * an unusable handle for the opposite direction.
+   */
+  @Internal
+  public static FieldAccessor createAccessor(Field field, int accessMask) {
+    Preconditions.checkArgument(!Modifier.isStatic(field.getModifiers()), field);
+    Preconditions.checkArgument(
+        accessMask != 0 && (accessMask & ~READ_WRITE_ACCESS) == 0,
+        "Invalid field access mask " + accessMask);
+    if (RecordUtils.isRecord(field.getDeclaringClass())) {
+      Preconditions.checkArgument(accessMask == READ_ACCESS, "Record field is read-only: " + field);
+      return RecordFieldAccessors.createAccessor(field);
+    }
+    return InstanceFieldAccessors.createAccessor(field, accessMask);
   }
 }

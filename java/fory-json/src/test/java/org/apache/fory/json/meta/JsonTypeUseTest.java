@@ -22,10 +22,12 @@ package org.apache.fory.json.meta;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -111,6 +113,46 @@ public class JsonTypeUseTest {
     assertThrows(ForyJsonException.class, () -> typeUse("wildcard"));
   }
 
+  @Test
+  public void testGeneratedIdentity() {
+    JsonCodecFactory firstFactory = factory();
+    JsonCodecFactory secondFactory = factory();
+    JsonTypeUse first = generated(String.class, firstFactory, -1);
+    JsonTypeUse same = generated(String.class, firstFactory, -1);
+    JsonTypeUse differentFactory = generated(String.class, secondFactory, -1);
+
+    assertEquals(first, same);
+    assertEquals(first.hashCode(), same.hashCode());
+    assertSame(first.codecFactory(), firstFactory);
+    assertFalse(first.equals(differentFactory));
+
+    JsonTypeUse firstVariable = generated(Generic.class.getTypeParameters()[0], null, 3);
+    JsonTypeUse secondVariable = generated(Generic.class.getTypeParameters()[0], null, 4);
+    assertFalse(firstVariable.equals(secondVariable));
+  }
+
+  private static JsonTypeUse generated(Type type, JsonCodecFactory factory, int variableKey) {
+    return JsonTypeUse.generatedNode(
+        type,
+        factory == null ? null : ACodec.class,
+        factory,
+        "generated test",
+        new JsonTypeUse[0],
+        null,
+        new JsonTypeUse[0],
+        new JsonTypeUse[0],
+        variableKey);
+  }
+
+  private static JsonCodecFactory factory() {
+    return new JsonCodecFactory() {
+      @Override
+      public JsonValueCodec<?> create() {
+        return new ACodec();
+      }
+    };
+  }
+
   private static JsonTypeUse typeUse(String name) throws Exception {
     return JsonTypeUse.forField(Models.class.getDeclaredField(name));
   }
@@ -133,6 +175,8 @@ public class JsonTypeUseTest {
   private static final class Envelope<T> {
     T value;
   }
+
+  private static final class Generic<T> {}
 
   private static final class ReorderedValues<K, V> extends ArrayList<V> {}
 

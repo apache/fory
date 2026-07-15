@@ -21,6 +21,7 @@ package org.apache.fory.reflect;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.concurrent.ConcurrentHashMap;
@@ -54,7 +55,18 @@ final class InstanceFieldAccessors {
   static FieldAccessor createAccessor(Field field) {
     Preconditions.checkArgument(!Modifier.isStatic(field.getModifiers()), field);
     if (AndroidSupport.IS_ANDROID) {
-      return new ReflectionAccessor(field);
+      return new AndroidAccessor(field, FieldAccessor.READ_WRITE_ACCESS);
+    }
+    if (GraalvmSupport.isGraalBuildTime()) {
+      return new GeneratedAccessor(field);
+    }
+    return new InstanceAccessor(field);
+  }
+
+  static FieldAccessor createAccessor(Field field, int accessMask) {
+    Preconditions.checkArgument(!Modifier.isStatic(field.getModifiers()), field);
+    if (AndroidSupport.IS_ANDROID) {
+      return new AndroidAccessor(field, accessMask);
     }
     if (GraalvmSupport.isGraalBuildTime()) {
       return new GeneratedAccessor(field);
@@ -84,33 +96,271 @@ final class InstanceFieldAccessors {
     return OBJECT_ACCESS;
   }
 
-  private static final class ReflectionAccessor extends FieldAccessor {
-    private ReflectionAccessor(Field field) {
+  private static final class AndroidAccessor extends FieldAccessor {
+    private final MethodHandle getter;
+    private final MethodHandle setter;
+    private final int accessKind;
+
+    private AndroidAccessor(Field field, int accessMask) {
       super(field);
-      try {
-        field.setAccessible(true);
-      } catch (RuntimeException e) {
-        throw new ForyException("Failed to make field accessible: " + field, e);
-      }
+      accessKind = accessKind(field);
+      MethodHandle[] handles = androidHandles(field, accessMask);
+      getter = handles[0];
+      setter = handles[1];
     }
 
     @Override
     public Object get(Object obj) {
-      try {
-        return field.get(obj);
-      } catch (IllegalAccessException | IllegalArgumentException e) {
-        throw new ForyException("Failed to read field reflectively: " + field, e);
+      switch (accessKind) {
+        case BOOLEAN_ACCESS:
+          return getBoolean(obj);
+        case BYTE_ACCESS:
+          return getByte(obj);
+        case CHAR_ACCESS:
+          return getChar(obj);
+        case SHORT_ACCESS:
+          return getShort(obj);
+        case INT_ACCESS:
+          return getInt(obj);
+        case LONG_ACCESS:
+          return getLong(obj);
+        case FLOAT_ACCESS:
+          return getFloat(obj);
+        case DOUBLE_ACCESS:
+          return getDouble(obj);
+        case OBJECT_ACCESS:
+          return getObject(obj);
+        default:
+          throw new IllegalStateException("Unsupported access kind " + accessKind);
       }
     }
 
     @Override
     public void set(Object obj, Object value) {
-      try {
-        field.set(obj, value);
-      } catch (IllegalAccessException | IllegalArgumentException e) {
-        throw new ForyException("Failed to write field reflectively: " + field, e);
+      switch (accessKind) {
+        case BOOLEAN_ACCESS:
+          putBoolean(obj, (Boolean) value);
+          return;
+        case BYTE_ACCESS:
+          putByte(obj, (Byte) value);
+          return;
+        case CHAR_ACCESS:
+          putChar(obj, (Character) value);
+          return;
+        case SHORT_ACCESS:
+          putShort(obj, (Short) value);
+          return;
+        case INT_ACCESS:
+          putInt(obj, (Integer) value);
+          return;
+        case LONG_ACCESS:
+          putLong(obj, (Long) value);
+          return;
+        case FLOAT_ACCESS:
+          putFloat(obj, (Float) value);
+          return;
+        case DOUBLE_ACCESS:
+          putDouble(obj, (Double) value);
+          return;
+        case OBJECT_ACCESS:
+          putObject(obj, value);
+          return;
+        default:
+          throw new IllegalStateException("Unsupported access kind " + accessKind);
       }
     }
+
+    @Override
+    public boolean getBoolean(Object obj) {
+      try {
+        return (boolean) getter.invokeExact(obj);
+      } catch (Throwable e) {
+        throw operationFailure(field, "read", e);
+      }
+    }
+
+    @Override
+    public void putBoolean(Object obj, boolean value) {
+      try {
+        setter.invokeExact(obj, value);
+      } catch (Throwable e) {
+        throw operationFailure(field, "write", e);
+      }
+    }
+
+    @Override
+    public byte getByte(Object obj) {
+      try {
+        return (byte) getter.invokeExact(obj);
+      } catch (Throwable e) {
+        throw operationFailure(field, "read", e);
+      }
+    }
+
+    @Override
+    public void putByte(Object obj, byte value) {
+      try {
+        setter.invokeExact(obj, value);
+      } catch (Throwable e) {
+        throw operationFailure(field, "write", e);
+      }
+    }
+
+    @Override
+    public char getChar(Object obj) {
+      try {
+        return (char) getter.invokeExact(obj);
+      } catch (Throwable e) {
+        throw operationFailure(field, "read", e);
+      }
+    }
+
+    @Override
+    public void putChar(Object obj, char value) {
+      try {
+        setter.invokeExact(obj, value);
+      } catch (Throwable e) {
+        throw operationFailure(field, "write", e);
+      }
+    }
+
+    @Override
+    public short getShort(Object obj) {
+      try {
+        return (short) getter.invokeExact(obj);
+      } catch (Throwable e) {
+        throw operationFailure(field, "read", e);
+      }
+    }
+
+    @Override
+    public void putShort(Object obj, short value) {
+      try {
+        setter.invokeExact(obj, value);
+      } catch (Throwable e) {
+        throw operationFailure(field, "write", e);
+      }
+    }
+
+    @Override
+    public int getInt(Object obj) {
+      try {
+        return (int) getter.invokeExact(obj);
+      } catch (Throwable e) {
+        throw operationFailure(field, "read", e);
+      }
+    }
+
+    @Override
+    public void putInt(Object obj, int value) {
+      try {
+        setter.invokeExact(obj, value);
+      } catch (Throwable e) {
+        throw operationFailure(field, "write", e);
+      }
+    }
+
+    @Override
+    public long getLong(Object obj) {
+      try {
+        return (long) getter.invokeExact(obj);
+      } catch (Throwable e) {
+        throw operationFailure(field, "read", e);
+      }
+    }
+
+    @Override
+    public void putLong(Object obj, long value) {
+      try {
+        setter.invokeExact(obj, value);
+      } catch (Throwable e) {
+        throw operationFailure(field, "write", e);
+      }
+    }
+
+    @Override
+    public float getFloat(Object obj) {
+      try {
+        return (float) getter.invokeExact(obj);
+      } catch (Throwable e) {
+        throw operationFailure(field, "read", e);
+      }
+    }
+
+    @Override
+    public void putFloat(Object obj, float value) {
+      try {
+        setter.invokeExact(obj, value);
+      } catch (Throwable e) {
+        throw operationFailure(field, "write", e);
+      }
+    }
+
+    @Override
+    public double getDouble(Object obj) {
+      try {
+        return (double) getter.invokeExact(obj);
+      } catch (Throwable e) {
+        throw operationFailure(field, "read", e);
+      }
+    }
+
+    @Override
+    public void putDouble(Object obj, double value) {
+      try {
+        setter.invokeExact(obj, value);
+      } catch (Throwable e) {
+        throw operationFailure(field, "write", e);
+      }
+    }
+
+    @Override
+    public Object getObject(Object obj) {
+      try {
+        return (Object) getter.invokeExact(obj);
+      } catch (Throwable e) {
+        throw operationFailure(field, "read", e);
+      }
+    }
+
+    @Override
+    public void putObject(Object obj, Object value) {
+      try {
+        setter.invokeExact(obj, value);
+      } catch (Throwable e) {
+        throw operationFailure(field, "write", e);
+      }
+    }
+  }
+
+  private static MethodHandle[] androidHandles(Field field, int accessMask) {
+    try {
+      field.setAccessible(true);
+      MethodHandles.Lookup lookup = MethodHandles.lookup();
+      Class<?> exactType = field.getType().isPrimitive() ? field.getType() : Object.class;
+      MethodHandle getter =
+          (accessMask & FieldAccessor.READ_ACCESS) == 0
+              ? null
+              : lookup
+                  .unreflectGetter(field)
+                  .asType(MethodType.methodType(exactType, Object.class));
+      MethodHandle setter =
+          (accessMask & FieldAccessor.WRITE_ACCESS) == 0
+              ? null
+              : lookup
+                  .unreflectSetter(field)
+                  .asType(MethodType.methodType(void.class, Object.class, exactType));
+      return new MethodHandle[] {getter, setter};
+    } catch (IllegalAccessException | RuntimeException e) {
+      throw new ForyException("Failed to create Android field accessor for " + field, e);
+    }
+  }
+
+  private static RuntimeException operationFailure(Field field, String operation, Throwable cause) {
+    if (cause instanceof Error) {
+      throw (Error) cause;
+    }
+    return new ForyException("Failed to " + operation + " field " + field, cause);
   }
 
   static final class InstanceAccessor extends FieldAccessor {

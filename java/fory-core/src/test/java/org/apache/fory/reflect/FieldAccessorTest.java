@@ -104,11 +104,11 @@ public class FieldAccessorTest {
   }
 
   @Test
-  public void testAndroidReflectionFieldAccessorPaths() throws Exception {
-    Process process =
-        new ProcessBuilder(TestUtils.javaCommand(AndroidReflectionFieldAccessorProbe.class))
-            .redirectErrorStream(true)
-            .start();
+  public void testAndroidMethodHandleAccessors() throws Exception {
+    ProcessBuilder builder =
+        new ProcessBuilder(TestUtils.javaCommand(AndroidMethodHandleAccessorProbe.class));
+    builder.environment().put("FORY_ANDROID_ENABLED", "0");
+    Process process = builder.redirectErrorStream(true).start();
     String output = readFully(process.getInputStream());
     Assert.assertEquals(process.waitFor(), 0, output);
   }
@@ -123,7 +123,7 @@ public class FieldAccessorTest {
     return new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
   }
 
-  public static final class AndroidReflectionFieldAccessorProbe {
+  public static final class AndroidMethodHandleAccessorProbe {
     public static void main(String[] args) throws Exception {
       System.setProperty("java.vm.name", "Dalvik");
       System.setProperty("java.runtime.name", "Android Runtime");
@@ -139,6 +139,19 @@ public class FieldAccessorTest {
       assertAccessor("floatValue", fields, 1.25f, 2.5f);
       assertAccessor("doubleValue", fields, 3.5d, 4.5d);
       assertAccessor("objectValue", fields, "before", "after");
+
+      Field intField = AndroidFields.class.getDeclaredField("intValue");
+      FieldAccessor writeAccessor =
+          FieldAccessor.createAccessor(intField, FieldAccessor.WRITE_ACCESS);
+      FieldAccessor readAccessor =
+          FieldAccessor.createAccessor(intField, FieldAccessor.READ_ACCESS);
+      writeAccessor.putInt(fields, 12);
+      check(readAccessor.getInt(fields) == 12, "direction-specific int accessors");
+
+      FieldAccessor finalAccessor =
+          FieldAccessor.createAccessor(
+              AndroidFields.class.getDeclaredField("finalValue"), FieldAccessor.READ_ACCESS);
+      check(finalAccessor.getLong(fields) == 13L, "read-only final field");
     }
 
     private static void assertAccessor(
@@ -150,8 +163,53 @@ public class FieldAccessorTest {
           accessor.getClass().getEnclosingClass() == InstanceFieldAccessors.class,
           "Expected instance accessor owner for " + field);
       checkEquals(accessor.get(fields), expected, "initial " + fieldName);
-      accessor.set(fields, replacement);
+      writeTyped(accessor, fields, replacement, field.getType());
+      checkEquals(readTyped(accessor, fields, field.getType()), replacement, "typed " + fieldName);
       checkEquals(accessor.get(fields), replacement, "updated " + fieldName);
+    }
+
+    private static Object readTyped(FieldAccessor accessor, Object target, Class<?> type) {
+      if (type == boolean.class) {
+        return accessor.getBoolean(target);
+      } else if (type == byte.class) {
+        return accessor.getByte(target);
+      } else if (type == char.class) {
+        return accessor.getChar(target);
+      } else if (type == short.class) {
+        return accessor.getShort(target);
+      } else if (type == int.class) {
+        return accessor.getInt(target);
+      } else if (type == long.class) {
+        return accessor.getLong(target);
+      } else if (type == float.class) {
+        return accessor.getFloat(target);
+      } else if (type == double.class) {
+        return accessor.getDouble(target);
+      }
+      return accessor.getObject(target);
+    }
+
+    private static void writeTyped(
+        FieldAccessor accessor, Object target, Object value, Class<?> type) {
+      if (type == boolean.class) {
+        accessor.putBoolean(target, (Boolean) value);
+      } else if (type == byte.class) {
+        accessor.putByte(target, (Byte) value);
+      } else if (type == char.class) {
+        accessor.putChar(target, (Character) value);
+      } else if (type == short.class) {
+        accessor.putShort(target, (Short) value);
+      } else if (type == int.class) {
+        accessor.putInt(target, (Integer) value);
+      } else if (type == long.class) {
+        accessor.putLong(target, (Long) value);
+      } else if (type == float.class) {
+        accessor.putFloat(target, (Float) value);
+      } else if (type == double.class) {
+        accessor.putDouble(target, (Double) value);
+      } else {
+        accessor.putObject(target, value);
+      }
     }
 
     private static void check(boolean value, String message) {
@@ -177,6 +235,7 @@ public class FieldAccessorTest {
     private float floatValue = 1.25f;
     private double doubleValue = 3.5d;
     private Object objectValue = "before";
+    private final long finalValue = 13L;
   }
 
   private static final class HiddenFields {

@@ -285,14 +285,34 @@ jobs:
         run: python ./ci/run_ci.py java --version windows_java21
 
   android:
-    name: Android Instrumented Tests API ${{ matrix.api-level }}
+    name: Android JSON ${{ matrix.name }} API ${{ matrix.api-level }}
     needs: changes
     if: needs.changes.outputs.java_code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        api-level: [26, 36]
+        include:
+          - name: agp-8.0
+            agp-version: "8.0.2"
+            gradle-version: "8.0.2"
+            compile-sdk: 34
+            api-level: 26
+          - name: agp-8.0
+            agp-version: "8.0.2"
+            gradle-version: "8.0.2"
+            compile-sdk: 34
+            api-level: 36
+          - name: current
+            agp-version: "8.13.2"
+            gradle-version: "8.13"
+            compile-sdk: 36
+            api-level: 26
+          - name: current
+            agp-version: "8.13.2"
+            gradle-version: "8.13"
+            compile-sdk: 36
+            api-level: 36
     steps:
       - uses: actions/checkout@v5
       - name: Set up JDK 17
@@ -310,11 +330,29 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e
         with:
-          gradle-version: "8.13"
+          gradle-version: ${{ matrix.gradle-version }}
       - name: Install Fory Java artifacts
         run: |
           cd java
-          mvn -T16 --no-transfer-progress -pl fory-core,fory-annotation-processor -am install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+          mvn -T16 --no-transfer-progress -pl fory-json,fory-annotation-processor,fory-json-gradle-plugin -am install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Build and verify release artifacts
+        working-directory: integration_tests/android_tests
+        run: |
+          yes | sdkmanager "platforms;android-${{ matrix.compile-sdk }}" "build-tools;35.0.0"
+          gradle --no-daemon --stacktrace \
+            -PagpVersion=${{ matrix.agp-version }} \
+            -PcompileSdk=${{ matrix.compile-sdk }} \
+            :json-model-jar:jar :json-model-aar:assembleRelease :assembleRelease :bundleRelease
+          mkdir -p build/reports/android-json
+          gradle --no-daemon \
+            -PagpVersion=${{ matrix.agp-version }} \
+            -PcompileSdk=${{ matrix.compile-sdk }} \
+            dependencies --configuration releaseRuntimeClasspath \
+            > build/reports/android-json/release-dependencies.txt
+          python3 verify_release.py \
+            --profile non-record \
+            --dependencies build/reports/android-json/release-dependencies.txt \
+            --output build/reports/android-json/release-artifacts.json
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -328,16 +366,138 @@ jobs:
           target: default
           working-directory: integration_tests/android_tests
           script: |
-            yes | sdkmanager "platforms;android-${{ matrix.api-level }}" "build-tools;35.0.0"
-            gradle --no-daemon --stacktrace connectedCheck
+            yes | sdkmanager "platforms;android-${{ matrix.compile-sdk }}" "build-tools;35.0.0"
+            gradle --no-daemon --stacktrace \
+              -PagpVersion=${{ matrix.agp-version }} \
+              -PcompileSdk=${{ matrix.compile-sdk }} \
+              -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.suppressErrors=EMULATOR,LOW-BATTERY,ACTIVITY-MISSING,UNLOCKED \
+              :connectedReleaseAndroidTest
       - name: Upload Android Test Report
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
-          name: android-test-reports-api-${{ matrix.api-level }}
+          name: android-json-${{ matrix.name }}-api-${{ matrix.api-level }}
           path: |
             integration_tests/android_tests/build/reports/androidTests/**
             integration_tests/android_tests/build/outputs/androidTest-results/**
+            integration_tests/android_tests/build/outputs/apk/release/**
+            integration_tests/android_tests/build/outputs/bundle/release/**
+            integration_tests/android_tests/build/outputs/mapping/release/**
+            integration_tests/android_tests/build/reports/android-json/**
+            integration_tests/android_tests/json-model-jar/build/libs/**
+            integration_tests/android_tests/json-model-aar/build/outputs/aar/**
+
+  android_record:
+    name: Android JSON Records ${{ matrix.name }} API ${{ matrix.api-level }}
+    needs: changes
+    if: needs.changes.outputs.java_code == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: agp-8.2
+            agp-version: "8.2.2"
+            gradle-version: "8.2"
+            compile-sdk: 34
+            api-level: 34
+          - name: current
+            agp-version: "8.13.2"
+            gradle-version: "8.13"
+            compile-sdk: 36
+            api-level: 36
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@50e97c2cd7a37755bbfafc9c5b7cafaece252f6e
+        with:
+          gradle-version: ${{ matrix.gradle-version }}
+      - name: Install Fory Java artifacts
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress -pl fory-json,fory-annotation-processor,fory-json-gradle-plugin -am install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Reject record builds below API 34
+        working-directory: integration_tests/android_tests
+        run: |
+          mkdir -p record-app/build/reports/android-json
+          set +e
+          gradle --no-daemon \
+            -PagpVersion=${{ matrix.agp-version }} \
+            -PcompileSdk=${{ matrix.compile-sdk }} \
+            -PrecordMinSdk=26 \
+            :record-app:assembleRelease \
+            > record-app/build/reports/android-json/min-sdk-26.log 2>&1
+          status=$?
+          set -e
+          if [[ "$status" -eq 0 ]]; then
+            echo "Record release unexpectedly accepted minSdk 26"
+            exit 1
+          fi
+          grep -F "Fory JSON Android records require minSdk 34 or later" \
+            record-app/build/reports/android-json/min-sdk-26.log
+      - name: Build and verify record release artifacts
+        working-directory: integration_tests/android_tests
+        run: |
+          yes | sdkmanager "platforms;android-${{ matrix.compile-sdk }}" "build-tools;35.0.0"
+          gradle --no-daemon --stacktrace \
+            -PagpVersion=${{ matrix.agp-version }} \
+            -PcompileSdk=${{ matrix.compile-sdk }} \
+            :record-model-jar:jar :record-model-aar:assembleRelease \
+            :record-app:assembleRelease :record-app:bundleRelease
+          mkdir -p record-app/build/reports/android-json
+          gradle --no-daemon \
+            -PagpVersion=${{ matrix.agp-version }} \
+            -PcompileSdk=${{ matrix.compile-sdk }} \
+            :record-app:dependencies --configuration releaseRuntimeClasspath \
+            > record-app/build/reports/android-json/release-dependencies.txt
+          python3 verify_release.py \
+            --profile record \
+            --dependencies record-app/build/reports/android-json/release-dependencies.txt \
+            --output record-app/build/reports/android-json/release-artifacts.json
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run record instrumented tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: x86_64
+          target: default
+          working-directory: integration_tests/android_tests
+          script: |
+            yes | sdkmanager "platforms;android-${{ matrix.compile-sdk }}" "build-tools;35.0.0"
+            gradle --no-daemon --stacktrace \
+              -PagpVersion=${{ matrix.agp-version }} \
+              -PcompileSdk=${{ matrix.compile-sdk }} \
+              :record-app:connectedReleaseAndroidTest
+      - name: Upload Android record artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: android-json-record-${{ matrix.name }}-api-${{ matrix.api-level }}
+          path: |
+            integration_tests/android_tests/record-app/build/reports/androidTests/**
+            integration_tests/android_tests/record-app/build/outputs/androidTest-results/**
+            integration_tests/android_tests/record-app/build/outputs/apk/release/**
+            integration_tests/android_tests/record-app/build/outputs/bundle/release/**
+            integration_tests/android_tests/record-app/build/outputs/mapping/release/**
+            integration_tests/android_tests/record-app/build/reports/android-json/**
+            integration_tests/android_tests/record-model-jar/build/libs/**
+            integration_tests/android_tests/record-model-aar/build/outputs/aar/**
 
   csharp:
     name: C# CI

@@ -1,1 +1,2 @@
 org.apache.fory.annotation.processing.ForyStructProcessor
+org.apache.fory.annotation.processing.ForyJsonProcessor

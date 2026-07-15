@@ -19,6 +19,7 @@
 
 package org.apache.fory.json.meta;
 
+import java.lang.reflect.Array;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
@@ -52,7 +53,7 @@ import org.apache.fory.util.record.RecordComponent;
  * only when the complete occurrence tree contains an explicit codec annotation.
  */
 @Internal
-public final class JsonTypeUse {
+public class JsonTypeUse {
   private static final JsonTypeUse[] NO_CHILDREN = new JsonTypeUse[0];
   private static final String[] NO_SOURCES = new String[0];
   private static final boolean ANNOTATIONS_SUPPORTED = !AndroidSupport.IS_ANDROID;
@@ -68,7 +69,7 @@ public final class JsonTypeUse {
   private final boolean hasExplicitCodec;
   private final int hashCode;
 
-  private JsonTypeUse(
+  JsonTypeUse(
       Type type,
       Class<? extends JsonValueCodec<?>> codecClass,
       String[] codecSources,
@@ -91,6 +92,99 @@ public final class JsonTypeUse {
             || containsExplicit(this.upperBounds)
             || containsExplicit(this.lowerBounds);
     hashCode = structuralHashCode();
+  }
+
+  private static JsonTypeUse newNode(
+      Type type,
+      Class<? extends JsonValueCodec<?>> codecClass,
+      JsonCodecFactory codecFactory,
+      String[] codecSources,
+      JsonTypeUse[] arguments,
+      JsonTypeUse arrayComponent,
+      JsonTypeUse[] upperBounds,
+      JsonTypeUse[] lowerBounds,
+    int variableKey) {
+    if (codecFactory != null || variableKey >= 0) {
+      return GeneratedJsonTypeUse.create(
+          type,
+          codecClass,
+          codecFactory,
+          codecSources,
+          arguments,
+          arrayComponent,
+          upperBounds,
+          lowerBounds,
+          variableKey);
+    }
+    return new JsonTypeUse(
+        type, codecClass, codecSources, arguments, arrayComponent, upperBounds, lowerBounds);
+  }
+
+  /** Creates one complete generated node, including an unresolved generated variable identity. */
+  public static JsonTypeUse generatedNode(
+      Type type,
+      Class<? extends JsonValueCodec<?>> codecClass,
+      JsonCodecFactory codecFactory,
+      String codecSource,
+      JsonTypeUse[] arguments,
+      JsonTypeUse arrayComponent,
+      JsonTypeUse[] upperBounds,
+      JsonTypeUse[] lowerBounds,
+      int variableKey) {
+    JsonTypeUse result =
+        newNode(
+            type,
+            codecClass,
+            codecFactory,
+            codecClass == null ? NO_SOURCES : new String[] {codecSource},
+            arguments,
+            arrayComponent,
+            upperBounds,
+            lowerBounds,
+            variableKey);
+    requireConcreteCodecTarget(result, codecSource);
+    return result;
+  }
+
+  /** Applies one generated variable occurrence annotation to its resolved owner binding. */
+  public static JsonTypeUse bindGenerated(
+      JsonTypeUse binding,
+      Class<? extends JsonValueCodec<?>> codecClass,
+      JsonCodecFactory codecFactory,
+      String codecSource,
+      String path) {
+    if (codecClass == null) {
+      return binding;
+    }
+    JsonTypeUse occurrence =
+        generatedNode(
+            binding.type,
+            codecClass,
+            codecFactory,
+            codecSource,
+            binding.arguments,
+            binding.arrayComponent,
+            binding.upperBounds,
+            binding.lowerBounds,
+            binding.generatedVariableKey());
+    return mergeVariableOccurrence(binding, occurrence, path);
+  }
+
+  /** Creates the parameterized {@link Type} used by a resolved generated node. */
+  public static Type generatedParameterizedType(Type owner, Class<?> rawType, Type[] arguments) {
+    return new GeneratedParameterizedType(owner, rawType, arguments);
+  }
+
+  /** Creates the array {@link Type} used by a resolved generated node. */
+  public static Type generatedArrayType(Type component) {
+    return component instanceof Class
+        ? Array.newInstance((Class<?>) component, 0).getClass()
+        : new GeneratedArrayType(component);
+  }
+
+  /** Creates the wildcard {@link Type} used by a resolved generated node. */
+  public static Type generatedWildcardType(Type[] upper, Type[] lower) {
+    return new GeneratedWildcardType(upper, lower);
   }
 
   /** Returns whether JSON codec annotations are supported on the current platform. */
@@ -221,13 +315,18 @@ public final class JsonTypeUse {
     }
     requireSameShape(left, right, path);
     Class<? extends JsonValueCodec<?>> mergedCodec = left.codecClass;
+    JsonCodecFactory mergedFactory = left.codecFactory();
     String[] mergedSources = left.codecSources;
     if (mergedCodec == null) {
       mergedCodec = right.codecClass;
+      mergedFactory = right.codecFactory();
       mergedSources = right.codecSources;
     } else if (right.codecClass != null) {
       if (mergedCodec != right.codecClass) {
         throw codecConflict(path, left, right);
+      }
+      if (mergedFactory == null) {
+        mergedFactory = right.codecFactory();
       }
       mergedSources = mergeSources(left.codecSources, right.codecSources);
     }
@@ -240,6 +339,7 @@ public final class JsonTypeUse {
     JsonTypeUse[] mergedLower =
         mergeChildren(left.lowerBounds, right.lowerBounds, path, ".lowerBound[");
     if (mergedCodec == left.codecClass
+        && mergedFactory == left.codecFactory()
         && mergedSources == left.codecSources
         && mergedArguments == left.arguments
         && mergedComponent == left.arrayComponent
@@ -247,14 +347,16 @@ public final class JsonTypeUse {
         && mergedLower == left.lowerBounds) {
       return left;
     }
-    return new JsonTypeUse(
+    return newNode(
         left.type,
         mergedCodec,
+        mergedFactory,
         mergedSources,
         mergedArguments,
         mergedComponent,
         mergedUpper,
-        mergedLower);
+        mergedLower,
+        left.generatedVariableKey());
   }
 
   /**
@@ -284,14 +386,16 @@ public final class JsonTypeUse {
       projectedArguments[i] = binding;
     }
     JsonTypeUse projected =
-        new JsonTypeUse(
+        newNode(
             projectedRef.getType(),
+            null,
             null,
             NO_SOURCES,
             projectedArguments,
             null,
             NO_CHILDREN,
-            NO_CHILDREN);
+            NO_CHILDREN,
+            -1);
     rejectUnprojectedDescendants(projected, path, targetRawType);
     return projected;
   }
@@ -339,6 +443,15 @@ public final class JsonTypeUse {
   /** Returns the codec selected at this exact node, or {@code null}. */
   public Class<? extends JsonValueCodec<?>> codecClass() {
     return codecClass;
+  }
+
+  /** Returns the generated direct codec factory for this node, or {@code null} on the JVM. */
+  public JsonCodecFactory codecFactory() {
+    return null;
+  }
+
+  int generatedVariableKey() {
+    return -1;
   }
 
   /** Returns one deterministic source for the codec at this node, or {@code null}. */
@@ -424,7 +537,9 @@ public final class JsonTypeUse {
         && Arrays.equals(arguments, other.arguments)
         && Objects.equals(arrayComponent, other.arrayComponent)
         && Arrays.equals(upperBounds, other.upperBounds)
-        && Arrays.equals(lowerBounds, other.lowerBounds);
+        && Arrays.equals(lowerBounds, other.lowerBounds)
+        && codecFactory() == other.codecFactory()
+        && generatedVariableKey() == other.generatedVariableKey();
   }
 
   @Override
@@ -521,14 +636,16 @@ public final class JsonTypeUse {
     if (lower.length == 0 && type instanceof WildcardType) {
       lower = plainTypes(((WildcardType) type).getLowerBounds());
     }
-    return new JsonTypeUse(
+    return newNode(
         type,
         annotation == null ? null : readCodecClass(annotation, source, path),
+        null,
         annotation == null ? NO_SOURCES : new String[] {source + " at " + path},
         arguments,
         component,
         upper,
-        lower);
+        lower,
+        -1);
   }
 
   private static Class<? extends JsonValueCodec<?>> readCodecClass(
@@ -568,7 +685,7 @@ public final class JsonTypeUse {
       upper = plainTypes(wildcard.getUpperBounds());
       lower = plainTypes(wildcard.getLowerBounds());
     }
-    return new JsonTypeUse(type, null, NO_SOURCES, arguments, component, upper, lower);
+    return newNode(type, null, null, NO_SOURCES, arguments, component, upper, lower, -1);
   }
 
   private static JsonTypeUse[] plainTypes(Type[] types) {
@@ -665,8 +782,16 @@ public final class JsonTypeUse {
     JsonTypeUse[] lower =
         resolveChildren(node.lowerBounds, context, bindings, path, ".lowerBound[");
     JsonTypeUse resolved =
-        new JsonTypeUse(
-            resolvedType, node.codecClass, node.codecSources, arguments, component, upper, lower);
+        newNode(
+            resolvedType,
+            node.codecClass,
+            node.codecFactory(),
+            node.codecSources,
+            arguments,
+            component,
+            upper,
+            lower,
+            node.generatedVariableKey());
     requireConcreteCodecTarget(resolved, path);
     return resolved;
   }
@@ -693,31 +818,40 @@ public final class JsonTypeUse {
       return binding;
     }
     Class<? extends JsonValueCodec<?>> codec = binding.codecClass;
+    JsonCodecFactory factory = binding.codecFactory();
     String[] sources = binding.codecSources;
     if (codec == null) {
       codec = occurrence.codecClass;
+      factory = occurrence.codecFactory();
       sources = occurrence.codecSources;
     } else if (codec != occurrence.codecClass) {
       throw codecConflict(path, binding, occurrence);
     } else {
+      if (factory == null) {
+        factory = occurrence.codecFactory();
+      }
       sources = mergeSources(binding.codecSources, occurrence.codecSources);
     }
     JsonTypeUse resolved =
-        new JsonTypeUse(
+        newNode(
             binding.type,
             codec,
+            factory,
             sources,
             binding.arguments,
             binding.arrayComponent,
             binding.upperBounds,
-            binding.lowerBounds);
+            binding.lowerBounds,
+            binding.generatedVariableKey());
     requireConcreteCodecTarget(resolved, path);
     return resolved;
   }
 
   private static void requireConcreteCodecTarget(JsonTypeUse node, String path) {
     if (node.codecClass != null
-        && (node.type instanceof TypeVariable || node.type instanceof WildcardType)) {
+        && (node.generatedVariableKey() >= 0
+            || node.type instanceof TypeVariable
+            || node.type instanceof WildcardType)) {
       throw new ForyJsonException(
           "@JsonCodec from "
               + node.codecSource()
@@ -791,6 +925,7 @@ public final class JsonTypeUse {
 
   private static void requireSameShape(JsonTypeUse left, JsonTypeUse right, String path) {
     if (!left.type.equals(right.type)
+        || left.generatedVariableKey() != right.generatedVariableKey()
         || left.arguments.length != right.arguments.length
         || (left.arrayComponent == null) != (right.arrayComponent == null)
         || left.upperBounds.length != right.upperBounds.length
@@ -927,6 +1062,150 @@ public final class JsonTypeUse {
               + parameterCount
               + " parameters but found "
               + typeUses.length);
+    }
+  }
+
+  private static final class GeneratedParameterizedType implements ParameterizedType {
+    private final Type owner;
+    private final Class<?> rawType;
+    private final Type[] arguments;
+
+    private GeneratedParameterizedType(Type owner, Class<?> rawType, Type[] arguments) {
+      this.owner = owner;
+      this.rawType = rawType;
+      this.arguments = arguments.clone();
+    }
+
+    @Override
+    public Type[] getActualTypeArguments() {
+      return arguments.clone();
+    }
+
+    @Override
+    public Type getRawType() {
+      return rawType;
+    }
+
+    @Override
+    public Type getOwnerType() {
+      return owner;
+    }
+
+    @Override
+    public boolean equals(Object value) {
+      if (!(value instanceof ParameterizedType)) {
+        return false;
+      }
+      ParameterizedType other = (ParameterizedType) value;
+      return rawType.equals(other.getRawType())
+          && Objects.equals(owner, other.getOwnerType())
+          && Arrays.equals(arguments, other.getActualTypeArguments());
+    }
+
+    @Override
+    public int hashCode() {
+      return Arrays.hashCode(arguments) ^ rawType.hashCode() ^ Objects.hashCode(owner);
+    }
+
+    @Override
+    public String getTypeName() {
+      StringBuilder builder = new StringBuilder(rawType.getTypeName()).append('<');
+      for (int i = 0; i < arguments.length; i++) {
+        if (i != 0) {
+          builder.append(", ");
+        }
+        builder.append(arguments[i].getTypeName());
+      }
+      return builder.append('>').toString();
+    }
+
+    @Override
+    public String toString() {
+      return getTypeName();
+    }
+  }
+
+  private static final class GeneratedArrayType implements GenericArrayType {
+    private final Type component;
+
+    private GeneratedArrayType(Type component) {
+      this.component = component;
+    }
+
+    @Override
+    public Type getGenericComponentType() {
+      return component;
+    }
+
+    @Override
+    public boolean equals(Object value) {
+      return value instanceof GenericArrayType
+          && component.equals(((GenericArrayType) value).getGenericComponentType());
+    }
+
+    @Override
+    public int hashCode() {
+      return component.hashCode();
+    }
+
+    @Override
+    public String getTypeName() {
+      return component.getTypeName() + "[]";
+    }
+
+    @Override
+    public String toString() {
+      return getTypeName();
+    }
+  }
+
+  private static final class GeneratedWildcardType implements WildcardType {
+    private final Type[] upper;
+    private final Type[] lower;
+
+    private GeneratedWildcardType(Type[] upper, Type[] lower) {
+      this.upper = upper.length == 0 ? new Type[] {Object.class} : upper.clone();
+      this.lower = lower.clone();
+    }
+
+    @Override
+    public Type[] getUpperBounds() {
+      return upper.clone();
+    }
+
+    @Override
+    public Type[] getLowerBounds() {
+      return lower.clone();
+    }
+
+    @Override
+    public boolean equals(Object value) {
+      if (!(value instanceof WildcardType)) {
+        return false;
+      }
+      WildcardType other = (WildcardType) value;
+      return Arrays.equals(upper, other.getUpperBounds())
+          && Arrays.equals(lower, other.getLowerBounds());
+    }
+
+    @Override
+    public int hashCode() {
+      return Arrays.hashCode(upper) ^ Arrays.hashCode(lower);
+    }
+
+    @Override
+    public String getTypeName() {
+      if (lower.length != 0) {
+        return "? super " + lower[0].getTypeName();
+      }
+      return upper.length == 0 || upper[0] == Object.class
+          ? "?"
+          : "? extends " + upper[0].getTypeName();
+    }
+
+    @Override
+    public String toString() {
+      return getTypeName();
     }
   }
 }

@@ -25,8 +25,10 @@ import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Map;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.CodecUtils;
+import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -141,6 +143,64 @@ public final class JsonFieldInfo {
       JsonFieldAccessor readAccessor,
       TypeRef<?> ownerType,
       JsonTypeUse typeUse) {
+    this(
+        name,
+        writeNull,
+        writeField,
+        writeGetter,
+        readField,
+        readSetter,
+        resolveType(ownerType, writeType(writeField, writeGetter)),
+        writeRawType(writeField, writeGetter),
+        resolveType(ownerType, readType(readField, readSetter)),
+        readRawType(readField, readSetter),
+        writeAccessor,
+        readAccessor,
+        typeUse);
+  }
+
+  /** Creates field metadata from validated generated Android member facts. */
+  @Internal
+  public static JsonFieldInfo fromGenerated(
+      String name,
+      boolean writeNull,
+      Type writeType,
+      Class<?> writeRawType,
+      Type readType,
+      Class<?> readRawType,
+      JsonFieldAccessor writeAccessor,
+      JsonFieldAccessor readAccessor,
+      JsonTypeUse typeUse) {
+    return new JsonFieldInfo(
+        name,
+        writeNull,
+        null,
+        null,
+        null,
+        null,
+        writeType,
+        writeRawType,
+        readType,
+        readRawType,
+        writeAccessor,
+        readAccessor,
+        typeUse);
+  }
+
+  private JsonFieldInfo(
+      String name,
+      boolean writeNull,
+      Field writeField,
+      Method writeGetter,
+      Field readField,
+      Method readSetter,
+      Type writeType,
+      Class<?> writeRawType,
+      Type readType,
+      Class<?> readRawType,
+      JsonFieldAccessor writeAccessor,
+      JsonFieldAccessor readAccessor,
+      JsonTypeUse typeUse) {
     this.name = name;
     // The write-null decision and read index are both immutable after ObjectCodec construction.
     // Packing the flag into the unused sign bit keeps JsonFieldInfo at its established object size
@@ -152,12 +212,10 @@ public final class JsonFieldInfo {
     this.writeGetter = writeGetter;
     this.readField = readField;
     this.readSetter = readSetter;
-    Class<?> writeFallback = writeRawType(writeField, writeGetter);
-    Class<?> readFallback = readRawType(readField, readSetter);
-    this.writeType = resolveType(ownerType, writeType(writeField, writeGetter));
-    this.writeRawType = semanticRawType(writeType, writeFallback);
-    this.readType = resolveType(ownerType, readType(readField, readSetter));
-    this.readRawType = semanticRawType(readType, readFallback);
+    this.writeType = writeType;
+    this.writeRawType = semanticRawType(writeType, writeRawType);
+    this.readType = readType;
+    this.readRawType = semanticRawType(readType, readRawType);
     this.typeUse = typeUse;
     this.writeAccessor = writeAccessor;
     this.readAccessor = readAccessor;
@@ -279,6 +337,72 @@ public final class JsonFieldInfo {
 
   public JsonFieldKind writeKind() {
     return writeKind;
+  }
+
+  /** Returns whether generated writers retain the resolved child codec for this property. */
+  @Internal
+  public boolean usesWriteCodec() {
+    switch (writeKind) {
+      case ARRAY:
+      case MAP:
+      case OBJECT:
+        return true;
+      case COLLECTION:
+        return !writesStringCollectionDirectly();
+      default:
+        return false;
+    }
+  }
+
+  /** Returns whether the optimized String collection writer consumes elements directly. */
+  @Internal
+  public boolean writesStringCollectionDirectly() {
+    return writeElementRawType == String.class
+        && writeTypeInfo.stringWriter().getClass() == CollectionCodec.StringCollectionCodec.class;
+  }
+
+  /** Returns the default object child type stored by a generated writer, or {@code null}. */
+  @Internal
+  public Class<?> writeNestedType() {
+    JsonTypeInfo typeInfo = writeTypeInfo;
+    return usesWriteCodec() && typeInfo.usesDefaultObjectCodec() ? typeInfo.rawType() : null;
+  }
+
+  /** Returns whether generated readers retain the resolved child codec for this property. */
+  @Internal
+  public boolean usesReadCodec() {
+    switch (readKind) {
+      case ENUM:
+      case ARRAY:
+      case COLLECTION:
+      case MAP:
+        return true;
+      case OBJECT:
+        return !usesReadObjectCodec();
+      default:
+        return false;
+    }
+  }
+
+  /** Returns whether a generated reader can call the nested default object reader directly. */
+  @Internal
+  public boolean usesReadObjectCodec() {
+    return readKind == JsonFieldKind.OBJECT
+        && readRawType != Object.class
+        && readTypeInfo.usesDefaultObjectCodec();
+  }
+
+  /** Returns the nested default object reader type, or {@code null}. */
+  @Internal
+  public Class<?> readNestedType() {
+    return usesReadObjectCodec() ? readRawType : null;
+  }
+
+  /** Returns whether a generated reader stores this nested object reader separately. */
+  @Internal
+  public boolean storesReadObjectCodec(Class<?> ownerType) {
+    Class<?> nestedType = readNestedType();
+    return nestedType != null && nestedType != ownerType;
   }
 
   public JsonFieldAccessor writeAccessor() {

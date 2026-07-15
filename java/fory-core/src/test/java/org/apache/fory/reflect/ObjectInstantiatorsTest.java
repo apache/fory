@@ -22,8 +22,16 @@ package org.apache.fory.reflect;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.stream.Stream;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 import org.apache.fory.TestUtils;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.platform.AndroidSupport;
@@ -85,10 +93,10 @@ public class ObjectInstantiatorsTest {
 
   @Test
   public void testAndroidObjectInstantiators() throws Exception {
-    Process process =
-        new ProcessBuilder(TestUtils.javaCommand(AndroidObjectInstantiatorProbe.class))
-            .redirectErrorStream(true)
-            .start();
+    ProcessBuilder builder =
+        new ProcessBuilder(TestUtils.javaCommand(AndroidObjectInstantiatorProbe.class));
+    builder.environment().put("FORY_ANDROID_ENABLED", "0");
+    Process process = builder.redirectErrorStream(true).start();
     String output = readFully(process.getInputStream());
     Assert.assertEquals(process.waitFor(), 0, output);
   }
@@ -112,7 +120,7 @@ public class ObjectInstantiatorsTest {
       ObjectInstantiator<AndroidPrivateNoArg> instantiator =
           ObjectInstantiators.getObjectInstantiator(AndroidPrivateNoArg.class);
       AndroidPrivateNoArg instance = instantiator.newInstance();
-      check(instance.value == 7, "Android reflective constructor should initialize fields");
+      check(instance.value == 7, "Android constructor should initialize fields");
 
       ObjectInstantiator<AndroidNoNoArg> unsupported =
           ObjectInstantiators.getObjectInstantiator(AndroidNoNoArg.class);
@@ -123,6 +131,83 @@ public class ObjectInstantiatorsTest {
         check(
             expected.getMessage().contains("without an accessible no-arg constructor"),
             "Unexpected message: " + expected.getMessage());
+      }
+
+      verifyRecordConstruction();
+    }
+
+    private static void verifyRecordConstruction() {
+      int feature = javaFeature();
+      JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+      if (feature < 16 || compiler == null) {
+        return;
+      }
+      Path directory = null;
+      try {
+        directory = Files.createTempDirectory("fory-android-record");
+        Path source = directory.resolve("AndroidProbeRecord.java");
+        Files.write(
+            source,
+            ("public record AndroidProbeRecord(int id, String name) {}")
+                .getBytes(StandardCharsets.UTF_8));
+        int result =
+            compiler.run(
+                null,
+                null,
+                null,
+                "--release",
+                Integer.toString(feature),
+                "-d",
+                directory.toString(),
+                source.toString());
+        check(result == 0, "Failed to compile Android record probe");
+        try (URLClassLoader loader =
+            new URLClassLoader(
+                new URL[] {directory.toUri().toURL()},
+                AndroidObjectInstantiatorProbe.class.getClassLoader())) {
+          Class<?> recordType = Class.forName("AndroidProbeRecord", true, loader);
+          ObjectInstantiator<?> recordInstantiator =
+              ObjectInstantiators.getObjectInstantiator(recordType);
+          Object record = recordInstantiator.newInstanceWithArguments(11, "record");
+          FieldAccessor idAccessor =
+              FieldAccessor.createAccessor(
+                  recordType.getDeclaredField("id"), FieldAccessor.READ_ACCESS);
+          FieldAccessor nameAccessor =
+              FieldAccessor.createAccessor(
+                  recordType.getDeclaredField("name"), FieldAccessor.READ_ACCESS);
+          check(idAccessor.getInt(record) == 11, "Android record int component");
+          check("record".equals(nameAccessor.getObject(record)), "Android record object component");
+        }
+      } catch (Exception e) {
+        throw new AssertionError("Android record construction failed", e);
+      } finally {
+        deleteTree(directory);
+      }
+    }
+
+    private static int javaFeature() {
+      String version = System.getProperty("java.specification.version", "8");
+      int dot = version.indexOf('.');
+      return Integer.parseInt(dot < 0 ? version : version.substring(dot + 1));
+    }
+
+    private static void deleteTree(Path directory) {
+      if (directory == null) {
+        return;
+      }
+      try (Stream<Path> paths = Files.walk(directory)) {
+        paths
+            .sorted(Comparator.reverseOrder())
+            .forEach(
+                path -> {
+                  try {
+                    Files.delete(path);
+                  } catch (IOException e) {
+                    throw new RuntimeException(e);
+                  }
+                });
+      } catch (IOException e) {
+        throw new RuntimeException(e);
       }
     }
 

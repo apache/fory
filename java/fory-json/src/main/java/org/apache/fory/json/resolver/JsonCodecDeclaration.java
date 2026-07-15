@@ -21,9 +21,10 @@ package org.apache.fory.json.resolver;
 
 import java.lang.reflect.Type;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.meta.JsonCodecFactory;
 
 /** Immutable result of resolving one direct or inherited {@code @JsonCodec} declaration. */
-final class JsonCodecDeclaration {
+class JsonCodecDeclaration {
   private final Class<? extends JsonValueCodec<?>> codecClass;
   private final Class<?>[] origins;
   private final boolean inherited;
@@ -37,6 +38,10 @@ final class JsonCodecDeclaration {
 
   Class<? extends JsonValueCodec<?>> codecClass() {
     return codecClass;
+  }
+
+  JsonCodecFactory codecFactory() {
+    return null;
   }
 
   boolean inherited() {

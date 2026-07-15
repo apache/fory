@@ -133,10 +133,6 @@ abstract class JsonWriterCodegen {
 
   abstract Expression writeExactArray(JsonFieldInfo property, Expression value, Expression writer);
 
-  private static boolean usesWriteCodec(JsonFieldInfo property) {
-    return JsonCodegen.usesWriteCodec(property);
-  }
-
   static Reference fieldRef(String name, Class<?> type) {
     return Reference.fieldRef(name, TypeRef.of(type));
   }
@@ -721,8 +717,7 @@ abstract class JsonWriterCodegen {
           kind == JsonFieldKind.MAP
               || kind == JsonFieldKind.ARRAY && writeExactArray(property, value, writer) == null
               || kind == JsonFieldKind.OBJECT && writeExactScalar(property, value, writer) == null
-              || kind == JsonFieldKind.COLLECTION
-                  && !JsonCodegen.writesStringCollectionDirectly(property);
+              || kind == JsonFieldKind.COLLECTION && !property.writesStringCollectionDirectly();
       if (onlyCodec) {
         return new Expression.ListExpression(
             value,
@@ -838,7 +833,7 @@ abstract class JsonWriterCodegen {
       case MAP:
         return writeCodec(property, id, value, writer);
       case COLLECTION:
-        if (JsonCodegen.writesStringCollectionDirectly(property)) {
+        if (property.writesStringCollectionDirectly()) {
           return writeStringCollection(value, writer);
         }
         return writeCodec(property, id, value, writer);
@@ -892,7 +887,7 @@ abstract class JsonWriterCodegen {
   }
 
   private boolean storesWriteCodec(JsonFieldInfo property) {
-    return usesWriteCodec(property)
+    return property.usesWriteCodec()
         && (!property.writeTypeInfo().usesDefaultObjectCodec()
             || property.writeRawType() != ownerType);
   }

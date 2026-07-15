@@ -26,11 +26,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a reachable JSON model for reflection metadata registration in a GraalVM native image.
+ * Marks a reachable JSON model for platform metadata generation.
  *
- * <p>The annotation does not change JSON behavior on the JVM and is intentionally not inherited.
- * Annotate every runtime model type that Fory JSON reads or writes. A class-literal subtype listed
- * by an annotated {@link JsonSubTypes} base is registered automatically.
+ * <p>The annotation does not change JSON behavior on the ordinary JVM and is intentionally not
+ * inherited. GraalVM uses it to register native-image reflection metadata. Android requires the
+ * Fory annotation processor to generate R8-safe metadata when the declaration is compiled. A
+ * class-literal subtype listed by an annotated {@link JsonSubTypes} base is reachable from the
+ * annotated base.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

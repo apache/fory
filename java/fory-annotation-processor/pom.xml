@@ -32,7 +32,7 @@
   <artifactId>fory-annotation-processor</artifactId>
 
   <description>
-    Apache Fory annotation processor for build-time @ForyStruct serializer generation.
+    Apache Fory annotation processors for build-time serializers and JSON Android metadata.
   </description>
 
   <properties>
@@ -44,9 +44,13 @@
   <dependencies>
     <dependency>
       <groupId>org.apache.fory</groupId>
+      <artifactId>fory-json</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
       <artifactId>fory-core</artifactId>
       <version>${project.version}</version>
-      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>org.testng</groupId>

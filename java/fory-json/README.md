@@ -57,6 +57,44 @@ For a module-path application:
 
 The JPMS module name of Fory JSON is `org.apache.fory.json`.
 
+### Android
+
+Android API 26 and later uses build-time model metadata with the interpreted runtime codecs. Apply
+the matching Fory JSON Gradle plugin to every Android application and Android library module:
+
+```gradle
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    classpath "org.apache.fory:fory-json-gradle-plugin:1.4.0-SNAPSHOT"
+  }
+}
+
+apply plugin: "com.android.application" // Or com.android.library.
+apply plugin: "org.apache.fory.json"
+
+dependencies {
+  implementation("org.apache.fory:fory-json:1.4.0-SNAPSHOT")
+  annotationProcessor("org.apache.fory:fory-annotation-processor:1.4.0-SNAPSHOT")
+}
+```
+
+Annotate each default-mapped model with `@JsonType` in the module that owns its source. A Java
+library JAR uses the runtime and processor dependencies without the Android plugin; the consuming
+Android application collects its exact generated rules. An Android library applies the plugin so
+its published AAR exposes standard consumer rules. The generated metadata supports R8 full-mode
+shrinking and obfuscation without a package-wide keep rule. It preserves private member access,
+generic and nested type-use metadata, creators, Any properties, subtype declarations, and
+`@JsonCodec`. Register an exact codec for a third-party type that cannot be annotated. Keep the
+plugin, runtime, and processor on the same version.
+
+The base Android profile requires Android Gradle Plugin 8.0 or later and `minSdk 26`. Record models
+require Android Gradle Plugin 8.2 or later, JDK 17, Java 17 source and target compatibility in each
+owning module, and `minSdk 34`. Records are not backported to Android API 26 through 33.
+
 ## Quick start
 
 Create one `ForyJson` instance and reuse it. The instance is thread-safe and has no close lifecycle.
@@ -362,12 +400,13 @@ disabled. Every other builder option keeps the behavior described above.
 ## JSON annotations
 
 Fory JSON defines ten annotations in `org.apache.fory.json.annotation`, including `JsonCodec` for
-complete-value codec selection and `JsonType` for GraalVM Native Image model metadata. They are Fory
-JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
+complete-value codec selection and `JsonType` for Android and GraalVM Native Image metadata. They
+are Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
 `JsonType` has no effect on ordinary JVM JSON behavior and is not inherited. Add it to every
-reachable object model used by a native executable. See the
-[GraalVM guide](../../docs/guide/java/graalvm-support.md) for the complete workflow.
+reachable Android or native-image object model. Android compilation requires the Fory annotation
+processor. See the [GraalVM guide](../../docs/guide/java/graalvm-support.md) for the native-image
+workflow.
 
 ### `JsonProperty`
 
@@ -1078,11 +1117,13 @@ plain `Base` fails with `ForyJsonException` containing the target type, codec cl
 and actual returned class. Fory validates the actual result rather than rejecting inheritance based
 on the codec's generic signature.
 
-`@JsonCodec` declaration and type-use discovery is supported on ordinary JVMs and GraalVM native
-images, including inherited declarations and nested type uses. Native object models must follow the
-`JsonType` workflow in the [GraalVM guide](../../docs/guide/java/graalvm-support.md), which registers
-the annotation codec's public no-argument constructor. Android ignores annotation codec sources;
-use exact `registerCodec(Target.class, instance)` registration there.
+`@JsonCodec` declaration and type-use discovery is supported on ordinary JVMs, Android API 26 or
+later, and GraalVM native images, including inherited declarations and nested type uses. Android
+model classes use `@JsonType` and `fory-annotation-processor` to preserve the metadata through R8.
+Native object models follow the `JsonType` workflow in the
+[GraalVM guide](../../docs/guide/java/graalvm-support.md), which registers the annotation codec's
+public no-argument constructor. Use exact `registerCodec(Target.class, instance)` for third-party
+Android types that cannot be annotated.
 
 ## Type validation and untrusted input
 

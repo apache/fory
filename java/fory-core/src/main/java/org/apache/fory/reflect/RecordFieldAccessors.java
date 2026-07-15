@@ -19,6 +19,9 @@
 
 package org.apache.fory.reflect;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -43,7 +46,7 @@ final class RecordFieldAccessors {
 
   static FieldAccessor createAccessor(Field field) {
     if (AndroidSupport.IS_ANDROID) {
-      return new ReflectiveRecordFieldAccessor(field);
+      return new AndroidRecordFieldAccessor(field);
     }
     if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
       return new ReflectiveRecordFieldAccessor(field);
@@ -73,6 +76,126 @@ final class RecordFieldAccessors {
       return new DoubleGetter(field, (ToDoubleFunction) getter);
     } else {
       return new ObjectGetter(field, (Function) getter);
+    }
+  }
+
+  static final class AndroidRecordFieldAccessor extends FieldGetter {
+    private final MethodHandle accessor;
+    private final int accessKind;
+
+    AndroidRecordFieldAccessor(Field field) {
+      this(field, androidAccessor(field));
+    }
+
+    private AndroidRecordFieldAccessor(Field field, MethodHandle accessor) {
+      super(field, accessor);
+      this.accessor = accessor;
+      accessKind = accessKind(field);
+    }
+
+    @Override
+    public Object get(Object obj) {
+      switch (accessKind) {
+        case 1:
+          return getBoolean(obj);
+        case 2:
+          return getByte(obj);
+        case 3:
+          return getChar(obj);
+        case 4:
+          return getShort(obj);
+        case 5:
+          return getInt(obj);
+        case 6:
+          return getLong(obj);
+        case 7:
+          return getFloat(obj);
+        case 8:
+          return getDouble(obj);
+        default:
+          return getObject(obj);
+      }
+    }
+
+    @Override
+    public boolean getBoolean(Object obj) {
+      try {
+        return (boolean) accessor.invokeExact(obj);
+      } catch (Throwable e) {
+        throw accessFailure(field, e);
+      }
+    }
+
+    @Override
+    public byte getByte(Object obj) {
+      try {
+        return (byte) accessor.invokeExact(obj);
+      } catch (Throwable e) {
+        throw accessFailure(field, e);
+      }
+    }
+
+    @Override
+    public char getChar(Object obj) {
+      try {
+        return (char) accessor.invokeExact(obj);
+      } catch (Throwable e) {
+        throw accessFailure(field, e);
+      }
+    }
+
+    @Override
+    public short getShort(Object obj) {
+      try {
+        return (short) accessor.invokeExact(obj);
+      } catch (Throwable e) {
+        throw accessFailure(field, e);
+      }
+    }
+
+    @Override
+    public int getInt(Object obj) {
+      try {
+        return (int) accessor.invokeExact(obj);
+      } catch (Throwable e) {
+        throw accessFailure(field, e);
+      }
+    }
+
+    @Override
+    public long getLong(Object obj) {
+      try {
+        return (long) accessor.invokeExact(obj);
+      } catch (Throwable e) {
+        throw accessFailure(field, e);
+      }
+    }
+
+    @Override
+    public float getFloat(Object obj) {
+      try {
+        return (float) accessor.invokeExact(obj);
+      } catch (Throwable e) {
+        throw accessFailure(field, e);
+      }
+    }
+
+    @Override
+    public double getDouble(Object obj) {
+      try {
+        return (double) accessor.invokeExact(obj);
+      } catch (Throwable e) {
+        throw accessFailure(field, e);
+      }
+    }
+
+    @Override
+    public Object getObject(Object obj) {
+      try {
+        return (Object) accessor.invokeExact(obj);
+      } catch (Throwable e) {
+        throw accessFailure(field, e);
+      }
     }
   }
 
@@ -106,6 +229,48 @@ final class RecordFieldAccessors {
     public void set(Object obj, Object value) {
       throw new UnsupportedOperationException("Record field is read-only: " + field);
     }
+  }
+
+  private static MethodHandle androidAccessor(Field field) {
+    try {
+      Method method = field.getDeclaringClass().getDeclaredMethod(field.getName());
+      method.setAccessible(true);
+      Class<?> exactType = field.getType().isPrimitive() ? field.getType() : Object.class;
+      return MethodHandles.lookup()
+          .unreflect(method)
+          .asType(MethodType.methodType(exactType, Object.class));
+    } catch (NoSuchMethodException | IllegalAccessException | RuntimeException e) {
+      throw new ForyException("Failed to create Android record accessor for " + field, e);
+    }
+  }
+
+  private static int accessKind(Field field) {
+    Class<?> fieldType = field.getType();
+    if (fieldType == boolean.class) {
+      return 1;
+    } else if (fieldType == byte.class) {
+      return 2;
+    } else if (fieldType == char.class) {
+      return 3;
+    } else if (fieldType == short.class) {
+      return 4;
+    } else if (fieldType == int.class) {
+      return 5;
+    } else if (fieldType == long.class) {
+      return 6;
+    } else if (fieldType == float.class) {
+      return 7;
+    } else if (fieldType == double.class) {
+      return 8;
+    }
+    return 9;
+  }
+
+  private static RuntimeException accessFailure(Field field, Throwable cause) {
+    if (cause instanceof Error) {
+      throw (Error) cause;
+    }
+    return new ForyException("Failed to read record field " + field, cause);
   }
 
   private static class BooleanGetter extends FieldGetter {

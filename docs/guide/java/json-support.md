@@ -60,6 +60,42 @@ implementation("org.apache.fory:fory-json:1.4.0-SNAPSHOT")
 Keep all Fory modules on the same version. Replace the snapshot with the released version that
 contains `fory-json` after publication.
 
+### Android
+
+Android API 26 and later uses build-time metadata for application and library JSON models. Add the
+matching Gradle plugin to every Android application and Android library module:
+
+```gradle
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    classpath "org.apache.fory:fory-json-gradle-plugin:1.4.0-SNAPSHOT"
+  }
+}
+
+apply plugin: "com.android.application" // Or com.android.library.
+apply plugin: "org.apache.fory.json"
+
+dependencies {
+  implementation("org.apache.fory:fory-json:1.4.0-SNAPSHOT")
+  annotationProcessor("org.apache.fory:fory-annotation-processor:1.4.0-SNAPSHOT")
+}
+```
+
+Annotate default-mapped models with `JsonType` in the module that owns their source. Java library
+modules use the runtime and processor dependencies without the Android plugin. Generated metadata
+and exact rules work with R8 full mode for application classes, Java-library JARs, and
+Android-library AARs; do not add a package-wide keep rule. Register an exact codec for a third-party
+model that cannot be annotated. Keep all three Fory artifacts on the same version.
+
+The base profile requires Android Gradle Plugin 8.0 or later and `minSdk 26`. Java records require
+Android Gradle Plugin 8.2 or later, JDK 17, Java 17 source and target compatibility, and `minSdk 34`.
+Records are not supported on Android API 26 through 33. See
+[Android Support](android-support.md#fory-json) for the complete model and build requirements.
+
 ### JDK 25 and later
 
 Open `java.lang.invoke` to Fory core. On the classpath:
@@ -934,11 +970,13 @@ succeed. Returning a plain parent while decoding the child fails with `ForyJsonE
 names the target type, codec class, declaring type, and actual returned type. The actual result,
 not the parent's `final` status or the codec's generic signature, determines validity.
 
-`@JsonCodec` is supported on ordinary JVMs and GraalVM native images, including inherited
-declarations and nested type uses. Native models must follow the `JsonType` workflow described in
+`@JsonCodec` is supported on ordinary JVMs, Android API 26 or later, and GraalVM native images,
+including inherited declarations and nested type uses. Android model classes use `@JsonType` and
+the Fory annotation processor so codec metadata remains available after R8 shrinking and
+obfuscation. Native models follow the `JsonType` workflow described in
 [GraalVM Support](graalvm-support.md), which registers the annotation codec's public no-argument
-constructor. Android ignores declaration and type-use forms; use exact `registerCodec`
-registration there.
+constructor. A third-party Android type that cannot be annotated needs an exact `registerCodec`
+registration.
 
 ## Type validation and untrusted input
 

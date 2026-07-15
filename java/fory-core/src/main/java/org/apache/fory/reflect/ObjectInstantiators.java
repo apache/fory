@@ -51,8 +51,8 @@ import org.apache.fory.util.record.RecordUtils;
  *       DeclaredNoArgCtrInstantiator} with MethodHandle for fast invocation
  *   <li><strong>Classes without accessible constructors:</strong> Uses JDK8-24 Unsafe allocation or
  *       serialization constructor creation through the runtime ReflectionFactory owner
- *   <li><strong>Android compatibility:</strong> Uses reflection for records and no-arg
- *       constructors, and throws when no supported reflective construction path exists
+ *   <li><strong>Android compatibility:</strong> Uses cached constructors for records and no-arg
+ *       construction, and throws when no supported construction path exists
  * </ul>
  *
  * <p>The static {@link #getObjectInstantiator(Class)} method keeps the process-global construction
@@ -65,6 +65,7 @@ import org.apache.fory.util.record.RecordUtils;
  */
 @SuppressWarnings("unchecked")
 public class ObjectInstantiators {
+  private static final Object[] EMPTY_ARGUMENTS = new Object[0];
   private static final ClassValueCache<ObjectInstantiator<?>> cache =
       ClassValueCache.newClassKeySoftCache(8);
 
@@ -89,12 +90,15 @@ public class ObjectInstantiators {
   @Internal
   public static <T> ObjectInstantiator<T> createObjectInstantiator(Class<T> type) {
     if (RecordUtils.isRecord(type)) {
+      if (AndroidSupport.IS_ANDROID) {
+        return new AndroidRecordObjectInstantiator<>(type);
+      }
       return new RecordObjectInstantiator<>(type);
     }
     Constructor<T> noArgConstructor = ReflectionUtils.getNoArgConstructor(type);
     if (AndroidSupport.IS_ANDROID) {
       if (noArgConstructor != null) {
-        return new ReflectiveNoArgCtrInstantiator<>(type, noArgConstructor);
+        return new AndroidNoArgCtrInstantiator<>(type, noArgConstructor);
       }
       return new UnsupportedObjectInstantiator<>(
           type, "Android cannot create " + type + " without an accessible no-arg constructor");
@@ -126,6 +130,22 @@ public class ObjectInstantiators {
     return new DeclaredNoArgCtrInstantiator<>(type);
   }
 
+  /** Creates the Android owner for an already validated no-argument constructor. */
+  @Internal
+  public static <T> ObjectInstantiator<T> createAndroidNoArgInstantiator(
+      Class<T> type, Constructor<?> constructor) {
+    validateAndroidConstructor(type, constructor, true);
+    return new AndroidNoArgCtrInstantiator<>(type, (Constructor<T>) constructor);
+  }
+
+  /** Creates the Android owner for an already validated record constructor. */
+  @Internal
+  public static <T> ObjectInstantiator<T> createAndroidRecordInstantiator(
+      Class<T> type, Constructor<?> constructor) {
+    validateAndroidConstructor(type, constructor, false);
+    return new AndroidRecordObjectInstantiator<>(type, constructor);
+  }
+
   /**
    * Creates an uncached empty-instance instantiator for Java ObjectStream-compatible serializers.
    */
@@ -134,7 +154,7 @@ public class ObjectInstantiators {
     if (AndroidSupport.IS_ANDROID) {
       Constructor<T> noArgConstructor = ReflectionUtils.getNoArgConstructor(type);
       if (noArgConstructor != null) {
-        return new ReflectiveNoArgCtrInstantiator<>(type, noArgConstructor);
+        return new AndroidNoArgCtrInstantiator<>(type, noArgConstructor);
       }
       return new UnsupportedObjectInstantiator<>(
           type, "Android cannot create " + type + " without an accessible no-arg constructor");
@@ -155,6 +175,14 @@ public class ObjectInstantiators {
     return new RuntimeException("Failed to create instance for " + type, target);
   }
 
+  private static void validateAndroidConstructor(
+      Class<?> type, Constructor<?> constructor, boolean noArg) {
+    if (constructor.getDeclaringClass() != type
+        || (noArg && constructor.getParameterCount() != 0)) {
+      throw new IllegalArgumentException("Constructor does not match Android owner " + type);
+    }
+  }
+
   private static Throwable unwrapConstructorFailure(Throwable cause) {
     if (cause instanceof InvocationTargetException) {
       Throwable target = ((InvocationTargetException) cause).getTargetException();
@@ -165,24 +193,19 @@ public class ObjectInstantiators {
     return cause;
   }
 
-  private static final class ReflectiveNoArgCtrInstantiator<T> extends ObjectInstantiator<T> {
+  private static final class AndroidNoArgCtrInstantiator<T> extends ObjectInstantiator<T> {
     private final Constructor<T> constructor;
 
-    private ReflectiveNoArgCtrInstantiator(Class<T> type, Constructor<T> constructor) {
+    private AndroidNoArgCtrInstantiator(Class<T> type, Constructor<T> constructor) {
       super(type);
-      this.constructor = constructor;
-      try {
-        constructor.setAccessible(true);
-      } catch (RuntimeException e) {
-        throw new ForyException("Failed to make no-arg constructor accessible for " + type, e);
-      }
+      this.constructor = androidConstructor(type, constructor);
     }
 
     @Override
     public T newInstance() {
       try {
-        return constructor.newInstance();
-      } catch (Exception e) {
+        return constructor.newInstance(EMPTY_ARGUMENTS);
+      } catch (Throwable e) {
         throw makeException(type, e);
       }
     }
@@ -247,8 +270,7 @@ public class ObjectInstantiators {
           tuple2.f1 == null
               ? null
               : tuple2.f1.asSpreader(Object[].class, constructor.getParameterCount());
-      if (AndroidSupport.IS_ANDROID
-          || (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && JdkVersion.MAJOR_VERSION >= 25)) {
+      if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && JdkVersion.MAJOR_VERSION >= 25) {
         try {
           constructor.setAccessible(true);
         } catch (Throwable t) {
@@ -267,17 +289,55 @@ public class ObjectInstantiators {
     public T newInstanceWithArguments(Object... arguments) {
       try {
         // compile-time constant is eligible for dead code elimination.
-        if (AndroidSupport.IS_ANDROID
-            || handle == null
+        if (handle == null
             || (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && JdkVersion.MAJOR_VERSION >= 25)) {
           return (T) constructor.newInstance(arguments);
         } else {
-          // Regular path: use method handle
           return (T) handle.invoke(arguments);
         }
       } catch (Throwable e) {
         throw makeException(type, e);
       }
+    }
+  }
+
+  private static final class AndroidRecordObjectInstantiator<T> extends ObjectInstantiator<T> {
+    private final Constructor<T> constructor;
+
+    private AndroidRecordObjectInstantiator(Class<T> type) {
+      this(type, RecordUtils.getRecordConstructor(type).f0);
+    }
+
+    private AndroidRecordObjectInstantiator(Class<T> type, Constructor<?> constructor) {
+      super(type);
+      this.constructor = androidConstructor(type, constructor);
+    }
+
+    @Override
+    public T newInstance() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public T newInstanceWithArguments(Object... arguments) {
+      try {
+        return constructor.newInstance(arguments);
+      } catch (Throwable e) {
+        throw makeException(type, e);
+      }
+    }
+  }
+
+  private static <T> Constructor<T> androidConstructor(Class<T> type, Constructor<?> constructor) {
+    try {
+      // API 26 ART allocates six adapter objects for each raw generic constructor-handle invoke.
+      // Adapting that handle with asType or explicitCastArguments corrupts its construction type,
+      // while filterReturnValue fails EmulatedStackFrame reference checks. A cached Constructor
+      // with a caller-owned argument array is the measured allocation-neutral Android owner.
+      constructor.setAccessible(true);
+      return (Constructor<T>) constructor;
+    } catch (RuntimeException e) {
+      throw new ForyException("Failed to access Android constructor for " + type, e);
     }
   }
 

@@ -29,7 +29,6 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.json.ForyJsonException;
-import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
@@ -38,7 +37,6 @@ import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
-import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 
 /**
@@ -394,98 +392,6 @@ public final class JsonCodegen {
       return type;
     }
     return Utf8ReaderCodec.class;
-  }
-
-  @Internal
-  public static Class<?> readNestedType(JsonFieldInfo property) {
-    if (property.readKind() == JsonFieldKind.OBJECT
-        && property.readRawType() != Object.class
-        && property.readTypeInfo().usesDefaultObjectCodec()) {
-      return property.readRawType();
-    }
-    return null;
-  }
-
-  @Internal
-  public static boolean usesWriteCodec(JsonFieldInfo property) {
-    switch (property.writeKind()) {
-      case ARRAY:
-      case MAP:
-      case OBJECT:
-        return true;
-      case COLLECTION:
-        return !writesStringCollectionDirectly(property);
-      default:
-        return false;
-    }
-  }
-
-  static boolean writesStringCollectionDirectly(JsonFieldInfo property) {
-    return property.writeElementRawType() == String.class
-        && property.writeTypeInfo().stringWriter().getClass()
-            == CollectionCodec.StringCollectionCodec.class;
-  }
-
-  private static JsonTypeInfo writeObjectTypeInfo(JsonFieldInfo property) {
-    JsonTypeInfo typeInfo = property.writeTypeInfo();
-    return usesWriteCodec(property) && typeInfo.usesDefaultObjectCodec() ? typeInfo : null;
-  }
-
-  @Internal
-  public static Class<?> writeNestedType(JsonFieldInfo property) {
-    JsonTypeInfo typeInfo = writeObjectTypeInfo(property);
-    return typeInfo == null ? null : typeInfo.rawType();
-  }
-
-  @Internal
-  public static boolean usesReadCodec(JsonFieldInfo property) {
-    switch (property.readKind()) {
-      case ENUM:
-      case ARRAY:
-      case COLLECTION:
-      case MAP:
-        return true;
-      case OBJECT:
-        return !usesReadObjectCodec(property);
-      default:
-        return false;
-    }
-  }
-
-  static boolean usesReadObjectCodec(JsonFieldInfo property) {
-    return property.readKind() == JsonFieldKind.OBJECT
-        && property.readRawType() != Object.class
-        && property.readTypeInfo().usesDefaultObjectCodec();
-  }
-
-  static boolean storesReadObjectCodec(Class<?> type, JsonFieldInfo property) {
-    Class<?> nestedType = readNestedType(property);
-    return nestedType != null && nestedType != type;
-  }
-
-  @Internal
-  public static boolean storesSelfReader(ObjectCodec<?> owner) {
-    AnyInfo any = owner.anyInfo();
-    if (any == null || any.readField() == null && any.readSetter() == null) {
-      return false;
-    }
-    return storesSelfReader(owner.type(), owner.readFields(), owner.creatorInfo() != null, any);
-  }
-
-  static boolean storesSelfReader(
-      Class<?> type, JsonFieldInfo[] properties, boolean creator, AnyInfo any) {
-    if (any.valueRawType() == type && any.valueTypeInfo().usesDefaultObjectCodec()) {
-      return true;
-    }
-    if (creator) {
-      return false;
-    }
-    for (JsonFieldInfo property : properties) {
-      if (readNestedType(property) == type) {
-        return true;
-      }
-    }
-    return false;
   }
 
   private boolean canCompileWrite(JsonFieldInfo property) {

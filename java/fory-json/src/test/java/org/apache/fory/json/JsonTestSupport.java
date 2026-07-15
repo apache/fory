@@ -47,7 +47,7 @@ final class JsonTestSupport {
           2 * 1024 * 1024,
           new CodecRegistry(),
           null);
-  private static final JsonSharedRegistry REGISTRY = new JsonSharedRegistry(CONFIG);
+  private static final JsonSharedRegistry REGISTRY = JsonSharedRegistry.create(CONFIG);
   private static final JsonValueCodec<Object> NULL_CODEC =
       new JsonValueCodec<Object>() {
         @Override

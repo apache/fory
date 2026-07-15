@@ -1,0 +1,2 @@
+org.apache.fory.annotation.processing.ForyStructProcessor,aggregating
+org.apache.fory.annotation.processing.ForyJsonProcessor,aggregating

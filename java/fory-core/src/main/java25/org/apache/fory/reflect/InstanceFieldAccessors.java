@@ -46,6 +46,14 @@ final class InstanceFieldAccessors {
     return new InstanceAccessor(field);
   }
 
+  static FieldAccessor createAccessor(Field field, int accessMask) {
+    Preconditions.checkArgument(!Modifier.isStatic(field.getModifiers()), field);
+    Preconditions.checkArgument(
+        accessMask != 0 && (accessMask & ~FieldAccessor.READ_WRITE_ACCESS) == 0,
+        "Invalid field access mask " + accessMask);
+    return new InstanceAccessor(field);
+  }
+
   private static int accessKind(Field field) {
     Class<?> fieldType = field.getType();
     if (fieldType == boolean.class) {

@@ -186,6 +186,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
         emitR8Rules(type, structs);
       } catch (InvalidStructException e) {
         messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
+      } catch (ProcessingException e) {
+        messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
       } catch (RuntimeException e) {
         messager.printMessage(
             Diagnostic.Kind.ERROR,
@@ -606,29 +608,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
   }
 
   private List<Element> recordComponents(TypeElement type) {
-    // Keep the processor artifact compilable on JDK 11 while still using record components
-    // when a newer compiler model provides them.
-    Object components;
-    try {
-      components = TypeElement.class.getMethod("getRecordComponents").invoke(type);
-    } catch (NoSuchMethodException e) {
-      throw new InvalidStructException(
-          "Record @ForyStruct processing requires a compiler with record component support", type);
-    } catch (ReflectiveOperationException e) {
-      throw new InvalidStructException("Failed to inspect record components: " + e, type);
-    }
-    if (!(components instanceof List<?>)) {
-      throw new InvalidStructException("Unexpected record component model for " + type, type);
-    }
-    List<?> componentList = (List<?>) components;
-    List<Element> componentElements = new ArrayList<>(componentList.size());
-    for (Object component : componentList) {
-      if (!(component instanceof Element)) {
-        throw new InvalidStructException("Unexpected record component model for " + type, type);
-      }
-      componentElements.add((Element) component);
-    }
-    return componentElements;
+    return RecordElements.components(type);
   }
 
   private boolean isSerializableRecordField(VariableElement field, TypeElement owner) {
@@ -735,7 +715,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
   }
 
   private boolean isRecord(TypeElement type) {
-    return type.getKind().name().equals("RECORD");
+    return RecordElements.isRecord(type);
   }
 
   private int reflectionModifiers(Set<Modifier> modifiers) {

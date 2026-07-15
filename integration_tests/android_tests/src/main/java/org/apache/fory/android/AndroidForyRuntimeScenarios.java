@@ -54,7 +54,7 @@ import org.apache.fory.type.union.Union2;
 public final class AndroidForyRuntimeScenarios {
   private AndroidForyRuntimeScenarios() {}
 
-  public static void androidRuntimeDisablesCodegenAndUnsafeCopies() {
+  public static void androidRuntimeConfig() {
     check(AndroidSupport.IS_ANDROID, "AndroidSupport must detect Android runtime");
 
     Fory fory = nativeBuilder().withCodegen(true).withAsyncCompilation(true).build();
@@ -95,7 +95,7 @@ public final class AndroidForyRuntimeScenarios {
     checkEquals(value, copy);
   }
 
-  public static void staticGeneratedSerializerSurvivesReleaseMinification() {
+  public static void staticSerializerAfterR8() {
     Class<?> expectedSerializerClass;
     try {
       expectedSerializerClass =
@@ -147,7 +147,7 @@ public final class AndroidForyRuntimeScenarios {
     checkSame(copiedAgain, copiedAgain.self());
   }
 
-  public static void internalCollectionMapAndSetWrappersRoundTrip() {
+  public static void collectionsRoundTrip() {
     Fory fory = nativeBuilder().build();
 
     List<String> list = Arrays.asList("a", "b", "c");
@@ -184,7 +184,7 @@ public final class AndroidForyRuntimeScenarios {
         new EnumMap<>(AndroidEnum.class), roundTrip(fory, new EnumMap<>(AndroidEnum.class)));
   }
 
-  public static void byteBufferStreamChannelAndOutOfBandRoundTrip() throws Exception {
+  public static void ioRoundTrip() throws Exception {
     ThreadSafeFory threadSafeFory = nativeBuilder().buildThreadSafeFory();
     Fory fory = nativeBuilder().build();
     AndroidStruct value = AndroidStruct.create();

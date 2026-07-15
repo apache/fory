@@ -17,8 +17,17 @@
  * under the License.
  */
 
+def foryVersion = providers.gradleProperty('foryVersion').getOrElse('1.4.0-SNAPSHOT')
+def androidCompileSdk = providers.gradleProperty('compileSdk').getOrElse('35').toInteger()
+def androidRecordMinSdk = providers.gradleProperty('recordMinSdk').getOrElse('34').toInteger()
+
+if (androidRecordMinSdk < 34) {
+    throw new GradleException('Fory JSON Android records require minSdk 34 or later')
+}
+
 buildscript {
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -29,7 +38,13 @@ buildscript {
                 if (details.requested.group == 'io.netty') {
                     details.useVersion '4.1.133.Final'
                 }
-                if (details.requested.group == 'org.bouncycastle') {
+                if (details.requested.group == 'org.bouncycastle' &&
+                        details.requested.name.endsWith('-jdk15on')) {
+                    // Gradle 8.0/8.2 instruments every multi-release entry. The jdk18on 1.84
+                    // artifacts contain Java 25 classes, while jdk15to18 is the matching 1.84
+                    // build-tool artifact for this JDK 17 fixture.
+                    details.useTarget "org.bouncycastle:${details.requested.name.replace('-jdk15on', '-jdk15to18')}:1.84"
+                } else if (details.requested.group == 'org.bouncycastle') {
                     details.useVersion '1.84'
                 }
             }
@@ -39,20 +54,31 @@ buildscript {
         }
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.13.2'
+        classpath "com.android.tools.build:gradle:${providers.gradleProperty('agpVersion').getOrElse('8.13.2')}"
+        classpath "org.apache.fory:fory-json-gradle-plugin:${providers.gradleProperty('foryVersion').getOrElse('1.4.0-SNAPSHOT')}"
     }
 }
 
+ext {
+    androidCompileSdkVersion = androidCompileSdk
+    androidRecordMinSdkVersion = androidRecordMinSdk
+    foryArtifactVersion = foryVersion
+    jsr305Version = '3.0.2'
+    guavaVersion = '32.1.2-android'
+    slf4jVersion = '2.0.12'
+}
+
 apply plugin: 'com.android.application'
+apply plugin: 'org.apache.fory.json'
 
 android {
     namespace 'org.apache.fory.android.tests'
-    compileSdk 35
+    compileSdk androidCompileSdkVersion
 
     defaultConfig {
         applicationId 'org.apache.fory.android.tests'
         minSdk 26
-        targetSdk 35
+        targetSdk androidCompileSdkVersion
         versionCode 1
         versionName '1.0'
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
@@ -66,6 +92,11 @@ android {
             signingConfig signingConfigs.debug
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 
     packaging {
@@ -82,14 +113,18 @@ android {
 }
 
 dependencies {
-    implementation('org.apache.fory:fory-core:1.4.0-SNAPSHOT') {
+    compileOnly "com.google.code.findbugs:jsr305:${jsr305Version}"
+    implementation("org.apache.fory:fory-core:${foryArtifactVersion}") {
         exclude group: 'com.google.guava', module: 'guava'
-        exclude group: 'org.codehaus.janino', module: 'janino'
     }
-    annotationProcessor 'org.apache.fory:fory-annotation-processor:1.4.0-SNAPSHOT'
-    implementation 'com.google.guava:guava:32.1.2-android'
-    implementation 'org.slf4j:slf4j-api:2.0.12'
+    implementation "org.apache.fory:fory-json:${foryArtifactVersion}"
+    annotationProcessor "org.apache.fory:fory-annotation-processor:${foryArtifactVersion}"
+    implementation project(':json-model-jar')
+    implementation project(':json-model-aar')
+    implementation "com.google.guava:guava:${guavaVersion}"
+    implementation "org.slf4j:slf4j-api:${slf4jVersion}"
 
     androidTestImplementation 'androidx.test.ext:junit:1.2.1'
     androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.benchmark:benchmark-junit4:1.3.4'
 }
