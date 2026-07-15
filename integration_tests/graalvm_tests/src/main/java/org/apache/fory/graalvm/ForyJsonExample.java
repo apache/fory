@@ -35,6 +35,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
+import org.apache.fory.graalvm.closed.ClosedJsonRecord;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonAnyProperty;
@@ -69,7 +70,15 @@ public final class ForyJsonExample {
     testGenericProperties();
     testBigDecimal();
     testSqlTypes();
+    testClosedPackage();
     System.out.println("Fory JSON succeed");
+  }
+
+  private static void testClosedPackage() {
+    ForyJson json = ForyJson.builder().build();
+    ClosedJsonRecord value = new ClosedJsonRecord(17, "closed");
+    String encoded = json.toJson(value);
+    Preconditions.checkArgument(json.fromJson(encoded, ClosedJsonRecord.class).equals(value));
   }
 
   private static void testModels() {

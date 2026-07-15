@@ -28,15 +28,19 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 
 /**
- * Immutable construction metadata for one property-based {@code JsonCreator}.
+ * Immutable ordered construction metadata for one JSON object codec.
  *
- * <p>The interpreted path allocates exactly one fixed-size argument array per object. Generated
- * readers consume the same field metadata but invoke the executable directly with typed locals.
+ * <p>Record canonical constructors, property-based {@code JsonCreator} constructors, and
+ * property-based {@code JsonCreator} factories share this owner. The separate complete-string
+ * {@code JsonValue} representation owns its value creator in its value codec. The interpreted path
+ * allocates exactly one fixed-size argument array per object. Generated JIT readers consume the
+ * same field metadata and executable but invoke it directly with typed locals.
  */
 @Internal
 public final class JsonCreatorInfo {
@@ -46,14 +50,23 @@ public final class JsonCreatorInfo {
   private final Object[] defaults;
   private final long[] hashes;
   private final MethodHandle invoker;
+  private final GeneratedJsonCodec<?> generatedCodec;
 
   public JsonCreatorInfo(
-      Class<?> ownerType, Executable executable, JsonCreatorFieldInfo[] fields, Object[] defaults) {
+      Class<?> ownerType,
+      Executable executable,
+      JsonCreatorFieldInfo[] fields,
+      Object[] defaults,
+      GeneratedJsonCodec<?> generatedCodec) {
     this.ownerType = ownerType;
     this.executable = executable;
     this.fields = fields;
     this.defaults = defaults;
-    invoker = buildInvoker(ownerType, executable, executable.getParameterCount());
+    this.generatedCodec = generatedCodec;
+    invoker =
+        generatedCodec == null
+            ? buildInvoker(ownerType, executable, executable.getParameterCount())
+            : null;
     hashes = new long[fields.length];
     for (int i = 0; i < fields.length; i++) {
       hashes[i] = fields[i].nameHash();
@@ -90,6 +103,16 @@ public final class JsonCreatorInfo {
   }
 
   public Object create(Object[] arguments) {
+    if (generatedCodec != null) {
+      try {
+        return requireResult(generatedCodec.newInstance(arguments));
+      } catch (Throwable cause) {
+        if (cause instanceof Error) {
+          throw (Error) cause;
+        }
+        throw new ForyJsonException("JSON creator failed for " + ownerType.getName(), cause);
+      }
+    }
     if (invoker != null) {
       return invoke(arguments);
     }

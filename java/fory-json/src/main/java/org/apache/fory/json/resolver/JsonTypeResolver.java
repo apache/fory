@@ -21,6 +21,7 @@ package org.apache.fory.json.resolver;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
@@ -43,6 +44,7 @@ import org.apache.fory.json.codec.ArrayCodec;
 import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
+import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
@@ -1489,11 +1491,20 @@ public final class JsonTypeResolver {
   private <T> ObjectCodec<T> newObjectCodec(TypeRef<T> ownerType) {
     Class<?> rawType = ownerType.getRawType();
     sharedRegistry.checkSecure(rawType);
+    if (rawType.isInterface()
+        || Modifier.isAbstract(rawType.getModifiers())
+        || rawType.isPrimitive()
+        || rawType.isArray()
+        || rawType.isEnum()) {
+      throw new ForyJsonException("Unsupported JSON object type " + rawType);
+    }
+    GeneratedJsonCodec<?> generatedCodec = sharedRegistry.generatedCodec(rawType);
     return ObjectCodec.build(
         ownerType,
         sharedRegistry.propertyDiscoveryEnabled(),
         sharedRegistry.propertyNamingStrategy(),
-        sharedRegistry.writeNullFields());
+        sharedRegistry.writeNullFields(),
+        generatedCodec);
   }
 
   private JsonTypeInfo buildTypeInfo(Class<?> rawType, Type declaredType, Object key) {

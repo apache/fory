@@ -26,11 +26,9 @@ import java.lang.reflect.Method;
 import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
-import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
-import org.apache.fory.util.record.RecordUtils;
 
 /**
  * Common field-access and source-class builder for one concrete generated JSON capability.
@@ -88,7 +86,7 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
   }
 
   private Descriptor writeDescriptor(Field field) {
-    return new Descriptor(field, TypeRef.of(field.getGenericType()), recordReadMethod(field), null);
+    return new Descriptor(field, TypeRef.of(field.getGenericType()), null, null);
   }
 
   private Descriptor readDescriptor(JsonFieldInfo property) {
@@ -97,17 +95,6 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
 
   private Descriptor readDescriptor(Field field) {
     return new Descriptor(field, TypeRef.of(field.getGenericType()), null, null);
-  }
-
-  private Method recordReadMethod(Field field) {
-    if (!RecordUtils.isRecord(field.getDeclaringClass())) {
-      return null;
-    }
-    try {
-      return field.getDeclaringClass().getMethod(field.getName());
-    } catch (NoSuchMethodException e) {
-      throw new ForyJsonException("Cannot resolve record accessor for field " + field, e);
-    }
   }
 
   Expression fieldValue(JsonFieldInfo property, Expression object) {

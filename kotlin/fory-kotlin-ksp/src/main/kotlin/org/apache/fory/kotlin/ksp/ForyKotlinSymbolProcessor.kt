@@ -40,6 +40,7 @@ import com.google.devtools.ksp.symbol.Modifier
 import com.google.devtools.ksp.symbol.Nullability
 import java.nio.charset.StandardCharsets
 import java.util.Locale
+import org.apache.fory.codegen.GeneratedClassNames
 
 private const val MAX_DEFAULT_FIELDS = 12
 
@@ -241,7 +242,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
       packageName = packageName,
       typeName = typeName,
       qualifiedTypeName = declaration.qualifiedName!!.asString(),
-      serializerName = "${escapeBinarySimpleName(typeName)}_ForySerializer",
+      serializerName = "${GeneratedClassNames.escapeBinarySimpleName(typeName)}_ForySerializer",
       serializerVisibility =
         if (Modifier.INTERNAL in declaration.modifiers) {
           KotlinSerializerVisibility.INTERNAL
@@ -542,7 +543,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
       packageName = packageName,
       typeName = typeName,
       qualifiedTypeName = declaration.qualifiedName!!.asString(),
-      serializerName = "${escapeBinarySimpleName(typeName)}_ForySerializer",
+      serializerName = "${GeneratedClassNames.escapeBinarySimpleName(typeName)}_ForySerializer",
       serializerVisibility =
         if (Modifier.INTERNAL in declaration.modifiers) {
           KotlinSerializerVisibility.INTERNAL
@@ -1716,17 +1717,7 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
     annotation.annotationType.resolve().declaration.qualifiedName?.asString() == qualifiedName
 
   private fun escapedResourceName(targetBinaryName: String): String {
-    val builder = StringBuilder(targetBinaryName.length + 32)
-    for (char in targetBinaryName) {
-      when {
-        char == '.' -> builder.append('.')
-        char == '$' -> builder.append('_')
-        char == '_' -> builder.append("_u_")
-        Character.isJavaIdentifierPart(char) -> builder.append(char)
-        else -> builder.append("_x").append(char.code.toString(16)).append('_')
-      }
-    }
-    return builder.toString()
+    return GeneratedClassNames.escapeBinaryName(targetBinaryName)
   }
 
   private sealed class Encoding(val sourceName: String) {
@@ -1763,22 +1754,6 @@ internal class ForyKotlinSymbolProcessor(private val environment: SymbolProcesso
     const val TAGGED = "org.apache.fory.kotlin.Tagged"
     val UnsupportedScalar = ScalarType("", "", "", "", false)
   }
-}
-
-internal fun escapeBinarySimpleName(binarySimpleName: String): String {
-  val builder = StringBuilder(binarySimpleName.length + 32)
-  var index = 0
-  while (index < binarySimpleName.length) {
-    val codePoint = Character.codePointAt(binarySimpleName, index)
-    when {
-      codePoint == '$'.code -> builder.append('_')
-      codePoint == '_'.code -> builder.append("_u_")
-      Character.isJavaIdentifierPart(codePoint) -> builder.appendCodePoint(codePoint)
-      else -> builder.append("_x").append(codePoint.toString(16)).append('_')
-    }
-    index += Character.charCount(codePoint)
-  }
-  return builder.toString()
 }
 
 internal fun isValidMapKeyType(type: KotlinSourceTypeNode): Boolean {

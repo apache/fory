@@ -328,10 +328,15 @@ import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonValue;
 ```
 
-`JsonType` marks a reachable object model for GraalVM Native Image metadata. On Android it enables
-processor-generated R8 rules. It has no effect on ordinary JVM JSON behavior and is not inherited.
-See [GraalVM Support](graalvm-support.md) and
-[Android Support](android-support.md) for the platform workflows.
+`JsonType` asks the annotation processor to generate direct property and creator operations plus
+the exact retention rules for an eligible concrete object model. A directly annotated
+`JsonValue` Record also receives a companion so its value accessor and canonical constructor work
+after Android desugaring. The same generated companion is used on the JVM, Android, and GraalVM
+Native Image. The annotation is not inherited; a concrete subtype needs its own direct annotation
+to receive a companion. See
+[GraalVM Support](graalvm-support.md) and [Android Support](android-support.md) for setup.
+A directly annotated model that uses the default object codec requires that generated companion;
+the runtime reports a configuration error if the processor output is missing.
 
 ### `JsonProperty`
 
@@ -999,8 +1004,9 @@ type-declaration codec is used for a more specific target, every decoded value m
 assignable to that target.
 
 The annotation has the same FIELD, METHOD, and PARAMETER behavior on the JVM, Android, and GraalVM
-Native Image. Android applications may use `JsonType` for generated exact R8 rules or provide the
-equivalent rules themselves. GraalVM object models follow the `JsonType` workflow in
+Native Image. Ordinary Android classes may omit `JsonType` and provide equivalent exact rules;
+Android-desugared Records, including `JsonValue` Records, require `JsonType` and the processor.
+GraalVM object models follow the `JsonType` workflow in
 [GraalVM Support](graalvm-support.md).
 
 ## Type validation and untrusted input

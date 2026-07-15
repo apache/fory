@@ -46,6 +46,16 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
+  public void generatedRecordJson() {
+    AndroidJsonScenarios.generatedRecord();
+  }
+
+  @Test
+  public void generatedValueRecordJson() {
+    AndroidJsonScenarios.generatedValueRecord();
+  }
+
+  @Test
   public void manualJsonCodecs() {
     AndroidJsonScenarios.manualCodecs();
   }

@@ -75,11 +75,6 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
   }
 
   @Override
-  String readFieldValueMethod() {
-    return "readUtf8Value";
-  }
-
-  @Override
   boolean isDirectName(String name, boolean tokenValueRead) {
     return JsonAsciiToken.isLongPackable(fieldNameToken(name));
   }

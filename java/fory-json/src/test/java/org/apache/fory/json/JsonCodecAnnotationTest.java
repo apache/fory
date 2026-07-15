@@ -150,9 +150,9 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
                 + "  @JsonCodec(AStringCodec.class) public String value() { return value; }\n"
                 + "}\n");
     Object accessorValue = accessorType.getConstructor(String.class).newInstance("x");
-    assertFailure(
-        () -> jsonText(newJson(), accessorValue),
-        "@JsonCodec requires an effective ordinary JSON getter");
+    assertEquals(jsonText(newJson(), accessorValue), "{\"value\":\"A:x\"}");
+    Object accessorDecoded = newJson().fromJson("{\"value\":\"A:y\"}", accessorType);
+    assertEquals(accessorType.getMethod("value").invoke(accessorDecoded), "y");
   }
 
   @Test

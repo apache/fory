@@ -96,8 +96,6 @@ abstract class JsonReaderCodegen {
     return readMethod + "Field" + start;
   }
 
-  abstract String readFieldValueMethod();
-
   abstract boolean isDirectName(String name, boolean tokenValueRead);
 
   abstract Expression tryReadNextFieldNameColon(JsonFieldInfo property, boolean tokenValueRead);
@@ -119,7 +117,6 @@ abstract class JsonReaderCodegen {
       JsonGeneratedCodecBuilder builder,
       Class<?> type,
       JsonFieldInfo[] properties,
-      boolean record,
       JsonCreatorInfo creatorInfo) {
     ownerType = type;
     if (creatorInfo != null) {
@@ -131,12 +128,9 @@ abstract class JsonReaderCodegen {
     CodegenContext ctx = builder.context();
     ctx.addImports(ObjectCodec.class, readerType, JsonFieldTable.class);
     ctx.implementsInterfaces(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()));
-    // Generated readers retain immutable lookup metadata directly. Only record readers keep the
-    // ObjectCodec because record allocation and construction remain owned by it.
+    // Generated mutable readers retain immutable lookup metadata directly. Creator-backed readers
+    // are selected above and consume the exact executable owned by JsonCreatorInfo.
     ctx.addField(JsonFieldTable.class, "readTable");
-    if (record) {
-      ctx.addField(ObjectCodec.class, "owner");
-    }
     ctx.addField(long[].class, "fieldHashes");
     for (int i = 0; i < properties.length; i++) {
       if (usesReadInfo(properties[i])) {
@@ -151,7 +145,7 @@ abstract class JsonReaderCodegen {
     }
     addGeneratedConstructor(
         ctx,
-        readerConstructorExpression(type, properties, record),
+        readerConstructorExpression(type, properties),
         ObjectCodec.class,
         "owner",
         JsonFieldInfo[].class,
@@ -160,7 +154,7 @@ abstract class JsonReaderCodegen {
         "codecs");
     ctx.clearExprState();
     Code.ExprCode body =
-        fastReadExpression(builder, readMethod, slowMethod, type, properties, record).genCode(ctx);
+        fastReadExpression(builder, readMethod, slowMethod, type, properties).genCode(ctx);
     String bodyCode = body.code();
     bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
     ctx.addMethod(
@@ -170,10 +164,9 @@ abstract class JsonReaderCodegen {
         Object.class,
         readerType,
         "reader");
-    addFastReadGroupMethods(
-        ctx, builder, readMethod, slowMethod, readerType, type, properties, record);
-    addReadFieldMethods(ctx, builder, readMethod, readerType, type, properties, record);
-    addSlowReadMethods(ctx, builder, slowMethod, readerType, type, properties, record);
+    addFastReadGroupMethods(ctx, builder, readMethod, slowMethod, readerType, type, properties);
+    addReadFieldMethods(ctx, builder, readMethod, readerType, type, properties);
+    addSlowReadMethods(ctx, builder, slowMethod, readerType, type, properties);
     return ctx.genCode();
   }
 
@@ -181,7 +174,6 @@ abstract class JsonReaderCodegen {
       JsonGeneratedCodecBuilder builder,
       Class<?> type,
       JsonFieldInfo[] properties,
-      boolean record,
       JsonCreatorInfo creatorInfo,
       AnyInfo any) {
     this.any = any;
@@ -215,7 +207,7 @@ abstract class JsonReaderCodegen {
     if (storesAnyReader) {
       addGeneratedConstructor(
           ctx,
-          readerConstructorExpression(type, properties, record),
+          readerConstructorExpression(type, properties),
           ObjectCodec.class,
           "owner",
           JsonFieldTable.class,
@@ -229,7 +221,7 @@ abstract class JsonReaderCodegen {
     } else {
       addGeneratedConstructor(
           ctx,
-          readerConstructorExpression(type, properties, record),
+          readerConstructorExpression(type, properties),
           ObjectCodec.class,
           "owner",
           JsonFieldTable.class,
@@ -243,7 +235,7 @@ abstract class JsonReaderCodegen {
         ctx,
         "private final",
         anyReadMethod,
-        fastReadExpression(builder, readMethod, slowMethod, type, properties, record),
+        fastReadExpression(builder, readMethod, slowMethod, type, properties),
         Object.class,
         concreteReaderType,
         "reader");
@@ -258,9 +250,9 @@ abstract class JsonReaderCodegen {
         concreteReaderType,
         "reader");
     addFastReadGroupMethods(
-        ctx, builder, readMethod, slowMethod, concreteReaderType, type, properties, record);
-    addReadFieldMethods(ctx, builder, readMethod, concreteReaderType, type, properties, record);
-    addSlowReadMethods(ctx, builder, slowMethod, concreteReaderType, type, properties, record);
+        ctx, builder, readMethod, slowMethod, concreteReaderType, type, properties);
+    addReadFieldMethods(ctx, builder, readMethod, concreteReaderType, type, properties);
+    addSlowReadMethods(ctx, builder, slowMethod, concreteReaderType, type, properties);
     return ctx.genCode();
   }
 
@@ -353,7 +345,7 @@ abstract class JsonReaderCodegen {
         "properties",
         JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
         "codecs");
-    addCreatorMethod(ctx, type, creatorInfo.executable(), fields);
+    addCreatorMethod(ctx, type, creatorInfo.executable());
     ctx.clearExprState();
     Code.ExprCode body = creatorReadExpression(type, creatorInfo).genCode(ctx);
     String bodyCode = body.code();
@@ -422,7 +414,7 @@ abstract class JsonReaderCodegen {
           JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
           "codecs");
     }
-    addAnyCreatorMethod(ctx, type, creatorInfo.executable());
+    addCreatorMethod(ctx, type, creatorInfo.executable());
     addGeneratedMethod(
         ctx,
         "private final",
@@ -449,11 +441,7 @@ abstract class JsonReaderCodegen {
     Class<?>[] parameterTypes = creatorInfo.executable().getParameterTypes();
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(new Expression.Invoke(readerRef(), "enterDepth"));
-    Expression[] arguments = new Expression[parameterTypes.length];
-    for (int i = 0; i < parameterTypes.length; i++) {
-      arguments[i] = new Expression.Variable("a" + i, creatorDefault(parameterTypes[i]));
-      expressions.add(arguments[i]);
-    }
+    Expression[] arguments = creatorArguments(creatorInfo.executable(), expressions);
     Expression anyMap =
         new Expression.Variable("anyMap", new Expression.Null(TypeRef.of(Map.class), false));
     expressions.add(anyMap);
@@ -561,7 +549,7 @@ abstract class JsonReaderCodegen {
                 eq(match, Expression.Literal.ofInt(JsonFieldTable.UNKNOWN)), read, skip)));
   }
 
-  private void addAnyCreatorMethod(CodegenContext ctx, Class<?> type, Executable executable) {
+  private void addCreatorMethod(CodegenContext ctx, Class<?> type, Executable executable) {
     Class<?>[] parameterTypes = executable.getParameterTypes();
     Object[] parameters = new Object[parameterTypes.length << 1];
     StringBuilder invocation = new StringBuilder();
@@ -630,11 +618,7 @@ abstract class JsonReaderCodegen {
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(new Expression.Invoke(readerRef(), "enterDepth"));
-    Expression[] arguments = new Expression[fields.length];
-    for (int i = 0; i < fields.length; i++) {
-      arguments[i] = new Expression.Variable("a" + i, creatorDefault(fields[i].rawType()));
-      expressions.add(arguments[i]);
-    }
+    Expression[] arguments = creatorArguments(creatorInfo.executable(), expressions);
     expressions.add(expectExpr('{'));
     expressions.add(
         new Expression.If(
@@ -664,7 +648,8 @@ abstract class JsonReaderCodegen {
           new Expression.Switch.Case(
               i,
               new Expression.ListExpression(
-                  new Expression.Assign(arguments[i], readCreatorValue(fields[i], i)),
+                  new Expression.Assign(
+                      arguments[fields[i].argumentIndex()], readCreatorValue(fields[i], i)),
                   new Expression.Break()));
     }
     loop.add(
@@ -679,35 +664,17 @@ abstract class JsonReaderCodegen {
     return expressions;
   }
 
-  private void addCreatorMethod(
-      CodegenContext ctx, Class<?> type, Executable executable, JsonCreatorFieldInfo[] fields) {
-    Object[] parameters = new Object[fields.length << 1];
-    StringBuilder invocation = new StringBuilder();
-    for (int i = 0; i < fields.length; i++) {
-      parameters[i << 1] = fields[i].rawType();
-      parameters[(i << 1) + 1] = "a" + i;
-      if (i != 0) {
-        invocation.append(", ");
-      }
-      invocation.append('a').append(i);
+  private Expression[] creatorArguments(
+      Executable executable, Expression.ListExpression expressions) {
+    // Creator fields cover only read-enabled JSON members. The executable owns the full argument
+    // shape, including ignored or getter-only parameters which must still receive typed defaults.
+    Class<?>[] parameterTypes = executable.getParameterTypes();
+    Expression[] arguments = new Expression[parameterTypes.length];
+    for (int i = 0; i < parameterTypes.length; i++) {
+      arguments[i] = new Expression.Variable("a" + i, creatorDefault(parameterTypes[i]));
+      expressions.add(arguments[i]);
     }
-    String typeName = ctx.type(type);
-    String expression =
-        executable instanceof Constructor
-            ? "new " + typeName + "(" + invocation + ")"
-            : typeName + "." + ((Method) executable).getName() + "(" + invocation + ")";
-    StringBuilder body = new StringBuilder();
-    body.append(typeName)
-        .append(" value;\ntry {\n  value = ")
-        .append(expression)
-        .append(";\n")
-        .append("} catch (Throwable e) {\n  throw owner.creatorFailure(e);\n}\n");
-    if (executable instanceof Method) {
-      body.append("return (").append(typeName).append(") owner.requireCreatorResult(value);");
-    } else {
-      body.append("return value;");
-    }
-    ctx.addMethod("private final", "createValue", body.toString(), type, parameters);
+    return arguments;
   }
 
   private Expression createValue(Class<?> type, Expression[] arguments) {
@@ -818,12 +785,10 @@ abstract class JsonReaderCodegen {
       String slowMethod,
       Class<?> readerType,
       Class<?> type,
-      JsonFieldInfo[] properties,
-      boolean record) {
+      JsonFieldInfo[] properties) {
     if (!shouldSplitFastRead(properties)) {
       return;
     }
-    Class<?> objectType = record ? Object[].class : type;
     for (int start = 0; start < properties.length; ) {
       int end = readGroupEnd(properties, start);
       if (any == null) {
@@ -831,11 +796,11 @@ abstract class JsonReaderCodegen {
             ctx,
             "final",
             readGroupMethod(readMethod, start),
-            fastReadGroupExpression(builder, slowMethod, type, properties, start, end, record),
+            fastReadGroupExpression(builder, slowMethod, type, properties, start, end),
             boolean.class,
             readerType,
             "reader",
-            objectType,
+            type,
             "object",
             long[].class,
             "fieldHashes");
@@ -844,11 +809,11 @@ abstract class JsonReaderCodegen {
             ctx,
             "final",
             readGroupMethod(readMethod, start),
-            fastReadGroupExpression(builder, slowMethod, type, properties, start, end, record),
+            fastReadGroupExpression(builder, slowMethod, type, properties, start, end),
             boolean.class,
             readerType,
             "reader",
-            objectType,
+            type,
             "object",
             long[].class,
             "fieldHashes",
@@ -865,12 +830,10 @@ abstract class JsonReaderCodegen {
       String readMethod,
       Class<?> readerType,
       Class<?> type,
-      JsonFieldInfo[] properties,
-      boolean record) {
+      JsonFieldInfo[] properties) {
     if (!shouldSplitFieldSwitch(properties)) {
       return;
     }
-    Class<?> objectType = record ? Object[].class : type;
     for (int start = 0; start < properties.length; start += READ_FIELD_SWITCH_SIZE) {
       int end = Math.min(start + READ_FIELD_SWITCH_SIZE, properties.length);
       addGeneratedMethod(
@@ -883,13 +846,12 @@ abstract class JsonReaderCodegen {
               properties,
               start,
               end,
-              objectParam(type, record),
-              new Reference("fieldIndex", TypeRef.of(int.class)),
-              record),
+              objectParam(type),
+              new Reference("fieldIndex", TypeRef.of(int.class))),
           void.class,
           readerType,
           "reader",
-          objectType,
+          type,
           "object",
           int.class,
           "fieldIndex");
@@ -902,9 +864,7 @@ abstract class JsonReaderCodegen {
       String methodName,
       Class<?> readerType,
       Class<?> type,
-      JsonFieldInfo[] properties,
-      boolean record) {
-    Class<?> objectType = record ? Object[].class : type;
+      JsonFieldInfo[] properties) {
     // An Any slow invocation consumes the entire remaining object and finishes its map before
     // returning. This makes the Map parameter its local accumulator without a holder or return
     // carrier; callers must not resume member consumption after the slow call.
@@ -913,11 +873,11 @@ abstract class JsonReaderCodegen {
           ctx,
           "final",
           methodName,
-          slowReadExpression(builder, type, properties, record),
+          slowReadExpression(builder, type, properties),
           void.class,
           readerType,
           "reader",
-          objectType,
+          type,
           "object",
           int.class,
           "expectedIndex");
@@ -925,11 +885,11 @@ abstract class JsonReaderCodegen {
           ctx,
           "final",
           methodName,
-          slowReadFromFirstExpression(builder, type, properties, record),
+          slowReadFromFirstExpression(builder, type, properties),
           void.class,
           readerType,
           "reader",
-          objectType,
+          type,
           "object",
           int.class,
           "expectedIndex",
@@ -941,11 +901,11 @@ abstract class JsonReaderCodegen {
         ctx,
         "final",
         methodName,
-        slowReadExpression(builder, type, properties, record),
+        slowReadExpression(builder, type, properties),
         void.class,
         readerType,
         "reader",
-        objectType,
+        type,
         "object",
         int.class,
         "expectedIndex",
@@ -955,11 +915,11 @@ abstract class JsonReaderCodegen {
         ctx,
         "final",
         methodName,
-        slowReadFromFirstExpression(builder, type, properties, record),
+        slowReadFromFirstExpression(builder, type, properties),
         void.class,
         readerType,
         "reader",
-        objectType,
+        type,
         "object",
         int.class,
         "expectedIndex",
@@ -996,8 +956,7 @@ abstract class JsonReaderCodegen {
     ctx.addConstructor(code, params);
   }
 
-  private Expression readerConstructorExpression(
-      Class<?> type, JsonFieldInfo[] properties, boolean record) {
+  private Expression readerConstructorExpression(Class<?> type, JsonFieldInfo[] properties) {
     Expression.ListExpression expressions = new Expression.ListExpression();
     Reference propertiesRef = new Reference("properties", TypeRef.of(JsonFieldInfo[].class));
     Reference codecsRef = new Reference("codecs", TypeRef.of(readerArrayType()));
@@ -1009,7 +968,7 @@ abstract class JsonReaderCodegen {
     expressions.add(
         new Expression.Assign(
             new Reference("this.readTable", TypeRef.of(JsonFieldTable.class)), table));
-    if (record || any != null) {
+    if (any != null) {
       expressions.add(
           new Expression.Assign(new Reference("this.owner", TypeRef.of(ObjectCodec.class)), owner));
     }
@@ -1065,24 +1024,23 @@ abstract class JsonReaderCodegen {
       String readMethod,
       String slowMethod,
       Class<?> type,
-      JsonFieldInfo[] properties,
-      boolean record) {
+      JsonFieldInfo[] properties) {
     if (shouldSplitFastRead(properties)) {
-      return splitFastReadExpression(builder, readMethod, slowMethod, type, properties, record);
+      return splitFastReadExpression(builder, readMethod, slowMethod, type, properties);
     }
-    Expression object = objectExpression(builder, record);
+    Expression object = objectExpression(builder);
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(new Expression.Invoke(readerRef(), "enterDepth"));
     expressions.add(object);
-    Expression anyMap = anyMap(builder, object, record);
+    Expression anyMap = anyMap(builder, object);
     if (anyMap != null) {
       expressions.add(anyMap);
     }
     expressions.add(expectExpr('{'));
-    expressions.add(new Expression.If(consumeExpr('}'), returnObject(object, record)));
+    expressions.add(new Expression.If(consumeExpr('}'), returnObject(object)));
     if (properties.length == 0) {
       expressions.add(slowCall(slowMethod, object, Expression.Literal.ofInt(0)));
-      expressions.add(returnObject(object, record));
+      expressions.add(returnObject(object));
       return expressions;
     }
     Expression hashes = fieldRef("fieldHashes", long[].class);
@@ -1097,10 +1055,10 @@ abstract class JsonReaderCodegen {
     }
     for (int i = 0; i < properties.length; i++) {
       Expression read =
-          fastReadField(builder, slowMethod, type, properties, i, object, hashes, skips, record);
+          fastReadField(builder, slowMethod, type, properties, i, object, hashes, skips);
       expressions.add(i == 0 ? read : new Expression.If(not(skips[i]), read));
     }
-    expressions.add(returnObject(object, record));
+    expressions.add(returnObject(object));
     return expressions;
   }
 
@@ -1109,28 +1067,27 @@ abstract class JsonReaderCodegen {
       String readMethod,
       String slowMethod,
       Class<?> type,
-      JsonFieldInfo[] properties,
-      boolean record) {
-    Expression object = objectExpression(builder, record);
+      JsonFieldInfo[] properties) {
+    Expression object = objectExpression(builder);
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(new Expression.Invoke(readerRef(), "enterDepth"));
     expressions.add(object);
-    Expression anyMap = anyMap(builder, object, record);
+    Expression anyMap = anyMap(builder, object);
     if (anyMap != null) {
       expressions.add(anyMap);
     }
     expressions.add(expectExpr('{'));
-    expressions.add(new Expression.If(consumeExpr('}'), returnObject(object, record)));
+    expressions.add(new Expression.If(consumeExpr('}'), returnObject(object)));
     Expression hashes =
         new Expression.Variable("localFieldHashes", fieldRef("fieldHashes", long[].class));
     expressions.add(hashes);
     for (int start = 0; start < properties.length; ) {
       int end = readGroupEnd(properties, start);
       Expression groupCall = inline(readGroupCall(readMethod, start, object, hashes));
-      expressions.add(new Expression.If(not(groupCall), returnObject(object, record)));
+      expressions.add(new Expression.If(not(groupCall), returnObject(object)));
       start = end;
     }
-    expressions.add(returnObject(object, record));
+    expressions.add(returnObject(object));
     return expressions;
   }
 
@@ -1140,9 +1097,8 @@ abstract class JsonReaderCodegen {
       Class<?> type,
       JsonFieldInfo[] properties,
       int start,
-      int end,
-      boolean record) {
-    Expression object = objectParam(type, record);
+      int end) {
+    Expression object = objectParam(type);
     Expression hashes = new Reference("fieldHashes", TypeRef.of(long[].class));
     Expression[] skips = new Expression[properties.length];
     Expression.ListExpression expressions = new Expression.ListExpression();
@@ -1152,8 +1108,7 @@ abstract class JsonReaderCodegen {
     }
     for (int i = start; i < end; i++) {
       Expression read =
-          fastReadField(
-              builder, slowMethod, type, properties, i, end, true, object, hashes, skips, record);
+          fastReadField(builder, slowMethod, type, properties, i, end, true, object, hashes, skips);
       expressions.add(i == start ? read : new Expression.If(not(skips[i]), read));
     }
     if (end < properties.length) {
@@ -1191,15 +1146,13 @@ abstract class JsonReaderCodegen {
         anyMapRef());
   }
 
-  private Expression anyMap(JsonGeneratedCodecBuilder builder, Expression object, boolean record) {
+  private Expression anyMap(JsonGeneratedCodecBuilder builder, Expression object) {
     if (any == null || any.readField() == null) {
       return null;
     }
     Expression initial =
-        record
-            ? new Expression.Null(TypeRef.of(Map.class), false)
-            : new Expression.Cast(
-                inline(builder.anyValue(any.readField(), object)), TypeRef.of(Map.class));
+        new Expression.Cast(
+            inline(builder.anyValue(any.readField(), object)), TypeRef.of(Map.class));
     return new Expression.Variable("anyMap", initial);
   }
 
@@ -1211,8 +1164,7 @@ abstract class JsonReaderCodegen {
       int index,
       Expression object,
       Expression hashes,
-      Expression[] skips,
-      boolean record) {
+      Expression[] skips) {
     return fastReadField(
         builder,
         slowMethod,
@@ -1223,8 +1175,7 @@ abstract class JsonReaderCodegen {
         false,
         object,
         hashes,
-        skips,
-        record);
+        skips);
   }
 
   private Expression fastReadField(
@@ -1237,15 +1188,13 @@ abstract class JsonReaderCodegen {
       boolean groupHelper,
       Expression object,
       Expression hashes,
-      Expression[] skips,
-      boolean record) {
+      Expression[] skips) {
     if (isDirectName(properties[index].name(), true)) {
       return statementIf(
           tryReadNextFieldNameColon(properties[index], true),
           new Expression.ListExpression(
-              readField(builder, type, properties[index], index, object, record, true),
-              fieldEnd(
-                  slowMethod, properties.length, groupEnd, groupHelper, index, object, record)),
+              readField(builder, type, properties[index], index, object, true),
+              fieldEnd(slowMethod, properties.length, groupEnd, groupHelper, index, object)),
           nextDirectFallback(
               builder,
               slowMethod,
@@ -1256,22 +1205,11 @@ abstract class JsonReaderCodegen {
               groupHelper,
               object,
               hashes,
-              skips,
-              record),
+              skips),
           groupHelper);
     }
     return nextDirectFallback(
-        builder,
-        slowMethod,
-        type,
-        properties,
-        index,
-        groupEnd,
-        groupHelper,
-        object,
-        hashes,
-        skips,
-        record);
+        builder, slowMethod, type, properties, index, groupEnd, groupHelper, object, hashes, skips);
   }
 
   private Expression nextDirectFallback(
@@ -1284,17 +1222,15 @@ abstract class JsonReaderCodegen {
       boolean groupHelper,
       Expression object,
       Expression hashes,
-      Expression[] skips,
-      boolean record) {
+      Expression[] skips) {
     int nextIndex = index + 1;
     if (nextIndex < groupEnd && isDirectName(properties[nextIndex].name(), true)) {
       return statementIf(
           tryReadNextFieldNameColon(properties[nextIndex], true),
           new Expression.ListExpression(
-              readField(builder, type, properties[nextIndex], nextIndex, object, record, true),
+              readField(builder, type, properties[nextIndex], nextIndex, object, true),
               new Expression.Assign(skips[nextIndex], Expression.Literal.True),
-              fieldEnd(
-                  slowMethod, properties.length, groupEnd, groupHelper, nextIndex, object, record)),
+              fieldEnd(slowMethod, properties.length, groupEnd, groupHelper, nextIndex, object)),
           hashFallback(
               builder,
               slowMethod,
@@ -1305,22 +1241,11 @@ abstract class JsonReaderCodegen {
               groupHelper,
               object,
               hashes,
-              skips,
-              record),
+              skips),
           groupHelper);
     }
     return hashFallback(
-        builder,
-        slowMethod,
-        type,
-        properties,
-        index,
-        groupEnd,
-        groupHelper,
-        object,
-        hashes,
-        skips,
-        record);
+        builder, slowMethod, type, properties, index, groupEnd, groupHelper, object, hashes, skips);
   }
 
   private Expression hashFallback(
@@ -1333,8 +1258,7 @@ abstract class JsonReaderCodegen {
       boolean groupHelper,
       Expression object,
       Expression hashes,
-      Expression[] skips,
-      boolean record) {
+      Expression[] skips) {
     Expression fieldStart =
         any == null
             ? null
@@ -1360,8 +1284,7 @@ abstract class JsonReaderCodegen {
             hashes,
             skips,
             fieldHash,
-            fieldStart,
-            record));
+            fieldStart));
     return expressions;
   }
 
@@ -1377,8 +1300,7 @@ abstract class JsonReaderCodegen {
       Expression hashes,
       Expression[] skips,
       Expression fieldHash,
-      Expression fieldStart,
-      boolean record) {
+      Expression fieldStart) {
     Expression fallback;
     if (index + 1 < groupEnd) {
       fallback =
@@ -1386,16 +1308,10 @@ abstract class JsonReaderCodegen {
               eq(fieldHash, arrayValue(hashes, index + 1)),
               new Expression.ListExpression(
                   expectExpr(':'),
-                  readField(builder, type, properties[index + 1], index + 1, object, record, false),
+                  readField(builder, type, properties[index + 1], index + 1, object, false),
                   new Expression.Assign(skips[index + 1], Expression.Literal.True),
                   fieldEnd(
-                      slowMethod,
-                      properties.length,
-                      groupEnd,
-                      groupHelper,
-                      index + 1,
-                      object,
-                      record)),
+                      slowMethod, properties.length, groupEnd, groupHelper, index + 1, object)),
               slowConsumedReturn(
                   slowMethod,
                   index,
@@ -1403,7 +1319,6 @@ abstract class JsonReaderCodegen {
                   fieldHash,
                   fieldStart,
                   object,
-                  record,
                   groupHelper),
               groupHelper);
     } else {
@@ -1415,7 +1330,6 @@ abstract class JsonReaderCodegen {
               fieldHash,
               fieldStart,
               object,
-              record,
               groupHelper);
     }
     return statementIf(
@@ -1423,8 +1337,8 @@ abstract class JsonReaderCodegen {
         fallback,
         new Expression.ListExpression(
             expectExpr(':'),
-            readField(builder, type, properties[index], index, object, record, false),
-            fieldEnd(slowMethod, properties.length, groupEnd, groupHelper, index, object, record)),
+            readField(builder, type, properties[index], index, object, false),
+            fieldEnd(slowMethod, properties.length, groupEnd, groupHelper, index, object)),
         groupHelper);
   }
 
@@ -1506,27 +1420,12 @@ abstract class JsonReaderCodegen {
     return properties.length > READ_FIELD_SWITCH_SIZE;
   }
 
-  private Expression objectExpression(JsonGeneratedCodecBuilder builder, boolean record) {
-    if (record) {
-      return new Expression.Variable(
-          "object",
-          inline(
-              new Expression.Invoke(
-                  ownerRef(), "newRecordFieldValues", TypeRef.of(Object[].class), false)));
-    }
+  private Expression objectExpression(JsonGeneratedCodecBuilder builder) {
     return builder.newObject();
   }
 
-  private Expression returnObject(Expression object, boolean record) {
+  private Expression returnObject(Expression object) {
     Expression exitDepth = new Expression.Invoke(readerRef(), "exitDepth");
-    if (record) {
-      return new Expression.ListExpression(
-          exitDepth,
-          new Expression.Return(
-              inline(
-                  new Expression.Invoke(
-                      ownerRef(), "newRecord", TypeRef.of(Object.class), object))));
-    }
     return new Expression.ListExpression(exitDepth, new Expression.Return(object));
   }
 
@@ -1547,10 +1446,10 @@ abstract class JsonReaderCodegen {
   }
 
   private Expression slowConsumedReturn(
-      String slowMethod, int index, Expression firstFieldIndex, Expression object, boolean record) {
+      String slowMethod, int index, Expression firstFieldIndex, Expression object) {
     return new Expression.ListExpression(
         slowCall(slowMethod, object, Expression.Literal.ofInt(index), firstFieldIndex),
-        returnObject(object, record));
+        returnObject(object));
   }
 
   private Expression slowConsumedReturn(
@@ -1558,10 +1457,9 @@ abstract class JsonReaderCodegen {
       int index,
       Expression firstFieldIndex,
       Expression object,
-      boolean record,
       boolean groupHelper) {
     if (!groupHelper) {
-      return slowConsumedReturn(slowMethod, index, firstFieldIndex, object, record);
+      return slowConsumedReturn(slowMethod, index, firstFieldIndex, object);
     }
     return new Expression.ListExpression(
         slowCall(slowMethod, object, Expression.Literal.ofInt(index), firstFieldIndex),
@@ -1575,10 +1473,9 @@ abstract class JsonReaderCodegen {
       Expression firstFieldHash,
       Expression firstFieldStart,
       Expression object,
-      boolean record,
       boolean groupHelper) {
     if (any == null) {
-      return slowConsumedReturn(slowMethod, index, firstFieldIndex, object, record, groupHelper);
+      return slowConsumedReturn(slowMethod, index, firstFieldIndex, object, groupHelper);
     }
     if (!groupHelper) {
       return new Expression.ListExpression(
@@ -1589,7 +1486,7 @@ abstract class JsonReaderCodegen {
               firstFieldIndex,
               firstFieldHash,
               firstFieldStart),
-          returnObject(object, record));
+          returnObject(object));
     }
     return new Expression.ListExpression(
         slowCall(
@@ -1608,18 +1505,16 @@ abstract class JsonReaderCodegen {
       int groupEnd,
       boolean groupHelper,
       int index,
-      Expression object,
-      boolean record) {
+      Expression object) {
     if (!groupHelper) {
-      return fieldEnd(slowMethod, propertyCount, index, object, record);
+      return fieldEnd(slowMethod, propertyCount, index, object);
     }
     return fastReadGroupEnd(slowMethod, propertyCount, index, object);
   }
 
-  private Expression fieldEnd(
-      String slowMethod, int propertyCount, int index, Expression object, boolean record) {
+  private Expression fieldEnd(String slowMethod, int propertyCount, int index, Expression object) {
     if (index + 1 < propertyCount) {
-      return new Expression.If(not(consumeCommaOrEndObjectExpr()), returnObject(object, record));
+      return new Expression.If(not(consumeCommaOrEndObjectExpr()), returnObject(object));
     }
     return new Expression.If(
         consumeCommaOrEndObjectExpr(),
@@ -1638,11 +1533,8 @@ abstract class JsonReaderCodegen {
   }
 
   private Expression slowReadExpression(
-      JsonGeneratedCodecBuilder builder,
-      Class<?> type,
-      JsonFieldInfo[] properties,
-      boolean record) {
-    Expression object = objectParam(type, record);
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonFieldInfo[] properties) {
+    Expression object = objectParam(type);
     Expression hashes =
         new Expression.Variable("localFieldHashes", fieldRef("fieldHashes", long[].class));
     Reference expectedIndex = new Reference("expectedIndex", TypeRef.of(int.class));
@@ -1652,10 +1544,10 @@ abstract class JsonReaderCodegen {
     Expression.ListExpression loop = new Expression.ListExpression();
     loop.add(
         readNextHashedField(
-            builder, type, properties, object, hashes, expectedIndex, anyMapCreated, record));
+            builder, type, properties, object, hashes, expectedIndex, anyMapCreated));
     loop.add(new Expression.If(not(consumeCommaOrEndObjectExpr()), new Expression.Break()));
     expressions.add(new Expression.While(Expression.Literal.True, loop));
-    finishAnyRead(builder, expressions, object, anyMapCreated, record);
+    finishAnyRead(builder, expressions, object, anyMapCreated);
     return expressions;
   }
 
@@ -1672,19 +1564,15 @@ abstract class JsonReaderCodegen {
       JsonGeneratedCodecBuilder builder,
       Expression.ListExpression expressions,
       Expression object,
-      Expression anyMapCreated,
-      boolean record) {
-    Expression finish = finishAnyReadExpression(builder, object, anyMapCreated, record);
+      Expression anyMapCreated) {
+    Expression finish = finishAnyReadExpression(builder, object, anyMapCreated);
     if (finish != null) {
       expressions.add(finish);
     }
   }
 
   private Expression finishAnyReadExpression(
-      JsonGeneratedCodecBuilder builder,
-      Expression object,
-      Expression anyMapCreated,
-      boolean record) {
+      JsonGeneratedCodecBuilder builder, Expression object, Expression anyMapCreated) {
     if (any == null || any.readField() == null) {
       return null;
     }
@@ -1696,11 +1584,7 @@ abstract class JsonReaderCodegen {
                 new Expression.Invoke(ownerRef(), "finishAnyMap", TypeRef.of(Map.class), map),
                 TypeRef.of(Map.class)));
     Expression store;
-    if (record) {
-      store =
-          new Expression.AssignArrayElem(
-              object, finished, Expression.Literal.ofInt(any.constructionIndex()));
-    } else if (Modifier.isFinal(any.readField().getModifiers())) {
+    if (Modifier.isFinal(any.readField().getModifiers())) {
       store = new Expression.Empty();
     } else {
       store = builder.setAnyField(any.readField(), object, finished);
@@ -1709,22 +1593,16 @@ abstract class JsonReaderCodegen {
   }
 
   private Expression finishAnyReadAndReturn(
-      JsonGeneratedCodecBuilder builder,
-      Expression object,
-      Expression anyMapCreated,
-      boolean record) {
-    Expression finish = finishAnyReadExpression(builder, object, anyMapCreated, record);
+      JsonGeneratedCodecBuilder builder, Expression object, Expression anyMapCreated) {
+    Expression finish = finishAnyReadExpression(builder, object, anyMapCreated);
     return finish == null
         ? new Expression.Return()
         : new Expression.ListExpression(finish, new Expression.Return());
   }
 
   private Expression slowReadFromFirstExpression(
-      JsonGeneratedCodecBuilder builder,
-      Class<?> type,
-      JsonFieldInfo[] properties,
-      boolean record) {
-    Expression object = objectParam(type, record);
+      JsonGeneratedCodecBuilder builder, Class<?> type, JsonFieldInfo[] properties) {
+    Expression object = objectParam(type);
     Expression hashes =
         new Expression.Variable("localFieldHashes", fieldRef("fieldHashes", long[].class));
     Reference expectedIndex = new Reference("expectedIndex", TypeRef.of(int.class));
@@ -1746,15 +1624,14 @@ abstract class JsonReaderCodegen {
             fieldIndex,
             new Reference("firstFieldHash", TypeRef.of(long.class)),
             any == null ? null : new Reference("firstFieldStart", TypeRef.of(int.class)),
-            anyMapCreated,
-            record));
+            anyMapCreated));
     loop.add(updateExpectedIndex(expectedIndex, fieldIndex));
     loop.add(
         new Expression.If(
             not(consumeCommaOrEndObjectExpr()),
             any == null
                 ? new Expression.Return()
-                : finishAnyReadAndReturn(builder, object, anyMapCreated, record)));
+                : finishAnyReadAndReturn(builder, object, anyMapCreated)));
     Expression fieldStart =
         any == null
             ? null
@@ -1786,8 +1663,7 @@ abstract class JsonReaderCodegen {
       Expression object,
       Expression hashes,
       Expression expectedIndex,
-      Expression anyMapCreated,
-      boolean record) {
+      Expression anyMapCreated) {
     Expression fieldStart =
         any == null
             ? null
@@ -1806,15 +1682,7 @@ abstract class JsonReaderCodegen {
         fieldIndex,
         expectExpr(':'),
         fieldSwitch(
-            builder,
-            type,
-            properties,
-            object,
-            fieldIndex,
-            fieldHash,
-            fieldStart,
-            anyMapCreated,
-            record),
+            builder, type, properties, object, fieldIndex, fieldHash, fieldStart, anyMapCreated),
         updateExpectedIndex(expectedIndex, fieldIndex));
     return expressions;
   }
@@ -1824,9 +1692,8 @@ abstract class JsonReaderCodegen {
       Class<?> type,
       JsonFieldInfo[] properties,
       Expression object,
-      Expression fieldIndex,
-      boolean record) {
-    return fieldSwitch(builder, type, properties, object, fieldIndex, null, null, null, record);
+      Expression fieldIndex) {
+    return fieldSwitch(builder, type, properties, object, fieldIndex, null, null, null);
   }
 
   private Expression fieldSwitch(
@@ -1837,8 +1704,7 @@ abstract class JsonReaderCodegen {
       Expression fieldIndex,
       Expression fieldHash,
       Expression fieldStart,
-      Expression anyMapCreated,
-      boolean record) {
+      Expression anyMapCreated) {
     if (shouldSplitFieldSwitch(properties)) {
       int chunks = (properties.length + READ_FIELD_SWITCH_SIZE - 1) / READ_FIELD_SWITCH_SIZE;
       Expression.Switch.Case[] cases = new Expression.Switch.Case[chunks];
@@ -1869,7 +1735,7 @@ abstract class JsonReaderCodegen {
           : new Expression.If(
               ge(fieldIndex, Expression.Literal.ofInt(0)),
               known,
-              readUnknown(object, fieldIndex, fieldHash, fieldStart, anyMapCreated, record));
+              readUnknown(object, fieldIndex, fieldHash, fieldStart, anyMapCreated));
     }
     return fieldSwitchRange(
         builder,
@@ -1881,8 +1747,7 @@ abstract class JsonReaderCodegen {
         fieldIndex,
         fieldHash,
         fieldStart,
-        anyMapCreated,
-        record);
+        anyMapCreated);
   }
 
   private Expression fieldSwitchRange(
@@ -1892,8 +1757,7 @@ abstract class JsonReaderCodegen {
       int start,
       int end,
       Expression object,
-      Expression fieldIndex,
-      boolean record) {
+      Expression fieldIndex) {
     return fieldSwitchRange(
         builder,
         type,
@@ -1902,8 +1766,7 @@ abstract class JsonReaderCodegen {
         end,
         object,
         fieldIndex,
-        new Expression.Invoke(readerRef(), "skipValue"),
-        record);
+        new Expression.Invoke(readerRef(), "skipValue"));
   }
 
   private Expression fieldSwitchRange(
@@ -1916,14 +1779,12 @@ abstract class JsonReaderCodegen {
       Expression fieldIndex,
       Expression fieldHash,
       Expression fieldStart,
-      Expression anyMapCreated,
-      boolean record) {
+      Expression anyMapCreated) {
     Expression unknown =
         any == null
             ? new Expression.Invoke(readerRef(), "skipValue")
-            : readUnknown(object, fieldIndex, fieldHash, fieldStart, anyMapCreated, record);
-    return fieldSwitchRange(
-        builder, type, properties, start, end, object, fieldIndex, unknown, record);
+            : readUnknown(object, fieldIndex, fieldHash, fieldStart, anyMapCreated);
+    return fieldSwitchRange(builder, type, properties, start, end, object, fieldIndex, unknown);
   }
 
   private Expression fieldSwitchRange(
@@ -1934,15 +1795,14 @@ abstract class JsonReaderCodegen {
       int end,
       Expression object,
       Expression fieldIndex,
-      Expression unknown,
-      boolean record) {
+      Expression unknown) {
     Expression.Switch.Case[] cases = new Expression.Switch.Case[end - start];
     for (int i = start; i < end; i++) {
       cases[i - start] =
           new Expression.Switch.Case(
               i,
               new Expression.ListExpression(
-                  readField(builder, type, properties[i], i, object, record, false),
+                  readField(builder, type, properties[i], i, object, false),
                   new Expression.Break()));
     }
     return new Expression.Switch(fieldIndex, cases, unknown);
@@ -1953,8 +1813,7 @@ abstract class JsonReaderCodegen {
       Expression fieldIndex,
       Expression fieldHash,
       Expression fieldStart,
-      Expression anyMapCreated,
-      boolean record) {
+      Expression anyMapCreated) {
     Expression skip = new Expression.Invoke(readerRef(), "skipValue");
     Expression reserved = eq(fieldIndex, Expression.Literal.ofInt(JsonFieldTable.SKIP));
     Expression name =
@@ -1984,29 +1843,21 @@ abstract class JsonReaderCodegen {
     } else {
       Reference map = new Reference("anyMap", TypeRef.of(Map.class));
       Expression create =
-          record
-              ? new Expression.ListExpression(
+          Modifier.isFinal(any.readField().getModifiers())
+              ? new Expression.Invoke(
+                  new Reference("this", TypeRef.of(Object.class)),
+                  "requireAnyMap",
+                  "",
+                  TypeRef.of(Map.class),
+                  false,
+                  false,
+                  map)
+              : new Expression.ListExpression(
                   new Expression.Assign(
                       map,
                       new Expression.Invoke(ownerRef(), "newAnyMap", TypeRef.of(Map.class), false)
                           .inline()),
-                  new Expression.Assign(anyMapCreated, Expression.Literal.True))
-              : Modifier.isFinal(any.readField().getModifiers())
-                  ? new Expression.Invoke(
-                      new Reference("this", TypeRef.of(Object.class)),
-                      "requireAnyMap",
-                      "",
-                      TypeRef.of(Map.class),
-                      false,
-                      false,
-                      map)
-                  : new Expression.ListExpression(
-                      new Expression.Assign(
-                          map,
-                          new Expression.Invoke(
-                                  ownerRef(), "newAnyMap", TypeRef.of(Map.class), false)
-                              .inline()),
-                      new Expression.Assign(anyMapCreated, Expression.Literal.True));
+                  new Expression.Assign(anyMapCreated, Expression.Literal.True));
       Expression put = new Expression.Invoke(ownerRef(), "putAnyMap", map, name, value);
       write =
           new Expression.ListExpression(
@@ -2041,10 +1892,8 @@ abstract class JsonReaderCodegen {
         TypeRef.of(int.class));
   }
 
-  final Expression objectParam(Class<?> type, boolean record) {
-    return record
-        ? new Reference("object", TypeRef.of(Object[].class))
-        : new Reference("object", TypeRef.of(type));
+  final Expression objectParam(Class<?> type) {
+    return new Reference("object", TypeRef.of(type));
   }
 
   final Reference ownerRef() {
@@ -2504,11 +2353,7 @@ abstract class JsonReaderCodegen {
       JsonFieldInfo property,
       int id,
       Expression object,
-      boolean record,
       boolean tokenValueRead) {
-    if (record) {
-      return readRecordField(type, property, id, object, tokenValueRead);
-    }
     Class<?> rawType = property.readRawType();
     switch (property.readKind()) {
       case BOOLEAN:
@@ -2536,122 +2381,6 @@ abstract class JsonReaderCodegen {
         return new Expression.Invoke(
             fieldRef("rp" + id, JsonFieldInfo.class), readFieldMethod(), readerRef(), object);
     }
-  }
-
-  private Expression readRecordField(
-      Class<?> type, JsonFieldInfo property, int id, Expression object, boolean tokenValueRead) {
-    Class<?> rawType = property.readRawType();
-    switch (property.readKind()) {
-      case BOOLEAN:
-        return readRecordBoolean(rawType, id, object, tokenValueRead);
-      case INT:
-        return readRecordInt(rawType, id, object, tokenValueRead);
-      case LONG:
-        return readRecordLong(rawType, id, object, tokenValueRead);
-      case FLOAT:
-        return readRecordFloat(rawType, id, object);
-      case DOUBLE:
-        return readRecordDouble(rawType, id, object);
-      case STRING:
-        return assignRecord(object, id, readStringExpr(tokenValueRead));
-      case ENUM:
-        return readRecordEnum(id, object, tokenValueRead);
-      case COLLECTION:
-        return readRecordCollection(property, id, object);
-      case ARRAY:
-      case MAP:
-        return assignRecord(object, id, readResolvedValue(property, id));
-      case OBJECT:
-        return readRecordObject(type, property, id, object);
-      default:
-        return assignRecord(
-            object,
-            id,
-            new Expression.Invoke(
-                fieldRef("rp" + id, JsonFieldInfo.class),
-                readFieldValueMethod(),
-                TypeRef.of(Object.class),
-                true,
-                readerRef()));
-    }
-  }
-
-  final Expression readRecordBoolean(
-      Class<?> rawType, int id, Expression object, boolean tokenValueRead) {
-    Expression value = box(Boolean.class, readBooleanExpr(tokenValueRead));
-    if (rawType.isPrimitive()) {
-      return assignRecord(object, id, value);
-    }
-    return new Expression.If(
-        tryReadNullExpr(),
-        assignRecord(object, id, new Expression.Null(TypeRef.of(Boolean.class), false)),
-        assignRecord(object, id, value));
-  }
-
-  final Expression readRecordInt(
-      Class<?> rawType, int id, Expression object, boolean tokenValueRead) {
-    Expression value = box(Integer.class, readIntExpr(tokenValueRead));
-    if (rawType.isPrimitive()) {
-      return assignRecord(object, id, value);
-    }
-    return new Expression.If(
-        tryReadNullExpr(),
-        assignRecord(object, id, new Expression.Null(TypeRef.of(Integer.class), false)),
-        assignRecord(object, id, value));
-  }
-
-  final Expression readRecordLong(
-      Class<?> rawType, int id, Expression object, boolean tokenValueRead) {
-    Expression value = box(Long.class, readLongExpr(tokenValueRead));
-    if (rawType.isPrimitive()) {
-      return assignRecord(object, id, value);
-    }
-    return new Expression.If(
-        tryReadNullExpr(),
-        assignRecord(object, id, new Expression.Null(TypeRef.of(Long.class), false)),
-        assignRecord(object, id, value));
-  }
-
-  final Expression readRecordFloat(Class<?> rawType, int id, Expression object) {
-    Expression value = box(Float.class, readFloatExpr());
-    if (rawType.isPrimitive()) {
-      return assignRecord(object, id, value);
-    }
-    return new Expression.If(
-        tryReadNullExpr(),
-        assignRecord(object, id, new Expression.Null(TypeRef.of(Float.class), false)),
-        assignRecord(object, id, value));
-  }
-
-  final Expression readRecordDouble(Class<?> rawType, int id, Expression object) {
-    Expression value = box(Double.class, readDoubleExpr());
-    if (rawType.isPrimitive()) {
-      return assignRecord(object, id, value);
-    }
-    return new Expression.If(
-        tryReadNullExpr(),
-        assignRecord(object, id, new Expression.Null(TypeRef.of(Double.class), false)),
-        assignRecord(object, id, value));
-  }
-
-  final Expression readRecordEnum(int id, Expression object, boolean tokenValueRead) {
-    return new Expression.If(
-        tryReadNullExpr(),
-        assignRecord(object, id, new Expression.Null(TypeRef.of(Object.class), false)),
-        assignRecord(object, id, readEnumValue(Object.class, id, tokenValueRead)));
-  }
-
-  final Expression readRecordObject(
-      Class<?> type, JsonFieldInfo property, int id, Expression object) {
-    if (property.readRawType() == Object.class
-        || !property.readTypeInfo().usesDefaultObjectCodec()) {
-      return assignRecord(object, id, readResolvedValue(property, id));
-    }
-    return assignRecord(object, id, readObjectValue(type, property, id));
-  }
-
-  final Expression readRecordCollection(JsonFieldInfo property, int id, Expression object) {
-    return assignRecord(object, id, readCollectionValue(property, id));
   }
 
   final Expression readBoolean(
@@ -2796,10 +2525,6 @@ abstract class JsonReaderCodegen {
       return readResolvedField(builder, property, id, object);
     }
     return builder.setField(property, object, readObjectValue(type, property, id));
-  }
-
-  final Expression assignRecord(Expression object, int id, Expression value) {
-    return new Expression.AssignArrayElem(object, inline(value), Expression.Literal.ofInt(id));
   }
 
   final Expression box(Class<?> boxedType, Expression value) {

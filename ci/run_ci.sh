@@ -98,7 +98,7 @@ run_graalvm_tests() {
   # GraalVM jobs consume production jars only; Java CI owns test/source jar verification.
   # Run the install goal directly after package so verify is not repeated in every native job.
   mvn -T10 -B --no-transfer-progress clean package install:install \
-    -pl .,fory-test-core,fory-core,fory-json \
+    -pl .,fory-test-core,fory-core,fory-json,fory-annotation-processor \
     -Dmaven.test.skip=true \
     -Dmaven.source.skip=true \
     -Dmaven.javadoc.skip=true

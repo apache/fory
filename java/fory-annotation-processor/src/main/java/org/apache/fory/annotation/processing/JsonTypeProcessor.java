@@ -74,6 +74,8 @@ final class JsonTypeProcessor {
   private static final String NO_JSON_VALUE_CODEC = JSON_CODEC + "$NoJsonValueCodec";
   private static final String NO_MAP_KEY_CODEC = JSON_CODEC + "$NoMapKeyCodec";
   private static final String R8_PREFIX = "META-INF/proguard/fory-json-";
+  private static final String NATIVE_IMAGE_PREFIX =
+      "META-INF/native-image/org.apache.fory/fory-json-";
   private static final String[] CODEC_MEMBERS = {
     "value", "elementCodec", "contentCodec", "keyCodec", "valueCodec"
   };
@@ -82,6 +84,7 @@ final class JsonTypeProcessor {
   private final Messager messager;
   private final Elements elements;
   private final Types types;
+  private final GeneratedJsonCodecSourceWriter codecSourceWriter;
   private final Set<String> processedTypes = new HashSet<>();
 
   JsonTypeProcessor(ProcessingEnvironment environment) {
@@ -89,6 +92,7 @@ final class JsonTypeProcessor {
     messager = environment.getMessager();
     elements = environment.getElementUtils();
     types = environment.getTypeUtils();
+    codecSourceWriter = new GeneratedJsonCodecSourceWriter(environment);
   }
 
   void process(RoundEnvironment roundEnvironment) {
@@ -110,10 +114,26 @@ final class JsonTypeProcessor {
       }
       try {
         Model model = inspect(type);
+        if (hasAnnotation(type, JSON_TYPE)) {
+          GeneratedJsonCodecSourceWriter.Result generated = codecSourceWriter.write(type);
+          if (generated != null) {
+            model.companionBinaryName = generated.companionBinaryName;
+            model.companionHasAnySetter = generated.hasAnySetter;
+            model.companionHasCreator = generated.hasCreator;
+            model.companionHasCreatorFactory = generated.hasCreatorFactory;
+            model.companionIsRecord = generated.record;
+            for (GeneratedJsonCodecSourceWriter.MemberRule member : generated.r8Members) {
+              model.addR8Member(new R8Member(member.ownerBinaryName, member.declaration));
+            }
+          }
+        }
         List<TypeElement> subtypes = classLiteralSubtypes(type, model.binaryFallbackTypes);
         model.sort();
         emitR8(model);
+        emitNativeImageProperties(model);
         pending.addAll(subtypes);
+      } catch (GeneratedJsonCodecSourceWriter.InvalidJsonTypeException e) {
+        messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
       } catch (InvalidJsonTypeException e) {
         messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
       } catch (RuntimeException e) {
@@ -246,6 +266,27 @@ final class JsonTypeProcessor {
     }
   }
 
+  private void emitNativeImageProperties(Model model) {
+    if (model.companionBinaryName == null) {
+      return;
+    }
+    // The hosted feature freezes factory instances into the image heap after reachability is
+    // known, but GraalVM accepts class-initialization configuration only before analysis starts.
+    // Emit the exact generated class here so unreachable model classes remain removable.
+    String resourceName =
+        NATIVE_IMAGE_PREFIX + model.companionBinaryName + "/native-image.properties";
+    try {
+      javax.tools.FileObject file =
+          filer.createResource(StandardLocation.CLASS_OUTPUT, "", resourceName, model.target);
+      try (Writer writer = file.openWriter()) {
+        writer.write("Args=--initialize-at-build-time=" + model.companionBinaryName + "$Factory\n");
+      }
+    } catch (IOException e) {
+      throw new InvalidJsonTypeException(
+          "Failed to write generated JSON Native Image properties: " + e, model.target);
+    }
+  }
+
   private String writeR8(Model model) {
     StringBuilder builder = new StringBuilder(8192);
     builder.append("-keepattributes Signature,RuntimeVisibleAnnotations\n");
@@ -267,7 +308,9 @@ final class JsonTypeProcessor {
           .add(member);
     }
     for (Map.Entry<String, List<R8Member>> entry : membersByOwner.entrySet()) {
-      boolean preserveName = model.binaryFallbackTypes.contains(entry.getKey());
+      boolean preserveName =
+          model.binaryFallbackTypes.contains(entry.getKey())
+              || model.companionBinaryName != null && model.binaryName.equals(entry.getKey());
       builder
           .append("-keep,allowoptimization")
           .append(preserveName ? "" : ",allowobfuscation")
@@ -316,6 +359,32 @@ final class JsonTypeProcessor {
           .append("-keep,allowoptimization,allowobfuscation class ")
           .append(codec)
           .append(" { public <init>(); }\n");
+    }
+    if (model.companionBinaryName != null) {
+      builder
+          .append("-keep,allowoptimization class ")
+          .append(model.companionBinaryName)
+          .append(" {\n")
+          .append("  public <init>();\n")
+          .append("  public java.lang.Class type();\n")
+          .append("  public org.apache.fory.json.meta.JsonFieldAccessor[] fieldAccessors();\n");
+      if (model.companionHasAnySetter) {
+        builder.append(
+            "  public org.apache.fory.json.meta.JsonAnySetterAccessor anySetterAccessor();\n");
+      }
+      if (model.companionHasCreator) {
+        builder
+            .append("  public java.lang.String[] creatorParameterNames();\n")
+            .append("  public java.lang.Class[] creatorParameterTypes();\n")
+            .append("  public java.lang.Object newInstance(java.lang.Object[]);\n");
+      }
+      if (model.companionHasCreatorFactory) {
+        builder.append("  public java.lang.String creatorFactoryName();\n");
+      }
+      if (model.companionIsRecord) {
+        builder.append("  public boolean isRecord();\n");
+      }
+      builder.append("}\n");
     }
     return builder.toString();
   }
@@ -702,6 +771,11 @@ final class JsonTypeProcessor {
     final Set<String> codecTypes = new LinkedHashSet<>();
     final Set<String> binaryFallbackTypes = new LinkedHashSet<>();
     final Set<String> annotationOwnerTypes = new LinkedHashSet<>();
+    String companionBinaryName;
+    boolean companionHasAnySetter;
+    boolean companionHasCreator;
+    boolean companionHasCreatorFactory;
+    boolean companionIsRecord;
 
     Model(TypeElement target, String binaryName) {
       this.target = target;

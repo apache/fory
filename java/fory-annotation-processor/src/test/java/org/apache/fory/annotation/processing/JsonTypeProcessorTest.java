@@ -22,9 +22,14 @@ package org.apache.fory.annotation.processing;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertTrue;
 
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -40,11 +45,19 @@ import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.codec.GeneratedJsonCodec;
+import org.apache.fory.json.codec.GeneratedJsonCodecFactory;
+import org.apache.fory.json.meta.JsonAnySetterAccessor;
+import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class JsonTypeProcessorTest {
   private static final String RULE_PREFIX = "META-INF/proguard/fory-json-";
+  private static final String NATIVE_IMAGE_PREFIX =
+      "META-INF/native-image/org.apache.fory/fory-json-";
 
   @Test
   public void unannotatedType() throws Exception {
@@ -77,6 +90,568 @@ public class JsonTypeProcessorTest {
     assertTrue(rules.contains("int getId();"), rules);
     assertTrue(rules.contains("<init>();"), rules);
     assertTrue(rules.contains("<init>(int);"), rules);
+    assertTrue(rules.contains("-keep,allowoptimization class test.Plain_ForyJsonCodec {"), rules);
+    assertFalse(rules.contains("test.Plain_ForyJsonCodec$Factory"), rules);
+    assertFalse(rules.contains("-keep,allowoptimization,allowobfuscation class test.Plain"), rules);
+    assertTrue(result.hasGeneratedSource("test/Plain_ForyJsonCodec.java"));
+    assertEquals(
+        result.generatedResource(
+            NATIVE_IMAGE_PREFIX + "test.Plain_ForyJsonCodec/native-image.properties"),
+        "Args=--initialize-at-build-time=test.Plain_ForyJsonCodec$Factory\n");
+  }
+
+  @Test
+  public void generatedAccessors() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.GeneratedModel",
+            "package test;\n"
+                + "import java.util.*;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public class GeneratedModel {\n"
+                + "  public int id;\n"
+                + "  private String name;\n"
+                + "  public final Map<String, Object> extra = new HashMap<>();\n"
+                + "  public GeneratedModel() {}\n"
+                + "  public String getName() { return name; }\n"
+                + "  public void setName(String name) { this.name = name; }\n"
+                + "  @JsonAnySetter public void putExtra(String key, Object value) {\n"
+                + "    extra.put(key, value);\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> modelType = loader.loadClass("test.GeneratedModel");
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, "test.GeneratedModel_ForyJsonCodec");
+    assertEquals(codec.type(), modelType);
+    JsonFieldAccessor[] first = codec.fieldAccessors();
+    JsonFieldAccessor[] second = codec.fieldAccessors();
+    assertNotSame(first, second);
+
+    Object model = modelType.getConstructor().newInstance();
+    JsonFieldAccessor id = fieldAccessor(first, "id");
+    id.putInt(model, 31);
+    assertEquals(id.getInt(model), 31);
+    JsonFieldAccessor setter = methodAccessor(first, "setName");
+    JsonFieldAccessor getter = methodAccessor(first, "getName");
+    setter.putObject(model, "fory");
+    assertEquals(getter.getObject(model), "fory");
+
+    JsonAnySetterAccessor anySetter = codec.anySetterAccessor();
+    assertNotNull(anySetter);
+    anySetter.put(model, "answer", 42);
+    Field extra = modelType.getField("extra");
+    assertEquals(((Map<?, ?>) extra.get(model)).get("answer"), 42);
+
+    GeneratedJsonCodecFactory factory =
+        (GeneratedJsonCodecFactory)
+            loader
+                .loadClass("test.GeneratedModel_ForyJsonCodec$Factory")
+                .getConstructor()
+                .newInstance();
+    assertEquals(factory.create().type(), modelType);
+  }
+
+  @Test
+  public void hiddenFieldAccessors() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.HiddenFieldModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonType;\n"
+                + "class HiddenFieldBase { public int value; }\n"
+                + "@JsonType public class HiddenFieldModel extends HiddenFieldBase {\n"
+                + "  public int value;\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> modelType = loader.loadClass("test.HiddenFieldModel");
+    Class<?> baseType = loader.loadClass("test.HiddenFieldBase");
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, "test.HiddenFieldModel_ForyJsonCodec");
+    JsonFieldAccessor base = fieldAccessor(codec.fieldAccessors(), baseType, "value");
+    JsonFieldAccessor child = fieldAccessor(codec.fieldAccessors(), modelType, "value");
+    Object model = modelType.getConstructor().newInstance();
+    base.putInt(model, 11);
+    child.putInt(model, 29);
+    assertEquals(base.getInt(model), 11);
+    assertEquals(child.getInt(model), 29);
+    Field baseField = baseType.getField("value");
+    baseField.setAccessible(true);
+    assertEquals(baseField.getInt(model), 11);
+    assertEquals(modelType.getField("value").getInt(model), 29);
+  }
+
+  @Test
+  public void genericMemberDispatch() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.GenericDispatchModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class GenericDispatchBase<T extends CharSequence> {\n"
+                + "  public T value;\n"
+                + "  public int baseSetterCalls;\n"
+                + "  public int baseAnySetterCalls;\n"
+                + "  @SuppressWarnings(\"unchecked\")\n"
+                + "  public void setText(CharSequence value) {\n"
+                + "    this.value = (T) value; baseSetterCalls++;\n"
+                + "  }\n"
+                + "  public T getValue() { return value; }\n"
+                + "  public String getVirtualValue() { return \"base\"; }\n"
+                + "  @SuppressWarnings(\"unchecked\")\n"
+                + "  @JsonAnySetter public void putExtra(String name, CharSequence value) {\n"
+                + "    this.value = (T) value; baseAnySetterCalls++;\n"
+                + "  }\n"
+                + "}\n"
+                + "@JsonType public class GenericDispatchModel\n"
+                + "    extends GenericDispatchBase<String> {\n"
+                + "  public String value;\n"
+                + "  public int overloadSetterCalls;\n"
+                + "  public int overloadAnySetterCalls;\n"
+                + "  public void setText(String value) { overloadSetterCalls++; }\n"
+                + "  public void putExtra(String name, String value) { overloadAnySetterCalls++; }\n"
+                + "  @Override public String getVirtualValue() { return \"child\"; }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> modelType = loader.loadClass("test.GenericDispatchModel");
+    Class<?> baseType = loader.loadClass("test.GenericDispatchBase");
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, "test.GenericDispatchModel_ForyJsonCodec");
+    Object model = modelType.getConstructor().newInstance();
+    JsonFieldAccessor baseField = fieldAccessor(codec.fieldAccessors(), baseType, "value");
+    JsonFieldAccessor childField = fieldAccessor(codec.fieldAccessors(), modelType, "value");
+    baseField.putObject(model, "base-field");
+    childField.putObject(model, "child-field");
+    assertEquals(baseField.getObject(model), "base-field");
+    assertEquals(childField.getObject(model), "child-field");
+    JsonFieldAccessor setter =
+        methodAccessor(codec.fieldAccessors(), baseType, "setText", CharSequence.class);
+    JsonFieldAccessor getter = methodAccessor(codec.fieldAccessors(), baseType, "getValue");
+    setter.putObject(model, "base-setter");
+    assertEquals(getter.getObject(model), "base-setter");
+    Field baseSetterCalls = baseType.getField("baseSetterCalls");
+    baseSetterCalls.setAccessible(true);
+    assertEquals(baseSetterCalls.getInt(model), 1);
+    assertEquals(modelType.getField("overloadSetterCalls").getInt(model), 0);
+
+    JsonAnySetterAccessor anySetter = codec.anySetterAccessor();
+    anySetter.put(model, "extra", "base-any");
+    assertEquals(getter.getObject(model), "base-any");
+    Field baseAnySetterCalls = baseType.getField("baseAnySetterCalls");
+    baseAnySetterCalls.setAccessible(true);
+    assertEquals(baseAnySetterCalls.getInt(model), 1);
+    assertEquals(modelType.getField("overloadAnySetterCalls").getInt(model), 0);
+
+    JsonFieldAccessor virtual =
+        methodAccessor(codec.fieldAccessors(), modelType, "getVirtualValue");
+    assertEquals(virtual.getObject(model), "child");
+  }
+
+  @Test
+  public void generatedCreator() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.CreatorModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public final class CreatorModel {\n"
+                + "  public final int id;\n"
+                + "  public final String name;\n"
+                + "  @JsonCreator({\"id\", \"name\"})\n"
+                + "  public CreatorModel(int id, String name) { this.id = id; this.name = name; }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, "test.CreatorModel_ForyJsonCodec");
+    assertEquals(codec.creatorParameterNames(), new String[] {"id", "name"});
+    assertEquals(codec.creatorParameterTypes(), new Class<?>[] {int.class, String.class});
+    assertNotSame(codec.creatorParameterNames(), codec.creatorParameterNames());
+    assertNotSame(codec.creatorParameterTypes(), codec.creatorParameterTypes());
+    Object model = codec.newInstance(new Object[] {7, "json"});
+    assertEquals(model.getClass().getField("id").getInt(model), 7);
+    assertEquals(model.getClass().getField("name").get(model), "json");
+  }
+
+  @Test
+  public void runtimePipeline() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.RuntimeModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public final class RuntimeModel {\n"
+                + "  public final int id;\n"
+                + "  private final String name;\n"
+                + "  @JsonCreator({\"id\", \"name\"})\n"
+                + "  public RuntimeModel(int id, String name) { this.id = id; this.name = name; }\n"
+                + "  public String getName() { return name; }\n"
+                + "  @Override public boolean equals(Object value) {\n"
+                + "    if (!(value instanceof RuntimeModel)) { return false; }\n"
+                + "    RuntimeModel other = (RuntimeModel) value;\n"
+                + "    return id == other.id && name.equals(other.name);\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertRoundTrips(
+        result,
+        "test.RuntimeModel",
+        new Class<?>[] {int.class, String.class},
+        new Object[] {7, "json"});
+  }
+
+  @Test
+  public void mutableRuntimePipeline() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.MutableModel",
+            "package test;\n"
+                + "import java.util.*;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public final class MutableModel {\n"
+                + "  public int id;\n"
+                + "  private String name;\n"
+                + "  private final Map<String, Object> extra = new LinkedHashMap<>();\n"
+                + "  public MutableModel() {}\n"
+                + "  public MutableModel(int id, String name, Map<String, Object> extra) {\n"
+                + "    this.id = id; this.name = name; this.extra.putAll(extra);\n"
+                + "  }\n"
+                + "  public String getName() { return name; }\n"
+                + "  public void setName(String name) { this.name = name; }\n"
+                + "  @JsonAnyGetter public Map<String, Object> getExtra() { return extra; }\n"
+                + "  @JsonAnySetter public void putExtra(String key, Object value) {\n"
+                + "    extra.put(key, value);\n"
+                + "  }\n"
+                + "  @Override public boolean equals(Object value) {\n"
+                + "    if (!(value instanceof MutableModel)) { return false; }\n"
+                + "    MutableModel other = (MutableModel) value;\n"
+                + "    return id == other.id && Objects.equals(name, other.name)\n"
+                + "        && extra.equals(other.extra);\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    Map<String, Object> extra = new LinkedHashMap<>();
+    extra.put("enabled", Boolean.TRUE);
+    assertRoundTrips(
+        result,
+        "test.MutableModel",
+        new Class<?>[] {int.class, String.class, Map.class},
+        new Object[] {5, "mutable", extra});
+  }
+
+  @Test
+  public void encodedRecordPipeline() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.EncodedRecord",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public record EncodedRecord(\n"
+                + "    @JsonRawValue String raw, @JsonBase64 byte[] bytes) {}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.EncodedRecord");
+    Object value =
+        type.getConstructor(String.class, byte[].class)
+            .newInstance("{\"id\":1}", new byte[] {1, 2, 3});
+    for (ForyJson json : jsonRuntimes(loader)) {
+      assertEquals(json.toJson(value), "{\"raw\":{\"id\":1},\"bytes\":\"AQID\"}");
+      Object decoded = json.fromJson("{\"raw\":\"text\",\"bytes\":\"AQI=\"}", type);
+      assertEquals(type.getMethod("raw").invoke(decoded), "text");
+      assertTrue(
+          Arrays.equals((byte[]) type.getMethod("bytes").invoke(decoded), new byte[] {1, 2}));
+    }
+  }
+
+  @Test
+  public void encodedCreatorPipeline() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.EncodedCreator",
+            "package test;\n"
+                + "import java.util.Arrays;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public final class EncodedCreator {\n"
+                + "  @JsonBase64 public final byte[] bytes;\n"
+                + "  @JsonCreator({\"bytes\"}) public EncodedCreator(byte[] bytes) {\n"
+                + "    this.bytes = bytes;\n"
+                + "  }\n"
+                + "  @Override public boolean equals(Object value) {\n"
+                + "    return value instanceof EncodedCreator\n"
+                + "        && Arrays.equals(bytes, ((EncodedCreator) value).bytes);\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertRoundTrips(
+        result,
+        "test.EncodedCreator",
+        new Class<?>[] {byte[].class},
+        new Object[] {new byte[] {1, 2, 3}});
+  }
+
+  @Test
+  public void missingCompanionFails() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.MissingModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonType;\n"
+                + "@JsonType public final class MissingModel {\n"
+                + "  public int id;\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertTrue(
+        Files.deleteIfExists(result.classRoot.resolve("test/MissingModel_ForyJsonCodec.class")));
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.MissingModel");
+    Object value = type.getConstructor().newInstance();
+    try {
+      ForyJson.builder().withCodegen(false).withClassLoader(loader).build().toJson(value);
+      throw new AssertionError("Missing generated JSON companion was accepted");
+    } catch (ForyJsonException e) {
+      assertTrue(
+          e.getMessage().contains("Missing generated JSON codec test.MissingModel_ForyJsonCodec"),
+          e.getMessage());
+    }
+  }
+
+  @Test
+  public void unannotatedRuntimePipeline() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.RuntimePlain",
+            "package test;\n"
+                + "public final class RuntimePlain {\n"
+                + "  public int id;\n"
+                + "  public String name;\n"
+                + "  public RuntimePlain() {}\n"
+                + "  public RuntimePlain(int id, String name) { this.id = id; this.name = name; }\n"
+                + "  @Override public boolean equals(Object value) {\n"
+                + "    if (!(value instanceof RuntimePlain)) { return false; }\n"
+                + "    RuntimePlain other = (RuntimePlain) value;\n"
+                + "    return id == other.id && name.equals(other.name);\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertFalse(result.hasGeneratedSource("test/RuntimePlain_ForyJsonCodec.java"));
+    assertRoundTrips(
+        result,
+        "test.RuntimePlain",
+        new Class<?>[] {int.class, String.class},
+        new Object[] {5, "plain"});
+  }
+
+  @Test
+  public void staleCompanionIgnored() throws Exception {
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put(
+        "test.StaleModel",
+        "package test;\n"
+            + "public final class StaleModel {\n"
+            + "  public int id;\n"
+            + "  public StaleModel() {}\n"
+            + "}\n");
+    sources.put(
+        "test.StaleModel_ForyJsonCodec",
+        "package test;\n"
+            + "public final class StaleModel_ForyJsonCodec\n"
+            + "    extends org.apache.fory.json.codec.GeneratedJsonCodec<StaleModel> {\n"
+            + "  public Class<StaleModel> type() {\n"
+            + "    throw new AssertionError(\"stale companion loaded\");\n"
+            + "  }\n"
+            + "  public org.apache.fory.json.meta.JsonFieldAccessor[] fieldAccessors() {\n"
+            + "    return new org.apache.fory.json.meta.JsonFieldAccessor[0];\n"
+            + "  }\n"
+            + "}\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.StaleModel");
+    Object value = type.getConstructor().newInstance();
+    type.getField("id").setInt(value, 7);
+    for (ForyJson json : jsonRuntimes(loader)) {
+      assertEquals(json.toJson(value), "{\"id\":7}");
+    }
+  }
+
+  @Test
+  public void recordRuntimePipeline() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.RuntimeRecord",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonType;\n"
+                + "@JsonType public record RuntimeRecord(int id, String name) {}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertRoundTrips(
+        result,
+        "test.RuntimeRecord",
+        new Class<?>[] {int.class, String.class},
+        new Object[] {11, "record"});
+  }
+
+  @Test
+  public void recordValuePipeline() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.RuntimeValueRecord",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public record RuntimeValueRecord(@JsonValue String value) {\n"
+                + "  @JsonCreator public RuntimeValueRecord {}\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertTrue(result.hasGeneratedSource("test/RuntimeValueRecord_ForyJsonCodec.java"));
+    assertRoundTrips(
+        result,
+        "test.RuntimeValueRecord",
+        new Class<?>[] {String.class},
+        new Object[] {"record-value"});
+  }
+
+  @Test
+  public void escapedCreatorNames() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.EscapedCreator",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public final class EscapedCreator {\n"
+                + "  public final int value;\n"
+                + "  @JsonCreator({\"line\\nfeed\\001\"})\n"
+                + "  public EscapedCreator(int value) { this.value = value; }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    GeneratedJsonCodec<?> codec =
+        generatedCodec(result.classLoader(), "test.EscapedCreator_ForyJsonCodec");
+    assertEquals(codec.creatorParameterNames(), new String[] {"line\nfeed\u0001"});
+  }
+
+  @Test
+  public void atomicSubtypeCompanion() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.AtomicModel",
+            "package test;\n"
+                + "import java.util.concurrent.atomic.AtomicReference;\n"
+                + "import org.apache.fory.json.annotation.JsonType;\n"
+                + "@JsonType public class AtomicModel extends AtomicReference<String> {\n"
+                + "  public int tag;\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertTrue(result.hasGeneratedSource("test/AtomicModel_ForyJsonCodec.java"));
+  }
+
+  @Test
+  public void rejectedRuntimeFamily() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.SocketModel",
+            "package test;\n"
+                + "import java.net.InetSocketAddress;\n"
+                + "import org.apache.fory.json.annotation.JsonType;\n"
+                + "@JsonType public class SocketModel extends InetSocketAddress {\n"
+                + "  public SocketModel() { super(0); }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertFalse(result.hasGeneratedSource("test/SocketModel_ForyJsonCodec.java"));
+  }
+
+  @Test
+  public void packageMethodsSkipped() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.PackageMethods",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public class PackageMethods {\n"
+                + "  @JsonProperty String getHidden() { return null; }\n"
+                + "  @JsonProperty void setHidden(String value) {}\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    GeneratedJsonCodec<?> codec =
+        generatedCodec(result.classLoader(), "test.PackageMethods_ForyJsonCodec");
+    assertEquals(codec.fieldAccessors().length, 0);
+  }
+
+  @Test
+  public void inaccessibleOwners() throws Exception {
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put(
+        "hidden.VisibleBase",
+        "package hidden;\n"
+            + "class HiddenBase {\n"
+            + "  public int id;\n"
+            + "}\n"
+            + "public class VisibleBase extends HiddenBase { public VisibleBase() {} }\n");
+    sources.put(
+        "test.InaccessibleModel",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.JsonType;\n"
+            + "@JsonType public final class InaccessibleModel extends hidden.VisibleBase {\n"
+            + "  public InaccessibleModel() {}\n"
+            + "}\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.InaccessibleModel");
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, "test.InaccessibleModel_ForyJsonCodec");
+    assertEquals(codec.fieldAccessors().length, 0);
+    Field id = type.getField("id");
+    id.setAccessible(true);
+    for (ForyJson json : jsonRuntimes(loader)) {
+      byte[] bytes = "{\"id\":3}".getBytes(StandardCharsets.UTF_8);
+      for (Object value :
+          Arrays.asList(
+              json.fromJson(new String(bytes, StandardCharsets.UTF_8), type),
+              json.fromJson(bytes, type))) {
+        assertEquals(id.getInt(value), 3);
+        assertEquals(json.toJson(value), "{\"id\":3}");
+      }
+    }
+  }
+
+  @Test
+  public void inaccessibleAnySetterType() throws Exception {
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put(
+        "hidden.AnyBase",
+        "package hidden;\n"
+            + "import org.apache.fory.json.annotation.JsonAnySetter;\n"
+            + "class HiddenValue { public int value; }\n"
+            + "public class AnyBase {\n"
+            + "  private Object extraValue;\n"
+            + "  @JsonAnySetter public void putExtra(String name, HiddenValue value) {\n"
+            + "    extraValue = value;\n"
+            + "  }\n"
+            + "  public Object getExtraValue() { return extraValue; }\n"
+            + "}\n");
+    sources.put(
+        "test.InaccessibleAnyModel",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.JsonType;\n"
+            + "@JsonType public final class InaccessibleAnyModel extends hidden.AnyBase {}\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.InaccessibleAnyModel");
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, "test.InaccessibleAnyModel_ForyJsonCodec");
+    assertEquals(codec.anySetterAccessor(), null);
+    Method getExtraValue = type.getMethod("getExtraValue");
+    for (ForyJson json : jsonRuntimes(loader)) {
+      byte[] bytes = "{\"unknown\":{\"value\":4}}".getBytes(StandardCharsets.UTF_8);
+      for (Object value :
+          Arrays.asList(
+              json.fromJson(new String(bytes, StandardCharsets.UTF_8), type),
+              json.fromJson(bytes, type))) {
+        Object extra = getExtraValue.invoke(value);
+        Field field = extra.getClass().getField("value");
+        field.setAccessible(true);
+        assertEquals(field.getInt(extra), 4);
+      }
+    }
   }
 
   @Test
@@ -121,6 +696,151 @@ public class JsonTypeProcessorTest {
     assertFalse(rules.contains("class test.Hierarchy$SuppressedCodec { public <init>(); }"), rules);
     assertTrue(rules.contains("class test.Base"), rules);
     assertTrue(rules.contains("class test.Contract"), rules);
+    assertFalse(result.hasGeneratedSource("test/Hierarchy_ForyJsonCodec.java"));
+  }
+
+  @Test
+  public void customTypeCodecSkipsCompanion() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.CustomModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType @JsonCodec(CustomModel.Codec.class) public class CustomModel {\n"
+                + valueCodec("Codec")
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertFalse(result.hasGeneratedSource("test/CustomModel_ForyJsonCodec.java"));
+  }
+
+  @Test
+  public void nestedCompanionName() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.Outer",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonType;\n"
+                + "public class Outer {\n"
+                + "  @JsonType public static class Inner_Name {\n"
+                + "    public int id;\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertTrue(result.hasGeneratedSource("test/Outer_d_Inner_u_Name_ForyJsonCodec.java"));
+    String rules = result.generatedResource(RULE_PREFIX + "test.Outer$Inner_Name.pro");
+    assertTrue(rules.contains("class test.Outer_d_Inner_u_Name_ForyJsonCodec {"), rules);
+  }
+
+  @Test
+  public void companionNamesDoNotCollide() throws Exception {
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put(
+        "test.A",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.JsonType;\n"
+            + "public class A { @JsonType public static class u_X { public int id; } }\n");
+    sources.put(
+        "test.A_u",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.JsonType;\n"
+            + "public class A_u { @JsonType public static class X { public int id; } }\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+    assertTrue(result.hasGeneratedSource("test/A_d_u_u_X_ForyJsonCodec.java"));
+    assertTrue(result.hasGeneratedSource("test/A_u_u_d_X_ForyJsonCodec.java"));
+  }
+
+  @Test
+  public void inaccessibleModelDiagnostic() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.PrivateModelOwner",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonType;\n"
+                + "public class PrivateModelOwner {\n"
+                + "  @JsonType private static class PrivateModel {}\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result.diagnostics().contains("@JsonType model is not accessible to generated JSON code"),
+        result.diagnostics());
+  }
+
+  @Test
+  public void creatorDiagnostic() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.InvalidCreator",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public class InvalidCreator {\n"
+                + "  @JsonCreator private InvalidCreator(@JsonProperty(\"id\") int id) {}\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(result.diagnostics().contains("@JsonCreator must be public"), result.diagnostics());
+  }
+
+  @Test
+  public void memberCreatorConstructorDiagnostic() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.MemberCreatorOwner",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public class MemberCreatorOwner {\n"
+                + "  @JsonType public class Value {\n"
+                + "    @JsonCreator public Value(@JsonProperty(\"id\") int id) {}\n"
+                + "  }\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result
+            .diagnostics()
+            .contains("A non-static member class must use a static @JsonCreator factory"),
+        result.diagnostics());
+  }
+
+  @Test
+  public void memberCreatorFactory() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.MemberFactoryOwner",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public class MemberFactoryOwner {\n"
+                + "  @JsonType public class Value {\n"
+                + "    public final int id;\n"
+                + "    private Value(int id) { this.id = id; }\n"
+                + "    @JsonCreator public static Value create(@JsonProperty(\"id\") int id) {\n"
+                + "      return new MemberFactoryOwner().new Value(id);\n"
+                + "    }\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertTrue(result.hasGeneratedSource("test/MemberFactoryOwner_d_Value_ForyJsonCodec.java"));
+  }
+
+  @Test
+  public void creatorPropertyListDiagnostic() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.InvalidPropertyListCreator",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public class InvalidPropertyListCreator {\n"
+                + "  public final int id;\n"
+                + "  @JsonCreator({\"id\"})\n"
+                + "  public InvalidPropertyListCreator(@JsonProperty(\"id\") int id) {\n"
+                + "    this.id = id;\n"
+                + "  }\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result
+            .diagnostics()
+            .contains("Property-list @JsonCreator parameters cannot declare @JsonProperty"),
+        result.diagnostics());
   }
 
   @Test
@@ -220,7 +940,7 @@ public class JsonTypeProcessorTest {
 
   @Test
   public void recordRules() throws Exception {
-    assumeRecordSupport();
+    assumeJava16Source();
     CompilationResult result =
         compile(
             "test.CodecRecord",
@@ -228,15 +948,58 @@ public class JsonTypeProcessorTest {
                 + "import java.util.List;\n"
                 + "import org.apache.fory.json.annotation.*;\n"
                 + "@JsonType public record CodecRecord(\n"
+                + "    int id, String name,\n"
                 + "    @JsonCodec(elementCodec = ElementCodec.class) List<String> values) {\n"
                 + valueCodec("ElementCodec")
                 + "}\n");
     assertTrue(result.success, result.diagnostics());
     String rules = result.generatedResource(RULE_PREFIX + "test.CodecRecord.pro");
     assertTrue(rules.contains("java.util.List values;"), rules);
+    assertTrue(rules.contains("int id();"), rules);
+    assertTrue(rules.contains("java.lang.String name();"), rules);
     assertTrue(rules.contains("java.util.List values();"), rules);
-    assertTrue(rules.contains("<init>(java.util.List);"), rules);
+    assertTrue(rules.contains("<init>(int,java.lang.String,java.util.List);"), rules);
     assertTrue(rules.contains("class test.CodecRecord$ElementCodec { public <init>(); }"), rules);
+    assertTrue(result.hasGeneratedSource("test/CodecRecord_ForyJsonCodec.java"));
+    GeneratedJsonCodec<?> codec =
+        generatedCodec(result.classLoader(), "test.CodecRecord_ForyJsonCodec");
+    assertTrue(codec.isRecord());
+    assertEquals(codec.creatorParameterNames(), new String[] {"id", "name", "values"});
+    Object record =
+        codec.newInstance(new Object[] {7, "record", Collections.singletonList("fory")});
+    assertEquals(record.getClass().getMethod("id").invoke(record), 7);
+    assertEquals(record.getClass().getMethod("name").invoke(record), "record");
+    assertEquals(
+        record.getClass().getMethod("values").invoke(record), Collections.singletonList("fory"));
+  }
+
+  @Test
+  public void ignoredRecordComponent() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.IgnoredRecord",
+            "package test;\n"
+                + "import java.util.Map;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public record IgnoredRecord(\n"
+                + "    @JsonIgnore(ignoreWrite = false) int id,\n"
+                + "    @JsonAnyProperty Map<String, Object> extra) {}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.IgnoredRecord");
+    byte[] bytes = "{\"id\":9,\"unknown\":1}".getBytes(StandardCharsets.UTF_8);
+    for (ForyJson json : jsonRuntimes(loader)) {
+      for (Object value :
+          Arrays.asList(
+              json.fromJson(new String(bytes, StandardCharsets.UTF_8), type),
+              json.fromJson(bytes, type))) {
+        assertEquals(type.getMethod("id").invoke(value), 0);
+        Map<?, ?> extra = (Map<?, ?>) type.getMethod("extra").invoke(value);
+        assertEquals(extra.size(), 1);
+        assertTrue(extra.containsKey("unknown"));
+      }
+    }
   }
 
   @Test
@@ -254,6 +1017,8 @@ public class JsonTypeProcessorTest {
     assertTrue(result.success, result.diagnostics());
     assertTrue(result.hasGeneratedResource(RULE_PREFIX + "test.Base.pro"));
     assertTrue(result.hasGeneratedResource(RULE_PREFIX + "test.Child.pro"));
+    assertFalse(result.hasGeneratedSource("test/Base_ForyJsonCodec.java"));
+    assertFalse(result.hasGeneratedSource("test/Child_ForyJsonCodec.java"));
     String rules = result.generatedResource(RULE_PREFIX + "test.Base.pro");
     assertTrue(rules.contains("-keep,allowoptimization class external.HiddenChild"), rules);
   }
@@ -284,6 +1049,7 @@ public class JsonTypeProcessorTest {
                 + "@ForyStruct @JsonType public class Both { public int id; public Both() {} }\n");
     assertTrue(result.success, result.diagnostics());
     assertTrue(result.hasGeneratedSource("test/Both_ForySerializer.java"));
+    assertTrue(result.hasGeneratedSource("test/Both_ForyJsonCodec.java"));
     assertTrue(
         result.hasGeneratedResource("META-INF/proguard/fory-static-generated-test.Both.pro"));
     assertTrue(result.hasGeneratedResource(RULE_PREFIX + "test.Both.pro"));
@@ -326,6 +1092,7 @@ public class JsonTypeProcessorTest {
     assertTrue(result.success, result.diagnostics());
 
     String valueRules = result.generatedResource(RULE_PREFIX + "test.ValueModel.pro");
+    assertFalse(result.hasGeneratedSource("test/ValueModel_ForyJsonCodec.java"));
     assertTrue(valueRules.contains("java.lang.String value();"), valueRules);
     assertTrue(valueRules.contains("<init>(java.lang.String);"), valueRules);
     assertTrue(
@@ -334,6 +1101,7 @@ public class JsonTypeProcessorTest {
         valueRules.contains("@interface org.apache.fory.json.annotation.JsonRawValue"), valueRules);
 
     String rawRules = result.generatedResource(RULE_PREFIX + "test.RawModel.pro");
+    assertTrue(result.hasGeneratedSource("test/RawModel_ForyJsonCodec.java"));
     assertTrue(rawRules.contains("java.lang.String body;"), rawRules);
     assertTrue(rawRules.contains("byte[] bytes;"), rawRules);
     assertTrue(rawRules.contains("java.lang.String getOther();"), rawRules);
@@ -364,6 +1132,7 @@ public class JsonTypeProcessorTest {
                 + "}\n");
     assertTrue(result.success, result.diagnostics());
     String rules = result.generatedResource(RULE_PREFIX + "test.ValueChild.pro");
+    assertTrue(result.hasGeneratedSource("test/ValueChild_ForyJsonCodec.java"));
     assertFalse(rules.contains("JsonValue"), rules);
     assertFalse(rules.contains("value();"), rules);
   }
@@ -507,7 +1276,84 @@ public class JsonTypeProcessorTest {
     }
   }
 
-  private static void assumeRecordSupport() {
+  private static GeneratedJsonCodec<?> generatedCodec(ClassLoader loader, String name)
+      throws Exception {
+    return (GeneratedJsonCodec<?>) loader.loadClass(name).getConstructor().newInstance();
+  }
+
+  private static void assertRoundTrips(
+      CompilationResult result, String typeName, Class<?>[] parameterTypes, Object[] arguments)
+      throws Exception {
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass(typeName);
+    Object value = type.getConstructor(parameterTypes).newInstance(arguments);
+    for (ForyJson json : jsonRuntimes(loader)) {
+      assertRoundTrip(json, type, value);
+    }
+  }
+
+  private static ForyJson[] jsonRuntimes(ClassLoader loader) {
+    return new ForyJson[] {
+      ForyJson.builder().withCodegen(false).withClassLoader(loader).build(),
+      ForyJson.builder()
+          .withCodegen(true)
+          .withAsyncCompilation(false)
+          .withClassLoader(loader)
+          .build()
+    };
+  }
+
+  private static void assertRoundTrip(ForyJson json, Class<?> type, Object value) {
+    String text = json.toJson(value);
+    assertEquals(json.fromJson(text, type), value);
+  }
+
+  private static JsonFieldAccessor fieldAccessor(JsonFieldAccessor[] accessors, String name) {
+    for (JsonFieldAccessor accessor : accessors) {
+      if (accessor.field() != null && accessor.field().getName().equals(name)) {
+        return accessor;
+      }
+    }
+    throw new AssertionError("Missing generated field accessor " + name);
+  }
+
+  private static JsonFieldAccessor fieldAccessor(
+      JsonFieldAccessor[] accessors, Class<?> owner, String name) {
+    for (JsonFieldAccessor accessor : accessors) {
+      if (accessor.field() != null
+          && accessor.field().getDeclaringClass() == owner
+          && accessor.field().getName().equals(name)) {
+        return accessor;
+      }
+    }
+    throw new AssertionError("Missing generated field accessor " + owner.getName() + "." + name);
+  }
+
+  private static JsonFieldAccessor methodAccessor(JsonFieldAccessor[] accessors, String name) {
+    for (JsonFieldAccessor accessor : accessors) {
+      Method method = accessor.getter() != null ? accessor.getter() : accessor.setter();
+      if (method != null && method.getName().equals(name)) {
+        return accessor;
+      }
+    }
+    throw new AssertionError("Missing generated method accessor " + name);
+  }
+
+  private static JsonFieldAccessor methodAccessor(
+      JsonFieldAccessor[] accessors, Class<?> owner, String name, Class<?>... parameterTypes) {
+    for (JsonFieldAccessor accessor : accessors) {
+      Method method = accessor.getter() != null ? accessor.getter() : accessor.setter();
+      if (method != null
+          && method.getDeclaringClass() == owner
+          && method.getName().equals(name)
+          && Arrays.equals(method.getParameterTypes(), parameterTypes)) {
+        return accessor;
+      }
+    }
+    throw new AssertionError("Missing generated method accessor " + owner.getName() + "." + name);
+  }
+
+  private static void assumeJava16Source() {
     String version = System.getProperty("java.specification.version");
     if (version.startsWith("1.")) {
       version = version.substring(2);
@@ -517,7 +1363,7 @@ public class JsonTypeProcessorTest {
       version = version.substring(0, dotIndex);
     }
     if (Integer.parseInt(version) < 16) {
-      throw new SkipException("Record source tests require JDK 16 or newer");
+      throw new SkipException("Source test requires JDK 16 or newer");
     }
   }
 
@@ -549,6 +1395,11 @@ public class JsonTypeProcessorTest {
     String generatedResource(String relativePath) throws IOException {
       return new String(
           Files.readAllBytes(classRoot.resolve(relativePath)), StandardCharsets.UTF_8);
+    }
+
+    ClassLoader classLoader() throws IOException {
+      return new URLClassLoader(
+          new URL[] {classRoot.toUri().toURL()}, JsonTypeProcessorTest.class.getClassLoader());
     }
 
     String diagnostics() {

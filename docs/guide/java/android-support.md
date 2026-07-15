@@ -81,8 +81,9 @@ Child codecs act on one direct level only. For example, `elementCodec` on `Money
 `Money[]`, and `elementCodec` on `AtomicReferenceArray<Money>` handles each `Money`. Use a complete
 `value` codec when deeper custom behavior is required.
 
-`@JsonType` is optional. Add the annotation processor and mark application models with `JsonType`
-when the build should generate exact R8 rules:
+Add the annotation processor and mark application object models with `JsonType` to generate direct
+field, getter, setter, Record constructor, and `JsonCreator` operations together with exact R8
+rules:
 
 ```kotlin
 dependencies {
@@ -99,7 +100,8 @@ public final class Invoice {
 }
 ```
 
-Applications that omit `JsonType` can supply equivalent exact rules themselves. Retain every model
+Ordinary non-Record classes that omit `JsonType` can supply equivalent exact rules themselves.
+Retain every model
 constructor, field, method, generic signature, declaration annotation, and parameter annotation used
 by Fory JSON, plus the public no-argument constructor of every annotation-selected codec. For the
 previous `Invoice` example:
@@ -118,8 +120,7 @@ previous `Invoice` example:
 ```
 
 The same exact-rule approach supports every `JsonCodec` member; it is not limited to complete-value
-codecs. `JsonType` only automates rule generation on Android and is not required for codec
-selection.
+codecs. `JsonType` is not required for codec selection on an ordinary class.
 
 For `@JsonType` models, the generated R8 rules also retain `JsonValue` fields and effective methods,
 fixed `JsonRawValue` and `JsonBase64` fields and getters, their runtime annotations, and the Base64
@@ -131,8 +132,14 @@ name that method explicitly.
 Android Fory JSON requires a retained no-argument constructor for an ordinary mutable class; it may
 be non-public when Android reflection can make it accessible. `JsonCreator` constructor-backed
 classes follow the normal creator rules instead. Retain every field and method used for reflection,
-or use an application codec when a model cannot satisfy those requirements. Fory JSON Record
-mapping is not supported on Android.
+or use an application codec when a model cannot satisfy those requirements.
+
+Android-desugared Records require a direct `@JsonType` annotation and the annotation processor.
+Manual R8 rules alone cannot reconstruct Record component order because Android does not provide
+the Java Record reflection APIs. This also applies to a Record whose complete representation is a
+`JsonValue` String: the generated companion identifies the propagated component accessor and calls
+an annotated one-String canonical constructor directly. Generated child codecs act on one level
+exactly as they do on the JVM; use a complete value codec for deeper nested behavior.
 
 ## Static Generated Serializers
 
@@ -207,7 +214,6 @@ The following JVM features are not supported on Android:
 - Native-address serialization APIs and native-address `MemoryBuffer` wrapping.
 - Raw unsafe memory copy APIs.
 - `java/fory-format` row-format APIs.
-- Fory JSON Record mapping.
 
 ## ByteBuffer
 
