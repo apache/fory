@@ -43,6 +43,7 @@ final class JsonTestSupport {
           PropertyNamingStrategy.LOWER_CAMEL_CASE,
           JsonTestSupport.class.getClassLoader(),
           ForyJson.DEFAULT_MAX_DEPTH,
+          ForyJson.DEFAULT_MAX_CACHED_MEMBER_NAMES,
           1,
           2 * 1024 * 1024,
           new CodecRegistry(),

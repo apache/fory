@@ -138,9 +138,11 @@ import org.apache.fory.util.record.RecordUtils;
  *
  * <p>Accepted type-check results are cached by class name up to a bounded 8192-entry shared cache.
  * Once full, new names are checked on every resolution rather than growing attacker-controlled
- * state. Source-generated model companions and JIT-generated classes are shared here; concrete JIT
- * codec instances, ordinary type bindings, JIT locks, and callbacks remain resolver-local. A fresh
- * generic {@link JsonJITContext} is therefore created for every pooled JSON state.
+ * state. Common short member names are retained in a separately bounded cache and reused by the
+ * readers owned by this runtime. Source-generated model companions and JIT-generated classes are
+ * shared here; concrete JIT codec instances, ordinary type bindings, JIT locks, and callbacks
+ * remain resolver-local. A fresh generic {@link JsonJITContext} is therefore created for every
+ * pooled JSON state.
  */
 public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
@@ -179,6 +181,10 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<Class<? extends MapKeyCodec>, MapKeyCodec> mapKeyCodecs;
   private final ConcurrentHashMap<Class<?>, GeneratedJsonCodec<?>> generatedCodecs;
   private final Set<Class<?>> typesWithoutGeneratedCodec;
+  private final ConcurrentHashMap<Long, CachedMemberName> cachedMemberNames;
+  private final Object cachedMemberNamesLock;
+  private final int maxCachedMemberNames;
+  private final int memberNameCacheSlots;
 
   public JsonSharedRegistry(JsonConfig config) {
     this(config, null);
@@ -206,11 +212,102 @@ public final class JsonSharedRegistry {
     mapKeyCodecs = new ConcurrentHashMap<>();
     generatedCodecs = new ConcurrentHashMap<>();
     typesWithoutGeneratedCodec = ConcurrentHashMap.newKeySet();
+    maxCachedMemberNames = config.maxCachedMemberNames();
+    if (maxCachedMemberNames == 0) {
+      cachedMemberNames = null;
+      cachedMemberNamesLock = null;
+      memberNameCacheSlots = 0;
+    } else {
+      cachedMemberNames = new ConcurrentHashMap<>();
+      cachedMemberNamesLock = new Object();
+      memberNameCacheSlots = config.memberNameCacheSlots();
+    }
     boolean codegenEnabled = config.codegenEnabled();
     codegen = codegenEnabled ? new JsonCodegen(config.getCodegenHash(), classLoader) : null;
     asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
     this.compilationService = compilationService;
     registerExactCodecs();
+  }
+
+  /** Returns the immutable cached entry for {@code hash}, or null when none was published. */
+  @Internal
+  public CachedMemberName cachedMemberName(long hash) {
+    return cachedMemberNames == null ? null : cachedMemberNames.get(hash);
+  }
+
+  /**
+   * Publishes one already validated short ASCII member name, or returns the existing hash owner.
+   */
+  @Internal
+  public CachedMemberName cacheMemberName(long hash, String name, long word0, long word1) {
+    ConcurrentHashMap<Long, CachedMemberName> cache = cachedMemberNames;
+    if (cache == null) {
+      return null;
+    }
+    CachedMemberName existing = cache.get(hash);
+    if (existing != null) {
+      return existing;
+    }
+    if (cache.size() >= maxCachedMemberNames) {
+      // A concurrent publication may have filled the final slot after the first lookup. Recheck
+      // that hash so every publisher of the winning name receives the canonical entry.
+      return cache.get(hash);
+    }
+    return cacheMemberNameCold(cache, hash, name, word0, word1);
+  }
+
+  private CachedMemberName cacheMemberNameCold(
+      ConcurrentHashMap<Long, CachedMemberName> cache,
+      long hash,
+      String name,
+      long word0,
+      long word1) {
+    synchronized (cachedMemberNamesLock) {
+      CachedMemberName existing = cache.get(hash);
+      if (existing != null) {
+        return existing;
+      }
+      if (cache.size() >= maxCachedMemberNames) {
+        return null;
+      }
+      CachedMemberName entry = new CachedMemberName(name, word0, word1);
+      cache.put(hash, entry);
+      return entry;
+    }
+  }
+
+  /** Returns the fixed local table size used by each reader in this registry. */
+  @Internal
+  public int memberNameCacheSlots() {
+    return memberNameCacheSlots;
+  }
+
+  /** Returns whether retained member names are cached by this registry. */
+  @Internal
+  public boolean memberNameCacheEnabled() {
+    return cachedMemberNames != null;
+  }
+
+  /** Immutable canonical member name retained by this registry. */
+  @Internal
+  public static final class CachedMemberName {
+    private final String name;
+    private final long word0;
+    private final long word1;
+
+    private CachedMemberName(String name, long word0, long word1) {
+      this.name = name;
+      this.word0 = word0;
+      this.word1 = word1;
+    }
+
+    public String name() {
+      return name;
+    }
+
+    public boolean matches(int length, long candidateWord0, long candidateWord1) {
+      return name.length() == length && word0 == candidateWord0 && word1 == candidateWord1;
+    }
   }
 
   GeneratedJsonCodec<?> generatedCodec(Class<?> type) {

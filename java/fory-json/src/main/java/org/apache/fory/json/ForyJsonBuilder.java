@@ -36,10 +36,11 @@ import org.apache.fory.platform.GraalvmSupport;
  *
  * <p>Defaults omit null object fields, enable code generation and asynchronous compilation where
  * supported, use JavaBean property discovery, use {@link PropertyNamingStrategy#LOWER_CAMEL_CASE},
- * snapshot the current thread context class loader, allow a nesting depth of 20, use twice the
- * available processors as the pooled-state concurrency level, retain writer buffers up to 2 MiB,
- * and install no custom type checker. Field mode disables getter and setter discovery but continues
- * to discover eligible instance fields across the class hierarchy.
+ * snapshot the current thread context class loader, allow a nesting depth of 20, retain up to 16K
+ * common member names, use twice the available processors as the pooled-state concurrency level,
+ * retain writer buffers up to 2 MiB, and install no custom type checker. Field mode disables getter
+ * and setter discovery but continues to discover eligible instance fields across the class
+ * hierarchy.
  */
 public final class ForyJsonBuilder {
   private boolean writeNullFields;
@@ -49,6 +50,7 @@ public final class ForyJsonBuilder {
   private PropertyNamingStrategy propertyNamingStrategy = PropertyNamingStrategy.LOWER_CAMEL_CASE;
   private ClassLoader classLoader;
   private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
+  private int maxCachedMemberNames = ForyJson.DEFAULT_MAX_CACHED_MEMBER_NAMES;
   private int concurrencyLevel = Math.max(1, Runtime.getRuntime().availableProcessors() * 2);
   private int bufferSizeLimitBytes = 2 * 1024 * 1024;
   private JsonTypeChecker typeChecker;
@@ -133,6 +135,22 @@ public final class ForyJsonBuilder {
     return this;
   }
 
+  /**
+   * Sets the maximum number of unescaped ASCII object member names of up to 16 characters retained
+   * by this runtime.
+   *
+   * <p>The default is {@link ForyJson#DEFAULT_MAX_CACHED_MEMBER_NAMES}. A value of zero disables
+   * member-name caching. Other member names are parsed normally without being cached. The limit
+   * bounds retained names and does not limit accepted JSON input.
+   */
+  public ForyJsonBuilder withMaxCachedMemberNames(int maxCachedMemberNames) {
+    if (maxCachedMemberNames < 0) {
+      throw new IllegalArgumentException("maxCachedMemberNames must be non-negative");
+    }
+    this.maxCachedMemberNames = maxCachedMemberNames;
+    return this;
+  }
+
   /** Sets the number of reusable execution states available to concurrent root operations. */
   public ForyJsonBuilder withConcurrencyLevel(int concurrencyLevel) {
     if (concurrencyLevel < 1) {
@@ -200,6 +218,7 @@ public final class ForyJsonBuilder {
             propertyNamingStrategy,
             fixedClassLoader,
             maxDepth,
+            maxCachedMemberNames,
             concurrencyLevel,
             bufferSizeLimitBytes,
             codecRegistry,

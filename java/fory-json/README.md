@@ -345,14 +345,17 @@ original key type. Null map keys are rejected.
 | `withPropertyNamingStrategy(strategy)` | `LOWER_CAMEL_CASE`                                       | Name properties without an explicit `JsonProperty` name              |
 | `withClassLoader(loader)`              | Snapshotted thread context loader, then Fory JSON loader | Resolve annotation-declared subtype class names                      |
 | `maxDepth(int)`                        | `20`                                                     | Maximum nested object/array depth for reads and writes               |
+| `withMaxCachedMemberNames(int)`        | `16K`                                                    | Maximum common member names retained while parsing; zero disables it |
 | `withConcurrencyLevel(int)`            | `max(1, 2 * processors)`                                 | Number of reusable concurrent operation states                       |
 | `withBufferSizeLimitBytes(int)`        | 2 MiB                                                    | Maximum reusable capacity retained by each pooled writer             |
 | `registerCodec(type, codec)`           | None                                                     | Replace the exact class's complete JSON codec                        |
 | `withTypeChecker(checker)`             | No custom checker                                        | Apply an application type policy in addition to Fory's disallow list |
 
-Depth, concurrency level, and buffer retention limit must be positive. The buffer retention setting
-does not limit JSON input or output size; it only limits reusable writer storage retained after an
-operation. Apply request/body size limits at the transport boundary when parsing untrusted input.
+Depth, concurrency level, and buffer retention limit must be positive. The cached-member-name limit
+must be non-negative. It bounds retained common names and does not limit accepted JSON input; zero
+disables this cache. The buffer retention setting does not limit JSON input or output size; it only
+limits reusable writer storage retained after an operation. Apply request/body size limits at the
+transport boundary when parsing untrusted input.
 
 Builder mutation after `build()` does not modify an existing `ForyJson` runtime.
 
@@ -1249,7 +1252,7 @@ native or xlang protocol when reference identity or cycles are required.
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ForyJsonException` while parsing         | Invalid JSON grammar, type mismatch, unsupported mapping, depth violation, or trailing content; inspect the message and target type                 |
 | `InsecureException`                       | Fory's disallow list or the configured `JsonTypeChecker` rejected a class                                                                           |
-| `IllegalArgumentException` from a builder | Depth, concurrency level, or retained buffer limit is not positive                                                                                  |
+| `IllegalArgumentException` from a builder | Depth, concurrency level, retained buffer limit, or cached-member-name limit is invalid                                                             |
 | Declared write is rejected                | The value is not assignable to the declared type, the type contains a wildcard/type variable, or null was supplied for a primitive                  |
 | Immutable value is not populated          | Use a record, a valid `JsonCreator`, or an exact custom codec                                                                                       |
 | `JsonValue` read fails                    | Add one plain `String` `JsonCreator`, or register an exact custom codec                                                                             |

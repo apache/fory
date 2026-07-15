@@ -110,6 +110,12 @@ public final class JsonTypeResolver {
     canonicalObjectTypeInfos = new IdentityMap<>();
   }
 
+  /** Returns the shared registry that owns this resolver and its reader cache domain. */
+  @Internal
+  public JsonSharedRegistry sharedRegistry() {
+    return sharedRegistry;
+  }
+
   @Internal
   public void lockJIT() {
     jitContext.lock();
@@ -321,7 +327,7 @@ public final class JsonTypeResolver {
           hasKey
               ? MapCodec.create(
                   rawType, keyRawType, valueInfo, sharedRegistry.mapKeyCodec(keyRawType, keyCodec))
-              : MapCodec.create(rawType, keyRawType, valueInfo);
+              : MapCodec.create(rawType, keyRawType, valueInfo, this);
       return newTypeInfo(declaredType, rawType, codec);
     }
     if (rawType == Optional.class || rawType == AtomicReference.class) {

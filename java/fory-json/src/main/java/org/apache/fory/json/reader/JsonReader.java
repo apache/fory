@@ -43,6 +43,8 @@ import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
+import org.apache.fory.json.resolver.JsonSharedRegistry;
+import org.apache.fory.json.resolver.JsonSharedRegistry.CachedMemberName;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 
 /**
@@ -135,6 +137,14 @@ public abstract class JsonReader {
   private final JsonTypeResolver typeResolver;
   protected int position;
   private final int maxDepth;
+  private final JsonSharedRegistry sharedRegistry;
+  private final int memberNameCacheMask;
+  private long[] memberNameHashes;
+  private CachedMemberName[] memberNames;
+  private long uncachedMemberNameHash;
+  private long uncachedMemberNameWord0;
+  private long uncachedMemberNameWord1;
+  private int uncachedMemberNameLength = -1;
   private int depth;
 
   /**
@@ -233,6 +243,8 @@ public abstract class JsonReader {
   protected JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
     maxDepth = config.maxDepth();
+    sharedRegistry = typeResolver.sharedRegistry();
+    memberNameCacheMask = sharedRegistry.memberNameCacheSlots() - 1;
   }
 
   /**
@@ -248,6 +260,97 @@ public abstract class JsonReader {
 
   public abstract String readString();
 
+  /**
+   * Reads a JSON object member name that the caller retains as a String key.
+   *
+   * <p>The returned String has normal value semantics. Implementations may reuse its reference for
+   * common names, but callers must not depend on reference identity.
+   */
+  public abstract String readMemberName();
+
+  protected final boolean memberNameCacheEnabled() {
+    return memberNameCacheMask >= 0;
+  }
+
+  protected final int memberNameCacheSlot(long hash) {
+    int spread = (int) (hash ^ (hash >>> 32));
+    spread ^= spread >>> 16;
+    return spread & memberNameCacheMask;
+  }
+
+  protected final CachedMemberName localMemberName(int slot, long hash) {
+    CachedMemberName[] names = memberNames;
+    return names != null && memberNameHashes[slot] == hash ? names[slot] : null;
+  }
+
+  protected final boolean isUncachedMemberName(long hash, int length, long word0, long word1) {
+    return hash == uncachedMemberNameHash
+        && length == uncachedMemberNameLength
+        && word0 == uncachedMemberNameWord0
+        && word1 == uncachedMemberNameWord1;
+  }
+
+  protected final int uncachedMemberNameLength() {
+    return uncachedMemberNameLength;
+  }
+
+  protected final boolean matchesUncachedWord0(long word0) {
+    return word0 == uncachedMemberNameWord0;
+  }
+
+  protected final boolean matchesUncachedWords(long word0, long word1) {
+    return word0 == uncachedMemberNameWord0 && word1 == uncachedMemberNameWord1;
+  }
+
+  protected final CachedMemberName sharedMemberName(long hash) {
+    return sharedRegistry.cachedMemberName(hash);
+  }
+
+  protected final CachedMemberName cacheMemberName(long hash, String name, long word0, long word1) {
+    return sharedRegistry.cacheMemberName(hash, name, word0, word1);
+  }
+
+  protected final void cacheLocalMemberName(int slot, long hash, CachedMemberName entry) {
+    CachedMemberName[] names = memberNames;
+    if (names == null) {
+      initMemberNameCache();
+      names = memberNames;
+    }
+    memberNameHashes[slot] = hash;
+    names[slot] = entry;
+  }
+
+  protected final void cacheUncachedMemberName(int length, long word0, long word1, long hash) {
+    uncachedMemberNameLength = length;
+    uncachedMemberNameWord0 = word0;
+    uncachedMemberNameWord1 = word1;
+    uncachedMemberNameHash = hash;
+  }
+
+  private void initMemberNameCache() {
+    int slots = memberNameCacheMask + 1;
+    memberNameHashes = new long[slots];
+    memberNames = new CachedMemberName[slots];
+  }
+
+  protected static long memberNameHash(int length, long word0, long word1) {
+    if (length == 0) {
+      return JsonFieldNameHash.MAGIC_HASH_CODE;
+    }
+    if (length <= Long.BYTES) {
+      return word0;
+    }
+    long hash = JsonFieldNameHash.hashPacked(word0, Long.BYTES);
+    for (int i = Long.BYTES; i < length; i++) {
+      hash = JsonFieldNameHash.update(hash, (char) ((word1 >>> ((i - Long.BYTES) << 3)) & 0xff));
+    }
+    return hash;
+  }
+
+  protected static long memberNameWord(long word, int length) {
+    return length == Long.BYTES ? word : word & ((1L << (length << 3)) - 1);
+  }
+
   @Internal
   public final int position() {
     return position;
@@ -257,7 +360,7 @@ public abstract class JsonReader {
   public final String materializeFieldName(int start) {
     int current = position;
     position = start;
-    String name = readString();
+    String name = readMemberName();
     position = current;
     return name;
   }

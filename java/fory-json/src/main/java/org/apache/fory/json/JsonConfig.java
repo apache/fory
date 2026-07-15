@@ -23,6 +23,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.resolver.CodecRegistry;
 
 /**
@@ -33,8 +34,8 @@ import org.apache.fory.json.resolver.CodecRegistry;
  * The type checker uses identity semantics because checker instances may carry different user
  * policy despite sharing a class. {@link #getCodegenHash()} identifies only settings that can
  * change generated source; runtime-only settings such as depth and asynchronous scheduling do not
- * fragment generated class names. Concurrency and retained writer-buffer limits are also
- * runtime-only and do not fragment generated class names.
+ * fragment generated class names. Concurrency, retained member-name, and retained writer-buffer
+ * limits are also runtime-only and do not fragment generated class names.
  */
 public final class JsonConfig {
   private final boolean writeNullFields;
@@ -44,6 +45,7 @@ public final class JsonConfig {
   private final PropertyNamingStrategy propertyNamingStrategy;
   private final ClassLoader classLoader;
   private final int maxDepth;
+  private final int maxCachedMemberNames;
   private final int concurrencyLevel;
   private final int bufferSizeLimitBytes;
   private final CodecRegistry codecRegistry;
@@ -61,6 +63,7 @@ public final class JsonConfig {
       PropertyNamingStrategy propertyNamingStrategy,
       ClassLoader classLoader,
       int maxDepth,
+      int maxCachedMemberNames,
       int concurrencyLevel,
       int bufferSizeLimitBytes,
       CodecRegistry codecRegistry,
@@ -73,6 +76,7 @@ public final class JsonConfig {
         Objects.requireNonNull(propertyNamingStrategy, "propertyNamingStrategy");
     this.classLoader = Objects.requireNonNull(classLoader, "classLoader");
     this.maxDepth = maxDepth;
+    this.maxCachedMemberNames = maxCachedMemberNames;
     this.concurrencyLevel = concurrencyLevel;
     this.bufferSizeLimitBytes = bufferSizeLimitBytes;
     this.codecRegistry = codecRegistry;
@@ -114,6 +118,20 @@ public final class JsonConfig {
     return maxDepth;
   }
 
+  public int maxCachedMemberNames() {
+    return maxCachedMemberNames;
+  }
+
+  /** Returns the fixed local member-name table size for each reader. */
+  @Internal
+  public int memberNameCacheSlots() {
+    if (maxCachedMemberNames == 0) {
+      return 0;
+    }
+    long target = Math.max(1L, maxCachedMemberNames / (3L * concurrencyLevel));
+    return Integer.highestOneBit((int) Math.min(1024L, target));
+  }
+
   public int concurrencyLevel() {
     return concurrencyLevel;
   }
@@ -150,6 +168,7 @@ public final class JsonConfig {
         && propertyNamingStrategy == that.propertyNamingStrategy
         && classLoader == that.classLoader
         && maxDepth == that.maxDepth
+        && maxCachedMemberNames == that.maxCachedMemberNames
         && concurrencyLevel == that.concurrencyLevel
         && bufferSizeLimitBytes == that.bufferSizeLimitBytes
         && typeChecker == that.typeChecker
@@ -165,6 +184,7 @@ public final class JsonConfig {
     result = 31 * result + propertyNamingStrategy.hashCode();
     result = 31 * result + System.identityHashCode(classLoader);
     result = 31 * result + maxDepth;
+    result = 31 * result + maxCachedMemberNames;
     result = 31 * result + concurrencyLevel;
     result = 31 * result + bufferSizeLimitBytes;
     result = 31 * result + System.identityHashCode(typeChecker);

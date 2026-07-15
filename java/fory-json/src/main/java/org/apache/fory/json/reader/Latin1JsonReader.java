@@ -30,6 +30,7 @@ import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
+import org.apache.fory.json.resolver.JsonSharedRegistry.CachedMemberName;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
@@ -1603,6 +1604,149 @@ public final class Latin1JsonReader extends JsonReader {
   public String readString() {
     skipWhitespaceFast();
     return readStringToken();
+  }
+
+  @Override
+  public String readMemberName() {
+    if (!memberNameCacheEnabled()) {
+      return readString();
+    }
+    skipWhitespaceFast();
+    byte[] bytes = input;
+    int inputLength = bytes.length;
+    if (position >= inputLength || bytes[position++] != '"') {
+      throw error("Expected string");
+    }
+    int start = position;
+    if (start + Long.BYTES <= inputLength) {
+      long word0 = LittleEndian.getInt64(bytes, start);
+      String uncached = readUncachedWord0(start, word0, inputLength);
+      if (uncached != null) {
+        return uncached;
+      }
+      long stopMask = asciiStringStopMask(word0);
+      if (stopMask != 0) {
+        int length = Long.numberOfTrailingZeros(stopMask) >>> 3;
+        int stop = start + length;
+        int ch = bytes[stop];
+        if (ch != '"') {
+          return readStringStop(start, stop, ch);
+        }
+        position = stop + 1;
+        word0 = memberNameWord(word0, length);
+        long hash = length == 0 ? JsonFieldNameHash.MAGIC_HASH_CODE : word0;
+        int slot = memberNameCacheSlot(hash);
+        CachedMemberName entry = localMemberName(slot, hash);
+        if (entry != null) {
+          return entry.matches(length, word0, 0) ? entry.name() : newLatin1String(start, stop);
+        }
+        if (isUncachedMemberName(hash, length, word0, 0)) {
+          return newLatin1String(start, stop);
+        }
+        return readMemberNameMiss(start, stop, length, word0, 0, hash, slot);
+      }
+      return readMemberNameAfterWord0(start, word0, inputLength);
+    }
+    return readMemberNameTail(start, start, 0, 0, 0);
+  }
+
+  private String readUncachedWord0(int start, long word0, int inputLength) {
+    int length = uncachedMemberNameLength();
+    if (length >= 0
+        && length <= Long.BYTES
+        && start + length < inputLength
+        && input[start + length] == '"'
+        && matchesUncachedWord0(memberNameWord(word0, length))) {
+      position = start + length + 1;
+      return newLatin1String(start, start + length);
+    }
+    return null;
+  }
+
+  private String readMemberNameAfterWord0(int start, long word0, int inputLength) {
+    int offset = start + Long.BYTES;
+    if (offset + Long.BYTES <= inputLength) {
+      long word1 = LittleEndian.getInt64(input, offset);
+      int uncachedLength = uncachedMemberNameLength();
+      if (uncachedLength > Long.BYTES
+          && start + uncachedLength < inputLength
+          && input[start + uncachedLength] == '"'
+          && matchesUncachedWords(word0, memberNameWord(word1, uncachedLength - Long.BYTES))) {
+        position = start + uncachedLength + 1;
+        return newLatin1String(start, start + uncachedLength);
+      }
+      long stopMask = asciiStringStopMask(word1);
+      if (stopMask != 0) {
+        int length = Long.numberOfTrailingZeros(stopMask) >>> 3;
+        int stop = offset + length;
+        int ch = input[stop];
+        if (ch != '"') {
+          return readStringStop(start, stop, ch);
+        }
+        position = stop + 1;
+        return resolveMemberName(
+            start, stop, Long.BYTES + length, word0, memberNameWord(word1, length));
+      }
+      offset += Long.BYTES;
+      if (offset < inputLength && input[offset] == '"') {
+        position = offset + 1;
+        return resolveMemberName(start, offset, 16, word0, word1);
+      }
+      return readStringTokenTail(start, offset, inputLength);
+    }
+    return readMemberNameTail(start, offset, Long.BYTES, word0, 0);
+  }
+
+  private String readMemberNameTail(int start, int offset, int length, long word0, long word1) {
+    int inputLength = input.length;
+    while (offset < inputLength) {
+      int ch = input[offset] & 0xff;
+      if (ch == '"') {
+        position = offset + 1;
+        return resolveMemberName(start, offset, length, word0, word1);
+      }
+      if (ch == '\\' || ch >= 0x80 || ch < 0x20) {
+        return readStringStop(start, offset, input[offset]);
+      }
+      if (length < Long.BYTES) {
+        word0 |= ((long) ch) << (length << 3);
+      } else {
+        word1 |= ((long) ch) << ((length - Long.BYTES) << 3);
+      }
+      length++;
+      offset++;
+    }
+    throw error("Unterminated string");
+  }
+
+  private String resolveMemberName(int start, int end, int length, long word0, long word1) {
+    long hash = memberNameHash(length, word0, word1);
+    int slot = memberNameCacheSlot(hash);
+    CachedMemberName entry = localMemberName(slot, hash);
+    if (entry != null) {
+      return entry.matches(length, word0, word1) ? entry.name() : newLatin1String(start, end);
+    }
+    if (isUncachedMemberName(hash, length, word0, word1)) {
+      return newLatin1String(start, end);
+    }
+    return readMemberNameMiss(start, end, length, word0, word1, hash, slot);
+  }
+
+  private String readMemberNameMiss(
+      int start, int end, int length, long word0, long word1, long hash, int slot) {
+    CachedMemberName entry = sharedMemberName(hash);
+    if (entry != null) {
+      cacheLocalMemberName(slot, hash, entry);
+      return entry.matches(length, word0, word1) ? entry.name() : newLatin1String(start, end);
+    }
+    String candidate = newLatin1String(start, end);
+    entry = cacheMemberName(hash, candidate, word0, word1);
+    if (entry == null) {
+      cacheUncachedMemberName(length, word0, word1, hash);
+      return candidate;
+    }
+    cacheLocalMemberName(slot, hash, entry);
+    return entry.matches(length, word0, word1) ? entry.name() : candidate;
   }
 
   @Override
