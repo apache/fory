@@ -317,4 +317,8 @@ public final class DisallowedList {
       throw new InsecureException(String.format("%s hit disallowed list", clsName));
     }
   }
+
+  public static boolean contains(String className) {
+      return DEFAULT_DISALLOWED_LIST_SET.contains(className);
+  }
 }

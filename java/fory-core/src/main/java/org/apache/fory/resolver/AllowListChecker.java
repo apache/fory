@@ -103,8 +103,8 @@ public class AllowListChecker implements TypeChecker {
     if (checkLevel == CheckLevel.DISABLE) {
       return true;
     }
-    boolean disallowed = containsPrefix(disallowList, disallowListPrefix, className);
-    boolean allowed = containsPrefix(allowList, allowListPrefix, className);
+    boolean disallowed = containsPrefix(disallowList, disallowListPrefix, className) || DisallowedList.contains(className);
+    boolean allowed = containsPrefix(allowList, allowListPrefix, className) || DefaultJdkClassAllowList.contains(className);
     if (className.startsWith("[")) {
       Tuple2<String, Integer> componentInfo = TypeUtils.getArrayComponentInfo(className);
       String componentName = componentInfo.f0;
