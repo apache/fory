@@ -125,6 +125,8 @@ public final class ForyJsonExample {
     value.array = new TypeUseValue[] {new TypeUseValue("array")};
     value.mapped = Map.of("key", new TypeUseValue("mapped"));
     value.property = new TypeUseValue("property");
+    value.declaredField = new TypeUseValue("declared-field");
+    value.declaredProperty = new TypeUseValue("declared-property");
     value.record = new CodecRecord(new TypeUseValue("record"));
     value.creator = new CodecCreator(new TypeUseValue("creator"));
     value.factory = CodecFactory.create(new TypeUseValue("factory"));
@@ -135,6 +137,8 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(stringJson.contains("string:nested"));
     Preconditions.checkArgument(stringJson.contains("string:array"));
     Preconditions.checkArgument(stringJson.contains("string:mapped"));
+    Preconditions.checkArgument(stringJson.contains("string:declared-field"));
+    Preconditions.checkArgument(stringJson.contains("string:declared-property"));
     String utf8Json = new String(json.toJsonBytes(value), StandardCharsets.UTF_8);
     Preconditions.checkArgument(utf8Json.contains("utf8:direct"));
     Preconditions.checkArgument(utf8Json.contains("utf8:property"));
@@ -154,6 +158,8 @@ public final class ForyJsonExample {
     checkStringRead(decoded.array[0].text, "string:array");
     checkStringRead(decoded.mapped.get("key").text, "string:mapped");
     checkStringRead(decoded.property.text, "string:property");
+    checkStringRead(decoded.declaredField.text, "string:declared-field");
+    checkStringRead(decoded.declaredProperty.text, "string:declared-property");
     checkStringRead(decoded.record.value.text, "string:record");
     checkStringRead(decoded.creator.value.text, "string:creator");
     checkStringRead(decoded.factory.value.text, "string:factory");
@@ -380,7 +386,7 @@ public final class ForyJsonExample {
     public String camelName;
     public String nullValue;
 
-    public @JsonCodec(IgnoredCodec.class) TypeUseValue ignoredCodecMethod() {
+    public ForyJsonExample.@JsonCodec(IgnoredCodec.class) TypeUseValue ignoredCodecMethod() {
       throw new AssertionError("Non-property methods must not participate in JSON metadata");
     }
   }
@@ -390,9 +396,14 @@ public final class ForyJsonExample {
     public DirectValue direct;
     public InheritedValue inherited;
     public List<@JsonCodec(TypeUseCodec.class) TypeUseValue> nested = new ArrayList<>();
-    public @JsonCodec(TypeUseCodec.class) TypeUseValue[] array;
+    public ForyJsonExample.@JsonCodec(TypeUseCodec.class) TypeUseValue[] array;
     public Map<String, @JsonCodec(TypeUseCodec.class) TypeUseValue> mapped;
     private TypeUseValue property;
+
+    @JsonCodec(TypeUseCodec.class)
+    public TypeUseValue declaredField;
+
+    private TypeUseValue declaredProperty;
     public CodecRecord record;
     public CodecCreator creator;
     public CodecFactory factory;
@@ -403,6 +414,15 @@ public final class ForyJsonExample {
 
     public void setProperty(@JsonCodec(TypeUseCodec.class) TypeUseValue property) {
       this.property = property;
+    }
+
+    @JsonCodec(TypeUseCodec.class)
+    public TypeUseValue getDeclaredProperty() {
+      return declaredProperty;
+    }
+
+    public void setDeclaredProperty(TypeUseValue declaredProperty) {
+      this.declaredProperty = declaredProperty;
     }
   }
 

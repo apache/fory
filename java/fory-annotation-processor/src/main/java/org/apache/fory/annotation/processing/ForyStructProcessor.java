@@ -21,7 +21,6 @@ package org.apache.fory.annotation.processing;
 
 import java.io.IOException;
 import java.io.Writer;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -76,6 +75,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
   private static final String FORY_DEBUG = annotationClass("ForyDebug");
   private static final String FORY_FIELD = annotationClass("ForyField");
   private static final String FORY_STRUCT = annotationClass("ForyStruct");
+  private static final String JSON_TYPE = "org.apache.fory.json.annotation.JsonType";
   private static final String IGNORE = annotationClass("Ignore");
   private static final String INT32_TYPE = annotationClass("Int32Type");
   private static final String INT64_TYPE = annotationClass("Int64Type");
@@ -89,20 +89,20 @@ public final class ForyStructProcessor extends AbstractProcessor {
   private static final String UINT8_TYPE = annotationClass("UInt8Type");
   private static final Set<String> SUPPORTED_ANNOTATIONS = supportedAnnotations();
 
-  private final Set<String> processed = new HashSet<>();
+  private final Set<String> processedStructs = new HashSet<>();
   private final Map<String, TypeElement> generatedTypes = new HashMap<>();
   private Messager messager;
   private Filer filer;
   private Elements elements;
   private javax.lang.model.util.Types types;
-  // JDK 8 javac can omit nested TYPE_USE annotations from TypeMirror, so recover them from
-  // javac's public tree API reflectively while keeping this processor targetable to Java 8.
-  private Object trees;
+  private JavacTypeUseTrees typeUseTrees;
+  private JsonTypeProcessor jsonTypeProcessor;
 
   private static Set<String> supportedAnnotations() {
     Set<String> annotations = new HashSet<>();
     annotations.add(FORY_STRUCT);
     annotations.add(FORY_DEBUG);
+    annotations.add(JSON_TYPE);
     return Collections.unmodifiableSet(annotations);
   }
 
@@ -141,18 +141,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
     filer = processingEnv.getFiler();
     elements = processingEnv.getElementUtils();
     types = processingEnv.getTypeUtils();
-    try {
-      ClassLoader javacLoader = processingEnv.getClass().getClassLoader();
-      Class<?> treesClass =
-          Class.forName(
-              "com.sun.source.util.Trees",
-              false,
-              javacLoader == null ? ClassLoader.getSystemClassLoader() : javacLoader);
-      trees =
-          treesClass.getMethod("instance", ProcessingEnvironment.class).invoke(null, processingEnv);
-    } catch (ReflectiveOperationException | IllegalArgumentException e) {
-      trees = null;
-    }
+    typeUseTrees = new JavacTypeUseTrees(processingEnv);
+    jsonTypeProcessor = new JsonTypeProcessor(processingEnv, typeUseTrees);
   }
 
   @Override
@@ -163,36 +153,36 @@ public final class ForyStructProcessor extends AbstractProcessor {
   @Override
   public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
     TypeElement foryStruct = elements.getTypeElement(FORY_STRUCT);
-    if (foryStruct == null) {
-      return false;
-    }
-    for (Element element : roundEnv.getElementsAnnotatedWith(foryStruct)) {
-      if (!(element instanceof TypeElement)) {
-        continue;
-      }
-      TypeElement type = (TypeElement) element;
-      if (isKotlinClass(type)) {
-        continue;
-      }
-      String binaryName = elements.getBinaryName(type).toString();
-      if (!processed.add(binaryName)) {
-        continue;
-      }
-      try {
-        List<SourceStruct> structs = buildStructs(type);
-        for (SourceStruct struct : structs) {
-          emit(struct, type);
+    if (foryStruct != null) {
+      for (Element element : roundEnv.getElementsAnnotatedWith(foryStruct)) {
+        if (!(element instanceof TypeElement)) {
+          continue;
         }
-        emitR8Rules(type, structs);
-      } catch (InvalidStructException e) {
-        messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
-      } catch (RuntimeException e) {
-        messager.printMessage(
-            Diagnostic.Kind.ERROR,
-            "Failed to generate Fory static serializer for " + binaryName + ": " + e.getMessage(),
-            type);
+        TypeElement type = (TypeElement) element;
+        if (isKotlinClass(type)) {
+          continue;
+        }
+        String binaryName = elements.getBinaryName(type).toString();
+        if (!processedStructs.add(binaryName)) {
+          continue;
+        }
+        try {
+          List<SourceStruct> structs = buildStructs(type);
+          for (SourceStruct struct : structs) {
+            emit(struct, type);
+          }
+          emitR8Rules(type, structs);
+        } catch (InvalidStructException e) {
+          messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
+        } catch (RuntimeException e) {
+          messager.printMessage(
+              Diagnostic.Kind.ERROR,
+              "Failed to generate Fory static serializer for " + binaryName + ": " + e.getMessage(),
+              type);
+        }
       }
     }
+    jsonTypeProcessor.process(roundEnv);
     return true;
   }
 
@@ -524,7 +514,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
     if (type.getKind().isPrimitive()) {
       return false;
     }
-    if (typeUseAnnotation(type, typeTreeInfo(tree).annotations, NULLABLE) != null) {
+    if (typeUseAnnotation(type, typeUseTrees.tree(tree).annotations, NULLABLE) != null) {
       return true;
     }
     if (mode == SerializerMode.NATIVE) {
@@ -534,7 +524,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
   }
 
   private boolean fieldTrackingRef(VariableElement field, Object tree) {
-    TypeUseAnnotation ref = typeUseAnnotation(field.asType(), typeTreeInfo(tree).annotations, REF);
+    TypeUseAnnotation ref =
+        typeUseAnnotation(field.asType(), typeUseTrees.tree(tree).annotations, REF);
     if (ref == null) {
       AnnotationMirror fieldRef = annotationMirror(field, REF);
       ref = fieldRef == null ? null : new TypeUseAnnotation(fieldRef, null);
@@ -546,7 +537,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
     if (hasAnnotation(field, REF)) {
       return true;
     }
-    return typeUseAnnotation(field.asType(), typeTreeInfo(tree).annotations, REF) != null;
+    return typeUseAnnotation(field.asType(), typeUseTrees.tree(tree).annotations, REF) != null;
   }
 
   private boolean isOptionalType(TypeMirror type) {
@@ -770,18 +761,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
   }
 
   private Object typeTree(VariableElement field) {
-    if (trees == null) {
-      return null;
-    }
-    Object path = invoke(trees, "getPath", new Class<?>[] {Element.class}, field);
-    if (path == null) {
-      return null;
-    }
-    Object leaf = invoke(path, "getLeaf");
-    if (!isInstance("com.sun.source.tree.VariableTree", leaf)) {
-      return null;
-    }
-    return invoke(leaf, "getType");
+    return typeUseTrees.typeTree(field);
   }
 
   private SourceTypeNode buildTypeNode(TypeMirror type) {
@@ -795,7 +775,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
       Element errorElement,
       boolean arrayComponent) {
     TypeKind kind = type.getKind();
-    TypeTreeInfo treeInfo = typeTreeInfo(tree);
+    JavacTypeUseTrees.Tree treeInfo = typeUseTrees.tree(tree);
     if (kind == TypeKind.TYPEVAR) {
       TypeVariable typeVariable = (TypeVariable) type;
       return buildTypeNode(
@@ -840,16 +820,6 @@ public final class ForyStructProcessor extends AbstractProcessor {
     boolean nestedStruct = isCompatibleForyStructType(type);
     return new SourceTypeNode(
         rawType, typeName(type), extMeta, arguments, componentType, primitive, nestedStruct);
-  }
-
-  private TypeTreeInfo typeTreeInfo(Object tree) {
-    List<?> annotations = Collections.emptyList();
-    Object current = tree;
-    while (isInstance("com.sun.source.tree.AnnotatedTypeTree", current)) {
-      annotations = listValue(invoke(current, "getAnnotations"));
-      current = invoke(current, "getUnderlyingType");
-    }
-    return new TypeTreeInfo(annotations, current);
   }
 
   private boolean isCompatibleForyStructType(TypeMirror type) {
@@ -1049,7 +1019,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
       return new TypeUseAnnotation(mirror, null);
     }
     for (Object annotationTree : treeAnnotations) {
-      if (isAnnotationTree(annotationTree, annotationName)) {
+      if (typeUseTrees.isAnnotation(annotationTree, annotationName)) {
         return new TypeUseAnnotation(null, annotationTree);
       }
     }
@@ -1066,20 +1036,6 @@ public final class ForyStructProcessor extends AbstractProcessor {
       return null;
     }
     return annotationMirror(componentType, annotationName);
-  }
-
-  private boolean isAnnotationTree(Object annotationTree, String annotationName) {
-    Object annotationType = invoke(annotationTree, "getAnnotationType");
-    if (annotationType == null) {
-      return false;
-    }
-    String treeName = annotationType.toString();
-    return treeName.equals(annotationName) || treeName.equals(simpleName(annotationName));
-  }
-
-  private String simpleName(String className) {
-    int index = className.lastIndexOf('.');
-    return index < 0 ? className : className.substring(index + 1);
   }
 
   private AnnotationMirror annotationMirror(TypeMirror type, String annotationName) {
@@ -1113,7 +1069,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
       return defaultValue;
     }
     if (annotation.mirror == null) {
-      return Boolean.parseBoolean(treeAnnotationValue(annotation.tree, name, defaultValue));
+      return Boolean.parseBoolean(
+          typeUseTrees.annotationValue(annotation.tree, name, defaultValue));
     }
     AnnotationMirror mirror = annotation.mirror;
     for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
@@ -1138,7 +1095,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
       return defaultValue;
     }
     if (annotation.mirror == null) {
-      return enumConstant(treeAnnotationValue(annotation.tree, name, defaultValue));
+      return enumConstant(typeUseTrees.annotationValue(annotation.tree, name, defaultValue));
     }
     AnnotationMirror mirror = annotation.mirror;
     for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
@@ -1150,94 +1107,9 @@ public final class ForyStructProcessor extends AbstractProcessor {
     return defaultValue;
   }
 
-  private String treeAnnotationValue(Object annotationTree, String name, Object defaultValue) {
-    for (Object argument : listValue(invoke(annotationTree, "getArguments"))) {
-      Object valueTree = argument;
-      if (isInstance("com.sun.source.tree.AssignmentTree", argument)) {
-        Object variable = invoke(argument, "getVariable");
-        if (variable == null || !variable.toString().equals(name)) {
-          continue;
-        }
-        valueTree = invoke(argument, "getExpression");
-      }
-      return valueTree.toString();
-    }
-    return String.valueOf(defaultValue);
-  }
-
   private String enumConstant(String value) {
     int index = value.lastIndexOf('.');
     return index < 0 ? value : value.substring(index + 1);
-  }
-
-  private static boolean isInstance(String className, Object value) {
-    if (value == null) {
-      return false;
-    }
-    return hasType(value.getClass(), className);
-  }
-
-  private static boolean hasType(Class<?> type, String className) {
-    if (type == null) {
-      return false;
-    }
-    if (type.getName().equals(className)) {
-      return true;
-    }
-    for (Class<?> interfaceType : type.getInterfaces()) {
-      if (hasType(interfaceType, className)) {
-        return true;
-      }
-    }
-    return hasType(type.getSuperclass(), className);
-  }
-
-  private static Object invoke(Object target, String methodName) {
-    return invoke(target, methodName, new Class<?>[0]);
-  }
-
-  private static Object invoke(
-      Object target, String methodName, Class<?>[] parameterTypes, Object... args) {
-    if (target == null) {
-      return null;
-    }
-    try {
-      Method method = target.getClass().getMethod(methodName, parameterTypes);
-      return method.invoke(target, args);
-    } catch (ReflectiveOperationException e) {
-      return null;
-    }
-  }
-
-  private static List<?> listValue(Object value) {
-    if (value instanceof List<?>) {
-      return (List<?>) value;
-    }
-    return Collections.emptyList();
-  }
-
-  private static final class TypeTreeInfo {
-    final List<?> annotations;
-    final Object tree;
-
-    TypeTreeInfo(List<?> annotations, Object tree) {
-      this.annotations = annotations;
-      this.tree = tree;
-    }
-
-    Object arrayComponentTree() {
-      if (isInstance("com.sun.source.tree.ArrayTypeTree", tree)) {
-        return invoke(tree, "getType");
-      }
-      return null;
-    }
-
-    List<?> typeArgumentTrees() {
-      if (isInstance("com.sun.source.tree.ParameterizedTypeTree", tree)) {
-        return listValue(invoke(tree, "getTypeArguments"));
-      }
-      return Collections.emptyList();
-    }
   }
 
   private static final class TypeUseAnnotation {

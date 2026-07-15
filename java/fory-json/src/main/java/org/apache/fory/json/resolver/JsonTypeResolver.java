@@ -1368,10 +1368,12 @@ public final class JsonTypeResolver {
   }
 
   private <T> ObjectCodec<T> newObjectCodec(TypeRef<T> ownerType, JsonTypeUse ownerTypeUse) {
-    sharedRegistry.checkSecure(ownerType.getRawType());
+    Class<?> rawType = ownerType.getRawType();
+    sharedRegistry.checkSecure(rawType);
     return ObjectCodec.build(
         ownerType,
         ownerTypeUse,
+        sharedRegistry.generatedTypeUses(rawType),
         sharedRegistry.propertyDiscoveryEnabled(),
         sharedRegistry.propertyNamingStrategy(),
         sharedRegistry.writeNullFields());

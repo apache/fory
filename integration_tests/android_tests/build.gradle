@@ -45,6 +45,8 @@ buildscript {
 
 apply plugin: 'com.android.application'
 
+def foryTestBuildType = providers.gradleProperty('foryTestBuildType').getOrElse('release')
+
 android {
     namespace 'org.apache.fory.android.tests'
     compileSdk 35
@@ -58,7 +60,7 @@ android {
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
 
-    testBuildType 'release'
+    testBuildType foryTestBuildType
 
     buildTypes {
         release {
@@ -86,6 +88,7 @@ dependencies {
         exclude group: 'com.google.guava', module: 'guava'
         exclude group: 'org.codehaus.janino', module: 'janino'
     }
+    implementation 'org.apache.fory:fory-json:1.4.0-SNAPSHOT'
     annotationProcessor 'org.apache.fory:fory-annotation-processor:1.4.0-SNAPSHOT'
     implementation 'com.google.guava:guava:32.1.2-android'
     implementation 'org.slf4j:slf4j-api:2.0.12'

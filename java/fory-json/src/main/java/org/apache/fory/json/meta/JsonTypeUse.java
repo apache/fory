@@ -19,6 +19,7 @@
 
 package org.apache.fory.json.meta;
 
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
@@ -47,15 +48,24 @@ import org.apache.fory.util.record.RecordComponent;
 /**
  * Immutable cold metadata for source-explicit {@link JsonCodec} annotations on one Java type use.
  *
- * <p>Declaration annotations are intentionally absent. They remain lazy defaults of a raw target
- * class and are resolved only when a value owner delegates to that node. Instances are retained
- * only when the complete occurrence tree contains an explicit codec annotation.
+ * <p>Raw-type declaration annotations are intentionally absent. They remain lazy defaults of a raw
+ * target class and are resolved only when a value owner delegates to that node. Field and method
+ * declarations are explicit annotations on the owned occurrence root. Instances are retained only
+ * when the complete occurrence tree contains an explicit codec annotation.
  */
 @Internal
 public final class JsonTypeUse {
   private static final JsonTypeUse[] NO_CHILDREN = new JsonTypeUse[0];
   private static final String[] NO_SOURCES = new String[0];
-  private static final boolean ANNOTATIONS_SUPPORTED = !AndroidSupport.IS_ANDROID;
+
+  /** Generated-path step selecting the component of an array type. */
+  public static final int ARRAY_COMPONENT = -1;
+
+  /** Generated-path step identifying the upper bound of a wildcard. */
+  public static final int WILDCARD_UPPER_BOUND = -2;
+
+  /** Generated-path step identifying the lower bound of a wildcard. */
+  public static final int WILDCARD_LOWER_BOUND = -3;
 
   private final Type type;
   private final Class<?> rawType;
@@ -93,54 +103,66 @@ public final class JsonTypeUse {
     hashCode = structuralHashCode();
   }
 
-  /** Returns whether JSON codec annotations are supported on the current platform. */
-  public static boolean annotationsSupported() {
-    return ANNOTATIONS_SUPPORTED;
-  }
-
   /** Returns the explicit type-use tree for {@code field}, or {@code null} when none is present. */
   public static JsonTypeUse forField(Field field) {
-    if (!ANNOTATIONS_SUPPORTED) {
-      return null;
+    String source = "field " + field.getDeclaringClass().getName() + "." + field.getName();
+    JsonCodec declaration = memberAnnotation(field, source);
+    if (AndroidSupport.IS_ANDROID) {
+      // Android API 26 exposes declaration annotations but none of the Java 8 AnnotatedType
+      // methods on Field, Method, or Executable. Pure type-use facts come from the generated map.
+      return rootTypeUse(field.getGenericType(), declaration, source);
     }
-    return fromTypeUse(
-        TypeUseMetadata.fieldTypeUse(field),
-        "field " + field.getDeclaringClass().getName() + "." + field.getName());
+    Type type = field.getGenericType();
+    if (declaration != null && !hasNestedTypeShape(type)) {
+      return rootTypeUse(type, declaration, source);
+    }
+    return declarationFirst(type, declaration, fieldTypeUse(field, source), source);
   }
 
   /** Returns the explicit return type-use tree for {@code method}, or {@code null}. */
   public static JsonTypeUse forMethodReturn(Method method) {
-    if (!ANNOTATIONS_SUPPORTED) {
-      return null;
+    String source =
+        "method return " + method.getDeclaringClass().getName() + "#" + method.getName();
+    JsonCodec declaration = memberAnnotation(method, source);
+    if (AndroidSupport.IS_ANDROID) {
+      return rootTypeUse(method.getGenericReturnType(), declaration, source);
     }
-    return fromTypeUse(
-        TypeUseMetadata.methodReturnTypeUse(method),
-        "method return " + method.getDeclaringClass().getName() + "#" + method.getName());
+    Type type = method.getGenericReturnType();
+    if (declaration != null && !hasNestedTypeShape(type)) {
+      return rootTypeUse(type, declaration, source);
+    }
+    return declarationFirst(type, declaration, methodReturnTypeUse(method, source), source);
   }
 
   /** Returns one explicit method-parameter type-use tree, or {@code null}. */
   public static JsonTypeUse forMethodParameter(Method method, int parameterIndex) {
-    if (!ANNOTATIONS_SUPPORTED) {
-      checkParameterIndex(null, method.getParameterCount(), parameterIndex, method.toString());
-      return null;
-    }
-    Object[] parameters = TypeUseMetadata.methodParameterTypeUses(method);
-    checkParameterIndex(parameters, method.getParameterCount(), parameterIndex, method.toString());
-    return fromTypeUse(
-        parameters == null ? null : parameters[parameterIndex],
+    String source =
         "method parameter "
             + method.getDeclaringClass().getName()
             + "#"
             + method.getName()
             + "["
             + parameterIndex
-            + "]");
+            + "]";
+    if (AndroidSupport.IS_ANDROID) {
+      checkParameterIndex(null, method.getParameterCount(), parameterIndex, method.toString());
+      return null;
+    }
+    Object[] parameters = TypeUseMetadata.methodParameterTypeUses(method);
+    checkParameterIndex(parameters, method.getParameterCount(), parameterIndex, method.toString());
+    return fromTypeUse(parameters == null ? null : parameters[parameterIndex], source);
   }
 
   /** Returns one explicit constructor-parameter type-use tree, or {@code null}. */
   public static JsonTypeUse forConstructorParameter(
       Constructor<?> constructor, int parameterIndex) {
-    if (!ANNOTATIONS_SUPPORTED) {
+    String source =
+        "constructor parameter "
+            + constructor.getDeclaringClass().getName()
+            + "["
+            + parameterIndex
+            + "]";
+    if (AndroidSupport.IS_ANDROID) {
       checkParameterIndex(
           null, constructor.getParameterCount(), parameterIndex, constructor.toString());
       return null;
@@ -148,18 +170,12 @@ public final class JsonTypeUse {
     Object[] parameters = TypeUseMetadata.constructorParameterTypeUses(constructor);
     checkParameterIndex(
         parameters, constructor.getParameterCount(), parameterIndex, constructor.toString());
-    return fromTypeUse(
-        parameters == null ? null : parameters[parameterIndex],
-        "constructor parameter "
-            + constructor.getDeclaringClass().getName()
-            + "["
-            + parameterIndex
-            + "]");
+    return fromTypeUse(parameters == null ? null : parameters[parameterIndex], source);
   }
 
   /** Returns the explicit type-use tree for {@code component}, or {@code null}. */
   public static JsonTypeUse forRecordComponent(RecordComponent component) {
-    if (!ANNOTATIONS_SUPPORTED) {
+    if (AndroidSupport.IS_ANDROID) {
       return null;
     }
     return fromTypeUse(
@@ -170,18 +186,36 @@ public final class JsonTypeUse {
   /**
    * Builds an explicit tree from a platform-neutral type-use handle.
    *
-   * <p>The returned value is {@code null} when annotation support is disabled or no codec occurs at
-   * any node. {@code source} identifies the field, accessor, record component, or creator parameter
-   * in diagnostics.
+   * <p>The returned value is {@code null} when recursive type-use metadata is unavailable or no
+   * codec occurs at any node. {@code source} identifies the field, accessor, record component, or
+   * creator parameter in diagnostics.
    */
   public static JsonTypeUse fromTypeUse(Object typeUse, String source) {
-    if (!ANNOTATIONS_SUPPORTED || typeUse == null) {
+    if (AndroidSupport.IS_ANDROID || typeUse == null) {
       return null;
     }
     if (!scanExplicit(typeUse, source, "$")) {
       return null;
     }
     return buildTypeUse(typeUse, source, "$");
+  }
+
+  /**
+   * Builds one generated codec tree from an ordinary retained reflection type.
+   *
+   * <p>An empty path selects the root. Each path step is otherwise a non-negative generic-argument
+   * index, {@link #ARRAY_COMPONENT}, {@link #WILDCARD_UPPER_BOUND}, or {@link
+   * #WILDCARD_LOWER_BOUND}. Wildcard steps reproduce the existing rejection for codecs on wildcards
+   * and their bounds rather than silently dropping invalid source annotations on platforms without
+   * recursive type-use reflection.
+   */
+  public static JsonTypeUse generated(
+      Type rootType, Class<? extends JsonValueCodec<?>> codecClass, String source, int... path) {
+    Objects.requireNonNull(rootType, "rootType");
+    Objects.requireNonNull(codecClass, "codecClass");
+    Objects.requireNonNull(source, "source");
+    Objects.requireNonNull(path, "path");
+    return applyGenerated(plainType(rootType), codecClass, source, path, 0, "$");
   }
 
   /**
@@ -462,6 +496,161 @@ public final class JsonTypeUse {
               + expected.getTypeName());
     }
     return owner;
+  }
+
+  private static JsonCodec memberAnnotation(AnnotatedElement member, String source) {
+    try {
+      return member.getAnnotation(JsonCodec.class);
+    } catch (RuntimeException | LinkageError e) {
+      throw new ForyJsonException("Cannot read @JsonCodec from " + source, e);
+    }
+  }
+
+  private static Object fieldTypeUse(Field field, String source) {
+    try {
+      return TypeUseMetadata.fieldTypeUse(field);
+    } catch (RuntimeException | LinkageError e) {
+      throw new ForyJsonException("Cannot read type-use @JsonCodec from " + source, e);
+    }
+  }
+
+  private static Object methodReturnTypeUse(Method method, String source) {
+    try {
+      return TypeUseMetadata.methodReturnTypeUse(method);
+    } catch (RuntimeException | LinkageError e) {
+      throw new ForyJsonException("Cannot read type-use @JsonCodec from " + source, e);
+    }
+  }
+
+  private static boolean hasNestedTypeShape(Type type) {
+    return type instanceof ParameterizedType
+        || type instanceof GenericArrayType
+        || type instanceof Class<?> && ((Class<?>) type).isArray();
+  }
+
+  private static JsonTypeUse declarationFirst(
+      Type type, JsonCodec declaration, Object typeUse, String source) {
+    JsonTypeUse reflected = fromTypeUse(typeUse, source);
+    return mergeDeclaration(type, declaration, reflected, source);
+  }
+
+  static JsonTypeUse mergeDeclaration(
+      Type type, JsonCodec declaration, JsonTypeUse reflected, String source) {
+    if (declaration == null) {
+      return reflected;
+    }
+    JsonTypeUse root = rootTypeUse(type, declaration, source);
+    if (reflected == null || !reflected.hasExplicitDescendant()) {
+      return root;
+    }
+    JsonTypeUse descendants =
+        new JsonTypeUse(
+            reflected.type,
+            null,
+            NO_SOURCES,
+            reflected.arguments,
+            reflected.arrayComponent,
+            reflected.upperBounds,
+            reflected.lowerBounds);
+    return merge(root, descendants, source);
+  }
+
+  private static JsonTypeUse rootTypeUse(Type type, JsonCodec annotation, String source) {
+    if (annotation == null) {
+      return null;
+    }
+    JsonTypeUse plain = plainType(type);
+    return new JsonTypeUse(
+        type,
+        readCodecClass(annotation, source, "$"),
+        new String[] {source + " at $"},
+        plain.arguments,
+        plain.arrayComponent,
+        plain.upperBounds,
+        plain.lowerBounds);
+  }
+
+  private static JsonTypeUse applyGenerated(
+      JsonTypeUse node,
+      Class<? extends JsonValueCodec<?>> codecClass,
+      String source,
+      int[] path,
+      int pathIndex,
+      String canonicalPath) {
+    if (pathIndex == path.length) {
+      if (node.type instanceof WildcardType) {
+        throw new ForyJsonException(
+            "@JsonCodec cannot target a wildcard at " + source + " " + canonicalPath);
+      }
+      return new JsonTypeUse(
+          node.type,
+          codecClass,
+          new String[] {source + " at " + canonicalPath},
+          node.arguments,
+          node.arrayComponent,
+          node.upperBounds,
+          node.lowerBounds);
+    }
+    int step = path[pathIndex];
+    if (step == WILDCARD_UPPER_BOUND || step == WILDCARD_LOWER_BOUND) {
+      String bound = step == WILDCARD_UPPER_BOUND ? ".upperBound[0]" : ".lowerBound[0]";
+      JsonTypeUse[] bounds = step == WILDCARD_UPPER_BOUND ? node.upperBounds : node.lowerBounds;
+      if (!(node.type instanceof WildcardType) || bounds.length == 0) {
+        throw invalidGeneratedPath(source, canonicalPath + bound, node.type);
+      }
+      throw new ForyJsonException(
+          "@JsonCodec cannot target a wildcard or wildcard bound at "
+              + source
+              + " "
+              + canonicalPath
+              + bound);
+    }
+    if (step == ARRAY_COMPONENT) {
+      if (node.arrayComponent == null) {
+        throw invalidGeneratedPath(source, canonicalPath + ".component", node.type);
+      }
+      JsonTypeUse component =
+          applyGenerated(
+              node.arrayComponent,
+              codecClass,
+              source,
+              path,
+              pathIndex + 1,
+              canonicalPath + ".component");
+      return new JsonTypeUse(
+          node.type,
+          node.codecClass,
+          node.codecSources,
+          node.arguments,
+          component,
+          node.upperBounds,
+          node.lowerBounds);
+    }
+    if (step < 0 || step >= node.arguments.length) {
+      throw invalidGeneratedPath(source, canonicalPath + ".argument[" + step + "]", node.type);
+    }
+    JsonTypeUse[] arguments = node.arguments.clone();
+    String childPath = canonicalPath + ".argument[" + step + "]";
+    arguments[step] =
+        applyGenerated(arguments[step], codecClass, source, path, pathIndex + 1, childPath);
+    return new JsonTypeUse(
+        node.type,
+        node.codecClass,
+        node.codecSources,
+        arguments,
+        node.arrayComponent,
+        node.upperBounds,
+        node.lowerBounds);
+  }
+
+  private static ForyJsonException invalidGeneratedPath(String source, String path, Type type) {
+    return new ForyJsonException(
+        "Generated @JsonCodec path "
+            + path
+            + " from "
+            + source
+            + " does not exist in "
+            + type.getTypeName());
   }
 
   private static boolean scanExplicit(Object typeUse, String source, String path) {

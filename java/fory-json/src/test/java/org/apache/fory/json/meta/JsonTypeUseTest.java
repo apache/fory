@@ -111,23 +111,77 @@ public class JsonTypeUseTest {
     assertThrows(ForyJsonException.class, () -> typeUse("wildcard"));
   }
 
+  @Test
+  public void generatedPaths() throws Exception {
+    Field values = Models.class.getDeclaredField("plainValues");
+    JsonTypeUse list =
+        JsonTypeUse.generated(values.getGenericType(), ACodec.class, "plainValues", 0);
+    assertEquals(list.rawType(), List.class);
+    assertFalse(list.hasCodec());
+    assertEquals(list.argument(0).codecClass(), ACodec.class);
+    assertTrue(list.argument(0).codecSource().contains("$.argument[0]"));
+
+    JsonTypeUse root = JsonTypeUse.generated(values.getGenericType(), ACodec.class, "plainValues");
+    assertEquals(root.codecClass(), ACodec.class);
+    assertTrue(root.codecSource().contains("at $"));
+
+    Field array = Models.class.getDeclaredField("plainArray");
+    JsonTypeUse component =
+        JsonTypeUse.generated(
+            array.getGenericType(), ACodec.class, "plainArray", JsonTypeUse.ARRAY_COMPONENT);
+    assertEquals(component.arrayComponent().codecClass(), ACodec.class);
+
+    Field map = Models.class.getDeclaredField("plainMap");
+    JsonTypeUse value = JsonTypeUse.generated(map.getGenericType(), ACodec.class, "plainMap", 1);
+    assertEquals(value.argument(1).codecClass(), ACodec.class);
+
+    Field wildcard = Models.class.getDeclaredField("plainWildcard");
+    assertThrows(
+        ForyJsonException.class,
+        () ->
+            JsonTypeUse.generated(
+                wildcard.getGenericType(),
+                ACodec.class,
+                "plainWildcard",
+                0,
+                JsonTypeUse.WILDCARD_UPPER_BOUND));
+  }
+
+  @Test
+  public void declarationPrecedence() throws Exception {
+    Field field = Models.class.getDeclaredField("declaration");
+    JsonTypeUse declaration =
+        JsonTypeUse.mergeDeclaration(
+            field.getGenericType(),
+            field.getAnnotation(JsonCodec.class),
+            JsonTypeUse.generated(field.getGenericType(), BCodec.class, "generated root"),
+            "declaration precedence");
+    assertEquals(declaration.codecClass(), ACodec.class);
+  }
+
   private static JsonTypeUse typeUse(String name) throws Exception {
     return JsonTypeUse.forField(Models.class.getDeclaredField(name));
   }
 
   private static final class Models {
+    @JsonCodec(ACodec.class)
+    String declaration;
+
     List<@JsonCodec(ACodec.class) String> values;
     List<@JsonCodec(ACodec.class) String> sameValues;
     List<@JsonCodec(BCodec.class) String> conflictingValues;
     String @JsonCodec(ACodec.class) [] array;
 
-    @JsonCodec(ACodec.class)
-    String[] elements;
+    java.lang.@JsonCodec(ACodec.class) String[] elements;
 
     Envelope<@JsonCodec(ACodec.class) String> envelope;
     ReorderedValues<String, @JsonCodec(ACodec.class) Integer> reorderedValues;
     ReorderedEntries<@JsonCodec(ACodec.class) Integer, String> reorderedEntries;
     List<@JsonCodec(ACodec.class) ? extends String> wildcard;
+    List<String> plainValues;
+    String[] plainArray;
+    Map<String, String> plainMap;
+    List<? extends String> plainWildcard;
   }
 
   private static final class Envelope<T> {
