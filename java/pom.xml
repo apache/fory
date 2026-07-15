@@ -80,8 +80,6 @@
     <argLine></argLine>
     <maven-spotless-plugin.version>3.6.0</maven-spotless-plugin.version>
     <google-java-format.version>1.35.0</google-java-format.version>
-    <gradle.api.version>8.0.2</gradle.api.version>
-    <android.gradle.api.version>8.0.2</android.gradle.api.version>
     <lombok.version>1.18.38</lombok.version>
     <mockito.version>4.11.0</mockito.version>
   </properties>
@@ -125,15 +123,6 @@
       <modules>
         <module>fory-format</module>
         <module>fory-testsuite</module>
-      </modules>
-    </profile>
-    <profile>
-      <id>jdk17-and-higher</id>
-      <activation>
-        <jdk>[17,]</jdk>
-      </activation>
-      <modules>
-        <module>fory-json-gradle-plugin</module>
       </modules>
     </profile>
     <profile>

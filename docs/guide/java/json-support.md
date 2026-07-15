@@ -63,37 +63,26 @@ contains `fory-json` after publication.
 ### Android
 
 Android API 26 and later uses build-time metadata for application and library JSON models. Add the
-matching Gradle plugin to every Android application and Android library module:
+runtime and matching annotation processor to every module that compiles Android JSON models:
 
 ```gradle
-buildscript {
-  repositories {
-    google()
-    mavenCentral()
-  }
-  dependencies {
-    classpath "org.apache.fory:fory-json-gradle-plugin:1.4.0-SNAPSHOT"
-  }
-}
-
-apply plugin: "com.android.application" // Or com.android.library.
-apply plugin: "org.apache.fory.json"
-
 dependencies {
   implementation("org.apache.fory:fory-json:1.4.0-SNAPSHOT")
   annotationProcessor("org.apache.fory:fory-annotation-processor:1.4.0-SNAPSHOT")
 }
 ```
 
-Annotate default-mapped models with `JsonType` in the module that owns their source. Java library
-modules use the runtime and processor dependencies without the Android plugin. Generated metadata
-and exact rules work with R8 full mode for application classes, Java-library JARs, and
-Android-library AARs; do not add a package-wide keep rule. Register an exact codec for a third-party
-model that cannot be annotated. Keep all three Fory artifacts on the same version.
+Annotate default-mapped models with `JsonType` in the module that owns their source. The processor
+writes precise R8 rules to standard `META-INF/com.android.tools/r8/*.pro` resources. Android R8
+consumes those resources from ordinary application, Java-library JAR, and Android-library AAR class
+inputs, so Fory does not require a Gradle plugin or package-wide keep rule. Register an exact codec
+for a third-party model that cannot be annotated. Keep the runtime and processor on the same
+version.
 
-The base profile requires Android Gradle Plugin 8.0 or later and `minSdk 26`. Java records require
-Android Gradle Plugin 8.2 or later, JDK 17, Java 17 source and target compatibility, and `minSdk 34`.
-Records are not supported on Android API 26 through 33. See
+The Android baseline requires Android Gradle Plugin 8.0 or later and `minSdk 26`. Java record model
+paths require Android API 34 or later, Android Gradle Plugin 8.2 or later, JDK 17, and Java 17 source
+and target compatibility. An application that guards record paths by API level can keep
+`minSdk 26`; records are not supported on Android API 26 through 33. See
 [Android Support](android-support.md#fory-json) for the complete model and build requirements.
 
 ### JDK 25 and later

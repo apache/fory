@@ -96,7 +96,8 @@ public class ForyJsonProcessorTest {
     }
 
     String rules =
-        result.generatedResource("META-INF/fory-json/r8/fory-json-generated-test.Model.pro");
+        result.generatedResource(
+            "META-INF/com.android.tools/r8/fory-json-generated-test.Model.pro");
     Assert.assertTrue(rules.contains("-keep,allowoptimization class test.Model"), rules);
     Assert.assertTrue(rules.contains("class test.Model_ForyJsonMetadata"), rules);
     Assert.assertTrue(rules.contains("java.lang.String secret;"), rules);
@@ -262,6 +263,22 @@ public class ForyJsonProcessorTest {
   }
 
   @Test
+  public void testOverriddenAnnotationIgnored() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.OverrideModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class ParentModel {\n"
+                + "  @JsonProperty public String value(int index) { return null; }\n"
+                + "}\n"
+                + "@JsonType public class OverrideModel extends ParentModel {\n"
+                + "  @Override public String value(int index) { return null; }\n"
+                + "}\n");
+    Assert.assertTrue(result.success, result.diagnostics());
+  }
+
+  @Test
   public void testBuiltInFamilyOmitsObjectSection() throws Exception {
     CompilationResult result =
         compile(
@@ -363,7 +380,7 @@ public class ForyJsonProcessorTest {
       Assert.assertEquals(metadata.subtypeTable(0).entry(1).className(), "test.ExternalChild");
     }
     String rules =
-        result.generatedResource("META-INF/fory-json/r8/fory-json-generated-test.Base.pro");
+        result.generatedResource("META-INF/com.android.tools/r8/fory-json-generated-test.Base.pro");
     Assert.assertTrue(rules.contains("class test.ExternalChild"), rules);
   }
 
@@ -774,7 +791,7 @@ public class ForyJsonProcessorTest {
     Assert.assertTrue(firstSource.contains("Operations2_1"), firstSource);
     Assert.assertEquals(
         firstSource, second.generatedSource("test/WideModel_ForyJsonMetadata.java"));
-    String resource = "META-INF/fory-json/r8/fory-json-generated-test.WideModel.pro";
+    String resource = "META-INF/com.android.tools/r8/fory-json-generated-test.WideModel.pro";
     Assert.assertEquals(first.generatedResource(resource), second.generatedResource(resource));
   }
 
@@ -885,7 +902,7 @@ public class ForyJsonProcessorTest {
   private static void assertCreatorRule(CompilationResult result, String binaryName, String member)
       throws IOException {
     String resource =
-        "META-INF/fory-json/r8/fory-json-generated-"
+        "META-INF/com.android.tools/r8/fory-json-generated-"
             + JsonTypeMetadata.escapedResourceName(binaryName)
             + ".pro";
     String rules = result.generatedResource(resource);

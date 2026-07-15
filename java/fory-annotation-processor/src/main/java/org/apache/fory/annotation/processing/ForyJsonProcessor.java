@@ -167,7 +167,7 @@ public final class ForyJsonProcessor extends AbstractProcessor {
 
   private void writeRules(JsonSourceModel model, TypeElement type, String rules) {
     String resource =
-        "META-INF/fory-json/r8/fory-json-generated-"
+        "META-INF/com.android.tools/r8/fory-json-generated-"
             + JsonTypeMetadata.escapedResourceName(model.targetBinaryName)
             + ".pro";
     try {

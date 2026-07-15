@@ -19,20 +19,15 @@
 
 package org.apache.fory.android.json;
 
-import org.apache.fory.android.json.aar.AarModel;
-import org.apache.fory.android.json.jar.JarCodedValue;
-import org.apache.fory.android.json.jar.JarModel;
-import org.apache.fory.android.json.jar.JarShape;
 import org.apache.fory.json.annotation.JsonType;
 
 @JsonType
 public class AppModel {
   public int appId;
   public String nullableName;
-  public JarModel jarModel;
-  public AarModel aarModel;
-  public JarCodedValue codedValue;
-  public JarShape shape;
+  public AndroidJsonRuntimeScenarios.NestedModel nested;
+  public AndroidJsonRuntimeScenarios.CodedValue codedValue;
+  public AndroidJsonRuntimeScenarios.Shape shape;
 
   public AppModel() {}
 }

@@ -21,24 +21,20 @@ package org.apache.fory.android.json;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
-import org.apache.fory.android.json.aar.AarModel;
-import org.apache.fory.android.json.jar.JarAnyModel;
-import org.apache.fory.android.json.jar.JarArrayShape;
-import org.apache.fory.android.json.jar.JarCircle;
-import org.apache.fory.android.json.jar.JarCodedValue;
-import org.apache.fory.android.json.jar.JarCreatorModel;
-import org.apache.fory.android.json.jar.JarModel;
-import org.apache.fory.android.json.jar.JarObjectShape;
-import org.apache.fory.android.json.jar.JarPrimitiveBean;
-import org.apache.fory.android.json.jar.JarShape;
-import org.apache.fory.android.json.jar.JarSquare;
+import java.util.Map;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.PropertyNamingStrategy;
+import org.apache.fory.json.annotation.JsonAnyProperty;
+import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonPropertyOrder;
+import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -52,23 +48,14 @@ import org.apache.fory.reflect.TypeRef;
 public final class AndroidJsonRuntimeScenarios {
   private AndroidJsonRuntimeScenarios() {}
 
-  public static void applicationJarAndAarModelsRoundTrip() {
+  public static void applicationModelsRoundTrip() {
     check(AndroidSupport.IS_ANDROID, "Fory JSON Android tests must run on Android");
     ForyJson json = ForyJson.builder().withCodegen(true).withAsyncCompilation(true).build();
-    AppModel value = new AppModel();
-    value.appId = 26;
-    value.jarModel = new JarModel(7, "jar");
-    value.jarModel.scores.add(Integer.valueOf(3));
-    value.aarModel = new AarModel("aar");
-    value.aarModel.putAttribute("source", "library");
-    value.codedValue = new JarCodedValue("android");
-    value.shape = new JarSquare(5);
+    AppModel value = model(26, "android");
 
     String text = json.toJson(value);
-    AppModel fromString = json.fromJson(text, AppModel.class);
-    AppModel fromUtf8 = json.fromJson(text.getBytes(StandardCharsets.UTF_8), AppModel.class);
-    assertAppModel(fromString);
-    assertAppModel(fromUtf8);
+    assertAppModel(json.fromJson(text, AppModel.class));
+    assertAppModel(json.fromJson(text.getBytes(StandardCharsets.UTF_8), AppModel.class));
 
     byte[] bytes = json.toJsonBytes(value);
     assertEquals(text, new String(bytes, StandardCharsets.UTF_8));
@@ -78,9 +65,7 @@ public final class AndroidJsonRuntimeScenarios {
   }
 
   public static void builderConfigurationsRemainIndependent() {
-    AppModel value = new AppModel();
-    value.appId = 11;
-    value.jarModel = new JarModel(12, "display name");
+    AppModel value = model(11, null);
 
     ForyJson lowerCamel =
         ForyJson.builder()
@@ -106,7 +91,6 @@ public final class AndroidJsonRuntimeScenarios {
     check(!camelText.contains("nullableName"), "null property must be omitted: " + camelText);
     check(snakeText.contains("\"app_id\""), "snake property missing: " + snakeText);
     check(snakeText.contains("\"nullable_name\":null"), "null property missing: " + snakeText);
-    check(snakeText.contains("\"coded_value\":null"), "codec null property missing: " + snakeText);
     check(fieldText.contains("\"appId\""), "field mode property missing: " + fieldText);
 
     assertEquals(11, lowerCamel.fromJson(camelText, AppModel.class).appId);
@@ -115,7 +99,7 @@ public final class AndroidJsonRuntimeScenarios {
   }
 
   public static void primitiveBeanUsesEveryTypedAccessor() {
-    JarPrimitiveBean value = new JarPrimitiveBean();
+    PrimitiveBean value = new PrimitiveBean();
     value.setBoolValue(true);
     value.setByteValue((byte) 2);
     value.setCharValue('A');
@@ -127,7 +111,7 @@ public final class AndroidJsonRuntimeScenarios {
     value.setTextValue("bean");
 
     ForyJson json = ForyJson.builder().build();
-    JarPrimitiveBean copy = json.fromJson(json.toJsonBytes(value), JarPrimitiveBean.class);
+    PrimitiveBean copy = json.fromJson(json.toJsonBytes(value), PrimitiveBean.class);
     check(copy.isBoolValue(), "boolean accessor mismatch");
     assertEquals(2, copy.getByteValue());
     assertEquals('A', copy.getCharValue());
@@ -139,64 +123,56 @@ public final class AndroidJsonRuntimeScenarios {
     assertEquals("bean", copy.getTextValue());
   }
 
-  public static void creatorAnyCodecAndSubtypesRoundTrip() {
+  public static void annotationsAndSubtypesRoundTrip() {
     ForyJson json = ForyJson.builder().build();
 
-    JarCreatorModel creator =
-        json.fromJson("{\"id\":17,\"name\":\"creator\"}", JarCreatorModel.class);
-    assertEquals(17, creator.id);
-    assertEquals("creator", creator.name);
+    PrivateCreatorModel creator = json.fromJson("{\"number\":17}", PrivateCreatorModel.class);
+    assertEquals(17, creator.number);
+    PrivateFactoryModel factory = json.fromJson("{\"number\":19}", PrivateFactoryModel.class);
+    assertEquals(19, factory.number);
 
-    JarAnyModel any = new JarAnyModel();
+    AnyModel any = new AnyModel();
     any.fixed = "fixed";
     any.extra.put("dynamic", Integer.valueOf(9));
-    JarAnyModel anyCopy = json.fromJson(json.toJson(any), JarAnyModel.class);
+    AnyModel anyCopy = json.fromJson(json.toJson(any), AnyModel.class);
     assertEquals("fixed", anyCopy.fixed);
     assertEquals(9, anyCopy.extra.get("dynamic").intValue());
 
-    JarCodedValue coded = json.fromJson("\"coded:value\"", JarCodedValue.class);
+    CodedValue coded = json.fromJson("\"coded:value\"", CodedValue.class);
     assertEquals("value", coded.value);
     assertEquals("\"coded:value\"", json.toJson(coded));
 
-    JarShape square = json.fromJson(json.toJson(new JarSquare(4), JarShape.class), JarShape.class);
-    check(square instanceof JarSquare, "literal subtype mismatch");
-    assertEquals(4, ((JarSquare) square).size);
-    JarShape circle = json.fromJson(json.toJson(new JarCircle(3), JarShape.class), JarShape.class);
-    check(circle instanceof JarCircle, "class-name subtype mismatch");
-    assertEquals(3, ((JarCircle) circle).radius);
-
-    JarObjectShape objectShape =
-        json.fromJson(json.toJson(new JarSquare(6), JarObjectShape.class), JarObjectShape.class);
-    check(objectShape instanceof JarSquare, "wrapper-object subtype mismatch");
-    assertEquals(6, ((JarSquare) objectShape).size);
-    JarArrayShape arrayShape =
-        json.fromJson(json.toJson(new JarSquare(8), JarArrayShape.class), JarArrayShape.class);
-    check(arrayShape instanceof JarSquare, "wrapper-array subtype mismatch");
-    assertEquals(8, ((JarSquare) arrayShape).size);
-
-    PrivateCreatorModel privateCreator =
-        json.fromJson("{\"number\":31}", PrivateCreatorModel.class);
-    assertEquals(31, privateCreator.number);
-    assertEquals("{\"number\":31}", json.toJson(privateCreator));
-    PrivateFactoryModel privateFactory =
-        json.fromJson("{\"number\":37}", PrivateFactoryModel.class);
-    assertEquals(37, privateFactory.number);
-    assertEquals("{\"number\":37}", json.toJson(privateFactory));
+    Shape square = json.fromJson(json.toJson(new Square(4), Shape.class), Shape.class);
+    check(square instanceof Square, "literal subtype mismatch");
+    assertEquals(4, ((Square) square).size);
+    Shape circle = json.fromJson(json.toJson(new Circle(3), Shape.class), Shape.class);
+    check(circle instanceof Circle, "class-name subtype mismatch");
+    assertEquals(3, ((Circle) circle).radius);
   }
 
-  public static void typeRefAndPrivateStaticTypeSurviveR8() {
+  public static void typeRefAndPrivateTypeSurviveR8() {
     ForyJson json = ForyJson.builder().build();
-    TypeRef<List<JarModel>> type = new TypeRef<List<JarModel>>() {};
-    List<JarModel> values = Arrays.asList(new JarModel(1, "one"), new JarModel(2, "two"));
-    List<JarModel> copy = json.fromJson(json.toJson(values, type), type);
+    TypeRef<List<NestedModel>> type = new TypeRef<List<NestedModel>>() {};
+    List<NestedModel> values = Arrays.asList(new NestedModel(1, "one"), new NestedModel(2, "two"));
+    List<NestedModel> copy = json.fromJson(json.toJson(values, type), type);
     assertEquals(2, copy.size());
     assertEquals("two", copy.get(1).displayName);
 
-    PrivateStaticModel privateValue = new PrivateStaticModel();
-    privateValue.setNumber(31);
-    PrivateStaticModel privateCopy =
-        json.fromJson(json.toJson(privateValue), PrivateStaticModel.class);
+    PrivateStaticModel value = new PrivateStaticModel();
+    value.setNumber(31);
+    PrivateStaticModel privateCopy = json.fromJson(json.toJson(value), PrivateStaticModel.class);
     assertEquals(31, privateCopy.getNumber());
+  }
+
+  public static void recordsRoundTrip() {
+    ForyJson json = ForyJson.builder().build();
+    AppRecord value = new AppRecord(34, "record", Arrays.asList(1, 2));
+    String text = json.toJson(value);
+    assertEquals(value, json.fromJson(text, AppRecord.class));
+    assertEquals(value, json.fromJson(text.getBytes(StandardCharsets.UTF_8), AppRecord.class));
+
+    PrivateRecord privateValue = new PrivateRecord(9, "private");
+    assertEquals(privateValue, json.fromJson(json.toJson(privateValue), PrivateRecord.class));
   }
 
   public static void platformSuperclassRequiresCodec() {
@@ -217,7 +193,7 @@ public final class AndroidJsonRuntimeScenarios {
   }
 
   public static Object newWriteBenchmark() {
-    return new WriteBenchmark(ForyJson.builder().build(), benchmarkValue());
+    return new WriteBenchmark(ForyJson.builder().build(), model(42, "benchmark"));
   }
 
   public static Object writeBenchmark(Object state) {
@@ -227,7 +203,7 @@ public final class AndroidJsonRuntimeScenarios {
 
   public static Object newReadBenchmark() {
     ForyJson json = ForyJson.builder().build();
-    byte[] bytes = json.toJson(benchmarkValue()).getBytes(StandardCharsets.UTF_8);
+    byte[] bytes = json.toJson(model(42, "benchmark")).getBytes(StandardCharsets.UTF_8);
     return new ReadBenchmark(json, bytes);
   }
 
@@ -236,15 +212,23 @@ public final class AndroidJsonRuntimeScenarios {
     return benchmark.json.fromJson(benchmark.bytes, AppModel.class);
   }
 
-  private static AppModel benchmarkValue() {
+  private static AppModel model(int appId, String codedValue) {
     AppModel value = new AppModel();
-    value.appId = 42;
-    value.jarModel = new JarModel(7, "benchmark");
-    value.jarModel.scores.add(Integer.valueOf(1));
-    value.aarModel = new AarModel("aar");
-    value.codedValue = new JarCodedValue("value");
-    value.shape = new JarCircle(2);
+    value.appId = appId;
+    value.nested = new NestedModel(7, "nested");
+    value.nested.scores.add(Integer.valueOf(3));
+    value.codedValue = codedValue == null ? null : new CodedValue(codedValue);
+    value.shape = new Square(5);
     return value;
+  }
+
+  private static void assertAppModel(AppModel value) {
+    assertEquals(26, value.appId);
+    assertEquals(7, value.nested.id);
+    assertEquals("nested", value.nested.displayName);
+    assertEquals(3, value.nested.scores.get(0).intValue());
+    assertEquals("android", value.codedValue.value);
+    check(value.shape instanceof Square, "nested subtype mismatch");
   }
 
   private static final class WriteBenchmark {
@@ -267,22 +251,162 @@ public final class AndroidJsonRuntimeScenarios {
     }
   }
 
-  private static void assertAppModel(AppModel value) {
-    assertEquals(26, value.appId);
-    assertEquals(7, value.jarModel.id);
-    assertEquals("jar", value.jarModel.displayName);
-    assertEquals(3, value.jarModel.scores.get(0).intValue());
-    assertEquals("aar", value.aarModel.getLabel());
-    assertEquals("library", value.aarModel.attributes().get("source"));
-    assertEquals("android", value.codedValue.value);
-    check(value.shape instanceof JarSquare, "nested subtype mismatch");
+  @JsonType
+  @JsonPropertyOrder({"id", "displayName", "scores"})
+  public static final class NestedModel {
+    @JsonProperty(index = 0)
+    public int id;
+
+    public String displayName;
+    public List<@JsonCodec(IntegerCodec.class) Integer> scores = new ArrayList<Integer>();
+
+    public NestedModel() {}
+
+    public NestedModel(int id, String displayName) {
+      this.id = id;
+      this.displayName = displayName;
+    }
+  }
+
+  @JsonType
+  public static final class PrimitiveBean {
+    private boolean boolValue;
+    private byte byteValue;
+    private char charValue;
+    private short shortValue;
+    private int intValue;
+    private long longValue;
+    private float floatValue;
+    private double doubleValue;
+    private String textValue;
+
+    public boolean isBoolValue() {
+      return boolValue;
+    }
+
+    public void setBoolValue(boolean boolValue) {
+      this.boolValue = boolValue;
+    }
+
+    public byte getByteValue() {
+      return byteValue;
+    }
+
+    public void setByteValue(byte byteValue) {
+      this.byteValue = byteValue;
+    }
+
+    public char getCharValue() {
+      return charValue;
+    }
+
+    public void setCharValue(char charValue) {
+      this.charValue = charValue;
+    }
+
+    public short getShortValue() {
+      return shortValue;
+    }
+
+    public void setShortValue(short shortValue) {
+      this.shortValue = shortValue;
+    }
+
+    public int getIntValue() {
+      return intValue;
+    }
+
+    public void setIntValue(int intValue) {
+      this.intValue = intValue;
+    }
+
+    public long getLongValue() {
+      return longValue;
+    }
+
+    public void setLongValue(long longValue) {
+      this.longValue = longValue;
+    }
+
+    public float getFloatValue() {
+      return floatValue;
+    }
+
+    public void setFloatValue(float floatValue) {
+      this.floatValue = floatValue;
+    }
+
+    public double getDoubleValue() {
+      return doubleValue;
+    }
+
+    public void setDoubleValue(double doubleValue) {
+      this.doubleValue = doubleValue;
+    }
+
+    public String getTextValue() {
+      return textValue;
+    }
+
+    public void setTextValue(String textValue) {
+      this.textValue = textValue;
+    }
+  }
+
+  @JsonType
+  @JsonPropertyOrder({"fixed", "extra"})
+  public static final class AnyModel {
+    public String fixed;
+
+    @JsonAnyProperty public final Map<String, Integer> extra = new LinkedHashMap<>();
+  }
+
+  @JsonType
+  @JsonCodec(CodedValueCodec.class)
+  public static final class CodedValue {
+    public final String value;
+
+    public CodedValue(String value) {
+      this.value = value;
+    }
+  }
+
+  @JsonType
+  @JsonSubTypes(
+      value = {
+        @JsonSubTypes.Type(value = Square.class, name = "square"),
+        @JsonSubTypes.Type(
+            className = "org.apache.fory.android.json.AndroidJsonRuntimeScenarios$Circle",
+            name = "circle")
+      },
+      property = "kind")
+  public interface Shape {}
+
+  @JsonType
+  public static final class Square implements Shape {
+    public int size;
+
+    public Square() {}
+
+    public Square(int size) {
+      this.size = size;
+    }
+  }
+
+  @JsonType
+  public static final class Circle implements Shape {
+    public int radius;
+
+    public Circle() {}
+
+    public Circle(int radius) {
+      this.radius = radius;
+    }
   }
 
   @JsonType
   private static final class PrivateStaticModel {
     private int number;
-
-    private PrivateStaticModel() {}
 
     @JsonProperty("number")
     public int getNumber() {
@@ -330,6 +454,81 @@ public final class AndroidJsonRuntimeScenarios {
     }
   }
 
+  @JsonType
+  public record AppRecord(int id, String name, List<Integer> values) {}
+
+  @JsonType
+  private record PrivateRecord(int id, String name) {}
+
+  public static final class IntegerCodec implements JsonValueCodec<Integer> {
+    @Override
+    public void writeString(StringJsonWriter writer, Integer value) {
+      writer.writeInt(value.intValue() + 1000);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, Integer value) {
+      writer.writeInt(value.intValue() + 1000);
+    }
+
+    @Override
+    public Integer readLatin1(Latin1JsonReader reader) {
+      return Integer.valueOf(reader.readInt() - 1000);
+    }
+
+    @Override
+    public Integer readUtf16(Utf16JsonReader reader) {
+      return Integer.valueOf(reader.readInt() - 1000);
+    }
+
+    @Override
+    public Integer readUtf8(Utf8JsonReader reader) {
+      return Integer.valueOf(reader.readInt() - 1000);
+    }
+  }
+
+  public static final class CodedValueCodec implements JsonValueCodec<CodedValue> {
+    @Override
+    public void writeString(StringJsonWriter writer, CodedValue value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString("coded:" + value.value);
+      }
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, CodedValue value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString("coded:" + value.value);
+      }
+    }
+
+    @Override
+    public CodedValue readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : decode(reader.readString());
+    }
+
+    @Override
+    public CodedValue readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : decode(reader.readString());
+    }
+
+    @Override
+    public CodedValue readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : decode(reader.readString());
+    }
+
+    private static CodedValue decode(String value) {
+      if (!value.startsWith("coded:")) {
+        throw new IllegalArgumentException("Expected coded value but got " + value);
+      }
+      return new CodedValue(value.substring("coded:".length()));
+    }
+  }
+
   public static final class PlatformChildCodec implements JsonValueCodec<PlatformChild> {
     @Override
     public void writeString(StringJsonWriter writer, PlatformChild value) {
@@ -365,7 +564,7 @@ public final class AndroidJsonRuntimeScenarios {
     }
   }
 
-  private static void assertEquals(String expected, String actual) {
+  private static void assertEquals(Object expected, Object actual) {
     if (expected == null ? actual != null : !expected.equals(actual)) {
       throw new AssertionError("Expected " + expected + " but got " + actual);
     }

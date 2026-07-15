@@ -20,6 +20,7 @@
 package org.apache.fory.android;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.filters.SdkSuppress;
 import org.apache.fory.android.json.AndroidJsonRuntimeScenarios;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -67,8 +68,8 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
-  public void applicationJarAndAarModelsRoundTrip() {
-    AndroidJsonRuntimeScenarios.applicationJarAndAarModelsRoundTrip();
+  public void applicationModelsRoundTrip() {
+    AndroidJsonRuntimeScenarios.applicationModelsRoundTrip();
   }
 
   @Test
@@ -82,13 +83,19 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
-  public void creatorAnyCodecAndSubtypesRoundTrip() {
-    AndroidJsonRuntimeScenarios.creatorAnyCodecAndSubtypesRoundTrip();
+  public void annotationsAndSubtypesRoundTrip() {
+    AndroidJsonRuntimeScenarios.annotationsAndSubtypesRoundTrip();
   }
 
   @Test
-  public void typeRefAndPrivateStaticTypeSurviveR8() {
-    AndroidJsonRuntimeScenarios.typeRefAndPrivateStaticTypeSurviveR8();
+  public void typeRefAndPrivateTypeSurviveR8() {
+    AndroidJsonRuntimeScenarios.typeRefAndPrivateTypeSurviveR8();
+  }
+
+  @Test
+  @SdkSuppress(minSdkVersion = 34)
+  public void recordsRoundTrip() {
+    AndroidJsonRuntimeScenarios.recordsRoundTrip();
   }
 
   @Test

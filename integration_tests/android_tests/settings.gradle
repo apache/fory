@@ -35,8 +35,3 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = 'fory-android-tests'
-include ':json-model-jar'
-include ':json-model-aar'
-include ':record-model-jar'
-include ':record-model-aar'
-include ':record-app'

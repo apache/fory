@@ -18,7 +18,7 @@ Non-Android JVM metadata discovery, runtime code generation, asynchronous compil
 
 Current Fory JSON object support discovers Java structure and annotations at runtime. That model is not complete on Android because R8 can remove or rename members and because Android reflection does not provide every Java annotation/type API used by the JVM implementation. Two current guards explicitly disable `@JsonCodec` discovery on Android: declaration discovery in `JsonSharedRegistry` and type-use discovery in `JsonTypeUse`. Runtime JSON code generation is also unsuitable for Android, even though `ForyJsonBuilder` enables it by default.
 
-Fory Core already establishes the correct Android direction: annotation processing, deterministic generated-class lookup, Android-safe type metadata, precise generated consumer rules, and typed field access. Fory JSON must extend those patterns without creating a second property model or freezing builder-dependent decisions at compilation time.
+Fory Core already establishes the correct Android direction: annotation processing, deterministic generated-class lookup, Android-safe type metadata, precise generated R8 rules, and typed field access. Fory JSON must extend those patterns without creating a second property model or freezing builder-dependent decisions at compilation time.
 
 ## Goals
 
@@ -85,23 +85,10 @@ The metadata requirement also applies to application/user-library enums and subc
 
 ### Build configuration
 
-Android Java users apply the Fory JSON Gradle plugin to every Android application and Android
-library module and add matching versions of the runtime and processor:
+Android Java users add matching versions of the runtime and processor to every module that compiles
+Android JSON models:
 
 ```gradle
-buildscript {
-  repositories {
-    google()
-    mavenCentral()
-  }
-  dependencies {
-    classpath "org.apache.fory:fory-json-gradle-plugin:<version>"
-  }
-}
-
-apply plugin: "com.android.application" // Or com.android.library.
-apply plugin: "org.apache.fory.json"
-
 dependencies {
   implementation("org.apache.fory:fory-json:<version>")
   annotationProcessor("org.apache.fory:fory-annotation-processor:<version>")
@@ -109,23 +96,16 @@ dependencies {
 ```
 
 The processor has a compile dependency on `fory-json`; neither `fory-json` nor the processor owns an
-Android variant. The `fory-json-gradle-plugin` module owns only Android build integration and uses
-public Android Gradle Plugin APIs. A version mismatch is diagnosed by the generated ABI check at
-runtime and should also be prevented by dependency-management tests.
+Android variant. A version mismatch is diagnosed by the generated ABI check at runtime and should
+also be prevented by dependency-management tests.
 
 No application ProGuard file is required for annotated types. The processor writes one exact
-per-type rule carrier under `META-INF/fory-json/r8/`. Android Gradle Plugin does not preserve or
-consume annotation-processor `CLASS_OUTPUT` resources as final R8 rules for every Android ownership
-path, so the Gradle plugin is required. For an application variant, it scans the public
-`ScopedArtifacts.Scope.ALL` class graph and adds one canonical merged file to the variant's public
-ProGuard inputs. This includes application classes, same-build Android-library classes, and JAR
-dependencies. For an Android library variant, it transforms the public AAR artifact, removes the
-private carriers from `classes.jar`, and appends their exact contents to the standard root
-`proguard.txt` consumer rules. A Java library keeps carriers in its JAR until a consuming Android
-application collects them. The application-module, Java-library JAR, same-build Android-library,
-and published AAR paths are release-build acceptance fixtures. This follows Android's
-[library optimization guidance](https://developer.android.com/topic/performance/app-optimization/library-optimization)
-and is verified using
+per-type R8 resource under `META-INF/com.android.tools/r8/<unique-name>.pro`. This is R8's standard
+embedded-rule location. Android R8 consumes these resources directly from ordinary application,
+JAR, and AAR class inputs, so Fory does not need a Gradle plugin, variant integration, artifact
+rewriting, or a second rule-publication format. The resource name is deterministic and unique to the
+generated companion so independently compiled model types cannot overwrite one another. This is
+verified using
 [R8 full mode](https://developer.android.com/topic/performance/app-optimization/full-mode).
 
 ## Ownership Model
@@ -143,8 +123,7 @@ and is verified using
 | Source-inaccessible field | Existing Fory Core typed `FieldAccessor` through `JsonFieldAccessor` | Resolves the field once and invokes cached typed API 26 method handles.                            |
 | Inaccessible methods      | Existing JSON accessor and Any owners                                | Resolve exact members once and invoke cached fixed-shape API 26 method handles.                    |
 | Inaccessible construction | Core `ObjectInstantiators` and JSON `JsonCreatorInvoker`             | Cache the exact `Constructor` or creator `Method` and reuse owner-supplied argument arrays.        |
-| R8 rule text              | `ForyJsonProcessor`                                                  | Emits one exact per-type carrier without knowing an Android variant.                               |
-| Android R8 publication    | `fory-json-gradle-plugin`                                            | Collects application rules and publishes standard AAR consumer rules through public variant APIs.  |
+| R8 rule resource          | `ForyJsonProcessor`                                                  | Emits one exact standard `META-INF/com.android.tools/r8/*.pro` resource per type.                  |
 | R8 retention              | Per-type exact generated rule                                        | Retains only convention names, cold-resolved members, constructors, and inaccessible type tokens.  |
 
 There is one semantic pipeline. JVM reflection and Android generated metadata are two cold input collectors for the same `ObjectCodecBuilder` normalization and codec construction. They are not separate JSON implementations.
@@ -155,7 +134,7 @@ There is one semantic pipeline. JVM reflection and Android generated metadata ar
 
 Extend `fory-annotation-processor` with an independent `ForyJsonProcessor`. Do not add JSON behavior to `ForyStructProcessor`: the two annotations have different generated ABIs, reachability rules, and diagnostics. Both processors may share a narrowly extracted source type-use scanner.
 
-Add `ForyJsonProcessor` to `META-INF/services/javax.annotation.processing.Processor`. Register it independently in `META-INF/gradle/incremental.annotation.processors` as `aggregating`. One annotated declaration still produces one source file and one exact R8-rule carrier with that declaration as an originating element, and the processor emits no global registry or aggregate resource. Aggregating classification is required because a closed companion embeds declarations, and for default-object types also members, generic declarations, and annotations from unannotated ancestors; a private or annotation-only ancestor change might not otherwise recompile the annotated child.
+Add `ForyJsonProcessor` to `META-INF/services/javax.annotation.processing.Processor`. Register it independently in `META-INF/gradle/incremental.annotation.processors` as `aggregating`. One annotated declaration still produces one source file and one exact standard R8-rule resource with that declaration as an originating element, and the processor emits no global registry or aggregate resource. Aggregating classification is required because a closed companion embeds declarations, and for default-object types also members, generic declarations, and annotations from unannotated ancestors; a private or annotation-only ancestor change might not otherwise recompile the annotated child.
 
 The existing type-use extraction logic used by `ForyStructProcessor` is the starting point, including the javac tree fallback needed to retain nested Java 8 type-use annotations. The shared scanner must remain annotation-processing-only and must not leak compiler types into `fory-json`.
 
@@ -171,7 +150,7 @@ For each `@JsonType` declaration, the processor performs these steps:
 4. For such a type, extract fields, public getters/setters, Any members, creators, record components, property order, and all related annotations.
 5. Extract complete generic source types and nested type-use `@JsonCodec` occurrences for fields, method returns, method parameters, constructor parameters, and record components.
 6. Validate facts that are invalid under every builder configuration, including invalid annotation targets, inaccessible codec constructors, conflicts inside one declared type tree, and unsupported declaration forms. Cross-member field/getter/setter conflicts remain runtime validation after the active builder selects its member model.
-7. Generate the metadata companion and its precise R8 rule carrier.
+7. Generate the metadata companion and its precise standard R8 rule resource.
 
 If a referenced source type is still incomplete in the current round, processing is deferred to a later round. An unresolved required symbol in the final round is a compilation error, not partially generated metadata.
 
@@ -384,7 +363,7 @@ Android: generated collectors ──┘
 
 Only a request that has passed exact/type-use/declaration/subtype/built-in resolution can load the inert default-object section. `ObjectCodecBuilder` first receives structural field, method, creator, Any, order, and type-use facts. It applies field/JavaBean mode, directional ignores, annotation merging, and read/write availability before resolving selected type/operation indexes. Its current merge and validation methods remain the sole implementation. Do not introduce a generic metadata-source policy interface if two direct cold entry methods are sufficient.
 
-Default object mapping has one deterministic Android platform boundary. Before selecting inherited object members, the Android collector rejects a generated hierarchy containing a non-terminal superclass loaded by the same loader as `Object`, other than `Object` or, in the record profile, `Record`. Android's boot loader is not required to be represented by `null`, while Android SDK/core-library stubs do not expose authoritative private platform state; comparing loader identity detects the platform owner without a package-name heuristic. The JVM owner uses `getDeclaredFields()` for every superclass, so silently accepting such a hierarchy would publish a partial schema. Exact builder, exact type-use, or declaration codecs still resolve before the object section and therefore bypass this check. The failure names the platform ancestor and requires a complete codec.
+Default object mapping has one deterministic Android platform boundary. Before selecting inherited object members, the Android collector rejects a generated hierarchy containing a non-terminal superclass loaded by the same loader as `Object`, other than `Object` or the terminal `Record` superclass of an API 34 record. Android's boot loader is not required to be represented by `null`, while Android SDK/core-library stubs do not expose authoritative private platform state; comparing loader identity detects the platform owner without a package-name heuristic. The JVM owner uses `getDeclaredFields()` for every superclass, so silently accepting such a hierarchy would publish a partial schema. Exact builder, exact type-use, or declaration codecs still resolve before the object section and therefore bypass this check. The failure names the platform ancestor and requires a complete codec.
 
 The existing private `FieldBuilder` currently stores `Field`, `Method`, `AnnotatedElement`, and annotation proxy objects. It must be refactored so its semantic state is annotation values, resolved type nodes, source descriptions, and selected accessors. The JVM collector continues to attach optional reflection members needed by JVM runtime code generation; the Android collector attaches generated accessors/invokers and never synthesizes a `Method` or a `Field` for directly accessed members. Two collector-specific overloads populate the same `FieldBuilder` and call the same merge/validation functions. Do not allocate a generic candidate wrapper per reflected JVM member merely to make the two collectors look identical.
 
@@ -494,22 +473,15 @@ Processor validation handles source-invariant errors early. Builder-dependent co
 ## R8 Full-mode Contract
 
 For each companion, the processor emits
-`META-INF/fory-json/r8/fory-json-generated-<escaped-name>.pro`. Rules are precise and derived from
-the generated access mode. This path is a private carrier ABI between the processor and the Gradle
-plugin; it is not an Android Gradle Plugin consumer-rule location and must not leak into a published
-AAR or final APK.
+`META-INF/com.android.tools/r8/fory-json-generated-<escaped-name>.pro`. Rules are precise and
+derived from the generated access mode. Each resource name is deterministic and unique to its
+generated companion. R8 consumes this standard resource directly from application class output and
+from ordinary JAR and AAR class inputs. Fory owns no Android variant task, rule merger, or artifact
+transform, and it requires no Fory-specific Gradle plugin.
 
-The application task rejects malformed, non-UTF-8, broad, or duplicate logical carriers, sorts by
-logical resource name, and writes a canonical rule file without per-build nondeterminism. It scans
-the complete variant class scope, adds that file directly to the variant's R8 inputs, and excludes
-`META-INF/fory-json/r8/**` through the variant's public packaging-resources API so carriers from the
-application and dependencies cannot enter an APK or Android App Bundle. The library task applies the
-same validation, preserves existing `proguard.txt` bytes as the prefix, appends the canonical
-generated rules, removes carrier entries from `classes.jar`, and writes a deterministic AAR. If a
-library has no carriers, the AAR bytes remain unchanged. Plugin application order relative to
-`com.android.application` or `com.android.library` does not affect configuration. Applying the
-plugin without exactly one supported Android plugin, or with Android Gradle Plugin earlier than 8.0,
-is an actionable build error.
+The processor validates every generated rule before writing the resource. Independently compiled
+types remain independent resources, so no global rule index or build-order-sensitive aggregation is
+required. R8 owns normal resource discovery and rule application for the final Android build.
 
 ### Convention lookup
 
@@ -561,13 +533,13 @@ The base Android contract is Android Gradle Plugin 8.0 or later, R8 full mode, J
 
 API 26 defines two source-inaccessible member shapes. Core fields and Fory JSON getter/setter/Any owners cache exact adapted method handles. Core construction owners and Fory JSON creator owners cache the exact `Constructor` or `Method` and consume owner-supplied fixed argument arrays. Generated direct calls remain preferable, and no second access abstraction is introduced.
 
-Java records are not part of the API 26 platform contract. Record support is a separate product profile requiring Android Gradle Plugin 8.2 or later, Java 17 source/target compatibility, and minSdk 34 or later; it does not rely on record desugaring. AGP 8.2 introduced native record dexing for min-api 34 and later, and `java.lang.Record` is an API 34 class, as documented in the [AGP 8.2 release notes](https://developer.android.com/build/releases/agp-8-2-0-release-notes) and [Android Java version guidance](https://developer.android.com/build/jdks). The processor's Java 8-compatible record adapter emits record metadata whenever the host compiler exposes a record declaration, because a Java annotation processor does not own or reliably receive the Android minSdk. The Java guide and Gradle fixtures enforce the platform profile. A minSdk 26 fixture containing a record is a required negative build test, and record execution is tested on API 34+. No record class is loaded in API 26 tests.
+Java records are not part of the API 26 platform contract. Record model execution requires Android API 34 or later, Android Gradle Plugin 8.2 or later, and Java 17 source/target compatibility. The application can keep minSdk 26 when all record paths are API-gated. AGP 8.2 introduced native record dexing for min-api 34 and later, and `java.lang.Record` is an API 34 class, as documented in the [AGP 8.2 release notes](https://developer.android.com/build/releases/agp-8-2-0-release-notes) and [Android Java version guidance](https://developer.android.com/build/jdks). The processor's Java 8-compatible record adapter emits record metadata whenever the host compiler exposes a record declaration, because a Java annotation processor does not own or reliably receive the Android minSdk. The existing Android integration application gates record tests so API 26 runs never load a record class and API 34 or later runs exercise record metadata in that same application.
 
 ## Errors and Security
 
 All failures occur on the cold resolution path and throw `ForyJsonException` with the target type and corrective action:
 
-- missing companion: name the type, require `@JsonType`, the annotation processor and Gradle plugin, matching versions, and intact generated R8 rules;
+- missing companion: name the type, require `@JsonType`, the annotation processor, matching runtime and processor versions, and intact generated R8 rules;
 - ABI mismatch: report runtime and generated versions and require recompilation;
 - wrong companion target: report both classes;
 - missing cold-resolved member or inaccessible type token: identify the declaring class, member/type, generated companion, and likely processor/R8 defect;
@@ -616,16 +588,15 @@ On Android, measure field-backed and JavaBean-backed models in release-minified 
 - Cover fields, public getters/setters, source-inaccessible fields/signatures/ancestors, creators, Any setters, and record components. Include private nested raw types, nested generic arguments, bounds, literal subtype values, and public methods whose signatures expose them.
 - Assert a normal mutable source field generates one accessor subclass and one singleton whose shared operation index serves both valid directions; ignored/final directions do not create another class. Getter and setter methods retain distinct indexes.
 - Generate a direct canonical-constructor instantiator for a fully source-nameable record and select Core's cached exact-constructor instantiator for a private static record or inaccessible canonical signature; reject a codec enclosed by any non-public declaration.
-- Validate deterministic escaped names, permanent bootstrap/transport/thunk ABI constants, independently lazy sections, indexed direct-type switches, operation-owned singletons, originating elements, aggregating processor metadata, and one exact R8 rule carrier per type.
+- Validate deterministic escaped names, permanent bootstrap/transport/thunk ABI constants, independently lazy sections, indexed direct-type switches, operation-owned singletons, originating elements, aggregating processor metadata, and one exact standard R8 rule resource per type.
 - Compile a large stress hierarchy with javac and process it with minimum/current D8 and R8 to prove deterministic switch chunks/fact holders stay within method-bytecode, constant-pool, field, and reference budgets; record generated class count, DEX type count, and APK size, and prove the decoder never concatenates chunks.
 - Reject local, anonymous, a non-static annotated member, invalid creator, invalid codec constructor, and source-invariant type-use conflicts; accept private static targets, private enclosing chains, and a static target inside a non-static enclosing class on Java 17.
 - Reject every invalid or R8-active subtype class-name form before writing a rule, including wildcards, comments, braces, commas, whitespace, descriptors, arrays, empty segments, directive text, `void`, and each primitive name; accept legal Unicode and `$` binary names and revalidate them at runtime.
 - Cover raw class variables, recursive bounds, and generic bean-method variables with and without `@JsonCodec`; assert JVM/Android unresolved-variable parity.
 - Prove declaration-only enum/interface/abstract/built-in-family companions neither emit nor initialize a default-object section. Compile concrete hierarchies against Android-like boot stubs that omit private fields; verify the generated superclass facts drive the runtime default-object rejection, while exact/type-use/declaration codec variants never request that object section.
 - Load the processor and compile ordinary Java 8 models on its minimum JDK; compile record models under JDK 17+ through the version-neutral record adapter.
-- Inspect generated R8 rules for exact members and inaccessible type tokens, empty-member `TypeRef` signature endpoints, the private `META-INF/fory-json/r8/` carrier location, and absence of broad keeps or accidental constructor/member constraints.
-- Exercise the Gradle plugin with both plugin application orders. Verify application, same-build AAR, Java-library JAR, and published AAR paths; deterministic and cacheable task output; exact existing-consumer-rule prefix preservation; malformed and duplicate carrier rejection; and absence of carriers in published AARs and final APKs.
-- Run Gradle TestKit and Android multi-module incremental cases for editing one annotated type, removing `@JsonType`, deleting/renaming a type, changing a same-module superclass/interface, changing an upstream library ABI/annotation, and rebuilding an AAR. Assert aggregating invalidation reruns the processor when inherited facts can change, stale generated source/rules are deleted, and incremental output is byte-identical to a clean rebuild.
+- Inspect generated R8 rules for exact members and inaccessible type tokens, empty-member `TypeRef` signature endpoints, the standard `META-INF/com.android.tools/r8/*.pro` location, deterministic unique resource names, and absence of broad keeps or accidental constructor/member constraints.
+- Exercise incremental annotation processing for editing one annotated type, removing `@JsonType`, deleting or renaming a type, and changing its superclass or interface. Assert aggregating invalidation reruns the processor when inherited facts can change, stale generated source and rules are deleted, and incremental output is byte-identical to a clean rebuild.
 
 ### JVM Android-mode tests
 
@@ -644,31 +615,34 @@ Run subprocess tests with `FORY_ANDROID_ENABLED=1` to cover behavior that does n
 - target/companion loading through a child class loader while the builder's fixed subtype loader is different;
 - concurrent first use from every pooled `JsonState`.
 
-### Android instrumentation matrix
+### Android instrumentation
 
-GitHub CI exclusively owns release-minified fixture builds, R8 acceptance, emulator
-instrumentation, and Android benchmarks. Local R8 or device runs are not final acceptance evidence.
-CI retains the exact APK, Android App Bundle, mapping, seeds, usage, dependency, instrumentation,
-and benchmark artifacts for every matrix entry.
+GitHub CI exclusively owns release-minified R8 acceptance, emulator instrumentation, and Android
+benchmarks. Local R8 or device runs are not final acceptance evidence. The existing
+`integration_tests/android_tests` application is the single owner of Android integration coverage;
+Fory JSON extends that application instead of creating JSON-specific application, JAR, AAR, or
+record-test modules.
 
-GitHub CI builds real release-minified fixtures with R8 full mode and no application broad keep
-rules. Pin the complete non-record matrix to exactly AGP 8.0 and its bundled D8/R8 using JDK 17,
-and run the same non-record matrix on the current supported AGP/R8 toolchain. If the minimum
-toolchain cannot consume any required generated resource or optimization rule, raise the base
-declared minimum before release. On both base-profile toolchains, run:
+CI builds that application in release-minified R8 full mode with no broad application keep rules and
+runs its instrumentation on API 26 and the current Android API. The application exercises standard
+processor-generated `META-INF/com.android.tools/r8/*.pro` resources from its normal class inputs.
+It covers String and UTF-8 writers, OutputStream output, Latin1/UTF16/UTF-8 readers, field-backed and
+JavaBean models, creators, Any properties, generic and recursive models, private static nested
+models, custom codecs, subtypes, Android framework superclass rejection, exact-codec bypass, and
+Android codegen-option normalization.
 
-- API 26 and current API 36 for the complete non-record matrix;
-- application-owned annotated models and models supplied by independent Java-library JAR and Android-library AAR artifacts; inspect annotation-processor `CLASS_OUTPUT`, JAR carriers, published AAR consumer rules, the canonical variant rule file, the merged R8 configuration, and final APK to prove exact generated rules and the packaged Android `-assumevalues` rule were consumed and no private carrier leaked;
-- String and UTF-8 writers, OutputStream output, and Latin1, UTF16, and UTF-8 readers;
-- field-backed, JavaBean, creator-only, Any, generic, recursive, private-static-nested, custom-codec, and subtype models;
-- a default-object Android framework subclass that fails with the exact-codec diagnostic and complete-codec variants that bypass object metadata;
-- both default `withCodegen(true)` and explicit true/false combinations to prove Android normalization.
+Record sources and instrumentation remain in the same application but are gated by the API 34,
+Android Gradle Plugin 8.2, JDK 17, and Java 17 requirements. API 26 execution does not load record
+classes. The API 34 or later run covers direct and inaccessible canonical constructors without a
+second build topology.
 
-Build the record profile separately on exactly AGP 8.2 with its bundled D8/R8 and on the current supported toolchain. Run the record corpus on API 34 or later for application-, JAR-, and AAR-owned models, and repeat the generated-rule, merged-configuration, final-APK, semantic parity, and inaccessible-canonical-constructor checks. AGP 8.0 is not a record acceptance fixture.
+For the same corpus and builder settings, compare Android minified, JVM interpreted, and JVM
+generated outputs byte-for-byte, including property order. Each implementation must read the String
+and UTF-8 output produced by the others. The parity coverage includes field mode,
+LOWER_CAMEL_CASE/SNAKE_CASE naming, null inclusion, property order, Any properties, and every subtype
+inclusion mode.
 
-For the same corpus and builder settings, compare Android minified, JVM interpreted, and JVM generated outputs byte-for-byte, including property order. Each implementation must read the String and UTF-8 output produced by the other implementations. The parity matrix includes field mode, LOWER_CAMEL_CASE/SNAKE_CASE naming, null inclusion, property order, Any properties, and every subtype inclusion mode.
-
-Inspect the minified APK, R8 mapping, seeds, and usage outputs to prove:
+Inspect the minified APK and R8 configuration, mapping, and usage outputs to prove:
 
 - companion convention names survive;
 - a private target referenced only by its generated binary-name constant survives, while its unrelated fields, methods, and constructors are not retained by the class-root rule;
@@ -692,7 +666,7 @@ Run the existing Fory JSON test suite, especially codec annotation/hierarchy, ty
 ### Performance and allocation tests
 
 - Benchmark current JVM generated and interpreted paths against `apache/main` according to repository performance rules.
-- Use an AndroidX Benchmark instrumentation harness in the release-minified/full-mode fixture on API 26 and the current API. Record device/emulator image, AGP/R8 version, commit, warmup, iterations, raw output, and retained medians.
+- Use an AndroidX Benchmark instrumentation harness in the existing release-minified/full-mode Android integration application on API 26 and the current API. Record device/emulator image, AGP/R8 version, commit, warmup, iterations, raw output, and retained medians.
 - Benchmark primitive field, all eight primitive bean getter/setter kinds, reference bean getter/setter, source-inaccessible typed field, inaccessible-target/signature getter/setter/Any/creator, direct no-argument construction, private no-argument construction, creator, and Any setter after warmup.
 - Use ART allocation counters around the measured region and a control benchmark to attribute events. Exclude `ForyJson` and codec construction from steady-state measurement. Generated and method-handle access must add no allocation; cached executable construction may allocate only the result object and must reuse its owner-supplied argument array.
 - Assert both directions of one mutable direct field use the same generated accessor identity, and both selected directions of one inaccessible field use the same Core-backed accessor identity and handle set.
@@ -700,9 +674,9 @@ Run the existing Fory JSON test suite, especially codec annotation/hierarchy, ty
 
 ## User-visible Changes and Migration
 
-- Android Java object models add `@JsonType`, configure the matching annotation processor, and apply the matching Gradle plugin to every Android application and Android library. Every declaration-owned codec/subtype root and every runtime object subtype follows the closed reachable-type rule.
+- Android Java object models add `@JsonType` and configure the matching annotation processor in every module that compiles those models. Every declaration-owned codec/subtype root and every runtime object subtype follows the closed reachable-type rule.
 - `@JsonType` is also a precise R8 retention declaration. Users annotate only model types that can participate in Fory JSON; no package-wide keep file is added.
-- The supported base build profile is Android Gradle Plugin 8.0 or later with R8 full mode and minSdk 26; exact generated rules work for application, JAR, same-build AAR, and published AAR-owned models.
+- The supported base build profile is Android Gradle Plugin 8.0 or later with R8 full mode and minSdk 26. The processor emits standard `META-INF/com.android.tools/r8/*.pro` resources, and Android R8 consumes them from ordinary application, JAR, and AAR class inputs without Fory-specific build integration.
 - A model extending a non-terminal Android boot/platform superclass needs a complete codec; default object metadata never guesses private state omitted from SDK stubs.
 - Android accepts codegen/async builder options but normalizes both off. The interpreted codec still honors every semantic builder option.
 - Android builds remove any manual external-Janino exclusion after Core publishes Janino as optional.
@@ -710,22 +684,21 @@ Run the existing Fory JSON test suite, especially codec annotation/hierarchy, ty
 - Android metadata preserves the JVM collector's existing candidate ordering. Users who require an
   explicit byte order declare it with `@JsonPropertyOrder`.
 - Libraries compiled with an older generated ABI must be rebuilt with the same Fory runtime/processor version; no compatibility shim is retained.
-- Records require the separate API 34/AGP 8.2/Java 17 profile. All other supported Java model features retain the API 26 baseline.
+- Records require API 34, Android Gradle Plugin 8.2, and Java 17. They remain gated cases in the existing Android integration application; all other supported Java model features retain the API 26 baseline.
 
 ## Implementation Surface and Sequence
 
 Implementation is complete only when all phases land together. Intermediate branches may be used for review, but no partial public Android claim is published.
 
 1. Add `@JsonType`, the permanent inert-section plus indexed type/operation ABI, deterministic naming, candidate-selective metadata decoding, and `JsonTypeMetadataRegistry` to `fory-json`.
-2. Extract the narrow source type-use and record-model adapters and add `ForyJsonProcessor`, service registration, aggregating metadata, generated companions, accessors/invokers, and exact R8 rule carriers to `fory-annotation-processor`.
+2. Extract the narrow source type-use and record-model adapters and add `ForyJsonProcessor`, service registration, aggregating metadata, generated companions, accessors/invokers, and exact standard R8 rule resources to `fory-annotation-processor`.
 3. Add the Android cold collector to `ObjectCodecBuilder`; route declaration codec and subtype lookups through generated metadata; preserve the single normalization pipeline.
 4. Extend Core's Android field owner and the existing JSON getter/setter/Any owners with fixed-shape API 26 method handles. Give Core construction and JSON creator owners cached exact executables with static or caller-owned fixed argument arrays; remove every allocating generic method-handle construction shape and duplicate reflection wrapper.
 5. Normalize Android codegen/async at registry construction, eliminate per-state disabled-JIT allocation, and put the codegen-null return before all capability map/callback work.
 6. Fix published dependency packaging so Android does not require manual Janino exclusions and add static APK/linkage checks.
-7. Add the first-class Gradle plugin with public variant wiring, exact carrier validation, canonical application rules, and deterministic standard AAR consumer-rule publication.
-8. Add processor, JVM forced-mode, release-minified API 26/36, API 34+ record, application/JAR/AAR rule-publication, semantic parity, allocation, and performance coverage.
-9. Update the Java JSON user guide with `@JsonType`, Gradle setup, reachable-type rules, exact-codec escape hatch, API levels, and R8 behavior.
-10. Remove obsolete Android annotation-disable branches, replaced boxed/reflection access paths, stale tests, and any documentation that says Fory JSON is unsupported on Android.
+7. Extend the existing Android integration application with release-minified API 26/current coverage, gated API 34+ record cases, semantic parity, allocation, and performance coverage.
+8. Update the Java JSON user guide with `@JsonType`, dependency setup, reachable-type rules, exact-codec escape hatch, API levels, and R8 behavior.
+9. Remove obsolete Android annotation-disable branches, replaced boxed/reflection access paths, stale tests, and any documentation that says Fory JSON is unsupported on Android.
 
 Likely owning files and packages are:
 
@@ -736,8 +709,7 @@ Likely owning files and packages are:
 - Core's existing `InstanceFieldAccessors` and `ObjectInstantiators` Android implementations;
 - `java/fory-annotation-processor/.../ForyJsonProcessor.java` and shared source scanning/generation helpers;
 - processor service and Gradle incremental metadata resources;
-- `java/fory-json-gradle-plugin` application collection and AAR publication tasks;
-- Android integration fixtures and the Java JSON guide.
+- the existing `integration_tests/android_tests` application and the Java JSON guide.
 
 Exact class decomposition must remain minimal during implementation. Compact immutable metadata value types are justified by distinct data shapes; manager, policy, session, plan, adapter, or parallel codec layers are not.
 
@@ -783,7 +755,7 @@ serializer model:
 - [`JsonTypeUse`](../../java/fory-json/src/main/java/org/apache/fory/json/meta/JsonTypeUse.java), [`JsonFieldAccessor`](../../java/fory-json/src/main/java/org/apache/fory/json/meta/JsonFieldAccessor.java), and [`JsonCreatorInfo`](../../java/fory-json/src/main/java/org/apache/fory/json/meta/JsonCreatorInfo.java) consume generated type-use, member-access, and creator facts on Android while retaining the JVM path.
 - [`ObjectCodec.AnyInfo`](../../java/fory-json/src/main/java/org/apache/fory/json/codec/ObjectCodec.java) is the current runtime owner for flattened Any access.
 - Core's [`InstanceFieldAccessors`](../../java/fory-core/src/main/java/org/apache/fory/reflect/InstanceFieldAccessors.java), [`ObjectInstantiators`](../../java/fory-core/src/main/java/org/apache/fory/reflect/ObjectInstantiators.java), and [`StaticGeneratedSerializerRegistry`](../../java/fory-core/src/main/java/org/apache/fory/resolver/StaticGeneratedSerializerRegistry.java) establish the cold-selection, construction, and deterministic-provider patterns.
-- [`ForyStructProcessor`](../../java/fory-annotation-processor/src/main/java/org/apache/fory/annotation/processing/ForyStructProcessor.java) and [`SourceTypeNode`](../../java/fory-annotation-processor/src/main/java/org/apache/fory/annotation/processing/SourceTypeNode.java) establish processor naming, consumer-rule, and Android-safe type-tree patterns that JSON extends without reusing an insufficient type model.
+- [`ForyStructProcessor`](../../java/fory-annotation-processor/src/main/java/org/apache/fory/annotation/processing/ForyStructProcessor.java) and [`SourceTypeNode`](../../java/fory-annotation-processor/src/main/java/org/apache/fory/annotation/processing/SourceTypeNode.java) establish processor naming, generated-rule, and Android-safe type-tree patterns that JSON extends without reusing an insufficient type model.
 
 ## Completion Criteria
 
@@ -792,7 +764,7 @@ Fory JSON Android support is complete only when all of the following are true:
 - `@JsonType` Java models serialize and deserialize with every supported builder configuration on API 26 and current Android.
 - Declaration and nested type-use `@JsonCodec` behavior matches JVM precedence and validation after R8 full-mode minification.
 - Source-accessible fields/methods/constructors use generated direct calls; inaccessible field/getter/setter/Any access uses one cold-resolved typed method handle, and inaccessible construction/creators use one cached exact executable in their existing owner.
-- Real R8 release builds require no broad application keep rules and work for application-, Java-library JAR-, and Android-library AAR-owned models.
+- Real R8 release builds require no broad application keep rules or Fory-specific Gradle plugin. R8 consumes the generated standard resources from ordinary application, Java-library JAR, and Android-library AAR class inputs.
 - Android default codegen settings never initialize or package a runtime compiler path.
 - Android codec hot loops contain no platform branch, JIT capability map lookup, metadata lookup, boxing primitive field access, or new per-property allocation. Cached `Constructor`/`Method` invocation appears only in source-inaccessible construction/creator owners and reuses fixed argument arrays without per-call carrier allocation.
 - The JVM path performs no generated-metadata lookup and stays within the repository's 1% regression threshold.

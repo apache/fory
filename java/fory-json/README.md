@@ -59,41 +59,29 @@ The JPMS module name of Fory JSON is `org.apache.fory.json`.
 
 ### Android
 
-Android API 26 and later uses build-time model metadata with the interpreted runtime codecs. Apply
-the matching Fory JSON Gradle plugin to every Android application and Android library module:
+Android API 26 and later uses build-time model metadata with the interpreted runtime codecs. Add
+the runtime and matching annotation processor to every module that compiles Android JSON models:
 
 ```gradle
-buildscript {
-  repositories {
-    google()
-    mavenCentral()
-  }
-  dependencies {
-    classpath "org.apache.fory:fory-json-gradle-plugin:1.4.0-SNAPSHOT"
-  }
-}
-
-apply plugin: "com.android.application" // Or com.android.library.
-apply plugin: "org.apache.fory.json"
-
 dependencies {
   implementation("org.apache.fory:fory-json:1.4.0-SNAPSHOT")
   annotationProcessor("org.apache.fory:fory-annotation-processor:1.4.0-SNAPSHOT")
 }
 ```
 
-Annotate each default-mapped model with `@JsonType` in the module that owns its source. A Java
-library JAR uses the runtime and processor dependencies without the Android plugin; the consuming
-Android application collects its exact generated rules. An Android library applies the plugin so
-its published AAR exposes standard consumer rules. The generated metadata supports R8 full-mode
-shrinking and obfuscation without a package-wide keep rule. It preserves private member access,
-generic and nested type-use metadata, creators, Any properties, subtype declarations, and
-`@JsonCodec`. Register an exact codec for a third-party type that cannot be annotated. Keep the
-plugin, runtime, and processor on the same version.
+Annotate each default-mapped model with `@JsonType` in the module that owns its source. The
+processor writes precise rules under the standard `META-INF/com.android.tools/r8/` resource
+directory, which R8 consumes from ordinary application, Java-library JAR, and Android-library AAR
+inputs. No Fory Gradle plugin or package-wide keep rule is required. Generated metadata preserves
+private member access, generic and nested type-use metadata, creators, Any properties, subtype
+declarations, and `@JsonCodec` through R8 full-mode shrinking and obfuscation. Register an exact
+codec for a third-party type that cannot be annotated. Keep the runtime and processor on the same
+version.
 
-The base Android profile requires Android Gradle Plugin 8.0 or later and `minSdk 26`. Record models
-require Android Gradle Plugin 8.2 or later, JDK 17, Java 17 source and target compatibility in each
-owning module, and `minSdk 34`. Records are not backported to Android API 26 through 33.
+The Android baseline requires Android Gradle Plugin 8.0 or later and `minSdk 26`. Record model paths
+require Android API 34 or later, Android Gradle Plugin 8.2 or later, JDK 17, and Java 17 source and
+target compatibility. An application that guards record paths by API level can keep `minSdk 26`;
+records are not supported on Android API 26 through 33.
 
 ## Quick start
 

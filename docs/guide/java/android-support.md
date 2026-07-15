@@ -49,23 +49,10 @@ shared builder configuration on Android and the JVM.
 ## Fory JSON
 
 Fory JSON supports Android API 26 and later, including release builds processed by R8 full mode.
-Add the Fory JSON Gradle plugin to every Android application and Android library module. Keep the
-plugin, runtime, and annotation processor on the same version:
+Add the runtime and matching annotation processor to every module that compiles Android JSON
+models:
 
 ```gradle
-buildscript {
-  repositories {
-    google()
-    mavenCentral()
-  }
-  dependencies {
-    classpath "org.apache.fory:fory-json-gradle-plugin:<version>"
-  }
-}
-
-apply plugin: "com.android.application" // Or com.android.library.
-apply plugin: "org.apache.fory.json"
-
 dependencies {
   implementation("org.apache.fory:fory-json:<version>")
   annotationProcessor("org.apache.fory:fory-annotation-processor:<version>")
@@ -90,28 +77,28 @@ obfuscation. This includes private fields, JavaBean properties, generic member t
 annotations. No application-wide keep rule is required.
 
 Annotate models in Java library JARs and Android library AARs in the module that owns their source.
-Java library modules need the runtime and processor dependencies, but do not apply the Android
-plugin. The consuming Android application collects the generated rules from JAR dependencies. An
-Android library applies the plugin so its published AAR exposes standard consumer rules. A
-third-party type that cannot be annotated needs an exact codec registered with
+The annotation processor writes precise R8 rules to standard
+`META-INF/com.android.tools/r8/*.pro` resources. Android R8 consumes those resources from ordinary
+application, JAR, and AAR class inputs, so Fory does not require a Gradle plugin or application-wide
+keep rules. A third-party type that cannot be annotated needs an exact codec registered with
 `ForyJsonBuilder.registerCodec`.
 
-Missing or mismatched generated metadata is an error. Do not disable annotation processing for
-model modules or omit the Fory JSON Gradle plugin from an Android application or Android library.
+Missing or mismatched generated metadata is an error. Do not disable annotation processing for a
+module that compiles Android JSON models.
 
 ### Java records
 
 Ordinary Fory JSON models support the Android API 26 baseline with Android Gradle Plugin 8.0 or
-later. Java record models require all of the following:
+later. An application can keep `minSdk 26` when it also contains Java record models, but every code
+path that loads or uses those models must run only on Android API 34 or later. Record models also
+require all of the following:
 
-- `minSdk 34` or later;
 - Android Gradle Plugin 8.2 or later;
 - JDK 17 for the Android build; and
-- Java 17 source and target compatibility in every application, Java-library, and Android-library
-  module that owns record models.
+- Java 17 source and target compatibility in the module that owns the record source.
 
-Fory does not backport records to API 26. Keep record models in an API 34 application profile, and
-use ordinary classes or `JsonCreator` models when the application must run on API 26 through 33.
+Fory does not backport record model execution to API 26 through 33. Use ordinary classes or
+`JsonCreator` models on those devices.
 
 ## Static Generated Serializers
 
