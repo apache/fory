@@ -25,6 +25,7 @@ import static org.apache.fory.codegen.ExpressionUtils.eq;
 import static org.apache.fory.codegen.ExpressionUtils.inline;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,9 @@ import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.codegen.ExpressionOptimizer;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.codec.JsonUnwrappedInfo;
+import org.apache.fory.json.codec.JsonUnwrappedInfo.Group;
+import org.apache.fory.json.codec.JsonUnwrappedInfo.WriteEntry;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
@@ -323,6 +327,147 @@ abstract class JsonWriterCodegen {
         "value");
 
     return ctx.genCode();
+  }
+
+  String genUnwrappedWriterCode(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      ObjectCodec<?> owner,
+      JsonUnwrappedInfo unwrapped) {
+    ownerType = type;
+    CodegenContext ctx = builder.context();
+    AnyInfo any = owner.anyInfo();
+    ctx.addImports(writerType(), ObjectCodec.class, Map.class);
+    ctx.implementsInterfaces(JsonCodegen.generatedCodecType(ctx, completeWriterType()));
+    List<JsonFieldInfo> leafList = new ArrayList<>();
+    collectUnwrappedWriteFields(unwrapped.writeEntries(), leafList);
+    JsonFieldInfo[] leaves = leafList.toArray(new JsonFieldInfo[0]);
+    IdentityHashMap<JsonFieldInfo, Integer> leafIndexes = new IdentityHashMap<>();
+    for (int i = 0; i < leaves.length; i++) {
+      leafIndexes.put(leaves[i], i);
+    }
+    PrefixFields prefixFields = new PrefixFields(leaves.length);
+    for (int i = 0; i < leaves.length; i++) {
+      if (usesPrefix(leaves[i])) {
+        prefixFields.name[i] = true;
+        prefixFields.comma[i] = true;
+      }
+    }
+    addWriterFields(ctx, leaves, prefixFields);
+    ctx.addField(ObjectCodec.class, "owner");
+    boolean writesAny = any != null && (any.writeField() != null || any.writeGetter() != null);
+    if (writesAny && any.writeGetter() != null) {
+      addAnyGetterMethod(ctx, type, any);
+    }
+    boolean storesAnyWriter = writesAny && storesAnyWriter(any);
+    if (storesAnyWriter) {
+      ctx.addField(JsonCodegen.generatedCodecType(ctx, completeWriterType()), "anyWriter");
+      addGeneratedConstructor(
+          ctx,
+          anyWriterConstructorExpression(leaves, prefixFields, true),
+          ObjectCodec.class,
+          "owner",
+          JsonFieldInfo[].class,
+          "properties",
+          JsonCodegen.generatedCodecArrayType(ctx, codecArrayType()),
+          "codecs",
+          JsonCodegen.generatedCodecType(ctx, completeWriterType()),
+          "anyWriter");
+    } else {
+      addGeneratedConstructor(
+          ctx,
+          anyWriterConstructorExpression(leaves, prefixFields, false),
+          ObjectCodec.class,
+          "owner",
+          JsonFieldInfo[].class,
+          "properties",
+          JsonCodegen.generatedCodecArrayType(ctx, codecArrayType()),
+          "codecs");
+    }
+    IdentityHashMap<Group, Integer> groupIndexes = new IdentityHashMap<>();
+    ctx.clearExprState();
+    Expression castObject =
+        inline(
+            new Expression.Cast(
+                new Reference("value", TypeRef.of(Object.class)), TypeRef.of(type)));
+    Expression object = new Expression.Variable("object", castObject);
+    Reference writer = writerRef();
+    Expression written = new Expression.Variable("written", Expression.Literal.ofInt(0));
+    Expression.ListExpression body =
+        new Expression.ListExpression(
+            object, new Expression.Invoke(writer, "writeObjectStart"), written);
+    addUnwrappedWriteEntries(
+        builder, body, unwrapped.writeEntries(), object, written, any, leafIndexes, groupIndexes);
+    body.add(new Expression.Invoke(writer, "writeObjectEnd"));
+    Code.ExprCode bodyCode = body.genCode(ctx);
+    String code = bodyCode.code();
+    code = code == null ? "" : ctx.optimizeMethodCode(code);
+    ctx.addMethod(
+        "@Override public final",
+        writeMethod(),
+        "if (value == null) {\n" + "  writer.writeNull();\n" + "  return;\n" + "}\n" + code,
+        void.class,
+        writerType(),
+        "writer",
+        Object.class,
+        "value");
+    return ctx.genCode();
+  }
+
+  private static void collectUnwrappedWriteFields(
+      WriteEntry[] entries, List<JsonFieldInfo> fields) {
+    for (WriteEntry entry : entries) {
+      if (entry.kind() == JsonUnwrappedInfo.DIRECT) {
+        fields.add(entry.field());
+      } else if (entry.kind() == JsonUnwrappedInfo.GROUP) {
+        collectUnwrappedWriteFields(entry.group().writeEntries(), fields);
+      }
+    }
+  }
+
+  private void addUnwrappedWriteEntries(
+      JsonGeneratedCodecBuilder builder,
+      Expression.ListExpression expressions,
+      WriteEntry[] entries,
+      Expression object,
+      Expression written,
+      AnyInfo any,
+      IdentityHashMap<JsonFieldInfo, Integer> leafIndexes,
+      IdentityHashMap<Group, Integer> groupIndexes) {
+    for (WriteEntry entry : entries) {
+      if (entry.kind() == JsonUnwrappedInfo.DIRECT) {
+        JsonFieldInfo field = entry.field();
+        int index = leafIndexes.get(field);
+        expressions.add(writeProp(builder, field, index, false, written, object, writerRef()));
+      } else if (entry.kind() == JsonUnwrappedInfo.ANY) {
+        expressions.add(new Expression.Assign(written, writeAny(builder, any, object, written)));
+      } else {
+        Group group = entry.group();
+        Integer existingIndex = groupIndexes.get(group);
+        int index;
+        if (existingIndex == null) {
+          index = groupIndexes.size();
+          groupIndexes.put(group, index);
+        } else {
+          index = existingIndex;
+        }
+        Class<?> childType = group.childCodec().type();
+        Expression child =
+            new Expression.Variable(
+                "unwrapped" + index,
+                cast(
+                    inline(builder.unwrappedValue(group.declaration(), object)),
+                    TypeRef.of(childType)));
+        Expression.ListExpression present = new Expression.ListExpression();
+        addUnwrappedWriteEntries(
+            builder, present, group.writeEntries(), child, written, any, leafIndexes, groupIndexes);
+        expressions.add(
+            new Expression.ListExpression(
+                child,
+                new Expression.If(
+                    ne(child, new Expression.Null(TypeRef.of(childType), false)), present)));
+      }
+    }
   }
 
   private void addAnyGetterMethod(CodegenContext ctx, Class<?> type, AnyInfo any) {

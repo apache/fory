@@ -30,6 +30,7 @@ import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.CollectionCodec;
+import org.apache.fory.json.codec.JsonUnwrappedInfo;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
@@ -37,6 +38,7 @@ import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
+import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
@@ -174,6 +176,12 @@ public final class JsonCodegen {
     String className = className(type, "StringWriter");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    JsonUnwrappedInfo unwrapped = codec.unwrappedInfo();
+    if (unwrapped != null) {
+      String code =
+          new StringWriterCodegen(this).genUnwrappedWriterCode(builder, type, codec, unwrapped);
+      return compileCodecClass(generatedPackage, className, code);
+    }
     AnyInfo any = codec.anyInfo();
     String code =
         any == null || any.writeField() == null && any.writeGetter() == null
@@ -189,6 +197,12 @@ public final class JsonCodegen {
     String className = className(type, "Utf8Writer");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    JsonUnwrappedInfo unwrapped = codec.unwrappedInfo();
+    if (unwrapped != null) {
+      String code =
+          new Utf8WriterCodegen(this).genUnwrappedWriterCode(builder, type, codec, unwrapped);
+      return compileCodecClass(generatedPackage, className, code);
+    }
     AnyInfo any = codec.anyInfo();
     String code =
         any == null || any.writeField() == null && any.writeGetter() == null
@@ -203,6 +217,12 @@ public final class JsonCodegen {
     String className = className(type, "Latin1Reader");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    JsonUnwrappedInfo unwrapped = codec.unwrappedInfo();
+    if (unwrapped != null) {
+      String code =
+          new Latin1ReaderCodegen(this).genUnwrappedReaderCode(builder, type, codec, unwrapped);
+      return compileCodecClass(generatedPackage, className, code);
+    }
     AnyInfo any = codec.anyInfo();
     String code =
         any == null || any.readField() == null && any.readSetter() == null
@@ -219,6 +239,12 @@ public final class JsonCodegen {
     String className = className(type, "Utf16Reader");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    JsonUnwrappedInfo unwrapped = codec.unwrappedInfo();
+    if (unwrapped != null) {
+      String code =
+          new Utf16ReaderCodegen(this).genUnwrappedReaderCode(builder, type, codec, unwrapped);
+      return compileCodecClass(generatedPackage, className, code);
+    }
     AnyInfo any = codec.anyInfo();
     String code =
         any == null || any.readField() == null && any.readSetter() == null
@@ -235,6 +261,12 @@ public final class JsonCodegen {
     String className = className(type, "Utf8Reader");
     JsonGeneratedCodecBuilder builder =
         new JsonGeneratedCodecBuilder(generatedPackage, className, type);
+    JsonUnwrappedInfo unwrapped = codec.unwrappedInfo();
+    if (unwrapped != null) {
+      String code =
+          new Utf8ReaderCodegen(this).genUnwrappedReaderCode(builder, type, codec, unwrapped);
+      return compileCodecClass(generatedPackage, className, code);
+    }
     AnyInfo any = codec.anyInfo();
     String code =
         any == null || any.readField() == null && any.readSetter() == null
@@ -260,6 +292,10 @@ public final class JsonCodegen {
     if (!canCompileType(codec.type())) {
       return false;
     }
+    JsonUnwrappedInfo unwrapped = codec.unwrappedInfo();
+    if (unwrapped != null) {
+      return canCompileUnwrappedWrite(codec, unwrapped.writeEntries());
+    }
     JsonFieldInfo[] properties = codec.writeFields();
     for (int i = 0; i < properties.length; i++) {
       if (!canCompileWrite(properties[i])) {
@@ -267,6 +303,29 @@ public final class JsonCodegen {
       }
     }
     AnyInfo any = codec.anyInfo();
+    return any == null || canCompileAnyWrite(any);
+  }
+
+  private boolean canCompileUnwrappedWrite(
+      ObjectCodec<?> owner, JsonUnwrappedInfo.WriteEntry[] entries) {
+    for (JsonUnwrappedInfo.WriteEntry entry : entries) {
+      if (entry.kind() == JsonUnwrappedInfo.DIRECT) {
+        if (!canCompileWrite(entry.field())) {
+          return false;
+        }
+      } else if (entry.kind() == JsonUnwrappedInfo.GROUP) {
+        JsonUnwrappedInfo.Declaration declaration = entry.group().declaration();
+        Method getter = declaration.writeAccessor().getter();
+        if (getter != null && !canCall(getter)) {
+          return false;
+        }
+        if (!isVisible(entry.group().childCodec().type())
+            || !canCompileUnwrappedWrite(owner, entry.group().writeEntries())) {
+          return false;
+        }
+      }
+    }
+    AnyInfo any = owner.anyInfo();
     return any == null || canCompileAnyWrite(any);
   }
 
@@ -283,6 +342,10 @@ public final class JsonCodegen {
         }
       }
     }
+    JsonUnwrappedInfo unwrapped = codec.unwrappedInfo();
+    if (unwrapped != null) {
+      return canCompileUnwrappedRead(codec, unwrapped);
+    }
     JsonFieldInfo[] properties = codec.readFields();
     for (int i = 0; i < properties.length; i++) {
       if (!canCompileRead(properties[i])) {
@@ -291,6 +354,45 @@ public final class JsonCodegen {
     }
     AnyInfo any = codec.anyInfo();
     return any == null || canCompileAnyRead(any, codec.creatorInfo() != null);
+  }
+
+  private boolean canCompileUnwrappedRead(ObjectCodec<?> owner, JsonUnwrappedInfo unwrapped) {
+    for (JsonFieldInfo field : owner.readFields()) {
+      if (!canCompileRead(field)) {
+        return false;
+      }
+    }
+    for (JsonUnwrappedInfo.Group group : unwrapped.groups()) {
+      JsonUnwrappedInfo.Declaration declaration = group.declaration();
+      Method setter =
+          declaration.readAccessor() == null ? null : declaration.readAccessor().setter();
+      if (setter != null && !canCall(setter)) {
+        return false;
+      }
+      if (!isVisible(group.childCodec().type())) {
+        return false;
+      }
+      JsonCreatorInfo creator = group.childCodec().creatorInfo();
+      if (creator != null) {
+        for (Class<?> parameterType : creator.executable().getParameterTypes()) {
+          if (!canCompileType(parameterType)) {
+            return false;
+          }
+        }
+      }
+    }
+    for (JsonUnwrappedInfo.ReadRoute route : unwrapped.readRoutes()) {
+      JsonFieldInfo field = route.field();
+      if (field != null && !canCompileRead(field)) {
+        return false;
+      }
+      JsonCreatorFieldInfo creatorField = route.creatorField();
+      if (creatorField != null && !canCompileType(creatorField.rawType())) {
+        return false;
+      }
+    }
+    AnyInfo any = owner.anyInfo();
+    return any == null || canCompileAnyRead(any, owner.creatorInfo() != null);
   }
 
   private boolean canCompileAnyWrite(AnyInfo any) {

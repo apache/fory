@@ -251,6 +251,26 @@ public final class JsonFieldInfo {
     return name;
   }
 
+  /** Returns parent-local metadata with a transformed JSON name and the same Java member owner. */
+  public JsonFieldInfo withName(String transformedName, TypeRef<?> ownerType) {
+    JsonFieldInfo copy =
+        new JsonFieldInfo(
+            transformedName,
+            writeNull(),
+            writeField,
+            writeGetter,
+            readField,
+            readSetter,
+            writeAccessor,
+            readAccessor,
+            ownerType,
+            codecAnnotation,
+            valueCodecClass,
+            writesRawString());
+    copy.setReadIndex(readIndex());
+    return copy;
+  }
+
   public long nameHash() {
     return nameHash;
   }

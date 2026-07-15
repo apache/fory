@@ -26,6 +26,7 @@ import java.lang.reflect.Method;
 import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
+import org.apache.fory.json.codec.JsonUnwrappedInfo.Declaration;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.Descriptor;
@@ -117,6 +118,19 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
     return getFieldValue(object, writeDescriptor(field));
   }
 
+  Expression unwrappedValue(Declaration declaration, Expression object) {
+    Method getter = declaration.writeAccessor().getter();
+    if (getter != null) {
+      return new Expression.Invoke(
+          object,
+          getter.getName(),
+          declaration.javaName(),
+          TypeRef.of(getter.getGenericReturnType()),
+          false);
+    }
+    return getFieldValue(object, writeDescriptor(declaration.writeAccessor().field()));
+  }
+
   Expression newObject() {
     return newBean();
   }
@@ -150,5 +164,22 @@ final class JsonGeneratedCodecBuilder extends CodecBuilder {
         object,
         readDescriptor(field),
         tryInlineCast(inline(value), TypeRef.of(field.getGenericType())));
+  }
+
+  Expression setUnwrapped(Declaration declaration, Expression object, Expression value) {
+    value = inline(value);
+    Method setter = declaration.readAccessor().setter();
+    if (setter != null) {
+      Class<?> rawType = setter.getParameterTypes()[0];
+      TypeRef<?> typeRef = TypeRef.of(setter.getGenericParameterTypes()[0]);
+      if (!rawType.isAssignableFrom(value.type().getRawType())) {
+        value = tryInlineCast(value, typeRef);
+      }
+      return new Expression.Invoke(object, setter.getName(), value);
+    }
+    return setFieldValue(
+        object,
+        readDescriptor(declaration.readAccessor().field()),
+        tryInlineCast(value, TypeRef.of(declaration.readAccessor().field().getGenericType())));
   }
 }

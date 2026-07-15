@@ -132,7 +132,8 @@ name that method explicitly.
 Android Fory JSON requires a retained no-argument constructor for an ordinary mutable class; it may
 be non-public when Android reflection can make it accessible. `JsonCreator` constructor-backed
 classes follow the normal creator rules instead. Retain every field and method used for reflection,
-or use an application codec when a model cannot satisfy those requirements.
+or use an application codec when a model cannot satisfy those requirements. `JsonUnwrapped`
+supports mutable and creator-backed classes through the same property and construction paths.
 
 Android-desugared Records require a direct `@JsonType` annotation and the annotation processor.
 Manual R8 rules alone cannot reconstruct Record component order because Android does not provide

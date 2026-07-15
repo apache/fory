@@ -66,6 +66,11 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
+  public void jsonUnwrappedReflection() {
+    AndroidJsonScenarios.unwrappedReflection();
+  }
+
+  @Test
   public void androidRuntimeDisablesCodegenAndUnsafeCopies() {
     AndroidForyRuntimeScenarios.androidRuntimeDisablesCodegenAndUnsafeCopies();
   }

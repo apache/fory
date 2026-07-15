@@ -47,6 +47,7 @@ import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonValue;
+import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -68,6 +69,7 @@ public final class ForyJsonExample {
     testSubtypes();
     testContainerRoots();
     testGenericProperties();
+    testUnwrapped();
     testBigDecimal();
     testSqlTypes();
     testClosedPackage();
@@ -260,6 +262,17 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(child.name.equals("generic"));
   }
 
+  private static void testUnwrapped() {
+    ForyJson json = ForyJson.builder().build();
+    UnwrappedModel value = new UnwrappedModel(14, new UnwrappedRecord("native", 15));
+    String encoded = json.toJson(value);
+    Preconditions.checkArgument(
+        encoded.equals("{\"id\":14,\"child_name\":\"native\",\"child_rank\":15}"));
+    UnwrappedModel decoded = json.fromJson(encoded, UnwrappedModel.class);
+    Preconditions.checkArgument(decoded.id == 14);
+    Preconditions.checkArgument(decoded.child.equals(new UnwrappedRecord("native", 15)));
+  }
+
   private static void testBigDecimal() {
     ForyJson json = ForyJson.builder().build();
     BigDecimalHolder value = new BigDecimalHolder();
@@ -414,6 +427,23 @@ public final class ForyJsonExample {
 
   @JsonType
   public record DataRecord(int id, String name) {}
+
+  @JsonType
+  public static final class UnwrappedModel {
+    public final int id;
+
+    @JsonUnwrapped(prefix = "child_")
+    public final UnwrappedRecord child;
+
+    @JsonCreator({"id", "child"})
+    public UnwrappedModel(int id, UnwrappedRecord child) {
+      this.id = id;
+      this.child = child;
+    }
+  }
+
+  @JsonType
+  public record UnwrappedRecord(String name, int rank) {}
 
   @JsonType
   public static final class CreatorValue {

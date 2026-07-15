@@ -314,6 +314,17 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
         rejectCollision(field.name(), field.nameHash(), property, hash, codec.type());
       }
     }
+    JsonUnwrappedInfo unwrapped = codec.unwrappedInfo();
+    if (unwrapped != null) {
+      for (String name : unwrapped.flattenedNames()) {
+        rejectCollision(
+            name,
+            org.apache.fory.json.meta.JsonFieldNameHash.hash(name),
+            property,
+            hash,
+            codec.type());
+      }
+    }
   }
 
   private static void rejectCollision(

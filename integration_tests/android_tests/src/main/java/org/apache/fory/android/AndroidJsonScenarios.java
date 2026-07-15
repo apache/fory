@@ -24,6 +24,8 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.annotation.JsonType;
 
 /** Android acceptance scenarios for reflection, declaration codecs, and R8 retention. */
@@ -210,6 +212,43 @@ public final class AndroidJsonScenarios {
     checkEquals("generated:direct", decodedCreated.direct.text);
     checkEquals(28, GeneratedJsonModel.codecCalls());
     checkEquals(2, GeneratedJsonModel.keyCodecCalls());
+  }
+
+  public static void unwrappedReflection() {
+    ForyJson json = ForyJson.builder().build();
+    UnwrappedParent value = new UnwrappedParent(30, new UnwrappedChild("android", 31));
+    String encoded = json.toJson(value);
+    checkEquals("{\"id\":30,\"child_name\":\"android\",\"child_rank\":31}", encoded);
+    UnwrappedParent decoded = json.fromJson(encoded, UnwrappedParent.class);
+    checkEquals(30, decoded.id);
+    checkEquals("android", decoded.child.name);
+    checkEquals(31, decoded.child.rank);
+  }
+
+  @JsonType
+  public static final class UnwrappedParent {
+    public final int id;
+
+    @JsonUnwrapped(prefix = "child_")
+    public final UnwrappedChild child;
+
+    @JsonCreator({"id", "child"})
+    public UnwrappedParent(int id, UnwrappedChild child) {
+      this.id = id;
+      this.child = child;
+    }
+  }
+
+  @JsonType
+  public static final class UnwrappedChild {
+    public final String name;
+    public final int rank;
+
+    @JsonCreator({"name", "rank"})
+    public UnwrappedChild(String name, int rank) {
+      this.name = name;
+      this.rank = rank;
+    }
   }
 
   private static void check(boolean condition) {

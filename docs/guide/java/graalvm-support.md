@@ -114,6 +114,10 @@ uses its generated component accessor and canonical constructor operations.
 `@JsonCodec(valueCodec = ...)` on that field or getter to customize each dynamic value. A second
 `JsonAnySetter` parameter may use the normal configuration for its own value shape.
 
+`JsonUnwrapped` uses the same interpreted behavior as on the JVM. Annotate the containing model and
+every unwrapped child or intermediate object with `JsonType` so the Native Image Feature retains
+their fields, accessors, record constructors, or `JsonCreator` parameters.
+
 Child codecs act on one direct level. `elementCodec` supports `Collection`, Java arrays, and
 `AtomicReferenceArray`; `contentCodec` supports `Optional` and `AtomicReference`; `keyCodec` and
 `valueCodec` support Map keys and values. A complete `value` codec cannot be combined with a child

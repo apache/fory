@@ -32,6 +32,9 @@ import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.json.codec.CollectionCodec;
+import org.apache.fory.json.codec.JsonUnwrappedInfo;
+import org.apache.fory.json.codec.JsonUnwrappedInfo.Group;
+import org.apache.fory.json.codec.JsonUnwrappedInfo.ReadRoute;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.codec.ScalarCodecs;
@@ -253,6 +256,207 @@ abstract class JsonReaderCodegen {
         ctx, builder, readMethod, slowMethod, concreteReaderType, type, properties);
     addReadFieldMethods(ctx, builder, readMethod, concreteReaderType, type, properties);
     addSlowReadMethods(ctx, builder, slowMethod, concreteReaderType, type, properties);
+    return ctx.genCode();
+  }
+
+  String genUnwrappedReaderCode(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      ObjectCodec<?> owner,
+      JsonUnwrappedInfo unwrapped) {
+    this.any = owner.anyInfo();
+    ownerType = type;
+    JsonCreatorInfo rootCreator = owner.creatorInfo();
+    boolean rootRecord = owner.isRecord();
+    boolean rootArray = rootRecord || rootCreator != null;
+    JsonFieldInfo[] directFields = owner.readFields();
+    JsonCreatorFieldInfo[] directCreatorFields = rootCreator == null ? null : rootCreator.fields();
+    int directCount = rootCreator == null ? directFields.length : directCreatorFields.length;
+    ReadRoute[] routes = unwrapped.readRoutes();
+    Group[] groups = unwrapped.groups();
+    CodegenContext ctx = builder.context();
+    ctx.addImports(
+        ObjectCodec.class,
+        readerType(),
+        JsonFieldTable.class,
+        JsonCreatorInfo.class,
+        JsonUnwrappedInfo.class,
+        Map.class);
+    ctx.implementsInterfaces(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()));
+    ctx.addField(ObjectCodec.class, "owner");
+    ctx.addField(JsonFieldTable.class, "readTable");
+    ctx.addField(JsonUnwrappedInfo.class, "unwrapped");
+    if (rootCreator != null) {
+      ctx.addField(JsonCreatorInfo.class, "creator");
+    }
+    storesSelfReader =
+        any != null && JsonCodegen.storesSelfReader(type, directFields, rootCreator != null, any);
+    addSelfReaderField(ctx);
+    boolean storesAnyReader = any != null && storesAnyReader(type);
+    if (storesAnyReader) {
+      ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "anyReader");
+    }
+    if (any != null
+        && any.readField() != null
+        && Modifier.isFinal(any.readField().getModifiers())) {
+      addFinalAnyMapMethod(ctx);
+    }
+    if (any != null && any.readSetter() != null) {
+      addAnySetterMethod(ctx, type, any);
+    }
+    if (rootCreator == null) {
+      addReaderFields(ctx, type, directFields);
+    } else {
+      for (int i = 0; i < directCreatorFields.length; i++) {
+        if (!isDirectCreatorPrimitive(directCreatorFields[i])) {
+          ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "r" + i);
+        }
+      }
+    }
+    for (int i = 0; i < routes.length; i++) {
+      int id = directCount + i;
+      JsonFieldInfo field = routes[i].field();
+      if (field != null) {
+        if (usesReadInfo(field)) {
+          ctx.addField(JsonFieldInfo.class, "rp" + id);
+        }
+        if (JsonCodegen.usesReadCodec(field)) {
+          ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(field)), "r" + id);
+        }
+        if (storesReadObjectCodec(routes[i].group().childCodec().type(), field)) {
+          ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "o" + id);
+        }
+      } else if (!isDirectCreatorPrimitive(routes[i].creatorField())) {
+        ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "r" + id);
+      }
+    }
+    for (int i = 0; i < groups.length; i++) {
+      ctx.addField(ObjectCodec.class, "g" + i);
+    }
+    Expression constructor =
+        unwrappedReaderConstructor(
+            type,
+            directFields,
+            directCreatorFields,
+            routes,
+            groups,
+            directCount,
+            storesAnyReader,
+            any != null);
+    if (storesAnyReader) {
+      addGeneratedConstructor(
+          ctx,
+          constructor,
+          ObjectCodec.class,
+          "owner",
+          JsonFieldTable.class,
+          "readTable",
+          JsonFieldInfo[].class,
+          "properties",
+          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
+          "codecs",
+          JsonCodegen.generatedCodecType(ctx, readerCapabilityType()),
+          "anyReader");
+    } else if (any != null) {
+      addGeneratedConstructor(
+          ctx,
+          constructor,
+          ObjectCodec.class,
+          "owner",
+          JsonFieldTable.class,
+          "readTable",
+          JsonFieldInfo[].class,
+          "properties",
+          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
+          "codecs");
+    } else {
+      addGeneratedConstructor(
+          ctx,
+          constructor,
+          ObjectCodec.class,
+          "owner",
+          JsonFieldInfo[].class,
+          "properties",
+          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
+          "codecs");
+    }
+    ctx.clearExprState();
+    Expression root = unwrappedRootWorkspace(builder, rootRecord, rootCreator != null);
+    Expression workspaces =
+        new Expression.Variable(
+            "groupWorkspaces",
+            new Expression.NewArray(Object.class, Expression.Literal.ofInt(groups.length)));
+    Expression present =
+        new Expression.Variable(
+            "groupPresent",
+            new Expression.NewArray(boolean.class, Expression.Literal.ofInt(groups.length)));
+    Expression.ListExpression body = new Expression.ListExpression();
+    body.add(new Expression.Invoke(readerRef(), "enterDepth"), root, workspaces, present);
+    Expression anyMap = anyMap(builder, root, rootArray);
+    if (anyMap != null) {
+      body.add(anyMap);
+    }
+    body.add(expectExpr('{'));
+    Expression.ListExpression members =
+        unwrappedMembers(
+            builder,
+            type,
+            directFields,
+            directCreatorFields,
+            routes,
+            groups,
+            directCount,
+            root,
+            workspaces,
+            present,
+            rootArray);
+    body.add(new Expression.If(not(consumeExpr('}')), members));
+    Expression anyCreated =
+        any == null || any.readField() == null
+            ? null
+            : new Expression.Variable("anyMapCreated", Expression.Literal.False);
+    // The loop owns Any-map creation. Its flag is declared before the loop when needed.
+    if (anyCreated != null) {
+      // Rebuild the member expression with the shared flag after declaring it.
+      body = new Expression.ListExpression();
+      body.add(
+          new Expression.Invoke(readerRef(), "enterDepth"),
+          root,
+          workspaces,
+          present,
+          anyMap,
+          anyCreated,
+          expectExpr('{'));
+      members =
+          unwrappedMembers(
+              builder,
+              type,
+              directFields,
+              directCreatorFields,
+              routes,
+              groups,
+              directCount,
+              root,
+              workspaces,
+              present,
+              rootArray,
+              anyCreated);
+      body.add(new Expression.If(not(consumeExpr('}')), members));
+    }
+    finishAnyRead(builder, body, root, anyCreated, rootArray);
+    addFinishUnwrappedGroups(builder, body, groups, root, workspaces, present, rootArray);
+    Expression finishedRoot = finishUnwrappedRoot(root, rootRecord, rootCreator != null);
+    body.add(new Expression.Invoke(readerRef(), "exitDepth"), new Expression.Return(finishedRoot));
+    Code.ExprCode generated = body.genCode(ctx);
+    String code = generated.code();
+    code = code == null ? "" : ctx.optimizeMethodCode(code);
+    ctx.addMethod(
+        "@Override public final",
+        readMethod(),
+        "if (reader.tryReadNullToken()) {\n  return null;\n}\n" + code,
+        Object.class,
+        readerType(),
+        "reader");
     return ctx.genCode();
   }
 
@@ -1017,6 +1221,547 @@ abstract class JsonReaderCodegen {
       }
     }
     return expressions;
+  }
+
+  private Expression unwrappedReaderConstructor(
+      Class<?> type,
+      JsonFieldInfo[] directFields,
+      JsonCreatorFieldInfo[] creatorFields,
+      ReadRoute[] routes,
+      Group[] groups,
+      int directCount,
+      boolean storesAnyReader,
+      boolean hasAny) {
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    Reference owner = new Reference("owner", TypeRef.of(ObjectCodec.class));
+    Reference properties = new Reference("properties", TypeRef.of(JsonFieldInfo[].class));
+    Reference codecs = new Reference("codecs", TypeRef.of(readerArrayType()));
+    Reference unwrapped = new Reference("this.unwrapped", TypeRef.of(JsonUnwrappedInfo.class));
+    expressions.add(
+        new Expression.Assign(new Reference("this.owner", TypeRef.of(ObjectCodec.class)), owner),
+        new Expression.Assign(
+            new Reference("this.readTable", TypeRef.of(JsonFieldTable.class)),
+            hasAny
+                ? new Reference("readTable", TypeRef.of(JsonFieldTable.class))
+                : new Expression.Invoke(owner, "readTable", TypeRef.of(JsonFieldTable.class))
+                    .inline()),
+        new Expression.Assign(
+            unwrapped,
+            new Expression.Invoke(owner, "unwrappedInfo", TypeRef.of(JsonUnwrappedInfo.class))
+                .inline()));
+    if (creatorFields != null) {
+      expressions.add(
+          new Expression.Assign(
+              new Reference("this.creator", TypeRef.of(JsonCreatorInfo.class)),
+              new Expression.Invoke(owner, "creatorInfo", TypeRef.of(JsonCreatorInfo.class))
+                  .inline()));
+      for (int i = 0; i < creatorFields.length; i++) {
+        if (!isDirectCreatorPrimitive(creatorFields[i])) {
+          expressions.add(
+              new Expression.Assign(
+                  new Reference("this.r" + i, TypeRef.of(readerCapabilityType())),
+                  new Expression.ArrayValue(codecs, Expression.Literal.ofInt(i))));
+        }
+      }
+    } else {
+      addUnwrappedReaderAssignments(expressions, type, directFields, 0, properties, codecs);
+    }
+    for (int i = 0; i < routes.length; i++) {
+      int id = directCount + i;
+      JsonFieldInfo field = routes[i].field();
+      if (field != null) {
+        addUnwrappedReaderAssignment(
+            expressions, routes[i].group().childCodec().type(), field, id, properties, codecs);
+      } else if (!isDirectCreatorPrimitive(routes[i].creatorField())) {
+        expressions.add(
+            new Expression.Assign(
+                new Reference("this.r" + id, TypeRef.of(readerCapabilityType())),
+                new Expression.ArrayValue(codecs, Expression.Literal.ofInt(id))));
+      }
+    }
+    Expression groupArray =
+        new Expression.Variable(
+            "resolvedGroups",
+            new Expression.Invoke(unwrapped, "groups", TypeRef.of(Group[].class)).inline());
+    expressions.add(groupArray);
+    for (int i = 0; i < groups.length; i++) {
+      expressions.add(
+          new Expression.Assign(
+              new Reference("this.g" + i, TypeRef.of(ObjectCodec.class)),
+              new Expression.Invoke(
+                      new Expression.ArrayValue(groupArray, Expression.Literal.ofInt(i)),
+                      "childCodec",
+                      TypeRef.of(ObjectCodec.class))
+                  .inline()));
+    }
+    if (storesAnyReader) {
+      expressions.add(
+          new Expression.Assign(
+              new Reference("this.anyReader", TypeRef.of(readerCapabilityType())),
+              new Reference("anyReader", TypeRef.of(readerCapabilityType()))));
+    }
+    return expressions;
+  }
+
+  private void addUnwrappedReaderAssignments(
+      Expression.ListExpression expressions,
+      Class<?> type,
+      JsonFieldInfo[] fields,
+      int offset,
+      Reference properties,
+      Reference codecs) {
+    for (int i = 0; i < fields.length; i++) {
+      addUnwrappedReaderAssignment(expressions, type, fields[i], offset + i, properties, codecs);
+    }
+  }
+
+  private void addUnwrappedReaderAssignment(
+      Expression.ListExpression expressions,
+      Class<?> type,
+      JsonFieldInfo field,
+      int id,
+      Reference properties,
+      Reference codecs) {
+    Expression property = new Expression.ArrayValue(properties, Expression.Literal.ofInt(id));
+    if (usesReadInfo(field)) {
+      expressions.add(
+          new Expression.Assign(
+              new Reference("this.rp" + id, TypeRef.of(JsonFieldInfo.class)), property));
+    }
+    if (JsonCodegen.usesReadCodec(field)) {
+      Class<?> codecType = codecFieldType(field);
+      expressions.add(
+          new Expression.Assign(
+              new Reference("this.r" + id, TypeRef.of(codecType)),
+              new Expression.Cast(
+                  new Expression.ArrayValue(codecs, Expression.Literal.ofInt(id)),
+                  TypeRef.of(codecType))));
+    } else if (storesReadObjectCodec(type, field)) {
+      expressions.add(
+          new Expression.Assign(
+              new Reference("this.o" + id, TypeRef.of(readerCapabilityType())),
+              new Expression.ArrayValue(codecs, Expression.Literal.ofInt(id))));
+    }
+  }
+
+  private Expression unwrappedRootWorkspace(
+      JsonGeneratedCodecBuilder builder, boolean record, boolean creator) {
+    if (!record && !creator) {
+      return builder.newObject();
+    }
+    Expression value =
+        record
+            ? new Expression.Invoke(ownerRef(), "newRecordFieldValues", TypeRef.of(Object[].class))
+            : new Expression.Invoke(
+                fieldRef("creator", JsonCreatorInfo.class),
+                "newArguments",
+                TypeRef.of(Object[].class));
+    return new Expression.Variable("object", inline(value));
+  }
+
+  private Expression finishUnwrappedRoot(Expression root, boolean record, boolean creator) {
+    if (!record && !creator) {
+      return root;
+    }
+    return record
+        ? new Expression.Invoke(ownerRef(), "newRecord", TypeRef.of(Object.class), root)
+        : new Expression.Invoke(
+            fieldRef("creator", JsonCreatorInfo.class), "create", TypeRef.of(Object.class), root);
+  }
+
+  private Expression.ListExpression unwrappedMembers(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonFieldInfo[] directFields,
+      JsonCreatorFieldInfo[] creatorFields,
+      ReadRoute[] routes,
+      Group[] groups,
+      int directCount,
+      Expression root,
+      Expression workspaces,
+      Expression present,
+      boolean rootArray) {
+    return unwrappedMembers(
+        builder,
+        type,
+        directFields,
+        creatorFields,
+        routes,
+        groups,
+        directCount,
+        root,
+        workspaces,
+        present,
+        rootArray,
+        null);
+  }
+
+  private Expression.ListExpression unwrappedMembers(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonFieldInfo[] directFields,
+      JsonCreatorFieldInfo[] creatorFields,
+      ReadRoute[] routes,
+      Group[] groups,
+      int directCount,
+      Expression root,
+      Expression workspaces,
+      Expression present,
+      boolean rootArray,
+      Expression anyCreated) {
+    Expression.ListExpression expressions = new Expression.ListExpression();
+    Expression.ListExpression loop = new Expression.ListExpression();
+    Expression fieldStart =
+        any == null
+            ? null
+            : new Expression.Variable(
+                "fieldStart",
+                new Expression.Invoke(readerRef(), "position", TypeRef.of(int.class)).inline());
+    if (fieldStart != null) {
+      loop.add(fieldStart);
+    }
+    Expression hash = readFieldNameHash("fieldHash");
+    loop.add(hash);
+    Expression direct =
+        new Expression.Variable(
+            "directIndex",
+            new Expression.Invoke(
+                    creatorFields == null
+                        ? readTableRef()
+                        : fieldRef("creator", JsonCreatorInfo.class),
+                    creatorFields == null ? "match" : "index",
+                    TypeRef.of(int.class),
+                    true,
+                    hash)
+                .inline());
+    loop.add(direct, expectExpr(':'));
+    Expression directRead =
+        creatorFields == null
+            ? unwrappedDirectFields(builder, type, directFields, root, direct, rootArray)
+            : unwrappedDirectCreator(creatorFields, root, direct);
+    Expression directMiss = direct;
+    if (creatorFields != null) {
+      directMiss =
+          new Expression.Variable(
+              "directMiss",
+              new Expression.Invoke(readTableRef(), "match", TypeRef.of(int.class), true, hash)
+                  .inline());
+    }
+    Expression routeIndex =
+        new Expression.Variable(
+            "routeIndex",
+            new Expression.Invoke(
+                    fieldRef("unwrapped", JsonUnwrappedInfo.class),
+                    "match",
+                    TypeRef.of(int.class),
+                    true,
+                    hash)
+                .inline());
+    Expression routeRead =
+        unwrappedRouteSwitch(builder, routes, groups, directCount, routeIndex, workspaces, present);
+    Expression unknown =
+        any == null
+            ? new Expression.Invoke(readerRef(), "skipValue")
+            : readUnknown(root, routeIndex, hash, fieldStart, anyCreated, rootArray);
+    Expression afterDirect =
+        new Expression.If(
+            eq(directMiss, Expression.Literal.ofInt(JsonFieldTable.SKIP)),
+            new Expression.Invoke(readerRef(), "skipValue"),
+            new Expression.ListExpression(
+                routeIndex,
+                new Expression.If(
+                    ge(routeIndex, Expression.Literal.ofInt(0)), routeRead, unknown)));
+    if (creatorFields != null) {
+      afterDirect = new Expression.ListExpression(directMiss, afterDirect);
+    }
+    loop.add(new Expression.If(ge(direct, Expression.Literal.ofInt(0)), directRead, afterDirect));
+    loop.add(
+        new Expression.If(
+            not(consumeExpr(',')),
+            new Expression.ListExpression(expectExpr('}'), new Expression.Break())));
+    expressions.add(new Expression.While(Expression.Literal.True, loop));
+    return expressions;
+  }
+
+  private Expression unwrappedDirectFields(
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonFieldInfo[] fields,
+      Expression root,
+      Expression index,
+      boolean record) {
+    Expression.Switch.Case[] cases = new Expression.Switch.Case[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      cases[i] =
+          new Expression.Switch.Case(
+              i,
+              new Expression.ListExpression(
+                  readField(builder, type, fields[i], i, root, record, false),
+                  new Expression.Break()));
+    }
+    return new Expression.Switch(index, cases, new Expression.Invoke(readerRef(), "skipValue"));
+  }
+
+  private Expression unwrappedDirectCreator(
+      JsonCreatorFieldInfo[] fields, Expression root, Expression index) {
+    Expression.Switch.Case[] cases = new Expression.Switch.Case[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      JsonCreatorFieldInfo field = fields[i];
+      cases[i] =
+          new Expression.Switch.Case(
+              i,
+              new Expression.ListExpression(
+                  new Expression.AssignArrayElem(
+                      root,
+                      readCreatorValue(field, i),
+                      Expression.Literal.ofInt(field.argumentIndex())),
+                  new Expression.Break()));
+    }
+    return new Expression.Switch(index, cases, new Expression.Invoke(readerRef(), "skipValue"));
+  }
+
+  private Expression unwrappedRouteSwitch(
+      JsonGeneratedCodecBuilder builder,
+      ReadRoute[] routes,
+      Group[] groups,
+      int directCount,
+      Expression routeIndex,
+      Expression workspaces,
+      Expression present) {
+    Expression.Switch.Case[] cases = new Expression.Switch.Case[routes.length];
+    for (int i = 0; i < routes.length; i++) {
+      ReadRoute route = routes[i];
+      int id = directCount + i;
+      Expression.ListExpression read = new Expression.ListExpression();
+      addEnsureUnwrappedGroup(read, route.group(), groups, workspaces, present);
+      int groupIndex = route.group().readIndex();
+      ObjectCodec<?> child = route.group().childCodec();
+      Expression workspace =
+          new Expression.ArrayValue(workspaces, Expression.Literal.ofInt(groupIndex));
+      if (route.field() != null) {
+        JsonFieldInfo field = route.field();
+        if (child.isRecord()) {
+          read.add(readUnwrappedRecordField(child.type(), field, id, workspace));
+        } else if (child.creatorInfo() != null) {
+          throw new IllegalStateException("Creator group route must use creator metadata");
+        } else {
+          Expression object = new Expression.Cast(workspace, TypeRef.of(child.type()));
+          read.add(readField(builder, child.type(), field, id, object, false, false));
+        }
+      } else {
+        JsonCreatorFieldInfo field = route.creatorField();
+        read.add(
+            new Expression.AssignArrayElem(
+                new Expression.Cast(workspace, TypeRef.of(Object[].class)),
+                readCreatorValue(field, id),
+                Expression.Literal.ofInt(field.argumentIndex())));
+      }
+      read.add(new Expression.Break());
+      cases[i] = new Expression.Switch.Case(i, read);
+    }
+    return new Expression.Switch(
+        routeIndex, cases, new Expression.Invoke(readerRef(), "skipValue"));
+  }
+
+  private void addEnsureUnwrappedGroup(
+      Expression.ListExpression expressions,
+      Group group,
+      Group[] groups,
+      Expression workspaces,
+      Expression present) {
+    if (group.parent() != null) {
+      addEnsureUnwrappedGroup(expressions, group.parent(), groups, workspaces, present);
+    }
+    int index = group.readIndex();
+    ObjectCodec<?> child = group.childCodec();
+    Expression codec = fieldRef("g" + index, ObjectCodec.class);
+    Expression workspace;
+    if (child.isRecord()) {
+      workspace = new Expression.Invoke(codec, "newRecordFieldValues", TypeRef.of(Object[].class));
+    } else if (child.creatorInfo() != null) {
+      workspace =
+          new Expression.Invoke(
+              new Expression.Invoke(codec, "creatorInfo", TypeRef.of(JsonCreatorInfo.class))
+                  .inline(),
+              "newArguments",
+              TypeRef.of(Object[].class));
+    } else {
+      workspace = new Expression.Invoke(codec, "newInstance", TypeRef.of(Object.class));
+    }
+    Expression initialize =
+        new Expression.ListExpression(
+            new Expression.AssignArrayElem(workspaces, workspace, Expression.Literal.ofInt(index)),
+            new Expression.AssignArrayElem(
+                present, Expression.Literal.True, Expression.Literal.ofInt(index)));
+    expressions.add(
+        new Expression.If(
+            not(new Expression.ArrayValue(present, Expression.Literal.ofInt(index))), initialize));
+  }
+
+  private Expression readUnwrappedRecordField(
+      Class<?> ownerType, JsonFieldInfo field, int codecId, Expression workspace) {
+    int slot = field.readIndex();
+    Expression value;
+    Class<?> rawType = field.readRawType();
+    switch (field.readKind()) {
+      case BOOLEAN:
+        value = box(Boolean.class, readBooleanExpr());
+        if (!rawType.isPrimitive()) {
+          value =
+              new Expression.Ternary(
+                  tryReadNullExpr(),
+                  new Expression.Null(TypeRef.of(Boolean.class), false),
+                  value,
+                  false,
+                  TypeRef.of(Boolean.class));
+        }
+        break;
+      case INT:
+        value = box(Integer.class, readIntExpr());
+        if (!rawType.isPrimitive()) {
+          value =
+              new Expression.Ternary(
+                  tryReadNullExpr(),
+                  new Expression.Null(TypeRef.of(Integer.class), false),
+                  value,
+                  false,
+                  TypeRef.of(Integer.class));
+        }
+        break;
+      case LONG:
+        value = box(Long.class, readLongExpr());
+        if (!rawType.isPrimitive()) {
+          value =
+              new Expression.Ternary(
+                  tryReadNullExpr(),
+                  new Expression.Null(TypeRef.of(Long.class), false),
+                  value,
+                  false,
+                  TypeRef.of(Long.class));
+        }
+        break;
+      case FLOAT:
+        value = box(Float.class, readFloatExpr());
+        if (!rawType.isPrimitive()) {
+          value =
+              new Expression.Ternary(
+                  tryReadNullExpr(),
+                  new Expression.Null(TypeRef.of(Float.class), false),
+                  value,
+                  false,
+                  TypeRef.of(Float.class));
+        }
+        break;
+      case DOUBLE:
+        value = box(Double.class, readDoubleExpr());
+        if (!rawType.isPrimitive()) {
+          value =
+              new Expression.Ternary(
+                  tryReadNullExpr(),
+                  new Expression.Null(TypeRef.of(Double.class), false),
+                  value,
+                  false,
+                  TypeRef.of(Double.class));
+        }
+        break;
+      case STRING:
+        value = readStringExpr(false);
+        break;
+      case ENUM:
+        value =
+            new Expression.Ternary(
+                tryReadNullExpr(),
+                new Expression.Null(TypeRef.of(Object.class), false),
+                readEnumValue(Object.class, codecId, false),
+                false,
+                TypeRef.of(Object.class));
+        break;
+      case COLLECTION:
+        value = readCollectionValue(field, codecId);
+        break;
+      case ARRAY:
+      case MAP:
+        value = readResolvedValue(field, codecId);
+        break;
+      case OBJECT:
+        value =
+            field.readRawType() == Object.class || !field.readTypeInfo().usesDefaultObjectCodec()
+                ? readResolvedValue(field, codecId)
+                : readObjectValue(ownerType, field, codecId);
+        break;
+      default:
+        value =
+            new Expression.Invoke(
+                fieldRef("rp" + codecId, JsonFieldInfo.class),
+                readFieldValueMethod(),
+                TypeRef.of(Object.class),
+                true,
+                readerRef());
+    }
+    return new Expression.AssignArrayElem(
+        new Expression.Cast(workspace, TypeRef.of(Object[].class)),
+        value,
+        Expression.Literal.ofInt(slot));
+  }
+
+  private void addFinishUnwrappedGroups(
+      JsonGeneratedCodecBuilder builder,
+      Expression.ListExpression expressions,
+      Group[] groups,
+      Expression root,
+      Expression workspaces,
+      Expression present,
+      boolean rootArray) {
+    for (int i = groups.length - 1; i >= 0; i--) {
+      Group group = groups[i];
+      ObjectCodec<?> childCodec = group.childCodec();
+      Expression workspace = new Expression.ArrayValue(workspaces, Expression.Literal.ofInt(i));
+      Expression child;
+      if (childCodec.isRecord()) {
+        child =
+            new Expression.Invoke(
+                fieldRef("g" + i, ObjectCodec.class),
+                "newRecord",
+                TypeRef.of(Object.class),
+                new Expression.Cast(workspace, TypeRef.of(Object[].class)));
+      } else if (childCodec.creatorInfo() != null) {
+        child =
+            new Expression.Invoke(
+                new Expression.Invoke(
+                        fieldRef("g" + i, ObjectCodec.class),
+                        "creatorInfo",
+                        TypeRef.of(JsonCreatorInfo.class))
+                    .inline(),
+                "create",
+                TypeRef.of(Object.class),
+                new Expression.Cast(workspace, TypeRef.of(Object[].class)));
+      } else {
+        child = workspace;
+      }
+      Group parent = group.parent();
+      ObjectCodec<?> parentCodec = group.parentCodec();
+      Expression parentWorkspace =
+          parent == null
+              ? root
+              : new Expression.ArrayValue(workspaces, Expression.Literal.ofInt(parent.readIndex()));
+      Expression assign;
+      if (parentCodec.isRecord() || parentCodec.creatorInfo() != null) {
+        assign =
+            new Expression.AssignArrayElem(
+                new Expression.Cast(parentWorkspace, TypeRef.of(Object[].class)),
+                child,
+                Expression.Literal.ofInt(group.declaration().constructionIndex()));
+      } else {
+        assign =
+            builder.setUnwrapped(
+                group.declaration(),
+                new Expression.Cast(parentWorkspace, TypeRef.of(parentCodec.type())),
+                new Expression.Cast(child, TypeRef.of(childCodec.type())));
+      }
+      expressions.add(
+          new Expression.If(
+              new Expression.ArrayValue(present, Expression.Literal.ofInt(i)), assign));
+    }
   }
 
   private Expression fastReadExpression(
