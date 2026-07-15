@@ -1171,6 +1171,10 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     return writeUnwrappedEntries(writer, value, unwrappedInfo.writeEntries(), written);
   }
 
+  private int writeUnwrappedMembers(Utf8JsonWriter writer, Object value, int written) {
+    return writeUnwrappedEntries(writer, value, unwrappedInfo.writeEntries(), written);
+  }
+
   private int writeUnwrappedEntries(
       StringJsonWriter writer, Object value, WriteEntry[] entries, int written) {
     for (WriteEntry entry : entries) {
@@ -1191,10 +1195,6 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       }
     }
     return written;
-  }
-
-  private int writeUnwrappedMembers(Utf8JsonWriter writer, Object value, int written) {
-    return writeUnwrappedEntries(writer, value, unwrappedInfo.writeEntries(), written);
   }
 
   private int writeUnwrappedEntries(

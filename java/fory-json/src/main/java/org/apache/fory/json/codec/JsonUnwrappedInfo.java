@@ -340,6 +340,10 @@ public final class JsonUnwrappedInfo {
       return new WriteEntry(GROUP, null, group);
     }
 
+    public Group group() {
+      return group;
+    }
+
     public static WriteEntry any() {
       return new WriteEntry(ANY, null, null);
     }
@@ -350,10 +354,6 @@ public final class JsonUnwrappedInfo {
 
     public JsonFieldInfo field() {
       return field;
-    }
-
-    public Group group() {
-      return group;
     }
   }
 

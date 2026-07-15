@@ -28,13 +28,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.apache.fory.json.annotation.JsonAnyProperty;
+import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
+import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
@@ -252,6 +255,23 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
   }
 
   @Test(dataProvider = "enableCodegen")
+  public void valueRepresentations(boolean codegen) {
+    ForyJson json = newJson(codegen);
+    ValueRepresentationParent value = new ValueRepresentationParent();
+    value.child = new ValueRepresentationChild();
+    value.child.raw = "{\"id\":1}";
+    value.child.bytes = new byte[] {1, 2, 3};
+    assertEquals(json.toJson(value), "{\"v_raw\":{\"id\":1},\"v_bytes\":\"AQID\"}");
+
+    ValueRepresentationParent decoded =
+        json.fromJson("{\"v_raw\":\"text\",\"v_bytes\":\"AQID\"}", ValueRepresentationParent.class);
+    assertEquals(decoded.child.raw, "text");
+    assertEquals(decoded.child.bytes, new byte[] {1, 2, 3});
+
+    assertThrows(ForyJsonException.class, () -> json.toJson(new ValueObjectParent()));
+  }
+
+  @Test(dataProvider = "enableCodegen")
   public void inlineSubtype(boolean codegen) {
     ForyJson json = newJson(codegen);
     InlineChild value = new InlineChild();
@@ -274,15 +294,19 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     EscapedParent value = new EscapedParent();
     value.child = new EscapedChild();
     value.child.value = "值";
-    String expected = "{\"" + "\\" + "u524d\\\"\\\\_" + "\\" + "u540d_" + "\\" + "u540e\":\"值\"}";
-    assertEquals(json.toJson(value), expected);
-    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
-    assertEquals(json.fromJson(expected, EscapedParent.class).child.value, "值");
+    String escape = "\\";
+    String stringExpected =
+        "{\"" + escape + "u524d\\\"\\\\_" + escape + "u540d_" + escape + "u540e\":\"值\"}";
+    String utf8Expected = "{\"前\\\"\\\\_名_后\":\"值\"}";
+    assertEquals(json.toJson(value), stringExpected);
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), utf8Expected);
+    assertEquals(json.fromJson(stringExpected, EscapedParent.class).child.value, "值");
     assertEquals(
-        json.fromJson(expected.getBytes(StandardCharsets.UTF_8), EscapedParent.class).child.value,
+        json.fromJson(stringExpected.getBytes(StandardCharsets.UTF_8), EscapedParent.class)
+            .child
+            .value,
         "值");
-    String literal = "{\"前\\\"\\\\_名_后\":\"值\"}";
-    assertEquals(json.fromJson(literal, EscapedParent.class).child.value, "值");
+    assertEquals(json.fromJson(utf8Expected, EscapedParent.class).child.value, "值");
   }
 
   private static void assertPerson(Person value) {
@@ -486,6 +510,24 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
   public static class OrdinaryRecursive {
     @JsonUnwrapped public Name name;
     public OrdinaryRecursive next;
+  }
+
+  public static class ValueRepresentationParent {
+    @JsonUnwrapped(prefix = "v_")
+    public ValueRepresentationChild child;
+  }
+
+  public static class ValueRepresentationChild {
+    @JsonRawValue public String raw;
+    @JsonBase64 public byte[] bytes;
+  }
+
+  public static class ValueObjectParent {
+    @JsonUnwrapped public ValueObject child;
+  }
+
+  public static class ValueObject {
+    @JsonValue public String value;
   }
 
   @JsonSubTypes(
