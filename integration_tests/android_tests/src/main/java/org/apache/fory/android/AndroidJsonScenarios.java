@@ -20,9 +20,12 @@
 package org.apache.fory.android;
 
 import java.util.Arrays;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.ForyJson;
 
-/** Android acceptance scenarios for reflection, generated metadata, and R8 retention. */
+/** Android acceptance scenarios for reflection, declaration codecs, and R8 retention. */
 public final class AndroidJsonScenarios {
   private AndroidJsonScenarios() {}
 
@@ -65,31 +68,45 @@ public final class AndroidJsonScenarios {
     value.direct = new ManualJsonModel.DirectValue("direct");
     value.declaredField = new ManualJsonModel.MemberValue("field");
     value.setDeclaredProperty(new ManualJsonModel.MemberValue("method"));
+    value.setParameterProperty(new ManualJsonModel.MemberValue("parameter"));
+    value.values.add(new ManualJsonModel.MemberValue("element"));
+    value.array = new ManualJsonModel.MemberValue[] {new ManualJsonModel.MemberValue("array")};
+    value.atomicArray =
+        new AtomicReferenceArray<>(
+            new ManualJsonModel.MemberValue[] {new ManualJsonModel.MemberValue("atomic-array")});
+    value.byName.put(new ManualJsonModel.Key("map"), new ManualJsonModel.MemberValue("map-value"));
+    value.optional = Optional.of(new ManualJsonModel.MemberValue("optional"));
+    value.atomic = new AtomicReference<>(new ManualJsonModel.MemberValue("atomic"));
+    value.extra.put("dynamic", new ManualJsonModel.MemberValue("any"));
 
     ManualJsonModel.resetCodecCalls();
     String encoded = json.toJson(value);
     check(encoded.contains("\"direct\":\"manual:direct\""));
     check(encoded.contains("\"declaredField\":\"manual:field\""));
     check(encoded.contains("\"declaredProperty\":\"manual:method\""));
+    check(encoded.contains("\"parameterProperty\":\"manual:parameter\""));
+    check(encoded.contains("\"values\":[\"manual:element\"]"));
+    check(encoded.contains("\"array\":[\"manual:array\"]"));
+    check(encoded.contains("\"atomicArray\":[\"manual:atomic-array\"]"));
+    check(encoded.contains("\"manual-key:map\":\"manual:map-value\""));
+    check(encoded.contains("\"optional\":\"manual:optional\""));
+    check(encoded.contains("\"atomic\":\"manual:atomic\""));
+    check(encoded.contains("\"dynamic\":\"manual:any\""));
 
     ManualJsonModel decoded = json.fromJson(encoded, ManualJsonModel.class);
     checkEquals("manual:direct", decoded.direct.text);
     checkEquals("manual:field", decoded.declaredField.text);
     checkEquals("manual:method", decoded.getDeclaredProperty().text);
-    checkEquals(6, ManualJsonModel.codecCalls());
-  }
-
-  public static void nestedCodecNeedsJsonType() {
-    ForyJson json = ForyJson.builder().build();
-    ManualNestedModel value = new ManualNestedModel();
-    value.values.add(new ManualNestedModel.NestedValue("plain"));
-
-    ManualNestedModel.resetCodecCalls();
-    String encoded = json.toJson(value);
-    checkEquals("{\"values\":[{\"text\":\"plain\"}]}", encoded);
-    ManualNestedModel decoded = json.fromJson(encoded, ManualNestedModel.class);
-    checkEquals("plain", decoded.values.get(0).text);
-    checkEquals(0, ManualNestedModel.codecCalls());
+    checkEquals("manual:parameter", decoded.getParameterProperty().text);
+    checkEquals("manual:element", decoded.values.get(0).text);
+    checkEquals("manual:array", decoded.array[0].text);
+    checkEquals("manual:atomic-array", decoded.atomicArray.get(0).text);
+    checkEquals("manual:map-value", decoded.byName.get(new ManualJsonModel.Key("map")).text);
+    checkEquals("manual:optional", decoded.optional.get().text);
+    checkEquals("manual:atomic", decoded.atomic.get().text);
+    checkEquals("manual:any", decoded.extra.get("dynamic").text);
+    checkEquals(22, ManualJsonModel.codecCalls());
+    checkEquals(2, ManualJsonModel.keyCodecCalls());
   }
 
   public static void generatedCodecs() {
@@ -99,11 +116,15 @@ public final class AndroidJsonScenarios {
     value.values.add(new GeneratedJsonModel.Value("list"));
     value.rootValue = new GeneratedJsonModel.Value("root");
     value.setRootProperty(new GeneratedJsonModel.Value("property"));
+    value.setParameterProperty(new GeneratedJsonModel.Value("parameter"));
     value.array = new GeneratedJsonModel.Value[] {new GeneratedJsonModel.Value("array")};
-    value.byName.put("map", new GeneratedJsonModel.Value("map"));
-    value.inheritedValues.add(new GeneratedJsonModel.Value("parent"));
-    value.replaceInterfaceValues(Arrays.asList(new GeneratedJsonModel.Value("interface")));
-    value.replaceSuppressedValues(Arrays.asList(new GeneratedJsonModel.PlainValue("plain")));
+    value.atomicArray =
+        new AtomicReferenceArray<>(
+            new GeneratedJsonModel.Value[] {new GeneratedJsonModel.Value("atomic-array")});
+    value.byName.put(new GeneratedJsonModel.Key("map"), new GeneratedJsonModel.Value("map-value"));
+    value.optional = Optional.of(new GeneratedJsonModel.Value("optional"));
+    value.atomic = new AtomicReference<>(new GeneratedJsonModel.Value("atomic"));
+    value.declared = new GeneratedJsonModel.DeclaredValue("type");
     value.extra.put("dynamic", new GeneratedJsonModel.Value("extra"));
 
     GeneratedJsonModel.resetCodecCalls();
@@ -112,11 +133,13 @@ public final class AndroidJsonScenarios {
     check(encoded.contains("\"generated:list\""));
     check(encoded.contains("\"generated:root\""));
     check(encoded.contains("\"generated:property\""));
+    check(encoded.contains("\"generated:parameter\""));
     check(encoded.contains("\"generated:array\""));
-    check(encoded.contains("\"generated:map\""));
-    check(encoded.contains("\"generated:parent\""));
-    check(encoded.contains("\"generated:interface\""));
-    check(encoded.contains("\"suppressedValues\":[{\"text\":\"plain\"}]"));
+    check(encoded.contains("\"generated:atomic-array\""));
+    check(encoded.contains("\"generated-key:map\":\"generated:map-value\""));
+    check(encoded.contains("\"generated:optional\""));
+    check(encoded.contains("\"generated:atomic\""));
+    check(encoded.contains("\"declared:type\""));
     check(encoded.contains("\"dynamic\":\"generated:extra\""));
 
     GeneratedJsonModel decoded = json.fromJson(encoded, GeneratedJsonModel.class);
@@ -126,11 +149,13 @@ public final class AndroidJsonScenarios {
     checkEquals("generated:list", subtype.values.get(0).text);
     checkEquals("generated:root", subtype.rootValue.text);
     checkEquals("generated:property", subtype.getRootProperty().text);
+    checkEquals("generated:parameter", subtype.getParameterProperty().text);
     checkEquals("generated:array", subtype.array[0].text);
-    checkEquals("generated:map", subtype.byName.get("map").text);
-    checkEquals("generated:parent", subtype.inheritedValues.get(0).text);
-    checkEquals("generated:interface", subtype.getInterfaceValues().get(0).text);
-    checkEquals("plain", subtype.getSuppressedValues().get(0).text);
+    checkEquals("generated:atomic-array", subtype.atomicArray.get(0).text);
+    checkEquals("generated:map-value", subtype.byName.get(new GeneratedJsonModel.Key("map")).text);
+    checkEquals("generated:optional", subtype.optional.get().text);
+    checkEquals("generated:atomic", subtype.atomic.get().text);
+    checkEquals("declared:type", subtype.declared.text);
     checkEquals("generated:extra", subtype.extra.get("dynamic").text);
 
     GeneratedJsonModel.CreatedValue created =
@@ -144,8 +169,8 @@ public final class AndroidJsonScenarios {
         json.fromJson(creatorJson, GeneratedJsonModel.CreatedValue.class);
     checkEquals("generated:creator", decodedCreated.values.get(0).text);
     checkEquals("generated:direct", decodedCreated.direct.text);
-    checkEquals(20, GeneratedJsonModel.codecCalls());
-    checkEquals(0, GeneratedJsonModel.suppressedCodecCalls());
+    checkEquals(26, GeneratedJsonModel.codecCalls());
+    checkEquals(2, GeneratedJsonModel.keyCodecCalls());
   }
 
   private static void check(boolean condition) {

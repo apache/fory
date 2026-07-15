@@ -22,6 +22,7 @@ package org.apache.fory.json.meta;
 import java.lang.reflect.Type;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -36,17 +37,17 @@ public final class JsonCreatorFieldInfo {
   private final int argumentIndex;
   private final Type type;
   private final Class<?> rawType;
-  private final JsonTypeUse typeUse;
+  private final JsonCodec codecAnnotation;
   private JsonTypeInfo typeInfo;
 
   public JsonCreatorFieldInfo(
-      String name, int argumentIndex, Type type, Class<?> rawType, JsonTypeUse typeUse) {
+      String name, int argumentIndex, Type type, Class<?> rawType, JsonCodec codecAnnotation) {
     this.name = name;
     nameHash = JsonFieldNameHash.hash(name);
     this.argumentIndex = argumentIndex;
     this.type = type;
     this.rawType = rawType;
-    this.typeUse = typeUse;
+    this.codecAnnotation = codecAnnotation;
   }
 
   public String name() {
@@ -75,7 +76,9 @@ public final class JsonCreatorFieldInfo {
 
   public void resolveType(JsonTypeResolver resolver) {
     typeInfo =
-        typeUse == null ? resolver.getTypeInfo(type, rawType) : resolver.getTypeInfo(typeUse);
+        codecAnnotation == null
+            ? resolver.getTypeInfo(type, rawType)
+            : resolver.getTypeInfo(type, rawType, codecAnnotation);
   }
 
   public Object readLatin1(Latin1JsonReader reader) {

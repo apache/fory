@@ -23,7 +23,11 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
@@ -31,55 +35,56 @@ import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
-/** Processor-generated nested codec and R8 metadata fixture. */
+/** Processor-generated declaration-codec and R8 rule fixture. */
 @JsonType
 @JsonSubTypes(
     property = "kind",
     value = {@JsonSubTypes.Type(value = GeneratedJsonSubtype.class, name = "generated")})
-public abstract class GeneratedJsonModel extends GeneratedJsonParent
-    implements GeneratedJsonContract, SuppressedJsonContract {
+public abstract class GeneratedJsonModel {
   private static final AtomicInteger CODEC_CALLS = new AtomicInteger();
-  private static final AtomicInteger SUPPRESSED_CODEC_CALLS = new AtomicInteger();
+  private static final AtomicInteger KEY_CODEC_CALLS = new AtomicInteger();
 
-  public List<@JsonCodec(ValueCodec.class) Value> values = new ArrayList<>();
-  public GeneratedJsonModel.@JsonCodec(ValueCodec.class) Value rootValue;
-  public GeneratedJsonModel.@JsonCodec(ValueCodec.class) Value[] array;
-  public Map<String, @JsonCodec(ValueCodec.class) Value> byName = new LinkedHashMap<>();
+  @JsonCodec(elementCodec = ValueCodec.class)
+  public List<Value> values = new ArrayList<>();
+
+  @JsonCodec(ValueCodec.class)
+  public Value rootValue;
+
+  @JsonCodec(elementCodec = ValueCodec.class)
+  public Value[] array;
+
+  @JsonCodec(elementCodec = ValueCodec.class)
+  public AtomicReferenceArray<Value> atomicArray;
+
+  @JsonCodec(keyCodec = KeyCodec.class, valueCodec = ValueCodec.class)
+  public Map<Key, Value> byName = new LinkedHashMap<>();
+
+  @JsonCodec(contentCodec = ValueCodec.class)
+  public Optional<Value> optional;
+
+  @JsonCodec(contentCodec = ValueCodec.class)
+  public AtomicReference<Value> atomic;
+
+  public DeclaredValue declared;
 
   @JsonAnyProperty
-  public Map<String, @JsonCodec(ValueCodec.class) Value> extra = new LinkedHashMap<>();
+  @JsonCodec(valueCodec = ValueCodec.class)
+  public Map<String, Value> extra = new LinkedHashMap<>();
 
-  private List<Value> interfaceValues = new ArrayList<>();
-  private List<PlainValue> suppressedValues = new ArrayList<>();
   private Value rootProperty;
+  private Value parameterProperty;
 
   public GeneratedJsonModel() {}
 
-  @Override
-  public List<Value> interfaceValuesStorage() {
-    return interfaceValues;
-  }
-
-  public void replaceInterfaceValues(List<Value> values) {
-    interfaceValues = values;
-  }
-
-  @Override
-  public List<PlainValue> getSuppressedValues() {
-    return suppressedValues;
-  }
-
-  public void replaceSuppressedValues(List<PlainValue> values) {
-    suppressedValues = values;
-  }
-
-  public GeneratedJsonModel.@JsonCodec(ValueCodec.class) Value getRootProperty() {
+  @JsonCodec(ValueCodec.class)
+  public Value getRootProperty() {
     return rootProperty;
   }
 
@@ -87,34 +92,31 @@ public abstract class GeneratedJsonModel extends GeneratedJsonParent
     this.rootProperty = rootProperty;
   }
 
+  public Value getParameterProperty() {
+    return parameterProperty;
+  }
+
+  public void setParameterProperty(@JsonCodec(ValueCodec.class) Value parameterProperty) {
+    this.parameterProperty = parameterProperty;
+  }
+
   public static void resetCodecCalls() {
     CODEC_CALLS.set(0);
-    SUPPRESSED_CODEC_CALLS.set(0);
+    KEY_CODEC_CALLS.set(0);
   }
 
   public static int codecCalls() {
     return CODEC_CALLS.get();
   }
 
-  public static int suppressedCodecCalls() {
-    return SUPPRESSED_CODEC_CALLS.get();
+  public static int keyCodecCalls() {
+    return KEY_CODEC_CALLS.get();
   }
 
   public static final class Value {
     public final String text;
 
     public Value(String text) {
-      this.text = text;
-    }
-  }
-
-  @JsonType
-  public static final class PlainValue {
-    public String text;
-
-    public PlainValue() {}
-
-    public PlainValue(String text) {
       this.text = text;
     }
   }
@@ -153,37 +155,80 @@ public abstract class GeneratedJsonModel extends GeneratedJsonParent
     }
   }
 
-  public static final class SuppressedValueCodec implements JsonValueCodec<PlainValue> {
-    public SuppressedValueCodec() {}
+  public static final class Key {
+    public final String text;
 
-    @Override
-    public void writeString(StringJsonWriter writer, PlainValue value) {
-      SUPPRESSED_CODEC_CALLS.incrementAndGet();
-      writer.writeString(value == null ? null : "suppressed:" + value.text);
+    public Key(String text) {
+      this.text = text;
     }
 
     @Override
-    public void writeUtf8(Utf8JsonWriter writer, PlainValue value) {
-      SUPPRESSED_CODEC_CALLS.incrementAndGet();
-      writer.writeString(value == null ? null : "suppressed:" + value.text);
+    public boolean equals(Object other) {
+      return other instanceof Key && Objects.equals(text, ((Key) other).text);
     }
 
     @Override
-    public PlainValue readLatin1(Latin1JsonReader reader) {
-      SUPPRESSED_CODEC_CALLS.incrementAndGet();
-      return reader.tryReadNullToken() ? null : new PlainValue(reader.readString());
+    public int hashCode() {
+      return Objects.hashCode(text);
+    }
+  }
+
+  public static final class KeyCodec implements MapKeyCodec {
+    public KeyCodec() {}
+
+    @Override
+    public String toName(Object key) {
+      KEY_CODEC_CALLS.incrementAndGet();
+      return "generated-key:" + ((Key) key).text;
     }
 
     @Override
-    public PlainValue readUtf16(Utf16JsonReader reader) {
-      SUPPRESSED_CODEC_CALLS.incrementAndGet();
-      return reader.tryReadNullToken() ? null : new PlainValue(reader.readString());
+    public Object fromName(String name) {
+      KEY_CODEC_CALLS.incrementAndGet();
+      return new Key(name.substring("generated-key:".length()));
+    }
+  }
+
+  @JsonCodec(DeclaredValueCodec.class)
+  public static final class DeclaredValue {
+    public final String text;
+
+    public DeclaredValue(String text) {
+      this.text = text;
+    }
+  }
+
+  public static final class DeclaredValueCodec implements JsonValueCodec<DeclaredValue> {
+    public DeclaredValueCodec() {}
+
+    @Override
+    public void writeString(StringJsonWriter writer, DeclaredValue value) {
+      CODEC_CALLS.incrementAndGet();
+      writer.writeString(value == null ? null : "declared:" + value.text);
     }
 
     @Override
-    public PlainValue readUtf8(Utf8JsonReader reader) {
-      SUPPRESSED_CODEC_CALLS.incrementAndGet();
-      return reader.tryReadNullToken() ? null : new PlainValue(reader.readString());
+    public void writeUtf8(Utf8JsonWriter writer, DeclaredValue value) {
+      CODEC_CALLS.incrementAndGet();
+      writer.writeString(value == null ? null : "declared:" + value.text);
+    }
+
+    @Override
+    public DeclaredValue readLatin1(Latin1JsonReader reader) {
+      CODEC_CALLS.incrementAndGet();
+      return reader.tryReadNullToken() ? null : new DeclaredValue(reader.readString());
+    }
+
+    @Override
+    public DeclaredValue readUtf16(Utf16JsonReader reader) {
+      CODEC_CALLS.incrementAndGet();
+      return reader.tryReadNullToken() ? null : new DeclaredValue(reader.readString());
+    }
+
+    @Override
+    public DeclaredValue readUtf8(Utf8JsonReader reader) {
+      CODEC_CALLS.incrementAndGet();
+      return reader.tryReadNullToken() ? null : new DeclaredValue(reader.readString());
     }
   }
 
@@ -194,8 +239,8 @@ public abstract class GeneratedJsonModel extends GeneratedJsonParent
 
     @JsonCreator
     public CreatedValue(
-        @JsonProperty("values") List<@JsonCodec(ValueCodec.class) Value> values,
-        @JsonProperty("direct") GeneratedJsonModel.@JsonCodec(ValueCodec.class) Value direct) {
+        @JsonProperty("values") @JsonCodec(elementCodec = ValueCodec.class) List<Value> values,
+        @JsonProperty("direct") @JsonCodec(ValueCodec.class) Value direct) {
       this.values = values;
       this.direct = direct;
     }

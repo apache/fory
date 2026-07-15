@@ -19,9 +19,19 @@
 
 package org.apache.fory.android;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
+import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -31,13 +41,37 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
 /** Declaration-codec fixture retained by application-authored exact R8 rules. */
 public final class ManualJsonModel {
   private static final AtomicInteger CODEC_CALLS = new AtomicInteger();
+  private static final AtomicInteger KEY_CODEC_CALLS = new AtomicInteger();
 
   public DirectValue direct;
 
   @JsonCodec(MemberValueCodec.class)
   public MemberValue declaredField;
 
+  @JsonCodec(elementCodec = MemberValueCodec.class)
+  public List<MemberValue> values = new ArrayList<>();
+
+  @JsonCodec(elementCodec = MemberValueCodec.class)
+  public MemberValue[] array;
+
+  @JsonCodec(elementCodec = MemberValueCodec.class)
+  public AtomicReferenceArray<MemberValue> atomicArray;
+
+  @JsonCodec(keyCodec = KeyCodec.class, valueCodec = MemberValueCodec.class)
+  public Map<Key, MemberValue> byName = new LinkedHashMap<>();
+
+  @JsonCodec(contentCodec = MemberValueCodec.class)
+  public Optional<MemberValue> optional;
+
+  @JsonCodec(contentCodec = MemberValueCodec.class)
+  public AtomicReference<MemberValue> atomic;
+
+  @JsonAnyProperty
+  @JsonCodec(valueCodec = MemberValueCodec.class)
+  public Map<String, MemberValue> extra = new LinkedHashMap<>();
+
   private MemberValue declaredProperty;
+  private MemberValue parameterProperty;
 
   public ManualJsonModel() {}
 
@@ -50,12 +84,26 @@ public final class ManualJsonModel {
     this.declaredProperty = declaredProperty;
   }
 
+  public MemberValue getParameterProperty() {
+    return parameterProperty;
+  }
+
+  public void setParameterProperty(
+      @JsonCodec(MemberValueCodec.class) MemberValue parameterProperty) {
+    this.parameterProperty = parameterProperty;
+  }
+
   public static void resetCodecCalls() {
     CODEC_CALLS.set(0);
+    KEY_CODEC_CALLS.set(0);
   }
 
   public static int codecCalls() {
     return CODEC_CALLS.get();
+  }
+
+  public static int keyCodecCalls() {
+    return KEY_CODEC_CALLS.get();
   }
 
   public interface TextValue {
@@ -86,6 +134,40 @@ public final class ManualJsonModel {
     @Override
     public String text() {
       return text;
+    }
+  }
+
+  public static final class Key {
+    public final String text;
+
+    public Key(String text) {
+      this.text = text;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      return other instanceof Key && Objects.equals(text, ((Key) other).text);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hashCode(text);
+    }
+  }
+
+  public static final class KeyCodec implements MapKeyCodec {
+    public KeyCodec() {}
+
+    @Override
+    public String toName(Object key) {
+      KEY_CODEC_CALLS.incrementAndGet();
+      return "manual-key:" + ((Key) key).text;
+    }
+
+    @Override
+    public Object fromName(String name) {
+      KEY_CODEC_CALLS.incrementAndGet();
+      return new Key(name.substring("manual-key:".length()));
     }
   }
 

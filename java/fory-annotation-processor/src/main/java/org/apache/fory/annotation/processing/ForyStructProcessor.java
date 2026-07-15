@@ -142,7 +142,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
     elements = processingEnv.getElementUtils();
     types = processingEnv.getTypeUtils();
     typeUseTrees = new JavacTypeUseTrees(processingEnv);
-    jsonTypeProcessor = new JsonTypeProcessor(processingEnv, typeUseTrees);
+    jsonTypeProcessor = new JsonTypeProcessor(processingEnv);
   }
 
   @Override

@@ -21,12 +21,8 @@ package org.apache.fory.json.resolver;
 
 import java.io.File;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Member;
-import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -102,14 +98,12 @@ import org.apache.fory.json.codec.GuavaCodecs;
 import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapCodec;
+import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
 import org.apache.fory.json.codegen.JsonJITContext;
-import org.apache.fory.json.meta.GeneratedJsonCodecMeta;
 import org.apache.fory.json.meta.JsonFieldKind;
-import org.apache.fory.json.meta.JsonTypeUse;
-import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.DisallowedList;
@@ -134,7 +128,6 @@ import org.apache.fory.type.TypeUtils;
  */
 public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
-  private static final String GENERATED_META_SUFFIX = "_ForyJsonCodecMeta";
   private static final Comparator<DeclarationCandidate> DECLARATION_ORDER =
       new Comparator<DeclarationCandidate>() {
         @Override
@@ -165,8 +158,7 @@ public final class JsonSharedRegistry {
   private final Set<Class<?>> typesWithoutCodecDeclaration;
   private final ConcurrentHashMap<Class<? extends JsonValueCodec<?>>, JsonValueCodec<?>>
       annotationCodecs;
-  private final IdentityHashMap<Class<?>, Map<Member, JsonTypeUse[]>> generatedTypeUses;
-  private final Set<Class<?>> typesWithoutGeneratedTypeUses;
+  private final ConcurrentHashMap<Class<? extends MapKeyCodec>, MapKeyCodec> mapKeyCodecs;
 
   public JsonSharedRegistry(JsonConfig config) {
     this(config, null);
@@ -188,11 +180,7 @@ public final class JsonSharedRegistry {
     typesWithoutCodecDeclaration =
         Collections.newSetFromMap(new IdentityHashMap<Class<?>, Boolean>());
     annotationCodecs = new ConcurrentHashMap<>();
-    generatedTypeUses = AndroidSupport.IS_ANDROID ? new IdentityHashMap<>() : null;
-    typesWithoutGeneratedTypeUses =
-        AndroidSupport.IS_ANDROID
-            ? Collections.newSetFromMap(new IdentityHashMap<Class<?>, Boolean>())
-            : null;
+    mapKeyCodecs = new ConcurrentHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
     codegen = codegenEnabled ? new JsonCodegen(config.getCodegenHash(), classLoader) : null;
     asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
@@ -267,42 +255,6 @@ public final class JsonSharedRegistry {
       return MapCodec.create(rawType, typeRef, localResolver);
     }
     return null;
-  }
-
-  JsonValueCodec<?> createCodec(JsonTypeUse typeUse, JsonTypeResolver localResolver) {
-    Class<?> rawType = typeUse.rawType();
-    if (rawType.isArray()) {
-      JsonTypeUse component = typeUse.arrayComponent();
-      return ArrayCodec.create(rawType, localResolver.getTypeInfo(component));
-    }
-    if (rawType == Optional.class) {
-      return new ScalarCodecs.OptionalCodec(localResolver.getTypeInfo(typeUse.argument(0)));
-    }
-    if (rawType == AtomicReference.class) {
-      return new ScalarCodecs.AtomicReferenceCodec(localResolver.getTypeInfo(typeUse.argument(0)));
-    }
-    if (rawType == AtomicReferenceArray.class) {
-      return new ScalarCodecs.AtomicReferenceArrayCodec(
-          localResolver.getTypeInfo(typeUse.argument(0)));
-    }
-    if (Collection.class.isAssignableFrom(rawType)) {
-      JsonTypeUse collection = typeUse.projectTo(Collection.class, rawType.getTypeName());
-      JsonTypeUse element = collection.argument(0);
-      return CollectionCodec.create(rawType, element.rawType(), localResolver.getTypeInfo(element));
-    }
-    if (Map.class.isAssignableFrom(rawType)) {
-      JsonTypeUse map = typeUse.projectTo(Map.class, rawType.getTypeName());
-      JsonTypeUse key = map.argument(0);
-      key.rejectMapKey(rawType.getTypeName());
-      localResolver.checkMapKeySecure(key.rawType());
-      JsonTypeUse value = map.argument(1);
-      return MapCodec.create(rawType, key.rawType(), localResolver.getTypeInfo(value));
-    }
-    JsonValueCodec<?> codec = createCodec(rawType, TypeRef.of(typeUse.type()), localResolver);
-    if (codec != null) {
-      typeUse.rejectExplicitDescendants(rawType.getTypeName());
-    }
-    return codec;
   }
 
   public JsonFieldKind kind(Class<?> type) {
@@ -403,157 +355,15 @@ public final class JsonSharedRegistry {
     }
   }
 
-  Map<Member, JsonTypeUse[]> generatedTypeUses(Class<?> targetType) {
-    if (!AndroidSupport.IS_ANDROID) {
-      return Collections.emptyMap();
-    }
-    synchronized (generatedTypeUses) {
-      Map<Member, JsonTypeUse[]> cached = generatedTypeUses.get(targetType);
-      if (cached != null) {
-        return cached;
-      }
-      if (typesWithoutGeneratedTypeUses.contains(targetType)) {
-        return Collections.emptyMap();
-      }
-      Map<Member, JsonTypeUse[]> loaded = loadGeneratedTypeUses(targetType);
-      if (loaded == null) {
-        // Android cannot observe whether source type-use annotations existed, so an absent
-        // companion is a normal cached miss. Only a found but malformed companion can fail here.
-        typesWithoutGeneratedTypeUses.add(targetType);
-        return Collections.emptyMap();
-      }
-      generatedTypeUses.put(targetType, loaded);
-      return loaded;
-    }
-  }
-
-  private static Map<Member, JsonTypeUse[]> loadGeneratedTypeUses(Class<?> targetType) {
-    String companionName = targetType.getName() + GENERATED_META_SUFFIX;
-    Class<?> companion;
-    try {
-      companion = Class.forName(companionName, true, targetType.getClassLoader());
-    } catch (ClassNotFoundException e) {
-      return null;
-    } catch (LinkageError | RuntimeException e) {
-      throw generatedMetaFailure(targetType, "cannot load " + companionName, e);
-    }
-    Class<? extends GeneratedJsonCodecMeta> providerType;
-    try {
-      providerType = companion.asSubclass(GeneratedJsonCodecMeta.class);
-    } catch (ClassCastException e) {
-      throw generatedMetaFailure(
-          targetType, companionName + " does not implement GeneratedJsonCodecMeta", e);
-    }
-    GeneratedJsonCodecMeta provider;
-    try {
-      provider = providerType.getConstructor().newInstance();
-    } catch (InvocationTargetException e) {
-      throw generatedMetaFailure(targetType, companionName + " constructor failed", e.getCause());
-    } catch (ReflectiveOperationException | LinkageError | RuntimeException e) {
-      throw generatedMetaFailure(
-          targetType, companionName + " must have an accessible public no-argument constructor", e);
-    }
-    Map<Member, JsonTypeUse[]> typeUses;
-    try {
-      typeUses = provider.typeUses();
-    } catch (LinkageError | RuntimeException e) {
-      throw generatedMetaFailure(targetType, companionName + ".typeUses() failed", e);
-    }
-    validateGeneratedTypeUses(targetType, typeUses);
-    return typeUses;
-  }
-
-  private static void validateGeneratedTypeUses(
-      Class<?> targetType, Map<Member, JsonTypeUse[]> typeUses) {
-    if (typeUses == null || typeUses.isEmpty()) {
-      throw generatedMetaFailure(targetType, "typeUses() must return a non-empty map", null);
-    }
-    boolean hasGeneratedCodec = false;
-    for (Map.Entry<Member, JsonTypeUse[]> entry : typeUses.entrySet()) {
-      Member member = entry.getKey();
-      JsonTypeUse[] slots = entry.getValue();
-      if (member == null || slots == null) {
-        throw generatedMetaFailure(
-            targetType, "typeUses() contains a null member or slot array", null);
-      }
-      Class<?> declaringType = member.getDeclaringClass();
-      if (!declaringType.isAssignableFrom(targetType)) {
-        throw generatedMemberFailure(targetType, member, "declaring type is outside the hierarchy");
-      }
-      Type[] types;
-      if (member instanceof Field) {
-        if (slots.length != 1) {
-          throw generatedMemberFailure(targetType, member, "field metadata must have one slot");
-        }
-        types = new Type[] {((Field) member).getGenericType()};
-      } else if (member instanceof Method) {
-        Method method = (Method) member;
-        Type[] parameters = method.getGenericParameterTypes();
-        types = new Type[parameters.length + 1];
-        types[0] = method.getGenericReturnType();
-        System.arraycopy(parameters, 0, types, 1, parameters.length);
-      } else if (member instanceof Constructor) {
-        if (declaringType != targetType) {
-          throw generatedMemberFailure(
-              targetType, member, "constructor must be declared by the target type");
-        }
-        Type[] parameters = ((Constructor<?>) member).getGenericParameterTypes();
-        types = new Type[parameters.length + 1];
-        System.arraycopy(parameters, 0, types, 1, parameters.length);
-      } else {
-        throw generatedMemberFailure(targetType, member, "unsupported member kind");
-      }
-      if (slots.length != types.length) {
-        throw generatedMemberFailure(
-            targetType, member, "expected " + types.length + " slots but found " + slots.length);
-      }
-      for (int i = 0; i < slots.length; i++) {
-        JsonTypeUse typeUse = slots[i];
-        if (typeUse == null) {
-          continue;
-        }
-        if (member instanceof Constructor && i == 0) {
-          throw generatedMemberFailure(targetType, member, "constructor return slot must be null");
-        }
-        if (!typeUse.type().equals(types[i])) {
-          throw generatedMemberFailure(
-              targetType,
-              member,
-              "slot "
-                  + i
-                  + " type "
-                  + typeUse.type().getTypeName()
-                  + " does not match "
-                  + types[i].getTypeName());
-        }
-        if (!typeUse.hasExplicitCodec()) {
-          throw generatedMemberFailure(
-              targetType, member, "slot " + i + " contains no codec metadata");
-        }
-        hasGeneratedCodec = true;
-      }
-    }
-    if (!hasGeneratedCodec) {
-      throw generatedMetaFailure(targetType, "typeUses() contains no codec metadata", null);
-    }
-  }
-
-  private static ForyJsonException generatedMemberFailure(
-      Class<?> targetType, Member member, String reason) {
-    return generatedMetaFailure(targetType, member + ": " + reason, null);
-  }
-
-  private static ForyJsonException generatedMetaFailure(
-      Class<?> targetType, String reason, Throwable cause) {
-    String message =
-        "Invalid generated JSON codec metadata for " + targetType.getName() + ": " + reason;
-    return cause == null ? new ForyJsonException(message) : new ForyJsonException(message, cause);
-  }
-
   JsonValueCodec<?> annotationCodec(
       Class<?> targetType, Class<? extends JsonValueCodec<?>> codecClass) {
     checkCustomSecure(targetType);
     return annotationCodecs.computeIfAbsent(codecClass, JsonSharedRegistry::newAnnotationCodec);
+  }
+
+  MapKeyCodec mapKeyCodec(Class<?> targetType, Class<? extends MapKeyCodec> codecClass) {
+    checkMapKeySecure(targetType);
+    return mapKeyCodecs.computeIfAbsent(codecClass, JsonSharedRegistry::newMapKeyCodec);
   }
 
   private JsonCodecDeclaration resolveCodecDeclaration(Class<?> targetType) {
@@ -643,8 +453,22 @@ public final class JsonSharedRegistry {
       return null;
     }
     try {
-      return new DeclarationCandidate(declarationType, annotation.value());
+      Class<? extends JsonValueCodec<?>> codecClass = annotation.value();
+      if (codecClass == JsonCodec.NoJsonValueCodec.class
+          || annotation.elementCodec() != JsonCodec.NoJsonValueCodec.class
+          || annotation.contentCodec() != JsonCodec.NoJsonValueCodec.class
+          || annotation.keyCodec() != JsonCodec.NoMapKeyCodec.class
+          || annotation.valueCodec() != JsonCodec.NoJsonValueCodec.class) {
+        throw new ForyJsonException(
+            "@JsonCodec on type "
+                + declarationType.getName()
+                + " must set only the complete value codec");
+      }
+      return new DeclarationCandidate(declarationType, codecClass);
     } catch (RuntimeException | LinkageError e) {
+      if (e instanceof ForyJsonException) {
+        throw (ForyJsonException) e;
+      }
       throw new ForyJsonException(
           "Cannot resolve @JsonCodec declared on " + declarationType.getName(), e);
     }
@@ -667,7 +491,7 @@ public final class JsonSharedRegistry {
     message
         .append(" declare @JsonCodec on ")
         .append(targetType.getName())
-        .append(", annotate the current type use, or register an exact codec for ")
+        .append(" or register an exact codec for ")
         .append(targetType.getName())
         .append(".");
     return new ForyJsonException(message.toString());
@@ -675,16 +499,24 @@ public final class JsonSharedRegistry {
 
   private static JsonValueCodec<?> newAnnotationCodec(
       Class<? extends JsonValueCodec<?>> codecClass) {
-    validateCodecClass(codecClass);
-    Constructor<? extends JsonValueCodec<?>> constructor;
+    return newCodec(codecClass, "JSON codec");
+  }
+
+  private static MapKeyCodec newMapKeyCodec(Class<? extends MapKeyCodec> codecClass) {
+    return newCodec(codecClass, "JSON map key codec");
+  }
+
+  private static <T> T newCodec(Class<? extends T> codecClass, String role) {
+    validateCodecClass(codecClass, role);
+    Constructor<? extends T> constructor;
     try {
       constructor = codecClass.getConstructor();
     } catch (NoSuchMethodException e) {
-      throw invalidCodecClass(codecClass, "must have a public no-argument constructor", e);
+      throw invalidCodecClass(codecClass, role, "must have a public no-argument constructor", e);
     } catch (SecurityException e) {
-      throw inaccessibleCodecClass(codecClass, e);
+      throw inaccessibleCodecClass(codecClass, role, e);
     } catch (LinkageError e) {
-      throw invalidCodecClass(codecClass, "constructor cannot be inspected", e);
+      throw invalidCodecClass(codecClass, role, "constructor cannot be inspected", e);
     }
     try {
       return constructor.newInstance();
@@ -696,46 +528,48 @@ public final class JsonSharedRegistry {
         constructor.setAccessible(true);
         return constructor.newInstance();
       } catch (InvocationTargetException retryFailure) {
-        throw invalidCodecClass(codecClass, "constructor failed", retryFailure.getCause());
+        throw invalidCodecClass(codecClass, role, "constructor failed", retryFailure.getCause());
       } catch (ReflectiveOperationException | LinkageError | RuntimeException retryFailure) {
-        throw inaccessibleCodecClass(codecClass, retryFailure);
+        throw inaccessibleCodecClass(codecClass, role, retryFailure);
       }
     } catch (InvocationTargetException e) {
-      throw invalidCodecClass(codecClass, "constructor failed", e.getCause());
+      throw invalidCodecClass(codecClass, role, "constructor failed", e.getCause());
     } catch (ReflectiveOperationException | LinkageError e) {
-      throw invalidCodecClass(codecClass, "cannot be constructed", e);
+      throw invalidCodecClass(codecClass, role, "cannot be constructed", e);
     } catch (RuntimeException e) {
-      throw invalidCodecClass(codecClass, "cannot be constructed", e);
+      throw invalidCodecClass(codecClass, role, "cannot be constructed", e);
     }
   }
 
-  private static void validateCodecClass(Class<? extends JsonValueCodec<?>> codecClass) {
+  private static void validateCodecClass(Class<?> codecClass, String role) {
     int modifiers = codecClass.getModifiers();
     if (!Modifier.isPublic(modifiers)) {
-      throw invalidCodecClass(codecClass, "must be public", null);
+      throw invalidCodecClass(codecClass, role, "must be public", null);
     }
     if (codecClass.isInterface() || Modifier.isAbstract(modifiers)) {
-      throw invalidCodecClass(codecClass, "must be concrete", null);
+      throw invalidCodecClass(codecClass, role, "must be concrete", null);
     }
     if (codecClass.getEnclosingClass() != null
         && (!codecClass.isMemberClass() || !Modifier.isStatic(modifiers))) {
-      throw invalidCodecClass(codecClass, "must be top-level or a static nested class", null);
+      throw invalidCodecClass(codecClass, role, "must be top-level or a static nested class", null);
     }
     for (Class<?> enclosing = codecClass.getEnclosingClass();
         enclosing != null;
         enclosing = enclosing.getEnclosingClass()) {
       if (!Modifier.isPublic(enclosing.getModifiers())) {
-        throw invalidCodecClass(codecClass, "must be enclosed only by public classes", null);
+        throw invalidCodecClass(codecClass, role, "must be enclosed only by public classes", null);
       }
     }
   }
 
   private static ForyJsonException inaccessibleCodecClass(
-      Class<? extends JsonValueCodec<?>> codecClass, Throwable cause) {
+      Class<?> codecClass, String role, Throwable cause) {
     Package codecPackage = codecClass.getPackage();
     String packageName = codecPackage == null ? "the unnamed package" : codecPackage.getName();
     return new ForyJsonException(
-        "Cannot access the public no-argument constructor of JSON codec "
+        "Cannot access the public no-argument constructor of "
+            + role
+            + ' '
             + codecClass.getName()
             + "; export or open package "
             + packageName
@@ -744,8 +578,8 @@ public final class JsonSharedRegistry {
   }
 
   private static ForyJsonException invalidCodecClass(
-      Class<? extends JsonValueCodec<?>> codecClass, String reason, Throwable cause) {
-    String message = "JSON codec " + codecClass.getName() + ' ' + reason + '.';
+      Class<?> codecClass, String role, String reason, Throwable cause) {
+    String message = role + ' ' + codecClass.getName() + ' ' + reason + '.';
     return cause == null ? new ForyJsonException(message) : new ForyJsonException(message, cause);
   }
 

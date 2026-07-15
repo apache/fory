@@ -17,17 +17,26 @@
  * under the License.
  */
 
-package org.apache.fory.android;
+package org.apache.fory.json.codec;
 
-import java.util.List;
-import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.writer.JsonWriter;
 
-/** Unannotated interface metadata covered by {@link GeneratedJsonModel}'s companion. */
-public interface GeneratedJsonContract {
-  default List<GeneratedJsonModel.@JsonCodec(GeneratedJsonModel.ValueCodec.class) Value>
-      getInterfaceValues() {
-    return interfaceValuesStorage();
+/** Converts a Java map key to and from a JSON object member name. */
+public interface MapKeyCodec {
+  /** Converts a non-null Java map key to its JSON object member name. */
+  String toName(Object key);
+
+  /** Converts a JSON object member name to a Java map key. */
+  Object fromName(String name);
+
+  /** Writes a Java map key as a JSON object member name. */
+  default void writeName(JsonWriter writer, Object key) {
+    writer.writeFieldName(toName(key));
   }
 
-  List<GeneratedJsonModel.Value> interfaceValuesStorage();
+  /** Reads a Java map key from a JSON object member name. */
+  default Object readName(JsonReader reader) {
+    return fromName(reader.readString());
+  }
 }

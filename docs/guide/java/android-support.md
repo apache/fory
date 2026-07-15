@@ -48,88 +48,78 @@ Fory JSON supports ordinary classes on Android API level 26 and later through th
 `fory-json` artifact. Runtime JSON code generation and asynchronous compilation are disabled
 automatically, so `ForyJson.builder().build()` uses the interpreted object mapper.
 
-Add Fory JSON to the application and put the annotation processor on the module's processor path:
+Add Fory JSON to the application:
 
 ```kotlin
 dependencies {
   implementation("org.apache.fory:fory-json:${foryVersion}")
-  annotationProcessor("org.apache.fory:fory-annotation-processor:${foryVersion}")
 }
 ```
 
-`@JsonType` is optional. Add it to application models when the processor should emit exact R8 rules
-and metadata for `@JsonCodec` type uses, including qualified roots, parameter types, generic
-arguments, and array components:
+`@JsonCodec` has the same declaration behavior on Android and the JVM. It supports complete values,
+direct collection and array elements, `Optional` and `AtomicReference` contents, Map keys and
+values, ordinary getters, setter value parameters, and `JsonCreator` parameters:
 
 ```java
 import java.util.List;
 import org.apache.fory.json.annotation.JsonCodec;
+
+public final class Invoice {
+  @JsonCodec(elementCodec = MoneyCodec.class)
+  public List<Money> items;
+  private Money primary;
+
+  public void setPrimary(@JsonCodec(MoneyCodec.class) Money primary) {
+    this.primary = primary;
+  }
+
+  public Invoice() {}
+}
+```
+
+Child codecs act on one direct level only. For example, `elementCodec` on `Money[][]` handles each
+`Money[]`, and `elementCodec` on `AtomicReferenceArray<Money>` handles each `Money`. Use a complete
+`value` codec when deeper custom behavior is required.
+
+`@JsonType` is optional. Add the annotation processor and mark application models with `JsonType`
+when the build should generate exact R8 rules:
+
+```kotlin
+dependencies {
+  annotationProcessor("org.apache.fory:fory-annotation-processor:${foryVersion}")
+}
+```
+
+```java
 import org.apache.fory.json.annotation.JsonType;
 
 @JsonType
-public final class GeneratedInvoice {
-  public List<@JsonCodec(MoneyCodec.class) Money> items;
-
-  public GeneratedInvoice() {}
+public final class Invoice {
+  // ...
 }
 ```
 
-Without `@JsonType`, ordinary reflection mapping and `@JsonCodec` declarations on types, fields, and
-effective ordinary getters still work. A release-minified application must supply equivalent exact
-R8 rules for every reflected class, constructor, field, method, generic signature, and runtime
-annotation. For example:
-
-```java
-public final class ManualInvoice {
-  @JsonCodec(MoneyCodec.class)
-  public Money total;
-
-  public ManualInvoice() {}
-}
-```
+Applications that omit `JsonType` can supply equivalent exact rules themselves. Retain every model
+constructor, field, method, generic signature, declaration annotation, and parameter annotation used
+by Fory JSON, plus the public no-argument constructor of every annotation-selected codec. For the
+previous `Invoice` example:
 
 ```proguard
--keepattributes Signature,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations,RuntimeVisibleTypeAnnotations,AnnotationDefault,MethodParameters
--keep,allowoptimization class com.example.ManualInvoice {
+-keepattributes Signature,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations
+-keepattributes AnnotationDefault,MethodParameters,InnerClasses,EnclosingMethod
+-keep,allowoptimization class com.example.Invoice {
   public <init>();
-  public com.example.Money total;
+  public java.util.List items;
+  public void setPrimary(com.example.Money);
 }
 -keep,allowoptimization,allowobfuscation class com.example.MoneyCodec {
   public <init>();
 }
 ```
 
-Application-authored rules cannot supply codec type-use metadata that Android reflection does not
-expose. For example, this nested annotation is not applied on Android when the class omits
-`@JsonType`, even if exact rules retain the class, field, generic signature, and type annotation:
-
-```java
-public final class UnsupportedNestedInvoice {
-  public List<@JsonCodec(MoneyCodec.class) Money> items;
-
-  public UnsupportedNestedInvoice() {}
-}
-```
-
-```proguard
--keepattributes Signature,RuntimeVisibleTypeAnnotations
--keep,allowoptimization class com.example.UnsupportedNestedInvoice {
-  public <init>();
-  public java.util.List items;
-}
-```
-
-On Android, a pure type-use `@JsonCodec` requires `@JsonType`. This includes a qualified root type
-use, a parameter type, a generic argument, and an array component. Type declarations, field
-declarations, and effective ordinary getter declarations remain available through direct
-reflection without `@JsonType`.
-
-On the JVM and in a native image, a field or effective ordinary getter declaration takes precedence
-over a codec on the root annotated type. Android reads the declaration directly and obtains pure
-type-use facts from the generated companion. A setter, creator factory, unrelated method, or void
-method cannot declare `@JsonCodec`. `JsonAnyProperty` and `JsonAnyGetter` flatten their Map rather
-than exposing a complete root value, so their root declaration and root type-use codec forms are
-invalid; annotate the Map value type when a nested codec is needed.
+The same exact-rule approach supports every `JsonCodec` member; it is not limited to complete-value
+codecs. `JsonType` only automates rule generation on Android and is not required for codec
+selection.
 
 Android Fory JSON requires a retained no-argument constructor for an ordinary mutable class; it may
 be non-public when Android reflection can make it accessible. `JsonCreator` constructor-backed

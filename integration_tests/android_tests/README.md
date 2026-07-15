@@ -3,8 +3,8 @@
 This project runs Android API 26+ instrumented tests for Java `fory-core` and
 `fory-json`. API 26 runs both debug reflection coverage and the release-minified
 suite. API 36 runs the release-minified suite. Release coverage verifies static
-serializers, processor-generated Fory JSON rules and codec type-use metadata, and
-equivalent application-authored exact rules.
+serializers, processor-generated Fory JSON rules for ordinary codec declarations,
+and equivalent application-authored exact rules.
 
 The tests consume `org.apache.fory:fory-core:1.4.0-SNAPSHOT`,
 `org.apache.fory:fory-json:1.4.0-SNAPSHOT`, and

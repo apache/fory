@@ -22,7 +22,6 @@ package org.apache.fory.json.codec;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
@@ -31,13 +30,13 @@ import java.util.Map;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.PropertyNamingStrategy;
+import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
-import org.apache.fory.json.meta.JsonTypeUse;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -116,18 +115,11 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   @Internal
   public static <T> ObjectCodec<T> build(
       TypeRef<T> ownerType,
-      JsonTypeUse ownerTypeUse,
-      Map<Member, JsonTypeUse[]> generatedTypeUses,
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
       boolean writeNullFields) {
     return ObjectCodecBuilder.build(
-        ownerType,
-        ownerTypeUse,
-        generatedTypeUses,
-        propertyDiscoveryEnabled,
-        propertyNamingStrategy,
-        writeNullFields);
+        ownerType, propertyDiscoveryEnabled, propertyNamingStrategy, writeNullFields);
   }
 
   static <T> ObjectCodec<T> createCodec(
@@ -1192,7 +1184,8 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     private final Class<?> mapRawType;
     private final Type valueType;
     private final Class<?> valueRawType;
-    private final JsonTypeUse valueTypeUse;
+    private final JsonCodec valueCodecAnnotation;
+    private final Class<? extends JsonValueCodec<?>> valueCodecClass;
     private final int writeIndex;
     private final int constructionIndex;
     private JsonTypeInfo valueTypeInfo;
@@ -1207,7 +1200,8 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
         Class<?> mapRawType,
         Type valueType,
         Class<?> valueRawType,
-        JsonTypeUse valueTypeUse,
+        JsonCodec valueCodecAnnotation,
+        Class<? extends JsonValueCodec<?>> valueCodecClass,
         int writeIndex,
         int constructionIndex) {
       this.writeField = writeField;
@@ -1229,22 +1223,25 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       this.mapRawType = mapRawType;
       this.valueType = valueType;
       this.valueRawType = valueRawType;
-      this.valueTypeUse = valueTypeUse;
+      this.valueCodecAnnotation = valueCodecAnnotation;
+      this.valueCodecClass = valueCodecClass;
       this.writeIndex = writeIndex;
       this.constructionIndex = constructionIndex;
     }
 
     private void resolveTypes(JsonTypeResolver resolver) {
-      if (readField != null && valueTypeUse != null) {
+      if (readField != null && (valueCodecAnnotation != null || valueCodecClass != null)) {
         resolver.checkMapKeySecure(String.class);
       }
       valueTypeInfo =
-          valueTypeUse == null
-              ? resolver.getTypeInfo(valueType, valueRawType)
-              : resolver.getTypeInfo(valueTypeUse);
+          valueCodecAnnotation != null
+              ? resolver.getTypeInfo(valueType, valueRawType, valueCodecAnnotation)
+              : valueCodecClass != null
+                  ? resolver.getTypeInfo(valueType, valueRawType, valueCodecClass)
+                  : resolver.getTypeInfo(valueType, valueRawType);
       if (readField != null) {
         mapCodec =
-            valueTypeUse == null
+            valueCodecAnnotation == null && valueCodecClass == null
                 ? MapCodec.create(mapRawType, TypeRef.of(mapType), resolver)
                 : MapCodec.create(mapRawType, String.class, valueTypeInfo);
       }
