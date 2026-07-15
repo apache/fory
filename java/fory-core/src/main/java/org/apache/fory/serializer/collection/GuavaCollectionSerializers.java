@@ -72,6 +72,10 @@ public class GuavaCollectionSerializers {
           && isClassAvailable(IMMUTABLE_SET_CLASS_NAME)
           && isClassAvailable(IMMUTABLE_SORTED_MAP_CLASS_NAME)
           && isClassAvailable(IMMUTABLE_SORTED_SET_CLASS_NAME);
+  private static final boolean SINGLETON_IMMUTABLE_BI_MAP_AVAILABLE =
+      GUAVA_AVAILABLE && isClassAvailable(PKG + ".SingletonImmutableBiMap");
+  private static final boolean SINGLETON_IMMUTABLE_LIST_AVAILABLE =
+      GUAVA_AVAILABLE && isClassAvailable(PKG + ".SingletonImmutableList");
 
   private interface MapEntryBuilder {
     void put(Object key, Object value);
@@ -84,6 +88,11 @@ public class GuavaCollectionSerializers {
       typeResolver.setSerializer(cls, this);
     }
 
+    GuavaCollectionSerializer(TypeResolver typeResolver, Class<T> cls, int ownerBytes) {
+      super(typeResolver, cls, true, ownerBytes);
+      typeResolver.setSerializer(cls, this);
+    }
+
     protected abstract T xnewInstance(Collection collection);
   }
 
@@ -91,6 +100,10 @@ public class GuavaCollectionSerializers {
       extends GuavaCollectionSerializer<T> {
     public ImmutableListSerializer(TypeResolver typeResolver, Class<T> cls) {
       super(typeResolver, cls);
+    }
+
+    ImmutableListSerializer(TypeResolver typeResolver, Class<T> cls, int ownerBytes) {
+      super(typeResolver, cls, ownerBytes);
     }
 
     @Override
@@ -241,6 +254,11 @@ public class GuavaCollectionSerializers {
       typeResolver.setSerializer(cls, this);
     }
 
+    GuavaMapSerializer(TypeResolver typeResolver, Class<T> cls, int ownerBytes) {
+      super(typeResolver, cls, true, ownerBytes);
+      typeResolver.setSerializer(cls, this);
+    }
+
     protected abstract ImmutableMap.Builder makeBuilder(int size);
 
     @Override
@@ -368,6 +386,10 @@ public class GuavaCollectionSerializers {
 
     public ImmutableBiMapSerializer(TypeResolver typeResolver, Class<T> cls) {
       super(typeResolver, cls);
+    }
+
+    ImmutableBiMapSerializer(TypeResolver typeResolver, Class<T> cls, int ownerBytes) {
+      super(typeResolver, cls, ownerBytes);
     }
 
     @Override
@@ -661,14 +683,36 @@ public class GuavaCollectionSerializers {
     Class cls =
         loadClass(PKG + ".RegularImmutableBiMap", ImmutableBiMap.of("k1", 1, "k2", 4).getClass());
     resolver.registerInternalSerializer(cls, new ImmutableBiMapSerializer(resolver, cls));
-    cls = loadClass(PKG + ".SingletonImmutableBiMap", ImmutableBiMap.of(1, 2).getClass());
-    resolver.registerInternalSerializer(cls, new ImmutableBiMapSerializer(resolver, cls));
+    if (SINGLETON_IMMUTABLE_BI_MAP_AVAILABLE) {
+      cls = loadClass(PKG + ".SingletonImmutableBiMap", ImmutableBiMap.of(1, 2).getClass());
+      resolver.registerInternalSerializer(cls, new ImmutableBiMapSerializer(resolver, cls));
+    } else {
+      // This class only preserves the missing singleton ID slot. Charge the concrete Guava owner
+      // returned by the local factory, which may be the regular implementation.
+      class GuavaSingletonBiMap {}
+
+      cls = GuavaSingletonBiMap.class;
+      int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(ImmutableBiMap.of(1, 2).getClass());
+      resolver.registerInternalSerializer(
+          cls, new ImmutableBiMapSerializer(resolver, cls, ownerBytes));
+    }
     cls = loadClass(PKG + ".RegularImmutableMap", ImmutableMap.of("k1", 1, "k2", 2).getClass());
     resolver.registerInternalSerializer(cls, new ImmutableMapSerializer(resolver, cls));
     cls = loadClass(PKG + ".RegularImmutableList", ImmutableList.of().getClass());
     resolver.registerInternalSerializer(cls, new RegularImmutableListSerializer(resolver, cls));
-    cls = loadClass(PKG + ".SingletonImmutableList", ImmutableList.of(1).getClass());
-    resolver.registerInternalSerializer(cls, new ImmutableListSerializer(resolver, cls));
+    if (SINGLETON_IMMUTABLE_LIST_AVAILABLE) {
+      cls = loadClass(PKG + ".SingletonImmutableList", ImmutableList.of(1).getClass());
+      resolver.registerInternalSerializer(cls, new ImmutableListSerializer(resolver, cls));
+    } else {
+      // This class only preserves the missing singleton ID slot. Charge the concrete Guava owner
+      // returned by the local factory, which may be the regular implementation.
+      class GuavaSingletonList {}
+
+      cls = GuavaSingletonList.class;
+      int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(ImmutableList.of(1).getClass());
+      resolver.registerInternalSerializer(
+          cls, new ImmutableListSerializer(resolver, cls, ownerBytes));
+    }
     cls = loadClass(PKG + ".RegularImmutableSet", ImmutableSet.of(1, 2).getClass());
     resolver.registerInternalSerializer(cls, new ImmutableSetSerializer(resolver, cls));
     cls = loadClass(PKG + ".SingletonImmutableSet", ImmutableSet.of(1).getClass());
