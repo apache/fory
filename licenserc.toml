@@ -67,3 +67,6 @@ excludes = [
 [mapping.DOUBLESLASH_STYLE]
 extensions = ['go', 'cs']
 filenames = ['go.mod']
+
+[mapping.SCRIPT_STYLE]
+extensions = ['properties']

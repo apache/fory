@@ -186,10 +186,10 @@ public final class AndroidJsonRuntimeScenarios {
     assertEquals("two", copy.get(1).displayName);
 
     PrivateStaticModel privateValue = new PrivateStaticModel();
-    privateValue.number = 31;
+    privateValue.setNumber(31);
     PrivateStaticModel privateCopy =
         json.fromJson(json.toJson(privateValue), PrivateStaticModel.class);
-    assertEquals(31, privateCopy.number);
+    assertEquals(31, privateCopy.getNumber());
   }
 
   public static Object newWriteBenchmark() {
@@ -259,6 +259,16 @@ public final class AndroidJsonRuntimeScenarios {
     private int number;
 
     private PrivateStaticModel() {}
+
+    @JsonProperty("number")
+    public int getNumber() {
+      return number;
+    }
+
+    @JsonProperty("number")
+    public void setNumber(int number) {
+      this.number = number;
+    }
   }
 
   @JsonType

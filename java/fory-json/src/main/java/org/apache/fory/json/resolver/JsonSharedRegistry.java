@@ -131,8 +131,7 @@ import org.apache.fory.type.TypeUtils;
  */
 public class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
-  private static final boolean CODEC_ANNOTATIONS_ENABLED =
-      !AndroidSupport.IS_ANDROID && !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE;
+  private static final boolean CODEC_ANNOTATIONS_ENABLED = !AndroidSupport.IS_ANDROID;
   static final Comparator<JsonCodecCandidate> DECLARATION_ORDER =
       new Comparator<JsonCodecCandidate>() {
         @Override

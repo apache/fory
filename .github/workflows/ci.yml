@@ -335,6 +335,10 @@ jobs:
         run: |
           cd java
           mvn -T16 --no-transfer-progress -pl fory-json,fory-annotation-processor,fory-json-gradle-plugin -am install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Test Android release verifier
+        if: matrix.name == 'agp-8.0' && matrix.api-level == 26
+        working-directory: integration_tests/android_tests
+        run: python3 -m unittest test_verify_release.py
       - name: Build and verify release artifacts
         working-directory: integration_tests/android_tests
         run: |

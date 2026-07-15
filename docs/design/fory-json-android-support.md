@@ -1,6 +1,6 @@
 # Fory JSON Android Support Design
 
-Status: Proposed
+Status: Implemented
 
 ## Summary
 
@@ -54,12 +54,17 @@ Add the following marker in `fory-json`:
 package org.apache.fory.json.annotation;
 
 @Documented
-@Retention(RetentionPolicy.CLASS)
+@Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface JsonType {}
 ```
 
-`@JsonType` means that the Java compiler must generate the Android metadata companion for the annotated declaration. It is not inherited and has no JVM runtime effect. `CLASS` retention is sufficient because the processor owns discovery; Android never reads `@JsonType`, JSON structure, or `@JsonCodec` values from runtime annotations.
+`@JsonType` is the shared platform-metadata marker introduced by the GraalVM native-image support.
+It is not inherited and has no ordinary JVM JSON effect. Its runtime retention remains the GraalVM
+feature's source of reachable reflection metadata. The Android annotation processor independently
+discovers the same annotation during compilation and generates the Android metadata companion;
+Android runtime code never reads `@JsonType`, JSON structure, or `@JsonCodec` values from runtime
+annotations.
 
 Eligible declarations are top-level classes and static nested classes, including private nested declarations and declarations inside a private enclosing chain. The generated companion does not need a source reference to an inaccessible target: it records the exact binary name, and the stable base constructor resolves that name without initialization through the companion/target defining loader and compares the resulting `Class` identity with the requested target. The processor rejects local classes, anonymous classes, and a non-static annotated member because those declarations do not have the required stable binary identity or have an enclosing-instance construction dependency. An enclosing class itself need not be static when Java permits it to declare the static annotated member.
 
@@ -393,7 +398,23 @@ The source-neutral cold boundary is concrete:
 
 For a selected occurrence, `JsonTypeNode.resolve(ownerType, ownerTypeUse)` requests only its required class indexes and reconstructs the declared/bound `Type`, raw class, unresolved-variable state, and `JsonTypeUse` from generated structure and the requested owner binding; it never reads a member `Signature`. It has concrete representations for parameterized, array, wildcard, and generated variable-key nodes, but it never materializes a fake `TypeVariable`. `JsonFieldInfo` receives explicit resolved read/write `Type`, raw class, type use, and accessor instead of deriving them from `Field` or `Method`. Its optional reflection members exist only for JVM code generation and diagnostics.
 
-`AnyInfo` stores explicit read/write capability flags, resolved map/value types, accessors, and `JsonAnySetterInvoker`; it does not use non-null `Field`/`Method` values as capability flags. `JsonCreatorInfo` gains a generated entry point taking explicit creator facts and `JsonCreatorInvoker`; its optional `Executable` and existing JVM handle remain on the JVM collector path, while an Android source-inaccessible creator executable is encapsulated by the generated invoker selected on the cold path. These changes keep executable ownership inside the invoker without duplicating merge, order, or validation logic.
+The final `AnyInfo` keeps the ordinary JVM 80-byte layout and its private hot helpers. One
+`setterHandle` carries either the JVM exact Any-setter handle or the Android bound handle returned
+by `JsonAnySetterInvoker.exactHandle()`. The hot `put` helper performs one `invokeExact`; it does not
+branch on the platform, look up metadata, retain a generated invoker, or allocate an invocation
+carrier. `AndroidAnyInfo` is only the cold Android factory that binds the generated invoker before
+constructing the common runtime value. Read and write capability continue to follow the selected
+accessor or setter handle, without additional flags in the common value.
+
+Generated-only retained state is isolated in Android/generated subclasses rather than widening
+ordinary JVM values. `AndroidJsonSharedRegistry` owns the metadata registry and generated
+declaration resolution, while `AndroidJsonTypeResolver` owns the no-codegen resolver behavior.
+`GeneratedJsonTypeUse`, `AndroidJsonCreatorInfo`, `AndroidJsonCodecDeclaration`,
+`GeneratedJsonCodecCandidate`, and `GeneratedFieldBuilder` retain generated factories, operations,
+tokens, resolved nodes, and access state only where those facts are used. The ordinary
+`JsonSharedRegistry`, `JsonTypeResolver`, `JsonTypeUse`, `JsonCreatorInfo`, `JsonCodecDeclaration`,
+codec candidate, and `FieldBuilder` layouts and class-loading graph therefore remain aligned with
+the non-Android JVM baseline.
 
 After construction, Android publishes the same `JsonTypeInfo` and five reader/writer capability slots used on the JVM. `ObjectCodec`, `JsonFieldInfo`, and `JsonFieldTable` retain concrete selected accessors. Serialization and deserialization loops do not query the metadata registry and do not branch on the platform.
 
@@ -625,7 +646,16 @@ Run subprocess tests with `FORY_ANDROID_ENABLED=1` to cover behavior that does n
 
 ### Android instrumentation matrix
 
-Build real release-minified fixtures with R8 full mode and no application broad keep rules. Pin the complete non-record matrix to exactly AGP 8.0 and its bundled D8/R8 using JDK 17, and run the same non-record matrix on the current supported AGP/R8 toolchain. If the minimum toolchain cannot consume any required generated resource or optimization rule, raise the base declared minimum before release. On both base-profile toolchains, run:
+GitHub CI exclusively owns release-minified fixture builds, R8 acceptance, emulator
+instrumentation, and Android benchmarks. Local R8 or device runs are not final acceptance evidence.
+CI retains the exact APK, Android App Bundle, mapping, seeds, usage, dependency, instrumentation,
+and benchmark artifacts for every matrix entry.
+
+GitHub CI builds real release-minified fixtures with R8 full mode and no application broad keep
+rules. Pin the complete non-record matrix to exactly AGP 8.0 and its bundled D8/R8 using JDK 17,
+and run the same non-record matrix on the current supported AGP/R8 toolchain. If the minimum
+toolchain cannot consume any required generated resource or optimization rule, raise the base
+declared minimum before release. On both base-profile toolchains, run:
 
 - API 26 and current API 36 for the complete non-record matrix;
 - application-owned annotated models and models supplied by independent Java-library JAR and Android-library AAR artifacts; inspect annotation-processor `CLASS_OUTPUT`, JAR carriers, published AAR consumer rules, the canonical variant rule file, the merged R8 configuration, and final APK to prove exact generated rules and the packaged Android `-assumevalues` rule were consumed and no private carrier leaked;
@@ -649,7 +679,11 @@ Inspect the minified APK, R8 mapping, seeds, and usage outputs to prove:
 - direct type lookup uses bounded switches rather than one holder class per token, generated operation subclasses own their singletons directly, and the generated-class formula is one companion plus bounded chunk classes, one accessor per direct source field, and one subclass per other required direct operation; record final DEX type count and APK size to catch optimizer-dependent expansion;
 - `TypeRef` root generic signatures survive while unrelated `TypeRef` members and anonymous-subclass constructors remain unconstrained;
 - stale generated fact formats reach the stable ABI diagnostic instead of an R8 missing-class failure;
-- no external Janino, unsupported multi-release class, `AnnotatedType`-based Android path, `JsonJITContext`, or runtime compiler path is packaged.
+- no external Janino, unsupported multi-release class, `AnnotatedType`-based Android path,
+  `JsonJITContext`, or runtime compiler path is packaged; and
+- the R8 mapping contains no forbidden runtime-codegen, generated-code-instantiator, Janino, or
+  `AnnotatedType` input class, even if its output name was obfuscated. Raw DEX descriptor checks
+  remain an independent guard for unrenamed forbidden classes.
 
 ### JVM regression suite
 

@@ -1,8 +1,20 @@
 #!/usr/bin/env python3
-# Licensed to the Apache Software Foundation (ASF) under one or more
-# contributor license agreements. See the NOTICE file distributed with
-# this work for additional information regarding copyright ownership.
-# The ASF licenses this file to You under the Apache License, Version 2.0.
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
 
 """Verify the release-minified Android artifacts without loading application code."""
 
@@ -27,6 +39,16 @@ FORBIDDEN_DEX_DESCRIPTORS = (
     b"Lorg/codehaus/janino/",
     b"Ljava/lang/reflect/AnnotatedType;",
 )
+FORBIDDEN_MAPPING_CLASSES = (
+    "org.apache.fory.json.codegen.JsonCodegen",
+    "org.apache.fory.json.codegen.JsonJITContext",
+    "org.apache.fory.json.resolver.GeneratedCodecInstantiator",
+    "java.lang.reflect.AnnotatedType",
+)
+FORBIDDEN_MAPPING_PREFIXES = (
+    "org.apache.fory.shaded.org.codehaus.janino.",
+    "org.codehaus.janino.",
+)
 NON_RECORD_APP_COMPANIONS = (
     "org.apache.fory.android.json.AppModel_ForyJsonMetadata",
     "org.apache.fory.android.json.FieldModeModel_ForyJsonMetadata",
@@ -49,13 +71,19 @@ NON_RECORD_JAR_COMPANIONS = tuple(
         "JarSquare",
     )
 )
-NON_RECORD_AAR_COMPANIONS = ("org.apache.fory.android.json.aar.AarModel_ForyJsonMetadata",)
+NON_RECORD_AAR_COMPANIONS = (
+    "org.apache.fory.android.json.aar.AarModel_ForyJsonMetadata",
+)
 RECORD_APP_COMPANIONS = (
     "org.apache.fory.android.json.record.AppRecord_ForyJsonMetadata",
     "org.apache.fory.android.json.record.RecordRuntimeScenarios_PrivateRecord_ForyJsonMetadata",
 )
-RECORD_JAR_COMPANIONS = ("org.apache.fory.android.json.record.jar.JarRecord_ForyJsonMetadata",)
-RECORD_AAR_COMPANIONS = ("org.apache.fory.android.json.record.aar.AarRecord_ForyJsonMetadata",)
+RECORD_JAR_COMPANIONS = (
+    "org.apache.fory.android.json.record.jar.JarRecord_ForyJsonMetadata",
+)
+RECORD_AAR_COMPANIONS = (
+    "org.apache.fory.android.json.record.aar.AarRecord_ForyJsonMetadata",
+)
 
 
 def fail(message: str) -> None:
@@ -81,8 +109,14 @@ def zip_entries(path: Path) -> dict[str, bytes]:
     return archive_entries(path, str(path))
 
 
-def verify_rule_contents(rule_entries: dict[str, bytes], expected_companions: tuple[str, ...], source: Path) -> int:
-    generated_rules = {name: value for name, value in rule_entries.items() if name.startswith(RULE_CARRIER_PREFIX) and RULE_CARRIER_NAME in name}
+def verify_rule_contents(
+    rule_entries: dict[str, bytes], expected_companions: tuple[str, ...], source: Path
+) -> int:
+    generated_rules = {
+        name: value
+        for name, value in rule_entries.items()
+        if name.startswith(RULE_CARRIER_PREFIX) and RULE_CARRIER_NAME in name
+    }
     if not generated_rules:
         fail(f"Missing generated R8 rule carriers in {source}")
     combined = ""
@@ -105,13 +139,21 @@ def verify_jar(path: Path, expected_companions: tuple[str, ...]) -> tuple[int, i
         entry = companion.replace(".", "/") + ".class"
         if entry not in outer:
             fail(f"Missing generated companion {entry} in {path}")
-    carriers = {name: value for name, value in outer.items() if name.startswith(RULE_CARRIER_PREFIX)}
+    carriers = {
+        name: value
+        for name, value in outer.items()
+        if name.startswith(RULE_CARRIER_PREFIX)
+    }
     rule_count = verify_rule_contents(carriers, expected_companions, path)
     return len([name for name in outer if name.endswith(".class")]), rule_count
 
 
 def reject_carriers(entries: dict[str, bytes], source: Path) -> None:
-    leaked = sorted(name for name in entries if name.startswith(RULE_CARRIER_PREFIX) or ("/" + RULE_CARRIER_PREFIX) in name)
+    leaked = sorted(
+        name
+        for name in entries
+        if name.startswith(RULE_CARRIER_PREFIX) or ("/" + RULE_CARRIER_PREFIX) in name
+    )
     if leaked:
         fail(f"Generated rule carrier leaked into {source}: {leaked}")
 
@@ -125,7 +167,9 @@ def verify_aar(path: Path, expected_companions: tuple[str, ...]) -> tuple[int, i
     reject_carriers(entries, path)
     for name, content in outer.items():
         if name.startswith("libs/") and name.endswith(".jar"):
-            reject_carriers(archive_entries(io.BytesIO(content), f"{path}!/{name}"), path)
+            reject_carriers(
+                archive_entries(io.BytesIO(content), f"{path}!/{name}"), path
+            )
     for companion in expected_companions:
         entry = companion.replace(".", "/") + ".class"
         if entry not in entries:
@@ -141,7 +185,9 @@ def verify_aar(path: Path, expected_companions: tuple[str, ...]) -> tuple[int, i
     return len([name for name in entries if name.endswith(".class")]), 1
 
 
-def verify_app_class_output(app_root: Path, expected_companions: tuple[str, ...]) -> tuple[int, int]:
+def verify_app_class_output(
+    app_root: Path, expected_companions: tuple[str, ...]
+) -> tuple[int, int]:
     javac_root = app_root / "build/intermediates/javac/release"
     candidates = (
         javac_root / "classes",
@@ -157,13 +203,17 @@ def verify_app_class_output(app_root: Path, expected_companions: tuple[str, ...]
             fail(f"Missing generated application companion in CLASS_OUTPUT: {path}")
     rule_entries = {
         path.relative_to(classes_root).as_posix(): path.read_bytes()
-        for path in (classes_root / RULE_CARRIER_PREFIX).glob("fory-json-generated-*.pro")
+        for path in (classes_root / RULE_CARRIER_PREFIX).glob(
+            "fory-json-generated-*.pro"
+        )
     }
     rule_count = verify_rule_contents(rule_entries, expected_companions, classes_root)
     return len(expected_companions), rule_count
 
 
-def verify_collected_rules(app_root: Path, expected_companions: tuple[str, ...]) -> Path:
+def verify_collected_rules(
+    app_root: Path, expected_companions: tuple[str, ...]
+) -> Path:
     path = app_root / "build/intermediates/fory-json-r8/release/rules.pro"
     if not path.is_file():
         fail(f"Missing Fory JSON variant R8 rules: {path}")
@@ -198,12 +248,21 @@ def find_usage(app_root: Path) -> Path:
 
 def verify_configuration(path: Path, expected_companions: tuple[str, ...]) -> None:
     text = path.read_text(encoding="utf-8")
-    if "org.apache.fory.platform.AndroidSupport" not in text or "IS_ANDROID return true" not in text:
-        fail(f"Merged R8 configuration did not consume the Fory Android assumption: {path}")
+    if (
+        "org.apache.fory.platform.AndroidSupport" not in text
+        or "IS_ANDROID return true" not in text
+    ):
+        fail(
+            f"Merged R8 configuration did not consume the Fory Android assumption: {path}"
+        )
     for companion in expected_companions:
         if companion not in text:
-            fail(f"Merged R8 configuration has no generated rule for {companion}: {path}")
-    broad_model_rule = re.compile(r"-keep[^\n]*class\s+org\.apache\.fory\.android\.json(?:\.[\w$]+)*\.\*\*")
+            fail(
+                f"Merged R8 configuration has no generated rule for {companion}: {path}"
+            )
+    broad_model_rule = re.compile(
+        r"-keep[^\n]*class\s+org\.apache\.fory\.android\.json(?:\.[\w$]+)*\.\*\*"
+    )
     if broad_model_rule.search(text):
         fail(f"Merged R8 configuration contains a broad JSON model keep rule: {path}")
 
@@ -213,9 +272,21 @@ def verify_mapping(path: Path, expected_companions: tuple[str, ...]) -> None:
     for companion in expected_companions:
         if f"{companion} -> {companion}:" not in text:
             fail(f"Companion convention name was not retained: {companion}")
+    for line in text.splitlines():
+        match = re.fullmatch(r"(\S+) -> \S+:", line)
+        if match is None:
+            continue
+        class_name = match.group(1)
+        if any(
+            class_name == forbidden or class_name.startswith(forbidden + "$")
+            for forbidden in FORBIDDEN_MAPPING_CLASSES
+        ) or class_name.startswith(FORBIDDEN_MAPPING_PREFIXES):
+            fail(f"Forbidden Android class survived R8: {class_name} in {path}")
 
 
-def verify_seeds_and_usage(seeds_path: Path, usage_path: Path, expected_companions: tuple[str, ...]) -> None:
+def verify_seeds_and_usage(
+    seeds_path: Path, usage_path: Path, expected_companions: tuple[str, ...]
+) -> None:
     seeded_classes = set(seeds_path.read_text(encoding="utf-8").splitlines())
     removed_classes = set(usage_path.read_text(encoding="utf-8").splitlines())
     for companion in expected_companions:
@@ -228,7 +299,9 @@ def verify_seeds_and_usage(seeds_path: Path, usage_path: Path, expected_companio
 def verify_apk(path: Path, expected_companions: tuple[str, ...]) -> tuple[int, int]:
     entries = zip_entries(path)
     reject_carriers(entries, path)
-    dex_entries = sorted(name for name in entries if re.fullmatch(r"classes\d*\.dex", name))
+    dex_entries = sorted(
+        name for name in entries if re.fullmatch(r"classes\d*\.dex", name)
+    )
     if not dex_entries:
         fail(f"No DEX files in {path}")
     dex_bytes = b"".join(entries[name] for name in dex_entries)
@@ -269,10 +342,14 @@ def profile_inputs(
 ]:
     if profile == "non-record":
         jar = one_file(root / "json-model-jar", "build/libs/*.jar", "JSON model JAR")
-        aar = one_file(root / "json-model-aar", "build/outputs/aar/*-release.aar", "JSON model AAR")
+        aar = one_file(
+            root / "json-model-aar", "build/outputs/aar/*-release.aar", "JSON model AAR"
+        )
         app_root = root
         apk = one_file(app_root, "build/outputs/apk/release/*.apk", "release APK")
-        bundle = one_file(app_root, "build/outputs/bundle/release/*.aab", "release Android App Bundle")
+        bundle = one_file(
+            app_root, "build/outputs/bundle/release/*.aab", "release Android App Bundle"
+        )
         return (
             jar,
             aar,
@@ -284,7 +361,9 @@ def profile_inputs(
             app_root,
         )
     jar = one_file(root / "record-model-jar", "build/libs/*.jar", "record model JAR")
-    aar = one_file(root / "record-model-aar", "build/outputs/aar/*-release.aar", "record model AAR")
+    aar = one_file(
+        root / "record-model-aar", "build/outputs/aar/*-release.aar", "record model AAR"
+    )
     app_root = root / "record-app"
     apk = one_file(app_root, "build/outputs/apk/release/*.apk", "record release APK")
     bundle = one_file(
@@ -312,7 +391,9 @@ def main() -> int:
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent
-    jar, aar, apk, bundle, app_companions, jar_companions, aar_companions, app_root = profile_inputs(root, args.profile)
+    jar, aar, apk, bundle, app_companions, jar_companions, aar_companions, app_root = (
+        profile_inputs(root, args.profile)
+    )
     companions = app_companions + jar_companions + aar_companions
     app_classes, app_rules = verify_app_class_output(app_root, app_companions)
     jar_classes, jar_rules = verify_jar(jar, jar_companions)

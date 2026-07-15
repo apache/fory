@@ -360,9 +360,10 @@ import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 ```
 
-`JsonType` marks a reachable object model for GraalVM Native Image metadata. It has no effect on
-ordinary JVM JSON behavior and is not inherited. See [GraalVM Support](graalvm-support.md) for the
-complete native-image workflow.
+`JsonType` marks a reachable object model for Android and GraalVM Native Image metadata. It has no
+effect on ordinary JVM JSON behavior and is not inherited. Android builds run the Fory annotation
+processor as described in [Android Support](android-support.md). See
+[GraalVM Support](graalvm-support.md) for the complete native-image workflow.
 
 ### `JsonProperty`
 
