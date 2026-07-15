@@ -300,7 +300,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void valueAndRawRules() throws Exception {
+  public void valueRawAndBase64Rules() throws Exception {
     Map<String, String> sources = new LinkedHashMap<>();
     sources.put(
         "test.ValueModel",
@@ -317,7 +317,7 @@ public class JsonTypeProcessorTest {
             + "import org.apache.fory.json.annotation.*;\n"
             + "@JsonType public final class RawModel {\n"
             + "  @JsonRawValue public String body;\n"
-            + "  @JsonRawValue public byte[] bytes;\n"
+            + "  @JsonBase64 public byte[] bytes;\n"
             + "  private String other;\n"
             + "  @JsonRawValue public String getOther() { return other; }\n"
             + "  public void setOther(String other) { this.other = other; }\n"
@@ -339,6 +339,14 @@ public class JsonTypeProcessorTest {
     assertTrue(rawRules.contains("java.lang.String getOther();"), rawRules);
     assertTrue(
         rawRules.contains("@interface org.apache.fory.json.annotation.JsonRawValue"), rawRules);
+    assertTrue(
+        rawRules.contains("@interface org.apache.fory.json.annotation.JsonBase64"), rawRules);
+    assertFalse(
+        rawRules.contains("@interface org.apache.fory.json.annotation.JsonCodec"), rawRules);
+    assertTrue(
+        rawRules.contains(
+            "class org.apache.fory.json.codec.Base64ByteArrayCodec { public <init>(); }"),
+        rawRules);
   }
 
   @Test

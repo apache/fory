@@ -32,6 +32,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonRawValue;
@@ -208,6 +209,6 @@ public class JsonAndroidRuntimeTest {
 
   public static final class AndroidRaw {
     @JsonRawValue public String body;
-    @JsonRawValue public byte[] bytes;
+    @JsonBase64 public byte[] bytes;
   }
 }

@@ -19,6 +19,7 @@
 
 package org.apache.fory.json.codec;
 
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
@@ -38,6 +39,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonSubTypes;
@@ -125,7 +127,7 @@ final class ForyJsonGraalVMFeature implements Feature {
           if (!current.isRecord() && Runtime.version().feature() <= 24) {
             access.registerAsUnsafeAccessed(field);
           }
-          registerCodecs(field.getDeclaredAnnotation(JsonCodec.class));
+          registerOccurrenceCodecs(field);
           registerResolvedType(ownerType.resolveType(field.getGenericType()).getType());
         }
       }
@@ -136,7 +138,7 @@ final class ForyJsonGraalVMFeature implements Feature {
           RuntimeReflection.register(method);
         }
         if (ObjectCodecBuilder.usesJsonReturn(method)) {
-          registerCodecs(method.getDeclaredAnnotation(JsonCodec.class));
+          registerOccurrenceCodecs(method);
           registerResolvedType(ownerType.resolveType(method.getGenericReturnType()).getType());
         }
         if (ObjectCodecBuilder.usesJsonParameters(method)) {
@@ -180,6 +182,13 @@ final class ForyJsonGraalVMFeature implements Feature {
   private void registerParameterCodecs(Parameter[] parameters) {
     for (Parameter parameter : parameters) {
       registerCodecs(parameter.getDeclaredAnnotation(JsonCodec.class));
+    }
+  }
+
+  private void registerOccurrenceCodecs(AnnotatedElement element) {
+    registerCodecs(element.getDeclaredAnnotation(JsonCodec.class));
+    if (element.isAnnotationPresent(JsonBase64.class)) {
+      registerCodec(Base64ByteArrayCodec.class);
     }
   }
 
@@ -250,7 +259,7 @@ final class ForyJsonGraalVMFeature implements Feature {
       RuntimeReflection.register(codecClass.getConstructor());
     } catch (NoSuchMethodException e) {
       throw new IllegalStateException(
-          "@JsonCodec class must have a public no-argument constructor: " + codecClass.getName(),
+          "JSON codec class must have a public no-argument constructor: " + codecClass.getName(),
           e);
     }
   }

@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonAnyProperty;
+import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonProperty;
@@ -210,16 +211,15 @@ public final class ForyJsonExample {
         new String(json.toJsonBytes(raw), StandardCharsets.UTF_8).equals("{\"body\":{\"id\":1}}"));
     Preconditions.checkArgument(
         json.fromJson("{\"body\":\"text\"}", RawValue.class).body.equals("text"));
-    RawBytes rawBytes = new RawBytes();
-    rawBytes.value = new byte[] {1, 2, 3};
-    Preconditions.checkArgument(json.toJson(rawBytes).equals("{\"value\":\"AQID\"}"));
+    Base64Bytes base64Bytes = new Base64Bytes();
+    base64Bytes.value = new byte[] {1, 2, 3};
+    Preconditions.checkArgument(json.toJson(base64Bytes).equals("{\"value\":\"AQID\"}"));
     Preconditions.checkArgument(
-        new String(json.toJsonBytes(rawBytes), StandardCharsets.UTF_8)
+        new String(json.toJsonBytes(base64Bytes), StandardCharsets.UTF_8)
             .equals("{\"value\":\"AQID\"}"));
     Preconditions.checkArgument(
         Arrays.equals(
-            json.fromJson("{\"value\":\"AQID\"}", RawBytes.class).value,
-            new byte[] {1, 2, 3}));
+            json.fromJson("{\"value\":\"AQID\"}", Base64Bytes.class).value, new byte[] {1, 2, 3}));
   }
 
   private static void testSubtypes() {
@@ -455,8 +455,8 @@ public final class ForyJsonExample {
   }
 
   @JsonType
-  public static final class RawBytes {
-    @JsonRawValue public byte[] value;
+  public static final class Base64Bytes {
+    @JsonBase64 public byte[] value;
   }
 
   @JsonType

@@ -855,6 +855,11 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     position = pos;
   }
 
+  public void writeRawValue(long prefix0, long prefix1, int prefixLength) {
+    ensure(packedPrefixSize(prefixLength));
+    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+  }
+
   /** Writes a byte array as a quoted Base64 JSON string without an intermediate String. */
   public void writeBase64(byte[] value) {
     int encodedLength = base64Length(value.length);
@@ -887,11 +892,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
     target[pos++] = '"';
     position = pos;
-  }
-
-  public void writeRawValue(long prefix0, long prefix1, int prefixLength) {
-    ensure(packedPrefixSize(prefixLength));
-    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
   }
 
   private void writeRawStringSlow(String value, int index, int length) {

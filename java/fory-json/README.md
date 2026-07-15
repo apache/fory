@@ -361,7 +361,7 @@ automatically disabled. Every other builder option keeps the behavior described 
 
 ## JSON annotations
 
-Fory JSON defines twelve annotations in `org.apache.fory.json.annotation`, including `JsonCodec` for
+Fory JSON defines thirteen annotations in `org.apache.fory.json.annotation`, including `JsonCodec` for
 complete-value codec selection and `JsonType` for GraalVM Native Image and Android build metadata.
 They are Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
@@ -563,8 +563,8 @@ change Map key encoding.
 
 ### `JsonRawValue`
 
-`JsonRawValue` marks one fixed ordinary `String` or `byte[]` property. Fory writes a String directly
-at the value position without quotes, escaping, parsing, or validation:
+`JsonRawValue` marks one fixed ordinary `String` property. Fory writes the String directly at the
+value position without quotes, escaping, parsing, or validation:
 
 ```java
 import org.apache.fory.json.annotation.JsonRawValue;
@@ -589,11 +589,8 @@ Reading remains ordinary String-property reading. For example, `{"body":"text"}`
 field, but an object such as `{"body":{"id":1}}` cannot be read back into it. `JsonRawValue` is not
 a type-use annotation and does not apply to container elements or Map values. It cannot be placed
 on a setter, creator parameter, Any declaration, or the same property occurrence as `JsonCodec`.
-As an occurrence-local representation, it keeps the raw String or Base64 `byte[]` shape even when
-the value type has an exact builder-registered codec.
-
-For an exact `byte[]` property, Fory writes a quoted Base64 JSON string and decodes it when reading.
-For example, bytes `{1, 2, 3}` are represented as `"AQID"`; Base64 text is never emitted unquoted.
+As an occurrence-local representation, it keeps the raw String shape even when the value type has
+an exact builder-registered codec.
 
 `JsonRawValue` does not collect unknown sibling fields. Unknown fields are skipped unless an
 existing `JsonAnyProperty` or `JsonAnyGetter`/`JsonAnySetter` owner captures them. The raw-value and
@@ -602,6 +599,29 @@ Any-property features are independent.
 `JsonValue` and `JsonRawValue` may be combined on the same String member to write an owning object
 as a trusted raw root value. That combination is serialization-only: the ordinary one-String
 `JsonCreator` cannot turn an input object or array into a String.
+
+### `JsonBase64`
+
+`JsonBase64` selects a quoted standard Base64 JSON string for one exact `byte[]` field or getter:
+
+```java
+import org.apache.fory.json.annotation.JsonBase64;
+
+public final class Attachment {
+  @JsonBase64
+  public byte[] content;
+}
+```
+
+Bytes `{1, 2, 3}` are written as `{"content":"AQID"}` and decoded back to the original array.
+Fory writes the Base64 characters directly to the JSON output and decodes directly from the JSON
+input without creating an intermediate String. Standard Base64 padding is preserved. Java null
+follows the property's normal inclusion rule and reads from JSON null as null.
+
+The annotation is not a type-use annotation and does not change ordinary unannotated `byte[]`
+properties, container elements, or Map values. It cannot share a logical property with
+`JsonRawValue`, an occurrence `JsonCodec`, or an Any declaration. The equivalent explicit codec is
+`@JsonCodec(Base64ByteArrayCodec.class)`.
 
 ### Dynamic object members
 

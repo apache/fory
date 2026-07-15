@@ -305,8 +305,9 @@ disabled. Every other builder option keeps the behavior described above.
 ## Annotations
 
 Fory JSON provides `JsonProperty`, `JsonPropertyOrder`, `JsonIgnore`, `JsonAnyProperty`,
-`JsonAnyGetter`, `JsonAnySetter`, `JsonCreator`, `JsonCodec`, `JsonSubTypes`, and `JsonType` under
-`org.apache.fory.json.annotation`. They are not Jackson, Gson, or Fory binary-protocol annotations.
+`JsonAnyGetter`, `JsonAnySetter`, `JsonCreator`, `JsonCodec`, `JsonValue`, `JsonRawValue`,
+`JsonBase64`, `JsonSubTypes`, and `JsonType` under `org.apache.fory.json.annotation`. They are not
+Jackson, Gson, or Fory binary-protocol annotations.
 
 ```java
 import java.util.LinkedHashMap;
@@ -315,13 +316,16 @@ import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonAnySetter;
+import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
+import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
+import org.apache.fory.json.annotation.JsonValue;
 ```
 
 `JsonType` marks a reachable object model for GraalVM Native Image metadata. On Android it enables
@@ -488,7 +492,7 @@ without invoking the value member or creator.
 ### `JsonRawValue`
 
 Use `JsonRawValue` on a fixed ordinary `String` property whose contents are already one complete
-JSON value, or on a `byte[]` property that should use a Base64 JSON string:
+JSON value:
 
 ```java
 import org.apache.fory.json.annotation.JsonRawValue;
@@ -510,17 +514,36 @@ Reading is unchanged and still expects a JSON string. A raw object or array writ
 property cannot be read back into that `String`. The annotation does not apply to setters, creator
 parameters, Any declarations, container elements, or Map values, and it cannot share an occurrence
 with `JsonCodec`.
-As an occurrence-local representation, it keeps the raw String or Base64 `byte[]` shape even when
-the value type has an exact builder-registered codec.
-
-For an exact `byte[]` property, Fory writes a quoted Base64 string and decodes the same form while
-reading. For example, bytes `{1, 2, 3}` are written as `"AQID"`. Binary values are never inserted as
-unquoted raw text.
+As an occurrence-local representation, it keeps the raw String shape even when the value type has
+an exact builder-registered codec.
 
 Neither annotation collects unknown sibling fields. Unknown fields are skipped unless an existing
 `JsonAnyProperty` or `JsonAnyGetter`/`JsonAnySetter` mapping owns them. Combining `JsonValue` and
 `JsonRawValue` on the same String member writes the owning object as a trusted raw root value, but
 does not add a raw-fragment read contract.
+
+### `JsonBase64`
+
+Use `JsonBase64` on one exact `byte[]` field or getter to represent it as a quoted standard Base64
+JSON string:
+
+```java
+import org.apache.fory.json.annotation.JsonBase64;
+
+public final class Attachment {
+  @JsonBase64
+  public byte[] content;
+}
+```
+
+Bytes `{1, 2, 3}` are written as `{"content":"AQID"}` and decoded back to the original array.
+Encoding and decoding do not create an intermediate String. Null handling follows the property's
+normal inclusion rule.
+
+The annotation is not a type-use annotation and does not affect ordinary `byte[]` properties,
+container elements, or Map values. It cannot share a logical property with `JsonRawValue`, an
+occurrence `JsonCodec`, or an Any declaration. The equivalent explicit codec is
+`@JsonCodec(Base64ByteArrayCodec.class)`.
 
 ### Dynamic object members
 

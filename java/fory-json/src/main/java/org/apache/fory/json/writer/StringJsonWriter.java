@@ -1158,6 +1158,41 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     position = pos;
   }
 
+  public void writeRawValue(byte[] value, byte[] utf16Value) {
+    if (coder == LATIN1) {
+      writeRaw(value);
+      return;
+    }
+    writeRawUtf16Value(utf16Value);
+  }
+
+  public void writeRawValue(
+      byte[] value,
+      long utf16Value0,
+      long utf16Value1,
+      long utf16Value2,
+      long utf16Value3,
+      int utf16Length) {
+    if (coder == LATIN1) {
+      writeRaw(value);
+      return;
+    }
+    writePackedUtf16Value(utf16Value0, utf16Value1, utf16Value2, utf16Value3, utf16Length);
+  }
+
+  public void writeRawValue(
+      byte[] namePrefix,
+      byte[] commaNamePrefix,
+      byte[] utf16NamePrefix,
+      byte[] utf16CommaNamePrefix,
+      int index) {
+    if (coder == LATIN1) {
+      writeRaw(index == 0 ? namePrefix : commaNamePrefix);
+      return;
+    }
+    writeRawUtf16Value(index == 0 ? utf16NamePrefix : utf16CommaNamePrefix);
+  }
+
   /** Writes a byte array as a quoted Base64 JSON string without an intermediate String. */
   public void writeBase64(byte[] value) {
     int encodedLength = base64Length(value.length);
@@ -1175,14 +1210,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writeUtf16ByteNoEnsure((byte) '"');
     writeBase64Utf16(value);
     writeUtf16ByteNoEnsure((byte) '"');
-  }
-
-  public void writeRawValue(byte[] value, byte[] utf16Value) {
-    if (coder == LATIN1) {
-      writeRaw(value);
-      return;
-    }
-    writeRawUtf16Value(utf16Value);
   }
 
   private void writeRawStringUtf16(String value, int index, int length) {
@@ -1285,33 +1312,6 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       throw new ForyJsonException("Raw JSON output is too large");
     }
     return (int) required;
-  }
-
-  public void writeRawValue(
-      byte[] value,
-      long utf16Value0,
-      long utf16Value1,
-      long utf16Value2,
-      long utf16Value3,
-      int utf16Length) {
-    if (coder == LATIN1) {
-      writeRaw(value);
-      return;
-    }
-    writePackedUtf16Value(utf16Value0, utf16Value1, utf16Value2, utf16Value3, utf16Length);
-  }
-
-  public void writeRawValue(
-      byte[] namePrefix,
-      byte[] commaNamePrefix,
-      byte[] utf16NamePrefix,
-      byte[] utf16CommaNamePrefix,
-      int index) {
-    if (coder == LATIN1) {
-      writeRaw(index == 0 ? namePrefix : commaNamePrefix);
-      return;
-    }
-    writeRawUtf16Value(index == 0 ? utf16NamePrefix : utf16CommaNamePrefix);
   }
 
   @Override

@@ -26,17 +26,14 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Selects the raw JSON representation of an exact {@link String} field or getter.
+ * Selects a quoted standard Base64 JSON string as the representation of one exact {@code byte[]}
+ * field or getter.
  *
- * <p>A String is written directly into the JSON stream without quoting, escaping, or validation.
- * This is a trusted write-only escape hatch for a fixed ordinary JSON property; reading still
- * expects a normal JSON string. Null inclusion and omission follow the property's normal
- * configuration, and an included null is written as JSON {@code null}.
- *
- * <p>For a String property, the caller is responsible for supplying a complete valid JSON value.
- * Invalid or untrusted raw content can make the complete output invalid or unsafe.
+ * <p>Writing encodes the bytes without an intermediate String, and reading decodes the JSON string
+ * directly into bytes. Null inclusion and omission follow the property's normal configuration, and
+ * an included null is written as JSON {@code null}.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ElementType.FIELD, ElementType.METHOD})
-public @interface JsonRawValue {}
+public @interface JsonBase64 {}

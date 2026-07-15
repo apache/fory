@@ -408,9 +408,6 @@ public final class JsonCodegen {
 
   @Internal
   public static boolean usesWriteCodec(JsonFieldInfo property) {
-    if (property.writesBase64()) {
-      return false;
-    }
     switch (property.writeKind()) {
       case ARRAY:
       case MAP:
@@ -442,9 +439,6 @@ public final class JsonCodegen {
 
   @Internal
   public static boolean usesReadCodec(JsonFieldInfo property) {
-    if (property.readsBase64()) {
-      return false;
-    }
     switch (property.readKind()) {
       case ENUM:
       case ARRAY:

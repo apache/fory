@@ -28,10 +28,8 @@ import java.util.Map;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonCodec;
-import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
-import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -83,115 +81,22 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void binaryBase64RoundTrip() {
-    ForyJson json = newJson();
-    BinaryRaw value = new BinaryRaw();
-    value.bytes = new byte[] {0, 1, 2, -1};
-    assertEquals(json.toJson(value), "{\"bytes\":\"AAEC/w==\"}");
-    assertEquals(
-        new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"bytes\":\"AAEC/w==\"}");
-    assertEquals(
-        json.fromJson("{\"bytes\":\"AQID\"}", BinaryRaw.class).bytes, new byte[] {1, 2, 3});
-    assertEquals(
-        json.fromJson("{\"bytes\":\"AQI=\"}".getBytes(StandardCharsets.UTF_8), BinaryRaw.class)
-            .bytes,
-        new byte[] {1, 2});
-    assertThrows(
-        ForyJsonException.class,
-        () -> json.fromJson("{\"bytes\":\"not base64\"}", BinaryRaw.class));
-    assertGeneratedWhenSupported(json, BinaryRaw.class, codegenEnabled());
-  }
-
-  @Test
-  public void binaryBase64PaddingAndEscapes() {
-    ForyJson json = newJson();
-    BinaryRaw value = new BinaryRaw();
-    byte[][] values = {new byte[0], {1}, {1, 2}, {1, 2, 3}};
-    String[] encoded = {"", "AQ==", "AQI=", "AQID"};
-    for (int i = 0; i < values.length; i++) {
-      value.bytes = values[i];
-      assertEquals(json.toJson(value), "{\"bytes\":\"" + encoded[i] + "\"}");
-      assertEquals(
-          new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
-          "{\"bytes\":\"" + encoded[i] + "\"}");
-      assertEquals(
-          json.fromJson("{\"bytes\":\"" + encoded[i] + "\"}", BinaryRaw.class).bytes, values[i]);
-    }
-    assertEquals(
-        json.fromJson("{\"bytes\":\"A\\u0051I=\"}", BinaryRaw.class).bytes, new byte[] {1, 2});
-    assertThrows(
-        ForyJsonException.class, () -> json.fromJson("{\"bytes\":\"A===\"}", BinaryRaw.class));
-    assertThrows(
-        ForyJsonException.class, () -> json.fromJson("{\"bytes\":\"AA=A\"}", BinaryRaw.class));
-    assertThrows(
-        ForyJsonException.class, () -> json.fromJson("{\"bytes\":\"A\"}", BinaryRaw.class));
-  }
-
-  @Test
-  public void binaryBase64AfterUnicode() {
-    ForyJson json = newJson();
-    UnicodeBinaryRaw value = new UnicodeBinaryRaw();
-    value.text = "你好";
-    value.bytes = new byte[] {1};
-    String expected = "{\"text\":\"你好\",\"bytes\":\"AQ==\"}";
-    assertEquals(json.toJson(value), expected);
-    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
-    UnicodeBinaryRaw decoded = json.fromJson(expected, UnicodeBinaryRaw.class);
-    assertEquals(decoded.text, "你好");
-    assertEquals(decoded.bytes, new byte[] {1});
-  }
-
-  @Test
-  public void binaryDirectionalIgnore() {
-    ForyJson json = newJson();
-    BinaryReadOnly readOnly = new BinaryReadOnly();
-    readOnly.bytes = new byte[] {1};
-    assertEquals(json.toJson(readOnly), "{}");
-    assertEquals(
-        json.fromJson("{\"bytes\":\"AQI=\"}", BinaryReadOnly.class).bytes, new byte[] {1, 2});
-
-    BinaryWriteOnly writeOnly = new BinaryWriteOnly();
-    writeOnly.bytes = new byte[] {1, 2};
-    assertEquals(json.toJson(writeOnly), "{\"bytes\":\"AQI=\"}");
-    assertNull(json.fromJson("{\"bytes\":\"AQID\"}", BinaryWriteOnly.class).bytes);
-  }
-
-  @Test
-  public void binaryCreatorRoundTrip() {
-    ForyJson json = newJson();
-    byte[] bytes = {1, 2, 3};
-    PropertyListBinary propertyList = new PropertyListBinary(bytes);
-    assertEquals(json.toJson(propertyList), "{\"bytes\":\"AQID\"}");
-    assertEquals(
-        json.fromJson("{\"bytes\":\"AQI=\"}", PropertyListBinary.class).bytes, new byte[] {1, 2});
-
-    ParameterLocalBinary parameterLocal = new ParameterLocalBinary(bytes);
-    assertEquals(json.toJson(parameterLocal), "{\"bytes\":\"AQID\"}");
-    assertEquals(
-        json.fromJson("{\"bytes\":\"AQ==\"}", ParameterLocalBinary.class).bytes, new byte[] {1});
-  }
-
-  @Test
   public void recordRoundTrip() throws Exception {
     if (JdkVersion.MAJOR_VERSION < 17) {
       throw new SkipException("Java record test requires JDK 17+");
     }
     Class<?> type =
         compileRecordClass(
-            "JsonRawRecord",
+            "JsonRawValueRecord",
             "package org.apache.fory.json.records;\n"
                 + "import org.apache.fory.json.annotation.JsonRawValue;\n"
-                + "public record JsonRawRecord(@JsonRawValue String body, "
-                + "@JsonRawValue byte[] bytes) {}\n");
-    Object value =
-        type.getConstructor(String.class, byte[].class)
-            .newInstance("{\"id\":1}", new byte[] {1, 2, 3});
-    ForyJson json = newJson();
-    String expected = "{\"body\":{\"id\":1},\"bytes\":\"AQID\"}";
-    assertEquals(json.toJson(value), expected);
-    Object decoded = json.fromJson("{\"body\":\"text\",\"bytes\":\"AQI=\"}", type);
-    assertEquals(type.getMethod("body").invoke(decoded), "text");
-    assertEquals(type.getMethod("bytes").invoke(decoded), new byte[] {1, 2});
+                + "public record JsonRawValueRecord(@JsonRawValue String value) {}\n");
+    Object value = type.getConstructor(String.class).newInstance("{\"id\":1}");
+    for (ForyJson json : new ForyJson[] {newJson(), newJsonBuilder().withFieldMode(true).build()}) {
+      assertEquals(json.toJson(value), "{\"value\":{\"id\":1}}");
+      Object decoded = json.fromJson("{\"value\":\"text\"}", type);
+      assertEquals(type.getMethod("value").invoke(decoded), "text");
+    }
   }
 
   @Test
@@ -203,19 +108,6 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
         new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"included\":null}");
     NullRaw read = json.fromJson("{\"included\":null}", NullRaw.class);
     assertNull(read.included);
-  }
-
-  @Test
-  public void binaryAlways() {
-    ForyJson json = newJson();
-    BinaryAlways value = new BinaryAlways();
-    assertEquals(json.toJson(value), "{\"bytes\":null}");
-    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"bytes\":null}");
-    value.bytes = new byte[] {1, 2, 3};
-    assertEquals(json.toJson(value), "{\"bytes\":\"AQID\"}");
-    assertEquals(
-        new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"bytes\":\"AQID\"}");
-    assertGeneratedWhenSupported(json, BinaryAlways.class, codegenEnabled());
   }
 
   @Test
@@ -243,8 +135,10 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
   public void rejectInvalidDeclarations() {
     ForyJson json = newJson();
     assertThrows(ForyJsonException.class, () -> json.toJson(new NonStringRaw()));
+    assertThrows(ForyJsonException.class, () -> json.toJson(new RawByteArray()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new StaticRaw()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new CodecRaw()));
+    assertThrows(ForyJsonException.class, () -> json.toJson(new IgnoredRaw()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new AnyFieldRaw()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new AnyGetterRaw()));
   }
@@ -274,44 +168,8 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
     }
   }
 
-  public static final class BinaryRaw {
+  public static final class RawByteArray {
     @JsonRawValue public byte[] bytes;
-  }
-
-  @JsonPropertyOrder({"text", "bytes"})
-  public static final class UnicodeBinaryRaw {
-    public String text;
-    @JsonRawValue public byte[] bytes;
-  }
-
-  public static final class BinaryReadOnly {
-    @JsonRawValue
-    @JsonIgnore(ignoreRead = false, ignoreWrite = true)
-    public byte[] bytes;
-  }
-
-  public static final class BinaryWriteOnly {
-    @JsonRawValue
-    @JsonIgnore(ignoreRead = true, ignoreWrite = false)
-    public byte[] bytes;
-  }
-
-  public static final class PropertyListBinary {
-    @JsonRawValue public final byte[] bytes;
-
-    @JsonCreator({"bytes"})
-    public PropertyListBinary(byte[] bytes) {
-      this.bytes = bytes;
-    }
-  }
-
-  public static final class ParameterLocalBinary {
-    @JsonRawValue public final byte[] bytes;
-
-    @JsonCreator
-    public ParameterLocalBinary(@JsonProperty("bytes") byte[] bytes) {
-      this.bytes = bytes;
-    }
   }
 
   public static final class NullRaw {
@@ -320,12 +178,6 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
     @JsonRawValue
     @JsonProperty(include = JsonProperty.Include.ALWAYS)
     public String included;
-  }
-
-  public static final class BinaryAlways {
-    @JsonRawValue
-    @JsonProperty(include = JsonProperty.Include.ALWAYS)
-    public byte[] bytes;
   }
 
   public static final class NonStringRaw {
@@ -340,6 +192,10 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
     @JsonRawValue
     @JsonCodec(JsonValueAnnotationTest.OverrideCodec.class)
     public String value = "1";
+  }
+
+  public static final class IgnoredRaw {
+    @JsonRawValue @JsonIgnore public String value = "1";
   }
 
   public static final class AnyFieldRaw {

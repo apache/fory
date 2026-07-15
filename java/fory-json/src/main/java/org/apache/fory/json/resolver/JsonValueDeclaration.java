@@ -31,6 +31,7 @@ import java.util.List;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
+import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
@@ -155,6 +156,7 @@ final class JsonValueDeclaration {
       throw new ForyJsonException("Invalid @JsonValue field " + field);
     }
     if (field.isAnnotationPresent(JsonCodec.class)
+        || field.isAnnotationPresent(JsonBase64.class)
         || field.isAnnotationPresent(JsonAnyProperty.class)
         || field.isAnnotationPresent(JsonIgnore.class)) {
       throw new ForyJsonException("Conflicting JSON annotations on @JsonValue field " + field);
@@ -174,6 +176,7 @@ final class JsonValueDeclaration {
       throw new ForyJsonException("Invalid @JsonValue method " + method);
     }
     if (method.isAnnotationPresent(JsonCodec.class)
+        || method.isAnnotationPresent(JsonBase64.class)
         || method.isAnnotationPresent(JsonAnyGetter.class)
         || method.isAnnotationPresent(JsonIgnore.class)) {
       throw new ForyJsonException("Conflicting JSON annotations on @JsonValue method " + method);
