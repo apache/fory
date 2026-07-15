@@ -163,6 +163,37 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void genericMemberRules() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.GenericRuleModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonCodec(GenericRuleModel.FieldCodec.class) class FieldValue {}\n"
+                + "@JsonCodec(GenericRuleModel.GetterCodec.class) class GetterValue {}\n"
+                + "@JsonCodec(GenericRuleModel.SetterCodec.class) class SetterValue {}\n"
+                + "class GenericBase<F, G, S> {\n"
+                + "  public F field;\n"
+                + "  public G getGetter() { return null; }\n"
+                + "  public void setSetter(S value) {}\n"
+                + "}\n"
+                + "@JsonType public class GenericRuleModel\n"
+                + "    extends GenericBase<FieldValue, GetterValue, SetterValue> {\n"
+                + "  public GenericRuleModel() {}\n"
+                + valueCodecs("FieldCodec", "GetterCodec", "SetterCodec")
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.GenericRuleModel.pro");
+    for (String codec : Arrays.asList("FieldCodec", "GetterCodec", "SetterCodec")) {
+      assertTrue(
+          rules.contains("class test.GenericRuleModel$" + codec + " { public <init>(); }"), rules);
+    }
+    assertTrue(rules.contains("class test.FieldValue"), rules);
+    assertTrue(rules.contains("class test.GetterValue"), rules);
+    assertTrue(rules.contains("class test.SetterValue"), rules);
+  }
+
+  @Test
   public void validationRules() throws Exception {
     CompilationResult result =
         compile(

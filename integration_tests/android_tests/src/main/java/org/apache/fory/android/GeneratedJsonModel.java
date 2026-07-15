@@ -42,12 +42,28 @@ import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 
+abstract class GeneratedJsonBase<F, P> {
+  public F declared;
+
+  private P inheritedProperty;
+
+  public P getInheritedProperty() {
+    return inheritedProperty;
+  }
+
+  public void setInheritedProperty(P inheritedProperty) {
+    this.inheritedProperty = inheritedProperty;
+  }
+}
+
 /** Processor-generated declaration-codec and R8 rule fixture. */
 @JsonType
 @JsonSubTypes(
     property = "kind",
     value = {@JsonSubTypes.Type(value = GeneratedJsonSubtype.class, name = "generated")})
-public abstract class GeneratedJsonModel {
+public abstract class GeneratedJsonModel
+    extends GeneratedJsonBase<
+        GeneratedJsonModel.DeclaredValue, GeneratedJsonModel.InheritedPropertyValue> {
   private static final AtomicInteger CODEC_CALLS = new AtomicInteger();
   private static final AtomicInteger KEY_CODEC_CALLS = new AtomicInteger();
 
@@ -71,8 +87,6 @@ public abstract class GeneratedJsonModel {
 
   @JsonCodec(contentCodec = ValueCodec.class)
   public AtomicReference<Value> atomic;
-
-  public DeclaredValue declared;
 
   @JsonAnyProperty
   @JsonCodec(valueCodec = ValueCodec.class)
@@ -229,6 +243,50 @@ public abstract class GeneratedJsonModel {
     public DeclaredValue readUtf8(Utf8JsonReader reader) {
       CODEC_CALLS.incrementAndGet();
       return reader.tryReadNullToken() ? null : new DeclaredValue(reader.readString());
+    }
+  }
+
+  @JsonCodec(InheritedPropertyValueCodec.class)
+  public static final class InheritedPropertyValue {
+    public final String text;
+
+    public InheritedPropertyValue(String text) {
+      this.text = text;
+    }
+  }
+
+  public static final class InheritedPropertyValueCodec
+      implements JsonValueCodec<InheritedPropertyValue> {
+    public InheritedPropertyValueCodec() {}
+
+    @Override
+    public void writeString(StringJsonWriter writer, InheritedPropertyValue value) {
+      CODEC_CALLS.incrementAndGet();
+      writer.writeString(value == null ? null : "inherited:" + value.text);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, InheritedPropertyValue value) {
+      CODEC_CALLS.incrementAndGet();
+      writer.writeString(value == null ? null : "inherited:" + value.text);
+    }
+
+    @Override
+    public InheritedPropertyValue readLatin1(Latin1JsonReader reader) {
+      CODEC_CALLS.incrementAndGet();
+      return reader.tryReadNullToken() ? null : new InheritedPropertyValue(reader.readString());
+    }
+
+    @Override
+    public InheritedPropertyValue readUtf16(Utf16JsonReader reader) {
+      CODEC_CALLS.incrementAndGet();
+      return reader.tryReadNullToken() ? null : new InheritedPropertyValue(reader.readString());
+    }
+
+    @Override
+    public InheritedPropertyValue readUtf8(Utf8JsonReader reader) {
+      CODEC_CALLS.incrementAndGet();
+      return reader.tryReadNullToken() ? null : new InheritedPropertyValue(reader.readString());
     }
   }
 

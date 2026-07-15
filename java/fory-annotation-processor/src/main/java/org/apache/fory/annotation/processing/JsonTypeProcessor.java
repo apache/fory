@@ -47,6 +47,7 @@ import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.ExecutableType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.WildcardType;
@@ -123,6 +124,7 @@ final class JsonTypeProcessor {
   private Model inspect(TypeElement target) {
     String binaryName = elements.getBinaryName(target).toString();
     Model model = new Model(target, binaryName);
+    DeclaredType targetType = (DeclaredType) target.asType();
     collectAnnotations(target, model.annotationTypes);
     collectCodecAnnotation(annotationMirror(target, JSON_CODEC), model);
     model.annotationOwnerTypes.add(binaryName);
@@ -145,7 +147,7 @@ final class JsonTypeProcessor {
         // Runtime validation still needs to see annotated members that are not JSON properties.
         if (isEligibleField(field) || hasJsonAnnotations(field)) {
           model.addR8Member(R8Member.field(field, typeName(field.asType())));
-          collectTypeEndpoints(field.asType(), model);
+          collectTypeEndpoints(types.asMemberOf(targetType, field), model);
         }
       }
     }
@@ -162,15 +164,16 @@ final class JsonTypeProcessor {
     List<ExecutableElement> jsonMethods = jsonMethods(target);
     for (ExecutableElement method : jsonMethods) {
       TypeElement owner = (TypeElement) method.getEnclosingElement();
+      ExecutableType resolvedMethod = (ExecutableType) types.asMemberOf(targetType, method);
       model.addR8Member(
           R8Member.method(method, typeName(method.getReturnType()), typeNames(method)));
       collectAnnotations(method, model.annotationTypes);
       collectCodecAnnotation(annotationMirror(method, JSON_CODEC), model);
       collectAnnotations(method.getParameters(), model.annotationTypes);
       collectCodecAnnotations(method.getParameters(), model);
-      collectTypeEndpoints(method.getReturnType(), model);
-      for (VariableElement parameter : method.getParameters()) {
-        collectTypeEndpoints(parameter.asType(), model);
+      collectTypeEndpoints(resolvedMethod.getReturnType(), model);
+      for (TypeMirror parameterType : resolvedMethod.getParameterTypes()) {
+        collectTypeEndpoints(parameterType, model);
       }
       collectAnnotations(owner, model.annotationTypes);
     }

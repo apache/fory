@@ -1002,11 +1002,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
 
     @Override
     public String toName(Object key) {
-      String name = delegate.toName(key);
-      if (name == null) {
-        throw new ForyJsonException("JSON map key codec returned a null member name");
-      }
-      return name;
+      return delegate.toName(key);
     }
 
     @Override

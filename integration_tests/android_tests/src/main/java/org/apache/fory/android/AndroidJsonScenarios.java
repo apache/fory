@@ -125,6 +125,7 @@ public final class AndroidJsonScenarios {
     value.optional = Optional.of(new GeneratedJsonModel.Value("optional"));
     value.atomic = new AtomicReference<>(new GeneratedJsonModel.Value("atomic"));
     value.declared = new GeneratedJsonModel.DeclaredValue("type");
+    value.setInheritedProperty(new GeneratedJsonModel.InheritedPropertyValue("property"));
     value.extra.put("dynamic", new GeneratedJsonModel.Value("extra"));
 
     GeneratedJsonModel.resetCodecCalls();
@@ -140,6 +141,7 @@ public final class AndroidJsonScenarios {
     check(encoded.contains("\"generated:optional\""));
     check(encoded.contains("\"generated:atomic\""));
     check(encoded.contains("\"declared:type\""));
+    check(encoded.contains("\"inherited:property\""));
     check(encoded.contains("\"dynamic\":\"generated:extra\""));
 
     GeneratedJsonModel decoded = json.fromJson(encoded, GeneratedJsonModel.class);
@@ -156,6 +158,7 @@ public final class AndroidJsonScenarios {
     checkEquals("generated:optional", subtype.optional.get().text);
     checkEquals("generated:atomic", subtype.atomic.get().text);
     checkEquals("declared:type", subtype.declared.text);
+    checkEquals("inherited:property", subtype.getInheritedProperty().text);
     checkEquals("generated:extra", subtype.extra.get("dynamic").text);
 
     GeneratedJsonModel.CreatedValue created =
@@ -169,7 +172,7 @@ public final class AndroidJsonScenarios {
         json.fromJson(creatorJson, GeneratedJsonModel.CreatedValue.class);
     checkEquals("generated:creator", decodedCreated.values.get(0).text);
     checkEquals("generated:direct", decodedCreated.direct.text);
-    checkEquals(26, GeneratedJsonModel.codecCalls());
+    checkEquals(28, GeneratedJsonModel.codecCalls());
     checkEquals(2, GeneratedJsonModel.keyCodecCalls());
   }
 

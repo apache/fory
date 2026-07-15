@@ -19,12 +19,13 @@
 
 package org.apache.fory.json.codec;
 
+import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.writer.JsonWriter;
 
 /** Converts a Java map key to and from a JSON object member name. */
 public interface MapKeyCodec {
-  /** Converts a non-null Java map key to its JSON object member name. */
+  /** Converts a non-null Java map key to a non-null JSON object member name. */
   String toName(Object key);
 
   /** Converts a JSON object member name to a Java map key. */
@@ -32,7 +33,11 @@ public interface MapKeyCodec {
 
   /** Writes a Java map key as a JSON object member name. */
   default void writeName(JsonWriter writer, Object key) {
-    writer.writeFieldName(toName(key));
+    String name = toName(key);
+    if (name == null) {
+      throw new ForyJsonException("JSON map key codec returned a null member name");
+    }
+    writer.writeFieldName(name);
   }
 
   /** Reads a Java map key from a JSON object member name. */

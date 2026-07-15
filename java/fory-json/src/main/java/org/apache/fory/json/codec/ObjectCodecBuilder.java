@@ -989,6 +989,13 @@ final class ObjectCodecBuilder {
         if (field.isAnnotationPresent(JsonCodec.class) && !isEligibleField(field)) {
           throw new ForyJsonException("@JsonCodec is not supported on JSON field: " + field);
         }
+        JsonIgnore ignore = field.getAnnotation(JsonIgnore.class);
+        if (field.isAnnotationPresent(JsonCodec.class)
+            && ignore != null
+            && ignore.ignoreRead()
+            && ignore.ignoreWrite()) {
+          throw new ForyJsonException("@JsonCodec has no JSON read or write direction: " + field);
+        }
         if (field.isAnnotationPresent(JsonProperty.class) && !isEligibleField(field)) {
           throw new ForyJsonException("@JsonProperty is not supported on JSON field: " + field);
         }

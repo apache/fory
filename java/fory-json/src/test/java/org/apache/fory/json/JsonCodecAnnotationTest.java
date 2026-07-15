@@ -40,6 +40,7 @@ import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
@@ -472,7 +473,15 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     assertFailure(() -> newJson().toJson(new UnrelatedParameterCodec()));
     assertFailure(() -> newJson().toJson(new AnyKeyCodec()));
     assertFailure(
+        () -> newJsonBuilder().withFieldMode(true).build().toJson(new IgnoredCodecField()),
+        "@JsonCodec has no JSON read or write direction");
+    assertFailure(
+        () -> newJson().toJson(new AtomicArrayContent()),
+        "supports only elementCodec as a child codec");
+    assertFailure(
         () -> newJson().fromJson("{\"values\":{\"wrong\":\"value\"}}", WrongMapKey.class));
+    assertFailure(
+        () -> newJson().toJson(new NullMapKey()), "JSON map key codec returned a null member name");
   }
 
   private static String jsonText(ForyJson json, Object value) {
@@ -613,6 +622,18 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     @Override
     public Object fromName(String name) {
       return name;
+    }
+  }
+
+  public static class NullMapKeyCodec implements MapKeyCodec {
+    @Override
+    public String toName(Object key) {
+      return null;
+    }
+
+    @Override
+    public Object fromName(String name) {
+      return Integer.valueOf(name);
     }
   }
 
@@ -1345,6 +1366,26 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
   public static class WrongMapKey {
     @JsonCodec(keyCodec = WrongMapKeyCodec.class)
     public Map<Integer, String> values = new LinkedHashMap<>();
+  }
+
+  public static class NullMapKey {
+    @JsonCodec(keyCodec = NullMapKeyCodec.class)
+    public Map<Integer, String> values = new LinkedHashMap<>();
+
+    public NullMapKey() {
+      values.put(1, "value");
+    }
+  }
+
+  public static class AtomicArrayContent {
+    @JsonCodec(contentCodec = AStringCodec.class)
+    public AtomicReferenceArray<String> value;
+  }
+
+  public static class IgnoredCodecField {
+    @JsonIgnore
+    @JsonCodec(AStringCodec.class)
+    public String value;
   }
 
   public static class SetterMethodCodec {
