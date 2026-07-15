@@ -22,6 +22,7 @@ package org.apache.fory.json;
 import static org.apache.fory.json.JsonTestSupport.primaryTypeResolver;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 
 import java.nio.charset.StandardCharsets;
@@ -217,6 +218,96 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
         Arrays.stream(info.utf8Writer().getClass().getDeclaredFields())
             .anyMatch(field -> field.getName().equals("owner")),
         false);
+  }
+
+  @Test
+  public void generatedChildBeforeParent() {
+    ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
+    JsonTypeResolver resolver = primaryTypeResolver(json);
+    ObjectCodec<Name> child = resolver.getObjectCodec(Name.class);
+    Name name = new Name();
+    name.first = "generated";
+    name.last = "child";
+    assertEquals(json.toJson(name), "{\"first\":\"generated\",\"last\":\"child\"}");
+    assertNotSame(resolver.getTypeInfo(Name.class, Name.class).stringWriter(), child);
+
+    ObjectCodec<Person> parent = resolver.getObjectCodec(Person.class);
+    assertSame(parent.unwrappedInfo().declarations()[0].childCodec(), child);
+    assertEquals(
+        json.toJson(person()),
+        "{\"id\":7,\"name_first_value\":\"Ada\",\"name_last_value\":\"Lovelace\"}");
+  }
+
+  @Test
+  public void writeOnlyAnyReader() {
+    ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
+    WriteOnlyAnyParent value =
+        json.fromJson(
+            "{\"v_first\":\"read\",\"dynamic\":2,\"extra\":{\"ignored\":3}}",
+            WriteOnlyAnyParent.class);
+    assertEquals(value.name.first, "read");
+    assertEquals(value.extra.isEmpty(), true);
+    JsonTypeResolver resolver = primaryTypeResolver(json);
+    ObjectCodec<WriteOnlyAnyParent> owner = resolver.getObjectCodec(WriteOnlyAnyParent.class);
+    assertNotSame(resolver.latin1Reader(owner), owner);
+  }
+
+  @Test
+  public void deepGeneratedCapabilities() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 17) {
+      throw new SkipException("Dynamic deep-model test requires JDK 17+");
+    }
+    int depth = 128;
+    StringBuilder source =
+        new StringBuilder(
+            "package org.apache.fory.json.records;\n"
+                + "import org.apache.fory.json.annotation.JsonUnwrapped;\n"
+                + "public class DeepUnwrappedModel {\n"
+                + "  @JsonUnwrapped(prefix=\"p\", suffix=\"s\") public Level0 child;\n");
+    for (int i = 0; i < depth; i++) {
+      source.append("  public static class Level").append(i).append(" {\n");
+      if (i + 1 == depth) {
+        source.append("    public int value;\n");
+      } else {
+        source
+            .append("    @JsonUnwrapped(prefix=\"p\", suffix=\"s\") public Level")
+            .append(i + 1)
+            .append(" child;\n");
+      }
+      source.append("  }\n");
+    }
+    source.append("}\n");
+    Class<?> type = compileRecordClass("DeepUnwrappedModel", source.toString());
+    StringBuilder name = new StringBuilder(depth * 2 + "value".length());
+    for (int i = 0; i < depth; i++) {
+      name.append('p');
+    }
+    name.append("value");
+    for (int i = 0; i < depth; i++) {
+      name.append('s');
+    }
+    String expected = "{\"" + name + "\":7}";
+
+    ForyJson interpreted = ForyJson.builder().withCodegen(false).build();
+    assertEquals(interpreted.toJson(interpreted.fromJson(expected, type)), expected);
+
+    ForyJson generated = ForyJson.builder().withAsyncCompilation(false).build();
+    JsonTypeResolver resolver = primaryTypeResolver(generated);
+    ObjectCodec<?> owner = resolver.getObjectCodec(type);
+    JsonTypeInfo info = resolver.getTypeInfo(type, type);
+    Object value = generated.fromJson(expected, type);
+    assertEquals(generated.toJson(value), expected);
+    assertEquals(new String(generated.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+    assertEquals(
+        generated.toJson(generated.fromJson(expected.getBytes(StandardCharsets.UTF_8), type)),
+        expected);
+    resolver.latin1Reader(owner);
+    resolver.utf16Reader(owner);
+    assertNotSame(info.stringWriter(), owner);
+    assertNotSame(info.utf8Writer(), owner);
+    assertNotSame(info.latin1Reader(), owner);
+    assertNotSame(info.utf16Reader(), owner);
+    assertNotSame(info.utf8Reader(), owner);
   }
 
   @Test
@@ -609,6 +700,15 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     public int writeOnly;
 
     public int readable;
+  }
+
+  public static class WriteOnlyAnyParent {
+    @JsonUnwrapped(prefix = "v_")
+    public Name name;
+
+    @JsonAnyProperty
+    @JsonIgnore(ignoreRead = true, ignoreWrite = false)
+    public Map<String, Object> extra = new LinkedHashMap<>();
   }
 
   public static class GenericParent<T> {

@@ -43,10 +43,10 @@ import java.lang.annotation.Target;
  * normal annotations.
  *
  * <p>The complete group occupies one position in the containing object's serialization order and is
- * identified there by its Java logical property name. A parameter-local creator annotation defines
- * a read-only group; its required {@link JsonProperty#value()} identifies the creator argument and
- * is not a JSON wrapper name. Recursive chains made only of unwrapped properties and final-name or
- * name-hash collisions are rejected when model metadata is resolved.
+ * identified there by its Java logical property name. A creator-only parameter defines a read-only
+ * group; its required {@link JsonProperty#value()} identifies the creator argument and is not a
+ * JSON wrapper name. Recursive chains made only of unwrapped properties and final-name or name-hash
+ * collisions are rejected when model metadata is resolved.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

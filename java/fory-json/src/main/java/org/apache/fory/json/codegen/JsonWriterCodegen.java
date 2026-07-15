@@ -24,6 +24,7 @@ import static org.apache.fory.codegen.ExpressionUtils.cast;
 import static org.apache.fory.codegen.ExpressionUtils.eq;
 import static org.apache.fory.codegen.ExpressionUtils.inline;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
@@ -339,9 +340,7 @@ abstract class JsonWriterCodegen {
     AnyInfo any = owner.anyInfo();
     ctx.addImports(writerType());
     ctx.implementsInterfaces(JsonCodegen.generatedCodecType(ctx, completeWriterType()));
-    List<JsonFieldInfo> leafList = new ArrayList<>();
-    collectUnwrappedWriteFields(unwrapped.writeEntries(), leafList);
-    JsonFieldInfo[] leaves = leafList.toArray(new JsonFieldInfo[0]);
+    JsonFieldInfo[] leaves = unwrapped.writeFields();
     IdentityHashMap<JsonFieldInfo, Integer> leafIndexes = new IdentityHashMap<>();
     for (int i = 0; i < leaves.length; i++) {
       leafIndexes.put(leaves[i], i);
@@ -395,11 +394,16 @@ abstract class JsonWriterCodegen {
       }
     }
     IdentityHashMap<Group, Integer> groupIndexes = new IdentityHashMap<>();
-    boolean splitEntries = leaves.length >= splitMemberThreshold();
+    List<Group> writeGroups = new ArrayList<>();
+    collectUnwrappedGroups(unwrapped.writeEntries(), groupIndexes, writeGroups);
+    boolean splitEntries =
+        leaves.length >= splitMemberThreshold() || writeGroups.size() >= splitMemberThreshold();
     if (splitEntries) {
-      collectUnwrappedGroups(unwrapped.writeEntries(), groupIndexes);
+      // Group identity owns method indexes, while preorder owns deterministic source emission.
       addUnwrappedWriteMethods(
-          builder, type, unwrapped.writeEntries(), any, leafIndexes, groupIndexes);
+          builder, type, unwrapped.writeEntries(), any, leafIndexes, groupIndexes, writeGroups);
+    } else {
+      groupIndexes.clear();
     }
     ctx.clearExprState();
     Expression castObject =
@@ -437,28 +441,27 @@ abstract class JsonWriterCodegen {
     return ctx.genCode();
   }
 
-  private static void collectUnwrappedWriteFields(
-      WriteEntry[] entries, List<JsonFieldInfo> fields) {
-    for (WriteEntry entry : entries) {
-      if (entry.kind() == JsonUnwrappedInfo.DIRECT) {
-        fields.add(entry.field());
-      } else if (entry.kind() == JsonUnwrappedInfo.GROUP) {
-        collectUnwrappedWriteFields(entry.group().writeEntries(), fields);
-      }
-    }
-  }
-
   private static void collectUnwrappedGroups(
-      WriteEntry[] entries, IdentityHashMap<Group, Integer> indexes) {
-    for (WriteEntry entry : entries) {
+      WriteEntry[] entries, IdentityHashMap<Group, Integer> indexes, List<Group> groups) {
+    ArrayDeque<WriteEntry> remaining = new ArrayDeque<>();
+    addWriteEntries(remaining, entries);
+    while (!remaining.isEmpty()) {
+      WriteEntry entry = remaining.removeLast();
       if (entry.kind() != JsonUnwrappedInfo.GROUP) {
         continue;
       }
       Group group = entry.group();
       if (!indexes.containsKey(group)) {
         indexes.put(group, indexes.size());
-        collectUnwrappedGroups(group.writeEntries(), indexes);
+        groups.add(group);
+        addWriteEntries(remaining, group.writeEntries());
       }
+    }
+  }
+
+  private static void addWriteEntries(ArrayDeque<WriteEntry> remaining, WriteEntry[] entries) {
+    for (int i = entries.length - 1; i >= 0; i--) {
+      remaining.addLast(entries[i]);
     }
   }
 
@@ -468,12 +471,12 @@ abstract class JsonWriterCodegen {
       WriteEntry[] rootEntries,
       AnyInfo any,
       IdentityHashMap<JsonFieldInfo, Integer> leafIndexes,
-      IdentityHashMap<Group, Integer> groupIndexes) {
-    for (Map.Entry<Group, Integer> entry : groupIndexes.entrySet()) {
-      Group group = entry.getKey();
+      IdentityHashMap<Group, Integer> groupIndexes,
+      List<Group> groups) {
+    for (Group group : groups) {
       addUnwrappedWriteMethods(
           builder,
-          entry.getValue(),
+          groupIndexes.get(group),
           group.childCodec().type(),
           group.writeEntries(),
           any,

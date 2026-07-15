@@ -78,6 +78,7 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   private final JsonCreatorInfo creatorInfo;
   private final AnyInfo anyInfo;
   private final JsonUnwrappedInfo unwrappedInfo;
+  private boolean directTypesResolved;
 
   private ObjectCodec(
       Class<?> type,
@@ -195,6 +196,17 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   public final void resolveTypes(JsonTypeResolver typeResolver) {
+    resolveDirectTypes(typeResolver);
+    if (unwrappedInfo != null) {
+      unwrappedInfo.resolve(this, typeResolver);
+    }
+  }
+
+  @Internal
+  public final void resolveDirectTypes(JsonTypeResolver typeResolver) {
+    if (directTypesResolved) {
+      return;
+    }
     for (JsonFieldInfo field : writeFields) {
       field.resolveTypes(typeResolver);
     }
@@ -207,9 +219,7 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     if (anyInfo != null) {
       anyInfo.resolveTypes(typeResolver);
     }
-    if (unwrappedInfo != null) {
-      unwrappedInfo.resolve(this, typeResolver);
-    }
+    directTypesResolved = true;
   }
 
   @SuppressWarnings("unchecked")
@@ -1168,51 +1178,65 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   private int writeUnwrappedMembers(StringJsonWriter writer, Object value, int written) {
-    return writeUnwrappedEntries(writer, value, unwrappedInfo.writeEntries(), written);
-  }
-
-  private int writeUnwrappedMembers(Utf8JsonWriter writer, Object value, int written) {
-    return writeUnwrappedEntries(writer, value, unwrappedInfo.writeEntries(), written);
-  }
-
-  private int writeUnwrappedEntries(
-      StringJsonWriter writer, Object value, WriteEntry[] entries, int written) {
-    for (WriteEntry entry : entries) {
+    WriteEntry[] steps = unwrappedInfo.writeSteps();
+    int[] depths = unwrappedInfo.writeDepths();
+    int[] ends = unwrappedInfo.writeEnds();
+    Object[] owners = new Object[unwrappedInfo.maxWriteDepth() + 1];
+    owners[0] = value;
+    for (int i = 0; i < steps.length; ) {
+      WriteEntry entry = steps[i];
+      int depth = depths[i];
+      Object current = owners[depth];
       if (entry.kind() == JsonUnwrappedInfo.DIRECT) {
-        if (entry.field().writeString(writer, value, written)) {
+        if (entry.field().writeString(writer, current, written)) {
           written++;
         }
+        i++;
       } else if (entry.kind() == JsonUnwrappedInfo.ANY) {
         written =
             writeStringAny(
-                writer, anyInfo.writeMap(value), anyInfo.valueTypeInfo.stringWriter(), written);
+                writer, anyInfo.writeMap(current), anyInfo.valueTypeInfo.stringWriter(), written);
+        i++;
       } else {
-        Group group = entry.group();
-        Object child = group.declaration().writeAccessor().getObject(value);
-        if (child != null) {
-          written = writeUnwrappedEntries(writer, child, group.writeEntries(), written);
+        Object child = entry.group().declaration().writeAccessor().getObject(current);
+        if (child == null) {
+          i = ends[i];
+        } else {
+          owners[depth + 1] = child;
+          i++;
         }
       }
     }
     return written;
   }
 
-  private int writeUnwrappedEntries(
-      Utf8JsonWriter writer, Object value, WriteEntry[] entries, int written) {
-    for (WriteEntry entry : entries) {
+  private int writeUnwrappedMembers(Utf8JsonWriter writer, Object value, int written) {
+    WriteEntry[] steps = unwrappedInfo.writeSteps();
+    int[] depths = unwrappedInfo.writeDepths();
+    int[] ends = unwrappedInfo.writeEnds();
+    Object[] owners = new Object[unwrappedInfo.maxWriteDepth() + 1];
+    owners[0] = value;
+    for (int i = 0; i < steps.length; ) {
+      WriteEntry entry = steps[i];
+      int depth = depths[i];
+      Object current = owners[depth];
       if (entry.kind() == JsonUnwrappedInfo.DIRECT) {
-        if (entry.field().writeUtf8(writer, value, written)) {
+        if (entry.field().writeUtf8(writer, current, written)) {
           written++;
         }
+        i++;
       } else if (entry.kind() == JsonUnwrappedInfo.ANY) {
         written =
             writeUtf8Any(
-                writer, anyInfo.writeMap(value), anyInfo.valueTypeInfo.utf8Writer(), written);
+                writer, anyInfo.writeMap(current), anyInfo.valueTypeInfo.utf8Writer(), written);
+        i++;
       } else {
-        Group group = entry.group();
-        Object child = group.declaration().writeAccessor().getObject(value);
-        if (child != null) {
-          written = writeUnwrappedEntries(writer, child, group.writeEntries(), written);
+        Object child = entry.group().declaration().writeAccessor().getObject(current);
+        if (child == null) {
+          i = ends[i];
+        } else {
+          owners[depth + 1] = child;
+          i++;
         }
       }
     }
@@ -1228,18 +1252,27 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   private Object ensureUnwrappedGroup(Group group, Object[] groupWorkspaces, boolean[] present) {
-    int index = group.readIndex();
-    if (present[index]) {
-      return groupWorkspaces[index];
+    int target = group.readIndex();
+    int[] parents = unwrappedInfo.groupParents();
+    int current = target;
+    while (parents[current] >= 0 && !present[parents[current]]) {
+      current = parents[current];
     }
-    Group parent = group.parent();
-    if (parent != null) {
-      ensureUnwrappedGroup(parent, groupWorkspaces, present);
+    int[] ends = unwrappedInfo.groupEnds();
+    ObjectCodec<?>[] codecs = unwrappedInfo.groupCodecs();
+    while (true) {
+      if (!present[current]) {
+        groupWorkspaces[current] = codecs[current].newUnwrappedWorkspace();
+        present[current] = true;
+      }
+      if (current == target) {
+        return groupWorkspaces[target];
+      }
+      current++;
+      while (ends[current] < target) {
+        current = ends[current] + 1;
+      }
     }
-    Object workspace = group.childCodec().newUnwrappedWorkspace();
-    groupWorkspaces[index] = workspace;
-    present[index] = true;
-    return workspace;
   }
 
   private void finishUnwrappedGroups(

@@ -26,12 +26,10 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -148,6 +146,34 @@ public final class JsonTypeResolver {
     } finally {
       endResolution();
     }
+  }
+
+  @Internal
+  public ObjectCodec<?> getUnwrappedObjectCodec(Class<?> rawType) {
+    TypeRef<?> ownerType = TypeRef.of(rawType);
+    Object key = typeInfoKey(rawType, rawType);
+    JsonTypeInfo typeInfo = typeInfos.get(key);
+    if (typeInfo != null) {
+      // Generated capabilities replace type-info slots; objectCodecs retains the stable metadata
+      // owner used to build an unwrapped parent.
+      return typeInfo.usesDefaultObjectCodec() ? objectCodecs.get(key) : null;
+    }
+    if (customTypeInfo(rawType, rawType) != null || sharedRegistry.subTypesInfo(rawType) != null) {
+      return null;
+    }
+    JsonValueCodec<?> selected = sharedRegistry.createCodec(rawType, ownerType, this);
+    if (selected != null) {
+      return null;
+    }
+    ObjectCodec<?> codec = objectCodecs.get(key);
+    if (codec == null) {
+      codec = newObjectCodec(ownerType);
+      objectCodecs.put(key, codec);
+    }
+    typeInfo = newTypeInfo(rawType, rawType, codec);
+    typeInfos.put(key, typeInfo);
+    registerObjectTypeInfo(typeInfo);
+    return codec;
   }
 
   public JsonTypeInfo getTypeInfo(Type declaredType, Class<?> fallback) {
@@ -903,20 +929,7 @@ public final class JsonTypeResolver {
   }
 
   private static JsonFieldInfo[] unwrappedWriteFields(ObjectCodec<?> owner) {
-    List<JsonFieldInfo> fields = new ArrayList<>();
-    collectUnwrappedWriteFields(owner.unwrappedInfo().writeEntries(), fields);
-    return fields.toArray(new JsonFieldInfo[0]);
-  }
-
-  private static void collectUnwrappedWriteFields(
-      JsonUnwrappedInfo.WriteEntry[] entries, List<JsonFieldInfo> fields) {
-    for (JsonUnwrappedInfo.WriteEntry entry : entries) {
-      if (entry.kind() == JsonUnwrappedInfo.DIRECT) {
-        fields.add(entry.field());
-      } else if (entry.kind() == JsonUnwrappedInfo.GROUP) {
-        collectUnwrappedWriteFields(entry.group().writeEntries(), fields);
-      }
-    }
+    return owner.unwrappedInfo().writeFields();
   }
 
   @SuppressWarnings("unchecked")

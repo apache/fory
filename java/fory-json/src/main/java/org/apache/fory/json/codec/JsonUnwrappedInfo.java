@@ -20,8 +20,10 @@
 package org.apache.fory.json.codec;
 
 import java.lang.reflect.Type;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +33,6 @@ import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
-import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 
@@ -53,7 +54,15 @@ public final class JsonUnwrappedInfo {
   private final String[] directReservedNames;
   private int resolutionState;
   private WriteEntry[] writeEntries;
+  private WriteEntry[] writeSteps;
+  private int[] writeDepths;
+  private int[] writeEnds;
+  private int maxWriteDepth;
+  private JsonFieldInfo[] writeFields;
   private Group[] groups;
+  private ObjectCodec<?>[] groupCodecs;
+  private int[] groupParents;
+  private int[] groupEnds;
   private ReadRoute[] readRoutes;
   private RouteTable routeTable;
   private String[] flattenedNames;
@@ -78,9 +87,49 @@ public final class JsonUnwrappedInfo {
     return writeEntries;
   }
 
+  public WriteEntry[] writeSteps() {
+    requireResolved();
+    return writeSteps;
+  }
+
+  public int[] writeDepths() {
+    requireResolved();
+    return writeDepths;
+  }
+
+  public int[] writeEnds() {
+    requireResolved();
+    return writeEnds;
+  }
+
+  public int maxWriteDepth() {
+    requireResolved();
+    return maxWriteDepth;
+  }
+
+  public JsonFieldInfo[] writeFields() {
+    requireResolved();
+    return writeFields;
+  }
+
   public Group[] groups() {
     requireResolved();
     return groups;
+  }
+
+  public ObjectCodec<?>[] groupCodecs() {
+    requireResolved();
+    return groupCodecs;
+  }
+
+  public int[] groupParents() {
+    requireResolved();
+    return groupParents;
+  }
+
+  public int[] groupEnds() {
+    requireResolved();
+    return groupEnds;
   }
 
   public ReadRoute[] readRoutes() {
@@ -107,30 +156,79 @@ public final class JsonUnwrappedInfo {
     if (resolutionState == RESOLVED) {
       return;
     }
-    if (resolutionState == RESOLVING) {
-      throw new ForyJsonException(
-          "Recursive @JsonUnwrapped property cycle reaches " + owner.type().getName());
-    }
-    resolutionState = RESOLVING;
+    ArrayDeque<ResolveFrame> frames = new ArrayDeque<>();
+    frames.addLast(new ResolveFrame(this, owner));
     try {
-      for (Declaration declaration : declarations) {
-        declaration.resolve(owner, resolver);
+      while (!frames.isEmpty()) {
+        ResolveFrame frame = frames.peekLast();
+        JsonUnwrappedInfo info = frame.info;
+        if (!frame.entered) {
+          if (info.resolutionState == RESOLVED) {
+            frames.removeLast();
+            continue;
+          }
+          if (info.resolutionState == RESOLVING) {
+            throw new ForyJsonException(
+                "Recursive @JsonUnwrapped property cycle reaches " + frame.owner.type().getName());
+          }
+          info.resolutionState = RESOLVING;
+          for (Declaration declaration : info.declarations) {
+            declaration.resolve(frame.owner, resolver);
+          }
+          frame.entered = true;
+        }
+        boolean descended = false;
+        while (frame.declarationIndex < info.declarations.length) {
+          Declaration declaration = info.declarations[frame.declarationIndex++];
+          JsonUnwrappedInfo child = declaration.childCodec.unwrappedInfo();
+          if (child == null || child.resolutionState == RESOLVED) {
+            continue;
+          }
+          if (child.resolutionState == RESOLVING) {
+            throw new ForyJsonException(
+                "Recursive @JsonUnwrapped property cycle from "
+                    + frame.owner.type().getName()
+                    + "."
+                    + declaration.javaName
+                    + " to "
+                    + declaration.childCodec.type().getName());
+          }
+          frames.addLast(new ResolveFrame(child, declaration.childCodec));
+          descended = true;
+          break;
+        }
+        if (descended) {
+          continue;
+        }
+        info.buildResolvedMetadata(frame.owner, resolver);
+        info.resolutionState = RESOLVED;
+        frames.removeLast();
       }
-      buildResolvedMetadata(owner, resolver);
-      resolutionState = RESOLVED;
     } catch (RuntimeException | Error e) {
-      resolutionState = UNRESOLVED;
-      writeEntries = null;
-      groups = null;
-      readRoutes = null;
-      routeTable = null;
-      flattenedNames = null;
+      for (ResolveFrame frame : frames) {
+        if (frame.info.resolutionState == RESOLVING) {
+          frame.info.clearResolution();
+        }
+      }
       throw e;
     }
   }
 
-  boolean isResolving() {
-    return resolutionState == RESOLVING;
+  private void clearResolution() {
+    resolutionState = UNRESOLVED;
+    writeEntries = null;
+    writeSteps = null;
+    writeDepths = null;
+    writeEnds = null;
+    maxWriteDepth = 0;
+    writeFields = null;
+    groups = null;
+    groupCodecs = null;
+    groupParents = null;
+    groupEnds = null;
+    readRoutes = null;
+    routeTable = null;
+    flattenedNames = null;
   }
 
   private void buildResolvedMetadata(ObjectCodec<?> owner, JsonTypeResolver resolver) {
@@ -138,7 +236,7 @@ public final class JsonUnwrappedInfo {
     context.registerRootNames();
     IdentityHashMap<Declaration, Group> rootGroups = new IdentityHashMap<>();
     for (Declaration declaration : declarations) {
-      Group group = context.buildGroup(null, owner, declaration, "", "", true, true);
+      Group group = context.buildRootGroup(declaration);
       rootGroups.put(declaration, group);
     }
     List<WriteEntry> resolvedWrites = new ArrayList<>(writeSpecs.length);
@@ -155,10 +253,66 @@ public final class JsonUnwrappedInfo {
       }
     }
     writeEntries = resolvedWrites.toArray(new WriteEntry[0]);
+    buildWriteSteps();
     groups = context.groups.toArray(new Group[0]);
+    groupCodecs = new ObjectCodec<?>[groups.length];
+    groupParents = new int[groups.length];
+    groupEnds = new int[groups.length];
+    for (int i = 0; i < groups.length; i++) {
+      Group group = groups[i];
+      groupCodecs[i] = group.childCodec;
+      groupParents[i] = group.parent == null ? -1 : group.parent.readIndex;
+      groupEnds[i] = i;
+    }
+    for (int i = groups.length - 1; i >= 0; i--) {
+      int parent = groupParents[i];
+      if (parent >= 0 && groupEnds[parent] < groupEnds[i]) {
+        groupEnds[parent] = groupEnds[i];
+      }
+    }
     readRoutes = context.routes.toArray(new ReadRoute[0]);
     routeTable = new RouteTable(context.names, context.routeIndexes);
     flattenedNames = context.names.keySet().toArray(new String[0]);
+  }
+
+  private void buildWriteSteps() {
+    List<WriteEntry> steps = new ArrayList<>();
+    List<Integer> depths = new ArrayList<>();
+    List<Integer> ends = new ArrayList<>();
+    List<JsonFieldInfo> fields = new ArrayList<>();
+    ArrayDeque<WriteWalk> walk = new ArrayDeque<>();
+    walk.addLast(new WriteWalk(writeEntries, 0, -1));
+    int deepest = 0;
+    while (!walk.isEmpty()) {
+      WriteWalk frame = walk.peekLast();
+      if (frame.index == frame.entries.length) {
+        if (frame.groupStep >= 0) {
+          ends.set(frame.groupStep, steps.size());
+        }
+        walk.removeLast();
+        continue;
+      }
+      WriteEntry entry = frame.entries[frame.index++];
+      int stepIndex = steps.size();
+      steps.add(entry);
+      depths.add(frame.depth);
+      ends.add(-1);
+      deepest = Math.max(deepest, frame.depth);
+      if (entry.kind == DIRECT) {
+        fields.add(entry.field);
+      } else if (entry.kind == GROUP) {
+        walk.addLast(new WriteWalk(entry.group.writeEntries, frame.depth + 1, stepIndex));
+      }
+    }
+    writeSteps = steps.toArray(new WriteEntry[0]);
+    writeDepths = new int[depths.size()];
+    writeEnds = new int[ends.size()];
+    for (int i = 0; i < depths.size(); i++) {
+      writeDepths[i] = depths.get(i);
+      writeEnds[i] = ends.get(i);
+    }
+    maxWriteDepth = deepest;
+    writeFields = fields.toArray(new JsonFieldInfo[0]);
   }
 
   private void requireResolved() {
@@ -247,27 +401,14 @@ public final class JsonUnwrappedInfo {
       if (rawType == Object.class || rawType.getTypeParameters().length != 0) {
         throw unsupported(owner, "does not support raw generic or Object children", type);
       }
-      JsonTypeInfo typeInfo = resolver.getTypeInfo(type, rawType);
-      if (!typeInfo.usesDefaultObjectCodec()) {
+      ObjectCodec<?> child = resolver.getUnwrappedObjectCodec(rawType);
+      if (child == null) {
         throw unsupported(owner, "requires the standard ObjectCodec", type);
       }
-      ObjectCodec<?> child = resolver.getObjectCodec(rawType);
       if (child.anyInfo() != null) {
         throw unsupported(owner, "does not support a JSON Any child", type);
       }
-      JsonUnwrappedInfo childInfo = child.unwrappedInfo();
-      if (childInfo != null) {
-        if (childInfo.isResolving()) {
-          throw new ForyJsonException(
-              "Recursive @JsonUnwrapped property cycle from "
-                  + owner.type().getName()
-                  + "."
-                  + javaName
-                  + " to "
-                  + child.type().getName());
-        }
-        childInfo.resolve(child, resolver);
-      }
+      child.resolveDirectTypes(resolver);
       childCodec = child;
     }
 
@@ -442,12 +583,42 @@ public final class JsonUnwrappedInfo {
     }
   }
 
+  private static final class ResolveFrame {
+    private final JsonUnwrappedInfo info;
+    private final ObjectCodec<?> owner;
+    private int declarationIndex;
+    private boolean entered;
+
+    private ResolveFrame(JsonUnwrappedInfo info, ObjectCodec<?> owner) {
+      this.info = info;
+      this.owner = owner;
+    }
+  }
+
+  private static final class WriteWalk {
+    private final WriteEntry[] entries;
+    private final int depth;
+    private final int groupStep;
+    private int index;
+
+    private WriteWalk(WriteEntry[] entries, int depth, int groupStep) {
+      this.entries = entries;
+      this.depth = depth;
+      this.groupStep = groupStep;
+    }
+  }
+
   private final class BuildContext {
     private final ObjectCodec<?> owner;
     private final JsonTypeResolver resolver;
     private final List<Group> groups = new ArrayList<>();
     private final List<ReadRoute> routes = new ArrayList<>();
-    private final LinkedHashMap<String, String> names = new LinkedHashMap<>();
+    private final StringBuilder prefix = new StringBuilder();
+    private final ArrayDeque<String> suffixes = new ArrayDeque<>();
+    private int suffixLength;
+    // Keep collision owners structural. Full Java property paths are diagnostic-only and can be
+    // quadratic in a deep tree if eagerly retained for every flattened name.
+    private final LinkedHashMap<String, NameOwner> names = new LinkedHashMap<>();
     private final Map<Long, String> hashes = new LinkedHashMap<>();
     private final Map<String, Integer> routeIndexes = new LinkedHashMap<>();
 
@@ -458,65 +629,101 @@ public final class JsonUnwrappedInfo {
 
     private void registerRootNames() {
       for (JsonFieldInfo field : owner.writeFields()) {
-        registerName(field.name(), "parent." + field.name());
+        registerName(field.name(), null, field.name());
       }
       for (JsonFieldInfo field : owner.readFields()) {
-        registerName(field.name(), "parent." + field.name());
+        registerName(field.name(), null, field.name());
       }
       if (owner.creatorInfo() != null) {
         for (JsonCreatorFieldInfo field : owner.creatorInfo().fields()) {
-          registerName(field.name(), "parent." + field.name());
+          registerName(field.name(), null, field.name());
         }
       }
       if (directReservedNames != null) {
         for (String name : directReservedNames) {
-          registerName(name, "parent." + name);
+          registerName(name, null, name);
         }
       }
     }
 
-    private Group buildGroup(
-        Group parent,
+    private Group buildRootGroup(Declaration declaration) {
+      BuildFrame root = newBuildFrame(null, owner, declaration, true, true);
+      ArrayDeque<BuildFrame> frames = new ArrayDeque<>();
+      frames.addLast(root);
+      while (!frames.isEmpty()) {
+        BuildFrame frame = frames.peekLast();
+        if (frame.childInfo != null && frame.childIndex < frame.childInfo.declarations.length) {
+          Declaration childDeclaration = frame.childInfo.declarations[frame.childIndex++];
+          BuildFrame child =
+              newBuildFrame(
+                  frame,
+                  frame.group.childCodec,
+                  childDeclaration,
+                  frame.group.writeEnabled,
+                  frame.group.readEnabled);
+          frame.childGroups.put(childDeclaration, child.group);
+          frames.addLast(child);
+          continue;
+        }
+        finishGroup(frame);
+        leaveFrame(frame);
+        frames.removeLast();
+      }
+      return root.group;
+    }
+
+    private BuildFrame newBuildFrame(
+        BuildFrame parent,
         ObjectCodec<?> parentCodec,
         Declaration declaration,
-        String outerPrefix,
-        String outerSuffix,
         boolean ancestorWrites,
         boolean ancestorReads) {
       boolean writes = ancestorWrites && declaration.writeEnabled;
       boolean reads = ancestorReads && declaration.readEnabled;
       int readIndex = reads ? groups.size() : -1;
-      Group group = new Group(declaration, parentCodec, parent, readIndex, writes, reads);
+      Group group =
+          new Group(
+              declaration,
+              parentCodec,
+              parent == null ? null : parent.group,
+              readIndex,
+              writes,
+              reads);
       if (reads) {
         groups.add(group);
       }
-      String prefix = outerPrefix + declaration.prefix;
-      String suffix = declaration.suffix + outerSuffix;
-      String path =
-          parent == null ? declaration.javaName : groupPath(parent) + "." + declaration.javaName;
-      IdentityHashMap<Declaration, Group> childGroups = new IdentityHashMap<>();
-      JsonUnwrappedInfo childInfo = declaration.childCodec.unwrappedInfo();
-      if (childInfo != null) {
-        for (Declaration childDeclaration : childInfo.declarations) {
-          Group childGroup =
-              buildGroup(
-                  group, declaration.childCodec, childDeclaration, prefix, suffix, writes, reads);
-          childGroups.put(childDeclaration, childGroup);
-        }
-      }
+      int prefixStart = prefix.length();
+      int suffixStart = suffixLength;
+      prefix.append(declaration.prefix);
+      suffixes.addLast(declaration.suffix);
+      suffixLength += declaration.suffix.length();
+      // Frames retain shared-state offsets; cumulative strings would retain quadratic data.
+      return new BuildFrame(
+          group, declaration.childCodec.unwrappedInfo(), routes.size(), prefixStart, suffixStart);
+    }
 
+    private void leaveFrame(BuildFrame frame) {
+      prefix.setLength(frame.prefixStart);
+      suffixes.removeLast();
+      suffixLength = frame.suffixStart;
+    }
+
+    private void finishGroup(BuildFrame frame) {
+      Group group = frame.group;
+      Declaration declaration = group.declaration;
+      JsonUnwrappedInfo childInfo = frame.childInfo;
       List<WriteEntry> entries = new ArrayList<>();
-      if (writes) {
+      if (group.writeEnabled) {
         if (childInfo == null) {
           for (JsonFieldInfo field : declaration.childCodec.writeFields()) {
-            entries.add(writeLeaf(field, declaration.childCodec, prefix, suffix, path));
+            entries.add(writeLeaf(frame, field));
           }
         } else {
           for (WriteSpec spec : childInfo.writeSpecs) {
             if (spec.kind == DIRECT) {
-              entries.add(writeLeaf(spec.field, declaration.childCodec, prefix, suffix, path));
+              entries.add(writeLeaf(frame, spec.field));
             } else if (spec.kind == GROUP) {
-              Group childGroup = childGroups.get(spec.declaration);
+              Group childGroup = frame.childGroups.get(spec.declaration);
               if (childGroup.writeEnabled) {
                 entries.add(WriteEntry.group(childGroup));
               }
@@ -531,62 +738,77 @@ public final class JsonUnwrappedInfo {
               "Write-enabled @JsonUnwrapped property expands to no members: "
                   + owner.type().getName()
                   + "."
-                  + path);
+                  + groupPath(group));
         }
       }
       group.writeEntries = entries.toArray(new WriteEntry[0]);
 
-      if (reads) {
-        int routeStart = routes.size();
+      if (group.readEnabled) {
         ObjectCodec<?> child = declaration.childCodec;
         if (child.creatorInfo() == null) {
           for (JsonFieldInfo field : child.readFields()) {
-            String transformed = prefix + field.name() + suffix;
-            String propertyOwner = path + "." + field.name();
-            registerName(transformed, propertyOwner);
+            String transformed = transformedName(field.name());
+            registerName(transformed, group, field.name());
             JsonFieldInfo copy = field.withName(transformed, TypeRef.of(child.type()));
             copy.resolveTypes(resolver);
             addRoute(transformed, new ReadRoute(group, copy, null));
           }
         } else {
           for (JsonCreatorFieldInfo field : child.creatorInfo().fields()) {
-            String transformed = prefix + field.name() + suffix;
-            String propertyOwner = path + "." + field.name();
-            registerName(transformed, propertyOwner);
+            String transformed = transformedName(field.name());
+            registerName(transformed, group, field.name());
             JsonCreatorFieldInfo copy = field.withName(transformed);
             copy.resolveType(resolver);
             addRoute(transformed, new ReadRoute(group, null, copy));
           }
         }
-        if (routes.size() == routeStart && !hasReadableDescendant(group)) {
+        if (routes.size() == frame.routeStart) {
           throw new ForyJsonException(
               "Read-enabled @JsonUnwrapped property expands to no members: "
                   + owner.type().getName()
                   + "."
-                  + path);
+                  + groupPath(group));
         }
       }
-      return group;
     }
 
-    private WriteEntry writeLeaf(
-        JsonFieldInfo field, ObjectCodec<?> child, String prefix, String suffix, String path) {
-      String transformed = prefix + field.name() + suffix;
-      registerName(transformed, path + "." + field.name());
-      JsonFieldInfo copy = field.withName(transformed, TypeRef.of(child.type()));
+    private WriteEntry writeLeaf(BuildFrame frame, JsonFieldInfo field) {
+      Group group = frame.group;
+      String transformed = transformedName(field.name());
+      registerName(transformed, group, field.name());
+      JsonFieldInfo copy = field.withName(transformed, TypeRef.of(group.childCodec.type()));
       copy.resolveTypes(resolver);
       return WriteEntry.direct(copy);
     }
 
-    private boolean hasReadableDescendant(Group ancestor) {
-      for (Group candidate : groups) {
-        for (Group parent = candidate.parent; parent != null; parent = parent.parent) {
-          if (parent == ancestor) {
-            return true;
-          }
-        }
+    private String transformedName(String name) {
+      if (prefix.length() == 0 && suffixLength == 0) {
+        return name;
       }
-      return false;
+      StringBuilder transformed =
+          new StringBuilder(prefix.length() + name.length() + suffixLength)
+              .append(prefix)
+              .append(name);
+      Iterator<String> suffix = suffixes.descendingIterator();
+      while (suffix.hasNext()) {
+        transformed.append(suffix.next());
+      }
+      return transformed.toString();
+    }
+
+    private String groupPath(Group group) {
+      ArrayDeque<Group> ancestors = new ArrayDeque<>();
+      for (Group current = group; current != null; current = current.parent) {
+        ancestors.addFirst(current);
+      }
+      StringBuilder builder = new StringBuilder();
+      for (Group ancestor : ancestors) {
+        if (builder.length() != 0) {
+          builder.append('.');
+        }
+        builder.append(ancestor.declaration.javaName);
+      }
+      return builder.toString();
     }
 
     private void addRoute(String name, ReadRoute route) {
@@ -597,22 +819,23 @@ public final class JsonUnwrappedInfo {
       routes.add(route);
     }
 
-    private void registerName(String name, String propertyOwner) {
+    private void registerName(String name, Group group, String propertyName) {
       if (name.isEmpty()) {
         throw new ForyJsonException(
             "@JsonUnwrapped produces an empty JSON member name on " + owner.type().getName());
       }
-      String priorOwner = names.putIfAbsent(name, propertyOwner);
-      if (priorOwner != null && !priorOwner.equals(propertyOwner)) {
+      NameOwner propertyOwner = new NameOwner(group, propertyName);
+      NameOwner priorOwner = names.putIfAbsent(name, propertyOwner);
+      if (priorOwner != null && !priorOwner.sameProperty(propertyOwner)) {
         throw new ForyJsonException(
             "Flattened JSON property collision on "
                 + owner.type().getName()
                 + " for "
                 + name
                 + ": "
-                + priorOwner
+                + propertyOwner(priorOwner)
                 + " and "
-                + propertyOwner);
+                + propertyOwner(propertyOwner));
       }
       long hash = JsonFieldNameHash.hash(name);
       String priorName = hashes.putIfAbsent(hash, name);
@@ -622,18 +845,47 @@ public final class JsonUnwrappedInfo {
       }
     }
 
-    private String groupPath(Group group) {
-      StringBuilder builder = new StringBuilder();
-      appendGroupPath(builder, group);
-      return builder.toString();
+    private String propertyOwner(NameOwner nameOwner) {
+      return nameOwner.group == null
+          ? "parent." + nameOwner.propertyName
+          : groupPath(nameOwner.group) + "." + nameOwner.propertyName;
     }
 
-    private void appendGroupPath(StringBuilder builder, Group group) {
-      if (group.parent != null) {
-        appendGroupPath(builder, group.parent);
-        builder.append('.');
+    private final class NameOwner {
+      private final Group group;
+      private final String propertyName;
+
+      private NameOwner(Group group, String propertyName) {
+        this.group = group;
+        this.propertyName = propertyName;
       }
-      builder.append(group.declaration.javaName);
+
+      private boolean sameProperty(NameOwner other) {
+        return group == other.group && propertyName.equals(other.propertyName);
+      }
+    }
+
+    private final class BuildFrame {
+      private final Group group;
+      private final JsonUnwrappedInfo childInfo;
+      private final int routeStart;
+      private final int prefixStart;
+      private final int suffixStart;
+      private final IdentityHashMap<Declaration, Group> childGroups = new IdentityHashMap<>();
+      private int childIndex;
+
+      private BuildFrame(
+          Group group,
+          JsonUnwrappedInfo childInfo,
+          int routeStart,
+          int prefixStart,
+          int suffixStart) {
+        this.group = group;
+        this.childInfo = childInfo;
+        this.routeStart = routeStart;
+        this.prefixStart = prefixStart;
+        this.suffixStart = suffixStart;
+      }
     }
   }
 
@@ -642,7 +894,7 @@ public final class JsonUnwrappedInfo {
     private final int[] matches;
     private final int mask;
 
-    private RouteTable(LinkedHashMap<String, String> names, Map<String, Integer> routeIndexes) {
+    private RouteTable(Map<String, ?> names, Map<String, Integer> routeIndexes) {
       int size = 1;
       while (size < names.size() * 4) {
         size <<= 1;

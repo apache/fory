@@ -264,7 +264,11 @@ abstract class JsonReaderCodegen {
       Class<?> type,
       ObjectCodec<?> owner,
       JsonUnwrappedInfo unwrapped) {
-    this.any = owner.anyInfo();
+    AnyInfo ownerAny = owner.anyInfo();
+    this.any =
+        ownerAny != null && (ownerAny.readField() != null || ownerAny.readSetter() != null)
+            ? ownerAny
+            : null;
     ownerType = type;
     JsonCreatorInfo rootCreator = owner.creatorInfo();
     boolean rootArray = rootCreator != null;
@@ -328,8 +332,10 @@ abstract class JsonReaderCodegen {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "r" + id);
       }
     }
-    for (int i = 0; i < groups.length; i++) {
-      ctx.addField(ObjectCodec.class, "g" + i);
+    if (groups.length != 0) {
+      ctx.addField(ObjectCodec[].class, "groupCodecs");
+      ctx.addField(int[].class, "groupParents");
+      ctx.addField(int[].class, "groupEnds");
     }
     Expression constructor =
         unwrappedReaderConstructor(
@@ -388,6 +394,8 @@ abstract class JsonReaderCodegen {
         groups,
         directCount,
         rootArray);
+    addUnwrappedCreatorMethods(ctx, type, rootCreator, groups);
+    addUnwrappedGroupMethods(ctx, builder, type, groups, rootArray);
     ctx.clearExprState();
     Expression root = unwrappedRootWorkspace(builder, rootCreator != null);
     Expression workspaces =
@@ -452,8 +460,10 @@ abstract class JsonReaderCodegen {
       body.add(new Expression.If(not(consumeExpr('}')), members));
     }
     finishAnyRead(builder, body, root, anyCreated, rootArray);
-    addFinishUnwrappedGroups(builder, body, groups, root, workspaces, present, rootArray);
-    Expression finishedRoot = finishUnwrappedRoot(root, rootCreator != null);
+    if (groups.length != 0) {
+      body.add(finishUnwrappedGroups(type, root, workspaces, present, rootArray));
+    }
+    Expression finishedRoot = finishUnwrappedRoot(root, type, rootCreator);
     body.add(new Expression.Invoke(readerRef(), "exitDepth"), new Expression.Return(finishedRoot));
     Code.ExprCode generated = body.genCode(ctx);
     String code = generated.code();
@@ -889,6 +899,77 @@ abstract class JsonReaderCodegen {
     return arguments;
   }
 
+  private void addUnwrappedCreatorMethods(
+      CodegenContext ctx, Class<?> rootType, JsonCreatorInfo rootCreator, Group[] groups) {
+    if (rootCreator != null) {
+      addWorkspaceCreatorMethod(
+          ctx, rootType, rootCreator.executable(), unwrappedCreatorMethod(-1), "owner");
+    }
+    for (int i = 0; i < groups.length; i++) {
+      ObjectCodec<?> child = groups[i].childCodec();
+      JsonCreatorInfo creator = child.creatorInfo();
+      if (creator != null) {
+        addWorkspaceCreatorMethod(
+            ctx,
+            child.type(),
+            creator.executable(),
+            unwrappedCreatorMethod(i),
+            "this.groupCodecs[" + i + "]");
+      }
+    }
+  }
+
+  private void addWorkspaceCreatorMethod(
+      CodegenContext ctx,
+      Class<?> type,
+      Executable executable,
+      String methodName,
+      String codecExpression) {
+    Class<?>[] parameterTypes = executable.getParameterTypes();
+    StringBuilder invocation = new StringBuilder();
+    for (int i = 0; i < parameterTypes.length; i++) {
+      if (i != 0) {
+        invocation.append(", ");
+      }
+      Class<?> parameterType = parameterTypes[i];
+      Class<?> castType =
+          parameterType.isPrimitive() ? TypeUtils.boxedType(parameterType) : parameterType;
+      invocation
+          .append("((")
+          .append(ctx.type(castType))
+          .append(") arguments[")
+          .append(i)
+          .append("])");
+    }
+    String typeName = ctx.type(type);
+    String expression =
+        executable instanceof Constructor
+            ? "new " + typeName + "(" + invocation + ")"
+            : typeName + "." + ((Method) executable).getName() + "(" + invocation + ")";
+    StringBuilder body = new StringBuilder();
+    body.append(typeName)
+        .append(" value;\ntry {\n  value = ")
+        .append(expression)
+        .append(";\n")
+        .append("} catch (Throwable e) {\n  throw ")
+        .append(codecExpression)
+        .append(".creatorFailure(e);\n}\n");
+    if (executable instanceof Method) {
+      body.append("return (")
+          .append(typeName)
+          .append(") ")
+          .append(codecExpression)
+          .append(".requireCreatorResult(value);");
+    } else {
+      body.append("return value;");
+    }
+    ctx.addMethod("private final", methodName, body.toString(), type, Object[].class, "arguments");
+  }
+
+  private String unwrappedCreatorMethod(int groupIndex) {
+    return groupIndex < 0 ? "createUnwrappedRoot" : "createUnwrappedGroup" + groupIndex;
+  }
+
   private Expression createValue(Class<?> type, Expression[] arguments) {
     return new Expression.Invoke(
         new Reference("this", TypeRef.of(Object.class)),
@@ -1286,20 +1367,18 @@ abstract class JsonReaderCodegen {
                 new Expression.ArrayValue(codecs, Expression.Literal.ofInt(id))));
       }
     }
-    Expression groupArray =
-        new Expression.Variable(
-            "resolvedGroups",
-            new Expression.Invoke(unwrapped, "groups", TypeRef.of(Group[].class)).inline());
-    expressions.add(groupArray);
-    for (int i = 0; i < groups.length; i++) {
+    if (groups.length != 0) {
       expressions.add(
           new Expression.Assign(
-              new Reference("this.g" + i, TypeRef.of(ObjectCodec.class)),
-              new Expression.Invoke(
-                      new Expression.ArrayValue(groupArray, Expression.Literal.ofInt(i)),
-                      "childCodec",
-                      TypeRef.of(ObjectCodec.class))
-                  .inline()));
+              new Reference("this.groupCodecs", TypeRef.of(ObjectCodec[].class)),
+              new Expression.Invoke(unwrapped, "groupCodecs", TypeRef.of(ObjectCodec[].class))
+                  .inline()),
+          new Expression.Assign(
+              new Reference("this.groupParents", TypeRef.of(int[].class)),
+              new Expression.Invoke(unwrapped, "groupParents", TypeRef.of(int[].class)).inline()),
+          new Expression.Assign(
+              new Reference("this.groupEnds", TypeRef.of(int[].class)),
+              new Expression.Invoke(unwrapped, "groupEnds", TypeRef.of(int[].class)).inline()));
     }
     if (storesAnyReader) {
       expressions.add(
@@ -1363,12 +1442,19 @@ abstract class JsonReaderCodegen {
     return new Expression.Variable("object", inline(value));
   }
 
-  private Expression finishUnwrappedRoot(Expression root, boolean creator) {
-    if (!creator) {
+  private Expression finishUnwrappedRoot(
+      Expression root, Class<?> type, JsonCreatorInfo creator) {
+    if (creator == null) {
       return root;
     }
     return new Expression.Invoke(
-        fieldRef("creator", JsonCreatorInfo.class), "create", TypeRef.of(Object.class), root);
+        new Reference("this", TypeRef.of(Object.class)),
+        unwrappedCreatorMethod(-1),
+        "",
+        TypeRef.of(type),
+        false,
+        false,
+        new Expression.Cast(root, TypeRef.of(Object[].class)));
   }
 
   private Expression.ListExpression unwrappedMembers(
@@ -1638,7 +1724,7 @@ abstract class JsonReaderCodegen {
       ReadRoute route = routes[i];
       int id = directCount + i;
       Expression.ListExpression read = new Expression.ListExpression();
-      addEnsureUnwrappedGroup(read, route.group(), groups, workspaces, present);
+      addEnsureUnwrappedGroup(read, route.group(), workspaces, present);
       int groupIndex = route.group().readIndex();
       ObjectCodec<?> child = route.group().childCodec();
       Expression workspace =
@@ -1740,87 +1826,273 @@ abstract class JsonReaderCodegen {
   private void addEnsureUnwrappedGroup(
       Expression.ListExpression expressions,
       Group group,
-      Group[] groups,
       Expression workspaces,
       Expression present) {
-    if (group.parent() != null) {
-      addEnsureUnwrappedGroup(expressions, group.parent(), groups, workspaces, present);
-    }
-    int index = group.readIndex();
-    ObjectCodec<?> child = group.childCodec();
-    Expression codec = fieldRef("g" + index, ObjectCodec.class);
-    Expression workspace;
-    if (child.creatorInfo() != null) {
-      workspace =
-          new Expression.Invoke(
-              new Expression.Invoke(codec, "creatorInfo", TypeRef.of(JsonCreatorInfo.class))
-                  .inline(),
-              "newArguments",
-              TypeRef.of(Object[].class));
-    } else {
-      workspace = new Expression.Invoke(codec, "newInstance", TypeRef.of(Object.class));
-    }
-    Expression initialize =
-        new Expression.ListExpression(
-            new Expression.AssignArrayElem(workspaces, workspace, Expression.Literal.ofInt(index)),
-            new Expression.AssignArrayElem(
-                present, Expression.Literal.True, Expression.Literal.ofInt(index)));
     expressions.add(
-        new Expression.If(
-            not(new Expression.ArrayValue(present, Expression.Literal.ofInt(index))), initialize));
+        new Expression.Invoke(
+            new Reference("this", TypeRef.of(Object.class)),
+            "ensureUnwrappedGroup",
+            "",
+            TypeRef.of(void.class),
+            false,
+            false,
+            Expression.Literal.ofInt(group.readIndex()),
+            workspaces,
+            present));
   }
 
-  private void addFinishUnwrappedGroups(
+  private void addUnwrappedGroupMethods(
+      CodegenContext ctx,
       JsonGeneratedCodecBuilder builder,
-      Expression.ListExpression expressions,
+      Class<?> rootType,
       Group[] groups,
+      boolean rootArray) {
+    if (groups.length == 0) {
+      return;
+    }
+    // Groups are preorder-indexed and groupEnds skips sibling subtrees, so a target path is
+    // initialized in one pass without repeatedly walking its ancestors.
+    String ensureBody =
+        "int current = target;\n"
+            + "while (this.groupParents[current] >= 0 "
+            + "&& !present[this.groupParents[current]]) {\n"
+            + "  current = this.groupParents[current];\n"
+            + "}\n"
+            + "while (true) {\n"
+            + "  if (!present[current]) {\n"
+            + "    initUnwrappedGroup(current, workspaces, present);\n"
+            + "  }\n"
+            + "  if (current == target) {\n"
+            + "    return;\n"
+            + "  }\n"
+            + "  current++;\n"
+            + "  while (this.groupEnds[current] < target) {\n"
+            + "    current = this.groupEnds[current] + 1;\n"
+            + "  }\n"
+            + "}";
+    ctx.addMethod(
+        "private final",
+        "ensureUnwrappedGroup",
+        ensureBody,
+        void.class,
+        int.class,
+        "target",
+        Object[].class,
+        "workspaces",
+        boolean[].class,
+        "present");
+    addUnwrappedGroupInitMethods(ctx, groups);
+    addUnwrappedGroupFinishMethods(ctx, builder, rootType, groups, rootArray);
+  }
+
+  private void addUnwrappedGroupInitMethods(CodegenContext ctx, Group[] groups) {
+    int chunks = (groups.length + READ_FIELD_SWITCH_SIZE - 1) / READ_FIELD_SWITCH_SIZE;
+    StringBuilder dispatch = new StringBuilder("switch (groupIndex / ");
+    dispatch.append(READ_FIELD_SWITCH_SIZE).append(") {\n");
+    for (int chunk = 0; chunk < chunks; chunk++) {
+      int start = chunk * READ_FIELD_SWITCH_SIZE;
+      int end = Math.min(start + READ_FIELD_SWITCH_SIZE, groups.length);
+      StringBuilder body = new StringBuilder("switch (groupIndex) {\n");
+      for (int i = start; i < end; i++) {
+        ObjectCodec<?> child = groups[i].childCodec();
+        body.append("case ").append(i).append(":\n  workspaces[").append(i).append("] = ");
+        if (child.creatorInfo() != null) {
+          body.append("this.groupCodecs[").append(i).append("].creatorInfo().newArguments();\n");
+        } else {
+          body.append("this.groupCodecs[").append(i).append("].newInstance();\n");
+        }
+        body.append("  present[").append(i).append("] = true;\n  return;\n");
+      }
+      body.append("default:\n  throw new IllegalArgumentException();\n}");
+      ctx.addMethod(
+          "private final",
+          unwrappedGroupInitMethod(start),
+          body.toString(),
+          void.class,
+          int.class,
+          "groupIndex",
+          Object[].class,
+          "workspaces",
+          boolean[].class,
+          "present");
+      dispatch
+          .append("case ")
+          .append(chunk)
+          .append(":\n  ")
+          .append(unwrappedGroupInitMethod(start))
+          .append("(groupIndex, workspaces, present);\n  return;\n");
+    }
+    dispatch.append("default:\n  throw new IllegalArgumentException();\n}");
+    ctx.addMethod(
+        "private final",
+        "initUnwrappedGroup",
+        dispatch.toString(),
+        void.class,
+        int.class,
+        "groupIndex",
+        Object[].class,
+        "workspaces",
+        boolean[].class,
+        "present");
+  }
+
+  private void addUnwrappedGroupFinishMethods(
+      CodegenContext ctx,
+      JsonGeneratedCodecBuilder builder,
+      Class<?> rootType,
+      Group[] groups,
+      boolean rootArray) {
+    Class<?> rootWorkspaceType = rootArray ? Object[].class : rootType;
+    int chunks = (groups.length + READ_FIELD_SWITCH_SIZE - 1) / READ_FIELD_SWITCH_SIZE;
+    Expression.Switch.Case[] dispatchCases = new Expression.Switch.Case[chunks];
+    for (int chunk = 0; chunk < chunks; chunk++) {
+      int start = chunk * READ_FIELD_SWITCH_SIZE;
+      int end = Math.min(start + READ_FIELD_SWITCH_SIZE, groups.length);
+      Expression.Switch.Case[] cases = new Expression.Switch.Case[end - start];
+      for (int i = start; i < end; i++) {
+        cases[i - start] =
+            new Expression.Switch.Case(
+                i,
+                new Expression.ListExpression(
+                    finishUnwrappedGroup(
+                        builder,
+                        groups[i],
+                        i,
+                        new Reference("root", TypeRef.of(rootWorkspaceType)),
+                        new Reference("workspaces", TypeRef.of(Object[].class))),
+                    new Expression.Break()));
+      }
+      addGeneratedMethod(
+          ctx,
+          "private final",
+          unwrappedGroupFinishMethod(start),
+          new Expression.Switch(
+              new Reference("groupIndex", TypeRef.of(int.class)), cases, new Expression.Empty()),
+          void.class,
+          rootWorkspaceType,
+          "root",
+          Object[].class,
+          "workspaces",
+          int.class,
+          "groupIndex");
+      dispatchCases[chunk] =
+          new Expression.Switch.Case(
+              chunk,
+              new Expression.ListExpression(
+                  new Expression.Invoke(
+                      new Reference("this", TypeRef.of(Object.class)),
+                      unwrappedGroupFinishMethod(start),
+                      "",
+                      TypeRef.of(void.class),
+                      false,
+                      false,
+                      new Reference("root", TypeRef.of(rootWorkspaceType)),
+                      new Reference("workspaces", TypeRef.of(Object[].class)),
+                      new Reference("groupIndex", TypeRef.of(int.class))),
+                  new Expression.Break()));
+    }
+    Expression chunk =
+        new Expression.Arithmetic(
+            true,
+            "/",
+            new Reference("groupIndex", TypeRef.of(int.class)),
+            Expression.Literal.ofInt(READ_FIELD_SWITCH_SIZE));
+    addGeneratedMethod(
+        ctx,
+        "private final",
+        "finishUnwrappedGroup",
+        new Expression.Switch(chunk, dispatchCases, new Expression.Empty()),
+        void.class,
+        rootWorkspaceType,
+        "root",
+        Object[].class,
+        "workspaces",
+        int.class,
+        "groupIndex");
+    String body =
+        "for (int i = this.groupCodecs.length - 1; i >= 0; i--) {\n"
+            + "  if (present[i]) {\n"
+            + "    finishUnwrappedGroup(root, workspaces, i);\n"
+            + "  }\n"
+            + "}";
+    ctx.addMethod(
+        "private final",
+        "finishUnwrappedGroups",
+        body,
+        void.class,
+        rootWorkspaceType,
+        "root",
+        Object[].class,
+        "workspaces",
+        boolean[].class,
+        "present");
+  }
+
+  private Expression finishUnwrappedGroup(
+      JsonGeneratedCodecBuilder builder,
+      Group group,
+      int index,
+      Expression root,
+      Expression workspaces) {
+    ObjectCodec<?> childCodec = group.childCodec();
+    Expression workspace = new Expression.ArrayValue(workspaces, Expression.Literal.ofInt(index));
+    Expression child;
+    if (childCodec.creatorInfo() != null) {
+      child =
+          new Expression.Invoke(
+              new Reference("this", TypeRef.of(Object.class)),
+              unwrappedCreatorMethod(index),
+              "",
+              TypeRef.of(childCodec.type()),
+              false,
+              false,
+              new Expression.Cast(workspace, TypeRef.of(Object[].class)));
+    } else {
+      child = workspace;
+    }
+    Group parent = group.parent();
+    ObjectCodec<?> parentCodec = group.parentCodec();
+    Expression parentWorkspace =
+        parent == null
+            ? root
+            : new Expression.ArrayValue(workspaces, Expression.Literal.ofInt(parent.readIndex()));
+    if (parentCodec.creatorInfo() != null) {
+      return new Expression.AssignArrayElem(
+          new Expression.Cast(parentWorkspace, TypeRef.of(Object[].class)),
+          child,
+          Expression.Literal.ofInt(group.declaration().constructionIndex()));
+    }
+    return builder.setUnwrapped(
+        group.declaration(),
+        new Expression.Cast(parentWorkspace, TypeRef.of(parentCodec.type())),
+        new Expression.Cast(child, TypeRef.of(childCodec.type())));
+  }
+
+  private Expression finishUnwrappedGroups(
+      Class<?> rootType,
       Expression root,
       Expression workspaces,
       Expression present,
       boolean rootArray) {
-    for (int i = groups.length - 1; i >= 0; i--) {
-      Group group = groups[i];
-      ObjectCodec<?> childCodec = group.childCodec();
-      Expression workspace = new Expression.ArrayValue(workspaces, Expression.Literal.ofInt(i));
-      Expression child;
-      if (childCodec.creatorInfo() != null) {
-        child =
-            new Expression.Invoke(
-                new Expression.Invoke(
-                        fieldRef("g" + i, ObjectCodec.class),
-                        "creatorInfo",
-                        TypeRef.of(JsonCreatorInfo.class))
-                    .inline(),
-                "create",
-                TypeRef.of(Object.class),
-                new Expression.Cast(workspace, TypeRef.of(Object[].class)));
-      } else {
-        child = workspace;
-      }
-      Group parent = group.parent();
-      ObjectCodec<?> parentCodec = group.parentCodec();
-      Expression parentWorkspace =
-          parent == null
-              ? root
-              : new Expression.ArrayValue(workspaces, Expression.Literal.ofInt(parent.readIndex()));
-      Expression assign;
-      if (parentCodec.creatorInfo() != null) {
-        assign =
-            new Expression.AssignArrayElem(
-                new Expression.Cast(parentWorkspace, TypeRef.of(Object[].class)),
-                child,
-                Expression.Literal.ofInt(group.declaration().constructionIndex()));
-      } else {
-        assign =
-            builder.setUnwrapped(
-                group.declaration(),
-                new Expression.Cast(parentWorkspace, TypeRef.of(parentCodec.type())),
-                new Expression.Cast(child, TypeRef.of(childCodec.type())));
-      }
-      expressions.add(
-          new Expression.If(
-              new Expression.ArrayValue(present, Expression.Literal.ofInt(i)), assign));
-    }
+    Class<?> rootWorkspaceType = rootArray ? Object[].class : rootType;
+    return new Expression.Invoke(
+        new Reference("this", TypeRef.of(Object.class)),
+        "finishUnwrappedGroups",
+        "",
+        TypeRef.of(void.class),
+        false,
+        false,
+        new Expression.Cast(root, TypeRef.of(rootWorkspaceType)),
+        workspaces,
+        present);
+  }
+
+  private String unwrappedGroupInitMethod(int start) {
+    return "initUnwrappedGroup" + start;
+  }
+
+  private String unwrappedGroupFinishMethod(int start) {
+    return "finishUnwrappedGroup" + start;
   }
 
   private Expression fastReadExpression(
