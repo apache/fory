@@ -68,7 +68,7 @@ final class JsonValueDeclaration {
     }
     if (members.size() != 1) {
       members.sort(MEMBER_ORDER);
-      throw multiple(type, members);
+      throw multipleValuesException(type, members);
     }
     Member member = members.get(0);
     JsonFieldAccessor accessor;
@@ -206,7 +206,7 @@ final class JsonValueDeclaration {
     }
   }
 
-  private static ForyJsonException multiple(Class<?> type, List<Member> members) {
+  private static ForyJsonException multipleValuesException(Class<?> type, List<Member> members) {
     StringBuilder message =
         new StringBuilder("Multiple effective @JsonValue declarations on ")
             .append(type.getName())

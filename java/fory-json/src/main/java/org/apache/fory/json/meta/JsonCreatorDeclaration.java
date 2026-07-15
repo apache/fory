@@ -54,7 +54,7 @@ public final class JsonCreatorDeclaration {
       if (candidate != null) {
         validate(type, constructor);
         if (creator != null) {
-          throw multiple(type);
+          throw multipleCreatorsException(type);
         }
         creator = constructor;
         annotation = candidate;
@@ -65,7 +65,7 @@ public final class JsonCreatorDeclaration {
       if (candidate != null) {
         validate(type, method);
         if (creator != null) {
-          throw multiple(type);
+          throw multipleCreatorsException(type);
         }
         creator = method;
         annotation = candidate;
@@ -91,7 +91,7 @@ public final class JsonCreatorDeclaration {
     }
   }
 
-  private static ForyJsonException multiple(Class<?> type) {
+  private static ForyJsonException multipleCreatorsException(Class<?> type) {
     return new ForyJsonException("Multiple @JsonCreator declarations on " + type.getName());
   }
 }

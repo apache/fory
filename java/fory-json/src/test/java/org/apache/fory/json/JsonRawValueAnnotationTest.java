@@ -210,8 +210,7 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
     ForyJson json = newJson();
     BinaryAlways value = new BinaryAlways();
     assertEquals(json.toJson(value), "{\"bytes\":null}");
-    assertEquals(
-        new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"bytes\":null}");
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"bytes\":null}");
     value.bytes = new byte[] {1, 2, 3};
     assertEquals(json.toJson(value), "{\"bytes\":\"AQID\"}");
     assertEquals(
