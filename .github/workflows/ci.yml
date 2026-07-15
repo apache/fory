@@ -329,9 +329,7 @@ jobs:
           working-directory: integration_tests/android_tests
           script: |
             yes | sdkmanager "platforms;android-${{ matrix.api-level }}" "build-tools;35.0.0"
-            if [[ "${{ matrix.api-level }}" == "26" ]]; then
-              gradle --no-daemon --stacktrace -PforyTestBuildType=debug connectedCheck
-            fi
+            if [ "${{ matrix.api-level }}" = "26" ]; then gradle --no-daemon --stacktrace -PforyTestBuildType=debug connectedCheck; fi
             gradle --no-daemon --stacktrace -PforyTestBuildType=release connectedCheck
       - name: Upload Android Test Report
         uses: actions/upload-artifact@v4
