@@ -271,6 +271,13 @@ public final class ForyJsonExample {
     UnwrappedModel decoded = json.fromJson(encoded, UnwrappedModel.class);
     Preconditions.checkArgument(decoded.id == 14);
     Preconditions.checkArgument(decoded.child.equals(new UnwrappedRecord("native", 15)));
+
+    UnwrappedRootRecord record = new UnwrappedRootRecord(16, new UnwrappedRecord("record", 17));
+    String recordJson = json.toJson(record);
+    Preconditions.checkArgument(
+        recordJson.equals("{\"id\":16,\"child_name\":\"record\",\"child_rank\":17}"));
+    UnwrappedRootRecord decodedRecord = json.fromJson(recordJson, UnwrappedRootRecord.class);
+    Preconditions.checkArgument(decodedRecord.equals(record));
   }
 
   private static void testBigDecimal() {
@@ -444,6 +451,10 @@ public final class ForyJsonExample {
 
   @JsonType
   public record UnwrappedRecord(String name, int rank) {}
+
+  @JsonType
+  public record UnwrappedRootRecord(
+      int id, @JsonUnwrapped(prefix = "child_") UnwrappedRecord child) {}
 
   @JsonType
   public static final class CreatorValue {

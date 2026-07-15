@@ -133,14 +133,17 @@ Android Fory JSON requires a retained no-argument constructor for an ordinary mu
 be non-public when Android reflection can make it accessible. `JsonCreator` constructor-backed
 classes follow the normal creator rules instead. Retain every field and method used for reflection,
 or use an application codec when a model cannot satisfy those requirements. `JsonUnwrapped`
-supports mutable and creator-backed classes through the same property and construction paths.
+supports mutable classes, creator-backed classes, and Records through their normal property and
+construction paths. When the containing model and its unwrapped children use `JsonType`, their
+generated companions supply those operations.
 
 Android-desugared Records require a direct `@JsonType` annotation and the annotation processor.
 Manual R8 rules alone cannot reconstruct Record component order because Android does not provide
 the Java Record reflection APIs. This also applies to a Record whose complete representation is a
 `JsonValue` String: the generated companion identifies the propagated component accessor and calls
 an annotated one-String canonical constructor directly. Generated child codecs act on one level
-exactly as they do on the JVM; use a complete value codec for deeper nested behavior.
+exactly as they do on the JVM. Every Record in a `JsonUnwrapped` path needs its own direct
+`JsonType`. Use a complete value codec for deeper nested behavior.
 
 ## Static Generated Serializers
 
@@ -215,7 +218,6 @@ The following JVM features are not supported on Android:
 - Native-address serialization APIs and native-address `MemoryBuffer` wrapping.
 - Raw unsafe memory copy APIs.
 - `java/fory-format` row-format APIs.
-- Fory JSON Record mapping.
 
 ## ByteBuffer
 

@@ -215,7 +215,7 @@ public final class AndroidJsonScenarios {
     checkEquals(2, GeneratedJsonModel.keyCodecCalls());
   }
 
-  public static void unwrappedReflection() {
+  public static void generatedUnwrapped() {
     ForyJson json = ForyJson.builder().build();
     UnwrappedParent value = new UnwrappedParent(30, new UnwrappedChild("android", 31));
     String encoded = json.toJson(value);
@@ -224,6 +224,14 @@ public final class AndroidJsonScenarios {
     checkEquals(30, decoded.id);
     checkEquals("android", decoded.child.name);
     checkEquals(31, decoded.child.rank);
+
+    UnwrappedRecord record = new UnwrappedRecord(32, new UnwrappedRecordChild("record", 33));
+    String recordJson = json.toJson(record);
+    checkEquals("{\"id\":32,\"child_name\":\"record\",\"child_rank\":33}", recordJson);
+    UnwrappedRecord decodedRecord = json.fromJson(recordJson, UnwrappedRecord.class);
+    checkEquals(32, decodedRecord.id());
+    checkEquals("record", decodedRecord.child().name());
+    checkEquals(33, decodedRecord.child().rank());
   }
 
   @JsonType
@@ -252,6 +260,14 @@ public final class AndroidJsonScenarios {
       this.rank = rank;
     }
   }
+
+  @JsonType
+  @JsonPropertyOrder({"id", "child"})
+  public record UnwrappedRecord(
+      int id, @JsonUnwrapped(prefix = "child_") UnwrappedRecordChild child) {}
+
+  @JsonType
+  public record UnwrappedRecordChild(String name, int rank) {}
 
   private static void check(boolean condition) {
     if (!condition) {

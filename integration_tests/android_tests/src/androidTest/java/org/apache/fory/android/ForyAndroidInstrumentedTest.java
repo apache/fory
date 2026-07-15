@@ -66,8 +66,8 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
-  public void jsonUnwrappedReflection() {
-    AndroidJsonScenarios.unwrappedReflection();
+  public void generatedJsonUnwrapped() {
+    AndroidJsonScenarios.generatedUnwrapped();
   }
 
   @Test

@@ -305,10 +305,8 @@ final class ObjectCodecBuilder {
               : orderWriteFields(type, propertyOrder, writeBuilders, writes);
     }
     JsonFieldInfo[] readArray = reads.toArray(new JsonFieldInfo[0]);
-    if (!record || !hasUnwrapped) {
-      for (int i = 0; i < readArray.length; i++) {
-        readArray[i].setReadIndex(i);
-      }
+    for (int i = 0; i < readArray.length; i++) {
+      readArray[i].setReadIndex(i);
     }
     int constructionIndex = -1;
     if (anyBuilder != null && anyBuilder.anyReadEnabled()) {
@@ -1380,7 +1378,7 @@ final class ObjectCodecBuilder {
           validateBase64Method(type, method, propertyDiscoveryEnabled, record, generatedCodec);
         }
         if (method.isAnnotationPresent(JsonUnwrapped.class)) {
-          validateUnwrappedMethod(type, method, propertyDiscoveryEnabled, record);
+          validateUnwrappedMethod(type, method, propertyDiscoveryEnabled, record, generatedCodec);
         }
         validateUnwrappedParameters(type, method, propertyDiscoveryEnabled, record);
         if (method.isAnnotationPresent(JsonProperty.class)) {
@@ -1404,7 +1402,7 @@ final class ObjectCodecBuilder {
     }
     for (Constructor<?> constructor : type.getDeclaredConstructors()) {
       validateCodecParameters(type, constructor, record, generatedCodec);
-      validateUnwrappedParameters(type, constructor, record);
+      validateUnwrappedParameters(type, constructor, record, generatedCodec);
     }
     for (Method method : type.getMethods()) {
       if (!method.getDeclaringClass().isInterface()) {
@@ -1423,7 +1421,7 @@ final class ObjectCodecBuilder {
         validateBase64Method(type, method, propertyDiscoveryEnabled, record, generatedCodec);
       }
       if (method.isAnnotationPresent(JsonUnwrapped.class)) {
-        validateUnwrappedMethod(type, method, propertyDiscoveryEnabled, record);
+        validateUnwrappedMethod(type, method, propertyDiscoveryEnabled, record, generatedCodec);
       }
       validateUnwrappedParameters(type, method, propertyDiscoveryEnabled, record);
     }
@@ -1431,13 +1429,17 @@ final class ObjectCodecBuilder {
   }
 
   private static void validateUnwrappedMethod(
-      Class<?> type, Method method, boolean propertyDiscoveryEnabled, boolean record) {
+      Class<?> type,
+      Method method,
+      boolean propertyDiscoveryEnabled,
+      boolean record,
+      GeneratedJsonCodec<?> generatedCodec) {
     if (method.isAnnotationPresent(JsonAnyGetter.class)
         || method.isAnnotationPresent(JsonAnySetter.class)) {
       throw new ForyJsonException("@JsonUnwrapped cannot annotate a JSON Any method: " + method);
     }
     if (record) {
-      if (isPropagatedRecordUnwrapped(type, method)) {
+      if (isPropagatedRecordUnwrapped(type, method, generatedCodec)) {
         return;
       }
       throw new ForyJsonException("@JsonUnwrapped requires a record component accessor: " + method);
@@ -1473,14 +1475,17 @@ final class ObjectCodecBuilder {
   }
 
   private static void validateUnwrappedParameters(
-      Class<?> type, Constructor<?> constructor, boolean record) {
+      Class<?> type,
+      Constructor<?> constructor,
+      boolean record,
+      GeneratedJsonCodec<?> generatedCodec) {
     Parameter[] parameters = constructor.getParameters();
     for (int i = 0; i < parameters.length; i++) {
       JsonUnwrapped annotation = parameters[i].getAnnotation(JsonUnwrapped.class);
       if (annotation == null || constructor.isAnnotationPresent(JsonCreator.class)) {
         continue;
       }
-      if (record && isPropagatedRecordUnwrapped(type, constructor, i, annotation)) {
+      if (record && isPropagatedRecordUnwrapped(type, constructor, i, annotation, generatedCodec)) {
         continue;
       }
       throw new ForyJsonException(
@@ -1678,8 +1683,9 @@ final class ObjectCodecBuilder {
     }
   }
 
-  private static boolean isPropagatedRecordUnwrapped(Class<?> type, Method method) {
-    if (!isRecordAccessor(type, method)) {
+  private static boolean isPropagatedRecordUnwrapped(
+      Class<?> type, Method method, GeneratedJsonCodec<?> generatedCodec) {
+    if (!isRecordAccessor(type, method, generatedCodec)) {
       return false;
     }
     try {
@@ -1695,18 +1701,33 @@ final class ObjectCodecBuilder {
   }
 
   private static boolean isPropagatedRecordUnwrapped(
-      Class<?> type, Constructor<?> constructor, int parameterIndex, JsonUnwrapped annotation) {
-    RecordComponent[] components = RecordUtils.getRecordComponents(type);
-    if (components.length != constructor.getParameterCount()
-        || parameterIndex >= components.length
-        || components[parameterIndex].getType()
-            != constructor.getParameterTypes()[parameterIndex]) {
+      Class<?> type,
+      Constructor<?> constructor,
+      int parameterIndex,
+      JsonUnwrapped annotation,
+      GeneratedJsonCodec<?> generatedCodec) {
+    if (!isRecordConstructor(type, constructor, generatedCodec)) {
       return false;
+    }
+    String componentName;
+    if (generatedCodec == null) {
+      RecordComponent[] components = RecordUtils.getRecordComponents(type);
+      if (parameterIndex >= components.length) {
+        return false;
+      }
+      componentName = components[parameterIndex].getName();
+    } else {
+      // Android-desugared Records do not expose Record components; the validated generated
+      // companion is the component-name owner on that path.
+      String[] names = generatedCodec.validatedCreatorParameterNames();
+      if (parameterIndex >= names.length) {
+        return false;
+      }
+      componentName = names[parameterIndex];
     }
     try {
       JsonUnwrapped fieldAnnotation =
-          type.getDeclaredField(components[parameterIndex].getName())
-              .getAnnotation(JsonUnwrapped.class);
+          type.getDeclaredField(componentName).getAnnotation(JsonUnwrapped.class);
       return sameUnwrapped(annotation, fieldAnnotation);
     } catch (NoSuchFieldException e) {
       return false;
@@ -1801,10 +1822,6 @@ final class ObjectCodecBuilder {
       }
     }
     return false;
-  }
-
-  private static boolean isRecordAccessor(Class<?> type, Method method) {
-    return isRecordAccessor(type, method, null);
   }
 
   private static boolean isEligibleField(Field field) {

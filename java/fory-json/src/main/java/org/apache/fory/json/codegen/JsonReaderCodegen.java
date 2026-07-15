@@ -1436,14 +1436,11 @@ abstract class JsonReaderCodegen {
     }
     Expression value =
         new Expression.Invoke(
-            fieldRef("creator", JsonCreatorInfo.class),
-            "newArguments",
-            TypeRef.of(Object[].class));
+            fieldRef("creator", JsonCreatorInfo.class), "newArguments", TypeRef.of(Object[].class));
     return new Expression.Variable("object", inline(value));
   }
 
-  private Expression finishUnwrappedRoot(
-      Expression root, Class<?> type, JsonCreatorInfo creator) {
+  private Expression finishUnwrappedRoot(Expression root, Class<?> type, JsonCreatorInfo creator) {
     if (creator == null) {
       return root;
     }
@@ -1615,7 +1612,7 @@ abstract class JsonReaderCodegen {
       Expression index) {
     Expression.Switch.Case[] cases = new Expression.Switch.Case[end - start];
     for (int i = start; i < end; i++) {
-      Expression read = readField(builder, type, fields[i], i, root, false, false);
+      Expression read = readField(builder, type, fields[i], i, root, false);
       cases[i - start] =
           new Expression.Switch.Case(
               i, new Expression.ListExpression(read, new Expression.Break()));
@@ -1735,7 +1732,7 @@ abstract class JsonReaderCodegen {
           throw new IllegalStateException("Creator group route must use creator metadata");
         }
         Expression object = new Expression.Cast(workspace, TypeRef.of(child.type()));
-        read.add(readField(builder, ownerType, field, id, object, false, false));
+        read.add(readField(builder, ownerType, field, id, object, false));
       } else {
         JsonCreatorFieldInfo field = route.creatorField();
         read.add(
@@ -2232,6 +2229,17 @@ abstract class JsonReaderCodegen {
     return new Expression.Variable("anyMap", initial);
   }
 
+  private Expression anyMap(
+      JsonGeneratedCodecBuilder builder, Expression object, boolean creatorWorkspace) {
+    if (!creatorWorkspace) {
+      return anyMap(builder, object);
+    }
+    if (any == null || any.readField() == null) {
+      return null;
+    }
+    return new Expression.Variable("anyMap", new Expression.Null(TypeRef.of(Map.class), false));
+  }
+
   private Expression fastReadField(
       JsonGeneratedCodecBuilder builder,
       String slowMethod,
@@ -2641,7 +2649,16 @@ abstract class JsonReaderCodegen {
       Expression.ListExpression expressions,
       Expression object,
       Expression anyMapCreated) {
-    Expression finish = finishAnyReadExpression(builder, object, anyMapCreated);
+    finishAnyRead(builder, expressions, object, anyMapCreated, false);
+  }
+
+  private void finishAnyRead(
+      JsonGeneratedCodecBuilder builder,
+      Expression.ListExpression expressions,
+      Expression object,
+      Expression anyMapCreated,
+      boolean creatorWorkspace) {
+    Expression finish = finishAnyReadExpression(builder, object, anyMapCreated, creatorWorkspace);
     if (finish != null) {
       expressions.add(finish);
     }
@@ -2649,6 +2666,14 @@ abstract class JsonReaderCodegen {
 
   private Expression finishAnyReadExpression(
       JsonGeneratedCodecBuilder builder, Expression object, Expression anyMapCreated) {
+    return finishAnyReadExpression(builder, object, anyMapCreated, false);
+  }
+
+  private Expression finishAnyReadExpression(
+      JsonGeneratedCodecBuilder builder,
+      Expression object,
+      Expression anyMapCreated,
+      boolean creatorWorkspace) {
     if (any == null || any.readField() == null) {
       return null;
     }
@@ -2660,7 +2685,11 @@ abstract class JsonReaderCodegen {
                 new Expression.Invoke(ownerRef(), "finishAnyMap", TypeRef.of(Map.class), map),
                 TypeRef.of(Map.class)));
     Expression store;
-    if (Modifier.isFinal(any.readField().getModifiers())) {
+    if (creatorWorkspace) {
+      store =
+          new Expression.AssignArrayElem(
+              object, finished, Expression.Literal.ofInt(any.constructionIndex()));
+    } else if (Modifier.isFinal(any.readField().getModifiers())) {
       store = new Expression.Empty();
     } else {
       store = builder.setAnyField(any.readField(), object, finished);
@@ -2890,6 +2919,16 @@ abstract class JsonReaderCodegen {
       Expression fieldHash,
       Expression fieldStart,
       Expression anyMapCreated) {
+    return readUnknown(object, fieldIndex, fieldHash, fieldStart, anyMapCreated, false);
+  }
+
+  private Expression readUnknown(
+      Expression object,
+      Expression fieldIndex,
+      Expression fieldHash,
+      Expression fieldStart,
+      Expression anyMapCreated,
+      boolean creatorWorkspace) {
     Expression skip = new Expression.Invoke(readerRef(), "skipValue");
     Expression reserved = eq(fieldIndex, Expression.Literal.ofInt(JsonFieldTable.SKIP));
     Expression name =
@@ -2919,21 +2958,29 @@ abstract class JsonReaderCodegen {
     } else {
       Reference map = new Reference("anyMap", TypeRef.of(Map.class));
       Expression create =
-          Modifier.isFinal(any.readField().getModifiers())
-              ? new Expression.Invoke(
-                  new Reference("this", TypeRef.of(Object.class)),
-                  "requireAnyMap",
-                  "",
-                  TypeRef.of(Map.class),
-                  false,
-                  false,
-                  map)
-              : new Expression.ListExpression(
+          creatorWorkspace
+              ? new Expression.ListExpression(
                   new Expression.Assign(
                       map,
                       new Expression.Invoke(ownerRef(), "newAnyMap", TypeRef.of(Map.class), false)
                           .inline()),
-                  new Expression.Assign(anyMapCreated, Expression.Literal.True));
+                  new Expression.Assign(anyMapCreated, Expression.Literal.True))
+              : Modifier.isFinal(any.readField().getModifiers())
+                  ? new Expression.Invoke(
+                      new Reference("this", TypeRef.of(Object.class)),
+                      "requireAnyMap",
+                      "",
+                      TypeRef.of(Map.class),
+                      false,
+                      false,
+                      map)
+                  : new Expression.ListExpression(
+                      new Expression.Assign(
+                          map,
+                          new Expression.Invoke(
+                                  ownerRef(), "newAnyMap", TypeRef.of(Map.class), false)
+                              .inline()),
+                      new Expression.Assign(anyMapCreated, Expression.Literal.True));
       Expression put = new Expression.Invoke(ownerRef(), "putAnyMap", map, name, value);
       write =
           new Expression.ListExpression(
