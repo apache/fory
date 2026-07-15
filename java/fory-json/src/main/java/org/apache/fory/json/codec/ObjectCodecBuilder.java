@@ -1215,21 +1215,6 @@ final class ObjectCodecBuilder {
     }
   }
 
-  private static boolean isPropagatedRecordAnnotation(
-      Class<?> type, Method method, Class<? extends Annotation> annotationType) {
-    if (!isRecordAccessor(type, method)) {
-      return false;
-    }
-    try {
-      return type.getDeclaredField(method.getName()).isAnnotationPresent(annotationType);
-    } catch (NoSuchFieldException e) {
-      return false;
-    } catch (RuntimeException | LinkageError e) {
-      throw new ForyJsonException(
-          "Cannot read record-component @" + annotationType.getSimpleName() + " for " + method, e);
-    }
-  }
-
   private static boolean isPropagatedRecordCodec(
       Class<?> type, Constructor<?> constructor, int parameterIndex, JsonCodec annotation) {
     RecordComponent[] components = RecordUtils.getRecordComponents(type);
@@ -1246,6 +1231,21 @@ final class ObjectCodecBuilder {
       return annotation.equals(fieldCodec);
     } catch (NoSuchFieldException e) {
       return false;
+    }
+  }
+
+  private static boolean isPropagatedRecordAnnotation(
+      Class<?> type, Method method, Class<? extends Annotation> annotationType) {
+    if (!isRecordAccessor(type, method)) {
+      return false;
+    }
+    try {
+      return type.getDeclaredField(method.getName()).isAnnotationPresent(annotationType);
+    } catch (NoSuchFieldException e) {
+      return false;
+    } catch (RuntimeException | LinkageError e) {
+      throw new ForyJsonException(
+          "Cannot read record-component @" + annotationType.getSimpleName() + " for " + method, e);
     }
   }
 
