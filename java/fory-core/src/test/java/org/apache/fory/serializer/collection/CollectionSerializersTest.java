@@ -25,6 +25,7 @@ import static org.apache.fory.collection.Collections.ofHashSet;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertSame;
 
+import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
@@ -77,6 +78,7 @@ import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.config.Language;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
@@ -85,6 +87,7 @@ import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.collection.CollectionSerializers.JDKCompatibleCollectionSerializer;
 import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.type.GenericType;
@@ -1810,6 +1813,65 @@ public class CollectionSerializersTest extends ForyTestBase {
     buffer.readerIndex(0);
     assertEquals(set, fory.deserialize(fory.serialize(buffer, set)));
   }
+
+  @Test
+  public void testGuavaListOwnerBudget() {
+    ImmutableList<String> list = ImmutableList.of("fory");
+    int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(list.getClass());
+    long requiredBytes = ownerBytes + GraphMemoryEstimates.REFERENCE_BYTES;
+    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    Fory fory = graphBudgetFory(requiredBytes);
+    GuavaCollectionSerializers.ImmutableListSerializer serializer =
+        new GuavaCollectionSerializers.ImmutableListSerializer(
+            fory.getTypeResolver(), SingletonListSlot.class, ownerBytes);
+    writeSerializer(fory, serializer, buffer, list);
+
+    Fory limitedFory = graphBudgetFory(requiredBytes - 1);
+    GuavaCollectionSerializers.ImmutableListSerializer limitedSerializer =
+        new GuavaCollectionSerializers.ImmutableListSerializer(
+            limitedFory.getTypeResolver(), SingletonListSlot.class, ownerBytes);
+    Assert.assertThrows(
+        InsecureException.class, () -> readSerializer(limitedFory, limitedSerializer, buffer));
+    buffer.readerIndex(0);
+    assertEquals(readSerializer(fory, serializer, buffer), list);
+  }
+
+  @Test
+  public void testGuavaBiMapOwnerBudget() {
+    ImmutableBiMap<String, Integer> biMap = ImmutableBiMap.of("fory", 1);
+    int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(biMap.getClass());
+    long requiredBytes = ownerBytes + 2L * GraphMemoryEstimates.REFERENCE_BYTES;
+    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    Fory fory = graphBudgetFory(requiredBytes);
+    GuavaCollectionSerializers.ImmutableBiMapSerializer serializer =
+        new GuavaCollectionSerializers.ImmutableBiMapSerializer(
+            fory.getTypeResolver(), SingletonBiMapSlot.class, ownerBytes);
+    writeSerializer(fory, serializer, buffer, biMap);
+
+    Fory limitedFory = graphBudgetFory(requiredBytes - 1);
+    GuavaCollectionSerializers.ImmutableBiMapSerializer limitedSerializer =
+        new GuavaCollectionSerializers.ImmutableBiMapSerializer(
+            limitedFory.getTypeResolver(), SingletonBiMapSlot.class, ownerBytes);
+    Assert.assertThrows(
+        InsecureException.class, () -> readSerializer(limitedFory, limitedSerializer, buffer));
+    buffer.readerIndex(0);
+    assertEquals(readSerializer(fory, serializer, buffer), biMap);
+  }
+
+  private static Fory graphBudgetFory(long maxGraphMemoryBytes) {
+    return Fory.builder()
+        .withXlang(false)
+        .registerGuavaTypes(true)
+        .requireClassRegistration(false)
+        .suppressClassRegistrationWarnings(true)
+        .withCompatible(false)
+        .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
+        .build();
+  }
+
+  private static final class SingletonListSlot {}
+
+  private static final class SingletonBiMapSlot {}
 
   @Test(dataProvider = "foryCopyConfig")
   public void testJavaSerialization(Fory fory) {
