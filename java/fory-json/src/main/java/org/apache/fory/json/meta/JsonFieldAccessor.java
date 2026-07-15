@@ -22,6 +22,8 @@ package org.apache.fory.json.meta;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.internal._JDKAccess;
@@ -54,6 +56,12 @@ public abstract class JsonFieldAccessor {
 
   public FieldAccessor coreAccessor() {
     return null;
+  }
+
+  /** Returns whether a generated field accessor targets a final field. */
+  @Internal
+  public boolean isFinalField() {
+    return false;
   }
 
   public boolean getBoolean(Object target) {
@@ -159,6 +167,11 @@ public abstract class JsonFieldAccessor {
     @Override
     public Field field() {
       return accessor.getField();
+    }
+
+    @Override
+    public boolean isFinalField() {
+      return Modifier.isFinal(accessor.getField().getModifiers());
     }
 
     @Override

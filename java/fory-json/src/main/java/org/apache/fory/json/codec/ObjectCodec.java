@@ -20,6 +20,7 @@
 package org.apache.fory.json.codec;
 
 import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -1247,12 +1248,12 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   @Internal
-  public static class AnyInfo {
+  public static final class AnyInfo {
     private final Field writeField;
     private final Method writeGetter;
     private final Field readField;
     private final Method readSetter;
-    final Class<?> setterValueRawType;
+    private final Class<?> setterValueRawType;
     private final JsonFieldAccessor writeAccessor;
     private final JsonFieldAccessor readAccessor;
     private final MethodHandle setterHandle;
@@ -1303,6 +1304,7 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     AnyInfo(
         JsonFieldAccessor writeAccessor,
         JsonFieldAccessor readAccessor,
+        MethodHandle setterHandle,
         Class<?> setterValueRawType,
         Type mapType,
         Class<?> mapRawType,
@@ -1318,7 +1320,7 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       this.setterValueRawType = setterValueRawType;
       this.writeAccessor = writeAccessor;
       this.readAccessor = readAccessor;
-      setterHandle = null;
+      this.setterHandle = setterHandle;
       this.mapType = mapType;
       this.mapRawType = mapRawType;
       this.valueType = valueType;
@@ -1376,20 +1378,28 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       return constructionIndex;
     }
 
-    boolean writeEnabled() {
+    /** Returns whether this Any declaration accepts unknown JSON members. */
+    @Internal
+    public boolean isReadEnabled() {
+      return readEnabled();
+    }
+
+    private boolean writeEnabled() {
       return writeAccessor != null;
     }
 
-    boolean readEnabled() {
-      return readAccessor != null || readSetter != null;
+    private boolean readEnabled() {
+      return readAccessor != null || setterHandle != null;
     }
 
-    boolean fieldRead() {
-      return readField != null;
+    private boolean fieldRead() {
+      return readAccessor != null;
     }
 
-    boolean finalReadField() {
-      return readField != null && Modifier.isFinal(readField.getModifiers());
+    private boolean finalReadField() {
+      return readField != null
+          ? Modifier.isFinal(readField.getModifiers())
+          : readAccessor.isFinalField();
     }
 
     @SuppressWarnings("unchecked")
@@ -1413,16 +1423,19 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       readAccessor.putObject(target, map);
     }
 
-    void put(Object target, String name, Object value) {
+    private void put(Object target, String name, Object value) {
       if (value == null && setterValueRawType.isPrimitive()) {
         throw new ForyJsonException(
             "Cannot read null into primitive @JsonAnySetter parameter " + setterValueRawType);
       }
       try {
-        setterHandle.invoke(target, name, value);
+        setterHandle.invokeExact(target, name, value);
       } catch (Throwable cause) {
         if (cause instanceof Error) {
           throw (Error) cause;
+        }
+        if (readSetter == null && cause instanceof RuntimeException) {
+          throw (RuntimeException) cause;
         }
         throw new ForyJsonException("Cannot invoke @JsonAnySetter " + readSetter, cause);
       }
@@ -1430,7 +1443,9 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
 
     private static MethodHandle methodHandle(Method method) {
       try {
-        return _JDKAccess._trustedLookup(method.getDeclaringClass()).unreflect(method);
+        return _JDKAccess._trustedLookup(method.getDeclaringClass())
+            .unreflect(method)
+            .asType(MethodType.methodType(void.class, Object.class, String.class, Object.class));
       } catch (IllegalAccessException e) {
         throw new ForyJsonException("Cannot access @JsonAnySetter " + method, e);
       }

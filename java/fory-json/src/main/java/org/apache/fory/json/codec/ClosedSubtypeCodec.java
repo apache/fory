@@ -92,7 +92,7 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
         rejectDiscriminatorCollision(objectCodec, definition.scanInfo.property());
         objectCodecs[i] = (ObjectCodec<Object>) objectCodec;
         ObjectCodec.AnyInfo any = objectCodec.anyInfo();
-        if (any != null && any.readEnabled()) {
+        if (any != null && any.isReadEnabled()) {
           if (inlineReadTables == null) {
             inlineReadTables = new JsonFieldTable[children.length];
             inlineLatin1Readers = new Latin1ReaderCodec[children.length];

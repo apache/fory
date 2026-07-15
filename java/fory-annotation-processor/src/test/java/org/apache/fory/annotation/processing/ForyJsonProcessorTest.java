@@ -129,7 +129,7 @@ public class ForyJsonProcessorTest {
                 + "import org.apache.fory.json.annotation.*;\n"
                 + "@JsonType public class AnyFieldModel {\n"
                 + "  public int id;\n"
-                + "  @JsonAnyProperty public Map<String, Integer> extra = new LinkedHashMap<>();\n"
+                + "  @JsonAnyProperty public final Map<String, Integer> extra = new LinkedHashMap<>();\n"
                 + "}\n");
     Assert.assertTrue(field.success, field.diagnostics());
     runAndroidAnyProbe(field, "test.AnyFieldModel", "field");

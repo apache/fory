@@ -24,6 +24,7 @@ import java.util.List;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
 import javax.lang.model.type.TypeKind;
@@ -399,6 +400,10 @@ final class JsonMetadataSourceWriter {
     String putMethod = primitive == null ? "putObject" : "put" + primitive;
     String returnType = primitive == null ? "Object" : sourceType(operation.valueType);
     String valueType = primitive == null ? "Object" : sourceType(operation.valueType);
+    if (operation.shape == JsonMetadataFormat.FIELD_ACCESS
+        && operation.member.getModifiers().contains(Modifier.FINAL)) {
+      builder.append("    @Override public boolean isFinalField() { return true; }\n");
+    }
     if ((operation.directionMask & JsonMetadataFormat.WRITE) != 0) {
       builder
           .append("    @Override public ")

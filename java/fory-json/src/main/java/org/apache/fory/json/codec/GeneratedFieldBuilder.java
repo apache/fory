@@ -19,6 +19,7 @@
 
 package org.apache.fory.json.codec;
 
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.PropertyNamingStrategy;
@@ -36,12 +37,12 @@ final class GeneratedFieldBuilder extends ObjectCodecBuilder.FieldBuilder {
   private boolean generatedField;
   private boolean generatedAnyField;
   private boolean generatedAnyGetter;
+  private boolean generatedFinalField;
   private int generatedFieldNode = -1;
   private int generatedGetterNode = -1;
   private int generatedSetterNode = -1;
   private int generatedRecordNode = -1;
   private int generatedFieldOperation = -1;
-  private int generatedFieldModifiers;
   private int generatedGetterOperation = -1;
   private int generatedSetterOperation = -1;
   private GeneratedObjectAccess.ResolvedType resolvedFieldType;
@@ -72,7 +73,7 @@ final class GeneratedFieldBuilder extends ObjectCodecBuilder.FieldBuilder {
     generatedField = true;
     generatedFieldNode = field.typeNode();
     generatedFieldOperation = field.operation();
-    generatedFieldModifiers = field.modifiers();
+    generatedFinalField = Modifier.isFinal(field.modifiers());
     fieldWriteAllowed = writeAllowed;
     fieldReadAllowed = readAllowed;
     if (writeSource) {
@@ -174,10 +175,6 @@ final class GeneratedFieldBuilder extends ObjectCodecBuilder.FieldBuilder {
 
   void setGeneratedCreatorType(GeneratedObjectAccess.ResolvedType parameterType) {
     resolvedCreatorType = parameterType;
-  }
-
-  int generatedFieldModifiers() {
-    return generatedFieldModifiers;
   }
 
   @Override
@@ -324,7 +321,9 @@ final class GeneratedFieldBuilder extends ObjectCodecBuilder.FieldBuilder {
     int readOperation = anyReadEnabled() ? generatedFieldOperation : -1;
     if (writeOperation >= 0 && writeOperation == readOperation) {
       JsonFieldAccessor accessor =
-          access.fieldAccessor(writeOperation, FieldAccessor.READ_WRITE_ACCESS);
+          access.fieldAccessor(
+              writeOperation,
+              generatedFinalField ? FieldAccessor.READ_ACCESS : FieldAccessor.READ_WRITE_ACCESS);
       writeAccessor = accessor;
       readAccessor = accessor;
       return;
@@ -336,7 +335,10 @@ final class GeneratedFieldBuilder extends ObjectCodecBuilder.FieldBuilder {
               : access.getter(writeOperation);
     }
     if (readOperation >= 0) {
-      readAccessor = access.fieldAccessor(readOperation, FieldAccessor.WRITE_ACCESS);
+      readAccessor =
+          access.fieldAccessor(
+              readOperation,
+              generatedFinalField ? FieldAccessor.READ_ACCESS : FieldAccessor.READ_WRITE_ACCESS);
     }
   }
 

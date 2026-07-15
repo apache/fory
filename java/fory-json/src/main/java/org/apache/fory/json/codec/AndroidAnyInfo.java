@@ -20,26 +20,18 @@
 package org.apache.fory.json.codec;
 
 import java.lang.reflect.Type;
-import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.meta.JsonAnySetterInvoker;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonTypeUse;
 
 /** Android generated Any metadata, isolated from the ordinary JVM Any hot path. */
-final class AndroidAnyInfo extends AnyInfo {
-  private final JsonAnySetterInvoker setterInvoker;
-  private final boolean readEnabled;
-  private final boolean fieldRead;
-  private final boolean finalReadField;
-
+final class AndroidAnyInfo {
   static AnyInfo create(
       JsonFieldAccessor writeAccessor,
       JsonFieldAccessor readAccessor,
       JsonAnySetterInvoker setterInvoker,
       Class<?> setterValueRawType,
-      boolean fieldRead,
-      boolean finalReadField,
       Type mapType,
       Class<?> mapRawType,
       Type valueType,
@@ -47,39 +39,10 @@ final class AndroidAnyInfo extends AnyInfo {
       JsonTypeUse valueTypeUse,
       int writeIndex,
       int constructionIndex) {
-    return new AndroidAnyInfo(
+    return new AnyInfo(
         writeAccessor,
         readAccessor,
-        setterInvoker,
-        setterValueRawType,
-        fieldRead,
-        finalReadField,
-        mapType,
-        mapRawType,
-        valueType,
-        valueRawType,
-        valueTypeUse,
-        writeIndex,
-        constructionIndex);
-  }
-
-  private AndroidAnyInfo(
-      JsonFieldAccessor writeAccessor,
-      JsonFieldAccessor readAccessor,
-      JsonAnySetterInvoker setterInvoker,
-      Class<?> setterValueRawType,
-      boolean fieldRead,
-      boolean finalReadField,
-      Type mapType,
-      Class<?> mapRawType,
-      Type valueType,
-      Class<?> valueRawType,
-      JsonTypeUse valueTypeUse,
-      int writeIndex,
-      int constructionIndex) {
-    super(
-        writeAccessor,
-        readAccessor,
+        setterInvoker == null ? null : setterInvoker.exactHandle(),
         setterValueRawType,
         mapType,
         mapRawType,
@@ -88,33 +51,7 @@ final class AndroidAnyInfo extends AnyInfo {
         valueTypeUse,
         writeIndex,
         constructionIndex);
-    this.setterInvoker = setterInvoker;
-    readEnabled = readAccessor != null || setterInvoker != null;
-    this.fieldRead = fieldRead;
-    this.finalReadField = finalReadField;
   }
 
-  @Override
-  boolean readEnabled() {
-    return readEnabled;
-  }
-
-  @Override
-  boolean fieldRead() {
-    return fieldRead;
-  }
-
-  @Override
-  boolean finalReadField() {
-    return finalReadField;
-  }
-
-  @Override
-  void put(Object target, String name, Object value) {
-    if (value == null && setterValueRawType.isPrimitive()) {
-      throw new ForyJsonException(
-          "Cannot read null into primitive @JsonAnySetter parameter " + setterValueRawType);
-    }
-    setterInvoker.set(target, name, value);
-  }
+  private AndroidAnyInfo() {}
 }

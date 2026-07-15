@@ -1860,8 +1860,6 @@ final class ObjectCodecBuilder {
     JsonTypeUse valueTypeUse = null;
     JsonFieldAccessor writeAccessor = null;
     JsonFieldAccessor readAccessor = null;
-    boolean fieldRead = false;
-    boolean finalReadField = false;
     if (builder != null) {
       builder.resolveGeneratedTypes(access);
       GeneratedObjectAccess.ResolvedType map = builder.generatedAnyMapType();
@@ -1890,8 +1888,6 @@ final class ObjectCodecBuilder {
       builder.resolveGeneratedAnyAccess(access);
       writeAccessor = builder.writeAccessor;
       readAccessor = builder.readAccessor;
-      fieldRead = builder.hasAnyField() && builder.anyReadEnabled();
-      finalReadField = fieldRead && Modifier.isFinal(builder.generatedFieldModifiers());
     }
     JsonAnySetterInvoker setterInvoker = null;
     Class<?> setterValueRawType = null;
@@ -1924,8 +1920,6 @@ final class ObjectCodecBuilder {
         readAccessor,
         setterInvoker,
         setterValueRawType,
-        fieldRead,
-        finalReadField,
         mapType,
         mapRawType,
         valueType,
@@ -2087,10 +2081,6 @@ final class ObjectCodecBuilder {
     }
 
     void setGeneratedCreatorType(GeneratedObjectAccess.ResolvedType parameterType) {
-      throw generatedBuilderRequired();
-    }
-
-    int generatedFieldModifiers() {
       throw generatedBuilderRequired();
     }
 

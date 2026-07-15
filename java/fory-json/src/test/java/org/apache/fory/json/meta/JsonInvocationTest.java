@@ -65,7 +65,7 @@ public class JsonInvocationTest {
   }
 
   public static final class AndroidExactInvocationProbe {
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) throws Throwable {
       System.setProperty("java.vm.name", "Dalvik");
       System.setProperty("java.runtime.name", "Android Runtime");
       check(AndroidSupport.IS_ANDROID, "AndroidSupport should detect the real runtime first");
@@ -108,6 +108,10 @@ public class JsonInvocationTest {
       AnyTarget anyTarget = new AnyTarget();
       anySetter.set(anyTarget, "key", 12);
       check("key".equals(anyTarget.name) && anyTarget.value == 12, "Any setter invocation");
+      anySetter
+          .exactHandle()
+          .invokeExact((Object) anyTarget, "exact", (Object) Integer.valueOf(13));
+      check("exact".equals(anyTarget.name) && anyTarget.value == 13, "exact Any setter handle");
       try {
         anySetter.set(anyTarget, "null", null);
         throw new AssertionError("Primitive Any setter should reject null");

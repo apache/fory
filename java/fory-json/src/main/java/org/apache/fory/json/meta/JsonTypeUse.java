@@ -103,7 +103,7 @@ public class JsonTypeUse {
       JsonTypeUse arrayComponent,
       JsonTypeUse[] upperBounds,
       JsonTypeUse[] lowerBounds,
-    int variableKey) {
+      int variableKey) {
     if (codecFactory != null || variableKey >= 0) {
       return GeneratedJsonTypeUse.create(
           type,

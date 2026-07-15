@@ -31,7 +31,16 @@ import org.apache.fory.platform.internal._JDKAccess;
 /** Stable generated call shape for one JSON Any setter. */
 @Internal
 public abstract class JsonAnySetterInvoker {
+  private static final MethodType SETTER_TYPE =
+      MethodType.methodType(void.class, Object.class, String.class, Object.class);
+  private static final MethodHandle INVOKER_HANDLE = invokerHandle();
+
   public abstract void set(Object target, String name, Object value);
+
+  /** Returns an exact bound handle for the generated setter invocation. */
+  public final MethodHandle exactHandle() {
+    return INVOKER_HANDLE.bindTo(this);
+  }
 
   /** Resolves one selected inaccessible Any setter to an exact cached call shape. */
   public static JsonAnySetterInvoker forMethod(Method method) {
@@ -47,10 +56,17 @@ public abstract class JsonAnySetterInvoker {
       } else {
         target = _JDKAccess._trustedLookup(method.getDeclaringClass()).unreflect(method);
       }
-      return target.asType(
-          MethodType.methodType(void.class, Object.class, String.class, Object.class));
+      return target.asType(SETTER_TYPE);
     } catch (IllegalAccessException | RuntimeException e) {
       throw new ForyJsonException("Cannot access @JsonAnySetter " + method, e);
+    }
+  }
+
+  private static MethodHandle invokerHandle() {
+    try {
+      return MethodHandles.lookup().findVirtual(JsonAnySetterInvoker.class, "set", SETTER_TYPE);
+    } catch (NoSuchMethodException | IllegalAccessException e) {
+      throw new ExceptionInInitializerError(e);
     }
   }
 
