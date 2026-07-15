@@ -44,6 +44,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonAnyGetter;
+import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonSubTypes;
@@ -131,7 +133,11 @@ final class ForyJsonGraalVMFeature implements Feature {
           if (!current.isRecord() && Runtime.version().feature() <= 24) {
             access.registerAsUnsafeAccessed(field);
           }
-          registerAnnotatedType(field.getAnnotatedType());
+          if (field.isAnnotationPresent(JsonAnyProperty.class)) {
+            registerNestedType(field.getAnnotatedType());
+          } else {
+            registerMemberType(field.getAnnotation(JsonCodec.class), field.getAnnotatedType());
+          }
           registerResolvedType(ownerType.resolveType(field.getGenericType()).getType());
         }
       }
@@ -142,7 +148,12 @@ final class ForyJsonGraalVMFeature implements Feature {
           RuntimeReflection.register(method);
         }
         if (ObjectCodecBuilder.usesJsonReturn(method)) {
-          registerAnnotatedType(method.getAnnotatedReturnType());
+          if (method.isAnnotationPresent(JsonAnyGetter.class)) {
+            registerNestedType(method.getAnnotatedReturnType());
+          } else {
+            registerMemberType(
+                method.getAnnotation(JsonCodec.class), method.getAnnotatedReturnType());
+          }
           registerResolvedType(ownerType.resolveType(method.getGenericReturnType()).getType());
         }
         if (ObjectCodecBuilder.usesJsonParameters(method)) {
@@ -240,27 +251,43 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   private void registerAnnotatedType(AnnotatedType type) {
     Set<TypeVariable<?>> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
-    registerAnnotatedType(type, visiting);
+    registerAnnotatedType(type, true, visiting);
   }
 
-  private void registerAnnotatedType(AnnotatedType type, Set<TypeVariable<?>> visiting) {
+  private void registerMemberType(JsonCodec declaration, AnnotatedType type) {
+    if (declaration != null) {
+      registerCodec(declaration.value());
+    }
+    Set<TypeVariable<?>> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
+    registerAnnotatedType(type, declaration == null, visiting);
+  }
+
+  private void registerNestedType(AnnotatedType type) {
+    Set<TypeVariable<?>> visiting = Collections.newSetFromMap(new IdentityHashMap<>());
+    registerAnnotatedType(type, false, visiting);
+  }
+
+  private void registerAnnotatedType(
+      AnnotatedType type, boolean registerRootCodec, Set<TypeVariable<?>> visiting) {
     if (type == null) {
       return;
     }
     registerContainer(type.getType());
-    JsonCodec annotation = type.getDeclaredAnnotation(JsonCodec.class);
-    if (annotation != null) {
-      registerCodec(annotation.value());
+    if (registerRootCodec) {
+      JsonCodec annotation = type.getAnnotation(JsonCodec.class);
+      if (annotation != null) {
+        registerCodec(annotation.value());
+      }
     }
     if (type instanceof AnnotatedParameterizedType) {
       AnnotatedParameterizedType parameterizedType = (AnnotatedParameterizedType) type;
-      registerAnnotatedType(parameterizedType.getAnnotatedOwnerType(), visiting);
+      registerAnnotatedType(parameterizedType.getAnnotatedOwnerType(), true, visiting);
       for (AnnotatedType argument : parameterizedType.getAnnotatedActualTypeArguments()) {
-        registerAnnotatedType(argument, visiting);
+        registerAnnotatedType(argument, true, visiting);
       }
     } else if (type instanceof AnnotatedArrayType) {
       registerAnnotatedType(
-          ((AnnotatedArrayType) type).getAnnotatedGenericComponentType(), visiting);
+          ((AnnotatedArrayType) type).getAnnotatedGenericComponentType(), true, visiting);
     } else if (type instanceof AnnotatedWildcardType) {
       AnnotatedWildcardType wildcardType = (AnnotatedWildcardType) type;
       registerAnnotatedTypes(wildcardType.getAnnotatedUpperBounds(), visiting);
@@ -276,7 +303,7 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   private void registerAnnotatedTypes(AnnotatedType[] types, Set<TypeVariable<?>> visiting) {
     for (AnnotatedType type : types) {
-      registerAnnotatedType(type, visiting);
+      registerAnnotatedType(type, true, visiting);
     }
   }
 

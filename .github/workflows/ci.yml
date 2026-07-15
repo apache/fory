@@ -314,7 +314,7 @@ jobs:
       - name: Install Fory Java artifacts
         run: |
           cd java
-          mvn -T16 --no-transfer-progress -pl fory-core,fory-annotation-processor -am install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+          mvn -T16 --no-transfer-progress -pl fory-json,fory-annotation-processor -am install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -329,7 +329,8 @@ jobs:
           working-directory: integration_tests/android_tests
           script: |
             yes | sdkmanager "platforms;android-${{ matrix.api-level }}" "build-tools;35.0.0"
-            gradle --no-daemon --stacktrace connectedCheck
+            if [ "${{ matrix.api-level }}" = "26" ]; then gradle --no-daemon --stacktrace -PforyTestBuildType=debug connectedCheck; fi
+            gradle --no-daemon --stacktrace -PforyTestBuildType=release connectedCheck
       - name: Upload Android Test Report
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

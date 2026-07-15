@@ -324,9 +324,10 @@ import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 ```
 
-`JsonType` marks a reachable object model for GraalVM Native Image metadata. It has no effect on
-ordinary JVM JSON behavior and is not inherited. See [GraalVM Support](graalvm-support.md) for the
-complete native-image workflow.
+`JsonType` marks a reachable object model for GraalVM Native Image metadata. On Android it also
+enables processor-generated R8 rules and `JsonCodec` type-use metadata. It has no effect on ordinary
+JVM JSON behavior and is not inherited. See [GraalVM Support](graalvm-support.md) and
+[Android Support](android-support.md) for the platform workflows.
 
 ### `JsonProperty`
 
@@ -738,6 +739,27 @@ The default applies at root `Class` and raw `TypeRef` targets and at unannotated
 positions. Fory explicitly inherits declarations through superclasses and interfaces; it does not
 use Java `@Inherited`.
 
+On a field or effective ordinary getter, a declaration annotation selects the codec for that
+member's root value:
+
+```java
+public final class Invoice {
+  @JsonCodec(MoneyCodec.class)
+  public Money total;
+
+  @JsonCodec(MoneyCodec.class)
+  public Money getTax() {
+    return tax;
+  }
+}
+```
+
+The method form is invalid on record accessors, setters, creator factories, unrelated methods, and
+void methods. An ordinary getter declaration is invalid when field mode disables getter discovery.
+Existing record-component `@JsonCodec` behavior is unchanged; declaring `@JsonCodec` only on a
+record accessor is unsupported. For a selected field or getter, Fory checks the declaration first
+and uses the annotation on the root annotated type only when the declaration is absent.
+
 Use the same annotation at a type-use position to select a codec for exactly that occurrence:
 
 ```java
@@ -749,7 +771,9 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class Invoice {
-  public @JsonCodec(MoneyCodec.class) Money total;
+  // Qualified placement selects the root type-use fallback rather than the field declaration.
+  public com.example.@JsonCodec(MoneyCodec.class) Money qualifiedTotal;
+
   public List<@JsonCodec(MoneyCodec.class) Money> items;
   public Set<@JsonCodec(MoneyCodec.class) Money> uniqueItems;
   public Collection<@JsonCodec(MoneyCodec.class) Money> allItems;
@@ -758,7 +782,7 @@ public final class Invoice {
   public AtomicReference<@JsonCodec(MoneyCodec.class) Money> current;
 
   // Codec for each element.
-  public @JsonCodec(MoneyCodec.class) Money[] itemArray;
+  public com.example.@JsonCodec(MoneyCodec.class) Money[] itemArray;
 
   // Codec for the complete array value.
   public Money @JsonCodec(MoneyArrayCodec.class) [] encodedArray;
@@ -793,17 +817,21 @@ discovered model property, declare a default on `Money`, or use exact builder re
 Fory chooses the complete codec for each current resolved value node using this exact order. An
 invalid higher-priority source fails rather than falling back.
 
-| Priority | Source                                  | Matching rule                                                             |
-| -------: | --------------------------------------- | ------------------------------------------------------------------------- |
-|        1 | Current `TYPE_USE @JsonCodec`           | Exact resolved occurrence after property merging and generic substitution |
-|        2 | `registerCodec(Target.class, instance)` | Exact target `Class`; never inherited                                     |
-|        3 | Direct `@JsonCodec` declaration         | Current class, record, enum, or interface                                 |
-|        4 | Inherited `@JsonCodec` declaration      | Most-specific superclass/interface result                                 |
-|        5 | Existing mapping                        | `JsonSubTypes`, built-in/container mapping, then default object mapping   |
+| Priority | Source                                  | Matching rule                                                                                             |
+| -------: | --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+|        1 | Current member or `TYPE_USE @JsonCodec` | Exact resolved occurrence after declaration-first acquisition, property merging, and generic substitution |
+|        2 | `registerCodec(Target.class, instance)` | Exact target `Class`; never inherited                                                                     |
+|        3 | Direct type `@JsonCodec` declaration    | Current class, record, enum, or interface                                                                 |
+|        4 | Inherited type declaration              | Most-specific superclass/interface result                                                                 |
+|        5 | Existing mapping                        | `JsonSubTypes`, built-in/container mapping, then default object mapping                                   |
+
+For each field or getter, its declaration takes precedence only over that same member's root
+annotated type. The selected field, getter, setter, record component, and creator occurrences are
+then merged as one logical property; different codecs at the same node remain a conflict.
 
 Rows 1 through 4 replace the whole current value mapping. They may therefore replace a scalar,
-enum, container, object, or `JsonSubTypes` representation. A current type-use, exact registration,
-or direct declaration also resolves any lower-priority inherited ambiguity.
+enum, container, object, or `JsonSubTypes` representation. A current occurrence, exact
+registration, or direct declaration also resolves any lower-priority inherited ambiguity.
 
 ### Deterministic inheritance and conflicts
 
@@ -911,11 +939,13 @@ map values, Optional, and atomic references resolve their annotated children nor
 
 Map keys are JSON object member names, not JSON values. An explicit `@JsonCodec` anywhere in a Map
 key subtree is rejected. Builder or declaration value codecs on the key's raw type are ignored in
-key position and still apply when that type is used as a value. For `JsonAnyProperty`,
-`JsonAnyGetter`, and `JsonAnySetter`, the outer Map is flattened and cannot select a whole-value
-codec; only its value node can. Wildcards, wildcard bounds, and type variables still unresolved
-after substitution cannot select a codec. A type-use on an `extends` or `implements` clause is not
-a JSON value occurrence and is not used; annotate the type declaration instead. Annotation type
+key position and still apply when that type is used as a value. `JsonAnyProperty` and
+`JsonAnyGetter` flatten their Map and cannot select a whole-value codec; only the nested Map value
+node can. A field or method declaration codec and a root type-use codec are therefore invalid on
+those two forms. A `JsonAnySetter` value parameter is already one flattened value and may carry a
+root type-use codec. Wildcards, wildcard bounds, and type variables still unresolved after
+substitution cannot select a codec. A type-use on an `extends` or `implements` clause is not a JSON
+value occurrence and is not used; annotate the type declaration instead. Annotation type
 declarations are not supported JSON model targets.
 
 ### Construction, inherited results, and platform support
@@ -934,11 +964,16 @@ succeed. Returning a plain parent while decoding the child fails with `ForyJsonE
 names the target type, codec class, declaring type, and actual returned type. The actual result,
 not the parent's `final` status or the codec's generic signature, determines validity.
 
-`@JsonCodec` is supported on ordinary JVMs and GraalVM native images, including inherited
-declarations and nested type uses. Native models must follow the `JsonType` workflow described in
-[GraalVM Support](graalvm-support.md), which registers the annotation codec's public no-argument
-constructor. Android ignores declaration and type-use forms; use exact `registerCodec`
-registration there.
+`@JsonCodec` is supported on ordinary JVMs and GraalVM native images, including member
+declarations, inherited type declarations, and nested type uses. Native models must follow the
+`JsonType` workflow described in [GraalVM Support](graalvm-support.md), which registers the
+annotation codec's public no-argument constructor.
+
+Android directly reads type, field, and effective getter declarations. Pure type-use locations,
+including qualified roots, parameters, generic arguments, and array components, require `JsonType`
+processor metadata. `JsonType` also supplies automatic R8 rules; applications that omit it can
+supply exact rules manually and use declaration syntax, but type-use codecs remain unavailable. See
+[Android Support](android-support.md).
 
 ## Type validation and untrusted input
 

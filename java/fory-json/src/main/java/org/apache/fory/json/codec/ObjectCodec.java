@@ -22,6 +22,7 @@ package org.apache.fory.json.codec;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
@@ -115,22 +116,18 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   @Internal
   public static <T> ObjectCodec<T> build(
       TypeRef<T> ownerType,
-      boolean propertyDiscoveryEnabled,
-      PropertyNamingStrategy propertyNamingStrategy,
-      boolean writeNullFields) {
-    return build(
-        ownerType, null, propertyDiscoveryEnabled, propertyNamingStrategy, writeNullFields);
-  }
-
-  @Internal
-  public static <T> ObjectCodec<T> build(
-      TypeRef<T> ownerType,
       JsonTypeUse ownerTypeUse,
+      Map<Member, JsonTypeUse[]> generatedTypeUses,
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
       boolean writeNullFields) {
     return ObjectCodecBuilder.build(
-        ownerType, ownerTypeUse, propertyDiscoveryEnabled, propertyNamingStrategy, writeNullFields);
+        ownerType,
+        ownerTypeUse,
+        generatedTypeUses,
+        propertyDiscoveryEnabled,
+        propertyNamingStrategy,
+        writeNullFields);
   }
 
   static <T> ObjectCodec<T> createCodec(

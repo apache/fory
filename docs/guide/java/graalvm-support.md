@@ -84,10 +84,19 @@ other builder options retain their normal behavior. Applications can create diff
 `ForyJson` instances at runtime and do not need build-time initialization or reflection
 configuration.
 
-Declaration-level, inherited, and nested type-use `@JsonCodec` annotations are supported. An
-annotation codec must have the same public no-argument constructor required on the JVM. In a named
-module, export or open its package to `org.apache.fory.json`. A codec instance supplied through
-`registerCodec` is constructed by the application and needs no annotation-constructor metadata.
+Type, field, effective ordinary getter, inherited, and nested type-use `@JsonCodec` annotations are
+supported. For a field or getter, the declaration is checked first and the root annotated type is
+used only when the declaration is absent. Nested generic arguments and array components remain
+fully supported in a native image.
+
+`JsonAnyProperty` and `JsonAnyGetter` flatten their Map and have no complete root value, so a field
+or method declaration codec and a root type-use codec are invalid there. A nested codec on the Map
+value remains supported.
+
+An annotation codec must have the same public no-argument constructor required on the JVM. In a
+named module, export or open its package to `org.apache.fory.json`. A codec instance supplied
+through `registerCodec` is constructed by the application and needs no annotation-constructor
+metadata.
 
 ## Basic Usage
 

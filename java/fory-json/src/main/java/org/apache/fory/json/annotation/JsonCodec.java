@@ -27,7 +27,8 @@ import java.lang.annotation.Target;
 import org.apache.fory.json.codec.JsonValueCodec;
 
 /**
- * Selects the complete JSON value codec for a type declaration or one exact type-use occurrence.
+ * Selects the complete JSON value codec for a type declaration, field, readable method, or one
+ * exact type-use occurrence.
  *
  * <p>On a class, record, enum, or interface declaration, this annotation defines an inheritable
  * JSON representation contract. Fory traverses both superclass and interface declarations
@@ -36,6 +37,14 @@ import org.apache.fory.json.codec.JsonValueCodec;
  * codec classes are rejected instead of being resolved by hierarchy traversal order. A concrete
  * declaration, a codec on the current type use, or an exact builder registration can disambiguate
  * such a hierarchy.
+ *
+ * <p>On a field, this annotation selects the codec for the field's root value. On a method, it is
+ * valid only on an effective ordinary JSON getter and selects the codec for the return value. A
+ * {@link org.apache.fory.json.annotation.JsonAnyProperty JsonAnyProperty} field and a {@link
+ * org.apache.fory.json.annotation.JsonAnyGetter JsonAnyGetter} are flattened into their owning
+ * object and therefore cannot have a complete root codec, although their nested map values may have
+ * type-use codecs. A declaration annotation takes precedence over an annotation on the
+ * corresponding root type use.
  *
  * <p>On a type use, this annotation applies only to that resolved value node. It can select the
  * complete codec for a field, accessor or creator value, an array dimension or component, or a
@@ -47,7 +56,7 @@ import org.apache.fory.json.codec.JsonValueCodec;
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.TYPE, ElementType.TYPE_USE})
+@Target({ElementType.TYPE, ElementType.FIELD, ElementType.METHOD, ElementType.TYPE_USE})
 public @interface JsonCodec {
   /** Returns the public, concrete codec class selected for this declaration or occurrence. */
   Class<? extends JsonValueCodec<?>> value();

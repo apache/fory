@@ -22,6 +22,7 @@ package org.apache.fory.json;
 import java.util.Objects;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
+import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
 
 /**
@@ -33,12 +34,12 @@ import org.apache.fory.platform.GraalvmSupport;
  * Latin1 reader, UTF16 reader, and UTF-8 reader paths; asynchronous compilation controls when those
  * path-specific replacements are installed, not codec semantics.
  *
- * <p>Defaults omit null object fields, enable code generation and asynchronous compilation, use
- * JavaBean property discovery, use {@link PropertyNamingStrategy#LOWER_CAMEL_CASE}, snapshot the
- * current thread context class loader, allow a nesting depth of 20, use twice the available
- * processors as the pooled-state concurrency level, retain writer buffers up to 2 MiB, and install
- * no custom type checker. Field mode disables getter and setter discovery but continues to discover
- * eligible instance fields across the class hierarchy.
+ * <p>Defaults omit null object fields, enable code generation and asynchronous compilation where
+ * supported, use JavaBean property discovery, use {@link PropertyNamingStrategy#LOWER_CAMEL_CASE},
+ * snapshot the current thread context class loader, allow a nesting depth of 20, use twice the
+ * available processors as the pooled-state concurrency level, retain writer buffers up to 2 MiB,
+ * and install no custom type checker. Field mode disables getter and setter discovery but continues
+ * to discover eligible instance fields across the class hierarchy.
  */
 public final class ForyJsonBuilder {
   private boolean writeNullFields;
@@ -69,7 +70,7 @@ public final class ForyJsonBuilder {
 
   /**
    * Enables generated object codecs for supported classes. Enabled by default and automatically
-   * disabled in a GraalVM native image.
+   * disabled on Android and in a GraalVM native image.
    */
   public ForyJsonBuilder withCodegen(boolean codegenEnabled) {
     this.codegenEnabled = codegenEnabled;
@@ -187,7 +188,8 @@ public final class ForyJsonBuilder {
         fixedClassLoader = ForyJson.class.getClassLoader();
       }
     }
-    boolean effectiveCodegen = codegenEnabled && !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE;
+    boolean effectiveCodegen =
+        codegenEnabled && !AndroidSupport.IS_ANDROID && !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE;
     boolean effectiveAsyncCompilation = asyncCompilationEnabled && effectiveCodegen;
     return new ForyJson(
         new JsonConfig(

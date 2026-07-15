@@ -19,12 +19,47 @@
 
 package org.apache.fory.android;
 
+import android.content.pm.ApplicationInfo;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public class ForyAndroidInstrumentedTest {
+  @Test
+  public void plainJsonReflectionWithoutRules() {
+    ApplicationInfo applicationInfo =
+        InstrumentationRegistry.getInstrumentation().getTargetContext().getApplicationInfo();
+    AndroidJsonScenarios.plainReflectionWithoutRules(
+        (applicationInfo.flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0);
+  }
+
+  @Test
+  public void manualPlainJsonRules() {
+    AndroidJsonScenarios.manualPlainRules();
+  }
+
+  @Test
+  public void generatedPlainJsonRules() {
+    AndroidJsonScenarios.generatedPlainRules();
+  }
+
+  @Test
+  public void manualJsonCodecs() {
+    AndroidJsonScenarios.manualCodecs();
+  }
+
+  @Test
+  public void nestedJsonCodecNeedsJsonType() {
+    AndroidJsonScenarios.nestedCodecNeedsJsonType();
+  }
+
+  @Test
+  public void generatedJsonCodecs() {
+    AndroidJsonScenarios.generatedCodecs();
+  }
+
   @Test
   public void androidRuntimeDisablesCodegenAndUnsafeCopies() {
     AndroidForyRuntimeScenarios.androidRuntimeDisablesCodegenAndUnsafeCopies();

@@ -4,3 +4,52 @@
 # own code.
 -keep class org.apache.fory.android.AndroidForyRuntimeScenarios { *; }
 -keep class org.apache.fory.android.AndroidForyRuntimeScenarios$* { *; }
+
+# Instrumentation calls these target-APK entry points from a separate APK. The
+# JSON fixture classes remain outside this keep so their own R8 rules are tested.
+-keep,allowoptimization class org.apache.fory.android.AndroidJsonScenarios {
+  public static void plainReflectionWithoutRules(boolean);
+  public static void manualPlainRules();
+  public static void generatedPlainRules();
+  public static void manualCodecs();
+  public static void nestedCodecNeedsJsonType();
+  public static void generatedCodecs();
+}
+
+# Equivalent user-authored rules for models that deliberately omit @JsonType.
+-keepattributes Signature,RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations
+-keepattributes RuntimeVisibleParameterAnnotations,RuntimeInvisibleParameterAnnotations
+-keepattributes RuntimeVisibleTypeAnnotations,RuntimeInvisibleTypeAnnotations,AnnotationDefault,MethodParameters
+-keepattributes InnerClasses,EnclosingMethod
+
+-keep,allowoptimization class org.apache.fory.android.ManualPlainJsonModel {
+  public <init>();
+  public int id;
+  public java.lang.String name;
+}
+
+-keep,allowoptimization class org.apache.fory.android.ManualJsonModel {
+  public <init>();
+  public org.apache.fory.android.ManualJsonModel$DirectValue direct;
+  public org.apache.fory.android.ManualJsonModel$MemberValue declaredField;
+  private org.apache.fory.android.ManualJsonModel$MemberValue declaredProperty;
+  public org.apache.fory.android.ManualJsonModel$MemberValue getDeclaredProperty();
+  public void setDeclaredProperty(org.apache.fory.android.ManualJsonModel$MemberValue);
+}
+
+-keep,allowoptimization class org.apache.fory.android.ManualJsonModel$DirectValue
+-keep,allowoptimization,allowobfuscation class org.apache.fory.android.ManualJsonModel$DirectValueCodec {
+  public <init>();
+}
+-keep,allowoptimization,allowobfuscation class org.apache.fory.android.ManualJsonModel$MemberValueCodec {
+  public <init>();
+}
+
+-keep,allowoptimization class org.apache.fory.android.ManualNestedModel {
+  public <init>();
+  public java.util.List values;
+}
+-keep,allowoptimization class org.apache.fory.android.ManualNestedModel$NestedValue {
+  public <init>();
+  public java.lang.String text;
+}

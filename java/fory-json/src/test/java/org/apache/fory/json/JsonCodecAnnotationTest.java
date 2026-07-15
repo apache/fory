@@ -130,6 +130,20 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     assertEquals(jsonText(newJson(), value), "{\"value\":\"A:x\"}");
     Object decoded = newJson().fromJson("{\"value\":\"A:y\"}", type);
     assertEquals(type.getMethod("value").invoke(decoded), "y");
+
+    Class<?> accessorType =
+        compileRecordClass(
+            "JsonCodecAccessorRecord",
+            "package org.apache.fory.json.records;\n"
+                + "import org.apache.fory.json.annotation.JsonCodec;\n"
+                + "import org.apache.fory.json.JsonCodecAnnotationTest.AStringCodec;\n"
+                + "public record JsonCodecAccessorRecord(String value) {\n"
+                + "  @JsonCodec(AStringCodec.class) public String value() { return value; }\n"
+                + "}\n");
+    Object accessorValue = accessorType.getConstructor(String.class).newInstance("x");
+    assertFailure(
+        () -> jsonText(newJson(), accessorValue),
+        "@JsonCodec requires an effective ordinary JSON getter");
   }
 
   @Test
@@ -150,7 +164,22 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
   public void anyRejections() {
     assertFailure(
         () -> newJson().toJson(new OuterAny()), "cannot select the flattened JSON Any map");
+    assertFailure(
+        () -> newJson().toJson(new MethodOuterAny()),
+        "@JsonCodec requires an effective ordinary JSON getter");
     assertFailure(() -> newJson().toJson(new KeyAny()), "map-key subtree");
+    assertFailure(
+        () -> newJson().toJson(new StaticCodecField()),
+        "@JsonCodec is not supported on JSON field");
+  }
+
+  @Test
+  public void interfaceMethods() {
+    assertEquals(newJson().toJson(new InterfaceGetter()), "{\"value\":\"A:x\"}");
+    assertEquals(newJson().toJson(new OverriddenGetter()), "{\"value\":\"x\"}");
+    assertFailure(
+        () -> newJson().toJson(new UnrelatedMethod()),
+        "@JsonCodec requires an effective ordinary JSON getter");
   }
 
   @Test
@@ -815,9 +844,45 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     public @JsonCodec(WholeMapCodec.class) Map<String, String> values = new LinkedHashMap<>();
   }
 
+  public static class MethodOuterAny {
+    @JsonAnyGetter
+    @JsonCodec(WholeMapCodec.class)
+    public Map<String, String> values() {
+      return new LinkedHashMap<>();
+    }
+  }
+
   public static class KeyAny {
     @JsonAnyProperty
     public Map<@JsonCodec(AStringCodec.class) String, String> values = new LinkedHashMap<>();
+  }
+
+  public static class StaticCodecField {
+    @JsonCodec(AStringCodec.class)
+    public static String value;
+  }
+
+  public interface CodecGetter {
+    @JsonCodec(AStringCodec.class)
+    default String getValue() {
+      return "x";
+    }
+  }
+
+  public static class InterfaceGetter implements CodecGetter {}
+
+  public static class OverriddenGetter implements CodecGetter {
+    @Override
+    public String getValue() {
+      return "x";
+    }
+  }
+
+  public static class UnrelatedMethod {
+    @JsonCodec(AStringCodec.class)
+    public String value() {
+      return "x";
+    }
   }
 
   public enum ScalarKind {
@@ -854,11 +919,11 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
   }
 
   public static class ComponentArray {
-    public @JsonCodec(AStringCodec.class) String[] value;
+    public java.lang.@JsonCodec(AStringCodec.class) String[] value;
   }
 
   public static class MultiArray {
-    public @JsonCodec(AStringCodec.class) String[][] value;
+    public java.lang.@JsonCodec(AStringCodec.class) String[][] value;
   }
 
   public static class ListModel {
