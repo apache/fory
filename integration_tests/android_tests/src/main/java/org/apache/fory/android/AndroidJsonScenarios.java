@@ -25,8 +25,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.annotation.JsonCreator;
-import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonType;
+import org.apache.fory.json.annotation.JsonUnwrapped;
 
 /** Android acceptance scenarios for reflection, declaration codecs, and R8 retention. */
 public final class AndroidJsonScenarios {
@@ -226,6 +227,7 @@ public final class AndroidJsonScenarios {
   }
 
   @JsonType
+  @JsonPropertyOrder({"id", "child"})
   public static final class UnwrappedParent {
     public final int id;
 
