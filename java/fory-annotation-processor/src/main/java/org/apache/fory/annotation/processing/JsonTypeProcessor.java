@@ -82,6 +82,7 @@ final class JsonTypeProcessor {
   private final Messager messager;
   private final Elements elements;
   private final Types types;
+  private final GeneratedJsonCodecSourceWriter codecSourceWriter;
   private final Set<String> processedTypes = new HashSet<>();
 
   JsonTypeProcessor(ProcessingEnvironment environment) {
@@ -89,6 +90,7 @@ final class JsonTypeProcessor {
     messager = environment.getMessager();
     elements = environment.getElementUtils();
     types = environment.getTypeUtils();
+    codecSourceWriter = new GeneratedJsonCodecSourceWriter(environment);
   }
 
   void process(RoundEnvironment roundEnvironment) {
@@ -110,10 +112,25 @@ final class JsonTypeProcessor {
       }
       try {
         Model model = inspect(type);
+        if (hasAnnotation(type, JSON_TYPE)) {
+          GeneratedJsonCodecSourceWriter.Result generated = codecSourceWriter.write(type);
+          if (generated != null) {
+            model.companionBinaryName = generated.companionBinaryName;
+            model.companionHasAnySetter = generated.hasAnySetter;
+            model.companionHasCreator = generated.hasCreator;
+            model.companionHasCreatorFactory = generated.hasCreatorFactory;
+            model.companionIsRecord = generated.record;
+            if (generated.creatorR8Declaration != null) {
+              model.addR8Member(new R8Member(model.binaryName, generated.creatorR8Declaration));
+            }
+          }
+        }
         List<TypeElement> subtypes = classLiteralSubtypes(type, model.binaryFallbackTypes);
         model.sort();
         emitR8(model);
         pending.addAll(subtypes);
+      } catch (GeneratedJsonCodecSourceWriter.InvalidJsonTypeException e) {
+        messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
       } catch (InvalidJsonTypeException e) {
         messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
       } catch (RuntimeException e) {
@@ -267,7 +284,9 @@ final class JsonTypeProcessor {
           .add(member);
     }
     for (Map.Entry<String, List<R8Member>> entry : membersByOwner.entrySet()) {
-      boolean preserveName = model.binaryFallbackTypes.contains(entry.getKey());
+      boolean preserveName =
+          model.binaryFallbackTypes.contains(entry.getKey())
+              || model.companionBinaryName != null && model.binaryName.equals(entry.getKey());
       builder
           .append("-keep,allowoptimization")
           .append(preserveName ? "" : ",allowobfuscation")
@@ -316,6 +335,39 @@ final class JsonTypeProcessor {
           .append("-keep,allowoptimization,allowobfuscation class ")
           .append(codec)
           .append(" { public <init>(); }\n");
+    }
+    if (model.companionBinaryName != null) {
+      builder
+          .append("-keep,allowoptimization class ")
+          .append(model.companionBinaryName)
+          .append(" {\n")
+          .append("  public <init>();\n")
+          .append("  public java.lang.Class type();\n")
+          .append("  public org.apache.fory.json.meta.JsonFieldAccessor[] fieldAccessors();\n");
+      if (model.companionHasAnySetter) {
+        builder.append(
+            "  public org.apache.fory.json.meta.JsonAnySetterAccessor anySetterAccessor();\n");
+      }
+      if (model.companionHasCreator) {
+        builder
+            .append("  public java.lang.String[] creatorParameterNames();\n")
+            .append("  public java.lang.Class[] creatorParameterTypes();\n")
+            .append("  public java.lang.Object newInstance(java.lang.Object[]);\n");
+      }
+      if (model.companionHasCreatorFactory) {
+        builder.append("  public java.lang.String creatorFactoryName();\n");
+      }
+      if (model.companionIsRecord) {
+        builder.append("  public boolean isRecord();\n");
+      }
+      builder
+          .append("}\n")
+          .append("-keep,allowoptimization class ")
+          .append(model.companionBinaryName)
+          .append("$Factory {\n")
+          .append("  public <init>();\n")
+          .append("  public org.apache.fory.json.codec.GeneratedJsonCodec create();\n")
+          .append("}\n");
     }
     return builder.toString();
   }
@@ -702,6 +754,11 @@ final class JsonTypeProcessor {
     final Set<String> codecTypes = new LinkedHashSet<>();
     final Set<String> binaryFallbackTypes = new LinkedHashSet<>();
     final Set<String> annotationOwnerTypes = new LinkedHashSet<>();
+    String companionBinaryName;
+    boolean companionHasAnySetter;
+    boolean companionHasCreator;
+    boolean companionHasCreatorFactory;
+    boolean companionIsRecord;
 
     Model(TypeElement target, String binaryName) {
       this.target = target;
@@ -716,6 +773,7 @@ final class JsonTypeProcessor {
 
     boolean hasNestedIdentity() {
       return binaryName.indexOf('$') >= 0
+          || companionBinaryName != null && companionBinaryName.indexOf('$') >= 0
           || containsNested(binaryFallbackTypes)
           || containsNested(annotationOwnerTypes)
           || containsNested(containerTypes)

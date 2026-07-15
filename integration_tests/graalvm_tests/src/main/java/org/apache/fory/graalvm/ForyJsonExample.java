@@ -54,6 +54,7 @@ import org.apache.fory.json.reader.Utf8JsonReader;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.util.Preconditions;
+import org.apache.fory.graalvm.closed.ClosedJsonRecord;
 
 /** Native-image acceptance coverage for the complete interpreted Fory JSON path. */
 public final class ForyJsonExample {
@@ -69,7 +70,15 @@ public final class ForyJsonExample {
     testGenericProperties();
     testBigDecimal();
     testSqlTypes();
+    testClosedPackage();
     System.out.println("Fory JSON succeed");
+  }
+
+  private static void testClosedPackage() {
+    ForyJson json = ForyJson.builder().build();
+    ClosedJsonRecord value = new ClosedJsonRecord(17, "closed");
+    String encoded = json.toJson(value);
+    Preconditions.checkArgument(json.fromJson(encoded, ClosedJsonRecord.class).equals(value));
   }
 
   private static void testModels() {

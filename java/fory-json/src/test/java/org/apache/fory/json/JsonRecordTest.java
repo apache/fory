@@ -114,4 +114,33 @@ public class JsonRecordTest extends ForyJsonTestModels {
     assertEquals(type.getMethod("id").invoke(decoded), Integer.valueOf(7));
     assertEquals(type.getMethod("displayName").invoke(decoded), "alice");
   }
+
+  @Test
+  public void canonicalCreator() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 17) {
+      throw new SkipException("Java record test requires JDK 17+");
+    }
+    Class<?> emptyType =
+        compileRecordClass(
+            "JsonEmptyRecord",
+            "package org.apache.fory.json.records;\npublic record JsonEmptyRecord() {}\n");
+    ForyJson json = newJson();
+    assertEquals(json.toJson(emptyType.getConstructor().newInstance()), "{}");
+    assertEquals(json.fromJson("{}", emptyType), emptyType.getConstructor().newInstance());
+
+    Class<?> type =
+        compileRecordClass(
+            "JsonCanonicalRecord",
+            "package org.apache.fory.json.records;\n"
+                + "public record JsonCanonicalRecord(int id, String name) {\n"
+                + "  public JsonCanonicalRecord { name = name.trim(); }\n"
+                + "  public JsonCanonicalRecord(int id) { this(id, \"aux\"); }\n"
+                + "  @Override public String name() { return name.toUpperCase(); }\n"
+                + "}\n");
+    Object value = type.getConstructor(int.class, String.class).newInstance(9, " value ");
+    assertEquals(json.toJson(value), "{\"id\":9,\"name\":\"VALUE\"}");
+    Object decoded = json.fromJson("{\"id\":10,\"name\":\" next \"}", type);
+    assertEquals(type.getMethod("id").invoke(decoded), Integer.valueOf(10));
+    assertEquals(type.getMethod("name").invoke(decoded), "NEXT");
+  }
 }

@@ -362,12 +362,16 @@ automatically disabled. Every other builder option keeps the behavior described 
 ## JSON annotations
 
 Fory JSON defines thirteen annotations in `org.apache.fory.json.annotation`, including `JsonCodec` for
-complete-value codec selection and `JsonType` for GraalVM Native Image and Android build metadata.
+complete-value codec selection and `JsonType` for generated model execution and retention.
 They are Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
-`JsonType` has no effect on ordinary JVM JSON behavior and is not inherited. Add it to every
-reachable object model used by a native executable. On Android it enables processor-generated R8
-rules. See the [GraalVM guide](../../docs/guide/java/graalvm-support.md) and
+`JsonType` asks the annotation processor to generate direct property and creator operations plus
+exact retention rules. It is not inherited, so annotate each eligible concrete model that needs a
+generated companion. Ordinary unannotated classes may still use reflection; on Android they need
+application-authored exact R8 rules. Android-desugared Records require `JsonType` and the processor.
+A directly annotated model that uses the default object codec fails during codec creation if its
+generated companion is missing.
+See the [GraalVM guide](../../docs/guide/java/graalvm-support.md) and
 [Android guide](../../docs/guide/java/android-support.md) for the platform workflows.
 
 ### `JsonProperty`
@@ -1128,8 +1132,9 @@ type-declaration codec is used for a more specific target, every decoded value m
 assignable to that target.
 
 The annotation has the same FIELD, METHOD, and PARAMETER behavior on the JVM, Android, and GraalVM
-Native Image. Android applications may use `JsonType` for generated exact R8 rules or provide the
-equivalent rules themselves. GraalVM object models follow the `JsonType` workflow in the
+Native Image. Ordinary Android classes may omit `JsonType` and provide equivalent exact rules;
+Android-desugared Records require `JsonType` and the processor. GraalVM object models follow the
+`JsonType` workflow in the
 [GraalVM guide](../../docs/guide/java/graalvm-support.md).
 
 ## Type validation and untrusted input

@@ -24,6 +24,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonType;
 
 /** Android acceptance scenarios for reflection, declaration codecs, and R8 retention. */
 public final class AndroidJsonScenarios {
@@ -60,6 +61,24 @@ public final class AndroidJsonScenarios {
     GeneratedPlainJsonModel decoded = json.fromJson(encoded, GeneratedPlainJsonModel.class);
     checkEquals(28, decoded.id);
     checkEquals("generated-plain", decoded.name);
+  }
+
+  public static void generatedRecord() {
+    try {
+      Class.forName(
+          "org.apache.fory.android.GeneratedJsonRecord_ForyJsonCodec",
+          false,
+          GeneratedJsonRecord.class.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      throw new AssertionError("generated Record JSON codec was removed", e);
+    }
+    check(GeneratedJsonRecord.class.isAnnotationPresent(JsonType.class));
+    ForyJson json = ForyJson.builder().build();
+    String encoded = json.toJson(new GeneratedJsonRecord(30, "android"));
+    checkEquals("{\"id\":30,\"name\":\"ANDROID\"}", encoded);
+    GeneratedJsonRecord decoded = json.fromJson(encoded, GeneratedJsonRecord.class);
+    checkEquals(30, decoded.id());
+    checkEquals("ANDROID", decoded.name());
   }
 
   public static void manualCodecs() {

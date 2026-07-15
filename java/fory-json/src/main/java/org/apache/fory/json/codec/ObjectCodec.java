@@ -25,12 +25,12 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
-import java.util.Arrays;
 import java.util.Map;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.meta.JsonAnySetterAccessor;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
@@ -48,8 +48,6 @@ import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.reflect.ObjectInstantiator;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.util.record.RecordInfo;
-import org.apache.fory.util.record.RecordUtils;
 
 /**
  * Reflection-backed semantic codec and metadata owner for one Java object type.
@@ -58,36 +56,28 @@ import org.apache.fory.util.record.RecordUtils;
  * field/getter/setter group into one logical property, applies its name, inclusion, serialization
  * order, and directional ignore rules, resolves generic member types against the owner {@link
  * TypeRef}, and builds separate read and write field arrays. Class-valued fields and properties are
- * never JSON members. Records retain constructor metadata and field defaults; ordinary objects
- * retain an allocation strategy plus field or accessor sinks.
+ * never JSON members. Records and explicit creators retain ordered creator metadata; mutable
+ * objects retain an allocation strategy plus field or accessor sinks.
  *
  * <p>This codec is the interpreted implementation and the semantic fallback. Only an exact
  * raw-class instance of this class is eligible for generated capability replacement. Parameterized
  * object codecs retain binding-specific member types and remain the owner of all five slots.
  * Generated code may replace paths independently, but it is built from this codec's immutable field
- * metadata and preserves the same null, unknown-field, record, and member-discovery semantics.
+ * metadata and preserves the same null, unknown-field, creator, and member-discovery semantics.
  */
 public class ObjectCodec<T> implements JsonValueCodec<T> {
-  private static final int MUTABLE = 0;
-  private static final int RECORD = 1;
-  private static final int CREATOR = 2;
-
   protected final Class<?> type;
   protected final JsonFieldInfo[] writeFields;
   protected final JsonFieldInfo[] readFields;
   protected final JsonFieldTable readTable;
   protected final ObjectInstantiator<?> instantiator;
-  private final int creationKind;
   private final JsonCreatorInfo creatorInfo;
   private final AnyInfo anyInfo;
-  private final RecordInfo recordInfo;
-  private final Object[] recordFieldDefaults;
 
   private ObjectCodec(
       Class<?> type,
       JsonFieldInfo[] writeFields,
       JsonFieldInfo[] readFields,
-      String[] readJavaNames,
       JsonCreatorInfo creatorInfo,
       AnyInfo anyInfo,
       String[] skippedNames,
@@ -102,14 +92,6 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
             : new JsonFieldTable(readFields, skippedNames);
     this.instantiator = instantiator;
     this.creatorInfo = creatorInfo;
-    creationKind = RecordUtils.isRecord(type) ? RECORD : creatorInfo == null ? MUTABLE : CREATOR;
-    if (creationKind == RECORD) {
-      recordInfo = new RecordInfo(type, Arrays.asList(readJavaNames));
-      recordFieldDefaults = recordFieldDefaults(type, readJavaNames, recordInfo);
-    } else {
-      recordInfo = null;
-      recordFieldDefaults = null;
-    }
   }
 
   @Internal
@@ -117,16 +99,20 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       TypeRef<T> ownerType,
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
-      boolean writeNullFields) {
+      boolean writeNullFields,
+      GeneratedJsonCodec<?> generatedCodec) {
     return ObjectCodecBuilder.build(
-        ownerType, propertyDiscoveryEnabled, propertyNamingStrategy, writeNullFields);
+        ownerType,
+        propertyDiscoveryEnabled,
+        propertyNamingStrategy,
+        writeNullFields,
+        generatedCodec);
   }
 
   static <T> ObjectCodec<T> createCodec(
       TypeRef<T> ownerType,
       JsonFieldInfo[] writeFields,
       JsonFieldInfo[] readFields,
-      String[] readJavaNames,
       JsonCreatorInfo creatorInfo,
       AnyInfo anyInfo,
       String[] skippedNames,
@@ -134,24 +120,10 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     Class<?> type = ownerType.getRawType();
     if (ownerType.getType() instanceof Class) {
       return new ObjectCodec<>(
-          type,
-          writeFields,
-          readFields,
-          readJavaNames,
-          creatorInfo,
-          anyInfo,
-          skippedNames,
-          instantiator);
+          type, writeFields, readFields, creatorInfo, anyInfo, skippedNames, instantiator);
     }
     return new ParameterizedObjectCodec<>(
-        type,
-        writeFields,
-        readFields,
-        readJavaNames,
-        creatorInfo,
-        anyInfo,
-        skippedNames,
-        instantiator);
+        type, writeFields, readFields, creatorInfo, anyInfo, skippedNames, instantiator);
   }
 
   public final Class<?> type() {
@@ -168,10 +140,6 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
 
   public final JsonFieldTable readTable() {
     return readTable;
-  }
-
-  public final boolean isRecord() {
-    return creationKind == RECORD;
   }
 
   public final JsonCreatorInfo creatorInfo() {
@@ -217,20 +185,6 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   @SuppressWarnings("unchecked")
   public final T newInstance() {
     return (T) instantiator.newInstance();
-  }
-
-  @Internal
-  public final Object[] newRecordFieldValues() {
-    return Arrays.copyOf(recordFieldDefaults, recordFieldDefaults.length);
-  }
-
-  @Internal
-  @SuppressWarnings("unchecked")
-  public final T newRecord(Object[] values) {
-    Object[] arguments = RecordUtils.remapping(recordInfo, values);
-    Object object = instantiator.newInstanceWithArguments(arguments);
-    Arrays.fill(recordInfo.getRecordComponents(), null);
-    return (T) object;
   }
 
   @Internal
@@ -384,15 +338,10 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
 
   private T readLatin1FixedObject(Latin1JsonReader reader) {
     reader.enterDepth();
-    if (creationKind != MUTABLE) {
-      if (creationKind == CREATOR) {
-        Object[] arguments = readLatin1CreatorArguments(reader);
-        reader.exitDepth();
-        return create(arguments);
-      }
-      T object = readLatin1Record(reader);
+    if (creatorInfo != null) {
+      Object[] arguments = readLatin1CreatorArguments(reader);
       reader.exitDepth();
-      return object;
+      return create(arguments);
     }
     T object = newInstance();
     reader.expect('{');
@@ -427,15 +376,10 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
 
   private T readUtf16FixedObject(Utf16JsonReader reader) {
     reader.enterDepth();
-    if (creationKind != MUTABLE) {
-      if (creationKind == CREATOR) {
-        Object[] arguments = readUtf16CreatorArguments(reader);
-        reader.exitDepth();
-        return create(arguments);
-      }
-      T object = readUtf16Record(reader);
+    if (creatorInfo != null) {
+      Object[] arguments = readUtf16CreatorArguments(reader);
       reader.exitDepth();
-      return object;
+      return create(arguments);
     }
     T object = newInstance();
     reader.expect('{');
@@ -470,15 +414,10 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
 
   private T readUtf8FixedObject(Utf8JsonReader reader) {
     reader.enterDepth();
-    if (creationKind != MUTABLE) {
-      if (creationKind == CREATOR) {
-        Object[] arguments = readUtf8CreatorArguments(reader);
-        reader.exitDepth();
-        return create(arguments);
-      }
-      T object = readUtf8Record(reader);
+    if (creatorInfo != null) {
+      Object[] arguments = readUtf8CreatorArguments(reader);
       reader.exitDepth();
-      return object;
+      return create(arguments);
     }
     T object = newInstance();
     reader.expect('{');
@@ -539,10 +478,8 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   private T readLatin1AnyObject(Latin1JsonReader reader, JsonFieldTable table) {
     reader.enterDepth();
     T object;
-    if (creationKind == CREATOR) {
+    if (creatorInfo != null) {
       object = create(readLatin1AnyCreatorArguments(reader, table));
-    } else if (creationKind == RECORD) {
-      object = readLatin1AnyRecord(reader, table);
     } else {
       object = readLatin1AnyMutable(reader, table);
     }
@@ -553,10 +490,8 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   private T readUtf16AnyObject(Utf16JsonReader reader, JsonFieldTable table) {
     reader.enterDepth();
     T object;
-    if (creationKind == CREATOR) {
+    if (creatorInfo != null) {
       object = create(readUtf16AnyCreatorArguments(reader, table));
-    } else if (creationKind == RECORD) {
-      object = readUtf16AnyRecord(reader, table);
     } else {
       object = readUtf16AnyMutable(reader, table);
     }
@@ -567,10 +502,8 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   private T readUtf8AnyObject(Utf8JsonReader reader, JsonFieldTable table) {
     reader.enterDepth();
     T object;
-    if (creationKind == CREATOR) {
+    if (creatorInfo != null) {
       object = create(readUtf8AnyCreatorArguments(reader, table));
-    } else if (creationKind == RECORD) {
-      object = readUtf8AnyRecord(reader, table);
     } else {
       object = readUtf8AnyMutable(reader, table);
     }
@@ -710,105 +643,6 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     return object;
   }
 
-  private T readLatin1AnyRecord(Latin1JsonReader reader, JsonFieldTable table) {
-    Object[] values = newRecordFieldValues();
-    Map<Object, Object> anyMap = null;
-    Latin1ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.latin1Reader();
-    reader.expect('{');
-    if (!reader.consume('}')) {
-      do {
-        int start = reader.position();
-        long hash = reader.readFieldNameHash();
-        int match = table.match(hash);
-        reader.expect(':');
-        if (match >= 0) {
-          JsonFieldInfo field = readFields[match];
-          values[field.readIndex()] = field.readLatin1Value(reader);
-        } else if (match == JsonFieldTable.SKIP) {
-          reader.skipValue();
-        } else {
-          String name = reader.materializeFieldName(start);
-          Object value = anyReader.readLatin1(reader);
-          if (anyMap == null) {
-            anyMap = newAnyMap();
-          }
-          putAnyMap(anyMap, name, value);
-        }
-      } while (reader.consume(','));
-      reader.expect('}');
-    }
-    if (anyMap != null) {
-      values[anyInfo.constructionIndex] = finishAnyMap(anyMap);
-    }
-    return newRecord(values);
-  }
-
-  private T readUtf16AnyRecord(Utf16JsonReader reader, JsonFieldTable table) {
-    Object[] values = newRecordFieldValues();
-    Map<Object, Object> anyMap = null;
-    Utf16ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf16Reader();
-    reader.expect('{');
-    if (!reader.consume('}')) {
-      do {
-        int start = reader.position();
-        long hash = reader.readFieldNameHash();
-        int match = table.match(hash);
-        reader.expect(':');
-        if (match >= 0) {
-          JsonFieldInfo field = readFields[match];
-          values[field.readIndex()] = field.readUtf16Value(reader);
-        } else if (match == JsonFieldTable.SKIP) {
-          reader.skipValue();
-        } else {
-          String name = reader.materializeFieldName(start);
-          Object value = anyReader.readUtf16(reader);
-          if (anyMap == null) {
-            anyMap = newAnyMap();
-          }
-          putAnyMap(anyMap, name, value);
-        }
-      } while (reader.consume(','));
-      reader.expect('}');
-    }
-    if (anyMap != null) {
-      values[anyInfo.constructionIndex] = finishAnyMap(anyMap);
-    }
-    return newRecord(values);
-  }
-
-  private T readUtf8AnyRecord(Utf8JsonReader reader, JsonFieldTable table) {
-    Object[] values = newRecordFieldValues();
-    Map<Object, Object> anyMap = null;
-    Utf8ReaderCodec<Object> anyReader = anyInfo.valueTypeInfo.utf8Reader();
-    reader.expect('{');
-    if (!reader.consume('}')) {
-      do {
-        int start = reader.position();
-        long hash = reader.readFieldNameHash();
-        int match = table.match(hash);
-        reader.expect(':');
-        if (match >= 0) {
-          JsonFieldInfo field = readFields[match];
-          values[field.readIndex()] = field.readUtf8Value(reader);
-        } else if (match == JsonFieldTable.SKIP) {
-          reader.skipValue();
-        } else {
-          String name = reader.materializeFieldName(start);
-          Object value = anyReader.readUtf8(reader);
-          if (anyMap == null) {
-            anyMap = newAnyMap();
-          }
-          putAnyMap(anyMap, name, value);
-        }
-      } while (reader.consume(','));
-      reader.expect('}');
-    }
-    if (anyMap != null) {
-      values[anyInfo.constructionIndex] = finishAnyMap(anyMap);
-    }
-    return newRecord(values);
-  }
-
   private Object[] readLatin1AnyCreatorArguments(Latin1JsonReader reader, JsonFieldTable table) {
     Object[] arguments = creatorInfo.newArguments();
     JsonCreatorFieldInfo[] fields = creatorInfo.fields();
@@ -918,60 +752,6 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       arguments[anyInfo.constructionIndex] = finishAnyMap(anyMap);
     }
     return arguments;
-  }
-
-  private T readLatin1Record(Latin1JsonReader reader) {
-    Object[] values = newRecordFieldValues();
-    reader.expect('{');
-    if (!reader.consume('}')) {
-      do {
-        JsonFieldInfo field = reader.readField(readTable);
-        reader.expect(':');
-        if (field == null) {
-          reader.skipValue();
-        } else {
-          values[field.readIndex()] = field.readLatin1Value(reader);
-        }
-      } while (reader.consume(','));
-      reader.expect('}');
-    }
-    return newRecord(values);
-  }
-
-  private T readUtf16Record(Utf16JsonReader reader) {
-    Object[] values = newRecordFieldValues();
-    reader.expect('{');
-    if (!reader.consume('}')) {
-      do {
-        JsonFieldInfo field = reader.readField(readTable);
-        reader.expect(':');
-        if (field == null) {
-          reader.skipValue();
-        } else {
-          values[field.readIndex()] = field.readUtf16Value(reader);
-        }
-      } while (reader.consume(','));
-      reader.expect('}');
-    }
-    return newRecord(values);
-  }
-
-  private T readUtf8Record(Utf8JsonReader reader) {
-    Object[] values = newRecordFieldValues();
-    reader.expect('{');
-    if (!reader.consume('}')) {
-      do {
-        JsonFieldInfo field = reader.readField(readTable);
-        reader.expect(':');
-        if (field == null) {
-          reader.skipValue();
-        } else {
-          values[field.readIndex()] = field.readUtf8Value(reader);
-        }
-      } while (reader.consume(','));
-      reader.expect('}');
-    }
-    return newRecord(values);
   }
 
   private Object[] readLatin1CreatorArguments(Latin1JsonReader reader) {
@@ -1158,18 +938,6 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     }
   }
 
-  private static Object[] recordFieldDefaults(
-      Class<?> type, String[] readJavaNames, RecordInfo recordInfo) {
-    Object[] defaults = new Object[readJavaNames.length];
-    Object[] componentDefaults = recordInfo.getRecordComponentsDefaultValues();
-    Map<String, Integer> componentIndexes = RecordUtils.buildFieldToComponentMapping(type);
-    for (int i = 0; i < readJavaNames.length; i++) {
-      Integer componentIndex = componentIndexes.get(readJavaNames[i]);
-      defaults[i] = componentIndex == null ? null : componentDefaults[componentIndex.intValue()];
-    }
-    return defaults;
-  }
-
   @Internal
   public static final class AnyInfo {
     private final Field writeField;
@@ -1179,6 +947,7 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     private final Class<?> setterValueRawType;
     private final JsonFieldAccessor writeAccessor;
     private final JsonFieldAccessor readAccessor;
+    private final JsonAnySetterAccessor generatedSetter;
     private final MethodHandle setterHandle;
     private final Type mapType;
     private final Class<?> mapRawType;
@@ -1196,6 +965,9 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
         Method writeGetter,
         Field readField,
         Method readSetter,
+        JsonFieldAccessor writeAccessor,
+        JsonFieldAccessor readAccessor,
+        JsonAnySetterAccessor generatedSetter,
         Type mapType,
         Class<?> mapRawType,
         Type valueType,
@@ -1209,14 +981,14 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       this.readField = readField;
       this.readSetter = readSetter;
       setterValueRawType = readSetter == null ? null : readSetter.getParameterTypes()[1];
-      writeAccessor =
-          writeGetter != null
-              ? JsonFieldAccessor.forGetter(writeGetter)
-              : writeField == null ? null : JsonFieldAccessor.forField(writeField);
-      readAccessor = readField == null ? null : JsonFieldAccessor.forField(readField);
+      this.writeAccessor = writeAccessor;
+      this.readAccessor = readAccessor;
+      this.generatedSetter = generatedSetter;
       setterHandle =
-          readSetter == null || AndroidSupport.IS_ANDROID ? null : methodHandle(readSetter);
-      if (readSetter != null && AndroidSupport.IS_ANDROID) {
+          readSetter == null || generatedSetter != null || AndroidSupport.IS_ANDROID
+              ? null
+              : methodHandle(readSetter);
+      if (readSetter != null && generatedSetter == null && AndroidSupport.IS_ANDROID) {
         readSetter.setAccessible(true);
       }
       this.mapType = mapType;
@@ -1284,7 +1056,7 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     }
 
     private boolean readEnabled() {
-      return readAccessor != null || readSetter != null;
+      return constructionIndex >= 0 || readAccessor != null || readSetter != null;
     }
 
     private boolean fieldRead() {
@@ -1321,6 +1093,10 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
         throw new ForyJsonException(
             "Cannot read null into primitive @JsonAnySetter parameter " + setterValueRawType);
       }
+      if (generatedSetter != null) {
+        generatedSetter.put(target, name, value);
+        return;
+      }
       try {
         if (AndroidSupport.IS_ANDROID) {
           readSetter.invoke(target, name, value);
@@ -1352,20 +1128,11 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
         Class<?> type,
         JsonFieldInfo[] writeFields,
         JsonFieldInfo[] readFields,
-        String[] readJavaNames,
         JsonCreatorInfo creatorInfo,
         AnyInfo anyInfo,
         String[] skippedNames,
         ObjectInstantiator<?> instantiator) {
-      super(
-          type,
-          writeFields,
-          readFields,
-          readJavaNames,
-          creatorInfo,
-          anyInfo,
-          skippedNames,
-          instantiator);
+      super(type, writeFields, readFields, creatorInfo, anyInfo, skippedNames, instantiator);
     }
 
     @Override

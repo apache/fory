@@ -318,7 +318,8 @@ public abstract class JsonFieldAccessor {
     }
   }
 
-  private static ForyJsonException accessException(Method method, Throwable e) {
+  /** Preserves ordinary property-method failure semantics for generated direct calls. */
+  protected static ForyJsonException accessException(Method method, Throwable e) {
     Throwable cause =
         e instanceof InvocationTargetException ? ((InvocationTargetException) e).getCause() : e;
     return new ForyJsonException("Cannot access JSON property method " + method, cause);

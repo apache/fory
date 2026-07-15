@@ -26,16 +26,20 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a reachable JSON model for build-time reflection configuration.
+ * Marks a JSON model for build-time generated execution and retention metadata.
  *
- * <p>When the Fory annotation processor is enabled, it generates exact R8 rules for the model and
- * the codec classes selected by its {@link JsonCodec} declarations. A class-literal subtype listed
- * by an annotated {@link JsonSubTypes} base is processed automatically. The annotation is also used
- * for reflection metadata registration in GraalVM native images.
+ * <p>The Fory annotation processor generates a type-owned JSON companion for an eligible concrete
+ * object model, together with exact R8 rules for the model, companion, and codec classes selected
+ * by its {@link JsonCodec} declarations. The companion provides direct property access and creator
+ * invocation on the JVM, Android, and GraalVM Native Image. A concrete subtype listed only by a
+ * class-literal {@link JsonSubTypes} entry receives retention metadata but needs its own direct
+ * {@code JsonType} annotation to receive a companion. A directly annotated model that reaches the
+ * default object codec fails during codec creation when its generated companion is missing.
  *
- * <p>This annotation does not change JSON codec semantics and is intentionally not inherited. It is
- * not required for Android runtime use: applications may supply equivalent exact R8 rules
- * themselves.
+ * <p>This annotation does not change the JSON schema and is intentionally not inherited. An
+ * ordinary mutable class may omit it and use reflection, with application-authored exact R8 rules
+ * on Android. Android-desugared Records require this annotation and the processor because Android
+ * does not expose the Java Record reflection APIs.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

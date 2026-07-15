@@ -44,9 +44,13 @@ import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
+import org.apache.fory.json.resolver.GeneratedJsonCodecFactories;
+import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.graalvm.nativeimage.hosted.Feature;
+import org.graalvm.nativeimage.hosted.RuntimeClassInitialization;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
 
 /** Registers reachable Fory JSON models for GraalVM native image reflection. */
@@ -69,6 +73,7 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   @Override
   public void beforeAnalysis(BeforeAnalysisAccess access) {
+    RuntimeClassInitialization.initializeAtBuildTime(GeneratedJsonCodecFactories.class);
     access.registerSubtypeReachabilityHandler(this::processReachableType, Object.class);
   }
 
@@ -104,16 +109,71 @@ final class ForyJsonGraalVMFeature implements Feature {
     if (!processedModels.add(type)) {
       return false;
     }
-    GraalvmSupport.registerClass(type);
+    RuntimeReflection.register(type);
     registerContainer(type);
     registerDeclarations(type);
     if (!type.isEnum()
         && !Collection.class.isAssignableFrom(type)
         && !Map.class.isAssignableFrom(type)) {
       registerModelHierarchy(access, type);
+      if (!type.isRecord() && GraalvmSupport.needReflectionRegisterForCreation(type)) {
+        RuntimeReflection.registerForReflectiveInstantiation(type);
+      }
     }
+    registerGeneratedCodec(access, type);
     registerSubtypes(access, type);
     return true;
+  }
+
+  private void registerGeneratedCodec(DuringAnalysisAccess access, Class<?> type) {
+    String codecName = JsonSharedRegistry.generatedCodecBinaryName(type);
+    Class<?> codecClass = access.findClassByName(codecName);
+    if (codecClass == null) {
+      return;
+    }
+    if (!GeneratedJsonCodec.class.isAssignableFrom(codecClass)) {
+      throw new IllegalStateException(
+          codecName + " does not extend " + GeneratedJsonCodec.class.getName());
+    }
+    try {
+      if (!Modifier.isPublic(codecClass.getModifiers())) {
+        throw new IllegalStateException("Generated JSON codec must be public: " + codecName);
+      }
+      codecClass.getConstructor();
+    } catch (NoSuchMethodException e) {
+      throw new IllegalStateException(
+          "Generated JSON codec must have a public no-argument constructor: " + codecName, e);
+    }
+    String factoryName = codecName + "$Factory";
+    Class<?> factoryClass = access.findClassByName(factoryName);
+    if (factoryClass == null || !GeneratedJsonCodecFactory.class.isAssignableFrom(factoryClass)) {
+      throw new IllegalStateException(
+          "Missing generated JSON codec factory " + factoryName + " for " + type.getName());
+    }
+    int modifiers = factoryClass.getModifiers();
+    if (!Modifier.isPublic(modifiers)
+        || !Modifier.isStatic(modifiers)
+        || !Modifier.isFinal(modifiers)) {
+      throw new IllegalStateException("Generated JSON codec factory must be public static final: " + factoryName);
+    }
+    try {
+      GeneratedJsonCodecFactory factory =
+          (GeneratedJsonCodecFactory) ReflectionUtils.getCtrHandle(factoryClass).invoke();
+      GeneratedJsonCodec<?> codec = JsonSharedRegistry.validateGeneratedCodec(type, factory.create());
+      if (codec.validatedRecord() != type.isRecord()) {
+        throw new IllegalStateException(
+            "Generated JSON codec Record metadata does not match " + type.getName());
+      }
+      GeneratedJsonCodecFactories.register(type, factory);
+    } catch (Throwable e) {
+      throw new IllegalStateException(
+          "Cannot initialize generated JSON codec factory " + factoryName, e);
+    }
+  }
+
+  @Override
+  public void afterAnalysis(AfterAnalysisAccess access) {
+    GeneratedJsonCodecFactories.freeze();
   }
 
   private void registerModelHierarchy(BeforeAnalysisAccess access, Class<?> type) {
@@ -122,6 +182,14 @@ final class ForyJsonGraalVMFeature implements Feature {
     for (Class<?> current = type;
         current != null && current != Object.class;
         current = current.getSuperclass()) {
+      // ObjectCodecBuilder still reads semantic annotations, generic types, and exact creator
+      // signatures at image runtime. Register that metadata here instead of routing JSON models
+      // through the core Fory feature, whose Record registration initializes RecordUtils and would
+      // reintroduce the native-Record path that generated JSON companions replace.
+      RuntimeReflection.register(current);
+      RuntimeReflection.register(current.getDeclaredFields());
+      RuntimeReflection.register(current.getDeclaredMethods());
+      RuntimeReflection.register(current.getDeclaredConstructors());
       for (Field field : current.getDeclaredFields()) {
         if (isJsonField(field)) {
           if (!current.isRecord() && Runtime.version().feature() <= 24) {

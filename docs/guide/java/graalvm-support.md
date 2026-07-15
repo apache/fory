@@ -46,9 +46,20 @@ compilation is unavailable.
 
 ## Fory JSON
 
-Fory JSON uses a separate Native Image workflow. It has no type-registration API and does not
-create a `ForyJson` instance or generate JSON codecs while the image is built. Add `@JsonType` to
-each object model that the native executable reads or writes:
+Fory JSON uses a separate Native Image workflow. Add the Fory annotation processor to the
+application compiler path:
+
+```xml
+<annotationProcessorPaths>
+  <path>
+    <groupId>org.apache.fory</groupId>
+    <artifactId>fory-annotation-processor</artifactId>
+    <version>${fory.version}</version>
+  </path>
+</annotationProcessorPaths>
+```
+
+Then add `@JsonType` to each concrete object model that the native executable reads or writes:
 
 ```java
 import org.apache.fory.json.ForyJson;
@@ -69,16 +80,19 @@ public class JsonExample {
 }
 ```
 
-The `fory-json` artifact activates its Native Image Feature automatically. Reachable `@JsonType`
-classes gate object-model metadata. `@JsonType` is not inherited, so annotate every concrete runtime
-model. An annotated base with a class-literal `@JsonSubTypes` table registers those listed subtypes
-automatically. Reachable concrete `Collection` and `Map` root types are also supported when they
+The processor generates direct property and creator operations. The `fory-json` artifact activates
+its Native Image Feature automatically and retains the generated factories and required model
+metadata. `@JsonType` is not inherited, so annotate every concrete runtime model. An annotated base
+with a class-literal `@JsonSubTypes` table registers those listed subtypes automatically, but each
+concrete object subtype needs its own direct `@JsonType` to receive generated operations. Reachable
+concrete `Collection` and `Map` root types are also supported when they
 have the public no-argument constructor required by Fory JSON. Reachable `@JsonCodec` declarations
 register their codec constructor even when the declaration target is not an object model. A class
 referenced only by a runtime string is not reachable; `JsonSubTypes.Type.className` is therefore
 unsupported in a native image.
 
-Native execution uses Fory JSON's interpreted object codec. `ForyJson.builder()` automatically
+Native execution uses Fory JSON's interpreted readers and writers with the generated property and
+creator operations. `ForyJson.builder()` automatically
 disables runtime code generation and asynchronous compilation in the native executable, while all
 other builder options retain their normal behavior. Applications can create differently configured
 `ForyJson` instances at runtime and do not need build-time initialization or reflection

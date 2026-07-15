@@ -75,11 +75,6 @@ final class Latin1ReaderCodegen extends JsonReaderCodegen {
   }
 
   @Override
-  String readFieldValueMethod() {
-    return "readLatin1Value";
-  }
-
-  @Override
   boolean isDirectName(String name, boolean tokenValueRead) {
     return JsonAsciiToken.isLongPackable(fieldNameToken(name));
   }

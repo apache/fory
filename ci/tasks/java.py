@@ -366,7 +366,8 @@ def run_graalvm_tests(main_class):
     # production multi-release jars consumed by native-image.
     common.exec_cmd(
         "mvn -T10 -B --no-transfer-progress clean package install:install "
-        "-pl .,fory-test-core,fory-core,fory-json -Dmaven.test.skip=true "
+        "-pl .,fory-test-core,fory-core,fory-json,fory-annotation-processor "
+        "-Dmaven.test.skip=true "
         "-Dmaven.source.skip=true -Dmaven.javadoc.skip=true"
     )
 

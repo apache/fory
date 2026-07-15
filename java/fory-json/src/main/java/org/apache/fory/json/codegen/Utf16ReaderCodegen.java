@@ -72,11 +72,6 @@ final class Utf16ReaderCodegen extends JsonReaderCodegen {
   }
 
   @Override
-  String readFieldValueMethod() {
-    return "readUtf16Value";
-  }
-
-  @Override
   boolean isDirectName(String name, boolean tokenValueRead) {
     return tokenValueRead ? isUtf16FieldNameToken(name) : isPackedName(name);
   }
