@@ -334,7 +334,7 @@ public class JsonTypeProcessorTest {
 
   @Test
   public void encodedRecordPipeline() throws Exception {
-    assumeRecordSupport();
+    assumeJava16Source();
     CompilationResult result =
         compile(
             "test.EncodedRecord",
@@ -470,7 +470,7 @@ public class JsonTypeProcessorTest {
 
   @Test
   public void recordRuntimePipeline() throws Exception {
-    assumeRecordSupport();
+    assumeJava16Source();
     CompilationResult result =
         compile(
             "test.RuntimeRecord",
@@ -487,7 +487,7 @@ public class JsonTypeProcessorTest {
 
   @Test
   public void recordValuePipeline() throws Exception {
-    assumeRecordSupport();
+    assumeJava16Source();
     CompilationResult result =
         compile(
             "test.RuntimeValueRecord",
@@ -796,6 +796,7 @@ public class JsonTypeProcessorTest {
 
   @Test
   public void memberCreatorFactory() throws Exception {
+    assumeJava16Source();
     CompilationResult result =
         compile(
             "test.MemberFactoryOwner",
@@ -933,7 +934,7 @@ public class JsonTypeProcessorTest {
 
   @Test
   public void recordRules() throws Exception {
-    assumeRecordSupport();
+    assumeJava16Source();
     CompilationResult result =
         compile(
             "test.CodecRecord",
@@ -968,7 +969,7 @@ public class JsonTypeProcessorTest {
 
   @Test
   public void ignoredRecordComponent() throws Exception {
-    assumeRecordSupport();
+    assumeJava16Source();
     CompilationResult result =
         compile(
             "test.IgnoredRecord",
@@ -1346,7 +1347,7 @@ public class JsonTypeProcessorTest {
     throw new AssertionError("Missing generated method accessor " + owner.getName() + "." + name);
   }
 
-  private static void assumeRecordSupport() {
+  private static void assumeJava16Source() {
     String version = System.getProperty("java.specification.version");
     if (version.startsWith("1.")) {
       version = version.substring(2);
@@ -1356,7 +1357,7 @@ public class JsonTypeProcessorTest {
       version = version.substring(0, dotIndex);
     }
     if (Integer.parseInt(version) < 16) {
-      throw new SkipException("Record source tests require JDK 16 or newer");
+      throw new SkipException("Source test requires JDK 16 or newer");
     }
   }
 
