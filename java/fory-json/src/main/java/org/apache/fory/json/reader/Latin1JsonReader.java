@@ -1692,9 +1692,30 @@ public final class Latin1JsonReader extends JsonReader {
         position = offset + 1;
         return resolveMemberName(start, offset, 16, word0, word1);
       }
-      return readStringTokenTail(start, offset, inputLength);
+      // Keep the beyond-cache-width scanner out of the short-name and ordinary-string hot paths.
+      return readLongMemberName(start, offset, inputLength);
     }
     return readMemberNameTail(start, offset, Long.BYTES, word0, 0);
+  }
+
+  private String readLongMemberName(int start, int offset, int inputLength) {
+    byte[] bytes = input;
+    int wordEnd = inputLength - Long.BYTES;
+    while (offset <= wordEnd) {
+      long stopMask = asciiStringStopMask(LittleEndian.getInt64(bytes, offset));
+      if (stopMask == 0) {
+        offset += Long.BYTES;
+        continue;
+      }
+      int stop = offset + (Long.numberOfTrailingZeros(stopMask) >>> 3);
+      int ch = bytes[stop];
+      if (ch == '"') {
+        position = stop + 1;
+        return newLatin1String(start, stop);
+      }
+      return readStringStop(start, stop, ch);
+    }
+    return readStringTokenTail(start, offset, inputLength);
   }
 
   private String readMemberNameTail(int start, int offset, int length, long word0, long word1) {

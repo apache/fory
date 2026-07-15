@@ -121,6 +121,19 @@ public class JsonMemberNameCacheTest {
   }
 
   @Test
+  public void longMemberNames() {
+    ForyJson json = newJson(64);
+    assertNotCached(json, "abcdefghijklmnopqrstuvwxyz0123456789");
+    assertNotCached(json, "abcdefghijklmnopé");
+
+    String first = firstKey(json.fromJson("{\"abcdefghijklmnop\\u0071\":1}", JsonObject.class));
+    String second = firstKey(json.fromJson("{\"abcdefghijklmnop\\u0071\":1}", JsonObject.class));
+    assertEquals(first, "abcdefghijklmnopq");
+    assertEquals(second, first);
+    assertNotSame(second, first);
+  }
+
+  @Test
   public void disabledAndFull() {
     ForyJson disabled = newJson(0);
     assertNotCached(disabled, "name");
@@ -196,7 +209,15 @@ public class JsonMemberNameCacheTest {
     ForyJson json = newJson(64);
     assertThrows(ForyJsonException.class, () -> json.fromJson("{\"bad\\q\":1}", JsonObject.class));
     assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"abcdefghijklmnop\\q\":1}", JsonObject.class));
+    assertThrows(
         ForyJsonException.class, () -> json.fromJson("{\"bad\u0001\":1}", JsonObject.class));
+    assertThrows(
+        ForyJsonException.class,
+        () -> json.fromJson("{\"abcdefghijklmnop\u0001\":1}", JsonObject.class));
+    assertThrows(
+        ForyJsonException.class, () -> json.fromJson("{\"abcdefghijklmnopq", JsonObject.class));
     assertThrows(ForyJsonException.class, () -> json.fromJson("{\"\ud800\":1}", JsonObject.class));
 
     byte[] invalidUtf8 = {'{', '"', (byte) 0xc0, (byte) 0x80, '"', ':', '1', '}'};
@@ -349,6 +370,8 @@ public class JsonMemberNameCacheTest {
   private static void assertNotCached(ForyJson json, String name) {
     String first = firstKey(json.fromJson(jsonForName(name), JsonObject.class));
     String second = firstKey(json.fromJson(jsonForName(name), JsonObject.class));
+    assertEquals(first, name);
+    assertEquals(second, name);
     assertNotSame(second, first);
   }
 
