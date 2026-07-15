@@ -130,6 +130,20 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     assertEquals(jsonText(newJson(), value), "{\"value\":\"A:x\"}");
     Object decoded = newJson().fromJson("{\"value\":\"A:y\"}", type);
     assertEquals(type.getMethod("value").invoke(decoded), "y");
+
+    Class<?> accessorType =
+        compileRecordClass(
+            "JsonCodecAccessorRecord",
+            "package org.apache.fory.json.records;\n"
+                + "import org.apache.fory.json.annotation.JsonCodec;\n"
+                + "import org.apache.fory.json.JsonCodecAnnotationTest.AStringCodec;\n"
+                + "public record JsonCodecAccessorRecord(String value) {\n"
+                + "  @JsonCodec(AStringCodec.class) public String value() { return value; }\n"
+                + "}\n");
+    Object accessorValue = accessorType.getConstructor(String.class).newInstance("x");
+    assertFailure(
+        () -> jsonText(newJson(), accessorValue),
+        "@JsonCodec requires an effective ordinary JSON getter");
   }
 
   @Test
@@ -152,7 +166,7 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
         () -> newJson().toJson(new OuterAny()), "cannot select the flattened JSON Any map");
     assertFailure(
         () -> newJson().toJson(new MethodOuterAny()),
-        "@JsonCodec requires an effective ordinary JSON getter or record accessor");
+        "@JsonCodec requires an effective ordinary JSON getter");
     assertFailure(() -> newJson().toJson(new KeyAny()), "map-key subtree");
     assertFailure(
         () -> newJson().toJson(new StaticCodecField()),
@@ -165,7 +179,7 @@ public class JsonCodecAnnotationTest extends ForyJsonTestModels {
     assertEquals(newJson().toJson(new OverriddenGetter()), "{\"value\":\"x\"}");
     assertFailure(
         () -> newJson().toJson(new UnrelatedMethod()),
-        "@JsonCodec requires an effective ordinary JSON getter or record accessor");
+        "@JsonCodec requires an effective ordinary JSON getter");
   }
 
   @Test

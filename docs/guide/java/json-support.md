@@ -754,11 +754,11 @@ public final class Invoice {
 }
 ```
 
-The method form is also valid on an effective record accessor. It is invalid on setters, creator
-factories, unrelated methods, and void methods. An ordinary getter declaration is invalid when
-field mode disables getter discovery; record accessors continue to follow the existing record owner
-path. For a selected field or getter, Fory checks the declaration first and uses the annotation on
-the root annotated type only when the declaration is absent.
+The method form is invalid on record accessors, setters, creator factories, unrelated methods, and
+void methods. An ordinary getter declaration is invalid when field mode disables getter discovery.
+Existing record-component `@JsonCodec` behavior is unchanged; declaring `@JsonCodec` only on a
+record accessor is unsupported. For a selected field or getter, Fory checks the declaration first
+and uses the annotation on the root annotated type only when the declaration is absent.
 
 Use the same annotation at a type-use position to select a codec for exactly that occurrence:
 

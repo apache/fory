@@ -1084,11 +1084,36 @@ final class ObjectCodecBuilder {
 
   private static void validateCodecMethod(
       Class<?> type, Method method, boolean propertyDiscoveryEnabled, boolean record) {
-    boolean readable =
-        record && isRecordAccessor(type, method) || !record && getterPropertyName(method) != null;
-    if ((!record && !propertyDiscoveryEnabled) || !isEligibleAccessor(method) || !readable) {
+    if (record) {
+      // javac copies a record-component annotation to every applicable generated member. The
+      // component/backing field remains the existing codec owner; tolerate only that identical
+      // duplicate so an explicit accessor-local declaration cannot be accepted and then ignored.
+      if (isPropagatedRecordCodec(type, method)) {
+        return;
+      }
       throw new ForyJsonException(
-          "@JsonCodec requires an effective ordinary JSON getter or record accessor: " + method);
+          "@JsonCodec requires an effective ordinary JSON getter: " + method);
+    }
+    if (!propertyDiscoveryEnabled
+        || !isEligibleAccessor(method)
+        || getterPropertyName(method) == null) {
+      throw new ForyJsonException(
+          "@JsonCodec requires an effective ordinary JSON getter: " + method);
+    }
+  }
+
+  private static boolean isPropagatedRecordCodec(Class<?> type, Method method) {
+    if (!isRecordAccessor(type, method)) {
+      return false;
+    }
+    try {
+      JsonCodec fieldCodec = type.getDeclaredField(method.getName()).getAnnotation(JsonCodec.class);
+      JsonCodec methodCodec = method.getAnnotation(JsonCodec.class);
+      return fieldCodec != null && methodCodec != null && fieldCodec.value() == methodCodec.value();
+    } catch (NoSuchFieldException e) {
+      return false;
+    } catch (RuntimeException | LinkageError e) {
+      throw new ForyJsonException("Cannot read record-component @JsonCodec for " + method, e);
     }
   }
 

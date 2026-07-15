@@ -39,11 +39,11 @@ import org.apache.fory.json.codec.JsonValueCodec;
  * such a hierarchy.
  *
  * <p>On a field, this annotation selects the codec for the field's root value. On a method, it is
- * valid only on an effective ordinary JSON getter or record accessor and selects the codec for the
- * return value. A {@link org.apache.fory.json.annotation.JsonAnyProperty JsonAnyProperty} field and
- * a {@link org.apache.fory.json.annotation.JsonAnyGetter JsonAnyGetter} are flattened into their
- * owning object and therefore cannot have a complete root codec, although their nested map values
- * may have type-use codecs. A declaration annotation takes precedence over an annotation on the
+ * valid only on an effective ordinary JSON getter and selects the codec for the return value. A
+ * {@link org.apache.fory.json.annotation.JsonAnyProperty JsonAnyProperty} field and a {@link
+ * org.apache.fory.json.annotation.JsonAnyGetter JsonAnyGetter} are flattened into their owning
+ * object and therefore cannot have a complete root codec, although their nested map values may have
+ * type-use codecs. A declaration annotation takes precedence over an annotation on the
  * corresponding root type use.
  *
  * <p>On a type use, this annotation applies only to that resolved value node. It can select the
