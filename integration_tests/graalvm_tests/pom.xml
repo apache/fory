@@ -235,9 +235,6 @@
                   <mainClass>${mainClass}</mainClass>
                   <includeProjectDependencies>true</includeProjectDependencies>
                   <includePluginDependencies>false</includePluginDependencies>
-                  <!-- The entry point has completed before cleanup starts. Native binaries are
-                       executed separately, so do not wait for idle common-pool daemon threads. -->
-                  <cleanupDaemonThreads>false</cleanupDaemonThreads>
                 </configuration>
               </execution>
             </executions>

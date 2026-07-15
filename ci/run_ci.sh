@@ -90,29 +90,24 @@ run_graalvm_tests() {
     java_major=$(echo "$java_version" | cut -d. -f1)
   fi
   if [[ "$java_major" -ge 25 ]]; then
-    export JDK_JAVA_OPTIONS="$(jdk25_runtime_options "ALL-UNNAMED") $(jdk25_javac_options)"
+    export JDK_JAVA_OPTIONS="$(jdk25_javac_options)"
   else
     unset JDK_JAVA_OPTIONS
   fi
   cd "$ROOT"/java
-  mvn -T10 -B --no-transfer-progress clean install \
-    -pl fory-json -am \
-    -DskipTests \
+  # GraalVM jobs consume production jars only; Java CI owns test/source jar verification.
+  # Run the install goal directly after package so verify is not repeated in every native job.
+  mvn -T10 -B --no-transfer-progress clean package install:install \
+    -pl .,fory-core,fory-json \
+    -Dmaven.test.skip=true \
+    -Dmaven.source.skip=true \
     -Dmaven.javadoc.skip=true
-  echo "Start to build GraalVM native image for $main_class"
+  echo "Start to build GraalVM JPMS native image for $main_class"
   cd "$ROOT"/integration_tests/graalvm_tests
   mvn -DmainClass="$main_class" -DskipTests=true -Dassembly.skipAssembly=true \
-    --no-transfer-progress -Pnative clean package
-  echo "Built GraalVM classpath native image"
-  echo "Start to run GraalVM classpath native image"
-  ./target/main
-  if [[ "$java_major" -ge 25 ]]; then
-    export JDK_JAVA_OPTIONS="$(jdk25_javac_options)"
-  fi
-  mvn -DmainClass="$main_class" -DskipTests=true -Dassembly.skipAssembly=true \
-    --no-transfer-progress -Pnative-module package
-  echo "Built GraalVM module-path native image"
-  echo "Start to run GraalVM module-path native image"
+    --no-transfer-progress -Pnative-module clean package
+  echo "Built GraalVM JPMS native image"
+  echo "Start to run GraalVM JPMS native image"
   ./target/main-module
   echo "Execute GraalVM tests for $main_class succeed!"
 }

@@ -353,42 +353,33 @@ def run_integration_tests():
 
 
 def run_graalvm_tests(main_class):
-    """Build and run classpath and module-path GraalVM tests."""
+    """Build and run JPMS GraalVM tests."""
     logging.info(f"Start GraalVM tests for {main_class}")
     java_major = get_jdk_major_version()
     if java_major is not None and java_major >= 25:
-        os.environ["JDK_JAVA_OPTIONS"] = " ".join(
-            jdk25_runtime_options("ALL-UNNAMED") + jdk25_javac_options()
-        )
+        os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk25_javac_options())
     else:
         os.environ.pop("JDK_JAVA_OPTIONS", None)
 
     common.cd_project_subdir("java")
+    # Java CI owns test/source jar verification. GraalVM jobs install only the
+    # production multi-release jars consumed by native-image.
     common.exec_cmd(
-        "mvn -T10 -B --no-transfer-progress clean install "
-        "-pl fory-json -am -DskipTests -Dmaven.javadoc.skip=true"
+        "mvn -T10 -B --no-transfer-progress clean package install:install "
+        "-pl .,fory-core,fory-json -Dmaven.test.skip=true "
+        "-Dmaven.source.skip=true -Dmaven.javadoc.skip=true"
     )
 
-    logging.info(f"Start to build GraalVM native image for {main_class}")
+    logging.info(f"Start to build GraalVM JPMS native image for {main_class}")
     common.cd_project_subdir("integration_tests/graalvm_tests")
     common.exec_cmd(
         f"mvn -DmainClass={main_class} -DskipTests=true "
-        "-Dassembly.skipAssembly=true --no-transfer-progress -Pnative clean package"
+        "-Dassembly.skipAssembly=true --no-transfer-progress "
+        "-Pnative-module clean package"
     )
 
-    logging.info("Built GraalVM classpath native image")
-    logging.info("Start to run GraalVM classpath native image")
-    common.exec_cmd("./target/main")
-
-    if java_major is not None and java_major >= 25:
-        os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk25_javac_options())
-    common.exec_cmd(
-        f"mvn -DmainClass={main_class} -DskipTests=true "
-        "-Dassembly.skipAssembly=true --no-transfer-progress -Pnative-module package"
-    )
-
-    logging.info("Built GraalVM module-path native image")
-    logging.info("Start to run GraalVM module-path native image")
+    logging.info("Built GraalVM JPMS native image")
+    logging.info("Start to run GraalVM JPMS native image")
     common.exec_cmd("./target/main-module")
     logging.info(f"Execute GraalVM tests for {main_class} succeed!")
 

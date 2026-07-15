@@ -591,13 +591,9 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Set up Python3.8
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.8
-      - name: Build native image and run
+      - name: Build JPMS native image and run
         shell: bash
-        run: python ./ci/run_ci.py java --version graalvm
+        run: ./ci/run_ci.sh graalvm_test
 
   graalvm_json:
     name: GraalVM JSON CI
@@ -622,13 +618,9 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Set up Python3.8
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.8
-      - name: Build JSON native image and run
+      - name: Build JSON JPMS native image and run
         shell: bash
-        run: python ./ci/run_ci.py java --version graalvm_json_tests
+        run: ./ci/run_ci.sh graalvm_json_tests
 
   kotlin:
     name: Kotlin CI
