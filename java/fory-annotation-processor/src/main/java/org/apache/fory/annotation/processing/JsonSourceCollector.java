@@ -264,15 +264,13 @@ final class JsonSourceCollector {
 
   private void collectObject(JsonSourceModel.Section section) {
     List<TypeElement> hierarchy = hierarchy(target);
+    validateObjectAnnotations(hierarchy);
     collectGenericHierarchy(section);
     Set<String> fieldNames = new HashSet<>();
     for (int i = hierarchy.size() - 1; i >= 0; i--) {
       TypeElement declaring = hierarchy.get(i);
       for (VariableElement field : ElementFilter.fieldsIn(declaring.getEnclosedElements())) {
-        Set<javax.lang.model.element.Modifier> fieldModifiers = field.getModifiers();
-        if (fieldModifiers.contains(javax.lang.model.element.Modifier.STATIC)
-            || fieldModifiers.contains(javax.lang.model.element.Modifier.TRANSIENT)
-            || types.erasure(field.asType()).toString().equals("java.lang.Class")) {
+        if (!isEligibleField(field)) {
           continue;
         }
         if (!fieldNames.add(field.getSimpleName().toString())) {
@@ -336,9 +334,9 @@ final class JsonSourceCollector {
     int flags = 0;
     boolean ignoreRead = ignore != null && annotations.bool(ignore, "ignoreRead", true);
     boolean ignoreWrite = ignore != null && annotations.bool(ignore, "ignoreWrite", true);
-    boolean read =
-        (record || !field.getModifiers().contains(javax.lang.model.element.Modifier.FINAL))
-            && !ignoreRead;
+    boolean any = annotations.has(field, JSON_ANY_FIELD);
+    boolean finalField = field.getModifiers().contains(javax.lang.model.element.Modifier.FINAL);
+    boolean read = (any || record || !finalField) && !ignoreRead;
     boolean write = !ignoreWrite;
     if (ignore != null) {
       flags |= JsonMetadataFormat.HAS_JSON_IGNORE;
@@ -355,15 +353,18 @@ final class JsonSourceCollector {
     if (write) {
       flags |= JsonMetadataFormat.WRITE_ELIGIBLE;
     }
-    if (annotations.has(field, JSON_ANY_FIELD)) {
+    if (any) {
       flags |= JsonMetadataFormat.JSON_ANY_PROPERTY;
     }
     JsonSourceModel.Property property = property(field);
     if (property.present) {
       flags |= JsonMetadataFormat.HAS_JSON_PROPERTY;
     }
+    // An input-enabled Any field first reads its existing Map even when JSON output is disabled.
+    // A non-final field also needs write access when a new Map must replace a null field value.
     int direction =
-        (read && !record ? JsonMetadataFormat.READ : 0) | (write ? JsonMetadataFormat.WRITE : 0);
+        (read && !finalField ? JsonMetadataFormat.READ : 0)
+            | (write || any && read ? JsonMetadataFormat.WRITE : 0);
     int operation = -1;
     if (direction != 0) {
       operation =
@@ -673,7 +674,7 @@ final class JsonSourceCollector {
     List<? extends Element> components = RecordElements.components(target);
     for (ExecutableElement constructor :
         ElementFilter.constructorsIn(target.getEnclosedElements())) {
-      if (constructor.getParameters().size() == components.size()) {
+      if (isCanonicalConstructor(constructor, components)) {
         int ownerToken = token(section, target.asType());
         int operation =
             operation(
@@ -695,6 +696,92 @@ final class JsonSourceCollector {
       }
     }
     fail("Missing canonical record constructor for " + target, target);
+  }
+
+  private void validateObjectAnnotations(List<TypeElement> hierarchy) {
+    boolean record = RecordElements.isRecord(target);
+    for (TypeElement declaration : hierarchy) {
+      for (VariableElement field : ElementFilter.fieldsIn(declaration.getEnclosedElements())) {
+        if (annotations.has(field, JSON_PROPERTY) && !isEligibleField(field)) {
+          fail("@JsonProperty is not supported on JSON field: " + field, field);
+        }
+        if (annotations.has(field, JSON_ANY_FIELD) && !isEligibleField(field)) {
+          fail("@JsonAnyProperty is not supported on JSON field: " + field, field);
+        }
+      }
+      for (ExecutableElement method : ElementFilter.methodsIn(declaration.getEnclosedElements())) {
+        boolean property = annotations.has(method, JSON_PROPERTY);
+        boolean anyGetter = annotations.has(method, JSON_ANY_GETTER);
+        boolean anySetter = annotations.has(method, JSON_ANY_SETTER);
+        if (!property && !anyGetter && !anySetter) {
+          continue;
+        }
+        if (isOverridden(method)) {
+          continue;
+        }
+        if (anyGetter && anySetter) {
+          fail("Conflicting JSON Any method annotations on " + method, method);
+        }
+        if (property && (anyGetter || anySetter)) {
+          fail("@JsonProperty is not supported on a JSON Any method: " + method, method);
+        }
+        Set<javax.lang.model.element.Modifier> modifiers = method.getModifiers();
+        boolean eligible =
+            modifiers.contains(javax.lang.model.element.Modifier.PUBLIC)
+                && !modifiers.contains(javax.lang.model.element.Modifier.STATIC);
+        if (property) {
+          if (!eligible || record && !isRecordAccessor(method)) {
+            fail("@JsonProperty is not supported on JSON method: " + method, method);
+          }
+          if (methodShape(method, false, false) < 0) {
+            fail("@JsonProperty requires a JSON getter or setter: " + method, method);
+          }
+        } else if (!eligible) {
+          fail(
+              (anyGetter ? "Invalid @JsonAnyGetter method " : "Invalid @JsonAnySetter method ")
+                  + method,
+              method);
+        } else {
+          methodShape(method, anyGetter, anySetter);
+        }
+      }
+    }
+  }
+
+  private boolean isEligibleField(VariableElement field) {
+    Set<javax.lang.model.element.Modifier> modifiers = field.getModifiers();
+    return !modifiers.contains(javax.lang.model.element.Modifier.STATIC)
+        && !modifiers.contains(javax.lang.model.element.Modifier.TRANSIENT)
+        && !types.erasure(field.asType()).toString().equals("java.lang.Class");
+  }
+
+  private boolean isOverridden(ExecutableElement method) {
+    Set<javax.lang.model.element.Modifier> modifiers = method.getModifiers();
+    if (method.getEnclosingElement().equals(target)
+        || !modifiers.contains(javax.lang.model.element.Modifier.PUBLIC)
+        || modifiers.contains(javax.lang.model.element.Modifier.STATIC)) {
+      return false;
+    }
+    for (ExecutableElement candidate : ElementFilter.methodsIn(elements.getAllMembers(target))) {
+      if (!candidate.equals(method) && elements.overrides(candidate, method, target)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean isCanonicalConstructor(
+      ExecutableElement constructor, List<? extends Element> components) {
+    List<? extends VariableElement> parameters = constructor.getParameters();
+    if (parameters.size() != components.size()) {
+      return false;
+    }
+    for (int i = 0; i < parameters.size(); i++) {
+      if (!types.isSameType(parameters.get(i).asType(), components.get(i).asType())) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private int typeNode(

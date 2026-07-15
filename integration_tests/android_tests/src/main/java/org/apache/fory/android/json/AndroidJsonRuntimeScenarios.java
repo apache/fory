@@ -35,10 +35,17 @@ import org.apache.fory.android.json.jar.JarPrimitiveBean;
 import org.apache.fory.android.json.jar.JarShape;
 import org.apache.fory.android.json.jar.JarSquare;
 import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonType;
+import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.reader.Utf16JsonReader;
+import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.writer.StringJsonWriter;
+import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.reflect.TypeRef;
 
@@ -192,6 +199,23 @@ public final class AndroidJsonRuntimeScenarios {
     assertEquals(31, privateCopy.getNumber());
   }
 
+  public static void platformSuperclassRequiresCodec() {
+    PlatformChild value = new PlatformChild("platform");
+    try {
+      ForyJson.builder().build().toJson(value);
+      throw new AssertionError("Platform superclass mapping must require an exact codec");
+    } catch (ForyJsonException expected) {
+      check(
+          expected.getMessage().contains("crosses platform superclass java.lang.RuntimeException"),
+          "Unexpected platform superclass failure: " + expected.getMessage());
+    }
+
+    ForyJson json =
+        ForyJson.builder().registerCodec(PlatformChild.class, new PlatformChildCodec()).build();
+    assertEquals("\"platform\"", json.toJson(value));
+    assertEquals("platform", json.fromJson("\"platform\"", PlatformChild.class).value);
+  }
+
   public static Object newWriteBenchmark() {
     return new WriteBenchmark(ForyJson.builder().build(), benchmarkValue());
   }
@@ -292,6 +316,52 @@ public final class AndroidJsonRuntimeScenarios {
     @JsonCreator
     public static PrivateFactoryModel create(@JsonProperty("number") int number) {
       return new PrivateFactoryModel(number);
+    }
+  }
+
+  @JsonType
+  public static final class PlatformChild extends RuntimeException {
+    public String value;
+
+    public PlatformChild() {}
+
+    PlatformChild(String value) {
+      this.value = value;
+    }
+  }
+
+  public static final class PlatformChildCodec implements JsonValueCodec<PlatformChild> {
+    @Override
+    public void writeString(StringJsonWriter writer, PlatformChild value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.value);
+      }
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, PlatformChild value) {
+      if (value == null) {
+        writer.writeNull();
+      } else {
+        writer.writeString(value.value);
+      }
+    }
+
+    @Override
+    public PlatformChild readLatin1(Latin1JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new PlatformChild(reader.readString());
+    }
+
+    @Override
+    public PlatformChild readUtf16(Utf16JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new PlatformChild(reader.readString());
+    }
+
+    @Override
+    public PlatformChild readUtf8(Utf8JsonReader reader) {
+      return reader.tryReadNullToken() ? null : new PlatformChild(reader.readString());
     }
   }
 

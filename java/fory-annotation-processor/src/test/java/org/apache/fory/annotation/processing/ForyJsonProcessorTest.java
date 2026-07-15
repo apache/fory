@@ -133,6 +133,39 @@ public class ForyJsonProcessorTest {
                 + "}\n");
     Assert.assertTrue(field.success, field.diagnostics());
     runAndroidAnyProbe(field, "test.AnyFieldModel", "field");
+
+    CompilationResult finalReadOnly =
+        compile(
+            "test.FinalReadOnlyAny",
+            "package test;\n"
+                + "import java.util.*;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public class FinalReadOnlyAny {\n"
+                + "  public int id;\n"
+                + "  @JsonAnyProperty @JsonIgnore(ignoreRead=false, ignoreWrite=true)\n"
+                + "  public final Map<String, Integer> extra = new LinkedHashMap<>();\n"
+                + "}\n");
+    Assert.assertTrue(finalReadOnly.success, finalReadOnly.diagnostics());
+    assertAnyDirection(finalReadOnly, "test.FinalReadOnlyAny", JsonMetadataFormat.WRITE);
+    runAndroidReadOnlyAnyProbe(finalReadOnly, "test.FinalReadOnlyAny");
+
+    CompilationResult mutableReadOnly =
+        compile(
+            "test.MutableReadOnlyAny",
+            "package test;\n"
+                + "import java.util.*;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public class MutableReadOnlyAny {\n"
+                + "  public int id;\n"
+                + "  @JsonAnyProperty @JsonIgnore(ignoreRead=false, ignoreWrite=true)\n"
+                + "  public Map<String, Integer> extra;\n"
+                + "}\n");
+    Assert.assertTrue(mutableReadOnly.success, mutableReadOnly.diagnostics());
+    assertAnyDirection(
+        mutableReadOnly,
+        "test.MutableReadOnlyAny",
+        JsonMetadataFormat.READ | JsonMetadataFormat.WRITE);
+    runAndroidReadOnlyAnyProbe(mutableReadOnly, "test.MutableReadOnlyAny");
   }
 
   @Test
@@ -185,6 +218,47 @@ public class ForyJsonProcessorTest {
             + "  @JsonAnyGetter public List<Object> values() { return null; }\n"
             + "}\n",
         "Invalid @JsonAnyGetter");
+    assertCompilationFails(
+        "test.PrivateProperty",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonType public class PrivateProperty {\n"
+            + "  @JsonProperty private String getValue() { return null; }\n"
+            + "}\n",
+        "@JsonProperty is not supported on JSON method");
+    assertCompilationFails(
+        "test.PrivateAnySetter",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonType public class PrivateAnySetter {\n"
+            + "  @JsonAnySetter private void put(String name, Object value) {}\n"
+            + "}\n",
+        "Invalid @JsonAnySetter");
+    assertCompilationFails(
+        "test.StaticPropertyField",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonType public class StaticPropertyField {\n"
+            + "  @JsonProperty public static int value;\n"
+            + "}\n",
+        "@JsonProperty is not supported on JSON field");
+    assertCompilationFails(
+        "test.TransientAnyField",
+        "package test;\n"
+            + "import java.util.Map;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonType public class TransientAnyField {\n"
+            + "  @JsonAnyProperty public transient Map<String, Object> values;\n"
+            + "}\n",
+        "@JsonAnyProperty is not supported on JSON field");
+    assertCompilationFails(
+        "test.ClassPropertyField",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonType public class ClassPropertyField {\n"
+            + "  @JsonProperty public Class<?> value;\n"
+            + "}\n",
+        "@JsonProperty is not supported on JSON field");
   }
 
   @Test
@@ -322,6 +396,31 @@ public class ForyJsonProcessorTest {
       Assert.assertFalse((Boolean) Class.class.getMethod("isRecord").invoke(target));
     }
     runAndroidRecordProbe(result, "test.Point");
+
+    CompilationResult overloaded =
+        compile(
+            "test.OverloadedRecord",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonType;\n"
+                + "@JsonType public record OverloadedRecord(int value) {\n"
+                + "  public OverloadedRecord(String value) { this(Integer.parseInt(value)); }\n"
+                + "  public OverloadedRecord(int value) { this.value = value; }\n"
+                + "}\n");
+    Assert.assertTrue(overloaded.success, overloaded.diagnostics());
+    try (URLClassLoader loader = overloaded.classLoader()) {
+      JsonDecodedMetadata metadata =
+          decode(overloaded, loader, "test.OverloadedRecord", JsonTypeMetadata.OBJECT);
+      JsonDecodedMetadata.Operation operation =
+          metadata.operation(metadata.instantiator(0).operation());
+      Assert.assertEquals(operation.mode(), JsonMetadataFormat.OP_DIRECT);
+    }
+    String overloadedSource =
+        overloaded.generatedSource("test/OverloadedRecord_ForyJsonMetadata.java");
+    Assert.assertTrue(
+        overloadedSource.contains("new test.OverloadedRecord(((Integer) arguments[0]).intValue())"),
+        overloadedSource);
+    stripRecordAttribute(overloaded.classRoot.resolve("test/OverloadedRecord.class"));
+    runAndroidIntRecordProbe(overloaded, "test.OverloadedRecord");
   }
 
   private static void runAndroidRecordProbe(CompilationResult result, String typeName)
@@ -341,6 +440,23 @@ public class ForyJsonProcessorTest {
     Assert.assertEquals(process.waitFor(), 0, output);
   }
 
+  private static void runAndroidIntRecordProbe(CompilationResult result, String typeName)
+      throws Exception {
+    String separator = System.getProperty("path.separator");
+    String classPath = result.classRoot + separator + forkClassPath();
+    ProcessBuilder builder =
+        new ProcessBuilder(
+            System.getProperty("java.home") + File.separator + "bin" + File.separator + "java",
+            "-cp",
+            classPath,
+            AndroidIntRecordProbe.class.getName(),
+            typeName);
+    builder.environment().put("FORY_ANDROID_ENABLED", "1");
+    Process process = builder.redirectErrorStream(true).start();
+    String output = readFully(process.getInputStream());
+    Assert.assertEquals(process.waitFor(), 0, output);
+  }
+
   private static void runAndroidAnyProbe(
       CompilationResult result, String typeName, String accessKind) throws Exception {
     String separator = System.getProperty("path.separator");
@@ -353,6 +469,23 @@ public class ForyJsonProcessorTest {
             AndroidAnyProbe.class.getName(),
             typeName,
             accessKind);
+    builder.environment().put("FORY_ANDROID_ENABLED", "1");
+    Process process = builder.redirectErrorStream(true).start();
+    String output = readFully(process.getInputStream());
+    Assert.assertEquals(process.waitFor(), 0, output);
+  }
+
+  private static void runAndroidReadOnlyAnyProbe(CompilationResult result, String typeName)
+      throws Exception {
+    String separator = System.getProperty("path.separator");
+    String classPath = result.classRoot + separator + forkClassPath();
+    ProcessBuilder builder =
+        new ProcessBuilder(
+            System.getProperty("java.home") + File.separator + "bin" + File.separator + "java",
+            "-cp",
+            classPath,
+            AndroidReadOnlyAnyProbe.class.getName(),
+            typeName);
     builder.environment().put("FORY_ANDROID_ENABLED", "1");
     Process process = builder.redirectErrorStream(true).start();
     String output = readFully(process.getInputStream());
@@ -387,6 +520,25 @@ public class ForyJsonProcessorTest {
     }
   }
 
+  public static final class AndroidReadOnlyAnyProbe {
+    @SuppressWarnings("unchecked")
+    public static void main(String[] args) throws Exception {
+      Class<?> type = Class.forName(args[0]);
+      ForyJson json = ForyJson.builder().withCodegen(true).build();
+      Object value = json.fromJson("{\"id\":7,\"extra\":8}", type);
+      java.util.Map<String, Integer> extra =
+          (java.util.Map<String, Integer>) type.getField("extra").get(value);
+      if (type.getField("id").getInt(value) != 7
+          || !Integer.valueOf(8).equals(extra.get("extra"))) {
+        throw new AssertionError("Generated input-only Android Any access did not read the map");
+      }
+      String text = json.toJson(value);
+      if (!"{\"id\":7}".equals(text)) {
+        throw new AssertionError(text);
+      }
+    }
+  }
+
   public static final class AndroidRecordProbe {
     public static void main(String[] args) throws Exception {
       Class<?> type = Class.forName(args[0]);
@@ -409,6 +561,24 @@ public class ForyJsonProcessorTest {
           || !"point".equals(name)) {
         throw new AssertionError(
             "Generated record value was x=" + x + ", ignored=" + ignored + ", name=" + name);
+      }
+    }
+  }
+
+  public static final class AndroidIntRecordProbe {
+    public static void main(String[] args) throws Exception {
+      Class<?> type = Class.forName(args[0]);
+      if ((Boolean) Class.class.getMethod("isRecord").invoke(type)) {
+        throw new AssertionError("Record attribute must be absent");
+      }
+      ForyJson json = ForyJson.builder().withCodegen(true).build();
+      Object value = json.fromJson("{\"value\":7}", type);
+      if (!Integer.valueOf(7).equals(type.getMethod("value").invoke(value))) {
+        throw new AssertionError("Generated canonical record constructor was not selected");
+      }
+      String text = json.toJson(value);
+      if (!"{\"value\":7}".equals(text)) {
+        throw new AssertionError(text);
       }
     }
   }
@@ -747,6 +917,16 @@ public class ForyJsonProcessorTest {
       }
     }
     throw new AssertionError("Missing method " + name);
+  }
+
+  private static void assertAnyDirection(CompilationResult result, String typeName, int direction)
+      throws Exception {
+    try (URLClassLoader loader = result.classLoader()) {
+      JsonDecodedMetadata metadata = decode(result, loader, typeName, JsonTypeMetadata.OBJECT);
+      JsonDecodedMetadata.Field field = field(metadata, "extra");
+      Assert.assertTrue(field.operation() >= 0);
+      Assert.assertEquals(metadata.operation(field.operation()).directionMask(), direction);
+    }
   }
 
   private static JsonDecodedMetadata decode(

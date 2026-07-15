@@ -342,7 +342,9 @@ final class GeneratedObjectAccess {
       Class<?> raw = superclass.rawType;
       if (raw != Object.class
           && !raw.getName().equals("java.lang.Record")
-          && raw.getClassLoader() == null) {
+          // Android represents platform classes with BootClassLoader rather than a null loader.
+          // Loader identity with Object is the portable boundary for platform-owned hierarchies.
+          && raw.getClassLoader() == Object.class.getClassLoader()) {
         throw new ForyJsonException(
             "Generated JSON object mapping for "
                 + owner.getName()

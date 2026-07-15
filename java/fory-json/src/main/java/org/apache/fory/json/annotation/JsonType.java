@@ -30,9 +30,10 @@ import java.lang.annotation.Target;
  *
  * <p>The annotation does not change JSON behavior on the ordinary JVM and is intentionally not
  * inherited. GraalVM uses it to register native-image reflection metadata. Android requires the
- * Fory annotation processor to generate R8-safe metadata when the declaration is compiled. A
- * class-literal subtype listed by an annotated {@link JsonSubTypes} base is reachable from the
- * annotated base.
+ * Fory annotation processor to generate R8-safe metadata when the declaration is compiled. GraalVM
+ * also treats class-literal subtypes listed by an annotated {@link JsonSubTypes} base as reachable.
+ * On Android, every subtype that uses default object mapping must declare {@code JsonType} so the
+ * processor can generate its object metadata.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

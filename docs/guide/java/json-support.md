@@ -674,7 +674,8 @@ inherited from another annotated base. Null is plain JSON null unless codec prec
 custom complete-value codec for the declared base, replacing the annotation. Readers accept only
 the configured shape, so changing inclusion is a wire-format change. At GraalVM native-image
 runtime, annotate the base with `JsonType` and use class literals instead of `className`. Listed
-class-literal subtypes are registered automatically.
+class-literal subtypes are registered automatically. On Android, annotate the base and every listed
+subtype that uses default object mapping so the processor generates metadata for each declaration.
 
 ## Custom codecs
 

@@ -91,4 +91,8 @@ public class ForyAndroidInstrumentedTest {
     AndroidJsonRuntimeScenarios.typeRefAndPrivateStaticTypeSurviveR8();
   }
 
+  @Test
+  public void platformSuperclassRequiresCodec() {
+    AndroidJsonRuntimeScenarios.platformSuperclassRequiresCodec();
+  }
 }
