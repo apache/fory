@@ -1,0 +1,36 @@
+--- a/benchmarks/java/src/main/java/org/apache/fory/benchmark/JsonObjectParseBenchmark.java
++++ b/benchmarks/java/src/main/java/org/apache/fory/benchmark/JsonObjectParseBenchmark.java
+@@ -21,0 +22 @@
++import java.lang.reflect.InvocationTargetException;
+@@ -25,0 +27 @@
++import org.apache.fory.json.ForyJsonBuilder;
+@@ -81,4 +83,4 @@
+-      cachedJson = buildJson(ForyJson.DEFAULT_MAX_CACHED_MEMBER_NAMES);
+-      disabledJson = buildJson(0);
+-      localCollisionJson = buildJson(3);
+-      sharedFullJson = buildJson(1);
++      cachedJson = buildJson(true);
++      disabledJson = buildJson(false);
++      localCollisionJson = buildJson(true);
++      sharedFullJson = buildJson(true);
+@@ -91,6 +93,13 @@
+-    private static ForyJson buildJson(int maxCachedMemberNames) {
+-      return ForyJson.builder()
+-          .withConcurrencyLevel(1)
+-          .withAsyncCompilation(false)
+-          .withMaxCachedMemberNames(maxCachedMemberNames)
+-          .build();
++    private static ForyJson buildJson(boolean cacheEnabled) {
++      ForyJsonBuilder builder =
++          ForyJson.builder().withConcurrencyLevel(1).withAsyncCompilation(false);
++      if (!cacheEnabled) {
++        try {
++          ForyJsonBuilder.class.getMethod("withMaxCachedMemberNames", int.class).invoke(builder, 0);
++        } catch (NoSuchMethodException ignored) {
++          // A runtime from before member-name caching is already equivalent to disabled caching.
++        } catch (IllegalAccessException | InvocationTargetException e) {
++          throw new IllegalStateException("Unable to disable member-name caching", e);
++        }
++      }
++      return builder.build();
+     }

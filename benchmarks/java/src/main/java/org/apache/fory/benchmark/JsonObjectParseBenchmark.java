@@ -61,7 +61,7 @@ public class JsonObjectParseBenchmark {
           + "\"ec\\u0068o\":5,\"fox\\u0074rot\":6,\"go\\u006cf\":7,\"hot\\u0065l\":8}";
   private static final String UNICODE_NAMES_JSON =
       "{\"甲\":1,\"乙\":2,\"丙\":3,\"丁\":4,\"戊\":5,\"己\":6,\"庚\":7,\"辛\":8}";
-  private static final String LOCAL_COLLISION_JSON = "{\"second\":1}";
+  private static final String LOCAL_COLLISION_JSON = "{\"first\":1,\"second\":2}";
   private static final String SHARED_FULL_JSON = "{\"second\":1}";
   private static final String SHARED_FULL_MIXED_JSON = "{\"first\":1,\"second\":2}";
   private static final TypeRef<Map<String, Integer>> STRING_INT_MAP =

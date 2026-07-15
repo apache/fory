@@ -18,6 +18,11 @@ Don't skip **warm up**, otherwise the results aren't accurate.
  -f 1 -wi 3 -i 3 -t 1 -w 2s -r 2s -rf cs
 ```
 
+## Focused JSON parsing benchmark
+
+See the [JSON member-name cache benchmark](json-member-name-cache.md) for source-aligned
+before/after throughput and allocation results across cached and fallback parsing paths.
+
 ## Benchmark Data
 
 ### Struct
