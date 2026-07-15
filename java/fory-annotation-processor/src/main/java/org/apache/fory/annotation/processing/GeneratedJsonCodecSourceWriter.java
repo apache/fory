@@ -60,6 +60,7 @@ final class GeneratedJsonCodecSourceWriter {
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
   private static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
+  private static final String JSON_UNWRAPPED = JSON_PACKAGE + ".annotation.JsonUnwrapped";
   private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
   private static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
   private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
@@ -420,15 +421,103 @@ final class GeneratedJsonCodecSourceWriter {
       }
     }
     boolean valueRecord = hasEffectiveJsonValue(model.target);
+    ExecutableElement canonicalConstructor = null;
     for (ExecutableElement constructor :
         ElementFilter.constructorsIn(model.target.getEnclosedElements())) {
       if (annotationMirror(constructor, JSON_CREATOR) != null
           && (!valueRecord || !isRecordValueCreator(constructor, components))) {
         throw invalid("Records cannot declare @JsonCreator", constructor);
       }
+      if (isRecordConstructor(constructor, components)) {
+        canonicalConstructor = constructor;
+      } else {
+        rejectRecordParameters(constructor);
+      }
     }
+    if (canonicalConstructor == null) {
+      throw invalid("Cannot find the canonical Record constructor", model.target);
+    }
+    validateRecordParameters(model.target, components, canonicalConstructor);
     String declaration = "<init>(" + join(binaryTypes) + ");";
     return new Creator(names, sourceTypes, kinds, null, true, declaration, false);
+  }
+
+  private boolean isRecordConstructor(
+      ExecutableElement constructor, List<? extends Element> components) {
+    List<? extends VariableElement> parameters = constructor.getParameters();
+    if (parameters.size() != components.size()) {
+      return false;
+    }
+    for (int i = 0; i < parameters.size(); i++) {
+      if (!types.isSameType(
+          types.erasure(parameters.get(i).asType()), types.erasure(components.get(i).asType()))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private void rejectRecordParameters(ExecutableElement constructor) {
+    for (VariableElement parameter : constructor.getParameters()) {
+      if (annotationMirror(parameter, JSON_CODEC) != null
+          || annotationMirror(parameter, JSON_PROPERTY) != null
+          || annotationMirror(parameter, JSON_UNWRAPPED) != null) {
+        throw invalid(
+            "JSON property annotations are not supported on non-canonical Record constructor parameters",
+            parameter);
+      }
+    }
+  }
+
+  private void validateRecordParameters(
+      TypeElement target, List<? extends Element> components, ExecutableElement constructor) {
+    List<? extends VariableElement> parameters = constructor.getParameters();
+    for (int i = 0; i < components.size(); i++) {
+      Element component = components.get(i);
+      VariableElement field = findRecordField(target, component);
+      ExecutableElement accessor = findRecordAccessor(target, component);
+      validateRecordAnnotation(parameters.get(i), field, accessor, JSON_CODEC);
+      validateRecordAnnotation(parameters.get(i), field, accessor, JSON_PROPERTY);
+      validateRecordAnnotation(parameters.get(i), field, accessor, JSON_UNWRAPPED);
+    }
+  }
+
+  private void validateRecordAnnotation(
+      VariableElement parameter,
+      VariableElement field,
+      ExecutableElement accessor,
+      String annotationName) {
+    AnnotationMirror parameterAnnotation = annotationMirror(parameter, annotationName);
+    if (parameterAnnotation == null) {
+      return;
+    }
+    AnnotationMirror fieldAnnotation =
+        field == null ? null : annotationMirror(field, annotationName);
+    AnnotationMirror accessorAnnotation =
+        accessor == null ? null : annotationMirror(accessor, annotationName);
+    if (sameAnnotation(parameterAnnotation, fieldAnnotation)
+        || sameAnnotation(parameterAnnotation, accessorAnnotation)) {
+      return;
+    }
+    throw invalid(
+        "Canonical Record constructor parameter @"
+            + annotationName.substring(annotationName.lastIndexOf('.') + 1)
+            + " must match the corresponding Record field or accessor",
+        parameter);
+  }
+
+  private boolean sameAnnotation(AnnotationMirror left, AnnotationMirror right) {
+    if (right == null || !types.isSameType(left.getAnnotationType(), right.getAnnotationType())) {
+      return false;
+    }
+    for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
+        elements.getElementValuesWithDefaults(left).entrySet()) {
+      AnnotationValue value = annotationValue(right, entry.getKey().getSimpleName().toString());
+      if (value == null || !entry.getValue().toString().equals(value.toString())) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private boolean isRecordValueCreator(
@@ -973,6 +1062,15 @@ final class GeneratedJsonCodecSourceWriter {
       if (method.getSimpleName().contentEquals(component.getSimpleName())
           && method.getParameters().isEmpty()) {
         return method;
+      }
+    }
+    return null;
+  }
+
+  private VariableElement findRecordField(TypeElement target, Element component) {
+    for (VariableElement field : ElementFilter.fieldsIn(target.getEnclosedElements())) {
+      if (field.getSimpleName().contentEquals(component.getSimpleName())) {
+        return field;
       }
     }
     return null;

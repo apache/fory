@@ -997,23 +997,35 @@ final class ObjectCodecBuilder {
       }
       constructor = (Constructor<?>) generatedCodec.validatedCreator();
     }
-    Type[] parameterTypes = constructor.getGenericParameterTypes();
-    Parameter[] parameters = constructor.getParameters();
+    Type[] parameterTypes = generatedCodec == null ? constructor.getGenericParameterTypes() : null;
+    // Fields and accessors already carry the annotations propagated from Record components. The
+    // generated companion owns the canonical parameter order on Android, where Android 8 ART can
+    // crash while reading annotations from desugared Record constructor parameters.
+    Parameter[] parameters = generatedCodec == null ? constructor.getParameters() : null;
     List<JsonCreatorFieldInfo> fields = new ArrayList<>(names.length);
     for (int i = 0; i < names.length; i++) {
       FieldBuilder builder = builders.get(names[i]);
       if (builder == null || !builder.hasLogicalMember()) {
         throw new ForyJsonException("Unknown JSON record component " + names[i]);
       }
-      builder.mergeAnnotation(type, parameters[i]);
+      if (parameters != null) {
+        builder.mergeAnnotation(type, parameters[i]);
+      }
       if (!builder.creatorReadAllowed()) {
         continue;
       }
-      bindCreatorType(ownerType, constructor, i, parameterTypes[i], builder);
+      if (parameters == null) {
+        builder.creatorArgumentIndex = i;
+      } else {
+        bindCreatorType(ownerType, constructor, i, parameterTypes[i], builder);
+      }
       if (builder.isAny() || builder.unwrappedAnnotation != null) {
         continue;
       }
-      Type resolved = ownerType.resolveType(parameterTypes[i]).getType();
+      Type resolved =
+          parameterTypes == null
+              ? builder.logicalType(ownerType)
+              : ownerType.resolveType(parameterTypes[i]).getType();
       fields.add(
           new JsonCreatorFieldInfo(
               builder.jsonName(namingStrategy),
@@ -1093,6 +1105,8 @@ final class ObjectCodecBuilder {
           throw new ForyJsonException("Unknown @JsonCreator Java property " + javaName);
         }
         bindCreatorType(ownerType, creator, i, parameterTypes[i], builder);
+        builder.mergeCodec(parameters[i]);
+        builder.mergeUnwrapped(parameters[i]);
         if (builder.isAny() && !builder.anyReadEnabled()) {
           throw new ForyJsonException(
               "JSON Any creator property has no read-enabled field: " + javaName);
@@ -1275,7 +1289,6 @@ final class ObjectCodecBuilder {
               + parameterIndex);
     }
     builder.creatorArgumentIndex = parameterIndex;
-    builder.setCreatorType(creator, parameterIndex);
   }
 
   private static void rejectCreatorHashCollisions(JsonCreatorFieldInfo[] fields) {
@@ -1400,9 +1413,13 @@ final class ObjectCodecBuilder {
         }
       }
     }
-    for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-      validateCodecParameters(type, constructor, record, generatedCodec);
-      validateUnwrappedParameters(type, constructor, record, generatedCodec);
+    // Generated Record parameter annotations are checked by the source processor against fields
+    // and accessors. Do not re-read desugared constructor parameters: Android 8 ART may crash.
+    if (!record || generatedCodec == null) {
+      for (Constructor<?> constructor : type.getDeclaredConstructors()) {
+        validateCodecParameters(type, constructor, record);
+        validateUnwrappedParameters(type, constructor, record);
+      }
     }
     for (Method method : type.getMethods()) {
       if (!method.getDeclaringClass().isInterface()) {
@@ -1475,17 +1492,14 @@ final class ObjectCodecBuilder {
   }
 
   private static void validateUnwrappedParameters(
-      Class<?> type,
-      Constructor<?> constructor,
-      boolean record,
-      GeneratedJsonCodec<?> generatedCodec) {
+      Class<?> type, Constructor<?> constructor, boolean record) {
     Parameter[] parameters = constructor.getParameters();
     for (int i = 0; i < parameters.length; i++) {
       JsonUnwrapped annotation = parameters[i].getAnnotation(JsonUnwrapped.class);
       if (annotation == null || constructor.isAnnotationPresent(JsonCreator.class)) {
         continue;
       }
-      if (record && isPropagatedRecordUnwrapped(type, constructor, i, annotation, generatedCodec)) {
+      if (record && isPropagatedRecordUnwrapped(type, constructor, i, annotation)) {
         continue;
       }
       throw new ForyJsonException(
@@ -1552,17 +1566,14 @@ final class ObjectCodecBuilder {
   }
 
   private static void validateCodecParameters(
-      Class<?> type,
-      Constructor<?> constructor,
-      boolean record,
-      GeneratedJsonCodec<?> generatedCodec) {
+      Class<?> type, Constructor<?> constructor, boolean record) {
     Parameter[] parameters = constructor.getParameters();
     for (int i = 0; i < parameters.length; i++) {
       JsonCodec annotation = parameters[i].getAnnotation(JsonCodec.class);
       if (annotation == null || constructor.isAnnotationPresent(JsonCreator.class)) {
         continue;
       }
-      if (record && isRecordConstructor(type, constructor, generatedCodec)) {
+      if (record && isRecordConstructor(type, constructor)) {
         continue;
       }
       throw new ForyJsonException("@JsonCodec parameter requires a @JsonCreator: " + constructor);
@@ -1650,19 +1661,18 @@ final class ObjectCodecBuilder {
     }
   }
 
-  private static boolean isRecordConstructor(
-      Class<?> type, Constructor<?> constructor, GeneratedJsonCodec<?> generatedCodec) {
-    Class<?>[] componentTypes;
-    if (generatedCodec == null) {
-      RecordComponent[] components = RecordUtils.getRecordComponents(type);
-      componentTypes = new Class<?>[components.length];
-      for (int i = 0; i < components.length; i++) {
-        componentTypes[i] = components[i].getType();
-      }
-    } else {
-      componentTypes = generatedCodec.validatedCreatorParameterTypes();
+  private static boolean isRecordConstructor(Class<?> type, Constructor<?> constructor) {
+    RecordComponent[] components = RecordUtils.getRecordComponents(type);
+    Class<?>[] parameterTypes = constructor.getParameterTypes();
+    if (components.length != parameterTypes.length) {
+      return false;
     }
-    return Arrays.equals(componentTypes, constructor.getParameterTypes());
+    for (int i = 0; i < components.length; i++) {
+      if (components[i].getType() != parameterTypes[i]) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private static boolean isPropagatedRecordAnnotation(
@@ -1701,33 +1711,18 @@ final class ObjectCodecBuilder {
   }
 
   private static boolean isPropagatedRecordUnwrapped(
-      Class<?> type,
-      Constructor<?> constructor,
-      int parameterIndex,
-      JsonUnwrapped annotation,
-      GeneratedJsonCodec<?> generatedCodec) {
-    if (!isRecordConstructor(type, constructor, generatedCodec)) {
+      Class<?> type, Constructor<?> constructor, int parameterIndex, JsonUnwrapped annotation) {
+    if (!isRecordConstructor(type, constructor)) {
       return false;
     }
-    String componentName;
-    if (generatedCodec == null) {
-      RecordComponent[] components = RecordUtils.getRecordComponents(type);
-      if (parameterIndex >= components.length) {
-        return false;
-      }
-      componentName = components[parameterIndex].getName();
-    } else {
-      // Android-desugared Records do not expose Record components; the validated generated
-      // companion is the component-name owner on that path.
-      String[] names = generatedCodec.validatedCreatorParameterNames();
-      if (parameterIndex >= names.length) {
-        return false;
-      }
-      componentName = names[parameterIndex];
+    RecordComponent[] components = RecordUtils.getRecordComponents(type);
+    if (parameterIndex >= components.length) {
+      return false;
     }
     try {
       JsonUnwrapped fieldAnnotation =
-          type.getDeclaredField(componentName).getAnnotation(JsonUnwrapped.class);
+          type.getDeclaredField(components[parameterIndex].getName())
+              .getAnnotation(JsonUnwrapped.class);
       return sameUnwrapped(annotation, fieldAnnotation);
     } catch (NoSuchFieldException e) {
       return false;
@@ -2394,12 +2389,6 @@ final class ObjectCodecBuilder {
           hasWriteSource(),
           creatorParent ? constructionIndex >= 0 : hasReadSink(),
           constructionIndex);
-    }
-
-    private void setCreatorType(Executable creator, int parameterIndex) {
-      Parameter parameter = creator.getParameters()[parameterIndex];
-      mergeCodec(parameter);
-      mergeUnwrapped(parameter);
     }
 
     private JsonCodec codecAnnotation() {

@@ -999,6 +999,46 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void recordParameterAnnotation() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.InvalidRecord",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public record InvalidRecord(Child child) {\n"
+                + "  public InvalidRecord(@JsonUnwrapped(prefix=\"child_\") Child child) {\n"
+                + "    this.child = child;\n"
+                + "  }\n"
+                + "  @JsonType public record Child(String name) {}\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result
+            .diagnostics()
+            .contains(
+                "Canonical Record constructor parameter @JsonUnwrapped must match the corresponding Record field or accessor"),
+        result.diagnostics());
+
+    CompilationResult overload =
+        compile(
+            "test.InvalidOverload",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public record InvalidOverload(Child child, int id) {\n"
+                + "  public InvalidOverload(@JsonUnwrapped Child child) { this(child, 0); }\n"
+                + "  @JsonType public record Child(String name) {}\n"
+                + "}\n");
+    assertFalse(overload.success);
+    assertTrue(
+        overload
+            .diagnostics()
+            .contains(
+                "JSON property annotations are not supported on non-canonical Record constructor parameters"),
+        overload.diagnostics());
+  }
+
+  @Test
   public void ignoredRecordComponent() throws Exception {
     assumeJava16Source();
     CompilationResult result =

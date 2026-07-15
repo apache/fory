@@ -190,6 +190,29 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void recordConstructorValidation() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 17) {
+      throw new SkipException("Java record test requires JDK 17+");
+    }
+    Class<?> type =
+        compileRecordClass(
+            "JsonUnwrappedOverload",
+            "package org.apache.fory.json.records;\n"
+                + "import org.apache.fory.json.annotation.JsonUnwrapped;\n"
+                + "public record JsonUnwrappedOverload(\n"
+                + "    @JsonUnwrapped(prefix=\"n_\") Name name, int id) {\n"
+                + "  public JsonUnwrappedOverload(\n"
+                + "      @JsonUnwrapped(prefix=\"n_\") Name name, long id) {\n"
+                + "    this(name, (int) id);\n"
+                + "  }\n"
+                + "  public record Name(String value) {}\n"
+                + "}\n");
+    assertThrows(
+        ForyJsonException.class,
+        () -> ForyJson.builder().withCodegen(false).build().fromJson("{}", type));
+  }
+
+  @Test
   public void generatedCapabilities() {
     ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
     JsonTypeResolver resolver = primaryTypeResolver(json);
