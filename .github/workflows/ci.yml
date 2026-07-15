@@ -127,7 +127,7 @@ jobs:
             echo "python=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^(java/|integration_tests/graalvm_tests/)' <<< "$changed_files"; then
+          if grep -Eq '^(\.github/workflows/ci\.yml$|ci/run_ci\.(py|sh)$|ci/tasks/(common|java)\.py$|java/|integration_tests/graalvm_tests/)' <<< "$changed_files"; then
             echo "graalvm=true" >> "$GITHUB_OUTPUT"
           else
             echo "graalvm=false" >> "$GITHUB_OUTPUT"
@@ -576,7 +576,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java-version: ["17", "21", "25"]
+        java-version: ["17", "25"]
     steps:
       - uses: actions/checkout@v5
       - uses: graalvm/setup-graalvm@6f3fa030c4b8f77c1f554a860f593a654538fa38 # 1.5.6
@@ -592,13 +592,36 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Set up Python3.8
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.8
-      - name: Build native image and run
+      - name: Build JPMS native image and run
         shell: bash
-        run: python ./ci/run_ci.py java --version graalvm
+        run: ./ci/run_ci.sh graalvm_test
+
+  graalvm_json:
+    name: GraalVM JSON CI
+    needs: changes
+    if: needs.changes.outputs.graalvm == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: ["17", "25"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: graalvm/setup-graalvm@6f3fa030c4b8f77c1f554a860f593a654538fa38 # 1.5.6
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: "graalvm"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: "true"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Build JSON JPMS native image and run
+        shell: bash
+        run: ./ci/run_ci.sh graalvm_json_tests
 
   kotlin:
     name: Kotlin CI
@@ -917,7 +940,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Dart
-        uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c  # v1.7.1
+        uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c # v1.7.1
         with:
           sdk: stable
       - name: Cache Maven local repository

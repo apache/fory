@@ -281,6 +281,8 @@
                   <executable>native-image</executable>
                   <arguments>
                     <argument>--no-fallback</argument>
+                    <!-- These images verify native-image compatibility, not runtime performance. -->
+                    <argument>-O1</argument>
                     <argument>-H:+UnlockExperimentalVMOptions</argument>
                     <argument>-o</argument>
                     <argument>${project.build.directory}/${moduleImageName}</argument>
