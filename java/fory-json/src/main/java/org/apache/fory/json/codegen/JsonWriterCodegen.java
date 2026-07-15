@@ -787,6 +787,11 @@ abstract class JsonWriterCodegen {
       boolean commaKnown,
       Expression index,
       Expression writer) {
+    if (property.writesRawString()) {
+      return new Expression.ListExpression(
+          writeFieldName(property, id, commaKnown, index, writer),
+          new Expression.Invoke(writer, "writeRawValue", value));
+    }
     JsonFieldKind kind = property.writeKind();
     switch (kind) {
       case BOOLEAN:

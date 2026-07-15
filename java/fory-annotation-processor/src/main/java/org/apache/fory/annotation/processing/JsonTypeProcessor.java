@@ -65,6 +65,10 @@ final class JsonTypeProcessor {
   private static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
   private static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
+  private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
+  private static final String JSON_RAW_VALUE = JSON_PACKAGE + ".annotation.JsonRawValue";
+  private static final String JSON_BASE64 = JSON_PACKAGE + ".annotation.JsonBase64";
+  private static final String BASE64_CODEC = JSON_PACKAGE + ".codec.Base64ByteArrayCodec";
   private static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
   private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
   private static final String NO_JSON_VALUE_CODEC = JSON_CODEC + "$NoJsonValueCodec";
@@ -139,7 +143,7 @@ final class JsonTypeProcessor {
       }
       for (VariableElement field : ElementFilter.fieldsIn(type.getEnclosedElements())) {
         collectAnnotations(field, model.annotationTypes);
-        collectCodecAnnotation(annotationMirror(field, JSON_CODEC), model);
+        collectOccurrenceCodec(field, model);
         if (field.getKind() == ElementKind.ENUM_CONSTANT) {
           model.addR8Member(R8Member.field(field, typeName(field.asType())));
           continue;
@@ -168,7 +172,7 @@ final class JsonTypeProcessor {
       model.addR8Member(
           R8Member.method(method, typeName(method.getReturnType()), typeNames(method)));
       collectAnnotations(method, model.annotationTypes);
-      collectCodecAnnotation(annotationMirror(method, JSON_CODEC), model);
+      collectOccurrenceCodec(method, model);
       collectAnnotations(method.getParameters(), model.annotationTypes);
       collectCodecAnnotations(method.getParameters(), model);
       collectTypeEndpoints(resolvedMethod.getReturnType(), model);
@@ -198,6 +202,13 @@ final class JsonTypeProcessor {
   private void collectCodecAnnotations(List<? extends Element> sourceElements, Model model) {
     for (Element element : sourceElements) {
       collectCodecAnnotation(annotationMirror(element, JSON_CODEC), model);
+    }
+  }
+
+  private void collectOccurrenceCodec(Element element, Model model) {
+    collectCodecAnnotation(annotationMirror(element, JSON_CODEC), model);
+    if (hasAnnotation(element, JSON_BASE64)) {
+      model.codecTypes.add(BASE64_CODEC);
     }
   }
 
@@ -391,7 +402,7 @@ final class JsonTypeProcessor {
         }
         collectAnnotations(method, model.annotationTypes);
         collectAnnotations(method.getParameters(), model.annotationTypes);
-        collectCodecAnnotation(annotationMirror(method, JSON_CODEC), model);
+        collectOccurrenceCodec(method, model);
         collectCodecAnnotations(method.getParameters(), model);
         collectTypeEndpoints(method.getReturnType(), model);
         for (VariableElement parameter : method.getParameters()) {
@@ -452,6 +463,9 @@ final class JsonTypeProcessor {
         || hasAnnotation(method, JSON_ANY_GETTER)
         || hasAnnotation(method, JSON_ANY_SETTER)
         || hasAnnotation(method, JSON_CODEC)
+        || hasAnnotation(method, JSON_VALUE)
+        || hasAnnotation(method, JSON_RAW_VALUE)
+        || hasAnnotation(method, JSON_BASE64)
         || hasJsonAnnotations(method.getParameters())) {
       return true;
     }

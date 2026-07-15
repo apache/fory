@@ -28,6 +28,7 @@ import java.util.Map;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.codec.CodecUtils;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.JsonReader;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -71,6 +72,7 @@ public final class JsonFieldInfo {
   private static final int KIND_MAP = 13;
   private static final int KIND_OBJECT = 14;
   private static final int KIND_CUSTOM_PRIMITIVE = 15;
+  private static final int KIND_RAW_STRING = 16;
   private static final int WRITE_NULL_MASK = Integer.MIN_VALUE;
   private static final byte[] TRUE_BYTES = "true".getBytes(StandardCharsets.ISO_8859_1);
   private static final byte[] FALSE_BYTES = "false".getBytes(StandardCharsets.ISO_8859_1);
@@ -85,6 +87,7 @@ public final class JsonFieldInfo {
   private final Type readType;
   private final Class<?> readRawType;
   private final JsonCodec codecAnnotation;
+  private final Class<? extends JsonValueCodec<?>> valueCodecClass;
   private JsonFieldKind writeKind;
   private JsonFieldKind readKind;
   private int writeKindId;
@@ -141,12 +144,14 @@ public final class JsonFieldInfo {
       JsonFieldAccessor writeAccessor,
       JsonFieldAccessor readAccessor,
       TypeRef<?> ownerType,
-      JsonCodec codecAnnotation) {
+      JsonCodec codecAnnotation,
+      Class<? extends JsonValueCodec<?>> valueCodecClass,
+      boolean rawValue) {
     this.name = name;
     // The write-null decision and read index are both immutable after ObjectCodec construction.
-    // Packing the flag into the unused sign bit keeps JsonFieldInfo at its established object size
-    // and preserves the offsets of hot enum/token metadata. Read schemas are bounded by Java array
-    // indexes, so the remaining 31 bits cover every representable property table.
+    // Packing the flag into the unused sign bit avoids a separate state field. Read schemas are
+    // bounded by Java array indexes, so the remaining 31 bits cover every representable property
+    // table.
     readIndexAndWriteNull = writeNull ? WRITE_NULL_MASK : 0;
     nameHash = JsonFieldNameHash.hash(name);
     this.writeField = writeField;
@@ -160,11 +165,12 @@ public final class JsonFieldInfo {
     this.readType = resolveType(ownerType, readType(readField, readSetter));
     this.readRawType = semanticRawType(readType, readFallback);
     this.codecAnnotation = codecAnnotation;
+    this.valueCodecClass = valueCodecClass;
     this.writeAccessor = writeAccessor;
     this.readAccessor = readAccessor;
     writeKind = writeRawType == null ? null : kind(writeRawType);
     readKind = readRawType == null ? null : kind(readRawType);
-    writeKindId = writeKind == null ? 0 : kindId(writeKind);
+    writeKindId = writeKind == null ? 0 : (rawValue ? KIND_RAW_STRING : kindId(writeKind));
     readPrimitiveKindId = primitiveKindId(readRawType, readKind);
     Type writeElementType =
         writeKind == JsonFieldKind.COLLECTION ? CodecUtils.elementType(writeType) : null;
@@ -282,6 +288,11 @@ public final class JsonFieldInfo {
     return writeKind;
   }
 
+  /** Returns whether the write source is emitted as trusted raw JSON text. */
+  public boolean writesRawString() {
+    return writeKindId == KIND_RAW_STRING;
+  }
+
   public JsonFieldAccessor writeAccessor() {
     return writeAccessor;
   }
@@ -350,16 +361,21 @@ public final class JsonFieldInfo {
     Type codecType = writeType == null ? readType : writeType;
     Class<?> codecRawType = writeRawType == null ? readRawType : writeRawType;
     JsonTypeInfo resolvedTypeInfo =
-        codecAnnotation == null
-            ? null
-            : typeResolver.getTypeInfo(codecType, codecRawType, codecAnnotation);
+        codecAnnotation != null
+            ? typeResolver.getTypeInfo(codecType, codecRawType, codecAnnotation)
+            : valueCodecClass != null
+                ? typeResolver.getTypeInfo(codecType, codecRawType, valueCodecClass)
+                : null;
+    boolean rawString = writeKindId == KIND_RAW_STRING;
     if (writeRawType != null) {
       writeTypeInfo =
           resolvedTypeInfo == null
               ? typeResolver.getTypeInfo(writeType, writeRawType)
               : resolvedTypeInfo;
-      writeKind = writeTypeInfo.kind();
-      writeKindId = kindId(writeKind);
+      if (!rawString) {
+        writeKind = writeTypeInfo.kind();
+        writeKindId = kindId(writeKind);
+      }
     }
     if (readRawType != null) {
       readTypeInfo =
@@ -697,6 +713,8 @@ public final class JsonFieldInfo {
         return true;
       case KIND_STRING:
         return writeStringText(writer, object, index);
+      case KIND_RAW_STRING:
+        return writeStringRaw(writer, object, index);
       case KIND_ENUM:
         return writeStringEnum(writer, object, index);
       case KIND_ARRAY:
@@ -771,6 +789,8 @@ public final class JsonFieldInfo {
         return true;
       case KIND_STRING:
         return writeUtf8String(writer, object, index);
+      case KIND_RAW_STRING:
+        return writeUtf8Raw(writer, object, index);
       case KIND_ENUM:
         return writeUtf8Enum(writer, object, index);
       case KIND_ARRAY:
@@ -882,6 +902,20 @@ public final class JsonFieldInfo {
       writer.writeNull();
     } else {
       writer.writeStringField(stringNamePrefix, stringCommaNamePrefix, index, value);
+    }
+    return true;
+  }
+
+  private boolean writeStringRaw(StringJsonWriter writer, Object object, int index) {
+    String value = (String) writeAccessor.getObject(object);
+    if (value == null && !writeNull()) {
+      return false;
+    }
+    writer.writeFieldName(this, index);
+    if (value == null) {
+      writer.writeNull();
+    } else {
+      writer.writeRawValue(value);
     }
     return true;
   }
@@ -1045,6 +1079,20 @@ public final class JsonFieldInfo {
           utf8CommaNamePrefixWord0, utf8CommaNamePrefixWord1, utf8CommaNamePrefix.length, value);
     } else {
       writer.writeStringField(utf8CommaNamePrefix, value);
+    }
+    return true;
+  }
+
+  private boolean writeUtf8Raw(Utf8JsonWriter writer, Object object, int index) {
+    String value = (String) writeAccessor.getObject(object);
+    if (value == null && !writeNull()) {
+      return false;
+    }
+    writer.writeFieldName(this, index);
+    if (value == null) {
+      writer.writeNull();
+    } else {
+      writer.writeRawValue(value);
     }
     return true;
   }

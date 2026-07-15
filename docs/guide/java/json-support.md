@@ -305,8 +305,9 @@ disabled. Every other builder option keeps the behavior described above.
 ## Annotations
 
 Fory JSON provides `JsonProperty`, `JsonPropertyOrder`, `JsonIgnore`, `JsonAnyProperty`,
-`JsonAnyGetter`, `JsonAnySetter`, `JsonCreator`, `JsonCodec`, `JsonSubTypes`, and `JsonType` under
-`org.apache.fory.json.annotation`. They are not Jackson, Gson, or Fory binary-protocol annotations.
+`JsonAnyGetter`, `JsonAnySetter`, `JsonCreator`, `JsonCodec`, `JsonValue`, `JsonRawValue`,
+`JsonBase64`, `JsonSubTypes`, and `JsonType` under `org.apache.fory.json.annotation`. They are not
+Jackson, Gson, or Fory binary-protocol annotations.
 
 ```java
 import java.util.LinkedHashMap;
@@ -315,13 +316,16 @@ import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonAnySetter;
+import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
+import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
+import org.apache.fory.json.annotation.JsonValue;
 ```
 
 `JsonType` marks a reachable object model for GraalVM Native Image metadata. On Android it enables
@@ -451,6 +455,96 @@ private String serverManagedValue;
 Both flags default to true. Accessors cannot restore an ignored direction, and `JsonProperty`
 cannot override it. Fory core's `Expose` has no effect in Fory JSON.
 
+### `JsonValue`
+
+Use `JsonValue` when one exact `String` member is the complete JSON representation of its owning
+type. Fory writes it as an ordinary quoted and escaped JSON string instead of an object:
+
+```java
+import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonValue;
+
+public final class UserId {
+  private final String value;
+
+  @JsonCreator
+  public UserId(String value) {
+    this.value = value;
+  }
+
+  @JsonValue
+  public String value() {
+    return value;
+  }
+}
+```
+
+The method may use any name but must be public, non-static, zero-argument, and return exactly
+`String`. A field must be an eligible non-static instance field. Only one effective member is
+allowed, and an unannotated override suppresses an inherited method annotation.
+
+The annotation controls writing on its own. Reading requires a `JsonCreator` constructor or public
+static factory with one exact `String` parameter, empty `JsonCreator.value()`, and no `JsonProperty`
+on the parameter. This shape is inferred as the reverse String constructor; no creator mode is
+needed. Existing property-based creator forms are unchanged. JSON null maps directly to Java null
+without invoking the value member or creator.
+
+### `JsonRawValue`
+
+Use `JsonRawValue` on a fixed ordinary `String` property whose contents are already one complete
+JSON value:
+
+```java
+import org.apache.fory.json.annotation.JsonRawValue;
+
+public final class Response {
+  public int status;
+
+  @JsonRawValue
+  public String body;
+}
+```
+
+For `body = "{\"id\":1}"`, Fory emits the object directly at the `body` value position. It does not
+quote, escape, parse, validate, or normalize the String. This is a trusted write-only escape hatch;
+invalid or attacker-controlled content can make the entire output invalid or change its structure.
+Java null follows the property's existing inclusion rule and is written as JSON null when included.
+
+Reading is unchanged and still expects a JSON string. A raw object or array written through the
+property cannot be read back into that `String`. The annotation does not apply to setters, creator
+parameters, Any declarations, container elements, or Map values, and it cannot share an occurrence
+with `JsonCodec`.
+As an occurrence-local representation, it keeps the raw String shape even when the value type has
+an exact builder-registered codec.
+
+Neither annotation collects unknown sibling fields. Unknown fields are skipped unless an existing
+`JsonAnyProperty` or `JsonAnyGetter`/`JsonAnySetter` mapping owns them. Combining `JsonValue` and
+`JsonRawValue` on the same String member writes the owning object as a trusted raw root value, but
+does not add a raw-fragment read contract.
+
+### `JsonBase64`
+
+Use `JsonBase64` on one exact `byte[]` field or getter to represent it as a quoted standard Base64
+JSON string:
+
+```java
+import org.apache.fory.json.annotation.JsonBase64;
+
+public final class Attachment {
+  @JsonBase64
+  public byte[] content;
+}
+```
+
+Bytes `{1, 2, 3}` are written as `{"content":"AQID"}` and decoded back to the original array.
+Encoding and decoding do not create an intermediate String. Null handling follows the property's
+normal inclusion rule.
+
+The annotation is not a type-use annotation and does not affect ordinary `byte[]` properties,
+container elements, or Map values. It cannot share a logical property with `JsonRawValue`, an
+occurrence `JsonCodec`, or an Any declaration. The equivalent explicit codec is
+`@JsonCodec(Base64ByteArrayCodec.class)`.
+
 ### Dynamic object members
 
 Use `JsonAnyProperty` to flatten a `Map<String, V>` field into the containing JSON object and store
@@ -566,11 +660,15 @@ parameter count, and compact parameters cannot also declare `JsonProperty`. Para
 requires a non-empty, unique `JsonProperty` name on every parameter. The creator is the complete
 read schema and setters do not run after it.
 
+For a type with `JsonValue`, the empty form also accepts exactly one `String` parameter without
+`JsonProperty` and reconstructs the owning value from its ordinary JSON string representation.
+
 Exactly one creator is allowed. It must be public, have at least one parameter, and be neither
 varargs nor generic. A factory is also static, declares the target class as its exact return type,
 and returns a non-null value whose runtime class is exactly the target. Missing references use null,
 missing primitives use zero, duplicate members use the last value, and explicit primitive null
-fails. Records cannot declare `JsonCreator`.
+fails. Records cannot declare a property-based `JsonCreator`; a record with `JsonValue` may annotate
+its one-String canonical constructor for the value form.
 
 ### `JsonSubTypes`
 
@@ -941,7 +1039,7 @@ default. URL and arbitrary unsupported Number/CharSequence subclasses require ex
   pretty-print configuration.
 - No Jackson/Gson annotation compatibility.
 - No aliases, views, filters, injection, managed/back references, object identity annotations, root
-  wrapping, format annotations, or annotation-driven raw JSON values.
+  wrapping, or format annotations.
 - Fory core's `Expose` is ignored.
 
 Circular graphs eventually fail `maxDepth`; they are not reconstructed.
@@ -955,6 +1053,8 @@ Circular graphs eventually fail `maxDepth`; they are not reconstructed.
 | Builder `IllegalArgumentException` | Use positive depth, concurrency, and retained-buffer values                                     |
 | Declared write fails               | Remove wildcard/type variables and pass an assignable value; primitive declarations reject null |
 | Immutable value is empty           | Use a record, valid creator, or custom codec                                                    |
+| `JsonValue` read fails             | Add one plain `String` creator, or register an exact custom codec                               |
+| Raw JSON output is invalid         | Supply one trusted, complete JSON value to the `JsonRawValue` property                          |
 | Ordinary object cannot be created  | Add a usable no-argument constructor, use a record or creator, or register a codec              |
 | Ordinary accessor annotation fails | Use an eligible public JavaBean accessor and disable field mode                                 |
 | Any annotation fails               | Use one field form or one valid method pair with resolved `Map<String, V>` types                |

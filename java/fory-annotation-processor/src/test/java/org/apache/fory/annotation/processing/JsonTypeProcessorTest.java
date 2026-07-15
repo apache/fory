@@ -299,6 +299,75 @@ public class JsonTypeProcessorTest {
     assertEquals(first.generatedResource(path), second.generatedResource(path));
   }
 
+  @Test
+  public void valueRawAndBase64Rules() throws Exception {
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put(
+        "test.ValueModel",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonType public final class ValueModel {\n"
+            + "  private final String text;\n"
+            + "  @JsonCreator public ValueModel(String text) { this.text = text; }\n"
+            + "  @JsonValue @JsonRawValue public String value() { return text; }\n"
+            + "}\n");
+    sources.put(
+        "test.RawModel",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonType public final class RawModel {\n"
+            + "  @JsonRawValue public String body;\n"
+            + "  @JsonBase64 public byte[] bytes;\n"
+            + "  private String other;\n"
+            + "  @JsonRawValue public String getOther() { return other; }\n"
+            + "  public void setOther(String other) { this.other = other; }\n"
+            + "}\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+
+    String valueRules = result.generatedResource(RULE_PREFIX + "test.ValueModel.pro");
+    assertTrue(valueRules.contains("java.lang.String value();"), valueRules);
+    assertTrue(valueRules.contains("<init>(java.lang.String);"), valueRules);
+    assertTrue(
+        valueRules.contains("@interface org.apache.fory.json.annotation.JsonValue"), valueRules);
+    assertTrue(
+        valueRules.contains("@interface org.apache.fory.json.annotation.JsonRawValue"), valueRules);
+
+    String rawRules = result.generatedResource(RULE_PREFIX + "test.RawModel.pro");
+    assertTrue(rawRules.contains("java.lang.String body;"), rawRules);
+    assertTrue(rawRules.contains("byte[] bytes;"), rawRules);
+    assertTrue(rawRules.contains("java.lang.String getOther();"), rawRules);
+    assertTrue(
+        rawRules.contains("@interface org.apache.fory.json.annotation.JsonRawValue"), rawRules);
+    assertTrue(
+        rawRules.contains("@interface org.apache.fory.json.annotation.JsonBase64"), rawRules);
+    assertFalse(
+        rawRules.contains("@interface org.apache.fory.json.annotation.JsonCodec"), rawRules);
+    assertTrue(
+        rawRules.contains(
+            "class org.apache.fory.json.codec.Base64ByteArrayCodec { public <init>(); }"),
+        rawRules);
+  }
+
+  @Test
+  public void valueOverrideSuppression() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.ValueChild",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class ValueBase {\n"
+                + "  @JsonValue public String value() { return \"base\"; }\n"
+                + "}\n"
+                + "@JsonType public final class ValueChild extends ValueBase {\n"
+                + "  @Override public String value() { return \"child\"; }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.ValueChild.pro");
+    assertFalse(rules.contains("JsonValue"), rules);
+    assertFalse(rules.contains("value();"), rules);
+  }
+
   private static String codecMemberSource() {
     return "package test;\n"
         + "import java.util.*;\n"

@@ -67,6 +67,7 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
  */
 public abstract class JsonReader {
   private static final int MAX_BIG_NUMBER_LENGTH = 10_000;
+  private static final byte[] EMPTY_BYTES = new byte[0];
   static final int MAX_BIG_DECIMAL_SCALE = 10_000;
   private static final int COMPACT_DECIMAL_MAX_SCALE = 18;
   private static final long[] LONG_POWERS_OF_TEN = {
@@ -291,6 +292,105 @@ public abstract class JsonReader {
 
   public String readNullableString() {
     return tryReadNull() ? null : readString();
+  }
+
+  /** Reads a nullable Base64 JSON string directly into its decoded bytes. */
+  public final byte[] readBase64() {
+    if (tryReadNull()) {
+      return null;
+    }
+    if (position >= length() || charAt(position++) != '"') {
+      throw error("Expected Base64 JSON string");
+    }
+    int bodyStart = position;
+    // Validate and consume the complete encoded text before allocating, so untrusted input can
+    // only request decoded storage proportional to code units already proven readable.
+    long shape = scanBase64Shape();
+    int encodedLength = (int) (shape >>> 2);
+    if (encodedLength == 0) {
+      return EMPTY_BYTES;
+    }
+    int end = position;
+    int padding = (int) (shape & 3);
+    byte[] decoded = new byte[(encodedLength >>> 2) * 3 - padding];
+    position = bodyStart;
+    decodeBase64(decoded, encodedLength);
+    position = end;
+    return decoded;
+  }
+
+  private long scanBase64Shape() {
+    int encodedLength = 0;
+    int padding = 0;
+    while (position < length()) {
+      char ch = charAt(position++);
+      if (ch == '"') {
+        if ((encodedLength & 3) != 0) {
+          throw error("Invalid Base64 JSON string length");
+        }
+        return ((long) encodedLength << 2) | padding;
+      }
+      if (ch == '\\') {
+        ch = readEscapedFieldNameChar();
+      } else if (ch < 0x20) {
+        throw error("Unescaped control character in Base64 JSON string");
+      }
+      if (ch == '=') {
+        if (++padding > 2) {
+          throw error("Invalid Base64 JSON string padding");
+        }
+      } else {
+        if (padding != 0 || decodeBase64Digit(ch) < 0) {
+          throw error("Invalid Base64 JSON string");
+        }
+      }
+      encodedLength++;
+    }
+    throw error("Unterminated Base64 JSON string");
+  }
+
+  private void decodeBase64(byte[] decoded, int encodedLength) {
+    int output = 0;
+    for (int index = 0; index < encodedLength; index += 4) {
+      int bits =
+          (decodeBase64Digit(readBase64Char()) << 18) | (decodeBase64Digit(readBase64Char()) << 12);
+      char third = readBase64Char();
+      char fourth = readBase64Char();
+      if (third != '=') {
+        bits |= decodeBase64Digit(third) << 6;
+      }
+      if (fourth != '=') {
+        bits |= decodeBase64Digit(fourth);
+      }
+      decoded[output++] = (byte) (bits >>> 16);
+      if (output < decoded.length) {
+        decoded[output++] = (byte) (bits >>> 8);
+        if (output < decoded.length) {
+          decoded[output++] = (byte) bits;
+        }
+      }
+    }
+  }
+
+  private char readBase64Char() {
+    char ch = charAt(position++);
+    return ch == '\\' ? readEscapedFieldNameChar() : ch;
+  }
+
+  private static int decodeBase64Digit(char ch) {
+    if (ch >= 'A' && ch <= 'Z') {
+      return ch - 'A';
+    }
+    if (ch >= 'a' && ch <= 'z') {
+      return ch - 'a' + 26;
+    }
+    if (ch >= '0' && ch <= '9') {
+      return ch - '0' + 52;
+    }
+    if (ch == '+') {
+      return 62;
+    }
+    return ch == '/' ? 63 : -1;
   }
 
   public String readCharSequence() {

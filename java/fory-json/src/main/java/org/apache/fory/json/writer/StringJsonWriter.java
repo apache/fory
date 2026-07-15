@@ -61,6 +61,9 @@ import org.apache.fory.serializer.StringSerializer;
 public final class StringJsonWriter extends JsonWriter implements Appendable {
   private static final byte LATIN1 = 0;
   private static final byte UTF16 = 1;
+  private static final byte[] BASE64_DIGITS =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+          .getBytes(StandardCharsets.ISO_8859_1);
   private static final byte[] MIN_INT_BYTES = "-2147483648".getBytes(StandardCharsets.ISO_8859_1);
   private static final byte[] MIN_LONG_BYTES =
       "-9223372036854775808".getBytes(StandardCharsets.ISO_8859_1);
@@ -1113,6 +1116,48 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
     writeRaw(value);
   }
 
+  /** Writes trusted JSON text without quoting, escaping, or validating its JSON grammar. */
+  public void writeRawValue(String value) {
+    int length = value.length();
+    if (coder == UTF16) {
+      writeRawStringUtf16(value, 0, length);
+      return;
+    }
+    ensureRawCapacity(length);
+    ensure(length);
+    byte[] bytes = buffer;
+    int pos = position;
+    int index = 0;
+    while (index + 4 <= length) {
+      char c0 = value.charAt(index);
+      char c1 = value.charAt(index + 1);
+      char c2 = value.charAt(index + 2);
+      char c3 = value.charAt(index + 3);
+      if ((c0 | c1 | c2 | c3) > 0xff) {
+        break;
+      }
+      bytes[pos] = (byte) c0;
+      bytes[pos + 1] = (byte) c1;
+      bytes[pos + 2] = (byte) c2;
+      bytes[pos + 3] = (byte) c3;
+      pos += 4;
+      index += 4;
+    }
+    while (index < length) {
+      char ch = value.charAt(index);
+      if (ch > 0xff) {
+        position = pos;
+        upgradeToUtf16(rawUtf16Capacity(pos, length - index));
+        latin1Output = false;
+        writeRawStringUtf16(value, index, length);
+        return;
+      }
+      bytes[pos++] = (byte) ch;
+      index++;
+    }
+    position = pos;
+  }
+
   public void writeRawValue(byte[] value, byte[] utf16Value) {
     if (coder == LATIN1) {
       writeRaw(value);
@@ -1146,6 +1191,127 @@ public final class StringJsonWriter extends JsonWriter implements Appendable {
       return;
     }
     writeRawUtf16Value(index == 0 ? utf16NamePrefix : utf16CommaNamePrefix);
+  }
+
+  /** Writes a byte array as a quoted Base64 JSON string without an intermediate String. */
+  public void writeBase64(byte[] value) {
+    int encodedLength = base64Length(value.length);
+    if (coder == LATIN1) {
+      ensure(base64Additional(encodedLength, 1));
+      byte[] target = buffer;
+      int pos = position;
+      target[pos++] = '"';
+      pos = writeBase64Latin1(value, target, pos);
+      target[pos++] = '"';
+      position = pos;
+      return;
+    }
+    ensure(base64Additional(encodedLength, 2));
+    writeUtf16ByteNoEnsure((byte) '"');
+    writeBase64Utf16(value);
+    writeUtf16ByteNoEnsure((byte) '"');
+  }
+
+  private void writeRawStringUtf16(String value, int index, int length) {
+    ensure(rawUtf16Additional(length - index));
+    for (int i = index; i < length; i++) {
+      char ch = value.charAt(i);
+      if (ch > 0xff) {
+        latin1Output = false;
+      }
+      writeUtf16CharNoEnsure(ch);
+    }
+  }
+
+  private static int writeBase64Latin1(byte[] value, byte[] target, int pos) {
+    int index = 0;
+    int end = value.length - 2;
+    while (index < end) {
+      int bits =
+          ((value[index++] & 0xff) << 16)
+              | ((value[index++] & 0xff) << 8)
+              | (value[index++] & 0xff);
+      target[pos++] = BASE64_DIGITS[bits >>> 18];
+      target[pos++] = BASE64_DIGITS[(bits >>> 12) & 0x3f];
+      target[pos++] = BASE64_DIGITS[(bits >>> 6) & 0x3f];
+      target[pos++] = BASE64_DIGITS[bits & 0x3f];
+    }
+    int remaining = value.length - index;
+    if (remaining != 0) {
+      int bits = (value[index] & 0xff) << 16;
+      if (remaining == 2) {
+        bits |= (value[index + 1] & 0xff) << 8;
+      }
+      target[pos++] = BASE64_DIGITS[bits >>> 18];
+      target[pos++] = BASE64_DIGITS[(bits >>> 12) & 0x3f];
+      target[pos++] = remaining == 2 ? BASE64_DIGITS[(bits >>> 6) & 0x3f] : (byte) '=';
+      target[pos++] = '=';
+    }
+    return pos;
+  }
+
+  private void writeBase64Utf16(byte[] value) {
+    int index = 0;
+    int end = value.length - 2;
+    while (index < end) {
+      int bits =
+          ((value[index++] & 0xff) << 16)
+              | ((value[index++] & 0xff) << 8)
+              | (value[index++] & 0xff);
+      writeUtf16ByteNoEnsure(BASE64_DIGITS[bits >>> 18]);
+      writeUtf16ByteNoEnsure(BASE64_DIGITS[(bits >>> 12) & 0x3f]);
+      writeUtf16ByteNoEnsure(BASE64_DIGITS[(bits >>> 6) & 0x3f]);
+      writeUtf16ByteNoEnsure(BASE64_DIGITS[bits & 0x3f]);
+    }
+    int remaining = value.length - index;
+    if (remaining != 0) {
+      int bits = (value[index] & 0xff) << 16;
+      if (remaining == 2) {
+        bits |= (value[index + 1] & 0xff) << 8;
+      }
+      writeUtf16ByteNoEnsure(BASE64_DIGITS[bits >>> 18]);
+      writeUtf16ByteNoEnsure(BASE64_DIGITS[(bits >>> 12) & 0x3f]);
+      writeUtf16ByteNoEnsure(remaining == 2 ? BASE64_DIGITS[(bits >>> 6) & 0x3f] : (byte) '=');
+      writeUtf16ByteNoEnsure((byte) '=');
+    }
+  }
+
+  private static int base64Length(int length) {
+    long encoded = ((length + 2L) / 3L) * 4L;
+    if (encoded > Integer.MAX_VALUE - 2L) {
+      throw new ForyJsonException("Byte array is too large for Base64 JSON output");
+    }
+    return (int) encoded;
+  }
+
+  private int base64Additional(int encodedLength, int bytesPerChar) {
+    long additional = (encodedLength + 2L) * bytesPerChar;
+    if (additional > Integer.MAX_VALUE - (long) position) {
+      throw new ForyJsonException("Base64 JSON output is too large");
+    }
+    return (int) additional;
+  }
+
+  private void ensureRawCapacity(int additional) {
+    if (additional > Integer.MAX_VALUE - position) {
+      throw new ForyJsonException("Raw JSON output is too large");
+    }
+  }
+
+  private int rawUtf16Additional(int chars) {
+    long additional = (long) chars << 1;
+    if (additional > Integer.MAX_VALUE - (long) position) {
+      throw new ForyJsonException("Raw JSON output is too large");
+    }
+    return (int) additional;
+  }
+
+  private static int rawUtf16Capacity(int latin1Position, int chars) {
+    long required = ((long) latin1Position + chars) << 1;
+    if (required > Integer.MAX_VALUE) {
+      throw new ForyJsonException("Raw JSON output is too large");
+    }
+    return (int) required;
   }
 
   @Override

@@ -156,6 +156,8 @@ public final class JsonSharedRegistry {
   private final IdentityHashMap<Class<?>, JsonSubTypesInfo> subTypesCache;
   private final IdentityHashMap<Class<?>, JsonCodecDeclaration> codecDeclarations;
   private final Set<Class<?>> typesWithoutCodecDeclaration;
+  private final IdentityHashMap<Class<?>, JsonValueDeclaration> valueDeclarations;
+  private final Set<Class<?>> typesWithoutValueDeclaration;
   private final ConcurrentHashMap<Class<? extends JsonValueCodec<?>>, JsonValueCodec<?>>
       annotationCodecs;
   private final ConcurrentHashMap<Class<? extends MapKeyCodec>, MapKeyCodec> mapKeyCodecs;
@@ -178,6 +180,9 @@ public final class JsonSharedRegistry {
     subTypesCache = new IdentityHashMap<>();
     codecDeclarations = new IdentityHashMap<>();
     typesWithoutCodecDeclaration =
+        Collections.newSetFromMap(new IdentityHashMap<Class<?>, Boolean>());
+    valueDeclarations = new IdentityHashMap<>();
+    typesWithoutValueDeclaration =
         Collections.newSetFromMap(new IdentityHashMap<Class<?>, Boolean>());
     annotationCodecs = new ConcurrentHashMap<>();
     mapKeyCodecs = new ConcurrentHashMap<>();
@@ -350,6 +355,28 @@ public final class JsonSharedRegistry {
         typesWithoutCodecDeclaration.add(targetType);
       } else {
         codecDeclarations.put(targetType, resolved);
+      }
+      return resolved;
+    }
+  }
+
+  JsonValueDeclaration valueDeclaration(Class<?> targetType) {
+    if (targetType.isAnnotation()) {
+      return null;
+    }
+    synchronized (valueDeclarations) {
+      JsonValueDeclaration cached = valueDeclarations.get(targetType);
+      if (cached != null) {
+        return cached;
+      }
+      if (typesWithoutValueDeclaration.contains(targetType)) {
+        return null;
+      }
+      JsonValueDeclaration resolved = JsonValueDeclaration.resolve(targetType);
+      if (resolved == null) {
+        typesWithoutValueDeclaration.add(targetType);
+      } else {
+        valueDeclarations.put(targetType, resolved);
       }
       return resolved;
     }

@@ -26,6 +26,7 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,11 +38,14 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonAnyProperty;
+import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
+import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -59,6 +63,7 @@ public final class ForyJsonExample {
     testModels();
     testConfigurations();
     testCodecs();
+    testValueAnnotations();
     testSubtypes();
     testContainerRoots();
     testGenericProperties();
@@ -184,6 +189,37 @@ public final class ForyJsonExample {
 
   private static void checkStringRead(String actual, String value) {
     Preconditions.checkArgument(actual.equals("latin:" + value) || actual.equals("utf16:" + value));
+  }
+
+  private static void testValueAnnotations() {
+    ForyJson json = ForyJson.builder().build();
+    ValueId value = new ValueId("native-value");
+    Preconditions.checkArgument(json.toJson(value).equals("\"native-value\""));
+    Preconditions.checkArgument(
+        new String(json.toJsonBytes(value), StandardCharsets.UTF_8).equals("\"native-value\""));
+    Preconditions.checkArgument(
+        json.fromJson("\"decoded\"", ValueId.class).value.equals("decoded"));
+    Preconditions.checkArgument(
+        json.fromJson("\"bytes\"".getBytes(StandardCharsets.UTF_8), ValueId.class)
+            .value
+            .equals("bytes"));
+
+    RawValue raw = new RawValue();
+    raw.body = "{\"id\":1}";
+    Preconditions.checkArgument(json.toJson(raw).equals("{\"body\":{\"id\":1}}"));
+    Preconditions.checkArgument(
+        new String(json.toJsonBytes(raw), StandardCharsets.UTF_8).equals("{\"body\":{\"id\":1}}"));
+    Preconditions.checkArgument(
+        json.fromJson("{\"body\":\"text\"}", RawValue.class).body.equals("text"));
+    Base64Bytes base64Bytes = new Base64Bytes();
+    base64Bytes.value = new byte[] {1, 2, 3};
+    Preconditions.checkArgument(json.toJson(base64Bytes).equals("{\"value\":\"AQID\"}"));
+    Preconditions.checkArgument(
+        new String(json.toJsonBytes(base64Bytes), StandardCharsets.UTF_8)
+            .equals("{\"value\":\"AQID\"}"));
+    Preconditions.checkArgument(
+        Arrays.equals(
+            json.fromJson("{\"value\":\"AQID\"}", Base64Bytes.class).value, new byte[] {1, 2, 3}));
   }
 
   private static void testSubtypes() {
@@ -396,6 +432,31 @@ public final class ForyJsonExample {
     public static FactoryValue create(int id, String name) {
       return new FactoryValue(id, name);
     }
+  }
+
+  @JsonType
+  public static final class ValueId {
+    private final String value;
+
+    @JsonCreator
+    public ValueId(String value) {
+      this.value = value;
+    }
+
+    @JsonValue
+    public String value() {
+      return value;
+    }
+  }
+
+  @JsonType
+  public static final class RawValue {
+    @JsonRawValue public String body;
+  }
+
+  @JsonType
+  public static final class Base64Bytes {
+    @JsonBase64 public byte[] value;
   }
 
   @JsonType

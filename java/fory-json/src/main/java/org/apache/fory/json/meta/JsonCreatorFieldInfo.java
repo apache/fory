@@ -23,6 +23,7 @@ import java.lang.reflect.Type;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -38,16 +39,23 @@ public final class JsonCreatorFieldInfo {
   private final Type type;
   private final Class<?> rawType;
   private final JsonCodec codecAnnotation;
+  private final Class<? extends JsonValueCodec<?>> valueCodecClass;
   private JsonTypeInfo typeInfo;
 
   public JsonCreatorFieldInfo(
-      String name, int argumentIndex, Type type, Class<?> rawType, JsonCodec codecAnnotation) {
+      String name,
+      int argumentIndex,
+      Type type,
+      Class<?> rawType,
+      JsonCodec codecAnnotation,
+      Class<? extends JsonValueCodec<?>> valueCodecClass) {
     this.name = name;
     nameHash = JsonFieldNameHash.hash(name);
     this.argumentIndex = argumentIndex;
     this.type = type;
     this.rawType = rawType;
     this.codecAnnotation = codecAnnotation;
+    this.valueCodecClass = valueCodecClass;
   }
 
   public String name() {
@@ -76,9 +84,11 @@ public final class JsonCreatorFieldInfo {
 
   public void resolveType(JsonTypeResolver resolver) {
     typeInfo =
-        codecAnnotation == null
-            ? resolver.getTypeInfo(type, rawType)
-            : resolver.getTypeInfo(type, rawType, codecAnnotation);
+        codecAnnotation != null
+            ? resolver.getTypeInfo(type, rawType, codecAnnotation)
+            : valueCodecClass != null
+                ? resolver.getTypeInfo(type, rawType, valueCodecClass)
+                : resolver.getTypeInfo(type, rawType);
   }
 
   public Object readLatin1(Latin1JsonReader reader) {

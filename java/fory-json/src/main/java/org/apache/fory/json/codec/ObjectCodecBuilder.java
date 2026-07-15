@@ -19,6 +19,7 @@
 
 package org.apache.fory.json.codec;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
@@ -40,12 +41,16 @@ import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonAnySetter;
+import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
+import org.apache.fory.json.annotation.JsonRawValue;
+import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
+import org.apache.fory.json.meta.JsonCreatorDeclaration;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
@@ -671,7 +676,10 @@ final class ObjectCodecBuilder {
       return true;
     }
     if (method.isAnnotationPresent(JsonAnyGetter.class)
-        || method.isAnnotationPresent(JsonAnySetter.class)) {
+        || method.isAnnotationPresent(JsonAnySetter.class)
+        || method.isAnnotationPresent(JsonValue.class)
+        || method.isAnnotationPresent(JsonRawValue.class)
+        || method.isAnnotationPresent(JsonBase64.class)) {
       return true;
     }
     return !record
@@ -682,7 +690,11 @@ final class ObjectCodecBuilder {
   static boolean usesJsonReturn(Method method) {
     // Java rejects type-use annotations on void, and setter returns are not JSON value owners.
     // Keep return and parameter roles separate so hosted metadata follows the same ownership.
-    return method.isAnnotationPresent(JsonAnyGetter.class) || getterPropertyName(method) != null;
+    return method.isAnnotationPresent(JsonAnyGetter.class)
+        || method.isAnnotationPresent(JsonValue.class)
+        || method.isAnnotationPresent(JsonRawValue.class)
+        || method.isAnnotationPresent(JsonBase64.class)
+        || getterPropertyName(method) != null;
   }
 
   static boolean usesJsonParameters(Method method) {
@@ -738,33 +750,12 @@ final class ObjectCodecBuilder {
       TypeRef<?> ownerType,
       LinkedHashMap<String, FieldBuilder> builders,
       PropertyNamingStrategy namingStrategy) {
-    Executable creator = null;
-    JsonCreator annotation = null;
-    for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-      JsonCreator candidate = constructor.getAnnotation(JsonCreator.class);
-      if (candidate != null) {
-        validateCreator(type, constructor);
-        if (creator != null) {
-          throw new ForyJsonException("Multiple @JsonCreator declarations on " + type.getName());
-        }
-        creator = constructor;
-        annotation = candidate;
-      }
-    }
-    for (Method method : type.getDeclaredMethods()) {
-      JsonCreator candidate = method.getAnnotation(JsonCreator.class);
-      if (candidate != null) {
-        validateCreator(type, method);
-        if (creator != null) {
-          throw new ForyJsonException("Multiple @JsonCreator declarations on " + type.getName());
-        }
-        creator = method;
-        annotation = candidate;
-      }
-    }
-    if (creator == null) {
+    JsonCreatorDeclaration declaration = JsonCreatorDeclaration.find(type);
+    if (declaration == null) {
       return null;
     }
+    Executable creator = declaration.executable();
+    JsonCreator annotation = declaration.annotation();
 
     Map<String, FieldBuilder> jsonProperties = new LinkedHashMap<>();
     for (FieldBuilder builder : builders.values()) {
@@ -821,9 +812,15 @@ final class ObjectCodecBuilder {
         if (!builder.isAny()) {
           Type resolved = ownerType.resolveType(parameterTypes[i]).getType();
           JsonCodec codecAnnotation = builder.codecAnnotation();
+          Class<? extends JsonValueCodec<?>> valueCodecClass = builder.valueCodecClass();
           fields.add(
               new JsonCreatorFieldInfo(
-                  builder.jsonName(namingStrategy), i, resolved, rawTypes[i], codecAnnotation));
+                  builder.jsonName(namingStrategy),
+                  i,
+                  resolved,
+                  rawTypes[i],
+                  codecAnnotation,
+                  valueCodecClass));
         }
       }
     } else {
@@ -878,7 +875,11 @@ final class ObjectCodecBuilder {
             builder == null
                 ? parameters[i].getAnnotation(JsonCodec.class)
                 : builder.codecAnnotation();
-        fields.add(new JsonCreatorFieldInfo(jsonName, i, resolved, rawTypes[i], codecAnnotation));
+        Class<? extends JsonValueCodec<?>> valueCodecClass =
+            builder == null ? null : builder.valueCodecClass();
+        fields.add(
+            new JsonCreatorFieldInfo(
+                jsonName, i, resolved, rawTypes[i], codecAnnotation, valueCodecClass));
       }
     }
     JsonCreatorFieldInfo[] fieldArray = fields.toArray(new JsonCreatorFieldInfo[0]);
@@ -898,23 +899,6 @@ final class ObjectCodecBuilder {
               + type.getName()
               + " from "
               + source);
-    }
-  }
-
-  private static void validateCreator(Class<?> type, Executable creator) {
-    int modifiers = creator.getModifiers();
-    if (!Modifier.isPublic(modifiers)
-        || creator.isSynthetic()
-        || creator.isVarArgs()
-        || creator.getParameterCount() == 0
-        || creator.getTypeParameters().length != 0) {
-      throw new ForyJsonException("Invalid @JsonCreator executable " + creator);
-    }
-    if (creator instanceof Method) {
-      Method factory = (Method) creator;
-      if (!Modifier.isStatic(modifiers) || factory.isBridge() || factory.getReturnType() != type) {
-        throw new ForyJsonException("Invalid @JsonCreator factory " + factory);
-      }
     }
   }
 
@@ -986,6 +970,12 @@ final class ObjectCodecBuilder {
         current != null && current != Object.class;
         current = current.getSuperclass()) {
       for (Field field : current.getDeclaredFields()) {
+        if (field.isAnnotationPresent(JsonBase64.class)) {
+          validateBase64Field(field);
+        }
+        if (field.isAnnotationPresent(JsonRawValue.class)) {
+          validateRawField(field);
+        }
         if (field.isAnnotationPresent(JsonCodec.class) && !isEligibleField(field)) {
           throw new ForyJsonException("@JsonCodec is not supported on JSON field: " + field);
         }
@@ -1020,6 +1010,12 @@ final class ObjectCodecBuilder {
           validateCodecMethod(type, method, propertyDiscoveryEnabled, record);
         }
         validateCodecParameters(method, propertyDiscoveryEnabled, record);
+        if (method.isAnnotationPresent(JsonRawValue.class)) {
+          validateRawMethod(type, method, propertyDiscoveryEnabled, record);
+        }
+        if (method.isAnnotationPresent(JsonBase64.class)) {
+          validateBase64Method(type, method, propertyDiscoveryEnabled, record);
+        }
         if (method.isAnnotationPresent(JsonProperty.class)) {
           validatePropertyMethod(type, method, propertyDiscoveryEnabled, record);
         }
@@ -1052,6 +1048,12 @@ final class ObjectCodecBuilder {
         validateCodecMethod(type, method, propertyDiscoveryEnabled, record);
       }
       validateCodecParameters(method, propertyDiscoveryEnabled, record);
+      if (method.isAnnotationPresent(JsonRawValue.class)) {
+        validateRawMethod(type, method, propertyDiscoveryEnabled, record);
+      }
+      if (method.isAnnotationPresent(JsonBase64.class)) {
+        validateBase64Method(type, method, propertyDiscoveryEnabled, record);
+      }
     }
     return hasAnyField;
   }
@@ -1127,6 +1129,77 @@ final class ObjectCodecBuilder {
     }
   }
 
+  private static void validateRawField(Field field) {
+    if (!isEligibleField(field) || field.getType() != String.class) {
+      throw new ForyJsonException("Invalid @JsonRawValue field " + field);
+    }
+    if (field.isAnnotationPresent(JsonCodec.class)
+        || field.isAnnotationPresent(JsonBase64.class)
+        || field.isAnnotationPresent(JsonAnyProperty.class)) {
+      throw new ForyJsonException("Conflicting JSON annotations on @JsonRawValue field " + field);
+    }
+    JsonIgnore ignore = field.getAnnotation(JsonIgnore.class);
+    if (ignore != null && ignore.ignoreRead() && ignore.ignoreWrite()) {
+      throw new ForyJsonException("@JsonRawValue has no JSON read or write direction: " + field);
+    }
+  }
+
+  private static void validateRawMethod(
+      Class<?> type, Method method, boolean propertyDiscoveryEnabled, boolean record) {
+    if ((!propertyDiscoveryEnabled
+            && !(record && isPropagatedRecordAnnotation(type, method, JsonRawValue.class)))
+        || !isEligibleAccessor(method)
+        || method.isVarArgs()
+        || method.getTypeParameters().length != 0
+        || method.getParameterCount() != 0
+        || method.getReturnType() != String.class
+        || (!method.isAnnotationPresent(JsonValue.class)
+            && ((!record && getterPropertyName(method) == null)
+                || (record && !isRecordAccessor(type, method))))) {
+      throw new ForyJsonException("Invalid @JsonRawValue method " + method);
+    }
+    if (method.isAnnotationPresent(JsonCodec.class)
+        || method.isAnnotationPresent(JsonBase64.class)
+        || method.isAnnotationPresent(JsonAnyGetter.class)) {
+      throw new ForyJsonException("Conflicting JSON annotations on @JsonRawValue method " + method);
+    }
+  }
+
+  private static void validateBase64Field(Field field) {
+    if (!isEligibleField(field) || field.getType() != byte[].class) {
+      throw new ForyJsonException("Invalid @JsonBase64 field " + field);
+    }
+    if (field.isAnnotationPresent(JsonCodec.class)
+        || field.isAnnotationPresent(JsonRawValue.class)
+        || field.isAnnotationPresent(JsonAnyProperty.class)) {
+      throw new ForyJsonException("Conflicting JSON annotations on @JsonBase64 field " + field);
+    }
+    JsonIgnore ignore = field.getAnnotation(JsonIgnore.class);
+    if (ignore != null && ignore.ignoreRead() && ignore.ignoreWrite()) {
+      throw new ForyJsonException("@JsonBase64 has no JSON read or write direction: " + field);
+    }
+  }
+
+  private static void validateBase64Method(
+      Class<?> type, Method method, boolean propertyDiscoveryEnabled, boolean record) {
+    if ((!propertyDiscoveryEnabled
+            && !(record && isPropagatedRecordAnnotation(type, method, JsonBase64.class)))
+        || !isEligibleAccessor(method)
+        || method.isVarArgs()
+        || method.getTypeParameters().length != 0
+        || method.getParameterCount() != 0
+        || method.getReturnType() != byte[].class
+        || ((!record && getterPropertyName(method) == null)
+            || (record && !isRecordAccessor(type, method)))) {
+      throw new ForyJsonException("Invalid @JsonBase64 method " + method);
+    }
+    if (method.isAnnotationPresent(JsonCodec.class)
+        || method.isAnnotationPresent(JsonRawValue.class)
+        || method.isAnnotationPresent(JsonAnyGetter.class)) {
+      throw new ForyJsonException("Conflicting JSON annotations on @JsonBase64 method " + method);
+    }
+  }
+
   private static boolean isPropagatedRecordCodec(Class<?> type, Method method) {
     if (!isRecordAccessor(type, method)) {
       return false;
@@ -1158,6 +1231,21 @@ final class ObjectCodecBuilder {
       return annotation.equals(fieldCodec);
     } catch (NoSuchFieldException e) {
       return false;
+    }
+  }
+
+  private static boolean isPropagatedRecordAnnotation(
+      Class<?> type, Method method, Class<? extends Annotation> annotationType) {
+    if (!isRecordAccessor(type, method)) {
+      return false;
+    }
+    try {
+      return type.getDeclaredField(method.getName()).isAnnotationPresent(annotationType);
+    } catch (NoSuchFieldException e) {
+      return false;
+    } catch (RuntimeException | LinkageError e) {
+      throw new ForyJsonException(
+          "Cannot read record-component @" + annotationType.getSimpleName() + " for " + method, e);
     }
   }
 
@@ -1311,6 +1399,10 @@ final class ObjectCodecBuilder {
       valueType = anyMapValueType(mapType, mapRawType, anyField != null ? anyField : anyGetter);
       valueRawType = CodecUtils.rawType(valueType, Object.class);
       validateAnyLogicalTypes(ownerType, builder, mapType);
+      if (builder.valueCodecClass() != null) {
+        throw new ForyJsonException(
+            "A complete-value codec cannot configure JSON Any property " + builder.name);
+      }
       JsonCodec annotation = builder.codecAnnotation();
       if (annotation != null) {
         valueCodecClass = anyValueCodec(annotation, "JSON Any property " + builder.name);
@@ -1479,9 +1571,11 @@ final class ObjectCodecBuilder {
     private AnnotatedElement explicitIndexSource;
     private JsonProperty.Include explicitInclude = JsonProperty.Include.DEFAULT;
     private AnnotatedElement explicitIncludeSource;
+    private AnnotatedElement rawValueSource;
     private boolean hasJsonProperty;
     private int creatorArgumentIndex = -1;
     private JsonCodec codecAnnotation;
+    private Class<? extends JsonValueCodec<?>> valueCodecClass;
     private AnnotatedElement codecSource;
 
     private FieldBuilder(String name) {
@@ -1582,7 +1676,9 @@ final class ObjectCodecBuilder {
       return explicitName != null
           || explicitIndex != JsonProperty.INDEX_UNKNOWN
           || explicitInclude != JsonProperty.Include.DEFAULT
-          || codecAnnotation != null;
+          || codecAnnotation != null
+          || rawValueSource != null
+          || valueCodecClass != null;
     }
 
     private boolean hasIndex() {
@@ -1652,6 +1748,17 @@ final class ObjectCodecBuilder {
           readSetter != null
               ? JsonFieldAccessor.forSetter(readSetter)
               : (readField == null || record ? null : JsonFieldAccessor.forField(readField));
+      boolean rawValue = rawValueSource != null;
+      if (rawValue) {
+        if (rawWriteType != null && rawWriteType != String.class) {
+          throw new ForyJsonException(
+              "@JsonRawValue requires an exact String write source for property " + name);
+        }
+        if (codecAnnotation != null || valueCodecClass != null) {
+          throw new ForyJsonException(
+              "@JsonRawValue cannot coexist with a value codec for property " + name);
+        }
+      }
       return new JsonFieldInfo(
           jsonName,
           writeNull,
@@ -1662,7 +1769,9 @@ final class ObjectCodecBuilder {
           writeAccessor,
           readAccessor,
           ownerType,
-          codecAnnotation);
+          codecAnnotation,
+          valueCodecClass,
+          rawValue);
     }
 
     private void setCreatorType(Executable creator, int parameterIndex) {
@@ -1673,8 +1782,15 @@ final class ObjectCodecBuilder {
       return codecAnnotation;
     }
 
+    private Class<? extends JsonValueCodec<?>> valueCodecClass() {
+      return valueCodecClass;
+    }
+
     private void mergeAnnotation(Class<?> type, AnnotatedElement source) {
       mergeCodec(source);
+      if (source.isAnnotationPresent(JsonRawValue.class) && rawValueSource == null) {
+        rawValueSource = source;
+      }
       JsonProperty property = source.getAnnotation(JsonProperty.class);
       if (property == null) {
         return;
@@ -1747,6 +1863,21 @@ final class ObjectCodecBuilder {
 
     private void mergeCodec(AnnotatedElement source) {
       JsonCodec declared = source.getAnnotation(JsonCodec.class);
+      if (source.isAnnotationPresent(JsonBase64.class)) {
+        if (declared != null || codecAnnotation != null) {
+          throw new ForyJsonException(
+              "@JsonBase64 cannot coexist with @JsonCodec for property " + name);
+        }
+        if (valueCodecClass == null) {
+          valueCodecClass = Base64ByteArrayCodec.class;
+          codecSource = source;
+        }
+        return;
+      }
+      if (declared != null && valueCodecClass != null) {
+        throw new ForyJsonException(
+            "@JsonBase64 cannot coexist with @JsonCodec for property " + name);
+      }
       if (declared == null) {
         return;
       }

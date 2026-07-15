@@ -30,14 +30,21 @@ import java.lang.annotation.Target;
  *
  * <p>Fory JSON supports two property-based forms. A non-empty {@link #value()} lists existing Java
  * logical property names in executable-parameter order and reuses their normalized JSON metadata.
- * An empty list selects parameter-local mode, where every parameter must declare a non-empty {@link
- * JsonProperty} name and may introduce a creator-only input property.
+ * An empty list normally selects parameter-local mode, where every parameter declares a non-empty
+ * {@link JsonProperty} name and may introduce a creator-only input property.
  *
- * <p>The creator is the complete read schema: ordinary properties not selected by it remain
- * write-only, and setters are not invoked after construction. Missing reference parameters receive
- * {@code null}, missing primitive parameters receive their Java zero value, and an explicit JSON
- * {@code null} for a primitive parameter is rejected. Records already have a canonical construction
- * contract and therefore cannot declare this annotation.
+ * <p>For a type with an effective {@link JsonValue} member, an empty list also supports the value
+ * form of exactly one {@link String} parameter without {@link JsonProperty}. That creator
+ * reconstructs the owning value from its ordinary JSON string representation. No creator is invoked
+ * when the input is JSON {@code null}.
+ *
+ * <p>A property-based creator is the complete object read schema: ordinary properties not selected
+ * by it remain write-only, and setters are not invoked after construction. Missing reference
+ * parameters receive {@code null}, missing primitive parameters receive their Java zero value, and
+ * an explicit JSON {@code null} for a primitive parameter is rejected. The {@link JsonValue} form
+ * instead owns the complete String input. Records cannot declare either property-based form, but a
+ * record with an effective {@link JsonValue} may annotate its one-String canonical constructor for
+ * the value form.
  *
  * <p>A constructor must be public. A factory must be public and static, declare the target class as
  * its exact return type, and return a non-null value whose runtime class is exactly that target.
@@ -52,9 +59,10 @@ public @interface JsonCreator {
   /**
    * Returns Java logical property names in executable-parameter order.
    *
-   * <p>An empty array selects parameter-local mode. Entries must be non-empty and unique, and the
-   * number of entries must equal the executable's parameter count. Parameters in this mode must not
-   * also declare {@link JsonProperty}.
+   * <p>An empty array selects the single-String value form for a type with {@link JsonValue} when
+   * its sole parameter has no {@link JsonProperty}; otherwise it selects parameter-local mode.
+   * Entries must be non-empty and unique, and the number of entries must equal the executable's
+   * parameter count. Parameters in property-list mode must not also declare {@link JsonProperty}.
    */
   String[] value() default {};
 }

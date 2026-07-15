@@ -32,7 +32,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonRawValue;
+import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.JdkVersion;
 import org.testng.annotations.Test;
@@ -90,6 +94,21 @@ public class JsonAndroidRuntimeTest {
     assertTrue(
         json.fromJson("\"declared-value\"", JsonCodecAnnotationTest.DeclaredValue.class)
             instanceof JsonCodecAnnotationTest.DeclaredValue);
+
+    AndroidValue androidValue = new AndroidValue("ten");
+    assertEquals(json.toJson(androidValue), "\"ten\"");
+    assertEquals(json.fromJson("\"eleven\"", AndroidValue.class).value, "eleven");
+
+    AndroidRaw androidRaw = new AndroidRaw();
+    androidRaw.body = "{\"ok\":true}";
+    androidRaw.bytes = new byte[] {1, 2, 3};
+    String rawJson = json.toJson(androidRaw);
+    assertTrue(rawJson.contains("\"body\":{\"ok\":true}"), rawJson);
+    assertTrue(rawJson.contains("\"bytes\":\"AQID\""), rawJson);
+    AndroidRaw decodedRaw =
+        json.fromJson("{\"body\":\"text\",\"bytes\":\"AQID\"}", AndroidRaw.class);
+    assertEquals(decodedRaw.body, "text");
+    assertEquals(decodedRaw.bytes, new byte[] {1, 2, 3});
   }
 
   private static List<String> javaCommand(String classPath, Class<?> mainClass) {
@@ -172,5 +191,24 @@ public class JsonAndroidRuntimeTest {
     public void setValue(@JsonCodec(JsonCodecAnnotationTest.AStringCodec.class) String value) {
       this.value = value;
     }
+  }
+
+  public static final class AndroidValue {
+    private final String value;
+
+    @JsonCreator
+    public AndroidValue(String value) {
+      this.value = value;
+    }
+
+    @JsonValue
+    public String value() {
+      return value;
+    }
+  }
+
+  public static final class AndroidRaw {
+    @JsonRawValue public String body;
+    @JsonBase64 public byte[] bytes;
   }
 }

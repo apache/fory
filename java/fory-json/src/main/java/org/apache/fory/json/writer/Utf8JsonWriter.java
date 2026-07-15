@@ -59,6 +59,9 @@ import org.apache.fory.serializer.StringSerializer;
 public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   private static final byte[] MIN_INT_BYTES =
       "-2147483648".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+  private static final byte[] BASE64_DIGITS =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+          .getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final byte[] MIN_LONG_BYTES =
       "-9223372036854775808".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
   private static final byte[] NAN_BYTES =
@@ -816,9 +819,133 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeRaw(value);
   }
 
+  /** Writes trusted JSON text without quoting, escaping, or validating its JSON grammar. */
+  public void writeRawValue(String value) {
+    int length = value.length();
+    ensureRawCapacity(length);
+    ensure(length);
+    byte[] bytes = buffer;
+    int pos = position;
+    int index = 0;
+    while (index + 4 <= length) {
+      char c0 = value.charAt(index);
+      char c1 = value.charAt(index + 1);
+      char c2 = value.charAt(index + 2);
+      char c3 = value.charAt(index + 3);
+      if ((c0 | c1 | c2 | c3) > 0x7f) {
+        break;
+      }
+      bytes[pos] = (byte) c0;
+      bytes[pos + 1] = (byte) c1;
+      bytes[pos + 2] = (byte) c2;
+      bytes[pos + 3] = (byte) c3;
+      pos += 4;
+      index += 4;
+    }
+    while (index < length) {
+      char ch = value.charAt(index);
+      if (ch > 0x7f) {
+        position = pos;
+        writeRawStringSlow(value, index, length);
+        return;
+      }
+      bytes[pos++] = (byte) ch;
+      index++;
+    }
+    position = pos;
+  }
+
   public void writeRawValue(long prefix0, long prefix1, int prefixLength) {
     ensure(packedPrefixSize(prefixLength));
     writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+  }
+
+  /** Writes a byte array as a quoted Base64 JSON string without an intermediate String. */
+  public void writeBase64(byte[] value) {
+    int encodedLength = base64Length(value.length);
+    ensure(base64Additional(encodedLength));
+    byte[] target = buffer;
+    int pos = position;
+    target[pos++] = '"';
+    int index = 0;
+    int end = value.length - 2;
+    while (index < end) {
+      int bits =
+          ((value[index++] & 0xff) << 16)
+              | ((value[index++] & 0xff) << 8)
+              | (value[index++] & 0xff);
+      target[pos++] = BASE64_DIGITS[bits >>> 18];
+      target[pos++] = BASE64_DIGITS[(bits >>> 12) & 0x3f];
+      target[pos++] = BASE64_DIGITS[(bits >>> 6) & 0x3f];
+      target[pos++] = BASE64_DIGITS[bits & 0x3f];
+    }
+    int remaining = value.length - index;
+    if (remaining != 0) {
+      int bits = (value[index] & 0xff) << 16;
+      if (remaining == 2) {
+        bits |= (value[index + 1] & 0xff) << 8;
+      }
+      target[pos++] = BASE64_DIGITS[bits >>> 18];
+      target[pos++] = BASE64_DIGITS[(bits >>> 12) & 0x3f];
+      target[pos++] = remaining == 2 ? BASE64_DIGITS[(bits >>> 6) & 0x3f] : (byte) '=';
+      target[pos++] = '=';
+    }
+    target[pos++] = '"';
+    position = pos;
+  }
+
+  private void writeRawStringSlow(String value, int index, int length) {
+    int remaining = length - index;
+    long additional = (long) remaining * 3L;
+    if (additional > Integer.MAX_VALUE - (long) position) {
+      throw new ForyJsonException("Raw JSON output is too large");
+    }
+    ensure((int) additional);
+    for (int i = index; i < length; i++) {
+      char ch = value.charAt(i);
+      if (ch < 0x80) {
+        buffer[position++] = (byte) ch;
+      } else if (ch < 0x800) {
+        buffer[position++] = (byte) (0xc0 | (ch >>> 6));
+        buffer[position++] = (byte) (0x80 | (ch & 0x3f));
+      } else if (!Character.isSurrogate(ch)) {
+        buffer[position++] = (byte) (0xe0 | (ch >>> 12));
+        buffer[position++] = (byte) (0x80 | ((ch >>> 6) & 0x3f));
+        buffer[position++] = (byte) (0x80 | (ch & 0x3f));
+      } else if (Character.isHighSurrogate(ch)
+          && i + 1 < length
+          && Character.isLowSurrogate(value.charAt(i + 1))) {
+        int codePoint = Character.toCodePoint(ch, value.charAt(++i));
+        buffer[position++] = (byte) (0xf0 | (codePoint >>> 18));
+        buffer[position++] = (byte) (0x80 | ((codePoint >>> 12) & 0x3f));
+        buffer[position++] = (byte) (0x80 | ((codePoint >>> 6) & 0x3f));
+        buffer[position++] = (byte) (0x80 | (codePoint & 0x3f));
+      } else {
+        throw new ForyJsonException("Invalid Unicode surrogate in raw JSON value at index " + i);
+      }
+    }
+  }
+
+  private static int base64Length(int length) {
+    long encoded = ((length + 2L) / 3L) * 4L;
+    if (encoded > Integer.MAX_VALUE - 2) {
+      throw new ForyJsonException("Byte array is too large for Base64 JSON output");
+    }
+    return (int) encoded;
+  }
+
+  private int base64Additional(int encodedLength) {
+    long additional = encodedLength + 2L;
+    if (additional > Integer.MAX_VALUE - (long) position) {
+      throw new ForyJsonException("Base64 JSON output is too large");
+    }
+    return (int) additional;
+  }
+
+  private void ensureRawCapacity(int additional) {
+    if (additional > Integer.MAX_VALUE - position) {
+      throw new ForyJsonException("Raw JSON output is too large");
+    }
   }
 
   @Override
