@@ -90,12 +90,12 @@ public final class DefaultJdkClassAllowList {
     return CLASS_NAMES.contains(className) || className.startsWith("java.util.function.");
   }
 
-    /**
-     * Get the allowed class names as an immutable set.
-     *
-     * @return Set of allowed class names
-     */
-    public static Set<String> getAllowClasses() {
-        return CLASS_NAMES;
-    }
+  /**
+   * Get the allowed class names as an immutable set.
+   *
+   * @return Set of allowed class names
+   */
+  public static Set<String> getAllowClasses() {
+    return CLASS_NAMES;
+  }
 }

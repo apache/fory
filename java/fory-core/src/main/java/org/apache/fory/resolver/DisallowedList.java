@@ -319,6 +319,6 @@ public final class DisallowedList {
   }
 
   public static boolean contains(String className) {
-      return DEFAULT_DISALLOWED_LIST_SET.contains(className);
+    return DEFAULT_DISALLOWED_LIST_SET.contains(className);
   }
 }
