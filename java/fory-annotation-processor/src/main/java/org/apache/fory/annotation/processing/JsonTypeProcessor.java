@@ -360,14 +360,7 @@ final class JsonTypeProcessor {
       if (model.companionIsRecord) {
         builder.append("  public boolean isRecord();\n");
       }
-      builder
-          .append("}\n")
-          .append("-keep,allowoptimization class ")
-          .append(model.companionBinaryName)
-          .append("$Factory {\n")
-          .append("  public <init>();\n")
-          .append("  public org.apache.fory.json.codec.GeneratedJsonCodec create();\n")
-          .append("}\n");
+      builder.append("}\n");
     }
     return builder.toString();
   }

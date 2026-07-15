@@ -89,8 +89,7 @@ public class JsonTypeProcessorTest {
     assertTrue(rules.contains("<init>();"), rules);
     assertTrue(rules.contains("<init>(int);"), rules);
     assertTrue(rules.contains("-keep,allowoptimization class test.Plain_ForyJsonCodec {"), rules);
-    assertTrue(
-        rules.contains("-keep,allowoptimization class test.Plain_ForyJsonCodec$Factory {"), rules);
+    assertFalse(rules.contains("test.Plain_ForyJsonCodec$Factory"), rules);
     assertFalse(rules.contains("-keep,allowoptimization,allowobfuscation class test.Plain"), rules);
     assertTrue(result.hasGeneratedSource("test/Plain_ForyJsonCodec.java"));
   }
@@ -773,6 +772,46 @@ public class JsonTypeProcessorTest {
                 + "}\n");
     assertFalse(result.success);
     assertTrue(result.diagnostics().contains("@JsonCreator must be public"), result.diagnostics());
+  }
+
+  @Test
+  public void memberCreatorConstructorDiagnostic() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.MemberCreatorOwner",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public class MemberCreatorOwner {\n"
+                + "  @JsonType public class Value {\n"
+                + "    @JsonCreator public Value(@JsonProperty(\"id\") int id) {}\n"
+                + "  }\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result
+            .diagnostics()
+            .contains("A non-static member class must use a static @JsonCreator factory"),
+        result.diagnostics());
+  }
+
+  @Test
+  public void memberCreatorFactory() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.MemberFactoryOwner",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public class MemberFactoryOwner {\n"
+                + "  @JsonType public class Value {\n"
+                + "    public final int id;\n"
+                + "    private Value(int id) { this.id = id; }\n"
+                + "    @JsonCreator public static Value create(@JsonProperty(\"id\") int id) {\n"
+                + "      return new MemberFactoryOwner().new Value(id);\n"
+                + "    }\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    assertTrue(result.hasGeneratedSource("test/MemberFactoryOwner_d_Value_ForyJsonCodec.java"));
   }
 
   @Test

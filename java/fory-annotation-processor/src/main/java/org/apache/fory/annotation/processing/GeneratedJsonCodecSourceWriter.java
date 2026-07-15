@@ -509,6 +509,11 @@ final class GeneratedJsonCodecSourceWriter {
       throw invalid(
           "@JsonCreator must be public, non-generic, non-varargs, and have parameters", creator);
     }
+    if (!factory
+        && model.target.getNestingKind() == NestingKind.MEMBER
+        && !model.target.getModifiers().contains(Modifier.STATIC)) {
+      throw invalid("A non-static member class must use a static @JsonCreator factory", creator);
+    }
     if (factory
         && (!modifiers.contains(Modifier.STATIC)
             || !types.isSameType(
