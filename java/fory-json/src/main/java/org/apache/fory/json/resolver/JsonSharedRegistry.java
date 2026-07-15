@@ -418,8 +418,7 @@ public final class JsonSharedRegistry {
       Map<Member, JsonTypeUse[]> loaded = loadGeneratedTypeUses(targetType);
       if (loaded == null) {
         // Android cannot observe whether source type-use annotations existed, so an absent
-        // companion
-        // is a normal cached miss. Only a companion that is found but malformed can fail here.
+        // companion is a normal cached miss. Only a found but malformed companion can fail here.
         typesWithoutGeneratedTypeUses.add(targetType);
         return Collections.emptyMap();
       }

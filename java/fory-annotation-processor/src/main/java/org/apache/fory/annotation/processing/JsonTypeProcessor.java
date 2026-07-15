@@ -70,7 +70,6 @@ final class JsonTypeProcessor {
   private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
   private static final String GENERATED_META = JSON_PACKAGE + ".meta.GeneratedJsonCodecMeta";
   private static final String JSON_TYPE_USE = JSON_PACKAGE + ".meta.JsonTypeUse";
-  private static final String JSON_VALUE_CODEC = JSON_PACKAGE + ".codec.JsonValueCodec";
   private static final String META_SUFFIX = "_ForyJsonCodecMeta";
   private static final String R8_PREFIX = "META-INF/com.android.tools/r8/fory-json-";
 
@@ -379,7 +378,7 @@ final class JsonTypeProcessor {
       List<CodecPath> codecs) {
     TypeElement codec = codecClass(type, tree, source);
     if (codec != null) {
-      codecs.add(codecPath(codec, path, packageName, model));
+      codecs.add(codecPath(codec, path, packageName, model, source));
     }
     collectNestedCodecs(type, tree, source, packageName, model, path, codecs);
   }
@@ -398,7 +397,7 @@ final class JsonTypeProcessor {
       throw new InvalidJsonTypeException("Cannot resolve @JsonCodec value", source);
     }
     for (Object annotationTree : typeUseTrees.tree(tree).annotations) {
-      if (!typeUseTrees.isAnnotation(annotationTree, JSON_CODEC)) {
+      if (!typeUseTrees.isAnnotation(source, annotationTree, JSON_CODEC)) {
         continue;
       }
       TypeMirror codecType = typeUseTrees.annotationClassValue(source, annotationTree, "value");
@@ -412,22 +411,18 @@ final class JsonTypeProcessor {
   }
 
   private CodecPath codecPath(
-      TypeElement codec, List<Integer> path, String packageName, Model model) {
+      TypeElement codec, List<Integer> path, String packageName, Model model, Element source) {
     String binaryName = elements.getBinaryName(codec).toString();
+    if (!isSourceAccessible(codec, packageName)) {
+      throw new InvalidJsonTypeException(
+          "@JsonCodec class "
+              + binaryName
+              + " is not accessible from generated metadata; use a public codec enclosed only by public classes",
+          source);
+    }
     model.codecTypes.add(binaryName);
     model.annotationTypes.add(JSON_CODEC);
-    String expression;
-    if (isSourceAccessible(codec, packageName)) {
-      // R8 rewrites class literals when it obfuscates an accessible codec. A binary-name lookup
-      // cannot be rewritten, so only that reflection fallback requires preserving the exact name.
-      expression = codec.getQualifiedName() + ".class";
-    } else {
-      expression = "codecClass(\"" + escape(binaryName) + "\")";
-      model.binaryFallbackTypes.add(binaryName);
-      model.needsClassLookup = true;
-      model.needsCodecLookup = true;
-    }
-    return new CodecPath(binaryName, expression, path);
+    return new CodecPath(binaryName, codec.getQualifiedName() + ".class", path);
   }
 
   private void collectCodecAnnotation(AnnotationMirror annotation, Model model) {
@@ -481,9 +476,6 @@ final class JsonTypeProcessor {
     builder.append("import java.util.Map;\n");
     builder.append("import ").append(GENERATED_META).append(";\n");
     builder.append("import ").append(JSON_TYPE_USE).append(";\n");
-    if (model.needsCodecLookup) {
-      builder.append("import ").append(JSON_VALUE_CODEC).append(";\n");
-    }
     builder.append('\n');
     builder
         .append("public final class ")
@@ -557,14 +549,6 @@ final class JsonTypeProcessor {
           .append("    return Class.forName(name, false, ")
           .append(model.metaSimpleName)
           .append(".class.getClassLoader());\n");
-      builder.append("  }\n");
-    }
-    if (model.needsCodecLookup) {
-      builder.append("\n  @SuppressWarnings({\"rawtypes\", \"unchecked\"})\n");
-      builder
-          .append("  private static Class<? extends JsonValueCodec<?>> codecClass(String name) ")
-          .append("throws ClassNotFoundException {\n");
-      builder.append("    return (Class) classForName(name);\n");
       builder.append("  }\n");
     }
     return builder.append("}\n").toString();
@@ -1171,7 +1155,6 @@ final class JsonTypeProcessor {
     final Set<String> binaryFallbackTypes = new LinkedHashSet<>();
     final Set<String> annotationOwnerTypes = new LinkedHashSet<>();
     boolean needsClassLookup;
-    boolean needsCodecLookup;
 
     Model(TypeElement target, String packageName, String binaryName, String metaSimpleName) {
       this.target = target;

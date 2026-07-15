@@ -24,13 +24,17 @@ import java.util.Collections;
 import java.util.List;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.Types;
 
 /** Java 8-compatible access to javac type-use trees omitted from some {@code TypeMirror}s. */
 final class JavacTypeUseTrees {
   private final Object trees;
+  private final Types types;
 
   JavacTypeUseTrees(ProcessingEnvironment processingEnv) {
+    types = processingEnv.getTypeUtils();
     Object javacTrees;
     try {
       ClassLoader javacLoader = processingEnv.getClass().getClassLoader();
@@ -75,15 +79,19 @@ final class JavacTypeUseTrees {
     return new Tree(annotations, current);
   }
 
-  boolean isAnnotation(Object annotationTree, String annotationName) {
+  boolean isAnnotation(Element owner, Object annotationTree, String annotationName) {
     Object annotationType = invoke(annotationTree, "getAnnotationType");
     if (annotationType == null) {
       return false;
     }
-    String treeName = annotationType.toString();
-    int separator = annotationName.lastIndexOf('.');
-    String simpleName = separator < 0 ? annotationName : annotationName.substring(separator + 1);
-    return treeName.equals(annotationName) || treeName.equals(simpleName);
+    TypeMirror mirror = treeType(owner, annotationType);
+    Element element = mirror == null ? null : types.asElement(mirror);
+    if (element instanceof TypeElement) {
+      return ((TypeElement) element).getQualifiedName().contentEquals(annotationName);
+    }
+    // A fully qualified tree remains unambiguous if javac cannot provide a symbol. Never match a
+    // simple name here: an imported third-party annotation may use the same name as a Fory one.
+    return annotationType.toString().equals(annotationName);
   }
 
   String annotationValue(Object annotationTree, String name, Object defaultValue) {
@@ -122,6 +130,13 @@ final class JavacTypeUseTrees {
         && "class".equals(String.valueOf(invoke(valueTree, "getIdentifier")))) {
       valueTree = invoke(valueTree, "getExpression");
     }
+    return treeType(owner, valueTree);
+  }
+
+  private TypeMirror treeType(Element owner, Object tree) {
+    if (trees == null || owner == null || tree == null) {
+      return null;
+    }
     Object ownerPath = invoke(trees, "getPath", new Class<?>[] {Element.class}, owner);
     Object compilationUnit = invoke(ownerPath, "getCompilationUnit");
     if (compilationUnit == null) {
@@ -138,7 +153,7 @@ final class JavacTypeUseTrees {
       Object valuePath =
           treePathClass
               .getMethod("getPath", compilationUnitClass, treeClass)
-              .invoke(null, compilationUnit, valueTree);
+              .invoke(null, compilationUnit, tree);
       Object type = invoke(trees, "getTypeMirror", new Class<?>[] {treePathClass}, valuePath);
       return type instanceof TypeMirror ? (TypeMirror) type : null;
     } catch (ReflectiveOperationException | LinkageError e) {

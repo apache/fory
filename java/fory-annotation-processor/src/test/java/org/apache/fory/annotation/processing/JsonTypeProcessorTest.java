@@ -102,7 +102,6 @@ public class JsonTypeProcessorTest {
     assertFalse(source.contains("getSuppressedValues"), source);
     assertFalse(source.contains("SuppressedCodec"), source);
     assertTrue(source.contains("test.Outer_Name.Codec.class"), source);
-    assertFalse(source.contains("codecClass("), source);
     assertFalse(source.contains("classForName("), source);
     assertFalse(source.contains("import java.lang.reflect.*"), source);
     assertFalse(source.contains("import java.util.*"), source);
@@ -207,7 +206,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void testInaccessibleCodecFallback() throws Exception {
+  public void testInaccessibleCodec() throws Exception {
     CompilationResult result =
         compile(
             "test.HiddenCodecModel",
@@ -219,18 +218,59 @@ public class JsonTypeProcessorTest {
                 + codecSource()
                     .replace("public static final class Codec", "private static final class Codec")
                 + "}\n");
+    assertFalse(result.success, result.diagnostics());
+    assertTrue(result.diagnostics().contains("is not accessible from generated metadata"));
+  }
+
+  @Test
+  public void testInaccessibleMember() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.HiddenMemberModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public class HiddenMemberModel {\n"
+                + "  private static final class Hidden {}\n"
+                + "  @JsonType public static class Model {\n"
+                + "    public void setValue(@JsonCodec(Codec.class) Hidden value) {}\n"
+                + "  }\n"
+                + codecSource()
+                + "}\n");
     assertTrue(result.success, result.diagnostics());
-    String source = result.generatedSource("test/HiddenCodecModel_ForyJsonCodecMeta.java");
-    assertTrue(source.contains("codecClass(\"test.HiddenCodecModel$Codec\")"), source);
-    assertTrue(source.contains("classForName("), source);
+    String source = result.generatedSource("test/HiddenMemberModel$Model_ForyJsonCodecMeta.java");
+    assertTrue(source.contains("classForName(\"test.HiddenMemberModel$Hidden\")"), source);
+    assertTrue(source.contains("test.HiddenMemberModel.Codec.class"), source);
     String rules =
         result.generatedResource(
-            "META-INF/com.android.tools/r8/fory-json-test.HiddenCodecModel.pro");
+            "META-INF/com.android.tools/r8/fory-json-test.HiddenMemberModel$Model.pro");
     assertTrue(
-        rules.contains(
-            "-keep,allowoptimization class test.HiddenCodecModel$Codec { public <init>(); }"),
-        rules);
-    assertFalse(rules.contains("allowobfuscation class test.HiddenCodecModel$Codec"), rules);
+        rules.contains("-keep,allowoptimization class test.HiddenMemberModel$Hidden"), rules);
+  }
+
+  @Test
+  public void testUnrelatedAnnotation() throws Exception {
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put(
+        "test.other.JsonCodec",
+        "package test.other;\n"
+            + "import java.lang.annotation.*;\n"
+            + "@Target(ElementType.TYPE_USE) @Retention(RetentionPolicy.RUNTIME)\n"
+            + "public @interface JsonCodec {}\n");
+    sources.put(
+        "test.CollisionModel",
+        "package test;\n"
+            + "import java.util.List;\n"
+            + "import org.apache.fory.json.annotation.JsonType;\n"
+            + "import test.other.JsonCodec;\n"
+            + "@JsonType public class CollisionModel {\n"
+            + "  public List<@JsonCodec String> values;\n"
+            + "}\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+    assertFalse(result.hasGeneratedSource("test/CollisionModel_ForyJsonCodecMeta.java"));
+    String rules =
+        result.generatedResource("META-INF/com.android.tools/r8/fory-json-test.CollisionModel.pro");
+    assertFalse(rules.contains("test.other.JsonCodec"), rules);
   }
 
   @Test

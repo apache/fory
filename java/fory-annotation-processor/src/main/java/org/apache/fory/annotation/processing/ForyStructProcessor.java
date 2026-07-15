@@ -441,7 +441,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
     Set<Modifier> modifiers = field.getModifiers();
     ForyFieldMeta foryField = foryField(field);
     Object fieldTypeTree = typeTree(field);
-    boolean nullable = fieldNullable(field.asType(), fieldTypeTree, mode);
+    boolean nullable = fieldNullable(field.asType(), fieldTypeTree, mode, field);
     boolean trackingRef = fieldTrackingRef(field, fieldTypeTree);
     boolean hasTrackingRefMetadata = fieldHasTrackingRefMetadata(field, fieldTypeTree);
     SourceTypeNode typeNode = buildFieldTypeNode(field.asType(), fieldTypeTree, nullable, field);
@@ -510,11 +510,12 @@ public final class ForyStructProcessor extends AbstractProcessor {
         foryField.dynamic);
   }
 
-  private boolean fieldNullable(TypeMirror type, Object tree, SerializerMode mode) {
+  private boolean fieldNullable(
+      TypeMirror type, Object tree, SerializerMode mode, VariableElement field) {
     if (type.getKind().isPrimitive()) {
       return false;
     }
-    if (typeUseAnnotation(type, typeUseTrees.tree(tree).annotations, NULLABLE) != null) {
+    if (typeUseAnnotation(type, typeUseTrees.tree(tree).annotations, NULLABLE, field) != null) {
       return true;
     }
     if (mode == SerializerMode.NATIVE) {
@@ -525,7 +526,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
 
   private boolean fieldTrackingRef(VariableElement field, Object tree) {
     TypeUseAnnotation ref =
-        typeUseAnnotation(field.asType(), typeUseTrees.tree(tree).annotations, REF);
+        typeUseAnnotation(field.asType(), typeUseTrees.tree(tree).annotations, REF, field);
     if (ref == null) {
       AnnotationMirror fieldRef = annotationMirror(field, REF);
       ref = fieldRef == null ? null : new TypeUseAnnotation(fieldRef, null);
@@ -537,7 +538,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
     if (hasAnnotation(field, REF)) {
       return true;
     }
-    return typeUseAnnotation(field.asType(), typeUseTrees.tree(tree).annotations, REF) != null;
+    return typeUseAnnotation(field.asType(), typeUseTrees.tree(tree).annotations, REF, field)
+        != null;
   }
 
   private boolean isOptionalType(TypeMirror type) {
@@ -860,8 +862,9 @@ public final class ForyStructProcessor extends AbstractProcessor {
       Element errorElement,
       boolean arrayComponent) {
     String typeId = scalarTypeId(type, rawType, treeAnnotations, errorElement, arrayComponent);
-    TypeUseAnnotation nullableAnnotation = typeUseAnnotation(type, treeAnnotations, NULLABLE);
-    TypeUseAnnotation ref = typeUseAnnotation(type, treeAnnotations, REF);
+    TypeUseAnnotation nullableAnnotation =
+        typeUseAnnotation(type, treeAnnotations, NULLABLE, errorElement);
+    TypeUseAnnotation ref = typeUseAnnotation(type, treeAnnotations, REF, errorElement);
     if (typeId == null && nullableAnnotation == null && ref == null) {
       return null;
     }
@@ -884,7 +887,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
       List<?> treeAnnotations,
       Element errorElement,
       boolean arrayComponent) {
-    if (hasTypeAnnotation(type, treeAnnotations, INT8_TYPE)) {
+    if (hasTypeAnnotation(type, treeAnnotations, INT8_TYPE, errorElement)) {
       validateScalarCarrier(
           "@Int8Type",
           rawType,
@@ -895,7 +898,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
           collectionClass("Int8List"));
       return rawType.equals("byte[]") ? "Types.INT8_ARRAY" : "Types.INT8";
     }
-    if (hasTypeAnnotation(type, treeAnnotations, UINT8_TYPE)) {
+    if (hasTypeAnnotation(type, treeAnnotations, UINT8_TYPE, errorElement)) {
       validateScalarCarrier(
           "@UInt8Type",
           rawType,
@@ -905,7 +908,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
               : new String[] {"int", "java.lang.Integer", "byte[]", collectionClass("UInt8List")});
       return rawType.equals("byte[]") ? "Types.UINT8_ARRAY" : "Types.UINT8";
     }
-    if (hasTypeAnnotation(type, treeAnnotations, UINT16_TYPE)) {
+    if (hasTypeAnnotation(type, treeAnnotations, UINT16_TYPE, errorElement)) {
       validateScalarCarrier(
           "@UInt16Type",
           rawType,
@@ -917,7 +920,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
               });
       return rawType.equals("short[]") ? "Types.UINT16_ARRAY" : "Types.UINT16";
     }
-    TypeUseAnnotation uint32 = typeUseAnnotation(type, treeAnnotations, UINT32_TYPE);
+    TypeUseAnnotation uint32 = typeUseAnnotation(type, treeAnnotations, UINT32_TYPE, errorElement);
     if (uint32 != null) {
       validateScalarCarrier(
           "@UInt32Type",
@@ -932,7 +935,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
       }
       return "FIXED".equals(encoding) ? "Types.UINT32" : "Types.VAR_UINT32";
     }
-    TypeUseAnnotation uint64 = typeUseAnnotation(type, treeAnnotations, UINT64_TYPE);
+    TypeUseAnnotation uint64 = typeUseAnnotation(type, treeAnnotations, UINT64_TYPE, errorElement);
     if (uint64 != null) {
       validateScalarCarrier(
           "@UInt64Type",
@@ -950,7 +953,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
       }
       return "TAGGED".equals(encoding) ? "Types.TAGGED_UINT64" : "Types.VAR_UINT64";
     }
-    TypeUseAnnotation int32 = typeUseAnnotation(type, treeAnnotations, INT32_TYPE);
+    TypeUseAnnotation int32 = typeUseAnnotation(type, treeAnnotations, INT32_TYPE, errorElement);
     if (int32 != null) {
       validateScalarCarrier(
           "@Int32Type",
@@ -962,7 +965,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
       String encoding = int32Encoding(int32);
       return "FIXED".equals(encoding) ? "Types.INT32" : "Types.VARINT32";
     }
-    TypeUseAnnotation int64 = typeUseAnnotation(type, treeAnnotations, INT64_TYPE);
+    TypeUseAnnotation int64 = typeUseAnnotation(type, treeAnnotations, INT64_TYPE, errorElement);
     if (int64 != null) {
       validateScalarCarrier(
           "@Int64Type",
@@ -977,7 +980,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
       }
       return "TAGGED".equals(encoding) ? "Types.TAGGED_INT64" : "Types.VARINT64";
     }
-    if (hasTypeAnnotation(type, treeAnnotations, FLOAT16_TYPE)) {
+    if (hasTypeAnnotation(type, treeAnnotations, FLOAT16_TYPE, errorElement)) {
       validateScalarCarrier(
           "@Float16Type",
           rawType,
@@ -985,7 +988,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
           arrayComponent ? new String[] {"short"} : new String[] {"short[]"});
       return "Types.FLOAT16_ARRAY";
     }
-    if (hasTypeAnnotation(type, treeAnnotations, BFLOAT16_TYPE)) {
+    if (hasTypeAnnotation(type, treeAnnotations, BFLOAT16_TYPE, errorElement)) {
       validateScalarCarrier(
           "@BFloat16Type",
           rawType,
@@ -1008,18 +1011,18 @@ public final class ForyStructProcessor extends AbstractProcessor {
   }
 
   private boolean hasTypeAnnotation(
-      TypeMirror type, List<?> treeAnnotations, String annotationName) {
-    return typeUseAnnotation(type, treeAnnotations, annotationName) != null;
+      TypeMirror type, List<?> treeAnnotations, String annotationName, Element source) {
+    return typeUseAnnotation(type, treeAnnotations, annotationName, source) != null;
   }
 
   private TypeUseAnnotation typeUseAnnotation(
-      TypeMirror type, List<?> treeAnnotations, String annotationName) {
+      TypeMirror type, List<?> treeAnnotations, String annotationName, Element source) {
     AnnotationMirror mirror = typeAnnotationMirror(type, annotationName);
     if (mirror != null) {
       return new TypeUseAnnotation(mirror, null);
     }
     for (Object annotationTree : treeAnnotations) {
-      if (typeUseTrees.isAnnotation(annotationTree, annotationName)) {
+      if (typeUseTrees.isAnnotation(source, annotationTree, annotationName)) {
         return new TypeUseAnnotation(null, annotationTree);
       }
     }
