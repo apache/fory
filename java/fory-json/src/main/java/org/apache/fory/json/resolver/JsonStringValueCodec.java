@@ -47,7 +47,7 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
       Class<?> ownerType, JsonFieldAccessor accessor, Executable creator, boolean raw) {
     this.ownerType = ownerType;
     this.accessor = accessor;
-    this.creator = creator == null ? null : new ValueCreator(ownerType, creator);
+    this.creator = creator == null ? null : ValueCreator.forExecutable(ownerType, creator);
     this.raw = raw;
   }
 
@@ -125,51 +125,16 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
     return creator.create(value);
   }
 
-  private static final class ValueCreator {
-    private final Class<?> ownerType;
-    private final Executable executable;
-    private final MethodHandle invoker;
+  private abstract static class ValueCreator {
+    final Class<?> ownerType;
 
-    private ValueCreator(Class<?> ownerType, Executable executable) {
+    private ValueCreator(Class<?> ownerType) {
       this.ownerType = ownerType;
-      this.executable = executable;
-      if (AndroidSupport.IS_ANDROID) {
-        executable.setAccessible(true);
-        invoker = null;
-      } else {
-        invoker = buildInvoker(ownerType, executable);
-      }
     }
 
-    private Object create(String value) {
-      if (invoker != null) {
-        return invoke(value);
-      }
-      try {
-        Object result;
-        if (executable instanceof Constructor) {
-          result = ((Constructor<?>) executable).newInstance(value);
-        } else {
-          result = ((Method) executable).invoke(null, value);
-        }
-        return requireResult(result);
-      } catch (InstantiationException | IllegalAccessException e) {
-        throw invocationFailure(e);
-      } catch (InvocationTargetException e) {
-        throw creatorFailure(e.getCause());
-      }
-    }
+    abstract Object create(String value);
 
-    private Object invoke(String value) {
-      try {
-        Object result = (Object) invoker.invokeExact(value);
-        return requireResult(result);
-      } catch (Throwable cause) {
-        throw creatorFailure(cause);
-      }
-    }
-
-    private Object requireResult(Object result) {
+    final Object requireResult(Object result) {
       if (result == null || result.getClass() != ownerType) {
         throw new ForyJsonException(
             "JSON creator must return an exact non-null " + ownerType.getName());
@@ -177,16 +142,26 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
       return result;
     }
 
-    private ForyJsonException invocationFailure(Throwable cause) {
+    final ForyJsonException invocationFailure(Throwable cause) {
       return new ForyJsonException(
           "Failed to invoke JSON creator for " + ownerType.getName(), cause);
     }
 
-    private ForyJsonException creatorFailure(Throwable cause) {
+    final ForyJsonException creatorFailure(Throwable cause) {
       if (cause instanceof Error) {
         throw (Error) cause;
       }
       return new ForyJsonException("JSON creator failed for " + ownerType.getName(), cause);
+    }
+
+    static ValueCreator forExecutable(Class<?> ownerType, Executable executable) {
+      if (!AndroidSupport.IS_ANDROID) {
+        return new MethodHandleCreator(ownerType, buildInvoker(ownerType, executable));
+      }
+      executable.setAccessible(true);
+      return executable instanceof Constructor
+          ? new ConstructorCreator(ownerType, (Constructor<?>) executable)
+          : new FactoryCreator(ownerType, (Method) executable);
     }
 
     private static MethodHandle buildInvoker(Class<?> ownerType, Executable executable) {
@@ -199,6 +174,65 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
         return target.asType(MethodType.methodType(Object.class, String.class));
       } catch (IllegalAccessException e) {
         throw new ForyJsonException("Cannot access JSON creator for " + ownerType.getName(), e);
+      }
+    }
+  }
+
+  private static final class MethodHandleCreator extends ValueCreator {
+    private final MethodHandle invoker;
+
+    private MethodHandleCreator(Class<?> ownerType, MethodHandle invoker) {
+      super(ownerType);
+      this.invoker = invoker;
+    }
+
+    @Override
+    Object create(String value) {
+      try {
+        Object result = (Object) invoker.invokeExact(value);
+        return requireResult(result);
+      } catch (Throwable cause) {
+        throw creatorFailure(cause);
+      }
+    }
+  }
+
+  private static final class ConstructorCreator extends ValueCreator {
+    private final Constructor<?> constructor;
+
+    private ConstructorCreator(Class<?> ownerType, Constructor<?> constructor) {
+      super(ownerType);
+      this.constructor = constructor;
+    }
+
+    @Override
+    Object create(String value) {
+      try {
+        return requireResult(constructor.newInstance(value));
+      } catch (InstantiationException | IllegalAccessException e) {
+        throw invocationFailure(e);
+      } catch (InvocationTargetException e) {
+        throw creatorFailure(e.getCause());
+      }
+    }
+  }
+
+  private static final class FactoryCreator extends ValueCreator {
+    private final Method factory;
+
+    private FactoryCreator(Class<?> ownerType, Method factory) {
+      super(ownerType);
+      this.factory = factory;
+    }
+
+    @Override
+    Object create(String value) {
+      try {
+        return requireResult(factory.invoke(null, value));
+      } catch (IllegalAccessException e) {
+        throw invocationFailure(e);
+      } catch (InvocationTargetException e) {
+        throw creatorFailure(e.getCause());
       }
     }
   }

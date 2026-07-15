@@ -108,12 +108,16 @@ final class JsonValueDeclaration {
         members.add(method);
       }
     }
-    for (Method method : type.getDeclaredMethods()) {
-      if (!method.isAnnotationPresent(JsonValue.class)
-          || Modifier.isPublic(method.getModifiers())) {
-        continue;
+    for (Class<?> current = type;
+        current != null && current != Object.class;
+        current = current.getSuperclass()) {
+      for (Method method : current.getDeclaredMethods()) {
+        if (!method.isAnnotationPresent(JsonValue.class)
+            || Modifier.isPublic(method.getModifiers())) {
+          continue;
+        }
+        validateMethod(method);
       }
-      validateMethod(method);
     }
   }
 

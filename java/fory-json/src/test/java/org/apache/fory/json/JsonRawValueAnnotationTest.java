@@ -206,6 +206,20 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void binaryAlways() {
+    ForyJson json = newJson();
+    BinaryAlways value = new BinaryAlways();
+    assertEquals(json.toJson(value), "{\"bytes\":null}");
+    assertEquals(
+        new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"bytes\":null}");
+    value.bytes = new byte[] {1, 2, 3};
+    assertEquals(json.toJson(value), "{\"bytes\":\"AQID\"}");
+    assertEquals(
+        new String(json.toJsonBytes(value), StandardCharsets.UTF_8), "{\"bytes\":\"AQID\"}");
+    assertGeneratedWhenSupported(json, BinaryAlways.class, codegenEnabled());
+  }
+
+  @Test
   public void rawTextIsNotValidated() {
     ForyJson json = newJson();
     RawFields value = new RawFields();
@@ -307,6 +321,12 @@ public class JsonRawValueAnnotationTest extends ForyJsonTestModels {
     @JsonRawValue
     @JsonProperty(include = JsonProperty.Include.ALWAYS)
     public String included;
+  }
+
+  public static final class BinaryAlways {
+    @JsonRawValue
+    @JsonProperty(include = JsonProperty.Include.ALWAYS)
+    public byte[] bytes;
   }
 
   public static final class NonStringRaw {

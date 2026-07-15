@@ -26,6 +26,7 @@ import org.apache.fory.graalvm.record.RecordExample2;
 public class Main {
   public static void main(String[] args) throws Throwable {
     Example.main(args);
+    ForyJsonExample.main(args);
     XlangExample.main(args);
     CompatibleExample.main(args);
     ScopedCompatibleExample.main(args);

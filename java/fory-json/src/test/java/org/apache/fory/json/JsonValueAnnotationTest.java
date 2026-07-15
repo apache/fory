@@ -102,6 +102,7 @@ public class JsonValueAnnotationTest extends ForyJsonTestModels {
     assertThrows(ForyJsonException.class, () -> json.toJson(new InvalidValueType()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new StaticValue()));
     assertThrows(ForyJsonException.class, () -> json.toJson(new CodecConflict()));
+    assertThrows(ForyJsonException.class, () -> json.toJson(new InheritedInvalidValue()));
   }
 
   @Test
@@ -242,6 +243,17 @@ public class JsonValueAnnotationTest extends ForyJsonTestModels {
     @JsonValue
     @JsonCodec(OverrideCodec.class)
     public String value = "x";
+  }
+
+  public static class InvalidValueParent {
+    @JsonValue
+    protected String hidden() {
+      return "parent";
+    }
+  }
+
+  public static final class InheritedInvalidValue extends InvalidValueParent {
+    @JsonValue public String value = "child";
   }
 
   @JsonCodec(OverrideCodec.class)

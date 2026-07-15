@@ -715,7 +715,9 @@ abstract class JsonWriterCodegen {
       JsonFieldKind kind = property.writeKind();
       boolean onlyCodec =
           kind == JsonFieldKind.MAP
-              || kind == JsonFieldKind.ARRAY && writeExactArray(property, value, writer) == null
+              || kind == JsonFieldKind.ARRAY
+                  && !property.writesBase64()
+                  && writeExactArray(property, value, writer) == null
               || kind == JsonFieldKind.OBJECT && writeExactScalar(property, value, writer) == null
               || kind == JsonFieldKind.COLLECTION
                   && !JsonCodegen.writesStringCollectionDirectly(property);
