@@ -15,6 +15,7 @@
   public static void generatedValueRecord();
   public static void manualCodecs();
   public static void generatedCodecs();
+  public static void unwrappedReflection();
 }
 
 # Equivalent user-authored rules for models that deliberately omit @JsonType.
