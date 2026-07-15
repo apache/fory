@@ -127,7 +127,7 @@ jobs:
             echo "python=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^(java/|integration_tests/graalvm_tests/)' <<< "$changed_files"; then
+          if grep -Eq '^(\.github/workflows/ci\.yml$|ci/run_ci\.(py|sh)$|ci/tasks/(common|java)\.py$|java/|integration_tests/graalvm_tests/)' <<< "$changed_files"; then
             echo "graalvm=true" >> "$GITHUB_OUTPUT"
           else
             echo "graalvm=false" >> "$GITHUB_OUTPUT"

@@ -352,29 +352,53 @@ def run_integration_tests():
     logging.info("Executing fory integration tests succeeds")
 
 
-def run_graalvm_test():
-    """Run GraalVM tests."""
-    logging.info("Start GraalVM tests")
+def run_graalvm_tests(main_class):
+    """Build and run classpath and module-path GraalVM tests."""
+    logging.info(f"Start GraalVM tests for {main_class}")
     java_major = get_jdk_major_version()
     if java_major is not None and java_major >= 25:
-        os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk25_javac_options())
+        os.environ["JDK_JAVA_OPTIONS"] = " ".join(
+            jdk25_runtime_options("ALL-UNNAMED") + jdk25_javac_options()
+        )
     else:
         os.environ.pop("JDK_JAVA_OPTIONS", None)
 
     common.cd_project_subdir("java")
     common.exec_cmd(
-        "mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-testsuite'"
+        "mvn -T10 -B --no-transfer-progress clean install "
+        "-pl fory-json -am -DskipTests -Dmaven.javadoc.skip=true"
     )
 
-    logging.info("Start to build graalvm native image")
+    logging.info(f"Start to build GraalVM native image for {main_class}")
     common.cd_project_subdir("integration_tests/graalvm_tests")
-    common.exec_cmd("mvn -DskipTests=true --no-transfer-progress -Pnative package")
+    common.exec_cmd(
+        f"mvn -DmainClass={main_class} -DskipTests=true "
+        "-Dassembly.skipAssembly=true --no-transfer-progress -Pnative clean package"
+    )
 
-    logging.info("Built graalvm native image")
-    logging.info("Start to run graalvm native image")
+    logging.info("Built GraalVM classpath native image")
+    logging.info("Start to run GraalVM classpath native image")
     common.exec_cmd("./target/main")
 
-    logging.info("Execute graalvm tests succeed!")
+    if java_major is not None and java_major >= 25:
+        os.environ["JDK_JAVA_OPTIONS"] = " ".join(jdk25_javac_options())
+    common.exec_cmd(
+        f"mvn -DmainClass={main_class} -DskipTests=true "
+        "-Dassembly.skipAssembly=true --no-transfer-progress -Pnative-module package"
+    )
+
+    logging.info("Built GraalVM module-path native image")
+    logging.info("Start to run GraalVM module-path native image")
+    common.exec_cmd("./target/main-module")
+    logging.info(f"Execute GraalVM tests for {main_class} succeed!")
+
+
+def run_graalvm_test():
+    run_graalvm_tests("org.apache.fory.graalvm.Main")
+
+
+def run_graalvm_json_tests():
+    run_graalvm_tests("org.apache.fory.graalvm.ForyJsonExample")
 
 
 def run_release():
@@ -435,3 +459,5 @@ def run(version=None, release=False, install_jdks=False, install_fory=False):
         run_integration_tests()
     elif version == "graalvm":
         run_graalvm_test()
+    elif version == "graalvm_json_tests":
+        run_graalvm_json_tests()
