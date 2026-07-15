@@ -74,6 +74,8 @@ final class JsonTypeProcessor {
   private static final String NO_JSON_VALUE_CODEC = JSON_CODEC + "$NoJsonValueCodec";
   private static final String NO_MAP_KEY_CODEC = JSON_CODEC + "$NoMapKeyCodec";
   private static final String R8_PREFIX = "META-INF/proguard/fory-json-";
+  private static final String NATIVE_IMAGE_PREFIX =
+      "META-INF/native-image/org.apache.fory/fory-json-";
   private static final String[] CODEC_MEMBERS = {
     "value", "elementCodec", "contentCodec", "keyCodec", "valueCodec"
   };
@@ -128,6 +130,7 @@ final class JsonTypeProcessor {
         List<TypeElement> subtypes = classLiteralSubtypes(type, model.binaryFallbackTypes);
         model.sort();
         emitR8(model);
+        emitNativeImageProperties(model);
         pending.addAll(subtypes);
       } catch (GeneratedJsonCodecSourceWriter.InvalidJsonTypeException e) {
         messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
@@ -260,6 +263,27 @@ final class JsonTypeProcessor {
       }
     } catch (IOException e) {
       throw new InvalidJsonTypeException("Failed to write Fory JSON R8 rules: " + e, model.target);
+    }
+  }
+
+  private void emitNativeImageProperties(Model model) {
+    if (model.companionBinaryName == null) {
+      return;
+    }
+    // The hosted feature freezes factory instances into the image heap after reachability is
+    // known, but GraalVM accepts class-initialization configuration only before analysis starts.
+    // Emit the exact generated class here so unreachable model classes remain removable.
+    String resourceName =
+        NATIVE_IMAGE_PREFIX + model.companionBinaryName + "/native-image.properties";
+    try {
+      javax.tools.FileObject file =
+          filer.createResource(StandardLocation.CLASS_OUTPUT, "", resourceName, model.target);
+      try (Writer writer = file.openWriter()) {
+        writer.write("Args=--initialize-at-build-time=" + model.companionBinaryName + "$Factory\n");
+      }
+    } catch (IOException e) {
+      throw new InvalidJsonTypeException(
+          "Failed to write generated JSON Native Image properties: " + e, model.target);
     }
   }
 

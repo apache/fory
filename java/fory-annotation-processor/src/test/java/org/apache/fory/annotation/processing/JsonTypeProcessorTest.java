@@ -56,6 +56,8 @@ import org.testng.annotations.Test;
 
 public class JsonTypeProcessorTest {
   private static final String RULE_PREFIX = "META-INF/proguard/fory-json-";
+  private static final String NATIVE_IMAGE_PREFIX =
+      "META-INF/native-image/org.apache.fory/fory-json-";
 
   @Test
   public void unannotatedType() throws Exception {
@@ -92,6 +94,10 @@ public class JsonTypeProcessorTest {
     assertFalse(rules.contains("test.Plain_ForyJsonCodec$Factory"), rules);
     assertFalse(rules.contains("-keep,allowoptimization,allowobfuscation class test.Plain"), rules);
     assertTrue(result.hasGeneratedSource("test/Plain_ForyJsonCodec.java"));
+    assertEquals(
+        result.generatedResource(
+            NATIVE_IMAGE_PREFIX + "test.Plain_ForyJsonCodec/native-image.properties"),
+        "Args=--initialize-at-build-time=test.Plain_ForyJsonCodec$Factory\n");
   }
 
   @Test

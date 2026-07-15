@@ -158,10 +158,6 @@ final class ForyJsonGraalVMFeature implements Feature {
           "Generated JSON codec factory must be public static final: " + factoryName);
     }
     try {
-      // The frozen factory table persists these stateless instances in the native image heap.
-      // GraalVM therefore requires each concrete factory class to be initialized at build time
-      // before its instance is created and published by the hosted feature.
-      RuntimeClassInitialization.initializeAtBuildTime(factoryClass);
       GeneratedJsonCodecFactory factory =
           (GeneratedJsonCodecFactory) ReflectionUtils.getCtrHandle(factoryClass).invoke();
       GeneratedJsonCodec<?> codec =
