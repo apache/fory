@@ -31,10 +31,12 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.platform.AndroidSupport;
+import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 
 /** Utils for java.lang.Record. */
@@ -100,6 +102,12 @@ public class RecordUtils {
   private static final ClassValueCache<Tuple2<Constructor, MethodHandle>> ctrCache =
       ClassValueCache.newClassKeyCache(32);
 
+  // This holder must remain in fory-core's Native Image build-time initialization list. Its cache
+  // stores getter functions created during analysis because Native Image cannot create them later.
+  private static final class NativeImageRecordGetters {
+    private static final ClassValueCache<Object[]> CACHE = ClassValueCache.newClassKeyCache(32);
+  }
+
   /**
    * Returns {@code true} if and only if this class is a record class.
    *
@@ -134,7 +142,24 @@ public class RecordUtils {
     if (GET_RECORD_COMPONENTS == null) {
       return null;
     }
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && GraalvmSupport.isGraalBuildTime()) {
+      // Annotated type values can be JDK annotation proxies, which Native Image must not persist in
+      // the image heap. Keep only the runtime-required getter functions and let build-time codegen
+      // consume transient component metadata.
+      prepareRecordComponentGetters(cls);
+      return getRecordComponentsUncached(cls);
+    }
     return recordComponentsCache.get(cls, () -> getRecordComponentsUncached(cls));
+  }
+
+  /** Prepares record getter functions during Native Image hosted analysis. */
+  @Internal
+  public static void prepareRecordComponentGetters(Class<?> cls) {
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE
+        && GET_RECORD_COMPONENTS != null
+        && !AndroidSupport.IS_ANDROID) {
+      NativeImageRecordGetters.CACHE.get(cls, () -> buildRecordComponentGetters(cls));
+    }
   }
 
   /** Returns the record canonical constructor. */
@@ -152,9 +177,15 @@ public class RecordUtils {
 
   private static RecordComponent[] getRecordComponentsUncached(Class<?> type) {
     try {
-      MethodHandles.Lookup lookup =
-          AndroidSupport.IS_ANDROID ? null : _JDKAccess._trustedLookup(type);
       Object[] components = (Object[]) GET_RECORD_COMPONENTS.invoke(type);
+      Object[] preparedGetters =
+          GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE
+              ? NativeImageRecordGetters.CACHE.getIfPresent(type)
+              : null;
+      MethodHandles.Lookup lookup =
+          AndroidSupport.IS_ANDROID || preparedGetters != null
+              ? null
+              : _JDKAccess._trustedLookup(type);
       RecordComponent[] recordComponents = new RecordComponent[components.length];
       for (int i = 0; i < components.length; i++) {
         Object component = components[i];
@@ -168,8 +199,12 @@ public class RecordUtils {
             throw new ForyException("Failed to make record accessor accessible: " + accessor, e);
           }
         } else {
-          MethodHandle handle = lookup.unreflect(accessor);
-          getter = _JDKAccess.makeGetterFunction(lookup, handle, fieldType);
+          if (preparedGetters == null) {
+            MethodHandle handle = lookup.unreflect(accessor);
+            getter = _JDKAccess.makeGetterFunction(lookup, handle, fieldType);
+          } else {
+            getter = preparedGetters[i];
+          }
         }
         recordComponents[i] =
             new RecordComponent(
@@ -182,6 +217,22 @@ public class RecordUtils {
                 getter);
       }
       return recordComponents;
+    } catch (IllegalAccessException | InvocationTargetException e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private static Object[] buildRecordComponentGetters(Class<?> type) {
+    try {
+      MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(type);
+      Object[] components = (Object[]) GET_RECORD_COMPONENTS.invoke(type);
+      Object[] getters = new Object[components.length];
+      for (int i = 0; i < components.length; i++) {
+        Method accessor = (Method) GET_ACCESSOR.invoke(components[i]);
+        Class<?> fieldType = (Class<?>) GET_TYPE.invoke(components[i]);
+        getters[i] = _JDKAccess.makeGetterFunction(lookup, lookup.unreflect(accessor), fieldType);
+      }
+      return getters;
     } catch (IllegalAccessException | InvocationTargetException e) {
       throw new RuntimeException(e);
     }

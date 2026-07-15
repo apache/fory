@@ -111,6 +111,11 @@ final class ForyGraalVMFeature implements Feature {
 
     if (RecordUtils.isRecord(clazz)) {
       RuntimeReflection.registerAllRecordComponents(clazz);
+      // Native Image cannot spin the hidden getter classes used by RecordUtils at runtime. Build
+      // only those getters here; annotated type proxies must remain runtime metadata instead of
+      // becoming objects in the image heap.
+      RecordUtils.prepareRecordComponentGetters(clazz);
+      RecordUtils.getRecordConstructor(clazz);
     } else if (GraalvmSupport.needReflectionRegisterForCreation(clazz)) {
       RuntimeReflection.registerForReflectiveInstantiation(clazz);
     }

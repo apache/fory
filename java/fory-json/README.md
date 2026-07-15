@@ -356,11 +356,18 @@ operation. Apply request/body size limits at the transport boundary when parsing
 
 Builder mutation after `build()` does not modify an existing `ForyJson` runtime.
 
+In a GraalVM native image, runtime code generation and asynchronous compilation are automatically
+disabled. Every other builder option keeps the behavior described above.
+
 ## JSON annotations
 
-Fory JSON defines nine annotations in `org.apache.fory.json.annotation`, including `JsonCodec` for
-complete-value codec selection. They are Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol
-compatibility annotations.
+Fory JSON defines ten annotations in `org.apache.fory.json.annotation`, including `JsonCodec` for
+complete-value codec selection and `JsonType` for GraalVM Native Image model metadata. They are Fory
+JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
+
+`JsonType` has no effect on ordinary JVM JSON behavior and is not inherited. Add it to every
+reachable object model used by a native executable. See the
+[GraalVM guide](../../docs/guide/java/graalvm-support.md) for the complete workflow.
 
 ### `JsonProperty`
 
@@ -745,7 +752,8 @@ is not inherited from another annotated interface or abstract class. Readers acc
 configured inclusion; changing inclusion is a wire-format change and there is no dual-read
 fallback.
 
-At GraalVM native-image runtime, use class-literal entries rather than `className` entries.
+At GraalVM native-image runtime, annotate the base with `JsonType` and use class-literal entries
+rather than `className` entries. Listed class-literal subtypes are registered automatically.
 
 ## Custom codecs
 
@@ -1070,11 +1078,11 @@ plain `Base` fails with `ForyJsonException` containing the target type, codec cl
 and actual returned class. Fory validates the actual result rather than rejecting inheritance based
 on the codec's generic signature.
 
-`@JsonCodec` declaration and type-use discovery is supported on ordinary JVMs. Android and GraalVM
-native image ignore all `@JsonCodec` sources so that declaration defaults cannot work while nested
-type-use metadata silently disappears. Use exact `registerCodec(Target.class, instance)`
-registration for both environments. Native-image reflection configuration is not a supported way
-to enable only part of the annotation feature.
+`@JsonCodec` declaration and type-use discovery is supported on ordinary JVMs and GraalVM native
+images, including inherited declarations and nested type uses. Native object models must follow the
+`JsonType` workflow in the [GraalVM guide](../../docs/guide/java/graalvm-support.md), which registers
+the annotation codec's public no-argument constructor. Android ignores annotation codec sources;
+use exact `registerCodec(Target.class, instance)` registration there.
 
 ## Type validation and untrusted input
 

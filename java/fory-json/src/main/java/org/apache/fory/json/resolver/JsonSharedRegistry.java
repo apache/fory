@@ -129,8 +129,7 @@ import org.apache.fory.type.TypeUtils;
  */
 public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
-  private static final boolean CODEC_ANNOTATIONS_ENABLED =
-      !AndroidSupport.IS_ANDROID && !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE;
+  private static final boolean CODEC_ANNOTATIONS_ENABLED = !AndroidSupport.IS_ANDROID;
   private static final Comparator<DeclarationCandidate> DECLARATION_ORDER =
       new Comparator<DeclarationCandidate>() {
         @Override
@@ -655,10 +654,9 @@ public final class JsonSharedRegistry {
         hasStringEntry = true;
       }
     }
-    if (hasStringEntry && GraalvmSupport.isGraalRuntime()) {
+    if (hasStringEntry && GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
       throw new ForyJsonException(
-          "GraalVM native image requires build-time Fory codegen for @JsonSubTypes className entries on "
-              + baseType.getName());
+          "GraalVM native image requires @JsonSubTypes class literals on " + baseType.getName());
     }
     for (String className : classNames) {
       if (className != null) {

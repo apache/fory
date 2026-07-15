@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.fory.builder;
+package org.apache.fory.json;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -35,32 +35,30 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 
-/** Verifies the packaged GraalVM Feature and its Native Image activation metadata. */
-public final class GraalvmFeatureJarVerifier {
-  private static final String FEATURE_CLASS_NAME = "org.apache.fory.platform.ForyGraalVMFeature";
+/** Verifies the packaged Fory JSON GraalVM Feature and activation metadata. */
+public final class ForyJsonGraalVMFeatureJarVerifier {
+  private static final String FEATURE_CLASS_NAME =
+      "org.apache.fory.json.codec.ForyJsonGraalVMFeature";
   private static final String FEATURE_CLASS_FILE =
-      "org/apache/fory/platform/ForyGraalVMFeature.class";
+      "org/apache/fory/json/codec/ForyJsonGraalVMFeature.class";
   private static final String VERSION_17_FEATURE_CLASS =
       "META-INF/versions/17/" + FEATURE_CLASS_FILE;
   private static final String FEATURE_SOURCE_FILE =
-      "org/apache/fory/platform/ForyGraalVMFeature.java";
+      "org/apache/fory/json/codec/ForyJsonGraalVMFeature.java";
   private static final String VERSION_17_FEATURE_SOURCE =
       "META-INF/versions/17/" + FEATURE_SOURCE_FILE;
   private static final String NATIVE_IMAGE_PROPERTIES =
-      "META-INF/native-image/org.apache.fory/fory-core/native-image.properties";
+      "META-INF/native-image/org.apache.fory/fory-json/native-image.properties";
   private static final String FEATURE_SERVICE =
       "META-INF/services/org.graalvm.nativeimage.hosted.Feature";
   private static final String FEATURE_OPTION = "--features=" + FEATURE_CLASS_NAME;
-  private static final String INITIALIZATION_OPTION = "--initialize-at-build-time=";
-  private static final String RECORD_GETTERS =
-      "org.apache.fory.util.record.RecordUtils$NativeImageRecordGetters";
 
-  private GraalvmFeatureJarVerifier() {}
+  private ForyJsonGraalVMFeatureJarVerifier() {}
 
   public static void main(String[] args) throws Exception {
     if (args.length != 2) {
       throw new IllegalArgumentException(
-          "Usage: GraalvmFeatureJarVerifier <fory-core.jar> <fory-core-sources.jar>");
+          "Usage: ForyJsonGraalVMFeatureJarVerifier <fory-json.jar> <sources.jar>");
     }
     Path jarPath = Paths.get(args[0]);
     verifyBinaryJar(jarPath);
@@ -84,19 +82,10 @@ public final class GraalvmFeatureJarVerifier {
       check(countEntries(jarFile, FEATURE_SERVICE) == 0, "Feature service file must not exist");
       check(
           countEntries(jarFile, NATIVE_IMAGE_PROPERTIES) == 1,
-          "Expected exactly one core native-image.properties");
-
+          "Expected exactly one JSON native-image.properties");
       String properties = readEntry(jarFile, NATIVE_IMAGE_PROPERTIES);
-      check(
-          countOccurrences(properties, "--features=") == 1,
-          "Expected exactly one --features option");
-      check(properties.contains(FEATURE_OPTION), "Core Feature option is missing");
-      check(
-          properties.contains(INITIALIZATION_OPTION),
-          "Build-time initialization option is missing");
-      check(
-          properties.contains(RECORD_GETTERS),
-          "Native Image record getter cache must initialize at build time");
+      check(countOccurrences(properties, "--features=") == 1, "Expected one --features option");
+      check(properties.contains(FEATURE_OPTION), "Fory JSON Feature option is missing");
     }
   }
 
@@ -115,10 +104,9 @@ public final class GraalvmFeatureJarVerifier {
   private static void verifyFeatureLoading(Path jarPath) throws Exception {
     URL[] urls = {jarPath.toUri().toURL()};
     try (URLClassLoader classLoader =
-        new URLClassLoader(urls, GraalvmFeatureJarVerifier.class.getClassLoader())) {
+        new URLClassLoader(urls, ForyJsonGraalVMFeatureJarVerifier.class.getClassLoader())) {
       Class<?> featureClass = Class.forName(FEATURE_CLASS_NAME, true, classLoader);
-      check(
-          featureClass.getClassLoader() == classLoader, "Feature was not loaded from packaged jar");
+      check(featureClass.getClassLoader() == classLoader, "Feature was not loaded from the jar");
       check(!Modifier.isPublic(featureClass.getModifiers()), "Feature must remain non-public");
       Constructor<?> constructor = featureClass.getDeclaredConstructor();
       constructor.setAccessible(true);
@@ -127,7 +115,7 @@ public final class GraalvmFeatureJarVerifier {
       getDescription.setAccessible(true);
       Object description = getDescription.invoke(feature);
       check(
-          description instanceof String && ((String) description).contains("Fory"),
+          description instanceof String && ((String) description).contains("Fory JSON"),
           "Packaged Feature returned an invalid description");
     }
   }

@@ -661,6 +661,37 @@ final class ObjectCodecBuilder {
     return anySetter;
   }
 
+  // Native Image hosted discovery must stay aligned with this builder without adding duplicate
+  // property-name parsing or allocation to ordinary JVM metadata construction.
+  static boolean usesJsonMetadata(Method method, boolean record) {
+    // javac copies runtime annotations to generic bridge methods. Those generated methods do not
+    // own JSON declarations and processing them would reject an otherwise valid concrete method.
+    if (method.isSynthetic() || method.isBridge()) {
+      return false;
+    }
+    if (method.getDeclaringClass().isInterface()
+        && method.isAnnotationPresent(JsonProperty.class)) {
+      return true;
+    }
+    if (method.isAnnotationPresent(JsonAnyGetter.class)
+        || method.isAnnotationPresent(JsonAnySetter.class)) {
+      return true;
+    }
+    return !record
+        && isEligibleAccessor(method)
+        && (usesJsonReturn(method) || usesJsonParameters(method));
+  }
+
+  static boolean usesJsonReturn(Method method) {
+    // Java rejects type-use annotations on void, and setter returns are not JSON value owners.
+    // Keep return and parameter roles separate so hosted metadata follows the same ownership.
+    return method.isAnnotationPresent(JsonAnyGetter.class) || getterPropertyName(method) != null;
+  }
+
+  static boolean usesJsonParameters(Method method) {
+    return method.isAnnotationPresent(JsonAnySetter.class) || setterPropertyName(method) != null;
+  }
+
   private static FieldBuilder findAnyBuilder(
       Class<?> type, LinkedHashMap<String, FieldBuilder> builders) {
     FieldBuilder anyBuilder = null;

@@ -17,15 +17,22 @@
  * under the License.
  */
 
-module org.apache.fory.graalvm.tests {
-  requires org.apache.fory.core;
-  requires org.apache.fory.json;
-  requires java.sql;
+package org.apache.fory.json.annotation;
 
-  // Fory-generated codecs and annotation codecs access the test models from library modules.
-  exports org.apache.fory.graalvm;
-  exports org.apache.fory.graalvm.record;
+import java.lang.annotation.Documented;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-  opens org.apache.fory.graalvm.record to
-      org.apache.fory.core;
-}
+/**
+ * Marks a reachable JSON model for reflection metadata registration in a GraalVM native image.
+ *
+ * <p>The annotation does not change JSON behavior on the JVM and is intentionally not inherited.
+ * Annotate every runtime model type that Fory JSON reads or writes. A class-literal subtype listed
+ * by an annotated {@link JsonSubTypes} base is registered automatically.
+ */
+@Documented
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.TYPE)
+public @interface JsonType {}

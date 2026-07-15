@@ -22,6 +22,7 @@ package org.apache.fory.json;
 import java.util.Objects;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
+import org.apache.fory.platform.GraalvmSupport;
 
 /**
  * Configures and creates an immutable, thread-safe {@link ForyJson} facade.
@@ -66,13 +67,19 @@ public final class ForyJsonBuilder {
     return this;
   }
 
-  /** Enables generated object codecs for supported classes. Enabled by default. */
+  /**
+   * Enables generated object codecs for supported classes. Enabled by default and automatically
+   * disabled in a GraalVM native image.
+   */
   public ForyJsonBuilder withCodegen(boolean codegenEnabled) {
     this.codegenEnabled = codegenEnabled;
     return this;
   }
 
-  /** Enables asynchronous runtime compilation for generated object codecs. Enabled by default. */
+  /**
+   * Enables asynchronous runtime compilation for generated object codecs. Enabled by default and
+   * automatically disabled when code generation is unavailable.
+   */
   public ForyJsonBuilder withAsyncCompilation(boolean asyncCompilationEnabled) {
     this.asyncCompilationEnabled = asyncCompilationEnabled;
     return this;
@@ -180,11 +187,13 @@ public final class ForyJsonBuilder {
         fixedClassLoader = ForyJson.class.getClassLoader();
       }
     }
+    boolean effectiveCodegen = codegenEnabled && !GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE;
+    boolean effectiveAsyncCompilation = asyncCompilationEnabled && effectiveCodegen;
     return new ForyJson(
         new JsonConfig(
             writeNullFields,
-            codegenEnabled,
-            asyncCompilationEnabled,
+            effectiveCodegen,
+            effectiveAsyncCompilation,
             propertyDiscoveryEnabled,
             propertyNamingStrategy,
             fixedClassLoader,

@@ -46,5 +46,6 @@ public class Main {
     ExceptionExample.main(args);
     AbstractClassExample.main(args);
     FeatureTestExample.main(args);
+    ForyJsonExample.main(args);
   }
 }
