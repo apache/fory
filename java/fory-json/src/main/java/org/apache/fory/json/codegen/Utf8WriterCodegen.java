@@ -101,7 +101,8 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
             fields.name[i] = true;
           }
         } else if (!commaKnown) {
-          if (!canUsePackedDynamicPrefix(property)
+          if (property.writesRawString()
+              || !canUsePackedDynamicPrefix(property)
               || !canPackSinglePrefix(property, false)
               || !canPackSinglePrefix(property, true)) {
             fields.name[i] = true;
@@ -206,7 +207,8 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
   }
 
   private static boolean canPackObjectStartString(JsonFieldInfo property) {
-    return property.writeKind() == JsonFieldKind.STRING
+    return !property.writesRawString()
+        && property.writeKind() == JsonFieldKind.STRING
         && property.utf8NamePrefix().length < Long.BYTES * 2;
   }
 

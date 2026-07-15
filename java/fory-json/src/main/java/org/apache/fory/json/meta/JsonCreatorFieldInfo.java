@@ -34,17 +34,24 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
 public final class JsonCreatorFieldInfo {
   private final String name;
   private final long nameHash;
-  private final int argumentIndex;
+  private final int argumentIndexAndBase64;
   private final Type type;
   private final Class<?> rawType;
   private final JsonCodec codecAnnotation;
   private JsonTypeInfo typeInfo;
 
   public JsonCreatorFieldInfo(
-      String name, int argumentIndex, Type type, Class<?> rawType, JsonCodec codecAnnotation) {
+      String name,
+      int argumentIndex,
+      Type type,
+      Class<?> rawType,
+      JsonCodec codecAnnotation,
+      boolean base64) {
     this.name = name;
     nameHash = JsonFieldNameHash.hash(name);
-    this.argumentIndex = argumentIndex;
+    // Creator argument indexes are non-negative, so the unused sign bit carries the uncommon
+    // Base64 shape without expanding metadata for ordinary creator arguments.
+    argumentIndexAndBase64 = base64 ? argumentIndex | Integer.MIN_VALUE : argumentIndex;
     this.type = type;
     this.rawType = rawType;
     this.codecAnnotation = codecAnnotation;
@@ -59,7 +66,12 @@ public final class JsonCreatorFieldInfo {
   }
 
   public int argumentIndex() {
-    return argumentIndex;
+    return argumentIndexAndBase64 & Integer.MAX_VALUE;
+  }
+
+  /** Returns whether this creator argument reads a Base64 JSON string. */
+  public boolean readsBase64() {
+    return argumentIndexAndBase64 < 0;
   }
 
   public Type type() {
@@ -82,14 +94,23 @@ public final class JsonCreatorFieldInfo {
   }
 
   public Object readLatin1(Latin1JsonReader reader) {
+    if (readsBase64()) {
+      return reader.readBase64();
+    }
     return requirePrimitive(typeInfo.latin1Reader().readLatin1(reader), rawType);
   }
 
   public Object readUtf16(Utf16JsonReader reader) {
+    if (readsBase64()) {
+      return reader.readBase64();
+    }
     return requirePrimitive(typeInfo.utf16Reader().readUtf16(reader), rawType);
   }
 
   public Object readUtf8(Utf8JsonReader reader) {
+    if (readsBase64()) {
+      return reader.readBase64();
+    }
     return requirePrimitive(typeInfo.utf8Reader().readUtf8(reader), rawType);
   }
 

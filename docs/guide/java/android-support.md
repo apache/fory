@@ -121,6 +121,12 @@ The same exact-rule approach supports every `JsonCodec` member; it is not limite
 codecs. `JsonType` only automates rule generation on Android and is not required for codec
 selection.
 
+For `@JsonType` models, the generated R8 rules also retain `JsonValue` fields and effective methods,
+fixed `JsonRawValue` fields and getters, and their runtime annotations. Without `@JsonType`, these
+annotations still work through reflection, but a release-minified application must keep the exact
+annotated members and annotation attributes itself. A `JsonValue` method may use a non-JavaBean
+name, so its manual rule must name that method explicitly.
+
 Android Fory JSON requires a retained no-argument constructor for an ordinary mutable class; it may
 be non-public when Android reflection can make it accessible. `JsonCreator` constructor-backed
 classes follow the normal creator rules instead. Retain every field and method used for reflection,

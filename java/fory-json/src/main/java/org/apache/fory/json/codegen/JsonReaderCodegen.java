@@ -142,7 +142,7 @@ abstract class JsonReaderCodegen {
       if (usesReadInfo(properties[i])) {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
-      if (JsonCodegen.usesReadCodec(properties[i])) {
+      if (usesReadCodec(properties[i])) {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(properties[i])), "r" + i);
       }
       if (storesReadObjectCodec(type, properties[i])) {
@@ -269,7 +269,7 @@ abstract class JsonReaderCodegen {
       if (usesReadInfo(properties[i])) {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
-      if (JsonCodegen.usesReadCodec(properties[i])) {
+      if (usesReadCodec(properties[i])) {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(properties[i])), "r" + i);
       }
       if (storesReadObjectCodec(type, properties[i])) {
@@ -340,7 +340,7 @@ abstract class JsonReaderCodegen {
     ctx.addField(ObjectCodec.class, "owner");
     ctx.addField(JsonCreatorInfo.class, "creator");
     for (int i = 0; i < fields.length; i++) {
-      if (!isDirectCreatorPrimitive(fields[i])) {
+      if (usesCreatorCodec(fields[i])) {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "r" + i);
       }
     }
@@ -391,7 +391,7 @@ abstract class JsonReaderCodegen {
       ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "anyReader");
     }
     for (int i = 0; i < fields.length; i++) {
-      if (!isDirectCreatorPrimitive(fields[i])) {
+      if (usesCreatorCodec(fields[i])) {
         ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "r" + i);
       }
     }
@@ -616,7 +616,7 @@ abstract class JsonReaderCodegen {
     }
     Reference codecs = new Reference("codecs", TypeRef.of(readerArrayType()));
     for (int i = 0; i < fields.length; i++) {
-      if (!isDirectCreatorPrimitive(fields[i])) {
+      if (usesCreatorCodec(fields[i])) {
         expressions.add(
             new Expression.Assign(
                 new Reference("this.r" + i, TypeRef.of(readerCapabilityType())),
@@ -748,7 +748,10 @@ abstract class JsonReaderCodegen {
 
   private Expression readCreatorValue(JsonCreatorFieldInfo field, int id) {
     Class<?> type = field.rawType();
-    if (!isDirectCreatorPrimitive(field)) {
+    if (field.readsBase64()) {
+      return new Expression.Invoke(readerRef(), "readBase64", TypeRef.of(byte[].class));
+    }
+    if (usesCreatorCodec(field)) {
       Expression value =
           new Expression.Invoke(
               fieldRef("r" + id, readerCapabilityType()),
@@ -809,6 +812,10 @@ abstract class JsonReaderCodegen {
         || (type == float.class && kind == JsonFieldKind.FLOAT)
         || (type == double.class && kind == JsonFieldKind.DOUBLE)
         || (type == char.class && kind == JsonFieldKind.CHAR);
+  }
+
+  private static boolean usesCreatorCodec(JsonCreatorFieldInfo field) {
+    return !field.readsBase64() && !isDirectCreatorPrimitive(field);
   }
 
   private void addFastReadGroupMethods(
@@ -1043,7 +1050,7 @@ abstract class JsonReaderCodegen {
               hashes,
               new Expression.Invoke(property, "nameHash", TypeRef.of(long.class)).inline(),
               id));
-      if (JsonCodegen.usesReadCodec(properties[i])) {
+      if (usesReadCodec(properties[i])) {
         Class<?> codecType = codecFieldType(properties[i]);
         expressions.add(
             new Expression.Assign(
@@ -2451,17 +2458,7 @@ abstract class JsonReaderCodegen {
   }
 
   final boolean usesReadCodec(JsonFieldInfo property) {
-    switch (property.readKind()) {
-      case ENUM:
-      case ARRAY:
-      case COLLECTION:
-      case MAP:
-        return true;
-      case OBJECT:
-        return !usesReadObjectCodec(property);
-      default:
-        return false;
-    }
+    return JsonCodegen.usesReadCodec(property);
   }
 
   final boolean usesReadInfo(JsonFieldInfo property) {
@@ -2509,6 +2506,12 @@ abstract class JsonReaderCodegen {
     if (record) {
       return readRecordField(type, property, id, object, tokenValueRead);
     }
+    if (property.readsBase64()) {
+      return builder.setField(
+          property,
+          object,
+          new Expression.Invoke(readerRef(), "readBase64", TypeRef.of(byte[].class)));
+    }
     Class<?> rawType = property.readRawType();
     switch (property.readKind()) {
       case BOOLEAN:
@@ -2540,6 +2543,10 @@ abstract class JsonReaderCodegen {
 
   private Expression readRecordField(
       Class<?> type, JsonFieldInfo property, int id, Expression object, boolean tokenValueRead) {
+    if (property.readsBase64()) {
+      return assignRecord(
+          object, id, new Expression.Invoke(readerRef(), "readBase64", TypeRef.of(byte[].class)));
+    }
     Class<?> rawType = property.readRawType();
     switch (property.readKind()) {
       case BOOLEAN:

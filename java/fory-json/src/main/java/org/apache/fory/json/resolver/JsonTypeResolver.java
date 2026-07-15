@@ -314,12 +314,20 @@ public final class JsonTypeResolver {
       return newTypeInfo(declaredType, rawType, JsonFieldKind.OBJECT, codec, false);
     }
     JsonCodecDeclaration declaration = sharedRegistry.codecDeclaration(rawType);
-    if (declaration == null) {
+    if (declaration != null) {
+      if (!declaration.inherited()) {
+        rejectConflictingValue(rawType);
+      }
+      codec = sharedRegistry.annotationCodec(rawType, declaration.codecClass());
+      codec = declaration.bind(declaredType, rawType, codec);
+      return newTypeInfo(declaredType, rawType, JsonFieldKind.OBJECT, codec, true);
+    }
+    JsonValueDeclaration value = sharedRegistry.valueDeclaration(rawType);
+    if (value == null) {
       return null;
     }
-    codec = sharedRegistry.annotationCodec(rawType, declaration.codecClass());
-    codec = declaration.bind(declaredType, rawType, codec);
-    return newTypeInfo(declaredType, rawType, JsonFieldKind.OBJECT, codec, true);
+    sharedRegistry.checkSecure(rawType);
+    return newTypeInfo(declaredType, rawType, JsonFieldKind.OBJECT, value.codec(), true);
   }
 
   private JsonTypeInfo annotationTypeInfo(
@@ -360,6 +368,13 @@ public final class JsonTypeResolver {
 
   private static ForyJsonException invalidCodecConfig(Class<?> rawType, String reason) {
     return new ForyJsonException("Invalid @JsonCodec for " + rawType.getTypeName() + ": " + reason);
+  }
+
+  private void rejectConflictingValue(Class<?> rawType) {
+    if (sharedRegistry.valueDeclaration(rawType) != null) {
+      throw new ForyJsonException(
+          "Conflicting type-level @JsonCodec and effective @JsonValue on " + rawType.getName());
+    }
   }
 
   private ResolutionSnapshot beginResolution() {

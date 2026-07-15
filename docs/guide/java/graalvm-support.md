@@ -89,6 +89,11 @@ Type, field, effective ordinary getter, setter value parameter, and `JsonCreator
 element, content, Map-key, and Map-value codec constructor. This is the same annotation model used
 on the JVM and Android.
 
+`JsonValue` fields and effective public zero-argument methods are supported, including matching
+one-String `JsonCreator` constructors and public static factories. Fixed `JsonRawValue` fields and
+getters support raw String values and Base64 `byte[]` values as on the JVM. Annotate each reachable
+owning model with `JsonType` so Native Image retains these members.
+
 `JsonAnyProperty` and `JsonAnyGetter` flatten their Map into the enclosing object. Use
 `@JsonCodec(valueCodec = ...)` on that field or getter to customize each dynamic value. A second
 `JsonAnySetter` parameter may use the normal configuration for its own value shape.

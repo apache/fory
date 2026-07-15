@@ -65,6 +65,8 @@ final class JsonTypeProcessor {
   private static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
   private static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
+  private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
+  private static final String JSON_RAW_VALUE = JSON_PACKAGE + ".annotation.JsonRawValue";
   private static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
   private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
   private static final String NO_JSON_VALUE_CODEC = JSON_CODEC + "$NoJsonValueCodec";
@@ -452,6 +454,8 @@ final class JsonTypeProcessor {
         || hasAnnotation(method, JSON_ANY_GETTER)
         || hasAnnotation(method, JSON_ANY_SETTER)
         || hasAnnotation(method, JSON_CODEC)
+        || hasAnnotation(method, JSON_VALUE)
+        || hasAnnotation(method, JSON_RAW_VALUE)
         || hasJsonAnnotations(method.getParameters())) {
       return true;
     }
