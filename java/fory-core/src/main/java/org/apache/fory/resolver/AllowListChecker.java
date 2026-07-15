@@ -113,10 +113,12 @@ public class AllowListChecker implements TypeChecker {
       Tuple2<String, Integer> componentInfo = TypeUtils.getArrayComponentInfo(className);
       String componentName = componentInfo.f0;
       if (componentName != null) {
-        disallowed |= containsPrefix(disallowList, disallowListPrefix, componentName)
-            || DisallowedList.contains(componentName);
-        allowed |= containsPrefix(allowList, allowListPrefix, componentName)
-            || DefaultJdkClassAllowList.contains(componentName);
+        disallowed |=
+            containsPrefix(disallowList, disallowListPrefix, componentName)
+                || DisallowedList.contains(componentName);
+        allowed |=
+            containsPrefix(allowList, allowListPrefix, componentName)
+                || DefaultJdkClassAllowList.contains(componentName);
       }
     }
     switch (checkLevel) {
