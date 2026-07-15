@@ -51,8 +51,8 @@ import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
-import org.apache.fory.json.meta.JsonCreatorDeclaration;
 import org.apache.fory.json.meta.JsonAnySetterAccessor;
+import org.apache.fory.json.meta.JsonCreatorDeclaration;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldAccessor;
@@ -86,7 +86,7 @@ final class ObjectCodecBuilder {
     }
     Method anySetter =
         addJsonMethods(type, propertyDiscoveryEnabled, record, builders, generatedCodec);
-    if (generatedCodec != null && generatedCodec.hasAnySetter() != (anySetter != null)) {
+    if (generatedCodec != null && generatedCodec.hasAnySetter() && anySetter == null) {
       throw new ForyJsonException(
           "Generated JSON Any setter does not match runtime annotations on " + type.getName());
     }
@@ -802,8 +802,10 @@ final class ObjectCodecBuilder {
       if (builder == null || !builder.hasLogicalMember()) {
         throw new ForyJsonException("Unknown JSON record component " + names[i]);
       }
-      builder.creatorArgumentIndex = i;
       builder.mergeAnnotation(type, parameters[i]);
+      if (!builder.creatorReadAllowed()) {
+        continue;
+      }
       bindCreatorType(ownerType, constructor, i, parameterTypes[i], builder);
       if (builder.isAny()) {
         continue;
@@ -1280,8 +1282,7 @@ final class ObjectCodecBuilder {
       GeneratedJsonCodec<?> generatedCodec) {
     if ((!propertyDiscoveryEnabled
             && !(record
-                && isPropagatedRecordAnnotation(
-                    type, method, JsonRawValue.class, generatedCodec)))
+                && isPropagatedRecordAnnotation(type, method, JsonRawValue.class, generatedCodec)))
         || !isEligibleAccessor(method)
         || method.isVarArgs()
         || method.getTypeParameters().length != 0
@@ -1609,7 +1610,7 @@ final class ObjectCodecBuilder {
 
   private static JsonFieldAccessor generatedAccessor(
       GeneratedJsonCodec<?> generatedCodec, Member member) {
-    return generatedCodec == null ? null : generatedCodec.accessor(member);
+    return generatedCodec == null ? null : generatedCodec.validatedAccessor(member);
   }
 
   private static JsonFieldAccessor fieldAccessor(

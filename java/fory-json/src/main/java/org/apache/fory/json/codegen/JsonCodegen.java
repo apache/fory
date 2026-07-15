@@ -37,6 +37,7 @@ import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.codec.Utf8WriterCodec;
+import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.resolver.JsonTypeInfo;
@@ -274,6 +275,14 @@ public final class JsonCodegen {
     if (!canCompileType(codec.type())) {
       return false;
     }
+    JsonCreatorInfo creator = codec.creatorInfo();
+    if (creator != null) {
+      for (Class<?> parameterType : creator.executable().getParameterTypes()) {
+        if (!canCompileType(parameterType)) {
+          return false;
+        }
+      }
+    }
     JsonFieldInfo[] properties = codec.readFields();
     for (int i = 0; i < properties.length; i++) {
       if (!canCompileRead(properties[i])) {
@@ -293,6 +302,9 @@ public final class JsonCodegen {
     if (getter != null && !canCall(getter)) {
       return false;
     }
+    if (field != null && !canCompileField(field)) {
+      return false;
+    }
     Class<?> mapType = getter == null ? field.getType() : getter.getReturnType();
     return isVisible(mapType) && isVisible(any.valueRawType());
   }
@@ -309,6 +321,9 @@ public final class JsonCodegen {
       return false;
     }
     if (field != null && !isVisible(field.getType())) {
+      return false;
+    }
+    if (field != null && !canCompileField(field)) {
       return false;
     }
     if (setter != null && creator) {
@@ -489,6 +504,9 @@ public final class JsonCodegen {
     if (property.writeGetter() != null && !canCall(property.writeGetter())) {
       return false;
     }
+    if (field != null && !canCompileField(field)) {
+      return false;
+    }
     Class<?> rawType = property.writeRawType();
     if (rawType != null && !rawType.isPrimitive() && !isVisible(rawType)) {
       return false;
@@ -501,6 +519,9 @@ public final class JsonCodegen {
       return false;
     }
     if (property.readSetter() != null && !canCall(property.readSetter())) {
+      return false;
+    }
+    if (property.readField() != null && !canCompileField(property.readField())) {
       return false;
     }
     // Generated field accessors deliberately have no Fory core FieldAccessor. The selected Field
@@ -517,6 +538,13 @@ public final class JsonCodegen {
 
   private boolean canCompileType(Class<?> type) {
     return isPublicSourceType(type) && isVisible(type);
+  }
+
+  private boolean canCompileField(Field field) {
+    // Descriptor emits public fields as direct Java member access. A public field inherited from
+    // an inaccessible declaring class is reflectively visible but cannot be resolved by Janino.
+    // Non-public fields use the existing generated accessor path and do not spell their owner.
+    return !Modifier.isPublic(field.getModifiers()) || canCompileType(field.getDeclaringClass());
   }
 
   private boolean canCall(Method method) {

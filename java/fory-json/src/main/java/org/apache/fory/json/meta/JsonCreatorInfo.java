@@ -34,11 +34,13 @@ import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.internal._JDKAccess;
 
 /**
- * Immutable construction metadata for one property-based creator.
+ * Immutable ordered construction metadata for one JSON object codec.
  *
- * <p>Records, {@code JsonCreator} constructors, and {@code JsonCreator} factories share this owner.
- * The interpreted path allocates exactly one fixed-size argument array per object. Generated JIT
- * readers consume the same field metadata and executable but invoke it directly with typed locals.
+ * <p>Record canonical constructors, property-based {@code JsonCreator} constructors, and
+ * property-based {@code JsonCreator} factories share this owner. The separate complete-string
+ * {@code JsonValue} representation owns its value creator in its value codec. The interpreted path
+ * allocates exactly one fixed-size argument array per object. Generated JIT readers consume the
+ * same field metadata and executable but invoke it directly with typed locals.
  */
 @Internal
 public final class JsonCreatorInfo {

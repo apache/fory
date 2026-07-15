@@ -22,10 +22,12 @@ package org.apache.fory.json;
 import static org.apache.fory.json.JsonTestSupport.nullCodec;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
+import static org.testng.Assert.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import org.apache.fory.platform.JdkVersion;
 import org.testng.SkipException;
 import org.testng.annotations.Factory;
@@ -142,5 +144,32 @@ public class JsonRecordTest extends ForyJsonTestModels {
     Object decoded = json.fromJson("{\"id\":10,\"name\":\" next \"}", type);
     assertEquals(type.getMethod("id").invoke(decoded), Integer.valueOf(10));
     assertEquals(type.getMethod("name").invoke(decoded), "NEXT");
+  }
+
+  @Test
+  public void ignoredComponent() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 17) {
+      throw new SkipException("Java record test requires JDK 17+");
+    }
+    Class<?> type =
+        compileRecordClass(
+            "JsonIgnoredRecord",
+            "package org.apache.fory.json.records;\n"
+                + "import java.util.Map;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public record JsonIgnoredRecord(\n"
+                + "    @JsonIgnore(ignoreWrite = false) int id,\n"
+                + "    @JsonAnyProperty Map<String, Object> extra) {}\n");
+    ForyJson json = newJson();
+    byte[] bytes = "{\"id\":9,\"unknown\":1}".getBytes(StandardCharsets.UTF_8);
+    for (Object decoded :
+        Arrays.asList(
+            json.fromJson(new String(bytes, StandardCharsets.UTF_8), type),
+            json.fromJson(bytes, type))) {
+      assertEquals(type.getMethod("id").invoke(decoded), Integer.valueOf(0));
+      Map<?, ?> extra = (Map<?, ?>) type.getMethod("extra").invoke(decoded);
+      assertEquals(extra.size(), 1);
+      assertTrue(extra.containsKey("unknown"));
+    }
   }
 }

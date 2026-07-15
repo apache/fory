@@ -37,6 +37,7 @@ import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonValue;
+import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.meta.JsonCreatorDeclaration;
 import org.apache.fory.json.meta.JsonFieldAccessor;
@@ -59,11 +60,11 @@ final class JsonValueDeclaration {
     return codec;
   }
 
-  static JsonValueDeclaration resolve(Class<?> type) {
+  static JsonValueDeclaration resolve(Class<?> type, GeneratedJsonCodec<?> generatedCodec) {
     List<Member> members = new ArrayList<>();
     collectFields(type, members);
     collectMethods(type, members);
-    coalesceRecordMember(type, members);
+    coalesceRecordMember(type, members, generatedCodec);
     if (members.isEmpty()) {
       return null;
     }
@@ -77,16 +78,31 @@ final class JsonValueDeclaration {
     if (member instanceof Field) {
       Field field = (Field) member;
       validateField(field);
-      accessor = JsonFieldAccessor.forField(field);
+      accessor = generatedAccessor(generatedCodec, field);
       raw = field.isAnnotationPresent(JsonRawValue.class);
     } else {
       Method method = (Method) member;
       validateMethod(method);
-      accessor = JsonFieldAccessor.forGetter(method);
+      accessor = generatedAccessor(generatedCodec, method);
       raw = method.isAnnotationPresent(JsonRawValue.class);
     }
-    Executable creator = valueCreator(type);
-    return new JsonValueDeclaration(new JsonStringValueCodec(type, accessor, creator, raw));
+    Executable creator = valueCreator(type, generatedCodec);
+    GeneratedJsonCodec<?> creatorBackend =
+        generatedCodec != null && generatedCodec.matchesCreator(creator) ? generatedCodec : null;
+    return new JsonValueDeclaration(
+        new JsonStringValueCodec(type, accessor, creator, creatorBackend, raw));
+  }
+
+  private static JsonFieldAccessor generatedAccessor(
+      GeneratedJsonCodec<?> generatedCodec, Member member) {
+    JsonFieldAccessor accessor =
+        generatedCodec == null ? null : generatedCodec.validatedAccessor(member);
+    if (accessor != null) {
+      return accessor;
+    }
+    return member instanceof Field
+        ? JsonFieldAccessor.forField((Field) member)
+        : JsonFieldAccessor.forGetter((Method) member);
   }
 
   private static void collectFields(Class<?> type, List<Member> members) {
@@ -122,8 +138,14 @@ final class JsonValueDeclaration {
     }
   }
 
-  private static void coalesceRecordMember(Class<?> type, List<Member> members) {
-    if (!RecordUtils.isRecord(type) || members.size() != 2) {
+  private static void coalesceRecordMember(
+      Class<?> type, List<Member> members, GeneratedJsonCodec<?> generatedCodec) {
+    // Android desugaring removes the platform Record identity but preserves the propagated field
+    // and accessor annotations. The validated companion is therefore the authoritative Record
+    // identity and lets this semantic owner select the direct accessor without structural guesses.
+    boolean record =
+        generatedCodec == null ? RecordUtils.isRecord(type) : generatedCodec.validatedRecord();
+    if (!record || members.size() != 2) {
       return;
     }
     Field field = null;
@@ -143,7 +165,10 @@ final class JsonValueDeclaration {
         && field.isAnnotationPresent(JsonRawValue.class)
             == method.isAnnotationPresent(JsonRawValue.class)) {
       members.clear();
-      members.add(field);
+      members.add(
+          generatedCodec != null && generatedCodec.validatedAccessor(method) != null
+              ? method
+              : field);
     }
   }
 
@@ -183,7 +208,7 @@ final class JsonValueDeclaration {
     }
   }
 
-  private static Executable valueCreator(Class<?> type) {
+  private static Executable valueCreator(Class<?> type, GeneratedJsonCodec<?> generatedCodec) {
     JsonCreatorDeclaration declaration = JsonCreatorDeclaration.find(type);
     if (declaration == null) {
       return null;
@@ -192,19 +217,19 @@ final class JsonValueDeclaration {
     if (declaration.annotation().value().length != 0
         || executable.getParameterCount() != 1
         || executable.getParameterTypes()[0] != String.class) {
-      rejectRecordCreator(type);
+      rejectRecordCreator(type, generatedCodec);
       return null;
     }
     Parameter parameter = executable.getParameters()[0];
     if (parameter.isAnnotationPresent(JsonProperty.class)) {
-      rejectRecordCreator(type);
+      rejectRecordCreator(type, generatedCodec);
       return null;
     }
     return executable;
   }
 
-  private static void rejectRecordCreator(Class<?> type) {
-    if (RecordUtils.isRecord(type)) {
+  private static void rejectRecordCreator(Class<?> type, GeneratedJsonCodec<?> generatedCodec) {
+    if (generatedCodec == null ? RecordUtils.isRecord(type) : generatedCodec.validatedRecord()) {
       throw new ForyJsonException("@JsonCreator is not supported on record " + type.getName());
     }
   }

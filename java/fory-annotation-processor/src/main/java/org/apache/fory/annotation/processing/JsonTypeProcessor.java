@@ -120,8 +120,8 @@ final class JsonTypeProcessor {
             model.companionHasCreator = generated.hasCreator;
             model.companionHasCreatorFactory = generated.hasCreatorFactory;
             model.companionIsRecord = generated.record;
-            if (generated.creatorR8Declaration != null) {
-              model.addR8Member(new R8Member(model.binaryName, generated.creatorR8Declaration));
+            for (GeneratedJsonCodecSourceWriter.MemberRule member : generated.r8Members) {
+              model.addR8Member(new R8Member(member.ownerBinaryName, member.declaration));
             }
           }
         }
@@ -773,7 +773,6 @@ final class JsonTypeProcessor {
 
     boolean hasNestedIdentity() {
       return binaryName.indexOf('$') >= 0
-          || companionBinaryName != null && companionBinaryName.indexOf('$') >= 0
           || containsNested(binaryFallbackTypes)
           || containsNested(annotationOwnerTypes)
           || containsNested(containerTypes)

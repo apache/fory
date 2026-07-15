@@ -27,7 +27,7 @@ import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.meta.JsonAnySetterAccessor;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 
-/** Source-generated execution operations for one JSON object model. */
+/** Source-generated execution operations for one JSON model. */
 @Internal
 public abstract class GeneratedJsonCodec<T> {
   private Map<Member, JsonFieldAccessor> validatedAccessors;
@@ -102,14 +102,14 @@ public abstract class GeneratedJsonCodec<T> {
     initialized = true;
   }
 
-  /** Returns the generated accessor for the exact selected member. */
-  public final JsonFieldAccessor accessor(Member member) {
+  /** Returns the validated generated accessor for the exact selected member. */
+  public final JsonFieldAccessor validatedAccessor(Member member) {
     requireInitialized();
     return validatedAccessors.get(member);
   }
 
   /** Returns the generated any-setter operation for the exact selected method. */
-  public final JsonAnySetterAccessor anySetter(Member member) {
+  final JsonAnySetterAccessor anySetter(Member member) {
     requireInitialized();
     return member != null && member.equals(validatedAnySetterMember)
         ? validatedAnySetterAccessor
@@ -117,31 +117,31 @@ public abstract class GeneratedJsonCodec<T> {
   }
 
   /** Returns whether the generated companion declared an any-setter operation. */
-  public final boolean hasAnySetter() {
+  final boolean hasAnySetter() {
     requireInitialized();
     return validatedAnySetterAccessor != null;
   }
 
   /** Returns the registry-owned creator parameter names. */
-  public final String[] validatedCreatorParameterNames() {
+  final String[] validatedCreatorParameterNames() {
     requireInitialized();
     return validatedCreatorParameterNames;
   }
 
   /** Returns the registry-owned creator parameter types. */
-  public final Class<?>[] validatedCreatorParameterTypes() {
+  final Class<?>[] validatedCreatorParameterTypes() {
     requireInitialized();
     return validatedCreatorParameterTypes;
   }
 
   /** Returns the validated static creator factory name. */
-  public final String validatedCreatorFactoryName() {
+  final String validatedCreatorFactoryName() {
     requireInitialized();
     return validatedCreatorFactoryName;
   }
 
   /** Returns the exact registry-validated creator executable, or {@code null}. */
-  public final Executable validatedCreator() {
+  final Executable validatedCreator() {
     requireInitialized();
     return validatedCreator;
   }
@@ -150,6 +150,12 @@ public abstract class GeneratedJsonCodec<T> {
   public final boolean validatedRecord() {
     requireInitialized();
     return validatedRecord;
+  }
+
+  /** Returns whether the generated construction operation targets the exact executable. */
+  public final boolean matchesCreator(Executable creator) {
+    requireInitialized();
+    return creator != null && creator.equals(validatedCreator);
   }
 
   /** Rethrows a checked creator failure without widening the generated ABI. */

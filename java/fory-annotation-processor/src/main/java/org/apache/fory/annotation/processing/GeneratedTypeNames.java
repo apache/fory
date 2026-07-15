@@ -17,36 +17,23 @@
  * under the License.
  */
 
-package org.apache.fory.codegen;
+package org.apache.fory.annotation.processing;
 
-import org.apache.fory.annotation.Internal;
+/** Collision-free generated names for the dependency-free annotation processor. */
+final class GeneratedTypeNames {
+  private GeneratedTypeNames() {}
 
-/** Collision-free Java names derived from model binary names. */
-@Internal
-public final class GeneratedClassNames {
-  private GeneratedClassNames() {}
-
-  /** Appends a generated-class suffix after escaping the binary simple name. */
-  public static String withSuffix(String binaryName, String suffix) {
-    int packageEnd = binaryName.lastIndexOf('.');
-    String binarySimpleName = packageEnd < 0 ? binaryName : binaryName.substring(packageEnd + 1);
-    String generatedSimpleName = escapeBinarySimpleName(binarySimpleName) + suffix;
-    return packageEnd < 0
-        ? generatedSimpleName
-        : binaryName.substring(0, packageEnd + 1) + generatedSimpleName;
-  }
-
-  /** Escapes one binary simple name into a collision-free Java identifier. */
-  public static String escapeBinarySimpleName(String binarySimpleName) {
+  static String escapeBinarySimpleName(String binarySimpleName) {
     return escape(binarySimpleName, false);
   }
 
-  /** Escapes every segment of a binary name while preserving package separators. */
-  public static String escapeBinaryName(String binaryName) {
+  static String escapeBinaryName(String binaryName) {
     return escape(binaryName, true);
   }
 
   private static String escape(String value, boolean preserveDots) {
+    // Keep this encoding identical to fory-core GeneratedClassNames. The processor intentionally
+    // has no runtime dependency, so generated source names need this local build-time owner.
     StringBuilder builder = new StringBuilder(value.length() + 32);
     for (int i = 0; i < value.length(); ) {
       int codePoint = value.codePointAt(i);

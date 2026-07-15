@@ -60,6 +60,7 @@ final class GeneratedJsonCodecSourceWriter {
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
   private static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
+  private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
   private static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
   private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
   private static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
@@ -98,7 +99,7 @@ final class GeneratedJsonCodecSourceWriter {
   }
 
   Result write(TypeElement target) {
-    if (!usesDefaultObjectCodec(target)) {
+    if (!needsGeneratedCodec(target)) {
       return null;
     }
     Model model = buildModel(target);
@@ -113,26 +114,46 @@ final class GeneratedJsonCodecSourceWriter {
     }
     return new Result(
         model.binaryName,
-        model.creator == null ? null : model.creator.r8Declaration,
+        Collections.unmodifiableList(new ArrayList<>(model.r8Members)),
         model.anySetter != null,
         model.creator != null,
         model.creator != null && model.creator.factory,
         model.creator != null && model.creator.record);
   }
 
-  private boolean usesDefaultObjectCodec(TypeElement target) {
-    if (!(target.getKind() == ElementKind.CLASS || isRecord(target))
+  private boolean needsGeneratedCodec(TypeElement target) {
+    boolean record = isRecord(target);
+    if (!(target.getKind() == ElementKind.CLASS || record)
         || target.getModifiers().contains(Modifier.ABSTRACT)
         || annotationMirror(target, JSON_SUB_TYPES) != null) {
       return false;
     }
-    if (hasCompleteTypeCodec(target) || isObjectCodecExcluded(target)) {
+    if (hasCompleteTypeCodec(target)
+        || !record && hasEffectiveJsonValue(target)
+        || isObjectCodecExcluded(target)) {
       return false;
     }
     if (!isNameable(target)) {
       throw invalid("@JsonType model is not accessible to generated JSON code", target);
     }
     return true;
+  }
+
+  private boolean hasEffectiveJsonValue(TypeElement target) {
+    for (TypeElement owner : classHierarchy(target)) {
+      for (VariableElement field : ElementFilter.fieldsIn(owner.getEnclosedElements())) {
+        if (annotationMirror(field, JSON_VALUE) != null) {
+          return true;
+        }
+      }
+    }
+    for (ExecutableElement method : effectiveMethods(target)) {
+      if (method.getModifiers().contains(Modifier.PUBLIC)
+          && annotationMirror(method, JSON_VALUE) != null) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private boolean hasCompleteTypeCodec(TypeElement target) {
@@ -199,11 +220,12 @@ final class GeneratedJsonCodecSourceWriter {
     String targetBinaryName = elements.getBinaryName(target).toString();
     String binarySimpleName =
         targetBinaryName.substring(packageName.isEmpty() ? 0 : packageName.length() + 1);
-    String simpleName = escapeBinarySimpleName(binarySimpleName) + SUFFIX;
+    String simpleName = GeneratedTypeNames.escapeBinarySimpleName(binarySimpleName) + SUFFIX;
     Model model =
         new Model(
             target,
             packageName,
+            targetBinaryName,
             simpleName,
             packageName.isEmpty() ? simpleName : packageName + "." + simpleName,
             packageName.isEmpty() ? simpleName : packageName + "." + simpleName,
@@ -211,7 +233,19 @@ final class GeneratedJsonCodecSourceWriter {
     collectFieldAccessors(model);
     collectMethodAccessors(model);
     model.anySetter = findAnySetter(model);
+    if (model.anySetter != null) {
+      model.addR8Member(
+          model.anySetter.ownerBinaryName,
+          "void "
+              + model.anySetter.methodName
+              + "(java.lang.String,"
+              + model.anySetter.memberValueBinaryType
+              + ");");
+    }
     model.creator = isRecord(target) ? recordCreator(model) : explicitCreator(model);
+    if (model.creator != null) {
+      model.addR8Member(model.targetBinaryName, model.creator.r8Declaration);
+    }
     return model;
   }
 
@@ -226,7 +260,7 @@ final class GeneratedJsonCodecSourceWriter {
             || modifiers.contains(Modifier.TRANSIENT)
             || binaryType(field.asType()).equals("java.lang.Class")
             || !isAccessible(field, model.packageName)
-            || !isNameable(owner)
+            || !isNameable(owner.asType(), model.packageName)
             || !isNameable(types.erasure(field.asType()), model.packageName)) {
           continue;
         }
@@ -240,6 +274,9 @@ final class GeneratedJsonCodecSourceWriter {
                 sourceType(types.erasure(field.asType())),
                 resolved.getKind(),
                 !modifiers.contains(Modifier.FINAL)));
+        model.addR8Member(
+            elements.getBinaryName(owner).toString(),
+            binaryType(field.asType()) + " " + field.getSimpleName() + ";");
       }
     }
   }
@@ -255,7 +292,7 @@ final class GeneratedJsonCodecSourceWriter {
         continue;
       }
       TypeElement owner = (TypeElement) method.getEnclosingElement();
-      if (!isNameable(owner)) {
+      if (!isNameable(owner.asType(), model.packageName)) {
         continue;
       }
       ExecutableType resolved =
@@ -271,6 +308,9 @@ final class GeneratedJsonCodecSourceWriter {
                 method.getSimpleName().toString(),
                 sourceType(types.erasure(resolved.getReturnType())),
                 resolved.getReturnType().getKind()));
+        model.addR8Member(
+            elements.getBinaryName(owner).toString(),
+            binaryType(method.getReturnType()) + " " + method.getSimpleName() + "();");
       } else if (isSetter(method, resolved)
           && isNameable(types.erasure(resolved.getParameterTypes().get(0)), model.packageName)
           && isNameable(types.erasure(method.getParameters().get(0).asType()), model.packageName)
@@ -283,6 +323,13 @@ final class GeneratedJsonCodecSourceWriter {
                 sourceType(types.erasure(resolved.getParameterTypes().get(0))),
                 sourceType(types.erasure(method.getParameters().get(0).asType())),
                 resolved.getParameterTypes().get(0).getKind()));
+        model.addR8Member(
+            elements.getBinaryName(owner).toString(),
+            "void "
+                + method.getSimpleName()
+                + "("
+                + binaryType(method.getParameters().get(0).asType())
+                + ");");
       }
     }
     if (isRecord(model.target)) {
@@ -303,6 +350,9 @@ final class GeneratedJsonCodecSourceWriter {
                 accessor.getSimpleName().toString(),
                 sourceType(type),
                 type.getKind()));
+        model.addR8Member(
+            model.targetBinaryName,
+            binaryType(accessor.getReturnType()) + " " + accessor.getSimpleName() + "();");
       }
     }
   }
@@ -332,7 +382,7 @@ final class GeneratedJsonCodecSourceWriter {
         || resolved.getParameterTypes().size() != 2
         || !binaryType(resolved.getParameterTypes().get(0)).equals("java.lang.String")
         || !binaryType(selected.getParameters().get(0).asType()).equals("java.lang.String")
-        || !isNameable(owner)
+        || !isNameable(owner.asType(), model.packageName)
         || !isNameable(types.erasure(resolved.getParameterTypes().get(1)), model.packageName)
         || !isNameable(
             types.erasure(selected.getParameters().get(1).asType()), model.packageName)) {
@@ -341,9 +391,10 @@ final class GeneratedJsonCodecSourceWriter {
     }
     return new AnySetter(
         sourceType(owner.asType()),
+        elements.getBinaryName(owner).toString(),
         selected.getSimpleName().toString(),
-        sourceType(types.erasure(resolved.getParameterTypes().get(1))),
         sourceType(types.erasure(selected.getParameters().get(1).asType())),
+        binaryType(selected.getParameters().get(1).asType()),
         resolved.getParameterTypes().get(1).getKind());
   }
 
@@ -368,14 +419,34 @@ final class GeneratedJsonCodecSourceWriter {
         throw invalid("Records cannot declare @JsonCreator", method);
       }
     }
+    boolean valueRecord = hasEffectiveJsonValue(model.target);
     for (ExecutableElement constructor :
         ElementFilter.constructorsIn(model.target.getEnclosedElements())) {
-      if (annotationMirror(constructor, JSON_CREATOR) != null) {
+      if (annotationMirror(constructor, JSON_CREATOR) != null
+          && (!valueRecord || !isRecordValueCreator(constructor, components))) {
         throw invalid("Records cannot declare @JsonCreator", constructor);
       }
     }
     String declaration = "<init>(" + join(binaryTypes) + ");";
     return new Creator(names, sourceTypes, kinds, null, true, declaration, false);
+  }
+
+  private boolean isRecordValueCreator(
+      ExecutableElement constructor, List<? extends Element> components) {
+    if (!constructor.getModifiers().contains(Modifier.PUBLIC)
+        || constructor.isVarArgs()
+        || !constructor.getTypeParameters().isEmpty()
+        || components.size() != 1
+        || constructor.getParameters().size() != 1
+        || !binaryType(components.get(0).asType()).equals("java.lang.String")
+        || !types.isSameType(
+            types.erasure(constructor.getParameters().get(0).asType()),
+            types.erasure(components.get(0).asType()))
+        || annotationMirror(constructor.getParameters().get(0), JSON_PROPERTY) != null) {
+      return false;
+    }
+    AnnotationMirror creator = annotationMirror(constructor, JSON_CREATOR);
+    return stringArray(annotationValue(creator, "value")).isEmpty();
   }
 
   private Creator explicitCreator(Model model) {
@@ -930,10 +1001,17 @@ final class GeneratedJsonCodecSourceWriter {
     if (element == null || !isNameable(element)) {
       return false;
     }
-    if (element.getModifiers().contains(Modifier.PUBLIC)) {
+    if (elements.getPackageOf(element).getQualifiedName().contentEquals(generatedPackage)) {
       return true;
     }
-    return elements.getPackageOf(element).getQualifiedName().contentEquals(generatedPackage);
+    Element current = element;
+    while (current instanceof TypeElement) {
+      if (!current.getModifiers().contains(Modifier.PUBLIC)) {
+        return false;
+      }
+      current = current.getEnclosingElement();
+    }
+    return true;
   }
 
   private boolean isNameable(TypeElement type) {
@@ -1024,24 +1102,6 @@ final class GeneratedJsonCodecSourceWriter {
       key.append(binaryType(parameter.asType())).append(';');
     }
     return key.append(')').toString();
-  }
-
-  private static String escapeBinarySimpleName(String binarySimpleName) {
-    StringBuilder builder = new StringBuilder(binarySimpleName.length() + 32);
-    for (int i = 0; i < binarySimpleName.length(); ) {
-      int codePoint = binarySimpleName.codePointAt(i);
-      if (codePoint == '$') {
-        builder.append('_');
-      } else if (codePoint == '_') {
-        builder.append("_u_");
-      } else if (Character.isJavaIdentifierPart(codePoint)) {
-        builder.appendCodePoint(codePoint);
-      } else {
-        builder.append("_x").append(Integer.toHexString(codePoint)).append('_');
-      }
-      i += Character.charCount(codePoint);
-    }
-    return builder.toString();
   }
 
   private static String primitiveSuffix(TypeKind kind) {
@@ -1177,7 +1237,7 @@ final class GeneratedJsonCodecSourceWriter {
 
   static final class Result {
     final String companionBinaryName;
-    final String creatorR8Declaration;
+    final List<MemberRule> r8Members;
     final boolean hasAnySetter;
     final boolean hasCreator;
     final boolean hasCreatorFactory;
@@ -1185,13 +1245,13 @@ final class GeneratedJsonCodecSourceWriter {
 
     Result(
         String companionBinaryName,
-        String creatorR8Declaration,
+        List<MemberRule> r8Members,
         boolean hasAnySetter,
         boolean hasCreator,
         boolean hasCreatorFactory,
         boolean record) {
       this.companionBinaryName = companionBinaryName;
-      this.creatorR8Declaration = creatorR8Declaration;
+      this.r8Members = r8Members;
       this.hasAnySetter = hasAnySetter;
       this.hasCreator = hasCreator;
       this.hasCreatorFactory = hasCreatorFactory;
@@ -1199,30 +1259,51 @@ final class GeneratedJsonCodecSourceWriter {
     }
   }
 
+  static final class MemberRule {
+    final String ownerBinaryName;
+    final String declaration;
+
+    MemberRule(String ownerBinaryName, String declaration) {
+      this.ownerBinaryName = ownerBinaryName;
+      this.declaration = declaration;
+    }
+  }
+
   private static final class Model {
     final TypeElement target;
     final String packageName;
+    final String targetBinaryName;
     final String simpleName;
     final String qualifiedName;
     final String binaryName;
     final String targetType;
     final List<Accessor> accessors = new ArrayList<>();
+    final List<MemberRule> r8Members = new ArrayList<>();
+    final Set<String> r8MemberKeys = new HashSet<>();
     AnySetter anySetter;
     Creator creator;
 
     Model(
         TypeElement target,
         String packageName,
+        String targetBinaryName,
         String simpleName,
         String qualifiedName,
         String binaryName,
         String targetType) {
       this.target = target;
       this.packageName = packageName;
+      this.targetBinaryName = targetBinaryName;
       this.simpleName = simpleName;
       this.qualifiedName = qualifiedName;
       this.binaryName = binaryName;
       this.targetType = targetType;
+    }
+
+    void addR8Member(String ownerBinaryName, String declaration) {
+      if (r8MemberKeys.add(ownerBinaryName + "#" + declaration)) {
+        r8Members.add(new MemberRule(ownerBinaryName, declaration));
+      }
     }
   }
 
@@ -1322,21 +1403,24 @@ final class GeneratedJsonCodecSourceWriter {
 
   private static final class AnySetter {
     final String ownerType;
+    final String ownerBinaryName;
     final String methodName;
-    final String valueType;
     final String memberValueType;
+    final String memberValueBinaryType;
     final TypeKind valueKind;
 
     AnySetter(
         String ownerType,
+        String ownerBinaryName,
         String methodName,
-        String valueType,
         String memberValueType,
+        String memberValueBinaryType,
         TypeKind valueKind) {
       this.ownerType = ownerType;
+      this.ownerBinaryName = ownerBinaryName;
       this.methodName = methodName;
-      this.valueType = valueType;
       this.memberValueType = memberValueType;
+      this.memberValueBinaryType = memberValueBinaryType;
       this.valueKind = valueKind;
     }
   }

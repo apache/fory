@@ -107,7 +107,8 @@ on the JVM and Android.
 one-String `JsonCreator` constructors and public static factories. Fixed `JsonRawValue` fields and
 getters support trusted raw String values, and fixed `JsonBase64` fields and getters support Base64
 `byte[]` values as on the JVM. Annotate each reachable owning model with `JsonType` so Native Image
-retains these members and the Base64 codec constructor.
+retains these members and the Base64 codec constructor. A directly annotated `JsonValue` Record
+uses its generated component accessor and canonical constructor operations.
 
 `JsonAnyProperty` and `JsonAnyGetter` flatten their Map into the enclosing object. Use
 `@JsonCodec(valueCodec = ...)` on that field or getter to customize each dynamic value. A second

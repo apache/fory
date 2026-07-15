@@ -154,12 +154,14 @@ final class ForyJsonGraalVMFeature implements Feature {
     if (!Modifier.isPublic(modifiers)
         || !Modifier.isStatic(modifiers)
         || !Modifier.isFinal(modifiers)) {
-      throw new IllegalStateException("Generated JSON codec factory must be public static final: " + factoryName);
+      throw new IllegalStateException(
+          "Generated JSON codec factory must be public static final: " + factoryName);
     }
     try {
       GeneratedJsonCodecFactory factory =
           (GeneratedJsonCodecFactory) ReflectionUtils.getCtrHandle(factoryClass).invoke();
-      GeneratedJsonCodec<?> codec = JsonSharedRegistry.validateGeneratedCodec(type, factory.create());
+      GeneratedJsonCodec<?> codec =
+          JsonSharedRegistry.validateGeneratedCodec(type, factory.create());
       if (codec.validatedRecord() != type.isRecord()) {
         throw new IllegalStateException(
             "Generated JSON codec Record metadata does not match " + type.getName());

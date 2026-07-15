@@ -367,10 +367,11 @@ They are Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibilit
 
 `JsonType` asks the annotation processor to generate direct property and creator operations plus
 exact retention rules. It is not inherited, so annotate each eligible concrete model that needs a
-generated companion. Ordinary unannotated classes may still use reflection; on Android they need
-application-authored exact R8 rules. Android-desugared Records require `JsonType` and the processor.
-A directly annotated model that uses the default object codec fails during codec creation if its
-generated companion is missing.
+generated companion. A directly annotated `JsonValue` Record also receives a companion for its
+value accessor and canonical constructor. Ordinary unannotated classes may still use reflection; on
+Android they need application-authored exact R8 rules. Android-desugared Records require `JsonType`
+and the processor. A directly annotated model that uses the default object codec fails during codec
+creation if its generated companion is missing.
 See the [GraalVM guide](../../docs/guide/java/graalvm-support.md) and
 [Android guide](../../docs/guide/java/android-support.md) for the platform workflows.
 
@@ -1133,8 +1134,8 @@ assignable to that target.
 
 The annotation has the same FIELD, METHOD, and PARAMETER behavior on the JVM, Android, and GraalVM
 Native Image. Ordinary Android classes may omit `JsonType` and provide equivalent exact rules;
-Android-desugared Records require `JsonType` and the processor. GraalVM object models follow the
-`JsonType` workflow in the
+Android-desugared Records, including `JsonValue` Records, require `JsonType` and the processor.
+GraalVM object models follow the `JsonType` workflow in the
 [GraalVM guide](../../docs/guide/java/graalvm-support.md).
 
 ## Type validation and untrusted input

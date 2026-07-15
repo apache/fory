@@ -26,6 +26,7 @@ import java.lang.reflect.Executable;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.reader.Latin1JsonReader;
@@ -44,10 +45,15 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
   private final boolean raw;
 
   JsonStringValueCodec(
-      Class<?> ownerType, JsonFieldAccessor accessor, Executable creator, boolean raw) {
+      Class<?> ownerType,
+      JsonFieldAccessor accessor,
+      Executable creator,
+      GeneratedJsonCodec<?> generatedCodec,
+      boolean raw) {
     this.ownerType = ownerType;
     this.accessor = accessor;
-    this.creator = creator == null ? null : ValueCreator.forExecutable(ownerType, creator);
+    this.creator =
+        creator == null ? null : ValueCreator.forExecutable(ownerType, creator, generatedCodec);
     this.raw = raw;
   }
 
@@ -154,7 +160,11 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
       return new ForyJsonException("JSON creator failed for " + ownerType.getName(), cause);
     }
 
-    static ValueCreator forExecutable(Class<?> ownerType, Executable executable) {
+    static ValueCreator forExecutable(
+        Class<?> ownerType, Executable executable, GeneratedJsonCodec<?> generatedCodec) {
+      if (generatedCodec != null) {
+        return new GeneratedCreator(ownerType, generatedCodec);
+      }
       if (!AndroidSupport.IS_ANDROID) {
         return new MethodHandleCreator(ownerType, buildInvoker(ownerType, executable));
       }
@@ -174,6 +184,24 @@ final class JsonStringValueCodec implements JsonValueCodec<Object> {
         return target.asType(MethodType.methodType(Object.class, String.class));
       } catch (IllegalAccessException e) {
         throw new ForyJsonException("Cannot access JSON creator for " + ownerType.getName(), e);
+      }
+    }
+  }
+
+  private static final class GeneratedCreator extends ValueCreator {
+    private final GeneratedJsonCodec<?> generatedCodec;
+
+    private GeneratedCreator(Class<?> ownerType, GeneratedJsonCodec<?> generatedCodec) {
+      super(ownerType);
+      this.generatedCodec = generatedCodec;
+    }
+
+    @Override
+    Object create(String value) {
+      try {
+        return requireResult(generatedCodec.newInstance(new Object[] {value}));
+      } catch (Throwable cause) {
+        throw creatorFailure(cause);
       }
     }
   }

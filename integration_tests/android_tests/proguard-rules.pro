@@ -12,6 +12,7 @@
   public static void manualPlainRules();
   public static void generatedPlainRules();
   public static void generatedRecord();
+  public static void generatedValueRecord();
   public static void manualCodecs();
   public static void generatedCodecs();
 }

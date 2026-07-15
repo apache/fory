@@ -214,6 +214,22 @@ public final class JsonSharedRegistry {
   }
 
   GeneratedJsonCodec<?> generatedCodec(Class<?> type) {
+    if (type.getDeclaredAnnotation(JsonType.class) == null) {
+      return null;
+    }
+    GeneratedJsonCodec<?> codec = generatedCodecIfPresent(type);
+    if (codec == null) {
+      throw new ForyJsonException(
+          "Missing generated JSON codec "
+              + generatedCodecBinaryName(type)
+              + " for @JsonType object model "
+              + type.getName()
+              + "; enable the Fory annotation processor and preserve its generated R8 rules");
+    }
+    return codec;
+  }
+
+  private GeneratedJsonCodec<?> generatedCodecIfPresent(Class<?> type) {
     GeneratedJsonCodec<?> codec = generatedCodecs.get(type);
     if (codec != null) {
       return codec;
@@ -230,14 +246,6 @@ public final class JsonSharedRegistry {
           }
         }
       }
-    }
-    if (codec == null && type.getDeclaredAnnotation(JsonType.class) != null) {
-      throw new ForyJsonException(
-          "Missing generated JSON codec "
-              + generatedCodecBinaryName(type)
-              + " for @JsonType object model "
-              + type.getName()
-              + "; enable the Fory annotation processor and preserve its generated R8 rules");
     }
     return codec;
   }
@@ -723,7 +731,11 @@ public final class JsonSharedRegistry {
       if (typesWithoutValueDeclaration.contains(targetType)) {
         return null;
       }
-      JsonValueDeclaration resolved = JsonValueDeclaration.resolve(targetType);
+      GeneratedJsonCodec<?> generatedCodec =
+          targetType.getDeclaredAnnotation(JsonType.class) == null
+              ? null
+              : generatedCodecIfPresent(targetType);
+      JsonValueDeclaration resolved = JsonValueDeclaration.resolve(targetType, generatedCodec);
       if (resolved == null) {
         typesWithoutValueDeclaration.add(targetType);
       } else {

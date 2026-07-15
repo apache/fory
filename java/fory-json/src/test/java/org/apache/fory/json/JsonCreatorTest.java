@@ -142,6 +142,26 @@ public class JsonCreatorTest extends ForyJsonTestModels {
     assertThrows(AssertionError.class, () -> newJson().fromJson("{\"id\":1}", ErrorFactory.class));
   }
 
+  @Test
+  public void hiddenCreatorParameter() {
+    PublicHiddenCreator value =
+        newJson().fromJson("{\"input\":{\"value\":7}}", PublicHiddenCreator.class);
+    assertEquals(value.value, 7);
+  }
+
+  static final class HiddenArgument {
+    public int value;
+  }
+
+  public static final class PublicHiddenCreator {
+    public final int value;
+
+    @JsonCreator
+    public PublicHiddenCreator(@JsonProperty("input") HiddenArgument input) {
+      value = input.value;
+    }
+  }
+
   public static final class User {
     public final long id;
     public final String name;

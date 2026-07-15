@@ -329,9 +329,11 @@ import org.apache.fory.json.annotation.JsonValue;
 ```
 
 `JsonType` asks the annotation processor to generate direct property and creator operations plus
-the exact retention rules for an eligible concrete object model. The same generated companion is
-used on the JVM, Android, and GraalVM Native Image. The annotation is not inherited; a concrete
-subtype needs its own direct annotation to receive a companion. See
+the exact retention rules for an eligible concrete object model. A directly annotated
+`JsonValue` Record also receives a companion so its value accessor and canonical constructor work
+after Android desugaring. The same generated companion is used on the JVM, Android, and GraalVM
+Native Image. The annotation is not inherited; a concrete subtype needs its own direct annotation
+to receive a companion. See
 [GraalVM Support](graalvm-support.md) and [Android Support](android-support.md) for setup.
 A directly annotated model that uses the default object codec requires that generated companion;
 the runtime reports a configuration error if the processor output is missing.
@@ -1003,8 +1005,8 @@ assignable to that target.
 
 The annotation has the same FIELD, METHOD, and PARAMETER behavior on the JVM, Android, and GraalVM
 Native Image. Ordinary Android classes may omit `JsonType` and provide equivalent exact rules;
-Android-desugared Records require `JsonType` and the processor. GraalVM object models follow the
-`JsonType` workflow in
+Android-desugared Records, including `JsonValue` Records, require `JsonType` and the processor.
+GraalVM object models follow the `JsonType` workflow in
 [GraalVM Support](graalvm-support.md).
 
 ## Type validation and untrusted input

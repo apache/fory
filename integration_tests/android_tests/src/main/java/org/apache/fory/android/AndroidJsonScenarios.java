@@ -81,6 +81,23 @@ public final class AndroidJsonScenarios {
     checkEquals("ANDROID", decoded.name());
   }
 
+  public static void generatedValueRecord() {
+    try {
+      Class.forName(
+          "org.apache.fory.android.GeneratedJsonValueRecord_ForyJsonCodec",
+          false,
+          GeneratedJsonValueRecord.class.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      throw new AssertionError("generated value Record JSON codec was removed", e);
+    }
+    ForyJson json = ForyJson.builder().build();
+    GeneratedJsonValueRecord value = new GeneratedJsonValueRecord("android-value");
+    checkEquals("\"android-value\"", json.toJson(value));
+    checkEquals(
+        "decoded-value",
+        json.fromJson("\"decoded-value\"", GeneratedJsonValueRecord.class).value());
+  }
+
   public static void manualCodecs() {
     ForyJson json = ForyJson.builder().build();
     ManualJsonModel value = new ManualJsonModel();

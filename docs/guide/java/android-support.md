@@ -136,8 +136,10 @@ or use an application codec when a model cannot satisfy those requirements.
 
 Android-desugared Records require a direct `@JsonType` annotation and the annotation processor.
 Manual R8 rules alone cannot reconstruct Record component order because Android does not provide
-the Java Record reflection APIs. Generated child codecs act on one level exactly as they do on the
-JVM; use a complete value codec for deeper nested behavior.
+the Java Record reflection APIs. This also applies to a Record whose complete representation is a
+`JsonValue` String: the generated companion identifies the propagated component accessor and calls
+an annotated one-String canonical constructor directly. Generated child codecs act on one level
+exactly as they do on the JVM; use a complete value codec for deeper nested behavior.
 
 ## Static Generated Serializers
 

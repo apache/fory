@@ -355,8 +355,8 @@ public class ForyStructProcessorTest {
                 + "}\n");
     Assert.assertTrue(result.success, result.diagnostics());
     try (URLClassLoader loader = result.classLoader()) {
-      Class<?> xlangSerializer = loader.loadClass("test.Outer_Inner_ForySerializer");
-      Class<?> nativeSerializer = loader.loadClass("test.Outer_Inner_ForyNativeSerializer");
+      Class<?> xlangSerializer = loader.loadClass("test.Outer_d_Inner_ForySerializer");
+      Class<?> nativeSerializer = loader.loadClass("test.Outer_d_Inner_ForyNativeSerializer");
       Assert.assertTrue(StaticGeneratedStructSerializer.class.isAssignableFrom(xlangSerializer));
       Assert.assertTrue(StaticGeneratedStructSerializer.class.isAssignableFrom(nativeSerializer));
     }
@@ -375,7 +375,7 @@ public class ForyStructProcessorTest {
                 + "    public Inner() {}\n"
                 + "  }\n"
                 + "}\n"
-                + "class Outer_Inner_ForySerializer {}\n");
+                + "class Outer_d_Inner_ForySerializer {}\n");
     Assert.assertFalse(result.success);
     Assert.assertTrue(result.diagnostics().contains("collides"), result.diagnostics());
   }

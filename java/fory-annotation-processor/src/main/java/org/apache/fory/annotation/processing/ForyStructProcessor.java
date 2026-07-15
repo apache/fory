@@ -382,48 +382,14 @@ public final class ForyStructProcessor extends AbstractProcessor {
   }
 
   private static String escapedResourceName(String targetBinaryName) {
-    StringBuilder builder = new StringBuilder(targetBinaryName.length() + 32);
-    for (int i = 0; i < targetBinaryName.length(); ) {
-      int codePoint = targetBinaryName.codePointAt(i);
-      if (codePoint == '.') {
-        builder.append('.');
-      } else if (codePoint == '$') {
-        builder.append('_');
-      } else if (codePoint == '_') {
-        builder.append("_u_");
-      } else if (Character.isJavaIdentifierPart(codePoint)) {
-        builder.appendCodePoint(codePoint);
-      } else {
-        builder.append("_x").append(Integer.toHexString(codePoint)).append('_');
-      }
-      i += Character.charCount(codePoint);
-    }
-    return builder.toString();
+    return GeneratedTypeNames.escapeBinaryName(targetBinaryName);
   }
 
   private static String generatedSerializerName(
       String targetBinaryName, String packageName, SerializerMode mode) {
     String binarySimpleName =
         targetBinaryName.substring(packageName.isEmpty() ? 0 : packageName.length() + 1);
-    return escapeBinarySimpleName(binarySimpleName) + mode.serializerSuffix;
-  }
-
-  private static String escapeBinarySimpleName(String binarySimpleName) {
-    StringBuilder builder = new StringBuilder(binarySimpleName.length() + 32);
-    for (int i = 0; i < binarySimpleName.length(); ) {
-      int codePoint = binarySimpleName.codePointAt(i);
-      if (codePoint == '$') {
-        builder.append('_');
-      } else if (codePoint == '_') {
-        builder.append("_u_");
-      } else if (Character.isJavaIdentifierPart(codePoint)) {
-        builder.appendCodePoint(codePoint);
-      } else {
-        builder.append("_x").append(Integer.toHexString(codePoint)).append('_');
-      }
-      i += Character.charCount(codePoint);
-    }
-    return builder.toString();
+    return GeneratedTypeNames.escapeBinarySimpleName(binarySimpleName) + mode.serializerSuffix;
   }
 
   private boolean isKotlinClass(TypeElement type) {
