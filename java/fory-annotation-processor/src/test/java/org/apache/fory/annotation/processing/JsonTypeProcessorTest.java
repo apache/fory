@@ -55,8 +55,7 @@ public class JsonTypeProcessorTest {
         compile("test.Plain", "package test; public class Plain { int id; }");
     assertTrue(result.success, result.diagnostics());
     assertFalse(result.hasGeneratedSource("test/Plain_ForyJsonCodecMeta.java"));
-    assertFalse(
-        result.hasGeneratedResource("META-INF/com.android.tools/r8/fory-json-test.Plain.pro"));
+    assertFalse(result.hasGeneratedResource("META-INF/proguard/fory-json-test.Plain.pro"));
   }
 
   @Test
@@ -74,8 +73,7 @@ public class JsonTypeProcessorTest {
                 + "}\n");
     assertTrue(result.success, result.diagnostics());
     assertFalse(result.hasGeneratedSource("test/Plain_ForyJsonCodecMeta.java"));
-    String rules =
-        result.generatedResource("META-INF/com.android.tools/r8/fory-json-test.Plain.pro");
+    String rules = result.generatedResource("META-INF/proguard/fory-json-test.Plain.pro");
     assertTrue(rules.contains("-keepattributes Signature,RuntimeVisibleAnnotations"), rules);
     assertTrue(rules.contains("-keepattributes MethodParameters"), rules);
     assertTrue(rules.contains("int id;"), rules);
@@ -128,7 +126,7 @@ public class JsonTypeProcessorTest {
 
     String rules =
         result.generatedResource(
-            "META-INF/com.android.tools/r8/fory-json-test.Outer_Name$Model_With_Underscore.pro");
+            "META-INF/proguard/fory-json-test.Outer_Name$Model_With_Underscore.pro");
     assertTrue(
         rules.contains(
             "-keep,allowoptimization class test.Outer_Name$Model_With_Underscore_ForyJsonCodecMeta"),
@@ -173,12 +171,9 @@ public class JsonTypeProcessorTest {
                 + "}) public abstract class Base {}\n"
                 + "class Child extends Base { public int value; }\n");
     assertTrue(result.success, result.diagnostics());
-    assertTrue(
-        result.hasGeneratedResource("META-INF/com.android.tools/r8/fory-json-test.Base.pro"));
-    assertTrue(
-        result.hasGeneratedResource("META-INF/com.android.tools/r8/fory-json-test.Child.pro"));
-    String rules =
-        result.generatedResource("META-INF/com.android.tools/r8/fory-json-test.Base.pro");
+    assertTrue(result.hasGeneratedResource("META-INF/proguard/fory-json-test.Base.pro"));
+    assertTrue(result.hasGeneratedResource("META-INF/proguard/fory-json-test.Child.pro"));
+    String rules = result.generatedResource("META-INF/proguard/fory-json-test.Base.pro");
     assertTrue(rules.contains("-keep,allowoptimization class external.HiddenChild"), rules);
   }
 
@@ -198,8 +193,7 @@ public class JsonTypeProcessorTest {
     assertTrue(result.success, result.diagnostics());
     assertFalse(result.hasGeneratedSource("test/DeclarationModel_ForyJsonCodecMeta.java"));
     String rules =
-        result.generatedResource(
-            "META-INF/com.android.tools/r8/fory-json-test.DeclarationModel.pro");
+        result.generatedResource("META-INF/proguard/fory-json-test.DeclarationModel.pro");
     assertTrue(rules.contains("allowobfuscation class test.DeclarationModel$Codec"), rules);
     assertTrue(rules.contains("public <init>();"), rules);
     assertTrue(rules.contains("-keepattributes InnerClasses,EnclosingMethod"), rules);
@@ -241,8 +235,7 @@ public class JsonTypeProcessorTest {
     assertTrue(source.contains("classForName(\"test.HiddenMemberModel$Hidden\")"), source);
     assertTrue(source.contains("test.HiddenMemberModel.Codec.class"), source);
     String rules =
-        result.generatedResource(
-            "META-INF/com.android.tools/r8/fory-json-test.HiddenMemberModel$Model.pro");
+        result.generatedResource("META-INF/proguard/fory-json-test.HiddenMemberModel$Model.pro");
     assertTrue(
         rules.contains("-keep,allowoptimization class test.HiddenMemberModel$Hidden"), rules);
   }
@@ -268,8 +261,7 @@ public class JsonTypeProcessorTest {
     CompilationResult result = compile(sources);
     assertTrue(result.success, result.diagnostics());
     assertFalse(result.hasGeneratedSource("test/CollisionModel_ForyJsonCodecMeta.java"));
-    String rules =
-        result.generatedResource("META-INF/com.android.tools/r8/fory-json-test.CollisionModel.pro");
+    String rules = result.generatedResource("META-INF/proguard/fory-json-test.CollisionModel.pro");
     assertFalse(rules.contains("test.other.JsonCodec"), rules);
   }
 
@@ -286,8 +278,7 @@ public class JsonTypeProcessorTest {
     assertTrue(result.hasGeneratedSource("test/Both_ForySerializer.java"));
     assertTrue(
         result.hasGeneratedResource("META-INF/proguard/fory-static-generated-test.Both.pro"));
-    assertTrue(
-        result.hasGeneratedResource("META-INF/com.android.tools/r8/fory-json-test.Both.pro"));
+    assertTrue(result.hasGeneratedResource("META-INF/proguard/fory-json-test.Both.pro"));
   }
 
   @Test
@@ -299,8 +290,7 @@ public class JsonTypeProcessorTest {
                 + "import org.apache.fory.json.annotation.JsonType;\n"
                 + "@JsonType public enum Status { READY, DONE }\n");
     assertTrue(result.success, result.diagnostics());
-    String rules =
-        result.generatedResource("META-INF/com.android.tools/r8/fory-json-test.Status.pro");
+    String rules = result.generatedResource("META-INF/proguard/fory-json-test.Status.pro");
     assertTrue(rules.contains("test.Status READY;"), rules);
     assertTrue(rules.contains("test.Status DONE;"), rules);
     assertFalse(rules.contains("$VALUES"), rules);
@@ -320,9 +310,7 @@ public class JsonTypeProcessorTest {
                 + "  public ValidationModel() {}\n"
                 + "}\n");
     assertTrue(result.success, result.diagnostics());
-    String rules =
-        result.generatedResource(
-            "META-INF/com.android.tools/r8/fory-json-test.ValidationModel.pro");
+    String rules = result.generatedResource("META-INF/proguard/fory-json-test.ValidationModel.pro");
     assertTrue(rules.contains("class test.ValidationBase"), rules);
     assertTrue(rules.contains("java.lang.String getHidden();"), rules);
   }
@@ -334,8 +322,7 @@ public class JsonTypeProcessorTest {
     assertTrue(first.success, first.diagnostics());
     assertTrue(second.success, second.diagnostics());
     String metaPath = "test/Outer_Name$Model_With_Underscore_ForyJsonCodecMeta.java";
-    String rulesPath =
-        "META-INF/com.android.tools/r8/fory-json-test.Outer_Name$Model_With_Underscore.pro";
+    String rulesPath = "META-INF/proguard/fory-json-test.Outer_Name$Model_With_Underscore.pro";
     assertEquals(first.generatedSource(metaPath), second.generatedSource(metaPath));
     assertEquals(first.generatedResource(rulesPath), second.generatedResource(rulesPath));
   }

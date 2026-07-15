@@ -71,7 +71,7 @@ final class JsonTypeProcessor {
   private static final String GENERATED_META = JSON_PACKAGE + ".meta.GeneratedJsonCodecMeta";
   private static final String JSON_TYPE_USE = JSON_PACKAGE + ".meta.JsonTypeUse";
   private static final String META_SUFFIX = "_ForyJsonCodecMeta";
-  private static final String R8_PREFIX = "META-INF/com.android.tools/r8/fory-json-";
+  private static final String R8_PREFIX = "META-INF/proguard/fory-json-";
 
   private final Filer filer;
   private final Messager messager;
