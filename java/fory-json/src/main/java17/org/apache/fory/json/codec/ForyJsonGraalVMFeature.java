@@ -80,6 +80,11 @@ final class ForyJsonGraalVMFeature implements Feature {
   @Override
   public void beforeAnalysis(BeforeAnalysisAccess access) {
     RuntimeClassInitialization.initializeAtBuildTime(GeneratedJsonCodecFactories.class);
+    // Exact target-Mixin keys are retained in the frozen factory table and therefore become image
+    // heap objects together with the table. Derive the private key name from its enclosing class so
+    // relocated/shaded packages remain valid.
+    RuntimeClassInitialization.initializeAtBuildTime(
+        GeneratedJsonCodecFactories.class.getName() + "$Key");
     // Hosted Mixin discovery deliberately reuses the runtime's structural resolver so build-time
     // reachability and runtime semantics cannot drift. Its static state contains only the immutable
     // supported-annotation set and is therefore safe to initialize in the image builder.
