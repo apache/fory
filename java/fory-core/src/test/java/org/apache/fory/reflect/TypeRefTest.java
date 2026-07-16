@@ -131,6 +131,10 @@ public class TypeRefTest extends ForyTestBase {
 
   static class MultiParamMap<A, K, V> extends HashMap<K, V> {}
 
+  static class SwappedMap<K, V> extends HashMap<V, K> {}
+
+  static class NestedElementList<E> extends ArrayList<List<E>> {}
+
   static class StringKeyMap<V> extends HashMap<String, V> {}
 
   static class ArrayElementList<A, E> extends ArrayList<E[]> {}
@@ -180,6 +184,50 @@ public class TypeRefTest extends ForyTestBase {
     Assert.assertEquals(fixedKeyMapGenericType.getTypeParametersCount(), 2);
     Assert.assertEquals(fixedKeyMapGenericType.getTypeParameter0().getCls(), String.class);
     Assert.assertEquals(fixedKeyMapGenericType.getTypeParameter1().getCls(), List.class);
+
+    TypeRef<?> generatedMapType =
+        TypeRef.ofDeclaredTypeArguments(
+            MultiParamMap.class,
+            null,
+            Arrays.asList(
+                TypeRef.of(String.class), TypeRef.of(Long.class), TypeRef.of(Integer.class)),
+            null);
+    Assert.assertEquals(generatedMapType.getTypeArguments().size(), 2);
+    Assert.assertEquals(generatedMapType.getTypeArguments().get(0), TypeRef.of(Long.class));
+    Assert.assertEquals(generatedMapType.getTypeArguments().get(1), TypeRef.of(Integer.class));
+
+    TypeRef<?> generatedListType =
+        TypeRef.ofDeclaredTypeArguments(
+            MultiParamList.class,
+            null,
+            Arrays.asList(TypeRef.of(String.class), TypeRef.of(Integer.class)),
+            null);
+    Assert.assertEquals(generatedListType.getTypeArguments().size(), 1);
+    Assert.assertEquals(generatedListType.getTypeArguments().get(0), TypeRef.of(Integer.class));
+
+    TypeRef<?> generatedSwappedMap =
+        TypeRef.ofDeclaredTypeArguments(
+            SwappedMap.class,
+            null,
+            Arrays.asList(TypeRef.of(String.class), TypeRef.of(Integer.class)),
+            null);
+    Assert.assertEquals(
+        generatedSwappedMap.getTypeArguments(),
+        Arrays.asList(TypeRef.of(Integer.class), TypeRef.of(String.class)));
+    TypeRef<?> rebuiltSwappedMap =
+        TypeRef.of(SwappedMap.class, null, generatedSwappedMap.getTypeArguments(), null);
+    Assert.assertEquals(
+        rebuiltSwappedMap.getTypeArguments(), generatedSwappedMap.getTypeArguments());
+
+    TypeRef<?> generatedNestedList =
+        TypeRef.ofDeclaredTypeArguments(
+            NestedElementList.class, null, Arrays.asList(TypeRef.of(String.class)), null);
+    Assert.assertEquals(
+        generatedNestedList.getTypeArguments(), Arrays.asList(new TypeRef<List<String>>() {}));
+    TypeRef<?> rebuiltNestedList =
+        TypeRef.of(NestedElementList.class, null, generatedNestedList.getTypeArguments(), null);
+    Assert.assertEquals(
+        rebuiltNestedList.getTypeArguments(), generatedNestedList.getTypeArguments());
   }
 
   @Test

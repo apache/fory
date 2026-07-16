@@ -167,6 +167,10 @@ public class Descriptor {
     if (generatedType.typeExtMeta == null && typeArguments == null && componentType == null) {
       return TypeRef.of(generatedType.rawType);
     }
+    if (typeArguments != null) {
+      return TypeRef.ofDeclaredTypeArguments(
+          generatedType.rawType, generatedType.typeExtMeta, typeArguments, componentType);
+    }
     return TypeRef.of(
         generatedType.rawType, generatedType.typeExtMeta, typeArguments, componentType);
   }

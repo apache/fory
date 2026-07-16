@@ -43,7 +43,9 @@ import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.meta.FieldInfo;
+import org.apache.fory.meta.FieldTypes;
 import org.apache.fory.meta.TypeDef;
+import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.StaticGeneratedStructSerializer;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.Types;
@@ -386,6 +388,8 @@ public class ForyStructProcessorTest {
         compile(
             "test.MetadataStruct",
             "package test;\n"
+                + "import java.util.ArrayList;\n"
+                + "import java.util.HashMap;\n"
                 + "import java.util.List;\n"
                 + "import org.apache.fory.annotation.ForyStruct;\n"
                 + "import org.apache.fory.annotation.Ref;\n"
@@ -395,6 +399,14 @@ public class ForyStructProcessorTest {
                 + "@ForyStruct public class MetadataStruct {\n"
                 + "  public List<@Ref String> names;\n"
                 + "  public List<@Int32Type(encoding = Int32Encoding.FIXED) Integer> codes;\n"
+                + "  public static class MultiParamMap<A, K, V> extends HashMap<K, V> {}\n"
+                + "  public static class MultiParamList<A, B, E> extends ArrayList<E> {}\n"
+                + "  public static class SwappedMap<K, V> extends HashMap<V, K> {}\n"
+                + "  public static class NestedElementList<E> extends ArrayList<List<E>> {}\n"
+                + "  public MultiParamMap<Object, String, List<String>> mapped;\n"
+                + "  public MultiParamList<Object, Long, String> listed;\n"
+                + "  public SwappedMap<String, Integer> swapped;\n"
+                + "  public NestedElementList<String> nested;\n"
                 + "  public @UInt16Type int code;\n"
                 + "  public MetadataStruct() {}\n"
                 + "}\n");
@@ -428,6 +440,70 @@ public class ForyStructProcessorTest {
       Assert.assertEquals(
           codes.getTypeRef().getTypeArguments().get(0).getTypeExtMeta().typeId(), Types.INT32);
       Assert.assertTrue(codes.getTypeRef().getTypeArguments().get(0).getTypeExtMeta().nullable());
+      Descriptor mapped = descriptor(serializer.getDescriptors(), "mapped");
+      Assert.assertEquals(mapped.getTypeRef().getTypeArguments().size(), 2);
+      Assert.assertEquals(mapped.getTypeRef().getTypeArguments().get(0).getRawType(), String.class);
+      TypeRef<?> mappedValue = mapped.getTypeRef().getTypeArguments().get(1);
+      Assert.assertEquals(mappedValue.getRawType(), List.class);
+      Assert.assertEquals(mappedValue.getTypeArguments().get(0).getRawType(), String.class);
+      FieldTypes.MapFieldType mappedType =
+          (FieldTypes.MapFieldType) FieldTypes.buildFieldType(fory.getTypeResolver(), mapped);
+      Assert.assertEquals(mappedType.getKeyType().getTypeId(), Types.STRING);
+      Assert.assertEquals(
+          ((FieldTypes.CollectionFieldType) mappedType.getValueType()).getElementType().getTypeId(),
+          Types.STRING);
+      Descriptor listed = descriptor(serializer.getDescriptors(), "listed");
+      Assert.assertEquals(listed.getTypeRef().getTypeArguments().size(), 1);
+      Assert.assertEquals(listed.getTypeRef().getTypeArguments().get(0).getRawType(), String.class);
+      FieldTypes.CollectionFieldType listedType =
+          (FieldTypes.CollectionFieldType)
+              FieldTypes.buildFieldType(fory.getTypeResolver(), listed);
+      Assert.assertEquals(listedType.getElementType().getTypeId(), Types.STRING);
+      Descriptor swapped = descriptor(serializer.getDescriptors(), "swapped");
+      Assert.assertEquals(swapped.getTypeRef().getTypeArguments().size(), 2);
+      Assert.assertEquals(
+          swapped.getTypeRef().getTypeArguments().get(0).getRawType(), Integer.class);
+      Assert.assertEquals(
+          swapped.getTypeRef().getTypeArguments().get(1).getRawType(), String.class);
+      FieldTypes.MapFieldType swappedType =
+          (FieldTypes.MapFieldType) FieldTypes.buildFieldType(fory.getTypeResolver(), swapped);
+      FieldTypes.MapFieldType remoteSwappedType =
+          new FieldTypes.MapFieldType(
+              swappedType.getTypeId(),
+              !swappedType.nullable(),
+              swappedType.trackingRef(),
+              swappedType.getKeyType(),
+              swappedType.getValueType());
+      Descriptor rebuiltSwapped =
+          new FieldInfo(type.getName(), "swapped", remoteSwappedType)
+              .toDescriptor(fory.getTypeResolver(), swapped);
+      Assert.assertEquals(rebuiltSwapped.getTypeRef().getTypeArguments().size(), 2);
+      Assert.assertEquals(
+          rebuiltSwapped.getTypeRef().getTypeArguments().get(0).getRawType(), Integer.class);
+      Assert.assertEquals(
+          rebuiltSwapped.getTypeRef().getTypeArguments().get(1).getRawType(), String.class);
+      Descriptor nested = descriptor(serializer.getDescriptors(), "nested");
+      TypeRef<?> nestedElement = nested.getTypeRef().getTypeArguments().get(0);
+      Assert.assertEquals(nestedElement.getRawType(), List.class);
+      Assert.assertEquals(nestedElement.getTypeArguments().get(0).getRawType(), String.class);
+      FieldTypes.CollectionFieldType nestedType =
+          (FieldTypes.CollectionFieldType)
+              FieldTypes.buildFieldType(fory.getTypeResolver(), nested);
+      FieldTypes.CollectionFieldType remoteNestedType =
+          new FieldTypes.CollectionFieldType(
+              nestedType.getTypeId(),
+              !nestedType.nullable(),
+              nestedType.trackingRef(),
+              nestedType.getElementType());
+      Descriptor rebuiltNested =
+          new FieldInfo(type.getName(), "nested", remoteNestedType)
+              .toDescriptor(fory.getTypeResolver(), nested);
+      Assert.assertEquals(rebuiltNested.getTypeRef().getTypeArguments().size(), 1);
+      TypeRef<?> rebuiltNestedElement = rebuiltNested.getTypeRef().getTypeArguments().get(0);
+      Assert.assertEquals(rebuiltNestedElement.getRawType(), List.class);
+      Assert.assertEquals(rebuiltNestedElement.getTypeArguments().size(), 1);
+      Assert.assertEquals(
+          rebuiltNestedElement.getTypeArguments().get(0).getRawType(), String.class);
       Descriptor code = descriptor(serializer.getDescriptors(), "code");
       Assert.assertTrue(code.getTypeRef().hasTypeExtMeta());
       Assert.assertEquals(code.getTypeRef().getTypeExtMeta().typeId(), Types.UINT16);

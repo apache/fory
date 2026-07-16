@@ -156,6 +156,28 @@ public class TypeRef<T> {
     return new TypeRef<>(type, typeExtMeta, typeArguments, componentType);
   }
 
+  /** Builds a generated type whose arguments still follow the raw class declaration. */
+  @Internal
+  public static <T> TypeRef<T> ofDeclaredTypeArguments(
+      Class<T> rawType,
+      TypeExtMeta typeExtMeta,
+      List<TypeRef<?>> typeArguments,
+      TypeRef<?> componentType) {
+    List<TypeRef<?>> normalizedArguments = typeArguments;
+    if (typeArguments != null && !typeArguments.isEmpty()) {
+      Type[] argumentTypes = new Type[typeArguments.size()];
+      for (int i = 0; i < typeArguments.size(); i++) {
+        argumentTypes[i] = typeArguments.get(i).getType();
+      }
+      Type declaredType = new ParameterizedTypeImpl(null, rawType, argumentTypes);
+      normalizedArguments = normalizeContainerTypeArguments(declaredType, typeArguments);
+    }
+    // Keep the raw Class as the generated descriptor's runtime type. Only this factory treats the
+    // supplied arguments as declared parameters; the general TypeRef factory receives semantic
+    // container arguments and must not normalize them again.
+    return new TypeRef<>(rawType, typeExtMeta, normalizedArguments, componentType, false);
+  }
+
   @Internal
   public static <T> TypeRef<T> ofTypeUse(Object typeUse) {
     return TypeUseMetadata.typeRef(typeUse);
