@@ -224,11 +224,15 @@ final class JsonTypeProcessor {
         if (annotations.isEmpty()) {
           continue;
         }
-        boolean typeCodec = codecSourceWriter.hasCompleteTypeCodec(target, annotations);
+        boolean directTypeCodec = codecSourceWriter.hasDirectTypeCodec(target, annotations);
+        boolean typeCodec =
+            directTypeCodec || codecSourceWriter.hasCompleteTypeCodec(target, annotations);
         GeneratedJsonCodecSourceWriter.Result generated =
             typeCodec ? null : codecSourceWriter.writePair(annotations);
         Model model =
-            typeCodec ? inspectTypeCodec(target, annotations) : inspect(target, annotations);
+            typeCodec
+                ? inspectTypeCodec(target, annotations, directTypeCodec)
+                : inspect(target, annotations);
         model.mixin = mixin;
         model.resourceIdentity = mixinBinaryName;
         collectMixinSource(annotations, model);
@@ -322,13 +326,72 @@ final class JsonTypeProcessor {
     return inspect(target, null);
   }
 
-  private Model inspectTypeCodec(TypeElement target, JsonMixinAnnotations annotations) {
+  private Model inspectTypeCodec(
+      TypeElement target, JsonMixinAnnotations annotations, boolean directTypeCodec) {
     String binaryName = elements.getBinaryName(target).toString();
     Model model = new Model(target, binaryName);
     model.annotations = annotations;
     model.annotationOwnerTypes.add(binaryName);
     collectTypeCodec(target, model);
+    if (directTypeCodec) {
+      collectValueValidation(target, annotations, model);
+    }
     return model;
+  }
+
+  private void collectValueValidation(
+      TypeElement target, JsonMixinAnnotations annotations, Model model) {
+    boolean hasValue = false;
+    for (TypeElement owner : classHierarchy(target)) {
+      for (VariableElement field : ElementFilter.fieldsIn(owner.getEnclosedElements())) {
+        if (hasAnnotation(annotations, field, JSON_VALUE)) {
+          hasValue = true;
+          collectAnnotations(annotations, field, model.annotationTypes);
+          collectOccurrenceCodec(annotations, field, model);
+          model.addR8Member(R8Member.field(field, typeName(field.asType())));
+        }
+      }
+    }
+    for (ExecutableElement method : jsonMethods(target, annotations)) {
+      if (hasAnnotation(annotations, method, JSON_VALUE)) {
+        hasValue = true;
+        collectAnnotations(annotations, method, model.annotationTypes);
+        collectOccurrenceCodec(annotations, method, model);
+        model.addR8Member(
+            R8Member.method(method, typeName(method.getReturnType()), typeNames(method)));
+      }
+    }
+    for (TypeElement owner : classHierarchy(target)) {
+      for (ExecutableElement method : ElementFilter.methodsIn(owner.getEnclosedElements())) {
+        if (!method.getModifiers().contains(Modifier.PUBLIC)
+            && hasAnnotation(annotations, method, JSON_VALUE)) {
+          hasValue = true;
+          collectAnnotations(annotations, method, model.annotationTypes);
+          collectOccurrenceCodec(annotations, method, model);
+          model.addR8Member(
+              R8Member.method(method, typeName(method.getReturnType()), typeNames(method)));
+        }
+      }
+    }
+    if (!hasValue) {
+      return;
+    }
+    for (ExecutableElement constructor :
+        ElementFilter.constructorsIn(target.getEnclosedElements())) {
+      if (hasAnnotation(annotations, constructor, JSON_CREATOR)) {
+        collectAnnotations(annotations, constructor, model.annotationTypes);
+        collectAnnotations(annotations, constructor.getParameters(), model.annotationTypes);
+        model.addR8Member(R8Member.constructor(constructor, typeNames(constructor)));
+      }
+    }
+    for (ExecutableElement method : ElementFilter.methodsIn(target.getEnclosedElements())) {
+      if (hasAnnotation(annotations, method, JSON_CREATOR)) {
+        collectAnnotations(annotations, method, model.annotationTypes);
+        collectAnnotations(annotations, method.getParameters(), model.annotationTypes);
+        model.addR8Member(
+            R8Member.method(method, typeName(method.getReturnType()), typeNames(method)));
+      }
+    }
   }
 
   private Model inspect(TypeElement target, JsonMixinAnnotations annotations) {
@@ -899,35 +962,20 @@ final class JsonTypeProcessor {
       return;
     }
     JsonMixinAnnotations annotations = type.equals(model.target) ? model.annotations : null;
-    // Match JsonSharedRegistry's declaration lookup: a direct declaration hides all inherited
-    // declarations; otherwise only the most-specific inherited declarations are retained. This
-    // does not select a built-in mapping or validate runtime codec conflicts.
+    // Match JsonSharedRegistry's declaration lookup: a direct declaration hides inherited
+    // declarations; otherwise runtime reads every inherited declaration before selecting the
+    // most-specific frontier. This does not select a built-in mapping.
     AnnotationMirror direct = annotationMirror(annotations, type, JSON_CODEC);
     if (direct != null) {
       collectCodecDeclaration(type, direct, model);
       return;
     }
-    List<TypeElement> candidates = new ArrayList<>();
     List<TypeElement> declarations = allDeclarations(type);
     for (int i = 1; i < declarations.size(); i++) {
       TypeElement declaration = declarations.get(i);
-      if (annotationMirror(annotations, declaration, JSON_CODEC) != null) {
-        candidates.add(declaration);
-      }
-    }
-    for (TypeElement candidate : candidates) {
-      boolean dominated = false;
-      for (TypeElement other : candidates) {
-        if (!candidate.equals(other)
-            && types.isAssignable(
-                types.erasure(other.asType()), types.erasure(candidate.asType()))) {
-          dominated = true;
-          break;
-        }
-      }
-      if (!dominated) {
-        collectCodecDeclaration(
-            candidate, annotationMirror(annotations, candidate, JSON_CODEC), model);
+      AnnotationMirror annotation = annotationMirror(annotations, declaration, JSON_CODEC);
+      if (annotation != null) {
+        collectCodecDeclaration(declaration, annotation, model);
       }
     }
   }

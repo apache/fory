@@ -187,9 +187,8 @@ final class GeneratedJsonCodecSourceWriter {
   }
 
   boolean hasCompleteTypeCodec(TypeElement target, JsonMixinAnnotations annotations) {
-    AnnotationMirror direct = annotationMirror(annotations, target, JSON_CODEC);
-    if (direct != null) {
-      return selectsValueCodec(direct);
+    if (hasDirectTypeCodec(target, annotations)) {
+      return true;
     }
     List<TypeElement> declarations = allDeclarations(target);
     List<TypeElement> candidates = new ArrayList<>();
@@ -214,6 +213,11 @@ final class GeneratedJsonCodecSourceWriter {
       }
     }
     return false;
+  }
+
+  boolean hasDirectTypeCodec(TypeElement target, JsonMixinAnnotations annotations) {
+    AnnotationMirror direct = annotationMirror(annotations, target, JSON_CODEC);
+    return direct != null && selectsValueCodec(direct);
   }
 
   private boolean selectsValueCodec(AnnotationMirror annotation) {

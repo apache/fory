@@ -125,9 +125,11 @@ public class JsonTypeProcessorTest {
                 + "import org.apache.fory.json.annotation.*;\n"
                 + "public final class CodecTarget {\n"
                 + "  public int selected;\n"
+                + "  @JsonValue public String value;\n"
                 + "  public String unrelated;\n"
                 + "  public Child child;\n"
-                + "  public static final class Child { public String value; }\n"
+                + "  @JsonCreator public CodecTarget(String value) { this.value = value; }\n"
+                + "  public static final class Child { public String nested; }\n"
                 + "}\n"
                 + "@JsonMixin(target = CodecTarget.class)\n"
                 + "@JsonCodec(CodecMixin.Codec.class) abstract class CodecMixin {\n"
@@ -141,13 +143,41 @@ public class JsonTypeProcessorTest {
     assertTrue(
         rules.contains(
             "-keepclassmembers,allowoptimization class test.CodecTarget {\n"
+                + "  <init>(java.lang.String);\n"
                 + "  int selected;\n"
+                + "  java.lang.String value;\n"
                 + "}"),
         rules);
     assertTrue(rules.contains("class test.CodecMixin$Codec { public <init>(); }"), rules);
     assertFalse(rules.contains("java.lang.String unrelated;"), rules);
     assertFalse(rules.contains("test.CodecTarget$Child child;"), rules);
-    assertFalse(rules.contains("java.lang.String value;"), rules);
+    assertFalse(rules.contains("java.lang.String nested;"), rules);
+  }
+
+  @Test
+  public void mixinInheritedCodecRules() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.InheritedTarget",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonCodec(value = Codecs.RootCodec.class, "
+                + "elementCodec = Codecs.RootCodec.class) interface Root {}\n"
+                + "@JsonCodec(Codecs.ChildCodec.class) interface Child extends Root {}\n"
+                + "public final class InheritedTarget implements Child { public int id; }\n"
+                + "@JsonMixin(target = InheritedTarget.class) abstract class InheritedMixin {\n"
+                + "  @JsonProperty int id;\n"
+                + "}\n"
+                + "final class Codecs {\n"
+                + valueCodec("RootCodec")
+                + valueCodec("ChildCodec")
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.InheritedMixin.pro");
+    assertTrue(rules.contains("class test.Codecs$RootCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("class test.Codecs$ChildCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("class test.Root"), rules);
+    assertTrue(rules.contains("class test.Child"), rules);
   }
 
   @Test
@@ -1244,7 +1274,7 @@ public class JsonTypeProcessorTest {
             "package test;\n"
                 + "import java.util.List;\n"
                 + "import org.apache.fory.json.annotation.*;\n"
-                + "@JsonCodec(DeclarationModel.ShadowedCodec.class) interface BaseContract {}\n"
+                + "@JsonCodec(DeclarationModel.DominatedCodec.class) interface BaseContract {}\n"
                 + "@JsonCodec(DeclarationModel.InheritedCodec.class)\n"
                 + "interface ValueContract extends BaseContract {}\n"
                 + "@JsonCodec(DeclarationModel.DirectCodec.class)\n"
@@ -1257,7 +1287,7 @@ public class JsonTypeProcessorTest {
                 + "  public List<DirectValue> nested;\n"
                 + "  @JsonCreator public DeclarationModel(\n"
                 + "      @JsonProperty(\"parameter\") ParameterValue parameter) {}\n"
-                + valueCodecs("DirectCodec", "InheritedCodec", "ParameterCodec", "ShadowedCodec")
+                + valueCodecs("DirectCodec", "InheritedCodec", "ParameterCodec", "DominatedCodec")
                 + "}\n");
     assertTrue(result.success, result.diagnostics());
     String rules = result.generatedResource(RULE_PREFIX + "test.DeclarationModel.pro");
@@ -1270,9 +1300,9 @@ public class JsonTypeProcessorTest {
     assertTrue(rules.contains("class test.DirectValue"), rules);
     assertTrue(rules.contains("class test.ValueContract"), rules);
     assertTrue(rules.contains("class test.ParameterValue"), rules);
-    assertFalse(
-        rules.contains("class test.DeclarationModel$ShadowedCodec { public <init>(); }"), rules);
-    assertFalse(rules.contains("class test.BaseContract"), rules);
+    assertTrue(
+        rules.contains("class test.DeclarationModel$DominatedCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("class test.BaseContract"), rules);
   }
 
   @Test
