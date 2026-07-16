@@ -668,6 +668,7 @@ def bump_rust_version(new_version):
         rust_version,
         _update_cargo_lock_version,
     )
+    _bump_version("rust/fory/src", "lib.rs", rust_version, _update_rust_doc_version)
 
 
 def bump_kotlin_version(new_version):
@@ -816,7 +817,7 @@ def _update_pom_parent_version(lines, new_version):
 def _update_android_tests_dependency_version(lines, new_version):
     for index, line in enumerate(lines):
         lines[index] = re.sub(
-            r"(org\.apache\.fory:fory-(?:core|annotation-processor):)[^'`)\s]+",
+            r"(org\.apache\.fory:fory-(?:core|json|annotation-processor):)[^'`)\s]+",
             r"\g<1>" + new_version,
             line,
         )
@@ -943,6 +944,14 @@ def _update_cargo_lock_version(lines, v: str):
         if package_name in local_packages and line.strip().startswith("version = "):
             lines[index] = f'version = "{v}"\n'
             package_name = None
+    return lines
+
+
+def _update_rust_doc_version(lines, v: str):
+    for index, line in enumerate(lines):
+        if re.match(r'^//!\s+fory\s*=\s*"', line):
+            lines[index] = re.sub(r'"[^"]+"', f'"{v}"', line, count=1)
+            break
     return lines
 
 
