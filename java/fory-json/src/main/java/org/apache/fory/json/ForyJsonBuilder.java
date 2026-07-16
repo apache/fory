@@ -19,7 +19,6 @@
 
 package org.apache.fory.json;
 
-import java.lang.reflect.Modifier;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -193,10 +192,13 @@ public final class ForyJsonBuilder {
    * Registers the JSON mix-in declared by {@code mixinType} for its exact target class.
    *
    * <p>Registering another mix-in for the same target replaces the previous registration. Existing
-   * {@link ForyJson} instances retain their immutable configuration snapshot.
+   * {@link ForyJson} instances retain their immutable configuration snapshot. Only the final source
+   * for each target is structurally resolved when {@link #build()} creates the runtime; a
+   * superseded source is not resolved.
    *
    * @throws NullPointerException if {@code mixinType} is null
-   * @throws IllegalArgumentException if the class is not a valid {@link JsonMixin} declaration
+   * @throws IllegalArgumentException if {@code mixinType} has no readable {@link JsonMixin}
+   *     declaration
    */
   public ForyJsonBuilder registerMixin(Class<?> mixinType) {
     Objects.requireNonNull(mixinType, "mixinType");
@@ -211,30 +213,12 @@ public final class ForyJsonBuilder {
       throw new IllegalArgumentException(
           "JSON mix-in source is missing @JsonMixin: " + mixinType.getName());
     }
-    int sourceModifiers = mixinType.getModifiers();
-    if (mixinType.isAnnotation()
-        || mixinType.isEnum()
-        || mixinType.isAnonymousClass()
-        || mixinType.isLocalClass()
-        || (!mixinType.isInterface() && !Modifier.isAbstract(sourceModifiers))) {
-      throw new IllegalArgumentException(
-          "JSON mix-in source must be a named interface or abstract class: " + mixinType.getName());
-    }
-    if (mixinType.getInterfaces().length != 0
-        || (!mixinType.isInterface() && mixinType.getSuperclass() != Object.class)) {
-      throw new IllegalArgumentException(
-          "JSON mix-in source must not extend or implement another type: " + mixinType.getName());
-    }
     Class<?> target;
     try {
       target = declaration.target();
     } catch (RuntimeException | LinkageError e) {
       throw new IllegalArgumentException(
           "Cannot resolve JSON mix-in target for " + mixinType.getName(), e);
-    }
-    if (target == mixinType || target.isPrimitive() || target.isArray() || target.isAnnotation()) {
-      throw new IllegalArgumentException(
-          "Invalid JSON mix-in target " + target.getTypeName() + " for " + mixinType.getName());
     }
     mixins.put(target, mixinType);
     return this;

@@ -381,7 +381,7 @@ interface registration does not change an implementation. A subclass mix-in may 
 that the subclass inherits, but the resulting annotation applies only while that exact subclass is
 mapped.
 
-All thirteen mapping annotations are supported: `JsonAnyGetter`, `JsonAnyProperty`,
+All Fory JSON mapping annotations are supported: `JsonAnyGetter`, `JsonAnyProperty`,
 `JsonAnySetter`, `JsonBase64`, `JsonCodec`, `JsonCreator`, `JsonIgnore`, `JsonProperty`,
 `JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`, and `JsonValue`. `JsonType`
 cannot be added or removed because it controls build-time generation rather than the JSON schema.
@@ -415,15 +415,21 @@ declaration. A source cannot both declare and remove the same annotation type on
 Only one source is enabled for an exact target in a built runtime. Registering a different source
 for the same target replaces the earlier registration, while registering the same source again is
 idempotent. `build()` snapshots the current last-registration-wins mapping; a later registration on
-the builder does not change a previously built `ForyJson`.
+the builder does not change a previously built `ForyJson`. A source with no mapping annotations is
+a no-op; registering it after another source for the same target clears the earlier overlay for
+subsequent builds.
+
+A `JsonCodec` supplied by a mix-in is the target's effective annotation and follows the ordinary
+codec precedence below. In particular, an exact `registerCodec` registration wins over a type-level
+mix-in codec, while a type-level mix-in codec wins over the built-in mapping for that target.
 
 Records use their existing field, accessor, and canonical-constructor parameter declarations. A
 mix-in does not introduce a separate record-component model. Use source selectors for those real
 declarations and keep repeated annotations consistent as required by normal record property
 mapping.
 
-On Android and GraalVM Native Image, compile mix-in sources with the Fory annotation processor so
-the exact target/mix-in pair metadata and any required generated operations are available. See
+On Android and GraalVM Native Image, compile non-empty mix-in sources with the Fory annotation
+processor so required generated operations and platform configuration are available. See
 [Android Support](android-support.md) and [GraalVM Support](graalvm-support.md).
 
 ### `JsonProperty`
@@ -1114,7 +1120,7 @@ Fory resolves each current value in this order:
 | -------: | ----------------------------------------- |
 |        1 | Current property or parameter `JsonCodec` |
 |        2 | Exact `registerCodec` registration        |
-|        3 | Direct type `JsonCodec` declaration       |
+|        3 | Effective type `JsonCodec` declaration    |
 |        4 | Inherited type declaration                |
 |        5 | Built-in or default JSON mapping          |
 

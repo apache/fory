@@ -20,23 +20,16 @@
 package org.apache.fory.json;
 
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
 
 import java.io.ByteArrayOutputStream;
-import java.lang.reflect.Field;
-import java.net.URL;
-import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import javax.tools.JavaCompiler;
-import javax.tools.ToolProvider;
+import java.util.UUID;
 import org.apache.fory.json.annotation.JsonAnyGetter;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonAnySetter;
@@ -57,8 +50,6 @@ import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.resolver.JsonSharedRegistry;
-import org.apache.fory.json.resolver.JsonSharedRegistry.JsonMixinView;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.platform.JdkVersion;
@@ -161,6 +152,11 @@ public class JsonMixinTest extends ForyJsonTestModels {
     ForyJson codecJson = newJsonBuilder().registerMixin(WholeTargetMixin.class).build();
     assertEquals(codecJson.toJson(new WholeTarget("write")), "\"whole:write\"");
     assertEquals(codecJson.fromJson("\"whole:read\"", WholeTarget.class).value, "read");
+
+    UUID uuid = UUID.fromString("0d57bb7d-e50e-4a4f-9d59-d159c48086ae");
+    ForyJson uuidJson = newJsonBuilder().registerMixin(UuidMixin.class).build();
+    assertEquals(uuidJson.toJson(uuid), "\"uuid:" + uuid + "\"");
+    assertEquals(uuidJson.fromJson("\"uuid:" + uuid + "\"", UUID.class), uuid);
   }
 
   @Test
@@ -175,6 +171,17 @@ public class JsonMixinTest extends ForyJsonTestModels {
     assertEquals(first.toJson(new NameTarget("value")), "{\"first\":\"value\"}");
     assertEquals(second.toJson(new NameTarget("value")), "{\"second\":\"value\"}");
     assertEquals(first.toJson(new NameTarget("again")), "{\"first\":\"again\"}");
+
+    ForyJson reset =
+        newJsonBuilder()
+            .registerMixin(FirstNameMixin.class)
+            .registerMixin(EmptyNameMixin.class)
+            .build();
+    assertEquals(reset.toJson(new NameTarget("value")), "{\"name\":\"value\"}");
+
+    ForyJson replacedInvalid =
+        newJsonBuilder().registerMixin(ConcreteMixin.class).registerMixin(BasicMixin.class).build();
+    assertTrue(replacedInvalid.toJson(basic("valid")).contains("\"display_name\":\"valid\""));
 
     ForyJson repeated =
         newJsonBuilder()
@@ -280,13 +287,13 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
     assertThrows(NullPointerException.class, () -> newJsonBuilder().registerMixin(null));
     assertRegistrationInvalid(BasicTarget.class);
-    assertRegistrationInvalid(ConcreteMixin.class);
-    assertRegistrationInvalid(SourceHierarchyMixin.class);
-    assertRegistrationInvalid(PrimitiveTargetMixin.class);
-    assertRegistrationInvalid(SelfMixin.class);
+    assertStructureInvalid(ConcreteMixin.class);
+    assertStructureInvalid(SourceHierarchyMixin.class);
+    assertStructureInvalid(PrimitiveTargetMixin.class);
+    assertStructureInvalid(SelfMixin.class);
     @JsonMixin(target = BasicTarget.class)
     abstract class LocalMixin {}
-    assertRegistrationInvalid(LocalMixin.class);
+    assertStructureInvalid(LocalMixin.class);
     assertStructureInvalid(UnmatchedFieldMixin.class);
     assertStructureInvalid(ReturnTypeMixin.class);
     assertStructureInvalid(HiddenFieldMixin.class);
@@ -302,78 +309,22 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void semanticFailureRollsBack() {
-    ForyJson json = newJsonBuilder().registerMixin(SemanticFailureMixin.class).build();
-    SemanticFailureTarget value = new SemanticFailureTarget();
-    value.body = "text";
-    ForyJsonException writeFailure =
-        expectThrows(ForyJsonException.class, () -> json.toJson(value));
-    assertSemanticContext(writeFailure);
-    assertFalse(resolverContains(json, "objectCodecs", SemanticFailureTarget.class));
-    assertFalse(resolverContains(json, "typeInfos", SemanticFailureTarget.class));
-
-    ForyJsonException readFailure =
-        expectThrows(
-            ForyJsonException.class,
-            () -> json.fromJson("{\"body\":\"text\"}", SemanticFailureTarget.class));
-    assertSemanticContext(readFailure);
-    assertFalse(resolverContains(json, "objectCodecs", SemanticFailureTarget.class));
-    assertFalse(resolverContains(json, "typeInfos", SemanticFailureTarget.class));
-    assertEquals(json.toJson(new NameTarget("valid")), "{\"name\":\"valid\"}");
-  }
-
-  @Test
   public void semanticDiagnostics() {
     assertPairFailure(InvalidTypeCodecMixin.class, InvalidTypeCodecTarget.class);
     assertPairFailure(InvalidSubTypesMixin.class, InvalidSubTypesTarget.class);
     assertPairFailure(InvalidValueMixin.class, InvalidValueTarget.class);
-    assertPairFailure(InvalidValueCreatorMixin.class, InvalidValueCreatorTarget.class);
-    assertPairFailure(IntrinsicMemberMixin.class, IntrinsicMemberTarget.class);
-    assertPairFailure(CodecFamilyMixin.class, CodecFamilyTarget.class);
-    assertPairFailure(ValueFamilyMixin.class, ValueFamilyTarget.class);
-    assertPairFailure(SubtypeFamilyMixin.class, SubtypeFamilyTarget.class);
-    assertPairFailure(ObjectParameterMixin.class, ObjectParameterTarget.class);
     assertPairFailure(ObjectMethodMixin.class, ObjectMethodTarget.class);
-    assertPairFailure(IneligibleIgnoreMixin.class, IneligibleIgnoreTarget.class);
-    assertPairFailure(UnsupportedTypeMixin.class, UnsupportedTypeTarget.class);
+
+    ForyJson intrinsic = newJsonBuilder().registerMixin(IntrinsicMemberMixin.class).build();
+    assertEquals(intrinsic.toJson(IntrinsicMemberTarget.VALUE), "\"VALUE\"");
 
     ForyJson registered =
         newJsonBuilder()
-            .registerCodec(WholeTarget.class, new WholeTargetCodec())
+            .registerCodec(WholeTarget.class, new WholeTargetCodec("registered:"))
             .registerMixin(WholeTargetMixin.class)
             .build();
-    ForyJsonException failure =
-        expectThrows(ForyJsonException.class, () -> registered.toJson(new WholeTarget("value")));
-    String message = failure.getMessage();
-    assertTrue(message.contains(WholeTarget.class.getName()), message);
-    assertTrue(message.contains(WholeTargetMixin.class.getName()), message);
-    assertTrue(message.contains("exact builder-registered codec"), message);
-  }
-
-  @Test
-  public void classLoaderIdentity() throws Exception {
-    if (!codegenEnabled()) {
-      throw new SkipException("Codegen identity test requires code generation");
-    }
-    try (URLClassLoader firstLoader = compileNamedMixin("first");
-        URLClassLoader secondLoader = compileNamedMixin("second")) {
-      Class<?> firstMixin = firstLoader.loadClass("plugins.NamedMixin");
-      Class<?> secondMixin = secondLoader.loadClass("plugins.NamedMixin");
-      ForyJson first =
-          newJsonBuilder()
-              .withCodegen(true)
-              .withAsyncCompilation(false)
-              .registerMixin(firstMixin)
-              .build();
-      ForyJson second =
-          newJsonBuilder()
-              .withCodegen(true)
-              .withAsyncCompilation(false)
-              .registerMixin(secondMixin)
-              .build();
-      assertEquals(first.toJson(new NameTarget("value")), "{\"first\":\"value\"}");
-      assertEquals(second.toJson(new NameTarget("value")), "{\"second\":\"value\"}");
-    }
+    assertEquals(registered.toJson(new WholeTarget("value")), "\"registered:value\"");
+    assertEquals(registered.fromJson("\"registered:read\"", WholeTarget.class).value, "read");
   }
 
   @Test
@@ -394,32 +345,10 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @Test
-  public void directParameterCompatibility() {
+  public void directParameterAnnotation() {
     DirectParameterTarget value = new DirectParameterTarget();
     value.id = 3;
     assertEquals(newJson().toJson(value), "{\"id\":3}");
-  }
-
-  @Test
-  public void hostedSourceClosure() throws Exception {
-    JsonMixinView view =
-        JsonSharedRegistry.resolveMixin(HostedSourceTarget.class, HostedSourceMixin.class);
-    assertEquals(view.sourceDeclarations().size(), 1);
-    assertTrue(view.sourceDeclarations().contains(HostedSourceMixin.class.getDeclaredField("id")));
-    assertFalse(
-        view.sourceDeclarations().contains(HostedSourceMixin.class.getDeclaredField("helper")));
-    assertTrue(view.targetDeclarations().contains(HostedSourceTarget.class.getDeclaredField("id")));
-    assertFalse(
-        view.targetDeclarations().contains(HostedSourceTarget.class.getDeclaredField("helper")));
-    assertThrows(
-        ForyJsonException.class,
-        () -> JsonSharedRegistry.resolveMixin(SelectorTarget.class, ConcreteMixin.class));
-  }
-
-  @Test
-  public void memberSourceConstructor() {
-    ForyJson json = newJsonBuilder().registerMixin(MemberCtorMixin.class).build();
-    assertEquals(json.fromJson("{\"id\":7}", MemberCtorTarget.class).id, 7);
   }
 
   private void assertPairFailure(Class<?> mixinType, Class<?> targetType) {
@@ -429,27 +358,6 @@ public class JsonMixinTest extends ForyJsonTestModels {
     String message = failure.getMessage();
     assertTrue(message.contains(targetType.getName()), message);
     assertTrue(message.contains(mixinType.getName()), message);
-  }
-
-  private static void assertSemanticContext(ForyJsonException failure) {
-    String message = failure.getMessage();
-    assertTrue(message.contains(SemanticFailureTarget.class.getName()), message);
-    assertTrue(message.contains(SemanticFailureMixin.class.getName()), message);
-    assertTrue(message.contains("body"), message);
-  }
-
-  @SuppressWarnings("unchecked")
-  private static boolean resolverContains(ForyJson json, String fieldName, Class<?> type) {
-    try {
-      Field field =
-          org.apache.fory.json.resolver.JsonTypeResolver.class.getDeclaredField(fieldName);
-      field.setAccessible(true);
-      Map<Object, ?> entries =
-          (Map<Object, ?>) field.get(JsonTestSupport.primaryTypeResolver(json));
-      return entries.containsKey(type);
-    } catch (ReflectiveOperationException e) {
-      throw new AssertionError(e);
-    }
   }
 
   @Test
@@ -523,29 +431,6 @@ public class JsonMixinTest extends ForyJsonTestModels {
     Map<String, Integer> result = new LinkedHashMap<>();
     result.put(name, value);
     return result;
-  }
-
-  private static URLClassLoader compileNamedMixin(String jsonName) throws Exception {
-    JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    assertTrue(compiler != null);
-    Path root = Files.createTempDirectory("fory-json-mixin-loader");
-    Path source = root.resolve("plugins/NamedMixin.java");
-    Files.createDirectories(source.getParent());
-    String code =
-        "package plugins;\n"
-            + "import org.apache.fory.json.annotation.*;\n"
-            + "@JsonMixin(target = org.apache.fory.json.JsonMixinTest.NameTarget.class)\n"
-            + "public abstract class NamedMixin {\n"
-            + "  @JsonProperty(\""
-            + jsonName
-            + "\") public String name;\n"
-            + "}\n";
-    Files.write(source, code.getBytes(StandardCharsets.UTF_8));
-    int exit =
-        compiler.run(null, null, null, "-proc:none", "-d", root.toString(), source.toString());
-    assertEquals(exit, 0);
-    return new URLClassLoader(
-        new URL[] {root.toUri().toURL()}, JsonMixinTest.class.getClassLoader());
   }
 
   public static final class BasicTarget {
@@ -718,14 +603,24 @@ public class JsonMixinTest extends ForyJsonTestModels {
   public interface WholeTargetMixin {}
 
   public static final class WholeTargetCodec implements JsonValueCodec<WholeTarget> {
+    private final String prefix;
+
+    public WholeTargetCodec() {
+      this("whole:");
+    }
+
+    WholeTargetCodec(String prefix) {
+      this.prefix = prefix;
+    }
+
     @Override
     public void writeString(StringJsonWriter writer, WholeTarget value) {
-      writer.writeString("whole:" + value.value);
+      writer.writeString(prefix + value.value);
     }
 
     @Override
     public void writeUtf8(Utf8JsonWriter writer, WholeTarget value) {
-      writer.writeString("whole:" + value.value);
+      writer.writeString(prefix + value.value);
     }
 
     @Override
@@ -744,7 +639,42 @@ public class JsonMixinTest extends ForyJsonTestModels {
     }
 
     private WholeTarget read(String value) {
-      return new WholeTarget(value.substring("whole:".length()));
+      return new WholeTarget(value.substring(prefix.length()));
+    }
+  }
+
+  @JsonMixin(target = UUID.class)
+  @JsonCodec(UuidCodec.class)
+  public interface UuidMixin {}
+
+  public static final class UuidCodec implements JsonValueCodec<UUID> {
+    @Override
+    public void writeString(StringJsonWriter writer, UUID value) {
+      writer.writeString("uuid:" + value);
+    }
+
+    @Override
+    public void writeUtf8(Utf8JsonWriter writer, UUID value) {
+      writer.writeString("uuid:" + value);
+    }
+
+    @Override
+    public UUID readLatin1(Latin1JsonReader reader) {
+      return read(reader.readString());
+    }
+
+    @Override
+    public UUID readUtf16(Utf16JsonReader reader) {
+      return read(reader.readString());
+    }
+
+    @Override
+    public UUID readUtf8(Utf8JsonReader reader) {
+      return read(reader.readString());
+    }
+
+    private UUID read(String value) {
+      return UUID.fromString(value.substring("uuid:".length()));
     }
   }
 
@@ -767,6 +697,9 @@ public class JsonMixinTest extends ForyJsonTestModels {
     @JsonProperty("second")
     String name;
   }
+
+  @JsonMixin(target = NameTarget.class)
+  public interface EmptyNameMixin {}
 
   public static class ExactParent {
     public String name = "parent";
@@ -1006,17 +939,6 @@ public class JsonMixinTest extends ForyJsonTestModels {
     public String name = "target";
   }
 
-  public static final class SemanticFailureTarget {
-    public String body;
-  }
-
-  @JsonMixin(target = SemanticFailureTarget.class)
-  public abstract static class SemanticFailureMixin {
-    @JsonRawValue
-    @JsonCodec(JsonCodecAnnotationTest.AStringCodec.class)
-    String body;
-  }
-
   public static final class InvalidTypeCodecTarget {}
 
   @JsonMixin(target = InvalidTypeCodecTarget.class)
@@ -1046,51 +968,6 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
     @JsonValue
     String second();
-  }
-
-  public static final class InvalidValueCreatorTarget {
-    public String value;
-
-    public static InvalidValueCreatorTarget create(String value, int ignored) {
-      InvalidValueCreatorTarget target = new InvalidValueCreatorTarget();
-      target.value = value;
-      return target;
-    }
-  }
-
-  @JsonMixin(target = InvalidValueCreatorTarget.class)
-  public abstract static class InvalidValueCreatorMixin {
-    @JsonValue String value;
-
-    @JsonCreator
-    abstract InvalidValueCreatorTarget create(String value, int ignored);
-  }
-
-  public static final class HostedSourceTarget {
-    public int id;
-    public int helper;
-  }
-
-  @JsonMixin(target = HostedSourceTarget.class)
-  public abstract static class HostedSourceMixin {
-    @JsonProperty("value")
-    int id;
-
-    int helper;
-  }
-
-  public static final class MemberCtorTarget {
-    public final int id;
-
-    public MemberCtorTarget(int id) {
-      this.id = id;
-    }
-  }
-
-  @JsonMixin(target = MemberCtorTarget.class)
-  public abstract class MemberCtorMixin {
-    @JsonCreator
-    MemberCtorMixin(@JsonProperty("id") int id) {}
   }
 
   public abstract static class SourceHierarchyParent {
@@ -1135,97 +1012,6 @@ public class JsonMixinTest extends ForyJsonTestModels {
     }
   }
 
-  public enum IntrinsicMemberTarget {
-    VALUE;
-
-    String label = "value";
-  }
-
-  @JsonMixin(target = IntrinsicMemberTarget.class)
-  public abstract static class IntrinsicMemberMixin {
-    @JsonProperty("name")
-    String label;
-  }
-
-  public static final class CodecFamilyTarget {
-    public String value;
-  }
-
-  @JsonMixin(target = CodecFamilyTarget.class)
-  @JsonCodec(CodecFamilyCodec.class)
-  public abstract static class CodecFamilyMixin {
-    @JsonProperty("ignored")
-    String value;
-  }
-
-  public static final class CodecFamilyCodec implements JsonValueCodec<CodecFamilyTarget> {
-    @Override
-    public void writeString(StringJsonWriter writer, CodecFamilyTarget value) {
-      writer.writeString(value.value);
-    }
-
-    @Override
-    public void writeUtf8(Utf8JsonWriter writer, CodecFamilyTarget value) {
-      writer.writeString(value.value);
-    }
-
-    @Override
-    public CodecFamilyTarget readLatin1(Latin1JsonReader reader) {
-      return read(reader.readString());
-    }
-
-    @Override
-    public CodecFamilyTarget readUtf16(Utf16JsonReader reader) {
-      return read(reader.readString());
-    }
-
-    @Override
-    public CodecFamilyTarget readUtf8(Utf8JsonReader reader) {
-      return read(reader.readString());
-    }
-
-    private CodecFamilyTarget read(String text) {
-      CodecFamilyTarget value = new CodecFamilyTarget();
-      value.value = text;
-      return value;
-    }
-  }
-
-  public static final class ValueFamilyTarget {
-    public String text;
-    public int ignored;
-
-    public static ValueFamilyTarget create(String text) {
-      ValueFamilyTarget value = new ValueFamilyTarget();
-      value.text = text;
-      return value;
-    }
-  }
-
-  @JsonMixin(target = ValueFamilyTarget.class)
-  public abstract static class ValueFamilyMixin {
-    @JsonValue String text;
-
-    @JsonProperty("ignored")
-    int ignored;
-
-    @JsonCreator
-    abstract ValueFamilyTarget create(String text);
-  }
-
-  public static final class ObjectParameterTarget {
-    public String text;
-
-    public ObjectParameterTarget(String text) {
-      this.text = text;
-    }
-  }
-
-  @JsonMixin(target = ObjectParameterTarget.class)
-  public abstract static class ObjectParameterMixin {
-    ObjectParameterMixin(@JsonProperty("text") String text) {}
-  }
-
   public static final class ObjectMethodTarget {
     public int id;
   }
@@ -1236,54 +1022,16 @@ public class JsonMixinTest extends ForyJsonTestModels {
     public abstract String toString();
   }
 
-  public static final class IneligibleIgnoreTarget {
-    public transient int hidden;
-    public int visible;
+  public enum IntrinsicMemberTarget {
+    VALUE;
+
+    String label = "value";
   }
 
-  @JsonMixin(target = IneligibleIgnoreTarget.class)
-  public abstract static class IneligibleIgnoreMixin {
-    @JsonIgnore int hidden;
-  }
-
-  public static final class UnsupportedTypeTarget implements CharSequence {
-    public String value = "text";
-
-    @Override
-    public int length() {
-      return value.length();
-    }
-
-    @Override
-    public char charAt(int index) {
-      return value.charAt(index);
-    }
-
-    @Override
-    public CharSequence subSequence(int start, int end) {
-      return value.subSequence(start, end);
-    }
-  }
-
-  @JsonMixin(target = UnsupportedTypeTarget.class)
-  public abstract static class UnsupportedTypeMixin {
-    @JsonProperty("text")
-    String value;
-  }
-
-  public abstract static class SubtypeFamilyTarget {
-    public int ignored;
-  }
-
-  public static final class SubtypeFamilyChild extends SubtypeFamilyTarget {}
-
-  @JsonMixin(target = SubtypeFamilyTarget.class)
-  @JsonSubTypes(
-      value = @JsonSubTypes.Type(name = "child", value = SubtypeFamilyChild.class),
-      property = "kind")
-  public abstract static class SubtypeFamilyMixin {
-    @JsonProperty("ignored")
-    int ignored;
+  @JsonMixin(target = IntrinsicMemberTarget.class)
+  public abstract static class IntrinsicMemberMixin {
+    @JsonProperty("name")
+    String label;
   }
 
   @JsonMixinRemove(JsonPropertyOrder.class)

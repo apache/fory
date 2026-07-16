@@ -31,19 +31,14 @@ final class GeneratedTypeNames {
     return escape(binaryName, true);
   }
 
-  static String jsonMixinSimpleName(String targetBinaryName, String mixinBinaryName) {
+  static String jsonMixinSimpleName(String mixinBinaryName, String targetBinaryName) {
+    // Keep this pair name identical to JsonSharedRegistry.generatedMixinCodecBinaryName; the
+    // processor cannot depend on the runtime module that loads the generated class.
     int packageSeparator = mixinBinaryName.lastIndexOf('.');
     String mixinSimpleName = mixinBinaryName.substring(packageSeparator + 1);
     return escapeBinarySimpleName(mixinSimpleName)
         + "_ForyJsonMixin_"
         + escapeBinarySimpleName(targetBinaryName);
-  }
-
-  static String jsonMixinBinaryName(String targetBinaryName, String mixinBinaryName) {
-    int packageSeparator = mixinBinaryName.lastIndexOf('.');
-    String packageName = packageSeparator < 0 ? "" : mixinBinaryName.substring(0, packageSeparator);
-    String simpleName = jsonMixinSimpleName(targetBinaryName, mixinBinaryName);
-    return packageName.isEmpty() ? simpleName : packageName + "." + simpleName;
   }
 
   private static String escape(String value, boolean preserveDots) {

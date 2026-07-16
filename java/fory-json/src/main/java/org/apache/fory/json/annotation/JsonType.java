@@ -43,8 +43,9 @@ import java.lang.annotation.Target;
  * require processor-generated operations from either a direct {@code JsonType} declaration or an
  * exact {@link JsonMixin} pair because Android does not expose the Java Record reflection APIs.
  *
- * <p>{@link JsonMixin} cannot contribute or remove this build-time marker. A mix-in is its own
- * processor entry point and produces artifacts for its exact target/source pair.
+ * <p>{@link JsonMixin} cannot contribute or remove this build-time marker. A non-empty mix-in is
+ * its own processor entry point and produces the platform configuration and generated operations
+ * required by its exact target/source mapping.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

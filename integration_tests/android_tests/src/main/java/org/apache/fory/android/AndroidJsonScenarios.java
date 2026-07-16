@@ -31,7 +31,6 @@ import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.annotation.JsonValue;
-import org.apache.fory.json.resolver.JsonSharedRegistry;
 
 /** Android acceptance scenarios for reflection, declaration codecs, and R8 retention. */
 public final class AndroidJsonScenarios {
@@ -254,27 +253,12 @@ public final class AndroidJsonScenarios {
     checkEquals("Hangzhou", decoded.getAddress().city);
     checkEquals(310000, decoded.getAddress().zip);
 
-    ForyJson alternate =
-        ForyJson.builder().registerMixin(GeneratedJsonAlternateMixin.class).build();
-    String alternateJson = alternate.toJson(value);
-    checkEquals(
-        "{\"account_id\":34,\"location_city\":\"Hangzhou\",\"location_zip\":310000}",
-        alternateJson);
-    GeneratedJsonMixinTarget alternateDecoded =
-        alternate.fromJson(alternateJson, GeneratedJsonMixinTarget.class);
-    checkEquals(34, alternateDecoded.getId());
-    checkEquals("Hangzhou", alternateDecoded.getAddress().city);
+    generatedMixinRecord();
+    generatedMixinValue();
+    generatedMixinValueRecord();
   }
 
-  public static void generatedMixinRecord() {
-    String companion =
-        JsonSharedRegistry.generatedMixinCodecBinaryName(
-            GeneratedJsonMixinRecordAnnotations.class, GeneratedJsonMixinRecord.class);
-    try {
-      Class.forName(companion, false, GeneratedJsonMixinRecordAnnotations.class.getClassLoader());
-    } catch (ClassNotFoundException e) {
-      throw new AssertionError("generated Record mix-in JSON codec was removed", e);
-    }
+  private static void generatedMixinRecord() {
     ForyJson json =
         ForyJson.builder().registerMixin(GeneratedJsonMixinRecordAnnotations.class).build();
     String encoded = json.toJson(new GeneratedJsonMixinRecord(35, "record-mixin"));
@@ -284,16 +268,7 @@ public final class AndroidJsonScenarios {
     checkEquals("record-mixin", decoded.name());
   }
 
-  public static void generatedMixinValue() {
-    String codec =
-        JsonSharedRegistry.generatedMixinCodecBinaryName(
-            GeneratedJsonMixinValue.class, GeneratedJsonMixinValueTarget.class);
-    try {
-      Class.forName(codec, false, GeneratedJsonMixinValue.class.getClassLoader());
-      throw new AssertionError("non-Record value mix-in generated an unused codec companion");
-    } catch (ClassNotFoundException expected) {
-      // The pair metadata is sufficient for this codec family.
-    }
+  private static void generatedMixinValue() {
     ForyJson json = ForyJson.builder().registerMixin(GeneratedJsonMixinValue.class).build();
     GeneratedJsonMixinValueTarget value = GeneratedJsonMixinValueTarget.create("value-mixin");
     checkEquals("\"value-mixin\"", json.toJson(value));
@@ -302,15 +277,7 @@ public final class AndroidJsonScenarios {
     checkEquals("decoded-mixin", decoded.getValue());
   }
 
-  public static void generatedMixinValueRecord() {
-    String codec =
-        JsonSharedRegistry.generatedMixinCodecBinaryName(
-            GeneratedJsonMixinValueRecordAnnotations.class, GeneratedJsonMixinValueRecord.class);
-    try {
-      Class.forName(codec, false, GeneratedJsonMixinValueRecordAnnotations.class.getClassLoader());
-    } catch (ClassNotFoundException e) {
-      throw new AssertionError("generated Record value mix-in JSON codec was removed", e);
-    }
+  private static void generatedMixinValueRecord() {
     ForyJson json =
         ForyJson.builder().registerMixin(GeneratedJsonMixinValueRecordAnnotations.class).build();
     checkEquals("\"record-value\"", json.toJson(new GeneratedJsonMixinValueRecord("record-value")));
@@ -361,19 +328,6 @@ public final class AndroidJsonScenarios {
     int getId();
 
     @JsonUnwrapped(prefix = "address_")
-    GeneratedJsonMixinTarget.Address getAddress();
-
-    @JsonCreator({"id", "address"})
-    GeneratedJsonMixinTarget create(int id, GeneratedJsonMixinTarget.Address address);
-  }
-
-  @JsonMixin(target = GeneratedJsonMixinTarget.class)
-  @JsonPropertyOrder({"id", "address"})
-  public interface GeneratedJsonAlternateMixin {
-    @JsonProperty("account_id")
-    int getId();
-
-    @JsonUnwrapped(prefix = "location_")
     GeneratedJsonMixinTarget.Address getAddress();
 
     @JsonCreator({"id", "address"})

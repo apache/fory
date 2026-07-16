@@ -117,27 +117,22 @@ ForyJson json =
     ForyJson.builder().registerMixin(ThirdPartyInvoiceMixin.class).build();
 ```
 
-Compile every mix-in source with `fory-annotation-processor`. The processor emits exact retention
-metadata for each `(target, mix-in)` pair. It also emits pair-specific generated operations when the
-effective mapping uses ordinary object or Record construction, creator invocation, or an Any
-setter. Complete type codecs, subtype bases, enums, and non-Record `JsonValue` representations do
-not receive an unused companion, but they still require their pair retention metadata.
+Compile every non-empty mix-in source with `fory-annotation-processor`. The processor emits exact
+R8 rules and any pair-specific target operations that the runtime can use. Registered codecs,
+effective type codecs, and built-in mappings keep their normal runtime precedence. An empty mix-in
+produces no generated output.
 
 The target does not need `JsonType` merely because it has a mix-in. `JsonMixin` is itself the
 processor entry point for the pair. If a target also uses `JsonType`, the runtime selects the
-pair-specific companion for the enabled mix-in instead of combining the mix-in with the target's
-direct companion.
+pair-specific companion for a non-empty registered mix-in instead of combining the overlay with the
+target's direct companion.
 
 Only one source is enabled for an exact target in one built runtime. A later registration for that
 target replaces an earlier registration on the builder, and `build()` snapshots the selected
 mapping. The processor may generate artifacts for multiple source alternatives; the runtime uses
 only the last registered source.
 
-Application-authored R8 rules are not a substitute for processor-generated mix-in pair metadata.
-An Android runtime that enables a mix-in without its pair metadata reports a configuration error.
-The generated rules retain the exact source annotations, target declarations, generic endpoints,
-codec constructors, subtypes, and unwrapped child models required by that pair without keeping an
-entire package.
+Use the processor-generated R8 rules for non-empty mix-ins instead of broad package keep rules.
 
 Ordinary non-Record classes that omit `JsonType` can supply equivalent exact rules themselves.
 Retain every model

@@ -29,12 +29,11 @@ import java.lang.annotation.Target;
 /**
  * Removes selected target annotations from one matched declaration in a JSON mix-in.
  *
- * <p>This annotation is valid only on a {@link JsonMixin} source. Each value must be one of the
- * thirteen mapping annotations supported by {@link JsonMixin}, and that annotation's Java {@link
- * Target} must permit the selector kind. {@link JsonType}, {@link JsonMixin}, {@code
- * JsonMixinRemove}, and unrelated annotations cannot be removed. The list must be non-empty and
- * contain no duplicates, and one source declaration cannot both contribute and remove the same
- * annotation type.
+ * <p>This annotation is valid only on a {@link JsonMixin} source. Each value must be a mapping
+ * annotation supported by {@link JsonMixin}, and that annotation's Java {@link Target} must permit
+ * the selector kind. {@link JsonType}, {@link JsonMixin}, {@code JsonMixinRemove}, and unrelated
+ * annotations cannot be removed. The list must be non-empty and contain no duplicates, and one
+ * source declaration cannot both contribute and remove the same annotation type.
  *
  * <p>Removal affects only the matched physical declaration in the exact target context before
  * normal logical-property merging. Removing an absent annotation is allowed, which lets a

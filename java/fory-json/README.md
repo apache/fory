@@ -365,7 +365,7 @@ automatically disabled. Every other builder option keeps the behavior described 
 
 ## JSON annotations
 
-Fory JSON provides thirteen mapping annotations in `org.apache.fory.json.annotation`:
+Fory JSON provides these mapping annotations in `org.apache.fory.json.annotation`:
 `JsonAnyGetter`, `JsonAnyProperty`, `JsonAnySetter`, `JsonBase64`, `JsonCodec`, `JsonCreator`,
 `JsonIgnore`, `JsonProperty`, `JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`,
 and `JsonValue`. `JsonType` is a separate build-time generation marker. They are Fory JSON APIs,
@@ -410,7 +410,7 @@ constructors, and parameters select existing declarations on the exact target. T
 to own all Java types, values, access, and construction. A registration for a base class does not
 affect a subclass, and an interface registration does not affect an implementation.
 
-The source may apply any of the thirteen mapping annotations listed above. Declaring an annotation
+The source may apply any mapping annotation listed above. Declaring an annotation
 on a matched source declaration replaces the target annotation of the same type as a whole; it does
 not merge individual annotation members. `JsonType` cannot be added or removed by a mix-in.
 
@@ -431,10 +431,16 @@ abstract class QuotedMessageMixin {
 The source selector must match exactly one target declaration even when it only removes an
 annotation. Registering a different mix-in for the same target on one builder replaces the earlier
 registration. Re-registering the same source is harmless. Each `build()` snapshots the current
-last-registration-wins mapping, so later builder changes do not mutate an existing `ForyJson`.
+last-registration-wins mapping, so later builder changes do not mutate an existing `ForyJson`. An
+empty source is a no-op and clears an earlier source for the same target when registered later.
 
-On Android and GraalVM Native Image, compile every enabled mix-in with the Fory annotation
-processor. See the platform guides linked above for the generated pair metadata requirements.
+A `JsonCodec` supplied by a mix-in is the target's effective annotation. An exact
+`registerCodec` registration still wins, while the effective type annotation wins over a built-in
+mapping.
+
+On Android and GraalVM Native Image, compile non-empty mix-ins with the Fory annotation processor
+so required generated operations and platform configuration are available. See the platform guides
+linked above.
 
 ### `JsonProperty`
 
@@ -1217,7 +1223,7 @@ Fory resolves each current value in this order:
 | -------: | ----------------------------------------- |
 |        1 | Current property or parameter `JsonCodec` |
 |        2 | Exact `registerCodec` registration        |
-|        3 | Direct type `JsonCodec` declaration       |
+|        3 | Effective type `JsonCodec` declaration    |
 |        4 | Inherited type declaration                |
 |        5 | Built-in or default JSON mapping          |
 

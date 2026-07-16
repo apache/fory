@@ -19,6 +19,8 @@
 
 package org.apache.fory.annotation.processing;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Target;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -157,6 +159,10 @@ final class JsonMixinAnnotations {
     return source;
   }
 
+  boolean isEmpty() {
+    return overlays.isEmpty();
+  }
+
   AnnotationMirror annotation(Element element, String annotationName) {
     Overlay overlay = overlays.get(element);
     if (overlay != null) {
@@ -177,18 +183,9 @@ final class JsonMixinAnnotations {
     return declaredAnnotation(element, annotationName);
   }
 
-  boolean isRemoved(Element element, String annotationName) {
+  private boolean isRemoved(Element element, String annotationName) {
     Overlay overlay = overlays.get(element);
     return overlay != null && overlay.removals.contains(annotationName);
-  }
-
-  boolean replaces(Element element, String annotationName) {
-    Overlay overlay = overlays.get(element);
-    return overlay != null && overlay.replacements.containsKey(annotationName);
-  }
-
-  boolean hasAnnotation(Element element, String annotationName) {
-    return annotation(element, annotationName) != null;
   }
 
   boolean hasJsonAnnotations(Element element) {
@@ -205,81 +202,6 @@ final class JsonMixinAnnotations {
       if (annotation(element, annotationName) != null) {
         annotationTypes.add(annotationName);
       }
-    }
-  }
-
-  void validateTypeReplacements(String annotationName, String representation) {
-    String unused = null;
-    Element unusedSource = null;
-    for (Map.Entry<Element, Overlay> entry : overlays.entrySet()) {
-      for (String replacement : entry.getValue().replacements.keySet()) {
-        if (entry.getKey().equals(target) && replacement.equals(annotationName)) {
-          continue;
-        }
-        String candidate = unusedReplacement(entry, replacement);
-        if (unused == null || candidate.compareTo(unused) < 0) {
-          unused = candidate;
-          unusedSource = entry.getValue().source;
-        }
-      }
-    }
-    rejectUnused(unused, unusedSource, representation);
-  }
-
-  void validateValueReplacements(
-      List<? extends Element> valueMembers, List<ExecutableElement> creators) {
-    String unused = null;
-    Element unusedSource = null;
-    for (Map.Entry<Element, Overlay> entry : overlays.entrySet()) {
-      Element targetElement = entry.getKey();
-      for (String replacement : entry.getValue().replacements.keySet()) {
-        boolean consumed =
-            valueMembers.contains(targetElement)
-                    && (replacement.equals(JSON_VALUE) || replacement.equals(JSON_RAW_VALUE))
-                || creators.contains(targetElement) && replacement.equals(JSON_CREATOR)
-                || targetElement.getKind() == ElementKind.PARAMETER
-                    && creators.contains(targetElement.getEnclosingElement())
-                    && replacement.equals(JSON_PROPERTY);
-        if (!consumed) {
-          String candidate = unusedReplacement(entry, replacement);
-          if (unused == null || candidate.compareTo(unused) < 0) {
-            unused = candidate;
-            unusedSource = entry.getValue().source;
-          }
-        }
-      }
-    }
-    rejectUnused(unused, unusedSource, "@JsonValue representation");
-  }
-
-  void validateNoReplacements(String representation) {
-    String unused = null;
-    Element unusedSource = null;
-    for (Map.Entry<Element, Overlay> entry : overlays.entrySet()) {
-      for (String replacement : entry.getValue().replacements.keySet()) {
-        String candidate = unusedReplacement(entry, replacement);
-        if (unused == null || candidate.compareTo(unused) < 0) {
-          unused = candidate;
-          unusedSource = entry.getValue().source;
-        }
-      }
-    }
-    rejectUnused(unused, unusedSource, representation);
-  }
-
-  private static String unusedReplacement(
-      Map.Entry<Element, Overlay> entry, String annotationName) {
-    return "@"
-        + annotationName.substring(annotationName.lastIndexOf('.') + 1)
-        + " on mix-in selector "
-        + entry.getValue().source
-        + " matched to "
-        + entry.getKey();
-  }
-
-  private static void rejectUnused(String unused, Element source, String representation) {
-    if (unused != null) {
-      throw invalid(unused + " is not consumed by the selected " + representation, source);
     }
   }
 
@@ -301,8 +223,9 @@ final class JsonMixinAnnotations {
     if (!(sourceKind == ElementKind.INTERFACE
             || sourceKind == ElementKind.CLASS && source.getModifiers().contains(Modifier.ABSTRACT))
         || nestingKind == NestingKind.LOCAL
-        || nestingKind == NestingKind.ANONYMOUS) {
-      throw invalid("@JsonMixin source must be a named interface or abstract class", source);
+        || nestingKind == NestingKind.ANONYMOUS
+        || nestingKind == NestingKind.MEMBER && !source.getModifiers().contains(Modifier.STATIC)) {
+      throw invalid("@JsonMixin source must be a named interface or static abstract class", source);
     }
     ElementKind targetKind = target.getKind();
     if (!(targetKind == ElementKind.CLASS
@@ -540,7 +463,7 @@ final class JsonMixinAnnotations {
           throw invalid(
               "Cannot declare and remove " + name + " on the same selector", sourceElement);
         }
-        validateRemovalKind(sourceElement, name);
+        validateRemovalKind(sourceElement, (TypeElement) annotationElement);
       }
       if (removals.isEmpty()) {
         throw invalid("@JsonMixinRemove must declare at least one annotation", sourceElement);
@@ -554,40 +477,38 @@ final class JsonMixinAnnotations {
             Collections.unmodifiableSet(removals));
   }
 
-  private static void validateRemovalKind(Element element, String annotationName) {
-    ElementKind kind = element.getKind();
-    boolean valid;
-    if (annotationName.equals(JSON_PROPERTY_ORDER) || annotationName.equals(JSON_SUB_TYPES)) {
-      valid = isType(kind);
-    } else if (annotationName.equals(JSON_ANY_PROPERTY) || annotationName.equals(JSON_IGNORE)) {
-      valid = kind == ElementKind.FIELD;
-    } else if (annotationName.equals(JSON_ANY_GETTER) || annotationName.equals(JSON_ANY_SETTER)) {
-      valid = kind == ElementKind.METHOD;
-    } else if (annotationName.equals(JSON_BASE64)
-        || annotationName.equals(JSON_RAW_VALUE)
-        || annotationName.equals(JSON_VALUE)) {
-      valid = kind == ElementKind.FIELD || kind == ElementKind.METHOD;
-    } else if (annotationName.equals(JSON_CREATOR)) {
-      valid = kind == ElementKind.METHOD || kind == ElementKind.CONSTRUCTOR;
-    } else if (annotationName.equals(JSON_CODEC)) {
-      valid =
-          isType(kind)
-              || kind == ElementKind.FIELD
-              || kind == ElementKind.METHOD
-              || kind == ElementKind.PARAMETER;
-    } else if (annotationName.equals(JSON_PROPERTY) || annotationName.equals(JSON_UNWRAPPED)) {
-      valid =
-          kind == ElementKind.FIELD || kind == ElementKind.METHOD || kind == ElementKind.PARAMETER;
-    } else {
-      valid = false;
+  private static void validateRemovalKind(Element element, TypeElement annotationType) {
+    ElementType elementType = elementType(element.getKind());
+    Target target = annotationType.getAnnotation(Target.class);
+    if (elementType != null
+        && (target == null || Arrays.asList(target.value()).contains(elementType))) {
+      return;
     }
-    if (!valid) {
-      throw invalid("Cannot remove " + annotationName + " from " + kind, element);
-    }
+    throw invalid(
+        "Cannot remove " + annotationType.getQualifiedName() + " from " + element.getKind(),
+        element);
   }
 
-  private static boolean isType(ElementKind kind) {
-    return kind == ElementKind.CLASS || kind == ElementKind.INTERFACE;
+  private static ElementType elementType(ElementKind kind) {
+    if (kind == ElementKind.CLASS
+        || kind == ElementKind.INTERFACE
+        || kind == ElementKind.ENUM
+        || kind.name().equals("RECORD")) {
+      return ElementType.TYPE;
+    }
+    if (kind == ElementKind.FIELD) {
+      return ElementType.FIELD;
+    }
+    if (kind == ElementKind.METHOD) {
+      return ElementType.METHOD;
+    }
+    if (kind == ElementKind.CONSTRUCTOR) {
+      return ElementType.CONSTRUCTOR;
+    }
+    if (kind == ElementKind.PARAMETER) {
+      return ElementType.PARAMETER;
+    }
+    return null;
   }
 
   private static AnnotationMirror declaredAnnotation(Element element, String annotationName) {

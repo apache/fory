@@ -26,7 +26,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -62,7 +61,6 @@ public final class JsonConfig {
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
   private final String codecRegistryKey;
-  private final String mixinKey;
   private final CodegenKey codegenKey;
   private transient int codegenHash;
 
@@ -97,14 +95,13 @@ public final class JsonConfig {
     this.typeChecker = typeChecker;
     typeCheckContext = new JsonTypeCheckContext();
     codecRegistryKey = codecRegistry.codegenKey();
-    mixinKey = mixinKey(this.mixins);
     codegenKey =
         new CodegenKey(
             writeNullFields,
             propertyDiscoveryEnabled,
             propertyNamingStrategy,
             codecRegistryKey,
-            mixinKey);
+            mixinKey(this.mixins));
   }
 
   public boolean writeNullFields() {
@@ -160,16 +157,10 @@ public final class JsonConfig {
     return codecRegistry;
   }
 
-  /** Returns the enabled mix-in for the exact target, or {@code null}. */
+  /** Returns the immutable exact target-to-mix-in registration snapshot. */
   @Internal
-  public Class<?> mixinType(Class<?> targetType) {
-    return mixins.get(targetType);
-  }
-
-  /** Returns a fresh array containing every exact registered mix-in target. */
-  @Internal
-  public Class<?>[] mixinTargets() {
-    return mixins.keySet().toArray(new Class<?>[0]);
+  public Map<Class<?>, Class<?>> mixins() {
+    return mixins;
   }
 
   public JsonTypeChecker typeChecker() {
@@ -201,7 +192,7 @@ public final class JsonConfig {
         && bufferSizeLimitBytes == that.bufferSizeLimitBytes
         && typeChecker == that.typeChecker
         && Objects.equals(codecRegistryKey, that.codecRegistryKey)
-        && Objects.equals(mixinKey, that.mixinKey);
+        && mixins.equals(that.mixins);
   }
 
   @Override
@@ -218,9 +209,7 @@ public final class JsonConfig {
     result = 31 * result + bufferSizeLimitBytes;
     result = 31 * result + System.identityHashCode(typeChecker);
     result = 31 * result + codecRegistryKey.hashCode();
-    if (!mixinKey.isEmpty()) {
-      result = 31 * result + mixinKey.hashCode();
-    }
+    result = 31 * result + mixins.hashCode();
     return result;
   }
 
@@ -228,11 +217,7 @@ public final class JsonConfig {
     if (registrations.isEmpty()) {
       return Collections.emptyMap();
     }
-    IdentityHashMap<Class<?>, Class<?>> copied = new IdentityHashMap<>(registrations.size());
-    for (Map.Entry<Class<?>, Class<?>> entry : registrations.entrySet()) {
-      copied.put(entry.getKey(), entry.getValue());
-    }
-    return Collections.unmodifiableMap(copied);
+    return Collections.unmodifiableMap(new IdentityHashMap<>(registrations));
   }
 
   private static String mixinKey(Map<Class<?>, Class<?>> mixins) {
@@ -242,36 +227,16 @@ public final class JsonConfig {
     List<Map.Entry<Class<?>, Class<?>>> entries = new ArrayList<>(mixins.entrySet());
     entries.sort(
         Comparator.comparing((Map.Entry<Class<?>, Class<?>> entry) -> entry.getKey().getName())
-            .thenComparing(entry -> entry.getValue().getName())
-            .thenComparingInt(entry -> classIdentity(entry.getKey()))
-            .thenComparingInt(entry -> classIdentity(entry.getValue())));
+            .thenComparing(entry -> entry.getValue().getName()));
     StringBuilder builder = new StringBuilder(entries.size() * 64);
     for (Map.Entry<Class<?>, Class<?>> entry : entries) {
       builder
           .append(entry.getKey().getName())
-          .append('#')
-          .append(classIdentity(entry.getKey()))
           .append('=')
           .append(entry.getValue().getName())
-          .append('#')
-          .append(classIdentity(entry.getValue()))
           .append(';');
     }
     return builder.toString();
-  }
-
-  private static final AtomicInteger CLASS_ID_COUNTER = new AtomicInteger(0);
-  private static final Map<Class<?>, Integer> CLASS_IDS = new WeakHashMap<>();
-
-  private static int classIdentity(Class<?> type) {
-    synchronized (CLASS_IDS) {
-      Integer identity = CLASS_IDS.get(type);
-      if (identity == null) {
-        identity = CLASS_ID_COUNTER.incrementAndGet();
-        CLASS_IDS.put(type, identity);
-      }
-      return identity;
-    }
   }
 
   private static final AtomicInteger COUNTER = new AtomicInteger(0);
@@ -330,7 +295,7 @@ public final class JsonConfig {
       int result =
           Objects.hash(
               writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
-      return mixinKey.isEmpty() ? result : 31 * result + mixinKey.hashCode();
+      return 31 * result + mixinKey.hashCode();
     }
   }
 }

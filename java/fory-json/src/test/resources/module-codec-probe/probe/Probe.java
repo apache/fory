@@ -21,7 +21,6 @@ package probe;
 
 import closed.ClosedValue;
 import java.nio.charset.StandardCharsets;
-import mixins.MixinFixture;
 import opened.OpenedValue;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.ForyJsonException;
@@ -42,12 +41,18 @@ public final class Probe {
     ForyJson json = ForyJson.builder().registerCodec(Value.class, new Codec()).build();
     require("\"latin\"".equals(json.toJson(new Value("latin"))));
     require(
-        "\"utf8\"".equals(new String(json.toJsonBytes(new Value("utf8")), StandardCharsets.UTF_8)));
+        "\"utf8\""
+            .equals(
+                new String(
+                    json.toJsonBytes(new Value("utf8")), StandardCharsets.UTF_8)));
     require("latin".equals(json.fromJson("\"latin\"", Value.class).text));
     require("\u6587".equals(json.fromJson("\"\u6587\"", Value.class).text));
     require(
         "utf8"
-            .equals(json.fromJson("\"utf8\"".getBytes(StandardCharsets.UTF_8), Value.class).text));
+            .equals(
+                json.fromJson(
+                        "\"utf8\"".getBytes(StandardCharsets.UTF_8), Value.class)
+                    .text));
 
     ForyJson annotated = ForyJson.builder().withAsyncCompilation(false).build();
     AnnotatedHolder holder = new AnnotatedHolder();
@@ -58,7 +63,8 @@ public final class Probe {
             .equals(new String(annotated.toJsonBytes(holder), StandardCharsets.UTF_8)));
     require(
         "latin"
-            .equals(annotated.fromJson("{\"value\":\"latin\"}", AnnotatedHolder.class).value.text));
+            .equals(
+                annotated.fromJson("{\"value\":\"latin\"}", AnnotatedHolder.class).value.text));
     require(
         "\u6587"
             .equals(
@@ -66,7 +72,8 @@ public final class Probe {
     require(
         "utf8"
             .equals(
-                annotated.fromJson(
+                annotated
+                    .fromJson(
                         "{\"value\":\"utf8\"}".getBytes(StandardCharsets.UTF_8),
                         AnnotatedHolder.class)
                     .value
@@ -80,10 +87,6 @@ public final class Probe {
       require(expected.getMessage().contains("export or open package closed"));
       require(ClosedValue.Codec.constructions == 0);
     }
-
-    ForyJson mixin = ForyJson.builder().registerMixin(MixinFixture.StateMixin.class).build();
-    require("\"ACTIVE\"".equals(mixin.toJson(MixinFixture.State.ACTIVE)));
-    require(mixin.fromJson("\"ACTIVE\"", MixinFixture.State.class) == MixinFixture.State.ACTIVE);
 
     ForyJson generated =
         ForyJson.builder()
@@ -101,8 +104,10 @@ public final class Probe {
     require(generated.fromJson("{\"id\":8,\"name\":\"latin\"}", Pojo.class).id == 8);
     require(generated.fromJson("{\"id\":9,\"name\":\"\u6587\"}", Pojo.class).id == 9);
     require(
-        generated.fromJson(
-                    "{\"id\":10,\"name\":\"utf8\"}".getBytes(StandardCharsets.UTF_8), Pojo.class)
+        generated
+                .fromJson(
+                    "{\"id\":10,\"name\":\"utf8\"}".getBytes(StandardCharsets.UTF_8),
+                    Pojo.class)
                 .id
             == 10);
   }
@@ -118,7 +123,6 @@ public final class Probe {
   public static final class Pojo {
     @JsonProperty("id")
     public int id;
-
     public String name;
 
     public Pojo() {}

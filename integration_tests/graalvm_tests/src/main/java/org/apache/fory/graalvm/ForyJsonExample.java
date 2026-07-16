@@ -55,7 +55,6 @@ import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.util.Preconditions;
@@ -104,27 +103,9 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(decoded.getId() == 18);
     Preconditions.checkArgument(decoded.getAddress().city.equals("Hangzhou"));
     Preconditions.checkArgument(decoded.getAddress().zip == 310000);
-
-    ForyJson alternate = ForyJson.builder().registerMixin(JsonAlternateMixinModel.class).build();
-    String alternateJson = alternate.toJson(value);
-    Preconditions.checkArgument(
-        alternateJson.equals(
-            "{\"account_id\":18,\"location_city\":\"Hangzhou\",\"location_zip\":310000}"));
-    JsonMixinTarget alternateDecoded = alternate.fromJson(alternateJson, JsonMixinTarget.class);
-    Preconditions.checkArgument(alternateDecoded.getId() == 18);
-    Preconditions.checkArgument(alternateDecoded.getAddress().city.equals("Hangzhou"));
   }
 
   private static void testMixinValue() {
-    String codec =
-        JsonSharedRegistry.generatedMixinCodecBinaryName(
-            JsonMixinValueModel.class, JsonMixinValueTarget.class);
-    try {
-      Class.forName(codec, false, JsonMixinValueModel.class.getClassLoader());
-      throw new AssertionError("non-Record value mix-in generated an unused codec companion");
-    } catch (ClassNotFoundException expected) {
-      // The pair metadata is sufficient for this codec family.
-    }
     ForyJson json = ForyJson.builder().registerMixin(JsonMixinValueModel.class).build();
     JsonMixinValueTarget value = JsonMixinValueTarget.create("value-mixin");
     Preconditions.checkArgument(json.toJson(value).equals("\"value-mixin\""));
@@ -133,14 +114,6 @@ public final class ForyJsonExample {
   }
 
   private static void testMixinValueRecord() {
-    String codec =
-        JsonSharedRegistry.generatedMixinCodecBinaryName(
-            JsonMixinValueRecordModel.class, JsonMixinValueRecord.class);
-    try {
-      Class.forName(codec, false, JsonMixinValueRecordModel.class.getClassLoader());
-    } catch (ClassNotFoundException e) {
-      throw new AssertionError("generated Record value mix-in JSON codec was removed", e);
-    }
     ForyJson json = ForyJson.builder().registerMixin(JsonMixinValueRecordModel.class).build();
     Preconditions.checkArgument(
         json.toJson(new JsonMixinValueRecord("record-value")).equals("\"record-value\""));
@@ -826,19 +799,6 @@ public final class ForyJsonExample {
     int getId();
 
     @JsonUnwrapped(prefix = "address_")
-    JsonMixinTarget.Address getAddress();
-
-    @JsonCreator({"id", "address"})
-    JsonMixinTarget create(int id, JsonMixinTarget.Address address);
-  }
-
-  @JsonMixin(target = JsonMixinTarget.class)
-  @JsonPropertyOrder({"id", "address"})
-  public interface JsonAlternateMixinModel {
-    @JsonProperty("account_id")
-    int getId();
-
-    @JsonUnwrapped(prefix = "location_")
     JsonMixinTarget.Address getAddress();
 
     @JsonCreator({"id", "address"})

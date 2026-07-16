@@ -28,8 +28,8 @@ import java.lang.annotation.Target;
 /**
  * Declares the exact model class configured by this JSON annotation mix-in.
  *
- * <p>A mix-in source must be a named interface or abstract class, must not be a local or anonymous
- * class, must not extend or implement another type, and is never instantiated. Its directly
+ * <p>A mix-in source must be a named interface, top-level abstract class, or static abstract member
+ * class. It must not extend or implement another type and is never instantiated. Its directly
  * declared annotated fields, methods, constructors, and parameters structurally select existing
  * declarations on {@link #target()}. Target fields match by name and erased type, methods by name
  * plus erased parameter and return types, constructors by erased parameter types, and parameters by
@@ -44,9 +44,17 @@ import java.lang.annotation.Target;
  * replaces the target annotation of the same type at the matched declaration; annotation members
  * are not merged individually. Use {@link JsonMixinRemove} for explicit removal.
  *
+ * <p>A contributed {@link JsonCodec} follows the same codec resolution as a codec declared on the
+ * target. An exact codec registered with {@link
+ * org.apache.fory.json.ForyJsonBuilder#registerCodec(Class,
+ * org.apache.fory.json.codec.JsonValueCodec)} takes precedence, while an effective type-level
+ * {@code JsonCodec} takes precedence over the target's built-in JSON mapping.
+ *
  * <p>Register a source with {@link org.apache.fory.json.ForyJsonBuilder#registerMixin(Class)}.
  * Registration applies only to the exact declared target. Registering a second source for that
- * target replaces the first source for subsequently built JSON runtimes.
+ * target replaces the first source for subsequently built JSON runtimes. A source containing no
+ * mapping annotations is a no-op and therefore clears an earlier overlay when registered later for
+ * the same target.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

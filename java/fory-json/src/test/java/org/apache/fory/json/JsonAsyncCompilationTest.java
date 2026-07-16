@@ -53,8 +53,6 @@ import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
-import org.apache.fory.json.annotation.JsonMixin;
-import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
@@ -127,58 +125,6 @@ public class JsonAsyncCompilationTest {
         4);
     assertNotSame(info.utf8Reader(), owner);
     assertSame(resolver.getObjectCodec(AsyncChild.class), owner);
-  }
-
-  @Test
-  public void mixinCapabilitiesPublish() throws Exception {
-    ControlledJson controlled =
-        controlledJson(Collections.singletonMap(AsyncMixinTarget.class, AsyncMixin.class));
-    ForyJson json = controlled.json;
-    JsonTypeResolver resolver = primaryTypeResolver(json);
-    ObjectCodec<AsyncMixinTarget> owner = resolver.getObjectCodec(AsyncMixinTarget.class);
-    JsonTypeInfo info = resolver.getTypeInfo(AsyncMixinTarget.class, AsyncMixinTarget.class);
-    assertCapabilities(info, owner);
-    AsyncMixinTarget value = new AsyncMixinTarget();
-    value.id = 1;
-    value.setName("before");
-
-    assertEquals(json.toJson(value), "{\"id\":1,\"mixed_name\":\"before\"}");
-    assertEquals(
-        new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
-        "{\"id\":1,\"mixed_name\":\"before\"}");
-    assertEquals(
-        json.fromJson("{\"id\":2,\"mixed_name\":\"latin\"}", AsyncMixinTarget.class).getName(),
-        "latin");
-    assertEquals(
-        json.fromJson("{\"id\":3,\"mixed_name\":\"你好\"}", AsyncMixinTarget.class).getName(), "你好");
-    assertEquals(
-        json.fromJson(
-                "{\"id\":4,\"mixed_name\":\"utf8\"}".getBytes(StandardCharsets.UTF_8),
-                AsyncMixinTarget.class)
-            .getName(),
-        "utf8");
-    assertTrue(controlled.executor.submittedTasks() > 0);
-
-    controlled.executor.runAll();
-    assertNotSame(info.stringWriter(), owner);
-    assertNotSame(info.utf8Writer(), owner);
-    assertNotSame(info.latin1Reader(), owner);
-    assertNotSame(info.utf16Reader(), owner);
-    assertNotSame(info.utf8Reader(), owner);
-    value.setName("after");
-    assertEquals(json.toJson(value), "{\"id\":1,\"mixed_name\":\"after\"}");
-    assertEquals(
-        new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
-        "{\"id\":1,\"mixed_name\":\"after\"}");
-    assertEquals(
-        json.fromJson("{\"id\":5,\"mixed_name\":\"again\"}", AsyncMixinTarget.class).getName(),
-        "again");
-    assertEquals(
-        json.fromJson(
-                "{\"id\":6,\"mixed_name\":\"bytes\"}".getBytes(StandardCharsets.UTF_8),
-                AsyncMixinTarget.class)
-            .getName(),
-        "bytes");
   }
 
   @Test
@@ -923,15 +869,6 @@ public class JsonAsyncCompilationTest {
   }
 
   private static ControlledJson controlledJson(CodecRegistry codecs) throws Exception {
-    return controlledJson(codecs, Collections.<Class<?>, Class<?>>emptyMap());
-  }
-
-  private static ControlledJson controlledJson(Map<Class<?>, Class<?>> mixins) throws Exception {
-    return controlledJson(new CodecRegistry(), mixins);
-  }
-
-  private static ControlledJson controlledJson(CodecRegistry codecs, Map<Class<?>, Class<?>> mixins)
-      throws Exception {
     JsonConfig config =
         new JsonConfig(
             false,
@@ -945,7 +882,7 @@ public class JsonAsyncCompilationTest {
             1,
             2 * 1024 * 1024,
             codecs,
-            mixins,
+            Collections.<Class<?>, Class<?>>emptyMap(),
             null);
     ControlledExecutor executor = new ControlledExecutor();
     Constructor<JsonSharedRegistry> constructor =
@@ -1200,25 +1137,6 @@ public class JsonAsyncCompilationTest {
   public static final class AsyncChild {
     public int id;
     public String name;
-  }
-
-  public static final class AsyncMixinTarget {
-    public int id;
-    private String name;
-
-    public String getName() {
-      return name;
-    }
-
-    public void setName(String name) {
-      this.name = name;
-    }
-  }
-
-  @JsonMixin(target = AsyncMixinTarget.class)
-  public interface AsyncMixin {
-    @JsonProperty("mixed_name")
-    String getName();
   }
 
   public static final class GenericAsyncBox<T> {

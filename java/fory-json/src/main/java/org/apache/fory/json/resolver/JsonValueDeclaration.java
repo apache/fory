@@ -66,7 +66,6 @@ final class JsonValueDeclaration {
     List<Member> members = new ArrayList<>();
     collectFields(type, members, registry);
     collectMethods(type, members, registry);
-    List<Member> valueMembers = new ArrayList<>(members);
     coalesceRecordMember(type, members, generatedCodec, registry);
     if (members.isEmpty()) {
       return null;
@@ -91,7 +90,6 @@ final class JsonValueDeclaration {
     }
     JsonCreatorDeclaration creatorDeclaration = JsonCreatorDeclaration.find(type, registry);
     Executable creator = valueCreator(type, generatedCodec, registry, creatorDeclaration);
-    registry.validateValueMixin(type, valueMembers, creator);
     GeneratedJsonCodec<?> creatorBackend =
         generatedCodec != null && generatedCodec.matchesCreator(creator) ? generatedCodec : null;
     return new JsonValueDeclaration(
@@ -214,7 +212,8 @@ final class JsonValueDeclaration {
     if (registry.annotation(type, method, JsonCodec.class) != null
         || registry.annotation(type, method, JsonBase64.class) != null
         || registry.annotation(type, method, JsonAnyGetter.class) != null
-        || registry.annotation(type, method, JsonUnwrapped.class) != null) {
+        || registry.annotation(type, method, JsonUnwrapped.class) != null
+        || registry.annotation(type, method, JsonIgnore.class) != null) {
       throw new ForyJsonException("Conflicting JSON annotations on @JsonValue method " + method);
     }
   }
@@ -234,12 +233,10 @@ final class JsonValueDeclaration {
       rejectRecordCreator(type, generatedCodec);
       return null;
     }
-    if (generatedCodec == null || !generatedCodec.validatedRecord()) {
-      Parameter parameter = executable.getParameters()[0];
-      if (registry.annotation(type, parameter, JsonProperty.class) != null) {
-        rejectRecordCreator(type, generatedCodec);
-        return null;
-      }
+    Parameter parameter = executable.getParameters()[0];
+    if (registry.annotation(type, parameter, JsonProperty.class) != null) {
+      rejectRecordCreator(type, generatedCodec);
+      return null;
     }
     return executable;
   }

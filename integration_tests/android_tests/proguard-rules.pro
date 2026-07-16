@@ -17,9 +17,6 @@
   public static void generatedCodecs();
   public static void generatedUnwrapped();
   public static void generatedMixin();
-  public static void generatedMixinRecord();
-  public static void generatedMixinValue();
-  public static void generatedMixinValueRecord();
 }
 
 # Equivalent user-authored rules for models that deliberately omit @JsonType.

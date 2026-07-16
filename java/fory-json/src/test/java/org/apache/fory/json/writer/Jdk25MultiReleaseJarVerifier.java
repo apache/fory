@@ -163,13 +163,6 @@ public final class Jdk25MultiReleaseJarVerifier {
       compile.add(sourceRoot.resolve("probe/Probe.java").toString());
       compile.add(sourceRoot.resolve("opened/OpenedValue.java").toString());
       compile.add(sourceRoot.resolve("closed/ClosedValue.java").toString());
-      compile.add(sourceRoot.resolve("mixins/MixinFixture.java").toString());
-      compile.add(
-          sourceRoot
-              .resolve(
-                  "mixins/MixinFixture_d_StateMixin_ForyJsonMixin_"
-                      + "mixins_x2e_MixinFixture_d_State.java")
-              .toString());
       Process compiler = new ProcessBuilder(compile).inheritIO().start();
       require(compiler.waitFor() == 0, "named-module custom codec compilation failed");
 

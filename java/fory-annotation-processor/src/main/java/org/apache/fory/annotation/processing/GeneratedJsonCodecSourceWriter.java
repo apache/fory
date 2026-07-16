@@ -59,23 +59,21 @@ final class GeneratedJsonCodecSourceWriter {
   private static final String JSON_PACKAGE = "org.apache.fory.json";
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
-  private static final String JSON_IGNORE = JSON_PACKAGE + ".annotation.JsonIgnore";
   private static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
   private static final String JSON_UNWRAPPED = JSON_PACKAGE + ".annotation.JsonUnwrapped";
   private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
   private static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
   private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
   private static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
+  private static final String NO_JSON_VALUE_CODEC = JSON_CODEC + ".NoJsonValueCodec";
   private static final String SUFFIX = "_ForyJsonCodec";
-  private static final List<String> ASSIGNABLE_UNSUPPORTED_TYPES =
+  private static final List<String> ASSIGNABLE_OBJECT_CODEC_EXCLUSIONS =
       Arrays.asList(
           "java.lang.Number",
           "java.lang.CharSequence",
           "java.net.InetAddress",
           "java.net.InetSocketAddress",
-          "java.net.URL");
-  private static final List<String> ASSIGNABLE_INTRINSIC_TYPES =
-      Arrays.asList(
+          "java.net.URL",
           "java.util.Collection",
           "java.util.Map",
           "java.util.Calendar",
@@ -84,68 +82,12 @@ final class GeneratedJsonCodecSourceWriter {
           "java.nio.ByteBuffer",
           "java.io.File",
           "java.nio.file.Path");
-  private static final List<String> EXACT_INTRINSIC_TYPES =
+  private static final List<String> EXACT_OBJECT_CODEC_EXCLUSIONS =
       Arrays.asList(
-          // Together with ASSIGNABLE_INTRINSIC_TYPES, keep these entries aligned with
-          // JsonSharedRegistry.registerExactCodecs.
-          "java.lang.Object",
-          "java.lang.Void",
-          "java.lang.Number",
-          "java.lang.String",
-          "java.lang.CharSequence",
-          "java.lang.Boolean",
-          "java.lang.Integer",
-          "java.lang.Long",
-          "java.lang.Short",
-          "java.lang.Byte",
-          "java.lang.Character",
-          "java.lang.Float",
-          "java.lang.Double",
-          "java.math.BigInteger",
-          "java.math.BigDecimal",
-          "org.apache.fory.type.Float16",
-          "org.apache.fory.type.BFloat16",
-          "java.util.BitSet",
-          "java.lang.StringBuilder",
-          "java.lang.StringBuffer",
-          "java.util.concurrent.atomic.AtomicBoolean",
-          "java.util.concurrent.atomic.AtomicInteger",
-          "java.util.concurrent.atomic.AtomicIntegerArray",
-          "java.util.concurrent.atomic.AtomicLong",
-          "java.util.concurrent.atomic.AtomicLongArray",
-          "java.util.Currency",
-          "java.net.URI",
-          "java.util.regex.Pattern",
-          "java.util.UUID",
-          "java.util.Locale",
-          "java.nio.charset.Charset",
-          "java.util.TimeZone",
-          "java.time.LocalDate",
-          "java.time.LocalTime",
-          "java.time.LocalDateTime",
-          "java.time.Instant",
-          "java.time.Duration",
-          "java.time.ZoneOffset",
-          "java.time.ZonedDateTime",
-          "java.time.Year",
-          "java.time.YearMonth",
-          "java.time.MonthDay",
-          "java.time.Period",
-          "java.time.OffsetTime",
-          "java.time.OffsetDateTime",
-          "java.time.chrono.HijrahDate",
-          "java.time.chrono.JapaneseDate",
-          "java.time.chrono.MinguoDate",
-          "java.time.chrono.ThaiBuddhistDate",
+          "java.lang.Class",
           "java.util.Optional",
-          "java.util.OptionalInt",
-          "java.util.OptionalLong",
-          "java.util.OptionalDouble",
           "java.util.concurrent.atomic.AtomicReference",
-          "java.util.concurrent.atomic.AtomicReferenceArray",
-          "com.google.common.primitives.ImmutableIntArray");
-  private static final List<String> EXACT_UNSUPPORTED_TYPES =
-      Collections.singletonList("java.lang.Class");
+          "java.util.concurrent.atomic.AtomicReferenceArray");
 
   private final Filer filer;
   private final Elements elements;
@@ -170,90 +112,18 @@ final class GeneratedJsonCodecSourceWriter {
     TypeElement target = annotations.target();
     TypeElement mixin = annotations.source();
     String packageName = elements.getPackageOf(mixin).getQualifiedName().toString();
-    if (!needsGeneratedCodec(target, annotations, packageName)) {
+    Model model;
+    try {
+      if (!needsGeneratedCodec(target, annotations, packageName)) {
+        return null;
+      }
+      model = buildModel(target, annotations);
+    } catch (InvalidJsonTypeException ignored) {
+      // A runtime-registered or built-in codec can own this pair without generated object access.
+      // Runtime codec resolution decides whether the absent pair codec is an error.
       return null;
     }
-    return write(buildModel(target, annotations), mixin, target);
-  }
-
-  Representation validatePair(JsonMixinAnnotations annotations) {
-    TypeElement target = annotations.target();
-    if (hasTypeCodecDeclaration(target, annotations)) {
-      annotations.validateTypeReplacements(JSON_CODEC, "type-level @JsonCodec representation");
-      return Representation.TYPE_CODEC;
-    }
-    List<Element> valueMembers = jsonValueDeclarations(target, annotations);
-    if (!valueMembers.isEmpty()) {
-      annotations.validateValueReplacements(valueMembers, valueCreators(target, annotations));
-      return Representation.VALUE;
-    }
-    if (annotationMirror(annotations, target, JSON_SUB_TYPES) != null) {
-      annotations.validateTypeReplacements(JSON_SUB_TYPES, "closed @JsonSubTypes representation");
-      return Representation.SUBTYPES;
-    }
-    if (isIntrinsicType(target)) {
-      annotations.validateNoReplacements("intrinsic JSON codec");
-      return Representation.INTRINSIC;
-    }
-    if (isUnsupportedType(target)) {
-      annotations.validateNoReplacements("unsupported JSON type");
-      return Representation.UNSUPPORTED;
-    }
-    validateObjectReplacements(target, annotations);
-    return Representation.OBJECT;
-  }
-
-  private void validateObjectReplacements(TypeElement target, JsonMixinAnnotations annotations) {
-    for (TypeElement owner : classHierarchy(target)) {
-      for (VariableElement field : ElementFilter.fieldsIn(owner.getEnclosedElements())) {
-        if (annotations.replaces(field, JSON_IGNORE) && !isEligibleField(field)) {
-          throw invalid("@JsonIgnore is not supported on JSON field", field);
-        }
-      }
-    }
-    List<ExecutableElement> effectiveMethods = effectiveMethods(target);
-    Set<String> validated = new HashSet<>();
-    for (ExecutableElement method : effectiveMethods) {
-      TypeElement owner = (TypeElement) method.getEnclosingElement();
-      validated.add(methodKey(owner, method));
-      boolean creator =
-          method.getEnclosingElement().equals(target)
-              && annotationMirror(annotations, method, JSON_CREATOR) != null;
-      validatePropertyParameters(annotations, method, creator);
-    }
-    for (TypeElement owner : classHierarchy(target)) {
-      for (ExecutableElement method : ElementFilter.methodsIn(owner.getEnclosedElements())) {
-        String key = methodKey(owner, method);
-        Set<Modifier> modifiers = method.getModifiers();
-        if (!validated.add(key)
-            || !owner.equals(target)
-                && modifiers.contains(Modifier.PUBLIC)
-                && !modifiers.contains(Modifier.STATIC)) {
-          continue;
-        }
-        boolean creator =
-            owner.equals(target) && annotationMirror(annotations, method, JSON_CREATOR) != null;
-        validatePropertyParameters(annotations, method, creator);
-      }
-    }
-    List<? extends Element> components = isRecord(target) ? recordComponents(target) : null;
-    for (ExecutableElement constructor :
-        ElementFilter.constructorsIn(target.getEnclosedElements())) {
-      boolean creator = annotationMirror(annotations, constructor, JSON_CREATOR) != null;
-      boolean canonical = components != null && isRecordConstructor(constructor, components);
-      validatePropertyParameters(annotations, constructor, creator || canonical);
-    }
-  }
-
-  private void validatePropertyParameters(
-      JsonMixinAnnotations annotations, ExecutableElement executable, boolean supported) {
-    for (VariableElement parameter : executable.getParameters()) {
-      if (!supported && annotations.replaces(parameter, JSON_PROPERTY)) {
-        throw invalid(
-            "@JsonProperty parameter requires a @JsonCreator or canonical Record constructor",
-            parameter);
-      }
-    }
+    return write(model, mixin, target);
   }
 
   private Result write(Model model, Element... originatingElements) {
@@ -283,9 +153,11 @@ final class GeneratedJsonCodecSourceWriter {
         || annotationMirror(annotations, target, JSON_SUB_TYPES) != null) {
       return false;
     }
-    if (hasTypeCodecDeclaration(target, annotations)
+    // Built-in codec selection belongs to the runtime. Applying the direct @JsonType exclusion
+    // inventory to a mix-in would make the processor choose runtime representation.
+    if (hasCompleteTypeCodec(target, annotations)
         || !record && hasJsonValueDeclaration(target, annotations)
-        || isObjectCodecExcluded(target)) {
+        || annotations == null && isObjectCodecExcluded(target)) {
       return false;
     }
     if (!isNameable(target.asType(), generatedPackage)) {
@@ -298,126 +170,73 @@ final class GeneratedJsonCodecSourceWriter {
   }
 
   private boolean hasJsonValueDeclaration(TypeElement target, JsonMixinAnnotations annotations) {
-    return !jsonValueDeclarations(target, annotations).isEmpty();
-  }
-
-  List<Element> jsonValueDeclarations(TypeElement target, JsonMixinAnnotations annotations) {
-    List<Element> values = new ArrayList<>();
-    Set<Element> retained = new HashSet<>();
     for (TypeElement owner : classHierarchy(target)) {
       for (VariableElement field : ElementFilter.fieldsIn(owner.getEnclosedElements())) {
-        if (annotationMirror(annotations, field, JSON_VALUE) != null && retained.add(field)) {
-          values.add(field);
+        if (annotationMirror(annotations, field, JSON_VALUE) != null) {
+          return true;
         }
       }
     }
     for (ExecutableElement method : effectiveMethods(target)) {
       if (method.getModifiers().contains(Modifier.PUBLIC)
-          && annotationMirror(annotations, method, JSON_VALUE) != null
-          && retained.add(method)) {
-        values.add(method);
-      }
-    }
-    for (TypeElement owner : classHierarchy(target)) {
-      for (ExecutableElement method : ElementFilter.methodsIn(owner.getEnclosedElements())) {
-        if (!method.getModifiers().contains(Modifier.PUBLIC)
-            && annotationMirror(annotations, method, JSON_VALUE) != null
-            && retained.add(method)) {
-          values.add(method);
-        }
-      }
-    }
-    return values;
-  }
-
-  private List<ExecutableElement> valueCreators(
-      TypeElement target, JsonMixinAnnotations annotations) {
-    List<ExecutableElement> creators = new ArrayList<>();
-    for (ExecutableElement constructor :
-        ElementFilter.constructorsIn(target.getEnclosedElements())) {
-      if (isValueCreator(target, annotations, constructor, false)) {
-        creators.add(constructor);
-      }
-    }
-    for (ExecutableElement method : ElementFilter.methodsIn(target.getEnclosedElements())) {
-      if (isValueCreator(target, annotations, method, true)) {
-        creators.add(method);
-      }
-    }
-    return creators;
-  }
-
-  private boolean isValueCreator(
-      TypeElement target,
-      JsonMixinAnnotations annotations,
-      ExecutableElement executable,
-      boolean factory) {
-    AnnotationMirror creator = annotationMirror(annotations, executable, JSON_CREATOR);
-    Set<Modifier> modifiers = executable.getModifiers();
-    if (creator == null
-        || !modifiers.contains(Modifier.PUBLIC)
-        || executable.isVarArgs()
-        || !executable.getTypeParameters().isEmpty()
-        || executable.getParameters().size() != 1
-        || !binaryType(executable.getParameters().get(0).asType()).equals("java.lang.String")
-        || !stringArray(annotationValue(creator, "value")).isEmpty()
-        || annotationMirror(annotations, executable.getParameters().get(0), JSON_PROPERTY)
-            != null) {
-      return false;
-    }
-    return !factory
-        || modifiers.contains(Modifier.STATIC)
-            && types.isSameType(
-                types.erasure(executable.getReturnType()), types.erasure(target.asType()));
-  }
-
-  private boolean hasTypeCodecDeclaration(TypeElement target, JsonMixinAnnotations annotations) {
-    if (annotationMirror(annotations, target, JSON_CODEC) != null) {
-      return true;
-    }
-    List<TypeElement> declarations = allDeclarations(target);
-    for (int i = 1; i < declarations.size(); i++) {
-      if (annotationMirror(annotations, declarations.get(i), JSON_CODEC) != null) {
+          && annotationMirror(annotations, method, JSON_VALUE) != null) {
         return true;
       }
     }
     return false;
   }
 
-  enum Representation {
-    TYPE_CODEC,
-    VALUE,
-    SUBTYPES,
-    INTRINSIC,
-    UNSUPPORTED,
-    OBJECT
+  private boolean hasCompleteTypeCodec(TypeElement target, JsonMixinAnnotations annotations) {
+    AnnotationMirror direct = annotationMirror(annotations, target, JSON_CODEC);
+    if (direct != null) {
+      return selectsValueCodec(direct);
+    }
+    List<TypeElement> declarations = allDeclarations(target);
+    List<TypeElement> candidates = new ArrayList<>();
+    for (int i = 1; i < declarations.size(); i++) {
+      TypeElement declaration = declarations.get(i);
+      if (annotationMirror(annotations, declaration, JSON_CODEC) != null) {
+        candidates.add(declaration);
+      }
+    }
+    for (TypeElement candidate : candidates) {
+      boolean dominated = false;
+      for (TypeElement other : candidates) {
+        if (!candidate.equals(other)
+            && types.isAssignable(
+                types.erasure(other.asType()), types.erasure(candidate.asType()))) {
+          dominated = true;
+          break;
+        }
+      }
+      if (!dominated && selectsValueCodec(annotationMirror(annotations, candidate, JSON_CODEC))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean selectsValueCodec(AnnotationMirror annotation) {
+    AnnotationValue value = annotationValue(annotation, "value");
+    if (value == null || !(value.getValue() instanceof TypeMirror)) {
+      return false;
+    }
+    TypeElement codec = asTypeElement((TypeMirror) value.getValue());
+    return codec != null && !codec.getQualifiedName().contentEquals(NO_JSON_VALUE_CODEC);
   }
 
   private boolean isObjectCodecExcluded(TypeElement target) {
-    return isIntrinsicType(target) || isUnsupportedType(target);
-  }
-
-  private boolean isIntrinsicType(TypeElement target) {
     if (target.getKind() == ElementKind.ENUM) {
       return true;
     }
-    return matchesType(target, ASSIGNABLE_INTRINSIC_TYPES, EXACT_INTRINSIC_TYPES);
-  }
-
-  private boolean isUnsupportedType(TypeElement target) {
-    return matchesType(target, ASSIGNABLE_UNSUPPORTED_TYPES, EXACT_UNSUPPORTED_TYPES);
-  }
-
-  private boolean matchesType(
-      TypeElement target, List<String> assignableNames, List<String> exactNames) {
     TypeMirror erased = types.erasure(target.asType());
-    for (String name : assignableNames) {
+    for (String name : ASSIGNABLE_OBJECT_CODEC_EXCLUSIONS) {
       TypeElement excluded = elements.getTypeElement(name);
       if (excluded != null && types.isAssignable(erased, types.erasure(excluded.asType()))) {
         return true;
       }
     }
-    for (String name : exactNames) {
+    for (String name : EXACT_OBJECT_CODEC_EXCLUSIONS) {
       TypeElement excluded = elements.getTypeElement(name);
       if (excluded != null && types.isSameType(erased, types.erasure(excluded.asType()))) {
         return true;
@@ -439,7 +258,7 @@ final class GeneratedJsonCodecSourceWriter {
       simpleName = GeneratedTypeNames.escapeBinarySimpleName(binarySimpleName) + SUFFIX;
     } else {
       simpleName =
-          GeneratedTypeNames.jsonMixinSimpleName(targetBinaryName, mixinBinaryName) + SUFFIX;
+          GeneratedTypeNames.jsonMixinSimpleName(mixinBinaryName, targetBinaryName) + SUFFIX;
     }
     Model model =
         new Model(
@@ -475,7 +294,11 @@ final class GeneratedJsonCodecSourceWriter {
     Collections.reverse(hierarchy);
     for (TypeElement owner : hierarchy) {
       for (VariableElement field : ElementFilter.fieldsIn(owner.getEnclosedElements())) {
-        if (!isEligibleField(field)
+        Set<Modifier> modifiers = field.getModifiers();
+        if (field.getKind() == ElementKind.ENUM_CONSTANT
+            || modifiers.contains(Modifier.STATIC)
+            || modifiers.contains(Modifier.TRANSIENT)
+            || binaryType(field.asType()).equals("java.lang.Class")
             || !isAccessible(field, model.packageName)
             || !isNameable(owner.asType(), model.packageName)
             || !isNameable(types.erasure(field.asType()), model.packageName)) {
@@ -490,20 +313,12 @@ final class GeneratedJsonCodecSourceWriter {
                 sourceType(types.erasure(resolved)),
                 sourceType(types.erasure(field.asType())),
                 resolved.getKind(),
-                !field.getModifiers().contains(Modifier.FINAL)));
+                !modifiers.contains(Modifier.FINAL)));
         model.addR8Member(
             elements.getBinaryName(owner).toString(),
             binaryType(field.asType()) + " " + field.getSimpleName() + ";");
       }
     }
-  }
-
-  private boolean isEligibleField(VariableElement field) {
-    Set<Modifier> modifiers = field.getModifiers();
-    return field.getKind() != ElementKind.ENUM_CONSTANT
-        && !modifiers.contains(Modifier.STATIC)
-        && !modifiers.contains(Modifier.TRANSIENT)
-        && !binaryType(field.asType()).equals("java.lang.Class");
   }
 
   private void collectMethodAccessors(Model model) {
@@ -607,9 +422,6 @@ final class GeneratedJsonCodecSourceWriter {
         || resolved.getParameterTypes().size() != 2
         || !binaryType(resolved.getParameterTypes().get(0)).equals("java.lang.String")
         || !binaryType(selected.getParameters().get(0).asType()).equals("java.lang.String")) {
-      if (model.annotations != null) {
-        throw invalid("Invalid effective @JsonAnySetter method", selected);
-      }
       // Runtime metadata validation owns the diagnostic for malformed annotations.
       return null;
     }
@@ -903,8 +715,7 @@ final class GeneratedJsonCodecSourceWriter {
         .append("    return ")
         .append(model.targetType)
         .append(".class;\n")
-        .append("  }\n\n");
-    source
+        .append("  }\n\n")
         .append("  @Override\n")
         .append("  public org.apache.fory.json.meta.JsonFieldAccessor[] fieldAccessors() {\n")
         .append("    return new org.apache.fory.json.meta.JsonFieldAccessor[] {");

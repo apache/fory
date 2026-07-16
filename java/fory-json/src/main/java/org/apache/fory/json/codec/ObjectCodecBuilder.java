@@ -1366,11 +1366,6 @@ final class ObjectCodecBuilder {
           throw new ForyJsonException("@JsonCodec is not supported on JSON field: " + field);
         }
         JsonIgnore ignore = annotations.get(field, JsonIgnore.class);
-        if (ignore != null
-            && annotations.hasMixin(field, JsonIgnore.class)
-            && !isEligibleField(field)) {
-          throw new ForyJsonException("@JsonIgnore is not supported on JSON field: " + field);
-        }
         if (annotations.has(field, JsonUnwrapped.class)
             && ignore != null
             && ignore.ignoreRead()
@@ -1404,7 +1399,6 @@ final class ObjectCodecBuilder {
         if (isOverridden(type, method)) {
           continue;
         }
-        validatePropertyParameters(type, method, record, annotations);
         if (annotations.has(method, JsonCodec.class)) {
           validateCodecMethod(
               type, method, propertyDiscoveryEnabled, record, generatedCodec, annotations);
@@ -1446,7 +1440,6 @@ final class ObjectCodecBuilder {
     // and accessors. Do not re-read desugared constructor parameters: Android 8 ART may crash.
     if (!record || generatedCodec == null) {
       for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-        validatePropertyParameters(type, constructor, record, annotations);
         validateCodecParameters(type, constructor, record, annotations);
         validateUnwrappedParameters(type, constructor, record, annotations);
       }
@@ -1455,7 +1448,6 @@ final class ObjectCodecBuilder {
       if (!method.getDeclaringClass().isInterface()) {
         continue;
       }
-      validatePropertyParameters(type, method, record, annotations);
       if (annotations.has(method, JsonCodec.class)) {
         // getMethods exposes only the effective inherited declaration. A class or child-interface
         // override therefore suppresses an annotation from the overridden interface method.
@@ -1603,22 +1595,6 @@ final class ObjectCodecBuilder {
       }
       throw new ForyJsonException(
           "@JsonCodec parameter requires a JSON setter or creator value: " + method);
-    }
-  }
-
-  private static void validatePropertyParameters(
-      Class<?> type, Executable executable, boolean record, Annotations annotations) {
-    boolean supported =
-        executable.getDeclaringClass() == type && annotations.has(executable, JsonCreator.class)
-            || record
-                && executable instanceof Constructor<?>
-                && isRecordConstructor(type, (Constructor<?>) executable);
-    for (Parameter parameter : executable.getParameters()) {
-      if (annotations.hasMixin(parameter, JsonProperty.class) && !supported) {
-        throw new ForyJsonException(
-            "@JsonProperty parameter requires a @JsonCreator or canonical Record constructor: "
-                + executable);
-      }
     }
   }
 
@@ -2172,10 +2148,6 @@ final class ObjectCodecBuilder {
 
     private boolean has(AnnotatedElement element, Class<? extends Annotation> annotationType) {
       return get(element, annotationType) != null;
-    }
-
-    private boolean hasMixin(AnnotatedElement element, Class<? extends Annotation> annotationType) {
-      return registry.hasMixinReplacement(targetType, element, annotationType);
     }
   }
 

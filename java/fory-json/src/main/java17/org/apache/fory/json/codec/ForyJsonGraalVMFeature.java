@@ -21,6 +21,7 @@ package org.apache.fory.json.codec;
 
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Executable;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
@@ -34,26 +35,19 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.json.ForyJson;
-import org.apache.fory.json.annotation.JsonAnyGetter;
-import org.apache.fory.json.annotation.JsonAnySetter;
 import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonMixin;
-import org.apache.fory.json.annotation.JsonProperty;
-import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
-import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.resolver.GeneratedJsonCodecFactories;
-import org.apache.fory.json.resolver.GeneratedJsonMixinMetadata;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonSharedRegistry.JsonMixinView;
 import org.apache.fory.platform.GraalvmSupport;
@@ -73,7 +67,7 @@ final class ForyJsonGraalVMFeature implements Feature {
   private final Set<Class<?>> processedReachableTypes = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedDeclarations = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedModels = ConcurrentHashMap.newKeySet();
-  private final Set<MixinPair> processedMixins = ConcurrentHashMap.newKeySet();
+  private final Set<Class<?>> processedMixins = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedCodecs = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedContainers = ConcurrentHashMap.newKeySet();
 
@@ -135,82 +129,45 @@ final class ForyJsonGraalVMFeature implements Feature {
         RuntimeReflection.registerForReflectiveInstantiation(type);
       }
     }
-    registerGeneratedCodec(access, type, null, false);
+    registerGeneratedCodec(access, type, null);
     registerSubtypes(access, type);
     return true;
   }
 
   private boolean registerMixin(
       DuringAnalysisAccess access, Class<?> mixinType, Class<?> targetType) {
-    MixinPair pair = new MixinPair(targetType, mixinType);
-    if (!processedMixins.add(pair)) {
+    if (!processedMixins.add(mixinType)) {
       return false;
     }
     JsonMixinView annotations = JsonSharedRegistry.resolveMixin(targetType, mixinType);
-    registerMixinMetadata(access, targetType, mixinType);
-    registerMixinSource(annotations);
-    registerMixinTargetDeclarations(annotations);
-    registerMixinDeclarations(annotations);
+    RuntimeReflection.register(mixinType);
+    if (annotations.isEmpty()) {
+      return true;
+    }
+    registerReflectiveDeclarations(annotations.sourceDeclarations());
+    registerReflectiveDeclarations(annotations.targetDeclarations());
+    // Retain every directly declared hierarchy codec plus the exact mix-in replacement. Runtime
+    // resolution remains the sole owner of codec precedence and conflict validation.
+    registerDeclarations(targetType);
+    registerCodecs(annotations.annotation(targetType, JsonCodec.class));
     RuntimeReflection.register(targetType);
     registerContainer(targetType);
-    if (annotations.valueMetadata()) {
-      registerMixinValue(access, targetType, annotations);
-    } else if (annotations.codecRequired()) {
+    if (!targetType.isEnum()
+        && !Collection.class.isAssignableFrom(targetType)
+        && !Map.class.isAssignableFrom(targetType)) {
       registerModelHierarchy(access, targetType, annotations);
       if (!targetType.isRecord()
           && GraalvmSupport.needReflectionRegisterForCreation(targetType)) {
         RuntimeReflection.registerForReflectiveInstantiation(targetType);
       }
     }
-    if (annotations.codecRequired()) {
-      registerGeneratedCodec(access, targetType, mixinType, true);
-    }
+    registerGeneratedCodec(access, targetType, mixinType);
     registerSubtypes(access, targetType, annotations);
     return true;
   }
 
-  private void registerMixinMetadata(
-      DuringAnalysisAccess access, Class<?> targetType, Class<?> mixinType) {
-    String name = JsonSharedRegistry.generatedMixinMetadataBinaryName(mixinType, targetType);
-    Class<?> metadataType = access.findClassByName(name);
-    if (metadataType == null
-        || !GeneratedJsonMixinMetadata.class.isAssignableFrom(metadataType)) {
-      throw new IllegalStateException(
-          "Missing generated JSON mix-in metadata "
-              + name
-              + " for "
-              + targetType.getName()
-              + " and "
-              + mixinType.getName());
-    }
-    RuntimeReflection.register(metadataType);
-    try {
-      RuntimeReflection.register(metadataType.getConstructor());
-    } catch (NoSuchMethodException e) {
-      throw new IllegalStateException(
-          "Generated JSON mix-in metadata must have a public no-argument constructor: " + name,
-          e);
-    }
-  }
-
-  private void registerMixinSource(JsonMixinView annotations) {
-    Class<?> mixinType = annotations.mixinType();
-    RuntimeReflection.register(mixinType);
-    for (AnnotatedElement declaration : annotations.sourceDeclarations()) {
-      if (declaration instanceof Field) {
-        RuntimeReflection.register((Field) declaration);
-      } else if (declaration instanceof Method) {
-        RuntimeReflection.register((Method) declaration);
-      } else if (declaration instanceof Constructor<?>) {
-        RuntimeReflection.register((Constructor<?>) declaration);
-      } else if (declaration instanceof Parameter) {
-        RuntimeReflection.register(((Parameter) declaration).getDeclaringExecutable());
-      }
-    }
-  }
-
-  private void registerMixinTargetDeclarations(JsonMixinView annotations) {
-    for (AnnotatedElement declaration : annotations.targetDeclarations()) {
+  private void registerReflectiveDeclarations(Set<AnnotatedElement> declarations) {
+    for (AnnotatedElement declaration : declarations) {
       if (declaration instanceof Field) {
         RuntimeReflection.register((Field) declaration);
       } else if (declaration instanceof Method) {
@@ -224,17 +181,13 @@ final class ForyJsonGraalVMFeature implements Feature {
   }
 
   private void registerGeneratedCodec(
-      DuringAnalysisAccess access, Class<?> type, Class<?> mixinType, boolean required) {
+      DuringAnalysisAccess access, Class<?> type, Class<?> mixinType) {
     String codecName =
         mixinType == null
             ? JsonSharedRegistry.generatedCodecBinaryName(type)
             : JsonSharedRegistry.generatedMixinCodecBinaryName(mixinType, type);
     Class<?> codecClass = access.findClassByName(codecName);
     if (codecClass == null) {
-      if (required) {
-        throw new IllegalStateException(
-            "Missing generated JSON codec " + codecName + " for " + type.getName());
-      }
       return;
     }
     if (!GeneratedJsonCodec.class.isAssignableFrom(codecClass)) {
@@ -318,13 +271,14 @@ final class ForyJsonGraalVMFeature implements Feature {
       }
     }
     for (Method method : type.getMethods()) {
+      boolean mixinSelector = hasMixinSelector(annotations, method);
       if (ObjectCodecBuilder.usesJsonMetadata(method, record)
-          || usesMixinMetadata(annotations, method)) {
+          || mixinSelector) {
         if (method.getDeclaringClass().isInterface()) {
           RuntimeReflection.register(method);
         }
         if (ObjectCodecBuilder.usesJsonReturn(method)
-            || usesMixinReturn(annotations, method)) {
+            || mixinSelector && method.getReturnType() != void.class) {
           registerOccurrenceCodecs(annotations, method);
           Type resolvedType = ownerType.resolveType(method.getGenericReturnType()).getType();
           registerResolvedType(resolvedType);
@@ -333,7 +287,7 @@ final class ForyJsonGraalVMFeature implements Feature {
           }
         }
         if (ObjectCodecBuilder.usesJsonParameters(method)
-            || usesMixinParameters(annotations, method)) {
+            || mixinSelector && method.getParameterCount() != 0) {
           registerParameterCodecs(annotations, method.getParameters());
           registerResolvedParameterTypes(ownerType, method.getParameters());
           registerUnwrappedParameters(access, ownerType, annotations, method.getParameters());
@@ -341,7 +295,8 @@ final class ForyJsonGraalVMFeature implements Feature {
       }
     }
     for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-      if (annotation(annotations, constructor, JsonCreator.class) != null) {
+      if (annotation(annotations, constructor, JsonCreator.class) != null
+          || hasMixinSelector(annotations, constructor)) {
         registerParameterCodecs(annotations, constructor.getParameters());
         registerResolvedParameterTypes(ownerType, constructor.getParameters());
         registerUnwrappedParameters(
@@ -349,7 +304,8 @@ final class ForyJsonGraalVMFeature implements Feature {
       }
     }
     for (Method method : type.getDeclaredMethods()) {
-      if (annotation(annotations, method, JsonCreator.class) != null) {
+      if (annotation(annotations, method, JsonCreator.class) != null
+          || hasMixinSelector(annotations, method)) {
         registerParameterCodecs(annotations, method.getParameters());
         registerResolvedParameterTypes(ownerType, method.getParameters());
         registerUnwrappedParameters(access, ownerType, annotations, method.getParameters());
@@ -395,92 +351,11 @@ final class ForyJsonGraalVMFeature implements Feature {
     return changed;
   }
 
-  private void registerMixinDeclarations(JsonMixinView annotations) {
-    Class<?> targetType = annotations.targetType();
-    JsonCodec direct = annotations.annotation(targetType, JsonCodec.class);
-    if (direct != null) {
-      RuntimeReflection.register(targetType);
-      registerCodecs(direct);
-      return;
-    }
-    registerMixinDeclarations(annotations, targetType.getSuperclass());
-    for (Class<?> interfaceType : targetType.getInterfaces()) {
-      registerMixinDeclarations(annotations, interfaceType);
-    }
-  }
-
-  private void registerMixinDeclarations(JsonMixinView annotations, Class<?> type) {
-    if (type == null || type == Object.class) {
-      return;
-    }
-    JsonCodec annotation = annotations.annotation(type, JsonCodec.class);
-    if (annotation != null) {
-      RuntimeReflection.register(type);
-      registerCodecs(annotation);
-    }
-    registerMixinDeclarations(annotations, type.getSuperclass());
-    for (Class<?> interfaceType : type.getInterfaces()) {
-      registerMixinDeclarations(annotations, interfaceType);
-    }
-  }
-
-  private void registerMixinValue(
-      DuringAnalysisAccess access, Class<?> type, JsonMixinView annotations) {
-    Set<AnnotatedElement> registered = new HashSet<>();
-    TypeRef<?> ownerType = TypeRef.of(type);
-    for (Class<?> current = type;
-        current != null && current != Object.class;
-        current = current.getSuperclass()) {
-      for (Field field : current.getDeclaredFields()) {
-        if (annotation(annotations, field, JsonValue.class) == null || !registered.add(field)) {
-          continue;
-        }
-        RuntimeReflection.register(field);
-        if (!current.isRecord() && Runtime.version().feature() <= 24) {
-          access.registerAsUnsafeAccessed(field);
-        }
-        registerResolvedType(ownerType.resolveType(field.getGenericType()).getType());
-      }
-      for (Method method : current.getDeclaredMethods()) {
-        if (annotation(annotations, method, JsonValue.class) != null && registered.add(method)) {
-          RuntimeReflection.register(method);
-          registerResolvedType(ownerType.resolveType(method.getGenericReturnType()).getType());
-        }
-      }
-    }
-    for (Method method : type.getMethods()) {
-      if (annotation(annotations, method, JsonValue.class) != null && registered.add(method)) {
-        RuntimeReflection.register(method);
-        registerResolvedType(ownerType.resolveType(method.getGenericReturnType()).getType());
-      }
-    }
-    for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-      if (annotation(annotations, constructor, JsonCreator.class) != null) {
-        RuntimeReflection.register(constructor);
-        registerResolvedParameterTypes(ownerType, constructor.getParameters());
-      }
-    }
-    for (Method method : type.getDeclaredMethods()) {
-      if (annotation(annotations, method, JsonCreator.class) != null) {
-        RuntimeReflection.register(method);
-        registerResolvedParameterTypes(ownerType, method.getParameters());
-      }
-    }
-  }
-
-  private void registerParameterCodecs(Parameter[] parameters) {
-    registerParameterCodecs(null, parameters);
-  }
-
   private void registerParameterCodecs(
       JsonMixinView annotations, Parameter[] parameters) {
     for (Parameter parameter : parameters) {
       registerCodecs(annotation(annotations, parameter, JsonCodec.class));
     }
-  }
-
-  private void registerOccurrenceCodecs(AnnotatedElement element) {
-    registerOccurrenceCodecs(null, element);
   }
 
   private void registerOccurrenceCodecs(
@@ -498,39 +373,16 @@ final class ForyJsonGraalVMFeature implements Feature {
         : annotations.annotation(element, annotationType);
   }
 
-  private static boolean usesMixinMetadata(JsonMixinView annotations, Method method) {
-    return annotations != null
-        && (annotation(annotations, method, JsonProperty.class) != null
-            || annotation(annotations, method, JsonAnyGetter.class) != null
-            || annotation(annotations, method, JsonAnySetter.class) != null
-            || annotation(annotations, method, JsonCodec.class) != null
-            || annotation(annotations, method, JsonValue.class) != null
-            || annotation(annotations, method, JsonRawValue.class) != null
-            || annotation(annotations, method, JsonBase64.class) != null
-            || annotation(annotations, method, JsonUnwrapped.class) != null
-            || usesMixinParameters(annotations, method));
-  }
-
-  private static boolean usesMixinReturn(JsonMixinView annotations, Method method) {
-    return annotations != null
-        && method.getParameterCount() == 0
-        && method.getReturnType() != void.class
-        && usesMixinMetadata(annotations, method);
-  }
-
-  private static boolean usesMixinParameters(JsonMixinView annotations, Method method) {
-    if (annotations == null || method.getParameterCount() == 0) {
+  private static boolean hasMixinSelector(JsonMixinView annotations, Executable executable) {
+    if (annotations == null) {
       return false;
     }
-    if (annotation(annotations, method, JsonProperty.class) != null
-        || annotation(annotations, method, JsonAnySetter.class) != null
-        || annotation(annotations, method, JsonUnwrapped.class) != null) {
+    Set<AnnotatedElement> declarations = annotations.targetDeclarations();
+    if (declarations.contains(executable)) {
       return true;
     }
-    for (Parameter parameter : method.getParameters()) {
-      if (annotation(annotations, parameter, JsonProperty.class) != null
-          || annotation(annotations, parameter, JsonCodec.class) != null
-          || annotation(annotations, parameter, JsonUnwrapped.class) != null) {
+    for (Parameter parameter : executable.getParameters()) {
+      if (declarations.contains(parameter)) {
         return true;
       }
     }
@@ -610,15 +462,7 @@ final class ForyJsonGraalVMFeature implements Feature {
   }
 
   private boolean registerContainer(Type type) {
-    Class<?> rawType = null;
-    if (type instanceof Class<?>) {
-      rawType = (Class<?>) type;
-    } else if (type instanceof ParameterizedType) {
-      Type parameterizedRawType = ((ParameterizedType) type).getRawType();
-      if (parameterizedRawType instanceof Class<?>) {
-        rawType = (Class<?>) parameterizedRawType;
-      }
-    }
+    Class<?> rawType = rawType(type);
     if (rawType == null
         || rawType.isInterface()
         || Modifier.isAbstract(rawType.getModifiers())
@@ -711,32 +555,5 @@ final class ForyJsonGraalVMFeature implements Feature {
       return rawType instanceof Class<?> ? (Class<?>) rawType : null;
     }
     return null;
-  }
-
-  private static final class MixinPair {
-    private final Class<?> targetType;
-    private final Class<?> mixinType;
-
-    private MixinPair(Class<?> targetType, Class<?> mixinType) {
-      this.targetType = targetType;
-      this.mixinType = mixinType;
-    }
-
-    @Override
-    public boolean equals(Object other) {
-      if (this == other) {
-        return true;
-      }
-      if (other == null || getClass() != other.getClass()) {
-        return false;
-      }
-      MixinPair that = (MixinPair) other;
-      return targetType == that.targetType && mixinType == that.mixinType;
-    }
-
-    @Override
-    public int hashCode() {
-      return 31 * System.identityHashCode(targetType) + System.identityHashCode(mixinType);
-    }
   }
 }
