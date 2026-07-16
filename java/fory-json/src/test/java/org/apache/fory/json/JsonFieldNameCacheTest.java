@@ -59,11 +59,18 @@ public class JsonFieldNameCacheTest {
     JsonConfig second =
         JsonTestSupport.config(
             ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(2).build());
+    JsonConfig maximum =
+        JsonTestSupport.config(
+            ForyJson.builder()
+                .withConcurrencyLevel(1)
+                .withMaxCachedFieldNames(ForyJson.MAX_CACHED_FIELD_NAMES)
+                .build());
     assertNotEquals(first, second);
     assertNotEquals(first.hashCode(), second.hashCode());
     assertEquals(first.getCodegenHash(), second.getCodegenHash());
     assertEquals(first.maxCachedFieldNames(), 1);
     assertEquals(second.maxCachedFieldNames(), 2);
+    assertEquals(maximum.maxCachedFieldNames(), ForyJson.MAX_CACHED_FIELD_NAMES);
     assertEquals(JsonTestSupport.config(newJson(0)).maxCachedFieldNames(), 0);
     assertEquals(ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES, 8192);
   }

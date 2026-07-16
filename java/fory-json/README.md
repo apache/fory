@@ -1253,7 +1253,7 @@ native or xlang protocol when reference identity or cycles are required.
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ForyJsonException` while parsing         | Invalid JSON grammar, type mismatch, unsupported mapping, depth violation, or trailing content; inspect the message and target type                 |
 | `InsecureException`                       | Fory's disallow list or the configured `JsonTypeChecker` rejected a class                                                                           |
-| `IllegalArgumentException` from a builder | Depth, concurrency level, retained buffer limit, or cached-field-name limit is invalid                                                              |
+| `IllegalArgumentException` from a builder | Use positive depth, concurrency, and retained-buffer values, and a cached-field-name limit in the documented range                                  |
 | Declared write is rejected                | The value is not assignable to the declared type, the type contains a wildcard/type variable, or null was supplied for a primitive                  |
 | Immutable value is not populated          | Use a record, a valid `JsonCreator`, or an exact custom codec                                                                                       |
 | `JsonValue` read fails                    | Add one plain `String` `JsonCreator`, or register an exact custom codec                                                                             |

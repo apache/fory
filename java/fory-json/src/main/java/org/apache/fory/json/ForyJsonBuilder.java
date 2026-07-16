@@ -139,9 +139,10 @@ public final class ForyJsonBuilder {
    * Sets the maximum number of unescaped ASCII object field names of up to 16 characters cached by
    * each JSON reader.
    *
-   * <p>The default is {@link ForyJson#DEFAULT_MAX_CACHED_FIELD_NAMES}. The value must not exceed
-   * {@link ForyJson#MAX_CACHED_FIELD_NAMES}; zero disables field-name caching. Other field names
-   * are parsed normally without being cached. The limit does not restrict accepted JSON input.
+   * <p>The default is {@link ForyJson#DEFAULT_MAX_CACHED_FIELD_NAMES}. The value must be between
+   * zero and {@link ForyJson#MAX_CACHED_FIELD_NAMES}, inclusive; zero disables field-name caching.
+   * Other field names are parsed normally without being cached. The limit does not restrict
+   * accepted JSON input.
    */
   public ForyJsonBuilder withMaxCachedFieldNames(int maxCachedFieldNames) {
     if (maxCachedFieldNames < 0 || maxCachedFieldNames > ForyJson.MAX_CACHED_FIELD_NAMES) {
