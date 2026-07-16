@@ -79,10 +79,15 @@ public final class Latin1JsonReader extends JsonReader {
   // Latin1 string content and field-name hashing must keep unsigned byte conversion.
   private byte[] input;
   private byte[] stringDecodeBuffer = new byte[INITIAL_STRING_DECODE_BUFFER_SIZE];
+  // Keep the cache after hot representation fields; an inherited reference shifts their offsets.
+  private final FieldNameCache fieldNameCache;
 
   public Latin1JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
     super(config, typeResolver);
     input = EMPTY_BYTES;
+    // The configured limit belongs to each reader; pooled-state concurrency must not divide it.
+    int maxEntries = config.maxCachedFieldNames();
+    fieldNameCache = maxEntries == 0 ? null : new FieldNameCache(maxEntries);
   }
 
   @Override

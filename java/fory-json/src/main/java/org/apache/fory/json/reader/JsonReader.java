@@ -135,7 +135,6 @@ public abstract class JsonReader {
   private final JsonTypeResolver typeResolver;
   protected int position;
   private final int maxDepth;
-  protected final FieldNameCache fieldNameCache;
   private int depth;
 
   /**
@@ -234,9 +233,6 @@ public abstract class JsonReader {
   protected JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
     maxDepth = config.maxDepth();
-    // The configured limit belongs to each reader; pooled-state concurrency must not divide it.
-    int maxEntries = config.maxCachedFieldNames();
-    fieldNameCache = maxEntries == 0 ? null : new FieldNameCache(maxEntries);
   }
 
   /**
