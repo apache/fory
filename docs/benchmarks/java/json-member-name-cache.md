@@ -8,8 +8,11 @@ parsed keys.
 ## Environment
 
 - Baseline: `bb0cbd1c0dcfad6e8ab0afd84e0ebbb16d9c1b9b`
-- Current: `8b13e87c990364546331750ac10972f9144617b0` plus the benchmark-only steady-state collision
-  correction in this report
+- Current production revision: `8df34bf337961cb35822baa09b35f33321a3de2c`
+- Baseline benchmark JAR SHA-256:
+  `4281f73a9ef30e9fbe59a9fa16313b270290f44ad52adce0aa869baa45ce6c65`
+- Current benchmark JAR SHA-256:
+  `9ea822791f22c5ac8083e47d615ace4a8e5f44dc057a84b1915ac03464ef979e`
 - Operating system: macOS 15.7.2, arm64
 - Processor: Apple M4 Pro
 - Memory: 48 GiB
@@ -19,13 +22,14 @@ parsed keys.
 - Execution: one fork, one thread, five 2-second warmup iterations, five 2-second measurement
   iterations, throughput mode, `gc` profiler
 
-Each case was run as an adjacent pair: the baseline shaded JAR was built from the baseline worktree
-and measured immediately before installing, building, and measuring the current worktree. Because
-the benchmark class is new, the exact current source was copied into the baseline worktree and the
+Each case was run as an adjacent pair: the verified baseline shaded JAR was measured immediately
+before the verified current shaded JAR, with no overlapping benchmark processes. Because the
+benchmark class is new, the exact current source was copied into the baseline worktree and the
 checked-in compatibility patch changed only setup-time access to the new builder method. The
 payload constants and benchmark methods therefore stayed identical. `javap` verified that the
 baseline JAR did not contain `withMaxCachedMemberNames`, the current JAR did, and both JARs contained
-the same benchmark payload for the measured case.
+the same benchmark payload. The measured current reader and the current production revision also
+have identical `javap -c -p` output; the post-measurement changes were tests and a source comment.
 
 ## Command
 
@@ -75,31 +79,33 @@ shared canonical-entry recoveries instead of becoming a warmed local hit.
 ## Results
 
 Higher throughput is better. Allocation change is normalized bytes per operation; negative values
-mean less allocation. The escaped-name row is the median of two isolated adjacent pairs because its
-individual forks showed higher variance. Every other row is one final adjacent pair.
+mean less allocation. All 13 cases first ran once. Every initial result below +2% then ran as two
+more adjacent pairs, and the median of the three pair ratios is retained. For repeated cases, the
+table shows the actual adjacent pair whose ratio is the median, so the throughput columns and
+reported change remain one coherent observation.
 
 ![JSON member-name cache throughput and allocation changes](json_member_name_cache.png)
 
 | Benchmark                     | Baseline ops/ms | Current ops/ms | Throughput | Baseline B/op | Current B/op | Allocation |
 | ----------------------------- | --------------: | -------------: | ---------: | ------------: | -----------: | ---------: |
-| `parseLatin1`                 |        4110.838 |       5151.234 |    +25.31% |      1360.001 |      976.001 |    -28.24% |
-| `parseUtf8`                   |        4385.356 |       5405.371 |    +23.26% |      1360.001 |      976.001 |    -28.24% |
-| `parseUtf16`                  |        4020.632 |       4431.555 |    +10.22% |      1360.001 |      976.001 |    -28.24% |
-| `parseCacheDisabled`          |        4021.526 |       4115.200 |     +2.33% |      1360.001 |     1360.001 |      0.00% |
-| `parseCacheDisabledObject`    |        4482.781 |       4468.580 |     -0.32% |      1360.001 |     1360.001 |      0.00% |
-| `parseCacheDisabledStringMap` |        5548.215 |       5636.258 |     +1.59% |       976.001 |      976.001 |      0.00% |
-| `parseLength17`               |        3259.125 |       3250.231 |     -0.27% |      1488.001 |     1488.001 |      0.00% |
-| `parseEscapedNames`           |        3026.698 |       3128.064 |     +3.35% |      1360.001 |     1360.001 |      0.00% |
-| `parseUnicodeNames`           |        4509.465 |       4578.033 |     +1.52% |      1360.001 |     1360.001 |      0.00% |
-| `parseLocalCollision`         |       12660.073 |      14450.239 |    +14.14% |       416.000 |      368.000 |    -11.54% |
-| `parseSharedFull`             |       27892.269 |      28781.574 |     +3.19% |       248.000 |      248.000 |      0.00% |
-| `parseSharedFullMixed`        |       12624.544 |      13811.082 |     +9.40% |       416.000 |      368.000 |    -11.54% |
-| `parseTypedPojo`              |       49073.098 |      50463.150 |     +2.83% |        48.000 |       48.000 |      0.00% |
+| `parseLatin1`                 |        4025.350 |       5089.462 |    +26.44% |      1360.001 |      976.001 |    -28.24% |
+| `parseUtf8`                   |        4297.273 |       5265.112 |    +22.52% |      1360.001 |      976.001 |    -28.24% |
+| `parseUtf16`                  |        4158.521 |       4362.233 |     +4.90% |      1360.001 |      976.001 |    -28.24% |
+| `parseCacheDisabled`          |        3688.262 |       4110.599 |    +11.45% |      1360.001 |     1360.001 |      0.00% |
+| `parseCacheDisabledObject`    |        4349.185 |       4470.750 |     +2.80% |      1360.001 |     1360.001 |      0.00% |
+| `parseCacheDisabledStringMap` |        5607.709 |       5616.865 |     +0.16% |       976.001 |      976.001 |      0.00% |
+| `parseLength17`               |        3478.744 |       3516.708 |     +1.09% |      1488.001 |     1488.001 |      0.00% |
+| `parseEscapedNames`           |        3113.468 |       3391.772 |     +8.94% |      1360.001 |     1360.001 |      0.00% |
+| `parseUnicodeNames`           |        4461.887 |       4482.636 |     +0.47% |      1360.001 |     1360.001 |      0.00% |
+| `parseLocalCollision`         |       12650.661 |      12803.292 |     +1.21% |       416.000 |      368.000 |    -11.54% |
+| `parseSharedFull`             |       27970.471 |      28052.363 |     +0.29% |       248.000 |      248.000 |      0.00% |
+| `parseSharedFullMixed`        |       12639.491 |      13952.540 |    +10.39% |       416.000 |      368.000 |    -11.54% |
+| `parseTypedPojo`              |       50045.383 |      50903.330 |     +1.71% |        48.000 |       48.000 |      0.00% |
 
-The common retained-key cases improve throughput by 10.22% to 25.31% and reduce allocation by
-28.24%. The steady-state local-displacement case improves throughput by 14.14% and removes 48 bytes
-per parse. Disabled, ineligible, escaped, Unicode, full-cache, and typed controls are faster or
-within 1% of baseline, with no allocation increase.
+The common retained-key cases improve throughput by 4.90% to 26.44% and reduce allocation by
+28.24%. The local-displacement and mixed full-cache cases remove 48 bytes per parse. The worst
+retained control result is still +0.16%, so every measured case is within the required 1% regression
+gate, with no allocation increase.
 
 The source data for the table and plot is
 [`data/json-member-name-cache.csv`](data/json-member-name-cache.csv).
