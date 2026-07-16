@@ -36,33 +36,39 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.meta.JsonFieldNameHash;
+import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
-import org.apache.fory.json.resolver.JsonSharedRegistry.CachedMemberName;
+import org.apache.fory.json.resolver.JsonSharedRegistry.CachedFieldName;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.annotations.Test;
 
-public class JsonMemberNameCacheTest {
+public class JsonFieldNameCacheTest {
   @Test
   public void configuration() {
     JsonConfig defaults = JsonTestSupport.config(ForyJson.builder().build());
-    assertEquals(defaults.maxCachedMemberNames(), ForyJson.DEFAULT_MAX_CACHED_MEMBER_NAMES);
+    assertEquals(defaults.maxCachedFieldNames(), ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES);
     assertThrows(
-        IllegalArgumentException.class, () -> ForyJson.builder().withMaxCachedMemberNames(-1));
+        IllegalArgumentException.class, () -> ForyJson.builder().withMaxCachedFieldNames(-1));
 
     JsonConfig first =
         JsonTestSupport.config(
-            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedMemberNames(1).build());
+            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(1).build());
     JsonConfig second =
         JsonTestSupport.config(
-            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedMemberNames(2).build());
+            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(2).build());
+    JsonConfig twoEntries =
+        JsonTestSupport.config(
+            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(6).build());
     assertNotEquals(first, second);
     assertNotEquals(first.hashCode(), second.hashCode());
     assertEquals(first.getCodegenHash(), second.getCodegenHash());
-    assertEquals(first.memberNameCacheSlots(), 1);
-    assertEquals(JsonTestSupport.config(newJson(0)).memberNameCacheSlots(), 0);
+    assertEquals(first.fieldNameCacheEntries(), 1);
+    assertEquals(second.fieldNameCacheEntries(), 1);
+    assertEquals(twoEntries.fieldNameCacheEntries(), 2);
+    assertEquals(JsonTestSupport.config(newJson(0)).fieldNameCacheEntries(), 0);
     assertEquals(
-        JsonTestSupport.config(newJson(ForyJson.DEFAULT_MAX_CACHED_MEMBER_NAMES))
-            .memberNameCacheSlots(),
+        JsonTestSupport.config(newJson(ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES))
+            .fieldNameCacheEntries(),
         1024);
   }
 
@@ -97,6 +103,18 @@ public class JsonMemberNameCacheTest {
   }
 
   @Test
+  public void convertedKeysAreNotCached() {
+    ForyJson json = newJson(64);
+    Map<Integer, Integer> values =
+        json.fromJson("{\"7\":1}", new TypeRef<Map<Integer, Integer>>() {});
+    assertEquals(values.get(7), Integer.valueOf(1));
+    assertNull(
+        JsonTestSupport.primaryTypeResolver(json)
+            .sharedRegistry()
+            .cachedFieldName(JsonFieldNameHash.hash("7")));
+  }
+
+  @Test
   public void eligibilityBoundaries() {
     assertCached(newJson(64), "");
     assertCached(newJson(64), "a");
@@ -121,7 +139,7 @@ public class JsonMemberNameCacheTest {
   }
 
   @Test
-  public void longMemberNames() {
+  public void longFieldNames() {
     ForyJson json = newJson(64);
     assertNotCached(json, "abcdefghijklmnopqrstuvwxyz0123456789");
     assertNotCached(json, "abcdefghijklmnopé");
@@ -173,17 +191,72 @@ public class JsonMemberNameCacheTest {
   }
 
   @Test
-  public void localReplacement() {
+  public void localLimitSkipsShared() {
     ForyJson json = newJson(3);
-    String first = firstKey(json.fromJson("{\"first\":1}", JsonObject.class));
-    byte[] secondBytes = "{\"second\":1}".getBytes(StandardCharsets.UTF_8);
-    String sharedSecond = firstKey(json.fromJson(secondBytes, JsonObject.class));
+    JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
+    CachedFieldName shared = cacheFieldName(registry, "b");
+    String first = firstKey(json.fromJson("{\"a\":1}", JsonObject.class));
 
-    String second1 = firstKey(json.fromJson("{\"second\":1}", JsonObject.class));
-    String second2 = firstKey(json.fromJson("{\"second\":1}", JsonObject.class));
-    assertSame(second1, sharedSecond);
-    assertSame(second2, second1);
-    assertSame(firstKey(json.fromJson("{\"first\":1}", JsonObject.class)), first);
+    String rejected1 = firstKey(json.fromJson("{\"b\":1}", JsonObject.class));
+    String rejected2 = firstKey(json.fromJson("{\"b\":1}", JsonObject.class));
+    assertNotSame(rejected1, shared.name());
+    assertNotSame(rejected2, shared.name());
+    assertNotSame(rejected2, rejected1);
+    assertSame(firstKey(json.fromJson("{\"a\":1}", JsonObject.class)), first);
+    assertSame(registry.cachedFieldName(JsonFieldNameHash.hash("b")), shared);
+  }
+
+  @Test
+  public void adjacentSlotHit() {
+    ForyJson json = newJson(6);
+    String home = firstKey(json.fromJson("{\"a\":1}", JsonObject.class));
+    String adjacent = firstKey(json.fromJson("{\"e\":1}", JsonObject.class));
+
+    assertSame(firstKey(json.fromJson("{\"e\":2}", JsonObject.class)), adjacent);
+    assertSame(firstKey(json.fromJson("{\"a\":2}", JsonObject.class)), home);
+  }
+
+  @Test
+  public void localConflictSkipsShared() {
+    ForyJson json = newJson(9);
+    JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
+    CachedFieldName shared = cacheFieldName(registry, "q");
+    String home = firstKey(json.fromJson("{\"a\":1}", JsonObject.class));
+    String adjacent = firstKey(json.fromJson("{\"i\":1}", JsonObject.class));
+
+    String rejected1 = firstKey(json.fromJson("{\"q\":1}", JsonObject.class));
+    String rejected2 = firstKey(json.fromJson("{\"q\":1}", JsonObject.class));
+    assertNotSame(rejected1, shared.name());
+    assertNotSame(rejected2, shared.name());
+    assertNotSame(rejected2, rejected1);
+    assertSame(firstKey(json.fromJson("{\"a\":2}", JsonObject.class)), home);
+    assertSame(firstKey(json.fromJson("{\"i\":2}", JsonObject.class)), adjacent);
+    assertSame(registry.cachedFieldName(JsonFieldNameHash.hash("q")), shared);
+  }
+
+  @Test
+  public void pooledReadersShareNames() {
+    ForyJson json =
+        ForyJson.builder()
+            .withCodegen(false)
+            .withAsyncCompilation(false)
+            .withConcurrencyLevel(2)
+            .withMaxCachedFieldNames(12)
+            .build();
+    Latin1JsonReader primary =
+        (Latin1JsonReader) JsonTestSupport.primaryStateField(json, "latin1Reader");
+    Latin1JsonReader secondary =
+        (Latin1JsonReader) JsonTestSupport.secondaryStateField(json, 0, "latin1Reader");
+
+    String first = primary.reset("\"shared\"").readFieldName();
+    String second = secondary.reset("\"shared\"").readFieldName();
+    assertSame(second, first);
+  }
+
+  @Test
+  public void typedFieldsAreNotCached() {
+    assertTypedFieldsNotCached(false);
+    assertTypedFieldsNotCached(true);
   }
 
   @Test
@@ -223,8 +296,8 @@ public class JsonMemberNameCacheTest {
     byte[] invalidUtf8 = {'{', '"', (byte) 0xc0, (byte) 0x80, '"', ':', '1', '}'};
     assertThrows(ForyJsonException.class, () -> json.fromJson(invalidUtf8, JsonObject.class));
     JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
-    assertNull(registry.cachedMemberName(JsonFieldNameHash.hash("bad")));
-    assertNull(registry.cachedMemberName(JsonFieldNameHash.hash("")));
+    assertNull(registry.cachedFieldName(JsonFieldNameHash.hash("bad")));
+    assertNull(registry.cachedFieldName(JsonFieldNameHash.hash("")));
   }
 
   @Test
@@ -232,7 +305,7 @@ public class JsonMemberNameCacheTest {
     int limit = 64;
     JsonConfig config =
         JsonTestSupport.config(
-            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedMemberNames(limit).build());
+            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(limit).build());
     JsonSharedRegistry registry = new JsonSharedRegistry(config);
     int threads = 8;
     ExecutorService executor = Executors.newFixedThreadPool(threads);
@@ -247,7 +320,7 @@ public class JsonMemberNameCacheTest {
               for (int i = 0; i < limit; i++) {
                 String name = "k" + threadIndex + '-' + i;
                 long[] words = pack(name);
-                registry.cacheMemberName(JsonFieldNameHash.hash(name), name, words[0], words[1]);
+                registry.cacheFieldName(JsonFieldNameHash.hash(name), name, words[0], words[1]);
               }
             } catch (InterruptedException e) {
               Thread.currentThread().interrupt();
@@ -263,7 +336,7 @@ public class JsonMemberNameCacheTest {
     int cached = 0;
     for (int thread = 0; thread < threads; thread++) {
       for (int i = 0; i < limit; i++) {
-        if (registry.cachedMemberName(JsonFieldNameHash.hash("k" + thread + '-' + i)) != null) {
+        if (registry.cachedFieldName(JsonFieldNameHash.hash("k" + thread + '-' + i)) != null) {
           cached++;
         }
       }
@@ -275,11 +348,11 @@ public class JsonMemberNameCacheTest {
   public void sharedHashCollision() {
     JsonConfig config = JsonTestSupport.config(newJson(4));
     JsonSharedRegistry registry = new JsonSharedRegistry(config);
-    CachedMemberName first = registry.cacheMemberName(1L, "a", 'a', 0);
-    CachedMemberName second = registry.cacheMemberName(1L, "b", 'b', 0);
+    CachedFieldName first = registry.cacheFieldName(1L, "a", 'a', 0);
+    CachedFieldName second = registry.cacheFieldName(1L, "b", 'b', 0);
     assertSame(second, first);
     assertEquals(first.name(), "a");
-    assertSame(registry.cachedMemberName(1L), first);
+    assertSame(registry.cachedFieldName(1L), first);
   }
 
   @Test
@@ -290,8 +363,8 @@ public class JsonMemberNameCacheTest {
     long hash = JsonFieldNameHash.hash(expected);
     long[] words = pack(different);
     JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
-    CachedMemberName collision =
-        registry.cacheMemberName(hash, new String(different), words[0], words[1]);
+    CachedFieldName collision =
+        registry.cacheFieldName(hash, new String(different), words[0], words[1]);
 
     assertCollisionFallback(
         collision,
@@ -306,7 +379,7 @@ public class JsonMemberNameCacheTest {
         collision,
         firstKey(json.fromJson(utf8, JsonObject.class)),
         firstKey(json.fromJson(utf8, JsonObject.class)));
-    assertSame(registry.cachedMemberName(hash), collision);
+    assertSame(registry.cachedFieldName(hash), collision);
   }
 
   @Test
@@ -317,7 +390,7 @@ public class JsonMemberNameCacheTest {
     ExecutorService executor = Executors.newFixedThreadPool(threads);
     CountDownLatch start = new CountDownLatch(1);
     CountDownLatch done = new CountDownLatch(threads);
-    AtomicReferenceArray<CachedMemberName> results = new AtomicReferenceArray<>(threads);
+    AtomicReferenceArray<CachedFieldName> results = new AtomicReferenceArray<>(threads);
     String name = "name";
     long hash = JsonFieldNameHash.hash(name);
     long[] words = pack(name);
@@ -328,7 +401,7 @@ public class JsonMemberNameCacheTest {
             try {
               start.await();
               results.set(
-                  index, registry.cacheMemberName(hash, new String(name), words[0], words[1]));
+                  index, registry.cacheFieldName(hash, new String(name), words[0], words[1]));
             } catch (InterruptedException e) {
               Thread.currentThread().interrupt();
             } finally {
@@ -343,26 +416,47 @@ public class JsonMemberNameCacheTest {
     for (int i = 1; i < threads; i++) {
       assertSame(results.get(i), results.get(0));
     }
-    assertSame(registry.cachedMemberName(hash), results.get(0));
+    assertSame(registry.cachedFieldName(hash), results.get(0));
   }
 
-  private static ForyJson newJson(int maxCachedMemberNames) {
+  private static ForyJson newJson(int maxCachedFieldNames) {
     return ForyJson.builder()
         .withCodegen(false)
         .withAsyncCompilation(false)
         .withConcurrencyLevel(1)
-        .withMaxCachedMemberNames(maxCachedMemberNames)
+        .withMaxCachedFieldNames(maxCachedFieldNames)
         .build();
+  }
+
+  private static void assertTypedFieldsNotCached(boolean codegen) {
+    ForyJson json =
+        ForyJson.builder()
+            .withCodegen(codegen)
+            .withAsyncCompilation(false)
+            .withConcurrencyLevel(1)
+            .withMaxCachedFieldNames(64)
+            .build();
+    TypedFields value = json.fromJson("{\"value\":1}", TypedFields.class);
+    assertEquals(value.value, 1);
+    assertNull(
+        JsonTestSupport.primaryTypeResolver(json)
+            .sharedRegistry()
+            .cachedFieldName(JsonFieldNameHash.hash("value")));
+  }
+
+  private static CachedFieldName cacheFieldName(JsonSharedRegistry registry, String name) {
+    long[] words = pack(name);
+    return registry.cacheFieldName(JsonFieldNameHash.hash(name), name, words[0], words[1]);
   }
 
   private static void assertCached(ForyJson json, String name) {
     String first = firstKey(json.fromJson(jsonForName(name), JsonObject.class));
     String second = firstKey(json.fromJson(jsonForName(name), JsonObject.class));
     assertSame(second, first);
-    CachedMemberName entry =
+    CachedFieldName entry =
         JsonTestSupport.primaryTypeResolver(json)
             .sharedRegistry()
-            .cachedMemberName(JsonFieldNameHash.hash(name));
+            .cachedFieldName(JsonFieldNameHash.hash(name));
     assertNotNull(entry);
     assertSame(entry.name(), first);
   }
@@ -376,7 +470,7 @@ public class JsonMemberNameCacheTest {
   }
 
   private static void assertCollisionFallback(
-      CachedMemberName collision, String first, String second) {
+      CachedFieldName collision, String first, String second) {
     assertEquals(first, "collisionKey");
     assertEquals(second, "collisionKey");
     assertNotSame(first, collision.name());
@@ -403,5 +497,9 @@ public class JsonMemberNameCacheTest {
       }
     }
     return new long[] {word0, word1};
+  }
+
+  public static class TypedFields {
+    public int value;
   }
 }

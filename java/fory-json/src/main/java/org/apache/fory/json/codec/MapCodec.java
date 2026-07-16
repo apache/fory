@@ -75,22 +75,10 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         public Object fromName(String name) {
           return name;
         }
-      };
-  private static final MapKeyCodec CACHED_STRING_KEY_CODEC =
-      new MapKeyCodec() {
-        @Override
-        public String toName(Object key) {
-          return (String) key;
-        }
-
-        @Override
-        public Object fromName(String name) {
-          return name;
-        }
 
         @Override
         public Object readName(JsonReader reader) {
-          return reader.readMemberName();
+          return reader.readFieldName();
         }
       };
   private static final MapKeyCodec OBJECT_KEY_CODEC =
@@ -104,22 +92,10 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         public Object fromName(String name) {
           return name;
         }
-      };
-  private static final MapKeyCodec CACHED_OBJECT_KEY_CODEC =
-      new MapKeyCodec() {
-        @Override
-        public String toName(Object key) {
-          return objectKeyName(key);
-        }
-
-        @Override
-        public Object fromName(String name) {
-          return name;
-        }
 
         @Override
         public Object readName(JsonReader reader) {
-          return reader.readMemberName();
+          return reader.readFieldName();
         }
       };
 
@@ -152,8 +128,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     resolver.checkMapKeySecure(keyRawType);
     MapFactory factory = mapFactory(rawType, keyRawType);
     JsonTypeInfo valueTypeInfo = resolver.getTypeInfo(valueType, valueRawType);
-    return create(
-        factory, keyRawType, valueTypeInfo, resolver.sharedRegistry().memberNameCacheEnabled());
+    return create(factory, keyRawType, valueTypeInfo);
   }
 
   @Internal
@@ -162,11 +137,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       Class<?> keyRawType,
       JsonTypeInfo valueTypeInfo,
       JsonTypeResolver resolver) {
-    return create(
-        mapFactory(rawType, keyRawType),
-        keyRawType,
-        valueTypeInfo,
-        resolver.sharedRegistry().memberNameCacheEnabled());
+    return create(mapFactory(rawType, keyRawType), keyRawType, valueTypeInfo);
   }
 
   @Internal
@@ -179,48 +150,43 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   private static MapCodec<?> create(
-      MapFactory factory,
-      Class<?> keyRawType,
-      JsonTypeInfo valueTypeInfo,
-      boolean cacheMemberNames) {
+      MapFactory factory, Class<?> keyRawType, JsonTypeInfo valueTypeInfo) {
     Object valueCodec = valueTypeInfo.stringWriter();
     if (keyRawType == String.class) {
       if (valueCodec == ScalarCodecs.StringCodec.INSTANCE) {
-        return new StringStringMapCodec(factory, cacheMemberNames);
+        return new StringStringMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.BooleanCodec.BOXED) {
-        return new StringBooleanMapCodec(factory, cacheMemberNames);
+        return new StringBooleanMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.IntCodec.BOXED) {
-        return new StringIntMapCodec(factory, cacheMemberNames);
+        return new StringIntMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.LongCodec.BOXED) {
-        return new StringLongMapCodec(factory, cacheMemberNames);
+        return new StringLongMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.ShortCodec.BOXED) {
-        return new StringShortMapCodec(factory, cacheMemberNames);
+        return new StringShortMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.ByteCodec.BOXED) {
-        return new StringByteMapCodec(factory, cacheMemberNames);
+        return new StringByteMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.FloatCodec.BOXED) {
-        return new StringFloatMapCodec(factory, cacheMemberNames);
+        return new StringFloatMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.DoubleCodec.BOXED) {
-        return new StringDoubleMapCodec(factory, cacheMemberNames);
+        return new StringDoubleMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.BigIntegerCodec.INSTANCE) {
-        return new StringBigIntegerMapCodec(factory, cacheMemberNames);
+        return new StringBigIntegerMapCodec(factory);
       }
       if (valueCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
-        return new StringBigDecimalMapCodec(factory, cacheMemberNames);
+        return new StringBigDecimalMapCodec(factory);
       }
-      return new GenericMapCodec(
-          factory, cacheMemberNames ? CACHED_STRING_KEY_CODEC : STRING_KEY_CODEC, valueTypeInfo);
+      return new GenericMapCodec(factory, STRING_KEY_CODEC, valueTypeInfo);
     }
     if (keyRawType == Object.class) {
-      return new GenericMapCodec(
-          factory, cacheMemberNames ? CACHED_OBJECT_KEY_CODEC : OBJECT_KEY_CODEC, valueTypeInfo);
+      return new GenericMapCodec(factory, OBJECT_KEY_CODEC, valueTypeInfo);
     }
     if (valueCodec == ScalarCodecs.StringCodec.INSTANCE && isNumericKey(keyRawType)) {
       return new NumberStringMapCodec(factory, defaultKeyCodec(keyRawType));
@@ -236,7 +202,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     reader.expectNextToken('{');
     if (!reader.consumeNextToken('}')) {
       do {
-        Object key = reader.readMemberName();
+        Object key = reader.readFieldName();
         reader.expectNextToken(':');
         map.put(key, codec.readLatin1(reader));
       } while (reader.consumeNextToken(','));
@@ -254,7 +220,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     reader.expectNextToken('{');
     if (!reader.consumeNextToken('}')) {
       do {
-        Object key = reader.readMemberName();
+        Object key = reader.readFieldName();
         reader.expectNextToken(':');
         map.put(key, codec.readUtf16(reader));
       } while (reader.consumeNextToken(','));
@@ -272,7 +238,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     reader.expectNextToken('{');
     if (!reader.consumeNextToken('}')) {
       do {
-        Object key = reader.readMemberName();
+        Object key = reader.readFieldName();
         reader.expectNextToken(':');
         map.put(key, codec.readUtf8(reader));
       } while (reader.consumeNextToken(','));
@@ -508,11 +474,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public abstract static class StringKeyMapCodec extends MapCodec<Map<?, ?>> {
-    private final boolean cacheMemberNames;
-
-    StringKeyMapCodec(MapFactory factory, boolean cacheMemberNames) {
+    StringKeyMapCodec(MapFactory factory) {
       super(factory);
-      this.cacheMemberNames = cacheMemberNames;
     }
 
     @Override
@@ -524,31 +487,15 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       Map<Object, Object> map = newMap();
       reader.expectNextToken('{');
       if (!reader.consumeNextToken('}')) {
-        if (cacheMemberNames) {
-          readLatin1Cached(reader, map);
-        } else {
-          readLatin1Uncached(reader, map);
-        }
+        do {
+          String key = reader.readFieldName();
+          reader.expectNextToken(':');
+          map.put(key, readLatin1Value(reader));
+        } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
       reader.exitDepth();
       return finishMap(map);
-    }
-
-    private void readLatin1Cached(Latin1JsonReader reader, Map<Object, Object> map) {
-      do {
-        String key = reader.readMemberName();
-        reader.expectNextToken(':');
-        map.put(key, readLatin1Value(reader));
-      } while (reader.consumeNextToken(','));
-    }
-
-    private void readLatin1Uncached(Latin1JsonReader reader, Map<Object, Object> map) {
-      do {
-        String key = reader.readString();
-        reader.expectNextToken(':');
-        map.put(key, readLatin1Value(reader));
-      } while (reader.consumeNextToken(','));
     }
 
     @Override
@@ -560,31 +507,15 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       Map<Object, Object> map = newMap();
       reader.expectNextToken('{');
       if (!reader.consumeNextToken('}')) {
-        if (cacheMemberNames) {
-          readUtf16Cached(reader, map);
-        } else {
-          readUtf16Uncached(reader, map);
-        }
+        do {
+          String key = reader.readFieldName();
+          reader.expectNextToken(':');
+          map.put(key, readUtf16Value(reader));
+        } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
       reader.exitDepth();
       return finishMap(map);
-    }
-
-    private void readUtf16Cached(Utf16JsonReader reader, Map<Object, Object> map) {
-      do {
-        String key = reader.readMemberName();
-        reader.expectNextToken(':');
-        map.put(key, readUtf16Value(reader));
-      } while (reader.consumeNextToken(','));
-    }
-
-    private void readUtf16Uncached(Utf16JsonReader reader, Map<Object, Object> map) {
-      do {
-        String key = reader.readString();
-        reader.expectNextToken(':');
-        map.put(key, readUtf16Value(reader));
-      } while (reader.consumeNextToken(','));
     }
 
     @Override
@@ -596,31 +527,15 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       Map<Object, Object> map = newMap();
       reader.expectNextToken('{');
       if (!reader.consumeNextToken('}')) {
-        if (cacheMemberNames) {
-          readUtf8Cached(reader, map);
-        } else {
-          readUtf8Uncached(reader, map);
-        }
+        do {
+          String key = reader.readFieldName();
+          reader.expectNextToken(':');
+          map.put(key, readUtf8Value(reader));
+        } while (reader.consumeNextToken(','));
         reader.expectNextToken('}');
       }
       reader.exitDepth();
       return finishMap(map);
-    }
-
-    private void readUtf8Cached(Utf8JsonReader reader, Map<Object, Object> map) {
-      do {
-        String key = reader.readMemberName();
-        reader.expectNextToken(':');
-        map.put(key, readUtf8Value(reader));
-      } while (reader.consumeNextToken(','));
-    }
-
-    private void readUtf8Uncached(Utf8JsonReader reader, Map<Object, Object> map) {
-      do {
-        String key = reader.readString();
-        reader.expectNextToken(':');
-        map.put(key, readUtf8Value(reader));
-      } while (reader.consumeNextToken(','));
     }
 
     // Each scalar specialization owns the complete map value, including JSON null.
@@ -632,8 +547,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public static final class StringStringMapCodec extends StringKeyMapCodec {
-    private StringStringMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    private StringStringMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     private void writeMap(JsonWriter writer, Object value) {
@@ -687,8 +602,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public static final class StringBooleanMapCodec extends StringKeyMapCodec {
-    private StringBooleanMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    private StringBooleanMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     private void writeMap(JsonWriter writer, Object value) {
@@ -742,8 +657,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public abstract static class StringNumberMapCodec extends StringKeyMapCodec {
-    StringNumberMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    StringNumberMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     private void writeMap(JsonWriter writer, Object value) {
@@ -784,8 +699,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public static final class StringIntMapCodec extends StringNumberMapCodec {
-    private StringIntMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    private StringIntMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -810,8 +725,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public static final class StringLongMapCodec extends StringNumberMapCodec {
-    private StringLongMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    private StringLongMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -836,8 +751,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public static final class StringShortMapCodec extends StringNumberMapCodec {
-    private StringShortMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    private StringShortMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -862,8 +777,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public static final class StringByteMapCodec extends StringNumberMapCodec {
-    private StringByteMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    private StringByteMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -888,8 +803,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public static final class StringFloatMapCodec extends StringNumberMapCodec {
-    private StringFloatMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    private StringFloatMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -914,8 +829,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public static final class StringDoubleMapCodec extends StringNumberMapCodec {
-    private StringDoubleMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    private StringDoubleMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -940,8 +855,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public static final class StringBigIntegerMapCodec extends StringNumberMapCodec {
-    private StringBigIntegerMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    private StringBigIntegerMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override
@@ -966,8 +881,8 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
   }
 
   public static final class StringBigDecimalMapCodec extends StringNumberMapCodec {
-    private StringBigDecimalMapCodec(MapFactory factory, boolean cacheMemberNames) {
-      super(factory, cacheMemberNames);
+    private StringBigDecimalMapCodec(MapFactory factory) {
+      super(factory);
     }
 
     @Override

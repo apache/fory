@@ -29,7 +29,7 @@ import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
-import org.apache.fory.json.resolver.JsonSharedRegistry.CachedMemberName;
+import org.apache.fory.json.resolver.JsonSharedRegistry.CachedFieldName;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
@@ -1528,26 +1528,31 @@ public final class Utf16JsonReader extends JsonReader {
   }
 
   @Override
-  public String readMemberName() {
-    if (!memberNameCacheEnabled()) {
+  public String readFieldName() {
+    FieldNameCache cache = fieldNameCache;
+    if (cache == null) {
       return readString();
     }
+    return readCachedFieldName(cache);
+  }
+
+  private String readCachedFieldName(FieldNameCache cache) {
     skipWhitespaceFast();
     if (position >= length || charAtFast(position++) != '"') {
       throw error("Expected string");
     }
     int start = position;
     if (LITTLE_ENDIAN && bytes != null) {
-      return readMemberNameWords(start);
+      return readFieldNameWords(cache, start);
     }
-    return readMemberNameTail(start, start, 0, 0, 0);
+    return readFieldNameTail(cache, start, start, 0, 0, 0);
   }
 
-  private String readMemberNameWords(int start) {
+  private String readFieldNameWords(FieldNameCache cache, int start) {
     byte[] localBytes = bytes;
     int inputLength = length;
     if (start + 4 > inputLength) {
-      return readMemberNameTail(start, start, 0, 0, 0);
+      return readFieldNameTail(cache, start, start, 0, 0, 0);
     }
     long word = LittleEndian.getInt64(localBytes, start << 1);
     long stopMask =
@@ -1556,16 +1561,16 @@ public final class Utf16JsonReader extends JsonReader {
       int chars = Long.numberOfTrailingZeros(stopMask) >>> 4;
       int stop = start + chars;
       if (charAtFast(stop) != '"') {
-        return continueMemberName(start, stop);
+        return continueFieldName(start, stop);
       }
       position = stop + 1;
-      return resolveShortMemberName(
-          start, stop, chars, memberNameWord(packAsciiUtf16(word), chars));
+      return resolveShortFieldName(
+          cache, start, stop, chars, fieldNameWord(packAsciiUtf16(word), chars));
     }
     long word0 = packAsciiUtf16(word);
     int offset = start + 4;
     if (offset + 4 > inputLength) {
-      return readMemberNameTail(start, offset, 4, word0, 0);
+      return readFieldNameTail(cache, start, offset, 4, word0, 0);
     }
     word = LittleEndian.getInt64(localBytes, offset << 1);
     stopMask =
@@ -1574,17 +1579,17 @@ public final class Utf16JsonReader extends JsonReader {
       int chars = Long.numberOfTrailingZeros(stopMask) >>> 4;
       int stop = offset + chars;
       if (charAtFast(stop) != '"') {
-        return continueMemberName(start, stop);
+        return continueFieldName(start, stop);
       }
       position = stop + 1;
-      word0 |= memberNameWord(packAsciiUtf16(word), chars) << 32;
-      return resolveShortMemberName(start, stop, 4 + chars, word0);
+      word0 |= fieldNameWord(packAsciiUtf16(word), chars) << 32;
+      return resolveShortFieldName(cache, start, stop, 4 + chars, word0);
     }
     word0 |= packAsciiUtf16(word) << 32;
-    return readMemberNameAfterWord0(start, offset + 4, word0);
+    return readFieldNameAfterWord0(cache, start, offset + 4, word0);
   }
 
-  private String readMemberNameAfterWord0(int start, int offset, long word0) {
+  private String readFieldNameAfterWord0(FieldNameCache cache, int start, int offset, long word0) {
     byte[] localBytes = bytes;
     long word1 = 0;
     int nameLength = Long.BYTES;
@@ -1597,12 +1602,12 @@ public final class Utf16JsonReader extends JsonReader {
         int stop = offset + chars;
         char ch = charAtFast(stop);
         if (ch != '"') {
-          return continueMemberName(start, stop);
+          return continueFieldName(start, stop);
         }
         position = stop + 1;
-        long packed = memberNameWord(packAsciiUtf16(word), chars);
+        long packed = fieldNameWord(packAsciiUtf16(word), chars);
         word1 |= packed << ((nameLength - Long.BYTES) << 3);
-        return resolveMemberName(start, stop, nameLength + chars, word0, word1);
+        return resolveFieldName(cache, start, stop, nameLength + chars, word0, word1);
       }
       long packed = packAsciiUtf16(word);
       word1 |= packed << ((nameLength - Long.BYTES) << 3);
@@ -1612,38 +1617,42 @@ public final class Utf16JsonReader extends JsonReader {
     if (nameLength == 16) {
       if (offset < length && charAtFast(offset) == '"') {
         position = offset + 1;
-        return resolveMemberName(start, offset, nameLength, word0, word1);
+        return resolveFieldName(cache, start, offset, nameLength, word0, word1);
       }
-      return continueMemberName(start, offset);
+      return continueFieldName(start, offset);
     }
-    return readMemberNameTail(start, offset, nameLength, word0, word1);
+    return readFieldNameTail(cache, start, offset, nameLength, word0, word1);
   }
 
-  private String resolveShortMemberName(int start, int end, int nameLength, long word0) {
+  private String resolveShortFieldName(
+      FieldNameCache cache, int start, int end, int nameLength, long word0) {
     long hash = nameLength == 0 ? JsonFieldNameHash.MAGIC_HASH_CODE : word0;
-    int slot = memberNameCacheSlot(hash);
-    CachedMemberName entry = localMemberName(slot, hash);
+    if (isRejectedFieldName(hash, nameLength, word0, 0)) {
+      return input.substring(start, end);
+    }
+    CachedFieldName entry = cache.get(hash);
     if (entry != null) {
       return entry.matches(nameLength, word0, 0) ? entry.name() : input.substring(start, end);
     }
-    if (isUncachedMemberName(hash, nameLength, word0, 0)) {
+    if (!cache.canPut(hash)) {
       return input.substring(start, end);
     }
-    return readMemberNameMiss(start, end, nameLength, word0, 0, hash, slot);
+    return readFieldNameMiss(cache, start, end, nameLength, word0, 0, hash);
   }
 
-  private String readMemberNameTail(int start, int offset, int nameLength, long word0, long word1) {
+  private String readFieldNameTail(
+      FieldNameCache cache, int start, int offset, int nameLength, long word0, long word1) {
     while (offset < length) {
       char ch = charAtFast(offset);
       if (ch == '"') {
         position = offset + 1;
-        return resolveMemberName(start, offset, nameLength, word0, word1);
+        return resolveFieldName(cache, start, offset, nameLength, word0, word1);
       }
       if (ch == '\\' || ch > 0x7f || ch < 0x20) {
-        return continueMemberName(start, offset);
+        return continueFieldName(start, offset);
       }
       if (nameLength == 16) {
-        return continueMemberName(start, offset);
+        return continueFieldName(start, offset);
       }
       if (nameLength < Long.BYTES) {
         word0 |= ((long) ch) << (nameLength << 3);
@@ -1656,7 +1665,7 @@ public final class Utf16JsonReader extends JsonReader {
     throw error("Unterminated string");
   }
 
-  private String continueMemberName(int start, int offset) {
+  private String continueFieldName(int start, int offset) {
     position = offset;
     if (LITTLE_ENDIAN && bytes != null) {
       return readUtf16StringToken(start, offset, false);
@@ -1664,34 +1673,37 @@ public final class Utf16JsonReader extends JsonReader {
     return readStringLoop(start, false);
   }
 
-  private String readMemberNameMiss(
-      int start, int end, int length, long word0, long word1, long hash, int slot) {
-    CachedMemberName entry = sharedMemberName(hash);
+  private String readFieldNameMiss(
+      FieldNameCache cache, int start, int end, int length, long word0, long word1, long hash) {
+    CachedFieldName entry = sharedFieldName(hash);
     if (entry != null) {
-      cacheLocalMemberName(slot, hash, entry);
+      cache.put(hash, entry);
       return entry.matches(length, word0, word1) ? entry.name() : input.substring(start, end);
     }
     String candidate = input.substring(start, end);
-    entry = cacheMemberName(hash, candidate, word0, word1);
+    entry = cacheFieldName(hash, candidate, word0, word1);
     if (entry == null) {
-      cacheUncachedMemberName(length, word0, word1, hash);
+      rejectFieldName(length, word0, word1, hash);
       return candidate;
     }
-    cacheLocalMemberName(slot, hash, entry);
+    cache.put(hash, entry);
     return entry.matches(length, word0, word1) ? entry.name() : candidate;
   }
 
-  private String resolveMemberName(int start, int end, int length, long word0, long word1) {
-    long hash = memberNameHash(length, word0, word1);
-    int slot = memberNameCacheSlot(hash);
-    CachedMemberName entry = localMemberName(slot, hash);
+  private String resolveFieldName(
+      FieldNameCache cache, int start, int end, int length, long word0, long word1) {
+    long hash = fieldNameHash(length, word0, word1);
+    if (isRejectedFieldName(hash, length, word0, word1)) {
+      return input.substring(start, end);
+    }
+    CachedFieldName entry = cache.get(hash);
     if (entry != null) {
       return entry.matches(length, word0, word1) ? entry.name() : input.substring(start, end);
     }
-    if (isUncachedMemberName(hash, length, word0, word1)) {
+    if (!cache.canPut(hash)) {
       return input.substring(start, end);
     }
-    return readMemberNameMiss(start, end, length, word0, word1, hash, slot);
+    return readFieldNameMiss(cache, start, end, length, word0, word1, hash);
   }
 
   @Override

@@ -43,7 +43,7 @@ final class JsonTestSupport {
           PropertyNamingStrategy.LOWER_CAMEL_CASE,
           JsonTestSupport.class.getClassLoader(),
           ForyJson.DEFAULT_MAX_DEPTH,
-          ForyJson.DEFAULT_MAX_CACHED_MEMBER_NAMES,
+          ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES,
           1,
           2 * 1024 * 1024,
           new CodecRegistry(),
@@ -129,6 +129,17 @@ final class JsonTestSupport {
     try {
       AtomicReference<?> primarySlot = (AtomicReference<?>) field(json, "primarySlot");
       Object pooledState = primarySlot.get();
+      Object state = field(pooledState, "state");
+      return field(state, name);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  static Object secondaryStateField(ForyJson json, int index, String name) {
+    try {
+      AtomicReferenceArray<?> slots = (AtomicReferenceArray<?>) field(json, "slots");
+      Object pooledState = slots.get(index);
       Object state = field(pooledState, "state");
       return field(state, name);
     } catch (ReflectiveOperationException e) {
