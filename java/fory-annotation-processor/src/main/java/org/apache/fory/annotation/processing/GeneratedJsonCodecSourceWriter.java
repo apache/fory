@@ -105,7 +105,7 @@ final class GeneratedJsonCodecSourceWriter {
       return null;
     }
     Model model = buildModel(target, null);
-    return write(model, target);
+    return writeSource(model, target);
   }
 
   Result writePair(JsonMixinAnnotations annotations) {
@@ -123,10 +123,10 @@ final class GeneratedJsonCodecSourceWriter {
       // Runtime codec resolution decides whether the absent pair codec is an error.
       return null;
     }
-    return write(model, mixin, target);
+    return writeSource(model, mixin, target);
   }
 
-  private Result write(Model model, Element... originatingElements) {
+  private Result writeSource(Model model, Element... originatingElements) {
     try {
       JavaFileObject file = filer.createSourceFile(model.qualifiedName, originatingElements);
       try (Writer writer = file.openWriter()) {

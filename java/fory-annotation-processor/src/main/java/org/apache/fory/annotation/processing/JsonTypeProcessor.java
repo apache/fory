@@ -232,7 +232,7 @@ final class JsonTypeProcessor {
         Model model =
             typeCodec
                 ? inspectTypeCodec(target, annotations, directTypeCodec)
-                : inspect(target, annotations);
+                : inspectModel(target, annotations);
         model.mixin = mixin;
         model.resourceIdentity = mixinBinaryName;
         collectMixinSource(annotations, model);
@@ -323,7 +323,7 @@ final class JsonTypeProcessor {
   }
 
   private Model inspect(TypeElement target) {
-    return inspect(target, null);
+    return inspectModel(target, null);
   }
 
   private Model inspectTypeCodec(
@@ -394,7 +394,7 @@ final class JsonTypeProcessor {
     }
   }
 
-  private Model inspect(TypeElement target, JsonMixinAnnotations annotations) {
+  private Model inspectModel(TypeElement target, JsonMixinAnnotations annotations) {
     String binaryName = elements.getBinaryName(target).toString();
     Model model = new Model(target, binaryName);
     model.annotations = annotations;
@@ -723,7 +723,7 @@ final class JsonTypeProcessor {
       if (!visited.add(binaryName)) {
         continue;
       }
-      Model child = inspect(type, null);
+      Model child = inspectModel(type, null);
       model.merge(child);
       pending.addAll(classLiteralSubtypes(type, model.binaryFallbackTypes, null));
       pending.addAll(unwrappedChildren(type, null));

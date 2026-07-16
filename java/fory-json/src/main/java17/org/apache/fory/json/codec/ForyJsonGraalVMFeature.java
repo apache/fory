@@ -80,6 +80,11 @@ final class ForyJsonGraalVMFeature implements Feature {
   @Override
   public void beforeAnalysis(BeforeAnalysisAccess access) {
     RuntimeClassInitialization.initializeAtBuildTime(GeneratedJsonCodecFactories.class);
+    // Hosted Mixin discovery deliberately reuses the runtime's structural resolver so build-time
+    // reachability and runtime semantics cannot drift. Its static state contains only the immutable
+    // supported-annotation set and is therefore safe to initialize in the image builder.
+    RuntimeClassInitialization.initializeAtBuildTime(
+        "org.apache.fory.json.resolver.JsonMixinAnnotations");
     access.registerSubtypeReachabilityHandler(this::processReachableType, Object.class);
   }
 
