@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -391,6 +392,7 @@ public class ForyStructProcessorTest {
                 + "import java.util.ArrayList;\n"
                 + "import java.util.HashMap;\n"
                 + "import java.util.List;\n"
+                + "import java.util.Map;\n"
                 + "import org.apache.fory.annotation.ForyStruct;\n"
                 + "import org.apache.fory.annotation.Ref;\n"
                 + "import org.apache.fory.annotation.Int32Type;\n"
@@ -403,10 +405,16 @@ public class ForyStructProcessorTest {
                 + "  public static class MultiParamList<A, B, E> extends ArrayList<E> {}\n"
                 + "  public static class SwappedMap<K, V> extends HashMap<V, K> {}\n"
                 + "  public static class NestedElementList<E> extends ArrayList<List<E>> {}\n"
+                + "  public static class Owner<T> {\n"
+                + "    public class Values<E> extends ArrayList<Map<T, E>> {}\n"
+                + "  }\n"
+                + "  @ForyStruct public static class OwnedStruct { public int id; }\n"
                 + "  public MultiParamMap<Object, String, List<String>> mapped;\n"
                 + "  public MultiParamList<Object, Long, String> listed;\n"
                 + "  public SwappedMap<String, Integer> swapped;\n"
                 + "  public NestedElementList<String> nested;\n"
+                + "  public Owner<String>.Values<Integer> owned;\n"
+                + "  public Owner<OwnedStruct>.Values<Integer> ownedStruct;\n"
                 + "  public @UInt16Type int code;\n"
                 + "  public MetadataStruct() {}\n"
                 + "}\n");
@@ -414,6 +422,8 @@ public class ForyStructProcessorTest {
     String generatedSource = result.generatedSource("test/MetadataStruct_ForySerializer.java");
     Assert.assertFalse(generatedSource.contains("TypeRef"), generatedSource);
     Assert.assertTrue(generatedSource.contains("Descriptor.generatedType("), generatedSource);
+    Assert.assertTrue(
+        generatedSource.contains("HAS_NESTED_COMPATIBLE_STRUCT_FIELDS = true;"), generatedSource);
     try (URLClassLoader loader = result.classLoader()) {
       Class<?> type = loader.loadClass("test.MetadataStruct");
       Class<?> serializerType = loader.loadClass("test.MetadataStruct_ForySerializer");
@@ -452,6 +462,17 @@ public class ForyStructProcessorTest {
       Assert.assertEquals(
           ((FieldTypes.CollectionFieldType) mappedType.getValueType()).getElementType().getTypeId(),
           Types.STRING);
+      Descriptor owned = descriptor(serializer.getDescriptors(), "owned");
+      TypeRef<?> ownedElement = owned.getTypeRef().getTypeArguments().get(0);
+      Assert.assertEquals(ownedElement.getRawType(), Map.class);
+      Assert.assertEquals(ownedElement.getTypeArguments().get(0).getRawType(), String.class);
+      Assert.assertEquals(ownedElement.getTypeArguments().get(1).getRawType(), Integer.class);
+      FieldTypes.CollectionFieldType ownedType =
+          (FieldTypes.CollectionFieldType) FieldTypes.buildFieldType(fory.getTypeResolver(), owned);
+      FieldTypes.MapFieldType ownedElementType =
+          (FieldTypes.MapFieldType) ownedType.getElementType();
+      Assert.assertEquals(ownedElementType.getKeyType().getTypeId(), Types.STRING);
+      Assert.assertEquals(ownedElementType.getValueType().getTypeId(), Types.VARINT32);
       Descriptor listed = descriptor(serializer.getDescriptors(), "listed");
       Assert.assertEquals(listed.getTypeRef().getTypeArguments().size(), 1);
       Assert.assertEquals(listed.getTypeRef().getTypeArguments().get(0).getRawType(), String.class);

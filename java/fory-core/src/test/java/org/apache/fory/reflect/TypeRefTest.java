@@ -139,6 +139,10 @@ public class TypeRefTest extends ForyTestBase {
 
   static class ParamB<T> extends ArrayList<ParamA<T>> {}
 
+  static class Owner<T> {
+    class Values<E> extends ArrayList<Map<T, E>> {}
+  }
+
   static class StringKeyMap<V> extends HashMap<String, V> {}
 
   static class ArrayElementList<A, E> extends ArrayList<E[]> {}
@@ -264,6 +268,27 @@ public class TypeRefTest extends ForyTestBase {
     TypeRef<?> paramA = paramB.getTypeArguments().get(0);
     Assert.assertEquals(paramA.getRawType(), ParamA.class);
     Assert.assertTrue(paramA.getTypeArguments().isEmpty());
+  }
+
+  @Test
+  public void testOwnerContainerType() {
+    assertOwnerContainerType(new TypeRef<Owner<String>.Values<Integer>>() {});
+
+    TypeRef<?> ownerType =
+        TypeRef.ofDeclaredTypeArguments(
+            Owner.class, null, Arrays.asList(TypeRef.of(String.class)), null);
+    TypeRef<?> generatedType =
+        TypeRef.ofDeclaredTypeArguments(
+            Owner.Values.class, null, Arrays.asList(TypeRef.of(Integer.class)), null, ownerType);
+    assertOwnerContainerType(generatedType);
+  }
+
+  private static void assertOwnerContainerType(TypeRef<?> type) {
+    TypeRef<?> elementType = TypeUtils.getElementType(type);
+    Assert.assertEquals(elementType.getRawType(), Map.class);
+    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(elementType);
+    Assert.assertEquals(keyValueType.f0.getRawType(), String.class);
+    Assert.assertEquals(keyValueType.f1.getRawType(), Integer.class);
   }
 
   @Test

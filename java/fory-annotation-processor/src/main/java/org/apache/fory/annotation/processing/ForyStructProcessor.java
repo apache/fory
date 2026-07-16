@@ -761,6 +761,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
     }
     List<SourceTypeNode> arguments = new ArrayList<>();
     SourceTypeNode componentType = null;
+    SourceTypeNode ownerType = null;
     if (kind == TypeKind.ARRAY) {
       TypeMirror componentMirror = ((ArrayType) type).getComponentType();
       componentType =
@@ -771,13 +772,21 @@ public final class ForyStructProcessor extends AbstractProcessor {
               errorElement,
               true);
     } else if (type instanceof DeclaredType) {
+      DeclaredType declaredType = (DeclaredType) type;
       List<?> argumentTrees = treeInfo.typeArgumentTrees();
       int index = 0;
-      for (TypeMirror argument : ((DeclaredType) type).getTypeArguments()) {
+      for (TypeMirror argument : declaredType.getTypeArguments()) {
         Object argumentTree = index < argumentTrees.size() ? argumentTrees.get(index) : null;
         arguments.add(
             buildTypeNode(argument, argumentTree, nestedNullable(argument), errorElement, false));
         index++;
+      }
+      TypeMirror enclosingType = declaredType.getEnclosingType();
+      // A non-static member container can use enclosing type variables in its inherited element
+      // type, so generated descriptors must retain the declared owner alongside local arguments.
+      if (enclosingType instanceof DeclaredType
+          && !declaredType.asElement().getModifiers().contains(Modifier.STATIC)) {
+        ownerType = buildTypeNode(enclosingType);
       }
     }
     String rawType = canonicalName(types.erasure(type));
@@ -787,7 +796,14 @@ public final class ForyStructProcessor extends AbstractProcessor {
     boolean primitive = kind.isPrimitive();
     boolean nestedStruct = isCompatibleForyStructType(type);
     return new SourceTypeNode(
-        rawType, typeName(type), extMeta, arguments, componentType, primitive, nestedStruct);
+        rawType,
+        typeName(type),
+        extMeta,
+        arguments,
+        componentType,
+        ownerType,
+        primitive,
+        nestedStruct);
   }
 
   private boolean isCompatibleForyStructType(TypeMirror type) {

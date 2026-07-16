@@ -188,19 +188,32 @@ public class TypeRef<T> {
       TypeExtMeta typeExtMeta,
       List<TypeRef<?>> typeArguments,
       TypeRef<?> componentType) {
+    return ofDeclaredTypeArguments(rawType, typeExtMeta, typeArguments, componentType, null);
+  }
+
+  /** Builds a generated member type whose arguments still follow the source declaration. */
+  @Internal
+  public static <T> TypeRef<T> ofDeclaredTypeArguments(
+      Class<T> rawType,
+      TypeExtMeta typeExtMeta,
+      List<TypeRef<?>> typeArguments,
+      TypeRef<?> componentType,
+      TypeRef<?> ownerType) {
     List<TypeRef<?>> normalizedArguments = typeArguments;
-    if (typeArguments != null && !typeArguments.isEmpty()) {
+    Type declaredType = rawType;
+    if (typeArguments != null) {
       Type[] argumentTypes = new Type[typeArguments.size()];
       for (int i = 0; i < typeArguments.size(); i++) {
         argumentTypes[i] = typeArguments.get(i).getType();
       }
-      Type declaredType = new ParameterizedTypeImpl(null, rawType, argumentTypes);
+      declaredType =
+          new ParameterizedTypeImpl(
+              ownerType == null ? null : ownerType.getType(), rawType, argumentTypes);
       normalizedArguments = normalizeContainerTypeArguments(declaredType, typeArguments);
     }
-    // Keep the raw Class as the generated descriptor's runtime type. Only this factory treats
-    // arguments paired with a raw Class as declared parameters; semantic rebuilds use
-    // ofSemanticTypeArguments instead.
-    return new TypeRef<>(rawType, typeExtMeta, normalizedArguments, componentType, false);
+    // Keep declaration arguments in the Java Type for owner-variable resolution, while explicit
+    // arguments carry normalized element/key/value semantics and type-use metadata.
+    return new TypeRef<>(declaredType, typeExtMeta, normalizedArguments, componentType, false);
   }
 
   @Internal
@@ -225,9 +238,6 @@ public class TypeRef<T> {
 
   private static List<TypeRef<?>> normalizeContainerTypeArguments(
       Type type, List<TypeRef<?>> typeArguments, Set<Class<?>> activeContainerTypes) {
-    if (typeArguments.isEmpty()) {
-      return typeArguments;
-    }
     Class<?> rawType = TypeUtils.getRawType(type);
     boolean mapLike = isMapLike(rawType);
     if (!mapLike && !isIterableLike(rawType)) {
@@ -260,7 +270,7 @@ public class TypeRef<T> {
     return Collections.singletonList(
         resolveTypeVariables(
             elementType.getType(),
-            explicitTypeVarRefs(rawType, typeArguments),
+            explicitTypeVarRefs(type, rawType, typeArguments),
             rawType,
             activeContainerTypes));
   }
@@ -274,7 +284,8 @@ public class TypeRef<T> {
       return typeArguments;
     }
     Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = rawMapKeyValueTypes(rawType);
-    Map<TypeVariableKey, TypeRef<?>> typeVarRefs = explicitTypeVarRefs(rawType, typeArguments);
+    Map<TypeVariableKey, TypeRef<?>> typeVarRefs =
+        explicitTypeVarRefs(type, rawType, typeArguments);
     return Arrays.asList(
         resolveTypeVariables(keyValueType.f0.getType(), typeVarRefs, rawType, activeContainerTypes),
         resolveTypeVariables(
@@ -289,9 +300,12 @@ public class TypeRef<T> {
   }
 
   private static Map<TypeVariableKey, TypeRef<?>> explicitTypeVarRefs(
-      Class<?> rawType, List<TypeRef<?>> typeArguments) {
-    TypeVariable<?>[] variables = rawType.getTypeParameters();
+      Type type, Class<?> rawType, List<TypeRef<?>> typeArguments) {
     Map<TypeVariableKey, TypeRef<?>> typeVarRefs = new HashMap<>();
+    for (Map.Entry<TypeVariableKey, Type> entry : resolveTypeMappings(type).entrySet()) {
+      typeVarRefs.put(entry.getKey(), TypeRef.of(entry.getValue()));
+    }
+    TypeVariable<?>[] variables = rawType.getTypeParameters();
     for (int i = 0; i < variables.length; i++) {
       typeVarRefs.put(new TypeVariableKey(variables[i]), typeArguments.get(i));
     }
