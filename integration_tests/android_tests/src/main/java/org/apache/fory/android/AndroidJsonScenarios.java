@@ -25,9 +25,12 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.annotation.JsonValue;
 
 /** Android acceptance scenarios for reflection, declaration codecs, and R8 retention. */
 public final class AndroidJsonScenarios {
@@ -234,6 +237,55 @@ public final class AndroidJsonScenarios {
     checkEquals(33, decodedRecord.child().rank());
   }
 
+  public static void generatedMixin() {
+    GeneratedJsonMixinTarget value =
+        GeneratedJsonMixinTarget.create(
+            34, new GeneratedJsonMixinTarget.Address("Hangzhou", 310000));
+    String direct = ForyJson.builder().build().toJson(value);
+    check(direct.contains("\"id\":34"));
+    check(direct.contains("\"address\":{"));
+
+    ForyJson json = ForyJson.builder().registerMixin(GeneratedJsonMixin.class).build();
+    String encoded = json.toJson(value);
+    checkEquals("{\"user_id\":34,\"address_city\":\"Hangzhou\",\"address_zip\":310000}", encoded);
+    GeneratedJsonMixinTarget decoded = json.fromJson(encoded, GeneratedJsonMixinTarget.class);
+    checkEquals(34, decoded.getId());
+    checkEquals("Hangzhou", decoded.getAddress().city);
+    checkEquals(310000, decoded.getAddress().zip);
+
+    generatedMixinRecord();
+    generatedMixinValue();
+    generatedMixinValueRecord();
+  }
+
+  private static void generatedMixinRecord() {
+    ForyJson json =
+        ForyJson.builder().registerMixin(GeneratedJsonMixinRecordAnnotations.class).build();
+    String encoded = json.toJson(new GeneratedJsonMixinRecord(35, "record-mixin"));
+    checkEquals("{\"user_id\":35,\"display_name\":\"record-mixin\"}", encoded);
+    GeneratedJsonMixinRecord decoded = json.fromJson(encoded, GeneratedJsonMixinRecord.class);
+    checkEquals(35, decoded.id());
+    checkEquals("record-mixin", decoded.name());
+  }
+
+  private static void generatedMixinValue() {
+    ForyJson json = ForyJson.builder().registerMixin(GeneratedJsonMixinValue.class).build();
+    GeneratedJsonMixinValueTarget value = GeneratedJsonMixinValueTarget.create("value-mixin");
+    checkEquals("\"value-mixin\"", json.toJson(value));
+    GeneratedJsonMixinValueTarget decoded =
+        json.fromJson("\"decoded-mixin\"", GeneratedJsonMixinValueTarget.class);
+    checkEquals("decoded-mixin", decoded.getValue());
+  }
+
+  private static void generatedMixinValueRecord() {
+    ForyJson json =
+        ForyJson.builder().registerMixin(GeneratedJsonMixinValueRecordAnnotations.class).build();
+    checkEquals("\"record-value\"", json.toJson(new GeneratedJsonMixinValueRecord("record-value")));
+    GeneratedJsonMixinValueRecord decoded =
+        json.fromJson("\"decoded-record\"", GeneratedJsonMixinValueRecord.class);
+    checkEquals("decoded-record", decoded.value());
+  }
+
   @JsonType
   @JsonPropertyOrder({"id", "child"})
   public static final class UnwrappedParent {
@@ -268,6 +320,113 @@ public final class AndroidJsonScenarios {
 
   @JsonType
   public record UnwrappedRecordChild(String name, int rank) {}
+
+  @JsonMixin(target = GeneratedJsonMixinTarget.class)
+  @JsonPropertyOrder({"id", "address"})
+  public interface GeneratedJsonMixin {
+    @JsonProperty("user_id")
+    int getId();
+
+    @JsonUnwrapped(prefix = "address_")
+    GeneratedJsonMixinTarget.Address getAddress();
+
+    @JsonCreator({"id", "address"})
+    GeneratedJsonMixinTarget create(int id, GeneratedJsonMixinTarget.Address address);
+  }
+
+  @JsonType
+  public static final class GeneratedJsonMixinTarget {
+    private final int id;
+    private final Address address;
+
+    private GeneratedJsonMixinTarget(int id, Address address) {
+      this.id = id;
+      this.address = address;
+    }
+
+    public int getId() {
+      return id;
+    }
+
+    public Address getAddress() {
+      return address;
+    }
+
+    public static GeneratedJsonMixinTarget create(int id, Address address) {
+      return new GeneratedJsonMixinTarget(id, address);
+    }
+
+    public static final class Address {
+      public String city;
+      public int zip;
+
+      public Address() {}
+
+      public Address(String city, int zip) {
+        this.city = city;
+        this.zip = zip;
+      }
+    }
+  }
+
+  public record GeneratedJsonMixinRecord(int id, String name) {}
+
+  @JsonMixin(target = GeneratedJsonMixinRecord.class)
+  @JsonPropertyOrder({"id", "name"})
+  public abstract static class GeneratedJsonMixinRecordAnnotations {
+    @JsonProperty("user_id")
+    int id;
+
+    @JsonProperty("display_name")
+    String name;
+
+    @JsonProperty("user_id")
+    abstract int id();
+
+    @JsonProperty("display_name")
+    abstract String name();
+
+    GeneratedJsonMixinRecordAnnotations(
+        @JsonProperty("user_id") int id, @JsonProperty("display_name") String name) {}
+  }
+
+  @JsonMixin(target = GeneratedJsonMixinValueTarget.class)
+  public interface GeneratedJsonMixinValue {
+    @JsonValue
+    String getValue();
+
+    @JsonCreator
+    GeneratedJsonMixinValueTarget create(String value);
+  }
+
+  public static final class GeneratedJsonMixinValueTarget {
+    private final String value;
+
+    private GeneratedJsonMixinValueTarget(String value) {
+      this.value = value;
+    }
+
+    public String getValue() {
+      return value;
+    }
+
+    public static GeneratedJsonMixinValueTarget create(String value) {
+      return new GeneratedJsonMixinValueTarget(value);
+    }
+  }
+
+  public record GeneratedJsonMixinValueRecord(String value) {}
+
+  @JsonMixin(target = GeneratedJsonMixinValueRecord.class)
+  public abstract static class GeneratedJsonMixinValueRecordAnnotations {
+    @JsonValue String value;
+
+    @JsonValue
+    abstract String value();
+
+    @JsonCreator
+    GeneratedJsonMixinValueRecordAnnotations(String value) {}
+  }
 
   private static void check(boolean condition) {
     if (!condition) {

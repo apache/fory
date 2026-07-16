@@ -42,7 +42,9 @@ import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
@@ -70,6 +72,11 @@ public final class ForyJsonExample {
     testContainerRoots();
     testGenericProperties();
     testUnwrapped();
+    testMixin();
+    testMixinValue();
+    testMixinValueRecord();
+    testMixinEnumValue();
+    testMixinCodec();
     testBigDecimal();
     testSqlTypes();
     testClosedPackage();
@@ -81,6 +88,65 @@ public final class ForyJsonExample {
     ClosedJsonRecord value = new ClosedJsonRecord(17, "closed");
     String encoded = json.toJson(value);
     Preconditions.checkArgument(json.fromJson(encoded, ClosedJsonRecord.class).equals(value));
+  }
+
+  private static void testMixin() {
+    JsonMixinTarget value =
+        JsonMixinTarget.create(18, new JsonMixinTarget.Address("Hangzhou", 310000));
+    String direct = ForyJson.builder().build().toJson(value);
+    Preconditions.checkArgument(direct.contains("\"id\":18"));
+    Preconditions.checkArgument(direct.contains("\"address\":{"));
+
+    ForyJson json = ForyJson.builder().registerMixin(JsonMixinModel.class).build();
+    String encoded = json.toJson(value);
+    Preconditions.checkArgument(
+        encoded.equals("{\"user_id\":18,\"address_city\":\"Hangzhou\",\"address_zip\":310000}"));
+    JsonMixinTarget decoded = json.fromJson(encoded, JsonMixinTarget.class);
+    Preconditions.checkArgument(decoded.getId() == 18);
+    Preconditions.checkArgument(decoded.getAddress().city.equals("Hangzhou"));
+    Preconditions.checkArgument(decoded.getAddress().zip == 310000);
+  }
+
+  private static void testMixinValue() {
+    ForyJson json = ForyJson.builder().registerMixin(JsonMixinValueModel.class).build();
+    JsonMixinValueTarget value = JsonMixinValueTarget.create("value-mixin");
+    Preconditions.checkArgument(json.toJson(value).equals("\"value-mixin\""));
+    JsonMixinValueTarget decoded = json.fromJson("\"decoded-mixin\"", JsonMixinValueTarget.class);
+    Preconditions.checkArgument(decoded.getValue().equals("decoded-mixin"));
+  }
+
+  private static void testMixinValueRecord() {
+    ForyJson json = ForyJson.builder().registerMixin(JsonMixinValueRecordModel.class).build();
+    Preconditions.checkArgument(
+        json.toJson(new JsonMixinValueRecord("record-value")).equals("\"record-value\""));
+    JsonMixinValueRecord decoded = json.fromJson("\"decoded-record\"", JsonMixinValueRecord.class);
+    Preconditions.checkArgument(decoded.value().equals("decoded-record"));
+  }
+
+  private static void testMixinEnumValue() {
+    ForyJson json = ForyJson.builder().registerMixin(JsonMixinEnumValueModel.class).build();
+    Preconditions.checkArgument(json.toJson(JsonMixinEnumValueTarget.READY).equals("\"ready\""));
+    Preconditions.checkArgument(
+        json.fromJson("\"done\"", JsonMixinEnumValueTarget.class) == JsonMixinEnumValueTarget.DONE);
+  }
+
+  private static void testMixinCodec() {
+    ForyJson json = ForyJson.builder().registerMixin(JsonMixinCodecModel.class).build();
+    JsonMixinCodecTarget value = new JsonMixinCodecTarget("mixin-codec");
+    Preconditions.checkArgument(json.toJson(value).equals("\"string:mixin-codec\""));
+    JsonMixinCodecTarget decoded =
+        json.fromJson("\"decoded-mixin-codec\"", JsonMixinCodecTarget.class);
+    checkStringRead(decoded.text, "decoded-mixin-codec");
+
+    ForyJson inherited =
+        ForyJson.builder().registerMixin(JsonMixinInheritedCodecModel.class).build();
+    JsonMixinInheritedCodecTarget inheritedValue =
+        new JsonMixinInheritedCodecTarget("inherited-codec");
+    Preconditions.checkArgument(
+        inherited.toJson(inheritedValue).equals("\"string:inherited-codec\""));
+    JsonMixinInheritedCodecTarget inheritedDecoded =
+        inherited.fromJson("\"decoded-inherited-codec\"", JsonMixinInheritedCodecTarget.class);
+    checkStringRead(inheritedDecoded.text, "decoded-inherited-codec");
   }
 
   private static void testModels() {
@@ -752,5 +818,198 @@ public final class ForyJsonExample {
     public Date date;
     public Time time;
     public Timestamp timestamp;
+  }
+
+  @JsonMixin(target = JsonMixinTarget.class)
+  @JsonPropertyOrder({"id", "address"})
+  public interface JsonMixinModel {
+    @JsonProperty("user_id")
+    int getId();
+
+    @JsonUnwrapped(prefix = "address_")
+    JsonMixinTarget.Address getAddress();
+
+    @JsonCreator({"id", "address"})
+    JsonMixinTarget create(int id, JsonMixinTarget.Address address);
+  }
+
+  @JsonType
+  public static final class JsonMixinTarget {
+    private final int id;
+    private final Address address;
+
+    private JsonMixinTarget(int id, Address address) {
+      this.id = id;
+      this.address = address;
+    }
+
+    public int getId() {
+      return id;
+    }
+
+    public Address getAddress() {
+      return address;
+    }
+
+    public static JsonMixinTarget create(int id, Address address) {
+      return new JsonMixinTarget(id, address);
+    }
+
+    public static final class Address {
+      public String city;
+      public int zip;
+
+      public Address() {}
+
+      public Address(String city, int zip) {
+        this.city = city;
+        this.zip = zip;
+      }
+    }
+  }
+
+  @JsonMixin(target = JsonMixinValueTarget.class)
+  public interface JsonMixinValueModel {
+    @JsonValue
+    String getValue();
+
+    @JsonCreator
+    JsonMixinValueTarget create(String value);
+  }
+
+  public static final class JsonMixinValueTarget {
+    private final String value;
+
+    private JsonMixinValueTarget(String value) {
+      this.value = value;
+    }
+
+    public String getValue() {
+      return value;
+    }
+
+    public static JsonMixinValueTarget create(String value) {
+      return new JsonMixinValueTarget(value);
+    }
+  }
+
+  public record JsonMixinValueRecord(String value) {}
+
+  @JsonMixin(target = JsonMixinValueRecord.class)
+  public abstract static class JsonMixinValueRecordModel {
+    @JsonValue String value;
+
+    @JsonValue
+    abstract String value();
+
+    @JsonCreator
+    JsonMixinValueRecordModel(String value) {}
+  }
+
+  public enum JsonMixinEnumValueTarget {
+    READY("ready"),
+    DONE("done");
+
+    private final String value;
+
+    JsonMixinEnumValueTarget(String value) {
+      this.value = value;
+    }
+
+    @JsonValue
+    public String value() {
+      return value;
+    }
+
+    public static JsonMixinEnumValueTarget fromValue(String value) {
+      for (JsonMixinEnumValueTarget candidate : values()) {
+        if (candidate.value.equals(value)) {
+          return candidate;
+        }
+      }
+      throw new IllegalArgumentException(value);
+    }
+  }
+
+  @JsonMixin(target = JsonMixinEnumValueTarget.class)
+  public interface JsonMixinEnumValueModel {
+    @JsonCreator
+    JsonMixinEnumValueTarget fromValue(String value);
+  }
+
+  @JsonMixin(target = JsonMixinCodecTarget.class)
+  @JsonCodec(JsonMixinTargetCodec.class)
+  public interface JsonMixinCodecModel {}
+
+  public static final class JsonMixinCodecTarget implements TextValue {
+    @JsonCodec(UnreachableFieldCodec.class)
+    public CodecValue ignored;
+
+    private final String text;
+
+    JsonMixinCodecTarget(String text) {
+      this.text = text;
+    }
+
+    @Override
+    public String text() {
+      return text;
+    }
+  }
+
+  public static final class JsonMixinTargetCodec extends TextCodec<JsonMixinCodecTarget> {
+    public JsonMixinTargetCodec() {}
+
+    @Override
+    protected JsonMixinCodecTarget create(String text) {
+      return new JsonMixinCodecTarget(text);
+    }
+  }
+
+  public static final class UnreachableFieldCodec extends TextCodec<CodecValue> {
+    private UnreachableFieldCodec() {}
+
+    @Override
+    protected CodecValue create(String text) {
+      return new CodecValue(text);
+    }
+  }
+
+  @JsonCodec(JsonMixinInheritedTargetCodec.class)
+  public interface JsonMixinInheritedCodecContract {}
+
+  @JsonMixin(target = JsonMixinInheritedCodecTarget.class)
+  public interface JsonMixinInheritedCodecModel {
+    @JsonValue
+    @JsonCodec(UnreachableFieldCodec.class)
+    String value();
+  }
+
+  public static final class JsonMixinInheritedCodecTarget
+      implements TextValue, JsonMixinInheritedCodecContract {
+    private final String text;
+
+    JsonMixinInheritedCodecTarget(String text) {
+      this.text = text;
+    }
+
+    public String value() {
+      return text;
+    }
+
+    @Override
+    public String text() {
+      return text;
+    }
+  }
+
+  public static final class JsonMixinInheritedTargetCodec
+      extends TextCodec<JsonMixinInheritedCodecTarget> {
+    public JsonMixinInheritedTargetCodec() {}
+
+    @Override
+    protected JsonMixinInheritedCodecTarget create(String text) {
+      return new JsonMixinInheritedCodecTarget(text);
+    }
   }
 }

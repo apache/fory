@@ -80,6 +80,43 @@ public class JsonExample {
 }
 ```
 
+The processor also supports Fory JSON Mixins for models that cannot be modified:
+
+```java
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonProperty;
+
+@JsonMixin(target = ThirdPartyUser.class)
+public abstract class ThirdPartyUserMixin {
+  @JsonProperty("user_id")
+  long id;
+}
+
+public class JsonExample {
+  public static void main(String[] args) {
+    ForyJson json =
+        ForyJson.builder().registerMixin(ThirdPartyUserMixin.class).build();
+    ThirdPartyUser user = json.fromJson("{\"user_id\":1}", ThirdPartyUser.class);
+    System.out.println(json.toJson(user));
+  }
+}
+```
+
+`JsonMixin` is a build-time entry point for its exact declared target, so the target does not need
+`JsonType` solely to use the Mixin. The registered Mixin class literal must be reachable from the
+application. The processor emits available target operations for each non-empty Mixin, and the
+Fory JSON Native Image Feature retains the effective runtime metadata. Normal runtime codec
+precedence still selects the representation. An empty Mixin produces no generated output.
+
+Only one source is enabled for an exact target in a built `ForyJson`. Later registration replaces
+an earlier source for subsequent `build()` calls; a runtime keeps the immutable snapshot it was
+built with. If the target also has a direct `JsonType` companion, a non-empty registered Mixin
+selects the pair-specific artifact instead of combining the overlay with the direct companion.
+
+Do not add application reflection configuration as a replacement for the generated configuration.
+The native executable resolves the same effective annotations as the JVM.
+
 The processor generates direct property and creator operations. The `fory-json` artifact activates
 its Native Image Feature automatically and retains the generated factories and required model
 metadata. `@JsonType` is not inherited, so annotate every concrete runtime model. An annotated base
@@ -106,17 +143,20 @@ on the JVM and Android.
 `JsonValue` fields and effective public zero-argument methods are supported, including matching
 one-String `JsonCreator` constructors and public static factories. Fixed `JsonRawValue` fields and
 getters support trusted raw String values, and fixed `JsonBase64` fields and getters support Base64
-`byte[]` values as on the JVM. Annotate each reachable owning model with `JsonType` so Native Image
-retains these members and the Base64 codec constructor. A directly annotated `JsonValue` Record
-uses its generated component accessor and canonical constructor operations.
+`byte[]` values as on the JVM. For direct target annotations, annotate each reachable owning model
+with `JsonType` so Native Image retains these members and the Base64 codec constructor. A directly
+annotated `JsonValue` Record uses its generated component accessor and canonical constructor
+operations. An effective declaration supplied by a Mixin uses the Mixin workflow above instead.
 
 `JsonAnyProperty` and `JsonAnyGetter` flatten their Map into the enclosing object. Use
 `@JsonCodec(valueCodec = ...)` on that field or getter to customize each dynamic value. A second
 `JsonAnySetter` parameter may use the normal configuration for its own value shape.
 
-`JsonUnwrapped` uses the same interpreted behavior as on the JVM. Annotate the containing model and
-every unwrapped child or intermediate object with `JsonType` so each model receives its generated
-property and creator operations.
+`JsonUnwrapped` uses the same interpreted behavior as on the JVM. For direct target annotations,
+annotate the containing model and every unwrapped child or intermediate object with `JsonType` so
+each model receives its generated property and creator operations. A Mixin retains the
+unwrapped models reached by its effective schema; register a separate exact Mixin for a child only
+when that child's annotations also need an overlay.
 
 Child codecs act on one direct level. `elementCodec` supports `Collection`, Java arrays, and
 `AtomicReferenceArray`; `contentCodec` supports `Optional` and `AtomicReference`; `keyCodec` and

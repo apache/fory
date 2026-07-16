@@ -882,6 +882,7 @@ public class JsonAsyncCompilationTest {
             1,
             2 * 1024 * 1024,
             codecs,
+            Collections.<Class<?>, Class<?>>emptyMap(),
             null);
     ControlledExecutor executor = new ControlledExecutor();
     Constructor<JsonSharedRegistry> constructor =

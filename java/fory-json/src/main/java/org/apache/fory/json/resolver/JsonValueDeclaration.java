@@ -61,11 +61,12 @@ final class JsonValueDeclaration {
     return codec;
   }
 
-  static JsonValueDeclaration resolve(Class<?> type, GeneratedJsonCodec<?> generatedCodec) {
+  static JsonValueDeclaration resolve(
+      Class<?> type, GeneratedJsonCodec<?> generatedCodec, JsonSharedRegistry registry) {
     List<Member> members = new ArrayList<>();
-    collectFields(type, members);
-    collectMethods(type, members);
-    coalesceRecordMember(type, members, generatedCodec);
+    collectFields(type, members, registry);
+    collectMethods(type, members, registry);
+    coalesceRecordMember(type, members, generatedCodec, registry);
     if (members.isEmpty()) {
       return null;
     }
@@ -78,16 +79,17 @@ final class JsonValueDeclaration {
     boolean raw;
     if (member instanceof Field) {
       Field field = (Field) member;
-      validateField(field);
+      validateField(type, field, registry);
       accessor = generatedAccessor(generatedCodec, field);
-      raw = field.isAnnotationPresent(JsonRawValue.class);
+      raw = registry.annotation(type, field, JsonRawValue.class) != null;
     } else {
       Method method = (Method) member;
-      validateMethod(method);
+      validateMethod(type, method, registry);
       accessor = generatedAccessor(generatedCodec, method);
-      raw = method.isAnnotationPresent(JsonRawValue.class);
+      raw = registry.annotation(type, method, JsonRawValue.class) != null;
     }
-    Executable creator = valueCreator(type, generatedCodec);
+    JsonCreatorDeclaration creatorDeclaration = JsonCreatorDeclaration.find(type, registry);
+    Executable creator = valueCreator(type, generatedCodec, registry, creatorDeclaration);
     GeneratedJsonCodec<?> creatorBackend =
         generatedCodec != null && generatedCodec.matchesCreator(creator) ? generatedCodec : null;
     return new JsonValueDeclaration(
@@ -106,23 +108,25 @@ final class JsonValueDeclaration {
         : JsonFieldAccessor.forGetter((Method) member);
   }
 
-  private static void collectFields(Class<?> type, List<Member> members) {
+  private static void collectFields(
+      Class<?> type, List<Member> members, JsonSharedRegistry registry) {
     for (Class<?> current = type;
         current != null && current != Object.class;
         current = current.getSuperclass()) {
       for (Field field : current.getDeclaredFields()) {
-        if (field.isAnnotationPresent(JsonValue.class)) {
-          validateField(field);
+        if (registry.annotation(type, field, JsonValue.class) != null) {
+          validateField(type, field, registry);
           members.add(field);
         }
       }
     }
   }
 
-  private static void collectMethods(Class<?> type, List<Member> members) {
+  private static void collectMethods(
+      Class<?> type, List<Member> members, JsonSharedRegistry registry) {
     for (Method method : type.getMethods()) {
-      if (method.isAnnotationPresent(JsonValue.class)) {
-        validateMethod(method);
+      if (registry.annotation(type, method, JsonValue.class) != null) {
+        validateMethod(type, method, registry);
         members.add(method);
       }
     }
@@ -130,17 +134,20 @@ final class JsonValueDeclaration {
         current != null && current != Object.class;
         current = current.getSuperclass()) {
       for (Method method : current.getDeclaredMethods()) {
-        if (!method.isAnnotationPresent(JsonValue.class)
+        if (registry.annotation(type, method, JsonValue.class) == null
             || Modifier.isPublic(method.getModifiers())) {
           continue;
         }
-        validateMethod(method);
+        validateMethod(type, method, registry);
       }
     }
   }
 
   private static void coalesceRecordMember(
-      Class<?> type, List<Member> members, GeneratedJsonCodec<?> generatedCodec) {
+      Class<?> type,
+      List<Member> members,
+      GeneratedJsonCodec<?> generatedCodec,
+      JsonSharedRegistry registry) {
     // Android desugaring removes the platform Record identity but preserves the propagated field
     // and accessor annotations. The validated companion is therefore the authoritative Record
     // identity and lets this semantic owner select the direct accessor without structural guesses.
@@ -163,8 +170,8 @@ final class JsonValueDeclaration {
         && field.getDeclaringClass() == type
         && method.getDeclaringClass() == type
         && field.getName().equals(method.getName())
-        && field.isAnnotationPresent(JsonRawValue.class)
-            == method.isAnnotationPresent(JsonRawValue.class)) {
+        && (registry.annotation(type, field, JsonRawValue.class) != null)
+            == (registry.annotation(type, method, JsonRawValue.class) != null)) {
       members.clear();
       members.add(
           generatedCodec != null && generatedCodec.validatedAccessor(method) != null
@@ -173,7 +180,7 @@ final class JsonValueDeclaration {
     }
   }
 
-  private static void validateField(Field field) {
+  private static void validateField(Class<?> type, Field field, JsonSharedRegistry registry) {
     int modifiers = field.getModifiers();
     if (Modifier.isStatic(modifiers)
         || Modifier.isTransient(modifiers)
@@ -181,16 +188,16 @@ final class JsonValueDeclaration {
         || field.getType() != String.class) {
       throw new ForyJsonException("Invalid @JsonValue field " + field);
     }
-    if (field.isAnnotationPresent(JsonCodec.class)
-        || field.isAnnotationPresent(JsonBase64.class)
-        || field.isAnnotationPresent(JsonAnyProperty.class)
-        || field.isAnnotationPresent(JsonUnwrapped.class)
-        || field.isAnnotationPresent(JsonIgnore.class)) {
+    if (registry.annotation(type, field, JsonCodec.class) != null
+        || registry.annotation(type, field, JsonBase64.class) != null
+        || registry.annotation(type, field, JsonAnyProperty.class) != null
+        || registry.annotation(type, field, JsonUnwrapped.class) != null
+        || registry.annotation(type, field, JsonIgnore.class) != null) {
       throw new ForyJsonException("Conflicting JSON annotations on @JsonValue field " + field);
     }
   }
 
-  private static void validateMethod(Method method) {
+  private static void validateMethod(Class<?> type, Method method, JsonSharedRegistry registry) {
     int modifiers = method.getModifiers();
     if (!Modifier.isPublic(modifiers)
         || Modifier.isStatic(modifiers)
@@ -202,17 +209,20 @@ final class JsonValueDeclaration {
         || method.getReturnType() != String.class) {
       throw new ForyJsonException("Invalid @JsonValue method " + method);
     }
-    if (method.isAnnotationPresent(JsonCodec.class)
-        || method.isAnnotationPresent(JsonBase64.class)
-        || method.isAnnotationPresent(JsonAnyGetter.class)
-        || method.isAnnotationPresent(JsonUnwrapped.class)
-        || method.isAnnotationPresent(JsonIgnore.class)) {
+    if (registry.annotation(type, method, JsonCodec.class) != null
+        || registry.annotation(type, method, JsonBase64.class) != null
+        || registry.annotation(type, method, JsonAnyGetter.class) != null
+        || registry.annotation(type, method, JsonUnwrapped.class) != null
+        || registry.annotation(type, method, JsonIgnore.class) != null) {
       throw new ForyJsonException("Conflicting JSON annotations on @JsonValue method " + method);
     }
   }
 
-  private static Executable valueCreator(Class<?> type, GeneratedJsonCodec<?> generatedCodec) {
-    JsonCreatorDeclaration declaration = JsonCreatorDeclaration.find(type);
+  private static Executable valueCreator(
+      Class<?> type,
+      GeneratedJsonCodec<?> generatedCodec,
+      JsonSharedRegistry registry,
+      JsonCreatorDeclaration declaration) {
     if (declaration == null) {
       return null;
     }
@@ -224,7 +234,7 @@ final class JsonValueDeclaration {
       return null;
     }
     Parameter parameter = executable.getParameters()[0];
-    if (parameter.isAnnotationPresent(JsonProperty.class)) {
+    if (registry.annotation(type, parameter, JsonProperty.class) != null) {
       rejectRecordCreator(type, generatedCodec);
       return null;
     }

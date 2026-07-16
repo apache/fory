@@ -44,6 +44,7 @@ import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
@@ -108,13 +109,19 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       boolean propertyDiscoveryEnabled,
       PropertyNamingStrategy propertyNamingStrategy,
       boolean writeNullFields,
+      JsonSharedRegistry sharedRegistry,
       GeneratedJsonCodec<?> generatedCodec) {
-    return ObjectCodecBuilder.build(
-        ownerType,
-        propertyDiscoveryEnabled,
-        propertyNamingStrategy,
-        writeNullFields,
-        generatedCodec);
+    try {
+      return ObjectCodecBuilder.build(
+          ownerType,
+          propertyDiscoveryEnabled,
+          propertyNamingStrategy,
+          writeNullFields,
+          sharedRegistry,
+          generatedCodec);
+    } catch (ForyJsonException e) {
+      throw sharedRegistry.mixinSchemaFailure(ownerType.getRawType(), e);
+    }
   }
 
   static <T> ObjectCodec<T> createCodec(

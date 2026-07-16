@@ -1819,6 +1819,7 @@ public final class JsonTypeResolver {
         sharedRegistry.propertyDiscoveryEnabled(),
         sharedRegistry.propertyNamingStrategy(),
         sharedRegistry.writeNullFields(),
+        sharedRegistry,
         generatedCodec);
   }
 

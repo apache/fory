@@ -20,6 +20,7 @@
 package org.apache.fory.json;
 
 import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.codec.JsonValueCodec;
@@ -47,6 +48,7 @@ final class JsonTestSupport {
           1,
           2 * 1024 * 1024,
           new CodecRegistry(),
+          Collections.<Class<?>, Class<?>>emptyMap(),
           null);
   private static final JsonSharedRegistry REGISTRY = new JsonSharedRegistry(CONFIG);
   private static final JsonValueCodec<Object> NULL_CODEC =

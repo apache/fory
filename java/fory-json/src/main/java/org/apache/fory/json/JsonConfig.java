@@ -19,10 +19,17 @@
 
 package org.apache.fory.json;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.resolver.CodecRegistry;
 
 /**
@@ -50,6 +57,7 @@ public final class JsonConfig {
   private final int concurrencyLevel;
   private final int bufferSizeLimitBytes;
   private final CodecRegistry codecRegistry;
+  private final Map<Class<?>, Class<?>> mixins;
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
   private final String codecRegistryKey;
@@ -68,6 +76,7 @@ public final class JsonConfig {
       int concurrencyLevel,
       int bufferSizeLimitBytes,
       CodecRegistry codecRegistry,
+      Map<Class<?>, Class<?>> mixins,
       JsonTypeChecker typeChecker) {
     this.writeNullFields = writeNullFields;
     this.codegenEnabled = codegenEnabled;
@@ -82,12 +91,17 @@ public final class JsonConfig {
     this.concurrencyLevel = concurrencyLevel;
     this.bufferSizeLimitBytes = bufferSizeLimitBytes;
     this.codecRegistry = codecRegistry;
+    this.mixins = immutableMixins(mixins);
     this.typeChecker = typeChecker;
     typeCheckContext = new JsonTypeCheckContext();
     codecRegistryKey = codecRegistry.codegenKey();
     codegenKey =
         new CodegenKey(
-            writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
+            writeNullFields,
+            propertyDiscoveryEnabled,
+            propertyNamingStrategy,
+            codecRegistryKey,
+            mixinKey(this.mixins));
   }
 
   public boolean writeNullFields() {
@@ -143,6 +157,12 @@ public final class JsonConfig {
     return codecRegistry;
   }
 
+  /** Returns the immutable exact target-to-Mixin registration snapshot. */
+  @Internal
+  public Map<Class<?>, Class<?>> mixins() {
+    return mixins;
+  }
+
   public JsonTypeChecker typeChecker() {
     return typeChecker;
   }
@@ -171,7 +191,8 @@ public final class JsonConfig {
         && concurrencyLevel == that.concurrencyLevel
         && bufferSizeLimitBytes == that.bufferSizeLimitBytes
         && typeChecker == that.typeChecker
-        && Objects.equals(codecRegistryKey, that.codecRegistryKey);
+        && Objects.equals(codecRegistryKey, that.codecRegistryKey)
+        && mixins.equals(that.mixins);
   }
 
   @Override
@@ -188,7 +209,34 @@ public final class JsonConfig {
     result = 31 * result + bufferSizeLimitBytes;
     result = 31 * result + System.identityHashCode(typeChecker);
     result = 31 * result + codecRegistryKey.hashCode();
+    result = 31 * result + mixins.hashCode();
     return result;
+  }
+
+  private static Map<Class<?>, Class<?>> immutableMixins(Map<Class<?>, Class<?>> registrations) {
+    if (registrations.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    return Collections.unmodifiableMap(new IdentityHashMap<>(registrations));
+  }
+
+  private static String mixinKey(Map<Class<?>, Class<?>> mixins) {
+    if (mixins.isEmpty()) {
+      return "";
+    }
+    List<Map.Entry<Class<?>, Class<?>>> entries = new ArrayList<>(mixins.entrySet());
+    entries.sort(
+        Comparator.comparing((Map.Entry<Class<?>, Class<?>> entry) -> entry.getKey().getName())
+            .thenComparing(entry -> entry.getValue().getName()));
+    StringBuilder builder = new StringBuilder(entries.size() * 64);
+    for (Map.Entry<Class<?>, Class<?>> entry : entries) {
+      builder
+          .append(entry.getKey().getName())
+          .append('=')
+          .append(entry.getValue().getName())
+          .append(';');
+    }
+    return builder.toString();
   }
 
   private static final AtomicInteger COUNTER = new AtomicInteger(0);
@@ -211,16 +259,19 @@ public final class JsonConfig {
     private final boolean propertyDiscoveryEnabled;
     private final PropertyNamingStrategy propertyNamingStrategy;
     private final String codecRegistryKey;
+    private final String mixinKey;
 
     private CodegenKey(
         boolean writeNullFields,
         boolean propertyDiscoveryEnabled,
         PropertyNamingStrategy propertyNamingStrategy,
-        String codecRegistryKey) {
+        String codecRegistryKey,
+        String mixinKey) {
       this.writeNullFields = writeNullFields;
       this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
       this.propertyNamingStrategy = propertyNamingStrategy;
       this.codecRegistryKey = codecRegistryKey;
+      this.mixinKey = mixinKey;
     }
 
     @Override
@@ -235,13 +286,16 @@ public final class JsonConfig {
       return writeNullFields == that.writeNullFields
           && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
           && propertyNamingStrategy == that.propertyNamingStrategy
-          && Objects.equals(codecRegistryKey, that.codecRegistryKey);
+          && Objects.equals(codecRegistryKey, that.codecRegistryKey)
+          && Objects.equals(mixinKey, that.mixinKey);
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(
-          writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
+      int result =
+          Objects.hash(
+              writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
+      return 31 * result + mixinKey.hashCode();
     }
   }
 }

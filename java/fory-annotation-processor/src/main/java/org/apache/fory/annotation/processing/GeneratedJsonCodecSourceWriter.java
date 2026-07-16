@@ -54,7 +54,7 @@ import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import javax.tools.JavaFileObject;
 
-/** Writes the direct JSON object operations owned by one {@code JsonType} model. */
+/** Writes direct target operations for one JSON model or exact target-Mixin pair. */
 final class GeneratedJsonCodecSourceWriter {
   private static final String JSON_PACKAGE = "org.apache.fory.json";
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
@@ -100,18 +100,41 @@ final class GeneratedJsonCodecSourceWriter {
   }
 
   Result write(TypeElement target) {
-    if (!needsGeneratedCodec(target)) {
+    if (!needsGeneratedCodec(
+        target, null, elements.getPackageOf(target).getQualifiedName().toString())) {
       return null;
     }
-    Model model = buildModel(target);
+    Model model = buildModel(target, null);
+    return writeSource(model, target);
+  }
+
+  Result writePair(JsonMixinAnnotations annotations) {
+    TypeElement target = annotations.target();
+    TypeElement mixin = annotations.source();
+    String packageName = elements.getPackageOf(mixin).getQualifiedName().toString();
+    Model model;
     try {
-      JavaFileObject file = filer.createSourceFile(model.qualifiedName, target);
+      if (!needsGeneratedCodec(target, annotations, packageName)) {
+        return null;
+      }
+      model = buildModel(target, annotations);
+    } catch (InvalidJsonTypeException ignored) {
+      // A runtime-registered or built-in codec can own this pair without generated object access.
+      // Runtime codec resolution decides whether the absent pair codec is an error.
+      return null;
+    }
+    return writeSource(model, mixin, target);
+  }
+
+  private Result writeSource(Model model, Element... originatingElements) {
+    try {
+      JavaFileObject file = filer.createSourceFile(model.qualifiedName, originatingElements);
       try (Writer writer = file.openWriter()) {
         writer.write(render(model));
       }
     } catch (IOException e) {
       throw invalid(
-          "Failed to write generated JSON codec " + model.qualifiedName + ": " + e, target);
+          "Failed to write generated JSON codec " + model.qualifiedName + ": " + e, model.target);
     }
     return new Result(
         model.binaryName,
@@ -122,51 +145,56 @@ final class GeneratedJsonCodecSourceWriter {
         model.creator != null && model.creator.record);
   }
 
-  private boolean needsGeneratedCodec(TypeElement target) {
+  private boolean needsGeneratedCodec(
+      TypeElement target, JsonMixinAnnotations annotations, String generatedPackage) {
     boolean record = isRecord(target);
     if (!(target.getKind() == ElementKind.CLASS || record)
         || target.getModifiers().contains(Modifier.ABSTRACT)
-        || annotationMirror(target, JSON_SUB_TYPES) != null) {
+        || annotationMirror(annotations, target, JSON_SUB_TYPES) != null) {
       return false;
     }
-    if (hasCompleteTypeCodec(target)
-        || !record && hasEffectiveJsonValue(target)
-        || isObjectCodecExcluded(target)) {
+    // Built-in codec selection belongs to the runtime. Applying the direct @JsonType exclusion
+    // inventory to a Mixin would make the processor choose runtime representation.
+    if (hasCompleteTypeCodec(target, annotations)
+        || !record && hasJsonValueDeclaration(target, annotations)
+        || annotations == null && isObjectCodecExcluded(target)) {
       return false;
     }
-    if (!isNameable(target)) {
-      throw invalid("@JsonType model is not accessible to generated JSON code", target);
+    if (!isNameable(target.asType(), generatedPackage)) {
+      throw invalid(
+          (annotations == null ? "@JsonType model" : "@JsonMixin target")
+              + " is not accessible to generated JSON code",
+          target);
     }
     return true;
   }
 
-  private boolean hasEffectiveJsonValue(TypeElement target) {
+  private boolean hasJsonValueDeclaration(TypeElement target, JsonMixinAnnotations annotations) {
     for (TypeElement owner : classHierarchy(target)) {
       for (VariableElement field : ElementFilter.fieldsIn(owner.getEnclosedElements())) {
-        if (annotationMirror(field, JSON_VALUE) != null) {
+        if (annotationMirror(annotations, field, JSON_VALUE) != null) {
           return true;
         }
       }
     }
     for (ExecutableElement method : effectiveMethods(target)) {
       if (method.getModifiers().contains(Modifier.PUBLIC)
-          && annotationMirror(method, JSON_VALUE) != null) {
+          && annotationMirror(annotations, method, JSON_VALUE) != null) {
         return true;
       }
     }
     return false;
   }
 
-  private boolean hasCompleteTypeCodec(TypeElement target) {
-    AnnotationMirror direct = annotationMirror(target, JSON_CODEC);
-    if (direct != null) {
-      return selectsValueCodec(direct);
+  boolean hasCompleteTypeCodec(TypeElement target, JsonMixinAnnotations annotations) {
+    if (hasDirectTypeCodec(target, annotations)) {
+      return true;
     }
     List<TypeElement> declarations = allDeclarations(target);
     List<TypeElement> candidates = new ArrayList<>();
     for (int i = 1; i < declarations.size(); i++) {
       TypeElement declaration = declarations.get(i);
-      if (annotationMirror(declaration, JSON_CODEC) != null) {
+      if (annotationMirror(annotations, declaration, JSON_CODEC) != null) {
         candidates.add(declaration);
       }
     }
@@ -180,11 +208,16 @@ final class GeneratedJsonCodecSourceWriter {
           break;
         }
       }
-      if (!dominated && selectsValueCodec(annotationMirror(candidate, JSON_CODEC))) {
+      if (!dominated && selectsValueCodec(annotationMirror(annotations, candidate, JSON_CODEC))) {
         return true;
       }
     }
     return false;
+  }
+
+  boolean hasDirectTypeCodec(TypeElement target, JsonMixinAnnotations annotations) {
+    AnnotationMirror direct = annotationMirror(annotations, target, JSON_CODEC);
+    return direct != null && selectsValueCodec(direct);
   }
 
   private boolean selectsValueCodec(AnnotationMirror annotation) {
@@ -216,12 +249,21 @@ final class GeneratedJsonCodecSourceWriter {
     return false;
   }
 
-  private Model buildModel(TypeElement target) {
-    String packageName = elements.getPackageOf(target).getQualifiedName().toString();
+  private Model buildModel(TypeElement target, JsonMixinAnnotations annotations) {
+    TypeElement mixin = annotations == null ? null : annotations.source();
+    String packageName =
+        elements.getPackageOf(mixin == null ? target : mixin).getQualifiedName().toString();
     String targetBinaryName = elements.getBinaryName(target).toString();
-    String binarySimpleName =
-        targetBinaryName.substring(packageName.isEmpty() ? 0 : packageName.length() + 1);
-    String simpleName = GeneratedTypeNames.escapeBinarySimpleName(binarySimpleName) + SUFFIX;
+    String mixinBinaryName = mixin == null ? null : elements.getBinaryName(mixin).toString();
+    String simpleName;
+    if (mixin == null) {
+      String binarySimpleName =
+          targetBinaryName.substring(packageName.isEmpty() ? 0 : packageName.length() + 1);
+      simpleName = GeneratedTypeNames.escapeBinarySimpleName(binarySimpleName) + SUFFIX;
+    } else {
+      simpleName =
+          GeneratedTypeNames.jsonMixinSimpleName(mixinBinaryName, targetBinaryName) + SUFFIX;
+    }
     Model model =
         new Model(
             target,
@@ -230,7 +272,8 @@ final class GeneratedJsonCodecSourceWriter {
             simpleName,
             packageName.isEmpty() ? simpleName : packageName + "." + simpleName,
             packageName.isEmpty() ? simpleName : packageName + "." + simpleName,
-            sourceType(target.asType()));
+            sourceType(target.asType()),
+            annotations);
     collectFieldAccessors(model);
     collectMethodAccessors(model);
     model.anySetter = findAnySetter(model);
@@ -287,7 +330,7 @@ final class GeneratedJsonCodecSourceWriter {
     for (ExecutableElement method : effectiveMethods(model.target)) {
       if (!method.getModifiers().contains(Modifier.PUBLIC)
           || method.getModifiers().contains(Modifier.STATIC)
-          || annotationMirror(method, JSON_ANY_SETTER) != null
+          || annotationMirror(model.annotations, method, JSON_ANY_SETTER) != null
           || method.isVarArgs()
           || !method.getTypeParameters().isEmpty()) {
         continue;
@@ -299,7 +342,7 @@ final class GeneratedJsonCodecSourceWriter {
       ExecutableType resolved =
           (ExecutableType) types.asMemberOf((DeclaredType) model.target.asType(), method);
       String key = methodKey(owner, method);
-      if (isGetter(method, resolved)
+      if (isGetter(model, method, resolved)
           && isNameable(types.erasure(resolved.getReturnType()), model.packageName)
           && seen.add(key)) {
         model.accessors.add(
@@ -312,7 +355,7 @@ final class GeneratedJsonCodecSourceWriter {
         model.addR8Member(
             elements.getBinaryName(owner).toString(),
             binaryType(method.getReturnType()) + " " + method.getSimpleName() + "();");
-      } else if (isSetter(method, resolved)
+      } else if (isSetter(model, method, resolved)
           && isNameable(types.erasure(resolved.getParameterTypes().get(0)), model.packageName)
           && isNameable(types.erasure(method.getParameters().get(0).asType()), model.packageName)
           && seen.add(key)) {
@@ -361,7 +404,7 @@ final class GeneratedJsonCodecSourceWriter {
   private AnySetter findAnySetter(Model model) {
     ExecutableElement selected = null;
     for (ExecutableElement method : effectiveMethods(model.target)) {
-      if (annotationMirror(method, JSON_ANY_SETTER) == null) {
+      if (annotationMirror(model.annotations, method, JSON_ANY_SETTER) == null) {
         continue;
       }
       if (selected != null) {
@@ -382,12 +425,14 @@ final class GeneratedJsonCodecSourceWriter {
         || resolved.getReturnType().getKind() != TypeKind.VOID
         || resolved.getParameterTypes().size() != 2
         || !binaryType(resolved.getParameterTypes().get(0)).equals("java.lang.String")
-        || !binaryType(selected.getParameters().get(0).asType()).equals("java.lang.String")
-        || !isNameable(owner.asType(), model.packageName)
+        || !binaryType(selected.getParameters().get(0).asType()).equals("java.lang.String")) {
+      // Runtime metadata validation owns the diagnostic for malformed annotations.
+      return null;
+    }
+    if (!isNameable(owner.asType(), model.packageName)
         || !isNameable(types.erasure(resolved.getParameterTypes().get(1)), model.packageName)
         || !isNameable(
             types.erasure(selected.getParameters().get(1).asType()), model.packageName)) {
-      // Runtime metadata validation owns the diagnostic for malformed annotations.
       return null;
     }
     return new AnySetter(
@@ -416,28 +461,28 @@ final class GeneratedJsonCodecSourceWriter {
       kinds.add(type.getKind());
     }
     for (ExecutableElement method : ElementFilter.methodsIn(model.target.getEnclosedElements())) {
-      if (annotationMirror(method, JSON_CREATOR) != null) {
+      if (annotationMirror(model.annotations, method, JSON_CREATOR) != null) {
         throw invalid("Records cannot declare @JsonCreator", method);
       }
     }
-    boolean valueRecord = hasEffectiveJsonValue(model.target);
+    boolean valueRecord = hasJsonValueDeclaration(model.target, model.annotations);
     ExecutableElement canonicalConstructor = null;
     for (ExecutableElement constructor :
         ElementFilter.constructorsIn(model.target.getEnclosedElements())) {
-      if (annotationMirror(constructor, JSON_CREATOR) != null
-          && (!valueRecord || !isRecordValueCreator(constructor, components))) {
+      if (annotationMirror(model.annotations, constructor, JSON_CREATOR) != null
+          && (!valueRecord || !isRecordValueCreator(model, constructor, components))) {
         throw invalid("Records cannot declare @JsonCreator", constructor);
       }
       if (isRecordConstructor(constructor, components)) {
         canonicalConstructor = constructor;
       } else {
-        rejectRecordParameters(constructor);
+        rejectRecordParameters(model, constructor);
       }
     }
     if (canonicalConstructor == null) {
       throw invalid("Cannot find the canonical Record constructor", model.target);
     }
-    validateRecordParameters(model.target, components, canonicalConstructor);
+    validateRecordParameters(model, components, canonicalConstructor);
     String declaration = "<init>(" + join(binaryTypes) + ");";
     return new Creator(names, sourceTypes, kinds, null, true, declaration, false);
   }
@@ -457,11 +502,11 @@ final class GeneratedJsonCodecSourceWriter {
     return true;
   }
 
-  private void rejectRecordParameters(ExecutableElement constructor) {
+  private void rejectRecordParameters(Model model, ExecutableElement constructor) {
     for (VariableElement parameter : constructor.getParameters()) {
-      if (annotationMirror(parameter, JSON_CODEC) != null
-          || annotationMirror(parameter, JSON_PROPERTY) != null
-          || annotationMirror(parameter, JSON_UNWRAPPED) != null) {
+      if (annotationMirror(model.annotations, parameter, JSON_CODEC) != null
+          || annotationMirror(model.annotations, parameter, JSON_PROPERTY) != null
+          || annotationMirror(model.annotations, parameter, JSON_UNWRAPPED) != null) {
         throw invalid(
             "JSON property annotations are not supported on non-canonical Record constructor parameters",
             parameter);
@@ -470,31 +515,33 @@ final class GeneratedJsonCodecSourceWriter {
   }
 
   private void validateRecordParameters(
-      TypeElement target, List<? extends Element> components, ExecutableElement constructor) {
+      Model model, List<? extends Element> components, ExecutableElement constructor) {
     List<? extends VariableElement> parameters = constructor.getParameters();
     for (int i = 0; i < components.size(); i++) {
       Element component = components.get(i);
-      VariableElement field = findRecordField(target, component);
-      ExecutableElement accessor = findRecordAccessor(target, component);
-      validateRecordAnnotation(parameters.get(i), field, accessor, JSON_CODEC);
-      validateRecordAnnotation(parameters.get(i), field, accessor, JSON_PROPERTY);
-      validateRecordAnnotation(parameters.get(i), field, accessor, JSON_UNWRAPPED);
+      VariableElement field = findRecordField(model.target, component);
+      ExecutableElement accessor = findRecordAccessor(model.target, component);
+      validateRecordAnnotation(model, parameters.get(i), field, accessor, JSON_CODEC);
+      validateRecordAnnotation(model, parameters.get(i), field, accessor, JSON_PROPERTY);
+      validateRecordAnnotation(model, parameters.get(i), field, accessor, JSON_UNWRAPPED);
     }
   }
 
   private void validateRecordAnnotation(
+      Model model,
       VariableElement parameter,
       VariableElement field,
       ExecutableElement accessor,
       String annotationName) {
-    AnnotationMirror parameterAnnotation = annotationMirror(parameter, annotationName);
+    AnnotationMirror parameterAnnotation =
+        annotationMirror(model.annotations, parameter, annotationName);
     if (parameterAnnotation == null) {
       return;
     }
     AnnotationMirror fieldAnnotation =
-        field == null ? null : annotationMirror(field, annotationName);
+        field == null ? null : annotationMirror(model.annotations, field, annotationName);
     AnnotationMirror accessorAnnotation =
-        accessor == null ? null : annotationMirror(accessor, annotationName);
+        accessor == null ? null : annotationMirror(model.annotations, accessor, annotationName);
     if (sameAnnotation(parameterAnnotation, fieldAnnotation)
         || sameAnnotation(parameterAnnotation, accessorAnnotation)) {
       return;
@@ -521,7 +568,7 @@ final class GeneratedJsonCodecSourceWriter {
   }
 
   private boolean isRecordValueCreator(
-      ExecutableElement constructor, List<? extends Element> components) {
+      Model model, ExecutableElement constructor, List<? extends Element> components) {
     if (!constructor.getModifiers().contains(Modifier.PUBLIC)
         || constructor.isVarArgs()
         || !constructor.getTypeParameters().isEmpty()
@@ -531,10 +578,11 @@ final class GeneratedJsonCodecSourceWriter {
         || !types.isSameType(
             types.erasure(constructor.getParameters().get(0).asType()),
             types.erasure(components.get(0).asType()))
-        || annotationMirror(constructor.getParameters().get(0), JSON_PROPERTY) != null) {
+        || annotationMirror(model.annotations, constructor.getParameters().get(0), JSON_PROPERTY)
+            != null) {
       return false;
     }
-    AnnotationMirror creator = annotationMirror(constructor, JSON_CREATOR);
+    AnnotationMirror creator = annotationMirror(model.annotations, constructor, JSON_CREATOR);
     return stringArray(annotationValue(creator, "value")).isEmpty();
   }
 
@@ -543,7 +591,7 @@ final class GeneratedJsonCodecSourceWriter {
     boolean factory = false;
     for (ExecutableElement constructor :
         ElementFilter.constructorsIn(model.target.getEnclosedElements())) {
-      if (annotationMirror(constructor, JSON_CREATOR) != null) {
+      if (annotationMirror(model.annotations, constructor, JSON_CREATOR) != null) {
         if (creator != null) {
           throw invalid("Exactly one @JsonCreator constructor or factory is allowed", constructor);
         }
@@ -551,7 +599,7 @@ final class GeneratedJsonCodecSourceWriter {
       }
     }
     for (ExecutableElement method : ElementFilter.methodsIn(model.target.getEnclosedElements())) {
-      if (annotationMirror(method, JSON_CREATOR) != null) {
+      if (annotationMirror(model.annotations, method, JSON_CREATOR) != null) {
         if (creator != null) {
           throw invalid("Exactly one @JsonCreator constructor or factory is allowed", method);
         }
@@ -563,7 +611,7 @@ final class GeneratedJsonCodecSourceWriter {
       return null;
     }
     validateCreator(model, creator, factory);
-    List<String> names = creatorParameterNames(creator);
+    List<String> names = creatorParameterNames(model, creator);
     List<String> sourceTypes = new ArrayList<>();
     List<String> binaryTypes = new ArrayList<>();
     List<TypeKind> kinds = new ArrayList<>();
@@ -611,8 +659,8 @@ final class GeneratedJsonCodecSourceWriter {
     }
   }
 
-  private List<String> creatorParameterNames(ExecutableElement creator) {
-    AnnotationMirror annotation = annotationMirror(creator, JSON_CREATOR);
+  private List<String> creatorParameterNames(Model model, ExecutableElement creator) {
+    AnnotationMirror annotation = annotationMirror(model.annotations, creator, JSON_CREATOR);
     AnnotationValue value = annotationValue(annotation, "value");
     List<String> names = stringArray(value);
     if (!names.isEmpty()) {
@@ -622,7 +670,7 @@ final class GeneratedJsonCodecSourceWriter {
       Set<String> unique = new HashSet<>();
       for (int i = 0; i < names.size(); i++) {
         VariableElement parameter = creator.getParameters().get(i);
-        if (annotationMirror(parameter, JSON_PROPERTY) != null) {
+        if (annotationMirror(model.annotations, parameter, JSON_PROPERTY) != null) {
           throw invalid(
               "Property-list @JsonCreator parameters cannot declare @JsonProperty", parameter);
         }
@@ -636,7 +684,7 @@ final class GeneratedJsonCodecSourceWriter {
     names = new ArrayList<>();
     Set<String> unique = new HashSet<>();
     for (VariableElement parameter : creator.getParameters()) {
-      AnnotationMirror property = annotationMirror(parameter, JSON_PROPERTY);
+      AnnotationMirror property = annotationMirror(model.annotations, parameter, JSON_PROPERTY);
       AnnotationValue propertyName = property == null ? null : annotationValue(property, "value");
       String name = propertyName == null ? "" : String.valueOf(propertyName.getValue());
       if (name.isEmpty() || !unique.add(name)) {
@@ -984,15 +1032,15 @@ final class GeneratedJsonCodecSourceWriter {
     return result;
   }
 
-  private boolean isGetter(ExecutableElement method, ExecutableType resolved) {
+  private boolean isGetter(Model model, ExecutableElement method, ExecutableType resolved) {
     if (!resolved.getParameterTypes().isEmpty()
         || resolved.getReturnType().getKind() == TypeKind.VOID
         || binaryType(resolved.getReturnType()).equals("java.lang.Class")) {
       return false;
     }
     String name = method.getSimpleName().toString();
-    return annotationMirror(method, JSON_PROPERTY) != null
-        || annotationMirror(method, JSON_ANY_GETTER) != null
+    return annotationMirror(model.annotations, method, JSON_PROPERTY) != null
+        || annotationMirror(model.annotations, method, JSON_ANY_GETTER) != null
         || name.startsWith("get") && name.length() > 3
         || name.startsWith("is")
             && name.length() > 2
@@ -1000,14 +1048,14 @@ final class GeneratedJsonCodecSourceWriter {
                 || binaryType(resolved.getReturnType()).equals("java.lang.Boolean"));
   }
 
-  private boolean isSetter(ExecutableElement method, ExecutableType resolved) {
+  private boolean isSetter(Model model, ExecutableElement method, ExecutableType resolved) {
     if (resolved.getParameterTypes().size() != 1
         || resolved.getReturnType().getKind() != TypeKind.VOID
         || binaryType(resolved.getParameterTypes().get(0)).equals("java.lang.Class")) {
       return false;
     }
     String name = method.getSimpleName().toString();
-    return annotationMirror(method, JSON_PROPERTY) != null
+    return annotationMirror(model.annotations, method, JSON_PROPERTY) != null
         || name.startsWith("set") && name.length() > 3;
   }
 
@@ -1170,6 +1218,13 @@ final class GeneratedJsonCodecSourceWriter {
       }
     }
     return null;
+  }
+
+  private AnnotationMirror annotationMirror(
+      JsonMixinAnnotations annotations, Element element, String annotationName) {
+    return annotations == null
+        ? annotationMirror(element, annotationName)
+        : annotations.annotation(element, annotationName);
   }
 
   private AnnotationValue annotationValue(AnnotationMirror annotation, String name) {
@@ -1380,6 +1435,7 @@ final class GeneratedJsonCodecSourceWriter {
     final String qualifiedName;
     final String binaryName;
     final String targetType;
+    final JsonMixinAnnotations annotations;
     final List<Accessor> accessors = new ArrayList<>();
     final List<MemberRule> r8Members = new ArrayList<>();
     final Set<String> r8MemberKeys = new HashSet<>();
@@ -1393,7 +1449,8 @@ final class GeneratedJsonCodecSourceWriter {
         String simpleName,
         String qualifiedName,
         String binaryName,
-        String targetType) {
+        String targetType,
+        JsonMixinAnnotations annotations) {
       this.target = target;
       this.packageName = packageName;
       this.targetBinaryName = targetBinaryName;
@@ -1401,6 +1458,7 @@ final class GeneratedJsonCodecSourceWriter {
       this.qualifiedName = qualifiedName;
       this.binaryName = binaryName;
       this.targetType = targetType;
+      this.annotations = annotations;
     }
 
     void addR8Member(String ownerBinaryName, String declaration) {

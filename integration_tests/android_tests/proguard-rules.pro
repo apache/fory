@@ -16,6 +16,7 @@
   public static void manualCodecs();
   public static void generatedCodecs();
   public static void generatedUnwrapped();
+  public static void generatedMixin();
 }
 
 # Equivalent user-authored rules for models that deliberately omit @JsonType.

@@ -19,7 +19,10 @@
 
 package org.apache.fory.json;
 
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Objects;
+import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
 import org.apache.fory.platform.AndroidSupport;
@@ -55,6 +58,7 @@ public final class ForyJsonBuilder {
   private int bufferSizeLimitBytes = 2 * 1024 * 1024;
   private JsonTypeChecker typeChecker;
   private final CodecRegistry codecRegistry = new CodecRegistry();
+  private final Map<Class<?>, Class<?>> mixins = new IdentityHashMap<>();
 
   ForyJsonBuilder() {}
 
@@ -185,6 +189,42 @@ public final class ForyJsonBuilder {
   }
 
   /**
+   * Registers the JSON Mixin declared by {@code mixinType} for its exact target class.
+   *
+   * <p>Registering another Mixin for the same target replaces the previous registration. Existing
+   * {@link ForyJson} instances retain their immutable configuration snapshot. Only the final source
+   * for each target is structurally resolved when {@link #build()} creates the runtime; a
+   * superseded source is not resolved.
+   *
+   * @throws NullPointerException if {@code mixinType} is null
+   * @throws IllegalArgumentException if {@code mixinType} has no readable {@link JsonMixin}
+   *     declaration
+   */
+  public ForyJsonBuilder registerMixin(Class<?> mixinType) {
+    Objects.requireNonNull(mixinType, "mixinType");
+    JsonMixin declaration;
+    try {
+      declaration = mixinType.getDeclaredAnnotation(JsonMixin.class);
+    } catch (RuntimeException | LinkageError e) {
+      throw new IllegalArgumentException(
+          "Cannot read JSON Mixin declaration " + mixinType.getName(), e);
+    }
+    if (declaration == null) {
+      throw new IllegalArgumentException(
+          "JSON Mixin source is missing @JsonMixin: " + mixinType.getName());
+    }
+    Class<?> target;
+    try {
+      target = declaration.target();
+    } catch (RuntimeException | LinkageError e) {
+      throw new IllegalArgumentException(
+          "Cannot resolve JSON Mixin target for " + mixinType.getName(), e);
+    }
+    mixins.put(target, mixinType);
+    return this;
+  }
+
+  /**
    * Sets the JSON type checker. Pass {@code null} to allow all non-disallowed classes.
    *
    * <p>The checker must be thread-safe because one {@link ForyJson} instance can be used
@@ -220,6 +260,7 @@ public final class ForyJsonBuilder {
             concurrencyLevel,
             bufferSizeLimitBytes,
             codecRegistry,
+            mixins,
             typeChecker));
   }
 }
