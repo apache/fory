@@ -817,7 +817,7 @@ def _update_pom_parent_version(lines, new_version):
 def _update_android_tests_dependency_version(lines, new_version):
     for index, line in enumerate(lines):
         lines[index] = re.sub(
-            r"(org\.apache\.fory:fory-(?:core|annotation-processor):)[^'`)\s]+",
+            r"(org\.apache\.fory:fory-(?:core|json|annotation-processor):)[^'`)\s]+",
             r"\g<1>" + new_version,
             line,
         )
