@@ -160,18 +160,24 @@ final class ForyJsonGraalVMFeature implements Feature {
     // Retain every directly declared hierarchy codec plus the exact Mixin replacement. Runtime
     // resolution remains the sole owner of codec precedence and conflict validation.
     registerDeclarations(targetType);
-    registerCodecs(annotations.annotation(targetType, JsonCodec.class));
+    JsonCodec directTypeCodec = annotations.annotation(targetType, JsonCodec.class);
+    registerCodecs(directTypeCodec);
     RuntimeReflection.register(targetType);
     registerContainer(targetType);
     boolean intrinsicTarget =
         targetType.isEnum()
             || Collection.class.isAssignableFrom(targetType)
             || Map.class.isAssignableFrom(targetType);
-    if (intrinsicTarget) {
-      // JsonValue resolution precedes intrinsic codecs. Register that focused semantic surface
-      // without retaining the complete object hierarchy of an enum or container target.
-      registerJsonValueDeclarations(access, targetType, annotations);
-    } else {
+    boolean hasDirectTypeCodec = directTypeCodec != null;
+    boolean hasTypeCodec = hasDirectTypeCodec || hasInheritedTypeCodec(targetType, annotations);
+    boolean hasJsonValue =
+        (!hasTypeCodec || isCompleteTypeCodec(directTypeCodec))
+            && registerJsonValueDeclarations(access, targetType, annotations);
+    JsonSubTypes subTypes = annotation(annotations, targetType, JsonSubTypes.class);
+    // Annotation-selected complete representations make ordinary object metadata unreachable.
+    // Keep builder registrations and built-in codec policy runtime-owned by treating only the
+    // effective annotations visible here as hosted reachability facts.
+    if (!intrinsicTarget && !hasTypeCodec && !hasJsonValue && subTypes == null) {
       registerModelHierarchy(access, targetType, annotations);
       if (!targetType.isRecord()
           && GraalvmSupport.needReflectionRegisterForCreation(targetType)) {
@@ -179,11 +185,38 @@ final class ForyJsonGraalVMFeature implements Feature {
       }
     }
     registerGeneratedCodec(access, targetType, mixinType);
-    registerSubtypes(access, targetType, annotations);
+    if (!hasTypeCodec && !hasJsonValue) {
+      registerSubtypes(access, targetType, annotations);
+    }
     return true;
   }
 
-  private void registerJsonValueDeclarations(
+  private boolean hasInheritedTypeCodec(Class<?> type, JsonMixinView annotations) {
+    Class<?> superclass = type.getSuperclass();
+    if (superclass != null
+        && (annotation(annotations, superclass, JsonCodec.class) != null
+            || hasInheritedTypeCodec(superclass, annotations))) {
+      return true;
+    }
+    for (Class<?> interfaceType : type.getInterfaces()) {
+      if (annotation(annotations, interfaceType, JsonCodec.class) != null
+          || hasInheritedTypeCodec(interfaceType, annotations)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isCompleteTypeCodec(JsonCodec annotation) {
+    return annotation != null
+        && annotation.value() != JsonCodec.NoJsonValueCodec.class
+        && annotation.elementCodec() == JsonCodec.NoJsonValueCodec.class
+        && annotation.contentCodec() == JsonCodec.NoJsonValueCodec.class
+        && annotation.keyCodec() == JsonCodec.NoMapKeyCodec.class
+        && annotation.valueCodec() == JsonCodec.NoJsonValueCodec.class;
+  }
+
+  private boolean registerJsonValueDeclarations(
       DuringAnalysisAccess access, Class<?> type, JsonMixinView annotations) {
     boolean hasValue = false;
     for (Class<?> current = type;
@@ -220,7 +253,7 @@ final class ForyJsonGraalVMFeature implements Feature {
       }
     }
     if (!hasValue) {
-      return;
+      return false;
     }
     for (Constructor<?> constructor : type.getDeclaredConstructors()) {
       if (annotation(annotations, constructor, JsonCreator.class) != null) {
@@ -232,6 +265,7 @@ final class ForyJsonGraalVMFeature implements Feature {
         RuntimeReflection.register(method);
       }
     }
+    return true;
   }
 
   private void registerReflectiveDeclarations(Set<AnnotatedElement> declarations) {
