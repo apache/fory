@@ -20,7 +20,6 @@
 package org.apache.fory.json.reader;
 
 import java.util.Objects;
-import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.resolver.JsonSharedRegistry.CachedFieldName;
 
 /** Fixed two-candidate cache of shared field-name entries owned by one JSON reader. */
@@ -32,10 +31,7 @@ final class FieldNameCache {
   private int size;
 
   FieldNameCache(int maxEntries) {
-    if (maxEntries <= 0 || maxEntries > ForyJson.MAX_CACHED_FIELD_NAMES) {
-      throw new IllegalArgumentException(
-          "maxEntries must be between 1 and " + ForyJson.MAX_CACHED_FIELD_NAMES);
-    }
+    // JsonConfig owns range validation; its upper bound keeps this doubled slot count positive.
     this.maxEntries = maxEntries;
     int requiredSlots = maxEntries << 1;
     int slots = Integer.highestOneBit(requiredSlots - 1) << 1;

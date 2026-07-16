@@ -297,10 +297,10 @@ are rejected.
 | `registerCodec`              | None                                         | Exact-class complete-value codec                       |
 | `withTypeChecker`            | None                                         | Application policy in addition to Fory's disallow list |
 
-Depth, concurrency, and retained buffer limits must be positive. The cached-field-name limit must
-be between zero and `MAX_CACHED_FIELD_NAMES`, inclusive, and applies independently to each reader;
-it does not limit accepted input. The buffer setting does not limit output size. Builder changes
-after `build()` do not mutate an existing runtime.
+Depth, concurrency, and retained buffer limits must be positive. The cached-field-name limit applies
+independently to each reader; zero disables the cache, and the setting does not limit accepted
+input. The buffer setting does not limit output size. Builder changes after `build()` do not mutate
+an existing runtime.
 
 In a GraalVM native image, runtime code generation and asynchronous compilation are automatically
 disabled. Every other builder option keeps the behavior described above.
@@ -1107,21 +1107,21 @@ Circular graphs eventually fail `maxDepth`; they are not reconstructed.
 
 ## Errors and troubleshooting
 
-| Symptom                            | Action                                                                                                      |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `ForyJsonException`                | Check JSON grammar, target type, mapping support, depth, trailing content, or output cause                  |
-| `InsecureException`                | Check Fory's disallow list and the configured type checker                                                  |
-| Builder `IllegalArgumentException` | Use positive depth, concurrency, and retained-buffer values, and a field-name limit in the documented range |
-| Declared write fails               | Remove wildcard/type variables and pass an assignable value; primitive declarations reject null             |
-| Immutable value is empty           | Use a record, valid creator, or custom codec                                                                |
-| `JsonValue` read fails             | Add one plain `String` creator, or register an exact custom codec                                           |
-| Raw JSON output is invalid         | Supply one trusted, complete JSON value to the `JsonRawValue` property                                      |
-| Ordinary object cannot be created  | Add a usable no-argument constructor, use a record or creator, or register a codec                          |
-| Ordinary accessor annotation fails | Use an eligible public JavaBean accessor and disable field mode                                             |
-| Any annotation fails               | Use one field form or one valid method pair with resolved `Map<String, V>` types                            |
-| Codec annotation fails             | Resolve same-node or hierarchy conflicts, hidden nested overrides, or codec constructor access              |
-| Subtype fails                      | Write with the declared base, list the exact runtime class, and use the configured wire shape               |
-| Collection fails                   | Target a supported interface/common implementation or register a codec                                      |
+| Symptom                            | Action                                                                                          |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `ForyJsonException`                | Check JSON grammar, target type, mapping support, depth, trailing content, or output cause      |
+| `InsecureException`                | Check Fory's disallow list and the configured type checker                                      |
+| Builder `IllegalArgumentException` | Check the configured depth, concurrency, retained-buffer, and cached-field-name limits          |
+| Declared write fails               | Remove wildcard/type variables and pass an assignable value; primitive declarations reject null |
+| Immutable value is empty           | Use a record, valid creator, or custom codec                                                    |
+| `JsonValue` read fails             | Add one plain `String` creator, or register an exact custom codec                               |
+| Raw JSON output is invalid         | Supply one trusted, complete JSON value to the `JsonRawValue` property                          |
+| Ordinary object cannot be created  | Add a usable no-argument constructor, use a record or creator, or register a codec              |
+| Ordinary accessor annotation fails | Use an eligible public JavaBean accessor and disable field mode                                 |
+| Any annotation fails               | Use one field form or one valid method pair with resolved `Map<String, V>` types                |
+| Codec annotation fails             | Resolve same-node or hierarchy conflicts, hidden nested overrides, or codec constructor access  |
+| Subtype fails                      | Write with the declared base, list the exact runtime class, and use the configured wire shape   |
+| Collection fails                   | Target a supported interface/common implementation or register a codec                          |
 
 Creator failures other than `Error` are wrapped with their original cause. User codec code may
 still throw its own runtime exceptions.

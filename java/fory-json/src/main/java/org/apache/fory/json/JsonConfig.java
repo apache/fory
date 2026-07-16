@@ -37,6 +37,8 @@ import org.apache.fory.json.resolver.CodecRegistry;
  * writer-buffer limits are also runtime-only and do not fragment generated class names.
  */
 public final class JsonConfig {
+  private static final int MAX_CACHED_FIELD_NAMES = 1 << 29;
+
   private final boolean writeNullFields;
   private final boolean codegenEnabled;
   private final boolean asyncCompilationEnabled;
@@ -75,6 +77,7 @@ public final class JsonConfig {
         Objects.requireNonNull(propertyNamingStrategy, "propertyNamingStrategy");
     this.classLoader = Objects.requireNonNull(classLoader, "classLoader");
     this.maxDepth = maxDepth;
+    validateMaxCachedFieldNames(maxCachedFieldNames);
     this.maxCachedFieldNames = maxCachedFieldNames;
     this.concurrencyLevel = concurrencyLevel;
     this.bufferSizeLimitBytes = bufferSizeLimitBytes;
@@ -119,6 +122,13 @@ public final class JsonConfig {
 
   public int maxCachedFieldNames() {
     return maxCachedFieldNames;
+  }
+
+  static void validateMaxCachedFieldNames(int maxCachedFieldNames) {
+    if (maxCachedFieldNames < 0 || maxCachedFieldNames > MAX_CACHED_FIELD_NAMES) {
+      throw new IllegalArgumentException(
+          "maxCachedFieldNames must be between 0 and " + MAX_CACHED_FIELD_NAMES);
+    }
   }
 
   public int concurrencyLevel() {

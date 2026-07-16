@@ -352,11 +352,10 @@ original key type. Null map keys are rejected.
 | `withTypeChecker(checker)`             | No custom checker                                        | Apply an application type policy in addition to Fory's disallow list |
 
 Depth, concurrency level, and buffer retention limit must be positive. The cached-field-name limit
-must be between zero and `MAX_CACHED_FIELD_NAMES`, inclusive, and applies independently to each
-reader. It does not limit accepted JSON input; zero disables this cache. The buffer retention
-setting does not limit JSON input or output size; it only limits reusable writer storage retained
-after an operation. Apply request/body size limits at the transport boundary when parsing untrusted
-input.
+applies independently to each reader. It does not limit accepted JSON input; zero disables this
+cache. The buffer retention setting does not limit JSON input or output size; it only limits
+reusable writer storage retained after an operation. Apply request/body size limits at the
+transport boundary when parsing untrusted input.
 
 Builder mutation after `build()` does not modify an existing `ForyJson` runtime.
 
@@ -1253,7 +1252,7 @@ native or xlang protocol when reference identity or cycles are required.
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ForyJsonException` while parsing         | Invalid JSON grammar, type mismatch, unsupported mapping, depth violation, or trailing content; inspect the message and target type                 |
 | `InsecureException`                       | Fory's disallow list or the configured `JsonTypeChecker` rejected a class                                                                           |
-| `IllegalArgumentException` from a builder | Use positive depth, concurrency, and retained-buffer values, and a cached-field-name limit in the documented range                                  |
+| `IllegalArgumentException` from a builder | Check the configured depth, concurrency, retained-buffer, and cached-field-name limits                                                              |
 | Declared write is rejected                | The value is not assignable to the declared type, the type contains a wildcard/type variable, or null was supplied for a primitive                  |
 | Immutable value is not populated          | Use a record, a valid `JsonCreator`, or an exact custom codec                                                                                       |
 | `JsonValue` read fails                    | Add one plain `String` `JsonCreator`, or register an exact custom codec                                                                             |

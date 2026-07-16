@@ -81,9 +81,6 @@ public final class ForyJson {
   /** Default maximum number of short, unescaped ASCII field names cached by each JSON reader. */
   public static final int DEFAULT_MAX_CACHED_FIELD_NAMES = 8192;
 
-  /** Largest supported field-name cache entry limit for one JSON reader. */
-  public static final int MAX_CACHED_FIELD_NAMES = 1 << 29;
-
   private final JsonConfig config;
   private final JsonSharedRegistry sharedRegistry;
   private final int secondaryPoolSize;
