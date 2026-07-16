@@ -349,6 +349,7 @@ original key type. Null map keys are rejected.
 | `withConcurrencyLevel(int)`            | `max(1, 2 * processors)`                                 | Number of reusable concurrent operation states                       |
 | `withBufferSizeLimitBytes(int)`        | 2 MiB                                                    | Maximum reusable capacity retained by each pooled writer             |
 | `registerCodec(type, codec)`           | None                                                     | Replace the exact class's complete JSON codec                        |
+| `registerMixIn(mixInType)`             | None                                                     | Apply one annotation mix-in to its exact declared target             |
 | `withTypeChecker(checker)`             | No custom checker                                        | Apply an application type policy in addition to Fory's disallow list |
 
 Depth, concurrency level, and buffer retention limit must be positive. The cached-field-name limit
@@ -364,19 +365,75 @@ automatically disabled. Every other builder option keeps the behavior described 
 
 ## JSON annotations
 
-Fory JSON defines fourteen annotations in `org.apache.fory.json.annotation`, including `JsonCodec` for
-complete-value codec selection and `JsonType` for generated model execution and retention.
-They are Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
+Fory JSON provides thirteen mapping annotations in `org.apache.fory.json.annotation`:
+`JsonAnyGetter`, `JsonAnyProperty`, `JsonAnySetter`, `JsonBase64`, `JsonCodec`, `JsonCreator`,
+`JsonIgnore`, `JsonProperty`, `JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`,
+and `JsonValue`. `JsonType` is a separate build-time generation marker. They are Fory JSON APIs,
+not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
 `JsonType` asks the annotation processor to generate direct property and creator operations plus
 exact retention rules. It is not inherited, so annotate each eligible concrete model that needs a
 generated companion. A directly annotated `JsonValue` Record also receives a companion for its
 value accessor and canonical constructor. Ordinary unannotated classes may still use reflection; on
-Android they need application-authored exact R8 rules. Android-desugared Records require `JsonType`
-and the processor. A directly annotated model that uses the default object codec fails during codec
+Android they need application-authored exact R8 rules. Android-desugared Records require
+processor-generated operations from either a direct `JsonType` declaration or a compiled exact
+`JsonMixin` pair. A directly annotated model that uses the default object codec fails during codec
 creation if its generated companion is missing.
 See the [GraalVM guide](../../docs/guide/java/graalvm-support.md) and
 [Android guide](../../docs/guide/java/android-support.md) for the platform workflows.
+
+### Mix-ins
+
+Use a JSON mix-in to apply Fory JSON mapping annotations to a class without modifying that class:
+
+```java
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonUnwrapped;
+
+@JsonMixin(target = ThirdPartyUser.class)
+abstract class ThirdPartyUserMixIn {
+  @JsonProperty("user_id")
+  long id;
+
+  @JsonUnwrapped(prefix = "address_")
+  Address address;
+}
+
+ForyJson json = ForyJson.builder().registerMixIn(ThirdPartyUserMixIn.class).build();
+```
+
+A mix-in source is a named abstract class or interface, must not be local or anonymous, must not
+extend or implement another type, and is never instantiated. Its annotated fields, methods,
+constructors, and parameters select existing declarations on the exact target. The target continues
+to own all Java types, values, access, and construction. A registration for a base class does not
+affect a subclass, and an interface registration does not affect an implementation.
+
+The source may apply any of the thirteen mapping annotations listed above. Declaring an annotation
+on a matched source declaration replaces the target annotation of the same type as a whole; it does
+not merge individual annotation members. `JsonType` cannot be added or removed by a mix-in.
+
+Use `JsonMixinRemove` when the target's annotation should not be effective in this configuration:
+
+```java
+import org.apache.fory.json.annotation.JsonMixinRemove;
+import org.apache.fory.json.annotation.JsonRawValue;
+
+@JsonMixin(target = ThirdPartyMessage.class)
+abstract class QuotedMessageMixIn {
+  @JsonMixinRemove(JsonRawValue.class)
+  String body;
+}
+```
+
+The source selector must match exactly one target declaration even when it only removes an
+annotation. Registering a different mix-in for the same target on one builder replaces the earlier
+registration. Re-registering the same source is harmless. Each `build()` snapshots the current
+last-registration-wins mapping, so later builder changes do not mutate an existing `ForyJson`.
+
+On Android and GraalVM Native Image, compile every enabled mix-in with the Fory annotation
+processor. See the platform guides linked above for the generated pair metadata requirements.
 
 ### `JsonProperty`
 
@@ -1188,9 +1245,10 @@ type-declaration codec is used for a more specific target, every decoded value m
 assignable to that target.
 
 The annotation has the same FIELD, METHOD, and PARAMETER behavior on the JVM, Android, and GraalVM
-Native Image. Ordinary Android classes may omit `JsonType` and provide equivalent exact rules;
-Android-desugared Records, including `JsonValue` Records, require `JsonType` and the processor.
-GraalVM object models follow the `JsonType` workflow in the
+Native Image. Ordinary Android classes may omit `JsonType` and provide equivalent exact rules.
+Android-desugared Records, including `JsonValue` Records, require processor-generated operations
+from either a direct `JsonType` declaration or a compiled exact `JsonMixin` pair. GraalVM object
+models follow the build-time workflow in the
 [GraalVM guide](../../docs/guide/java/graalvm-support.md).
 
 ## Type validation and untrusted input

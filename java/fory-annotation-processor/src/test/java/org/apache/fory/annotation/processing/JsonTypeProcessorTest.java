@@ -24,6 +24,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -56,6 +57,7 @@ import org.testng.annotations.Test;
 
 public class JsonTypeProcessorTest {
   private static final String RULE_PREFIX = "META-INF/proguard/fory-json-";
+  private static final String MIXIN_RULE_PREFIX = "META-INF/proguard/fory-json-mixin-";
   private static final String NATIVE_IMAGE_PREFIX =
       "META-INF/native-image/org.apache.fory/fory-json-";
 
@@ -65,6 +67,572 @@ public class JsonTypeProcessorTest {
         compile("test.Plain", "package test; public class Plain { int id; }");
     assertTrue(result.success, result.diagnostics());
     assertFalse(result.hasGeneratedResource(RULE_PREFIX + "test.Plain.pro"));
+  }
+
+  @Test
+  public void mixInPairArtifacts() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.Person",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class Person {\n"
+                + "  public Address address;\n"
+                + "  public String body;\n"
+                + "  private Person(String body) { this.body = body; }\n"
+                + "  public static Person create(String body) { return new Person(body); }\n"
+                + "}\n"
+                + "class Address { public String city; }\n"
+                + "@JsonMixin(target = Person.class) abstract class PersonMixin {\n"
+                + "  @JsonUnwrapped(prefix = \"address_\") Address address;\n"
+                + "  @JsonRawValue String body;\n"
+                + "  @JsonCreator({\"body\"}) abstract Person create(String body);\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String base = "PersonMixin_ForyJsonMixin_test_x2e_Person";
+    assertTrue(result.hasGeneratedSource("test/" + base + ".java"));
+    assertTrue(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.PersonMixin.pro");
+    assertTrue(rules.contains("-keep,allowoptimization class test.Person"), rules);
+    assertTrue(rules.contains("-keep,allowoptimization class test.PersonMixin"), rules);
+    assertTrue(rules.contains("test.Address address;"), rules);
+    assertTrue(rules.contains("test.Person create(java.lang.String);"), rules);
+    assertTrue(rules.contains("java.lang.String city;"), rules);
+    assertTrue(rules.contains("class test." + base + " {"), rules);
+    assertTrue(rules.contains("class test." + base + "_ForyJsonCodec {"), rules);
+  }
+
+  @Test
+  public void mixInRuntimePipeline() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.MixinTarget",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class MixinTarget {\n"
+                + "  private final int id;\n"
+                + "  private final String name;\n"
+                + "  private MixinTarget(int id, String name) { this.id = id; this.name = name; }\n"
+                + "  public int getId() { return id; }\n"
+                + "  public String getName() { return name; }\n"
+                + "  public static MixinTarget create(int id, String name) {\n"
+                + "    return new MixinTarget(id, name);\n"
+                + "  }\n"
+                + "}\n"
+                + "@JsonMixin(target = MixinTarget.class)\n"
+                + "@JsonPropertyOrder({\"id\", \"name\"})\n"
+                + "interface MixinTargetAnnotations {\n"
+                + "  @JsonProperty(\"user_id\") int getId();\n"
+                + "  @JsonCreator({\"id\", \"name\"}) MixinTarget create(int id, String name);\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> target = loader.loadClass("test.MixinTarget");
+    Class<?> mixIn = loader.loadClass("test.MixinTargetAnnotations");
+    String base = "test.MixinTargetAnnotations_ForyJsonMixin_test_x2e_MixinTarget";
+    GeneratedJsonCodec<?> codec = generatedCodec(loader, base + "_ForyJsonCodec");
+    assertEquals(codec.type(), target);
+    Object value = target.getMethod("create", int.class, String.class).invoke(null, 7, "pair");
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json =
+          ForyJson.builder()
+              .withCodegen(codegen)
+              .withAsyncCompilation(false)
+              .withClassLoader(loader)
+              .registerMixIn(mixIn)
+              .build();
+      String text = json.toJson(value);
+      assertEquals(text, "{\"user_id\":7,\"name\":\"pair\"}");
+      Object decoded = json.fromJson(text, target);
+      assertEquals(target.getMethod("getId").invoke(decoded), 7);
+      assertEquals(target.getMethod("getName").invoke(decoded), "pair");
+    }
+  }
+
+  @Test
+  public void mixInRecordPipeline() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.MixinRecord",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public record MixinRecord(int id, String name) {}\n"
+                + "@JsonMixin(target = MixinRecord.class)\n"
+                + "@JsonPropertyOrder({\"id\", \"name\"})\n"
+                + "abstract class MixinRecordAnnotations {\n"
+                + "  @JsonProperty(\"user_id\") int id;\n"
+                + "  @JsonProperty(\"display_name\") String name;\n"
+                + "  @JsonProperty(\"user_id\") abstract int id();\n"
+                + "  @JsonProperty(\"display_name\") abstract String name();\n"
+                + "  MixinRecordAnnotations(@JsonProperty(\"user_id\") int id,\n"
+                + "      @JsonProperty(\"display_name\") String name) {}\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String base = "MixinRecordAnnotations_ForyJsonMixin_test_x2e_MixinRecord";
+    assertTrue(result.hasGeneratedSource("test/" + base + ".java"));
+    assertTrue(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
+    ClassLoader loader = result.classLoader();
+    Class<?> target = loader.loadClass("test.MixinRecord");
+    Class<?> mixIn = loader.loadClass("test.MixinRecordAnnotations");
+    Object value = target.getConstructor(int.class, String.class).newInstance(9, "record");
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json =
+          ForyJson.builder()
+              .withCodegen(codegen)
+              .withAsyncCompilation(false)
+              .withClassLoader(loader)
+              .registerMixIn(mixIn)
+              .build();
+      String text = json.toJson(value);
+      assertEquals(text, "{\"user_id\":9,\"display_name\":\"record\"}");
+      Object decoded = json.fromJson(text, target);
+      assertEquals(target.getMethod("id").invoke(decoded), 9);
+      assertEquals(target.getMethod("name").invoke(decoded), "record");
+    }
+  }
+
+  @Test
+  public void mixInValueRecordPipeline() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.MixinValueRecord",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public record MixinValueRecord(String value) {}\n"
+                + "@JsonMixin(target = MixinValueRecord.class)\n"
+                + "abstract class MixinValueRecordAnnotations {\n"
+                + "  @JsonValue String value;\n"
+                + "  @JsonValue abstract String value();\n"
+                + "  @JsonCreator MixinValueRecordAnnotations(String value) {}\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String base = "MixinValueRecordAnnotations_ForyJsonMixin_test_x2e_MixinValueRecord";
+    assertTrue(result.hasGeneratedSource("test/" + base + ".java"));
+    assertTrue(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
+    ClassLoader loader = result.classLoader();
+    Class<?> target = loader.loadClass("test.MixinValueRecord");
+    Class<?> mixIn = loader.loadClass("test.MixinValueRecordAnnotations");
+    Object value = target.getConstructor(String.class).newInstance("write");
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json =
+          ForyJson.builder()
+              .withCodegen(codegen)
+              .withAsyncCompilation(false)
+              .withClassLoader(loader)
+              .registerMixIn(mixIn)
+              .build();
+      assertEquals(json.toJson(value), "\"write\"");
+      Object decoded = json.fromJson("\"read\"", target);
+      assertEquals(target.getMethod("value").invoke(decoded), "read");
+    }
+  }
+
+  @Test
+  public void mixInClassLoaderIdentity() throws Exception {
+    CompilationResult first = compile("test.LoaderTarget", mixInLoaderSource("first"));
+    CompilationResult second = compile("test.LoaderTarget", mixInLoaderSource("second"));
+    assertTrue(first.success, first.diagnostics());
+    assertTrue(second.success, second.diagnostics());
+    ClassLoader firstLoader = first.classLoader();
+    ClassLoader secondLoader = second.classLoader();
+    Class<?> firstTarget = firstLoader.loadClass("test.LoaderTarget");
+    Class<?> secondTarget = secondLoader.loadClass("test.LoaderTarget");
+    Class<?> firstMixIn = firstLoader.loadClass("test.LoaderMixin");
+    Class<?> secondMixIn = secondLoader.loadClass("test.LoaderMixin");
+    assertNotSame(firstTarget, secondTarget);
+    assertNotSame(firstMixIn, secondMixIn);
+
+    Object firstValue = firstTarget.getConstructor().newInstance();
+    Object secondValue = secondTarget.getConstructor().newInstance();
+    firstTarget.getField("name").set(firstValue, "one");
+    secondTarget.getField("name").set(secondValue, "two");
+    ForyJson firstJson =
+        ForyJson.builder().withClassLoader(firstLoader).registerMixIn(firstMixIn).build();
+    ForyJson secondJson =
+        ForyJson.builder().withClassLoader(secondLoader).registerMixIn(secondMixIn).build();
+    assertEquals(firstJson.toJson(firstValue), "{\"first\":\"one\"}");
+    assertEquals(secondJson.toJson(secondValue), "{\"second\":\"two\"}");
+    expectThrows(
+        ForyJsonException.class,
+        () -> ForyJson.builder().withClassLoader(firstLoader).registerMixIn(secondMixIn).build());
+  }
+
+  @Test
+  public void mixInNamesDoNotCollide() throws Exception {
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put("test.Target", "package test; public class Target { public int id; }\n");
+    sources.put(
+        "test.FirstMixin",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonMixin(target = Target.class) public abstract class FirstMixin {\n"
+            + "  @JsonProperty(\"first\") int id;\n"
+            + "}\n");
+    sources.put(
+        "test.SecondMixin",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonMixin(target = Target.class) public abstract class SecondMixin {\n"
+            + "  @JsonProperty(\"second\") int id;\n"
+            + "}\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+    assertTrue(
+        result.hasGeneratedSource(
+            "test/FirstMixin_ForyJsonMixin_test_x2e_Target_ForyJsonCodec.java"));
+    assertTrue(
+        result.hasGeneratedSource(
+            "test/SecondMixin_ForyJsonMixin_test_x2e_Target_ForyJsonCodec.java"));
+    assertTrue(result.hasGeneratedResource(MIXIN_RULE_PREFIX + "test.FirstMixin.pro"));
+    assertTrue(result.hasGeneratedResource(MIXIN_RULE_PREFIX + "test.SecondMixin.pro"));
+  }
+
+  @Test
+  public void mixInSelectorShape() throws Exception {
+    CompilationResult staticField =
+        compile(
+            "test.StaticFieldMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class Target { public int id; }\n"
+                + "@JsonMixin(target = Target.class) abstract class StaticFieldMixin {\n"
+                + "  @JsonProperty static int id;\n"
+                + "}\n");
+    assertFalse(staticField.success);
+    assertTrue(
+        staticField.diagnostics().contains("field selector must be an instance field"),
+        staticField.diagnostics());
+
+    CompilationResult concreteMethod =
+        compile(
+            "test.ConcreteMethodMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class Target { public String getName() { return null; } }\n"
+                + "@JsonMixin(target = Target.class) abstract class ConcreteMethodMixin {\n"
+                + "  @JsonProperty String getName() { return null; }\n"
+                + "}\n");
+    assertFalse(concreteMethod.success);
+    assertTrue(
+        concreteMethod.diagnostics().contains("method selector must be abstract"),
+        concreteMethod.diagnostics());
+
+    CompilationResult jsonTypeSource =
+        compile(
+            "test.JsonTypeMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class Target { public int id; }\n"
+                + "@JsonType @JsonMixin(target = Target.class) interface JsonTypeMixin {}\n");
+    assertFalse(jsonTypeSource.success);
+    assertTrue(
+        jsonTypeSource.diagnostics().contains("@JsonType cannot be declared by a JSON mix-in"),
+        jsonTypeSource.diagnostics());
+    assertFalse(jsonTypeSource.hasGeneratedResource(RULE_PREFIX + "test.JsonTypeMixin.pro"));
+  }
+
+  @Test
+  public void mixInMetadataAccessibility() throws Exception {
+    CompilationResult privateSource =
+        compile(
+            "test.Owner",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class Owner {\n"
+                + "  public static final class Target { public int id; }\n"
+                + "  @JsonMixin(target = Target.class) private abstract static class HiddenMixin {\n"
+                + "    @JsonProperty(\"value\") int id;\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(privateSource.success, privateSource.diagnostics());
+    ClassLoader privateLoader = privateSource.classLoader();
+    Class<?> privateTarget = privateLoader.loadClass("test.Owner$Target");
+    Class<?> privateMixIn = privateLoader.loadClass("test.Owner$HiddenMixin");
+    Object privateValue = privateTarget.getConstructor().newInstance();
+    privateTarget.getField("id").setInt(privateValue, 7);
+    ForyJson privateJson =
+        ForyJson.builder().withClassLoader(privateLoader).registerMixIn(privateMixIn).build();
+    assertEquals(privateJson.toJson(privateValue), "{\"value\":7}");
+
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put(
+        "base.Base",
+        "package base;\n" + "public class Base { protected enum HiddenTarget { VALUE } }\n");
+    sources.put(
+        "app.Owner",
+        "package app;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "public class Owner extends base.Base {\n"
+            + "  @JsonMixin(target = HiddenTarget.class) public interface Mixin {}\n"
+            + "}\n");
+    CompilationResult protectedTarget = compile(sources);
+    assertTrue(protectedTarget.success, protectedTarget.diagnostics());
+    ClassLoader protectedLoader = protectedTarget.classLoader();
+    Class<?> protectedMixIn = protectedLoader.loadClass("app.Owner$Mixin");
+    ForyJson.builder().withClassLoader(protectedLoader).registerMixIn(protectedMixIn).build();
+  }
+
+  @Test
+  public void mixInMemberConstructorRule() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.Owner",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class Owner {\n"
+                + "  public static final class Target {\n"
+                + "    public final int id;\n"
+                + "    public Target(int id) { this.id = id; }\n"
+                + "  }\n"
+                + "  @JsonMixin(target = Target.class) public abstract class Mixin {\n"
+                + "    @JsonCreator({\"id\"}) Mixin(int id) {}\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.Owner$Mixin.pro");
+    assertTrue(rules.contains("<init>(test.Owner,int);"), rules);
+  }
+
+  @Test
+  public void mixInAnySetterFallback() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.Owner",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class Owner {\n"
+                + "  private static final class HiddenValue { public int id; }\n"
+                + "  public static final class Target {\n"
+                + "    private HiddenValue extra;\n"
+                + "    public void putExtra(String name, HiddenValue value) { extra = value; }\n"
+                + "    public int getExtraId() { return extra.id; }\n"
+                + "  }\n"
+                + "  @JsonMixin(target = Target.class) public interface Mixin {\n"
+                + "    @JsonAnySetter void putExtra(String name, HiddenValue value);\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> target = loader.loadClass("test.Owner$Target");
+    Class<?> mixIn = loader.loadClass("test.Owner$Mixin");
+    String codecName = "test.Owner_d_Mixin_ForyJsonMixin_test_x2e_Owner_d_Target_ForyJsonCodec";
+    assertEquals(generatedCodec(loader, codecName).anySetterAccessor(), null);
+    ForyJson json = ForyJson.builder().withClassLoader(loader).registerMixIn(mixIn).build();
+    Object value = json.fromJson("{\"answer\":{\"id\":42}}", target);
+    assertEquals(target.getMethod("getExtraId").invoke(value), 42);
+  }
+
+  @Test
+  public void mixInFamilyValidation() throws Exception {
+    CompilationResult intrinsic =
+        compile(
+            "test.StateMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "enum State { VALUE; String label; }\n"
+                + "@JsonMixin(target = State.class) abstract class StateMixin {\n"
+                + "  @JsonProperty(\"name\") String label;\n"
+                + "}\n");
+    assertFalse(intrinsic.success);
+    assertTrue(
+        intrinsic.diagnostics().contains("not consumed by the selected"), intrinsic.diagnostics());
+
+    CompilationResult parameter =
+        compile(
+            "test.ParameterMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class Target { Target(String value) {} }\n"
+                + "@JsonMixin(target = Target.class) abstract class ParameterMixin {\n"
+                + "  ParameterMixin(@JsonProperty(\"value\") String value) {}\n"
+                + "}\n");
+    assertFalse(parameter.success);
+    assertTrue(
+        parameter.diagnostics().contains("requires a @JsonCreator"), parameter.diagnostics());
+
+    CompilationResult inheritedParameter =
+        compile(
+            "test.InheritedParameterMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class Parent { private void setValue(String value) {} }\n"
+                + "class Child extends Parent {}\n"
+                + "@JsonMixin(target = Child.class) abstract class InheritedParameterMixin {\n"
+                + "  abstract void setValue(@JsonProperty(\"value\") String value);\n"
+                + "}\n");
+    assertFalse(inheritedParameter.success);
+    assertTrue(
+        inheritedParameter.diagnostics().contains("requires a @JsonCreator"),
+        inheritedParameter.diagnostics());
+  }
+
+  @Test
+  public void directMixinRemoveRejected() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.InvalidRemove",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonMixinRemove(JsonPropertyOrder.class) class InvalidRemove {}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result.diagnostics().contains("valid only inside a direct @JsonMixin source"),
+        result.diagnostics());
+  }
+
+  @Test
+  public void inheritedCodecRemovalRules() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.CodecBarrierMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonCodec(Codec.class) class Base {}\n"
+                + "class Target extends Base {}\n"
+                + "@JsonMixin(target = Target.class)\n"
+                + "@JsonMixinRemove(JsonCodec.class) interface CodecBarrierMixin {}\n"
+                + "final class Codec implements org.apache.fory.json.codec.JsonValueCodec<Object> {\n"
+                + "  public Codec() {}\n"
+                + "  public void writeString(org.apache.fory.json.writer.StringJsonWriter w, Object v) {}\n"
+                + "  public void writeUtf8(org.apache.fory.json.writer.Utf8JsonWriter w, Object v) {}\n"
+                + "  public Object readLatin1(org.apache.fory.json.reader.Latin1JsonReader r) { return null; }\n"
+                + "  public Object readUtf16(org.apache.fory.json.reader.Utf16JsonReader r) { return null; }\n"
+                + "  public Object readUtf8(org.apache.fory.json.reader.Utf8JsonReader r) { return null; }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.CodecBarrierMixin.pro");
+    assertFalse(rules.contains("class test.Codec "), rules);
+    assertFalse(rules.contains("class test.Base"), rules);
+  }
+
+  @Test
+  public void mixInCreatorIsExact() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.CreatorMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class Base { public static Target create(String name) { return null; } }\n"
+                + "class Target extends Base {}\n"
+                + "@JsonMixin(target = Target.class) interface CreatorMixin {\n"
+                + "  @JsonCreator({\"name\"}) Target create(String name);\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(result.diagnostics().contains("does not match test.Target"), result.diagnostics());
+  }
+
+  @Test
+  public void mixInCodecSkipsCompanion() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.CodecMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class Target {}\n"
+                + "@JsonMixin(target = Target.class)\n"
+                + "@JsonCodec(Codec.class) interface CodecMixin {}\n"
+                + "final class Codec implements org.apache.fory.json.codec.JsonValueCodec<Object> {\n"
+                + "  public Codec() {}\n"
+                + "  public void writeString(org.apache.fory.json.writer.StringJsonWriter w, Object v) {}\n"
+                + "  public void writeUtf8(org.apache.fory.json.writer.Utf8JsonWriter w, Object v) {}\n"
+                + "  public Object readLatin1(org.apache.fory.json.reader.Latin1JsonReader r) { return null; }\n"
+                + "  public Object readUtf16(org.apache.fory.json.reader.Utf16JsonReader r) { return null; }\n"
+                + "  public Object readUtf8(org.apache.fory.json.reader.Utf8JsonReader r) { return null; }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String base = "CodecMixin_ForyJsonMixin_test_x2e_Target";
+    assertTrue(result.hasGeneratedSource("test/" + base + ".java"));
+    assertFalse(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.CodecMixin.pro");
+    assertTrue(rules.contains("class test.Codec { public <init>(); }"), rules);
+  }
+
+  @Test
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  public void mixInFamiliesSkipCompanion() throws Exception {
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put("test.Shape", "package test; public interface Shape {}\n");
+    sources.put(
+        "test.Circle",
+        "package test; public final class Circle implements Shape { public int radius; }\n");
+    sources.put(
+        "test.ShapeMixin",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonMixin(target = Shape.class)\n"
+            + "@JsonSubTypes(property = \"kind\", value = {\n"
+            + "  @JsonSubTypes.Type(value = Circle.class, name = \"circle\")\n"
+            + "})\n"
+            + "public interface ShapeMixin {}\n");
+    sources.put(
+        "test.ValueTarget",
+        "package test;\n"
+            + "public final class ValueTarget {\n"
+            + "  private final String text;\n"
+            + "  private ValueTarget(String text) { this.text = text; }\n"
+            + "  public String getText() { return text; }\n"
+            + "  public static ValueTarget create(String text) { return new ValueTarget(text); }\n"
+            + "}\n");
+    sources.put(
+        "test.ValueMixin",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonMixin(target = ValueTarget.class) public interface ValueMixin {\n"
+            + "  @JsonValue String getText();\n"
+            + "  @JsonCreator ValueTarget create(String text);\n"
+            + "}\n");
+    sources.put("test.State", "package test; public enum State { ACTIVE }\n");
+    sources.put(
+        "test.StateMixin",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonMixin(target = State.class) public interface StateMixin {}\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+
+    for (String base :
+        new String[] {
+          "ShapeMixin_ForyJsonMixin_test_x2e_Shape",
+          "ValueMixin_ForyJsonMixin_test_x2e_ValueTarget",
+          "StateMixin_ForyJsonMixin_test_x2e_State"
+        }) {
+      assertTrue(result.hasGeneratedSource("test/" + base + ".java"));
+      assertFalse(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
+    }
+
+    ClassLoader loader = result.classLoader();
+    Class<?> shape = loader.loadClass("test.Shape");
+    Class<?> circle = loader.loadClass("test.Circle");
+    Class<?> valueType = loader.loadClass("test.ValueTarget");
+    Class<?> state = loader.loadClass("test.State");
+    Class<?> shapeMixIn = loader.loadClass("test.ShapeMixin");
+    Class<?> valueMixIn = loader.loadClass("test.ValueMixin");
+    Class<?> stateMixIn = loader.loadClass("test.StateMixin");
+    Object circleValue = circle.getConstructor().newInstance();
+    circle.getField("radius").setInt(circleValue, 3);
+    Object value = valueType.getMethod("create", String.class).invoke(null, "write");
+    Object active = state.getEnumConstants()[0];
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json =
+          ForyJson.builder()
+              .withCodegen(codegen)
+              .withAsyncCompilation(false)
+              .withClassLoader(loader)
+              .registerMixIn(shapeMixIn)
+              .registerMixIn(valueMixIn)
+              .registerMixIn(stateMixIn)
+              .build();
+      assertEquals(json.toJson(circleValue, (Class) shape), "{\"kind\":\"circle\",\"radius\":3}");
+      Object decodedShape = json.fromJson("{\"kind\":\"circle\",\"radius\":4}", shape);
+      assertEquals(circle.getField("radius").getInt(decodedShape), 4);
+      assertEquals(json.toJson(value), "\"write\"");
+      Object decodedValue = json.fromJson("\"read\"", valueType);
+      assertEquals(valueType.getMethod("getText").invoke(decodedValue), "read");
+      assertEquals(json.toJson(active), "\"ACTIVE\"");
+      assertEquals(json.fromJson("\"ACTIVE\"", state), active);
+    }
   }
 
   @Test
@@ -1128,6 +1696,9 @@ public class JsonTypeProcessorTest {
     assertTrue(second.success, second.diagnostics());
     String path = RULE_PREFIX + "test.CodecModel.pro";
     assertEquals(first.generatedResource(path), second.generatedResource(path));
+    assertEquals(
+        first.generatedSource("test/CodecModel_ForyJsonCodec.java"),
+        second.generatedSource("test/CodecModel_ForyJsonCodec.java"));
   }
 
   @Test
@@ -1303,6 +1874,17 @@ public class JsonTypeProcessorTest {
     return compile(sources);
   }
 
+  private static String mixInLoaderSource(String jsonName) {
+    return "package test;\n"
+        + "import org.apache.fory.json.annotation.*;\n"
+        + "public final class LoaderTarget { public String name; }\n"
+        + "@JsonMixin(target = LoaderTarget.class) abstract class LoaderMixin {\n"
+        + "  @JsonProperty(\""
+        + jsonName
+        + "\") String name;\n"
+        + "}\n";
+  }
+
   private static CompilationResult compile(Map<String, String> sources) throws IOException {
     JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
     assertNotNull(compiler, "Tests require a JDK compiler");
@@ -1460,6 +2042,11 @@ public class JsonTypeProcessorTest {
     String generatedResource(String relativePath) throws IOException {
       return new String(
           Files.readAllBytes(classRoot.resolve(relativePath)), StandardCharsets.UTF_8);
+    }
+
+    String generatedSource(String relativePath) throws IOException {
+      return new String(
+          Files.readAllBytes(generatedRoot.resolve(relativePath)), StandardCharsets.UTF_8);
     }
 
     ClassLoader classLoader() throws IOException {

@@ -71,6 +71,14 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
+  public void generatedJsonMixIn() {
+    AndroidJsonScenarios.generatedMixIn();
+    AndroidJsonScenarios.generatedMixInRecord();
+    AndroidJsonScenarios.generatedMixInValue();
+    AndroidJsonScenarios.generatedMixInValueRecord();
+  }
+
+  @Test
   public void androidRuntimeDisablesCodegenAndUnsafeCopies() {
     AndroidForyRuntimeScenarios.androidRuntimeDisablesCodegenAndUnsafeCopies();
   }

@@ -40,8 +40,11 @@ import java.lang.annotation.Target;
  * <p>This annotation does not change the JSON schema and is intentionally not inherited. An
  * ordinary mutable class may omit it and use reflection, with application-authored exact R8 rules
  * on Android. Android-desugared Records, including Records represented by {@link JsonValue},
- * require this annotation and the processor because Android does not expose the Java Record
- * reflection APIs.
+ * require processor-generated operations from either a direct {@code JsonType} declaration or an
+ * exact {@link JsonMixin} pair because Android does not expose the Java Record reflection APIs.
+ *
+ * <p>{@link JsonMixin} cannot contribute or remove this build-time marker. A mix-in is its own
+ * processor entry point and produces artifacts for its exact target/source pair.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

@@ -5,8 +5,10 @@ This project runs Android API 26+ instrumented tests for Java `fory-core` and
 suite. API 36 runs the release-minified suite. Release coverage verifies static
 serializers, processor-generated Fory JSON execution for mutable classes,
 `JsonCreator` classes, object-mapped and `JsonValue` desugared Records, generated
-retention rules, and equivalent application-authored exact rules for
-unannotated ordinary classes.
+retention rules, exact target/mix-in pair metadata and companions, and equivalent
+application-authored exact rules for unannotated ordinary classes. Mix-in coverage
+registers the source at runtime after R8 minification so broad application keep
+rules cannot hide missing processor output.
 
 The tests consume `org.apache.fory:fory-core:1.4.0-SNAPSHOT`,
 `org.apache.fory:fory-json:1.4.0-SNAPSHOT`, and

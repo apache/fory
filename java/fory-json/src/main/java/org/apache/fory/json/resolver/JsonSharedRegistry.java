@@ -20,7 +20,9 @@
 package org.apache.fory.json.resolver;
 
 import java.io.File;
+import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Field;
@@ -28,6 +30,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Parameter;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -97,6 +100,8 @@ import org.apache.fory.json.JsonTypeCheckContext;
 import org.apache.fory.json.JsonTypeChecker;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonMixinRemove;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.annotation.JsonType;
@@ -172,6 +177,8 @@ public final class JsonSharedRegistry {
   private final PropertyNamingStrategy propertyNamingStrategy;
   private final boolean writeNullFields;
   private final ClassLoader classLoader;
+  private final JsonMixinAnnotations mixInAnnotations;
+  private final Set<Class<?>> validatedMixinControls;
   private final IdentityHashMap<Class<?>, JsonSubTypesInfo> subTypesCache;
   private final IdentityHashMap<Class<?>, JsonCodecDeclaration> codecDeclarations;
   private final Set<Class<?>> typesWithoutCodecDeclaration;
@@ -198,6 +205,8 @@ public final class JsonSharedRegistry {
     propertyNamingStrategy = config.propertyNamingStrategy();
     writeNullFields = config.writeNullFields();
     classLoader = config.classLoader();
+    mixInAnnotations = config.hasMixIns() ? new JsonMixinAnnotations(config) : null;
+    validatedMixinControls = Collections.newSetFromMap(new IdentityHashMap<Class<?>, Boolean>());
     exactCodecs = new IdentityHashMap<>();
     subTypesCache = new IdentityHashMap<>();
     codecDeclarations = new IdentityHashMap<>();
@@ -255,22 +264,33 @@ public final class JsonSharedRegistry {
   }
 
   GeneratedJsonCodec<?> generatedCodec(Class<?> type) {
-    if (type.getDeclaredAnnotation(JsonType.class) == null) {
+    Class<?> mixInType = mixInType(type);
+    boolean directGenerated = type.getDeclaredAnnotation(JsonType.class) != null;
+    if (!directGenerated && mixInType == null) {
       return null;
     }
-    GeneratedJsonCodec<?> codec = generatedCodecIfPresent(type);
-    if (codec == null) {
-      throw new ForyJsonException(
-          "Missing generated JSON codec "
-              + generatedCodecBinaryName(type)
-              + " for @JsonType object model "
-              + type.getName()
-              + "; enable the Fory annotation processor and preserve its generated R8 rules");
+    try {
+      GeneratedJsonCodec<?> codec = generatedCodecIfPresent(type, mixInType);
+      if (codec == null
+          && (directGenerated
+              || mixInType != null
+                  && (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE))) {
+        throw new ForyJsonException(
+            "Missing generated JSON codec "
+                + (mixInType == null
+                    ? generatedCodecBinaryName(type)
+                    : generatedMixinCodecBinaryName(mixInType, type))
+                + " for JSON object model "
+                + type.getName()
+                + "; enable the Fory annotation processor and preserve its generated R8 rules");
+      }
+      return codec;
+    } catch (ForyJsonException e) {
+      throw mixInSchemaFailure(type, e);
     }
-    return codec;
   }
 
-  private GeneratedJsonCodec<?> generatedCodecIfPresent(Class<?> type) {
+  private GeneratedJsonCodec<?> generatedCodecIfPresent(Class<?> type, Class<?> mixInType) {
     GeneratedJsonCodec<?> codec = generatedCodecs.get(type);
     if (codec != null) {
       return codec;
@@ -279,7 +299,7 @@ public final class JsonSharedRegistry {
       synchronized (generatedCodecs) {
         codec = generatedCodecs.get(type);
         if (codec == null && !typesWithoutGeneratedCodec.contains(type)) {
-          codec = loadGeneratedCodec(type);
+          codec = loadGeneratedCodec(type, mixInType);
           if (codec == null) {
             typesWithoutGeneratedCodec.add(type);
           } else {
@@ -291,15 +311,22 @@ public final class JsonSharedRegistry {
     return codec;
   }
 
-  private GeneratedJsonCodec<?> loadGeneratedCodec(Class<?> type) {
+  private GeneratedJsonCodec<?> loadGeneratedCodec(Class<?> type, Class<?> mixInType) {
     if (GraalvmSupport.isGraalRuntime()) {
-      GeneratedJsonCodecFactory factory = GeneratedJsonCodecFactories.get(type);
+      GeneratedJsonCodecFactory factory = GeneratedJsonCodecFactories.get(type, mixInType);
       return factory == null ? null : validateGeneratedCodec(type, factory.create());
     }
-    String generatedName = generatedCodecBinaryName(type);
+    String generatedName =
+        mixInType == null
+            ? generatedCodecBinaryName(type)
+            : generatedMixinCodecBinaryName(mixInType, type);
     Class<?> generatedClass;
     try {
-      generatedClass = Class.forName(generatedName, false, type.getClassLoader());
+      generatedClass =
+          Class.forName(
+              generatedName,
+              false,
+              mixInType == null ? type.getClassLoader() : mixInType.getClassLoader());
     } catch (ClassNotFoundException e) {
       return null;
     } catch (LinkageError e) {
@@ -593,6 +620,25 @@ public final class JsonSharedRegistry {
     return GeneratedClassNames.withSuffix(binaryName, "_ForyJsonCodec");
   }
 
+  /** Returns the deterministic generated metadata name for one target/mix-in pair. */
+  @Internal
+  public static String generatedMixinMetadataBinaryName(Class<?> mixInType, Class<?> targetType) {
+    String sourceName = mixInType.getName();
+    int packageEnd = sourceName.lastIndexOf('.');
+    String sourcePackage = packageEnd < 0 ? "" : sourceName.substring(0, packageEnd + 1);
+    String sourceSimple = packageEnd < 0 ? sourceName : sourceName.substring(packageEnd + 1);
+    return sourcePackage
+        + GeneratedClassNames.escapeBinarySimpleName(sourceSimple)
+        + "_ForyJsonMixin_"
+        + GeneratedClassNames.escapeBinarySimpleName(targetType.getName());
+  }
+
+  /** Returns the deterministic generated companion name for one target/mix-in pair. */
+  @Internal
+  public static String generatedMixinCodecBinaryName(Class<?> mixInType, Class<?> targetType) {
+    return generatedMixinMetadataBinaryName(mixInType, targetType) + "_ForyJsonCodec";
+  }
+
   public JsonValueCodec<?> createCodec(
       Class<?> rawType, TypeRef<?> typeRef, JsonTypeResolver localResolver) {
     JsonValueCodec<?> customCodec = customCodecs.get(rawType);
@@ -601,6 +647,7 @@ public final class JsonSharedRegistry {
     }
     JsonValueCodec<?> codec = exactCodecs.get(rawType);
     if (codec != null) {
+      validateIntrinsicMixin(rawType);
       return codec;
     }
     if (rawType == Class.class) {
@@ -618,45 +665,57 @@ public final class JsonSharedRegistry {
       throw new ForyJsonException("Unsupported JSON type " + rawType);
     }
     if (rawType.isEnum()) {
+      validateIntrinsicMixin(rawType);
       return new ScalarCodecs.EnumCodec(rawType);
     }
     if (rawType.isArray()) {
       return ArrayCodec.create(rawType, localResolver);
     }
     if (rawType == Optional.class) {
+      validateIntrinsicMixin(rawType);
       return new ScalarCodecs.OptionalCodec(
           CodecUtils.elementType(typeRef.getType()), localResolver);
     }
     if (rawType == AtomicReference.class) {
+      validateIntrinsicMixin(rawType);
       return new ScalarCodecs.AtomicReferenceCodec(
           CodecUtils.elementType(typeRef.getType()), localResolver);
     }
     if (rawType == AtomicReferenceArray.class) {
+      validateIntrinsicMixin(rawType);
       return new ScalarCodecs.AtomicReferenceArrayCodec(
           CodecUtils.elementType(typeRef.getType()), localResolver);
     }
     if (Calendar.class.isAssignableFrom(rawType)) {
+      validateIntrinsicMixin(rawType);
       return ScalarCodecs.CalendarCodec.INSTANCE;
     }
     if (Date.class.isAssignableFrom(rawType)) {
+      validateIntrinsicMixin(rawType);
       return ScalarCodecs.DateCodec.INSTANCE;
     }
     if (ZoneId.class.isAssignableFrom(rawType)) {
+      validateIntrinsicMixin(rawType);
       return ScalarCodecs.ZoneIdCodec.INSTANCE;
     }
     if (ByteBuffer.class.isAssignableFrom(rawType)) {
+      validateIntrinsicMixin(rawType);
       return ScalarCodecs.ByteBufferCodec.INSTANCE;
     }
     if (File.class.isAssignableFrom(rawType)) {
+      validateIntrinsicMixin(rawType);
       return ScalarCodecs.FileCodec.INSTANCE;
     }
     if (Path.class.isAssignableFrom(rawType)) {
+      validateIntrinsicMixin(rawType);
       return ScalarCodecs.PathCodec.INSTANCE;
     }
     if (Collection.class.isAssignableFrom(rawType)) {
+      validateIntrinsicMixin(rawType);
       return CollectionCodec.create(rawType, typeRef, localResolver);
     }
     if (Map.class.isAssignableFrom(rawType)) {
+      validateIntrinsicMixin(rawType);
       return MapCodec.create(rawType, typeRef, localResolver);
     }
     return null;
@@ -734,6 +793,157 @@ public final class JsonSharedRegistry {
     return classLoader;
   }
 
+  /** Returns the effective annotation for one declaration in an exact target context. */
+  @Internal
+  public <A extends Annotation> A annotation(
+      Class<?> targetType, AnnotatedElement declaration, Class<A> annotationType) {
+    JsonMixinAnnotations annotations = mixInAnnotations;
+    if (annotations == null) {
+      return declaration.getDeclaredAnnotation(annotationType);
+    }
+    JsonMixinAnnotations.TargetOverlay overlay = annotations.overlay(targetType);
+    return overlay == null
+        ? declaration.getDeclaredAnnotation(annotationType)
+        : overlay.annotation(declaration, annotationType);
+  }
+
+  Class<?> mixInType(Class<?> targetType) {
+    JsonMixinAnnotations annotations = mixInAnnotations;
+    if (annotations == null) {
+      return null;
+    }
+    JsonMixinAnnotations.TargetOverlay overlay = annotations.overlay(targetType);
+    return overlay == null ? null : overlay.mixInType();
+  }
+
+  void validateValueMixin(
+      Class<?> targetType, List<? extends Member> valueMembers, Executable creator) {
+    JsonMixinAnnotations.TargetOverlay overlay = mixInOverlay(targetType);
+    if (overlay != null) {
+      overlay.validateValueReplacements(valueMembers, creator);
+    }
+  }
+
+  private void validateTypeMixin(
+      Class<?> targetType, Class<? extends Annotation> annotationType, String representation) {
+    JsonMixinAnnotations.TargetOverlay overlay = mixInOverlay(targetType);
+    if (overlay != null) {
+      overlay.validateTypeReplacements(annotationType, representation);
+    }
+  }
+
+  private void validateIntrinsicMixin(Class<?> targetType) {
+    JsonMixinAnnotations.TargetOverlay overlay = mixInOverlay(targetType);
+    if (overlay == null) {
+      return;
+    }
+    try {
+      overlay.validateNoReplacements("intrinsic JSON codec");
+    } catch (ForyJsonException e) {
+      throw mixInSchemaFailure(targetType, e);
+    }
+  }
+
+  private JsonMixinAnnotations.TargetOverlay mixInOverlay(Class<?> targetType) {
+    return mixInAnnotations == null ? null : mixInAnnotations.overlay(targetType);
+  }
+
+  void validateMixinControls(Class<?> targetType) {
+    synchronized (validatedMixinControls) {
+      if (validatedMixinControls.contains(targetType)) {
+        return;
+      }
+      Set<Class<?>> visited = Collections.newSetFromMap(new IdentityHashMap<Class<?>, Boolean>());
+      validateMixinControls(targetType, visited);
+      validatedMixinControls.add(targetType);
+    }
+  }
+
+  private static void validateMixinControls(Class<?> owner, Set<Class<?>> visited) {
+    if (owner == null || owner == Object.class || !visited.add(owner)) {
+      return;
+    }
+    if (owner.getDeclaredAnnotation(JsonMixin.class) == null) {
+      rejectMixinControl(owner);
+      for (Field field : owner.getDeclaredFields()) {
+        rejectMixinControl(field);
+      }
+      for (Method method : owner.getDeclaredMethods()) {
+        rejectMixinControl(method);
+        for (Parameter parameter : method.getParameters()) {
+          rejectMixinControl(parameter);
+        }
+      }
+      for (Constructor<?> constructor : owner.getDeclaredConstructors()) {
+        rejectMixinControl(constructor);
+        for (Parameter parameter : constructor.getParameters()) {
+          rejectMixinControl(parameter);
+        }
+      }
+    }
+    validateMixinControls(owner.getSuperclass(), visited);
+    for (Class<?> interfaceType : owner.getInterfaces()) {
+      validateMixinControls(interfaceType, visited);
+    }
+  }
+
+  private static void rejectMixinControl(AnnotatedElement declaration) {
+    if (declaration.getDeclaredAnnotation(JsonMixinRemove.class) != null) {
+      throw new ForyJsonException(
+          "@JsonMixinRemove is valid only inside a direct @JsonMixin source: " + declaration);
+    }
+  }
+
+  /** Adds exact pair context to a cold effective-schema validation failure. */
+  @Internal
+  public ForyJsonException mixInSchemaFailure(Class<?> targetType, ForyJsonException failure) {
+    Class<?> mixInType = mixInType(targetType);
+    if (mixInType == null) {
+      return failure;
+    }
+    return new ForyJsonException(
+        "Invalid effective JSON mix-in schema for target "
+            + targetType.getName()
+            + " from source "
+            + mixInType.getName()
+            + ": "
+            + failure.getMessage(),
+        failure);
+  }
+
+  /** Resolves one target/mix-in overlay for hosted metadata discovery. */
+  @Internal
+  public static JsonMixinView resolveMixin(Class<?> targetType, Class<?> mixInType) {
+    return new JsonMixinView(JsonMixinAnnotations.resolve(targetType, mixInType));
+  }
+
+  /** Read-only hosted view of one fully validated structural mix-in overlay. */
+  @Internal
+  public static final class JsonMixinView {
+    private final JsonMixinAnnotations.TargetOverlay overlay;
+
+    private JsonMixinView(JsonMixinAnnotations.TargetOverlay overlay) {
+      this.overlay = overlay;
+    }
+
+    public Class<?> targetType() {
+      return overlay.targetType();
+    }
+
+    public Class<?> mixInType() {
+      return overlay.mixInType();
+    }
+
+    public Set<AnnotatedElement> sourceDeclarations() {
+      return overlay.sourceDeclarations();
+    }
+
+    public <A extends Annotation> A annotation(
+        AnnotatedElement declaration, Class<A> annotationType) {
+      return overlay.annotation(declaration, annotationType);
+    }
+  }
+
   JsonValueCodec<?> customCodec(Class<?> type) {
     return customCodecs.get(type);
   }
@@ -742,21 +952,28 @@ public final class JsonSharedRegistry {
     if (targetType.isAnnotation()) {
       return null;
     }
-    synchronized (codecDeclarations) {
-      JsonCodecDeclaration cached = codecDeclarations.get(targetType);
-      if (cached != null) {
-        return cached;
+    try {
+      synchronized (codecDeclarations) {
+        JsonCodecDeclaration cached = codecDeclarations.get(targetType);
+        if (cached != null) {
+          return cached;
+        }
+        if (typesWithoutCodecDeclaration.contains(targetType)) {
+          return null;
+        }
+        JsonCodecDeclaration resolved = resolveCodecDeclaration(targetType);
+        if (resolved != null) {
+          validateTypeMixin(targetType, JsonCodec.class, "type-level @JsonCodec representation");
+        }
+        if (resolved == null) {
+          typesWithoutCodecDeclaration.add(targetType);
+        } else {
+          codecDeclarations.put(targetType, resolved);
+        }
+        return resolved;
       }
-      if (typesWithoutCodecDeclaration.contains(targetType)) {
-        return null;
-      }
-      JsonCodecDeclaration resolved = resolveCodecDeclaration(targetType);
-      if (resolved == null) {
-        typesWithoutCodecDeclaration.add(targetType);
-      } else {
-        codecDeclarations.put(targetType, resolved);
-      }
-      return resolved;
+    } catch (ForyJsonException e) {
+      throw mixInSchemaFailure(targetType, e);
     }
   }
 
@@ -764,25 +981,31 @@ public final class JsonSharedRegistry {
     if (targetType.isAnnotation()) {
       return null;
     }
-    synchronized (valueDeclarations) {
-      JsonValueDeclaration cached = valueDeclarations.get(targetType);
-      if (cached != null) {
-        return cached;
+    try {
+      synchronized (valueDeclarations) {
+        JsonValueDeclaration cached = valueDeclarations.get(targetType);
+        if (cached != null) {
+          return cached;
+        }
+        if (typesWithoutValueDeclaration.contains(targetType)) {
+          return null;
+        }
+        Class<?> mixInType = mixInType(targetType);
+        GeneratedJsonCodec<?> generatedCodec =
+            targetType.getDeclaredAnnotation(JsonType.class) == null && mixInType == null
+                ? null
+                : generatedCodecIfPresent(targetType, mixInType);
+        JsonValueDeclaration resolved =
+            JsonValueDeclaration.resolve(targetType, generatedCodec, this);
+        if (resolved == null) {
+          typesWithoutValueDeclaration.add(targetType);
+        } else {
+          valueDeclarations.put(targetType, resolved);
+        }
+        return resolved;
       }
-      if (typesWithoutValueDeclaration.contains(targetType)) {
-        return null;
-      }
-      GeneratedJsonCodec<?> generatedCodec =
-          targetType.getDeclaredAnnotation(JsonType.class) == null
-              ? null
-              : generatedCodecIfPresent(targetType);
-      JsonValueDeclaration resolved = JsonValueDeclaration.resolve(targetType, generatedCodec);
-      if (resolved == null) {
-        typesWithoutValueDeclaration.add(targetType);
-      } else {
-        valueDeclarations.put(targetType, resolved);
-      }
-      return resolved;
+    } catch (ForyJsonException e) {
+      throw mixInSchemaFailure(targetType, e);
     }
   }
 
@@ -798,7 +1021,7 @@ public final class JsonSharedRegistry {
   }
 
   private JsonCodecDeclaration resolveCodecDeclaration(Class<?> targetType) {
-    DeclarationCandidate direct = declaredCodec(targetType);
+    DeclarationCandidate direct = declaredCodec(targetType, targetType);
     if (direct != null) {
       return new JsonCodecDeclaration(direct.codecClass, new Class<?>[] {targetType}, false);
     }
@@ -821,7 +1044,7 @@ public final class JsonSharedRegistry {
     return new JsonCodecDeclaration(codecClass, origins, true);
   }
 
-  private static List<DeclarationCandidate> inheritedCodecCandidates(Class<?> targetType) {
+  private List<DeclarationCandidate> inheritedCodecCandidates(Class<?> targetType) {
     List<DeclarationCandidate> candidates = new ArrayList<>();
     Set<Class<?>> visited = Collections.newSetFromMap(new IdentityHashMap<Class<?>, Boolean>());
     Deque<Class<?>> pending = new ArrayDeque<>();
@@ -832,7 +1055,7 @@ public final class JsonSharedRegistry {
         continue;
       }
       if (!current.isAnnotation()) {
-        DeclarationCandidate candidate = declaredCodec(current);
+        DeclarationCandidate candidate = declaredCodec(targetType, current);
         if (candidate != null) {
           candidates.add(candidate);
         }
@@ -872,10 +1095,10 @@ public final class JsonSharedRegistry {
     return frontier;
   }
 
-  private static DeclarationCandidate declaredCodec(Class<?> declarationType) {
+  private DeclarationCandidate declaredCodec(Class<?> targetType, Class<?> declarationType) {
     JsonCodec annotation;
     try {
-      annotation = declarationType.getDeclaredAnnotation(JsonCodec.class);
+      annotation = annotation(targetType, declarationType, JsonCodec.class);
     } catch (RuntimeException | LinkageError e) {
       throw new ForyJsonException(
           "Cannot read @JsonCodec declared on " + declarationType.getName(), e);
@@ -1015,18 +1238,23 @@ public final class JsonSharedRegistry {
   }
 
   JsonSubTypesInfo subTypesInfo(Class<?> baseType) {
-    JsonSubTypes annotation = baseType.getDeclaredAnnotation(JsonSubTypes.class);
-    if (annotation == null) {
-      return null;
-    }
-    synchronized (subTypesCache) {
-      JsonSubTypesInfo cached = subTypesCache.get(baseType);
-      if (cached != null) {
-        return cached;
+    try {
+      JsonSubTypes annotation = annotation(baseType, baseType, JsonSubTypes.class);
+      if (annotation == null) {
+        return null;
       }
-      JsonSubTypesInfo resolved = buildSubTypesInfo(baseType, annotation);
-      subTypesCache.put(baseType, resolved);
-      return resolved;
+      validateTypeMixin(baseType, JsonSubTypes.class, "closed @JsonSubTypes representation");
+      synchronized (subTypesCache) {
+        JsonSubTypesInfo cached = subTypesCache.get(baseType);
+        if (cached != null) {
+          return cached;
+        }
+        JsonSubTypesInfo resolved = buildSubTypesInfo(baseType, annotation);
+        subTypesCache.put(baseType, resolved);
+        return resolved;
+      }
+    } catch (ForyJsonException e) {
+      throw mixInSchemaFailure(baseType, e);
     }
   }
 

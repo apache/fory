@@ -31,6 +31,21 @@ final class GeneratedTypeNames {
     return escape(binaryName, true);
   }
 
+  static String jsonMixinSimpleName(String targetBinaryName, String mixInBinaryName) {
+    int packageSeparator = mixInBinaryName.lastIndexOf('.');
+    String mixInSimpleName = mixInBinaryName.substring(packageSeparator + 1);
+    return escapeBinarySimpleName(mixInSimpleName)
+        + "_ForyJsonMixin_"
+        + escapeBinarySimpleName(targetBinaryName);
+  }
+
+  static String jsonMixinBinaryName(String targetBinaryName, String mixInBinaryName) {
+    int packageSeparator = mixInBinaryName.lastIndexOf('.');
+    String packageName = packageSeparator < 0 ? "" : mixInBinaryName.substring(0, packageSeparator);
+    String simpleName = jsonMixinSimpleName(targetBinaryName, mixInBinaryName);
+    return packageName.isEmpty() ? simpleName : packageName + "." + simpleName;
+  }
+
   private static String escape(String value, boolean preserveDots) {
     // Keep this encoding identical to fory-core GeneratedClassNames. The processor intentionally
     // has no runtime dependency, so generated source names need this local build-time owner.

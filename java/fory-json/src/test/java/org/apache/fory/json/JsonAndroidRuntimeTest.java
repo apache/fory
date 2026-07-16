@@ -22,6 +22,7 @@ package org.apache.fory.json;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.expectThrows;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -35,6 +36,8 @@ import java.util.List;
 import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.platform.AndroidSupport;
@@ -142,6 +145,11 @@ public class JsonAndroidRuntimeTest {
   public static final class AndroidMain {
     public static void main(String[] args) {
       assertTrue(AndroidSupport.IS_ANDROID);
+      ForyJsonException exception =
+          expectThrows(
+              ForyJsonException.class,
+              () -> ForyJson.builder().registerMixIn(MissingMetadataMixIn.class).build());
+      assertTrue(exception.getMessage().contains("Missing generated JSON mix-in metadata"));
       ForyJson json = ForyJson.builder().withCodegen(true).withAsyncCompilation(true).build();
       assertFalse(ForyJsonTestModels.hasGeneratedCapability(json, AndroidModel.class));
       assertRoundTrips(json);
@@ -210,5 +218,15 @@ public class JsonAndroidRuntimeTest {
   public static final class AndroidRaw {
     @JsonRawValue public String body;
     @JsonBase64 public byte[] bytes;
+  }
+
+  public static final class MissingMetadataTarget {
+    public String name;
+  }
+
+  @JsonMixin(target = MissingMetadataTarget.class)
+  public abstract static class MissingMetadataMixIn {
+    @JsonProperty("mixed_name")
+    String name;
   }
 }

@@ -19,10 +19,17 @@
 
 package org.apache.fory.json;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.IdentityHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.resolver.CodecRegistry;
 
 /**
@@ -50,9 +57,11 @@ public final class JsonConfig {
   private final int concurrencyLevel;
   private final int bufferSizeLimitBytes;
   private final CodecRegistry codecRegistry;
+  private final Map<Class<?>, Class<?>> mixIns;
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
   private final String codecRegistryKey;
+  private final String mixInKey;
   private final CodegenKey codegenKey;
   private transient int codegenHash;
 
@@ -68,6 +77,7 @@ public final class JsonConfig {
       int concurrencyLevel,
       int bufferSizeLimitBytes,
       CodecRegistry codecRegistry,
+      Map<Class<?>, Class<?>> mixIns,
       JsonTypeChecker typeChecker) {
     this.writeNullFields = writeNullFields;
     this.codegenEnabled = codegenEnabled;
@@ -82,12 +92,18 @@ public final class JsonConfig {
     this.concurrencyLevel = concurrencyLevel;
     this.bufferSizeLimitBytes = bufferSizeLimitBytes;
     this.codecRegistry = codecRegistry;
+    this.mixIns = immutableMixIns(mixIns, classLoader);
     this.typeChecker = typeChecker;
     typeCheckContext = new JsonTypeCheckContext();
     codecRegistryKey = codecRegistry.codegenKey();
+    mixInKey = mixInKey(this.mixIns);
     codegenKey =
         new CodegenKey(
-            writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
+            writeNullFields,
+            propertyDiscoveryEnabled,
+            propertyNamingStrategy,
+            codecRegistryKey,
+            mixInKey);
   }
 
   public boolean writeNullFields() {
@@ -143,6 +159,24 @@ public final class JsonConfig {
     return codecRegistry;
   }
 
+  /** Returns the enabled mix-in for the exact target, or {@code null}. */
+  @Internal
+  public Class<?> mixInType(Class<?> targetType) {
+    return mixIns.get(targetType);
+  }
+
+  /** Returns whether this runtime has any enabled JSON mix-ins. */
+  @Internal
+  public boolean hasMixIns() {
+    return !mixIns.isEmpty();
+  }
+
+  /** Returns a fresh array containing every exact registered mix-in target. */
+  @Internal
+  public Class<?>[] mixInTargets() {
+    return mixIns.keySet().toArray(new Class<?>[0]);
+  }
+
   public JsonTypeChecker typeChecker() {
     return typeChecker;
   }
@@ -171,7 +205,8 @@ public final class JsonConfig {
         && concurrencyLevel == that.concurrencyLevel
         && bufferSizeLimitBytes == that.bufferSizeLimitBytes
         && typeChecker == that.typeChecker
-        && Objects.equals(codecRegistryKey, that.codecRegistryKey);
+        && Objects.equals(codecRegistryKey, that.codecRegistryKey)
+        && Objects.equals(mixInKey, that.mixInKey);
   }
 
   @Override
@@ -188,7 +223,60 @@ public final class JsonConfig {
     result = 31 * result + bufferSizeLimitBytes;
     result = 31 * result + System.identityHashCode(typeChecker);
     result = 31 * result + codecRegistryKey.hashCode();
+    if (!mixInKey.isEmpty()) {
+      result = 31 * result + mixInKey.hashCode();
+    }
     return result;
+  }
+
+  private static Map<Class<?>, Class<?>> immutableMixIns(
+      Map<Class<?>, Class<?>> registrations, ClassLoader classLoader) {
+    if (registrations.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    IdentityHashMap<Class<?>, Class<?>> copied = new IdentityHashMap<>(registrations.size());
+    for (Map.Entry<Class<?>, Class<?>> entry : registrations.entrySet()) {
+      Class<?> target = entry.getKey();
+      Class<?> mixIn = entry.getValue();
+      requireExactClass(classLoader, target, "target");
+      requireExactClass(classLoader, mixIn, "source");
+      copied.put(target, mixIn);
+    }
+    return Collections.unmodifiableMap(copied);
+  }
+
+  private static void requireExactClass(ClassLoader classLoader, Class<?> type, String role) {
+    Class<?> resolved;
+    try {
+      resolved = Class.forName(type.getName(), false, classLoader);
+    } catch (ClassNotFoundException | LinkageError e) {
+      throw new ForyJsonException(
+          "Configured class loader cannot resolve JSON mix-in " + role + ' ' + type.getName(), e);
+    }
+    if (resolved != type) {
+      throw new ForyJsonException(
+          "Configured class loader resolves a different JSON mix-in "
+              + role
+              + ' '
+              + type.getName());
+    }
+  }
+
+  private static String mixInKey(Map<Class<?>, Class<?>> mixIns) {
+    if (mixIns.isEmpty()) {
+      return "";
+    }
+    List<Map.Entry<Class<?>, Class<?>>> entries = new ArrayList<>(mixIns.entrySet());
+    entries.sort(Comparator.comparing(entry -> entry.getKey().getName()));
+    StringBuilder builder = new StringBuilder(entries.size() * 64);
+    for (Map.Entry<Class<?>, Class<?>> entry : entries) {
+      builder
+          .append(entry.getKey().getName())
+          .append('=')
+          .append(entry.getValue().getName())
+          .append(';');
+    }
+    return builder.toString();
   }
 
   private static final AtomicInteger COUNTER = new AtomicInteger(0);
@@ -211,16 +299,19 @@ public final class JsonConfig {
     private final boolean propertyDiscoveryEnabled;
     private final PropertyNamingStrategy propertyNamingStrategy;
     private final String codecRegistryKey;
+    private final String mixInKey;
 
     private CodegenKey(
         boolean writeNullFields,
         boolean propertyDiscoveryEnabled,
         PropertyNamingStrategy propertyNamingStrategy,
-        String codecRegistryKey) {
+        String codecRegistryKey,
+        String mixInKey) {
       this.writeNullFields = writeNullFields;
       this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
       this.propertyNamingStrategy = propertyNamingStrategy;
       this.codecRegistryKey = codecRegistryKey;
+      this.mixInKey = mixInKey;
     }
 
     @Override
@@ -235,13 +326,16 @@ public final class JsonConfig {
       return writeNullFields == that.writeNullFields
           && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
           && propertyNamingStrategy == that.propertyNamingStrategy
-          && Objects.equals(codecRegistryKey, that.codecRegistryKey);
+          && Objects.equals(codecRegistryKey, that.codecRegistryKey)
+          && Objects.equals(mixInKey, that.mixInKey);
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(
-          writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
+      int result =
+          Objects.hash(
+              writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
+      return mixInKey.isEmpty() ? result : 31 * result + mixInKey.hashCode();
     }
   }
 }

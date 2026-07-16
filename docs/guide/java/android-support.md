@@ -100,6 +100,45 @@ public final class Invoice {
 }
 ```
 
+The same processor supports Fory JSON mix-ins. A mix-in declares one exact target and is registered
+on the runtime that should use it:
+
+```java
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonMixin;
+
+@JsonMixin(target = ThirdPartyInvoice.class)
+public abstract class ThirdPartyInvoiceMixIn {
+  @JsonBase64 byte[] signature;
+}
+
+ForyJson json =
+    ForyJson.builder().registerMixIn(ThirdPartyInvoiceMixIn.class).build();
+```
+
+Compile every mix-in source with `fory-annotation-processor`. The processor emits exact retention
+metadata for each `(target, mix-in)` pair. It also emits pair-specific generated operations when the
+effective mapping uses ordinary object or Record construction, creator invocation, or an Any
+setter. Complete type codecs, subtype bases, enums, and non-Record `JsonValue` representations do
+not receive an unused companion, but they still require their pair retention metadata.
+
+The target does not need `JsonType` merely because it has a mix-in. `JsonMixin` is itself the
+processor entry point for the pair. If a target also uses `JsonType`, the runtime selects the
+pair-specific companion for the enabled mix-in instead of combining the mix-in with the target's
+direct companion.
+
+Only one source is enabled for an exact target in one built runtime. A later registration for that
+target replaces an earlier registration on the builder, and `build()` snapshots the selected
+mapping. The processor may generate artifacts for multiple source alternatives; the runtime uses
+only the last registered source.
+
+Application-authored R8 rules are not a substitute for processor-generated mix-in pair metadata.
+An Android runtime that enables a mix-in without its pair metadata reports a configuration error.
+The generated rules retain the exact source annotations, target declarations, generic endpoints,
+codec constructors, subtypes, and unwrapped child models required by that pair without keeping an
+entire package.
+
 Ordinary non-Record classes that omit `JsonType` can supply equivalent exact rules themselves.
 Retain every model
 constructor, field, method, generic signature, declaration annotation, and parameter annotation used
@@ -137,13 +176,14 @@ supports mutable classes, creator-backed classes, and Records through their norm
 construction paths. When the containing model and its unwrapped children use `JsonType`, their
 generated companions supply those operations.
 
-Android-desugared Records require a direct `@JsonType` annotation and the annotation processor.
-Manual R8 rules alone cannot reconstruct Record component order because Android does not provide
-the Java Record reflection APIs. This also applies to a Record whose complete representation is a
-`JsonValue` String: the generated companion identifies the propagated component accessor and calls
-an annotated one-String canonical constructor directly. Generated child codecs act on one level
-exactly as they do on the JVM. Every Record in a `JsonUnwrapped` path needs its own direct
-`JsonType`. Use a complete value codec for deeper nested behavior.
+Android-desugared Records require processor-generated operations from either a direct `@JsonType`
+declaration or a compiled exact `@JsonMixin` pair. Manual R8 rules alone cannot reconstruct Record
+component order because Android does not provide the Java Record reflection APIs. This also applies
+to a Record whose complete representation is a `JsonValue` String: the generated companion
+identifies the propagated component accessor and calls an annotated one-String canonical
+constructor directly. Generated child codecs act on one level exactly as they do on the JVM. Every
+Record in a `JsonUnwrapped` path needs its own direct `JsonType` declaration or compiled exact
+`JsonMixin` pair. Use a complete value codec for deeper nested behavior.
 
 ## Static Generated Serializers
 

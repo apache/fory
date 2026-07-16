@@ -234,6 +234,73 @@ public final class AndroidJsonScenarios {
     checkEquals(33, decodedRecord.child().rank());
   }
 
+  public static void generatedMixIn() {
+    ForyJson json = ForyJson.builder().registerMixIn(GeneratedJsonMixin.class).build();
+    GeneratedJsonMixinTarget value =
+        GeneratedJsonMixinTarget.create(
+            34, new GeneratedJsonMixinTarget.Address("Hangzhou", 310000));
+    String encoded = json.toJson(value);
+    checkEquals("{\"user_id\":34,\"address_city\":\"Hangzhou\",\"address_zip\":310000}", encoded);
+    GeneratedJsonMixinTarget decoded = json.fromJson(encoded, GeneratedJsonMixinTarget.class);
+    checkEquals(34, decoded.getId());
+    checkEquals("Hangzhou", decoded.getAddress().city);
+    checkEquals(310000, decoded.getAddress().zip);
+  }
+
+  public static void generatedMixInRecord() {
+    String companion =
+        "org.apache.fory.android.GeneratedJsonMixinRecordAnnotations_ForyJsonMixin_"
+            + "org_x2e_apache_x2e_fory_x2e_android_x2e_GeneratedJsonMixinRecord_ForyJsonCodec";
+    try {
+      Class.forName(companion, false, GeneratedJsonMixinRecordAnnotations.class.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      throw new AssertionError("generated Record mix-in JSON codec was removed", e);
+    }
+    ForyJson json =
+        ForyJson.builder().registerMixIn(GeneratedJsonMixinRecordAnnotations.class).build();
+    String encoded = json.toJson(new GeneratedJsonMixinRecord(35, "record-mixin"));
+    checkEquals("{\"user_id\":35,\"display_name\":\"record-mixin\"}", encoded);
+    GeneratedJsonMixinRecord decoded = json.fromJson(encoded, GeneratedJsonMixinRecord.class);
+    checkEquals(35, decoded.id());
+    checkEquals("record-mixin", decoded.name());
+  }
+
+  public static void generatedMixInValue() {
+    String codec =
+        "org.apache.fory.android.GeneratedJsonMixinValue_ForyJsonMixin_"
+            + "org_x2e_apache_x2e_fory_x2e_android_x2e_GeneratedJsonMixinValueTarget_ForyJsonCodec";
+    try {
+      Class.forName(codec, false, GeneratedJsonMixinValue.class.getClassLoader());
+      throw new AssertionError("non-Record value mix-in generated an unused codec companion");
+    } catch (ClassNotFoundException expected) {
+      // The pair metadata is sufficient for this codec family.
+    }
+    ForyJson json = ForyJson.builder().registerMixIn(GeneratedJsonMixinValue.class).build();
+    GeneratedJsonMixinValueTarget value = GeneratedJsonMixinValueTarget.create("value-mixin");
+    checkEquals("\"value-mixin\"", json.toJson(value));
+    GeneratedJsonMixinValueTarget decoded =
+        json.fromJson("\"decoded-mixin\"", GeneratedJsonMixinValueTarget.class);
+    checkEquals("decoded-mixin", decoded.getValue());
+  }
+
+  public static void generatedMixInValueRecord() {
+    String codec =
+        "org.apache.fory.android.GeneratedJsonMixinValueRecordAnnotations_ForyJsonMixin_"
+            + "org_x2e_apache_x2e_fory_x2e_android_x2e_"
+            + "GeneratedJsonMixinValueRecord_ForyJsonCodec";
+    try {
+      Class.forName(codec, false, GeneratedJsonMixinValueRecordAnnotations.class.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      throw new AssertionError("generated Record value mix-in JSON codec was removed", e);
+    }
+    ForyJson json =
+        ForyJson.builder().registerMixIn(GeneratedJsonMixinValueRecordAnnotations.class).build();
+    checkEquals("\"record-value\"", json.toJson(new GeneratedJsonMixinValueRecord("record-value")));
+    GeneratedJsonMixinValueRecord decoded =
+        json.fromJson("\"decoded-record\"", GeneratedJsonMixinValueRecord.class);
+    checkEquals("decoded-record", decoded.value());
+  }
+
   @JsonType
   @JsonPropertyOrder({"id", "child"})
   public static final class UnwrappedParent {

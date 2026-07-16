@@ -70,6 +70,9 @@ public final class ForyJsonExample {
     testContainerRoots();
     testGenericProperties();
     testUnwrapped();
+    testMixIn();
+    testMixInValue();
+    testMixInValueRecord();
     testBigDecimal();
     testSqlTypes();
     testClosedPackage();
@@ -81,6 +84,52 @@ public final class ForyJsonExample {
     ClosedJsonRecord value = new ClosedJsonRecord(17, "closed");
     String encoded = json.toJson(value);
     Preconditions.checkArgument(json.fromJson(encoded, ClosedJsonRecord.class).equals(value));
+  }
+
+  private static void testMixIn() {
+    ForyJson json = ForyJson.builder().registerMixIn(JsonMixinModel.class).build();
+    JsonMixinTarget value =
+        JsonMixinTarget.create(18, new JsonMixinTarget.Address("Hangzhou", 310000));
+    String encoded = json.toJson(value);
+    Preconditions.checkArgument(
+        encoded.equals("{\"user_id\":18,\"address_city\":\"Hangzhou\",\"address_zip\":310000}"));
+    JsonMixinTarget decoded = json.fromJson(encoded, JsonMixinTarget.class);
+    Preconditions.checkArgument(decoded.getId() == 18);
+    Preconditions.checkArgument(decoded.getAddress().city.equals("Hangzhou"));
+    Preconditions.checkArgument(decoded.getAddress().zip == 310000);
+  }
+
+  private static void testMixInValue() {
+    String codec =
+        "org.apache.fory.graalvm.JsonMixinValueModel_ForyJsonMixin_"
+            + "org_x2e_apache_x2e_fory_x2e_graalvm_x2e_JsonMixinValueTarget_ForyJsonCodec";
+    try {
+      Class.forName(codec, false, JsonMixinValueModel.class.getClassLoader());
+      throw new AssertionError("non-Record value mix-in generated an unused codec companion");
+    } catch (ClassNotFoundException expected) {
+      // The pair metadata is sufficient for this codec family.
+    }
+    ForyJson json = ForyJson.builder().registerMixIn(JsonMixinValueModel.class).build();
+    JsonMixinValueTarget value = JsonMixinValueTarget.create("value-mixin");
+    Preconditions.checkArgument(json.toJson(value).equals("\"value-mixin\""));
+    JsonMixinValueTarget decoded = json.fromJson("\"decoded-mixin\"", JsonMixinValueTarget.class);
+    Preconditions.checkArgument(decoded.getValue().equals("decoded-mixin"));
+  }
+
+  private static void testMixInValueRecord() {
+    String codec =
+        "org.apache.fory.graalvm.JsonMixinValueRecordModel_ForyJsonMixin_"
+            + "org_x2e_apache_x2e_fory_x2e_graalvm_x2e_JsonMixinValueRecord_ForyJsonCodec";
+    try {
+      Class.forName(codec, false, JsonMixinValueRecordModel.class.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      throw new AssertionError("generated Record value mix-in JSON codec was removed", e);
+    }
+    ForyJson json = ForyJson.builder().registerMixIn(JsonMixinValueRecordModel.class).build();
+    Preconditions.checkArgument(
+        json.toJson(new JsonMixinValueRecord("record-value")).equals("\"record-value\""));
+    JsonMixinValueRecord decoded = json.fromJson("\"decoded-record\"", JsonMixinValueRecord.class);
+    Preconditions.checkArgument(decoded.value().equals("decoded-record"));
   }
 
   private static void testModels() {

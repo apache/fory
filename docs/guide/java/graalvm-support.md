@@ -80,6 +80,47 @@ public class JsonExample {
 }
 ```
 
+The processor also supports Fory JSON mix-ins for models that cannot be modified:
+
+```java
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonProperty;
+
+@JsonMixin(target = ThirdPartyUser.class)
+public abstract class ThirdPartyUserMixIn {
+  @JsonProperty("user_id")
+  long id;
+}
+
+public class JsonExample {
+  public static void main(String[] args) {
+    ForyJson json =
+        ForyJson.builder().registerMixIn(ThirdPartyUserMixIn.class).build();
+    ThirdPartyUser user = json.fromJson("{\"user_id\":1}", ThirdPartyUser.class);
+    System.out.println(json.toJson(user));
+  }
+}
+```
+
+`JsonMixin` is a build-time entry point for its exact declared target, so the target does not need
+`JsonType` solely to use the mix-in. The registered mix-in class literal must be reachable from the
+application. The processor emits exact metadata for the `(target, mix-in)` pair and a pair-specific
+companion when the effective codec family needs generated object, Record, creator, or Any-setter
+operations. Complete type codecs, subtype bases, enums, and non-Record `JsonValue` representations
+retain their existing no-companion behavior.
+
+Only one source is enabled for an exact target in a built `ForyJson`. Later registration replaces
+an earlier source for subsequent `build()` calls; a runtime keeps the immutable snapshot it was
+built with. If the target also has a direct `JsonType` companion, enabling a mix-in selects the
+pair-specific artifact instead of combining the mix-in with the direct companion.
+
+The Native Image Feature retains the exact mix-in declarations, matched target declarations,
+codec constructors, subtype entries, generic endpoints, and unwrapped child models required by the
+pair. Do not add application reflection configuration as a replacement. Registration and the
+target's first metadata resolution happen inside the native executable, using the same mix-in
+contract as the JVM.
+
 The processor generates direct property and creator operations. The `fory-json` artifact activates
 its Native Image Feature automatically and retains the generated factories and required model
 metadata. `@JsonType` is not inherited, so annotate every concrete runtime model. An annotated base
@@ -106,17 +147,20 @@ on the JVM and Android.
 `JsonValue` fields and effective public zero-argument methods are supported, including matching
 one-String `JsonCreator` constructors and public static factories. Fixed `JsonRawValue` fields and
 getters support trusted raw String values, and fixed `JsonBase64` fields and getters support Base64
-`byte[]` values as on the JVM. Annotate each reachable owning model with `JsonType` so Native Image
-retains these members and the Base64 codec constructor. A directly annotated `JsonValue` Record
-uses its generated component accessor and canonical constructor operations.
+`byte[]` values as on the JVM. For direct target annotations, annotate each reachable owning model
+with `JsonType` so Native Image retains these members and the Base64 codec constructor. A directly
+annotated `JsonValue` Record uses its generated component accessor and canonical constructor
+operations. An effective declaration supplied by a mix-in uses the pair workflow above instead.
 
 `JsonAnyProperty` and `JsonAnyGetter` flatten their Map into the enclosing object. Use
 `@JsonCodec(valueCodec = ...)` on that field or getter to customize each dynamic value. A second
 `JsonAnySetter` parameter may use the normal configuration for its own value shape.
 
-`JsonUnwrapped` uses the same interpreted behavior as on the JVM. Annotate the containing model and
-every unwrapped child or intermediate object with `JsonType` so each model receives its generated
-property and creator operations.
+`JsonUnwrapped` uses the same interpreted behavior as on the JVM. For direct target annotations,
+annotate the containing model and every unwrapped child or intermediate object with `JsonType` so
+each model receives its generated property and creator operations. A mix-in pair retains the
+unwrapped models reached by its effective schema; register a separate exact mix-in for a child only
+when that child's annotations also need an overlay.
 
 Child codecs act on one direct level. `elementCodec` supports `Collection`, Java arrays, and
 `AtomicReferenceArray`; `contentCodec` supports `Optional` and `AtomicReference`; `keyCodec` and

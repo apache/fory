@@ -19,7 +19,11 @@
 
 package org.apache.fory.json;
 
+import java.lang.reflect.Modifier;
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Objects;
+import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
 import org.apache.fory.platform.AndroidSupport;
@@ -55,6 +59,7 @@ public final class ForyJsonBuilder {
   private int bufferSizeLimitBytes = 2 * 1024 * 1024;
   private JsonTypeChecker typeChecker;
   private final CodecRegistry codecRegistry = new CodecRegistry();
+  private final Map<Class<?>, Class<?>> mixIns = new IdentityHashMap<>();
 
   ForyJsonBuilder() {}
 
@@ -185,6 +190,57 @@ public final class ForyJsonBuilder {
   }
 
   /**
+   * Registers the JSON mix-in declared by {@code mixInType} for its exact target class.
+   *
+   * <p>Registering another mix-in for the same target replaces the previous registration. Existing
+   * {@link ForyJson} instances retain their immutable configuration snapshot.
+   *
+   * @throws NullPointerException if {@code mixInType} is null
+   * @throws IllegalArgumentException if the class is not a valid {@link JsonMixin} declaration
+   */
+  public ForyJsonBuilder registerMixIn(Class<?> mixInType) {
+    Objects.requireNonNull(mixInType, "mixInType");
+    JsonMixin declaration;
+    try {
+      declaration = mixInType.getDeclaredAnnotation(JsonMixin.class);
+    } catch (RuntimeException | LinkageError e) {
+      throw new IllegalArgumentException(
+          "Cannot read JSON mix-in declaration " + mixInType.getName(), e);
+    }
+    if (declaration == null) {
+      throw new IllegalArgumentException(
+          "JSON mix-in source is missing @JsonMixin: " + mixInType.getName());
+    }
+    int sourceModifiers = mixInType.getModifiers();
+    if (mixInType.isAnnotation()
+        || mixInType.isEnum()
+        || mixInType.isAnonymousClass()
+        || mixInType.isLocalClass()
+        || (!mixInType.isInterface() && !Modifier.isAbstract(sourceModifiers))) {
+      throw new IllegalArgumentException(
+          "JSON mix-in source must be a named interface or abstract class: " + mixInType.getName());
+    }
+    if (mixInType.getInterfaces().length != 0
+        || (!mixInType.isInterface() && mixInType.getSuperclass() != Object.class)) {
+      throw new IllegalArgumentException(
+          "JSON mix-in source must not extend or implement another type: " + mixInType.getName());
+    }
+    Class<?> target;
+    try {
+      target = declaration.target();
+    } catch (RuntimeException | LinkageError e) {
+      throw new IllegalArgumentException(
+          "Cannot resolve JSON mix-in target for " + mixInType.getName(), e);
+    }
+    if (target == mixInType || target.isPrimitive() || target.isArray() || target.isAnnotation()) {
+      throw new IllegalArgumentException(
+          "Invalid JSON mix-in target " + target.getTypeName() + " for " + mixInType.getName());
+    }
+    mixIns.put(target, mixInType);
+    return this;
+  }
+
+  /**
    * Sets the JSON type checker. Pass {@code null} to allow all non-disallowed classes.
    *
    * <p>The checker must be thread-safe because one {@link ForyJson} instance can be used
@@ -220,6 +276,7 @@ public final class ForyJsonBuilder {
             concurrencyLevel,
             bufferSizeLimitBytes,
             codecRegistry,
+            mixIns,
             typeChecker));
   }
 }

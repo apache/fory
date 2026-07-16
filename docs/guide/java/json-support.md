@@ -295,6 +295,7 @@ are rejected.
 | `withConcurrencyLevel`       | `max(1, 2 * processors)`                     | Reusable operation-state count                         |
 | `withBufferSizeLimitBytes`   | 2 MiB                                        | Reusable capacity retained by each pooled writer       |
 | `registerCodec`              | None                                         | Exact-class complete-value codec                       |
+| `registerMixIn`              | None                                         | Annotation mix-in for its exact declared target        |
 | `withTypeChecker`            | None                                         | Application policy in addition to Fory's disallow list |
 
 Depth, concurrency, and retained buffer limits must be positive. The cached-field-name limit applies
@@ -309,8 +310,9 @@ disabled. Every other builder option keeps the behavior described above.
 
 Fory JSON provides `JsonProperty`, `JsonPropertyOrder`, `JsonIgnore`, `JsonAnyProperty`,
 `JsonAnyGetter`, `JsonAnySetter`, `JsonCreator`, `JsonCodec`, `JsonValue`, `JsonRawValue`,
-`JsonBase64`, `JsonUnwrapped`, `JsonSubTypes`, and `JsonType` under
-`org.apache.fory.json.annotation`. They are not Jackson, Gson, or Fory binary-protocol annotations.
+`JsonBase64`, `JsonUnwrapped`, and `JsonSubTypes` as mapping annotations under
+`org.apache.fory.json.annotation`. `JsonType` is a separate build-time generation marker. They are
+not Jackson, Gson, or Fory binary-protocol annotations.
 
 ```java
 import java.util.LinkedHashMap;
@@ -323,6 +325,8 @@ import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonIgnore;
+import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonMixinRemove;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonRawValue;
@@ -341,6 +345,83 @@ to receive a companion. See
 [GraalVM Support](graalvm-support.md) and [Android Support](android-support.md) for setup.
 A directly annotated model that uses the default object codec requires that generated companion;
 the runtime reports a configuration error if the processor output is missing.
+
+### Mix-ins
+
+Use a mix-in to configure an existing class without changing its source:
+
+```java
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonMixin;
+import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonUnwrapped;
+
+@JsonMixin(target = ThirdPartyUser.class)
+abstract class ThirdPartyUserMixIn {
+  @JsonProperty("user_id")
+  long id;
+
+  @JsonUnwrapped(prefix = "address_")
+  Address address;
+}
+
+ForyJson json = ForyJson.builder().registerMixIn(ThirdPartyUserMixIn.class).build();
+```
+
+The source must be a named abstract class or interface, must not be local or anonymous, must not
+extend or implement another type, and is never instantiated. An annotated source field, method,
+constructor, or parameter selects an existing target declaration by its Java signature. The source
+cannot add a property, creator, factory, subtype, value, generic type, or executable implementation.
+Every Java type, access operation, invocation, and runtime value still comes from the target.
+
+Registration is exact-target only. A base-class registration does not change a subclass, and an
+interface registration does not change an implementation. A subclass mix-in may select a member
+that the subclass inherits, but the resulting annotation applies only while that exact subclass is
+mapped.
+
+All thirteen mapping annotations are supported: `JsonAnyGetter`, `JsonAnyProperty`,
+`JsonAnySetter`, `JsonBase64`, `JsonCodec`, `JsonCreator`, `JsonIgnore`, `JsonProperty`,
+`JsonPropertyOrder`, `JsonRawValue`, `JsonSubTypes`, `JsonUnwrapped`, and `JsonValue`. `JsonType`
+cannot be added or removed because it controls build-time generation rather than the JSON schema.
+
+A source annotation replaces the target annotation of the same type on the matched declaration.
+The complete annotation is replaced, so omitted members use their declared defaults instead of
+inheriting values from the target annotation. Other annotation types on that target declaration
+remain effective.
+
+Use `JsonMixinRemove` to make selected target annotations ineffective:
+
+```java
+import org.apache.fory.json.annotation.JsonMixinRemove;
+import org.apache.fory.json.annotation.JsonRawValue;
+
+@JsonMixin(target = ThirdPartyMessage.class)
+abstract class QuotedMessageMixIn {
+  @JsonMixinRemove(JsonRawValue.class)
+  String body;
+}
+```
+
+Removal affects only the matched declaration in the exact-target configuration. Removing
+`JsonRawValue` restores ordinary quoted String output; removing `JsonBase64` restores the ordinary
+`byte[]` representation; removing `JsonUnwrapped` restores a nested object property. Type-level
+removal can mask inherited `JsonCodec` or `JsonPropertyOrder` declarations for the exact target.
+Removing an absent annotation is harmless, but the selector must still match exactly one target
+declaration. A source cannot both declare and remove the same annotation type on one declaration.
+
+Only one source is enabled for an exact target in a built runtime. Registering a different source
+for the same target replaces the earlier registration, while registering the same source again is
+idempotent. `build()` snapshots the current last-registration-wins mapping; a later registration on
+the builder does not change a previously built `ForyJson`.
+
+Records use their existing field, accessor, and canonical-constructor parameter declarations. A
+mix-in does not introduce a separate record-component model. Use source selectors for those real
+declarations and keep repeated annotations consistent as required by normal record property
+mapping.
+
+On Android and GraalVM Native Image, compile mix-in sources with the Fory annotation processor so
+the exact target/mix-in pair metadata and any required generated operations are available. See
+[Android Support](android-support.md) and [GraalVM Support](graalvm-support.md).
 
 ### `JsonProperty`
 
@@ -1059,9 +1140,10 @@ type-declaration codec is used for a more specific target, every decoded value m
 assignable to that target.
 
 The annotation has the same FIELD, METHOD, and PARAMETER behavior on the JVM, Android, and GraalVM
-Native Image. Ordinary Android classes may omit `JsonType` and provide equivalent exact rules;
-Android-desugared Records, including `JsonValue` Records, require `JsonType` and the processor.
-GraalVM object models follow the `JsonType` workflow in
+Native Image. Ordinary Android classes may omit `JsonType` and provide equivalent exact rules.
+Android-desugared Records, including `JsonValue` Records, require processor-generated operations
+from either a direct `JsonType` declaration or a compiled exact `JsonMixin` pair. GraalVM object
+models follow the build-time workflow in
 [GraalVM Support](graalvm-support.md).
 
 ## Type validation and untrusted input

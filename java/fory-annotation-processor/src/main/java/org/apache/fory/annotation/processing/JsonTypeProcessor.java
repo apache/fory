@@ -42,6 +42,7 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
+import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.PackageElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.VariableElement;
@@ -61,6 +62,8 @@ import javax.tools.StandardLocation;
 final class JsonTypeProcessor {
   private static final String JSON_PACKAGE = "org.apache.fory.json";
   private static final String JSON_TYPE = JSON_PACKAGE + ".annotation.JsonType";
+  private static final String JSON_MIXIN = JSON_PACKAGE + ".annotation.JsonMixin";
+  private static final String JSON_MIXIN_REMOVE = JSON_PACKAGE + ".annotation.JsonMixinRemove";
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
   private static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
   private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
@@ -68,12 +71,14 @@ final class JsonTypeProcessor {
   private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
   private static final String JSON_RAW_VALUE = JSON_PACKAGE + ".annotation.JsonRawValue";
   private static final String JSON_BASE64 = JSON_PACKAGE + ".annotation.JsonBase64";
+  private static final String JSON_UNWRAPPED = JSON_PACKAGE + ".annotation.JsonUnwrapped";
   private static final String BASE64_CODEC = JSON_PACKAGE + ".codec.Base64ByteArrayCodec";
   private static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
   private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
   private static final String NO_JSON_VALUE_CODEC = JSON_CODEC + "$NoJsonValueCodec";
   private static final String NO_MAP_KEY_CODEC = JSON_CODEC + "$NoMapKeyCodec";
   private static final String R8_PREFIX = "META-INF/proguard/fory-json-";
+  private static final String R8_MIXIN_PREFIX = "META-INF/proguard/fory-json-mixin-";
   private static final String NATIVE_IMAGE_PREFIX =
       "META-INF/native-image/org.apache.fory/fory-json-";
   private static final String[] CODEC_MEMBERS = {
@@ -86,6 +91,8 @@ final class JsonTypeProcessor {
   private final Types types;
   private final GeneratedJsonCodecSourceWriter codecSourceWriter;
   private final Set<String> processedTypes = new HashSet<>();
+  private final Set<String> processedMixIns = new HashSet<>();
+  private final Map<String, TypeElement> pendingMixIns = new LinkedHashMap<>();
 
   JsonTypeProcessor(ProcessingEnvironment environment) {
     filer = environment.getFiler();
@@ -96,8 +103,10 @@ final class JsonTypeProcessor {
   }
 
   void process(RoundEnvironment roundEnvironment) {
+    validateMixinControls(roundEnvironment);
     TypeElement jsonType = elements.getTypeElement(JSON_TYPE);
     if (jsonType == null) {
+      processMixIns(roundEnvironment);
       return;
     }
     Deque<TypeElement> pending = new ArrayDeque<>();
@@ -110,6 +119,9 @@ final class JsonTypeProcessor {
       TypeElement type = pending.removeFirst();
       String binaryName = elements.getBinaryName(type).toString();
       if (!processedTypes.add(binaryName)) {
+        continue;
+      }
+      if (hasAnnotation(type, JsonMixinAnnotations.JSON_MIXIN)) {
         continue;
       }
       try {
@@ -132,6 +144,7 @@ final class JsonTypeProcessor {
         emitR8(model);
         emitNativeImageProperties(model);
         pending.addAll(subtypes);
+        pending.addAll(unwrappedChildren(type, null));
       } catch (GeneratedJsonCodecSourceWriter.InvalidJsonTypeException e) {
         messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
       } catch (InvalidJsonTypeException e) {
@@ -143,33 +156,249 @@ final class JsonTypeProcessor {
             type);
       }
     }
+    processMixIns(roundEnvironment);
+  }
+
+  private void validateMixinControls(RoundEnvironment roundEnvironment) {
+    TypeElement removeType = elements.getTypeElement(JSON_MIXIN_REMOVE);
+    if (removeType == null) {
+      return;
+    }
+    for (Element element : roundEnvironment.getElementsAnnotatedWith(removeType)) {
+      TypeElement owner = enclosingType(element);
+      if (owner == null || !hasAnnotation(owner, JSON_MIXIN)) {
+        messager.printMessage(
+            Diagnostic.Kind.ERROR,
+            "@JsonMixinRemove is valid only inside a direct @JsonMixin source",
+            element);
+      }
+    }
+  }
+
+  private static TypeElement enclosingType(Element element) {
+    Element current = element;
+    while (current != null && !(current instanceof TypeElement)) {
+      current = current.getEnclosingElement();
+    }
+    return current instanceof TypeElement ? (TypeElement) current : null;
+  }
+
+  private void processMixIns(RoundEnvironment roundEnvironment) {
+    TypeElement jsonMixin = elements.getTypeElement(JSON_MIXIN);
+    if (jsonMixin == null) {
+      return;
+    }
+    for (Element element : roundEnvironment.getElementsAnnotatedWith(jsonMixin)) {
+      if (element instanceof TypeElement) {
+        TypeElement mixIn = (TypeElement) element;
+        pendingMixIns.put(elements.getBinaryName(mixIn).toString(), mixIn);
+      }
+    }
+    List<Map.Entry<String, TypeElement>> candidates = new ArrayList<>(pendingMixIns.entrySet());
+    for (Map.Entry<String, TypeElement> candidate : candidates) {
+      String mixInBinaryName = candidate.getKey();
+      TypeElement mixIn = candidate.getValue();
+      TypeElement currentMixIn = elements.getTypeElement(mixIn.getQualifiedName());
+      if (currentMixIn != null) {
+        mixIn = currentMixIn;
+        pendingMixIns.put(mixInBinaryName, mixIn);
+      }
+      if (processedMixIns.contains(mixInBinaryName)) {
+        pendingMixIns.remove(mixInBinaryName);
+        continue;
+      }
+      try {
+        TypeElement target = mixInTarget(mixIn);
+        if (target == null) {
+          if (roundEnvironment.processingOver()) {
+            messager.printMessage(
+                Diagnostic.Kind.ERROR,
+                "Cannot resolve @JsonMixin target for " + mixInBinaryName,
+                mixIn);
+            pendingMixIns.remove(mixInBinaryName);
+          }
+          continue;
+        }
+        processedMixIns.add(mixInBinaryName);
+        pendingMixIns.remove(mixInBinaryName);
+        JsonMixinAnnotations annotations =
+            JsonMixinAnnotations.resolve(elements, types, target, mixIn);
+        codecSourceWriter.validatePair(annotations);
+        Model model = inspect(target, annotations);
+        model.mixIn = mixIn;
+        model.resourceIdentity = mixInBinaryName;
+        model.metadataBinaryName = writeMixInMetadata(annotations);
+        model.nameTypes.add(model.binaryName);
+        model.nameTypes.add(mixInBinaryName);
+        collectMixInSource(annotations, model);
+        GeneratedJsonCodecSourceWriter.Result generated = codecSourceWriter.writePair(annotations);
+        if (generated != null) {
+          model.companionBinaryName = generated.companionBinaryName;
+          model.companionHasAnySetter = generated.hasAnySetter;
+          model.companionHasCreator = generated.hasCreator;
+          model.companionHasCreatorFactory = generated.hasCreatorFactory;
+          model.companionIsRecord = generated.record;
+          for (GeneratedJsonCodecSourceWriter.MemberRule member : generated.r8Members) {
+            model.addR8Member(new R8Member(member.ownerBinaryName, member.declaration));
+          }
+        }
+        collectPairClosure(model, target, annotations);
+        model.sort();
+        emitR8(model);
+        emitNativeImageProperties(model);
+      } catch (JsonMixinAnnotations.InvalidJsonMixinException e) {
+        messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
+      } catch (GeneratedJsonCodecSourceWriter.InvalidJsonTypeException e) {
+        messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
+      } catch (InvalidJsonTypeException e) {
+        messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
+      } catch (RuntimeException e) {
+        messager.printMessage(
+            Diagnostic.Kind.ERROR,
+            "Failed to generate Fory JSON mix-in metadata for "
+                + mixInBinaryName
+                + ": "
+                + e.getMessage(),
+            mixIn);
+      }
+    }
+  }
+
+  private TypeElement mixInTarget(TypeElement mixIn) {
+    AnnotationMirror annotation = annotationMirror(mixIn, JSON_MIXIN);
+    if (annotation == null) {
+      throw new InvalidJsonTypeException("Missing @JsonMixin declaration", mixIn);
+    }
+    AnnotationValue value = annotationValue(annotation, "target");
+    if (value == null || !(value.getValue() instanceof TypeMirror)) {
+      throw new InvalidJsonTypeException("@JsonMixin must declare a target type", mixIn);
+    }
+    TypeMirror target = (TypeMirror) value.getValue();
+    if (target.getKind() == TypeKind.ERROR) {
+      return null;
+    }
+    TypeElement targetElement = asTypeElement(target);
+    if (targetElement == null) {
+      throw new InvalidJsonTypeException("@JsonMixin target must be a declared type", mixIn);
+    }
+    return targetElement;
+  }
+
+  private String writeMixInMetadata(JsonMixinAnnotations annotations) {
+    TypeElement target = annotations.target();
+    TypeElement mixIn = annotations.source();
+    String targetBinaryName = elements.getBinaryName(target).toString();
+    String mixInBinaryName = elements.getBinaryName(mixIn).toString();
+    String binaryName = GeneratedTypeNames.jsonMixinBinaryName(targetBinaryName, mixInBinaryName);
+    int packageSeparator = binaryName.lastIndexOf('.');
+    String packageName = packageSeparator < 0 ? "" : binaryName.substring(0, packageSeparator);
+    String simpleName = binaryName.substring(packageSeparator + 1);
+    StringBuilder source = new StringBuilder(1024);
+    source.append("// Generated by Apache Fory. Do not edit.\n");
+    if (!packageName.isEmpty()) {
+      source.append("package ").append(packageName).append(";\n\n");
+    }
+    source
+        .append("public final class ")
+        .append(simpleName)
+        .append(" implements org.apache.fory.json.resolver.GeneratedJsonMixinMetadata {\n")
+        .append("  public ")
+        .append(simpleName)
+        .append("() {}\n\n")
+        .append("  @Override\n")
+        .append("  public String targetName() {\n")
+        .append("    return \"")
+        .append(escapeJava(targetBinaryName))
+        .append("\";\n")
+        .append("  }\n\n")
+        .append("  @Override\n")
+        .append("  public String mixInName() {\n")
+        .append("    return \"")
+        .append(escapeJava(mixInBinaryName))
+        .append("\";\n")
+        .append("  }\n")
+        .append("}\n");
+    try {
+      javax.tools.JavaFileObject file = filer.createSourceFile(binaryName, mixIn, target);
+      try (Writer writer = file.openWriter()) {
+        writer.write(source.toString());
+      }
+    } catch (IOException e) {
+      throw new InvalidJsonTypeException(
+          "Failed to write generated JSON mix-in metadata: " + e, mixIn);
+    }
+    return binaryName;
+  }
+
+  private void collectMixInSource(JsonMixinAnnotations annotations, Model model) {
+    TypeElement source = annotations.source();
+    String sourceBinaryName = elements.getBinaryName(source).toString();
+    collectAnnotations(source, model.annotationTypes);
+    model.annotationTypes.add(JSON_MIXIN);
+    model.annotationOwnerTypes.add(sourceBinaryName);
+    Set<Element> retained = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    boolean hasRemoval = false;
+    List<Element> selectors = annotations.sourceSelectors();
+    for (Element selector : selectors) {
+      collectAnnotations(selector, model.annotationTypes);
+      hasRemoval |= annotationMirror(selector, JSON_MIXIN_REMOVE) != null;
+      Element retainedElement =
+          selector.getKind() == ElementKind.PARAMETER ? selector.getEnclosingElement() : selector;
+      if (retainedElement instanceof ExecutableElement) {
+        ExecutableElement executable = (ExecutableElement) retainedElement;
+        collectAnnotations(executable.getParameters(), model.annotationTypes);
+      }
+      if (!retained.add(retainedElement)) {
+        continue;
+      }
+      if (retainedElement.getKind() == ElementKind.FIELD) {
+        VariableElement field = (VariableElement) retainedElement;
+        model.addR8Member(R8Member.field(field, typeName(field.asType())));
+      } else if (retainedElement.getKind() == ElementKind.METHOD) {
+        ExecutableElement method = (ExecutableElement) retainedElement;
+        model.addR8Member(
+            R8Member.method(method, typeName(method.getReturnType()), typeNames(method)));
+      } else if (retainedElement.getKind() == ElementKind.CONSTRUCTOR) {
+        ExecutableElement constructor = (ExecutableElement) retainedElement;
+        model.addR8Member(
+            R8Member.constructor(constructor, sourceConstructorTypes(source, constructor)));
+      }
+    }
+    if (hasRemoval) {
+      model.annotationTypes.add(JSON_MIXIN_REMOVE);
+    }
   }
 
   private Model inspect(TypeElement target) {
+    return inspect(target, null);
+  }
+
+  private Model inspect(TypeElement target, JsonMixinAnnotations annotations) {
     String binaryName = elements.getBinaryName(target).toString();
     Model model = new Model(target, binaryName);
+    model.annotations = annotations;
     DeclaredType targetType = (DeclaredType) target.asType();
-    collectAnnotations(target, model.annotationTypes);
-    collectCodecAnnotation(annotationMirror(target, JSON_CODEC), model);
+    collectAnnotations(annotations, target, model.annotationTypes);
+    collectCodecAnnotation(annotationMirror(annotations, target, JSON_CODEC), model);
     model.annotationOwnerTypes.add(binaryName);
 
     List<TypeElement> classes = classHierarchy(target);
     Collections.reverse(classes);
     for (TypeElement type : classes) {
-      collectAnnotations(type, model.annotationTypes);
-      collectCodecAnnotation(annotationMirror(type, JSON_CODEC), model);
-      if (hasJsonAnnotations(type)) {
+      collectAnnotations(annotations, type, model.annotationTypes);
+      collectCodecAnnotation(annotationMirror(annotations, type, JSON_CODEC), model);
+      if (hasJsonAnnotations(annotations, type)) {
         model.annotationOwnerTypes.add(elements.getBinaryName(type).toString());
       }
       for (VariableElement field : ElementFilter.fieldsIn(type.getEnclosedElements())) {
-        collectAnnotations(field, model.annotationTypes);
-        collectOccurrenceCodec(field, model);
+        collectAnnotations(annotations, field, model.annotationTypes);
+        collectOccurrenceCodec(annotations, field, model);
         if (field.getKind() == ElementKind.ENUM_CONSTANT) {
           model.addR8Member(R8Member.field(field, typeName(field.asType())));
           continue;
         }
         // Runtime validation still needs to see annotated members that are not JSON properties.
-        if (isEligibleField(field) || hasJsonAnnotations(field)) {
+        if (isEligibleField(field) || hasJsonAnnotations(annotations, field)) {
           model.addR8Member(R8Member.field(field, typeName(field.asType())));
           collectTypeEndpoints(types.asMemberOf(targetType, field), model);
         }
@@ -177,39 +406,39 @@ final class JsonTypeProcessor {
     }
 
     for (TypeElement owner : allDeclarations(target)) {
-      collectAnnotations(owner, model.annotationTypes);
-      collectCodecAnnotation(annotationMirror(owner, JSON_CODEC), model);
-      if (hasJsonAnnotations(owner)) {
+      collectAnnotations(annotations, owner, model.annotationTypes);
+      collectCodecAnnotation(annotationMirror(annotations, owner, JSON_CODEC), model);
+      if (hasJsonAnnotations(annotations, owner)) {
         model.annotationOwnerTypes.add(elements.getBinaryName(owner).toString());
       }
     }
     // Ordinary property rules follow Java's effective method set. An unannotated override
     // suppresses the inherited declaration, while creators remain exact to the target declaration.
-    List<ExecutableElement> jsonMethods = jsonMethods(target);
+    List<ExecutableElement> jsonMethods = jsonMethods(target, annotations);
     for (ExecutableElement method : jsonMethods) {
       TypeElement owner = (TypeElement) method.getEnclosingElement();
       ExecutableType resolvedMethod = (ExecutableType) types.asMemberOf(targetType, method);
       model.addR8Member(
           R8Member.method(method, typeName(method.getReturnType()), typeNames(method)));
-      collectAnnotations(method, model.annotationTypes);
-      collectOccurrenceCodec(method, model);
-      collectAnnotations(method.getParameters(), model.annotationTypes);
-      collectCodecAnnotations(method.getParameters(), model);
+      collectAnnotations(annotations, method, model.annotationTypes);
+      collectOccurrenceCodec(annotations, method, model);
+      collectAnnotations(annotations, method.getParameters(), model.annotationTypes);
+      collectCodecAnnotations(annotations, method.getParameters(), model);
       collectTypeEndpoints(resolvedMethod.getReturnType(), model);
       for (TypeMirror parameterType : resolvedMethod.getParameterTypes()) {
         collectTypeEndpoints(parameterType, model);
       }
-      collectAnnotations(owner, model.annotationTypes);
+      collectAnnotations(annotations, owner, model.annotationTypes);
     }
-    collectValidationMethods(target, jsonMethods, model);
+    collectValidationMethods(target, jsonMethods, annotations, model);
 
     for (ExecutableElement constructor :
         ElementFilter.constructorsIn(target.getEnclosedElements())) {
-      collectAnnotations(constructor, model.annotationTypes);
-      collectAnnotations(constructor.getParameters(), model.annotationTypes);
-      collectCodecAnnotations(constructor.getParameters(), model);
-      boolean creator = hasAnnotation(constructor, JSON_CREATOR);
-      if (creator || isNoArg(constructor) || hasJsonDeclaration(constructor)) {
+      collectAnnotations(annotations, constructor, model.annotationTypes);
+      collectAnnotations(annotations, constructor.getParameters(), model.annotationTypes);
+      collectCodecAnnotations(annotations, constructor.getParameters(), model);
+      boolean creator = hasAnnotation(annotations, constructor, JSON_CREATOR);
+      if (creator || isNoArg(constructor) || hasJsonDeclaration(annotations, constructor)) {
         model.addR8Member(R8Member.constructor(constructor, typeNames(constructor)));
         for (VariableElement parameter : constructor.getParameters()) {
           collectTypeEndpoints(parameter.asType(), model);
@@ -219,15 +448,17 @@ final class JsonTypeProcessor {
     return model;
   }
 
-  private void collectCodecAnnotations(List<? extends Element> sourceElements, Model model) {
+  private void collectCodecAnnotations(
+      JsonMixinAnnotations annotations, List<? extends Element> sourceElements, Model model) {
     for (Element element : sourceElements) {
-      collectCodecAnnotation(annotationMirror(element, JSON_CODEC), model);
+      collectCodecAnnotation(annotationMirror(annotations, element, JSON_CODEC), model);
     }
   }
 
-  private void collectOccurrenceCodec(Element element, Model model) {
-    collectCodecAnnotation(annotationMirror(element, JSON_CODEC), model);
-    if (hasAnnotation(element, JSON_BASE64)) {
+  private void collectOccurrenceCodec(
+      JsonMixinAnnotations annotations, Element element, Model model) {
+    collectCodecAnnotation(annotationMirror(annotations, element, JSON_CODEC), model);
+    if (hasAnnotation(annotations, element, JSON_BASE64)) {
       model.codecTypes.add(BASE64_CODEC);
     }
   }
@@ -254,10 +485,12 @@ final class JsonTypeProcessor {
   }
 
   private void emitR8(Model model) {
-    String resourceName = R8_PREFIX + model.binaryName + ".pro";
+    String resourceName =
+        (model.mixIn == null ? R8_PREFIX : R8_MIXIN_PREFIX) + model.resourceIdentity + ".pro";
     try {
       javax.tools.FileObject file =
-          filer.createResource(StandardLocation.CLASS_OUTPUT, "", resourceName, model.target);
+          filer.createResource(
+              StandardLocation.CLASS_OUTPUT, "", resourceName, model.originatingElements());
       try (Writer writer = file.openWriter()) {
         writer.write(writeR8(model));
       }
@@ -277,7 +510,8 @@ final class JsonTypeProcessor {
         NATIVE_IMAGE_PREFIX + model.companionBinaryName + "/native-image.properties";
     try {
       javax.tools.FileObject file =
-          filer.createResource(StandardLocation.CLASS_OUTPUT, "", resourceName, model.target);
+          filer.createResource(
+              StandardLocation.CLASS_OUTPUT, "", resourceName, model.originatingElements());
       try (Writer writer = file.openWriter()) {
         writer.write("Args=--initialize-at-build-time=" + model.companionBinaryName + "$Factory\n");
       }
@@ -310,6 +544,7 @@ final class JsonTypeProcessor {
     for (Map.Entry<String, List<R8Member>> entry : membersByOwner.entrySet()) {
       boolean preserveName =
           model.binaryFallbackTypes.contains(entry.getKey())
+              || model.nameTypes.contains(entry.getKey())
               || model.companionBinaryName != null && model.binaryName.equals(entry.getKey());
       builder
           .append("-keep,allowoptimization")
@@ -366,8 +601,8 @@ final class JsonTypeProcessor {
           .append(model.companionBinaryName)
           .append(" {\n")
           .append("  public <init>();\n")
-          .append("  public java.lang.Class type();\n")
-          .append("  public org.apache.fory.json.meta.JsonFieldAccessor[] fieldAccessors();\n");
+          .append("  public java.lang.Class type();\n");
+      builder.append("  public org.apache.fory.json.meta.JsonFieldAccessor[] fieldAccessors();\n");
       if (model.companionHasAnySetter) {
         builder.append(
             "  public org.apache.fory.json.meta.JsonAnySetterAccessor anySetterAccessor();\n");
@@ -386,12 +621,27 @@ final class JsonTypeProcessor {
       }
       builder.append("}\n");
     }
+    if (model.metadataBinaryName != null) {
+      builder
+          .append("-keep,allowoptimization class ")
+          .append(model.metadataBinaryName)
+          .append(" {\n")
+          .append("  public <init>();\n")
+          .append("  public java.lang.String targetName();\n")
+          .append("  public java.lang.String mixInName();\n")
+          .append("}\n");
+    }
     return builder.toString();
   }
 
   private List<TypeElement> classLiteralSubtypes(
       TypeElement target, Set<String> binaryFallbackTypes) {
-    AnnotationMirror subtypes = annotationMirror(target, JSON_SUB_TYPES);
+    return classLiteralSubtypes(target, binaryFallbackTypes, null);
+  }
+
+  private List<TypeElement> classLiteralSubtypes(
+      TypeElement target, Set<String> binaryFallbackTypes, JsonMixinAnnotations annotations) {
+    AnnotationMirror subtypes = annotationMirror(annotations, target, JSON_SUB_TYPES);
     if (subtypes == null) {
       return Collections.emptyList();
     }
@@ -427,6 +677,74 @@ final class JsonTypeProcessor {
     return subtypesToProcess;
   }
 
+  private void collectPairClosure(
+      Model model, TypeElement target, JsonMixinAnnotations annotations) {
+    Set<String> visited = new HashSet<>();
+    visited.add(elements.getBinaryName(target).toString());
+    Deque<TypeElement> pending = new ArrayDeque<>();
+    pending.addAll(classLiteralSubtypes(target, model.binaryFallbackTypes, annotations));
+    pending.addAll(unwrappedChildren(target, annotations));
+    while (!pending.isEmpty()) {
+      TypeElement type = pending.removeFirst();
+      String binaryName = elements.getBinaryName(type).toString();
+      if (!visited.add(binaryName)) {
+        continue;
+      }
+      Model child = inspect(type, null);
+      model.merge(child);
+      pending.addAll(classLiteralSubtypes(type, model.binaryFallbackTypes, null));
+      pending.addAll(unwrappedChildren(type, null));
+    }
+  }
+
+  private List<TypeElement> unwrappedChildren(
+      TypeElement target, JsonMixinAnnotations annotations) {
+    LinkedHashMap<String, TypeElement> children = new LinkedHashMap<>();
+    DeclaredType targetType = (DeclaredType) target.asType();
+    for (TypeElement owner : classHierarchy(target)) {
+      for (VariableElement field : ElementFilter.fieldsIn(owner.getEnclosedElements())) {
+        if (annotationMirror(annotations, field, JSON_UNWRAPPED) != null) {
+          addChild(types.asMemberOf(targetType, field), children);
+        }
+      }
+    }
+    for (ExecutableElement method : jsonMethods(target, annotations)) {
+      ExecutableType resolved = (ExecutableType) types.asMemberOf(targetType, method);
+      if (annotationMirror(annotations, method, JSON_UNWRAPPED) != null) {
+        if (resolved.getParameterTypes().isEmpty()
+            && resolved.getReturnType().getKind() != TypeKind.VOID) {
+          addChild(resolved.getReturnType(), children);
+        } else if (resolved.getParameterTypes().size() == 1) {
+          addChild(resolved.getParameterTypes().get(0), children);
+        }
+      }
+      List<? extends VariableElement> parameters = method.getParameters();
+      for (int i = 0; i < parameters.size(); i++) {
+        if (annotationMirror(annotations, parameters.get(i), JSON_UNWRAPPED) != null) {
+          addChild(resolved.getParameterTypes().get(i), children);
+        }
+      }
+    }
+    for (ExecutableElement constructor :
+        ElementFilter.constructorsIn(target.getEnclosedElements())) {
+      List<? extends VariableElement> parameters = constructor.getParameters();
+      for (VariableElement parameter : parameters) {
+        if (annotationMirror(annotations, parameter, JSON_UNWRAPPED) != null) {
+          addChild(parameter.asType(), children);
+        }
+      }
+    }
+    return new ArrayList<>(children.values());
+  }
+
+  private void addChild(TypeMirror type, Map<String, TypeElement> children) {
+    TypeElement child = asTypeElement(types.erasure(type));
+    if (child == null || child.getQualifiedName().contentEquals("java.lang.Object")) {
+      return;
+    }
+    children.put(elements.getBinaryName(child).toString(), child);
+  }
+
   private List<TypeElement> classHierarchy(TypeElement target) {
     List<TypeElement> hierarchy = new ArrayList<>();
     TypeElement current = target;
@@ -438,11 +756,12 @@ final class JsonTypeProcessor {
     return hierarchy;
   }
 
-  private List<ExecutableElement> jsonMethods(TypeElement target) {
+  private List<ExecutableElement> jsonMethods(
+      TypeElement target, JsonMixinAnnotations annotations) {
     Map<String, ExecutableElement> methods = new LinkedHashMap<>();
     for (ExecutableElement method : ElementFilter.methodsIn(elements.getAllMembers(target))) {
       TypeElement owner = (TypeElement) method.getEnclosingElement();
-      if (!isJsonMethod(method, owner.equals(target))) {
+      if (!isJsonMethod(annotations, method, owner.equals(target))) {
         continue;
       }
       String key = elements.getBinaryName(owner) + "#" + methodSignature(method);
@@ -454,7 +773,10 @@ final class JsonTypeProcessor {
   }
 
   private void collectValidationMethods(
-      TypeElement target, List<ExecutableElement> effectiveMethods, Model model) {
+      TypeElement target,
+      List<ExecutableElement> effectiveMethods,
+      JsonMixinAnnotations annotations,
+      Model model) {
     // Runtime validation scans declared class methods, including private and static declarations
     // that property discovery cannot select. R8 must retain those declarations and annotations so
     // release builds reject the same invalid model instead of silently losing the annotation.
@@ -465,14 +787,14 @@ final class JsonTypeProcessor {
     for (TypeElement owner : classHierarchy(target)) {
       boolean targetDeclaration = owner.equals(target);
       for (ExecutableElement method : ElementFilter.methodsIn(owner.getEnclosedElements())) {
-        if (!hasMethodValidationAnnotation(method)
+        if (!hasMethodValidationAnnotation(annotations, method)
             || !isEffectiveValidationMethod(method, targetDeclaration, effectiveKeys)) {
           continue;
         }
-        collectAnnotations(method, model.annotationTypes);
-        collectAnnotations(method.getParameters(), model.annotationTypes);
-        collectOccurrenceCodec(method, model);
-        collectCodecAnnotations(method.getParameters(), model);
+        collectAnnotations(annotations, method, model.annotationTypes);
+        collectAnnotations(annotations, method.getParameters(), model.annotationTypes);
+        collectOccurrenceCodec(annotations, method, model);
+        collectCodecAnnotations(annotations, method.getParameters(), model);
         collectTypeEndpoints(method.getReturnType(), model);
         for (VariableElement parameter : method.getParameters()) {
           collectTypeEndpoints(parameter.asType(), model);
@@ -492,8 +814,9 @@ final class JsonTypeProcessor {
         || effectiveKeys.contains(methodKey(method));
   }
 
-  private boolean hasMethodValidationAnnotation(ExecutableElement method) {
-    return hasJsonDeclaration(method);
+  private boolean hasMethodValidationAnnotation(
+      JsonMixinAnnotations annotations, ExecutableElement method) {
+    return hasJsonDeclaration(annotations, method);
   }
 
   private String methodKey(ExecutableElement method) {
@@ -527,18 +850,20 @@ final class JsonTypeProcessor {
     return new ArrayList<>(owners.values());
   }
 
-  private boolean isJsonMethod(ExecutableElement method, boolean targetDeclaration) {
-    if (hasAnnotation(method, JSON_PROPERTY)
-        || hasAnnotation(method, JSON_ANY_GETTER)
-        || hasAnnotation(method, JSON_ANY_SETTER)
-        || hasAnnotation(method, JSON_CODEC)
-        || hasAnnotation(method, JSON_VALUE)
-        || hasAnnotation(method, JSON_RAW_VALUE)
-        || hasAnnotation(method, JSON_BASE64)
-        || hasJsonAnnotations(method.getParameters())) {
+  private boolean isJsonMethod(
+      JsonMixinAnnotations annotations, ExecutableElement method, boolean targetDeclaration) {
+    if (hasAnnotation(annotations, method, JSON_PROPERTY)
+        || hasAnnotation(annotations, method, JSON_ANY_GETTER)
+        || hasAnnotation(annotations, method, JSON_ANY_SETTER)
+        || hasAnnotation(annotations, method, JSON_CODEC)
+        || hasAnnotation(annotations, method, JSON_VALUE)
+        || hasAnnotation(annotations, method, JSON_RAW_VALUE)
+        || hasAnnotation(annotations, method, JSON_BASE64)
+        || hasAnnotation(annotations, method, JSON_UNWRAPPED)
+        || hasJsonAnnotations(annotations, method.getParameters())) {
       return true;
     }
-    if (targetDeclaration && hasAnnotation(method, JSON_CREATOR)) {
+    if (targetDeclaration && hasAnnotation(annotations, method, JSON_CREATOR)) {
       return true;
     }
     Set<Modifier> modifiers = method.getModifiers();
@@ -607,7 +932,7 @@ final class JsonTypeProcessor {
     // Match JsonSharedRegistry's declaration lookup: a direct declaration hides all inherited
     // declarations; otherwise only the most-specific inherited declarations are inspected.
     // Their owners must remain reflection-visible as well as their selected codec constructors.
-    AnnotationMirror direct = annotationMirror(type, JSON_CODEC);
+    AnnotationMirror direct = annotationMirror(model.annotations, type, JSON_CODEC);
     if (direct != null) {
       collectCodecDeclaration(type, direct, model);
       return;
@@ -616,7 +941,7 @@ final class JsonTypeProcessor {
     List<TypeElement> declarations = allDeclarations(type);
     for (int i = 1; i < declarations.size(); i++) {
       TypeElement declaration = declarations.get(i);
-      if (annotationMirror(declaration, JSON_CODEC) != null) {
+      if (annotationMirror(model.annotations, declaration, JSON_CODEC) != null) {
         candidates.add(declaration);
       }
     }
@@ -631,7 +956,8 @@ final class JsonTypeProcessor {
         }
       }
       if (!dominated) {
-        collectCodecDeclaration(candidate, annotationMirror(candidate, JSON_CODEC), model);
+        collectCodecDeclaration(
+            candidate, annotationMirror(model.annotations, candidate, JSON_CODEC), model);
       }
     }
   }
@@ -659,6 +985,18 @@ final class JsonTypeProcessor {
     List<String> names = new ArrayList<>();
     for (VariableElement parameter : executable.getParameters()) {
       names.add(typeName(parameter.asType()));
+    }
+    return names;
+  }
+
+  private List<String> sourceConstructorTypes(TypeElement source, ExecutableElement constructor) {
+    List<String> names = typeNames(constructor);
+    if (source.getNestingKind() == NestingKind.MEMBER
+        && !source.getModifiers().contains(Modifier.STATIC)) {
+      Element enclosing = source.getEnclosingElement();
+      if (enclosing instanceof TypeElement) {
+        names.add(0, typeName(enclosing.asType()));
+      }
     }
     return names;
   }
@@ -693,9 +1031,30 @@ final class JsonTypeProcessor {
   }
 
   private void collectAnnotations(
+      JsonMixinAnnotations annotations, Element element, Set<String> annotationTypes) {
+    if (annotations == null) {
+      collectAnnotations(element, annotationTypes);
+      return;
+    }
+    annotations.collectAnnotations(element, annotationTypes);
+    if (annotationMirror(element, JSON_TYPE) != null) {
+      annotationTypes.add(JSON_TYPE);
+    }
+  }
+
+  private void collectAnnotations(
       List<? extends Element> sourceElements, Set<String> annotationTypes) {
     for (Element element : sourceElements) {
       collectAnnotations(element, annotationTypes);
+    }
+  }
+
+  private void collectAnnotations(
+      JsonMixinAnnotations annotations,
+      List<? extends Element> sourceElements,
+      Set<String> annotationTypes) {
+    for (Element element : sourceElements) {
+      collectAnnotations(annotations, element, annotationTypes);
     }
   }
 
@@ -710,8 +1069,20 @@ final class JsonTypeProcessor {
     return null;
   }
 
+  private AnnotationMirror annotationMirror(
+      JsonMixinAnnotations annotations, Element element, String annotationName) {
+    return annotations == null
+        ? annotationMirror(element, annotationName)
+        : annotations.annotation(element, annotationName);
+  }
+
   private boolean hasAnnotation(Element element, String annotationName) {
     return annotationMirror(element, annotationName) != null;
+  }
+
+  private boolean hasAnnotation(
+      JsonMixinAnnotations annotations, Element element, String annotationName) {
+    return annotationMirror(annotations, element, annotationName) != null;
   }
 
   private boolean hasJsonAnnotations(Element element) {
@@ -728,9 +1099,25 @@ final class JsonTypeProcessor {
     return false;
   }
 
+  private boolean hasJsonAnnotations(JsonMixinAnnotations annotations, Element element) {
+    return annotations == null
+        ? hasJsonAnnotations(element)
+        : annotations.hasJsonAnnotations(element);
+  }
+
   private boolean hasJsonAnnotations(List<? extends Element> sourceElements) {
     for (Element element : sourceElements) {
       if (hasJsonAnnotations(element)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private boolean hasJsonAnnotations(
+      JsonMixinAnnotations annotations, List<? extends Element> sourceElements) {
+    for (Element element : sourceElements) {
+      if (hasJsonAnnotations(annotations, element)) {
         return true;
       }
     }
@@ -741,6 +1128,12 @@ final class JsonTypeProcessor {
     return hasJsonAnnotations(executable) || hasJsonAnnotations(executable.getParameters());
   }
 
+  private boolean hasJsonDeclaration(
+      JsonMixinAnnotations annotations, ExecutableElement executable) {
+    return hasJsonAnnotations(annotations, executable)
+        || hasJsonAnnotations(annotations, executable.getParameters());
+  }
+
   private AnnotationValue annotationValue(AnnotationMirror annotation, String name) {
     for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> entry :
         elements.getElementValuesWithDefaults(annotation).entrySet()) {
@@ -749,6 +1142,18 @@ final class JsonTypeProcessor {
       }
     }
     return null;
+  }
+
+  private static String escapeJava(String value) {
+    StringBuilder escaped = new StringBuilder(value.length());
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      if (c == '\\' || c == '"') {
+        escaped.append('\\');
+      }
+      escaped.append(c);
+    }
+    return escaped.toString();
   }
 
   private String memberSortKey(ExecutableElement method) {
@@ -771,6 +1176,11 @@ final class JsonTypeProcessor {
     final Set<String> codecTypes = new LinkedHashSet<>();
     final Set<String> binaryFallbackTypes = new LinkedHashSet<>();
     final Set<String> annotationOwnerTypes = new LinkedHashSet<>();
+    final Set<String> nameTypes = new LinkedHashSet<>();
+    JsonMixinAnnotations annotations;
+    TypeElement mixIn;
+    String resourceIdentity;
+    String metadataBinaryName;
     String companionBinaryName;
     boolean companionHasAnySetter;
     boolean companionHasCreator;
@@ -780,6 +1190,7 @@ final class JsonTypeProcessor {
     Model(TypeElement target, String binaryName) {
       this.target = target;
       this.binaryName = binaryName;
+      resourceIdentity = binaryName;
     }
 
     void addR8Member(R8Member member) {
@@ -790,6 +1201,7 @@ final class JsonTypeProcessor {
 
     boolean hasNestedIdentity() {
       return binaryName.indexOf('$') >= 0
+          || containsNested(nameTypes)
           || containsNested(binaryFallbackTypes)
           || containsNested(annotationOwnerTypes)
           || containsNested(containerTypes)
@@ -804,6 +1216,23 @@ final class JsonTypeProcessor {
       sortSet(codecTypes);
       sortSet(binaryFallbackTypes);
       sortSet(annotationOwnerTypes);
+      sortSet(nameTypes);
+    }
+
+    void merge(Model other) {
+      for (R8Member member : other.r8Members) {
+        addR8Member(member);
+      }
+      annotationTypes.addAll(other.annotationTypes);
+      containerTypes.addAll(other.containerTypes);
+      codecTypes.addAll(other.codecTypes);
+      binaryFallbackTypes.addAll(other.binaryFallbackTypes);
+      annotationOwnerTypes.addAll(other.annotationOwnerTypes);
+      nameTypes.addAll(other.nameTypes);
+    }
+
+    Element[] originatingElements() {
+      return mixIn == null ? new Element[] {target} : new Element[] {mixIn, target};
     }
 
     private static boolean containsNested(Set<String> names) {
