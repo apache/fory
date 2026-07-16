@@ -110,6 +110,12 @@ public final class JsonTypeResolver {
     canonicalObjectTypeInfos = new IdentityMap<>();
   }
 
+  /** Returns the shared registry that owns this resolver and its reader cache domain. */
+  @Internal
+  public JsonSharedRegistry sharedRegistry() {
+    return sharedRegistry;
+  }
+
   @Internal
   public void lockJIT() {
     jitContext.lock();

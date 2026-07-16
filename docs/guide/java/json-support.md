@@ -291,13 +291,16 @@ are rejected.
 | `withPropertyNamingStrategy` | `LOWER_CAMEL_CASE`                           | Naming of properties without explicit names            |
 | `withClassLoader`            | Snapshotted context loader, then Fory loader | Resolve annotation subtype class names                 |
 | `maxDepth`                   | `20`                                         | Maximum nested object/array depth                      |
+| `withMaxCachedFieldNames`    | `DEFAULT_MAX_CACHED_FIELD_NAMES` (`8192`)    | Field-name cache entries per reader; zero disables it  |
 | `withConcurrencyLevel`       | `max(1, 2 * processors)`                     | Reusable operation-state count                         |
 | `withBufferSizeLimitBytes`   | 2 MiB                                        | Reusable capacity retained by each pooled writer       |
 | `registerCodec`              | None                                         | Exact-class complete-value codec                       |
 | `withTypeChecker`            | None                                         | Application policy in addition to Fory's disallow list |
 
-Depth, concurrency, and retained buffer limits must be positive. The buffer setting does not limit
-output size. Builder changes after `build()` do not mutate an existing runtime.
+Depth, concurrency, and retained buffer limits must be positive. The cached-field-name limit applies
+independently to each reader; zero disables the cache, and the setting does not limit accepted
+input. The buffer setting does not limit output size. Builder changes after `build()` do not mutate
+an existing runtime.
 
 In a GraalVM native image, runtime code generation and asynchronous compilation are automatically
 disabled. Every other builder option keeps the behavior described above.
@@ -1108,7 +1111,7 @@ Circular graphs eventually fail `maxDepth`; they are not reconstructed.
 | ---------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `ForyJsonException`                | Check JSON grammar, target type, mapping support, depth, trailing content, or output cause      |
 | `InsecureException`                | Check Fory's disallow list and the configured type checker                                      |
-| Builder `IllegalArgumentException` | Use positive depth, concurrency, and retained-buffer values                                     |
+| Builder `IllegalArgumentException` | Check the configured depth, concurrency, retained-buffer, and cached-field-name limits          |
 | Declared write fails               | Remove wildcard/type variables and pass an assignable value; primitive declarations reject null |
 | Immutable value is empty           | Use a record, valid creator, or custom codec                                                    |
 | `JsonValue` read fails             | Add one plain `String` creator, or register an exact custom codec                               |

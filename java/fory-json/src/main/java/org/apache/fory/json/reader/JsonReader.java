@@ -135,6 +135,7 @@ public abstract class JsonReader {
   private final JsonTypeResolver typeResolver;
   protected int position;
   private final int maxDepth;
+  protected final FieldNameCache fieldNameCache;
   private int depth;
 
   /**
@@ -233,6 +234,9 @@ public abstract class JsonReader {
   protected JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
     maxDepth = config.maxDepth();
+    // The configured limit belongs to each reader; pooled-state concurrency must not divide it.
+    int maxEntries = config.maxCachedFieldNames();
+    fieldNameCache = maxEntries == 0 ? null : new FieldNameCache(maxEntries);
   }
 
   /**
@@ -248,6 +252,32 @@ public abstract class JsonReader {
 
   public abstract String readString();
 
+  /**
+   * Reads a JSON object field name that the caller retains as a String key.
+   *
+   * <p>The returned String has normal value semantics. Implementations may reuse its reference for
+   * common names, but callers must not depend on reference identity.
+   */
+  public abstract String readFieldName();
+
+  protected static long fieldNameHash(int length, long word0, long word1) {
+    if (length == 0) {
+      return JsonFieldNameHash.MAGIC_HASH_CODE;
+    }
+    if (length <= Long.BYTES) {
+      return word0;
+    }
+    long hash = JsonFieldNameHash.hashPacked(word0, Long.BYTES);
+    for (int i = Long.BYTES; i < length; i++) {
+      hash = JsonFieldNameHash.update(hash, (char) ((word1 >>> ((i - Long.BYTES) << 3)) & 0xff));
+    }
+    return hash;
+  }
+
+  protected static long fieldNameWord(long word, int length) {
+    return length == Long.BYTES ? word : word & ((1L << (length << 3)) - 1);
+  }
+
   @Internal
   public final int position() {
     return position;
@@ -257,7 +287,7 @@ public abstract class JsonReader {
   public final String materializeFieldName(int start) {
     int current = position;
     position = start;
-    String name = readString();
+    String name = readFieldName();
     position = current;
     return name;
   }

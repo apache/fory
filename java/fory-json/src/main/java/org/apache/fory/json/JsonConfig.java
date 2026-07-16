@@ -33,10 +33,12 @@ import org.apache.fory.json.resolver.CodecRegistry;
  * The type checker uses identity semantics because checker instances may carry different user
  * policy despite sharing a class. {@link #getCodegenHash()} identifies only settings that can
  * change generated source; runtime-only settings such as depth and asynchronous scheduling do not
- * fragment generated class names. Concurrency and retained writer-buffer limits are also
- * runtime-only and do not fragment generated class names.
+ * fragment generated class names. Concurrency, per-reader field-name cache, and retained
+ * writer-buffer limits are also runtime-only and do not fragment generated class names.
  */
 public final class JsonConfig {
+  private static final int MAX_CACHED_FIELD_NAMES = 1 << 29;
+
   private final boolean writeNullFields;
   private final boolean codegenEnabled;
   private final boolean asyncCompilationEnabled;
@@ -44,6 +46,7 @@ public final class JsonConfig {
   private final PropertyNamingStrategy propertyNamingStrategy;
   private final ClassLoader classLoader;
   private final int maxDepth;
+  private final int maxCachedFieldNames;
   private final int concurrencyLevel;
   private final int bufferSizeLimitBytes;
   private final CodecRegistry codecRegistry;
@@ -61,6 +64,7 @@ public final class JsonConfig {
       PropertyNamingStrategy propertyNamingStrategy,
       ClassLoader classLoader,
       int maxDepth,
+      int maxCachedFieldNames,
       int concurrencyLevel,
       int bufferSizeLimitBytes,
       CodecRegistry codecRegistry,
@@ -73,6 +77,8 @@ public final class JsonConfig {
         Objects.requireNonNull(propertyNamingStrategy, "propertyNamingStrategy");
     this.classLoader = Objects.requireNonNull(classLoader, "classLoader");
     this.maxDepth = maxDepth;
+    validateMaxCachedFieldNames(maxCachedFieldNames);
+    this.maxCachedFieldNames = maxCachedFieldNames;
     this.concurrencyLevel = concurrencyLevel;
     this.bufferSizeLimitBytes = bufferSizeLimitBytes;
     this.codecRegistry = codecRegistry;
@@ -114,6 +120,17 @@ public final class JsonConfig {
     return maxDepth;
   }
 
+  public int maxCachedFieldNames() {
+    return maxCachedFieldNames;
+  }
+
+  static void validateMaxCachedFieldNames(int maxCachedFieldNames) {
+    if (maxCachedFieldNames < 0 || maxCachedFieldNames > MAX_CACHED_FIELD_NAMES) {
+      throw new IllegalArgumentException(
+          "maxCachedFieldNames must be between 0 and " + MAX_CACHED_FIELD_NAMES);
+    }
+  }
+
   public int concurrencyLevel() {
     return concurrencyLevel;
   }
@@ -150,6 +167,7 @@ public final class JsonConfig {
         && propertyNamingStrategy == that.propertyNamingStrategy
         && classLoader == that.classLoader
         && maxDepth == that.maxDepth
+        && maxCachedFieldNames == that.maxCachedFieldNames
         && concurrencyLevel == that.concurrencyLevel
         && bufferSizeLimitBytes == that.bufferSizeLimitBytes
         && typeChecker == that.typeChecker
@@ -165,6 +183,7 @@ public final class JsonConfig {
     result = 31 * result + propertyNamingStrategy.hashCode();
     result = 31 * result + System.identityHashCode(classLoader);
     result = 31 * result + maxDepth;
+    result = 31 * result + maxCachedFieldNames;
     result = 31 * result + concurrencyLevel;
     result = 31 * result + bufferSizeLimitBytes;
     result = 31 * result + System.identityHashCode(typeChecker);
