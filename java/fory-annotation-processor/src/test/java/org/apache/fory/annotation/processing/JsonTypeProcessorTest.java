@@ -686,6 +686,31 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void unwrappedMemberRules() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.UnwrappedModel",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public class UnwrappedModel {\n"
+                + "  @JsonUnwrapped(prefix=\"field_\") public Child field;\n"
+                + "  private Child property;\n"
+                + "  @JsonUnwrapped(prefix=\"property_\") public Child getProperty() { return property; }\n"
+                + "  public void setProperty(@JsonUnwrapped(prefix=\"property_\") Child value) { property = value; }\n"
+                + "  @JsonCreator public UnwrappedModel(\n"
+                + "      @JsonProperty(\"created\") @JsonUnwrapped(prefix=\"created_\") Child value) {}\n"
+                + "  @JsonType public static class Child { public String name; }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.UnwrappedModel.pro");
+    assertTrue(rules.contains("test.UnwrappedModel$Child field;"), rules);
+    assertTrue(rules.contains("test.UnwrappedModel$Child getProperty();"), rules);
+    assertTrue(rules.contains("void setProperty(test.UnwrappedModel$Child);"), rules);
+    assertTrue(rules.contains("<init>(test.UnwrappedModel$Child);"), rules);
+    assertTrue(rules.contains("RuntimeVisibleParameterAnnotations"), rules);
+  }
+
+  @Test
   public void hierarchyRules() throws Exception {
     CompilationResult result = compile("test.Hierarchy", hierarchySource());
     assertTrue(result.success, result.diagnostics());
@@ -971,6 +996,46 @@ public class JsonTypeProcessorTest {
     assertEquals(record.getClass().getMethod("name").invoke(record), "record");
     assertEquals(
         record.getClass().getMethod("values").invoke(record), Collections.singletonList("fory"));
+  }
+
+  @Test
+  public void recordParameterAnnotation() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.InvalidRecord",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public record InvalidRecord(Child child) {\n"
+                + "  public InvalidRecord(@JsonUnwrapped(prefix=\"child_\") Child child) {\n"
+                + "    this.child = child;\n"
+                + "  }\n"
+                + "  @JsonType public record Child(String name) {}\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result
+            .diagnostics()
+            .contains(
+                "Canonical Record constructor parameter @JsonUnwrapped must match the corresponding Record field or accessor"),
+        result.diagnostics());
+
+    CompilationResult overload =
+        compile(
+            "test.InvalidOverload",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType public record InvalidOverload(Child child, int id) {\n"
+                + "  public InvalidOverload(@JsonUnwrapped Child child) { this(child, 0); }\n"
+                + "  @JsonType public record Child(String name) {}\n"
+                + "}\n");
+    assertFalse(overload.success);
+    assertTrue(
+        overload
+            .diagnostics()
+            .contains(
+                "JSON property annotations are not supported on non-canonical Record constructor parameters"),
+        overload.diagnostics());
   }
 
   @Test

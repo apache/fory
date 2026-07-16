@@ -46,6 +46,7 @@ import org.apache.fory.json.codec.CodecUtils;
 import org.apache.fory.json.codec.CollectionCodec;
 import org.apache.fory.json.codec.GeneratedJsonCodec;
 import org.apache.fory.json.codec.JsonSubTypesInfo;
+import org.apache.fory.json.codec.JsonUnwrappedInfo;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.MapCodec;
@@ -145,6 +146,34 @@ public final class JsonTypeResolver {
     } finally {
       endResolution();
     }
+  }
+
+  @Internal
+  public ObjectCodec<?> getUnwrappedObjectCodec(Class<?> rawType) {
+    TypeRef<?> ownerType = TypeRef.of(rawType);
+    Object key = typeInfoKey(rawType, rawType);
+    JsonTypeInfo typeInfo = typeInfos.get(key);
+    if (typeInfo != null) {
+      // Generated capabilities replace type-info slots; objectCodecs retains the stable metadata
+      // owner used to build an unwrapped parent.
+      return typeInfo.usesDefaultObjectCodec() ? objectCodecs.get(key) : null;
+    }
+    if (customTypeInfo(rawType, rawType) != null || sharedRegistry.subTypesInfo(rawType) != null) {
+      return null;
+    }
+    JsonValueCodec<?> selected = sharedRegistry.createCodec(rawType, ownerType, this);
+    if (selected != null) {
+      return null;
+    }
+    ObjectCodec<?> codec = objectCodecs.get(key);
+    if (codec == null) {
+      codec = newObjectCodec(ownerType);
+      objectCodecs.put(key, codec);
+    }
+    typeInfo = newTypeInfo(rawType, rawType, codec);
+    typeInfos.put(key, typeInfo);
+    registerObjectTypeInfo(typeInfo);
+    return codec;
   }
 
   public JsonTypeInfo getTypeInfo(Type declaredType, Class<?> fallback) {
@@ -749,6 +778,9 @@ public final class JsonTypeResolver {
 
   @SuppressWarnings("unchecked")
   private StringWriterCodec<Object> newStringWriter(ObjectCodec<?> owner, Class<?> generatedClass) {
+    if (owner.unwrappedInfo() != null) {
+      return newUnwrappedStringWriter(owner, generatedClass);
+    }
     JsonFieldInfo[] fields = owner.writeFields();
     StringWriterCodec<Object>[] codecs =
         (StringWriterCodec<Object>[]) new StringWriterCodec<?>[fields.length];
@@ -785,6 +817,9 @@ public final class JsonTypeResolver {
 
   @SuppressWarnings("unchecked")
   private Utf8WriterCodec<Object> newUtf8Writer(ObjectCodec<?> owner, Class<?> generatedClass) {
+    if (owner.unwrappedInfo() != null) {
+      return newUnwrappedUtf8Writer(owner, generatedClass);
+    }
     JsonFieldInfo[] fields = owner.writeFields();
     Utf8WriterCodec<Object>[] codecs =
         (Utf8WriterCodec<Object>[]) new Utf8WriterCodec<?>[fields.length];
@@ -820,6 +855,84 @@ public final class JsonTypeResolver {
   }
 
   @SuppressWarnings("unchecked")
+  private StringWriterCodec<Object> newUnwrappedStringWriter(
+      ObjectCodec<?> owner, Class<?> generatedClass) {
+    JsonFieldInfo[] fields = unwrappedWriteFields(owner);
+    StringWriterCodec<Object>[] codecs =
+        (StringWriterCodec<Object>[]) new StringWriterCodec<?>[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      JsonFieldInfo field = fields[i];
+      if (JsonCodegen.usesWriteCodec(field)) {
+        JsonTypeInfo child = field.writeTypeInfo();
+        StringWriterCodec<Object> codec = child.stringWriter();
+        if (JsonCodegen.writeNestedType(field) != null
+            && child.rawType() != owner.type()
+            && codec instanceof ObjectCodec) {
+          codec = stringWriter((ObjectCodec<Object>) codec);
+        }
+        codecs[i] = codec;
+      }
+    }
+    AnyInfo any = owner.anyInfo();
+    if (any == null || any.writeField() == null && any.writeGetter() == null) {
+      return GeneratedCodecInstantiator.instantiateStringWriter(generatedClass, fields, codecs);
+    }
+    if (!storesAnyCodec(owner, any)) {
+      return GeneratedCodecInstantiator.instantiateAnyStringWriter(
+          generatedClass, owner, fields, codecs);
+    }
+    StringWriterCodec<Object> anyCodec = any.valueTypeInfo().stringWriter();
+    if (any.valueTypeInfo().usesDefaultObjectCodec()
+        && any.valueRawType() != owner.type()
+        && anyCodec instanceof ObjectCodec) {
+      anyCodec = stringWriter((ObjectCodec<Object>) anyCodec);
+    }
+    return GeneratedCodecInstantiator.instantiateAnyStringWriter(
+        generatedClass, owner, fields, codecs, anyCodec);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Utf8WriterCodec<Object> newUnwrappedUtf8Writer(
+      ObjectCodec<?> owner, Class<?> generatedClass) {
+    JsonFieldInfo[] fields = unwrappedWriteFields(owner);
+    Utf8WriterCodec<Object>[] codecs =
+        (Utf8WriterCodec<Object>[]) new Utf8WriterCodec<?>[fields.length];
+    for (int i = 0; i < fields.length; i++) {
+      JsonFieldInfo field = fields[i];
+      if (JsonCodegen.usesWriteCodec(field)) {
+        JsonTypeInfo child = field.writeTypeInfo();
+        Utf8WriterCodec<Object> codec = child.utf8Writer();
+        if (JsonCodegen.writeNestedType(field) != null
+            && child.rawType() != owner.type()
+            && codec instanceof ObjectCodec) {
+          codec = utf8Writer((ObjectCodec<Object>) codec);
+        }
+        codecs[i] = codec;
+      }
+    }
+    AnyInfo any = owner.anyInfo();
+    if (any == null || any.writeField() == null && any.writeGetter() == null) {
+      return GeneratedCodecInstantiator.instantiateUtf8Writer(generatedClass, fields, codecs);
+    }
+    if (!storesAnyCodec(owner, any)) {
+      return GeneratedCodecInstantiator.instantiateAnyUtf8Writer(
+          generatedClass, owner, fields, codecs);
+    }
+    Utf8WriterCodec<Object> anyCodec = any.valueTypeInfo().utf8Writer();
+    if (any.valueTypeInfo().usesDefaultObjectCodec()
+        && any.valueRawType() != owner.type()
+        && anyCodec instanceof ObjectCodec) {
+      anyCodec = utf8Writer((ObjectCodec<Object>) anyCodec);
+    }
+    return GeneratedCodecInstantiator.instantiateAnyUtf8Writer(
+        generatedClass, owner, fields, codecs, anyCodec);
+  }
+
+  private static JsonFieldInfo[] unwrappedWriteFields(ObjectCodec<?> owner) {
+    return owner.unwrappedInfo().writeFields();
+  }
+
+  @SuppressWarnings("unchecked")
   private Latin1ReaderCodec<Object> newLatin1Reader(ObjectCodec<?> owner, Class<?> generatedClass) {
     return newLatin1Reader(owner, generatedClass, owner.readTable());
   }
@@ -827,6 +940,9 @@ public final class JsonTypeResolver {
   @SuppressWarnings("unchecked")
   private Latin1ReaderCodec<Object> newLatin1Reader(
       ObjectCodec<?> owner, Class<?> generatedClass, JsonFieldTable readTable) {
+    if (owner.unwrappedInfo() != null) {
+      return newUnwrappedLatin1Reader(owner, generatedClass, readTable);
+    }
     JsonFieldInfo[] fields = owner.readFields();
     JsonCreatorInfo creator = owner.creatorInfo();
     if (creator != null) {
@@ -894,6 +1010,9 @@ public final class JsonTypeResolver {
   @SuppressWarnings("unchecked")
   private Utf16ReaderCodec<Object> newUtf16Reader(
       ObjectCodec<?> owner, Class<?> generatedClass, JsonFieldTable readTable) {
+    if (owner.unwrappedInfo() != null) {
+      return newUnwrappedUtf16Reader(owner, generatedClass, readTable);
+    }
     JsonFieldInfo[] fields = owner.readFields();
     JsonCreatorInfo creator = owner.creatorInfo();
     if (creator != null) {
@@ -960,6 +1079,9 @@ public final class JsonTypeResolver {
   @SuppressWarnings("unchecked")
   private Utf8ReaderCodec<Object> newUtf8Reader(
       ObjectCodec<?> owner, Class<?> generatedClass, JsonFieldTable readTable) {
+    if (owner.unwrappedInfo() != null) {
+      return newUnwrappedUtf8Reader(owner, generatedClass, readTable);
+    }
     JsonFieldInfo[] fields = owner.readFields();
     JsonCreatorInfo creator = owner.creatorInfo();
     if (creator != null) {
@@ -1018,6 +1140,150 @@ public final class JsonTypeResolver {
         generatedClass, owner, readTable, fields, codecs, anyCodec);
   }
 
+  @SuppressWarnings("unchecked")
+  private Latin1ReaderCodec<Object> newUnwrappedLatin1Reader(
+      ObjectCodec<?> owner, Class<?> generatedClass, JsonFieldTable readTable) {
+    JsonFieldInfo[] fields = unwrappedReadFields(owner);
+    JsonTypeInfo[] children = unwrappedReadTypeInfos(owner);
+    Latin1ReaderCodec<Object>[] codecs =
+        (Latin1ReaderCodec<Object>[]) new Latin1ReaderCodec<?>[children.length];
+    for (int i = 0; i < children.length; i++) {
+      JsonTypeInfo child = children[i];
+      Latin1ReaderCodec<Object> codec = child.latin1Reader();
+      if (child.usesDefaultObjectCodec()
+          && child.rawType() != owner.type()
+          && codec instanceof ObjectCodec) {
+        codec = latin1Reader((ObjectCodec<Object>) codec);
+      }
+      codecs[i] = codec;
+    }
+    AnyInfo any = owner.anyInfo();
+    if (any == null || any.readField() == null && any.readSetter() == null) {
+      return GeneratedCodecInstantiator.instantiateLatin1Reader(
+          generatedClass, owner, fields, codecs);
+    }
+    if (!storesAnyCodec(owner, any)) {
+      return GeneratedCodecInstantiator.instantiateAnyLatin1Reader(
+          generatedClass, owner, readTable, fields, codecs);
+    }
+    Latin1ReaderCodec<Object> anyCodec = any.valueTypeInfo().latin1Reader();
+    if (any.valueTypeInfo().usesDefaultObjectCodec()
+        && any.valueRawType() != owner.type()
+        && anyCodec instanceof ObjectCodec) {
+      anyCodec = latin1Reader((ObjectCodec<Object>) anyCodec);
+    }
+    return GeneratedCodecInstantiator.instantiateAnyLatin1Reader(
+        generatedClass, owner, readTable, fields, codecs, anyCodec);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Utf16ReaderCodec<Object> newUnwrappedUtf16Reader(
+      ObjectCodec<?> owner, Class<?> generatedClass, JsonFieldTable readTable) {
+    JsonFieldInfo[] fields = unwrappedReadFields(owner);
+    JsonTypeInfo[] children = unwrappedReadTypeInfos(owner);
+    Utf16ReaderCodec<Object>[] codecs =
+        (Utf16ReaderCodec<Object>[]) new Utf16ReaderCodec<?>[children.length];
+    for (int i = 0; i < children.length; i++) {
+      JsonTypeInfo child = children[i];
+      Utf16ReaderCodec<Object> codec = child.utf16Reader();
+      if (child.usesDefaultObjectCodec()
+          && child.rawType() != owner.type()
+          && codec instanceof ObjectCodec) {
+        codec = utf16Reader((ObjectCodec<Object>) codec);
+      }
+      codecs[i] = codec;
+    }
+    AnyInfo any = owner.anyInfo();
+    if (any == null || any.readField() == null && any.readSetter() == null) {
+      return GeneratedCodecInstantiator.instantiateUtf16Reader(
+          generatedClass, owner, fields, codecs);
+    }
+    if (!storesAnyCodec(owner, any)) {
+      return GeneratedCodecInstantiator.instantiateAnyUtf16Reader(
+          generatedClass, owner, readTable, fields, codecs);
+    }
+    Utf16ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf16Reader();
+    if (any.valueTypeInfo().usesDefaultObjectCodec()
+        && any.valueRawType() != owner.type()
+        && anyCodec instanceof ObjectCodec) {
+      anyCodec = utf16Reader((ObjectCodec<Object>) anyCodec);
+    }
+    return GeneratedCodecInstantiator.instantiateAnyUtf16Reader(
+        generatedClass, owner, readTable, fields, codecs, anyCodec);
+  }
+
+  @SuppressWarnings("unchecked")
+  private Utf8ReaderCodec<Object> newUnwrappedUtf8Reader(
+      ObjectCodec<?> owner, Class<?> generatedClass, JsonFieldTable readTable) {
+    JsonFieldInfo[] fields = unwrappedReadFields(owner);
+    JsonTypeInfo[] children = unwrappedReadTypeInfos(owner);
+    Utf8ReaderCodec<Object>[] codecs =
+        (Utf8ReaderCodec<Object>[]) new Utf8ReaderCodec<?>[children.length];
+    for (int i = 0; i < children.length; i++) {
+      JsonTypeInfo child = children[i];
+      Utf8ReaderCodec<Object> codec = child.utf8Reader();
+      if (child.usesDefaultObjectCodec()
+          && child.rawType() != owner.type()
+          && codec instanceof ObjectCodec) {
+        codec = utf8Reader((ObjectCodec<Object>) codec);
+      }
+      codecs[i] = codec;
+    }
+    AnyInfo any = owner.anyInfo();
+    if (any == null || any.readField() == null && any.readSetter() == null) {
+      return GeneratedCodecInstantiator.instantiateUtf8Reader(
+          generatedClass, owner, fields, codecs);
+    }
+    if (!storesAnyCodec(owner, any)) {
+      return GeneratedCodecInstantiator.instantiateAnyUtf8Reader(
+          generatedClass, owner, readTable, fields, codecs);
+    }
+    Utf8ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf8Reader();
+    if (any.valueTypeInfo().usesDefaultObjectCodec()
+        && any.valueRawType() != owner.type()
+        && anyCodec instanceof ObjectCodec) {
+      anyCodec = utf8Reader((ObjectCodec<Object>) anyCodec);
+    }
+    return GeneratedCodecInstantiator.instantiateAnyUtf8Reader(
+        generatedClass, owner, readTable, fields, codecs, anyCodec);
+  }
+
+  private static JsonFieldInfo[] unwrappedReadFields(ObjectCodec<?> owner) {
+    JsonCreatorInfo creator = owner.creatorInfo();
+    int directCount = creator == null ? owner.readFields().length : creator.fields().length;
+    JsonUnwrappedInfo.ReadRoute[] routes = owner.unwrappedInfo().readRoutes();
+    JsonFieldInfo[] fields = new JsonFieldInfo[directCount + routes.length];
+    if (creator == null) {
+      System.arraycopy(owner.readFields(), 0, fields, 0, directCount);
+    }
+    for (int i = 0; i < routes.length; i++) {
+      fields[directCount + i] = routes[i].field();
+    }
+    return fields;
+  }
+
+  private static JsonTypeInfo[] unwrappedReadTypeInfos(ObjectCodec<?> owner) {
+    JsonCreatorInfo creator = owner.creatorInfo();
+    int directCount = creator == null ? owner.readFields().length : creator.fields().length;
+    JsonUnwrappedInfo.ReadRoute[] routes = owner.unwrappedInfo().readRoutes();
+    JsonTypeInfo[] children = new JsonTypeInfo[directCount + routes.length];
+    if (creator == null) {
+      for (int i = 0; i < directCount; i++) {
+        children[i] = owner.readFields()[i].readTypeInfo();
+      }
+    } else {
+      for (int i = 0; i < directCount; i++) {
+        children[i] = creator.fields()[i].typeInfo();
+      }
+    }
+    for (int i = 0; i < routes.length; i++) {
+      JsonUnwrappedInfo.ReadRoute route = routes[i];
+      children[directCount + i] =
+          route.field() == null ? route.creatorField().typeInfo() : route.field().readTypeInfo();
+    }
+    return children;
+  }
+
   private Latin1ReaderCodec<Object> newInlineLatin1Reader(
       ObjectCodec<Object> owner,
       Class<?> generatedClass,
@@ -1071,7 +1337,8 @@ public final class JsonTypeResolver {
 
   private Field[] writerChildFields(Object parent, ObjectCodec<?> owner) {
     Field[] childFields = null;
-    JsonFieldInfo[] fields = owner.writeFields();
+    JsonFieldInfo[] fields =
+        owner.unwrappedInfo() == null ? owner.writeFields() : unwrappedWriteFields(owner);
     for (int i = 0; i < fields.length; i++) {
       Class<?> nestedType = JsonCodegen.writeNestedType(fields[i]);
       JsonTypeInfo child = fields[i].writeTypeInfo();
@@ -1088,6 +1355,9 @@ public final class JsonTypeResolver {
   }
 
   private Field[] readerChildFields(Object parent, ObjectCodec<?> owner) {
+    if (owner.unwrappedInfo() != null) {
+      return unwrappedReaderChildFields(parent, owner);
+    }
     Field[] childFields = null;
     JsonCreatorInfo creator = owner.creatorInfo();
     if (creator != null) {
@@ -1117,6 +1387,40 @@ public final class JsonTypeResolver {
         }
         childFields[i] = ReflectionUtils.getField(parent.getClass(), "o" + i);
       }
+    }
+    return childFields;
+  }
+
+  private Field[] unwrappedReaderChildFields(Object parent, ObjectCodec<?> owner) {
+    JsonTypeInfo[] children = unwrappedReadTypeInfos(owner);
+    JsonCreatorInfo creator = owner.creatorInfo();
+    int directCount = creator == null ? owner.readFields().length : creator.fields().length;
+    JsonUnwrappedInfo.ReadRoute[] routes = owner.unwrappedInfo().readRoutes();
+    Field[] childFields = null;
+    for (int i = 0; i < children.length; i++) {
+      JsonTypeInfo child = children[i];
+      if (!child.usesDefaultObjectCodec()
+          || child.rawType() == owner.type()
+          || rawObjectTypeInfos.get(child.rawType()) != child) {
+        continue;
+      }
+      String fieldName;
+      if (i < directCount) {
+        if (creator == null && JsonCodegen.readNestedType(owner.readFields()[i]) == null) {
+          continue;
+        }
+        fieldName = creator == null ? "o" + i : "r" + i;
+      } else {
+        JsonUnwrappedInfo.ReadRoute route = routes[i - directCount];
+        if (route.field() != null && JsonCodegen.readNestedType(route.field()) == null) {
+          continue;
+        }
+        fieldName = (route.field() == null ? "r" : "o") + i;
+      }
+      if (childFields == null) {
+        childFields = new Field[children.length];
+      }
+      childFields[i] = ReflectionUtils.getField(parent.getClass(), fieldName);
     }
     return childFields;
   }
@@ -1189,7 +1493,8 @@ public final class JsonTypeResolver {
     if (fields == null) {
       return;
     }
-    JsonFieldInfo[] properties = owner.writeFields();
+    JsonFieldInfo[] properties =
+        owner.unwrappedInfo() == null ? owner.writeFields() : unwrappedWriteFields(owner);
     for (int i = 0; i < fields.length; i++) {
       Field field = fields[i];
       if (field != null) {
@@ -1218,7 +1523,8 @@ public final class JsonTypeResolver {
     if (fields == null) {
       return;
     }
-    JsonFieldInfo[] properties = owner.writeFields();
+    JsonFieldInfo[] properties =
+        owner.unwrappedInfo() == null ? owner.writeFields() : unwrappedWriteFields(owner);
     for (int i = 0; i < fields.length; i++) {
       Field field = fields[i];
       if (field != null) {
@@ -1466,6 +1772,9 @@ public final class JsonTypeResolver {
   }
 
   private static JsonTypeInfo readerChildTypeInfo(ObjectCodec<?> owner, int index) {
+    if (owner.unwrappedInfo() != null) {
+      return unwrappedReadTypeInfos(owner)[index];
+    }
     JsonCreatorInfo creator = owner.creatorInfo();
     return creator == null
         ? owner.readFields()[index].readTypeInfo()

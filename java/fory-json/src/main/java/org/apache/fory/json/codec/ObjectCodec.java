@@ -30,6 +30,10 @@ import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.PropertyNamingStrategy;
 import org.apache.fory.json.annotation.JsonCodec;
+import org.apache.fory.json.codec.JsonUnwrappedInfo.Declaration;
+import org.apache.fory.json.codec.JsonUnwrappedInfo.Group;
+import org.apache.fory.json.codec.JsonUnwrappedInfo.ReadRoute;
+import org.apache.fory.json.codec.JsonUnwrappedInfo.WriteEntry;
 import org.apache.fory.json.meta.JsonAnySetterAccessor;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
@@ -73,6 +77,8 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   protected final ObjectInstantiator<?> instantiator;
   private final JsonCreatorInfo creatorInfo;
   private final AnyInfo anyInfo;
+  private final JsonUnwrappedInfo unwrappedInfo;
+  private boolean directTypesResolved;
 
   private ObjectCodec(
       Class<?> type,
@@ -81,11 +87,13 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       JsonCreatorInfo creatorInfo,
       AnyInfo anyInfo,
       String[] skippedNames,
+      JsonUnwrappedInfo unwrappedInfo,
       ObjectInstantiator<?> instantiator) {
     this.type = type;
     this.writeFields = writeFields;
     this.readFields = readFields;
     this.anyInfo = anyInfo;
+    this.unwrappedInfo = unwrappedInfo;
     readTable =
         anyInfo == null
             ? new JsonFieldTable(readFields)
@@ -116,14 +124,29 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       JsonCreatorInfo creatorInfo,
       AnyInfo anyInfo,
       String[] skippedNames,
+      JsonUnwrappedInfo unwrappedInfo,
       ObjectInstantiator<?> instantiator) {
     Class<?> type = ownerType.getRawType();
     if (ownerType.getType() instanceof Class) {
       return new ObjectCodec<>(
-          type, writeFields, readFields, creatorInfo, anyInfo, skippedNames, instantiator);
+          type,
+          writeFields,
+          readFields,
+          creatorInfo,
+          anyInfo,
+          skippedNames,
+          unwrappedInfo,
+          instantiator);
     }
     return new ParameterizedObjectCodec<>(
-        type, writeFields, readFields, creatorInfo, anyInfo, skippedNames, instantiator);
+        type,
+        writeFields,
+        readFields,
+        creatorInfo,
+        anyInfo,
+        skippedNames,
+        unwrappedInfo,
+        instantiator);
   }
 
   public final Class<?> type() {
@@ -152,6 +175,11 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   @Internal
+  public final JsonUnwrappedInfo unwrappedInfo() {
+    return unwrappedInfo;
+  }
+
+  @Internal
   public final Object requireCreatorResult(Object value) {
     if (value == null || value.getClass() != type) {
       throw new ForyJsonException("JSON creator must return an exact non-null " + type.getName());
@@ -168,6 +196,17 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   public final void resolveTypes(JsonTypeResolver typeResolver) {
+    resolveDirectTypes(typeResolver);
+    if (unwrappedInfo != null) {
+      unwrappedInfo.resolve(this, typeResolver);
+    }
+  }
+
+  @Internal
+  public final void resolveDirectTypes(JsonTypeResolver typeResolver) {
+    if (directTypesResolved) {
+      return;
+    }
     for (JsonFieldInfo field : writeFields) {
       field.resolveTypes(typeResolver);
     }
@@ -180,6 +219,7 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     if (anyInfo != null) {
       anyInfo.resolveTypes(typeResolver);
     }
+    directTypesResolved = true;
   }
 
   @SuppressWarnings("unchecked")
@@ -281,7 +321,9 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
     // These names belong to the child's declared schema and must never be reintroduced through
     // Any. Inline discriminators are different: their parent codec owns the fixed-schema check and
     // deliberately leaves runtime Any keys to the application.
-    return readTable.containsHash(hash) || creatorInfo != null && creatorInfo.index(hash) >= 0;
+    return readTable.containsHash(hash)
+        || creatorInfo != null && creatorInfo.index(hash) >= 0
+        || unwrappedInfo != null && unwrappedInfo.containsHash(hash);
   }
 
   private ForyJsonException invalidAnyKey(Object key) {
@@ -326,6 +368,9 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   // top-level owner. Package access avoids Java 8 synthetic accessors from the nested binding;
   // these methods are not codec entries and must not be used for capability dispatch.
   final T readLatin1Object(Latin1JsonReader reader) {
+    if (unwrappedInfo != null) {
+      return readLatin1UnwrappedObject(reader, readTable);
+    }
     if (anyInfo != null && anyInfo.readEnabled()) {
       return readLatin1AnyObject(reader, readTable);
     }
@@ -333,6 +378,9 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   final T readLatin1Object(Latin1JsonReader reader, JsonFieldTable table) {
+    if (unwrappedInfo != null) {
+      return readLatin1UnwrappedObject(reader, table);
+    }
     return readLatin1AnyObject(reader, table);
   }
 
@@ -364,6 +412,9 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   final T readUtf16Object(Utf16JsonReader reader) {
+    if (unwrappedInfo != null) {
+      return readUtf16UnwrappedObject(reader, readTable);
+    }
     if (anyInfo != null && anyInfo.readEnabled()) {
       return readUtf16AnyObject(reader, readTable);
     }
@@ -371,6 +422,9 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   final T readUtf16Object(Utf16JsonReader reader, JsonFieldTable table) {
+    if (unwrappedInfo != null) {
+      return readUtf16UnwrappedObject(reader, table);
+    }
     return readUtf16AnyObject(reader, table);
   }
 
@@ -402,6 +456,9 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   final T readUtf8Object(Utf8JsonReader reader) {
+    if (unwrappedInfo != null) {
+      return readUtf8UnwrappedObject(reader, readTable);
+    }
     if (anyInfo != null && anyInfo.readEnabled()) {
       return readUtf8AnyObject(reader, readTable);
     }
@@ -409,6 +466,9 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   final T readUtf8Object(Utf8JsonReader reader, JsonFieldTable table) {
+    if (unwrappedInfo != null) {
+      return readUtf8UnwrappedObject(reader, table);
+    }
     return readUtf8AnyObject(reader, table);
   }
 
@@ -473,6 +533,262 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
       return null;
     }
     return readUtf8Object(reader);
+  }
+
+  private T readLatin1UnwrappedObject(Latin1JsonReader reader, JsonFieldTable directTable) {
+    reader.enterDepth();
+    Object rootWorkspace = newUnwrappedWorkspace();
+    Group[] resolvedGroups = unwrappedInfo.groups();
+    Object[] groupWorkspaces = new Object[resolvedGroups.length];
+    boolean[] present = new boolean[resolvedGroups.length];
+    Map<Object, Object> anyMap = null;
+    boolean newAnyMap = false;
+    Latin1ReaderCodec<Object> anyReader =
+        anyInfo != null && anyInfo.readEnabled() ? anyInfo.valueTypeInfo.latin1Reader() : null;
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int direct = creatorInfo != null ? creatorInfo.index(hash) : directTable.match(hash);
+        reader.expect(':');
+        if (direct >= 0) {
+          if (creatorInfo == null) {
+            readFields[direct].readLatin1(reader, rootWorkspace);
+          } else {
+            JsonCreatorFieldInfo field = creatorInfo.fields()[direct];
+            ((Object[]) rootWorkspace)[field.argumentIndex()] = field.readLatin1(reader);
+          }
+          continue;
+        }
+        int directMiss = creatorInfo != null ? directTable.match(hash) : direct;
+        if (directMiss == JsonFieldTable.SKIP) {
+          reader.skipValue();
+          continue;
+        }
+        int routeIndex = unwrappedInfo.match(hash);
+        if (routeIndex >= 0) {
+          readLatin1Route(reader, unwrappedInfo.readRoutes()[routeIndex], groupWorkspaces, present);
+        } else if (routeIndex == JsonUnwrappedInfo.SKIP || anyReader == null) {
+          reader.skipValue();
+        } else {
+          String name = reader.materializeFieldName(start);
+          Object value = anyReader.readLatin1(reader);
+          if (creatorInfo == null && !anyInfo.fieldRead()) {
+            anyInfo.put(rootWorkspace, name, value);
+          } else {
+            if (anyMap == null) {
+              if (creatorInfo == null) {
+                anyMap = anyInfo.readMap(rootWorkspace);
+              }
+              if (anyMap == null) {
+                if (creatorInfo == null && anyInfo.finalReadField()) {
+                  throw nullFinalAnyMap();
+                }
+                anyMap = newAnyMap();
+                newAnyMap = true;
+              }
+            }
+            putAnyMap(anyMap, name, value);
+          }
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    finishUnwrappedAny(rootWorkspace, anyMap, newAnyMap);
+    finishUnwrappedGroups(rootWorkspace, groupWorkspaces, present);
+    T object = castFinished(finishUnwrappedWorkspace(rootWorkspace));
+    reader.exitDepth();
+    return object;
+  }
+
+  private T readUtf16UnwrappedObject(Utf16JsonReader reader, JsonFieldTable directTable) {
+    reader.enterDepth();
+    Object rootWorkspace = newUnwrappedWorkspace();
+    Group[] resolvedGroups = unwrappedInfo.groups();
+    Object[] groupWorkspaces = new Object[resolvedGroups.length];
+    boolean[] present = new boolean[resolvedGroups.length];
+    Map<Object, Object> anyMap = null;
+    boolean newAnyMap = false;
+    Utf16ReaderCodec<Object> anyReader =
+        anyInfo != null && anyInfo.readEnabled() ? anyInfo.valueTypeInfo.utf16Reader() : null;
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int direct = creatorInfo != null ? creatorInfo.index(hash) : directTable.match(hash);
+        reader.expect(':');
+        if (direct >= 0) {
+          if (creatorInfo == null) {
+            readFields[direct].readUtf16(reader, rootWorkspace);
+          } else {
+            JsonCreatorFieldInfo field = creatorInfo.fields()[direct];
+            ((Object[]) rootWorkspace)[field.argumentIndex()] = field.readUtf16(reader);
+          }
+          continue;
+        }
+        int directMiss = creatorInfo != null ? directTable.match(hash) : direct;
+        if (directMiss == JsonFieldTable.SKIP) {
+          reader.skipValue();
+          continue;
+        }
+        int routeIndex = unwrappedInfo.match(hash);
+        if (routeIndex >= 0) {
+          readUtf16Route(reader, unwrappedInfo.readRoutes()[routeIndex], groupWorkspaces, present);
+        } else if (routeIndex == JsonUnwrappedInfo.SKIP || anyReader == null) {
+          reader.skipValue();
+        } else {
+          String name = reader.materializeFieldName(start);
+          Object value = anyReader.readUtf16(reader);
+          if (creatorInfo == null && !anyInfo.fieldRead()) {
+            anyInfo.put(rootWorkspace, name, value);
+          } else {
+            if (anyMap == null) {
+              if (creatorInfo == null) {
+                anyMap = anyInfo.readMap(rootWorkspace);
+              }
+              if (anyMap == null) {
+                if (creatorInfo == null && anyInfo.finalReadField()) {
+                  throw nullFinalAnyMap();
+                }
+                anyMap = newAnyMap();
+                newAnyMap = true;
+              }
+            }
+            putAnyMap(anyMap, name, value);
+          }
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    finishUnwrappedAny(rootWorkspace, anyMap, newAnyMap);
+    finishUnwrappedGroups(rootWorkspace, groupWorkspaces, present);
+    T object = castFinished(finishUnwrappedWorkspace(rootWorkspace));
+    reader.exitDepth();
+    return object;
+  }
+
+  private T readUtf8UnwrappedObject(Utf8JsonReader reader, JsonFieldTable directTable) {
+    reader.enterDepth();
+    Object rootWorkspace = newUnwrappedWorkspace();
+    Group[] resolvedGroups = unwrappedInfo.groups();
+    Object[] groupWorkspaces = new Object[resolvedGroups.length];
+    boolean[] present = new boolean[resolvedGroups.length];
+    Map<Object, Object> anyMap = null;
+    boolean newAnyMap = false;
+    Utf8ReaderCodec<Object> anyReader =
+        anyInfo != null && anyInfo.readEnabled() ? anyInfo.valueTypeInfo.utf8Reader() : null;
+    reader.expect('{');
+    if (!reader.consume('}')) {
+      do {
+        int start = reader.position();
+        long hash = reader.readFieldNameHash();
+        int direct = creatorInfo != null ? creatorInfo.index(hash) : directTable.match(hash);
+        reader.expect(':');
+        if (direct >= 0) {
+          if (creatorInfo == null) {
+            readFields[direct].readUtf8(reader, rootWorkspace);
+          } else {
+            JsonCreatorFieldInfo field = creatorInfo.fields()[direct];
+            ((Object[]) rootWorkspace)[field.argumentIndex()] = field.readUtf8(reader);
+          }
+          continue;
+        }
+        int directMiss = creatorInfo != null ? directTable.match(hash) : direct;
+        if (directMiss == JsonFieldTable.SKIP) {
+          reader.skipValue();
+          continue;
+        }
+        int routeIndex = unwrappedInfo.match(hash);
+        if (routeIndex >= 0) {
+          readUtf8Route(reader, unwrappedInfo.readRoutes()[routeIndex], groupWorkspaces, present);
+        } else if (routeIndex == JsonUnwrappedInfo.SKIP || anyReader == null) {
+          reader.skipValue();
+        } else {
+          String name = reader.materializeFieldName(start);
+          Object value = anyReader.readUtf8(reader);
+          if (creatorInfo == null && !anyInfo.fieldRead()) {
+            anyInfo.put(rootWorkspace, name, value);
+          } else {
+            if (anyMap == null) {
+              if (creatorInfo == null) {
+                anyMap = anyInfo.readMap(rootWorkspace);
+              }
+              if (anyMap == null) {
+                if (creatorInfo == null && anyInfo.finalReadField()) {
+                  throw nullFinalAnyMap();
+                }
+                anyMap = newAnyMap();
+                newAnyMap = true;
+              }
+            }
+            putAnyMap(anyMap, name, value);
+          }
+        }
+      } while (reader.consume(','));
+      reader.expect('}');
+    }
+    finishUnwrappedAny(rootWorkspace, anyMap, newAnyMap);
+    finishUnwrappedGroups(rootWorkspace, groupWorkspaces, present);
+    T object = castFinished(finishUnwrappedWorkspace(rootWorkspace));
+    reader.exitDepth();
+    return object;
+  }
+
+  private void readLatin1Route(
+      Latin1JsonReader reader, ReadRoute route, Object[] groupWorkspaces, boolean[] present) {
+    Object workspace = ensureUnwrappedGroup(route.group(), groupWorkspaces, present);
+    ObjectCodec<?> child = route.group().childCodec();
+    if (child.creatorInfo == null) {
+      route.field().readLatin1(reader, workspace);
+    } else {
+      JsonCreatorFieldInfo field = route.creatorField();
+      ((Object[]) workspace)[field.argumentIndex()] = field.readLatin1(reader);
+    }
+  }
+
+  private void readUtf16Route(
+      Utf16JsonReader reader, ReadRoute route, Object[] groupWorkspaces, boolean[] present) {
+    Object workspace = ensureUnwrappedGroup(route.group(), groupWorkspaces, present);
+    ObjectCodec<?> child = route.group().childCodec();
+    if (child.creatorInfo == null) {
+      route.field().readUtf16(reader, workspace);
+    } else {
+      JsonCreatorFieldInfo field = route.creatorField();
+      ((Object[]) workspace)[field.argumentIndex()] = field.readUtf16(reader);
+    }
+  }
+
+  private void readUtf8Route(
+      Utf8JsonReader reader, ReadRoute route, Object[] groupWorkspaces, boolean[] present) {
+    Object workspace = ensureUnwrappedGroup(route.group(), groupWorkspaces, present);
+    ObjectCodec<?> child = route.group().childCodec();
+    if (child.creatorInfo == null) {
+      route.field().readUtf8(reader, workspace);
+    } else {
+      JsonCreatorFieldInfo field = route.creatorField();
+      ((Object[]) workspace)[field.argumentIndex()] = field.readUtf8(reader);
+    }
+  }
+
+  private void finishUnwrappedAny(
+      Object rootWorkspace, Map<Object, Object> anyMap, boolean newAnyMap) {
+    if (anyMap == null) {
+      return;
+    }
+    if (creatorInfo == null) {
+      if (newAnyMap) {
+        anyInfo.setReadMap(rootWorkspace, finishAnyMap(anyMap));
+      }
+    } else {
+      ((Object[]) rootWorkspace)[anyInfo.constructionIndex] = finishAnyMap(anyMap);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private T castFinished(Object value) {
+    return (T) value;
   }
 
   private T readLatin1AnyObject(Latin1JsonReader reader, JsonFieldTable table) {
@@ -838,6 +1154,10 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   // complete value through its normal codec entry, where ordinary child code generation remains
   // active.
   final void writeMembers(StringJsonWriter writer, T value, int written) {
+    if (unwrappedInfo != null) {
+      writeUnwrappedMembers(writer, value, written);
+      return;
+    }
     if (anyInfo != null && anyInfo.writeEnabled()) {
       writeAnyMembers(writer, value, written);
       return;
@@ -846,11 +1166,136 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
   }
 
   final void writeMembers(Utf8JsonWriter writer, T value, int written) {
+    if (unwrappedInfo != null) {
+      writeUnwrappedMembers(writer, value, written);
+      return;
+    }
     if (anyInfo != null && anyInfo.writeEnabled()) {
       writeAnyMembers(writer, value, written);
       return;
     }
     writeFixedMembers(writer, value, written);
+  }
+
+  private int writeUnwrappedMembers(StringJsonWriter writer, Object value, int written) {
+    WriteEntry[] steps = unwrappedInfo.writeSteps();
+    int[] depths = unwrappedInfo.writeDepths();
+    int[] ends = unwrappedInfo.writeEnds();
+    Object[] owners = new Object[unwrappedInfo.maxWriteDepth() + 1];
+    owners[0] = value;
+    for (int i = 0; i < steps.length; ) {
+      WriteEntry entry = steps[i];
+      int depth = depths[i];
+      Object current = owners[depth];
+      if (entry.kind() == JsonUnwrappedInfo.DIRECT) {
+        if (entry.field().writeString(writer, current, written)) {
+          written++;
+        }
+        i++;
+      } else if (entry.kind() == JsonUnwrappedInfo.ANY) {
+        written =
+            writeStringAny(
+                writer, anyInfo.writeMap(current), anyInfo.valueTypeInfo.stringWriter(), written);
+        i++;
+      } else {
+        Object child = entry.group().declaration().writeAccessor().getObject(current);
+        if (child == null) {
+          i = ends[i];
+        } else {
+          owners[depth + 1] = child;
+          i++;
+        }
+      }
+    }
+    return written;
+  }
+
+  private int writeUnwrappedMembers(Utf8JsonWriter writer, Object value, int written) {
+    WriteEntry[] steps = unwrappedInfo.writeSteps();
+    int[] depths = unwrappedInfo.writeDepths();
+    int[] ends = unwrappedInfo.writeEnds();
+    Object[] owners = new Object[unwrappedInfo.maxWriteDepth() + 1];
+    owners[0] = value;
+    for (int i = 0; i < steps.length; ) {
+      WriteEntry entry = steps[i];
+      int depth = depths[i];
+      Object current = owners[depth];
+      if (entry.kind() == JsonUnwrappedInfo.DIRECT) {
+        if (entry.field().writeUtf8(writer, current, written)) {
+          written++;
+        }
+        i++;
+      } else if (entry.kind() == JsonUnwrappedInfo.ANY) {
+        written =
+            writeUtf8Any(
+                writer, anyInfo.writeMap(current), anyInfo.valueTypeInfo.utf8Writer(), written);
+        i++;
+      } else {
+        Object child = entry.group().declaration().writeAccessor().getObject(current);
+        if (child == null) {
+          i = ends[i];
+        } else {
+          owners[depth + 1] = child;
+          i++;
+        }
+      }
+    }
+    return written;
+  }
+
+  private Object newUnwrappedWorkspace() {
+    return creatorInfo == null ? newInstance() : creatorInfo.newArguments();
+  }
+
+  private Object finishUnwrappedWorkspace(Object workspace) {
+    return creatorInfo == null ? workspace : create((Object[]) workspace);
+  }
+
+  private Object ensureUnwrappedGroup(Group group, Object[] groupWorkspaces, boolean[] present) {
+    int target = group.readIndex();
+    int[] parents = unwrappedInfo.groupParents();
+    int current = target;
+    while (parents[current] >= 0 && !present[parents[current]]) {
+      current = parents[current];
+    }
+    int[] ends = unwrappedInfo.groupEnds();
+    ObjectCodec<?>[] codecs = unwrappedInfo.groupCodecs();
+    while (true) {
+      if (!present[current]) {
+        groupWorkspaces[current] = codecs[current].newUnwrappedWorkspace();
+        present[current] = true;
+      }
+      if (current == target) {
+        return groupWorkspaces[target];
+      }
+      current++;
+      while (ends[current] < target) {
+        current = ends[current] + 1;
+      }
+    }
+  }
+
+  private void finishUnwrappedGroups(
+      Object rootWorkspace, Object[] groupWorkspaces, boolean[] present) {
+    Group[] resolvedGroups = unwrappedInfo.groups();
+    for (int i = resolvedGroups.length - 1; i >= 0; i--) {
+      if (!present[i]) {
+        continue;
+      }
+      Group group = resolvedGroups[i];
+      Object child = group.childCodec().finishUnwrappedWorkspace(groupWorkspaces[i]);
+      Group parent = group.parent();
+      Object parentWorkspace = parent == null ? rootWorkspace : groupWorkspaces[parent.readIndex()];
+      group.parentCodec().assignUnwrapped(group.declaration(), parentWorkspace, child);
+    }
+  }
+
+  private void assignUnwrapped(Declaration declaration, Object workspace, Object child) {
+    if (creatorInfo == null) {
+      declaration.readAccessor().putObject(workspace, child);
+    } else {
+      ((Object[]) workspace)[declaration.constructionIndex()] = child;
+    }
   }
 
   private void writeFixedMembers(StringJsonWriter writer, T value, int written) {
@@ -1131,8 +1576,17 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
         JsonCreatorInfo creatorInfo,
         AnyInfo anyInfo,
         String[] skippedNames,
+        JsonUnwrappedInfo unwrappedInfo,
         ObjectInstantiator<?> instantiator) {
-      super(type, writeFields, readFields, creatorInfo, anyInfo, skippedNames, instantiator);
+      super(
+          type,
+          writeFields,
+          readFields,
+          creatorInfo,
+          anyInfo,
+          skippedNames,
+          unwrappedInfo,
+          instantiator);
     }
 
     @Override

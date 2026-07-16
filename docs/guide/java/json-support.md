@@ -306,8 +306,8 @@ disabled. Every other builder option keeps the behavior described above.
 
 Fory JSON provides `JsonProperty`, `JsonPropertyOrder`, `JsonIgnore`, `JsonAnyProperty`,
 `JsonAnyGetter`, `JsonAnySetter`, `JsonCreator`, `JsonCodec`, `JsonValue`, `JsonRawValue`,
-`JsonBase64`, `JsonSubTypes`, and `JsonType` under `org.apache.fory.json.annotation`. They are not
-Jackson, Gson, or Fory binary-protocol annotations.
+`JsonBase64`, `JsonUnwrapped`, `JsonSubTypes`, and `JsonType` under
+`org.apache.fory.json.annotation`. They are not Jackson, Gson, or Fory binary-protocol annotations.
 
 ```java
 import java.util.LinkedHashMap;
@@ -326,6 +326,7 @@ import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonValue;
+import org.apache.fory.json.annotation.JsonUnwrapped;
 ```
 
 `JsonType` asks the annotation processor to generate direct property and creator operations plus
@@ -413,6 +414,9 @@ subclass properties. Interface declarations are not considered.
 
 Property order affects serialization only. Deserialization remains name-based and accepts members
 in any order. Subtype discriminators remain before user properties.
+
+An unwrapped group also occupies one position, selected by the group's Java logical property name.
+Its child members remain adjacent and retain the child's own order.
 
 A write-enabled `JsonAnyProperty` or `JsonAnyGetter` participates as one position identified by its
 Java logical property name:
@@ -549,6 +553,54 @@ The annotation is not a type-use annotation and does not affect ordinary `byte[]
 container elements, or Map values. It cannot share a logical property with `JsonRawValue`, an
 occurrence `JsonCodec`, or an Any declaration. The equivalent explicit codec is
 `@JsonCodec(Base64ByteArrayCodec.class)`.
+
+### `JsonUnwrapped`
+
+Use `JsonUnwrapped` when an object-valued property should keep its Java object boundary but place
+its members in the containing JSON object:
+
+```java
+import org.apache.fory.json.annotation.JsonUnwrapped;
+
+public final class Person {
+  public int age;
+
+  @JsonUnwrapped(prefix = "name_")
+  public Name name;
+}
+
+public final class Name {
+  public String first;
+  public String last;
+}
+```
+
+This writes `{"age":18,"name_first":"Ada","name_last":"Lovelace"}` instead of a
+nested `name` object. `prefix` and `suffix` apply to every final child name after `JsonProperty` and
+the configured naming strategy. Nested groups compose these transformations from the inside out.
+
+A null child emits no members. During reading, the child is created only when at least one
+flattened member is present. A missing group preserves a mutable parent's initialized value and
+leaves a record or creator argument at its normal missing-property default. Partial input creates
+the child and uses ordinary defaults for its other members.
+
+Mutable classes, records, and `JsonCreator` classes are supported as parents and children. A
+parameter-local creator parameter can define a read-only group; its required `JsonProperty` value
+identifies the Java argument and is not a wrapper name. The containing parent may be parameterized,
+but each unwrapped child and intermediate must be an exact raw, non-generic class using the standard
+Fory object mapping.
+
+The complete group occupies one position in parent serialization order. Position it with
+`JsonProperty.index`, or list its Java logical property name in `JsonPropertyOrder`. Child ordering
+is preserved inside the group. Input matches parent fixed properties first, flattened properties
+second, and dynamic Any members last.
+
+Fory rejects final-name or name-hash collisions, recursive chains made only of unwrapped
+properties, parameterized children, JSON Any children, polymorphic or custom-codec child roots,
+and scalar, array, collection, or Map children. Flatten Maps with `JsonAnyProperty`,
+`JsonAnyGetter`, or `JsonAnySetter`. An unwrapped property cannot use `JsonProperty.value`, a
+non-default `JsonProperty.include`, or `JsonCodec`; ordinary leaf properties inside the child keep
+their normal annotations.
 
 ### Dynamic object members
 

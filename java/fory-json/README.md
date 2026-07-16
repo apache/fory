@@ -361,7 +361,7 @@ automatically disabled. Every other builder option keeps the behavior described 
 
 ## JSON annotations
 
-Fory JSON defines thirteen annotations in `org.apache.fory.json.annotation`, including `JsonCodec` for
+Fory JSON defines fourteen annotations in `org.apache.fory.json.annotation`, including `JsonCodec` for
 complete-value codec selection and `JsonType` for generated model execution and retention.
 They are Fory JSON APIs, not Jackson, Gson, or Fory binary-protocol compatibility annotations.
 
@@ -461,6 +461,9 @@ A subclass declaration replaces both settings from its superclass as a whole. If
 no declaration, the nearest superclass declaration is used and resolved against the subclass
 properties. Interface declarations are not considered. Ordering affects serialization only;
 deserialization remains name-based, and subtype discriminators remain before user properties.
+
+An unwrapped group also occupies one position, selected by the group's Java logical property name.
+Its child members remain adjacent and retain the child's own order.
 
 A write-enabled `JsonAnyProperty` or `JsonAnyGetter` participates as one position identified by its
 Java logical property name. The position emits all dynamic entries in Map iteration order:
@@ -627,6 +630,55 @@ The annotation is not a type-use annotation and does not change ordinary unannot
 properties, container elements, or Map values. It cannot share a logical property with
 `JsonRawValue`, an occurrence `JsonCodec`, or an Any declaration. The equivalent explicit codec is
 `@JsonCodec(Base64ByteArrayCodec.class)`.
+
+### `JsonUnwrapped`
+
+Use `JsonUnwrapped` to place an object-valued property's members directly in the containing JSON
+object:
+
+```java
+import org.apache.fory.json.annotation.JsonUnwrapped;
+
+public final class Person {
+  public int age;
+
+  @JsonUnwrapped(prefix = "name_")
+  public Name name;
+}
+
+public final class Name {
+  public String first;
+  public String last;
+}
+```
+
+This maps `Person` to `{"age":18,"name_first":"Ada","name_last":"Lovelace"}`. The
+optional prefix and suffix apply to each child's final JSON name after `JsonProperty` and the
+configured naming strategy. Nested unwrapped properties compose their transformations from the
+inside out.
+
+A null child writes no members. On input, Fory creates and assigns the child only after seeing one
+of its flattened members. A completely missing group therefore preserves a mutable parent's
+initializer value and leaves a record or creator argument at its normal missing-property default.
+Partial input constructs the child with the ordinary defaults for its other properties.
+
+Mutable classes, records, and `JsonCreator` classes can be parents or children. A parameter-local
+creator parameter may declare a read-only unwrapped group; its required `JsonProperty` value names
+the Java creator argument and is not accepted as a JSON wrapper. A parameterized parent is allowed,
+but every unwrapped child and intermediate must be an exact raw, non-generic class using Fory's
+standard object mapping.
+
+The flattened group occupies one position in the parent's write order. `JsonProperty.index` may
+position it, and `JsonPropertyOrder` selects it by Java logical property name. The child's own
+property order remains intact. Parent fields are matched before flattened fields, which are matched
+before dynamic Any handling.
+
+Fory rejects duplicate or hash-colliding final names, recursive chains made only of unwrapped
+properties, parameterized children, JSON Any children, polymorphic or custom-codec child roots,
+and scalar, array, collection, or Map children. Use `JsonAnyProperty`, `JsonAnyGetter`, or
+`JsonAnySetter` to flatten a Map. `JsonProperty.value`, non-default `JsonProperty.include`, and
+`JsonCodec` are not valid on an unwrapped property; ordinary child leaf properties may still use
+them.
 
 ### Dynamic object members
 
