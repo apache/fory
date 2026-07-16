@@ -123,7 +123,8 @@ public class JsonTypeProcessorTest {
             "test.CodecTarget",
             "package test;\n"
                 + "import org.apache.fory.json.annotation.*;\n"
-                + "public final class CodecTarget {\n"
+                + "@JsonCodec(CodecMixin.InheritedCodec.class) interface InheritedContract {}\n"
+                + "public final class CodecTarget implements InheritedContract {\n"
                 + "  public int selected;\n"
                 + "  @JsonValue public String value;\n"
                 + "  public String unrelated;\n"
@@ -135,6 +136,7 @@ public class JsonTypeProcessorTest {
                 + "@JsonCodec(CodecMixin.Codec.class) abstract class CodecMixin {\n"
                 + "  @JsonProperty int selected;\n"
                 + valueCodec("Codec")
+                + valueCodec("InheritedCodec")
                 + "}\n");
     assertTrue(result.success, result.diagnostics());
     String base = "CodecMixin_ForyJsonMixin_test_x2e_CodecTarget";
@@ -149,6 +151,8 @@ public class JsonTypeProcessorTest {
                 + "}"),
         rules);
     assertTrue(rules.contains("class test.CodecMixin$Codec { public <init>(); }"), rules);
+    assertFalse(rules.contains("class test.CodecMixin$InheritedCodec { public <init>(); }"), rules);
+    assertFalse(rules.contains("class test.InheritedContract"), rules);
     assertFalse(rules.contains("java.lang.String unrelated;"), rules);
     assertFalse(rules.contains("test.CodecTarget$Child child;"), rules);
     assertFalse(rules.contains("java.lang.String nested;"), rules);
@@ -164,7 +168,12 @@ public class JsonTypeProcessorTest {
                 + "@JsonCodec(value = Codecs.RootCodec.class, "
                 + "elementCodec = Codecs.RootCodec.class) interface Root {}\n"
                 + "@JsonCodec(Codecs.ChildCodec.class) interface Child extends Root {}\n"
-                + "public final class InheritedTarget implements Child { public int id; }\n"
+                + "public final class InheritedTarget implements Child {\n"
+                + "  public int id;\n"
+                + "  public String unrelated;\n"
+                + "  @JsonUnwrapped public Details details;\n"
+                + "  public static final class Details { public String nested; }\n"
+                + "}\n"
                 + "@JsonMixin(target = InheritedTarget.class) abstract class InheritedMixin {\n"
                 + "  @JsonProperty int id;\n"
                 + "}\n"
@@ -178,6 +187,9 @@ public class JsonTypeProcessorTest {
     assertTrue(rules.contains("class test.Codecs$ChildCodec { public <init>(); }"), rules);
     assertTrue(rules.contains("class test.Root"), rules);
     assertTrue(rules.contains("class test.Child"), rules);
+    assertFalse(rules.contains("java.lang.String unrelated;"), rules);
+    assertFalse(rules.contains("test.InheritedTarget$Details details;"), rules);
+    assertFalse(rules.contains("java.lang.String nested;"), rules);
   }
 
   @Test
