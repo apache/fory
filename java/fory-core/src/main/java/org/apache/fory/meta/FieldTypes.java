@@ -979,7 +979,7 @@ public class FieldTypes {
             && Objects.equals(declared.getTypeExtMeta(), extMeta)) {
           return declared;
         }
-        return TypeRef.of(
+        return TypeRef.ofSemanticTypeArguments(
             declared.getType(), extMeta, java.util.Collections.singletonList(elementType), null);
       }
       // Build array type from element type
@@ -1086,7 +1086,7 @@ public class FieldTypes {
             && Objects.equals(declared.getTypeExtMeta(), extMeta)) {
           return declared;
         }
-        return TypeRef.of(
+        return TypeRef.ofSemanticTypeArguments(
             declared.getType(), extMeta, java.util.Arrays.asList(keyTypeRef, valueTypeRef), null);
       }
       return mapOf(

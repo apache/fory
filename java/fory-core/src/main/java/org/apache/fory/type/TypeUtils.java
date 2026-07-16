@@ -773,13 +773,13 @@ public class TypeUtils {
   public static <E> TypeRef<Collection<E>> collectionOf(TypeRef<E> elemType) {
     TypeRef<Collection<E>> raw =
         new TypeRef<Collection<E>>() {}.where(new TypeParameter<E>() {}, elemType);
-    return TypeRef.of(raw.getType(), null, Arrays.asList(elemType), null);
+    return TypeRef.ofSemanticTypeArguments(raw.getType(), null, Arrays.asList(elemType), null);
   }
 
   public static <E> TypeRef<Collection<E>> collectionOf(TypeRef<E> elemType, TypeExtMeta extMeta) {
     TypeRef<Collection<E>> raw =
         new TypeRef<Collection<E>>(extMeta) {}.where(new TypeParameter<E>() {}, elemType);
-    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(elemType), null);
+    return TypeRef.ofSemanticTypeArguments(raw.getType(), extMeta, Arrays.asList(elemType), null);
   }
 
   public static <E> TypeRef<? extends Collection<E>> collectionOf(
@@ -787,7 +787,7 @@ public class TypeUtils {
     TypeRef<? extends Collection<E>> raw =
         new TypeRef<Collection<E>>(extMeta) {}.where(new TypeParameter<E>() {}, elemType)
             .getSubtype(collectionType);
-    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(elemType), null);
+    return TypeRef.ofSemanticTypeArguments(raw.getType(), extMeta, Arrays.asList(elemType), null);
   }
 
   public static <K, V> TypeRef<Map<K, V>> mapOf(Class<K> keyType, Class<V> valueType) {
@@ -798,7 +798,8 @@ public class TypeUtils {
     TypeRef<Map<K, V>> raw =
         new TypeRef<Map<K, V>>() {}.where(new TypeParameter<K>() {}, keyType)
             .where(new TypeParameter<V>() {}, valueType);
-    return TypeRef.of(raw.getType(), null, Arrays.asList(keyType, valueType), null);
+    return TypeRef.ofSemanticTypeArguments(
+        raw.getType(), null, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<Map<K, V>> mapOf(
@@ -806,7 +807,8 @@ public class TypeUtils {
     TypeRef<Map<K, V>> raw =
         new TypeRef<Map<K, V>>(extMeta) {}.where(new TypeParameter<K>() {}, keyType)
             .where(new TypeParameter<V>() {}, valueType);
-    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(keyType, valueType), null);
+    return TypeRef.ofSemanticTypeArguments(
+        raw.getType(), extMeta, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<? extends Map<K, V>> mapOf(
@@ -815,14 +817,16 @@ public class TypeUtils {
         new TypeRef<Map<K, V>>(extMeta) {}.where(new TypeParameter<K>() {}, keyType)
             .where(new TypeParameter<V>() {}, valueType);
     TypeRef<? extends Map<K, V>> raw = mapTypeRef.getSubtype(mapType);
-    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(keyType, valueType), null);
+    return TypeRef.ofSemanticTypeArguments(
+        raw.getType(), extMeta, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<? extends Map<K, V>> mapOf(
       Class<?> mapType, TypeRef<K> keyType, TypeRef<V> valueType) {
     TypeRef<Map<K, V>> mapTypeRef = mapOf(keyType, valueType);
     TypeRef<? extends Map<K, V>> raw = mapTypeRef.getSubtype(mapType);
-    return TypeRef.of(raw.getType(), null, Arrays.asList(keyType, valueType), null);
+    return TypeRef.ofSemanticTypeArguments(
+        raw.getType(), null, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<? extends Map<K, V>> mapOf(

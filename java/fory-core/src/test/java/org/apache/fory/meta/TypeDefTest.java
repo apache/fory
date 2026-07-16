@@ -123,6 +123,15 @@ public class TypeDefTest extends ForyTestBase {
     private MultiParamList<Object, Long, String> values;
   }
 
+  static class SwappedMap<K, V> extends HashMap<V, K> {}
+
+  static class NestedElementList<E> extends ArrayList<List<E>> {}
+
+  static class RemappedContainerHolder {
+    private SwappedMap<String, Integer> map;
+    private NestedElementList<String> list;
+  }
+
   @Test
   public void testTypeDefSerialization() throws NoSuchFieldException {
     Fory fory =
@@ -285,6 +294,51 @@ public class TypeDefTest extends ForyTestBase {
     FieldTypes.CollectionFieldType listType =
         (FieldTypes.CollectionFieldType) listTypeDef.getFieldsInfo().get(0).getFieldType();
     assertEquals(listType.getElementType().getTypeId(), Types.STRING);
+  }
+
+  @Test
+  public void testContainerTypeRebuild() {
+    Fory fory = Fory.builder().withXlang(false).requireClassRegistration(false).build();
+    Map<String, Descriptor> descriptors =
+        Descriptor.getDescriptorsMap(RemappedContainerHolder.class);
+
+    Descriptor mapDescriptor = descriptors.get("map");
+    FieldTypes.MapFieldType mapType =
+        (FieldTypes.MapFieldType) FieldTypes.buildFieldType(fory.getTypeResolver(), mapDescriptor);
+    FieldTypes.MapFieldType remoteMapType =
+        new FieldTypes.MapFieldType(
+            mapType.getTypeId(),
+            !mapType.nullable(),
+            mapType.trackingRef(),
+            mapType.getKeyType(),
+            mapType.getValueType());
+    Descriptor rebuiltMap =
+        new FieldInfo(RemappedContainerHolder.class.getName(), "map", remoteMapType)
+            .toDescriptor(fory.getTypeResolver(), mapDescriptor);
+    List<TypeRef<?>> rebuiltMapTypes = rebuiltMap.getTypeRef().getTypeArguments();
+    assertEquals(rebuiltMapTypes.size(), 2);
+    assertEquals(rebuiltMapTypes.get(0).getRawType(), Integer.class);
+    assertEquals(rebuiltMapTypes.get(1).getRawType(), String.class);
+
+    Descriptor listDescriptor = descriptors.get("list");
+    FieldTypes.CollectionFieldType listType =
+        (FieldTypes.CollectionFieldType)
+            FieldTypes.buildFieldType(fory.getTypeResolver(), listDescriptor);
+    FieldTypes.CollectionFieldType remoteListType =
+        new FieldTypes.CollectionFieldType(
+            listType.getTypeId(),
+            !listType.nullable(),
+            listType.trackingRef(),
+            listType.getElementType());
+    Descriptor rebuiltList =
+        new FieldInfo(RemappedContainerHolder.class.getName(), "list", remoteListType)
+            .toDescriptor(fory.getTypeResolver(), listDescriptor);
+    List<TypeRef<?>> rebuiltListTypes = rebuiltList.getTypeRef().getTypeArguments();
+    assertEquals(rebuiltListTypes.size(), 1);
+    TypeRef<?> rebuiltElementType = rebuiltListTypes.get(0);
+    assertEquals(rebuiltElementType.getRawType(), List.class);
+    assertEquals(rebuiltElementType.getTypeArguments().size(), 1);
+    assertEquals(rebuiltElementType.getTypeArguments().get(0).getRawType(), String.class);
   }
 
   @Test

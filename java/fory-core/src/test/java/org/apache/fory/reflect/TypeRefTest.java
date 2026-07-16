@@ -135,6 +135,10 @@ public class TypeRefTest extends ForyTestBase {
 
   static class NestedElementList<E> extends ArrayList<List<E>> {}
 
+  static class ParamA<T> extends ArrayList<ParamB<T>> {}
+
+  static class ParamB<T> extends ArrayList<ParamA<T>> {}
+
   static class StringKeyMap<V> extends HashMap<String, V> {}
 
   static class ArrayElementList<A, E> extends ArrayList<E[]> {}
@@ -228,6 +232,38 @@ public class TypeRefTest extends ForyTestBase {
         TypeRef.of(NestedElementList.class, null, generatedNestedList.getTypeArguments(), null);
     Assert.assertEquals(
         rebuiltNestedList.getTypeArguments(), generatedNestedList.getTypeArguments());
+
+    TypeRef<?> semanticSwappedMap =
+        TypeUtils.mapOf(
+            SwappedMap.class, TypeRef.of(Integer.class), TypeRef.of(String.class), null);
+    Assert.assertEquals(
+        semanticSwappedMap.getTypeArguments(),
+        Arrays.asList(TypeRef.of(Integer.class), TypeRef.of(String.class)));
+    TypeRef<?> semanticNestedList =
+        TypeUtils.collectionOf(NestedElementList.class, new TypeRef<List<String>>() {}, null);
+    Assert.assertEquals(
+        semanticNestedList.getTypeArguments(), Arrays.asList(new TypeRef<List<String>>() {}));
+  }
+
+  @Test
+  public void testMutualContainerType() {
+    TypeRef<?> type = new TypeRef<ParamA<String>>() {};
+    assertMutualContainerType(type);
+    Assert.assertNotNull(GenericType.build(type));
+
+    TypeRef<?> generatedType =
+        TypeRef.ofDeclaredTypeArguments(
+            ParamA.class, null, Arrays.asList(TypeRef.of(String.class)), null);
+    assertMutualContainerType(generatedType);
+    Assert.assertNotNull(GenericType.build(generatedType));
+  }
+
+  private static void assertMutualContainerType(TypeRef<?> type) {
+    TypeRef<?> paramB = type.getTypeArguments().get(0);
+    Assert.assertEquals(paramB.getRawType(), ParamB.class);
+    TypeRef<?> paramA = paramB.getTypeArguments().get(0);
+    Assert.assertEquals(paramA.getRawType(), ParamA.class);
+    Assert.assertTrue(paramA.getTypeArguments().isEmpty());
   }
 
   @Test
