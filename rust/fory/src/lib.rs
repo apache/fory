@@ -49,7 +49,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! fory = "0.13"
+//! fory = "1.4.0"
 //! ```
 //!
 //! ### Basic Example

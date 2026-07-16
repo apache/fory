@@ -47,14 +47,14 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.4.0-SNAPSHOT</version>
+  <version>1.4.0</version>
 </dependency>
 ```
 
 Gradle, using `mavenLocal()` for the snapshot:
 
 ```kotlin
-implementation("org.apache.fory:fory-json:1.4.0-SNAPSHOT")
+implementation("org.apache.fory:fory-json:1.4.0")
 ```
 
 Keep all Fory modules on the same version. Replace the snapshot with the released version that

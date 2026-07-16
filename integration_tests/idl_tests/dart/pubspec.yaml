@@ -1,5 +1,5 @@
 name: idl_dart_tests
-version: 1.4.0-dev
+version: 1.4.0
 publish_to: none
 
 environment:

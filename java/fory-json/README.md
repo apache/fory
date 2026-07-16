@@ -12,34 +12,22 @@ reference identity, circular graphs, or Fory's binary-only features.
 
 ## Requirements and installation
 
-The module targets Java 8 bytecode. Record mapping requires Java 17 or later.
-
-Fory JSON is currently available from the source tree as `1.4.0-SNAPSHOT`. Until a published Fory
-release contains the module, install it into the local Maven repository from the repository root:
-
-```bash
-cd java
-mvn -pl fory-json -am -DskipTests install
-```
-
+Fory JSON supports java8+, jdk record is also supported
 Maven:
 
 ```xml
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.4.0-SNAPSHOT</version>
+  <version>1.4.0</version>
 </dependency>
 ```
 
-Gradle, using `mavenLocal()` while consuming the snapshot:
+Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-json:1.4.0-SNAPSHOT")
+implementation("org.apache.fory:fory-json:1.4.0")
 ```
-
-Use the same version for every Fory module in one application. After `fory-json` is published,
-replace the snapshot with the released version that contains it.
 
 ### JDK 25 and later
 
