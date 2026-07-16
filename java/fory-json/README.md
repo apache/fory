@@ -995,20 +995,18 @@ reader. It is not a JSON abstract syntax tree (AST) or `JsonNode` codec. It owns
 including JSON null, but never handles a Map key; `MapKeyCodec` remains responsible for JSON object
 member names.
 
-Implement all five representations with the same JSON shape:
+For an application codec with the same semantics in every representation, extend
+`AbstractJsonValueCodec<T>` and implement the JSON shape once:
 
 ```java
 import java.math.BigDecimal;
-import org.apache.fory.json.codec.JsonValueCodec;
-import org.apache.fory.json.reader.Latin1JsonReader;
-import org.apache.fory.json.reader.Utf16JsonReader;
-import org.apache.fory.json.reader.Utf8JsonReader;
-import org.apache.fory.json.writer.StringJsonWriter;
-import org.apache.fory.json.writer.Utf8JsonWriter;
+import org.apache.fory.json.codec.AbstractJsonValueCodec;
+import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.writer.JsonWriter;
 
-public final class MoneyCodec implements JsonValueCodec<Money> {
+public final class MoneyCodec extends AbstractJsonValueCodec<Money> {
   @Override
-  public void writeString(StringJsonWriter writer, Money value) {
+  public void write(JsonWriter writer, Money value) {
     if (value == null) {
       writer.writeNull();
     } else {
@@ -1017,26 +1015,7 @@ public final class MoneyCodec implements JsonValueCodec<Money> {
   }
 
   @Override
-  public void writeUtf8(Utf8JsonWriter writer, Money value) {
-    if (value == null) {
-      writer.writeNull();
-    } else {
-      writer.writeBigDecimal(value.amount);
-    }
-  }
-
-  @Override
-  public Money readLatin1(Latin1JsonReader reader) {
-    return reader.tryReadNullToken() ? null : new Money(reader.readBigDecimal());
-  }
-
-  @Override
-  public Money readUtf16(Utf16JsonReader reader) {
-    return reader.tryReadNullToken() ? null : new Money(reader.readBigDecimal());
-  }
-
-  @Override
-  public Money readUtf8(Utf8JsonReader reader) {
+  public Money read(JsonReader reader) {
     return reader.tryReadNullToken() ? null : new Money(reader.readBigDecimal());
   }
 }
@@ -1049,6 +1028,10 @@ final class Money {
   }
 }
 ```
+
+`AbstractJsonValueCodec` adds one virtual method call per operation. For a
+performance-sensitive codec, or when behavior depends on a concrete reader or writer, implement
+`JsonValueCodec<T>` directly and provide all five representation-specific methods.
 
 ```java
 import org.apache.fory.json.ForyJson;

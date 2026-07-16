@@ -476,6 +476,7 @@ public final class Utf16JsonReader extends JsonReader {
     throw error("Expected ',' or ']'");
   }
 
+  @Override
   public boolean tryReadNullToken() {
     skipWhitespaceFast();
     return tryReadNullLiteral();
