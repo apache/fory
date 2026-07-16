@@ -224,8 +224,11 @@ final class JsonTypeProcessor {
         if (annotations.isEmpty()) {
           continue;
         }
-        GeneratedJsonCodecSourceWriter.Result generated = codecSourceWriter.writePair(annotations);
-        Model model = inspect(target, annotations);
+        boolean typeCodec = codecSourceWriter.hasCompleteTypeCodec(target, annotations);
+        GeneratedJsonCodecSourceWriter.Result generated =
+            typeCodec ? null : codecSourceWriter.writePair(annotations);
+        Model model =
+            typeCodec ? inspectTypeCodec(target, annotations) : inspect(target, annotations);
         model.mixin = mixin;
         model.resourceIdentity = mixinBinaryName;
         collectMixinSource(annotations, model);
@@ -242,7 +245,9 @@ final class JsonTypeProcessor {
             model.addR8Member(new R8Member(member.ownerBinaryName, member.declaration));
           }
         }
-        collectPairClosure(model, target, annotations);
+        if (!typeCodec) {
+          collectPairClosure(model, target, annotations);
+        }
         model.sort();
         emitR8(model);
         emitNativeImageProperties(model);
@@ -315,6 +320,15 @@ final class JsonTypeProcessor {
 
   private Model inspect(TypeElement target) {
     return inspect(target, null);
+  }
+
+  private Model inspectTypeCodec(TypeElement target, JsonMixinAnnotations annotations) {
+    String binaryName = elements.getBinaryName(target).toString();
+    Model model = new Model(target, binaryName);
+    model.annotations = annotations;
+    model.annotationOwnerTypes.add(binaryName);
+    collectTypeCodec(target, model);
+    return model;
   }
 
   private Model inspect(TypeElement target, JsonMixinAnnotations annotations) {

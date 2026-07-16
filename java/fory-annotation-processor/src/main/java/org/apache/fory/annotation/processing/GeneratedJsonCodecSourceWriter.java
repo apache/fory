@@ -186,7 +186,7 @@ final class GeneratedJsonCodecSourceWriter {
     return false;
   }
 
-  private boolean hasCompleteTypeCodec(TypeElement target, JsonMixinAnnotations annotations) {
+  boolean hasCompleteTypeCodec(TypeElement target, JsonMixinAnnotations annotations) {
     AnnotationMirror direct = annotationMirror(annotations, target, JSON_CODEC);
     if (direct != null) {
       return selectsValueCodec(direct);

@@ -117,6 +117,40 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void mixinTypeCodecRules() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.CodecTarget",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class CodecTarget {\n"
+                + "  public int selected;\n"
+                + "  public String unrelated;\n"
+                + "  public Child child;\n"
+                + "  public static final class Child { public String value; }\n"
+                + "}\n"
+                + "@JsonMixin(target = CodecTarget.class)\n"
+                + "@JsonCodec(CodecMixin.Codec.class) abstract class CodecMixin {\n"
+                + "  @JsonProperty int selected;\n"
+                + valueCodec("Codec")
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String base = "CodecMixin_ForyJsonMixin_test_x2e_CodecTarget";
+    assertFalse(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.CodecMixin.pro");
+    assertTrue(
+        rules.contains(
+            "-keepclassmembers,allowoptimization class test.CodecTarget {\n"
+                + "  int selected;\n"
+                + "}"),
+        rules);
+    assertTrue(rules.contains("class test.CodecMixin$Codec { public <init>(); }"), rules);
+    assertFalse(rules.contains("java.lang.String unrelated;"), rules);
+    assertFalse(rules.contains("test.CodecTarget$Child child;"), rules);
+    assertFalse(rules.contains("java.lang.String value;"), rules);
+  }
+
+  @Test
   public void mixinRuntimePipeline() throws Exception {
     CompilationResult result =
         compile(
