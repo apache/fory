@@ -138,11 +138,12 @@ import org.apache.fory.util.record.RecordUtils;
  *
  * <p>Accepted type-check results are cached by class name up to a bounded 8192-entry shared cache.
  * Once full, new names are checked on every resolution rather than growing attacker-controlled
- * state. Common short field names are retained in a separately bounded cache and reused by the
- * readers owned by this runtime. Source-generated model companions and JIT-generated classes are
- * shared here; concrete JIT codec instances, ordinary type bindings, JIT locks, and callbacks
- * remain resolver-local. A fresh generic {@link JsonJITContext} is therefore created for every
- * pooled JSON state.
+ * state. Common short field names admitted by reader-local caches are published here for
+ * best-effort String reference reuse across readers. Reader-local admission is the only field-name
+ * capacity gate; the shared field-name map has no explicit limit. Source-generated model companions
+ * and JIT-generated classes are shared here; concrete JIT codec instances, ordinary type bindings,
+ * JIT locks, and callbacks remain resolver-local. A fresh generic {@link JsonJITContext} is
+ * therefore created for every pooled JSON state.
  */
 public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
@@ -182,8 +183,6 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<Class<?>, GeneratedJsonCodec<?>> generatedCodecs;
   private final Set<Class<?>> typesWithoutGeneratedCodec;
   private final ConcurrentHashMap<Long, CachedFieldName> cachedFieldNames;
-  private final Object cachedFieldNamesLock;
-  private final int maxCachedFieldNames;
 
   public JsonSharedRegistry(JsonConfig config) {
     this(config, null);
@@ -211,14 +210,7 @@ public final class JsonSharedRegistry {
     mapKeyCodecs = new ConcurrentHashMap<>();
     generatedCodecs = new ConcurrentHashMap<>();
     typesWithoutGeneratedCodec = ConcurrentHashMap.newKeySet();
-    maxCachedFieldNames = config.maxCachedFieldNames();
-    if (maxCachedFieldNames == 0) {
-      cachedFieldNames = null;
-      cachedFieldNamesLock = null;
-    } else {
-      cachedFieldNames = new ConcurrentHashMap<>();
-      cachedFieldNamesLock = new Object();
-    }
+    cachedFieldNames = new ConcurrentHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
     codegen = codegenEnabled ? new JsonCodegen(config.getCodegenHash(), classLoader) : null;
     asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
@@ -229,49 +221,18 @@ public final class JsonSharedRegistry {
   /** Returns the immutable cached entry for {@code hash}, or null when none was published. */
   @Internal
   public CachedFieldName cachedFieldName(long hash) {
-    return cachedFieldNames == null ? null : cachedFieldNames.get(hash);
+    return cachedFieldNames.get(hash);
   }
 
   /** Publishes one already validated short ASCII field name, or returns the existing hash owner. */
   @Internal
   public CachedFieldName cacheFieldName(long hash, String name, long word0, long word1) {
-    ConcurrentHashMap<Long, CachedFieldName> cache = cachedFieldNames;
-    if (cache == null) {
-      return null;
-    }
-    CachedFieldName existing = cache.get(hash);
-    if (existing != null) {
-      return existing;
-    }
-    if (cache.size() >= maxCachedFieldNames) {
-      // A concurrent publication may have filled the final slot after the first lookup. Recheck
-      // that hash so every publisher of the winning name receives the canonical entry.
-      return cache.get(hash);
-    }
-    return cacheFieldNameCold(cache, hash, name, word0, word1);
+    CachedFieldName candidate = new CachedFieldName(name, word0, word1);
+    CachedFieldName existing = cachedFieldNames.putIfAbsent(hash, candidate);
+    return existing == null ? candidate : existing;
   }
 
-  private CachedFieldName cacheFieldNameCold(
-      ConcurrentHashMap<Long, CachedFieldName> cache,
-      long hash,
-      String name,
-      long word0,
-      long word1) {
-    synchronized (cachedFieldNamesLock) {
-      CachedFieldName existing = cache.get(hash);
-      if (existing != null) {
-        return existing;
-      }
-      if (cache.size() >= maxCachedFieldNames) {
-        return null;
-      }
-      CachedFieldName entry = new CachedFieldName(name, word0, word1);
-      cache.put(hash, entry);
-      return entry;
-    }
-  }
-
-  /** Immutable canonical field name retained by this registry. */
+  /** Immutable field-name hash owner retained for best-effort cross-reader reference reuse. */
   @Internal
   public static final class CachedFieldName {
     private final String name;

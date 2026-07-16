@@ -139,13 +139,6 @@ public abstract class JsonReader {
   private final int maxDepth;
   private final JsonSharedRegistry sharedRegistry;
   protected final FieldNameCache fieldNameCache;
-  // The shared registry is monotonic. A null publication result therefore proves that this exact
-  // absent identity can never acquire an entry after the strict shared limit is reached. Retaining
-  // one primitive identity avoids a boxed shared lookup on every repeat without owning a String.
-  private long rejectedFieldNameHash;
-  private long rejectedFieldNameWord0;
-  private long rejectedFieldNameWord1;
-  private int rejectedFieldNameLength = -1;
   private int depth;
 
   /**
@@ -245,7 +238,8 @@ public abstract class JsonReader {
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
     maxDepth = config.maxDepth();
     sharedRegistry = typeResolver.sharedRegistry();
-    int maxEntries = config.fieldNameCacheEntries();
+    // The configured limit belongs to each reader; pooled-state concurrency must not divide it.
+    int maxEntries = config.maxCachedFieldNames();
     fieldNameCache = maxEntries == 0 ? null : new FieldNameCache(maxEntries);
   }
 
@@ -270,26 +264,12 @@ public abstract class JsonReader {
    */
   public abstract String readFieldName();
 
-  protected final boolean isRejectedFieldName(long hash, int length, long word0, long word1) {
-    return hash == rejectedFieldNameHash
-        && length == rejectedFieldNameLength
-        && word0 == rejectedFieldNameWord0
-        && word1 == rejectedFieldNameWord1;
-  }
-
   protected final CachedFieldName sharedFieldName(long hash) {
     return sharedRegistry.cachedFieldName(hash);
   }
 
   protected final CachedFieldName cacheFieldName(long hash, String name, long word0, long word1) {
     return sharedRegistry.cacheFieldName(hash, name, word0, word1);
-  }
-
-  protected final void rejectFieldName(int length, long word0, long word1, long hash) {
-    rejectedFieldNameLength = length;
-    rejectedFieldNameWord0 = word0;
-    rejectedFieldNameWord1 = word1;
-    rejectedFieldNameHash = hash;
   }
 
   protected static long fieldNameHash(int length, long word0, long word1) {

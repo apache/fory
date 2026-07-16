@@ -56,20 +56,17 @@ public class JsonFieldNameCacheTest {
     JsonConfig second =
         JsonTestSupport.config(
             ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(2).build());
-    JsonConfig twoEntries =
+    JsonConfig sixEntries =
         JsonTestSupport.config(
             ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(6).build());
     assertNotEquals(first, second);
     assertNotEquals(first.hashCode(), second.hashCode());
     assertEquals(first.getCodegenHash(), second.getCodegenHash());
-    assertEquals(first.fieldNameCacheEntries(), 1);
-    assertEquals(second.fieldNameCacheEntries(), 1);
-    assertEquals(twoEntries.fieldNameCacheEntries(), 2);
-    assertEquals(JsonTestSupport.config(newJson(0)).fieldNameCacheEntries(), 0);
-    assertEquals(
-        JsonTestSupport.config(newJson(ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES))
-            .fieldNameCacheEntries(),
-        1024);
+    assertEquals(first.maxCachedFieldNames(), 1);
+    assertEquals(second.maxCachedFieldNames(), 2);
+    assertEquals(sixEntries.maxCachedFieldNames(), 6);
+    assertEquals(JsonTestSupport.config(newJson(0)).maxCachedFieldNames(), 0);
+    assertEquals(ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES, 8192);
   }
 
   @Test
@@ -152,9 +149,13 @@ public class JsonFieldNameCacheTest {
   }
 
   @Test
-  public void disabledAndFull() {
+  public void disabledAndLocalFull() {
     ForyJson disabled = newJson(0);
     assertNotCached(disabled, "name");
+    assertNull(
+        JsonTestSupport.primaryTypeResolver(disabled)
+            .sharedRegistry()
+            .cachedFieldName(JsonFieldNameHash.hash("name")));
 
     ForyJson bounded = newJson(1);
     assertCached(bounded, "first");
@@ -163,7 +164,7 @@ public class JsonFieldNameCacheTest {
   }
 
   @Test
-  public void fullFallbacks() {
+  public void localFullFallbacks() {
     ForyJson utf8 = newJson(1);
     byte[] utf8First = "{\"first\":1}".getBytes(StandardCharsets.UTF_8);
     byte[] utf8Second = "{\"second\":1}".getBytes(StandardCharsets.UTF_8);
@@ -192,23 +193,31 @@ public class JsonFieldNameCacheTest {
 
   @Test
   public void localLimitSkipsShared() {
-    ForyJson json = newJson(3);
+    ForyJson json = newJson(1, 2);
     JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
-    CachedFieldName shared = cacheFieldName(registry, "b");
+    Latin1JsonReader secondary =
+        (Latin1JsonReader) JsonTestSupport.secondaryStateField(json, 0, "latin1Reader");
+    String sharedName = secondary.reset("\"b\"").readFieldName();
+    CachedFieldName shared = registry.cachedFieldName(JsonFieldNameHash.hash("b"));
+    assertNotNull(shared);
+    assertSame(shared.name(), sharedName);
     String first = firstKey(json.fromJson("{\"a\":1}", JsonObject.class));
 
-    String rejected1 = firstKey(json.fromJson("{\"b\":1}", JsonObject.class));
-    String rejected2 = firstKey(json.fromJson("{\"b\":1}", JsonObject.class));
-    assertNotSame(rejected1, shared.name());
-    assertNotSame(rejected2, shared.name());
-    assertNotSame(rejected2, rejected1);
+    String fallback1 = firstKey(json.fromJson("{\"b\":1}", JsonObject.class));
+    String fallback2 = firstKey(json.fromJson("{\"b\":1}", JsonObject.class));
+    assertNotSame(fallback1, shared.name());
+    assertNotSame(fallback2, shared.name());
+    assertNotSame(fallback2, fallback1);
     assertSame(firstKey(json.fromJson("{\"a\":1}", JsonObject.class)), first);
     assertSame(registry.cachedFieldName(JsonFieldNameHash.hash("b")), shared);
+    CachedFieldName primaryEntry = registry.cachedFieldName(JsonFieldNameHash.hash("a"));
+    assertNotNull(primaryEntry);
+    assertSame(primaryEntry.name(), first);
   }
 
   @Test
   public void adjacentSlotHit() {
-    ForyJson json = newJson(6);
+    ForyJson json = newJson(2);
     String home = firstKey(json.fromJson("{\"a\":1}", JsonObject.class));
     String adjacent = firstKey(json.fromJson("{\"e\":1}", JsonObject.class));
 
@@ -218,17 +227,22 @@ public class JsonFieldNameCacheTest {
 
   @Test
   public void localConflictSkipsShared() {
-    ForyJson json = newJson(9);
+    ForyJson json = newJson(3, 2);
     JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
-    CachedFieldName shared = cacheFieldName(registry, "q");
+    Latin1JsonReader secondary =
+        (Latin1JsonReader) JsonTestSupport.secondaryStateField(json, 0, "latin1Reader");
+    String sharedName = secondary.reset("\"q\"").readFieldName();
+    CachedFieldName shared = registry.cachedFieldName(JsonFieldNameHash.hash("q"));
+    assertNotNull(shared);
+    assertSame(shared.name(), sharedName);
     String home = firstKey(json.fromJson("{\"a\":1}", JsonObject.class));
     String adjacent = firstKey(json.fromJson("{\"i\":1}", JsonObject.class));
 
-    String rejected1 = firstKey(json.fromJson("{\"q\":1}", JsonObject.class));
-    String rejected2 = firstKey(json.fromJson("{\"q\":1}", JsonObject.class));
-    assertNotSame(rejected1, shared.name());
-    assertNotSame(rejected2, shared.name());
-    assertNotSame(rejected2, rejected1);
+    String fallback1 = firstKey(json.fromJson("{\"q\":1}", JsonObject.class));
+    String fallback2 = firstKey(json.fromJson("{\"q\":1}", JsonObject.class));
+    assertNotSame(fallback1, shared.name());
+    assertNotSame(fallback2, shared.name());
+    assertNotSame(fallback2, fallback1);
     assertSame(firstKey(json.fromJson("{\"a\":2}", JsonObject.class)), home);
     assertSame(firstKey(json.fromJson("{\"i\":2}", JsonObject.class)), adjacent);
     assertSame(registry.cachedFieldName(JsonFieldNameHash.hash("q")), shared);
@@ -241,7 +255,7 @@ public class JsonFieldNameCacheTest {
             .withCodegen(false)
             .withAsyncCompilation(false)
             .withConcurrencyLevel(2)
-            .withMaxCachedFieldNames(12)
+            .withMaxCachedFieldNames(1)
             .build();
     Latin1JsonReader primary =
         (Latin1JsonReader) JsonTestSupport.primaryStateField(json, "latin1Reader");
@@ -298,50 +312,6 @@ public class JsonFieldNameCacheTest {
     JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
     assertNull(registry.cachedFieldName(JsonFieldNameHash.hash("bad")));
     assertNull(registry.cachedFieldName(JsonFieldNameHash.hash("")));
-  }
-
-  @Test
-  public void strictSharedLimit() throws Exception {
-    int limit = 64;
-    JsonConfig config =
-        JsonTestSupport.config(
-            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(limit).build());
-    JsonSharedRegistry registry = new JsonSharedRegistry(config);
-    int threads = 8;
-    ExecutorService executor = Executors.newFixedThreadPool(threads);
-    CountDownLatch start = new CountDownLatch(1);
-    CountDownLatch done = new CountDownLatch(threads);
-    for (int thread = 0; thread < threads; thread++) {
-      final int threadIndex = thread;
-      executor.execute(
-          () -> {
-            try {
-              start.await();
-              for (int i = 0; i < limit; i++) {
-                String name = "k" + threadIndex + '-' + i;
-                long[] words = pack(name);
-                registry.cacheFieldName(JsonFieldNameHash.hash(name), name, words[0], words[1]);
-              }
-            } catch (InterruptedException e) {
-              Thread.currentThread().interrupt();
-            } finally {
-              done.countDown();
-            }
-          });
-    }
-    start.countDown();
-    assertTrue(done.await(10, TimeUnit.SECONDS));
-    executor.shutdown();
-    executor.awaitTermination(10, TimeUnit.SECONDS);
-    int cached = 0;
-    for (int thread = 0; thread < threads; thread++) {
-      for (int i = 0; i < limit; i++) {
-        if (registry.cachedFieldName(JsonFieldNameHash.hash("k" + thread + '-' + i)) != null) {
-          cached++;
-        }
-      }
-    }
-    assertEquals(cached, limit);
   }
 
   @Test
@@ -420,10 +390,14 @@ public class JsonFieldNameCacheTest {
   }
 
   private static ForyJson newJson(int maxCachedFieldNames) {
+    return newJson(maxCachedFieldNames, 1);
+  }
+
+  private static ForyJson newJson(int maxCachedFieldNames, int concurrencyLevel) {
     return ForyJson.builder()
         .withCodegen(false)
         .withAsyncCompilation(false)
-        .withConcurrencyLevel(1)
+        .withConcurrencyLevel(concurrencyLevel)
         .withMaxCachedFieldNames(maxCachedFieldNames)
         .build();
   }
@@ -442,11 +416,6 @@ public class JsonFieldNameCacheTest {
         JsonTestSupport.primaryTypeResolver(json)
             .sharedRegistry()
             .cachedFieldName(JsonFieldNameHash.hash("value")));
-  }
-
-  private static CachedFieldName cacheFieldName(JsonSharedRegistry registry, String name) {
-    long[] words = pack(name);
-    return registry.cacheFieldName(JsonFieldNameHash.hash(name), name, words[0], words[1]);
   }
 
   private static void assertCached(ForyJson json, String name) {

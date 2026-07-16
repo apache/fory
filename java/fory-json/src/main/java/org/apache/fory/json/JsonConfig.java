@@ -23,7 +23,6 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.resolver.CodecRegistry;
 
 /**
@@ -34,8 +33,8 @@ import org.apache.fory.json.resolver.CodecRegistry;
  * The type checker uses identity semantics because checker instances may carry different user
  * policy despite sharing a class. {@link #getCodegenHash()} identifies only settings that can
  * change generated source; runtime-only settings such as depth and asynchronous scheduling do not
- * fragment generated class names. Concurrency, retained field-name, and retained writer-buffer
- * limits are also runtime-only and do not fragment generated class names.
+ * fragment generated class names. Concurrency, per-reader field-name cache, and retained
+ * writer-buffer limits are also runtime-only and do not fragment generated class names.
  */
 public final class JsonConfig {
   private final boolean writeNullFields;
@@ -120,16 +119,6 @@ public final class JsonConfig {
 
   public int maxCachedFieldNames() {
     return maxCachedFieldNames;
-  }
-
-  /** Returns the logical field-name entry limit for each reader. */
-  @Internal
-  public int fieldNameCacheEntries() {
-    if (maxCachedFieldNames == 0) {
-      return 0;
-    }
-    long target = Math.max(1L, maxCachedFieldNames / (3L * concurrencyLevel));
-    return (int) Math.min(1024L, target);
   }
 
   public int concurrencyLevel() {

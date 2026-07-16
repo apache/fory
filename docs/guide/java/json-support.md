@@ -291,15 +291,16 @@ are rejected.
 | `withPropertyNamingStrategy` | `LOWER_CAMEL_CASE`                           | Naming of properties without explicit names            |
 | `withClassLoader`            | Snapshotted context loader, then Fory loader | Resolve annotation subtype class names                 |
 | `maxDepth`                   | `20`                                         | Maximum nested object/array depth                      |
-| `withMaxCachedFieldNames`    | `DEFAULT_MAX_CACHED_FIELD_NAMES` (`16K`)     | Retained common field-name limit; zero disables it     |
+| `withMaxCachedFieldNames`    | `DEFAULT_MAX_CACHED_FIELD_NAMES` (`8192`)    | Field-name cache entries per reader; zero disables it  |
 | `withConcurrencyLevel`       | `max(1, 2 * processors)`                     | Reusable operation-state count                         |
 | `withBufferSizeLimitBytes`   | 2 MiB                                        | Reusable capacity retained by each pooled writer       |
 | `registerCodec`              | None                                         | Exact-class complete-value codec                       |
 | `withTypeChecker`            | None                                         | Application policy in addition to Fory's disallow list |
 
 Depth, concurrency, and retained buffer limits must be positive. The cached-field-name limit must
-be non-negative; it bounds retained common names rather than accepted input. The buffer setting does
-not limit output size. Builder changes after `build()` do not mutate an existing runtime.
+be non-negative and applies independently to each reader; it does not limit accepted input. The
+buffer setting does not limit output size. Builder changes after `build()` do not mutate an existing
+runtime.
 
 In a GraalVM native image, runtime code generation and asynchronous compilation are automatically
 disabled. Every other builder option keeps the behavior described above.

@@ -78,8 +78,8 @@ public final class ForyJson {
   /** Default maximum nested JSON object/array depth accepted while reading or writing. */
   public static final int DEFAULT_MAX_DEPTH = 20;
 
-  /** Default maximum number of short, unescaped ASCII field names retained by one runtime. */
-  public static final int DEFAULT_MAX_CACHED_FIELD_NAMES = 16 * 1024;
+  /** Default maximum number of short, unescaped ASCII field names cached by each JSON reader. */
+  public static final int DEFAULT_MAX_CACHED_FIELD_NAMES = 8192;
 
   private final JsonConfig config;
   private final JsonSharedRegistry sharedRegistry;

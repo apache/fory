@@ -1627,9 +1627,6 @@ public final class Utf16JsonReader extends JsonReader {
   private String resolveShortFieldName(
       FieldNameCache cache, int start, int end, int nameLength, long word0) {
     long hash = nameLength == 0 ? JsonFieldNameHash.MAGIC_HASH_CODE : word0;
-    if (isRejectedFieldName(hash, nameLength, word0, 0)) {
-      return input.substring(start, end);
-    }
     CachedFieldName entry = cache.get(hash);
     if (entry != null) {
       return entry.matches(nameLength, word0, 0) ? entry.name() : input.substring(start, end);
@@ -1682,10 +1679,6 @@ public final class Utf16JsonReader extends JsonReader {
     }
     String candidate = input.substring(start, end);
     entry = cacheFieldName(hash, candidate, word0, word1);
-    if (entry == null) {
-      rejectFieldName(length, word0, word1, hash);
-      return candidate;
-    }
     cache.put(hash, entry);
     return entry.matches(length, word0, word1) ? entry.name() : candidate;
   }
@@ -1693,9 +1686,6 @@ public final class Utf16JsonReader extends JsonReader {
   private String resolveFieldName(
       FieldNameCache cache, int start, int end, int length, long word0, long word1) {
     long hash = fieldNameHash(length, word0, word1);
-    if (isRejectedFieldName(hash, length, word0, word1)) {
-      return input.substring(start, end);
-    }
     CachedFieldName entry = cache.get(hash);
     if (entry != null) {
       return entry.matches(length, word0, word1) ? entry.name() : input.substring(start, end);

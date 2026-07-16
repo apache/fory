@@ -345,17 +345,17 @@ original key type. Null map keys are rejected.
 | `withPropertyNamingStrategy(strategy)` | `LOWER_CAMEL_CASE`                                       | Name properties without an explicit `JsonProperty` name              |
 | `withClassLoader(loader)`              | Snapshotted thread context loader, then Fory JSON loader | Resolve annotation-declared subtype class names                      |
 | `maxDepth(int)`                        | `20`                                                     | Maximum nested object/array depth for reads and writes               |
-| `withMaxCachedFieldNames(int)`         | `DEFAULT_MAX_CACHED_FIELD_NAMES` (`16K`)                 | Maximum common field names retained while parsing; zero disables it  |
+| `withMaxCachedFieldNames(int)`         | `DEFAULT_MAX_CACHED_FIELD_NAMES` (`8192`)                | Field-name cache entries per reader; zero disables caching           |
 | `withConcurrencyLevel(int)`            | `max(1, 2 * processors)`                                 | Number of reusable concurrent operation states                       |
 | `withBufferSizeLimitBytes(int)`        | 2 MiB                                                    | Maximum reusable capacity retained by each pooled writer             |
 | `registerCodec(type, codec)`           | None                                                     | Replace the exact class's complete JSON codec                        |
 | `withTypeChecker(checker)`             | No custom checker                                        | Apply an application type policy in addition to Fory's disallow list |
 
 Depth, concurrency level, and buffer retention limit must be positive. The cached-field-name limit
-must be non-negative. It bounds retained common names and does not limit accepted JSON input; zero
-disables this cache. The buffer retention setting does not limit JSON input or output size; it only
-limits reusable writer storage retained after an operation. Apply request/body size limits at the
-transport boundary when parsing untrusted input.
+must be non-negative and applies independently to each reader. It does not limit accepted JSON
+input; zero disables this cache. The buffer retention setting does not limit JSON input or output
+size; it only limits reusable writer storage retained after an operation. Apply request/body size
+limits at the transport boundary when parsing untrusted input.
 
 Builder mutation after `build()` does not modify an existing `ForyJson` runtime.
 

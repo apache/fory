@@ -1729,9 +1729,6 @@ public final class Utf8JsonReader extends JsonReader {
         position = stop + 1;
         word0 = fieldNameWord(word0, length);
         long hash = length == 0 ? JsonFieldNameHash.MAGIC_HASH_CODE : word0;
-        if (isRejectedFieldName(hash, length, word0, 0)) {
-          return newLatin1String(start, stop);
-        }
         CachedFieldName entry = cache.get(hash);
         if (entry != null) {
           return entry.matches(length, word0, 0) ? entry.name() : newLatin1String(start, stop);
@@ -1799,9 +1796,6 @@ public final class Utf8JsonReader extends JsonReader {
   private String resolveFieldName(
       FieldNameCache cache, int start, int end, int length, long word0, long word1) {
     long hash = fieldNameHash(length, word0, word1);
-    if (isRejectedFieldName(hash, length, word0, word1)) {
-      return newLatin1String(start, end);
-    }
     CachedFieldName entry = cache.get(hash);
     if (entry != null) {
       return entry.matches(length, word0, word1) ? entry.name() : newLatin1String(start, end);
@@ -1821,10 +1815,6 @@ public final class Utf8JsonReader extends JsonReader {
     }
     String candidate = newLatin1String(start, end);
     entry = cacheFieldName(hash, candidate, word0, word1);
-    if (entry == null) {
-      rejectFieldName(length, word0, word1, hash);
-      return candidate;
-    }
     cache.put(hash, entry);
     return entry.matches(length, word0, word1) ? entry.name() : candidate;
   }
