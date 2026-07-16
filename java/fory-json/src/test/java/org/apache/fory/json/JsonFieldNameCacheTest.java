@@ -200,7 +200,7 @@ public class JsonFieldNameCacheTest {
     JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
     Latin1JsonReader secondary =
         (Latin1JsonReader) JsonTestSupport.secondaryStateField(json, 0, "latin1Reader");
-    String sharedName = secondary.reset("\"b\"").readFieldName();
+    String sharedName = secondary.reset(latin1Bytes("\"b\"")).readFieldName();
     CachedFieldName shared = registry.cachedFieldName(JsonFieldNameHash.hash("b"));
     assertNotNull(shared);
     assertSame(shared.name(), sharedName);
@@ -234,7 +234,7 @@ public class JsonFieldNameCacheTest {
     JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
     Latin1JsonReader secondary =
         (Latin1JsonReader) JsonTestSupport.secondaryStateField(json, 0, "latin1Reader");
-    String sharedName = secondary.reset("\"q\"").readFieldName();
+    String sharedName = secondary.reset(latin1Bytes("\"q\"")).readFieldName();
     CachedFieldName shared = registry.cachedFieldName(JsonFieldNameHash.hash("q"));
     assertNotNull(shared);
     assertSame(shared.name(), sharedName);
@@ -265,8 +265,8 @@ public class JsonFieldNameCacheTest {
     Latin1JsonReader secondary =
         (Latin1JsonReader) JsonTestSupport.secondaryStateField(json, 0, "latin1Reader");
 
-    String first = primary.reset("\"shared\"").readFieldName();
-    String second = secondary.reset("\"shared\"").readFieldName();
+    String first = primary.reset(latin1Bytes("\"shared\"")).readFieldName();
+    String second = secondary.reset(latin1Bytes("\"shared\"")).readFieldName();
     assertSame(second, first);
   }
 
@@ -452,6 +452,10 @@ public class JsonFieldNameCacheTest {
 
   private static String jsonForName(String name) {
     return "{\"" + name + "\":1}";
+  }
+
+  private static byte[] latin1Bytes(String json) {
+    return json.getBytes(StandardCharsets.ISO_8859_1);
   }
 
   private static String firstKey(Map<?, ?> map) {
