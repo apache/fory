@@ -146,7 +146,7 @@ final class ForyJsonGraalVMFeature implements Feature {
     }
     registerReflectiveDeclarations(annotations.sourceDeclarations());
     registerReflectiveDeclarations(annotations.targetDeclarations());
-    // Retain every directly declared hierarchy codec plus the exact mix-in replacement. Runtime
+    // Retain every directly declared hierarchy codec plus the exact Mixin replacement. Runtime
     // resolution remains the sole owner of codec precedence and conflict validation.
     registerDeclarations(targetType);
     registerCodecs(annotations.annotation(targetType, JsonCodec.class));

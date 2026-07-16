@@ -189,9 +189,9 @@ public final class ForyJsonBuilder {
   }
 
   /**
-   * Registers the JSON mix-in declared by {@code mixinType} for its exact target class.
+   * Registers the JSON Mixin declared by {@code mixinType} for its exact target class.
    *
-   * <p>Registering another mix-in for the same target replaces the previous registration. Existing
+   * <p>Registering another Mixin for the same target replaces the previous registration. Existing
    * {@link ForyJson} instances retain their immutable configuration snapshot. Only the final source
    * for each target is structurally resolved when {@link #build()} creates the runtime; a
    * superseded source is not resolved.
@@ -207,18 +207,18 @@ public final class ForyJsonBuilder {
       declaration = mixinType.getDeclaredAnnotation(JsonMixin.class);
     } catch (RuntimeException | LinkageError e) {
       throw new IllegalArgumentException(
-          "Cannot read JSON mix-in declaration " + mixinType.getName(), e);
+          "Cannot read JSON Mixin declaration " + mixinType.getName(), e);
     }
     if (declaration == null) {
       throw new IllegalArgumentException(
-          "JSON mix-in source is missing @JsonMixin: " + mixinType.getName());
+          "JSON Mixin source is missing @JsonMixin: " + mixinType.getName());
     }
     Class<?> target;
     try {
       target = declaration.target();
     } catch (RuntimeException | LinkageError e) {
       throw new IllegalArgumentException(
-          "Cannot resolve JSON mix-in target for " + mixinType.getName(), e);
+          "Cannot resolve JSON Mixin target for " + mixinType.getName(), e);
     }
     mixins.put(target, mixinType);
     return this;

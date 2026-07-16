@@ -100,7 +100,7 @@ public final class Invoice {
 }
 ```
 
-The same processor supports Fory JSON mix-ins. A mix-in declares one exact target and is registered
+The same processor supports Fory JSON Mixins. A Mixin declares one exact target and is registered
 on the runtime that should use it:
 
 ```java
@@ -117,14 +117,14 @@ ForyJson json =
     ForyJson.builder().registerMixin(ThirdPartyInvoiceMixin.class).build();
 ```
 
-Compile every non-empty mix-in source with `fory-annotation-processor`. The processor emits exact
+Compile every non-empty Mixin source with `fory-annotation-processor`. The processor emits exact
 R8 rules and any pair-specific target operations that the runtime can use. Registered codecs,
-effective type codecs, and built-in mappings keep their normal runtime precedence. An empty mix-in
+effective type codecs, and built-in mappings keep their normal runtime precedence. An empty Mixin
 produces no generated output.
 
-The target does not need `JsonType` merely because it has a mix-in. `JsonMixin` is itself the
+The target does not need `JsonType` merely because it has a Mixin. `JsonMixin` is itself the
 processor entry point for the pair. If a target also uses `JsonType`, the runtime selects the
-pair-specific companion for a non-empty registered mix-in instead of combining the overlay with the
+pair-specific companion for a non-empty registered Mixin instead of combining the overlay with the
 target's direct companion.
 
 Only one source is enabled for an exact target in one built runtime. A later registration for that
@@ -132,7 +132,7 @@ target replaces an earlier registration on the builder, and `build()` snapshots 
 mapping. The processor may generate artifacts for multiple source alternatives; the runtime uses
 only the last registered source.
 
-Use the processor-generated R8 rules for non-empty mix-ins instead of broad package keep rules.
+Use the processor-generated R8 rules for non-empty Mixins instead of broad package keep rules.
 
 Ordinary non-Record classes that omit `JsonType` can supply equivalent exact rules themselves.
 Retain every model

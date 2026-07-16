@@ -624,7 +624,7 @@ public final class JsonSharedRegistry {
     return GeneratedClassNames.withSuffix(binaryName, "_ForyJsonCodec");
   }
 
-  /** Returns the deterministic generated companion name for one target/mix-in pair. */
+  /** Returns the deterministic generated companion name for one target-Mixin pair. */
   @Internal
   public static String generatedMixinCodecBinaryName(Class<?> mixinType, Class<?> targetType) {
     String sourceName = mixinType.getName();
@@ -802,7 +802,7 @@ public final class JsonSharedRegistry {
       return failure;
     }
     return new ForyJsonException(
-        "Invalid effective JSON mix-in schema for target "
+        "Invalid effective JSON Mixin schema for target "
             + targetType.getName()
             + " from source "
             + mixinType.getName()
@@ -811,13 +811,13 @@ public final class JsonSharedRegistry {
         failure);
   }
 
-  /** Resolves one target/mix-in overlay for hosted metadata discovery. */
+  /** Resolves one target-Mixin overlay for hosted metadata discovery. */
   @Internal
   public static JsonMixinView resolveMixin(Class<?> targetType, Class<?> mixinType) {
     return new JsonMixinView(JsonMixinAnnotations.resolve(targetType, mixinType));
   }
 
-  /** Read-only hosted view of one fully validated structural mix-in overlay. */
+  /** Read-only hosted view of one fully validated structural Mixin overlay. */
   @Internal
   public static final class JsonMixinView {
     private final JsonMixinAnnotations.TargetOverlay overlay;

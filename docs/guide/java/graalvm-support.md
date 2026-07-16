@@ -80,7 +80,7 @@ public class JsonExample {
 }
 ```
 
-The processor also supports Fory JSON mix-ins for models that cannot be modified:
+The processor also supports Fory JSON Mixins for models that cannot be modified:
 
 ```java
 import org.apache.fory.json.ForyJson;
@@ -104,14 +104,14 @@ public class JsonExample {
 ```
 
 `JsonMixin` is a build-time entry point for its exact declared target, so the target does not need
-`JsonType` solely to use the mix-in. The registered mix-in class literal must be reachable from the
-application. The processor emits available target operations for each non-empty mix-in, and the
+`JsonType` solely to use the Mixin. The registered Mixin class literal must be reachable from the
+application. The processor emits available target operations for each non-empty Mixin, and the
 Fory JSON Native Image Feature retains the effective runtime metadata. Normal runtime codec
-precedence still selects the representation. An empty mix-in produces no generated output.
+precedence still selects the representation. An empty Mixin produces no generated output.
 
 Only one source is enabled for an exact target in a built `ForyJson`. Later registration replaces
 an earlier source for subsequent `build()` calls; a runtime keeps the immutable snapshot it was
-built with. If the target also has a direct `JsonType` companion, a non-empty registered mix-in
+built with. If the target also has a direct `JsonType` companion, a non-empty registered Mixin
 selects the pair-specific artifact instead of combining the overlay with the direct companion.
 
 Do not add application reflection configuration as a replacement for the generated configuration.
@@ -146,7 +146,7 @@ getters support trusted raw String values, and fixed `JsonBase64` fields and get
 `byte[]` values as on the JVM. For direct target annotations, annotate each reachable owning model
 with `JsonType` so Native Image retains these members and the Base64 codec constructor. A directly
 annotated `JsonValue` Record uses its generated component accessor and canonical constructor
-operations. An effective declaration supplied by a mix-in uses the mix-in workflow above instead.
+operations. An effective declaration supplied by a Mixin uses the Mixin workflow above instead.
 
 `JsonAnyProperty` and `JsonAnyGetter` flatten their Map into the enclosing object. Use
 `@JsonCodec(valueCodec = ...)` on that field or getter to customize each dynamic value. A second
@@ -154,8 +154,8 @@ operations. An effective declaration supplied by a mix-in uses the mix-in workfl
 
 `JsonUnwrapped` uses the same interpreted behavior as on the JVM. For direct target annotations,
 annotate the containing model and every unwrapped child or intermediate object with `JsonType` so
-each model receives its generated property and creator operations. A mix-in retains the
-unwrapped models reached by its effective schema; register a separate exact mix-in for a child only
+each model receives its generated property and creator operations. A Mixin retains the
+unwrapped models reached by its effective schema; register a separate exact Mixin for a child only
 when that child's annotations also need an overlay.
 
 Child codecs act on one direct level. `elementCodec` supports `Collection`, Java arrays, and

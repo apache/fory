@@ -59,7 +59,7 @@ import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.annotation.JsonValue;
 
-/** Resolves immutable annotation overlays for the exact mix-ins enabled by one runtime. */
+/** Resolves immutable annotation overlays for the exact Mixins enabled by one runtime. */
 final class JsonMixinAnnotations {
   @SuppressWarnings("unchecked")
   private static final Class<? extends Annotation>[] SUPPORTED =
@@ -166,7 +166,7 @@ final class JsonMixinAnnotations {
     }
     if (declaration == null || declaration.target() != targetType) {
       throw new ForyJsonException(
-          "Invalid JSON mix-in association " + mixinType.getName() + " -> " + targetType.getName());
+          "Invalid JSON Mixin association " + mixinType.getName() + " -> " + targetType.getName());
     }
     int sourceModifiers = mixinType.getModifiers();
     if (mixinType.isAnnotation()
@@ -176,20 +176,20 @@ final class JsonMixinAnnotations {
         || mixinType.isMemberClass() && !Modifier.isStatic(sourceModifiers)
         || (!mixinType.isInterface() && !Modifier.isAbstract(sourceModifiers))) {
       throw new ForyJsonException(
-          "JSON mix-in source must be a named interface or static abstract class: "
+          "JSON Mixin source must be a named interface or static abstract class: "
               + mixinType.getName());
     }
     if (mixinType.getInterfaces().length != 0
         || (!mixinType.isInterface() && mixinType.getSuperclass() != Object.class)) {
       throw new ForyJsonException(
-          "JSON mix-in source must not extend or implement another type: " + mixinType.getName());
+          "JSON Mixin source must not extend or implement another type: " + mixinType.getName());
     }
     if (targetType == mixinType
         || targetType.isPrimitive()
         || targetType.isArray()
         || targetType.isAnnotation()) {
       throw new ForyJsonException(
-          "Invalid JSON mix-in target " + targetType.getTypeName() + " for " + mixinType.getName());
+          "Invalid JSON Mixin target " + targetType.getTypeName() + " for " + mixinType.getName());
     }
   }
 
@@ -232,7 +232,7 @@ final class JsonMixinAnnotations {
     }
     ElementOverlay previous = declarations.put(target, overlay);
     if (previous != null) {
-      throw new ForyJsonException("Duplicate JSON mix-in selector for " + target);
+      throw new ForyJsonException("Duplicate JSON Mixin selector for " + target);
     }
   }
 
@@ -245,7 +245,7 @@ final class JsonMixinAnnotations {
       }
     }
     if (declaredAnnotation(source, JsonType.class) != null) {
-      throw new ForyJsonException("@JsonType cannot be declared by a JSON mix-in: " + source);
+      throw new ForyJsonException("@JsonType cannot be declared by a JSON Mixin: " + source);
     }
     Set<Class<? extends Annotation>> removals = new HashSet<>();
     JsonMixinRemove remove = declaredAnnotation(source, JsonMixinRemove.class);
@@ -263,11 +263,11 @@ final class JsonMixinAnnotations {
       for (Class<? extends Annotation> removedType : removedTypes) {
         if (!SUPPORTED_SET.contains(removedType)) {
           throw new ForyJsonException(
-              "Unsupported JSON mix-in removal " + removedType.getName() + " on " + source);
+              "Unsupported JSON Mixin removal " + removedType.getName() + " on " + source);
         }
         if (!supportsElement(removedType, elementType)) {
           throw new ForyJsonException(
-              "JSON mix-in cannot remove @"
+              "JSON Mixin cannot remove @"
                   + removedType.getSimpleName()
                   + " from "
                   + elementType
@@ -276,11 +276,11 @@ final class JsonMixinAnnotations {
         }
         if (!removals.add(removedType)) {
           throw new ForyJsonException(
-              "Duplicate JSON mix-in removal " + removedType.getName() + " on " + source);
+              "Duplicate JSON Mixin removal " + removedType.getName() + " on " + source);
         }
         if (replacements.containsKey(removedType)) {
           throw new ForyJsonException(
-              "JSON mix-in both declares and removes " + removedType.getName() + " on " + source);
+              "JSON Mixin both declares and removes " + removedType.getName() + " on " + source);
         }
       }
     }
@@ -373,7 +373,7 @@ final class JsonMixinAnnotations {
   private static ForyJsonException invalidSelector(
       Class<?> targetType, Class<?> mixinType, AnnotatedElement source, String reason) {
     return new ForyJsonException(
-        "Invalid JSON mix-in selector "
+        "Invalid JSON Mixin selector "
             + source
             + " from "
             + mixinType.getName()

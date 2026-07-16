@@ -27,7 +27,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Removes selected target annotations from one matched declaration in a JSON mix-in.
+ * Removes selected target annotations from one matched declaration in a JSON Mixin.
  *
  * <p>This annotation is valid only on a {@link JsonMixin} source. Each value must be a mapping
  * annotation supported by {@link JsonMixin}, and that annotation's Java {@link Target} must permit

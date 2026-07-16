@@ -45,7 +45,7 @@ import javax.lang.model.util.ElementFilter;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 
-/** Resolves one mix-in source into an immutable effective-annotation table for its exact target. */
+/** Resolves one Mixin source into an immutable effective-annotation table for its exact target. */
 final class JsonMixinAnnotations {
   private static final String JSON_PACKAGE = "org.apache.fory.json";
   private static final String JSON_MIXIN_REMOVE = JSON_PACKAGE + ".annotation.JsonMixinRemove";
@@ -423,7 +423,7 @@ final class JsonMixinAnnotations {
 
   private static Overlay overlay(Element sourceElement) {
     if (declaredAnnotation(sourceElement, JSON_TYPE) != null) {
-      throw invalid("@JsonType cannot be declared by a JSON mix-in", sourceElement);
+      throw invalid("@JsonType cannot be declared by a JSON Mixin", sourceElement);
     }
     Map<String, AnnotationMirror> replacements = new LinkedHashMap<>();
     for (AnnotationMirror mirror : sourceElement.getAnnotationMirrors()) {

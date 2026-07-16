@@ -310,7 +310,7 @@ public class JsonTypeProcessorTest {
                 + "@JsonType @JsonMixin(target = Target.class) interface JsonTypeMixin {}\n");
     assertFalse(jsonTypeSource.success);
     assertTrue(
-        jsonTypeSource.diagnostics().contains("@JsonType cannot be declared by a JSON mix-in"),
+        jsonTypeSource.diagnostics().contains("@JsonType cannot be declared by a JSON Mixin"),
         jsonTypeSource.diagnostics());
     assertFalse(jsonTypeSource.hasGeneratedResource(RULE_PREFIX + "test.JsonTypeMixin.pro"));
   }

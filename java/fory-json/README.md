@@ -349,7 +349,7 @@ original key type. Null map keys are rejected.
 | `withConcurrencyLevel(int)`            | `max(1, 2 * processors)`                                 | Number of reusable concurrent operation states                       |
 | `withBufferSizeLimitBytes(int)`        | 2 MiB                                                    | Maximum reusable capacity retained by each pooled writer             |
 | `registerCodec(type, codec)`           | None                                                     | Replace the exact class's complete JSON codec                        |
-| `registerMixin(mixinType)`             | None                                                     | Apply one annotation mix-in to its exact declared target             |
+| `registerMixin(mixinType)`             | None                                                     | Apply one annotation Mixin to its exact declared target              |
 | `withTypeChecker(checker)`             | No custom checker                                        | Apply an application type policy in addition to Fory's disallow list |
 
 Depth, concurrency level, and buffer retention limit must be positive. The cached-field-name limit
@@ -382,9 +382,9 @@ creation if its generated companion is missing.
 See the [GraalVM guide](../../docs/guide/java/graalvm-support.md) and
 [Android guide](../../docs/guide/java/android-support.md) for the platform workflows.
 
-### Mix-ins
+### Mixins
 
-Use a JSON mix-in to apply Fory JSON mapping annotations to a class without modifying that class:
+Use a JSON Mixin to apply Fory JSON mapping annotations to a class without modifying that class:
 
 ```java
 import org.apache.fory.json.ForyJson;
@@ -404,7 +404,7 @@ abstract class ThirdPartyUserMixin {
 ForyJson json = ForyJson.builder().registerMixin(ThirdPartyUserMixin.class).build();
 ```
 
-A mix-in source is a named abstract class or interface, must not be local or anonymous, must not
+A Mixin source is a named abstract class or interface, must not be local or anonymous, must not
 extend or implement another type, and is never instantiated. Its annotated fields, methods,
 constructors, and parameters select existing declarations on the exact target. The target continues
 to own all Java types, values, access, and construction. A registration for a base class does not
@@ -412,7 +412,7 @@ affect a subclass, and an interface registration does not affect an implementati
 
 The source may apply any mapping annotation listed above. Declaring an annotation
 on a matched source declaration replaces the target annotation of the same type as a whole; it does
-not merge individual annotation members. `JsonType` cannot be added or removed by a mix-in.
+not merge individual annotation members. `JsonType` cannot be added or removed by a Mixin.
 
 Use `JsonMixinRemove` when the target's annotation should not be effective in this configuration:
 
@@ -429,16 +429,16 @@ abstract class QuotedMessageMixin {
 ```
 
 The source selector must match exactly one target declaration even when it only removes an
-annotation. Registering a different mix-in for the same target on one builder replaces the earlier
+annotation. Registering a different Mixin for the same target on one builder replaces the earlier
 registration. Re-registering the same source is harmless. Each `build()` snapshots the current
 last-registration-wins mapping, so later builder changes do not mutate an existing `ForyJson`. An
 empty source is a no-op and clears an earlier source for the same target when registered later.
 
-A `JsonCodec` supplied by a mix-in is the target's effective annotation. An exact
+A `JsonCodec` supplied by a Mixin is the target's effective annotation. An exact
 `registerCodec` registration still wins, while the effective type annotation wins over a built-in
 mapping.
 
-On Android and GraalVM Native Image, compile non-empty mix-ins with the Fory annotation processor
+On Android and GraalVM Native Image, compile non-empty Mixins with the Fory annotation processor
 so required generated operations and platform configuration are available. See the platform guides
 linked above.
 

@@ -295,7 +295,7 @@ are rejected.
 | `withConcurrencyLevel`       | `max(1, 2 * processors)`                     | Reusable operation-state count                         |
 | `withBufferSizeLimitBytes`   | 2 MiB                                        | Reusable capacity retained by each pooled writer       |
 | `registerCodec`              | None                                         | Exact-class complete-value codec                       |
-| `registerMixin`              | None                                         | Annotation mix-in for its exact declared target        |
+| `registerMixin`              | None                                         | Annotation Mixin for its exact declared target         |
 | `withTypeChecker`            | None                                         | Application policy in addition to Fory's disallow list |
 
 Depth, concurrency, and retained buffer limits must be positive. The cached-field-name limit applies
@@ -346,9 +346,9 @@ to receive a companion. See
 A directly annotated model that uses the default object codec requires that generated companion;
 the runtime reports a configuration error if the processor output is missing.
 
-### Mix-ins
+### Mixins
 
-Use a mix-in to configure an existing class without changing its source:
+Use a Mixin to configure an existing class without changing its source:
 
 ```java
 import org.apache.fory.json.ForyJson;
@@ -377,7 +377,7 @@ representation to matching declarations that already exist on the target. Every 
 operation, invocation, and runtime value still comes from the target.
 
 Registration is exact-target only. A base-class registration does not change a subclass, and an
-interface registration does not change an implementation. A subclass mix-in may select a member
+interface registration does not change an implementation. A subclass Mixin may select a member
 that the subclass inherits, but the resulting annotation applies only while that exact subclass is
 mapped.
 
@@ -419,16 +419,16 @@ the builder does not change a previously built `ForyJson`. A source with no mapp
 a no-op; registering it after another source for the same target clears the earlier overlay for
 subsequent builds.
 
-A `JsonCodec` supplied by a mix-in is the target's effective annotation and follows the ordinary
+A `JsonCodec` supplied by a Mixin is the target's effective annotation and follows the ordinary
 codec precedence below. In particular, an exact `registerCodec` registration wins over a type-level
-mix-in codec, while a type-level mix-in codec wins over the built-in mapping for that target.
+Mixin codec, while a type-level Mixin codec wins over the built-in mapping for that target.
 
 Records use their existing field, accessor, and canonical-constructor parameter declarations. A
-mix-in does not introduce a separate record-component model. Use source selectors for those real
+Mixin does not introduce a separate record-component model. Use source selectors for those real
 declarations and keep repeated annotations consistent as required by normal record property
 mapping.
 
-On Android and GraalVM Native Image, compile non-empty mix-in sources with the Fory annotation
+On Android and GraalVM Native Image, compile non-empty Mixin sources with the Fory annotation
 processor so required generated operations and platform configuration are available. See
 [Android Support](android-support.md) and [GraalVM Support](graalvm-support.md).
 

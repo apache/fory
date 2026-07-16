@@ -157,7 +157,7 @@ public final class JsonConfig {
     return codecRegistry;
   }
 
-  /** Returns the immutable exact target-to-mix-in registration snapshot. */
+  /** Returns the immutable exact target-to-Mixin registration snapshot. */
   @Internal
   public Map<Class<?>, Class<?>> mixins() {
     return mixins;

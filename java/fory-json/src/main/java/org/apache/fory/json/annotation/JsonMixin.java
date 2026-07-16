@@ -26,9 +26,9 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Declares the exact model class configured by this JSON annotation mix-in.
+ * Declares the exact model class configured by this JSON annotation Mixin.
  *
- * <p>A mix-in source must be a named interface, top-level abstract class, or static abstract member
+ * <p>A Mixin source must be a named interface, top-level abstract class, or static abstract member
  * class. It must not extend or implement another type and is never instantiated. Its directly
  * declared annotated fields, methods, constructors, and parameters structurally select existing
  * declarations on {@link #target()}. Target fields match by name and erased type, methods by name
@@ -36,11 +36,11 @@ import java.lang.annotation.Target;
  * executable and index. The target declaration continues to own its Java type, generic type,
  * access, invocation, and value.
  *
- * <p>A mix-in may contribute {@link JsonAnyGetter}, {@link JsonAnyProperty}, {@link JsonAnySetter},
+ * <p>A Mixin may contribute {@link JsonAnyGetter}, {@link JsonAnyProperty}, {@link JsonAnySetter},
  * {@link JsonBase64}, {@link JsonCodec}, {@link JsonCreator}, {@link JsonIgnore}, {@link
  * JsonProperty}, {@link JsonPropertyOrder}, {@link JsonRawValue}, {@link JsonSubTypes}, {@link
  * JsonUnwrapped}, and {@link JsonValue}. {@link JsonType} remains a marker declared directly on a
- * model and cannot be contributed or removed by a mix-in. A contributed annotation completely
+ * model and cannot be contributed or removed by a Mixin. A contributed annotation completely
  * replaces the target annotation of the same type at the matched declaration; annotation members
  * are not merged individually. Use {@link JsonMixinRemove} for explicit removal.
  *

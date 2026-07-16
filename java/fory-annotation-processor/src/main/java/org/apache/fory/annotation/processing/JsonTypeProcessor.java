@@ -57,7 +57,7 @@ import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
 
-/** Generates JSON companions and platform configuration for annotated models and mix-ins. */
+/** Generates JSON companions and platform configuration for annotated models and Mixins. */
 final class JsonTypeProcessor {
   private static final String JSON_PACKAGE = "org.apache.fory.json";
   private static final String JSON_TYPE = JSON_PACKAGE + ".annotation.JsonType";
@@ -255,7 +255,7 @@ final class JsonTypeProcessor {
       } catch (RuntimeException e) {
         messager.printMessage(
             Diagnostic.Kind.ERROR,
-            "Failed to process Fory JSON mix-in " + mixinBinaryName + ": " + e.getMessage(),
+            "Failed to process Fory JSON Mixin " + mixinBinaryName + ": " + e.getMessage(),
             mixin);
       }
     }

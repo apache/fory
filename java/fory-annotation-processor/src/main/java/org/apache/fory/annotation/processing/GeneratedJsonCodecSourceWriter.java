@@ -54,7 +54,7 @@ import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import javax.tools.JavaFileObject;
 
-/** Writes direct target operations for one JSON model or exact target/mix-in pair. */
+/** Writes direct target operations for one JSON model or exact target-Mixin pair. */
 final class GeneratedJsonCodecSourceWriter {
   private static final String JSON_PACKAGE = "org.apache.fory.json";
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
@@ -154,7 +154,7 @@ final class GeneratedJsonCodecSourceWriter {
       return false;
     }
     // Built-in codec selection belongs to the runtime. Applying the direct @JsonType exclusion
-    // inventory to a mix-in would make the processor choose runtime representation.
+    // inventory to a Mixin would make the processor choose runtime representation.
     if (hasCompleteTypeCodec(target, annotations)
         || !record && hasJsonValueDeclaration(target, annotations)
         || annotations == null && isObjectCodecExcluded(target)) {

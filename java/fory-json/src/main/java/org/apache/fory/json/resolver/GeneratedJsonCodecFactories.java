@@ -34,7 +34,7 @@ public final class GeneratedJsonCodecFactories {
 
   private GeneratedJsonCodecFactories() {}
 
-  /** Publishes one hosted-analysis factory for an exact target and optional mix-in pair. */
+  /** Publishes one hosted-analysis factory for an exact target and optional Mixin pair. */
   public static synchronized void register(
       Class<?> type, Class<?> mixinType, GeneratedJsonCodecFactory factory) {
     if (frozen) {
