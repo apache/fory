@@ -1460,7 +1460,7 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
         mapCodec =
             valueCodecAnnotation == null && valueCodecClass == null
                 ? MapCodec.create(mapRawType, TypeRef.of(mapType), resolver)
-                : MapCodec.create(mapRawType, String.class, valueTypeInfo, resolver);
+                : MapCodec.create(mapRawType, String.class, valueTypeInfo);
       }
     }
 

@@ -20,12 +20,11 @@
 package org.apache.fory.json.reader;
 
 import java.util.Objects;
+import org.apache.fory.json.ForyJson;
 import org.apache.fory.json.resolver.JsonSharedRegistry.CachedFieldName;
 
 /** Fixed two-candidate cache of shared field-name entries owned by one JSON reader. */
 final class FieldNameCache {
-  private static final int MAX_ENTRIES = 1 << 29;
-
   private final int maxEntries;
   private final int mask;
   private long[] hashes;
@@ -33,8 +32,9 @@ final class FieldNameCache {
   private int size;
 
   FieldNameCache(int maxEntries) {
-    if (maxEntries <= 0 || maxEntries > MAX_ENTRIES) {
-      throw new IllegalArgumentException("maxEntries must be between 1 and " + MAX_ENTRIES);
+    if (maxEntries <= 0 || maxEntries > ForyJson.MAX_CACHED_FIELD_NAMES) {
+      throw new IllegalArgumentException(
+          "maxEntries must be between 1 and " + ForyJson.MAX_CACHED_FIELD_NAMES);
     }
     this.maxEntries = maxEntries;
     int requiredSlots = maxEntries << 1;

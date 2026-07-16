@@ -39,7 +39,7 @@ public class FieldNameCacheTest {
     FieldNameCache cache = new FieldNameCache(3);
     CachedFieldName home = entry("home");
     CachedFieldName adjacent = entry("adjacent");
-    CachedFieldName rejected = entry("rejected");
+    CachedFieldName fallback = entry("fallback");
     CachedFieldName unrelated = entry("unrelated");
 
     assertNull(cache.get(0L));
@@ -52,7 +52,7 @@ public class FieldNameCacheTest {
     assertSame(cache.get(8L), adjacent);
 
     assertFalse(cache.canPut(16L));
-    cache.put(16L, rejected);
+    cache.put(16L, fallback);
     assertNull(cache.get(16L));
     assertSame(cache.get(0L), home);
     assertSame(cache.get(8L), adjacent);
@@ -61,7 +61,7 @@ public class FieldNameCacheTest {
     cache.put(2L, unrelated);
     assertSame(cache.get(2L), unrelated);
     assertFalse(cache.canPut(3L));
-    cache.put(3L, rejected);
+    cache.put(3L, fallback);
     assertNull(cache.get(3L));
   }
 

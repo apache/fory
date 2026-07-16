@@ -298,9 +298,9 @@ are rejected.
 | `withTypeChecker`            | None                                         | Application policy in addition to Fory's disallow list |
 
 Depth, concurrency, and retained buffer limits must be positive. The cached-field-name limit must
-be non-negative and applies independently to each reader; it does not limit accepted input. The
-buffer setting does not limit output size. Builder changes after `build()` do not mutate an existing
-runtime.
+be between zero and `MAX_CACHED_FIELD_NAMES`, inclusive, and applies independently to each reader;
+it does not limit accepted input. The buffer setting does not limit output size. Builder changes
+after `build()` do not mutate an existing runtime.
 
 In a GraalVM native image, runtime code generation and asynchronous compilation are automatically
 disabled. Every other builder option keeps the behavior described above.

@@ -352,10 +352,11 @@ original key type. Null map keys are rejected.
 | `withTypeChecker(checker)`             | No custom checker                                        | Apply an application type policy in addition to Fory's disallow list |
 
 Depth, concurrency level, and buffer retention limit must be positive. The cached-field-name limit
-must be non-negative and applies independently to each reader. It does not limit accepted JSON
-input; zero disables this cache. The buffer retention setting does not limit JSON input or output
-size; it only limits reusable writer storage retained after an operation. Apply request/body size
-limits at the transport boundary when parsing untrusted input.
+must be between zero and `MAX_CACHED_FIELD_NAMES`, inclusive, and applies independently to each
+reader. It does not limit accepted JSON input; zero disables this cache. The buffer retention
+setting does not limit JSON input or output size; it only limits reusable writer storage retained
+after an operation. Apply request/body size limits at the transport boundary when parsing untrusted
+input.
 
 Builder mutation after `build()` does not modify an existing `ForyJson` runtime.
 

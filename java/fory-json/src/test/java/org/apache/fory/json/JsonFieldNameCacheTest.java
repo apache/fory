@@ -49,6 +49,9 @@ public class JsonFieldNameCacheTest {
     assertEquals(defaults.maxCachedFieldNames(), ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES);
     assertThrows(
         IllegalArgumentException.class, () -> ForyJson.builder().withMaxCachedFieldNames(-1));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> ForyJson.builder().withMaxCachedFieldNames(ForyJson.MAX_CACHED_FIELD_NAMES + 1));
 
     JsonConfig first =
         JsonTestSupport.config(
@@ -56,15 +59,11 @@ public class JsonFieldNameCacheTest {
     JsonConfig second =
         JsonTestSupport.config(
             ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(2).build());
-    JsonConfig sixEntries =
-        JsonTestSupport.config(
-            ForyJson.builder().withConcurrencyLevel(1).withMaxCachedFieldNames(6).build());
     assertNotEquals(first, second);
     assertNotEquals(first.hashCode(), second.hashCode());
     assertEquals(first.getCodegenHash(), second.getCodegenHash());
     assertEquals(first.maxCachedFieldNames(), 1);
     assertEquals(second.maxCachedFieldNames(), 2);
-    assertEquals(sixEntries.maxCachedFieldNames(), 6);
     assertEquals(JsonTestSupport.config(newJson(0)).maxCachedFieldNames(), 0);
     assertEquals(ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES, 8192);
   }
@@ -94,6 +93,10 @@ public class JsonFieldNameCacheTest {
     assertSame(
         firstKey(json.fromJson("{\"common\":\"v\"}", new TypeRef<Map<String, String>>() {})),
         canonical);
+    Map<String, TypedFields> generic =
+        json.fromJson("{\"common\":{\"value\":1}}", new TypeRef<Map<String, TypedFields>>() {});
+    assertSame(firstKey(generic), canonical);
+    assertEquals(generic.get("common").value, 1);
     assertSame(
         firstKey(json.fromJson("{\"common\":1}", new TypeRef<Map<Object, Object>>() {})),
         canonical);

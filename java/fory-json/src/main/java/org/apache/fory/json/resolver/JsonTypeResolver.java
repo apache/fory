@@ -327,7 +327,7 @@ public final class JsonTypeResolver {
           hasKey
               ? MapCodec.create(
                   rawType, keyRawType, valueInfo, sharedRegistry.mapKeyCodec(keyRawType, keyCodec))
-              : MapCodec.create(rawType, keyRawType, valueInfo, this);
+              : MapCodec.create(rawType, keyRawType, valueInfo);
       return newTypeInfo(declaredType, rawType, codec);
     }
     if (rawType == Optional.class || rawType == AtomicReference.class) {

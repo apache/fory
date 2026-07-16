@@ -85,7 +85,16 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       new MapKeyCodec() {
         @Override
         public String toName(Object key) {
-          return objectKeyName(key);
+          if (key instanceof String) {
+            return (String) key;
+          }
+          if (key instanceof Number || key instanceof Boolean || key instanceof Character) {
+            return key.toString();
+          }
+          if (key instanceof Enum) {
+            return ((Enum<?>) key).name();
+          }
+          throw new ForyJsonException("Unsupported JSON map key type " + key.getClass());
         }
 
         @Override
@@ -98,19 +107,6 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
           return reader.readFieldName();
         }
       };
-
-  private static String objectKeyName(Object key) {
-    if (key instanceof String) {
-      return (String) key;
-    }
-    if (key instanceof Number || key instanceof Boolean || key instanceof Character) {
-      return key.toString();
-    }
-    if (key instanceof Enum) {
-      return ((Enum<?>) key).name();
-    }
-    throw new ForyJsonException("Unsupported JSON map key type " + key.getClass());
-  }
 
   private final MapFactory factory;
 
@@ -133,10 +129,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
 
   @Internal
   public static MapCodec<?> create(
-      Class<?> rawType,
-      Class<?> keyRawType,
-      JsonTypeInfo valueTypeInfo,
-      JsonTypeResolver resolver) {
+      Class<?> rawType, Class<?> keyRawType, JsonTypeInfo valueTypeInfo) {
     return create(mapFactory(rawType, keyRawType), keyRawType, valueTypeInfo);
   }
 
@@ -183,7 +176,6 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       if (valueCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
         return new StringBigDecimalMapCodec(factory);
       }
-      return new GenericMapCodec(factory, STRING_KEY_CODEC, valueTypeInfo);
     }
     if (keyRawType == Object.class) {
       return new GenericMapCodec(factory, OBJECT_KEY_CODEC, valueTypeInfo);

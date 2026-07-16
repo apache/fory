@@ -30,6 +30,7 @@ import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
+import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonSharedRegistry.CachedFieldName;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
@@ -1808,13 +1809,14 @@ public final class Utf8JsonReader extends JsonReader {
 
   private String readFieldNameMiss(
       FieldNameCache cache, int start, int end, int length, long word0, long word1, long hash) {
-    CachedFieldName entry = sharedFieldName(hash);
+    JsonSharedRegistry registry = typeResolver().sharedRegistry();
+    CachedFieldName entry = registry.cachedFieldName(hash);
     if (entry != null) {
       cache.put(hash, entry);
       return entry.matches(length, word0, word1) ? entry.name() : newLatin1String(start, end);
     }
     String candidate = newLatin1String(start, end);
-    entry = cacheFieldName(hash, candidate, word0, word1);
+    entry = registry.cacheFieldName(hash, candidate, word0, word1);
     cache.put(hash, entry);
     return entry.matches(length, word0, word1) ? entry.name() : candidate;
   }

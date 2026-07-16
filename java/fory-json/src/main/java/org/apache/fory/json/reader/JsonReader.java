@@ -43,8 +43,6 @@ import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
-import org.apache.fory.json.resolver.JsonSharedRegistry;
-import org.apache.fory.json.resolver.JsonSharedRegistry.CachedFieldName;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 
 /**
@@ -137,7 +135,6 @@ public abstract class JsonReader {
   private final JsonTypeResolver typeResolver;
   protected int position;
   private final int maxDepth;
-  private final JsonSharedRegistry sharedRegistry;
   protected final FieldNameCache fieldNameCache;
   private int depth;
 
@@ -237,7 +234,6 @@ public abstract class JsonReader {
   protected JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
     this.typeResolver = Objects.requireNonNull(typeResolver, "typeResolver");
     maxDepth = config.maxDepth();
-    sharedRegistry = typeResolver.sharedRegistry();
     // The configured limit belongs to each reader; pooled-state concurrency must not divide it.
     int maxEntries = config.maxCachedFieldNames();
     fieldNameCache = maxEntries == 0 ? null : new FieldNameCache(maxEntries);
@@ -263,14 +259,6 @@ public abstract class JsonReader {
    * common names, but callers must not depend on reference identity.
    */
   public abstract String readFieldName();
-
-  protected final CachedFieldName sharedFieldName(long hash) {
-    return sharedRegistry.cachedFieldName(hash);
-  }
-
-  protected final CachedFieldName cacheFieldName(long hash, String name, long word0, long word1) {
-    return sharedRegistry.cacheFieldName(hash, name, word0, word1);
-  }
 
   protected static long fieldNameHash(int length, long word0, long word1) {
     if (length == 0) {
