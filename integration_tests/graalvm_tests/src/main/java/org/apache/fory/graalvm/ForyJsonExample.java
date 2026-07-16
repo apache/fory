@@ -75,6 +75,7 @@ public final class ForyJsonExample {
     testMixin();
     testMixinValue();
     testMixinValueRecord();
+    testMixinEnumValue();
     testBigDecimal();
     testSqlTypes();
     testClosedPackage();
@@ -119,6 +120,13 @@ public final class ForyJsonExample {
         json.toJson(new JsonMixinValueRecord("record-value")).equals("\"record-value\""));
     JsonMixinValueRecord decoded = json.fromJson("\"decoded-record\"", JsonMixinValueRecord.class);
     Preconditions.checkArgument(decoded.value().equals("decoded-record"));
+  }
+
+  private static void testMixinEnumValue() {
+    ForyJson json = ForyJson.builder().registerMixin(JsonMixinEnumValueModel.class).build();
+    Preconditions.checkArgument(json.toJson(JsonMixinEnumValueTarget.READY).equals("\"ready\""));
+    Preconditions.checkArgument(
+        json.fromJson("\"done\"", JsonMixinEnumValueTarget.class) == JsonMixinEnumValueTarget.DONE);
   }
 
   private static void testModels() {
@@ -876,5 +884,36 @@ public final class ForyJsonExample {
 
     @JsonCreator
     JsonMixinValueRecordModel(String value) {}
+  }
+
+  public enum JsonMixinEnumValueTarget {
+    READY("ready"),
+    DONE("done");
+
+    private final String value;
+
+    JsonMixinEnumValueTarget(String value) {
+      this.value = value;
+    }
+
+    @JsonValue
+    public String value() {
+      return value;
+    }
+
+    public static JsonMixinEnumValueTarget fromValue(String value) {
+      for (JsonMixinEnumValueTarget candidate : values()) {
+        if (candidate.value.equals(value)) {
+          return candidate;
+        }
+      }
+      throw new IllegalArgumentException(value);
+    }
+  }
+
+  @JsonMixin(target = JsonMixinEnumValueTarget.class)
+  public interface JsonMixinEnumValueModel {
+    @JsonCreator
+    JsonMixinEnumValueTarget fromValue(String value);
   }
 }

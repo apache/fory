@@ -47,6 +47,7 @@ import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
 import org.apache.fory.json.annotation.JsonUnwrapped;
+import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.json.resolver.GeneratedJsonCodecFactories;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.resolver.JsonSharedRegistry.JsonMixinView;
@@ -152,9 +153,15 @@ final class ForyJsonGraalVMFeature implements Feature {
     registerCodecs(annotations.annotation(targetType, JsonCodec.class));
     RuntimeReflection.register(targetType);
     registerContainer(targetType);
-    if (!targetType.isEnum()
-        && !Collection.class.isAssignableFrom(targetType)
-        && !Map.class.isAssignableFrom(targetType)) {
+    boolean intrinsicTarget =
+        targetType.isEnum()
+            || Collection.class.isAssignableFrom(targetType)
+            || Map.class.isAssignableFrom(targetType);
+    if (intrinsicTarget) {
+      // JsonValue resolution precedes intrinsic codecs. Register that focused semantic surface
+      // without retaining the complete object hierarchy of an enum or container target.
+      registerJsonValueDeclarations(access, targetType, annotations);
+    } else {
       registerModelHierarchy(access, targetType, annotations);
       if (!targetType.isRecord()
           && GraalvmSupport.needReflectionRegisterForCreation(targetType)) {
@@ -164,6 +171,57 @@ final class ForyJsonGraalVMFeature implements Feature {
     registerGeneratedCodec(access, targetType, mixinType);
     registerSubtypes(access, targetType, annotations);
     return true;
+  }
+
+  private void registerJsonValueDeclarations(
+      DuringAnalysisAccess access, Class<?> type, JsonMixinView annotations) {
+    boolean hasValue = false;
+    for (Class<?> current = type;
+        current != null && current != Object.class;
+        current = current.getSuperclass()) {
+      for (Field field : current.getDeclaredFields()) {
+        if (annotation(annotations, field, JsonValue.class) != null) {
+          hasValue = true;
+          RuntimeReflection.register(field);
+          if (Runtime.version().feature() <= 24) {
+            access.registerAsUnsafeAccessed(field);
+          }
+          registerOccurrenceCodecs(annotations, field);
+        }
+      }
+    }
+    for (Method method : type.getMethods()) {
+      if (annotation(annotations, method, JsonValue.class) != null) {
+        hasValue = true;
+        RuntimeReflection.register(method);
+        registerOccurrenceCodecs(annotations, method);
+      }
+    }
+    for (Class<?> current = type;
+        current != null && current != Object.class;
+        current = current.getSuperclass()) {
+      for (Method method : current.getDeclaredMethods()) {
+        if (!Modifier.isPublic(method.getModifiers())
+            && annotation(annotations, method, JsonValue.class) != null) {
+          hasValue = true;
+          RuntimeReflection.register(method);
+          registerOccurrenceCodecs(annotations, method);
+        }
+      }
+    }
+    if (!hasValue) {
+      return;
+    }
+    for (Constructor<?> constructor : type.getDeclaredConstructors()) {
+      if (annotation(annotations, constructor, JsonCreator.class) != null) {
+        RuntimeReflection.register(constructor);
+      }
+    }
+    for (Method method : type.getDeclaredMethods()) {
+      if (annotation(annotations, method, JsonCreator.class) != null) {
+        RuntimeReflection.register(method);
+      }
+    }
   }
 
   private void registerReflectiveDeclarations(Set<AnnotatedElement> declarations) {

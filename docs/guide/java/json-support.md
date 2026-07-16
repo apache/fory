@@ -1116,13 +1116,13 @@ The first `JsonAnySetter` parameter is the String property name. Its second para
 
 Fory resolves each current value in this order:
 
-| Priority | Source                                    |
-| -------: | ----------------------------------------- |
-|        1 | Current property or parameter `JsonCodec` |
-|        2 | Exact `registerCodec` registration        |
-|        3 | Effective type `JsonCodec` declaration    |
-|        4 | Inherited type declaration                |
-|        5 | Built-in or default JSON mapping          |
+| Priority | Source                                            |
+| -------: | ------------------------------------------------- |
+|        1 | Current property or parameter `JsonCodec`         |
+|        2 | Exact `registerCodec` registration                |
+|        3 | Exact-target type `JsonCodec` after Mixin overlay |
+|        4 | Inherited-frontier type `JsonCodec` declaration   |
+|        5 | Built-in or default JSON mapping                  |
 
 One logical property may expose the annotation from its field, getter, setter parameter, creator
 parameter, or record propagation. Repeated configurations must be identical; Fory does not merge
