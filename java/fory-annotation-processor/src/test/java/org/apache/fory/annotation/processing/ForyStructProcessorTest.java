@@ -408,6 +408,7 @@ public class ForyStructProcessorTest {
                 + "  public static class Owner<T> {\n"
                 + "    public class Values<E> extends ArrayList<Map<T, E>> {}\n"
                 + "  }\n"
+                + "  public static class WildcardList<E> extends ArrayList<List<? extends E>> {}\n"
                 + "  @ForyStruct public static class OwnedStruct { public int id; }\n"
                 + "  public MultiParamMap<Object, String, List<String>> mapped;\n"
                 + "  public MultiParamList<Object, Long, String> listed;\n"
@@ -415,6 +416,7 @@ public class ForyStructProcessorTest {
                 + "  public NestedElementList<String> nested;\n"
                 + "  public Owner<String>.Values<Integer> owned;\n"
                 + "  public Owner<OwnedStruct>.Values<Integer> ownedStruct;\n"
+                + "  public WildcardList<String> wildcard;\n"
                 + "  public @UInt16Type int code;\n"
                 + "  public MetadataStruct() {}\n"
                 + "}\n");
@@ -473,6 +475,18 @@ public class ForyStructProcessorTest {
           (FieldTypes.MapFieldType) ownedType.getElementType();
       Assert.assertEquals(ownedElementType.getKeyType().getTypeId(), Types.STRING);
       Assert.assertEquals(ownedElementType.getValueType().getTypeId(), Types.VARINT32);
+      Descriptor wildcard = descriptor(serializer.getDescriptors(), "wildcard");
+      TypeRef<?> wildcardList = wildcard.getTypeRef().getTypeArguments().get(0);
+      Assert.assertEquals(wildcardList.getRawType(), List.class);
+      TypeRef<?> wildcardElement = wildcardList.getTypeArguments().get(0);
+      Assert.assertTrue(wildcardElement.isWildcard());
+      Assert.assertEquals(wildcardElement.resolveWildcard().getRawType(), String.class);
+      FieldTypes.CollectionFieldType wildcardType =
+          (FieldTypes.CollectionFieldType)
+              FieldTypes.buildFieldType(fory.getTypeResolver(), wildcard);
+      FieldTypes.CollectionFieldType wildcardListType =
+          (FieldTypes.CollectionFieldType) wildcardType.getElementType();
+      Assert.assertEquals(wildcardListType.getElementType().getTypeId(), Types.STRING);
       Descriptor listed = descriptor(serializer.getDescriptors(), "listed");
       Assert.assertEquals(listed.getTypeRef().getTypeArguments().size(), 1);
       Assert.assertEquals(listed.getTypeRef().getTypeArguments().get(0).getRawType(), String.class);

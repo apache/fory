@@ -351,6 +351,16 @@ public class TypeRef<T> {
       TypeRef<?> typeRef = typeVarRefs.get(new TypeVariableKey((TypeVariable<?>) type));
       return typeRef == null ? TypeRef.of(type) : typeRef;
     }
+    if (type instanceof WildcardType) {
+      WildcardType wildcardType = (WildcardType) type;
+      Type[] upperBounds =
+          resolveTypeVariables(
+              wildcardType.getUpperBounds(), typeVarRefs, containerRawType, activeContainerTypes);
+      Type[] lowerBounds =
+          resolveTypeVariables(
+              wildcardType.getLowerBounds(), typeVarRefs, containerRawType, activeContainerTypes);
+      return TypeRef.of(new WildcardTypeImpl(upperBounds, lowerBounds));
+    }
     if (type instanceof ParameterizedType) {
       ParameterizedType parameterizedType = (ParameterizedType) type;
       Type ownerType = parameterizedType.getOwnerType();
@@ -390,6 +400,20 @@ public class TypeRef<T> {
       return TypeRef.of(newArrayType(componentType.getType()), null, null, componentType);
     }
     return TypeRef.of(type);
+  }
+
+  private static Type[] resolveTypeVariables(
+      Type[] types,
+      Map<TypeVariableKey, TypeRef<?>> typeVarRefs,
+      Class<?> containerRawType,
+      Set<Class<?>> activeContainerTypes) {
+    Type[] resolvedTypes = new Type[types.length];
+    for (int i = 0; i < types.length; i++) {
+      resolvedTypes[i] =
+          resolveTypeVariables(types[i], typeVarRefs, containerRawType, activeContainerTypes)
+              .getType();
+    }
+    return resolvedTypes;
   }
 
   private static TypeRef<?> ofResolvedTypeArgs(Type type, List<TypeRef<?>> typeArguments) {

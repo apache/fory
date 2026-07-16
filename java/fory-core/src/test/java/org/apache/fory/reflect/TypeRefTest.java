@@ -143,6 +143,8 @@ public class TypeRefTest extends ForyTestBase {
     class Values<E> extends ArrayList<Map<T, E>> {}
   }
 
+  static class WildcardList<T> extends ArrayList<List<? extends T>> {}
+
   static class StringKeyMap<V> extends HashMap<String, V> {}
 
   static class ArrayElementList<A, E> extends ArrayList<E[]> {}
@@ -289,6 +291,23 @@ public class TypeRefTest extends ForyTestBase {
     Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(elementType);
     Assert.assertEquals(keyValueType.f0.getRawType(), String.class);
     Assert.assertEquals(keyValueType.f1.getRawType(), Integer.class);
+  }
+
+  @Test
+  public void testWildcardContainerType() {
+    assertWildcardContainerType(new TypeRef<WildcardList<String>>() {});
+    TypeRef<?> generatedType =
+        TypeRef.ofDeclaredTypeArguments(
+            WildcardList.class, null, Arrays.asList(TypeRef.of(String.class)), null);
+    assertWildcardContainerType(generatedType);
+  }
+
+  private static void assertWildcardContainerType(TypeRef<?> type) {
+    TypeRef<?> listType = TypeUtils.getElementType(type);
+    Assert.assertEquals(listType.getRawType(), List.class);
+    TypeRef<?> wildcardType = listType.getTypeArguments().get(0);
+    Assert.assertTrue(wildcardType.isWildcard());
+    Assert.assertEquals(wildcardType.resolveWildcard().getRawType(), String.class);
   }
 
   @Test
