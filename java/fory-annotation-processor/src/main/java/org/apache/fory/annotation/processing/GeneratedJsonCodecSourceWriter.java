@@ -110,12 +110,12 @@ final class GeneratedJsonCodecSourceWriter {
 
   Result writePair(JsonMixinAnnotations annotations) {
     TypeElement target = annotations.target();
-    TypeElement mixIn = annotations.source();
-    String packageName = elements.getPackageOf(mixIn).getQualifiedName().toString();
+    TypeElement mixin = annotations.source();
+    String packageName = elements.getPackageOf(mixin).getQualifiedName().toString();
     if (!needsGeneratedCodec(target, annotations, packageName)) {
       return null;
     }
-    return write(buildModel(target, annotations), mixIn, target);
+    return write(buildModel(target, annotations), mixin, target);
   }
 
   void validatePair(JsonMixinAnnotations annotations) {
@@ -321,19 +321,19 @@ final class GeneratedJsonCodecSourceWriter {
   }
 
   private Model buildModel(TypeElement target, JsonMixinAnnotations annotations) {
-    TypeElement mixIn = annotations == null ? null : annotations.source();
+    TypeElement mixin = annotations == null ? null : annotations.source();
     String packageName =
-        elements.getPackageOf(mixIn == null ? target : mixIn).getQualifiedName().toString();
+        elements.getPackageOf(mixin == null ? target : mixin).getQualifiedName().toString();
     String targetBinaryName = elements.getBinaryName(target).toString();
-    String mixInBinaryName = mixIn == null ? null : elements.getBinaryName(mixIn).toString();
+    String mixinBinaryName = mixin == null ? null : elements.getBinaryName(mixin).toString();
     String simpleName;
-    if (mixIn == null) {
+    if (mixin == null) {
       String binarySimpleName =
           targetBinaryName.substring(packageName.isEmpty() ? 0 : packageName.length() + 1);
       simpleName = GeneratedTypeNames.escapeBinarySimpleName(binarySimpleName) + SUFFIX;
     } else {
       simpleName =
-          GeneratedTypeNames.jsonMixinSimpleName(targetBinaryName, mixInBinaryName) + SUFFIX;
+          GeneratedTypeNames.jsonMixinSimpleName(targetBinaryName, mixinBinaryName) + SUFFIX;
     }
     Model model =
         new Model(

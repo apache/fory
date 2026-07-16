@@ -349,7 +349,7 @@ original key type. Null map keys are rejected.
 | `withConcurrencyLevel(int)`            | `max(1, 2 * processors)`                                 | Number of reusable concurrent operation states                       |
 | `withBufferSizeLimitBytes(int)`        | 2 MiB                                                    | Maximum reusable capacity retained by each pooled writer             |
 | `registerCodec(type, codec)`           | None                                                     | Replace the exact class's complete JSON codec                        |
-| `registerMixIn(mixInType)`             | None                                                     | Apply one annotation mix-in to its exact declared target             |
+| `registerMixin(mixinType)`             | None                                                     | Apply one annotation mix-in to its exact declared target             |
 | `withTypeChecker(checker)`             | No custom checker                                        | Apply an application type policy in addition to Fory's disallow list |
 
 Depth, concurrency level, and buffer retention limit must be positive. The cached-field-name limit
@@ -393,7 +393,7 @@ import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonUnwrapped;
 
 @JsonMixin(target = ThirdPartyUser.class)
-abstract class ThirdPartyUserMixIn {
+abstract class ThirdPartyUserMixin {
   @JsonProperty("user_id")
   long id;
 
@@ -401,7 +401,7 @@ abstract class ThirdPartyUserMixIn {
   Address address;
 }
 
-ForyJson json = ForyJson.builder().registerMixIn(ThirdPartyUserMixIn.class).build();
+ForyJson json = ForyJson.builder().registerMixin(ThirdPartyUserMixin.class).build();
 ```
 
 A mix-in source is a named abstract class or interface, must not be local or anonymous, must not
@@ -421,7 +421,7 @@ import org.apache.fory.json.annotation.JsonMixinRemove;
 import org.apache.fory.json.annotation.JsonRawValue;
 
 @JsonMixin(target = ThirdPartyMessage.class)
-abstract class QuotedMessageMixIn {
+abstract class QuotedMessageMixin {
   @JsonMixinRemove(JsonRawValue.class)
   String body;
 }

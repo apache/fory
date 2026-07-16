@@ -71,11 +71,11 @@ public class ForyAndroidInstrumentedTest {
   }
 
   @Test
-  public void generatedJsonMixIn() {
-    AndroidJsonScenarios.generatedMixIn();
-    AndroidJsonScenarios.generatedMixInRecord();
-    AndroidJsonScenarios.generatedMixInValue();
-    AndroidJsonScenarios.generatedMixInValueRecord();
+  public void generatedJsonMixin() {
+    AndroidJsonScenarios.generatedMixin();
+    AndroidJsonScenarios.generatedMixinRecord();
+    AndroidJsonScenarios.generatedMixinValue();
+    AndroidJsonScenarios.generatedMixinValueRecord();
   }
 
   @Test

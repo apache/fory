@@ -17,7 +17,27 @@
  * under the License.
  */
 
-package org.apache.fory.graalvm;
+package mixins;
 
-/** Record value target configured only through {@link JsonMixinValueRecordModel}. */
-public record JsonMixinValueRecord(String value) {}
+import org.apache.fory.json.resolver.GeneratedJsonMixinMetadata;
+
+/** Exact processor-shaped metadata fixture for {@link MixinFixture.StateMixin}. */
+public final class MixinFixture_d_StateMixin_ForyJsonMixin_mixins_x2e_MixinFixture_d_State
+    implements GeneratedJsonMixinMetadata {
+  public MixinFixture_d_StateMixin_ForyJsonMixin_mixins_x2e_MixinFixture_d_State() {}
+
+  @Override
+  public String targetName() {
+    return "mixins.MixinFixture$State";
+  }
+
+  @Override
+  public String mixinName() {
+    return "mixins.MixinFixture$StateMixin";
+  }
+
+  @Override
+  public boolean codecRequired() {
+    return false;
+  }
+}

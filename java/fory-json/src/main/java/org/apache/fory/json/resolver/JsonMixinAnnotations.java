@@ -22,10 +22,12 @@ package org.apache.fory.json.resolver;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Target;
+import java.lang.invoke.MethodHandle;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -60,6 +62,7 @@ import org.apache.fory.json.annotation.JsonUnwrapped;
 import org.apache.fory.json.annotation.JsonValue;
 import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.reflect.ReflectionUtils;
 
 /** Resolves immutable annotation overlays for the exact mix-ins enabled by one runtime. */
 final class JsonMixinAnnotations {
@@ -88,9 +91,9 @@ final class JsonMixinAnnotations {
 
   JsonMixinAnnotations(JsonConfig config) {
     IdentityHashMap<Class<?>, TargetOverlay> resolved = new IdentityHashMap<>();
-    for (Class<?> targetType : config.mixInTargets()) {
-      Class<?> mixInType = config.mixInType(targetType);
-      resolved.put(targetType, resolve(targetType, mixInType));
+    for (Class<?> targetType : config.mixinTargets()) {
+      Class<?> mixinType = config.mixinType(targetType);
+      resolved.put(targetType, resolve(targetType, mixinType));
     }
     overlays = resolved;
   }
@@ -99,24 +102,24 @@ final class JsonMixinAnnotations {
     return overlays.get(targetType);
   }
 
-  static TargetOverlay resolve(Class<?> targetType, Class<?> mixInType) {
-    validateAssociation(targetType, mixInType);
-    validateGeneratedMetadata(targetType, mixInType);
+  static TargetOverlay resolve(Class<?> targetType, Class<?> mixinType) {
+    validateAssociation(targetType, mixinType);
+    boolean codecRequired = validateGeneratedMetadata(targetType, mixinType);
     Map<AnnotatedElement, ElementOverlay> declarations = new HashMap<>();
-    addOverlay(declarations, targetType, elementOverlay(mixInType, ElementType.TYPE));
+    addOverlay(declarations, targetType, elementOverlay(mixinType, ElementType.TYPE));
 
-    for (Field sourceField : mixInType.getDeclaredFields()) {
+    for (Field sourceField : mixinType.getDeclaredFields()) {
       if (sourceField.isSynthetic() || !hasConfiguration(sourceField)) {
         continue;
       }
       if (Modifier.isStatic(sourceField.getModifiers())) {
-        throw invalidSelector(targetType, mixInType, sourceField, "must be an instance field");
+        throw invalidSelector(targetType, mixinType, sourceField, "must be an instance field");
       }
-      Field targetField = matchField(targetType, mixInType, sourceField);
+      Field targetField = matchField(targetType, mixinType, sourceField);
       addOverlay(declarations, targetField, elementOverlay(sourceField, ElementType.FIELD));
     }
 
-    for (Method sourceMethod : mixInType.getDeclaredMethods()) {
+    for (Method sourceMethod : mixinType.getDeclaredMethods()) {
       if (sourceMethod.isSynthetic() || sourceMethod.isBridge()) {
         continue;
       }
@@ -124,23 +127,23 @@ final class JsonMixinAnnotations {
         continue;
       }
       if (!Modifier.isAbstract(sourceMethod.getModifiers())) {
-        throw invalidSelector(targetType, mixInType, sourceMethod, "must be abstract");
+        throw invalidSelector(targetType, mixinType, sourceMethod, "must be abstract");
       }
-      Method targetMethod = matchMethod(targetType, mixInType, sourceMethod);
+      Method targetMethod = matchMethod(targetType, mixinType, sourceMethod);
       if (mentions(sourceMethod, JsonCreator.class)
           && targetMethod.getDeclaringClass() != targetType) {
         throw invalidSelector(
-            targetType, mixInType, sourceMethod, "cannot select an inherited @JsonCreator factory");
+            targetType, mixinType, sourceMethod, "cannot select an inherited @JsonCreator factory");
       }
       addOverlay(declarations, targetMethod, elementOverlay(sourceMethod, ElementType.METHOD));
       addParameterOverlays(declarations, sourceMethod, targetMethod);
     }
 
-    for (Constructor<?> sourceConstructor : mixInType.getDeclaredConstructors()) {
+    for (Constructor<?> sourceConstructor : mixinType.getDeclaredConstructors()) {
       if (!hasConfiguration(sourceConstructor) && !hasParameterConfiguration(sourceConstructor)) {
         continue;
       }
-      Constructor<?> targetConstructor = matchConstructor(targetType, mixInType, sourceConstructor);
+      Constructor<?> targetConstructor = matchConstructor(targetType, mixinType, sourceConstructor);
       addOverlay(
           declarations,
           targetConstructor,
@@ -149,50 +152,50 @@ final class JsonMixinAnnotations {
           declarations,
           sourceConstructor,
           targetConstructor,
-          constructorParameterOffset(mixInType, sourceConstructor));
+          constructorParameterOffset(mixinType, sourceConstructor));
     }
-    return new TargetOverlay(targetType, mixInType, declarations);
+    return new TargetOverlay(targetType, mixinType, codecRequired, declarations);
   }
 
-  private static void validateAssociation(Class<?> targetType, Class<?> mixInType) {
+  private static void validateAssociation(Class<?> targetType, Class<?> mixinType) {
     JsonMixin declaration;
     try {
-      declaration = mixInType.getDeclaredAnnotation(JsonMixin.class);
+      declaration = mixinType.getDeclaredAnnotation(JsonMixin.class);
     } catch (RuntimeException | LinkageError e) {
-      throw new ForyJsonException("Cannot read @JsonMixin on " + mixInType.getName(), e);
+      throw new ForyJsonException("Cannot read @JsonMixin on " + mixinType.getName(), e);
     }
     if (declaration == null || declaration.target() != targetType) {
       throw new ForyJsonException(
-          "Invalid JSON mix-in association " + mixInType.getName() + " -> " + targetType.getName());
+          "Invalid JSON mix-in association " + mixinType.getName() + " -> " + targetType.getName());
     }
-    int sourceModifiers = mixInType.getModifiers();
-    if (mixInType.isAnnotation()
-        || mixInType.isEnum()
-        || mixInType.isAnonymousClass()
-        || mixInType.isLocalClass()
-        || (!mixInType.isInterface() && !Modifier.isAbstract(sourceModifiers))) {
+    int sourceModifiers = mixinType.getModifiers();
+    if (mixinType.isAnnotation()
+        || mixinType.isEnum()
+        || mixinType.isAnonymousClass()
+        || mixinType.isLocalClass()
+        || (!mixinType.isInterface() && !Modifier.isAbstract(sourceModifiers))) {
       throw new ForyJsonException(
-          "JSON mix-in source must be a named interface or abstract class: " + mixInType.getName());
+          "JSON mix-in source must be a named interface or abstract class: " + mixinType.getName());
     }
-    if (mixInType.getInterfaces().length != 0
-        || (!mixInType.isInterface() && mixInType.getSuperclass() != Object.class)) {
+    if (mixinType.getInterfaces().length != 0
+        || (!mixinType.isInterface() && mixinType.getSuperclass() != Object.class)) {
       throw new ForyJsonException(
-          "JSON mix-in source must not extend or implement another type: " + mixInType.getName());
+          "JSON mix-in source must not extend or implement another type: " + mixinType.getName());
     }
-    if (targetType == mixInType
+    if (targetType == mixinType
         || targetType.isPrimitive()
         || targetType.isArray()
         || targetType.isAnnotation()) {
       throw new ForyJsonException(
-          "Invalid JSON mix-in target " + targetType.getTypeName() + " for " + mixInType.getName());
+          "Invalid JSON mix-in target " + targetType.getTypeName() + " for " + mixinType.getName());
     }
   }
 
-  private static void validateGeneratedMetadata(Class<?> targetType, Class<?> mixInType) {
-    String name = JsonSharedRegistry.generatedMixinMetadataBinaryName(mixInType, targetType);
+  private static boolean validateGeneratedMetadata(Class<?> targetType, Class<?> mixinType) {
+    String name = JsonSharedRegistry.generatedMixinMetadataBinaryName(mixinType, targetType);
     Class<?> metadataClass;
     try {
-      metadataClass = Class.forName(name, false, mixInType.getClassLoader());
+      metadataClass = Class.forName(name, false, mixinType.getClassLoader());
     } catch (ClassNotFoundException e) {
       if (AndroidSupport.IS_ANDROID || GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
         throw new ForyJsonException(
@@ -201,9 +204,9 @@ final class JsonMixinAnnotations {
                 + " for "
                 + targetType.getName()
                 + " and "
-                + mixInType.getName());
+                + mixinType.getName());
       }
-      return;
+      return false;
     } catch (LinkageError e) {
       throw new ForyJsonException("Cannot load generated JSON mix-in metadata " + name, e);
     }
@@ -214,32 +217,69 @@ final class JsonMixinAnnotations {
               + ": "
               + name);
     }
-    GeneratedJsonMixinMetadata metadata;
-    try {
-      metadata = (GeneratedJsonMixinMetadata) metadataClass.getConstructor().newInstance();
-    } catch (ReflectiveOperationException e) {
-      throw new ForyJsonException(
-          "Cannot construct generated JSON mix-in metadata " + metadataClass.getName(), e);
-    }
+    GeneratedJsonMixinMetadata metadata = newGeneratedMetadata(metadataClass);
     String targetName;
-    String mixInName;
+    String mixinName;
+    boolean codecRequired;
     try {
       targetName = metadata.targetName();
-      mixInName = metadata.mixInName();
+      mixinName = metadata.mixinName();
+      codecRequired = metadata.codecRequired();
     } catch (RuntimeException | LinkageError e) {
       throw new ForyJsonException(
           "Cannot read generated JSON mix-in metadata " + metadataClass.getName(), e);
     }
-    if (!targetType.getName().equals(targetName) || !mixInType.getName().equals(mixInName)) {
+    if (!targetType.getName().equals(targetName) || !mixinType.getName().equals(mixinName)) {
       throw new ForyJsonException(
           "Generated JSON mix-in metadata identity does not match "
               + targetType.getName()
               + " and "
-              + mixInType.getName());
+              + mixinType.getName());
     }
     ClassLoader metadataLoader = metadataClass.getClassLoader();
     requireMetadataClass(metadataLoader, targetType, metadataClass);
-    requireMetadataClass(metadataLoader, mixInType, metadataClass);
+    requireMetadataClass(metadataLoader, mixinType, metadataClass);
+    return codecRequired;
+  }
+
+  private static GeneratedJsonMixinMetadata newGeneratedMetadata(Class<?> metadataClass) {
+    Constructor<?> publicConstructor;
+    try {
+      publicConstructor = metadataClass.getConstructor();
+    } catch (NoSuchMethodException e) {
+      throw new ForyJsonException(
+          "Generated JSON mix-in metadata must declare a public no-argument constructor: "
+              + metadataClass.getName(),
+          e);
+    }
+    if (!Modifier.isPublic(metadataClass.getModifiers())) {
+      throw new ForyJsonException(
+          "Generated JSON mix-in metadata must be public: " + metadataClass.getName());
+    }
+    if (AndroidSupport.IS_ANDROID) {
+      try {
+        return (GeneratedJsonMixinMetadata) publicConstructor.newInstance();
+      } catch (ReflectiveOperationException e) {
+        throw new ForyJsonException(
+            "Cannot construct generated JSON mix-in metadata " + metadataClass.getName(),
+            unwrap(e));
+      }
+    }
+    try {
+      // Generated metadata belongs to the source module and may be in a package that is not
+      // exported or opened to Fory. The trusted handle is used only during pair validation.
+      MethodHandle constructor = ReflectionUtils.getCtrHandle(metadataClass);
+      return (GeneratedJsonMixinMetadata) constructor.invoke();
+    } catch (Throwable e) {
+      throw new ForyJsonException(
+          "Cannot construct generated JSON mix-in metadata " + metadataClass.getName(), unwrap(e));
+    }
+  }
+
+  private static Throwable unwrap(Throwable failure) {
+    return failure instanceof InvocationTargetException
+        ? ((InvocationTargetException) failure).getTargetException()
+        : failure;
   }
 
   private static void requireMetadataClass(
@@ -367,7 +407,7 @@ final class JsonMixinAnnotations {
     return false;
   }
 
-  private static Field matchField(Class<?> targetType, Class<?> mixInType, Field source) {
+  private static Field matchField(Class<?> targetType, Class<?> mixinType, Field source) {
     List<Field> matches = new ArrayList<>();
     for (Class<?> current = targetType;
         current != null && current != Object.class;
@@ -381,10 +421,10 @@ final class JsonMixinAnnotations {
         }
       }
     }
-    return oneMatch(targetType, mixInType, source, matches);
+    return oneMatch(targetType, mixinType, source, matches);
   }
 
-  private static Method matchMethod(Class<?> targetType, Class<?> mixInType, Method source) {
+  private static Method matchMethod(Class<?> targetType, Class<?> mixinType, Method source) {
     Set<Method> candidates = new LinkedHashSet<>(Arrays.asList(targetType.getMethods()));
     for (Class<?> current = targetType;
         current != null && current != Object.class;
@@ -405,14 +445,14 @@ final class JsonMixinAnnotations {
         matches.add(method);
       }
     }
-    return oneMatch(targetType, mixInType, source, matches);
+    return oneMatch(targetType, mixinType, source, matches);
   }
 
   private static Constructor<?> matchConstructor(
-      Class<?> targetType, Class<?> mixInType, Constructor<?> source) {
+      Class<?> targetType, Class<?> mixinType, Constructor<?> source) {
     List<Constructor<?>> matches = new ArrayList<>();
     Class<?>[] sourceParameters = source.getParameterTypes();
-    int sourceOffset = constructorParameterOffset(mixInType, source);
+    int sourceOffset = constructorParameterOffset(mixinType, source);
     for (Constructor<?> constructor : targetType.getDeclaredConstructors()) {
       if (!constructor.isSynthetic()
           && sourceParameters.length - sourceOffset == constructor.getParameterCount()
@@ -420,16 +460,16 @@ final class JsonMixinAnnotations {
         matches.add(constructor);
       }
     }
-    return oneMatch(targetType, mixInType, source, matches);
+    return oneMatch(targetType, mixinType, source, matches);
   }
 
   private static int constructorParameterOffset(
-      Class<?> mixInType, Constructor<?> sourceConstructor) {
-    Class<?> enclosingType = mixInType.getEnclosingClass();
+      Class<?> mixinType, Constructor<?> sourceConstructor) {
+    Class<?> enclosingType = mixinType.getEnclosingClass();
     Class<?>[] parameters = sourceConstructor.getParameterTypes();
     return enclosingType != null
-            && mixInType.isMemberClass()
-            && !Modifier.isStatic(mixInType.getModifiers())
+            && mixinType.isMemberClass()
+            && !Modifier.isStatic(mixinType.getModifiers())
             && parameters.length != 0
             && parameters[0] == enclosingType
         ? 1
@@ -446,11 +486,11 @@ final class JsonMixinAnnotations {
   }
 
   private static <T extends AnnotatedElement> T oneMatch(
-      Class<?> targetType, Class<?> mixInType, AnnotatedElement source, List<T> matches) {
+      Class<?> targetType, Class<?> mixinType, AnnotatedElement source, List<T> matches) {
     if (matches.size() != 1) {
       throw invalidSelector(
           targetType,
-          mixInType,
+          mixinType,
           source,
           matches.isEmpty() ? "does not match a target declaration" : "is ambiguous");
     }
@@ -458,12 +498,12 @@ final class JsonMixinAnnotations {
   }
 
   private static ForyJsonException invalidSelector(
-      Class<?> targetType, Class<?> mixInType, AnnotatedElement source, String reason) {
+      Class<?> targetType, Class<?> mixinType, AnnotatedElement source, String reason) {
     return new ForyJsonException(
         "Invalid JSON mix-in selector "
             + source
             + " from "
-            + mixInType.getName()
+            + mixinType.getName()
             + " for "
             + targetType.getName()
             + ": "
@@ -519,18 +559,48 @@ final class JsonMixinAnnotations {
     }
   }
 
+  static <A extends Annotation> A targetAnnotation(
+      AnnotatedElement element, Class<A> annotationType) {
+    validateTargetControl(element);
+    return declaredAnnotation(element, annotationType);
+  }
+
+  static void validateTargetControl(AnnotatedElement element) {
+    if (declaredAnnotation(element, JsonMixinRemove.class) != null
+        && declaredAnnotation(declarationOwner(element), JsonMixin.class) == null) {
+      throw new ForyJsonException(
+          "@JsonMixinRemove is valid only inside a direct @JsonMixin source: " + element);
+    }
+  }
+
+  private static Class<?> declarationOwner(AnnotatedElement element) {
+    if (element instanceof Class<?>) {
+      return (Class<?>) element;
+    }
+    if (element instanceof Member) {
+      return ((Member) element).getDeclaringClass();
+    }
+    if (element instanceof Parameter) {
+      return ((Parameter) element).getDeclaringExecutable().getDeclaringClass();
+    }
+    throw new ForyJsonException("Unsupported JSON annotation declaration " + element);
+  }
+
   static final class TargetOverlay {
     private final Class<?> targetType;
-    private final Class<?> mixInType;
+    private final Class<?> mixinType;
+    private final boolean codecRequired;
     private final Map<AnnotatedElement, ElementOverlay> declarations;
     private final Set<AnnotatedElement> sourceDeclarations;
 
     private TargetOverlay(
         Class<?> targetType,
-        Class<?> mixInType,
+        Class<?> mixinType,
+        boolean codecRequired,
         Map<AnnotatedElement, ElementOverlay> declarations) {
       this.targetType = targetType;
-      this.mixInType = mixInType;
+      this.mixinType = mixinType;
+      this.codecRequired = codecRequired;
       this.declarations = Collections.unmodifiableMap(new HashMap<>(declarations));
       Set<AnnotatedElement> sources = new HashSet<>();
       for (ElementOverlay declaration : declarations.values()) {
@@ -543,8 +613,12 @@ final class JsonMixinAnnotations {
       return targetType;
     }
 
-    Class<?> mixInType() {
-      return mixInType;
+    Class<?> mixinType() {
+      return mixinType;
+    }
+
+    boolean codecRequired() {
+      return codecRequired;
     }
 
     Set<AnnotatedElement> sourceDeclarations() {
@@ -552,6 +626,7 @@ final class JsonMixinAnnotations {
     }
 
     <A extends Annotation> A annotation(AnnotatedElement target, Class<A> annotationType) {
+      validateTargetControl(target);
       ElementOverlay overlay = declarations.get(target);
       if (overlay != null) {
         Annotation replacement = overlay.replacements.get(annotationType);

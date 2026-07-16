@@ -109,12 +109,12 @@ import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonMixin;
 
 @JsonMixin(target = ThirdPartyInvoice.class)
-public abstract class ThirdPartyInvoiceMixIn {
+public abstract class ThirdPartyInvoiceMixin {
   @JsonBase64 byte[] signature;
 }
 
 ForyJson json =
-    ForyJson.builder().registerMixIn(ThirdPartyInvoiceMixIn.class).build();
+    ForyJson.builder().registerMixin(ThirdPartyInvoiceMixin.class).build();
 ```
 
 Compile every mix-in source with `fory-annotation-processor`. The processor emits exact retention

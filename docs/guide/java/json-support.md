@@ -295,7 +295,7 @@ are rejected.
 | `withConcurrencyLevel`       | `max(1, 2 * processors)`                     | Reusable operation-state count                         |
 | `withBufferSizeLimitBytes`   | 2 MiB                                        | Reusable capacity retained by each pooled writer       |
 | `registerCodec`              | None                                         | Exact-class complete-value codec                       |
-| `registerMixIn`              | None                                         | Annotation mix-in for its exact declared target        |
+| `registerMixin`              | None                                         | Annotation mix-in for its exact declared target        |
 | `withTypeChecker`            | None                                         | Application policy in addition to Fory's disallow list |
 
 Depth, concurrency, and retained buffer limits must be positive. The cached-field-name limit applies
@@ -357,7 +357,7 @@ import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonUnwrapped;
 
 @JsonMixin(target = ThirdPartyUser.class)
-abstract class ThirdPartyUserMixIn {
+abstract class ThirdPartyUserMixin {
   @JsonProperty("user_id")
   long id;
 
@@ -365,7 +365,7 @@ abstract class ThirdPartyUserMixIn {
   Address address;
 }
 
-ForyJson json = ForyJson.builder().registerMixIn(ThirdPartyUserMixIn.class).build();
+ForyJson json = ForyJson.builder().registerMixin(ThirdPartyUserMixin.class).build();
 ```
 
 The source must be a named abstract class or interface, must not be local or anonymous, must not
@@ -396,7 +396,7 @@ import org.apache.fory.json.annotation.JsonMixinRemove;
 import org.apache.fory.json.annotation.JsonRawValue;
 
 @JsonMixin(target = ThirdPartyMessage.class)
-abstract class QuotedMessageMixIn {
+abstract class QuotedMessageMixin {
   @JsonMixinRemove(JsonRawValue.class)
   String body;
 }

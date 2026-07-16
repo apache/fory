@@ -59,7 +59,7 @@ public final class ForyJsonBuilder {
   private int bufferSizeLimitBytes = 2 * 1024 * 1024;
   private JsonTypeChecker typeChecker;
   private final CodecRegistry codecRegistry = new CodecRegistry();
-  private final Map<Class<?>, Class<?>> mixIns = new IdentityHashMap<>();
+  private final Map<Class<?>, Class<?>> mixins = new IdentityHashMap<>();
 
   ForyJsonBuilder() {}
 
@@ -190,53 +190,53 @@ public final class ForyJsonBuilder {
   }
 
   /**
-   * Registers the JSON mix-in declared by {@code mixInType} for its exact target class.
+   * Registers the JSON mix-in declared by {@code mixinType} for its exact target class.
    *
    * <p>Registering another mix-in for the same target replaces the previous registration. Existing
    * {@link ForyJson} instances retain their immutable configuration snapshot.
    *
-   * @throws NullPointerException if {@code mixInType} is null
+   * @throws NullPointerException if {@code mixinType} is null
    * @throws IllegalArgumentException if the class is not a valid {@link JsonMixin} declaration
    */
-  public ForyJsonBuilder registerMixIn(Class<?> mixInType) {
-    Objects.requireNonNull(mixInType, "mixInType");
+  public ForyJsonBuilder registerMixin(Class<?> mixinType) {
+    Objects.requireNonNull(mixinType, "mixinType");
     JsonMixin declaration;
     try {
-      declaration = mixInType.getDeclaredAnnotation(JsonMixin.class);
+      declaration = mixinType.getDeclaredAnnotation(JsonMixin.class);
     } catch (RuntimeException | LinkageError e) {
       throw new IllegalArgumentException(
-          "Cannot read JSON mix-in declaration " + mixInType.getName(), e);
+          "Cannot read JSON mix-in declaration " + mixinType.getName(), e);
     }
     if (declaration == null) {
       throw new IllegalArgumentException(
-          "JSON mix-in source is missing @JsonMixin: " + mixInType.getName());
+          "JSON mix-in source is missing @JsonMixin: " + mixinType.getName());
     }
-    int sourceModifiers = mixInType.getModifiers();
-    if (mixInType.isAnnotation()
-        || mixInType.isEnum()
-        || mixInType.isAnonymousClass()
-        || mixInType.isLocalClass()
-        || (!mixInType.isInterface() && !Modifier.isAbstract(sourceModifiers))) {
+    int sourceModifiers = mixinType.getModifiers();
+    if (mixinType.isAnnotation()
+        || mixinType.isEnum()
+        || mixinType.isAnonymousClass()
+        || mixinType.isLocalClass()
+        || (!mixinType.isInterface() && !Modifier.isAbstract(sourceModifiers))) {
       throw new IllegalArgumentException(
-          "JSON mix-in source must be a named interface or abstract class: " + mixInType.getName());
+          "JSON mix-in source must be a named interface or abstract class: " + mixinType.getName());
     }
-    if (mixInType.getInterfaces().length != 0
-        || (!mixInType.isInterface() && mixInType.getSuperclass() != Object.class)) {
+    if (mixinType.getInterfaces().length != 0
+        || (!mixinType.isInterface() && mixinType.getSuperclass() != Object.class)) {
       throw new IllegalArgumentException(
-          "JSON mix-in source must not extend or implement another type: " + mixInType.getName());
+          "JSON mix-in source must not extend or implement another type: " + mixinType.getName());
     }
     Class<?> target;
     try {
       target = declaration.target();
     } catch (RuntimeException | LinkageError e) {
       throw new IllegalArgumentException(
-          "Cannot resolve JSON mix-in target for " + mixInType.getName(), e);
+          "Cannot resolve JSON mix-in target for " + mixinType.getName(), e);
     }
-    if (target == mixInType || target.isPrimitive() || target.isArray() || target.isAnnotation()) {
+    if (target == mixinType || target.isPrimitive() || target.isArray() || target.isAnnotation()) {
       throw new IllegalArgumentException(
-          "Invalid JSON mix-in target " + target.getTypeName() + " for " + mixInType.getName());
+          "Invalid JSON mix-in target " + target.getTypeName() + " for " + mixinType.getName());
     }
-    mixIns.put(target, mixInType);
+    mixins.put(target, mixinType);
     return this;
   }
 
@@ -276,7 +276,7 @@ public final class ForyJsonBuilder {
             concurrencyLevel,
             bufferSizeLimitBytes,
             codecRegistry,
-            mixIns,
+            mixins,
             typeChecker));
   }
 }

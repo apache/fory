@@ -88,7 +88,7 @@ import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty;
 
 @JsonMixin(target = ThirdPartyUser.class)
-public abstract class ThirdPartyUserMixIn {
+public abstract class ThirdPartyUserMixin {
   @JsonProperty("user_id")
   long id;
 }
@@ -96,7 +96,7 @@ public abstract class ThirdPartyUserMixIn {
 public class JsonExample {
   public static void main(String[] args) {
     ForyJson json =
-        ForyJson.builder().registerMixIn(ThirdPartyUserMixIn.class).build();
+        ForyJson.builder().registerMixin(ThirdPartyUserMixin.class).build();
     ThirdPartyUser user = json.fromJson("{\"user_id\":1}", ThirdPartyUser.class);
     System.out.println(json.toJson(user));
   }

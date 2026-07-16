@@ -91,8 +91,8 @@ final class JsonTypeProcessor {
   private final Types types;
   private final GeneratedJsonCodecSourceWriter codecSourceWriter;
   private final Set<String> processedTypes = new HashSet<>();
-  private final Set<String> processedMixIns = new HashSet<>();
-  private final Map<String, TypeElement> pendingMixIns = new LinkedHashMap<>();
+  private final Set<String> processedMixins = new HashSet<>();
+  private final Map<String, TypeElement> pendingMixins = new LinkedHashMap<>();
 
   JsonTypeProcessor(ProcessingEnvironment environment) {
     filer = environment.getFiler();
@@ -106,7 +106,7 @@ final class JsonTypeProcessor {
     validateMixinControls(roundEnvironment);
     TypeElement jsonType = elements.getTypeElement(JSON_TYPE);
     if (jsonType == null) {
-      processMixIns(roundEnvironment);
+      processMixins(roundEnvironment);
       return;
     }
     Deque<TypeElement> pending = new ArrayDeque<>();
@@ -156,7 +156,7 @@ final class JsonTypeProcessor {
             type);
       }
     }
-    processMixIns(roundEnvironment);
+    processMixins(roundEnvironment);
   }
 
   private void validateMixinControls(RoundEnvironment roundEnvironment) {
@@ -183,55 +183,55 @@ final class JsonTypeProcessor {
     return current instanceof TypeElement ? (TypeElement) current : null;
   }
 
-  private void processMixIns(RoundEnvironment roundEnvironment) {
+  private void processMixins(RoundEnvironment roundEnvironment) {
     TypeElement jsonMixin = elements.getTypeElement(JSON_MIXIN);
     if (jsonMixin == null) {
       return;
     }
     for (Element element : roundEnvironment.getElementsAnnotatedWith(jsonMixin)) {
       if (element instanceof TypeElement) {
-        TypeElement mixIn = (TypeElement) element;
-        pendingMixIns.put(elements.getBinaryName(mixIn).toString(), mixIn);
+        TypeElement mixin = (TypeElement) element;
+        pendingMixins.put(elements.getBinaryName(mixin).toString(), mixin);
       }
     }
-    List<Map.Entry<String, TypeElement>> candidates = new ArrayList<>(pendingMixIns.entrySet());
+    List<Map.Entry<String, TypeElement>> candidates = new ArrayList<>(pendingMixins.entrySet());
     for (Map.Entry<String, TypeElement> candidate : candidates) {
-      String mixInBinaryName = candidate.getKey();
-      TypeElement mixIn = candidate.getValue();
-      TypeElement currentMixIn = elements.getTypeElement(mixIn.getQualifiedName());
-      if (currentMixIn != null) {
-        mixIn = currentMixIn;
-        pendingMixIns.put(mixInBinaryName, mixIn);
+      String mixinBinaryName = candidate.getKey();
+      TypeElement mixin = candidate.getValue();
+      TypeElement currentMixin = elements.getTypeElement(mixin.getQualifiedName());
+      if (currentMixin != null) {
+        mixin = currentMixin;
+        pendingMixins.put(mixinBinaryName, mixin);
       }
-      if (processedMixIns.contains(mixInBinaryName)) {
-        pendingMixIns.remove(mixInBinaryName);
+      if (processedMixins.contains(mixinBinaryName)) {
+        pendingMixins.remove(mixinBinaryName);
         continue;
       }
       try {
-        TypeElement target = mixInTarget(mixIn);
+        TypeElement target = mixinTarget(mixin);
         if (target == null) {
           if (roundEnvironment.processingOver()) {
             messager.printMessage(
                 Diagnostic.Kind.ERROR,
-                "Cannot resolve @JsonMixin target for " + mixInBinaryName,
-                mixIn);
-            pendingMixIns.remove(mixInBinaryName);
+                "Cannot resolve @JsonMixin target for " + mixinBinaryName,
+                mixin);
+            pendingMixins.remove(mixinBinaryName);
           }
           continue;
         }
-        processedMixIns.add(mixInBinaryName);
-        pendingMixIns.remove(mixInBinaryName);
+        processedMixins.add(mixinBinaryName);
+        pendingMixins.remove(mixinBinaryName);
         JsonMixinAnnotations annotations =
-            JsonMixinAnnotations.resolve(elements, types, target, mixIn);
+            JsonMixinAnnotations.resolve(elements, types, target, mixin);
         codecSourceWriter.validatePair(annotations);
         Model model = inspect(target, annotations);
-        model.mixIn = mixIn;
-        model.resourceIdentity = mixInBinaryName;
-        model.metadataBinaryName = writeMixInMetadata(annotations);
+        model.mixin = mixin;
+        model.resourceIdentity = mixinBinaryName;
         model.nameTypes.add(model.binaryName);
-        model.nameTypes.add(mixInBinaryName);
-        collectMixInSource(annotations, model);
+        model.nameTypes.add(mixinBinaryName);
+        collectMixinSource(annotations, model);
         GeneratedJsonCodecSourceWriter.Result generated = codecSourceWriter.writePair(annotations);
+        model.metadataBinaryName = writeMixinMetadata(annotations, generated != null);
         if (generated != null) {
           model.companionBinaryName = generated.companionBinaryName;
           model.companionHasAnySetter = generated.hasAnySetter;
@@ -256,22 +256,22 @@ final class JsonTypeProcessor {
         messager.printMessage(
             Diagnostic.Kind.ERROR,
             "Failed to generate Fory JSON mix-in metadata for "
-                + mixInBinaryName
+                + mixinBinaryName
                 + ": "
                 + e.getMessage(),
-            mixIn);
+            mixin);
       }
     }
   }
 
-  private TypeElement mixInTarget(TypeElement mixIn) {
-    AnnotationMirror annotation = annotationMirror(mixIn, JSON_MIXIN);
+  private TypeElement mixinTarget(TypeElement mixin) {
+    AnnotationMirror annotation = annotationMirror(mixin, JSON_MIXIN);
     if (annotation == null) {
-      throw new InvalidJsonTypeException("Missing @JsonMixin declaration", mixIn);
+      throw new InvalidJsonTypeException("Missing @JsonMixin declaration", mixin);
     }
     AnnotationValue value = annotationValue(annotation, "target");
     if (value == null || !(value.getValue() instanceof TypeMirror)) {
-      throw new InvalidJsonTypeException("@JsonMixin must declare a target type", mixIn);
+      throw new InvalidJsonTypeException("@JsonMixin must declare a target type", mixin);
     }
     TypeMirror target = (TypeMirror) value.getValue();
     if (target.getKind() == TypeKind.ERROR) {
@@ -279,17 +279,17 @@ final class JsonTypeProcessor {
     }
     TypeElement targetElement = asTypeElement(target);
     if (targetElement == null) {
-      throw new InvalidJsonTypeException("@JsonMixin target must be a declared type", mixIn);
+      throw new InvalidJsonTypeException("@JsonMixin target must be a declared type", mixin);
     }
     return targetElement;
   }
 
-  private String writeMixInMetadata(JsonMixinAnnotations annotations) {
+  private String writeMixinMetadata(JsonMixinAnnotations annotations, boolean codecRequired) {
     TypeElement target = annotations.target();
-    TypeElement mixIn = annotations.source();
+    TypeElement mixin = annotations.source();
     String targetBinaryName = elements.getBinaryName(target).toString();
-    String mixInBinaryName = elements.getBinaryName(mixIn).toString();
-    String binaryName = GeneratedTypeNames.jsonMixinBinaryName(targetBinaryName, mixInBinaryName);
+    String mixinBinaryName = elements.getBinaryName(mixin).toString();
+    String binaryName = GeneratedTypeNames.jsonMixinBinaryName(targetBinaryName, mixinBinaryName);
     int packageSeparator = binaryName.lastIndexOf('.');
     String packageName = packageSeparator < 0 ? "" : binaryName.substring(0, packageSeparator);
     String simpleName = binaryName.substring(packageSeparator + 1);
@@ -312,25 +312,32 @@ final class JsonTypeProcessor {
         .append("\";\n")
         .append("  }\n\n")
         .append("  @Override\n")
-        .append("  public String mixInName() {\n")
+        .append("  public String mixinName() {\n")
         .append("    return \"")
-        .append(escapeJava(mixInBinaryName))
+        .append(escapeJava(mixinBinaryName))
         .append("\";\n")
+        .append("  }\n")
+        .append("\n")
+        .append("  @Override\n")
+        .append("  public boolean codecRequired() {\n")
+        .append("    return ")
+        .append(codecRequired)
+        .append(";\n")
         .append("  }\n")
         .append("}\n");
     try {
-      javax.tools.JavaFileObject file = filer.createSourceFile(binaryName, mixIn, target);
+      javax.tools.JavaFileObject file = filer.createSourceFile(binaryName, mixin, target);
       try (Writer writer = file.openWriter()) {
         writer.write(source.toString());
       }
     } catch (IOException e) {
       throw new InvalidJsonTypeException(
-          "Failed to write generated JSON mix-in metadata: " + e, mixIn);
+          "Failed to write generated JSON mix-in metadata: " + e, mixin);
     }
     return binaryName;
   }
 
-  private void collectMixInSource(JsonMixinAnnotations annotations, Model model) {
+  private void collectMixinSource(JsonMixinAnnotations annotations, Model model) {
     TypeElement source = annotations.source();
     String sourceBinaryName = elements.getBinaryName(source).toString();
     collectAnnotations(source, model.annotationTypes);
@@ -486,7 +493,7 @@ final class JsonTypeProcessor {
 
   private void emitR8(Model model) {
     String resourceName =
-        (model.mixIn == null ? R8_PREFIX : R8_MIXIN_PREFIX) + model.resourceIdentity + ".pro";
+        (model.mixin == null ? R8_PREFIX : R8_MIXIN_PREFIX) + model.resourceIdentity + ".pro";
     try {
       javax.tools.FileObject file =
           filer.createResource(
@@ -628,7 +635,8 @@ final class JsonTypeProcessor {
           .append(" {\n")
           .append("  public <init>();\n")
           .append("  public java.lang.String targetName();\n")
-          .append("  public java.lang.String mixInName();\n")
+          .append("  public java.lang.String mixinName();\n")
+          .append("  public boolean codecRequired();\n")
           .append("}\n");
     }
     return builder.toString();
@@ -929,10 +937,11 @@ final class JsonTypeProcessor {
     if (type.getKind() == ElementKind.ANNOTATION_TYPE) {
       return;
     }
+    JsonMixinAnnotations annotations = type.equals(model.target) ? model.annotations : null;
     // Match JsonSharedRegistry's declaration lookup: a direct declaration hides all inherited
     // declarations; otherwise only the most-specific inherited declarations are inspected.
     // Their owners must remain reflection-visible as well as their selected codec constructors.
-    AnnotationMirror direct = annotationMirror(model.annotations, type, JSON_CODEC);
+    AnnotationMirror direct = annotationMirror(annotations, type, JSON_CODEC);
     if (direct != null) {
       collectCodecDeclaration(type, direct, model);
       return;
@@ -941,7 +950,7 @@ final class JsonTypeProcessor {
     List<TypeElement> declarations = allDeclarations(type);
     for (int i = 1; i < declarations.size(); i++) {
       TypeElement declaration = declarations.get(i);
-      if (annotationMirror(model.annotations, declaration, JSON_CODEC) != null) {
+      if (annotationMirror(annotations, declaration, JSON_CODEC) != null) {
         candidates.add(declaration);
       }
     }
@@ -957,7 +966,7 @@ final class JsonTypeProcessor {
       }
       if (!dominated) {
         collectCodecDeclaration(
-            candidate, annotationMirror(model.annotations, candidate, JSON_CODEC), model);
+            candidate, annotationMirror(annotations, candidate, JSON_CODEC), model);
       }
     }
   }
@@ -1178,7 +1187,7 @@ final class JsonTypeProcessor {
     final Set<String> annotationOwnerTypes = new LinkedHashSet<>();
     final Set<String> nameTypes = new LinkedHashSet<>();
     JsonMixinAnnotations annotations;
-    TypeElement mixIn;
+    TypeElement mixin;
     String resourceIdentity;
     String metadataBinaryName;
     String companionBinaryName;
@@ -1232,7 +1241,7 @@ final class JsonTypeProcessor {
     }
 
     Element[] originatingElements() {
-      return mixIn == null ? new Element[] {target} : new Element[] {mixIn, target};
+      return mixin == null ? new Element[] {target} : new Element[] {mixin, target};
     }
 
     private static boolean containsNested(Set<String> names) {

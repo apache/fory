@@ -68,7 +68,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @Test
   public void propertyAnnotations() {
-    ForyJson json = newJsonBuilder().registerMixIn(BasicMixIn.class).build();
+    ForyJson json = newJsonBuilder().registerMixin(BasicMixin.class).build();
     BasicTarget value = basic("alpha");
     String expected =
         "{\"display_name\":\"alpha\",\"body\":{\"ok\":true},\"bytes\":\"AQID\","
@@ -102,7 +102,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @Test
   public void anyAnnotations() {
-    ForyJson fieldJson = newJsonBuilder().registerMixIn(AnyFieldMixIn.class).build();
+    ForyJson fieldJson = newJsonBuilder().registerMixin(AnyFieldMixin.class).build();
     AnyFieldTarget field = new AnyFieldTarget();
     field.extra.put("dynamic", "one");
     assertEquals(fieldJson.toJson(field), "{\"dynamic\":\"A:one\"}");
@@ -110,7 +110,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
         fieldJson.fromJson("{\"dynamic\":\"A:two\"}", AnyFieldTarget.class).extra.get("dynamic"),
         "two");
 
-    ForyJson methodJson = newJsonBuilder().registerMixIn(AnyMethodMixIn.class).build();
+    ForyJson methodJson = newJsonBuilder().registerMixin(AnyMethodMixin.class).build();
     AnyMethodTarget method = new AnyMethodTarget();
     method.extra.put("dynamic", "three");
     assertEquals(methodJson.toJson(method), "{\"dynamic\":\"A:three\"}");
@@ -124,18 +124,18 @@ public class JsonMixinTest extends ForyJsonTestModels {
   @Test
   public void creatorsAndValue() {
     ForyJson constructorJson =
-        newJsonBuilder().registerMixIn(ConstructorCreatorMixIn.class).build();
+        newJsonBuilder().registerMixin(ConstructorCreatorMixin.class).build();
     CreatorTarget constructor =
         constructorJson.fromJson("{\"id\":1,\"name\":\"one\"}", CreatorTarget.class);
     assertEquals(constructor.route, "constructor");
     assertEquals(constructorJson.toJson(constructor), "{\"id\":1,\"name\":\"one\"}");
 
-    ForyJson factoryJson = newJsonBuilder().registerMixIn(FactoryCreatorMixIn.class).build();
+    ForyJson factoryJson = newJsonBuilder().registerMixin(FactoryCreatorMixin.class).build();
     CreatorTarget factory =
         factoryJson.fromJson("{\"id\":2,\"name\":\"two\"}", CreatorTarget.class);
     assertEquals(factory.route, "factory");
 
-    ForyJson valueJson = newJsonBuilder().registerMixIn(ValueMixIn.class).build();
+    ForyJson valueJson = newJsonBuilder().registerMixin(ValueMixin.class).build();
     assertEquals(valueJson.toJson(new ValueTarget("write")), "\"write\"");
     ValueTarget decoded = valueJson.fromJson("\"read\"", ValueTarget.class);
     assertEquals(decoded.text(), "read");
@@ -144,23 +144,23 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @Test
   public void typeAnnotations() {
-    ForyJson subtypeJson = newJsonBuilder().registerMixIn(ShapeMixIn.class).build();
+    ForyJson subtypeJson = newJsonBuilder().registerMixin(ShapeMixin.class).build();
     Shape value = new Circle(3);
     assertEquals(subtypeJson.toJson(value, Shape.class), "{\"kind\":\"circle\",\"radius\":3}");
     Shape decoded = subtypeJson.fromJson("{\"kind\":\"circle\",\"radius\":4}", Shape.class);
     assertTrue(decoded instanceof Circle);
     assertEquals(((Circle) decoded).radius, 4);
 
-    ForyJson codecJson = newJsonBuilder().registerMixIn(WholeTargetMixIn.class).build();
+    ForyJson codecJson = newJsonBuilder().registerMixin(WholeTargetMixin.class).build();
     assertEquals(codecJson.toJson(new WholeTarget("write")), "\"whole:write\"");
     assertEquals(codecJson.fromJson("\"whole:read\"", WholeTarget.class).value, "read");
   }
 
   @Test
   public void registrationLifecycle() {
-    ForyJsonBuilder builder = newJsonBuilder().registerMixIn(FirstNameMixIn.class);
+    ForyJsonBuilder builder = newJsonBuilder().registerMixin(FirstNameMixin.class);
     ForyJson first = builder.build();
-    builder.registerMixIn(SecondNameMixIn.class);
+    builder.registerMixin(SecondNameMixin.class);
     ForyJson second = builder.build();
 
     assertEquals(first.toJson(new NameTarget("value")), "{\"first\":\"value\"}");
@@ -169,10 +169,10 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
     ForyJson repeated =
         newJsonBuilder()
-            .registerMixIn(FirstNameMixIn.class)
-            .registerMixIn(FirstNameMixIn.class)
+            .registerMixin(FirstNameMixin.class)
+            .registerMixin(FirstNameMixin.class)
             .build();
-    ForyJson equivalent = newJsonBuilder().registerMixIn(FirstNameMixIn.class).build();
+    ForyJson equivalent = newJsonBuilder().registerMixin(FirstNameMixin.class).build();
     assertEquals(JsonTestSupport.config(repeated), JsonTestSupport.config(equivalent));
     assertEquals(
         JsonTestSupport.config(repeated).getCodegenHash(),
@@ -185,18 +185,18 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @Test
   public void exactTargets() {
-    ForyJson parentJson = newJsonBuilder().registerMixIn(ExactParentMixIn.class).build();
+    ForyJson parentJson = newJsonBuilder().registerMixin(ExactParentMixin.class).build();
     assertEquals(parentJson.toJson(new ExactParent()), "{\"parent_name\":\"parent\"}");
     assertEquals(parentJson.toJson(new ExactChild()), "{\"name\":\"parent\",\"rank\":2}");
 
-    ForyJson childJson = newJsonBuilder().registerMixIn(ExactChildMixIn.class).build();
+    ForyJson childJson = newJsonBuilder().registerMixin(ExactChildMixin.class).build();
     assertEquals(childJson.toJson(new ExactParent()), "{\"name\":\"parent\"}");
     assertEquals(childJson.toJson(new ExactChild()), "{\"child_name\":\"parent\",\"rank\":2}");
 
     ForyJson nestedJson =
         newJsonBuilder()
-            .registerMixIn(BasicMixIn.class)
-            .registerMixIn(BasicChildMixIn.class)
+            .registerMixin(BasicMixin.class)
+            .registerMixin(BasicChildMixin.class)
             .build();
     assertEquals(
         nestedJson.toJson(basic("nested")),
@@ -206,7 +206,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @Test
   public void replacementAndRemoval() {
-    ForyJson replacement = newJsonBuilder().registerMixIn(ReplacementMixIn.class).build();
+    ForyJson replacement = newJsonBuilder().registerMixin(ReplacementMixin.class).build();
     ReplacementTarget replacementValue = new ReplacementTarget();
     replacementValue.value = "value";
     assertEquals(
@@ -220,79 +220,79 @@ public class JsonMixinTest extends ForyJsonTestModels {
     assertEquals(replacementDecoded.child.label, "child");
 
     ForyJson representation =
-        newJsonBuilder().registerMixIn(RepresentationRemoveMixIn.class).build();
+        newJsonBuilder().registerMixin(RepresentationRemoveMixin.class).build();
     assertEquals(
         representation.toJson(new RepresentationRemoveTarget()),
         "{\"name\":\"name\",\"raw\":\"1\",\"bytes\":[1],"
             + "\"child\":{\"label\":\"kid\"},\"hidden\":7}");
 
-    ForyJson anyField = newJsonBuilder().registerMixIn(AnyFieldRemoveMixIn.class).build();
+    ForyJson anyField = newJsonBuilder().registerMixin(AnyFieldRemoveMixin.class).build();
     assertEquals(anyField.toJson(new AnyFieldRemoveTarget()), "{\"extra\":{\"x\":1}}");
 
-    ForyJson anyMethods = newJsonBuilder().registerMixIn(AnyMethodRemoveMixIn.class).build();
+    ForyJson anyMethods = newJsonBuilder().registerMixin(AnyMethodRemoveMixin.class).build();
     assertEquals(anyMethods.toJson(new AnyMethodRemoveTarget()), "{\"extra\":{\"x\":1}}");
     AnyMethodRemoveTarget anyDecoded =
         anyMethods.fromJson("{\"unknown\":2}", AnyMethodRemoveTarget.class);
     assertEquals(anyDecoded.extra, map("x", 1));
 
-    ForyJson value = newJsonBuilder().registerMixIn(ValueRemoveMixIn.class).build();
+    ForyJson value = newJsonBuilder().registerMixin(ValueRemoveMixin.class).build();
     assertEquals(value.toJson(new ValueRemoveTarget("write")), "{\"text\":\"write\"}");
     assertEquals(value.fromJson("{\"text\":\"read\"}", ValueRemoveTarget.class).text, "read");
 
-    ForyJson creator = newJsonBuilder().registerMixIn(CreatorRemoveMixIn.class).build();
+    ForyJson creator = newJsonBuilder().registerMixin(CreatorRemoveMixin.class).build();
     CreatorRemoveTarget creatorValue = creator.fromJson("{\"id\":5}", CreatorRemoveTarget.class);
     assertEquals(creatorValue.id, 5);
     assertEquals(creatorValue.route, "default");
 
-    ForyJson subtype = newJsonBuilder().registerMixIn(ShapeRemoveMixIn.class).build();
+    ForyJson subtype = newJsonBuilder().registerMixin(ShapeRemoveMixin.class).build();
     assertThrows(
         ForyJsonException.class, () -> subtype.toJson(new RemovedCircle(), RemovedShape.class));
 
-    ForyJson codec = newJsonBuilder().registerMixIn(CodecBarrierMixIn.class).build();
+    ForyJson codec = newJsonBuilder().registerMixin(CodecBarrierMixin.class).build();
     assertEquals(newJson().toJson(new CodecBarrierChild()), "\"inherited\"");
     assertEquals(codec.toJson(new CodecBarrierChild()), "{\"name\":\"child\"}");
 
-    ForyJson order = newJsonBuilder().registerMixIn(OrderBarrierMixIn.class).build();
+    ForyJson order = newJsonBuilder().registerMixin(OrderBarrierMixin.class).build();
     assertEquals(newJson().toJson(new OrderBarrierChild()), "{\"b\":2,\"a\":1}");
     assertEquals(order.toJson(new OrderBarrierChild()), "{\"a\":1,\"b\":2}");
   }
 
   @Test
   public void matching() {
-    ForyJson overload = newJsonBuilder().registerMixIn(OverloadMixIn.class).build();
+    ForyJson overload = newJsonBuilder().registerMixin(OverloadMixin.class).build();
     OverloadTarget value = overload.fromJson("{\"text\":\"value\"}", OverloadTarget.class);
     assertEquals(value.value, "value");
     assertEquals(overload.toJson(value), "{\"text\":\"value\"}");
 
-    ForyJson helper = newJsonBuilder().registerMixIn(HelperMixIn.class).build();
+    ForyJson helper = newJsonBuilder().registerMixin(HelperMixin.class).build();
     assertEquals(helper.toJson(new SelectorTarget()), "{\"name\":\"target\"}");
 
-    assertThrows(NullPointerException.class, () -> newJsonBuilder().registerMixIn(null));
+    assertThrows(NullPointerException.class, () -> newJsonBuilder().registerMixin(null));
     assertRegistrationInvalid(BasicTarget.class);
-    assertRegistrationInvalid(ConcreteMixIn.class);
-    assertRegistrationInvalid(SourceHierarchyMixIn.class);
-    assertRegistrationInvalid(PrimitiveTargetMixIn.class);
-    assertRegistrationInvalid(SelfMixIn.class);
+    assertRegistrationInvalid(ConcreteMixin.class);
+    assertRegistrationInvalid(SourceHierarchyMixin.class);
+    assertRegistrationInvalid(PrimitiveTargetMixin.class);
+    assertRegistrationInvalid(SelfMixin.class);
     @JsonMixin(target = BasicTarget.class)
-    abstract class LocalMixIn {}
-    assertRegistrationInvalid(LocalMixIn.class);
-    assertStructureInvalid(UnmatchedFieldMixIn.class);
-    assertStructureInvalid(ReturnTypeMixIn.class);
-    assertStructureInvalid(HiddenFieldMixIn.class);
-    assertStructureInvalid(StaticFieldMixIn.class);
-    assertStructureInvalid(ConcreteMethodMixIn.class);
-    assertStructureInvalid(JsonTypeMixIn.class);
-    assertStructureInvalid(RemoveJsonTypeMixIn.class);
-    assertStructureInvalid(EmptyRemoveMixIn.class);
-    assertStructureInvalid(DuplicateRemoveMixIn.class);
-    assertStructureInvalid(UnsupportedRemoveMixIn.class);
-    assertStructureInvalid(IllegalRemoveMixIn.class);
-    assertStructureInvalid(AddRemoveMixIn.class);
+    abstract class LocalMixin {}
+    assertRegistrationInvalid(LocalMixin.class);
+    assertStructureInvalid(UnmatchedFieldMixin.class);
+    assertStructureInvalid(ReturnTypeMixin.class);
+    assertStructureInvalid(HiddenFieldMixin.class);
+    assertStructureInvalid(StaticFieldMixin.class);
+    assertStructureInvalid(ConcreteMethodMixin.class);
+    assertStructureInvalid(JsonTypeMixin.class);
+    assertStructureInvalid(RemoveJsonTypeMixin.class);
+    assertStructureInvalid(EmptyRemoveMixin.class);
+    assertStructureInvalid(DuplicateRemoveMixin.class);
+    assertStructureInvalid(UnsupportedRemoveMixin.class);
+    assertStructureInvalid(IllegalRemoveMixin.class);
+    assertStructureInvalid(AddRemoveMixin.class);
   }
 
   @Test
   public void semanticFailureRollsBack() {
-    ForyJson json = newJsonBuilder().registerMixIn(SemanticFailureMixIn.class).build();
+    ForyJson json = newJsonBuilder().registerMixin(SemanticFailureMixin.class).build();
     SemanticFailureTarget value = new SemanticFailureTarget();
     value.body = "text";
     ForyJsonException writeFailure =
@@ -315,14 +315,14 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @Test
   public void semanticDiagnostics() {
-    assertPairFailure(InvalidTypeCodecMixIn.class, InvalidTypeCodecTarget.class);
-    assertPairFailure(InvalidSubTypesMixIn.class, InvalidSubTypesTarget.class);
-    assertPairFailure(InvalidValueMixIn.class, InvalidValueTarget.class);
-    assertPairFailure(IntrinsicMemberMixIn.class, IntrinsicMemberTarget.class);
-    assertPairFailure(CodecFamilyMixIn.class, CodecFamilyTarget.class);
-    assertPairFailure(ValueFamilyMixIn.class, ValueFamilyTarget.class);
-    assertPairFailure(SubtypeFamilyMixIn.class, SubtypeFamilyTarget.class);
-    assertPairFailure(ObjectParameterMixIn.class, ObjectParameterTarget.class);
+    assertPairFailure(InvalidTypeCodecMixin.class, InvalidTypeCodecTarget.class);
+    assertPairFailure(InvalidSubTypesMixin.class, InvalidSubTypesTarget.class);
+    assertPairFailure(InvalidValueMixin.class, InvalidValueTarget.class);
+    assertPairFailure(IntrinsicMemberMixin.class, IntrinsicMemberTarget.class);
+    assertPairFailure(CodecFamilyMixin.class, CodecFamilyTarget.class);
+    assertPairFailure(ValueFamilyMixin.class, ValueFamilyTarget.class);
+    assertPairFailure(SubtypeFamilyMixin.class, SubtypeFamilyTarget.class);
+    assertPairFailure(ObjectParameterMixin.class, ObjectParameterTarget.class);
   }
 
   @Test
@@ -333,7 +333,8 @@ public class JsonMixinTest extends ForyJsonTestModels {
           DirectFieldRemove.class,
           DirectMethodRemove.class,
           DirectConstructorRemove.class,
-          DirectParameterRemove.class
+          DirectParameterRemove.class,
+          DirectEnumRemove.class
         }) {
       ForyJsonException failure =
           expectThrows(ForyJsonException.class, () -> newJson().fromJson("{}", type));
@@ -344,35 +345,35 @@ public class JsonMixinTest extends ForyJsonTestModels {
   @Test
   public void hostedSourceClosure() throws Exception {
     JsonMixinView view =
-        JsonSharedRegistry.resolveMixin(HostedSourceTarget.class, HostedSourceMixIn.class);
+        JsonSharedRegistry.resolveMixin(HostedSourceTarget.class, HostedSourceMixin.class);
     assertEquals(view.sourceDeclarations().size(), 1);
-    assertTrue(view.sourceDeclarations().contains(HostedSourceMixIn.class.getDeclaredField("id")));
+    assertTrue(view.sourceDeclarations().contains(HostedSourceMixin.class.getDeclaredField("id")));
     assertFalse(
-        view.sourceDeclarations().contains(HostedSourceMixIn.class.getDeclaredField("helper")));
+        view.sourceDeclarations().contains(HostedSourceMixin.class.getDeclaredField("helper")));
     assertThrows(
         ForyJsonException.class,
-        () -> JsonSharedRegistry.resolveMixin(SelectorTarget.class, ConcreteMixIn.class));
+        () -> JsonSharedRegistry.resolveMixin(SelectorTarget.class, ConcreteMixin.class));
   }
 
   @Test
   public void memberSourceConstructor() {
-    ForyJson json = newJsonBuilder().registerMixIn(MemberCtorMixIn.class).build();
+    ForyJson json = newJsonBuilder().registerMixin(MemberCtorMixin.class).build();
     assertEquals(json.fromJson("{\"id\":7}", MemberCtorTarget.class).id, 7);
   }
 
-  private void assertPairFailure(Class<?> mixInType, Class<?> targetType) {
-    ForyJson json = newJsonBuilder().registerMixIn(mixInType).build();
+  private void assertPairFailure(Class<?> mixinType, Class<?> targetType) {
+    ForyJson json = newJsonBuilder().registerMixin(mixinType).build();
     ForyJsonException failure =
         expectThrows(ForyJsonException.class, () -> json.fromJson("{}", targetType));
     String message = failure.getMessage();
     assertTrue(message.contains(targetType.getName()), message);
-    assertTrue(message.contains(mixInType.getName()), message);
+    assertTrue(message.contains(mixinType.getName()), message);
   }
 
   private static void assertSemanticContext(ForyJsonException failure) {
     String message = failure.getMessage();
     assertTrue(message.contains(SemanticFailureTarget.class.getName()), message);
-    assertTrue(message.contains(SemanticFailureMixIn.class.getName()), message);
+    assertTrue(message.contains(SemanticFailureMixin.class.getName()), message);
     assertTrue(message.contains("body"), message);
   }
 
@@ -383,7 +384,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
     }
     String simpleName =
         codegenEnabled() ? "JsonMixinGeneratedRecord" : "JsonMixinInterpretedRecord";
-    String mixInName = simpleName + "MixIn";
+    String mixinName = simpleName + "Mixin";
     Class<?> type =
         compileRecordClass(
             simpleName,
@@ -397,20 +398,20 @@ public class JsonMixinTest extends ForyJsonTestModels {
                 + ".class)\n"
                 + "@JsonPropertyOrder({\"display_name\", \"bytes\"})\n"
                 + "abstract class "
-                + mixInName
+                + mixinName
                 + " {\n"
                 + "  @JsonProperty(\"display_name\") String name;\n"
                 + "  @JsonBase64 byte[] bytes;\n"
                 + "  "
-                + mixInName
+                + mixinName
                 + "(\n"
                 + "      @JsonProperty(\"display_name\") String name, byte[] bytes) {}\n"
                 + "}\n");
-    Class<?> mixIn =
-        Class.forName("org.apache.fory.json.records." + mixInName, true, type.getClassLoader());
+    Class<?> mixin =
+        Class.forName("org.apache.fory.json.records." + mixinName, true, type.getClassLoader());
     Object record =
         type.getConstructor(String.class, byte[].class).newInstance("record", new byte[] {1, 2, 3});
-    ForyJson json = newJsonBuilder().registerMixIn(mixIn).build();
+    ForyJson json = newJsonBuilder().registerMixin(mixin).build();
     assertEquals(json.toJson(record), "{\"display_name\":\"record\",\"bytes\":\"AQID\"}");
     Object decoded = json.fromJson("{\"display_name\":\"read\",\"bytes\":\"AQID\"}", type);
     assertEquals(type.getMethod("name").invoke(decoded), "read");
@@ -418,12 +419,12 @@ public class JsonMixinTest extends ForyJsonTestModels {
     assertGeneratedWhenSupported(json, type);
   }
 
-  private void assertRegistrationInvalid(Class<?> mixIn) {
-    assertThrows(IllegalArgumentException.class, () -> newJsonBuilder().registerMixIn(mixIn));
+  private void assertRegistrationInvalid(Class<?> mixin) {
+    assertThrows(IllegalArgumentException.class, () -> newJsonBuilder().registerMixin(mixin));
   }
 
-  private void assertStructureInvalid(Class<?> mixIn) {
-    assertThrows(ForyJsonException.class, () -> newJsonBuilder().registerMixIn(mixIn).build());
+  private void assertStructureInvalid(Class<?> mixin) {
+    assertThrows(ForyJsonException.class, () -> newJsonBuilder().registerMixin(mixin).build());
   }
 
   private static BasicTarget basic(String name) {
@@ -469,7 +470,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @JsonMixin(target = BasicTarget.class)
   @JsonPropertyOrder({"display_name", "body", "bytes", "child", "ignored"})
-  public abstract static class BasicMixIn {
+  public abstract static class BasicMixin {
     @JsonProperty("display_name")
     String name;
 
@@ -484,7 +485,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = BasicChild.class)
-  public abstract static class BasicChildMixIn {
+  public abstract static class BasicChildMixin {
     @JsonProperty("caption")
     String label;
   }
@@ -494,7 +495,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = AnyFieldTarget.class)
-  public abstract static class AnyFieldMixIn {
+  public abstract static class AnyFieldMixin {
     @JsonAnyProperty
     @JsonCodec(valueCodec = JsonCodecAnnotationTest.AStringCodec.class)
     Map<String, String> extra;
@@ -513,7 +514,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = AnyMethodTarget.class)
-  public interface AnyMethodMixIn {
+  public interface AnyMethodMixin {
     @JsonAnyGetter
     @JsonCodec(valueCodec = JsonCodecAnnotationTest.AStringCodec.class)
     Map<String, String> getExtra();
@@ -544,13 +545,13 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = CreatorTarget.class)
-  public abstract static class ConstructorCreatorMixIn {
+  public abstract static class ConstructorCreatorMixin {
     @JsonCreator({"id", "name"})
-    ConstructorCreatorMixIn(int id, String name) {}
+    ConstructorCreatorMixin(int id, String name) {}
   }
 
   @JsonMixin(target = CreatorTarget.class)
-  public interface FactoryCreatorMixIn {
+  public interface FactoryCreatorMixin {
     @JsonCreator({"id", "name"})
     CreatorTarget create(int id, String name);
   }
@@ -578,7 +579,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = ValueTarget.class)
-  public interface ValueMixIn {
+  public interface ValueMixin {
     @JsonValue
     String text();
 
@@ -602,7 +603,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   @JsonSubTypes(
       property = "kind",
       value = {@JsonSubTypes.Type(value = Circle.class, name = "circle")})
-  public interface ShapeMixIn {}
+  public interface ShapeMixin {}
 
   public static final class WholeTarget {
     public String value;
@@ -616,7 +617,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @JsonMixin(target = WholeTarget.class)
   @JsonCodec(WholeTargetCodec.class)
-  public interface WholeTargetMixIn {}
+  public interface WholeTargetMixin {}
 
   public static final class WholeTargetCodec implements JsonValueCodec<WholeTarget> {
     @Override
@@ -658,13 +659,13 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = NameTarget.class)
-  public abstract static class FirstNameMixIn {
+  public abstract static class FirstNameMixin {
     @JsonProperty("first")
     String name;
   }
 
   @JsonMixin(target = NameTarget.class)
-  public abstract static class SecondNameMixIn {
+  public abstract static class SecondNameMixin {
     @JsonProperty("second")
     String name;
   }
@@ -678,13 +679,13 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = ExactParent.class)
-  public abstract static class ExactParentMixIn {
+  public abstract static class ExactParentMixin {
     @JsonProperty("parent_name")
     String name;
   }
 
   @JsonMixin(target = ExactChild.class)
-  public abstract static class ExactChildMixIn {
+  public abstract static class ExactChildMixin {
     @JsonProperty("child_name")
     String name;
   }
@@ -698,7 +699,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = ReplacementTarget.class)
-  public abstract static class ReplacementMixIn {
+  public abstract static class ReplacementMixin {
     @JsonProperty("mixed")
     String value;
 
@@ -720,7 +721,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = RepresentationRemoveTarget.class)
-  public abstract static class RepresentationRemoveMixIn {
+  public abstract static class RepresentationRemoveMixin {
     @JsonMixinRemove(JsonProperty.class)
     String name;
 
@@ -742,7 +743,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = AnyFieldRemoveTarget.class)
-  public abstract static class AnyFieldRemoveMixIn {
+  public abstract static class AnyFieldRemoveMixin {
     @JsonMixinRemove(JsonAnyProperty.class)
     Map<String, Integer> extra;
   }
@@ -762,7 +763,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = AnyMethodRemoveTarget.class)
-  public interface AnyMethodRemoveMixIn {
+  public interface AnyMethodRemoveMixin {
     @JsonMixinRemove(JsonAnyGetter.class)
     Map<String, Integer> getExtra();
 
@@ -782,12 +783,12 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = ValueRemoveTarget.class)
-  public abstract static class ValueRemoveMixIn {
+  public abstract static class ValueRemoveMixin {
     @JsonMixinRemove(JsonValue.class)
     String text;
 
     @JsonMixinRemove(JsonCreator.class)
-    ValueRemoveMixIn(String text) {}
+    ValueRemoveMixin(String text) {}
   }
 
   public static final class CreatorRemoveTarget {
@@ -806,9 +807,9 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = CreatorRemoveTarget.class)
-  public abstract static class CreatorRemoveMixIn {
+  public abstract static class CreatorRemoveMixin {
     @JsonMixinRemove(JsonCreator.class)
-    CreatorRemoveMixIn(int id) {}
+    CreatorRemoveMixin(int id) {}
   }
 
   @JsonSubTypes(
@@ -822,7 +823,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @JsonMixin(target = RemovedShape.class)
   @JsonMixinRemove(JsonSubTypes.class)
-  public interface ShapeRemoveMixIn {}
+  public interface ShapeRemoveMixin {}
 
   @JsonCodec(InheritedCodec.class)
   public static class CodecBarrierParent {
@@ -867,7 +868,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @JsonMixin(target = CodecBarrierChild.class)
   @JsonMixinRemove(JsonCodec.class)
-  public interface CodecBarrierMixIn {}
+  public interface CodecBarrierMixin {}
 
   @JsonPropertyOrder({"b", "a"})
   public static class OrderBarrierParent {
@@ -879,7 +880,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @JsonMixin(target = OrderBarrierChild.class)
   @JsonMixinRemove(JsonPropertyOrder.class)
-  public interface OrderBarrierMixIn {}
+  public interface OrderBarrierMixin {}
 
   public static final class OverloadTarget {
     String value;
@@ -898,7 +899,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = OverloadTarget.class)
-  public interface OverloadMixIn {
+  public interface OverloadMixin {
     @JsonProperty("text")
     void setValue(String value);
   }
@@ -912,7 +913,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = SemanticFailureTarget.class)
-  public abstract static class SemanticFailureMixIn {
+  public abstract static class SemanticFailureMixin {
     @JsonRawValue
     @JsonCodec(JsonCodecAnnotationTest.AStringCodec.class)
     String body;
@@ -922,13 +923,13 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @JsonMixin(target = InvalidTypeCodecTarget.class)
   @JsonCodec(elementCodec = JsonCodecAnnotationTest.AStringCodec.class)
-  public interface InvalidTypeCodecMixIn {}
+  public interface InvalidTypeCodecMixin {}
 
   public static final class InvalidSubTypesTarget {}
 
   @JsonMixin(target = InvalidSubTypesTarget.class)
   @JsonSubTypes({@JsonSubTypes.Type(value = InvalidSubTypesTarget.class, name = "value")})
-  public interface InvalidSubTypesMixIn {}
+  public interface InvalidSubTypesMixin {}
 
   public static final class InvalidValueTarget {
     public String first() {
@@ -941,7 +942,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = InvalidValueTarget.class)
-  public interface InvalidValueMixIn {
+  public interface InvalidValueMixin {
     @JsonValue
     String first();
 
@@ -955,7 +956,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = HostedSourceTarget.class)
-  public abstract static class HostedSourceMixIn {
+  public abstract static class HostedSourceMixin {
     @JsonProperty("value")
     int id;
 
@@ -971,9 +972,9 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = MemberCtorTarget.class)
-  public abstract class MemberCtorMixIn {
+  public abstract class MemberCtorMixin {
     @JsonCreator
-    MemberCtorMixIn(@JsonProperty("id") int id) {}
+    MemberCtorMixin(@JsonProperty("id") int id) {}
   }
 
   public abstract static class SourceHierarchyParent {
@@ -982,32 +983,32 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = SelectorTarget.class)
-  public abstract static class SourceHierarchyMixIn extends SourceHierarchyParent {
+  public abstract static class SourceHierarchyMixin extends SourceHierarchyParent {
     String unmatchedHelper;
   }
 
   @JsonMixin(target = SelectorTarget.class)
-  public abstract static class HelperMixIn {
+  public abstract static class HelperMixin {
     String unmatchedHelper;
   }
 
   @JsonMixin(target = BasicTarget.class)
-  public static final class ConcreteMixIn {}
+  public static final class ConcreteMixin {}
 
   @JsonMixin(target = int.class)
-  public abstract static class PrimitiveTargetMixIn {}
+  public abstract static class PrimitiveTargetMixin {}
 
-  @JsonMixin(target = SelfMixIn.class)
-  public abstract static class SelfMixIn {}
+  @JsonMixin(target = SelfMixin.class)
+  public abstract static class SelfMixin {}
 
   @JsonMixin(target = BasicTarget.class)
-  public abstract static class UnmatchedFieldMixIn {
+  public abstract static class UnmatchedFieldMixin {
     @JsonProperty("missing")
     long missing;
   }
 
   @JsonMixin(target = SelectorMethodTarget.class)
-  public interface ReturnTypeMixIn {
+  public interface ReturnTypeMixin {
     @JsonProperty("name")
     CharSequence getName();
   }
@@ -1025,7 +1026,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = IntrinsicMemberTarget.class)
-  public abstract static class IntrinsicMemberMixIn {
+  public abstract static class IntrinsicMemberMixin {
     @JsonProperty("name")
     String label;
   }
@@ -1036,7 +1037,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @JsonMixin(target = CodecFamilyTarget.class)
   @JsonCodec(CodecFamilyCodec.class)
-  public abstract static class CodecFamilyMixIn {
+  public abstract static class CodecFamilyMixin {
     @JsonProperty("ignored")
     String value;
   }
@@ -1086,7 +1087,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = ValueFamilyTarget.class)
-  public abstract static class ValueFamilyMixIn {
+  public abstract static class ValueFamilyMixin {
     @JsonValue String text;
 
     @JsonProperty("ignored")
@@ -1105,8 +1106,8 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = ObjectParameterTarget.class)
-  public abstract static class ObjectParameterMixIn {
-    ObjectParameterMixIn(@JsonProperty("text") String text) {}
+  public abstract static class ObjectParameterMixin {
+    ObjectParameterMixin(@JsonProperty("text") String text) {}
   }
 
   public abstract static class SubtypeFamilyTarget {
@@ -1119,7 +1120,7 @@ public class JsonMixinTest extends ForyJsonTestModels {
   @JsonSubTypes(
       value = @JsonSubTypes.Type(name = "child", value = SubtypeFamilyChild.class),
       property = "kind")
-  public abstract static class SubtypeFamilyMixIn {
+  public abstract static class SubtypeFamilyMixin {
     @JsonProperty("ignored")
     int ignored;
   }
@@ -1149,6 +1150,11 @@ public class JsonMixinTest extends ForyJsonTestModels {
     public DirectParameterRemove(@JsonProperty("id") @JsonMixinRemove(JsonProperty.class) int id) {}
   }
 
+  @JsonMixinRemove(JsonPropertyOrder.class)
+  public enum DirectEnumRemove {
+    VALUE
+  }
+
   public static class HiddenFieldParent {
     public String name;
   }
@@ -1158,19 +1164,19 @@ public class JsonMixinTest extends ForyJsonTestModels {
   }
 
   @JsonMixin(target = HiddenFieldChild.class)
-  public abstract static class HiddenFieldMixIn {
+  public abstract static class HiddenFieldMixin {
     @JsonProperty("name")
     String name;
   }
 
   @JsonMixin(target = BasicTarget.class)
-  public abstract static class StaticFieldMixIn {
+  public abstract static class StaticFieldMixin {
     @JsonProperty("name")
     static final String name = null;
   }
 
   @JsonMixin(target = SelectorMethodTarget.class)
-  public abstract static class ConcreteMethodMixIn {
+  public abstract static class ConcreteMethodMixin {
     @JsonProperty("name")
     public String getName() {
       return "source";
@@ -1179,32 +1185,32 @@ public class JsonMixinTest extends ForyJsonTestModels {
 
   @JsonMixin(target = BasicTarget.class)
   @JsonType
-  public abstract static class JsonTypeMixIn {}
+  public abstract static class JsonTypeMixin {}
 
   @JsonMixin(target = BasicTarget.class)
   @JsonMixinRemove(JsonType.class)
-  public abstract static class RemoveJsonTypeMixIn {}
+  public abstract static class RemoveJsonTypeMixin {}
 
   @JsonMixin(target = BasicTarget.class)
   @JsonMixinRemove({})
-  public abstract static class EmptyRemoveMixIn {}
+  public abstract static class EmptyRemoveMixin {}
 
   @JsonMixin(target = BasicTarget.class)
   @JsonMixinRemove({JsonProperty.class, JsonProperty.class})
-  public abstract static class DuplicateRemoveMixIn {}
+  public abstract static class DuplicateRemoveMixin {}
 
   @JsonMixin(target = BasicTarget.class)
   @JsonMixinRemove(Deprecated.class)
-  public abstract static class UnsupportedRemoveMixIn {}
+  public abstract static class UnsupportedRemoveMixin {}
 
   @JsonMixin(target = BasicTarget.class)
-  public abstract static class IllegalRemoveMixIn {
+  public abstract static class IllegalRemoveMixin {
     @JsonMixinRemove(JsonPropertyOrder.class)
     String name;
   }
 
   @JsonMixin(target = BasicTarget.class)
-  public abstract static class AddRemoveMixIn {
+  public abstract static class AddRemoveMixin {
     @JsonProperty("name")
     @JsonMixinRemove(JsonProperty.class)
     String name;

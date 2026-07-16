@@ -44,7 +44,7 @@ import java.lang.annotation.Target;
  * replaces the target annotation of the same type at the matched declaration; annotation members
  * are not merged individually. Use {@link JsonMixinRemove} for explicit removal.
  *
- * <p>Register a source with {@link org.apache.fory.json.ForyJsonBuilder#registerMixIn(Class)}.
+ * <p>Register a source with {@link org.apache.fory.json.ForyJsonBuilder#registerMixin(Class)}.
  * Registration applies only to the exact declared target. Registering a second source for that
  * target replaces the first source for subsequently built JSON runtimes.
  */

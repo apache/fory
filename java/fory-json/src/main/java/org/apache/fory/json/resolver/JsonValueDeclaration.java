@@ -237,10 +237,12 @@ final class JsonValueDeclaration {
       rejectRecordCreator(type, generatedCodec);
       return null;
     }
-    Parameter parameter = executable.getParameters()[0];
-    if (registry.annotation(type, parameter, JsonProperty.class) != null) {
-      rejectRecordCreator(type, generatedCodec);
-      return null;
+    if (generatedCodec == null || !generatedCodec.validatedRecord()) {
+      Parameter parameter = executable.getParameters()[0];
+      if (registry.annotation(type, parameter, JsonProperty.class) != null) {
+        rejectRecordCreator(type, generatedCodec);
+        return null;
+      }
     }
     return executable;
   }

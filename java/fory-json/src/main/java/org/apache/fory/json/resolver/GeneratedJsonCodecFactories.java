@@ -36,11 +36,11 @@ public final class GeneratedJsonCodecFactories {
 
   /** Publishes one hosted-analysis factory for an exact target and optional mix-in pair. */
   public static synchronized void register(
-      Class<?> type, Class<?> mixInType, GeneratedJsonCodecFactory factory) {
+      Class<?> type, Class<?> mixinType, GeneratedJsonCodecFactory factory) {
     if (frozen) {
       throw new ForyJsonException("Generated JSON codec factory table is already frozen");
     }
-    Key key = new Key(type, mixInType);
+    Key key = new Key(type, mixinType);
     GeneratedJsonCodecFactory previous = factories.get(key);
     if (previous == null) {
       factories.put(key, factory);
@@ -48,7 +48,7 @@ public final class GeneratedJsonCodecFactories {
       throw new ForyJsonException(
           "Conflicting generated JSON codec factories for "
               + type.getName()
-              + (mixInType == null ? "" : " and " + mixInType.getName())
+              + (mixinType == null ? "" : " and " + mixinType.getName())
               + ": "
               + previous.getClass().getName()
               + " and "
@@ -65,17 +65,17 @@ public final class GeneratedJsonCodecFactories {
   }
 
   /** Returns the exact pair factory, or {@code null} when no companion was generated. */
-  public static synchronized GeneratedJsonCodecFactory get(Class<?> type, Class<?> mixInType) {
-    return factories.get(new Key(type, mixInType));
+  public static synchronized GeneratedJsonCodecFactory get(Class<?> type, Class<?> mixinType) {
+    return factories.get(new Key(type, mixinType));
   }
 
   private static final class Key {
     private final Class<?> type;
-    private final Class<?> mixInType;
+    private final Class<?> mixinType;
 
-    private Key(Class<?> type, Class<?> mixInType) {
+    private Key(Class<?> type, Class<?> mixinType) {
       this.type = type;
-      this.mixInType = mixInType;
+      this.mixinType = mixinType;
     }
 
     @Override
@@ -87,12 +87,12 @@ public final class GeneratedJsonCodecFactories {
         return false;
       }
       Key that = (Key) other;
-      return type == that.type && mixInType == that.mixInType;
+      return type == that.type && mixinType == that.mixinType;
     }
 
     @Override
     public int hashCode() {
-      return 31 * System.identityHashCode(type) + System.identityHashCode(mixInType);
+      return 31 * System.identityHashCode(type) + System.identityHashCode(mixinType);
     }
   }
 }

@@ -57,11 +57,11 @@ public final class JsonConfig {
   private final int concurrencyLevel;
   private final int bufferSizeLimitBytes;
   private final CodecRegistry codecRegistry;
-  private final Map<Class<?>, Class<?>> mixIns;
+  private final Map<Class<?>, Class<?>> mixins;
   private final JsonTypeChecker typeChecker;
   private final JsonTypeCheckContext typeCheckContext;
   private final String codecRegistryKey;
-  private final String mixInKey;
+  private final String mixinKey;
   private final CodegenKey codegenKey;
   private transient int codegenHash;
 
@@ -77,7 +77,7 @@ public final class JsonConfig {
       int concurrencyLevel,
       int bufferSizeLimitBytes,
       CodecRegistry codecRegistry,
-      Map<Class<?>, Class<?>> mixIns,
+      Map<Class<?>, Class<?>> mixins,
       JsonTypeChecker typeChecker) {
     this.writeNullFields = writeNullFields;
     this.codegenEnabled = codegenEnabled;
@@ -92,18 +92,18 @@ public final class JsonConfig {
     this.concurrencyLevel = concurrencyLevel;
     this.bufferSizeLimitBytes = bufferSizeLimitBytes;
     this.codecRegistry = codecRegistry;
-    this.mixIns = immutableMixIns(mixIns, classLoader);
+    this.mixins = immutableMixins(mixins, classLoader);
     this.typeChecker = typeChecker;
     typeCheckContext = new JsonTypeCheckContext();
     codecRegistryKey = codecRegistry.codegenKey();
-    mixInKey = mixInKey(this.mixIns);
+    mixinKey = mixinKey(this.mixins);
     codegenKey =
         new CodegenKey(
             writeNullFields,
             propertyDiscoveryEnabled,
             propertyNamingStrategy,
             codecRegistryKey,
-            mixInKey);
+            mixinKey);
   }
 
   public boolean writeNullFields() {
@@ -161,20 +161,20 @@ public final class JsonConfig {
 
   /** Returns the enabled mix-in for the exact target, or {@code null}. */
   @Internal
-  public Class<?> mixInType(Class<?> targetType) {
-    return mixIns.get(targetType);
+  public Class<?> mixinType(Class<?> targetType) {
+    return mixins.get(targetType);
   }
 
   /** Returns whether this runtime has any enabled JSON mix-ins. */
   @Internal
-  public boolean hasMixIns() {
-    return !mixIns.isEmpty();
+  public boolean hasMixins() {
+    return !mixins.isEmpty();
   }
 
   /** Returns a fresh array containing every exact registered mix-in target. */
   @Internal
-  public Class<?>[] mixInTargets() {
-    return mixIns.keySet().toArray(new Class<?>[0]);
+  public Class<?>[] mixinTargets() {
+    return mixins.keySet().toArray(new Class<?>[0]);
   }
 
   public JsonTypeChecker typeChecker() {
@@ -206,7 +206,7 @@ public final class JsonConfig {
         && bufferSizeLimitBytes == that.bufferSizeLimitBytes
         && typeChecker == that.typeChecker
         && Objects.equals(codecRegistryKey, that.codecRegistryKey)
-        && Objects.equals(mixInKey, that.mixInKey);
+        && Objects.equals(mixinKey, that.mixinKey);
   }
 
   @Override
@@ -223,13 +223,13 @@ public final class JsonConfig {
     result = 31 * result + bufferSizeLimitBytes;
     result = 31 * result + System.identityHashCode(typeChecker);
     result = 31 * result + codecRegistryKey.hashCode();
-    if (!mixInKey.isEmpty()) {
-      result = 31 * result + mixInKey.hashCode();
+    if (!mixinKey.isEmpty()) {
+      result = 31 * result + mixinKey.hashCode();
     }
     return result;
   }
 
-  private static Map<Class<?>, Class<?>> immutableMixIns(
+  private static Map<Class<?>, Class<?>> immutableMixins(
       Map<Class<?>, Class<?>> registrations, ClassLoader classLoader) {
     if (registrations.isEmpty()) {
       return Collections.emptyMap();
@@ -237,10 +237,10 @@ public final class JsonConfig {
     IdentityHashMap<Class<?>, Class<?>> copied = new IdentityHashMap<>(registrations.size());
     for (Map.Entry<Class<?>, Class<?>> entry : registrations.entrySet()) {
       Class<?> target = entry.getKey();
-      Class<?> mixIn = entry.getValue();
+      Class<?> mixin = entry.getValue();
       requireExactClass(classLoader, target, "target");
-      requireExactClass(classLoader, mixIn, "source");
-      copied.put(target, mixIn);
+      requireExactClass(classLoader, mixin, "source");
+      copied.put(target, mixin);
     }
     return Collections.unmodifiableMap(copied);
   }
@@ -262,11 +262,11 @@ public final class JsonConfig {
     }
   }
 
-  private static String mixInKey(Map<Class<?>, Class<?>> mixIns) {
-    if (mixIns.isEmpty()) {
+  private static String mixinKey(Map<Class<?>, Class<?>> mixins) {
+    if (mixins.isEmpty()) {
       return "";
     }
-    List<Map.Entry<Class<?>, Class<?>>> entries = new ArrayList<>(mixIns.entrySet());
+    List<Map.Entry<Class<?>, Class<?>>> entries = new ArrayList<>(mixins.entrySet());
     entries.sort(Comparator.comparing(entry -> entry.getKey().getName()));
     StringBuilder builder = new StringBuilder(entries.size() * 64);
     for (Map.Entry<Class<?>, Class<?>> entry : entries) {
@@ -299,19 +299,19 @@ public final class JsonConfig {
     private final boolean propertyDiscoveryEnabled;
     private final PropertyNamingStrategy propertyNamingStrategy;
     private final String codecRegistryKey;
-    private final String mixInKey;
+    private final String mixinKey;
 
     private CodegenKey(
         boolean writeNullFields,
         boolean propertyDiscoveryEnabled,
         PropertyNamingStrategy propertyNamingStrategy,
         String codecRegistryKey,
-        String mixInKey) {
+        String mixinKey) {
       this.writeNullFields = writeNullFields;
       this.propertyDiscoveryEnabled = propertyDiscoveryEnabled;
       this.propertyNamingStrategy = propertyNamingStrategy;
       this.codecRegistryKey = codecRegistryKey;
-      this.mixInKey = mixInKey;
+      this.mixinKey = mixinKey;
     }
 
     @Override
@@ -327,7 +327,7 @@ public final class JsonConfig {
           && propertyDiscoveryEnabled == that.propertyDiscoveryEnabled
           && propertyNamingStrategy == that.propertyNamingStrategy
           && Objects.equals(codecRegistryKey, that.codecRegistryKey)
-          && Objects.equals(mixInKey, that.mixInKey);
+          && Objects.equals(mixinKey, that.mixinKey);
     }
 
     @Override
@@ -335,7 +335,7 @@ public final class JsonConfig {
       int result =
           Objects.hash(
               writeNullFields, propertyDiscoveryEnabled, propertyNamingStrategy, codecRegistryKey);
-      return mixInKey.isEmpty() ? result : 31 * result + mixInKey.hashCode();
+      return mixinKey.isEmpty() ? result : 31 * result + mixinKey.hashCode();
     }
   }
 }

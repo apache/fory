@@ -42,7 +42,9 @@ import org.apache.fory.json.annotation.JsonAnyProperty;
 import org.apache.fory.json.annotation.JsonBase64;
 import org.apache.fory.json.annotation.JsonCodec;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty;
+import org.apache.fory.json.annotation.JsonPropertyOrder;
 import org.apache.fory.json.annotation.JsonRawValue;
 import org.apache.fory.json.annotation.JsonSubTypes;
 import org.apache.fory.json.annotation.JsonType;
@@ -53,6 +55,7 @@ import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.util.Preconditions;
@@ -70,9 +73,9 @@ public final class ForyJsonExample {
     testContainerRoots();
     testGenericProperties();
     testUnwrapped();
-    testMixIn();
-    testMixInValue();
-    testMixInValueRecord();
+    testMixin();
+    testMixinValue();
+    testMixinValueRecord();
     testBigDecimal();
     testSqlTypes();
     testClosedPackage();
@@ -86,8 +89,8 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(json.fromJson(encoded, ClosedJsonRecord.class).equals(value));
   }
 
-  private static void testMixIn() {
-    ForyJson json = ForyJson.builder().registerMixIn(JsonMixinModel.class).build();
+  private static void testMixin() {
+    ForyJson json = ForyJson.builder().registerMixin(JsonMixinModel.class).build();
     JsonMixinTarget value =
         JsonMixinTarget.create(18, new JsonMixinTarget.Address("Hangzhou", 310000));
     String encoded = json.toJson(value);
@@ -99,33 +102,33 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(decoded.getAddress().zip == 310000);
   }
 
-  private static void testMixInValue() {
+  private static void testMixinValue() {
     String codec =
-        "org.apache.fory.graalvm.JsonMixinValueModel_ForyJsonMixin_"
-            + "org_x2e_apache_x2e_fory_x2e_graalvm_x2e_JsonMixinValueTarget_ForyJsonCodec";
+        JsonSharedRegistry.generatedMixinCodecBinaryName(
+            JsonMixinValueModel.class, JsonMixinValueTarget.class);
     try {
       Class.forName(codec, false, JsonMixinValueModel.class.getClassLoader());
       throw new AssertionError("non-Record value mix-in generated an unused codec companion");
     } catch (ClassNotFoundException expected) {
       // The pair metadata is sufficient for this codec family.
     }
-    ForyJson json = ForyJson.builder().registerMixIn(JsonMixinValueModel.class).build();
+    ForyJson json = ForyJson.builder().registerMixin(JsonMixinValueModel.class).build();
     JsonMixinValueTarget value = JsonMixinValueTarget.create("value-mixin");
     Preconditions.checkArgument(json.toJson(value).equals("\"value-mixin\""));
     JsonMixinValueTarget decoded = json.fromJson("\"decoded-mixin\"", JsonMixinValueTarget.class);
     Preconditions.checkArgument(decoded.getValue().equals("decoded-mixin"));
   }
 
-  private static void testMixInValueRecord() {
+  private static void testMixinValueRecord() {
     String codec =
-        "org.apache.fory.graalvm.JsonMixinValueRecordModel_ForyJsonMixin_"
-            + "org_x2e_apache_x2e_fory_x2e_graalvm_x2e_JsonMixinValueRecord_ForyJsonCodec";
+        JsonSharedRegistry.generatedMixinCodecBinaryName(
+            JsonMixinValueRecordModel.class, JsonMixinValueRecord.class);
     try {
       Class.forName(codec, false, JsonMixinValueRecordModel.class.getClassLoader());
     } catch (ClassNotFoundException e) {
       throw new AssertionError("generated Record value mix-in JSON codec was removed", e);
     }
-    ForyJson json = ForyJson.builder().registerMixIn(JsonMixinValueRecordModel.class).build();
+    ForyJson json = ForyJson.builder().registerMixin(JsonMixinValueRecordModel.class).build();
     Preconditions.checkArgument(
         json.toJson(new JsonMixinValueRecord("record-value")).equals("\"record-value\""));
     JsonMixinValueRecord decoded = json.fromJson("\"decoded-record\"", JsonMixinValueRecord.class);
@@ -801,5 +804,90 @@ public final class ForyJsonExample {
     public Date date;
     public Time time;
     public Timestamp timestamp;
+  }
+
+  @JsonMixin(target = JsonMixinTarget.class)
+  @JsonPropertyOrder({"id", "address"})
+  public interface JsonMixinModel {
+    @JsonProperty("user_id")
+    int getId();
+
+    @JsonUnwrapped(prefix = "address_")
+    JsonMixinTarget.Address getAddress();
+
+    @JsonCreator({"id", "address"})
+    JsonMixinTarget create(int id, JsonMixinTarget.Address address);
+  }
+
+  public static final class JsonMixinTarget {
+    private final int id;
+    private final Address address;
+
+    private JsonMixinTarget(int id, Address address) {
+      this.id = id;
+      this.address = address;
+    }
+
+    public int getId() {
+      return id;
+    }
+
+    public Address getAddress() {
+      return address;
+    }
+
+    public static JsonMixinTarget create(int id, Address address) {
+      return new JsonMixinTarget(id, address);
+    }
+
+    public static final class Address {
+      public String city;
+      public int zip;
+
+      public Address() {}
+
+      public Address(String city, int zip) {
+        this.city = city;
+        this.zip = zip;
+      }
+    }
+  }
+
+  @JsonMixin(target = JsonMixinValueTarget.class)
+  public interface JsonMixinValueModel {
+    @JsonValue
+    String getValue();
+
+    @JsonCreator
+    JsonMixinValueTarget create(String value);
+  }
+
+  public static final class JsonMixinValueTarget {
+    private final String value;
+
+    private JsonMixinValueTarget(String value) {
+      this.value = value;
+    }
+
+    public String getValue() {
+      return value;
+    }
+
+    public static JsonMixinValueTarget create(String value) {
+      return new JsonMixinValueTarget(value);
+    }
+  }
+
+  public record JsonMixinValueRecord(String value) {}
+
+  @JsonMixin(target = JsonMixinValueRecord.class)
+  public abstract static class JsonMixinValueRecordModel {
+    @JsonValue String value;
+
+    @JsonValue
+    abstract String value();
+
+    @JsonCreator
+    JsonMixinValueRecordModel(String value) {}
   }
 }

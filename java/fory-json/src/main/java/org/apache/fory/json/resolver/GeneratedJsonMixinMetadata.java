@@ -28,5 +28,8 @@ public interface GeneratedJsonMixinMetadata {
   String targetName();
 
   /** Returns the binary name of the exact mix-in source class. */
-  String mixInName();
+  String mixinName();
+
+  /** Returns whether this pair requires its generated JSON codec companion. */
+  boolean codecRequired();
 }

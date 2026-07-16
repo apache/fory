@@ -154,6 +154,14 @@ public class JsonCodecHierarchyTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void customCodecIsolatesSignatures() throws Exception {
+    try (LoadedType value = compileIsolatedType()) {
+      ForyJson json = registerMarker(newJsonBuilder(), value.type);
+      assertMarker(json, value.newInstance(), "isolated");
+    }
+  }
+
+  @Test
   public void subtypePrecedence() {
     ForyJson json = newJson();
     assertEquals(json.toJson(new SubTypeValue(), SubTypeContract.class), "\"subtypes\"");
@@ -293,15 +301,6 @@ public class JsonCodecHierarchyTest extends ForyJsonTestModels {
   }
 
   private static LoadedType compileConflictType(String interfaces) throws Exception {
-    JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    if (compiler == null) {
-      throw new SkipException("A JDK compiler is required");
-    }
-    Path root = Files.createTempDirectory("fory-json-codec-order");
-    Path output = root.resolve("classes");
-    Path source = root.resolve("src/org/apache/fory/json/hierarchy/ConflictValue.java");
-    Files.createDirectories(output);
-    Files.createDirectories(source.getParent());
     String text =
         "package org.apache.fory.json.hierarchy;\n"
             + "import org.apache.fory.json.JsonCodecHierarchyTest.LeftConflict;\n"
@@ -309,6 +308,32 @@ public class JsonCodecHierarchyTest extends ForyJsonTestModels {
             + "public final class ConflictValue implements "
             + interfaces
             + " {}\n";
+    return compileType("ConflictValue", text, null);
+  }
+
+  private static LoadedType compileIsolatedType() throws Exception {
+    String text =
+        "package org.apache.fory.json.hierarchy;\n"
+            + "public final class IsolatedValue {\n"
+            + "  public IsolatedValue() {}\n"
+            + "  public Missing optional() { return null; }\n"
+            + "}\n"
+            + "final class Missing {}\n";
+    return compileType("IsolatedValue", text, "Missing.class");
+  }
+
+  private static LoadedType compileType(String simpleName, String text, String removedClass)
+      throws Exception {
+    JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+    if (compiler == null) {
+      throw new SkipException("A JDK compiler is required");
+    }
+    Path root = Files.createTempDirectory("fory-json-codec-order");
+    Path output = root.resolve("classes");
+    Path packageRoot = output.resolve("org/apache/fory/json/hierarchy");
+    Path source = root.resolve("src/org/apache/fory/json/hierarchy/" + simpleName + ".java");
+    Files.createDirectories(output);
+    Files.createDirectories(source.getParent());
     Files.write(source, text.getBytes(StandardCharsets.UTF_8));
     int exit =
         compiler.run(
@@ -321,11 +346,18 @@ public class JsonCodecHierarchyTest extends ForyJsonTestModels {
             output.toString(),
             source.toString());
     assertEquals(exit, 0);
+    if (removedClass != null) {
+      Files.delete(packageRoot.resolve(removedClass));
+    }
     URLClassLoader loader =
         new URLClassLoader(
             new URL[] {output.toUri().toURL()}, JsonCodecHierarchyTest.class.getClassLoader());
-    Class<?> type = Class.forName("org.apache.fory.json.hierarchy.ConflictValue", true, loader);
+    Class<?> type = Class.forName("org.apache.fory.json.hierarchy." + simpleName, true, loader);
     return new LoadedType(root, loader, type);
+  }
+
+  private static <T> ForyJson registerMarker(ForyJsonBuilder builder, Class<T> type) {
+    return builder.registerCodec(type, new RuntimeMarkerCodec<T>("isolated")).build();
   }
 
   private static final class LoadedType implements AutoCloseable {

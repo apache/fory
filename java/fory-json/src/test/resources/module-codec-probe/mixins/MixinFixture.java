@@ -17,24 +17,18 @@
  * under the License.
  */
 
-package org.apache.fory.android;
+package mixins;
 
-import org.apache.fory.json.annotation.JsonCreator;
 import org.apache.fory.json.annotation.JsonMixin;
-import org.apache.fory.json.annotation.JsonProperty;
-import org.apache.fory.json.annotation.JsonPropertyOrder;
-import org.apache.fory.json.annotation.JsonUnwrapped;
 
-/** Processor entry point for the Android JSON mix-in acceptance pair. */
-@JsonMixin(target = GeneratedJsonMixinTarget.class)
-@JsonPropertyOrder({"id", "address"})
-public interface GeneratedJsonMixin {
-  @JsonProperty("user_id")
-  int getId();
+/** Mix-in fixture in a named-module package that is neither exported nor opened. */
+public final class MixinFixture {
+  private MixinFixture() {}
 
-  @JsonUnwrapped(prefix = "address_")
-  GeneratedJsonMixinTarget.Address getAddress();
+  public enum State {
+    ACTIVE
+  }
 
-  @JsonCreator({"id", "address"})
-  GeneratedJsonMixinTarget create(int id, GeneratedJsonMixinTarget.Address address);
+  @JsonMixin(target = State.class)
+  public interface StateMixin {}
 }

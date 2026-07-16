@@ -156,7 +156,6 @@ public final class JsonTypeResolver {
 
   @Internal
   public ObjectCodec<?> getUnwrappedObjectCodec(Class<?> rawType) {
-    sharedRegistry.validateMixinControls(rawType);
     TypeRef<?> ownerType = TypeRef.of(rawType);
     Object key = typeInfoKey(rawType, rawType);
     JsonTypeInfo typeInfo = typeInfos.get(key);
@@ -222,12 +221,10 @@ public final class JsonTypeResolver {
   public JsonTypeInfo getTypeInfo(
       Type declaredType, Class<?> fallback, Class<? extends JsonValueCodec<?>> codecClass) {
     Class<?> rawType = CodecUtils.rawType(declaredType, fallback);
-    sharedRegistry.validateMixinControls(rawType);
     return annotationTypeInfo(declaredType, rawType, codecClass);
   }
 
   private JsonTypeInfo resolveTypeInfo(Type declaredType, Class<?> rawType, Object key) {
-    sharedRegistry.validateMixinControls(rawType);
     JsonTypeInfo typeInfo = customTypeInfo(declaredType, rawType);
     if (typeInfo != null) {
       typeInfos.put(key, typeInfo);
@@ -249,7 +246,6 @@ public final class JsonTypeResolver {
   }
 
   private JsonTypeInfo resolveTypeInfo(Type declaredType, Class<?> rawType, JsonCodec annotation) {
-    sharedRegistry.validateMixinControls(rawType);
     Class<? extends JsonValueCodec<?>> valueCodec = annotation.value();
     Class<? extends JsonValueCodec<?>> elementCodec = annotation.elementCodec();
     Class<? extends JsonValueCodec<?>> contentCodec = annotation.contentCodec();
@@ -1809,7 +1805,6 @@ public final class JsonTypeResolver {
 
   private <T> ObjectCodec<T> newObjectCodec(TypeRef<T> ownerType) {
     Class<?> rawType = ownerType.getRawType();
-    sharedRegistry.validateMixinControls(rawType);
     sharedRegistry.checkSecure(rawType);
     if (rawType.isInterface()
         || Modifier.isAbstract(rawType.getModifiers())
@@ -1872,7 +1867,6 @@ public final class JsonTypeResolver {
   }
 
   private JsonTypeInfo buildRuntimeTypeInfo(Class<?> rawType) {
-    sharedRegistry.validateMixinControls(rawType);
     JsonTypeInfo custom = customTypeInfo(rawType, rawType);
     if (custom != null) {
       return custom;

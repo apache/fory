@@ -70,7 +70,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void mixInPairArtifacts() throws Exception {
+  public void mixinPairArtifacts() throws Exception {
     CompilationResult result =
         compile(
             "test.Person",
@@ -92,6 +92,7 @@ public class JsonTypeProcessorTest {
     String base = "PersonMixin_ForyJsonMixin_test_x2e_Person";
     assertTrue(result.hasGeneratedSource("test/" + base + ".java"));
     assertTrue(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
+    assertTrue(result.generatedSource("test/" + base + ".java").contains("return true;"));
     String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.PersonMixin.pro");
     assertTrue(rules.contains("-keep,allowoptimization class test.Person"), rules);
     assertTrue(rules.contains("-keep,allowoptimization class test.PersonMixin"), rules);
@@ -103,7 +104,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void mixInRuntimePipeline() throws Exception {
+  public void mixinRuntimePipeline() throws Exception {
     CompilationResult result =
         compile(
             "test.MixinTarget",
@@ -128,7 +129,7 @@ public class JsonTypeProcessorTest {
     assertTrue(result.success, result.diagnostics());
     ClassLoader loader = result.classLoader();
     Class<?> target = loader.loadClass("test.MixinTarget");
-    Class<?> mixIn = loader.loadClass("test.MixinTargetAnnotations");
+    Class<?> mixin = loader.loadClass("test.MixinTargetAnnotations");
     String base = "test.MixinTargetAnnotations_ForyJsonMixin_test_x2e_MixinTarget";
     GeneratedJsonCodec<?> codec = generatedCodec(loader, base + "_ForyJsonCodec");
     assertEquals(codec.type(), target);
@@ -139,7 +140,7 @@ public class JsonTypeProcessorTest {
               .withCodegen(codegen)
               .withAsyncCompilation(false)
               .withClassLoader(loader)
-              .registerMixIn(mixIn)
+              .registerMixin(mixin)
               .build();
       String text = json.toJson(value);
       assertEquals(text, "{\"user_id\":7,\"name\":\"pair\"}");
@@ -150,7 +151,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void mixInRecordPipeline() throws Exception {
+  public void mixinRecordPipeline() throws Exception {
     assumeJava16Source();
     CompilationResult result =
         compile(
@@ -174,7 +175,7 @@ public class JsonTypeProcessorTest {
     assertTrue(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
     ClassLoader loader = result.classLoader();
     Class<?> target = loader.loadClass("test.MixinRecord");
-    Class<?> mixIn = loader.loadClass("test.MixinRecordAnnotations");
+    Class<?> mixin = loader.loadClass("test.MixinRecordAnnotations");
     Object value = target.getConstructor(int.class, String.class).newInstance(9, "record");
     for (boolean codegen : new boolean[] {false, true}) {
       ForyJson json =
@@ -182,7 +183,7 @@ public class JsonTypeProcessorTest {
               .withCodegen(codegen)
               .withAsyncCompilation(false)
               .withClassLoader(loader)
-              .registerMixIn(mixIn)
+              .registerMixin(mixin)
               .build();
       String text = json.toJson(value);
       assertEquals(text, "{\"user_id\":9,\"display_name\":\"record\"}");
@@ -193,7 +194,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void mixInValueRecordPipeline() throws Exception {
+  public void mixinValueRecordPipeline() throws Exception {
     assumeJava16Source();
     CompilationResult result =
         compile(
@@ -213,7 +214,7 @@ public class JsonTypeProcessorTest {
     assertTrue(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
     ClassLoader loader = result.classLoader();
     Class<?> target = loader.loadClass("test.MixinValueRecord");
-    Class<?> mixIn = loader.loadClass("test.MixinValueRecordAnnotations");
+    Class<?> mixin = loader.loadClass("test.MixinValueRecordAnnotations");
     Object value = target.getConstructor(String.class).newInstance("write");
     for (boolean codegen : new boolean[] {false, true}) {
       ForyJson json =
@@ -221,46 +222,57 @@ public class JsonTypeProcessorTest {
               .withCodegen(codegen)
               .withAsyncCompilation(false)
               .withClassLoader(loader)
-              .registerMixIn(mixIn)
+              .registerMixin(mixin)
               .build();
       assertEquals(json.toJson(value), "\"write\"");
       Object decoded = json.fromJson("\"read\"", target);
       assertEquals(target.getMethod("value").invoke(decoded), "read");
     }
+
+    Files.delete(result.classRoot.resolve("test/" + base + "_ForyJsonCodec.class"));
+    ClassLoader missingLoader = result.classLoader();
+    Class<?> missingTarget = missingLoader.loadClass("test.MixinValueRecord");
+    Class<?> missingMixin = missingLoader.loadClass("test.MixinValueRecordAnnotations");
+    Object missingValue = missingTarget.getConstructor(String.class).newInstance("missing");
+    ForyJson missingJson =
+        ForyJson.builder().withClassLoader(missingLoader).registerMixin(missingMixin).build();
+    ForyJsonException failure =
+        expectThrows(ForyJsonException.class, () -> missingJson.toJson(missingValue));
+    assertTrue(failure.getMessage().contains("Missing generated JSON codec"), failure.getMessage());
   }
 
   @Test
-  public void mixInClassLoaderIdentity() throws Exception {
-    CompilationResult first = compile("test.LoaderTarget", mixInLoaderSource("first"));
-    CompilationResult second = compile("test.LoaderTarget", mixInLoaderSource("second"));
+  public void mixinClassLoaderIdentity() throws Exception {
+    CompilationResult first = compile("test.LoaderTarget", mixinLoaderSource("first"));
+    CompilationResult second = compile("test.LoaderTarget", mixinLoaderSource("second"));
     assertTrue(first.success, first.diagnostics());
     assertTrue(second.success, second.diagnostics());
     ClassLoader firstLoader = first.classLoader();
     ClassLoader secondLoader = second.classLoader();
     Class<?> firstTarget = firstLoader.loadClass("test.LoaderTarget");
     Class<?> secondTarget = secondLoader.loadClass("test.LoaderTarget");
-    Class<?> firstMixIn = firstLoader.loadClass("test.LoaderMixin");
-    Class<?> secondMixIn = secondLoader.loadClass("test.LoaderMixin");
+    Class<?> firstMixin = firstLoader.loadClass("test.LoaderMixin");
+    Class<?> secondMixin = secondLoader.loadClass("test.LoaderMixin");
     assertNotSame(firstTarget, secondTarget);
-    assertNotSame(firstMixIn, secondMixIn);
+    assertNotSame(firstMixin, secondMixin);
 
     Object firstValue = firstTarget.getConstructor().newInstance();
     Object secondValue = secondTarget.getConstructor().newInstance();
     firstTarget.getField("name").set(firstValue, "one");
     secondTarget.getField("name").set(secondValue, "two");
     ForyJson firstJson =
-        ForyJson.builder().withClassLoader(firstLoader).registerMixIn(firstMixIn).build();
+        ForyJson.builder().withClassLoader(firstLoader).registerMixin(firstMixin).build();
     ForyJson secondJson =
-        ForyJson.builder().withClassLoader(secondLoader).registerMixIn(secondMixIn).build();
+        ForyJson.builder().withClassLoader(secondLoader).registerMixin(secondMixin).build();
     assertEquals(firstJson.toJson(firstValue), "{\"first\":\"one\"}");
     assertEquals(secondJson.toJson(secondValue), "{\"second\":\"two\"}");
     expectThrows(
         ForyJsonException.class,
-        () -> ForyJson.builder().withClassLoader(firstLoader).registerMixIn(secondMixIn).build());
+        () -> ForyJson.builder().withClassLoader(firstLoader).registerMixin(secondMixin).build());
   }
 
   @Test
-  public void mixInNamesDoNotCollide() throws Exception {
+  public void mixinNamesDoNotCollide() throws Exception {
     Map<String, String> sources = new LinkedHashMap<>();
     sources.put("test.Target", "package test; public class Target { public int id; }\n");
     sources.put(
@@ -290,7 +302,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void mixInSelectorShape() throws Exception {
+  public void mixinSelectorShape() throws Exception {
     CompilationResult staticField =
         compile(
             "test.StaticFieldMixin",
@@ -334,7 +346,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void mixInMetadataAccessibility() throws Exception {
+  public void mixinMetadataAccessibility() throws Exception {
     CompilationResult privateSource =
         compile(
             "test.Owner",
@@ -349,11 +361,11 @@ public class JsonTypeProcessorTest {
     assertTrue(privateSource.success, privateSource.diagnostics());
     ClassLoader privateLoader = privateSource.classLoader();
     Class<?> privateTarget = privateLoader.loadClass("test.Owner$Target");
-    Class<?> privateMixIn = privateLoader.loadClass("test.Owner$HiddenMixin");
+    Class<?> privateMixin = privateLoader.loadClass("test.Owner$HiddenMixin");
     Object privateValue = privateTarget.getConstructor().newInstance();
     privateTarget.getField("id").setInt(privateValue, 7);
     ForyJson privateJson =
-        ForyJson.builder().withClassLoader(privateLoader).registerMixIn(privateMixIn).build();
+        ForyJson.builder().withClassLoader(privateLoader).registerMixin(privateMixin).build();
     assertEquals(privateJson.toJson(privateValue), "{\"value\":7}");
 
     Map<String, String> sources = new LinkedHashMap<>();
@@ -370,12 +382,12 @@ public class JsonTypeProcessorTest {
     CompilationResult protectedTarget = compile(sources);
     assertTrue(protectedTarget.success, protectedTarget.diagnostics());
     ClassLoader protectedLoader = protectedTarget.classLoader();
-    Class<?> protectedMixIn = protectedLoader.loadClass("app.Owner$Mixin");
-    ForyJson.builder().withClassLoader(protectedLoader).registerMixIn(protectedMixIn).build();
+    Class<?> protectedMixin = protectedLoader.loadClass("app.Owner$Mixin");
+    ForyJson.builder().withClassLoader(protectedLoader).registerMixin(protectedMixin).build();
   }
 
   @Test
-  public void mixInMemberConstructorRule() throws Exception {
+  public void mixinMemberConstructorRule() throws Exception {
     CompilationResult result =
         compile(
             "test.Owner",
@@ -396,7 +408,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void mixInAnySetterFallback() throws Exception {
+  public void mixinAnySetterFallback() throws Exception {
     CompilationResult result =
         compile(
             "test.Owner",
@@ -416,16 +428,16 @@ public class JsonTypeProcessorTest {
     assertTrue(result.success, result.diagnostics());
     ClassLoader loader = result.classLoader();
     Class<?> target = loader.loadClass("test.Owner$Target");
-    Class<?> mixIn = loader.loadClass("test.Owner$Mixin");
+    Class<?> mixin = loader.loadClass("test.Owner$Mixin");
     String codecName = "test.Owner_d_Mixin_ForyJsonMixin_test_x2e_Owner_d_Target_ForyJsonCodec";
     assertEquals(generatedCodec(loader, codecName).anySetterAccessor(), null);
-    ForyJson json = ForyJson.builder().withClassLoader(loader).registerMixIn(mixIn).build();
+    ForyJson json = ForyJson.builder().withClassLoader(loader).registerMixin(mixin).build();
     Object value = json.fromJson("{\"answer\":{\"id\":42}}", target);
     assertEquals(target.getMethod("getExtraId").invoke(value), 42);
   }
 
   @Test
-  public void mixInFamilyValidation() throws Exception {
+  public void mixinFamilyValidation() throws Exception {
     CompilationResult intrinsic =
         compile(
             "test.StateMixin",
@@ -490,25 +502,29 @@ public class JsonTypeProcessorTest {
             "package test;\n"
                 + "import org.apache.fory.json.annotation.*;\n"
                 + "@JsonCodec(Codec.class) class Base {}\n"
-                + "class Target extends Base {}\n"
+                + "@JsonCodec(EndpointCodec.class) class Endpoint {}\n"
+                + "class Target extends Base { public Endpoint endpoint; }\n"
                 + "@JsonMixin(target = Target.class)\n"
                 + "@JsonMixinRemove(JsonCodec.class) interface CodecBarrierMixin {}\n"
-                + "final class Codec implements org.apache.fory.json.codec.JsonValueCodec<Object> {\n"
+                + "class Codec implements org.apache.fory.json.codec.JsonValueCodec<Object> {\n"
                 + "  public Codec() {}\n"
                 + "  public void writeString(org.apache.fory.json.writer.StringJsonWriter w, Object v) {}\n"
                 + "  public void writeUtf8(org.apache.fory.json.writer.Utf8JsonWriter w, Object v) {}\n"
                 + "  public Object readLatin1(org.apache.fory.json.reader.Latin1JsonReader r) { return null; }\n"
                 + "  public Object readUtf16(org.apache.fory.json.reader.Utf16JsonReader r) { return null; }\n"
                 + "  public Object readUtf8(org.apache.fory.json.reader.Utf8JsonReader r) { return null; }\n"
+                + "}\n"
+                + "final class EndpointCodec extends Codec { public EndpointCodec() {}\n"
                 + "}\n");
     assertTrue(result.success, result.diagnostics());
     String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.CodecBarrierMixin.pro");
     assertFalse(rules.contains("class test.Codec "), rules);
     assertFalse(rules.contains("class test.Base"), rules);
+    assertTrue(rules.contains("class test.EndpointCodec { public <init>(); }"), rules);
   }
 
   @Test
-  public void mixInCreatorIsExact() throws Exception {
+  public void mixinCreatorIsExact() throws Exception {
     CompilationResult result =
         compile(
             "test.CreatorMixin",
@@ -524,7 +540,7 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
-  public void mixInCodecSkipsCompanion() throws Exception {
+  public void mixinCodecSkipsCompanion() throws Exception {
     CompilationResult result =
         compile(
             "test.CodecMixin",
@@ -545,13 +561,14 @@ public class JsonTypeProcessorTest {
     String base = "CodecMixin_ForyJsonMixin_test_x2e_Target";
     assertTrue(result.hasGeneratedSource("test/" + base + ".java"));
     assertFalse(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
+    assertTrue(result.generatedSource("test/" + base + ".java").contains("return false;"));
     String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.CodecMixin.pro");
     assertTrue(rules.contains("class test.Codec { public <init>(); }"), rules);
   }
 
   @Test
   @SuppressWarnings({"rawtypes", "unchecked"})
-  public void mixInFamiliesSkipCompanion() throws Exception {
+  public void mixinFamiliesSkipCompanion() throws Exception {
     Map<String, String> sources = new LinkedHashMap<>();
     sources.put("test.Shape", "package test; public interface Shape {}\n");
     sources.put(
@@ -607,9 +624,9 @@ public class JsonTypeProcessorTest {
     Class<?> circle = loader.loadClass("test.Circle");
     Class<?> valueType = loader.loadClass("test.ValueTarget");
     Class<?> state = loader.loadClass("test.State");
-    Class<?> shapeMixIn = loader.loadClass("test.ShapeMixin");
-    Class<?> valueMixIn = loader.loadClass("test.ValueMixin");
-    Class<?> stateMixIn = loader.loadClass("test.StateMixin");
+    Class<?> shapeMixin = loader.loadClass("test.ShapeMixin");
+    Class<?> valueMixin = loader.loadClass("test.ValueMixin");
+    Class<?> stateMixin = loader.loadClass("test.StateMixin");
     Object circleValue = circle.getConstructor().newInstance();
     circle.getField("radius").setInt(circleValue, 3);
     Object value = valueType.getMethod("create", String.class).invoke(null, "write");
@@ -620,9 +637,9 @@ public class JsonTypeProcessorTest {
               .withCodegen(codegen)
               .withAsyncCompilation(false)
               .withClassLoader(loader)
-              .registerMixIn(shapeMixIn)
-              .registerMixIn(valueMixIn)
-              .registerMixIn(stateMixIn)
+              .registerMixin(shapeMixin)
+              .registerMixin(valueMixin)
+              .registerMixin(stateMixin)
               .build();
       assertEquals(json.toJson(circleValue, (Class) shape), "{\"kind\":\"circle\",\"radius\":3}");
       Object decodedShape = json.fromJson("{\"kind\":\"circle\",\"radius\":4}", shape);
@@ -1874,7 +1891,7 @@ public class JsonTypeProcessorTest {
     return compile(sources);
   }
 
-  private static String mixInLoaderSource(String jsonName) {
+  private static String mixinLoaderSource(String jsonName) {
     return "package test;\n"
         + "import org.apache.fory.json.annotation.*;\n"
         + "public final class LoaderTarget { public String name; }\n"

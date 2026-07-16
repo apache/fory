@@ -148,7 +148,7 @@ public class JsonAndroidRuntimeTest {
       ForyJsonException exception =
           expectThrows(
               ForyJsonException.class,
-              () -> ForyJson.builder().registerMixIn(MissingMetadataMixIn.class).build());
+              () -> ForyJson.builder().registerMixin(MissingMetadataMixin.class).build());
       assertTrue(exception.getMessage().contains("Missing generated JSON mix-in metadata"));
       ForyJson json = ForyJson.builder().withCodegen(true).withAsyncCompilation(true).build();
       assertFalse(ForyJsonTestModels.hasGeneratedCapability(json, AndroidModel.class));
@@ -225,7 +225,7 @@ public class JsonAndroidRuntimeTest {
   }
 
   @JsonMixin(target = MissingMetadataTarget.class)
-  public abstract static class MissingMetadataMixIn {
+  public abstract static class MissingMetadataMixin {
     @JsonProperty("mixed_name")
     String name;
   }

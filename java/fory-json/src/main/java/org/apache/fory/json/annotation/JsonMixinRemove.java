@@ -41,7 +41,7 @@ import java.lang.annotation.Target;
  * type-level removal mask an inherited {@link JsonCodec} or {@link JsonPropertyOrder}. It never
  * removes a field, method, constructor, parameter, or logical property.
  *
- * @see org.apache.fory.json.ForyJsonBuilder#registerMixIn(Class)
+ * @see org.apache.fory.json.ForyJsonBuilder#registerMixin(Class)
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)

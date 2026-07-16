@@ -130,7 +130,7 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
-  public void mixInCapabilitiesPublish() throws Exception {
+  public void mixinCapabilitiesPublish() throws Exception {
     ControlledJson controlled =
         controlledJson(Collections.singletonMap(AsyncMixinTarget.class, AsyncMixin.class));
     ForyJson json = controlled.json;
@@ -915,11 +915,11 @@ public class JsonAsyncCompilationTest {
     return controlledJson(codecs, Collections.<Class<?>, Class<?>>emptyMap());
   }
 
-  private static ControlledJson controlledJson(Map<Class<?>, Class<?>> mixIns) throws Exception {
-    return controlledJson(new CodecRegistry(), mixIns);
+  private static ControlledJson controlledJson(Map<Class<?>, Class<?>> mixins) throws Exception {
+    return controlledJson(new CodecRegistry(), mixins);
   }
 
-  private static ControlledJson controlledJson(CodecRegistry codecs, Map<Class<?>, Class<?>> mixIns)
+  private static ControlledJson controlledJson(CodecRegistry codecs, Map<Class<?>, Class<?>> mixins)
       throws Exception {
     JsonConfig config =
         new JsonConfig(
@@ -934,7 +934,7 @@ public class JsonAsyncCompilationTest {
             1,
             2 * 1024 * 1024,
             codecs,
-            mixIns,
+            mixins,
             null);
     ControlledExecutor executor = new ControlledExecutor();
     Constructor<JsonSharedRegistry> constructor =

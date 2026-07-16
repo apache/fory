@@ -120,7 +120,7 @@ public class ObjectCodec<T> implements JsonValueCodec<T> {
           sharedRegistry,
           generatedCodec);
     } catch (ForyJsonException e) {
-      throw sharedRegistry.mixInSchemaFailure(ownerType.getRawType(), e);
+      throw sharedRegistry.mixinSchemaFailure(ownerType.getRawType(), e);
     }
   }
 

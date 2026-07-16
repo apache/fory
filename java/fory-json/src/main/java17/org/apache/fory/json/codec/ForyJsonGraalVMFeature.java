@@ -72,7 +72,7 @@ final class ForyJsonGraalVMFeature implements Feature {
   private final Set<Class<?>> processedReachableTypes = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedDeclarations = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedModels = ConcurrentHashMap.newKeySet();
-  private final Set<MixinPair> processedMixIns = ConcurrentHashMap.newKeySet();
+  private final Set<MixinPair> processedMixins = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedCodecs = ConcurrentHashMap.newKeySet();
   private final Set<Class<?>> processedContainers = ConcurrentHashMap.newKeySet();
 
@@ -104,9 +104,9 @@ final class ForyJsonGraalVMFeature implements Feature {
         if (type.getDeclaredAnnotation(JsonType.class) != null) {
           changed |= registerModel(access, type);
         }
-        JsonMixin mixIn = type.getDeclaredAnnotation(JsonMixin.class);
-        if (mixIn != null) {
-          changed |= registerMixIn(access, type, mixIn.target());
+        JsonMixin mixin = type.getDeclaredAnnotation(JsonMixin.class);
+        if (mixin != null) {
+          changed |= registerMixin(access, type, mixin.target());
         }
         if (type == ForyJson.class) {
           registerBuiltInTypes(access);
@@ -134,20 +134,20 @@ final class ForyJsonGraalVMFeature implements Feature {
         RuntimeReflection.registerForReflectiveInstantiation(type);
       }
     }
-    registerGeneratedCodec(access, type, null);
+    registerGeneratedCodec(access, type, null, false);
     registerSubtypes(access, type);
     return true;
   }
 
-  private boolean registerMixIn(
-      DuringAnalysisAccess access, Class<?> mixInType, Class<?> targetType) {
-    MixinPair pair = new MixinPair(targetType, mixInType);
-    if (!processedMixIns.add(pair)) {
+  private boolean registerMixin(
+      DuringAnalysisAccess access, Class<?> mixinType, Class<?> targetType) {
+    MixinPair pair = new MixinPair(targetType, mixinType);
+    if (!processedMixins.add(pair)) {
       return false;
     }
-    JsonMixinView annotations = JsonSharedRegistry.resolveMixin(targetType, mixInType);
-    registerMixInMetadata(access, targetType, mixInType);
-    registerMixInSource(annotations);
+    JsonMixinView annotations = JsonSharedRegistry.resolveMixin(targetType, mixinType);
+    registerMixinMetadata(access, targetType, mixinType);
+    registerMixinSource(annotations);
     registerMixinDeclarations(annotations);
     RuntimeReflection.register(targetType);
     registerContainer(targetType);
@@ -160,14 +160,14 @@ final class ForyJsonGraalVMFeature implements Feature {
         RuntimeReflection.registerForReflectiveInstantiation(targetType);
       }
     }
-    registerGeneratedCodec(access, targetType, mixInType);
+    registerGeneratedCodec(access, targetType, mixinType, annotations.codecRequired());
     registerSubtypes(access, targetType, annotations);
     return true;
   }
 
-  private void registerMixInMetadata(
-      DuringAnalysisAccess access, Class<?> targetType, Class<?> mixInType) {
-    String name = JsonSharedRegistry.generatedMixinMetadataBinaryName(mixInType, targetType);
+  private void registerMixinMetadata(
+      DuringAnalysisAccess access, Class<?> targetType, Class<?> mixinType) {
+    String name = JsonSharedRegistry.generatedMixinMetadataBinaryName(mixinType, targetType);
     Class<?> metadataType = access.findClassByName(name);
     if (metadataType == null
         || !GeneratedJsonMixinMetadata.class.isAssignableFrom(metadataType)) {
@@ -177,7 +177,7 @@ final class ForyJsonGraalVMFeature implements Feature {
               + " for "
               + targetType.getName()
               + " and "
-              + mixInType.getName());
+              + mixinType.getName());
     }
     RuntimeReflection.register(metadataType);
     try {
@@ -189,9 +189,9 @@ final class ForyJsonGraalVMFeature implements Feature {
     }
   }
 
-  private void registerMixInSource(JsonMixinView annotations) {
-    Class<?> mixInType = annotations.mixInType();
-    RuntimeReflection.register(mixInType);
+  private void registerMixinSource(JsonMixinView annotations) {
+    Class<?> mixinType = annotations.mixinType();
+    RuntimeReflection.register(mixinType);
     for (AnnotatedElement declaration : annotations.sourceDeclarations()) {
       if (declaration instanceof Field) {
         RuntimeReflection.register((Field) declaration);
@@ -206,13 +206,17 @@ final class ForyJsonGraalVMFeature implements Feature {
   }
 
   private void registerGeneratedCodec(
-      DuringAnalysisAccess access, Class<?> type, Class<?> mixInType) {
+      DuringAnalysisAccess access, Class<?> type, Class<?> mixinType, boolean required) {
     String codecName =
-        mixInType == null
+        mixinType == null
             ? JsonSharedRegistry.generatedCodecBinaryName(type)
-            : JsonSharedRegistry.generatedMixinCodecBinaryName(mixInType, type);
+            : JsonSharedRegistry.generatedMixinCodecBinaryName(mixinType, type);
     Class<?> codecClass = access.findClassByName(codecName);
     if (codecClass == null) {
+      if (required) {
+        throw new IllegalStateException(
+            "Missing generated JSON codec " + codecName + " for " + type.getName());
+      }
       return;
     }
     if (!GeneratedJsonCodec.class.isAssignableFrom(codecClass)) {
@@ -250,7 +254,7 @@ final class ForyJsonGraalVMFeature implements Feature {
         throw new IllegalStateException(
             "Generated JSON codec Record metadata does not match " + type.getName());
       }
-      GeneratedJsonCodecFactories.register(type, mixInType, factory);
+      GeneratedJsonCodecFactories.register(type, mixinType, factory);
     } catch (Throwable e) {
       throw new IllegalStateException(
           "Cannot initialize generated JSON codec factory " + factoryName, e);
@@ -649,11 +653,11 @@ final class ForyJsonGraalVMFeature implements Feature {
 
   private static final class MixinPair {
     private final Class<?> targetType;
-    private final Class<?> mixInType;
+    private final Class<?> mixinType;
 
-    private MixinPair(Class<?> targetType, Class<?> mixInType) {
+    private MixinPair(Class<?> targetType, Class<?> mixinType) {
       this.targetType = targetType;
-      this.mixInType = mixInType;
+      this.mixinType = mixinType;
     }
 
     @Override
@@ -665,12 +669,12 @@ final class ForyJsonGraalVMFeature implements Feature {
         return false;
       }
       MixinPair that = (MixinPair) other;
-      return targetType == that.targetType && mixInType == that.mixInType;
+      return targetType == that.targetType && mixinType == that.mixinType;
     }
 
     @Override
     public int hashCode() {
-      return 31 * System.identityHashCode(targetType) + System.identityHashCode(mixInType);
+      return 31 * System.identityHashCode(targetType) + System.identityHashCode(mixinType);
     }
   }
 }

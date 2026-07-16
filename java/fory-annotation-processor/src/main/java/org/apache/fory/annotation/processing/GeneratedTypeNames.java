@@ -31,18 +31,18 @@ final class GeneratedTypeNames {
     return escape(binaryName, true);
   }
 
-  static String jsonMixinSimpleName(String targetBinaryName, String mixInBinaryName) {
-    int packageSeparator = mixInBinaryName.lastIndexOf('.');
-    String mixInSimpleName = mixInBinaryName.substring(packageSeparator + 1);
-    return escapeBinarySimpleName(mixInSimpleName)
+  static String jsonMixinSimpleName(String targetBinaryName, String mixinBinaryName) {
+    int packageSeparator = mixinBinaryName.lastIndexOf('.');
+    String mixinSimpleName = mixinBinaryName.substring(packageSeparator + 1);
+    return escapeBinarySimpleName(mixinSimpleName)
         + "_ForyJsonMixin_"
         + escapeBinarySimpleName(targetBinaryName);
   }
 
-  static String jsonMixinBinaryName(String targetBinaryName, String mixInBinaryName) {
-    int packageSeparator = mixInBinaryName.lastIndexOf('.');
-    String packageName = packageSeparator < 0 ? "" : mixInBinaryName.substring(0, packageSeparator);
-    String simpleName = jsonMixinSimpleName(targetBinaryName, mixInBinaryName);
+  static String jsonMixinBinaryName(String targetBinaryName, String mixinBinaryName) {
+    int packageSeparator = mixinBinaryName.lastIndexOf('.');
+    String packageName = packageSeparator < 0 ? "" : mixinBinaryName.substring(0, packageSeparator);
+    String simpleName = jsonMixinSimpleName(targetBinaryName, mixinBinaryName);
     return packageName.isEmpty() ? simpleName : packageName + "." + simpleName;
   }
 
