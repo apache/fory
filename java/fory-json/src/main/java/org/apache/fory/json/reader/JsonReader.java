@@ -515,6 +515,15 @@ public abstract class JsonReader {
     return false;
   }
 
+  /**
+   * Tries to read a JSON {@code null} token.
+   *
+   * <p>Concrete readers override this method with their direct representation-specific token scan.
+   */
+  public boolean tryReadNullToken() {
+    return tryReadNull();
+  }
+
   public final boolean readBoolean() {
     skipWhitespace();
     if (startsWith("true")) {

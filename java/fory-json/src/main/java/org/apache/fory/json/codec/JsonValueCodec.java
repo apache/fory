@@ -34,6 +34,9 @@ package org.apache.fory.json.codec;
  * the Java type's semantics for every representation. Generated object specializations implement
  * only the narrow capability they accelerate and are installed independently in the corresponding
  * {@link org.apache.fory.json.resolver.JsonTypeInfo} slot.
+ *
+ * <p>Application codecs whose semantics are representation-neutral may extend {@link
+ * AbstractJsonValueCodec}. Performance-sensitive codecs should implement this interface directly.
  */
 public interface JsonValueCodec<T>
     extends StringWriterCodec<T>,
