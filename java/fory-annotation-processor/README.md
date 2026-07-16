@@ -51,5 +51,6 @@ annotations, so every supported codec member remains available through reflectio
 rules. See
 [`docs/guide/java/android-support.md`](../../docs/guide/java/android-support.md).
 
-For the full user-facing guide, see
-[`docs/guide/java/static-generated-serializers.md`](../../docs/guide/java/static-generated-serializers.md).
+For the full user-facing guides, see
+[`docs/guide/java/static-generated-serializers.md`](../../docs/guide/java/static-generated-serializers.md)
+and [`docs/guide/java/json-support.md`](../../docs/guide/java/json-support.md).

@@ -26,6 +26,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -92,7 +93,7 @@ public final class JsonConfig {
     this.concurrencyLevel = concurrencyLevel;
     this.bufferSizeLimitBytes = bufferSizeLimitBytes;
     this.codecRegistry = codecRegistry;
-    this.mixins = immutableMixins(mixins, classLoader);
+    this.mixins = immutableMixins(mixins);
     this.typeChecker = typeChecker;
     typeCheckContext = new JsonTypeCheckContext();
     codecRegistryKey = codecRegistry.codegenKey();
@@ -165,12 +166,6 @@ public final class JsonConfig {
     return mixins.get(targetType);
   }
 
-  /** Returns whether this runtime has any enabled JSON mix-ins. */
-  @Internal
-  public boolean hasMixins() {
-    return !mixins.isEmpty();
-  }
-
   /** Returns a fresh array containing every exact registered mix-in target. */
   @Internal
   public Class<?>[] mixinTargets() {
@@ -229,37 +224,15 @@ public final class JsonConfig {
     return result;
   }
 
-  private static Map<Class<?>, Class<?>> immutableMixins(
-      Map<Class<?>, Class<?>> registrations, ClassLoader classLoader) {
+  private static Map<Class<?>, Class<?>> immutableMixins(Map<Class<?>, Class<?>> registrations) {
     if (registrations.isEmpty()) {
       return Collections.emptyMap();
     }
     IdentityHashMap<Class<?>, Class<?>> copied = new IdentityHashMap<>(registrations.size());
     for (Map.Entry<Class<?>, Class<?>> entry : registrations.entrySet()) {
-      Class<?> target = entry.getKey();
-      Class<?> mixin = entry.getValue();
-      requireExactClass(classLoader, target, "target");
-      requireExactClass(classLoader, mixin, "source");
-      copied.put(target, mixin);
+      copied.put(entry.getKey(), entry.getValue());
     }
     return Collections.unmodifiableMap(copied);
-  }
-
-  private static void requireExactClass(ClassLoader classLoader, Class<?> type, String role) {
-    Class<?> resolved;
-    try {
-      resolved = Class.forName(type.getName(), false, classLoader);
-    } catch (ClassNotFoundException | LinkageError e) {
-      throw new ForyJsonException(
-          "Configured class loader cannot resolve JSON mix-in " + role + ' ' + type.getName(), e);
-    }
-    if (resolved != type) {
-      throw new ForyJsonException(
-          "Configured class loader resolves a different JSON mix-in "
-              + role
-              + ' '
-              + type.getName());
-    }
   }
 
   private static String mixinKey(Map<Class<?>, Class<?>> mixins) {
@@ -267,16 +240,38 @@ public final class JsonConfig {
       return "";
     }
     List<Map.Entry<Class<?>, Class<?>>> entries = new ArrayList<>(mixins.entrySet());
-    entries.sort(Comparator.comparing(entry -> entry.getKey().getName()));
+    entries.sort(
+        Comparator.comparing((Map.Entry<Class<?>, Class<?>> entry) -> entry.getKey().getName())
+            .thenComparing(entry -> entry.getValue().getName())
+            .thenComparingInt(entry -> classIdentity(entry.getKey()))
+            .thenComparingInt(entry -> classIdentity(entry.getValue())));
     StringBuilder builder = new StringBuilder(entries.size() * 64);
     for (Map.Entry<Class<?>, Class<?>> entry : entries) {
       builder
           .append(entry.getKey().getName())
+          .append('#')
+          .append(classIdentity(entry.getKey()))
           .append('=')
           .append(entry.getValue().getName())
+          .append('#')
+          .append(classIdentity(entry.getValue()))
           .append(';');
     }
     return builder.toString();
+  }
+
+  private static final AtomicInteger CLASS_ID_COUNTER = new AtomicInteger(0);
+  private static final Map<Class<?>, Integer> CLASS_IDS = new WeakHashMap<>();
+
+  private static int classIdentity(Class<?> type) {
+    synchronized (CLASS_IDS) {
+      Integer identity = CLASS_IDS.get(type);
+      if (identity == null) {
+        identity = CLASS_ID_COUNTER.incrementAndGet();
+        CLASS_IDS.put(type, identity);
+      }
+      return identity;
+    }
   }
 
   private static final AtomicInteger COUNTER = new AtomicInteger(0);

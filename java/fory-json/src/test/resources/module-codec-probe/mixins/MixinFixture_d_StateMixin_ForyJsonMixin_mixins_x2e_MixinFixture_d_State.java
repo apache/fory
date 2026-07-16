@@ -21,7 +21,14 @@ package mixins;
 
 import org.apache.fory.json.resolver.GeneratedJsonMixinMetadata;
 
-/** Exact processor-shaped metadata fixture for {@link MixinFixture.StateMixin}. */
+/**
+ * Exact processor-shaped metadata fixture for {@link MixinFixture.StateMixin}.
+ *
+ * <p>This module probe lives in {@code fory-json}, which cannot depend on the annotation processor:
+ * the processor's tests already depend on {@code fory-json}, so the reverse test dependency would
+ * create a reactor cycle. Processor tests verify generation; this fixture isolates construction of
+ * generated metadata from a named-module package that is neither exported nor opened.
+ */
 public final class MixinFixture_d_StateMixin_ForyJsonMixin_mixins_x2e_MixinFixture_d_State
     implements GeneratedJsonMixinMetadata {
   public MixinFixture_d_StateMixin_ForyJsonMixin_mixins_x2e_MixinFixture_d_State() {}
@@ -38,6 +45,11 @@ public final class MixinFixture_d_StateMixin_ForyJsonMixin_mixins_x2e_MixinFixtu
 
   @Override
   public boolean codecRequired() {
+    return false;
+  }
+
+  @Override
+  public boolean valueMetadata() {
     return false;
   }
 }

@@ -417,6 +417,7 @@ not merge individual annotation members. `JsonType` cannot be added or removed b
 Use `JsonMixinRemove` when the target's annotation should not be effective in this configuration:
 
 ```java
+import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonMixinRemove;
 import org.apache.fory.json.annotation.JsonRawValue;
 

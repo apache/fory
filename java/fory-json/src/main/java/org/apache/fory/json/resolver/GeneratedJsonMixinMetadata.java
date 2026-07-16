@@ -21,7 +21,7 @@ package org.apache.fory.json.resolver;
 
 import org.apache.fory.annotation.Internal;
 
-/** Source-generated identity metadata for one exact JSON target and mix-in pair. */
+/** Source-generated identity and platform requirements for one exact JSON target/mix-in pair. */
 @Internal
 public interface GeneratedJsonMixinMetadata {
   /** Returns the binary name of the exact target class. */
@@ -32,4 +32,7 @@ public interface GeneratedJsonMixinMetadata {
 
   /** Returns whether this pair requires its generated JSON codec companion. */
   boolean codecRequired();
+
+  /** Returns whether this pair uses exact {@code JsonValue} member and creator metadata. */
+  boolean valueMetadata();
 }

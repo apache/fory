@@ -239,16 +239,31 @@ public final class AndroidJsonScenarios {
   }
 
   public static void generatedMixin() {
-    ForyJson json = ForyJson.builder().registerMixin(GeneratedJsonMixin.class).build();
     GeneratedJsonMixinTarget value =
         GeneratedJsonMixinTarget.create(
             34, new GeneratedJsonMixinTarget.Address("Hangzhou", 310000));
+    String direct = ForyJson.builder().build().toJson(value);
+    check(direct.contains("\"id\":34"));
+    check(direct.contains("\"address\":{"));
+
+    ForyJson json = ForyJson.builder().registerMixin(GeneratedJsonMixin.class).build();
     String encoded = json.toJson(value);
     checkEquals("{\"user_id\":34,\"address_city\":\"Hangzhou\",\"address_zip\":310000}", encoded);
     GeneratedJsonMixinTarget decoded = json.fromJson(encoded, GeneratedJsonMixinTarget.class);
     checkEquals(34, decoded.getId());
     checkEquals("Hangzhou", decoded.getAddress().city);
     checkEquals(310000, decoded.getAddress().zip);
+
+    ForyJson alternate =
+        ForyJson.builder().registerMixin(GeneratedJsonAlternateMixin.class).build();
+    String alternateJson = alternate.toJson(value);
+    checkEquals(
+        "{\"account_id\":34,\"location_city\":\"Hangzhou\",\"location_zip\":310000}",
+        alternateJson);
+    GeneratedJsonMixinTarget alternateDecoded =
+        alternate.fromJson(alternateJson, GeneratedJsonMixinTarget.class);
+    checkEquals(34, alternateDecoded.getId());
+    checkEquals("Hangzhou", alternateDecoded.getAddress().city);
   }
 
   public static void generatedMixinRecord() {
@@ -352,6 +367,20 @@ public final class AndroidJsonScenarios {
     GeneratedJsonMixinTarget create(int id, GeneratedJsonMixinTarget.Address address);
   }
 
+  @JsonMixin(target = GeneratedJsonMixinTarget.class)
+  @JsonPropertyOrder({"id", "address"})
+  public interface GeneratedJsonAlternateMixin {
+    @JsonProperty("account_id")
+    int getId();
+
+    @JsonUnwrapped(prefix = "location_")
+    GeneratedJsonMixinTarget.Address getAddress();
+
+    @JsonCreator({"id", "address"})
+    GeneratedJsonMixinTarget create(int id, GeneratedJsonMixinTarget.Address address);
+  }
+
+  @JsonType
   public static final class GeneratedJsonMixinTarget {
     private final int id;
     private final Address address;

@@ -45,23 +45,22 @@ import javax.lang.model.util.Types;
 
 /** Resolves one mix-in source into an immutable effective-annotation table for its exact target. */
 final class JsonMixinAnnotations {
-  static final String JSON_PACKAGE = "org.apache.fory.json";
-  static final String JSON_MIXIN = JSON_PACKAGE + ".annotation.JsonMixin";
-  static final String JSON_MIXIN_REMOVE = JSON_PACKAGE + ".annotation.JsonMixinRemove";
-  static final String JSON_TYPE = JSON_PACKAGE + ".annotation.JsonType";
-  static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
-  static final String JSON_ANY_PROPERTY = JSON_PACKAGE + ".annotation.JsonAnyProperty";
-  static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
-  static final String JSON_BASE64 = JSON_PACKAGE + ".annotation.JsonBase64";
-  static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
-  static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
-  static final String JSON_IGNORE = JSON_PACKAGE + ".annotation.JsonIgnore";
-  static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
-  static final String JSON_PROPERTY_ORDER = JSON_PACKAGE + ".annotation.JsonPropertyOrder";
-  static final String JSON_RAW_VALUE = JSON_PACKAGE + ".annotation.JsonRawValue";
-  static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
-  static final String JSON_UNWRAPPED = JSON_PACKAGE + ".annotation.JsonUnwrapped";
-  static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
+  private static final String JSON_PACKAGE = "org.apache.fory.json";
+  private static final String JSON_MIXIN_REMOVE = JSON_PACKAGE + ".annotation.JsonMixinRemove";
+  private static final String JSON_TYPE = JSON_PACKAGE + ".annotation.JsonType";
+  private static final String JSON_ANY_GETTER = JSON_PACKAGE + ".annotation.JsonAnyGetter";
+  private static final String JSON_ANY_PROPERTY = JSON_PACKAGE + ".annotation.JsonAnyProperty";
+  private static final String JSON_ANY_SETTER = JSON_PACKAGE + ".annotation.JsonAnySetter";
+  private static final String JSON_BASE64 = JSON_PACKAGE + ".annotation.JsonBase64";
+  private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
+  private static final String JSON_CREATOR = JSON_PACKAGE + ".annotation.JsonCreator";
+  private static final String JSON_IGNORE = JSON_PACKAGE + ".annotation.JsonIgnore";
+  private static final String JSON_PROPERTY = JSON_PACKAGE + ".annotation.JsonProperty";
+  private static final String JSON_PROPERTY_ORDER = JSON_PACKAGE + ".annotation.JsonPropertyOrder";
+  private static final String JSON_RAW_VALUE = JSON_PACKAGE + ".annotation.JsonRawValue";
+  private static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
+  private static final String JSON_UNWRAPPED = JSON_PACKAGE + ".annotation.JsonUnwrapped";
+  private static final String JSON_VALUE = JSON_PACKAGE + ".annotation.JsonValue";
 
   private static final Set<String> MAPPING_ANNOTATIONS =
       Collections.unmodifiableSet(
@@ -183,6 +182,11 @@ final class JsonMixinAnnotations {
     return overlay != null && overlay.removals.contains(annotationName);
   }
 
+  boolean replaces(Element element, String annotationName) {
+    Overlay overlay = overlays.get(element);
+    return overlay != null && overlay.replacements.containsKey(annotationName);
+  }
+
   boolean hasAnnotation(Element element, String annotationName) {
     return annotation(element, annotationName) != null;
   }
@@ -280,23 +284,15 @@ final class JsonMixinAnnotations {
   }
 
   List<Element> sourceSelectors() {
-    List<Element> selectors = new ArrayList<>();
-    if (overlay(source) != null) {
-      selectors.add(source);
-    }
-    for (Element element : source.getEnclosedElements()) {
-      if (overlay(element) != null) {
-        selectors.add(element);
-      }
-      if (element instanceof ExecutableElement) {
-        for (VariableElement parameter : ((ExecutableElement) element).getParameters()) {
-          if (overlay(parameter) != null) {
-            selectors.add(parameter);
-          }
-        }
-      }
+    List<Element> selectors = new ArrayList<>(overlays.size());
+    for (Overlay overlay : overlays.values()) {
+      selectors.add(overlay.source);
     }
     return selectors;
+  }
+
+  List<Element> targetSelectors() {
+    return new ArrayList<>(overlays.keySet());
   }
 
   private static void validateTypes(TypeElement target, TypeElement source) {
@@ -351,7 +347,7 @@ final class JsonMixinAnnotations {
           superclass.getKind() == TypeKind.NONE ? null : types.asElement(superclass);
       current = superElement instanceof TypeElement ? (TypeElement) superElement : null;
     }
-    return oneMatch(elements, target, source, selector, matches, "field");
+    return oneMatch(elements, target, source, selector, "field", matches);
   }
 
   private static ExecutableElement matchMethod(
@@ -387,7 +383,7 @@ final class JsonMixinAnnotations {
         }
       }
     }
-    return oneMatch(elements, target, source, selector, matches, "method");
+    return oneMatch(elements, target, source, selector, "method", matches);
   }
 
   private static List<TypeElement> classHierarchy(Types types, TypeElement target) {
@@ -474,16 +470,6 @@ final class JsonMixinAnnotations {
       }
     }
     return false;
-  }
-
-  private static <T extends Element> T oneMatch(
-      Elements elements,
-      TypeElement target,
-      TypeElement source,
-      Element selector,
-      List<T> matches,
-      String kind) {
-    return oneMatch(elements, target, source, selector, kind, matches);
   }
 
   private static <T extends Element> T oneMatch(

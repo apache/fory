@@ -90,10 +90,8 @@ final class JsonValueDeclaration {
       raw = registry.annotation(type, method, JsonRawValue.class) != null;
     }
     JsonCreatorDeclaration creatorDeclaration = JsonCreatorDeclaration.find(type, registry);
-    Executable declaredCreator =
-        creatorDeclaration == null ? null : creatorDeclaration.executable();
     Executable creator = valueCreator(type, generatedCodec, registry, creatorDeclaration);
-    registry.validateValueMixin(type, valueMembers, declaredCreator);
+    registry.validateValueMixin(type, valueMembers, creator);
     GeneratedJsonCodec<?> creatorBackend =
         generatedCodec != null && generatedCodec.matchesCreator(creator) ? generatedCodec : null;
     return new JsonValueDeclaration(
@@ -216,8 +214,7 @@ final class JsonValueDeclaration {
     if (registry.annotation(type, method, JsonCodec.class) != null
         || registry.annotation(type, method, JsonBase64.class) != null
         || registry.annotation(type, method, JsonAnyGetter.class) != null
-        || registry.annotation(type, method, JsonUnwrapped.class) != null
-        || registry.annotation(type, method, JsonIgnore.class) != null) {
+        || registry.annotation(type, method, JsonUnwrapped.class) != null) {
       throw new ForyJsonException("Conflicting JSON annotations on @JsonValue method " + method);
     }
   }

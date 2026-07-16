@@ -215,6 +215,9 @@ public class JsonTypeProcessorTest {
     ClassLoader loader = result.classLoader();
     Class<?> target = loader.loadClass("test.MixinValueRecord");
     Class<?> mixin = loader.loadClass("test.MixinValueRecordAnnotations");
+    Object metadata = loader.loadClass("test." + base).getConstructor().newInstance();
+    assertEquals(metadata.getClass().getMethod("codecRequired").invoke(metadata), true);
+    assertEquals(metadata.getClass().getMethod("valueMetadata").invoke(metadata), true);
     Object value = target.getConstructor(String.class).newInstance("write");
     for (boolean codegen : new boolean[] {false, true}) {
       ForyJson json =
@@ -266,9 +269,9 @@ public class JsonTypeProcessorTest {
         ForyJson.builder().withClassLoader(secondLoader).registerMixin(secondMixin).build();
     assertEquals(firstJson.toJson(firstValue), "{\"first\":\"one\"}");
     assertEquals(secondJson.toJson(secondValue), "{\"second\":\"two\"}");
-    expectThrows(
-        ForyJsonException.class,
-        () -> ForyJson.builder().withClassLoader(firstLoader).registerMixin(secondMixin).build());
+    ForyJson crossLoader =
+        ForyJson.builder().withClassLoader(firstLoader).registerMixin(secondMixin).build();
+    assertEquals(crossLoader.toJson(secondValue), "{\"second\":\"two\"}");
   }
 
   @Test
@@ -451,6 +454,37 @@ public class JsonTypeProcessorTest {
     assertTrue(
         intrinsic.diagnostics().contains("not consumed by the selected"), intrinsic.diagnostics());
 
+    CompilationResult unsupported =
+        compile(
+            "test.TextMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "final class Text implements CharSequence {\n"
+                + "  String value;\n"
+                + "  public int length() { return 0; }\n"
+                + "  public char charAt(int index) { return 0; }\n"
+                + "  public CharSequence subSequence(int start, int end) { return this; }\n"
+                + "}\n"
+                + "@JsonMixin(target = Text.class) abstract class TextMixin {\n"
+                + "  @JsonProperty(\"text\") String value;\n"
+                + "}\n");
+    assertFalse(unsupported.success);
+    assertTrue(
+        unsupported.diagnostics().contains("unsupported JSON type"), unsupported.diagnostics());
+
+    CompilationResult ignored =
+        compile(
+            "test.IgnoreMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class IgnoreTarget { transient int hidden; }\n"
+                + "@JsonMixin(target = IgnoreTarget.class) abstract class IgnoreMixin {\n"
+                + "  @JsonIgnore int hidden;\n"
+                + "}\n");
+    assertFalse(ignored.success);
+    assertTrue(
+        ignored.diagnostics().contains("@JsonIgnore is not supported"), ignored.diagnostics());
+
     CompilationResult parameter =
         compile(
             "test.ParameterMixin",
@@ -478,6 +512,54 @@ public class JsonTypeProcessorTest {
     assertTrue(
         inheritedParameter.diagnostics().contains("requires a @JsonCreator"),
         inheritedParameter.diagnostics());
+
+    CompilationResult directParameter =
+        compile(
+            "test.DirectParameterMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class Target {\n"
+                + "  public int id;\n"
+                + "  void ignored(@JsonProperty(\"ignored\") String value) {}\n"
+                + "}\n"
+                + "@JsonMixin(target = Target.class)\n"
+                + "@JsonPropertyOrder(alphabetic = true) interface DirectParameterMixin {}\n");
+    assertTrue(directParameter.success, directParameter.diagnostics());
+
+    CompilationResult valueCreator =
+        compile(
+            "test.InvalidValueCreatorMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "class Target {\n"
+                + "  public String value;\n"
+                + "  public static Target create(String value, int ignored) { return null; }\n"
+                + "}\n"
+                + "@JsonMixin(target = Target.class) abstract class InvalidValueCreatorMixin {\n"
+                + "  @JsonValue String value;\n"
+                + "  @JsonCreator abstract Target create(String value, int ignored);\n"
+                + "}\n");
+    assertFalse(valueCreator.success);
+    assertTrue(
+        valueCreator.diagnostics().contains("not consumed by the selected"),
+        valueCreator.diagnostics());
+
+    CompilationResult typeCodec =
+        compile(
+            "test.TypeCodecMixin",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonCodec(elementCodec = Target.Codec.class) class Target {\n"
+                + "  String value;\n"
+                + valueCodec("Codec")
+                + "}\n"
+                + "@JsonMixin(target = Target.class) abstract class TypeCodecMixin {\n"
+                + "  @JsonValue String value;\n"
+                + "}\n");
+    assertFalse(typeCodec.success);
+    assertTrue(
+        typeCodec.diagnostics().contains("selected type-level @JsonCodec representation"),
+        typeCodec.diagnostics());
   }
 
   @Test
@@ -546,7 +628,12 @@ public class JsonTypeProcessorTest {
             "test.CodecMixin",
             "package test;\n"
                 + "import org.apache.fory.json.annotation.*;\n"
-                + "class Target {}\n"
+                + "class Target {\n"
+                + "  public int unused;\n"
+                + "  public Target() {}\n"
+                + "  public Target(String unused) {}\n"
+                + "  public String getUnused() { return null; }\n"
+                + "}\n"
                 + "@JsonMixin(target = Target.class)\n"
                 + "@JsonCodec(Codec.class) interface CodecMixin {}\n"
                 + "final class Codec implements org.apache.fory.json.codec.JsonValueCodec<Object> {\n"
@@ -564,6 +651,9 @@ public class JsonTypeProcessorTest {
     assertTrue(result.generatedSource("test/" + base + ".java").contains("return false;"));
     String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.CodecMixin.pro");
     assertTrue(rules.contains("class test.Codec { public <init>(); }"), rules);
+    assertFalse(rules.contains("int unused;"), rules);
+    assertFalse(rules.contains("java.lang.String getUnused();"), rules);
+    assertFalse(rules.contains("<init>(java.lang.String);"), rules);
   }
 
   @Test
@@ -586,19 +676,25 @@ public class JsonTypeProcessorTest {
     sources.put(
         "test.ValueTarget",
         "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
             + "public final class ValueTarget {\n"
             + "  private final String text;\n"
             + "  private ValueTarget(String text) { this.text = text; }\n"
             + "  public String getText() { return text; }\n"
             + "  public static ValueTarget create(String text) { return new ValueTarget(text); }\n"
+            + "  @JsonProperty public Child unused;\n"
+            + "  public String getUnused() { return null; }\n"
+            + "  @JsonCodec(ChildCodec.class) public static final class Child {}\n"
+            + valueCodec("ChildCodec")
             + "}\n");
     sources.put(
         "test.ValueMixin",
         "package test;\n"
             + "import org.apache.fory.json.annotation.*;\n"
-            + "@JsonMixin(target = ValueTarget.class) public interface ValueMixin {\n"
-            + "  @JsonValue String getText();\n"
-            + "  @JsonCreator ValueTarget create(String text);\n"
+            + "@JsonMixin(target = ValueTarget.class) public abstract class ValueMixin {\n"
+            + "  @JsonValue abstract String getText();\n"
+            + "  @JsonCreator abstract ValueTarget create(String text);\n"
+            + "  @JsonMixinRemove(JsonProperty.class) ValueTarget.Child unused;\n"
             + "}\n");
     sources.put("test.State", "package test; public enum State { ACTIVE }\n");
     sources.put(
@@ -606,6 +702,23 @@ public class JsonTypeProcessorTest {
         "package test;\n"
             + "import org.apache.fory.json.annotation.*;\n"
             + "@JsonMixin(target = State.class) public interface StateMixin {}\n");
+    sources.put(
+        "test.UuidMixin",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonMixin(target = java.util.UUID.class) public interface UuidMixin {}\n");
+    sources.put(
+        "test.InvalidValueTarget",
+        "package test; public final class InvalidValueTarget {\n"
+            + "  private String value() { return null; }\n"
+            + "}\n");
+    sources.put(
+        "test.InvalidValueMixin",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonMixin(target = InvalidValueTarget.class) interface InvalidValueMixin {\n"
+            + "  @JsonValue String value();\n"
+            + "}\n");
     CompilationResult result = compile(sources);
     assertTrue(result.success, result.diagnostics());
 
@@ -613,11 +726,22 @@ public class JsonTypeProcessorTest {
         new String[] {
           "ShapeMixin_ForyJsonMixin_test_x2e_Shape",
           "ValueMixin_ForyJsonMixin_test_x2e_ValueTarget",
-          "StateMixin_ForyJsonMixin_test_x2e_State"
+          "StateMixin_ForyJsonMixin_test_x2e_State",
+          "UuidMixin_ForyJsonMixin_java_x2e_util_x2e_UUID",
+          "InvalidValueMixin_ForyJsonMixin_test_x2e_InvalidValueTarget"
         }) {
       assertTrue(result.hasGeneratedSource("test/" + base + ".java"));
       assertFalse(result.hasGeneratedSource("test/" + base + "_ForyJsonCodec.java"));
     }
+    String valueRules = result.generatedResource(MIXIN_RULE_PREFIX + "test.ValueMixin.pro");
+    assertTrue(valueRules.contains("java.lang.String getText();"), valueRules);
+    assertTrue(valueRules.contains("test.ValueTarget create(java.lang.String);"), valueRules);
+    assertTrue(valueRules.contains("test.ValueTarget$Child unused;"), valueRules);
+    assertFalse(valueRules.contains("java.lang.String getUnused();"), valueRules);
+    assertFalse(valueRules.contains("ChildCodec"), valueRules);
+    String invalidValueRules =
+        result.generatedResource(MIXIN_RULE_PREFIX + "test.InvalidValueMixin.pro");
+    assertTrue(invalidValueRules.contains("java.lang.String value();"), invalidValueRules);
 
     ClassLoader loader = result.classLoader();
     Class<?> shape = loader.loadClass("test.Shape");
@@ -627,10 +751,21 @@ public class JsonTypeProcessorTest {
     Class<?> shapeMixin = loader.loadClass("test.ShapeMixin");
     Class<?> valueMixin = loader.loadClass("test.ValueMixin");
     Class<?> stateMixin = loader.loadClass("test.StateMixin");
+    Class<?> uuidMixin = loader.loadClass("test.UuidMixin");
     Object circleValue = circle.getConstructor().newInstance();
     circle.getField("radius").setInt(circleValue, 3);
     Object value = valueType.getMethod("create", String.class).invoke(null, "write");
     Object active = state.getEnumConstants()[0];
+    String valueMetadataName = "test.ValueMixin_ForyJsonMixin_test_x2e_ValueTarget";
+    Object valueMetadata = loader.loadClass(valueMetadataName).getConstructor().newInstance();
+    assertEquals(valueMetadata.getClass().getMethod("codecRequired").invoke(valueMetadata), false);
+    assertEquals(valueMetadata.getClass().getMethod("valueMetadata").invoke(valueMetadata), true);
+    String invalidMetadataName = "test.InvalidValueMixin_ForyJsonMixin_test_x2e_InvalidValueTarget";
+    Object invalidMetadata = loader.loadClass(invalidMetadataName).getConstructor().newInstance();
+    assertEquals(
+        invalidMetadata.getClass().getMethod("codecRequired").invoke(invalidMetadata), false);
+    assertEquals(
+        invalidMetadata.getClass().getMethod("valueMetadata").invoke(invalidMetadata), true);
     for (boolean codegen : new boolean[] {false, true}) {
       ForyJson json =
           ForyJson.builder()
@@ -640,6 +775,7 @@ public class JsonTypeProcessorTest {
               .registerMixin(shapeMixin)
               .registerMixin(valueMixin)
               .registerMixin(stateMixin)
+              .registerMixin(uuidMixin)
               .build();
       assertEquals(json.toJson(circleValue, (Class) shape), "{\"kind\":\"circle\",\"radius\":3}");
       Object decodedShape = json.fromJson("{\"kind\":\"circle\",\"radius\":4}", shape);
@@ -649,6 +785,9 @@ public class JsonTypeProcessorTest {
       assertEquals(valueType.getMethod("getText").invoke(decodedValue), "read");
       assertEquals(json.toJson(active), "\"ACTIVE\"");
       assertEquals(json.fromJson("\"ACTIVE\"", state), active);
+      java.util.UUID uuid = java.util.UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
+      assertEquals(json.toJson(uuid), "\"123e4567-e89b-12d3-a456-426614174000\"");
+      assertEquals(json.fromJson(json.toJson(uuid), java.util.UUID.class), uuid);
     }
   }
 
@@ -1060,6 +1199,60 @@ public class JsonTypeProcessorTest {
   }
 
   @Test
+  public void staleMixinCompanionIgnored() throws Exception {
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put(
+        "test.StaleMixinTarget",
+        "package test;\n"
+            + "public final class StaleMixinTarget {\n"
+            + "  private final String value;\n"
+            + "  private StaleMixinTarget(String value) { this.value = value; }\n"
+            + "  public String value() { return value; }\n"
+            + "  public static StaleMixinTarget create(String value) {\n"
+            + "    return new StaleMixinTarget(value);\n"
+            + "  }\n"
+            + "}\n");
+    sources.put(
+        "test.StaleMixin",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.*;\n"
+            + "@JsonMixin(target = StaleMixinTarget.class) public interface StaleMixin {\n"
+            + "  @JsonValue String value();\n"
+            + "  @JsonCreator StaleMixinTarget create(String value);\n"
+            + "}\n");
+    sources.put(
+        "test.StaleMixin_ForyJsonMixin_test_x2e_StaleMixinTarget_ForyJsonCodec",
+        "package test;\n"
+            + "public final class StaleMixin_ForyJsonMixin_test_x2e_StaleMixinTarget_ForyJsonCodec\n"
+            + "    extends org.apache.fory.json.codec.GeneratedJsonCodec<StaleMixinTarget> {\n"
+            + "  public Class<StaleMixinTarget> type() {\n"
+            + "    throw new AssertionError(\"stale pair companion loaded\");\n"
+            + "  }\n"
+            + "  public org.apache.fory.json.meta.JsonFieldAccessor[] fieldAccessors() {\n"
+            + "    return new org.apache.fory.json.meta.JsonFieldAccessor[0];\n"
+            + "  }\n"
+            + "}\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.StaleMixinTarget");
+    Class<?> mixin = loader.loadClass("test.StaleMixin");
+    Object value = type.getMethod("create", String.class).invoke(null, "write");
+    for (boolean codegen : new boolean[] {false, true}) {
+      ForyJson json =
+          ForyJson.builder()
+              .withCodegen(codegen)
+              .withAsyncCompilation(false)
+              .withClassLoader(loader)
+              .registerMixin(mixin)
+              .build();
+      assertEquals(json.toJson(value), "\"write\"");
+      Object decoded = json.fromJson("\"read\"", type);
+      assertEquals(type.getMethod("value").invoke(decoded), "read");
+    }
+  }
+
+  @Test
   public void recordRuntimePipeline() throws Exception {
     assumeJava16Source();
     CompilationResult result =
@@ -1317,10 +1510,13 @@ public class JsonTypeProcessorTest {
             "package test;\n"
                 + "import org.apache.fory.json.annotation.*;\n"
                 + "@JsonType @JsonCodec(CustomModel.Codec.class) public class CustomModel {\n"
+                + "  @JsonUnwrapped public Child child;\n"
+                + "  public static class Child { public String value; }\n"
                 + valueCodec("Codec")
                 + "}\n");
     assertTrue(result.success, result.diagnostics());
     assertFalse(result.hasGeneratedSource("test/CustomModel_ForyJsonCodec.java"));
+    assertFalse(result.hasGeneratedResource(RULE_PREFIX + "test.CustomModel$Child.pro"));
   }
 
   @Test

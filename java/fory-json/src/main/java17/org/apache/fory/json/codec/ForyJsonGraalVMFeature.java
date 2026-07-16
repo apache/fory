@@ -34,6 +34,7 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -148,19 +149,22 @@ final class ForyJsonGraalVMFeature implements Feature {
     JsonMixinView annotations = JsonSharedRegistry.resolveMixin(targetType, mixinType);
     registerMixinMetadata(access, targetType, mixinType);
     registerMixinSource(annotations);
+    registerMixinTargetDeclarations(annotations);
     registerMixinDeclarations(annotations);
     RuntimeReflection.register(targetType);
     registerContainer(targetType);
-    if (!targetType.isEnum()
-        && !Collection.class.isAssignableFrom(targetType)
-        && !Map.class.isAssignableFrom(targetType)) {
+    if (annotations.valueMetadata()) {
+      registerMixinValue(access, targetType, annotations);
+    } else if (annotations.codecRequired()) {
       registerModelHierarchy(access, targetType, annotations);
       if (!targetType.isRecord()
           && GraalvmSupport.needReflectionRegisterForCreation(targetType)) {
         RuntimeReflection.registerForReflectiveInstantiation(targetType);
       }
     }
-    registerGeneratedCodec(access, targetType, mixinType, annotations.codecRequired());
+    if (annotations.codecRequired()) {
+      registerGeneratedCodec(access, targetType, mixinType, true);
+    }
     registerSubtypes(access, targetType, annotations);
     return true;
   }
@@ -193,6 +197,20 @@ final class ForyJsonGraalVMFeature implements Feature {
     Class<?> mixinType = annotations.mixinType();
     RuntimeReflection.register(mixinType);
     for (AnnotatedElement declaration : annotations.sourceDeclarations()) {
+      if (declaration instanceof Field) {
+        RuntimeReflection.register((Field) declaration);
+      } else if (declaration instanceof Method) {
+        RuntimeReflection.register((Method) declaration);
+      } else if (declaration instanceof Constructor<?>) {
+        RuntimeReflection.register((Constructor<?>) declaration);
+      } else if (declaration instanceof Parameter) {
+        RuntimeReflection.register(((Parameter) declaration).getDeclaringExecutable());
+      }
+    }
+  }
+
+  private void registerMixinTargetDeclarations(JsonMixinView annotations) {
+    for (AnnotatedElement declaration : annotations.targetDeclarations()) {
       if (declaration instanceof Field) {
         RuntimeReflection.register((Field) declaration);
       } else if (declaration instanceof Method) {
@@ -403,6 +421,50 @@ final class ForyJsonGraalVMFeature implements Feature {
     registerMixinDeclarations(annotations, type.getSuperclass());
     for (Class<?> interfaceType : type.getInterfaces()) {
       registerMixinDeclarations(annotations, interfaceType);
+    }
+  }
+
+  private void registerMixinValue(
+      DuringAnalysisAccess access, Class<?> type, JsonMixinView annotations) {
+    Set<AnnotatedElement> registered = new HashSet<>();
+    TypeRef<?> ownerType = TypeRef.of(type);
+    for (Class<?> current = type;
+        current != null && current != Object.class;
+        current = current.getSuperclass()) {
+      for (Field field : current.getDeclaredFields()) {
+        if (annotation(annotations, field, JsonValue.class) == null || !registered.add(field)) {
+          continue;
+        }
+        RuntimeReflection.register(field);
+        if (!current.isRecord() && Runtime.version().feature() <= 24) {
+          access.registerAsUnsafeAccessed(field);
+        }
+        registerResolvedType(ownerType.resolveType(field.getGenericType()).getType());
+      }
+      for (Method method : current.getDeclaredMethods()) {
+        if (annotation(annotations, method, JsonValue.class) != null && registered.add(method)) {
+          RuntimeReflection.register(method);
+          registerResolvedType(ownerType.resolveType(method.getGenericReturnType()).getType());
+        }
+      }
+    }
+    for (Method method : type.getMethods()) {
+      if (annotation(annotations, method, JsonValue.class) != null && registered.add(method)) {
+        RuntimeReflection.register(method);
+        registerResolvedType(ownerType.resolveType(method.getGenericReturnType()).getType());
+      }
+    }
+    for (Constructor<?> constructor : type.getDeclaredConstructors()) {
+      if (annotation(annotations, constructor, JsonCreator.class) != null) {
+        RuntimeReflection.register(constructor);
+        registerResolvedParameterTypes(ownerType, constructor.getParameters());
+      }
+    }
+    for (Method method : type.getDeclaredMethods()) {
+      if (annotation(annotations, method, JsonCreator.class) != null) {
+        RuntimeReflection.register(method);
+        registerResolvedParameterTypes(ownerType, method.getParameters());
+      }
     }
   }
 

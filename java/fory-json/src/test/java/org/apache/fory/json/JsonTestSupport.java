@@ -21,7 +21,6 @@ package org.apache.fory.json;
 
 import java.lang.reflect.Field;
 import java.util.Collections;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.codec.JsonValueCodec;
@@ -93,18 +92,6 @@ final class JsonTestSupport {
 
   static StringJsonWriter newStringWriter() {
     return new StringJsonWriter(CONFIG, newResolver());
-  }
-
-  @SuppressWarnings("unchecked")
-  static boolean resolverContains(ForyJson json, String fieldName, Class<?> type) {
-    JsonTypeResolver resolver = primaryTypeResolver(json);
-    try {
-      Field field = JsonTypeResolver.class.getDeclaredField(fieldName);
-      field.setAccessible(true);
-      return ((Map<Object, ?>) field.get(resolver)).containsKey(type);
-    } catch (ReflectiveOperationException e) {
-      throw new AssertionError(e);
-    }
   }
 
   static StringJsonWriter newStringWriter(byte[] buffer) {

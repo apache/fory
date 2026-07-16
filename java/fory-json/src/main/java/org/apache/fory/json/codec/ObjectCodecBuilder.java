@@ -1354,9 +1354,7 @@ final class ObjectCodecBuilder {
       GeneratedJsonCodec<?> generatedCodec,
       Annotations annotations) {
     boolean hasAnyField = false;
-    for (Class<?> current = type;
-        current != null && current != Object.class;
-        current = current.getSuperclass()) {
+    for (Class<?> current = type; current != null; current = current.getSuperclass()) {
       for (Field field : current.getDeclaredFields()) {
         if (annotations.has(field, JsonBase64.class)) {
           validateBase64Field(field, annotations);
@@ -1368,6 +1366,11 @@ final class ObjectCodecBuilder {
           throw new ForyJsonException("@JsonCodec is not supported on JSON field: " + field);
         }
         JsonIgnore ignore = annotations.get(field, JsonIgnore.class);
+        if (ignore != null
+            && annotations.hasMixin(field, JsonIgnore.class)
+            && !isEligibleField(field)) {
+          throw new ForyJsonException("@JsonIgnore is not supported on JSON field: " + field);
+        }
         if (annotations.has(field, JsonUnwrapped.class)
             && ignore != null
             && ignore.ignoreRead()
@@ -1611,7 +1614,7 @@ final class ObjectCodecBuilder {
                 && executable instanceof Constructor<?>
                 && isRecordConstructor(type, (Constructor<?>) executable);
     for (Parameter parameter : executable.getParameters()) {
-      if (annotations.has(parameter, JsonProperty.class) && !supported) {
+      if (annotations.hasMixin(parameter, JsonProperty.class) && !supported) {
         throw new ForyJsonException(
             "@JsonProperty parameter requires a @JsonCreator or canonical Record constructor: "
                 + executable);
@@ -2169,6 +2172,10 @@ final class ObjectCodecBuilder {
 
     private boolean has(AnnotatedElement element, Class<? extends Annotation> annotationType) {
       return get(element, annotationType) != null;
+    }
+
+    private boolean hasMixin(AnnotatedElement element, Class<? extends Annotation> annotationType) {
+      return registry.hasMixinReplacement(targetType, element, annotationType);
     }
   }
 

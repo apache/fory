@@ -104,7 +104,7 @@ final class JsonMixinAnnotations {
 
   static TargetOverlay resolve(Class<?> targetType, Class<?> mixinType) {
     validateAssociation(targetType, mixinType);
-    boolean codecRequired = validateGeneratedMetadata(targetType, mixinType);
+    GeneratedRequirements generated = validateGeneratedMetadata(targetType, mixinType);
     Map<AnnotatedElement, ElementOverlay> declarations = new HashMap<>();
     addOverlay(declarations, targetType, elementOverlay(mixinType, ElementType.TYPE));
 
@@ -154,7 +154,8 @@ final class JsonMixinAnnotations {
           targetConstructor,
           constructorParameterOffset(mixinType, sourceConstructor));
     }
-    return new TargetOverlay(targetType, mixinType, codecRequired, declarations);
+    return new TargetOverlay(
+        targetType, mixinType, generated.codecRequired, generated.valueMetadata, declarations);
   }
 
   private static void validateAssociation(Class<?> targetType, Class<?> mixinType) {
@@ -191,7 +192,8 @@ final class JsonMixinAnnotations {
     }
   }
 
-  private static boolean validateGeneratedMetadata(Class<?> targetType, Class<?> mixinType) {
+  private static GeneratedRequirements validateGeneratedMetadata(
+      Class<?> targetType, Class<?> mixinType) {
     String name = JsonSharedRegistry.generatedMixinMetadataBinaryName(mixinType, targetType);
     Class<?> metadataClass;
     try {
@@ -206,7 +208,7 @@ final class JsonMixinAnnotations {
                 + " and "
                 + mixinType.getName());
       }
-      return false;
+      return GeneratedRequirements.NONE;
     } catch (LinkageError e) {
       throw new ForyJsonException("Cannot load generated JSON mix-in metadata " + name, e);
     }
@@ -221,10 +223,12 @@ final class JsonMixinAnnotations {
     String targetName;
     String mixinName;
     boolean codecRequired;
+    boolean valueMetadata;
     try {
       targetName = metadata.targetName();
       mixinName = metadata.mixinName();
       codecRequired = metadata.codecRequired();
+      valueMetadata = metadata.valueMetadata();
     } catch (RuntimeException | LinkageError e) {
       throw new ForyJsonException(
           "Cannot read generated JSON mix-in metadata " + metadataClass.getName(), e);
@@ -239,7 +243,7 @@ final class JsonMixinAnnotations {
     ClassLoader metadataLoader = metadataClass.getClassLoader();
     requireMetadataClass(metadataLoader, targetType, metadataClass);
     requireMetadataClass(metadataLoader, mixinType, metadataClass);
-    return codecRequired;
+    return new GeneratedRequirements(codecRequired, valueMetadata);
   }
 
   private static GeneratedJsonMixinMetadata newGeneratedMetadata(Class<?> metadataClass) {
@@ -590,6 +594,7 @@ final class JsonMixinAnnotations {
     private final Class<?> targetType;
     private final Class<?> mixinType;
     private final boolean codecRequired;
+    private final boolean valueMetadata;
     private final Map<AnnotatedElement, ElementOverlay> declarations;
     private final Set<AnnotatedElement> sourceDeclarations;
 
@@ -597,10 +602,12 @@ final class JsonMixinAnnotations {
         Class<?> targetType,
         Class<?> mixinType,
         boolean codecRequired,
+        boolean valueMetadata,
         Map<AnnotatedElement, ElementOverlay> declarations) {
       this.targetType = targetType;
       this.mixinType = mixinType;
       this.codecRequired = codecRequired;
+      this.valueMetadata = valueMetadata;
       this.declarations = Collections.unmodifiableMap(new HashMap<>(declarations));
       Set<AnnotatedElement> sources = new HashSet<>();
       for (ElementOverlay declaration : declarations.values()) {
@@ -621,8 +628,16 @@ final class JsonMixinAnnotations {
       return codecRequired;
     }
 
+    boolean valueMetadata() {
+      return valueMetadata;
+    }
+
     Set<AnnotatedElement> sourceDeclarations() {
       return sourceDeclarations;
+    }
+
+    Set<AnnotatedElement> targetDeclarations() {
+      return declarations.keySet();
     }
 
     <A extends Annotation> A annotation(AnnotatedElement target, Class<A> annotationType) {
@@ -649,6 +664,11 @@ final class JsonMixinAnnotations {
     boolean removed(AnnotatedElement target, Class<? extends Annotation> annotationType) {
       ElementOverlay overlay = declarations.get(target);
       return overlay != null && overlay.removals.contains(annotationType);
+    }
+
+    boolean replaces(AnnotatedElement target, Class<? extends Annotation> annotationType) {
+      ElementOverlay overlay = declarations.get(target);
+      return overlay != null && overlay.replacements.containsKey(annotationType);
     }
 
     void validateTypeReplacements(
@@ -721,6 +741,18 @@ final class JsonMixinAnnotations {
       Collections.sort(unused);
       throw new ForyJsonException(
           unused.get(0) + " is not consumed by the selected " + representation);
+    }
+  }
+
+  private static final class GeneratedRequirements {
+    private static final GeneratedRequirements NONE = new GeneratedRequirements(false, false);
+
+    private final boolean codecRequired;
+    private final boolean valueMetadata;
+
+    private GeneratedRequirements(boolean codecRequired, boolean valueMetadata) {
+      this.codecRequired = codecRequired;
+      this.valueMetadata = valueMetadata;
     }
   }
 

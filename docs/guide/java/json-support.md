@@ -371,8 +371,10 @@ ForyJson json = ForyJson.builder().registerMixin(ThirdPartyUserMixin.class).buil
 The source must be a named abstract class or interface, must not be local or anonymous, must not
 extend or implement another type, and is never instantiated. An annotated source field, method,
 constructor, or parameter selects an existing target declaration by its Java signature. The source
-cannot add a property, creator, factory, subtype, value, generic type, or executable implementation.
-Every Java type, access operation, invocation, and runtime value still comes from the target.
+cannot invent a Java field, method, constructor, generic type, subtype implementation, or executable
+body. It may assign supported JSON roles such as property, creator, factory, subtype table, or value
+representation to matching declarations that already exist on the target. Every Java type, access
+operation, invocation, and runtime value still comes from the target.
 
 Registration is exact-target only. A base-class registration does not change a subclass, and an
 interface registration does not change an implementation. A subclass mix-in may select a member
@@ -392,6 +394,7 @@ remain effective.
 Use `JsonMixinRemove` to make selected target annotations ineffective:
 
 ```java
+import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonMixinRemove;
 import org.apache.fory.json.annotation.JsonRawValue;
 

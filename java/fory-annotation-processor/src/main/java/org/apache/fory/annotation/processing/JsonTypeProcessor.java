@@ -58,7 +58,7 @@ import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import javax.tools.StandardLocation;
 
-/** Generates precise Android R8 rules for {@code JsonType} models. */
+/** Generates JSON companions and platform metadata for direct models and exact mix-in pairs. */
 final class JsonTypeProcessor {
   private static final String JSON_PACKAGE = "org.apache.fory.json";
   private static final String JSON_TYPE = JSON_PACKAGE + ".annotation.JsonType";
@@ -121,14 +121,16 @@ final class JsonTypeProcessor {
       if (!processedTypes.add(binaryName)) {
         continue;
       }
-      if (hasAnnotation(type, JsonMixinAnnotations.JSON_MIXIN)) {
+      if (hasAnnotation(type, JSON_MIXIN)) {
         continue;
       }
       try {
         Model model = inspect(type);
+        boolean generatedObjectCodec = false;
         if (hasAnnotation(type, JSON_TYPE)) {
           GeneratedJsonCodecSourceWriter.Result generated = codecSourceWriter.write(type);
           if (generated != null) {
+            generatedObjectCodec = codecSourceWriter.jsonValueDeclarations(type, null).isEmpty();
             model.companionBinaryName = generated.companionBinaryName;
             model.companionHasAnySetter = generated.hasAnySetter;
             model.companionHasCreator = generated.hasCreator;
@@ -144,7 +146,9 @@ final class JsonTypeProcessor {
         emitR8(model);
         emitNativeImageProperties(model);
         pending.addAll(subtypes);
-        pending.addAll(unwrappedChildren(type, null));
+        if (generatedObjectCodec) {
+          pending.addAll(unwrappedChildren(type, null));
+        }
       } catch (GeneratedJsonCodecSourceWriter.InvalidJsonTypeException e) {
         messager.printMessage(Diagnostic.Kind.ERROR, e.getMessage(), e.element);
       } catch (InvalidJsonTypeException e) {
@@ -223,15 +227,24 @@ final class JsonTypeProcessor {
         pendingMixins.remove(mixinBinaryName);
         JsonMixinAnnotations annotations =
             JsonMixinAnnotations.resolve(elements, types, target, mixin);
-        codecSourceWriter.validatePair(annotations);
-        Model model = inspect(target, annotations);
+        GeneratedJsonCodecSourceWriter.Representation representation =
+            codecSourceWriter.validatePair(annotations);
+        GeneratedJsonCodecSourceWriter.Result generated = codecSourceWriter.writePair(annotations);
+        boolean generatedObjectCodec =
+            representation == GeneratedJsonCodecSourceWriter.Representation.OBJECT
+                && generated != null;
+        Model model = inspectPair(target, annotations, representation, generatedObjectCodec);
         model.mixin = mixin;
         model.resourceIdentity = mixinBinaryName;
         model.nameTypes.add(model.binaryName);
         model.nameTypes.add(mixinBinaryName);
         collectMixinSource(annotations, model);
-        GeneratedJsonCodecSourceWriter.Result generated = codecSourceWriter.writePair(annotations);
-        model.metadataBinaryName = writeMixinMetadata(annotations, generated != null);
+        collectMixinTargets(annotations, model);
+        model.metadataBinaryName =
+            writeMixinMetadata(
+                annotations,
+                generated != null,
+                representation == GeneratedJsonCodecSourceWriter.Representation.VALUE);
         if (generated != null) {
           model.companionBinaryName = generated.companionBinaryName;
           model.companionHasAnySetter = generated.hasAnySetter;
@@ -242,7 +255,7 @@ final class JsonTypeProcessor {
             model.addR8Member(new R8Member(member.ownerBinaryName, member.declaration));
           }
         }
-        collectPairClosure(model, target, annotations);
+        collectPairClosure(model, target, annotations, representation, generatedObjectCodec);
         model.sort();
         emitR8(model);
         emitNativeImageProperties(model);
@@ -284,7 +297,8 @@ final class JsonTypeProcessor {
     return targetElement;
   }
 
-  private String writeMixinMetadata(JsonMixinAnnotations annotations, boolean codecRequired) {
+  private String writeMixinMetadata(
+      JsonMixinAnnotations annotations, boolean codecRequired, boolean valueMetadata) {
     TypeElement target = annotations.target();
     TypeElement mixin = annotations.source();
     String targetBinaryName = elements.getBinaryName(target).toString();
@@ -324,6 +338,13 @@ final class JsonTypeProcessor {
         .append(codecRequired)
         .append(";\n")
         .append("  }\n")
+        .append("\n")
+        .append("  @Override\n")
+        .append("  public boolean valueMetadata() {\n")
+        .append("    return ")
+        .append(valueMetadata)
+        .append(";\n")
+        .append("  }\n")
         .append("}\n");
     try {
       javax.tools.JavaFileObject file = filer.createSourceFile(binaryName, mixin, target);
@@ -341,14 +362,11 @@ final class JsonTypeProcessor {
     TypeElement source = annotations.source();
     String sourceBinaryName = elements.getBinaryName(source).toString();
     collectAnnotations(source, model.annotationTypes);
-    model.annotationTypes.add(JSON_MIXIN);
     model.annotationOwnerTypes.add(sourceBinaryName);
     Set<Element> retained = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
-    boolean hasRemoval = false;
     List<Element> selectors = annotations.sourceSelectors();
     for (Element selector : selectors) {
       collectAnnotations(selector, model.annotationTypes);
-      hasRemoval |= annotationMirror(selector, JSON_MIXIN_REMOVE) != null;
       Element retainedElement =
           selector.getKind() == ElementKind.PARAMETER ? selector.getEnclosingElement() : selector;
       if (retainedElement instanceof ExecutableElement) {
@@ -371,13 +389,90 @@ final class JsonTypeProcessor {
             R8Member.constructor(constructor, sourceConstructorTypes(source, constructor)));
       }
     }
-    if (hasRemoval) {
-      model.annotationTypes.add(JSON_MIXIN_REMOVE);
-    }
   }
 
   private Model inspect(TypeElement target) {
     return inspect(target, null);
+  }
+
+  private Model inspectPair(
+      TypeElement target,
+      JsonMixinAnnotations annotations,
+      GeneratedJsonCodecSourceWriter.Representation representation,
+      boolean generatedObjectCodec) {
+    switch (representation) {
+      case OBJECT:
+        return generatedObjectCodec
+            ? inspect(target, annotations)
+            : newPairModel(target, annotations);
+      case TYPE_CODEC:
+        Model codecModel = newPairModel(target, annotations);
+        collectTypeCodec(target, codecModel);
+        return codecModel;
+      case VALUE:
+        return inspectValue(target, annotations);
+      case SUBTYPES:
+        Model subtypeModel = newPairModel(target, annotations);
+        subtypeModel.annotationTypes.add(JSON_SUB_TYPES);
+        return subtypeModel;
+      case INTRINSIC:
+      case UNSUPPORTED:
+        return newPairModel(target, annotations);
+      default:
+        throw new AssertionError("Unknown JSON mix-in representation " + representation);
+    }
+  }
+
+  private Model newPairModel(TypeElement target, JsonMixinAnnotations annotations) {
+    String binaryName = elements.getBinaryName(target).toString();
+    Model model = new Model(target, binaryName);
+    model.annotations = annotations;
+    return model;
+  }
+
+  private Model inspectValue(TypeElement target, JsonMixinAnnotations annotations) {
+    Model model = newPairModel(target, annotations);
+    for (Element declaration : codecSourceWriter.jsonValueDeclarations(target, annotations)) {
+      collectValueMember(annotations, declaration, model);
+    }
+    for (ExecutableElement constructor :
+        ElementFilter.constructorsIn(target.getEnclosedElements())) {
+      if (hasAnnotation(annotations, constructor, JSON_CREATOR)) {
+        collectValueCreator(annotations, constructor, model);
+      }
+    }
+    for (ExecutableElement method : ElementFilter.methodsIn(target.getEnclosedElements())) {
+      if (hasAnnotation(annotations, method, JSON_CREATOR)) {
+        collectValueCreator(annotations, method, model);
+      }
+    }
+    return model;
+  }
+
+  private void collectValueMember(
+      JsonMixinAnnotations annotations, Element declaration, Model model) {
+    collectAnnotations(annotations, declaration, model.annotationTypes);
+    collectOccurrenceCodec(annotations, declaration, model);
+    if (declaration.getKind() == ElementKind.FIELD) {
+      VariableElement field = (VariableElement) declaration;
+      model.addR8Member(R8Member.field(field, typeName(field.asType())));
+    } else {
+      ExecutableElement method = (ExecutableElement) declaration;
+      model.addR8Member(
+          R8Member.method(method, typeName(method.getReturnType()), typeNames(method)));
+    }
+  }
+
+  private void collectValueCreator(
+      JsonMixinAnnotations annotations, ExecutableElement creator, Model model) {
+    collectAnnotations(annotations, creator, model.annotationTypes);
+    collectAnnotations(annotations, creator.getParameters(), model.annotationTypes);
+    if (creator.getKind() == ElementKind.CONSTRUCTOR) {
+      model.addR8Member(R8Member.constructor(creator, typeNames(creator)));
+    } else {
+      model.addR8Member(
+          R8Member.method(creator, typeName(creator.getReturnType()), typeNames(creator)));
+    }
   }
 
   private Model inspect(TypeElement target, JsonMixinAnnotations annotations) {
@@ -459,6 +554,28 @@ final class JsonTypeProcessor {
       JsonMixinAnnotations annotations, List<? extends Element> sourceElements, Model model) {
     for (Element element : sourceElements) {
       collectCodecAnnotation(annotationMirror(annotations, element, JSON_CODEC), model);
+    }
+  }
+
+  private void collectMixinTargets(JsonMixinAnnotations annotations, Model model) {
+    Set<Element> retained = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    for (Element selector : annotations.targetSelectors()) {
+      Element declaration =
+          selector.getKind() == ElementKind.PARAMETER ? selector.getEnclosingElement() : selector;
+      if (!retained.add(declaration)) {
+        continue;
+      }
+      if (declaration.getKind() == ElementKind.FIELD) {
+        VariableElement field = (VariableElement) declaration;
+        model.addR8Member(R8Member.field(field, typeName(field.asType())));
+      } else if (declaration.getKind() == ElementKind.METHOD) {
+        ExecutableElement method = (ExecutableElement) declaration;
+        model.addR8Member(
+            R8Member.method(method, typeName(method.getReturnType()), typeNames(method)));
+      } else if (declaration.getKind() == ElementKind.CONSTRUCTOR) {
+        ExecutableElement constructor = (ExecutableElement) declaration;
+        model.addR8Member(R8Member.constructor(constructor, typeNames(constructor)));
+      }
     }
   }
 
@@ -637,6 +754,7 @@ final class JsonTypeProcessor {
           .append("  public java.lang.String targetName();\n")
           .append("  public java.lang.String mixinName();\n")
           .append("  public boolean codecRequired();\n")
+          .append("  public boolean valueMetadata();\n")
           .append("}\n");
     }
     return builder.toString();
@@ -686,12 +804,19 @@ final class JsonTypeProcessor {
   }
 
   private void collectPairClosure(
-      Model model, TypeElement target, JsonMixinAnnotations annotations) {
+      Model model,
+      TypeElement target,
+      JsonMixinAnnotations annotations,
+      GeneratedJsonCodecSourceWriter.Representation representation,
+      boolean generatedObjectCodec) {
     Set<String> visited = new HashSet<>();
     visited.add(elements.getBinaryName(target).toString());
     Deque<TypeElement> pending = new ArrayDeque<>();
-    pending.addAll(classLiteralSubtypes(target, model.binaryFallbackTypes, annotations));
-    pending.addAll(unwrappedChildren(target, annotations));
+    if (representation == GeneratedJsonCodecSourceWriter.Representation.SUBTYPES) {
+      pending.addAll(classLiteralSubtypes(target, model.binaryFallbackTypes, annotations));
+    } else if (generatedObjectCodec) {
+      pending.addAll(unwrappedChildren(target, annotations));
+    }
     while (!pending.isEmpty()) {
       TypeElement type = pending.removeFirst();
       String binaryName = elements.getBinaryName(type).toString();

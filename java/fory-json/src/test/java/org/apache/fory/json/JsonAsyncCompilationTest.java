@@ -134,6 +134,10 @@ public class JsonAsyncCompilationTest {
     ControlledJson controlled =
         controlledJson(Collections.singletonMap(AsyncMixinTarget.class, AsyncMixin.class));
     ForyJson json = controlled.json;
+    JsonTypeResolver resolver = primaryTypeResolver(json);
+    ObjectCodec<AsyncMixinTarget> owner = resolver.getObjectCodec(AsyncMixinTarget.class);
+    JsonTypeInfo info = resolver.getTypeInfo(AsyncMixinTarget.class, AsyncMixinTarget.class);
+    assertCapabilities(info, owner);
     AsyncMixinTarget value = new AsyncMixinTarget();
     value.id = 1;
     value.setName("before");
@@ -146,25 +150,32 @@ public class JsonAsyncCompilationTest {
         json.fromJson("{\"id\":2,\"mixed_name\":\"latin\"}", AsyncMixinTarget.class).getName(),
         "latin");
     assertEquals(
+        json.fromJson("{\"id\":3,\"mixed_name\":\"你好\"}", AsyncMixinTarget.class).getName(), "你好");
+    assertEquals(
         json.fromJson(
-                "{\"id\":3,\"mixed_name\":\"utf8\"}".getBytes(StandardCharsets.UTF_8),
+                "{\"id\":4,\"mixed_name\":\"utf8\"}".getBytes(StandardCharsets.UTF_8),
                 AsyncMixinTarget.class)
             .getName(),
         "utf8");
     assertTrue(controlled.executor.submittedTasks() > 0);
 
     controlled.executor.runAll();
+    assertNotSame(info.stringWriter(), owner);
+    assertNotSame(info.utf8Writer(), owner);
+    assertNotSame(info.latin1Reader(), owner);
+    assertNotSame(info.utf16Reader(), owner);
+    assertNotSame(info.utf8Reader(), owner);
     value.setName("after");
     assertEquals(json.toJson(value), "{\"id\":1,\"mixed_name\":\"after\"}");
     assertEquals(
         new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
         "{\"id\":1,\"mixed_name\":\"after\"}");
     assertEquals(
-        json.fromJson("{\"id\":4,\"mixed_name\":\"again\"}", AsyncMixinTarget.class).getName(),
+        json.fromJson("{\"id\":5,\"mixed_name\":\"again\"}", AsyncMixinTarget.class).getName(),
         "again");
     assertEquals(
         json.fromJson(
-                "{\"id\":5,\"mixed_name\":\"bytes\"}".getBytes(StandardCharsets.UTF_8),
+                "{\"id\":6,\"mixed_name\":\"bytes\"}".getBytes(StandardCharsets.UTF_8),
                 AsyncMixinTarget.class)
             .getName(),
         "bytes");

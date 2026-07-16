@@ -90,9 +90,13 @@ public final class ForyJsonExample {
   }
 
   private static void testMixin() {
-    ForyJson json = ForyJson.builder().registerMixin(JsonMixinModel.class).build();
     JsonMixinTarget value =
         JsonMixinTarget.create(18, new JsonMixinTarget.Address("Hangzhou", 310000));
+    String direct = ForyJson.builder().build().toJson(value);
+    Preconditions.checkArgument(direct.contains("\"id\":18"));
+    Preconditions.checkArgument(direct.contains("\"address\":{"));
+
+    ForyJson json = ForyJson.builder().registerMixin(JsonMixinModel.class).build();
     String encoded = json.toJson(value);
     Preconditions.checkArgument(
         encoded.equals("{\"user_id\":18,\"address_city\":\"Hangzhou\",\"address_zip\":310000}"));
@@ -100,6 +104,15 @@ public final class ForyJsonExample {
     Preconditions.checkArgument(decoded.getId() == 18);
     Preconditions.checkArgument(decoded.getAddress().city.equals("Hangzhou"));
     Preconditions.checkArgument(decoded.getAddress().zip == 310000);
+
+    ForyJson alternate = ForyJson.builder().registerMixin(JsonAlternateMixinModel.class).build();
+    String alternateJson = alternate.toJson(value);
+    Preconditions.checkArgument(
+        alternateJson.equals(
+            "{\"account_id\":18,\"location_city\":\"Hangzhou\",\"location_zip\":310000}"));
+    JsonMixinTarget alternateDecoded = alternate.fromJson(alternateJson, JsonMixinTarget.class);
+    Preconditions.checkArgument(alternateDecoded.getId() == 18);
+    Preconditions.checkArgument(alternateDecoded.getAddress().city.equals("Hangzhou"));
   }
 
   private static void testMixinValue() {
@@ -819,6 +832,20 @@ public final class ForyJsonExample {
     JsonMixinTarget create(int id, JsonMixinTarget.Address address);
   }
 
+  @JsonMixin(target = JsonMixinTarget.class)
+  @JsonPropertyOrder({"id", "address"})
+  public interface JsonAlternateMixinModel {
+    @JsonProperty("account_id")
+    int getId();
+
+    @JsonUnwrapped(prefix = "location_")
+    JsonMixinTarget.Address getAddress();
+
+    @JsonCreator({"id", "address"})
+    JsonMixinTarget create(int id, JsonMixinTarget.Address address);
+  }
+
+  @JsonType
   public static final class JsonMixinTarget {
     private final int id;
     private final Address address;
