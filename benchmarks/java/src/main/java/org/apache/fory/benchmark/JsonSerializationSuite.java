@@ -20,6 +20,8 @@
 package org.apache.fory.benchmark;
 
 import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONFactory;
+import com.alibaba.fastjson2.JSONReader;
 import com.alibaba.fastjson2.JSONWriter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
@@ -52,28 +54,58 @@ public class JsonSerializationSuite {
   @State(Scope.Thread)
   public static class JsonState {
     ForyJson foryJson;
-    JSONWriter.Context fastjson2Context;
+    JSONReader.Context fastjson2ReadContext;
+    JSONWriter.Context fastjson2WriteContext;
     ObjectMapper mapper;
     Gson gson;
     MediaContent mediaContent;
+    byte[] jsonBytes;
+    String jsonString;
 
     @Setup
     public void setup() {
       foryJson = ForyJson.builder().build();
-      fastjson2Context = new JSONWriter.Context();
+      fastjson2ReadContext = JSONFactory.createReadContext();
+      fastjson2WriteContext = new JSONWriter.Context();
       mapper = new ObjectMapper();
       gson = new Gson();
-      mediaContent = JSON.parseObject(readResource(), MediaContent.class);
+      jsonString = readResource();
+      jsonBytes = jsonString.getBytes(StandardCharsets.UTF_8);
+      mediaContent = JSON.parseObject(jsonString, MediaContent.class);
       byte[] foryBytes = foryJson.toJsonBytes(mediaContent);
       byte[] fastjsonBytes =
-          JSON.toJSONBytes(mediaContent, StandardCharsets.UTF_8, fastjson2Context);
+          JSON.toJSONBytes(mediaContent, StandardCharsets.UTF_8, fastjson2WriteContext);
       if (!JSON.parseObject(foryBytes).equals(JSON.parseObject(fastjsonBytes))) {
         throw new IllegalStateException("Fory JSON and fastjson2 produce different JSON objects");
       }
       String foryString = foryJson.toJson(mediaContent);
-      String fastjsonString = JSON.toJSONString(mediaContent, fastjson2Context);
+      String fastjsonString = JSON.toJSONString(mediaContent, fastjson2WriteContext);
       if (!JSON.parseObject(foryString).equals(JSON.parseObject(fastjsonString))) {
         throw new IllegalStateException("Fory JSON and fastjson2 produce different JSON strings");
+      }
+      try {
+        verifyDecoded("Fory JSON bytes", foryJson.fromJson(jsonBytes, MediaContent.class));
+        verifyDecoded(
+            "Fastjson2 bytes",
+            JSON.parseObject(jsonBytes, MediaContent.class, fastjson2ReadContext));
+        verifyDecoded("Jackson bytes", mapper.readValue(jsonBytes, MediaContent.class));
+        verifyDecoded(
+            "Gson bytes",
+            gson.fromJson(new String(jsonBytes, StandardCharsets.UTF_8), MediaContent.class));
+        verifyDecoded("Fory JSON string", foryJson.fromJson(jsonString, MediaContent.class));
+        verifyDecoded(
+            "Fastjson2 string",
+            JSON.parseObject(jsonString, MediaContent.class, fastjson2ReadContext));
+        verifyDecoded("Jackson string", mapper.readValue(jsonString, MediaContent.class));
+        verifyDecoded("Gson string", gson.fromJson(jsonString, MediaContent.class));
+      } catch (IOException e) {
+        throw new IllegalStateException("Unable to verify JSON deserialization", e);
+      }
+    }
+
+    private void verifyDecoded(String serializer, MediaContent decoded) {
+      if (!mediaContent.equals(decoded)) {
+        throw new IllegalStateException(serializer + " produced different MediaContent");
       }
     }
 
@@ -105,7 +137,8 @@ public class JsonSerializationSuite {
 
   @Benchmark
   public byte[] fastjson2ToJsonBytes(JsonState state) {
-    return JSON.toJSONBytes(state.mediaContent, StandardCharsets.UTF_8, state.fastjson2Context);
+    return JSON.toJSONBytes(
+        state.mediaContent, StandardCharsets.UTF_8, state.fastjson2WriteContext);
   }
 
   @Benchmark
@@ -125,7 +158,7 @@ public class JsonSerializationSuite {
 
   @Benchmark
   public String fastjson2ToJsonString(JsonState state) {
-    return JSON.toJSONString(state.mediaContent, state.fastjson2Context);
+    return JSON.toJSONString(state.mediaContent, state.fastjson2WriteContext);
   }
 
   @Benchmark
@@ -136,5 +169,46 @@ public class JsonSerializationSuite {
   @Benchmark
   public String gsonToJsonString(JsonState state) {
     return state.gson.toJson(state.mediaContent);
+  }
+
+  @Benchmark
+  public MediaContent foryFromJsonBytes(JsonState state) {
+    return state.foryJson.fromJson(state.jsonBytes, MediaContent.class);
+  }
+
+  @Benchmark
+  public MediaContent fastjson2FromJsonBytes(JsonState state) {
+    return JSON.parseObject(state.jsonBytes, MediaContent.class, state.fastjson2ReadContext);
+  }
+
+  @Benchmark
+  public MediaContent jacksonFromJsonBytes(JsonState state) throws IOException {
+    return state.mapper.readValue(state.jsonBytes, MediaContent.class);
+  }
+
+  @Benchmark
+  public MediaContent gsonFromJsonBytes(JsonState state) {
+    return state.gson.fromJson(
+        new String(state.jsonBytes, StandardCharsets.UTF_8), MediaContent.class);
+  }
+
+  @Benchmark
+  public MediaContent foryFromJsonString(JsonState state) {
+    return state.foryJson.fromJson(state.jsonString, MediaContent.class);
+  }
+
+  @Benchmark
+  public MediaContent fastjson2FromJsonString(JsonState state) {
+    return JSON.parseObject(state.jsonString, MediaContent.class, state.fastjson2ReadContext);
+  }
+
+  @Benchmark
+  public MediaContent jacksonFromJsonString(JsonState state) throws IOException {
+    return state.mapper.readValue(state.jsonString, MediaContent.class);
+  }
+
+  @Benchmark
+  public MediaContent gsonFromJsonString(JsonState state) {
+    return state.gson.fromJson(state.jsonString, MediaContent.class);
   }
 }
