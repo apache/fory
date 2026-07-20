@@ -106,7 +106,7 @@ aligned. `fory-json` includes `fory-core` transitively.
   <version>1.4.0</version>
 </dependency>
 
-<!-- Optional: Row format support -->
+<!-- Row format -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
@@ -127,9 +127,11 @@ aligned. `fory-json` includes `fory-core` transitively.
 dependencies {
     // Binary object serialization
     implementation 'org.apache.fory:fory-core:1.4.0'
-    // Add only the optional formats and extensions you use
+    // JSON serialization
     implementation 'org.apache.fory:fory-json:1.4.0'
+    // Row format
     implementation 'org.apache.fory:fory-format:1.4.0'
+    // Optional: Protobuf serializers and metadata compression
     implementation 'org.apache.fory:fory-extensions:1.4.0'
 }
 ```
