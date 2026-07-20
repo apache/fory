@@ -63,6 +63,7 @@ SCALA_RELEASE_CMDS = (
 RELEASE_DOC_ROOTS = (
     "README.md",
     "java/README.md",
+    "java/fory-json/README.md",
     "rust/README.md",
     "scala/README.md",
     "csharp/README.md",
@@ -531,7 +532,7 @@ def bump_version(**kwargs):
         elif lang == "kotlin":
             bump_kotlin_version(_normalize_java_version(new_version))
         elif lang == "rust":
-            bump_rust_version(new_version)
+            bump_rust_version(new_version, kwargs.get("release_version"))
         elif lang == "python":
             bump_python_version(new_version)
         elif lang == "javascript":
@@ -641,8 +642,9 @@ def bump_python_version(new_version):
     )
 
 
-def bump_rust_version(new_version):
+def bump_rust_version(new_version, release_version=None):
     rust_version = _normalize_rust_version(new_version)
+    release_version = _resolve_release_doc_version(new_version, release_version)
     _bump_version("rust", "Cargo.toml", rust_version, _update_rust_version)
     _bump_version(
         "benchmarks/rust",
@@ -668,7 +670,12 @@ def bump_rust_version(new_version):
         rust_version,
         _update_cargo_lock_version,
     )
-    _bump_version("rust/fory/src", "lib.rs", rust_version, _update_rust_doc_version)
+    _bump_version(
+        "rust/fory/src",
+        "lib.rs",
+        release_version or rust_version,
+        _update_rust_doc_version,
+    )
 
 
 def bump_kotlin_version(new_version):

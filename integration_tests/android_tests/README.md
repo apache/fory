@@ -10,9 +10,9 @@ exact rules for unannotated ordinary classes. Mixin coverage
 registers the source at runtime after R8 minification so broad application keep
 rules cannot hide missing processor output.
 
-The tests consume `org.apache.fory:fory-core:1.4.0-SNAPSHOT`,
-`org.apache.fory:fory-json:1.4.0-SNAPSHOT`, and
-`org.apache.fory:fory-annotation-processor:1.4.0-SNAPSHOT` from the local Maven
+The tests consume `org.apache.fory:fory-core:1.5.0-SNAPSHOT`,
+`org.apache.fory:fory-json:1.5.0-SNAPSHOT`, and
+`org.apache.fory:fory-annotation-processor:1.5.0-SNAPSHOT` from the local Maven
 repository, so install the Java artifacts before running Gradle:
 
 ```bash

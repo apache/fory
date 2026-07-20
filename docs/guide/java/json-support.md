@@ -33,13 +33,7 @@ binary-only features.
 
 The module targets Java 8 bytecode. Record mapping requires Java 17 or later.
 
-Fory JSON is currently available from the source tree as `1.4.0-SNAPSHOT`. Until a published Fory
-release contains the module, install it locally from the repository root:
-
-```bash
-cd java
-mvn -pl fory-json -am -DskipTests install
-```
+Fory JSON is available from Maven Central.
 
 Maven:
 
@@ -47,18 +41,17 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.4.0-SNAPSHOT</version>
+  <version>1.4.0</version>
 </dependency>
 ```
 
-Gradle, using `mavenLocal()` for the snapshot:
+Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-json:1.4.0-SNAPSHOT")
+implementation("org.apache.fory:fory-json:1.4.0")
 ```
 
-Keep all Fory modules on the same version. Replace the snapshot with the released version that
-contains `fory-json` after publication.
+Keep all Fory modules on the same version.
 
 ### JDK 25 and later
 
