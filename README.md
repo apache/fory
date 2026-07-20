@@ -698,11 +698,25 @@ val fory = ForyKotlin.builder()
 
 ## Schema IDL
 
-Fory IDL is Fory's schema language for shared data models. It supports
-references, nullable fields, lists, maps, arrays, enums, messages, and unions,
-and generates native data structures for Java, Python, C++, Go, Rust,
-JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Use it when multiple
-languages need one shared contract.
+Fory IDL is Fory's schema-first path for shared data models. Use it when
+multiple languages need one explicit contract, stable field identities, and
+generated native domain objects instead of manually coordinating equivalent
+types in every implementation.
+
+The schema supports primitive values, nullable fields, lists, maps, dense
+arrays, enums, messages, unions, imports, and first-class shared or circular
+references. The compiler generates idiomatic models and Fory integration for
+Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and
+Kotlin. It can also generate Fory-backed gRPC service companions for supported
+languages.
+
+Install the compiler from PyPI:
+
+```bash
+pip install fory-compiler
+```
+
+Define the shared model in `tree.fdl`:
 
 ```protobuf
 package tree;
@@ -716,7 +730,18 @@ message TreeNode {
 }
 ```
 
-See the [Fory IDL and compiler guide](https://fory.apache.org/docs/compiler).
+Generate native models for the languages used by your application:
+
+```bash
+foryc tree.fdl --lang java,python,rust --output ./generated
+```
+
+Generated types use each language's normal classes, structs, dataclasses,
+annotations, macros, or registration helpers, so application code works with
+native domain objects while all peers share the same Fory schema. See the
+[Fory IDL and compiler guide](https://fory.apache.org/docs/compiler) for the
+complete type system, language-specific output options, schema evolution, and
+gRPC generation.
 
 ## JSON Serialization
 

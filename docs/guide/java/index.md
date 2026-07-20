@@ -19,48 +19,87 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ provides blazingly fast Java object serialization with JIT compilation and zero-copy techniques. Java supports both xlang mode and native mode. Xlang mode is the default cross-language wire format and uses compatible schema evolution. Native mode is the Java-only wire format for same-language object serialization, JDK serialization replacement behavior, framework replacement, and Java-native object graph features.
+Apache Fory™ Java provides high-performance binary object serialization, JSON
+serialization, and a random-access row format. Binary serialization supports
+xlang mode for cross-language payloads and native mode for Java-only object
+graphs. [Fory JSON](json-support.md) is a separate, performance-first standard
+JSON codec with its own object-mapping model.
 
-Fory also provides a separate [JSON codec](json-support.md) for interoperable text payloads. JSON is
-not the native or xlang binary protocol and has its own object-mapping annotations and limits.
+## Choose a Format
+
+| Format                          | Use it when                                                                      | Artifact                      | Start here                                    |
+| ------------------------------- | -------------------------------------------------------------------------------- | ----------------------------- | --------------------------------------------- |
+| **Binary Object Serialization** | You need compact object graphs in Java native mode or across supported languages | `org.apache.fory:fory-core`   | [Basic Serialization](basic-serialization.md) |
+| **Fory JSON**                   | You need high-throughput standard JSON for Java applications                     | `org.apache.fory:fory-json`   | [JSON Support](json-support.md)               |
+| **Row Format**                  | You need zero-copy random access, partial reads, or Arrow integration            | `org.apache.fory:fory-format` | [Row Format](row-format.md)                   |
 
 ## Features
 
-### High Performance
+### Binary Object Serialization
 
-- **JIT Code Generation**: Highly-extensible JIT framework generates serializer code at runtime using async multi-threaded compilation, delivering 20-170x speedup through:
-  - Inlining variables to reduce memory access
-  - Inlining method calls to eliminate virtual dispatch overhead
-  - Minimizing conditional branching
-  - Eliminating hash lookups
-- **Zero-Copy**: Direct memory access without intermediate buffer copies; row format supports random access and partial serialization
-- **Variable-Length Encoding**: Optimized compression for integers, longs
-- **Meta Sharing**: Cached class metadata reduces redundant type information
-- **SIMD Acceleration**: Java Vector API support for array operations (Java 16+)
+- **Generated Codecs**: JIT-generated serializers reduce virtual dispatch,
+  branching, and metadata lookups on hot paths.
+- **Native and Xlang Modes**: Choose Java-native object semantics or a portable
+  wire format shared with other Fory implementations.
+- **Compact Encoding**: Variable-length integers, metadata sharing, string
+  compression, and optional numeric-array compression reduce payload size.
+- **Object Graph Semantics**: Preserve shared and circular references,
+  polymorphism, schema evolution, and deep-copy identity.
 
-### Drop-in Replacement
+### Fory JSON
 
-- **100% JDK Serialization Compatible**: Supports `writeObject`/`readObject`/`writeReplace`/`readResolve`/`readObjectNoData`/`Externalizable`
-- **Java 8+ Support**: Works across all modern Java versions including Java 17+ records
-- **GraalVM Native Image**: AOT compilation support without reflection configuration
-- **Android API 26+ Support**: Core object serialization works on Android without runtime code generation.
+- **Performance-First Codec**: Optimized readers and writers plus interpreted
+  and runtime-generated codecs keep JSON encoding and decoding fast.
+- **Java Object Mapping**: Supports ordinary objects, Java 17 records, immutable
+  creator-based classes, common JDK types, generic containers, custom codecs,
+  and annotation-declared polymorphism.
+- **String and UTF-8 APIs**: Read and write `String` and UTF-8 `byte[]` with one
+  immutable, thread-safe `ForyJson` instance.
 
-### Advanced Features
+### Java Native Serialization
 
-- **Reference Tracking**: Automatic handling of shared and circular references
-- **Schema Evolution**: Forward/backward compatibility for class schema changes
-- **Polymorphism**: Full support for inheritance hierarchies and interfaces
-- **Deep Copy**: Efficient deep cloning of complex object graphs with reference preservation
-- **Security**: Class registration and configurable deserialization policies
+- **Framework Replacement**: Replace JDK serialization, Kryo, FST, Hessian, or
+  Java-only Protocol Buffers payloads in Java-only systems.
+- **JDK Semantics**: Supports JDK custom serialization behavior and
+  `Externalizable` in native mode.
+- **Security Controls**: Class registration, type checking, depth limits, and
+  configurable deserialization policies protect decoding boundaries.
+
+### Row Format
+
+- **Zero-Copy Random Access**: Read fields and nested values without rebuilding
+  complete objects.
+- **Partial Reads**: Decode only the data required by an analytics or query path.
+- **Apache Arrow Integration**: Convert between Fory row data and Arrow data for
+  columnar processing.
+
+### Platforms
+
+- `fory-core` and `fory-json` support Java 8 and later; Java records require
+  Java 17 or later.
+- `fory-format` targets Java 11 and later and is not supported on Android.
+- `fory-core` and `fory-json` run on standard JDKs, GraalVM native images, and
+  Android API level 26 and later.
 
 ## Installation
+
+Add the artifact for the format you use and keep all Fory modules on the same
+version. `fory-json` includes `fory-core` transitively.
 
 ### Maven
 
 ```xml
+<!-- Binary object serialization -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
+  <version>1.4.0</version>
+</dependency>
+
+<!-- JSON serialization -->
+<dependency>
+  <groupId>org.apache.fory</groupId>
+  <artifactId>fory-json</artifactId>
   <version>1.4.0</version>
 </dependency>
 ```
@@ -68,7 +107,10 @@ not the native or xlang binary protocol and has its own object-mapping annotatio
 ### Gradle
 
 ```kotlin
+// Binary object serialization
 implementation("org.apache.fory:fory-core:1.4.0")
+// JSON serialization
+implementation("org.apache.fory:fory-json:1.4.0")
 ```
 
 ### JDK25+
@@ -159,6 +201,46 @@ public class Example {
   }
 }
 ```
+
+### Fory JSON
+
+`ForyJson` is immutable and thread-safe after construction. Reuse one instance
+for both `String` and UTF-8 `byte[]` operations:
+
+```java
+import org.apache.fory.json.ForyJson;
+
+public final class JsonExample {
+  private static final ForyJson JSON = ForyJson.builder().build();
+
+  public static final class User {
+    public long id;
+    public String name;
+
+    public User() {}
+
+    public User(long id, String name) {
+      this.id = id;
+      this.name = name;
+    }
+  }
+
+  public static void main(String[] args) {
+    User input = new User(7, "Alice");
+
+    String text = JSON.toJson(input);
+    User fromText = JSON.fromJson(text, User.class);
+
+    byte[] utf8 = JSON.toJsonBytes(input);
+    User fromUtf8 = JSON.fromJson(utf8, User.class);
+
+    System.out.println(fromText.name + " / " + fromUtf8.name);
+  }
+}
+```
+
+See [JSON Support](json-support.md) for supported types, annotations, custom
+codecs, security controls, and platform setup.
 
 ## Xlang Mode And Native Mode
 
