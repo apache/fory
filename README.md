@@ -718,6 +718,39 @@ message TreeNode {
 
 See the [Fory IDL and compiler guide](https://fory.apache.org/docs/compiler).
 
+## JSON Serialization
+
+Fory JSON is a high-performance, thread-safe JSON codec for Java. It combines
+optimized readers and writers with runtime-generated codecs where available to
+maximize throughput. It supports Java 8 and later on standard JDKs, GraalVM
+native images, and Android, with Java records supported on Java 17 and later.
+
+Add `org.apache.fory:fory-json` with the same version as `fory-core`, then reuse
+one `ForyJson` instance across threads:
+
+```java
+import org.apache.fory.json.ForyJson;
+
+public class User {
+  public long id;
+  public String name;
+
+  public User() {}
+
+  public User(long id, String name) {
+    this.id = id;
+    this.name = name;
+  }
+}
+
+ForyJson json = ForyJson.builder().build();
+byte[] bytes = json.toJsonBytes(new User(7, "Alice"));
+User user = json.fromJson(bytes, User.class);
+```
+
+See the [Fory JSON guide](docs/guide/java/json-support.md) for installation,
+configuration, supported types, custom codecs, and platform-specific setup.
+
 ## Row Format
 
 Row format is for random access and partial reads. These examples encode an
