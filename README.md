@@ -812,8 +812,26 @@ optimized for maximum performance across JSON encoding, decoding, and Java
 object mapping. It supports Java 8 and later on standard JDKs, GraalVM native
 images, and Android, with Java records supported on Java 17 and later.
 
-Add `org.apache.fory:fory-json` with the same version as `fory-core`, then reuse
-one `ForyJson` instance across threads:
+Add Fory JSON to your project:
+
+**Maven**
+
+```xml
+<dependency>
+  <groupId>org.apache.fory</groupId>
+  <artifactId>fory-json</artifactId>
+  <version>1.4.0</version>
+</dependency>
+```
+
+**Gradle**
+
+```gradle
+implementation "org.apache.fory:fory-json:1.4.0"
+```
+
+Keep all Fory modules in the same application on the same version. Build one
+`ForyJson` instance and reuse it across threads:
 
 ```java
 import org.apache.fory.json.ForyJson;
