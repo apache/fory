@@ -61,14 +61,14 @@ not the native or xlang binary protocol and has its own object-mapping annotatio
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.3.0</version>
+  <version>1.4.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```kotlin
-implementation("org.apache.fory:fory-core:1.3.0")
+implementation("org.apache.fory:fory-core:1.4.0")
 ```
 
 ### JDK25+
