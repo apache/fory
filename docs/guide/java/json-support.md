@@ -31,7 +31,8 @@ binary-only features.
 
 ## Requirements and installation
 
-The module targets Java 8 bytecode. Record mapping requires Java 17 or later.
+Fory JSON supports Java 8 and later on standard JDKs, GraalVM native images, and Android. Java
+records are supported on Java 17 and later.
 
 Fory JSON is available from Maven Central.
 
