@@ -40,8 +40,6 @@ references.
   JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin, including GraalVM
   native image, Android, Dart VM/Flutter/web, and Node.js/browser JavaScript.
 
-**Beyond Cross-Language Serialization**
-
 For same-language workloads, Fory provides native serialization modes that
 support broader language-specific object models:
 
