@@ -58,9 +58,11 @@ Fory also provides specialized formats for other data-processing requirements:
 
 - **Row Format**: Read fields, arrays, and nested values without rebuilding
   complete objects, with zero-copy access and partial reads.
-- **JSON Serialization for Java**: Interoperable JSON for HTTP APIs, browsers,
-  logs, and configuration, with support for standard JDKs, GraalVM native
-  images, Android, and Java 17 records.
+- **High-Performance JSON Serialization for Java**: Built for maximum
+  throughput with runtime-generated codecs and optimized readers and writers,
+  while remaining interoperable with standard JSON for HTTP APIs, browsers,
+  logs, and configuration. Supports Java 8 and later on standard JDKs, GraalVM
+  native images, and Android, including Java 17 records.
 
 ## Performance
 
