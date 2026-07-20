@@ -34,13 +34,35 @@ references.
   directly in the schema, alongside numbers, strings, lists, maps, arrays,
   enums, structs, and unions. Define schemas once, then generate native domain
   objects for each language without forcing wrapper types into user code.
-- **Row-Format Random Access**: Read fields, arrays, and nested values without
-  rebuilding full objects, with zero-copy access and partial reads.
 - **Optimized Implementations**: Java JIT serializers and generated/static serializers
   in other language implementations keep hot paths fast and payloads compact.
 - **Language And Platform Support**: Java, Python, C++, Go, Rust,
   JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin, including GraalVM
   native image, Android, Dart VM/Flutter/web, and Node.js/browser JavaScript.
+
+**Beyond Cross-Language Serialization**
+
+For same-language workloads, Fory provides native serialization modes that
+support broader language-specific object models:
+
+- **Java Native Serialization**: A high-performance replacement for JDK
+  serialization, Hessian, Kryo, and FST in Java-only systems. It natively
+  supports JDK custom serialization hooks including `writeObject`,
+  `readObject`, `writeReplace`, and `readResolve`.
+- **Python Native Serialization**: A faster and more compact replacement for
+  `pickle` and `cloudpickle` in Python-only systems. It supports Python
+  classes, modules, global and local functions, `__reduce__`/`__reduce_ex__`,
+  and `__getstate__`/`__setstate__`, with fine-grained deserialization
+  controls through `DeserializationPolicy` for class, module, function,
+  reduction, and state restoration behavior.
+
+Fory also provides specialized formats for other data-processing requirements:
+
+- **Row Format**: Read fields, arrays, and nested values without rebuilding
+  complete objects, with zero-copy access and partial reads.
+- **JSON Serialization for Java**: Interoperable JSON for HTTP APIs, browsers,
+  logs, and configuration, with support for standard JDKs, GraalVM native
+  images, Android, and Java 17 records.
 
 ## Performance
 
