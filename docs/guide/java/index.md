@@ -19,19 +19,19 @@ license: |
   limitations under the License.
 ---
 
-Apache Fory™ Java provides high-performance binary object serialization, JSON
-serialization, and a random-access row format. Binary serialization supports
-xlang mode for cross-language payloads and native mode for Java-only object
-graphs. [Fory JSON](json-support.md) is a high-performance JSON serialization
-framework for Java applications.
+Apache Fory™ Java provides high-performance binary object serialization, a
+cross-language random-access row format, and JSON serialization for Java.
+Binary serialization supports xlang mode for cross-language payloads and native
+mode for Java-only object graphs. [Fory JSON](json-support.md) is a
+high-performance JSON serialization framework for Java applications.
 
 ## Choose a Format
 
 | Format                          | Use it when                                                                      | Artifact                      | Start here                                    |
 | ------------------------------- | -------------------------------------------------------------------------------- | ----------------------------- | --------------------------------------------- |
 | **Binary Object Serialization** | You need compact object graphs in Java native mode or across supported languages | `org.apache.fory:fory-core`   | [Basic Serialization](basic-serialization.md) |
-| **Fory JSON**                   | You need high-throughput standard JSON for Java applications                     | `org.apache.fory:fory-json`   | [JSON Support](json-support.md)               |
 | **Row Format**                  | You need zero-copy random access, partial reads, or Arrow integration            | `org.apache.fory:fory-format` | [Row Format](row-format.md)                   |
+| **Fory JSON**                   | You need high-throughput standard JSON for Java applications                     | `org.apache.fory:fory-json`   | [JSON Support](json-support.md)               |
 
 ## Binary Object Serialization
 
@@ -246,6 +246,40 @@ ThreadSafeFory threadLocalFory = Fory.builder()
   .buildThreadLocalFory();
 ```
 
+## Row Format
+
+Fory row format is a separate cache-friendly binary format for random access,
+partial reads, and analytics workloads.
+
+### Features
+
+- **Zero-Copy Random Access**: Read fields and nested values without rebuilding
+  complete objects.
+- **Partial Reads**: Decode only the data required by an analytics or query path.
+- **Apache Arrow Integration**: Convert between Fory row data and Arrow data for
+  columnar processing.
+
+### Installation
+
+#### Maven
+
+```xml
+<dependency>
+  <groupId>org.apache.fory</groupId>
+  <artifactId>fory-format</artifactId>
+  <version>1.4.0</version>
+</dependency>
+```
+
+#### Gradle
+
+```kotlin
+implementation("org.apache.fory:fory-format:1.4.0")
+```
+
+See [Row Format](row-format.md) for encoding, typed field access, partial
+deserialization, nested values, and Arrow integration.
+
 ## Fory JSON
 
 Fory JSON is a thread-safe JSON serialization framework for Java, extensively
@@ -254,8 +288,8 @@ object mapping.
 
 ### Features
 
-- **Performance-First Codec**: Optimized readers and writers plus interpreted
-  and runtime-generated codecs keep JSON encoding and decoding fast.
+- **Maximum Performance**: Optimized readers and writers plus interpreted and
+  runtime-generated codecs keep JSON encoding and decoding fast.
 - **Java Object Mapping**: Supports ordinary objects, Java 17 records, immutable
   creator-based classes, common JDK types, generic containers, custom codecs,
   and annotation-declared polymorphism.
@@ -323,40 +357,6 @@ public final class JsonExample {
 
 See [JSON Support](json-support.md) for supported types, annotations, custom
 codecs, security controls, and platform setup.
-
-## Row Format
-
-Fory row format is a separate cache-friendly binary format for random access,
-partial reads, and analytics workloads.
-
-### Features
-
-- **Zero-Copy Random Access**: Read fields and nested values without rebuilding
-  complete objects.
-- **Partial Reads**: Decode only the data required by an analytics or query path.
-- **Apache Arrow Integration**: Convert between Fory row data and Arrow data for
-  columnar processing.
-
-### Installation
-
-#### Maven
-
-```xml
-<dependency>
-  <groupId>org.apache.fory</groupId>
-  <artifactId>fory-format</artifactId>
-  <version>1.4.0</version>
-</dependency>
-```
-
-#### Gradle
-
-```kotlin
-implementation("org.apache.fory:fory-format:1.4.0")
-```
-
-See [Row Format](row-format.md) for encoding, typed field access, partial
-deserialization, nested values, and Arrow integration.
 
 ## Platform Support
 

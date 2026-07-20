@@ -53,12 +53,12 @@ support broader language-specific object models:
 
 Fory also provides specialized formats for other data-processing requirements:
 
+- **Row Format**: Read fields, arrays, and nested values without rebuilding
+  complete objects, with zero-copy access and partial reads.
 - **Fory JSON**: A Java JSON serialization framework built for maximum
   throughput through runtime-generated codecs and optimized readers and
   writers. Supports Java 8 and later on standard JDKs, GraalVM native images,
   and Android, including Java 17 records.
-- **Row Format**: Read fields, arrays, and nested values without rebuilding
-  complete objects, with zero-copy access and partial reads.
 
 ## Performance
 
@@ -316,8 +316,8 @@ Snapshots for Java, Scala, and Kotlin are available from
 | ------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
 | Xlang binary  | Data crosses language boundaries                              | [Cross-language guide](docs/guide/xlang)                 |
 | Native binary | Producer and consumer are in the same language                | Language guide                                           |
-| Fory JSON     | Java applications need high-performance standard JSON         | [Fory JSON guide](docs/guide/java/json-support.md)       |
 | Row format    | You need random field access or analytics-style partial reads | [Row format spec](docs/specification/row_format_spec.md) |
+| Fory JSON     | Java applications need high-performance standard JSON         | [Fory JSON guide](docs/guide/java/json-support.md)       |
 
 For Java, Scala, Kotlin, Python, C++, Go, and Rust, use native mode for
 same-language traffic. It avoids xlang's cross-language type mapping and
@@ -744,51 +744,6 @@ native domain objects while all peers share the same Fory schema. See the
 complete type system, language-specific output options, schema evolution, and
 gRPC generation.
 
-## Fory JSON
-
-Fory JSON is a thread-safe JSON serialization framework for Java, extensively
-optimized for maximum performance across JSON encoding, decoding, and Java
-object mapping. It supports Java 8 and later on standard JDKs, GraalVM native
-images, and Android, with Java records supported on Java 17 and later.
-
-Add `org.apache.fory:fory-json` with the same version as `fory-core`, then reuse
-one `ForyJson` instance across threads:
-
-```java
-import org.apache.fory.json.ForyJson;
-
-public final class JsonExample {
-  private static final ForyJson JSON = ForyJson.builder().build();
-
-  public static final class User {
-    public long id;
-    public String name;
-
-    public User() {}
-
-    public User(long id, String name) {
-      this.id = id;
-      this.name = name;
-    }
-  }
-
-  public static void main(String[] args) {
-    User input = new User(7, "Alice");
-
-    String text = JSON.toJson(input);
-    User fromText = JSON.fromJson(text, User.class);
-
-    byte[] bytes = JSON.toJsonBytes(input);
-    User fromBytes = JSON.fromJson(bytes, User.class);
-
-    System.out.println(fromText.name + " / " + fromBytes.name);
-  }
-}
-```
-
-See the [Fory JSON guide](docs/guide/java/json-support.md) for installation,
-configuration, supported types, custom codecs, and platform-specific setup.
-
 ## Row Format
 
 Row format is for random access and partial reads. These examples encode an
@@ -849,6 +804,51 @@ deserialization, see the
 [Java row-format guide](https://fory.apache.org/docs/guide/java/row_format), the
 [Python row-format guide](docs/guide/python/row-format.md), and the
 [row-format specification](docs/specification/row_format_spec.md).
+
+## Fory JSON
+
+Fory JSON is a thread-safe JSON serialization framework for Java, extensively
+optimized for maximum performance across JSON encoding, decoding, and Java
+object mapping. It supports Java 8 and later on standard JDKs, GraalVM native
+images, and Android, with Java records supported on Java 17 and later.
+
+Add `org.apache.fory:fory-json` with the same version as `fory-core`, then reuse
+one `ForyJson` instance across threads:
+
+```java
+import org.apache.fory.json.ForyJson;
+
+public final class JsonExample {
+  private static final ForyJson JSON = ForyJson.builder().build();
+
+  public static final class User {
+    public long id;
+    public String name;
+
+    public User() {}
+
+    public User(long id, String name) {
+      this.id = id;
+      this.name = name;
+    }
+  }
+
+  public static void main(String[] args) {
+    User input = new User(7, "Alice");
+
+    String text = JSON.toJson(input);
+    User fromText = JSON.fromJson(text, User.class);
+
+    byte[] bytes = JSON.toJsonBytes(input);
+    User fromBytes = JSON.fromJson(bytes, User.class);
+
+    System.out.println(fromText.name + " / " + fromBytes.name);
+  }
+}
+```
+
+See the [Fory JSON guide](docs/guide/java/json-support.md) for installation,
+configuration, supported types, custom codecs, and platform-specific setup.
 
 ## Documentation
 

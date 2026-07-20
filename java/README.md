@@ -4,16 +4,17 @@
 [![Java Version](https://img.shields.io/badge/Java-8%2B-blue?style=for-the-badge)](https://www.oracle.com/java/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge)](https://opensource.org/licenses/Apache-2.0)
 
-Apache Fory™ Java provides high-performance binary object serialization, JSON
-serialization, and a random-access row format for the Java ecosystem.
+Apache Fory™ Java provides high-performance binary object serialization, a
+cross-language random-access row format, and JSON serialization for the Java
+ecosystem.
 
 ## Choose a Format
 
 | Format                          | Use it when                                                                      | Module        | Guide                                                 |
 | ------------------------------- | -------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------- |
 | **Binary Object Serialization** | You need compact object graphs in Java native mode or across supported languages | `fory-core`   | [Java guide](../docs/guide/java/)                     |
-| **Fory JSON**                   | You need high-throughput standard JSON for Java applications                     | `fory-json`   | [Fory JSON guide](../docs/guide/java/json-support.md) |
 | **Row Format**                  | You need zero-copy random access, partial reads, or Arrow integration            | `fory-format` | [Row-format guide](../docs/guide/java/row-format.md)  |
+| **Fory JSON**                   | You need high-throughput standard JSON for Java applications                     | `fory-json`   | [Fory JSON guide](../docs/guide/java/json-support.md) |
 
 Keep all Fory modules in one application on the same version.
 
@@ -34,6 +35,14 @@ Keep all Fory modules in one application on the same version.
 - **Security Controls**: Class registration, type checking, depth limits, and
   configurable deserialization policies protect decoding boundaries.
 
+### Row Format
+
+- **Zero-Copy Random Access**: Read fields and nested values without rebuilding
+  complete objects.
+- **Partial Reads**: Decode only the data required by an analytics or query path.
+- **Apache Arrow Integration**: Convert between Fory row data and Arrow data for
+  columnar processing.
+
 ### Fory JSON
 
 - **Maximum Performance**: Optimized readers and writers plus interpreted
@@ -43,14 +52,6 @@ Keep all Fory modules in one application on the same version.
   and annotation-declared polymorphism.
 - **Thread-Safe Runtime**: Build one immutable `ForyJson` instance and reuse it
   across threads.
-
-### Row Format
-
-- **Zero-Copy Random Access**: Read fields and nested values without rebuilding
-  complete objects.
-- **Partial Reads**: Decode only the data required by an analytics or query path.
-- **Apache Arrow Integration**: Convert between Fory row data and Arrow data for
-  columnar processing.
 
 ### Platforms
 
@@ -66,8 +67,8 @@ Keep all Fory modules in one application on the same version.
 | Topic                       | Description                                   | Source Doc Link                                                                | Website Doc Link                                                                              |
 | --------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
 | **Java Guide**              | Binary xlang and native mode usage            | [docs/guide/java](../docs/guide/java)                                          | [Java Guide](https://fory.apache.org/docs/guide/java/)                                        |
-| **Fory JSON**               | JSON usage, object mapping, and configuration | [json-support.md](../docs/guide/java/json-support.md)                          | [Fory JSON](https://fory.apache.org/docs/guide/java/json_support)                             |
 | **Row Format**              | Random access and Arrow integration           | [row-format.md](../docs/guide/java/row-format.md)                              | [Row Format](https://fory.apache.org/docs/guide/java/row_format)                              |
+| **Fory JSON**               | JSON usage, object mapping, and configuration | [json-support.md](../docs/guide/java/json-support.md)                          | [Fory JSON](https://fory.apache.org/docs/guide/java/json_support)                             |
 | **GraalVM Native Image**    | Native image support                          | [graalvm-support.md](../docs/guide/java/graalvm-support.md)                    | [GraalVM Support](https://fory.apache.org/docs/guide/java/graalvm_support)                    |
 | **Java Serialization Spec** | Binary protocol specification                 | [java_serialization_spec.md](../docs/specification/java_serialization_spec.md) | [Java Serialization Spec](https://fory.apache.org/docs/specification/java_serialization_spec) |
 | **Java Benchmarks**         | Performance data and plots                    | [java/README.md](../docs/benchmarks/java/README.md)                            | [Java Benchmarks](https://fory.apache.org/docs/benchmarks/java)                               |
@@ -77,8 +78,8 @@ Keep all Fory modules in one application on the same version.
 | Module                               | Description                                   | Maven Artifact                    |
 | ------------------------------------ | --------------------------------------------- | --------------------------------- |
 | **fory-core**                        | Binary native and xlang serialization         | `org.apache.fory:fory-core`       |
-| [**fory-json**](fory-json/README.md) | High-performance JSON serialization framework | `org.apache.fory:fory-json`       |
 | **fory-format**                      | Row format and Apache Arrow support           | `org.apache.fory:fory-format`     |
+| [**fory-json**](fory-json/README.md) | High-performance JSON serialization framework | `org.apache.fory:fory-json`       |
 | **fory-extensions**                  | Protobuf support and metadata compression     | `org.apache.fory:fory-extensions` |
 | **fory-test-core**                   | Testing utilities and data generators         | `org.apache.fory:fory-test-core`  |
 
@@ -97,17 +98,17 @@ aligned. `fory-json` includes `fory-core` transitively.
   <version>1.4.0</version>
 </dependency>
 
-<!-- JSON serialization -->
-<dependency>
-  <groupId>org.apache.fory</groupId>
-  <artifactId>fory-json</artifactId>
-  <version>1.4.0</version>
-</dependency>
-
 <!-- Row format -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
+  <version>1.4.0</version>
+</dependency>
+
+<!-- JSON serialization -->
+<dependency>
+  <groupId>org.apache.fory</groupId>
+  <artifactId>fory-json</artifactId>
   <version>1.4.0</version>
 </dependency>
 
@@ -125,10 +126,10 @@ aligned. `fory-json` includes `fory-core` transitively.
 dependencies {
     // Binary object serialization
     implementation 'org.apache.fory:fory-core:1.4.0'
-    // JSON serialization
-    implementation 'org.apache.fory:fory-json:1.4.0'
     // Row format
     implementation 'org.apache.fory:fory-format:1.4.0'
+    // JSON serialization
+    implementation 'org.apache.fory:fory-json:1.4.0'
     // Optional: Protobuf serializers and metadata compression
     implementation 'org.apache.fory:fory-extensions:1.4.0'
 }
@@ -374,6 +375,52 @@ java --add-modules=jdk.incubator.vector ...
    measuring the payload distribution and throughput tradeoff.
 7. Warm up generated serializers before measuring steady-state performance.
 
+## Row Format
+
+Fory row format is a cache-friendly binary format for random access and
+analytics. It can read fields, arrays, and nested values without rebuilding the
+complete object.
+
+```java
+import org.apache.fory.format.encoder.Encoders;
+import org.apache.fory.format.encoder.RowEncoder;
+import org.apache.fory.format.row.ArrayData;
+import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.fory.format.type.Schema;
+
+public final class RowExample {
+  public static final class User {
+    public int id;
+    public String name;
+    public int[] scores;
+  }
+
+  public static void main(String[] args) {
+    RowEncoder<User> encoder = Encoders.bean(User.class);
+
+    User user = new User();
+    user.id = 1;
+    user.name = "Alice";
+    user.scores = new int[] {98, 100, 95};
+
+    BinaryRow row = encoder.toRow(user);
+
+    Schema schema = encoder.schema();
+    Schema.StringField nameField = schema.stringField("name");
+    Schema.ArrayField scoresField = schema.arrayField("scores");
+
+    String name = nameField.get(row);
+    ArrayData scores = scoresField.get(row);
+    int secondScore = scores.getInt32(1);
+
+    System.out.println(name + ": " + secondScore);
+  }
+}
+```
+
+See the [Java row-format guide](../docs/guide/java/row-format.md) for nested
+structs, arrays, maps, partial deserialization, and Arrow integration.
+
 ## Fory JSON
 
 Fory JSON is a thread-safe JSON serialization framework for Java, extensively
@@ -421,52 +468,6 @@ Fory JSON supports Java 8 and later on standard JDKs, GraalVM native images,
 and Android. Java records are supported on Java 17 and later. See the
 [Fory JSON guide](../docs/guide/java/json-support.md) for supported types,
 annotations, custom codecs, security controls, and platform setup.
-
-## Row Format
-
-Fory row format is a cache-friendly binary format for random access and
-analytics. It can read fields, arrays, and nested values without rebuilding the
-complete object.
-
-```java
-import org.apache.fory.format.encoder.Encoders;
-import org.apache.fory.format.encoder.RowEncoder;
-import org.apache.fory.format.row.ArrayData;
-import org.apache.fory.format.row.binary.BinaryRow;
-import org.apache.fory.format.type.Schema;
-
-public final class RowExample {
-  public static final class User {
-    public int id;
-    public String name;
-    public int[] scores;
-  }
-
-  public static void main(String[] args) {
-    RowEncoder<User> encoder = Encoders.bean(User.class);
-
-    User user = new User();
-    user.id = 1;
-    user.name = "Alice";
-    user.scores = new int[] {98, 100, 95};
-
-    BinaryRow row = encoder.toRow(user);
-
-    Schema schema = encoder.schema();
-    Schema.StringField nameField = schema.stringField("name");
-    Schema.ArrayField scoresField = schema.arrayField("scores");
-
-    String name = nameField.get(row);
-    ArrayData scores = scoresField.get(row);
-    int secondScore = scores.getInt32(1);
-
-    System.out.println(name + ": " + secondScore);
-  }
-}
-```
-
-See the [Java row-format guide](../docs/guide/java/row-format.md) for nested
-structs, arrays, maps, partial deserialization, and Arrow integration.
 
 ## GraalVM Native Image
 
