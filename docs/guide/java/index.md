@@ -22,8 +22,8 @@ license: |
 Apache Fory™ Java provides high-performance binary object serialization, JSON
 serialization, and a random-access row format. Binary serialization supports
 xlang mode for cross-language payloads and native mode for Java-only object
-graphs. [Fory JSON](json-support.md) is a separate, performance-first standard
-JSON codec with its own object-mapping model.
+graphs. [Fory JSON](json-support.md) provides high-performance standard JSON
+serialization for Java applications.
 
 ## Choose a Format
 
@@ -248,9 +248,8 @@ ThreadSafeFory threadLocalFory = Fory.builder()
 
 ## Fory JSON
 
-Fory JSON is a separate, performance-first standard JSON codec for Java. It has
-its own object-mapping annotations and limits and does not use Fory's native or
-xlang binary wire format.
+Fory JSON is a high-performance, thread-safe JSON serializer for Java, with
+optimized APIs for both `String` and UTF-8 `byte[]`.
 
 ### Features
 
