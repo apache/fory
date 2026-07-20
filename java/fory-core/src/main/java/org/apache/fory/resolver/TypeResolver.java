@@ -84,6 +84,7 @@ import org.apache.fory.serializer.CodegenSerializer;
 import org.apache.fory.serializer.CodegenSerializer.LazyInitBeanSerializer;
 import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.ForyExtraFields;
+import org.apache.fory.serializer.ForyExtraFieldsSupport;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.PrimitiveSerializers;
 import org.apache.fory.serializer.Serializer;
@@ -524,19 +525,19 @@ public abstract class TypeResolver {
     return idToSerializer != null ? idToSerializer.get(typeDefId) : null;
   }
 
-  private static boolean hasExtraFieldsSinkField(Class<?> cls) {
-    return ForyExtraFields.findSinkField(cls) != null;
-  }
-
   /**
    * Records the reader-class serializer used to replay {@code cls} under the remote {@code
    * typeDefId} it was captured from.
    */
-  private void registerExtraFieldsSerializer(Class<?> cls, long typeDefId, Serializer<?> gen) {
-    extRegistry
-        .extraFieldsSerializers
-        .computeIfAbsent(cls, k -> new ConcurrentHashMap<>())
-        .putIfAbsent(typeDefId, gen);
+  private void registerExtraFieldsSerializer(
+      Class<?> cls, long typeDefId, Serializer<?> serializer, boolean generated) {
+    Map<Long, Serializer<?>> idToSerializer =
+        extRegistry.extraFieldsSerializers.computeIfAbsent(cls, k -> new ConcurrentHashMap<>());
+    if (generated) {
+      idToSerializer.put(typeDefId, serializer);
+    } else {
+      idToSerializer.putIfAbsent(typeDefId, serializer);
+    }
   }
 
   /**
@@ -658,19 +659,22 @@ public abstract class TypeResolver {
       WriteContext writeContext, MemoryBuffer buffer, TypeInfo typeInfo) {
     MetaWriteContext metaWriteContext = writeContext.getMetaWriteContext();
     assert metaWriteContext != null : SET_META_WRITE_CONTEXT_MSG;
-    IdentityObjectIntMap<Class<?>> classMap = metaWriteContext.classMap;
+    TypeDef typeDef = typeInfo.typeDef;
+    if (typeDef == null) {
+      typeDef = buildTypeDef(typeInfo);
+    }
+    // Dedup by TypeDef identity, not by typeInfo.type: one local class can legitimately announce
+    // several distinct TypeDefs in a single graph when forwarding {@code ForyExtraFields} from two
+    // remote versions of the same class.
+    IdentityObjectIntMap<Object> classMap = metaWriteContext.classMap;
     int newId = classMap.size;
-    int id = classMap.putOrGet(typeInfo.type, newId);
+    int id = classMap.putOrGet(typeDef, newId);
     if (id >= 0) {
       // Reference to previously written type: (index << 1) | 1, LSB=1
       buffer.writeVarUInt32((id << 1) | 1);
     } else {
       // New type: index << 1, LSB=0, followed by TypeDef bytes inline
       buffer.writeVarUInt32(newId << 1);
-      TypeDef typeDef = typeInfo.typeDef;
-      if (typeDef == null) {
-        typeDef = buildTypeDef(typeInfo);
-      }
       buffer.writeBytes(typeDef.getEncoded());
     }
   }
@@ -1311,8 +1315,8 @@ public abstract class TypeResolver {
                 c -> {
                   Serializer<?> gen = newGeneratedCompatibleSerializer(cls, c, typeDef);
                   typeInfo.setSerializer(this, gen);
-                  if (hasExtraFieldsSinkField(cls)) {
-                    registerExtraFieldsSerializer(cls, typeDef.getId(), gen);
+                  if (typeInfo.hasExtraFieldsSink()) {
+                    registerExtraFieldsSerializer(cls, typeDef.getId(), gen, true);
                   }
                 });
       } else if (sc == null) {
@@ -1336,14 +1340,14 @@ public abstract class TypeResolver {
     } else if (sc == CompatibleSerializer.class) {
       CompatibleSerializer<?> cs = new CompatibleSerializer<>(this, cls, typeDef);
       typeInfo.setSerializer(this, cs);
-      if (hasExtraFieldsSinkField(cls)) {
-        registerExtraFieldsSerializer(cls, typeDef.getId(), cs);
+      if (typeInfo.hasExtraFieldsSink()) {
+        registerExtraFieldsSerializer(cls, typeDef.getId(), cs, false);
       }
     } else if (GeneratedCompatibleSerializer.class.isAssignableFrom(sc)) {
       Serializer<?> gen = newGeneratedCompatibleSerializer(cls, sc, typeDef);
       typeInfo.setSerializer(this, gen);
-      if (hasExtraFieldsSinkField(cls)) {
-        registerExtraFieldsSerializer(cls, typeDef.getId(), gen);
+      if (typeInfo.hasExtraFieldsSink()) {
+        registerExtraFieldsSerializer(cls, typeDef.getId(), gen, true);
       }
     } else {
       typeInfo.setSerializer(this, Serializers.newSerializer(this, cls, sc));
@@ -1914,9 +1918,15 @@ public abstract class TypeResolver {
     List<Descriptor> result = new ArrayList<>(descriptors.size());
     boolean globalRefTracking = trackingRef();
     boolean isXlang = isCrossLanguage();
+    // The extra-fields sink is a framework marker type, never a data field
+    boolean excludeExtraFieldsSink = ForyExtraFieldsSupport.isEnabled(config);
 
     for (Descriptor descriptor : descriptors) {
       if (!searchParent && !descriptor.getDeclaringClass().equals(clz.getName())) {
+        continue;
+      }
+      if (excludeExtraFieldsSink && descriptor.getRawType() == ForyExtraFields.class) {
+        ForyExtraFieldsSupport.rejectRecordSink(clz);
         continue;
       }
       // Compute the final isTrackingRef value:

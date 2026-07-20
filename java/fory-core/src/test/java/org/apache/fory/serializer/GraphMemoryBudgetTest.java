@@ -21,6 +21,7 @@ package org.apache.fory.serializer;
 
 import static org.apache.fory.io.ForyStreamReader.of;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -257,6 +258,79 @@ public class GraphMemoryBudgetTest extends ForyTestBase {
           () -> fory.getSerializer(ArrayList.class).read(readContext));
     } finally {
       readContext.reset();
+    }
+  }
+
+  private static Fory compatibleFory(long maxGraphMemoryBytes, boolean codegen) {
+    return Fory.builder()
+        .withXlang(false)
+        .withCompatible(true)
+        .requireClassRegistration(false)
+        .suppressClassRegistrationWarnings(true)
+        .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
+        .withCodegen(codegen)
+        .build();
+  }
+
+  public static class BudgetUpstream {
+    public int kept;
+    public int e0;
+    public int e1;
+    public int e2;
+
+    public BudgetUpstream() {}
+
+    public BudgetUpstream(int base) {
+      kept = base;
+      e0 = base + 1;
+      e1 = base + 2;
+      e2 = base + 3;
+    }
+  }
+
+  public static class BudgetSinkDownstream {
+    public int kept;
+    public ForyExtraFields extraFields;
+
+    public BudgetSinkDownstream() {}
+  }
+
+  /**
+   * The compatible-mode extra-fields sink retains new owners (a {@link ForyExtraFields}, its
+   * backing HashMap, and one map entry per captured field). {@code ForyExtraFieldsSupport.capture}
+   * must charge those owners to the graph-memory budget before allocating, on both the interpreter
+   * and generated read paths, so untrusted input cannot spawn many partial objects and grow
+   * retained heap past maxGraphMemoryBytes. The exact required budget is (object owner) + (sink+map
+   * owners on first capture) + 3 * (per-entry). The formula is recomputed independently of
+   * ForyExtraFieldsSupport's private constants so this test also guards the accounting itself.
+   */
+  @Test
+  public void testExtraFieldsSinkChargedToGraphBudget() {
+    long sinkOwnerBytes =
+        (long) GraphMemoryEstimates.shallowObjectBytes(ForyExtraFields.class)
+            + GraphMemoryEstimates.shallowObjectBytes(HashMap.class);
+    long perEntryBytes = 2L * REFERENCE_BYTES;
+    long required =
+        GraphMemoryEstimates.shallowObjectBytes(BudgetSinkDownstream.class)
+            + sinkOwnerBytes
+            + 3 * perEntryBytes;
+
+    for (boolean codegen : new boolean[] {false, true}) {
+      byte[] bytes =
+          compatibleFory(DEFAULT_GRAPH_MEMORY_BYTES, codegen).serialize(new BudgetUpstream(100));
+
+      // One byte short of the full budget: first field capture must reject when it tries to reserve
+      // sink cost.
+      assertThrows(
+          InsecureException.class,
+          () ->
+              compatibleFory(required - 1, codegen).deserialize(bytes, BudgetSinkDownstream.class));
+
+      // Exactly the sink cost: capture succeeds and the unmatched fields land in the sink.
+      BudgetSinkDownstream ok =
+          compatibleFory(required, codegen).deserialize(bytes, BudgetSinkDownstream.class);
+      assertEquals(ok.kept, 100, "codegen=" + codegen);
+      assertNotNull(ok.extraFields, "codegen=" + codegen);
     }
   }
 

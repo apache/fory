@@ -67,9 +67,32 @@ its nested children can each declare one and capture independently — see
   compatible mode (the default).
   [same-schema mode](schema-evolution.md#same-schema-optimization).
 - **A sink field** of type `ForyExtraFields` per class.
+- **A mutable owner — not a record.** The sink is populated field-by-field while the object is being
+  read, so the owner must exist before its fields are set. A `record` is built from its constructor
+  arguments and is immutable, so there is no instance to capture into mid-read. See
+  [Records Are Not Supported](#records-are-not-supported).
 - Supported across the runtime interpreter, and the runtime JIT
   (`withCodegen(true)`).
   Cross-language (xlang) mode is not supported. Using `ForyExtraFields` under xlang mode will cause errors.
+
+### Records Are Not Supported
+
+Declaring a `ForyExtraFields` component on a `record` is **rejected** — Fory throws an
+`UnsupportedOperationException` when it builds the serializer for that type (for both serialization
+and deserialization, under the interpreter and the JIT), rather than silently dropping the extra
+fields:
+
+```java
+// Rejected: ForyExtraFields on a record.
+public record PersonView(int age, ForyExtraFields extraFields) {}
+// -> UnsupportedOperationException: ForyExtraFields is not supported on records: ...
+//    Extra-field capture requires a mutable owner; declare the ForyExtraFields sink
+//    on a regular class instead.
+```
+
+Capture requires a mutable owner: the framework fills the sink as it reads each unmatched field, but
+a record's fields can only be supplied all at once to its canonical constructor, and the instance
+does not exist until then. Use a regular class instead.
 
 ## Constraints
 
@@ -182,7 +205,94 @@ replays every level correctly. This is exercised directly in `ForyExtraFieldsTes
 `roundTripTripleNestedObjectWithInnerSink` (three levels deep), and
 `roundTripMultipleNestedObjectsWithOwnSinks` (two sibling children capturing independently).
 
+### Converted (Type-Mismatched) Fields
+
+[Compatible mode](schema-evolution.md#compatible-mode) can bridge some scalar type mismatches
+between the writer and reader — for example a remote `int score` deserializing into a local `long
+score`. Such a field is **matched** (the reader does declare `score`), but reached through a scalar
+converter rather than a direct field write, because the reader's field type differs from the wire
+type.
+
+When a converter field is combined with a sink, Fory captures the field **twice**, for two
+different purposes:
+
+- The local field (`score`) holds the converted value (`95` as a `long`), for application code to
+  read normally.
+- The sink **also** preserves the untouched, remote-typed value (`95` as the wire's original
+  `int`), keyed by the field's identity like any other captured field.
+
+The sink copy exists purely for replay. Re-deriving the remote value from the local one at
+re-serialization time is not always exact — a remote `BigDecimal("1.0")` converted to a local `int`
+loses the original scale, and reconverting `1` back to `BigDecimal` would produce `"1"`, not
+`"1.0"`. Capturing the pre-conversion value sidesteps that: replay always emits the exact original
+bytes, never a value re-derived from a lossy local conversion.
+
+```java
+// Remote: age, score (int), bonus (int, unknown to the reader)
+Fory foryA = Fory.builder().withXlang(false).withCompatible(true).build();
+byte[] aToB = foryA.serialize(new UpstreamConverted(30, 95, 7));
+
+// Local: age matches, score converts int -> long, bonus is captured
+public class DownstreamConvertedSink {
+  public int age;
+  public long score;              // converter field: reads the remote int, converts to long
+  public ForyExtraFields extraFields;
+}
+
+Fory foryB = Fory.builder().withXlang(false).withCompatible(true).build();
+DownstreamConvertedSink b = foryB.deserialize(aToB, DownstreamConvertedSink.class);
+b.score;   // 95L -- the converted value, for application code
+
+// The sink holds the untouched remote value alongside it:
+ForyExtraFields.FieldIdentity scoreId =
+    ForyExtraFields.FieldIdentity.of(UpstreamConverted.class.getName(), "score");
+b.extraFields.get(scoreId);   // 95 (an Integer) -- the original remote-typed value
+
+byte[] bToC = foryB.serialize(b);   // replays the exact original int, plus bonus
+```
+
+Replaying a converter field this way needs the target object at read time to capture the
+pre-conversion value into the sink. Both the interpreter and the JIT-compiled (codegen) reader
+provide it, for every converter field remote type — non-nullable primitives, nullable/boxed
+scalars, `BigDecimal`, `String`, the unsigned wrapper types, and `Float16`/`BFloat16` alike.
+
+One narrower constraint remains, independent of codegen vs. the interpreter: a converter field
+combined with a sink is schema-incompatible when the remote type is reference-tracked (e.g.
+`BigDecimal` under `withRefTracking(true)`) but the local converted type is a primitive-family type
+(`int`, `long`, `String`, etc.) that can never carry ref-tracking itself. That combination fails.
+
 ## Future Work
 
 Adiding Extra-field capture for
 the annotation processor, Scala macros, and KSP is planned for a follow-up change.
+
+AI Usage Disclosure
+
+- substantial_ai_assistance: yes
+- scope: docs, code drafting, tests, design drafting
+- affected_files_or_subsystems:
+  - docs/guide/java/extra-fields.md
+  - builder/BaseObjectCodecBuilder
+  - builder/CompatibleCodecBuilder
+  - builder/ObjectCodecBuilder
+  - builder/StaticCompatibleCodecBuilder
+  - context/MetaWriteContext
+  - context/WriteContext
+  - resolver/TypeInfo
+  - resolver/TypeResolver
+  - serializer/CompatibleLayerSerializerBase
+  - serializer/CompatibleSerializer
+  - serializer/ForyExtraFields
+  - serializer/ForyExtraFieldsSupport
+  - serializer/UnknownClassSerializers
+  - serializer/converter/FieldConverters
+  - serializer/CompatibleFieldConvertTest
+  - serializer/ForyExtraFieldsTest
+  - serializer/GraphMemoryBudgetTest
+  - builder/StaticCompatibleCodecBuilderTest
+  - native-image.properties
+- ai_review: Line-by-line review of serializer logic and field capture/replay mechanics completed. Architecture validated against compatible-mode constraints and reference-tracking edge cases. Documentation reviewed for clarity and completeness across nested structures, converter fields, and round-trip scenarios.
+- ai_review_artifacts:https://claude.ai/code/session_01JAyGgABzsVxarBkJ6zq9Tk , https://claude.ai/code/session_01VA4BrfmpXTVmGKiyu3Sv1t
+- human_verification: mvn -T10 clean test
+- performance_verification: N/A (feature addition with no performance regression expected; benchmarks validated in test suite)
+- provenance_license_confirmation: Apache-2.0-compatible provenance confirmed; no incompatible third-party code introduced

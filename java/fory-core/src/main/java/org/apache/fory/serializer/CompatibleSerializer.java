@@ -84,7 +84,10 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
         "Class version check should be disabled when compatible mode is enabled.");
     Preconditions.checkArgument(config.isMetaShareEnabled(), "Meta share must be enabled.");
     this.typeDef = typeDef;
-    this.extraFieldsSinkAccessor = ForyExtraFields.findSinkAccessor(type);
+    this.extraFieldsSinkAccessor =
+        (type == null || !ForyExtraFieldsSupport.isEnabled(config))
+            ? null
+            : ForyExtraFieldsSupport.findSinkAccessor(type);
     if (Utils.DEBUG_OUTPUT_ENABLED) {
       LOG.info("========== CompatibleSerializer TypeDef for {} ==========", type.getName());
       LOG.info("TypeDef fieldsInfo count: {}", typeDef.getFieldCount());
@@ -265,7 +268,9 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
     boolean useExtraField = false;
     Object fieldValue = null;
 
-    Object temp = extraField.getOrDefault(fieldInfo.descriptor.getName(), NOT_FOUND);
+    Object temp =
+        extraField.getOrDefault(
+            ForyExtraFieldsSupport.fieldIdentity(fieldInfo.descriptor), NOT_FOUND);
     if (temp != NOT_FOUND) {
       useExtraField = true;
       fieldValue = temp; // might be null, which is valid
@@ -343,11 +348,18 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
   /**
    * Puts {@code value} into the sink on {@code target}, stashing the remote TypeDef on first use.
    */
-  private void captureExtraField(Object target, String name, Object value) {
+  private void captureExtraField(
+      ReadContext readContext, Object target, Descriptor descriptor, Object value) {
     if (target == null) {
       throw new IllegalArgumentException("Cannot capture extra field for null target");
     }
-    ForyExtraFields.capture(target, extraFieldsSinkAccessor, typeDef, name, value);
+    ForyExtraFieldsSupport.capture(
+        readContext,
+        target,
+        extraFieldsSinkAccessor,
+        typeDef,
+        ForyExtraFieldsSupport.fieldIdentity(descriptor),
+        value);
   }
 
   private void setFieldValue(T targetObject, SerializationFieldInfo fieldInfo, Object fieldValue) {
@@ -378,11 +390,18 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
     }
   }
 
+  /**
+   * Reads a converter field: converts the wire value into the local field. When a sink is declared
+   * also preserves the untouched remote-typed value in the sink
+   */
   private void compatibleRead(
       ReadContext readContext, SerializationFieldInfo fieldInfo, Object obj) {
     Object fieldValue =
         FieldConverters.readSourceScalar(readContext, fieldInfo, fieldInfo.fieldConverter);
     fieldInfo.fieldConverter.set(obj, fieldValue);
+    if (extraFieldsSinkAccessor != null) {
+      captureExtraField(readContext, obj, fieldInfo.descriptor, fieldValue);
+    }
   }
 
   private void readFieldsWithCompatibleCollectionArray(ReadContext readContext, T targetObject) {
@@ -499,7 +518,7 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
     }
 
     Object value = readField(readContext, refReader, generics, fieldInfo, buffer, action, true);
-    captureExtraField(targetObject, fieldInfo.descriptor.getName(), value);
+    captureExtraField(readContext, targetObject, fieldInfo.descriptor, value);
   }
 
   private void printFieldDebugInfo(SerializationFieldInfo fieldInfo, MemoryBuffer buffer) {

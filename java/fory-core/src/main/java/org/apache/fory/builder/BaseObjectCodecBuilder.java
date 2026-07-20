@@ -129,11 +129,12 @@ import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeInfoHolder;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.CodegenSerializer.LazyInitBeanSerializer;
 import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.DeferedLazySerializer.DeferredLazyObjectSerializer;
 import org.apache.fory.serializer.EnumSerializer;
 import org.apache.fory.serializer.FinalFieldReplaceResolveSerializer;
-import org.apache.fory.serializer.ForyExtraFields;
+import org.apache.fory.serializer.ForyExtraFieldsSupport;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
@@ -923,17 +924,6 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                   classInfo,
                   inlineInvoke(typeResolverRef, "getTypeInfo", classInfoTypeRef, clsExpr))));
     }
-    // Mirror WriteContext.writeRef
-    Expression extraFieldsReplay =
-        new Expression.LogicalAnd(
-            inlineInvoke(classInfo, "hasExtraFieldsSink", PRIMITIVE_BOOLEAN_TYPE),
-            new Invoke(
-                writeContextRef(),
-                "tryWriteExtraFieldsSchema",
-                PRIMITIVE_BOOLEAN_TYPE,
-                typeResolverRef,
-                classInfo,
-                inputObject));
     ListExpression normalWrite = new ListExpression();
     normalWrite.add(
         typeResolver(r -> r.writeClassExpr(typeResolverRef, writeContextRef(), classInfo)));
@@ -944,7 +934,21 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             PRIMITIVE_VOID_TYPE,
             writeContextRef(),
             inputObject));
-    writeClassAndObject.add(new If(not(extraFieldsReplay), normalWrite));
+    if (ForyExtraFieldsSupport.isEnabled(config)) {
+      Expression extraFieldsReplay =
+          new Expression.LogicalAnd(
+              inlineInvoke(classInfo, "hasExtraFieldsSink", PRIMITIVE_BOOLEAN_TYPE),
+              new Invoke(
+                  writeContextRef(),
+                  "tryWriteExtraFieldsSchema",
+                  PRIMITIVE_BOOLEAN_TYPE,
+                  typeResolverRef,
+                  classInfo,
+                  inputObject));
+      writeClassAndObject.add(new If(not(extraFieldsReplay), normalWrite));
+    } else {
+      writeClassAndObject.add(normalWrite);
+    }
     Expression write =
         exactClassWrite == null
             ? writeClassAndObject
@@ -967,7 +971,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
                         typeResolverRef, writeContextRef(), buffer, typeInfo, clz)),
             new Invoke(
                 serializer, writeMethodName, PRIMITIVE_VOID_TYPE, writeContextRef(), inputObject));
-    if (ForyExtraFields.findSinkField(clz) == null) {
+    if (!ForyExtraFieldsSupport.isEnabled(config)
+        || ForyExtraFieldsSupport.findSinkField(clz) == null) {
       return normalWrite;
     }
     Expression extraFieldsReplay =
@@ -2350,7 +2355,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   protected Expression deserializeField(
-      Expression buffer, Descriptor descriptor, Function<Expression, Expression> callback) {
+      Expression bean,
+      Expression buffer,
+      Descriptor descriptor,
+      Function<Expression, Expression> callback) {
     if (hasCompatibleCollectionArrayRead(descriptor)) {
       Expression value = deserializeCompatibleListArrayField(descriptor);
       return new ListExpression(value, callback.apply(value));

@@ -24,6 +24,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.config.Config;
 import org.apache.fory.config.Int64Encoding;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
@@ -32,10 +33,12 @@ import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.serializer.BufferObject;
 import org.apache.fory.serializer.ForyExtraFields;
+import org.apache.fory.serializer.ForyExtraFieldsSupport;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.serializer.UnknownClass.UnknownStruct;
+import org.apache.fory.serializer.UnknownClassSerializers.UnknownStructSerializer;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Float16;
 import org.apache.fory.type.Generics;
@@ -67,6 +70,7 @@ public final class WriteContext {
   private final Int64Encoding longEncoding;
   private final boolean forVirtualThread;
   private final boolean scopedMetaShareEnabled;
+  private final boolean extraFieldsEnabled;
   private final IdentityHashMap<Object, Object> contextObjects = new IdentityHashMap<>();
   private MemoryBuffer buffer;
   private BufferCallback bufferCallback;
@@ -98,6 +102,7 @@ public final class WriteContext {
     longEncoding = config.longEncoding();
     forVirtualThread = config.forVirtualThread();
     scopedMetaShareEnabled = config.isScopedMetaShareEnabled();
+    extraFieldsEnabled = ForyExtraFieldsSupport.isEnabled(config);
     if (scopedMetaShareEnabled) {
       metaWriteContext = new MetaWriteContext();
     }
@@ -458,10 +463,11 @@ public final class WriteContext {
       return false;
     }
     ForyExtraFields extraField = (ForyExtraFields) sinkAccessor.getObject(obj);
-    if (extraField == null || extraField.getTypeDef() == null) {
+    TypeDef sinkTypeDef = extraField == null ? null : ForyExtraFieldsSupport.getTypeDef(extraField);
+    if (sinkTypeDef == null) {
       return false;
     }
-    long sinkTypeDefId = extraField.getTypeDef().getId();
+    long sinkTypeDefId = sinkTypeDef.getId();
     // The object was deserialized under a different (fuller) remote schema. Emit that remote schema
     // header (from the writer-class TypeInfo) and replay all fields through the reader-class
     // serializer that captured them, whose field order follows the remote schema.
@@ -490,6 +496,14 @@ public final class WriteContext {
               + " has not been read into this class on this Fory instance.");
     }
     resolver.writeTypeInfo(this, headerTypeInfo);
+    if (headerTypeInfo.getType() == UnknownStruct.class) {
+      // This Fory instance cannot load the original writer class: the cached header TypeInfo is
+      // the UnknownStruct placeholder, not a concrete class. writeTypeInfo above only wrote the
+      // NONEXISTENT_META_SHARED_ID placeholder byte; rewrite it to the real type id and emit the
+      // remote TypeDef inline, the same way the normal UnknownStruct write path does, so the
+      // forwarded stream carries the schema the replayed body needs to be decoded against.
+      UnknownStructSerializer.writeUnknownStructHeader(this, sinkTypeDef);
+    }
     depth++;
     ((Serializer<Object>) replaySerializer).write(this, obj);
     depth--;
@@ -513,7 +527,9 @@ public final class WriteContext {
         depth--;
         return;
       }
-      if (typeInfo.hasExtraFieldsSink() && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
+      if (extraFieldsEnabled
+          && typeInfo.hasExtraFieldsSink()
+          && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
         return;
       }
       resolver.writeTypeInfo(this, typeInfo);
@@ -533,7 +549,9 @@ public final class WriteContext {
         depth--;
         return;
       }
-      if (typeInfo.hasExtraFieldsSink() && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
+      if (extraFieldsEnabled
+          && typeInfo.hasExtraFieldsSink()
+          && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
         return;
       }
       resolver.writeTypeInfo(this, typeInfo);
@@ -621,7 +639,9 @@ public final class WriteContext {
       depth--;
       return;
     }
-    if (typeInfo.hasExtraFieldsSink() && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
+    if (extraFieldsEnabled
+        && typeInfo.hasExtraFieldsSink()
+        && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
       return;
     }
     resolver.writeTypeInfo(this, typeInfo);
@@ -645,7 +665,9 @@ public final class WriteContext {
       depth--;
       return;
     }
-    if (typeInfo.hasExtraFieldsSink() && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
+    if (extraFieldsEnabled
+        && typeInfo.hasExtraFieldsSink()
+        && tryWriteExtraFieldsSchema(resolver, typeInfo, obj)) {
       return;
     }
     resolver.writeTypeInfo(this, typeInfo);

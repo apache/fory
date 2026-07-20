@@ -23,12 +23,13 @@ import static org.apache.fory.meta.Encoders.PACKAGE_DECODER;
 import static org.apache.fory.meta.Encoders.TYPE_NAME_DECODER;
 
 import org.apache.fory.collection.Tuple2;
+import org.apache.fory.config.Config;
 import org.apache.fory.meta.EncodedMetaString;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.serializer.ForyExtraFields;
+import org.apache.fory.serializer.ForyExtraFieldsSupport;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.Types;
 import org.apache.fory.util.function.Functions;
@@ -125,20 +126,29 @@ public class TypeInfo {
     }
     this.typeId = typeId;
     this.userTypeId = userTypeId;
+    Config config = classResolver.getConfig();
+    this.extraFieldsSinkAccessor =
+        !ForyExtraFieldsSupport.isEnabled(config)
+            ? null
+            : ForyExtraFieldsSupport.findSinkAccessor(type);
   }
 
   public TypeInfo copy(int typeId) {
     if (typeId == this.typeId) {
       return this;
     }
-    return new TypeInfo(type, namespace, typeName, serializer, typeId, userTypeId);
+    TypeInfo copy = new TypeInfo(type, namespace, typeName, serializer, typeId, userTypeId);
+    copy.extraFieldsSinkAccessor = extraFieldsSinkAccessor;
+    return copy;
   }
 
   public TypeInfo copy(int typeId, int userTypeId) {
     if (typeId == this.typeId && userTypeId == this.userTypeId) {
       return this;
     }
-    return new TypeInfo(type, namespace, typeName, serializer, typeId, userTypeId);
+    TypeInfo copy = new TypeInfo(type, namespace, typeName, serializer, typeId, userTypeId);
+    copy.extraFieldsSinkAccessor = extraFieldsSinkAccessor;
+    return copy;
   }
 
   public Class<?> getType() {
@@ -174,7 +184,13 @@ public class TypeInfo {
   void setSerializer(TypeResolver resolver, Serializer<?> serializer) {
     this.serializer = serializer;
     needToWriteTypeDef = serializer != null && resolver.needToWriteTypeDef(serializer);
-    this.extraFieldsSinkAccessor = type == null ? null : ForyExtraFields.findSinkAccessor(type);
+    Config config = resolver.getConfig();
+    if (this.extraFieldsSinkAccessor == null) {
+      this.extraFieldsSinkAccessor =
+          !ForyExtraFieldsSupport.isEnabled(config)
+              ? null
+              : ForyExtraFieldsSupport.findSinkAccessor(type);
+    }
   }
 
   public FieldAccessor getExtraFieldsSinkAccessor() {

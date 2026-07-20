@@ -20,6 +20,8 @@
 package org.apache.fory.serializer;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
@@ -28,7 +30,16 @@ import static org.testng.Assert.assertTrue;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.builder.Generated;
+import org.apache.fory.builder.ObjectCodecBuilder;
+import org.apache.fory.collection.LongMap;
+import org.apache.fory.meta.FieldInfo;
+import org.apache.fory.meta.TypeDef;
+import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.TypeInfo;
+import org.apache.fory.resolver.TypeResolver;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -102,6 +113,11 @@ public class ForyExtraFieldsTest {
   public static class DownstreamWithSink {
     public int f0, f1, f2, f3, f4, f5, f6, f7, f8;
     public ForyExtraFields extraFields;
+  }
+
+  public static class DownstreamPreInitSink {
+    public int f0, f1, f2, f3, f4, f5, f6, f7, f8;
+    public final ForyExtraFields extraFields = new ForyExtraFields();
   }
 
   /**
@@ -268,6 +284,146 @@ public class ForyExtraFieldsTest {
 
   public static class DownstreamInheritedSink extends ExtraFieldsBase {}
 
+  // -------------------------------------------------------------------------
+  // Field hiding: a subclass legally hides the inherited ForyExtraFields sink
+  // with a same-named field of a different type. The scanner returns the exact
+  // inherited sink (declared on the base), so the generated codec must bind THAT
+  // field, not re-resolve by beanClass + name (which would pick the subclass's
+  // shadowing String field and write a ForyExtraFields reference into it).
+  // -------------------------------------------------------------------------
+
+  public static class HidingSinkBase {
+    public ForyExtraFields extraFields;
+  }
+
+  /** Hides the inherited {@code extraFields} sink with a same-named, different-typed field. */
+  public static class DownstreamHidingSink extends HidingSinkBase {
+    public String extraFields;
+  }
+
+  @Test(dataProvider = "config")
+  public void hiddenInheritedSinkCapturesIntoDeclaringClassField(
+      boolean codegen, boolean refTracking) {
+    // The upstream schema is fully unknown to DownstreamHidingSink, so every field is captured into
+    // the inherited sink. A subclass field named `extraFields` (a String) legally hides the
+    // inherited ForyExtraFields sink. The scanner returns the exact base sink, so capture must land
+    // there; a beanClass + name lookup would instead bind the shadowing String field.
+    Fory foryA = compatibleFory(codegen, refTracking);
+    UpstreamMixed original = new UpstreamMixed(30, "Alice", 95);
+    byte[] bytes = foryA.serialize(original);
+
+    Fory foryB = compatibleFory(codegen, refTracking);
+    DownstreamHidingSink result = foryB.deserialize(bytes, DownstreamHidingSink.class);
+
+    // The shadowing subclass field must be left untouched...
+    assertNull(result.extraFields);
+    // ...and every captured field must land in the real inherited sink on the declaring class.
+    ForyExtraFields sink = ((HidingSinkBase) result).extraFields;
+    assertNotNull(sink);
+    assertEquals(byName(sink, "age"), original.age);
+    assertEquals(byName(sink, "name"), original.name);
+    assertEquals(((Number) byName(sink, "score")).intValue(), original.score);
+  }
+
+  // -------------------------------------------------------------------------
+  // Shadowed fields: a superclass and subclass may legally declare fields with
+  // the SAME simple name. In the remote TypeDef these are two
+  // distinct FieldInfo entries, distinguished by declaring class + field id. A
+  // sink keyed by simple name collapses them: capture overwrites one value, and
+  // replay writes both remote slots from the single survivor. The full identity
+  // must be the sink key so each slot round-trips independently.
+  // -------------------------------------------------------------------------
+
+  public static class ShadowBase {
+    public int x;
+
+    public ShadowBase() {}
+  }
+
+  /** Legally hides {@code ShadowBase.x} with a same-named field of the same type. */
+  public static class ShadowChild extends ShadowBase {
+    public int x;
+
+    public ShadowChild() {}
+
+    public ShadowChild(int baseX, int childX) {
+      super.x = baseX;
+      this.x = childX;
+    }
+  }
+
+  /** Partial peer with only a sink: both shadowed {@code x} fields are unmatched and captured. */
+  public static class ShadowDownstreamSink {
+    public ForyExtraFields extraFields;
+  }
+
+  @Test(dataProvider = "config")
+  public void roundTripShadowedFieldsPreservedIndependently(boolean codegen, boolean refTracking) {
+    // A: full schema, two distinct x fields (base=111, child=222)
+    Fory foryA = compatibleFory(codegen, refTracking);
+    ShadowChild original = new ShadowChild(111, 222);
+    byte[] aToBBytes = foryA.serialize(original);
+
+    // B: sink-only peer captures both remote x fields
+    Fory foryB = compatibleFory(codegen, refTracking);
+    ShadowDownstreamSink intermediate = foryB.deserialize(aToBBytes, ShadowDownstreamSink.class);
+    assertNotNull(intermediate.extraFields);
+
+    // B re-serializes under the remote schema; both slots must replay their own captured value.
+    byte[] bToCBytes = foryB.serialize(intermediate);
+
+    // C: full schema must recover BOTH x values, not the same value twice.
+    Fory foryC = compatibleFory(codegen, refTracking);
+    ShadowChild recovered = foryC.deserialize(bToCBytes, ShadowChild.class);
+    assertEquals(((ShadowBase) recovered).x, 111, "ShadowBase.x must round-trip independently");
+    assertEquals(recovered.x, 222, "ShadowChild.x must round-trip independently");
+  }
+
+  // -------------------------------------------------------------------------
+  // Tagged / id-bearing fields: a field written by its fory field id (e.g.
+  // @ForyField(id=N))
+  // -------------------------------------------------------------------------
+
+  public static class UpstreamTagged {
+    @ForyField(id = 7)
+    public int secret;
+
+    public UpstreamTagged() {}
+
+    public UpstreamTagged(int secret) {
+      this.secret = secret;
+    }
+  }
+
+  /** Sink-only peer: the id-bearing {@code secret} field is unmatched and captured by id. */
+  public static class DownstreamTaggedSink {
+    public ForyExtraFields extraFields;
+  }
+
+  @Test(dataProvider = "config")
+  public void taggedFieldCapturedAndLookedUpById(boolean codegen, boolean refTracking) {
+    Fory foryA = compatibleFory(codegen, refTracking);
+    UpstreamTagged original = new UpstreamTagged(123);
+    byte[] aToBBytes = foryA.serialize(original);
+
+    Fory foryB = compatibleFory(codegen, refTracking);
+    DownstreamTaggedSink intermediate = foryB.deserialize(aToBBytes, DownstreamTaggedSink.class);
+    assertNotNull(intermediate.extraFields);
+
+    // Keyed by the field id, not by a name: the field carried no name on the wire.
+    ForyExtraFields.FieldIdentity byId = ForyExtraFields.FieldIdentity.ofId(7);
+    assertTrue(intermediate.extraFields.containsKey(byId));
+    assertEquals(intermediate.extraFields.get(byId), 123);
+    assertFalse(intermediate.extraFields.containsKey(identity(UpstreamTagged.class, "secret")));
+    assertFalse(intermediate.extraFields.containsKey(identity(UpstreamTagged.class, "$tag7")));
+
+    // Round-trips back to a full-schema peer under the remote (id-bearing) schema.
+    byte[] bToCBytes = foryB.serialize(intermediate);
+    Fory foryC = compatibleFory(codegen, refTracking);
+    UpstreamTagged recovered = foryC.deserialize(bToCBytes, UpstreamTagged.class);
+    assertEquals(recovered.secret, original.secret);
+  }
+
   @Test(dataProvider = "config")
   public void roundTripInheritedExtraFieldSink(boolean codegen, boolean refTracking) {
     Fory foryA = compatibleFory(codegen, refTracking);
@@ -284,7 +440,7 @@ public class ForyExtraFieldsTest {
 
     assertNotNull(intermediate.extraFields);
 
-    Object captured = intermediate.extraFields.get("address");
+    Object captured = byName(intermediate.extraFields, "address");
     assertNotNull(captured);
     assertTrue(captured instanceof Address);
 
@@ -319,11 +475,11 @@ public class ForyExtraFieldsTest {
 
     assertNotNull(intermediate.extraFields);
 
-    Object capturedAge = intermediate.extraFields.get("age");
+    Object capturedAge = byName(intermediate.extraFields, "age");
     assertNotNull(capturedAge);
     assertEquals(capturedAge, 30);
 
-    Object capturedAddress = intermediate.extraFields.get("address");
+    Object capturedAddress = byName(intermediate.extraFields, "address");
     assertNotNull(capturedAddress);
     assertTrue(capturedAddress instanceof Address);
 
@@ -359,7 +515,7 @@ public class ForyExtraFieldsTest {
     assertEquals(intermediate.age, original.age);
     assertNotNull(intermediate.extraFields);
 
-    Object captured = intermediate.extraFields.get("address");
+    Object captured = byName(intermediate.extraFields, "address");
     assertNotNull(captured);
     assertTrue(captured instanceof Address);
 
@@ -395,8 +551,8 @@ public class ForyExtraFieldsTest {
 
     assertNotNull(intermediate.extraFields);
 
-    Object capturedHome = intermediate.extraFields.get("home");
-    Object capturedWork = intermediate.extraFields.get("work");
+    Object capturedHome = byName(intermediate.extraFields, "home");
+    Object capturedWork = byName(intermediate.extraFields, "work");
 
     assertNotNull(capturedHome);
     assertNotNull(capturedWork);
@@ -421,6 +577,36 @@ public class ForyExtraFieldsTest {
    *     generated serializer ({@code CompatibleCodecBuilder}).
    * @param refTracking whether reference tracking is enabled on the built {@link Fory}.
    */
+  /** Builds a name-based field identity for sink lookups: {@code (declaringClass, name)}. */
+  private static ForyExtraFields.FieldIdentity identity(Class<?> declaringClass, String name) {
+    return ForyExtraFields.FieldIdentity.of(declaringClass.getName(), name);
+  }
+
+  /**
+   * Resolves a captured value by remote field name through the public identity API. The declaring
+   * class of a captured field is the deserialization target for root-class fields, so tests that
+   * only care about the value look up by name instead of hardcoding that mapping. Returns {@code
+   * null} when no such field was captured, mirroring the old name-based {@code get}.
+   */
+  private static Object byName(ForyExtraFields extra, String name) {
+    for (ForyExtraFields.FieldIdentity id : extra.fieldIdentities()) {
+      if (name.equals(id.getName())) {
+        return extra.get(id);
+      }
+    }
+    return null;
+  }
+
+  /** Whether a field with the given remote name was captured. */
+  private static boolean hasName(ForyExtraFields extra, String name) {
+    for (ForyExtraFields.FieldIdentity id : extra.fieldIdentities()) {
+      if (name.equals(id.getName())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private static Fory compatibleFory(boolean codegen, boolean refTracking) {
     return Fory.builder()
         .withXlang(false)
@@ -490,7 +676,7 @@ public class ForyExtraFieldsTest {
 
     assertNotNull(result.extraFields);
 
-    Object value = result.extraFields.get("f9");
+    Object value = byName(result.extraFields, "f9");
 
     // primitive int stored inside Object becomes Integer
     assertTrue(value instanceof Integer);
@@ -525,7 +711,7 @@ public class ForyExtraFieldsTest {
 
     // B captured f9
     assertNotNull(intermediate.extraFields);
-    assertEquals(intermediate.extraFields.get("f9"), original.f9);
+    assertEquals(byName(intermediate.extraFields, "f9"), original.f9);
 
     // B re-serializes — must emit the remote (full) TypeDef + all 10 fields
     byte[] bToCBytes = foryB.serialize(intermediate);
@@ -543,6 +729,76 @@ public class ForyExtraFieldsTest {
     assertEquals(recovered.f6, original.f6);
     assertEquals(recovered.f7, original.f7);
     assertEquals(recovered.f8, original.f8);
+    assertEquals(recovered.f9, original.f9);
+  }
+
+  /** Capture must bind the remote TypeDef to the existing instance too. */
+  @Test(dataProvider = "config")
+  public void roundTripRecoversFieldWithPreInitializedSink(boolean codegen, boolean refTracking) {
+    // --- A: full-schema writer ---
+    Fory foryA = compatibleFory(codegen, refTracking);
+    Upstream original = new Upstream(300);
+    byte[] aToBBytes = foryA.serialize(original);
+
+    // --- B: partial-schema peer whose sink is pre-initialized by a field initializer ---
+    Fory foryB = compatibleFory(codegen, refTracking);
+    DownstreamPreInitSink intermediate = foryB.deserialize(aToBBytes, DownstreamPreInitSink.class);
+
+    // The pre-initialized sink captured f9...
+    assertNotNull(intermediate.extraFields);
+    assertEquals(byName(intermediate.extraFields, "f9"), original.f9);
+    // ...and the remote TypeDef must be bound to it even though it was never framework-allocated,
+    // otherwise replay is silently skipped below.
+    assertNotNull(
+        ForyExtraFieldsSupport.getTypeDef(intermediate.extraFields),
+        "remote TypeDef must be bound to a pre-initialized sink so replay can fire");
+
+    // B re-serializes — replay must fire, emitting the remote (full) schema + f9.
+    byte[] bToCBytes = foryB.serialize(intermediate);
+
+    // --- C: full-schema receiver must recover f9 (dropped before the fix) ---
+    Fory foryC = compatibleFory(codegen, refTracking);
+    Upstream recovered = foryC.deserialize(bToCBytes, Upstream.class);
+    assertEquals(recovered.f9, original.f9);
+  }
+
+  // -------------------------------------------------------------------------
+  // Sink accessor must survive TypeInfo.copy() from numeric-id registration
+  // -------------------------------------------------------------------------
+
+  /**
+   * Regression: {@code TypeInfo.copy(...)} (used by numeric class-id registration) must preserve
+   * the resolved extra-fields sink accessor. If the serializer is materialized first — which
+   * resolves and caches the accessor via {@code setSerializer(resolver, ...)} — and a numeric class
+   * id is registered afterwards, the copied {@code TypeInfo} keeps the serializer but must not drop
+   * the accessor. Otherwise {@code hasExtraFieldsSink()} becomes false on the cached TypeInfo and
+   * the write path silently skips replay, losing the captured remote field.
+   */
+  @Test(dataProvider = "config")
+  public void sinkAccessorSurvivesNumericIdRegistration(boolean codegen, boolean refTracking) {
+    // --- A: full-schema writer ---
+    Fory foryA = compatibleFory(codegen, refTracking);
+    Upstream original = new Upstream(400);
+    byte[] aToBBytes = foryA.serialize(original);
+
+    // --- B: partial-schema peer with sink ---
+    Fory foryB = compatibleFory(codegen, refTracking);
+    // Materialize the serializer first: this resolves and caches the sink accessor on the TypeInfo.
+    foryB.getTypeResolver().getSerializer(DownstreamWithSink.class);
+    // Then register a numeric class id, which copies the TypeInfo. The copy must carry the
+    // accessor.
+    foryB.register(DownstreamWithSink.class, 500);
+
+    DownstreamWithSink intermediate = foryB.deserialize(aToBBytes, DownstreamWithSink.class);
+    assertNotNull(intermediate.extraFields);
+    assertEquals(byName(intermediate.extraFields, "f9"), original.f9);
+
+    // B re-serializes — replay must still fire, so the remote (full) schema + f9 are emitted.
+    byte[] bToCBytes = foryB.serialize(intermediate);
+
+    // --- C: full-schema receiver must recover f9 ---
+    Fory foryC = compatibleFory(codegen, refTracking);
+    Upstream recovered = foryC.deserialize(bToCBytes, Upstream.class);
     assertEquals(recovered.f9, original.f9);
   }
 
@@ -564,8 +820,8 @@ public class ForyExtraFieldsTest {
     assertEquals(result.value, original.value);
     assertNotNull(result.extraFields);
 
-    Object capturedShared = result.extraFields.get("shared");
-    Object capturedAlias = result.extraFields.get("alias");
+    Object capturedShared = byName(result.extraFields, "shared");
+    Object capturedAlias = byName(result.extraFields, "alias");
     assertNotNull(capturedShared);
     assertSame(capturedShared, capturedAlias);
   }
@@ -584,8 +840,8 @@ public class ForyExtraFieldsTest {
     DownstreamMixedSink intermediate = foryB.deserialize(aToBBytes, DownstreamMixedSink.class);
     assertEquals(intermediate.age, original.age);
     assertNotNull(intermediate.extraFields);
-    assertEquals(intermediate.extraFields.get("name"), original.name);
-    assertEquals(((Number) intermediate.extraFields.get("score")).intValue(), original.score);
+    assertEquals(byName(intermediate.extraFields, "name"), original.name);
+    assertEquals(((Number) byName(intermediate.extraFields, "score")).intValue(), original.score);
 
     byte[] bToCBytes = foryB.serialize(intermediate);
 
@@ -594,6 +850,89 @@ public class ForyExtraFieldsTest {
     assertEquals(recovered.age, original.age);
     assertEquals(recovered.name, original.name);
     assertEquals(recovered.score, original.score);
+  }
+
+  // -------------------------------------------------------------------------
+  // Converted field + extra field replayed together
+  //
+  // A compatible scalar conversion (remote int score -> local long score) yields
+  // a descriptor with a fieldConverter but NO fieldAccessor / no local Field. It
+  // is a MATCHED field, reached through the converter, not an unmatched/extra one.
+  // The replay (write) path only runs when the sink is non-empty, so we pair the
+  // converted score with an extra field to populate the sink.
+  //
+  // This test is
+  // pinned to refTracking=true (via configRefTracking) rather than the full config
+  // matrix: a BigDecimal-sourced converter field would be the natural third case here,
+  // but BigDecimal is ref-tracked by default while its convertible local targets
+  // (int/long/String) are primitive-family types that can never carry ref-tracking, so
+  // that combination is schema-incompatible independent of this feature (see
+  // FieldConverters#isRefTrackedScalarSchemaMismatch).
+  // -------------------------------------------------------------------------
+
+  /**
+   * Remote/full schema. {@code score} (int) and {@code level} (boxed Integer) both become converter
+   * fields downstream.
+   */
+  public static class UpstreamConverted {
+    public int age;
+    public int score; // remote int -> local long: becomes a converter field downstream
+    public Integer level; // remote Integer -> local Long: non-batched converter field
+    public int bonus; // unmatched downstream -> captured into the sink
+
+    public UpstreamConverted() {}
+
+    public UpstreamConverted(int age, int score, Integer level, int bonus) {
+      this.age = age;
+      this.score = score;
+      this.level = level;
+      this.bonus = bonus;
+    }
+  }
+
+  /** Local peer: {@code long score} forces a scalar converter; {@code bonus} lands in the sink. */
+  public static class DownstreamConvertedSink {
+    public int age;
+    public long score; // remote int -> local long: converter field (no local Field on the remote
+    // descriptor)
+    public Long level; // remote Integer -> local Long: non-batched converter field
+    public ForyExtraFields extraFields;
+  }
+
+  @Test(dataProvider = "configRefTracking")
+  public void roundTripConvertedFieldWithExtraField(boolean codegen, boolean refTracking) {
+    // --- A: full schema, int score + an extra bonus field ---
+    Fory foryA = compatibleFory(codegen, refTracking);
+    UpstreamConverted original = new UpstreamConverted(30, 95, 12, 7);
+    byte[] aToBBytes = foryA.serialize(original);
+
+    // --- B: converts score int->long, captures bonus into the (now non-empty) sink ---
+    Fory foryB = compatibleFory(codegen, refTracking);
+    DownstreamConvertedSink intermediate =
+        foryB.deserialize(aToBBytes, DownstreamConvertedSink.class);
+    assertEquals(intermediate.age, original.age);
+    assertEquals(intermediate.score, (long) original.score); // widened via converter
+    assertEquals(intermediate.level, Long.valueOf(original.level)); // boxed converter field
+    assertNotNull(intermediate.extraFields);
+    assertEquals(((Number) byName(intermediate.extraFields, "bonus")).intValue(), original.bonus);
+    // score/level are matched (converter) fields, but under Option A their untouched remote-typed
+    // values are ALSO preserved in the sink (not just the locally converted value), so replay can
+    // emit the exact original bytes rather than re-deriving them from the (possibly lossy) local
+    // value.
+    assertEquals(((Number) byName(intermediate.extraFields, "score")).intValue(), original.score);
+    assertEquals(
+        ((Number) byName(intermediate.extraFields, "level")).intValue(), (int) original.level);
+
+    // --- B re-serializes: the converter fields must replay under the remote schema ---
+    byte[] bToCBytes = foryB.serialize(intermediate);
+
+    // --- C: full-schema peer must recover every field, including the converted ones ---
+    Fory foryC = compatibleFory(codegen, refTracking);
+    UpstreamConverted recovered = foryC.deserialize(bToCBytes, UpstreamConverted.class);
+    assertEquals(recovered.age, original.age);
+    assertEquals(recovered.score, original.score);
+    assertEquals(recovered.level, original.level);
+    assertEquals(recovered.bonus, original.bonus);
   }
 
   // -------------------------------------------------------------------------
@@ -611,8 +950,8 @@ public class ForyExtraFieldsTest {
     DownstreamMixedSink intermediate = foryB.deserialize(aToBBytes, DownstreamMixedSink.class);
     assertEquals(intermediate.age, original.age);
     assertNotNull(intermediate.extraFields);
-    assertTrue(intermediate.extraFields.containsKey("name"));
-    assertNull(intermediate.extraFields.get("name"));
+    assertTrue(hasName(intermediate.extraFields, "name"));
+    assertNull(byName(intermediate.extraFields, "name"));
 
     byte[] bToCBytes = foryB.serialize(intermediate);
 
@@ -650,8 +989,8 @@ public class ForyExtraFieldsTest {
     assertEquals(c.age, original.age);
     assertEquals(c.name, original.name);
     assertNotNull(c.extraFields);
-    assertEquals(((Number) c.extraFields.get("score")).intValue(), original.score);
-    assertNull(c.extraFields.get("name")); // name is matched, not captured
+    assertEquals(((Number) byName(c.extraFields, "score")).intValue(), original.score);
+    assertNull(byName(c.extraFields, "name")); // name is matched, not captured
 
     byte[] cToDBytes = foryC.serialize(c);
 
@@ -748,7 +1087,7 @@ public class ForyExtraFieldsTest {
     Fory foryB = compatibleFory(codegen, refTracking);
     DownstreamWithSink intermediate = foryB.deserialize(aToBBytes, DownstreamWithSink.class);
     assertNotNull(intermediate.extraFields);
-    assertEquals(intermediate.extraFields.get("f9"), original.f9);
+    assertEquals(byName(intermediate.extraFields, "f9"), original.f9);
 
     // wrapper.writeReplace() substitutes `intermediate` (a different runtime type), forcing
     // ReplaceResolveSerializer down the REPLACED_NEW_TYPE branch, which calls
@@ -850,15 +1189,94 @@ public class ForyExtraFieldsTest {
   }
 
   // -------------------------------------------------------------------------
+  // Generated-code gating: the replay branch is native compatible mode only,
+  // so xlang/same-schema write codegen stays byte-for-byte as before. We assert
+  // on the generated write code for a class whose non-final field is sink-bearing
+  // (DownstreamOuterNoSink.nested -> NestedPartialSink), since the tryWriteExtraFieldsSchema
+  // call is emitted by the field's writer, not by the sink class's own serializer.
+  // -------------------------------------------------------------------------
+
+  private static String writeCode(Class<?> cls, boolean compatible) {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withCompatible(compatible)
+            .requireClassRegistration(false)
+            .withCodegen(true)
+            .build();
+    return new ObjectCodecBuilder(cls, fory).genCode();
+  }
+
+  /**
+   * Positive counterpart to {@link #extraFieldsBranchAbsentInSameSchema}: in native compatible mode
+   * the generated writer for a sink-bearing field must still emit the replay branch. Guards against
+   * the config gate over-reaching and silently disabling the feature.
+   */
+  @Test
+  public void extraFieldsBranchPresentInCompatibleMode() {
+    String code = writeCode(DownstreamOuterNoSink.class, true);
+    assertTrue(code.contains("tryWriteExtraFieldsSchema"), code);
+  }
+
+  /**
+   * The replay branch is native compatible mode only. Under same-schema mode the same class must
+   * generate write code with no sink check and no replay call, so the hot path is unchanged.
+   */
+  @Test
+  public void extraFieldsBranchAbsentInSameSchema() {
+    String code = writeCode(DownstreamOuterNoSink.class, false);
+    assertFalse(code.contains("tryWriteExtraFieldsSchema"), code);
+    assertFalse(code.contains("hasExtraFieldsSink"), code);
+  }
+
+  // -------------------------------------------------------------------------
+  // Sink is a framework field, not a data field: it must be excluded from the
+  // owner's local schema. Otherwise a fresh (non-replay) sink-bearing object
+  // exposes `extraFields` in its local TypeDef and writes the sink out as an
+  // ordinary nested object instead of it being reserved for remote-schema replay.
+  // -------------------------------------------------------------------------
+
+  private static boolean localTypeDefContainsField(Class<?> cls, String fieldName) {
+    Fory fory = compatibleFory(false, false);
+    TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), cls);
+    for (FieldInfo fieldInfo : typeDef.getFieldsInfo()) {
+      if (fieldName.equals(fieldInfo.getFieldName())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @Test
+  public void sinkFieldAbsentFromLocalTypeDef() {
+    assertTrue(
+        localTypeDefContainsField(DownstreamWithSink.class, "f0"),
+        "data field f0 should be in the local TypeDef");
+    assertFalse(
+        localTypeDefContainsField(DownstreamWithSink.class, "extraFields"),
+        "sink field extraFields must be excluded from the local TypeDef");
+  }
+
+  @Test
+  public void inheritedSinkFieldAbsentFromLocalTypeDef() {
+    // The selected sink may be declared on a superclass; it must still be excluded.
+    assertFalse(
+        localTypeDefContainsField(DownstreamInheritedSink.class, "extraFields"),
+        "inherited sink field extraFields must be excluded from the local TypeDef");
+  }
+
+  // -------------------------------------------------------------------------
   // async compilation — interpreter bootstraps, JIT takes over
   // -------------------------------------------------------------------------
 
   /**
-   * Exercises the interpreter→JIT handoff. Under async compilation the first serialize uses the
-   * interpreter {@code write()}; once compilation completes the serializer is swapped for a {@link
-   * Generated} one. We wait deterministically for that swap and assert the second serialize
-   * genuinely ran through the generated path — then confirm both wire outputs replay the captured
-   * field correctly.
+   * Exercises the interpreter→JIT handoff on the replay path. The captured extra fields are
+   * re-emitted through the serializer stored in {@code extraFieldsSerializers} (see {@link
+   * org.apache.fory.context.WriteContext} replay), which is a cache distinct from the normal {@link
+   * TypeInfo} serializer. Under async compilation the interpreter registers that entry first and
+   * the generated serializer must supersede it once compilation completes. We poll and assert on
+   * that replay owner directly — then confirm both wire outputs replay the captured field
+   * correctly.
    */
   @Test(timeOut = 30000)
   public void roundTripAfterJitCompilation() throws InterruptedException {
@@ -878,14 +1296,22 @@ public class ForyExtraFieldsTest {
     DownstreamMixedSink intermediate = foryB.deserialize(aToBBytes, DownstreamMixedSink.class);
     assertNotNull(intermediate.extraFields);
 
-    // First serialize triggers async JIT and runs through the interpreter write path.
+    TypeResolver resolverB = foryB.getTypeResolver();
+    // The remote schema id the fields were captured under; the replay cache is keyed by it.
+    long remoteTypeDefId = ForyExtraFieldsSupport.getTypeDef(intermediate.extraFields).getId();
+
+    // First serialize triggers async JIT; the captured fields replay through the interpreter entry.
     byte[] fromInterpreter = foryB.serialize(intermediate);
 
-    // Wait for the generated serializer to be swapped in, then serialize via the compiled path.
-    while (!(foryB.getTypeResolver().getSerializer(DownstreamMixedSink.class)
+    // Wait for the generated serializer to supersede the interpreter in the replay cache — the
+    // actual owner used to re-emit the captured fields, then serialize via the compiled path.
+    while (!(resolverB.getExtraFieldsWriteSerializer(DownstreamMixedSink.class, remoteTypeDefId)
         instanceof Generated)) {
       Thread.sleep(10);
     }
+    assertTrue(
+        resolverB.getExtraFieldsWriteSerializer(DownstreamMixedSink.class, remoteTypeDefId)
+            instanceof Generated);
     byte[] fromJit = foryB.serialize(intermediate);
 
     // Both wire outputs must recover all three fields on a full-schema peer.
@@ -896,6 +1322,187 @@ public class ForyExtraFieldsTest {
       assertEquals(recovered.name, original.name);
       assertEquals(recovered.score, original.score);
     }
+  }
+
+  @Test(dataProvider = "config")
+  public void unknownStructHeaderDoesNotCorruptForwardedStream(boolean codegen, boolean refTracking)
+      throws Exception {
+    Fory foryA = compatibleFory(codegen, refTracking);
+    UpstreamMixed original = new UpstreamMixed(40, "Carol", 77);
+    byte[] aToB = foryA.serialize(original);
+
+    Fory foryB =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(refTracking)
+            .withCompatible(true)
+            .requireClassRegistration(false)
+            .withCodegen(codegen)
+            .withDeserializeUnknownClass(true)
+            .build();
+    DownstreamMixedSink intermediate = foryB.deserialize(aToB, DownstreamMixedSink.class);
+    assertNotNull(intermediate.extraFields);
+    long sinkTypeDefId = ForyExtraFieldsSupport.getTypeDef(intermediate.extraFields).getId();
+
+    // A class genuinely unknown to foryB, so foryB reads it as an UnknownStruct with a real
+    // TypeInfo cached under its own TypeDef id
+    String pkg = "org.apache.fory.serializer.extrafields.gen";
+    String className = "TrulyUnknownPeer";
+    Class<?> unknownClass =
+        ClassUtils.loadClass(
+            pkg,
+            className,
+            "package " + pkg + ";\npublic class " + className + " { public int x = 1; }");
+    byte[] unknownBytes = foryA.serialize(unknownClass.getConstructor().newInstance());
+    UnknownClass.UnknownStruct unknownStruct =
+        (UnknownClass.UnknownStruct) foryB.deserialize(unknownBytes);
+
+    TypeResolver resolverB = foryB.getTypeResolver();
+    TypeInfo unknownHeaderTypeInfo =
+        resolverB.getTypeInfoByTypeDefId(unknownStruct.typeDef.getId());
+    assertNotNull(unknownHeaderTypeInfo);
+    assertEquals(unknownHeaderTypeInfo.getType(), UnknownClass.UnknownStruct.class);
+    assertEquals(unknownHeaderTypeInfo.getTypeId(), ClassResolver.NONEXISTENT_META_SHARED_ID);
+
+    Object extRegistry = ReflectionUtils.getObjectFieldValue(resolverB, "extRegistry");
+    @SuppressWarnings("unchecked")
+    LongMap<TypeInfo> typeInfoByTypeDefId =
+        (LongMap<TypeInfo>) ReflectionUtils.getObjectFieldValue(extRegistry, "typeInfoByTypeDefId");
+    typeInfoByTypeDefId.put(sinkTypeDefId, unknownHeaderTypeInfo);
+
+    byte[] bToC = foryB.serialize(intermediate);
+
+    Fory foryC = compatibleFory(codegen, refTracking);
+    UpstreamMixed recovered = foryC.deserialize(bToC, UpstreamMixed.class);
+    assertEquals(recovered.age, 40);
+    assertEquals(recovered.name, "Carol");
+    assertEquals(recovered.score, 77);
+  }
+
+  /** Holds two polymorphic elements so both go through the replay-checked writeRef path. */
+  public static class SinkContainer {
+    public Object first;
+    public Object second;
+
+    public SinkContainer() {}
+
+    public SinkContainer(Object first, Object second) {
+      this.first = first;
+      this.second = second;
+    }
+  }
+
+  /**
+   * Two remote *versions of the same class* (same fully-qualified name, different schemas) captured
+   * into one sink class and forwarded together in a single root graph. Each carries its own remote
+   * {@link TypeDef} id, but both share the one local sink class, so meta-share must key by the
+   * checked TypeDef identity so each version emits its own schema header.
+   */
+  @Test(dataProvider = "config")
+  public void twoRemoteVersionsOfSameClassForwardedInOneGraph(boolean codegen, boolean refTracking)
+      throws Exception {
+    String pkg = "org.apache.fory.serializer.extrafields.gen";
+    String className = "EvolvingMember";
+    Class<?> scoreVersion =
+        ClassUtils.loadClass(
+            pkg,
+            className,
+            "package "
+                + pkg
+                + ";\n"
+                + "public class "
+                + className
+                + " {\n"
+                + "  public int age;\n"
+                + "  public int score;\n"
+                + "  public "
+                + className
+                + "() {}\n"
+                + "  public "
+                + className
+                + "(int age, int score) { this.age = age; this.score = score; }\n"
+                + "}");
+    Class<?> levelVersion =
+        ClassUtils.loadClass(
+            pkg,
+            className,
+            "package "
+                + pkg
+                + ";\n"
+                + "public class "
+                + className
+                + " {\n"
+                + "  public int age;\n"
+                + "  public int level;\n"
+                + "  public "
+                + className
+                + "() {}\n"
+                + "  public "
+                + className
+                + "(int age, int level) { this.age = age; this.level = level; }\n"
+                + "}");
+    Class<?> sinkVersion =
+        ClassUtils.loadClass(
+            pkg,
+            className,
+            "package "
+                + pkg
+                + ";\n"
+                + "import org.apache.fory.serializer.ForyExtraFields;\n"
+                + "public class "
+                + className
+                + " {\n"
+                + "  public int age;\n"
+                + "  public ForyExtraFields extraFields;\n"
+                + "}");
+
+    Fory foryScore = compatibleFory(codegen, refTracking);
+    byte[] scoreBytes =
+        foryScore.serialize(scoreVersion.getConstructor(int.class, int.class).newInstance(30, 95));
+
+    Fory foryLevel = compatibleFory(codegen, refTracking);
+    byte[] levelBytes =
+        foryLevel.serialize(levelVersion.getConstructor(int.class, int.class).newInstance(25, 5));
+
+    Fory foryB =
+        Fory.builder()
+            .withXlang(false)
+            .withRefTracking(refTracking)
+            .withCompatible(true)
+            .requireClassRegistration(false)
+            .withCodegen(codegen)
+            .withClassLoader(sinkVersion.getClassLoader())
+            .build();
+    Object fromScore = foryB.deserialize(scoreBytes);
+    Object fromLevel = foryB.deserialize(levelBytes);
+    assertSame(fromScore.getClass(), sinkVersion);
+    assertSame(fromLevel.getClass(), sinkVersion);
+
+    ForyExtraFields scoreExtra =
+        (ForyExtraFields) ReflectionUtils.getObjectFieldValue(fromScore, "extraFields");
+    ForyExtraFields levelExtra =
+        (ForyExtraFields) ReflectionUtils.getObjectFieldValue(fromLevel, "extraFields");
+    assertNotNull(scoreExtra);
+    assertNotNull(levelExtra);
+    assertNotEquals(
+        scoreExtra.getTypeDef().getId(),
+        levelExtra.getTypeDef().getId(),
+        "the two remote versions must have distinct TypeDef ids");
+
+    // Both captured objects forwarded together in ONE root graph.
+    byte[] forwarded = foryB.serialize(new SinkContainer(fromScore, fromLevel));
+
+    SinkContainer recovered = (SinkContainer) foryB.deserialize(forwarded);
+    ForyExtraFields recoveredScore =
+        (ForyExtraFields) ReflectionUtils.getObjectFieldValue(recovered.first, "extraFields");
+    ForyExtraFields recoveredLevel =
+        (ForyExtraFields) ReflectionUtils.getObjectFieldValue(recovered.second, "extraFields");
+
+    // Each element must round-trip under its OWN remote schema: no cross-wiring, no reader drift.
+    assertEquals(byName(recoveredScore, "score"), 95);
+    assertFalse(hasName(recoveredScore, "level"));
+    assertEquals(byName(recoveredLevel, "level"), 5);
+    assertFalse(hasName(recoveredLevel, "score"));
   }
 
   public static class OuterFull {
@@ -985,7 +1592,7 @@ public class ForyExtraFieldsTest {
     assertEquals(intermediate.middle.inner.f0, original.middle.inner.f0);
 
     assertNotNull(intermediate.middle.inner.extraFields);
-    assertEquals(intermediate.middle.inner.extraFields.get("f1"), original.middle.inner.f1);
+    assertEquals(byName(intermediate.middle.inner.extraFields, "f1"), original.middle.inner.f1);
 
     byte[] bToCBytes = foryB.serialize(intermediate);
 
@@ -1064,12 +1671,12 @@ public class ForyExtraFieldsTest {
     assertNotNull(intermediate.left);
     assertEquals(intermediate.left.f0, left.f0);
     assertNotNull(intermediate.left.extraFields);
-    assertEquals(intermediate.left.extraFields.get("f1"), left.f1);
+    assertEquals(byName(intermediate.left.extraFields, "f1"), left.f1);
 
     assertNotNull(intermediate.right);
     assertEquals(intermediate.right.f0, right.f0);
     assertNotNull(intermediate.right.extraFields);
-    assertEquals(intermediate.right.extraFields.get("f1"), right.f1);
+    assertEquals(byName(intermediate.right.extraFields, "f1"), right.f1);
 
     byte[] bToCBytes = foryB.serialize(intermediate);
 
@@ -1085,5 +1692,37 @@ public class ForyExtraFieldsTest {
     assertNotNull(recovered.right);
     assertEquals(recovered.right.f0, right.f0);
     assertEquals(recovered.right.f1, right.f1);
+  }
+
+  @Test
+  public void noExtraFieldsBranchWhenFeatureInactive() {
+    Fory fory = Fory.builder().withCompatible(false).withCodegen(true).build();
+    String code = new ObjectCodecBuilder(Upstream.class, fory).genCode();
+    assertTrue(!code.contains("tryWriteExtraFieldsSchema"));
+    assertTrue(!code.contains("hasExtraFieldsSink"));
+  }
+
+  // -------------------------------------------------------------------------
+  // Static ForyExtraFields fields must be ignored during sink discovery
+  // -------------------------------------------------------------------------
+
+  public static class StaticSinkOnly {
+    public static final ForyExtraFields SHARED = new ForyExtraFields();
+    public int f0, f1, f2, f3, f4, f5, f6, f7, f8;
+  }
+
+  public static class StaticAndInstanceSink {
+    public static final ForyExtraFields SHARED = new ForyExtraFields();
+    public int f0, f1, f2, f3, f4, f5, f6, f7, f8;
+    public ForyExtraFields extraFields;
+  }
+
+  @Test
+  public void staticSinkFieldIgnoredByDiscovery() {
+    // A lone static field is not a sink.
+    assertNull(ForyExtraFieldsSupport.findSinkAccessor(StaticSinkOnly.class));
+    assertEquals(
+        ForyExtraFieldsSupport.findSinkAccessor(StaticAndInstanceSink.class).getField().getName(),
+        "extraFields");
   }
 }
