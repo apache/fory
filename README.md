@@ -744,8 +744,13 @@ public class User {
 }
 
 ForyJson json = ForyJson.builder().build();
-byte[] bytes = json.toJsonBytes(new User(7, "Alice"));
-User user = json.fromJson(bytes, User.class);
+User input = new User(7, "Alice");
+
+String text = json.toJson(input);
+User fromText = json.fromJson(text, User.class);
+
+byte[] bytes = json.toJsonBytes(input);
+User fromBytes = json.fromJson(bytes, User.class);
 ```
 
 See the [Fory JSON guide](docs/guide/java/json-support.md) for installation,
