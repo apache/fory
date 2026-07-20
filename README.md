@@ -44,15 +44,12 @@ For same-language workloads, Fory provides native serialization modes that
 support broader language-specific object models:
 
 - **Java Native Serialization**: A high-performance replacement for JDK
-  serialization, Hessian, Kryo, and FST in Java-only systems. It natively
-  supports JDK custom serialization hooks including `writeObject`,
-  `readObject`, `writeReplace`, and `readResolve`.
+  serialization, Hessian, Kryo, and FST in Java-only systems. It supports JDK
+  custom serialization semantics.
 - **Python Native Serialization**: A faster and more compact replacement for
-  `pickle` and `cloudpickle` in Python-only systems. It supports Python
-  classes, modules, global and local functions, `__reduce__`/`__reduce_ex__`,
-  and `__getstate__`/`__setstate__`, with fine-grained deserialization
-  controls through `DeserializationPolicy` for class, module, function,
-  reduction, and state restoration behavior.
+  `pickle` and `cloudpickle` in Python-only systems. It supports classes,
+  modules, functions, and custom object state, with fine-grained
+  deserialization controls through `DeserializationPolicy`.
 
 Fory also provides specialized formats for other data-processing requirements:
 
