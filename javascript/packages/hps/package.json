@@ -17,7 +17,11 @@
     "prepublishOnly": "npm run build"
   },
   "license": "Apache-2.0",
-  "repository": "git@github.com:apache/fory.git",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apache/fory.git",
+    "directory": "javascript/packages/hps"
+  },
   "dependencies": {
     "bindings": "~1.2.1",
     "fs-extra": "^11.3.0",

@@ -25,7 +25,11 @@
     "node-gyp": "^11.5.0",
     "tslib": "^2.4.0"
   },
-  "repository": "git@github.com:apache/fory.git",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apache/fory.git",
+    "directory": "javascript/packages/core"
+  },
   "workspaces": [
     "packages/hps"
   ]
