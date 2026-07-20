@@ -249,7 +249,7 @@ ThreadSafeFory threadLocalFory = Fory.builder()
 ## Fory JSON
 
 Fory JSON is a high-performance, thread-safe JSON serialization framework for
-Java. It supports both `String` and UTF-8 `byte[]` input and output.
+Java.
 
 ### Features
 
@@ -258,8 +258,6 @@ Java. It supports both `String` and UTF-8 `byte[]` input and output.
 - **Java Object Mapping**: Supports ordinary objects, Java 17 records, immutable
   creator-based classes, common JDK types, generic containers, custom codecs,
   and annotation-declared polymorphism.
-- **String and UTF-8 APIs**: Read and write `String` and UTF-8 `byte[]` with one
-  immutable, thread-safe `ForyJson` instance.
 
 ### Installation
 
@@ -288,7 +286,7 @@ the binary serialization installation section.
 ### Quick Start
 
 `ForyJson` is immutable and thread-safe after construction. Reuse one instance
-for both `String` and UTF-8 `byte[]` operations:
+across threads:
 
 ```java
 import org.apache.fory.json.ForyJson;
