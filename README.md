@@ -830,8 +830,11 @@ Add Fory JSON to your project:
 implementation "org.apache.fory:fory-json:1.4.0"
 ```
 
-Keep all Fory modules in the same application on the same version. Build one
-`ForyJson` instance and reuse it across threads:
+Keep all Fory modules in the same application on the same version.
+
+**Quick Start**
+
+Build one `ForyJson` instance and reuse it across threads:
 
 ```java
 import org.apache.fory.json.ForyJson;
