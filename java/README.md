@@ -12,7 +12,7 @@ serialization, and a random-access row format for the Java ecosystem.
 | Format                          | Use it when                                                                      | Module        | Guide                                                 |
 | ------------------------------- | -------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------- |
 | **Binary Object Serialization** | You need compact object graphs in Java native mode or across supported languages | `fory-core`   | [Java guide](../docs/guide/java/)                     |
-| **JSON Serialization**          | You need high-throughput standard JSON for Java applications                     | `fory-json`   | [Fory JSON guide](../docs/guide/java/json-support.md) |
+| **Fory JSON**                   | You need high-throughput standard JSON for Java applications                     | `fory-json`   | [Fory JSON guide](../docs/guide/java/json-support.md) |
 | **Row Format**                  | You need zero-copy random access, partial reads, or Arrow integration            | `fory-format` | [Row-format guide](../docs/guide/java/row-format.md)  |
 
 Keep all Fory modules in one application on the same version.
@@ -34,15 +34,13 @@ Keep all Fory modules in one application on the same version.
 - **Security Controls**: Class registration, type checking, depth limits, and
   configurable deserialization policies protect decoding boundaries.
 
-### JSON Serialization
+### Fory JSON
 
-- **Performance-First Codec**: Optimized readers and writers plus interpreted
+- **Maximum Performance**: Optimized readers and writers plus interpreted
   and runtime-generated codecs keep JSON encoding and decoding fast.
 - **Java Object Mapping**: Supports ordinary objects, Java 17 records, immutable
   creator-based classes, common JDK types, generic containers, custom codecs,
   and annotation-declared polymorphism.
-- **String and UTF-8 APIs**: Read and write both `String` and UTF-8 `byte[]`
-  without requiring separate mapper instances.
 - **Thread-Safe Runtime**: Build one immutable `ForyJson` instance and reuse it
   across threads.
 
@@ -65,24 +63,24 @@ Keep all Fory modules in one application on the same version.
 
 ## Documentation
 
-| Topic                       | Description                         | Source Doc Link                                                                | Website Doc Link                                                                              |
-| --------------------------- | ----------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| **Java Guide**              | Binary xlang and native mode usage  | [docs/guide/java](../docs/guide/java)                                          | [Java Guide](https://fory.apache.org/docs/guide/java/)                                        |
-| **Fory JSON**               | JSON installation, APIs, and types  | [json-support.md](../docs/guide/java/json-support.md)                          | [Fory JSON](https://fory.apache.org/docs/guide/java/json_support)                             |
-| **Row Format**              | Random access and Arrow integration | [row-format.md](../docs/guide/java/row-format.md)                              | [Row Format](https://fory.apache.org/docs/guide/java/row_format)                              |
-| **GraalVM Native Image**    | Native image support                | [graalvm-support.md](../docs/guide/java/graalvm-support.md)                    | [GraalVM Support](https://fory.apache.org/docs/guide/java/graalvm_support)                    |
-| **Java Serialization Spec** | Binary protocol specification       | [java_serialization_spec.md](../docs/specification/java_serialization_spec.md) | [Java Serialization Spec](https://fory.apache.org/docs/specification/java_serialization_spec) |
-| **Java Benchmarks**         | Performance data and plots          | [java/README.md](../docs/benchmarks/java/README.md)                            | [Java Benchmarks](https://fory.apache.org/docs/benchmarks/java)                               |
+| Topic                       | Description                                   | Source Doc Link                                                                | Website Doc Link                                                                              |
+| --------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| **Java Guide**              | Binary xlang and native mode usage            | [docs/guide/java](../docs/guide/java)                                          | [Java Guide](https://fory.apache.org/docs/guide/java/)                                        |
+| **Fory JSON**               | JSON usage, object mapping, and configuration | [json-support.md](../docs/guide/java/json-support.md)                          | [Fory JSON](https://fory.apache.org/docs/guide/java/json_support)                             |
+| **Row Format**              | Random access and Arrow integration           | [row-format.md](../docs/guide/java/row-format.md)                              | [Row Format](https://fory.apache.org/docs/guide/java/row_format)                              |
+| **GraalVM Native Image**    | Native image support                          | [graalvm-support.md](../docs/guide/java/graalvm-support.md)                    | [GraalVM Support](https://fory.apache.org/docs/guide/java/graalvm_support)                    |
+| **Java Serialization Spec** | Binary protocol specification                 | [java_serialization_spec.md](../docs/specification/java_serialization_spec.md) | [Java Serialization Spec](https://fory.apache.org/docs/specification/java_serialization_spec) |
+| **Java Benchmarks**         | Performance data and plots                    | [java/README.md](../docs/benchmarks/java/README.md)                            | [Java Benchmarks](https://fory.apache.org/docs/benchmarks/java)                               |
 
 ## Modules
 
-| Module                               | Description                               | Maven Artifact                    |
-| ------------------------------------ | ----------------------------------------- | --------------------------------- |
-| **fory-core**                        | Binary native and xlang serialization     | `org.apache.fory:fory-core`       |
-| [**fory-json**](fory-json/README.md) | High-performance JSON codec               | `org.apache.fory:fory-json`       |
-| **fory-format**                      | Row format and Apache Arrow support       | `org.apache.fory:fory-format`     |
-| **fory-extensions**                  | Protobuf support and metadata compression | `org.apache.fory:fory-extensions` |
-| **fory-test-core**                   | Testing utilities and data generators     | `org.apache.fory:fory-test-core`  |
+| Module                               | Description                                   | Maven Artifact                    |
+| ------------------------------------ | --------------------------------------------- | --------------------------------- |
+| **fory-core**                        | Binary native and xlang serialization         | `org.apache.fory:fory-core`       |
+| [**fory-json**](fory-json/README.md) | High-performance JSON serialization framework | `org.apache.fory:fory-json`       |
+| **fory-format**                      | Row format and Apache Arrow support           | `org.apache.fory:fory-format`     |
+| **fory-extensions**                  | Protobuf support and metadata compression     | `org.apache.fory:fory-extensions` |
+| **fory-test-core**                   | Testing utilities and data generators         | `org.apache.fory:fory-test-core`  |
 
 ## Installation
 
@@ -376,12 +374,11 @@ java --add-modules=jdk.incubator.vector ...
    measuring the payload distribution and throughput tradeoff.
 7. Warm up generated serializers before measuring steady-state performance.
 
-## JSON Serialization
+## Fory JSON
 
-Fory JSON is a performance-first, thread-safe JSON codec for Java. Optimized
-readers and writers handle `String` and UTF-8 `byte[]` directly, while
-runtime-generated codecs accelerate object mapping where runtime code generation
-is available.
+Fory JSON is a thread-safe JSON serialization framework for Java, extensively
+optimized for maximum performance across JSON encoding, decoding, and Java
+object mapping.
 
 Build one `ForyJson` instance and reuse it across threads:
 

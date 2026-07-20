@@ -53,12 +53,12 @@ support broader language-specific object models:
 
 Fory also provides specialized formats for other data-processing requirements:
 
-- **Row Format**: Read fields, arrays, and nested values without rebuilding
-  complete objects, with zero-copy access and partial reads.
-- **High-Performance JSON Serialization for Java**: Built for maximum
+- **Fory JSON**: A Java JSON serialization framework built for maximum
   throughput through runtime-generated codecs and optimized readers and
   writers. Supports Java 8 and later on standard JDKs, GraalVM native images,
   and Android, including Java 17 records.
+- **Row Format**: Read fields, arrays, and nested values without rebuilding
+  complete objects, with zero-copy access and partial reads.
 
 ## Performance
 
@@ -310,13 +310,14 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 Snapshots for Java, Scala, and Kotlin are available from
 `https://repository.apache.org/snapshots/` with the matching `-SNAPSHOT` version.
 
-## Choose Serialization Mode
+## Choose a Serialization Format
 
-| Mode        | Use it when                                                   | Start here                                               |
-| ----------- | ------------------------------------------------------------- | -------------------------------------------------------- |
-| Xlang mode  | Data crosses language boundaries                              | [Cross-language guide](docs/guide/xlang)                 |
-| Native mode | Producer and consumer are in the same language                | Language guide                                           |
-| Row format  | You need random field access or analytics-style partial reads | [Row format spec](docs/specification/row_format_spec.md) |
+| Format        | Use it when                                                   | Start here                                               |
+| ------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
+| Xlang binary  | Data crosses language boundaries                              | [Cross-language guide](docs/guide/xlang)                 |
+| Native binary | Producer and consumer are in the same language                | Language guide                                           |
+| Fory JSON     | Java applications need high-performance standard JSON         | [Fory JSON guide](docs/guide/java/json-support.md)       |
+| Row format    | You need random field access or analytics-style partial reads | [Row format spec](docs/specification/row_format_spec.md) |
 
 For Java, Scala, Kotlin, Python, C++, Go, and Rust, use native mode for
 same-language traffic. It avoids xlang's cross-language type mapping and
@@ -743,12 +744,12 @@ native domain objects while all peers share the same Fory schema. See the
 complete type system, language-specific output options, schema evolution, and
 gRPC generation.
 
-## JSON Serialization
+## Fory JSON
 
-Fory JSON is a high-performance, thread-safe JSON codec for Java. It combines
-optimized readers and writers with runtime-generated codecs where available to
-maximize throughput. It supports Java 8 and later on standard JDKs, GraalVM
-native images, and Android, with Java records supported on Java 17 and later.
+Fory JSON is a thread-safe JSON serialization framework for Java, extensively
+optimized for maximum performance across JSON encoding, decoding, and Java
+object mapping. It supports Java 8 and later on standard JDKs, GraalVM native
+images, and Android, with Java records supported on Java 17 and later.
 
 Add `org.apache.fory:fory-json` with the same version as `fory-core`, then reuse
 one `ForyJson` instance across threads:
@@ -756,26 +757,33 @@ one `ForyJson` instance across threads:
 ```java
 import org.apache.fory.json.ForyJson;
 
-public class User {
-  public long id;
-  public String name;
+public final class JsonExample {
+  private static final ForyJson JSON = ForyJson.builder().build();
 
-  public User() {}
+  public static final class User {
+    public long id;
+    public String name;
 
-  public User(long id, String name) {
-    this.id = id;
-    this.name = name;
+    public User() {}
+
+    public User(long id, String name) {
+      this.id = id;
+      this.name = name;
+    }
+  }
+
+  public static void main(String[] args) {
+    User input = new User(7, "Alice");
+
+    String text = JSON.toJson(input);
+    User fromText = JSON.fromJson(text, User.class);
+
+    byte[] bytes = JSON.toJsonBytes(input);
+    User fromBytes = JSON.fromJson(bytes, User.class);
+
+    System.out.println(fromText.name + " / " + fromBytes.name);
   }
 }
-
-ForyJson json = ForyJson.builder().build();
-User input = new User(7, "Alice");
-
-String text = json.toJson(input);
-User fromText = json.fromJson(text, User.class);
-
-byte[] bytes = json.toJsonBytes(input);
-User fromBytes = json.fromJson(bytes, User.class);
 ```
 
 See the [Fory JSON guide](docs/guide/java/json-support.md) for installation,
