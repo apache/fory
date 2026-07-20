@@ -248,8 +248,9 @@ ThreadSafeFory threadLocalFory = Fory.builder()
 
 ## Fory JSON
 
-Fory JSON is a high-performance, thread-safe JSON serialization framework for
-Java.
+Fory JSON is a thread-safe JSON serialization framework for Java, extensively
+optimized for maximum performance across JSON encoding, decoding, and Java
+object mapping.
 
 ### Features
 
