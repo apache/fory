@@ -4,70 +4,111 @@
 [![Java Version](https://img.shields.io/badge/Java-8%2B-blue?style=for-the-badge)](https://www.oracle.com/java/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge)](https://opensource.org/licenses/Apache-2.0)
 
-Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem, delivering up to **170x performance improvement** over traditional frameworks through JIT compilation and zero-copy techniques.
+Apache Fory™ Java provides high-performance binary object serialization, a
+cross-language random-access row format, and JSON serialization for the Java
+ecosystem.
+
+## Choose a Format
+
+| Format                          | Use it when                                                                      | Module        | Guide                                                 |
+| ------------------------------- | -------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------- |
+| **Binary Object Serialization** | You need compact object graphs in Java native mode or across supported languages | `fory-core`   | [Java guide](../docs/guide/java/)                     |
+| **Row Format**                  | You need zero-copy random access, partial reads, or Arrow integration            | `fory-format` | [Row-format guide](../docs/guide/java/row-format.md)  |
+| **Fory JSON**                   | You need high-throughput standard JSON for Java applications                     | `fory-json`   | [Fory JSON guide](../docs/guide/java/json-support.md) |
+
+Keep all Fory modules in one application on the same version.
 
 ## Features
 
-### High Performance
+### Binary Object Serialization
 
-- **JIT Code Generation**: Highly-extensible JIT framework generates serializer code at runtime using async multi-threaded compilation, delivering 20-170x speedup through:
-  - Inlining variables to reduce memory access
-  - Inlining method calls to eliminate virtual dispatch overhead
-  - Minimizing conditional branching
-  - Eliminating hash lookups
-- **Zero-Copy**: Direct memory access without intermediate buffer copies; row format supports random access and partial serialization
-- **Variable-Length Encoding**: Optimized compression for integers, longs
-- **Meta Sharing**: Cached class metadata reduces redundant type information
-- **SIMD Acceleration**: Java Vector API support for array operations (Java 16+)
+- **Generated Codecs**: JIT-generated serializers inline data access and reduce
+  virtual dispatch, branching, and metadata lookups on hot paths.
+- **Native and Cross-Language Modes**: Use Java-native object semantics for
+  Java-only traffic or a portable wire format across supported languages.
+- **Object Graph Semantics**: Preserve shared and circular references,
+  polymorphism, and schema evolution.
+- **Compact Encoding**: Variable-length integer encoding, metadata sharing,
+  string compression, and optional numeric-array compression reduce payload size.
+- **Java Object Model**: Native mode supports ordinary Java classes, records,
+  JDK custom serialization semantics, `Externalizable`, and deep copy.
+- **Security Controls**: Class registration, type checking, depth limits, and
+  configurable deserialization policies protect decoding boundaries.
 
-### Drop-in Replacement
+### Row Format
 
-- **100% JDK Serialization Compatible**: Supports `writeObject`/`readObject`/`writeReplace`/`readResolve`/`readObjectNoData`/`Externalizable`
-- **Java 8+ Support**: Works across all modern Java versions including Java 17+ records
-- **GraalVM Native Image**: AOT compilation support without reflection configuration
+- **Zero-Copy Random Access**: Read fields and nested values without rebuilding
+  complete objects.
+- **Partial Reads**: Decode only the data required by an analytics or query path.
+- **Apache Arrow Integration**: Convert between Fory row data and Arrow data for
+  columnar processing.
 
-### Advanced Features
+### Fory JSON
 
-- **Reference Tracking**: Automatic handling of shared and circular references
-- **Schema Evolution**: Forward/backward compatibility for class schema changes
-- **Polymorphism**: Full support for inheritance hierarchies and interfaces
-- **Deep Copy**: Efficient deep cloning of complex object graphs with reference preservation
-- **Security**: Class registration and configurable deserialization policies
+- **Maximum Performance**: Optimized readers and writers plus interpreted
+  and runtime-generated codecs keep JSON encoding and decoding fast.
+- **Java Object Mapping**: Supports ordinary objects, Java 17 records, immutable
+  creator-based classes, common JDK types, generic containers, custom codecs,
+  and annotation-declared polymorphism.
+- **Thread-Safe Runtime**: Build one immutable `ForyJson` instance and reuse it
+  across threads.
+
+### Platforms
+
+- `fory-core` and `fory-json` support Java 8 and later; Java records require
+  Java 17 or later.
+- `fory-format` targets Java 11 and later.
+- `fory-core` and `fory-json` run on standard JDKs, GraalVM native images, and
+  Android. Optional SIMD array acceleration in `fory-core` uses the Java Vector
+  API on Java 16 and later.
 
 ## Documentation
 
-| Topic                       | Description                      | Source Doc Link                                                                | Website Doc Link                                                                              |
-| --------------------------- | -------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
-| **Java Guide**              | Java xlang and native mode usage | [docs/guide/java](../docs/guide/java)                                          | [Java Guide](https://fory.apache.org/docs/guide/java/)                                        |
-| **GraalVM Native Image**    | Native image support             | [graalvm-support.md](../docs/guide/java/graalvm-support.md)                    | [GraalVM Support](https://fory.apache.org/docs/guide/java/graalvm_support)                    |
-| **Java Serialization Spec** | Protocol specification           | [java_serialization_spec.md](../docs/specification/java_serialization_spec.md) | [Java Serialization Spec](https://fory.apache.org/docs/specification/java_serialization_spec) |
-| **Java Benchmarks**         | Performance data and plots       | [java/README.md](../docs/benchmarks/java/README.md)                            | [Java Benchmarks](https://fory.apache.org/docs/benchmarks/java)                               |
+| Topic                       | Description                                   | Source Doc Link                                                                | Website Doc Link                                                                              |
+| --------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| **Java Guide**              | Binary xlang and native mode usage            | [docs/guide/java](../docs/guide/java)                                          | [Java Guide](https://fory.apache.org/docs/guide/java/)                                        |
+| **Row Format**              | Random access and Arrow integration           | [row-format.md](../docs/guide/java/row-format.md)                              | [Row Format](https://fory.apache.org/docs/guide/java/row_format)                              |
+| **Fory JSON**               | JSON usage, object mapping, and configuration | [json-support.md](../docs/guide/java/json-support.md)                          | [Fory JSON](https://fory.apache.org/docs/guide/java/json_support)                             |
+| **GraalVM Native Image**    | Native image support                          | [graalvm-support.md](../docs/guide/java/graalvm-support.md)                    | [GraalVM Support](https://fory.apache.org/docs/guide/java/graalvm_support)                    |
+| **Java Serialization Spec** | Binary protocol specification                 | [java_serialization_spec.md](../docs/specification/java_serialization_spec.md) | [Java Serialization Spec](https://fory.apache.org/docs/specification/java_serialization_spec) |
+| **Java Benchmarks**         | Performance data and plots                    | [java/README.md](../docs/benchmarks/java/README.md)                            | [Java Benchmarks](https://fory.apache.org/docs/benchmarks/java)                               |
 
 ## Modules
 
-| Module                               | Description                           | Maven Artifact                    |
-| ------------------------------------ | ------------------------------------- | --------------------------------- |
-| **fory-core**                        | Core serialization engine             | `org.apache.fory:fory-core`       |
-| **fory-format**                      | Row format and Apache Arrow support   | `org.apache.fory:fory-format`     |
-| [**fory-json**](fory-json/README.md) | JSON serialization and parsing        | `org.apache.fory:fory-json`       |
-| **fory-extensions**                  | Protobuf support and meta compression | `org.apache.fory:fory-extensions` |
-| **fory-test-core**                   | Testing utilities and data generators | `org.apache.fory:fory-test-core`  |
+| Module                               | Description                                   | Maven Artifact                    |
+| ------------------------------------ | --------------------------------------------- | --------------------------------- |
+| **fory-core**                        | Binary native and xlang serialization         | `org.apache.fory:fory-core`       |
+| **fory-format**                      | Row format and Apache Arrow support           | `org.apache.fory:fory-format`     |
+| [**fory-json**](fory-json/README.md) | High-performance JSON serialization framework | `org.apache.fory:fory-json`       |
+| **fory-extensions**                  | Protobuf support and metadata compression     | `org.apache.fory:fory-extensions` |
+| **fory-test-core**                   | Testing utilities and data generators         | `org.apache.fory:fory-test-core`  |
 
 ## Installation
+
+Add only the artifacts required by your chosen formats and keep their versions
+aligned. `fory-json` includes `fory-core` transitively.
 
 ### Maven
 
 ```xml
+<!-- Binary object serialization -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
   <version>1.4.0</version>
 </dependency>
 
-<!-- Optional: Row format support -->
+<!-- Row format -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
+  <version>1.4.0</version>
+</dependency>
+
+<!-- JSON serialization -->
+<dependency>
+  <groupId>org.apache.fory</groupId>
+  <artifactId>fory-json</artifactId>
   <version>1.4.0</version>
 </dependency>
 
@@ -77,16 +118,19 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
   <artifactId>fory-extensions</artifactId>
   <version>1.4.0</version>
 </dependency>
-
 ```
 
 ### Gradle
 
 ```gradle
 dependencies {
+    // Binary object serialization
     implementation 'org.apache.fory:fory-core:1.4.0'
-    // Optional modules
+    // Row format
     implementation 'org.apache.fory:fory-format:1.4.0'
+    // JSON serialization
+    implementation 'org.apache.fory:fory-json:1.4.0'
+    // Optional: Protobuf serializers and metadata compression
     implementation 'org.apache.fory:fory-extensions:1.4.0'
 }
 ```
@@ -106,15 +150,14 @@ Use the Fory core module name when Fory is on the module path:
 --add-opens=java.base/java.lang.invoke=org.apache.fory.core
 ```
 
-## Quick Start
+## Binary Object Serialization
 
-### Basic Usage
+### Quick Start
 
 Create a Fory instance, register your classes, and start serializing objects. Remember to reuse the Fory instance for optimal performance:
 
 ```java
-import org.apache.fory.*;
-import org.apache.fory.config.*;
+import org.apache.fory.Fory;
 
 // Create Fory instance (should be reused). Java defaults to xlang mode with
 // compatible schema evolution.
@@ -123,15 +166,15 @@ Fory fory = Fory.builder()
   .requireClassRegistration(true)
   .build();
 
-// Register your classes
-fory.register(MyClass.class);
+// Register the same type identity on every xlang peer
+fory.register(MyClass.class, "example.MyClass");
 
 // Serialize
 MyClass object = new MyClass();
 byte[] bytes = fory.serialize(object);
 
 // Deserialize
-MyClass result = (MyClass) fory.deserialize(bytes);
+MyClass result = fory.deserialize(bytes, MyClass.class);
 ```
 
 ### Thread-Safe Usage
@@ -139,14 +182,17 @@ MyClass result = (MyClass) fory.deserialize(bytes);
 For multi-threaded environments, use `ThreadSafeFory` which maintains a pool of Fory instances:
 
 ```java
-import org.apache.fory.*;
-import org.apache.fory.config.*;
+import org.apache.fory.Fory;
+import org.apache.fory.ThreadSafeFory;
 
 // Create thread-safe xlang Fory instance
-private static final ThreadSafeFory fory = Fory.builder().withXlang(true).buildThreadSafeFory();
+private static final ThreadSafeFory fory = Fory.builder()
+    .withXlang(true)
+    .requireClassRegistration(true)
+    .buildThreadSafeFory();
 
 static {
-    fory.register(MyClass.class);
+    fory.register(MyClass.class, "example.MyClass");
 }
 
 // Use in multiple threads
@@ -215,9 +261,7 @@ fory.register(MyClass.class, 1);
 byte[] bytes = fory.serialize(object);
 ```
 
-## Configuration Options
-
-### ForyBuilder Options
+### Configuration
 
 Configure Fory with various options to suit your specific use case:
 
@@ -245,14 +289,17 @@ Fory fory = Fory.builder()
 
 See the [Java guide](../docs/guide/java/) for detailed configuration options.
 
-## Advanced Features
-
-### JDK Serialization Compatibility
+### JDK Custom Serialization Semantics
 
 In native mode, Fory supports JDK serialization APIs with much better performance. Use native mode
 when replacing Java-only JDK serialization, Kryo, FST, Hessian, or Protocol Buffers payloads:
 
 ```java
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
+
 public class MyClass implements Serializable {
   private void writeObject(ObjectOutputStream out) throws IOException {
     // Custom serialization logic
@@ -286,58 +333,6 @@ MyClass original = new MyClass();
 MyClass copy = fory.copy(original);
 ```
 
-### Row Format
-
-Fory provides a cache-friendly binary row format optimized for random access and analytics:
-
-- **Zero-Copy Random Access**: Read individual fields without deserializing entire objects
-- **Partial Serialization**: Skip unnecessary fields during serialization
-- **Cross-Language Compatible**: Row format data can be read by Python, C++
-- **Apache Arrow Integration**: Convert row format to/from Arrow RecordBatch for analytics
-
-```java
-import org.apache.fory.format.encoder.*;
-import org.apache.fory.format.row.*;
-
-public class Bar {
-  String f1;
-  List<Long> f2;
-}
-
-public class Foo {
-  int f1;
-  List<Integer> f2;
-  Map<String, Integer> f3;
-  List<Bar> f4;
-}
-
-// Create row encoder
-RowEncoder<Foo> encoder = Encoders.bean(Foo.class);
-
-// Serialize to row format
-Foo foo = new Foo();
-foo.f1 = 10;
-foo.f2 = IntStream.range(0, 1000).boxed().collect(Collectors.toList());
-BinaryRow binaryRow = encoder.toRow(foo);
-
-// Zero-copy random access to fields
-BinaryArray f2Array = binaryRow.getArray(1);  // Access f2 without deserializing entire object
-BinaryArray f4Array = binaryRow.getArray(3);  // Access f4
-
-// Zero-copy access nested fields
-BinaryRow barStruct = f4Array.getStruct(10);  // Get 11th element
-long value = barStruct.getArray(1).getInt64(5);  // Access nested field
-
-// Partial deserialization
-RowEncoder<Bar> barEncoder = Encoders.bean(Bar.class);
-Bar partialBar = barEncoder.fromRow(barStruct);  // Deserialize only one Bar object
-
-// Full deserialization
-Foo deserializedFoo = encoder.fromRow(binaryRow);
-```
-
-See the [Java row-format guide](../docs/guide/java/row-format.md) for more details.
-
 ### Array Compression
 
 Use width compression for integer and long arrays to reduce serialized size when array elements have small values. JDK 8 through 15 use scalar range analysis; JDK 16 and later automatically select the Vector API implementation from the multi-release JAR.
@@ -364,7 +359,117 @@ On JDK 16 or later, resolve the incubator Vector API module when starting the ap
 java --add-modules=jdk.incubator.vector ...
 ```
 
-### GraalVM Native Image
+### Performance Guidelines
+
+1. Reuse `Fory` or `ThreadSafeFory` instances instead of rebuilding runtime
+   state for each operation.
+2. Register application classes to avoid repeated type metadata and keep type
+   identity explicit.
+3. Use native mode for Java-only payloads; use xlang mode only when payloads
+   must cross language boundaries.
+4. Keep compatible mode enabled when schemas may differ. Disable it only when
+   every reader and writer always uses the same schema.
+5. Disable reference tracking only when shared identity and circular references
+   are not part of the data model.
+6. Enable string, integer, long, or numeric-array compression only after
+   measuring the payload distribution and throughput tradeoff.
+7. Warm up generated serializers before measuring steady-state performance.
+
+## Row Format
+
+Fory row format is a cache-friendly binary format for random access and
+analytics. It can read fields, arrays, and nested values without rebuilding the
+complete object.
+
+```java
+import org.apache.fory.format.encoder.Encoders;
+import org.apache.fory.format.encoder.RowEncoder;
+import org.apache.fory.format.row.ArrayData;
+import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.fory.format.type.Schema;
+
+public final class RowExample {
+  public static final class User {
+    public int id;
+    public String name;
+    public int[] scores;
+  }
+
+  public static void main(String[] args) {
+    RowEncoder<User> encoder = Encoders.bean(User.class);
+
+    User user = new User();
+    user.id = 1;
+    user.name = "Alice";
+    user.scores = new int[] {98, 100, 95};
+
+    BinaryRow row = encoder.toRow(user);
+
+    Schema schema = encoder.schema();
+    Schema.StringField nameField = schema.stringField("name");
+    Schema.ArrayField scoresField = schema.arrayField("scores");
+
+    String name = nameField.get(row);
+    ArrayData scores = scoresField.get(row);
+    int secondScore = scores.getInt32(1);
+
+    System.out.println(name + ": " + secondScore);
+  }
+}
+```
+
+See the [Java row-format guide](../docs/guide/java/row-format.md) for nested
+structs, arrays, maps, partial deserialization, and Arrow integration.
+
+## Fory JSON
+
+Fory JSON is a thread-safe JSON serialization framework for Java, extensively
+optimized for maximum performance across JSON encoding, decoding, and Java
+object mapping.
+
+Build one `ForyJson` instance and reuse it across threads:
+
+```java
+import java.nio.charset.StandardCharsets;
+import org.apache.fory.json.ForyJson;
+
+public final class JsonExample {
+  private static final ForyJson JSON = ForyJson.builder().build();
+
+  public static final class User {
+    public long id;
+    public String name;
+
+    public User() {}
+
+    public User(long id, String name) {
+      this.id = id;
+      this.name = name;
+    }
+  }
+
+  public static void main(String[] args) {
+    User input = new User(7, "Alice");
+
+    String text = JSON.toJson(input);
+    User fromText = JSON.fromJson(text, User.class);
+
+    byte[] utf8 = JSON.toJsonBytes(input);
+    User fromUtf8 = JSON.fromJson(utf8, User.class);
+
+    System.out.println(text);
+    System.out.println(new String(utf8, StandardCharsets.UTF_8));
+    System.out.println(fromText.name + " / " + fromUtf8.name);
+  }
+}
+```
+
+Fory JSON supports Java 8 and later on standard JDKs, GraalVM native images,
+and Android. Java records are supported on Java 17 and later. See the
+[Fory JSON guide](../docs/guide/java/json-support.md) for supported types,
+annotations, custom codecs, security controls, and platform setup.
+
+## GraalVM Native Image
 
 Fory supports GraalVM Native Image without application reflection configuration. Binary
 serialization generates serializers while the image is built; the Fory annotation processor
@@ -426,16 +531,6 @@ mvn -T16 spotless:apply
 # Check code style
 mvn -T16 checkstyle:check
 ```
-
-## Performance Tips
-
-1. **Reuse Fory Instances**: Creating Fory is expensive; reuse instances across serializations
-2. **Enable Compression**: For numeric-heavy data, enable int/long compression
-3. **Disable Reference Tracking**: If no circular references exist, disable tracking for better performance
-4. **Use native mode**: For Java-only payloads, use `withXlang(false)`. Native mode reduces type metadata overhead and supports more Java-native types not available in xlang mode
-5. **Warm Up**: Allow JIT compilation to complete before benchmarking
-6. **Register Classes**: Class registration reduces metadata overhead
-7. **Compress numeric arrays**: Enable array compression when numeric array values usually fit in narrower primitive types
 
 ## Contributing
 
