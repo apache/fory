@@ -32,6 +32,7 @@ from fory_compiler.ir.validator import SchemaValidator
 from fory_compiler.generators.base import GeneratorOptions
 from fory_compiler.generators import GENERATORS
 from fory_compiler.generators.csharp import validate_csharp_generation
+from fory_compiler.generators.swift import validate_swift_generation
 from fory_compiler.generators.kotlin import (
     kotlin_output_paths,
     kotlin_package_for_schema,
@@ -337,6 +338,27 @@ def validate_csharp_files(
         graph.extend(file_graph)
     try:
         return validate_csharp_generation(graph, grpc=grpc)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return False
+
+
+def validate_swift_files(
+    files: List[Path],
+    import_paths: List[Path],
+    namespace_style: Optional[str] = None,
+    grpc: bool = False,
+) -> bool:
+    """Preflight Swift output paths and top-level symbols before writing output."""
+    cache: Dict[Path, Schema] = {}
+    graph: List[Tuple[Path, Schema]] = []
+    for file_path in files:
+        file_graph = collect_schema_graph(file_path, import_paths, cache, set())
+        if file_graph is None:
+            return False
+        graph.extend(file_graph)
+    try:
+        return validate_swift_generation(graph, namespace_style, grpc=grpc)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         return False
@@ -1052,6 +1074,11 @@ def cmd_compile(args: argparse.Namespace) -> int:
             return 1
     if "scala" in lang_output_dirs:
         if not validate_scala_generation(args.files, import_paths, grpc=args.grpc):
+            return 1
+    if "swift" in lang_output_dirs:
+        if not validate_swift_files(
+            args.files, import_paths, args.swift_namespace_style, grpc=args.grpc
+        ):
             return 1
 
     if args.grpc_web and "javascript" not in lang_output_dirs:

@@ -52,6 +52,15 @@ if has_test_class "DartGrpcTest"; then
   dart analyze bin lib/generated/*/*_grpc.dart
   dart format --output=none --set-exit-if-changed bin lib/generated/*/*_grpc.dart
 fi
+# Swift toolchain tests (generated marshaller round-trip and concurrency). These
+# need the Swift toolchain rather than the JVM, so they run in their own package.
+if command -v swift >/dev/null 2>&1 && [ -d "${SCRIPT_DIR}/swift/interop" ]; then
+  cd "${SCRIPT_DIR}/swift/interop"
+  swift test
+  if [[ "${FORY_SWIFT_TSAN:-}" == "1" ]]; then
+    swift test --sanitize=thread
+  fi
+fi
 cd "${ROOT_DIR}/integration_tests/grpc_tests/java"
 mvn -T16 --no-transfer-progress \
   -Dtest="${TEST_CLASSES}" \
