@@ -41,6 +41,7 @@ from fory_compiler.generators.dart import DartGenerator
 from fory_compiler.ir.ast import Schema
 from fory_compiler.ir.validator import SchemaValidator
 
+
 GENERATOR_CLASSES: Tuple[Type[BaseGenerator], ...] = (
     JavaGenerator,
     PythonGenerator,
@@ -100,7 +101,8 @@ def assert_all_languages_equal(schemas: Dict[str, Schema]) -> None:
 
 
 def test_generated_code_scalar_types_equivalent():
-    fdl = dedent("""
+    fdl = dedent(
+        """
         package gen;
 
         message ScalarTypes {
@@ -113,8 +115,10 @@ def test_generated_code_scalar_types_equivalent():
             float64 f64 = 7;
             string name = 8;
         }
-        """)
-    proto = dedent("""
+        """
+    )
+    proto = dedent(
+        """
         syntax = "proto3";
         package gen;
 
@@ -128,8 +132,10 @@ def test_generated_code_scalar_types_equivalent():
             double f64 = 7;
             string name = 8;
         }
-        """)
-    fbs = dedent("""
+        """
+    )
+    fbs = dedent(
+        """
         namespace gen;
 
         table ScalarTypes {
@@ -142,7 +148,8 @@ def test_generated_code_scalar_types_equivalent():
             f64:double;
             name:string;
         }
-        """)
+        """
+    )
     schemas = {
         "fdl": parse_fdl(fdl),
         "proto": parse_proto(proto),
@@ -153,7 +160,8 @@ def test_generated_code_scalar_types_equivalent():
 
 def test_rust_generated_code_uses_fory_temporal_carriers():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message TemporalTypes {
@@ -161,7 +169,8 @@ def test_rust_generated_code_uses_fory_temporal_carriers():
                 timestamp instant = 2;
                 duration elapsed = 3;
             }
-            """)
+            """
+        )
     )
 
     rust_output = render_files(generate_files(schema, RustGenerator))
@@ -173,7 +182,8 @@ def test_rust_generated_code_uses_fory_temporal_carriers():
 
 def test_rust_generated_code_can_use_chrono_temporal_types():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
             option rust_use_chrono_temporal_types = true;
 
@@ -182,7 +192,8 @@ def test_rust_generated_code_can_use_chrono_temporal_types():
                 timestamp instant = 2;
                 duration elapsed = 3;
             }
-            """)
+            """
+        )
     )
 
     rust_output = render_files(generate_files(schema, RustGenerator))
@@ -196,7 +207,8 @@ def test_rust_generated_code_can_use_chrono_temporal_types():
 
 def test_rust_nested_container_ref_uses_correct_pointer_type():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message Node {
@@ -207,7 +219,8 @@ def test_rust_nested_container_ref_uses_correct_pointer_type():
                 list<list<ref Node>> groups = 1;
                 map<string, map<string, ref Node>> nodes = 2;
             }
-            """)
+            """
+        )
     )
 
     rust_output = render_files(generate_files(schema, RustGenerator))
@@ -233,7 +246,8 @@ def test_rust_nested_container_ref_uses_correct_pointer_type():
 
 
 def test_generated_code_integer_encoding_variants_equivalent():
-    fdl = dedent("""
+    fdl = dedent(
+        """
         package gen;
 
         message EncodingTypes {
@@ -244,8 +258,10 @@ def test_generated_code_integer_encoding_variants_equivalent():
             tagged int64 ti64 = 5;
             tagged uint64 tu64 = 6;
         }
-        """)
-    proto = dedent("""
+        """
+    )
+    proto = dedent(
+        """
         syntax = "proto3";
         package gen;
 
@@ -257,7 +273,8 @@ def test_generated_code_integer_encoding_variants_equivalent():
             int64 ti64 = 5 [(fory).type = "tagged int64"];
             uint64 tu64 = 6 [(fory).type = "tagged uint64"];
         }
-        """)
+        """
+    )
     schemas = {
         "fdl": parse_fdl(fdl),
         "proto": parse_proto(proto),
@@ -270,7 +287,8 @@ def test_generated_code_integer_encoding_variants_equivalent():
 
 
 def test_generated_code_list_modifier_aliases_equivalent():
-    repeated = dedent("""
+    repeated = dedent(
+        """
         package gen;
 
         message Item {
@@ -284,8 +302,10 @@ def test_generated_code_list_modifier_aliases_equivalent():
             ref repeated Item items = 4;
             repeated ref Item children = 5;
         }
-        """)
-    list_syntax = dedent("""
+        """
+    )
+    list_syntax = dedent(
+        """
         package gen;
 
         message Item {
@@ -299,7 +319,8 @@ def test_generated_code_list_modifier_aliases_equivalent():
             ref list<Item> items = 4;
             list<ref Item> children = 5;
         }
-        """)
+        """
+    )
     schemas = {
         "repeated": parse_fdl(repeated),
         "list": parse_fdl(list_syntax),
@@ -308,7 +329,8 @@ def test_generated_code_list_modifier_aliases_equivalent():
 
 
 def test_generated_code_repeated_primitives_are_lists():
-    fdl = dedent("""
+    fdl = dedent(
+        """
         package gen;
 
         message ArrayTypes {
@@ -324,8 +346,10 @@ def test_generated_code_repeated_primitives_are_lists():
             repeated float32 f32s = 10;
             repeated float64 f64s = 11;
         }
-        """)
-    proto = dedent("""
+        """
+    )
+    proto = dedent(
+        """
         syntax = "proto3";
         package gen;
 
@@ -342,7 +366,8 @@ def test_generated_code_repeated_primitives_are_lists():
             repeated float f32s = 10;
             repeated double f64s = 11;
         }
-        """)
+        """
+    )
     schemas = {
         "fdl": parse_fdl(fdl),
         "proto": parse_proto(proto),
@@ -351,7 +376,8 @@ def test_generated_code_repeated_primitives_are_lists():
 
 
 def test_generated_code_flatbuffers_primitive_vectors_are_arrays():
-    fbs = dedent("""
+    fbs = dedent(
+        """
         namespace gen;
 
         table ArrayTypes {
@@ -367,7 +393,8 @@ def test_generated_code_flatbuffers_primitive_vectors_are_arrays():
             f32s:[float];
             f64s:[double];
         }
-        """)
+        """
+    )
     schema = parse_fbs(fbs)
 
     java_output = render_files(generate_files(schema, JavaGenerator))
@@ -382,7 +409,8 @@ def test_generated_code_flatbuffers_primitive_vectors_are_arrays():
 
 
 def test_generated_code_list_types_equivalent():
-    fdl = dedent("""
+    fdl = dedent(
+        """
         package gen;
 
         message ListItem {
@@ -394,8 +422,10 @@ def test_generated_code_list_types_equivalent():
             repeated bool flags = 2;
             repeated ListItem items = 3;
         }
-        """)
-    proto = dedent("""
+        """
+    )
+    proto = dedent(
+        """
         syntax = "proto3";
         package gen;
 
@@ -408,7 +438,8 @@ def test_generated_code_list_types_equivalent():
             repeated bool flags = 2;
             repeated ListItem items = 3;
         }
-        """)
+        """
+    )
     schemas = {
         "fdl": parse_fdl(fdl),
         "proto": parse_proto(proto),
@@ -417,7 +448,8 @@ def test_generated_code_list_types_equivalent():
 
 
 def test_generated_code_map_types_equivalent():
-    fdl = dedent("""
+    fdl = dedent(
+        """
         package gen;
 
         message MapValue {
@@ -430,8 +462,10 @@ def test_generated_code_map_types_equivalent():
             map<string, ref(weak=true, thread_safe=false) MapValue> weak_entries = 3;
             optional int32 version = 4;
         }
-        """)
-    proto = dedent("""
+        """
+    )
+    proto = dedent(
+        """
         syntax = "proto3";
         package gen;
 
@@ -449,7 +483,8 @@ def test_generated_code_map_types_equivalent():
             ];
             optional sint32 version = 4;
         }
-        """)
+        """
+    )
     # FlatBuffers does not support maps, compare FDL vs proto only.
     schemas = {
         "fdl": parse_fdl(fdl),
@@ -479,7 +514,8 @@ def test_generated_code_map_types_equivalent():
 
 def test_rust_generated_ref_pointer_default_and_opt_out():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message Node {
@@ -494,7 +530,8 @@ def test_rust_generated_ref_pointer_default_and_opt_out():
                 list<ref Node> default_ref_list = 5;
                 list<ref(thread_safe=false) Node> rc_ref_list = 6;
             }
-            """)
+            """
+        )
     )
     rust_output = render_files(generate_files(schema, RustGenerator))
     assert "pub default_ref: ::std::sync::Arc<Node>," in rust_output
@@ -508,7 +545,8 @@ def test_rust_generated_ref_pointer_default_and_opt_out():
 
 
 def test_generated_code_nested_messages_equivalent():
-    fdl = dedent("""
+    fdl = dedent(
+        """
         package gen;
 
         message Outer {
@@ -520,8 +558,10 @@ def test_generated_code_nested_messages_equivalent():
 
             Inner inner = 2;
         }
-        """)
-    proto = dedent("""
+        """
+    )
+    proto = dedent(
+        """
         syntax = "proto3";
         package gen;
 
@@ -534,7 +574,8 @@ def test_generated_code_nested_messages_equivalent():
 
             Inner inner = 2;
         }
-        """)
+        """
+    )
     # FlatBuffers does not support nested message declarations.
     schemas = {
         "fdl": parse_fdl(fdl),
@@ -544,7 +585,8 @@ def test_generated_code_nested_messages_equivalent():
 
 
 def test_java_nested_name_registration_uses_owner_namespace():
-    schema = parse_fdl("""
+    schema = parse_fdl(
+        """
         option enable_auto_type_id = false;
         package demo;
 
@@ -568,7 +610,8 @@ def test_java_nested_name_registration_uses_owner_namespace():
             Choice choice = 3;
             list<ref Payload> payloads = 4;
         }
-        """)
+        """
+    )
     output = render_files(generate_files(schema, JavaGenerator))
 
     assert "import org.apache.fory.annotation.Ref;" in output
@@ -586,7 +629,8 @@ def test_java_nested_name_registration_uses_owner_namespace():
 
 
 def test_generated_registration_uses_single_name_for_dart_python_swift():
-    schema = parse_fdl("""
+    schema = parse_fdl(
+        """
         option enable_auto_type_id = false;
         package demo;
 
@@ -609,7 +653,8 @@ def test_generated_registration_uses_single_name_for_dart_python_swift():
             Kind kind = 2;
             Choice choice = 3;
         }
-        """)
+        """
+    )
 
     dart_output = render_files(generate_files(schema, DartGenerator))
     assert (
@@ -656,19 +701,23 @@ def test_generated_registration_uses_single_name_for_dart_python_swift():
 
 def test_java_default_package_import_registers_dependency(tmp_path):
     common = tmp_path / "common.fdl"
-    common.write_text("""
+    common.write_text(
+        """
         message Common [id=200] {
             string name = 1;
         }
-        """)
+        """
+    )
     main = tmp_path / "main.fdl"
-    main.write_text("""
+    main.write_text(
+        """
         import "common.fdl";
 
         message Holder [id=201] {
             Common common = 1;
         }
-        """)
+        """
+    )
 
     schema = resolve_imports(main)
     validator = SchemaValidator(schema)
@@ -684,20 +733,24 @@ def test_java_default_package_import_registers_dependency(tmp_path):
 def test_java_rejects_mixed_default_and_named_imports(tmp_path):
     default_dir = tmp_path / "default_in_named"
     default_dir.mkdir()
-    (default_dir / "common.fdl").write_text("""
+    (default_dir / "common.fdl").write_text(
+        """
         message Common [id=200] {
             string name = 1;
         }
-        """)
+        """
+    )
     default_main = default_dir / "main.fdl"
-    default_main.write_text("""
+    default_main.write_text(
+        """
         package app;
         import "common.fdl";
 
         message Holder [id=201] {
             Common common = 1;
         }
-        """)
+        """
+    )
 
     with pytest.raises(ValueError, match="default-package"):
         JavaGenerator(
@@ -706,21 +759,25 @@ def test_java_rejects_mixed_default_and_named_imports(tmp_path):
 
     named_dir = tmp_path / "named_in_default"
     named_dir.mkdir()
-    (named_dir / "common.fdl").write_text("""
+    (named_dir / "common.fdl").write_text(
+        """
         package shared;
 
         message Common [id=200] {
             string name = 1;
         }
-        """)
+        """
+    )
     named_main = named_dir / "main.fdl"
-    named_main.write_text("""
+    named_main.write_text(
+        """
         import "common.fdl";
 
         message Holder [id=201] {
             optional Common common = 1;
         }
-        """)
+        """
+    )
 
     with pytest.raises(ValueError, match="default-package"):
         JavaGenerator(
@@ -729,7 +786,8 @@ def test_java_rejects_mixed_default_and_named_imports(tmp_path):
 
 
 def test_java_nested_enum_shadowing_does_not_emit_ref_annotations():
-    schema = parse_fdl("""
+    schema = parse_fdl(
+        """
         package demo;
 
         message Node {
@@ -746,7 +804,8 @@ def test_java_nested_enum_shadowing_does_not_emit_ref_annotations():
             list<Node> kinds = 2;
             map<string, Node> indexed = 3;
         }
-        """)
+        """
+    )
     output = render_files(generate_files(schema, JavaGenerator))
 
     assert "import org.apache.fory.annotation.Ref;" not in output
@@ -757,7 +816,8 @@ def test_java_nested_enum_shadowing_does_not_emit_ref_annotations():
 
 
 def test_generated_code_tree_ref_options_equivalent():
-    fdl = dedent("""
+    fdl = dedent(
+        """
         package tree;
 
         message TreeNode {
@@ -767,8 +827,10 @@ def test_generated_code_tree_ref_options_equivalent():
             repeated ref TreeNode children = 3;
             ref(weak=true) TreeNode parent = 4;
         }
-        """)
-    proto = dedent("""
+        """
+    )
+    proto = dedent(
+        """
         syntax = "proto3";
         package tree;
 
@@ -779,8 +841,10 @@ def test_generated_code_tree_ref_options_equivalent():
             repeated TreeNode children = 3 [(fory).ref = true];
             TreeNode parent = 4 [(fory).weak_ref = true];
         }
-        """)
-    fbs = dedent("""
+        """
+    )
+    fbs = dedent(
+        """
         namespace tree;
 
         table TreeNode {
@@ -789,7 +853,8 @@ def test_generated_code_tree_ref_options_equivalent():
             children: [TreeNode] (fory_ref: true);
             parent: TreeNode (fory_weak_ref: true);
         }
-        """)
+        """
+    )
     # Tree ref options should produce identical outputs across frontends.
     schemas = {
         "fdl": parse_fdl(fdl),
@@ -818,14 +883,16 @@ def test_generated_code_tree_ref_options_equivalent():
 
 def test_java_float16_equals_hash_contract_generation():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message Float16Contract {
                 float16 f16 = 1;
                 optional float16 opt_f16 = 2;
             }
-            """)
+            """
+        )
     )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "Objects.equals(f16, that.f16)" in java_output
@@ -835,13 +902,15 @@ def test_java_float16_equals_hash_contract_generation():
 
 def test_java_repeated_float16_generation_uses_float16_list():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message RepeatedFloat16 {
                 list<float16> vals = 1;
             }
-            """)
+            """
+        )
     )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "import org.apache.fory.collection.Float16List;" in java_output
@@ -850,7 +919,8 @@ def test_java_repeated_float16_generation_uses_float16_list():
 
 def test_java_nested_array_values_use_deep_equals_hash_generation():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message NestedArrays {
@@ -862,7 +932,8 @@ def test_java_nested_array_values_use_deep_equals_hash_generation():
                 list<array<int32>> groups = 1;
                 map<string, array<uint8>> bytes_by_name = 2;
             }
-            """)
+            """
+        )
     )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert (
@@ -879,7 +950,8 @@ def test_java_nested_array_values_use_deep_equals_hash_generation():
 
 def test_java_unsigned_carriers_and_integer_encoding_annotations():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message UnsignedCarriers {
@@ -890,7 +962,8 @@ def test_java_unsigned_carriers_and_integer_encoding_annotations():
                 optional uint32 maybe_u32 = 5;
                 fixed int32 fixed_i32 = 6;
             }
-            """)
+            """
+        )
     )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "import org.apache.fory.annotation.Nullable;" in java_output
@@ -911,7 +984,8 @@ def test_java_unsigned_carriers_and_integer_encoding_annotations():
 
 def test_java_nullable_type_use_annotation_targets_top_level_type():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message Money {
@@ -923,7 +997,8 @@ def test_java_nullable_type_use_annotation_targets_top_level_type():
                 optional bytes payload = 2;
                 optional decimal amount = 3;
             }
-            """)
+            """
+        )
     )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "private @Nullable Money money;" in java_output
@@ -933,7 +1008,8 @@ def test_java_nullable_type_use_annotation_targets_top_level_type():
 
 def test_java_evolving_false_generation_uses_struct_evolution_enum():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message DefaultEvolving {
@@ -947,7 +1023,8 @@ def test_java_evolving_false_generation_uses_struct_evolution_enum():
                     int32 id = 1;
                 }
             }
-            """)
+            """
+        )
     )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "import org.apache.fory.annotation.ForyStruct;" in java_output
@@ -959,13 +1036,15 @@ def test_java_evolving_false_generation_uses_struct_evolution_enum():
 
 def test_java_nested_integer_annotations_in_generic_containers():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message NestedIntegerAnnotations {
                 map<fixed uint32, list<optional tagged uint64>> values = 1;
             }
-            """)
+            """
+        )
     )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert (
@@ -983,14 +1062,16 @@ def test_java_nested_integer_annotations_in_generic_containers():
 
 def test_python_nested_integer_schema_aliases_in_generic_containers():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message NestedIntegerSchemaAliases {
                 map<fixed int32, list<tagged int64>> signed_values = 1;
                 map<fixed uint32, list<tagged uint64>> unsigned_values = 2;
             }
-            """)
+            """
+        )
     )
     python_output = render_files(generate_files(schema, PythonGenerator))
     assert (
@@ -1005,13 +1086,15 @@ def test_python_nested_integer_schema_aliases_in_generic_containers():
 
 def test_cpp_nested_integer_specs_in_generic_containers():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message NestedIntegerSpecs {
                 map<fixed uint32, list<optional tagged uint64>> values = 1;
             }
-            """)
+            """
+        )
     )
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert (
@@ -1027,7 +1110,8 @@ def test_cpp_nested_integer_specs_in_generic_containers():
 
 def test_cpp_escapes_keywords_and_generated_helpers():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package class.demo;
 
             message private {
@@ -1043,7 +1127,8 @@ def test_cpp_escapes_keywords_and_generated_helpers():
                 string visit = 1;
                 string class = 2;
             }
-            """)
+            """
+        )
     )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
@@ -1188,16 +1273,19 @@ def test_cpp_imported_type_uses_sanitized_namespace_and_identifier(tmp_path: Pat
     imported_fdl = tmp_path / "imported.fdl"
     main_fdl = tmp_path / "main.fdl"
     imported_fdl.write_text(
-        dedent("""
+        dedent(
+            """
             package class.imported;
 
             message private {
                 string value = 1;
             }
-            """)
+            """
+        )
     )
     main_fdl.write_text(
-        dedent("""
+        dedent(
+            """
             package demo;
 
             import "imported.fdl";
@@ -1205,7 +1293,8 @@ def test_cpp_imported_type_uses_sanitized_namespace_and_identifier(tmp_path: Pat
             message Holder {
                 private value = 1;
             }
-            """)
+            """
+        )
     )
     schema = resolve_imports(main_fdl, [tmp_path])
 
@@ -1218,7 +1307,8 @@ def test_cpp_imported_type_uses_sanitized_namespace_and_identifier(tmp_path: Pat
 
 def test_cpp_generator_supports_decimal_fields_and_unions():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message Money {
@@ -1229,7 +1319,8 @@ def test_cpp_generator_supports_decimal_fields_and_unions():
                 decimal amount = 1;
                 Money money = 2;
             }
-            """)
+            """
+        )
     )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
@@ -1242,7 +1333,8 @@ def test_cpp_generator_supports_decimal_fields_and_unions():
 
 def test_cpp_union_aliases_comma_payload_types():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             union MapChoice {
@@ -1271,7 +1363,8 @@ def test_cpp_union_aliases_comma_payload_types():
                 date day = 16;
                 timestamp ts = 17;
             }
-            """)
+            """
+        )
     )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
@@ -1307,7 +1400,8 @@ def test_cpp_union_aliases_comma_payload_types():
 
 def test_cpp_omits_equality_for_any_types():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message Inner {
@@ -1371,7 +1465,8 @@ def test_cpp_omits_equality_for_any_types():
                 string name = 1;
                 int32 code = 2;
             }
-            """)
+            """
+        )
     )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
@@ -1393,7 +1488,8 @@ def test_cpp_omits_equality_for_any_types():
 
 def test_cpp_nested_container_ref_uses_correct_pointer_type():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message Node {
@@ -1406,7 +1502,8 @@ def test_cpp_nested_container_ref_uses_correct_pointer_type():
                 list<list<ref(weak=true) Node>> weak_groups = 3;
                 map<string, map<string, ref(weak=true) Node>> weak_nodes = 4;
             }
-            """)
+            """
+        )
     )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
@@ -1437,7 +1534,8 @@ def test_cpp_nested_container_ref_uses_correct_pointer_type():
 
 def test_cpp_temporal_map_keys_use_fory_owned_wrappers():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package demo;
 
             message Holder {
@@ -1445,7 +1543,8 @@ def test_cpp_temporal_map_keys_use_fory_owned_wrappers():
                 map<timestamp, string> timestamps = 2;
                 map<date, string> dates = 3;
             }
-            """)
+            """
+        )
     )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
@@ -1465,14 +1564,16 @@ def test_cpp_temporal_map_keys_use_fory_owned_wrappers():
 
 def test_java_enum_generation_uses_fory_enum_ids():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             enum Status {
                 UNKNOWN = 4096;
                 OK = 8192;
             }
-            """)
+            """
+        )
     )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "import org.apache.fory.annotation.ForyEnumId;" in java_output
@@ -1488,7 +1589,8 @@ def test_java_enum_generation_uses_fory_enum_ids():
 
 
 def test_go_bfloat16_generation():
-    idl = dedent("""
+    idl = dedent(
+        """
         package bfloat16_test;
 
         message BFloat16Message {
@@ -1496,7 +1598,8 @@ def test_go_bfloat16_generation():
             optional bfloat16 opt_val = 2;
             list<bfloat16> list_val = 3;
         }
-        """)
+        """
+    )
     schema = parse_fdl(idl)
     files = generate_files(schema, GoGenerator)
 
@@ -1517,14 +1620,16 @@ def test_go_bfloat16_generation():
 
 def test_go_generator_distinguishes_bytes_from_uint8_lists():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package gen;
 
             message ByteSemantics {
                 bytes payload = 1;
                 list<uint8> values = 2;
             }
-            """)
+            """
+        )
     )
     go_output = render_files(generate_files(schema, GoGenerator))
     assert 'Payload []byte `fory:"id=1,type=bytes"`' in go_output
@@ -1533,7 +1638,8 @@ def test_go_generator_distinguishes_bytes_from_uint8_lists():
 
 def test_rust_generated_code_uses_absolute_paths():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package foo;
 
             message String {
@@ -1547,7 +1653,8 @@ def test_rust_generated_code_uses_absolute_paths():
             union Fory {
                 String text = 1;
             }
-            """)
+            """
+        )
     )
     rust_output = render_files(generate_files(schema, RustGenerator))
     assert "use fory::" not in rust_output
@@ -1581,7 +1688,8 @@ def test_rust_generated_code_uses_absolute_paths():
 
 def test_rust_union_conflicting_payload_uses_self_path():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package foo;
 
             message Dog {
@@ -1591,7 +1699,8 @@ def test_rust_union_conflicting_payload_uses_self_path():
             union Animal {
                 Dog dog = 1;
             }
-            """)
+            """
+        )
     )
 
     rust_output = render_files(generate_files(schema, RustGenerator))
@@ -1604,7 +1713,8 @@ def test_rust_union_conflicting_payload_uses_self_path():
 
 def test_rust_escapes_keywords():
     schema = parse_fdl(
-        dedent("""
+        dedent(
+            """
             package demo;
 
             message type {
@@ -1618,7 +1728,8 @@ def test_rust_escapes_keywords():
             message _1 {
                 string value = 1;
             }
-            """)
+            """
+        )
     )
     rust_files = generate_files(schema, RustGenerator)
     rust_output = render_files(rust_files)
@@ -1673,22 +1784,26 @@ def test_rust_rejects_same_output_path_collisions(
     second_fdl = tmp_path / "second.fdl"
     rust_out = tmp_path / "rust"
     first_fdl.write_text(
-        dedent("""
+        dedent(
+            """
             package foo.bar;
 
             message First {
                 string value = 1;
             }
-            """)
+            """
+        )
     )
     second_fdl.write_text(
-        dedent("""
+        dedent(
+            """
             package foo_bar;
 
             message Second {
                 string value = 1;
             }
-            """)
+            """
+        )
     )
     exit_code = foryc_main(
         [
@@ -1704,3 +1819,129 @@ def test_rust_rejects_same_output_path_collisions(
 
     assert exit_code == 1
     assert "Rust output path collision" in captured.err
+
+
+def test_java_generated_helper_builder_is_wrapped():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Person {
+                string first_name = 1;
+            }
+            """
+        )
+    )
+
+    java_output = render_files(generate_files(schema, JavaGenerator))
+
+    assert (
+        "return Fory.builder()\n"
+        "            .withXlang(true)\n"
+        "            .withCompatible(true)\n"
+        "            .withRefTracking(true)\n"
+        "            .withModule(INSTANCE)\n"
+        "            .buildThreadSafeFory();" in java_output
+    )
+
+
+def test_go_generated_helper_options_are_wrapped():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Person {
+                string first_name = 1;
+            }
+            """
+        )
+    )
+
+    go_output = render_files(generate_files(schema, GoGenerator))
+
+    assert (
+        "f := fory.New(\n"
+        "\t\tfory.WithXlang(true),\n"
+        "\t\tfory.WithRefTracking(true),\n"
+        "\t\tfory.WithCompatible(true),\n"
+        "\t)" in go_output
+    )
+
+
+def test_python_field_wrapping_is_generated():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Person {
+                map<string, string> very_long_metadata_field_name_for_wrapping = 1;
+            }
+            """
+        )
+    )
+
+    python_output = render_files(generate_files(schema, PythonGenerator))
+
+    assert (
+        "    very_long_metadata_field_name_for_wrapping: "
+        "Dict[str, str] = pyfory.field(\n"
+        "        id=1,\n"
+        "        default_factory=dict,\n"
+        "    )" in python_output
+    )
+
+
+def test_cpp_equality_and_struct_macros_are_wrapped():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Person {
+                string first_name = 1;
+                string last_name = 2;
+                string email_address = 3;
+                list<string> tags = 4;
+                map<string, string> metadata = 5;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+
+    assert "  return\n" in cpp_output
+    assert "      first_name_ == other.first_name_ &&" in cpp_output
+    assert "  FORY_STRUCT(\n" in cpp_output
+    assert "    Person,\n" in cpp_output
+
+
+def test_rust_map_fields_and_helpers_are_wrapped():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Person {
+                map<string, string> metadata = 1;
+            }
+            """
+        )
+    )
+
+    rust_output = render_files(generate_files(schema, RustGenerator))
+
+    assert (
+        "    pub metadata: ::std::collections::HashMap<\n"
+        "        ::std::string::String,\n"
+        "        ::std::string::String,\n"
+        "    >," in rust_output
+    )
+    assert (
+        "pub fn register_types(\n"
+        "    fory: &mut ::fory::Fory,\n"
+        ") -> ::std::result::Result<(), ::fory::Error> {" in rust_output
+    )
