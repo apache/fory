@@ -878,9 +878,11 @@ public class JsonAsyncCompilationTest {
             PropertyNamingStrategy.LOWER_CAMEL_CASE,
             JsonAsyncCompilationTest.class.getClassLoader(),
             ForyJson.DEFAULT_MAX_DEPTH,
+            ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES,
             1,
             2 * 1024 * 1024,
             codecs,
+            Collections.<Class<?>, Class<?>>emptyMap(),
             null);
     ControlledExecutor executor = new ControlledExecutor();
     Constructor<JsonSharedRegistry> constructor =

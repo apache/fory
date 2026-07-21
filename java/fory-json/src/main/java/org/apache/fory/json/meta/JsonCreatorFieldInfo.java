@@ -62,6 +62,12 @@ public final class JsonCreatorFieldInfo {
     return name;
   }
 
+  /** Returns parent-local metadata with a transformed JSON name and the same creator argument. */
+  public JsonCreatorFieldInfo withName(String transformedName) {
+    return new JsonCreatorFieldInfo(
+        transformedName, argumentIndex, type, rawType, codecAnnotation, valueCodecClass);
+  }
+
   public long nameHash() {
     return nameHash;
   }

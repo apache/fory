@@ -122,6 +122,19 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
   }
 
   @Test
+  public void retainedKeyIdentity() {
+    ForyJson json = newJson();
+    MutableAny latin1 = json.fromJson("{\"common\":1}", MutableAny.class);
+    String canonical = latin1.properties.keySet().iterator().next();
+
+    MutableAny utf16 = json.fromJson("{\"common\":2,\"键\":3}", MutableAny.class);
+    MutableAny utf8 =
+        json.fromJson("{\"common\":4}".getBytes(StandardCharsets.UTF_8), MutableAny.class);
+    assertSame(utf16.properties.keySet().iterator().next(), canonical);
+    assertSame(utf8.properties.keySet().iterator().next(), canonical);
+  }
+
+  @Test
   public void directionalField() {
     ForyJson json = newJson();
     OutputAny output = new OutputAny();

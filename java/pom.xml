@@ -21,7 +21,8 @@
 -->
 <project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xmlns="http://maven.apache.org/POM/4.0.0"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+         child.project.url.inherit.append.path="false">
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
@@ -33,12 +34,12 @@
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-parent</artifactId>
   <packaging>pom</packaging>
-  <version>1.4.0-SNAPSHOT</version>
+  <version>1.5.0-SNAPSHOT</version>
   <name>Fory Project Parent POM</name>
   <description>
     Apache Fory™ is a blazingly fast multi-language serialization framework powered by jit and zero-copy.
   </description>
-  <url>https://github.com/apache/fory</url>
+  <url>https://fory.apache.org</url>
 
   <licenses>
     <license>
@@ -47,10 +48,12 @@
     </license>
   </licenses>
 
-  <scm>
+  <scm child.scm.connection.inherit.append.path="false"
+       child.scm.developerConnection.inherit.append.path="false"
+       child.scm.url.inherit.append.path="false">
     <url>https://github.com/apache/fory</url>
-    <connection>git@github.com:apache/fory.git</connection>
-    <developerConnection>scm:git:ssh://github.com:apache/fory.git</developerConnection>
+    <connection>scm:git:https://github.com/apache/fory.git</connection>
+    <developerConnection>scm:git:https://github.com/apache/fory.git</developerConnection>
   </scm>
   <developers>
     <developer>

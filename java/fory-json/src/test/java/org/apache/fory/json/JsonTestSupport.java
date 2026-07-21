@@ -20,6 +20,7 @@
 package org.apache.fory.json;
 
 import java.lang.reflect.Field;
+import java.util.Collections;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.codec.JsonValueCodec;
@@ -43,9 +44,11 @@ final class JsonTestSupport {
           PropertyNamingStrategy.LOWER_CAMEL_CASE,
           JsonTestSupport.class.getClassLoader(),
           ForyJson.DEFAULT_MAX_DEPTH,
+          ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES,
           1,
           2 * 1024 * 1024,
           new CodecRegistry(),
+          Collections.<Class<?>, Class<?>>emptyMap(),
           null);
   private static final JsonSharedRegistry REGISTRY = new JsonSharedRegistry(CONFIG);
   private static final JsonValueCodec<Object> NULL_CODEC =
@@ -128,6 +131,17 @@ final class JsonTestSupport {
     try {
       AtomicReference<?> primarySlot = (AtomicReference<?>) field(json, "primarySlot");
       Object pooledState = primarySlot.get();
+      Object state = field(pooledState, "state");
+      return field(state, name);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  static Object secondaryStateField(ForyJson json, int index, String name) {
+    try {
+      AtomicReferenceArray<?> slots = (AtomicReferenceArray<?>) field(json, "slots");
+      Object pooledState = slots.get(index);
       Object state = field(pooledState, "state");
       return field(state, name);
     } catch (ReflectiveOperationException e) {

@@ -26,6 +26,7 @@ import java.lang.reflect.Modifier;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.annotation.JsonCreator;
+import org.apache.fory.json.resolver.JsonSharedRegistry;
 
 /** Immutable result of selecting and validating one declared {@link JsonCreator}. */
 @Internal
@@ -46,11 +47,11 @@ public final class JsonCreatorDeclaration {
     return annotation;
   }
 
-  public static JsonCreatorDeclaration find(Class<?> type) {
+  public static JsonCreatorDeclaration find(Class<?> type, JsonSharedRegistry registry) {
     Executable creator = null;
     JsonCreator annotation = null;
     for (Constructor<?> constructor : type.getDeclaredConstructors()) {
-      JsonCreator candidate = constructor.getAnnotation(JsonCreator.class);
+      JsonCreator candidate = registry.annotation(type, constructor, JsonCreator.class);
       if (candidate != null) {
         validate(type, constructor);
         if (creator != null) {
@@ -61,7 +62,7 @@ public final class JsonCreatorDeclaration {
       }
     }
     for (Method method : type.getDeclaredMethods()) {
-      JsonCreator candidate = method.getAnnotation(JsonCreator.class);
+      JsonCreator candidate = registry.annotation(type, method, JsonCreator.class);
       if (candidate != null) {
         validate(type, method);
         if (creator != null) {

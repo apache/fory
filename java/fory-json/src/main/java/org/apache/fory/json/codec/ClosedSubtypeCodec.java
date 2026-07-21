@@ -25,6 +25,7 @@ import org.apache.fory.json.annotation.JsonSubTypes.Inclusion;
 import org.apache.fory.json.meta.JsonCreatorFieldInfo;
 import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -301,7 +302,7 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
     // Only the statically known child schema is validated here. Do not probe Any output: dynamic
     // discriminator conflicts are application-owned, and invoking its getter here would duplicate
     // access while leaking this parent's policy into the child writer.
-    long hash = org.apache.fory.json.meta.JsonFieldNameHash.hash(property);
+    long hash = JsonFieldNameHash.hash(property);
     for (JsonFieldInfo field : codec.writeFields()) {
       rejectCollision(field.name(), field.nameHash(), property, hash, codec.type());
     }
@@ -312,6 +313,12 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
     if (creator != null) {
       for (JsonCreatorFieldInfo field : creator.fields()) {
         rejectCollision(field.name(), field.nameHash(), property, hash, codec.type());
+      }
+    }
+    JsonUnwrappedInfo unwrapped = codec.unwrappedInfo();
+    if (unwrapped != null) {
+      for (String name : unwrapped.flattenedNames()) {
+        rejectCollision(name, JsonFieldNameHash.hash(name), property, hash, codec.type());
       }
     }
   }

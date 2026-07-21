@@ -76,6 +76,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
   private static final String FORY_FIELD = annotationClass("ForyField");
   private static final String FORY_STRUCT = annotationClass("ForyStruct");
   private static final String JSON_TYPE = "org.apache.fory.json.annotation.JsonType";
+  private static final String JSON_MIXIN = "org.apache.fory.json.annotation.JsonMixin";
+  private static final String JSON_MIXIN_REMOVE = "org.apache.fory.json.annotation.JsonMixinRemove";
   private static final String IGNORE = annotationClass("Ignore");
   private static final String INT32_TYPE = annotationClass("Int32Type");
   private static final String INT64_TYPE = annotationClass("Int64Type");
@@ -103,6 +105,8 @@ public final class ForyStructProcessor extends AbstractProcessor {
     annotations.add(FORY_STRUCT);
     annotations.add(FORY_DEBUG);
     annotations.add(JSON_TYPE);
+    annotations.add(JSON_MIXIN);
+    annotations.add(JSON_MIXIN_REMOVE);
     return Collections.unmodifiableSet(annotations);
   }
 
@@ -761,6 +765,7 @@ public final class ForyStructProcessor extends AbstractProcessor {
     }
     List<SourceTypeNode> arguments = new ArrayList<>();
     SourceTypeNode componentType = null;
+    SourceTypeNode ownerType = null;
     if (kind == TypeKind.ARRAY) {
       TypeMirror componentMirror = ((ArrayType) type).getComponentType();
       componentType =
@@ -771,13 +776,21 @@ public final class ForyStructProcessor extends AbstractProcessor {
               errorElement,
               true);
     } else if (type instanceof DeclaredType) {
+      DeclaredType declaredType = (DeclaredType) type;
       List<?> argumentTrees = treeInfo.typeArgumentTrees();
       int index = 0;
-      for (TypeMirror argument : ((DeclaredType) type).getTypeArguments()) {
+      for (TypeMirror argument : declaredType.getTypeArguments()) {
         Object argumentTree = index < argumentTrees.size() ? argumentTrees.get(index) : null;
         arguments.add(
             buildTypeNode(argument, argumentTree, nestedNullable(argument), errorElement, false));
         index++;
+      }
+      TypeMirror enclosingType = declaredType.getEnclosingType();
+      // A non-static member container can use enclosing type variables in its inherited element
+      // type, so generated descriptors must retain the declared owner alongside local arguments.
+      if (enclosingType instanceof DeclaredType
+          && !declaredType.asElement().getModifiers().contains(Modifier.STATIC)) {
+        ownerType = buildTypeNode(enclosingType);
       }
     }
     String rawType = canonicalName(types.erasure(type));
@@ -787,7 +800,14 @@ public final class ForyStructProcessor extends AbstractProcessor {
     boolean primitive = kind.isPrimitive();
     boolean nestedStruct = isCompatibleForyStructType(type);
     return new SourceTypeNode(
-        rawType, typeName(type), extMeta, arguments, componentType, primitive, nestedStruct);
+        rawType,
+        typeName(type),
+        extMeta,
+        arguments,
+        componentType,
+        ownerType,
+        primitive,
+        nestedStruct);
   }
 
   private boolean isCompatibleForyStructType(TypeMirror type) {

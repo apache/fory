@@ -150,7 +150,12 @@ build_pyfory() {
 }
 
 install_pyarrow() {
-  $PIP_CMD install pyarrow numpy
+  # Newer PyArrow and NumPy Linux wheels require manylinux_2_28.
+  if [[ ${PLAT:-} == manylinux2014_* ]]; then
+    $PIP_CMD install "pyarrow<21" "numpy<2.3"
+  else
+    $PIP_CMD install pyarrow numpy
+  fi
 }
 
 deploy_scala() {

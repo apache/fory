@@ -19,7 +19,10 @@
 
 package org.apache.fory.json;
 
+import java.util.IdentityHashMap;
+import java.util.Map;
 import java.util.Objects;
+import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.resolver.CodecRegistry;
 import org.apache.fory.platform.AndroidSupport;
@@ -36,10 +39,11 @@ import org.apache.fory.platform.GraalvmSupport;
  *
  * <p>Defaults omit null object fields, enable code generation and asynchronous compilation where
  * supported, use JavaBean property discovery, use {@link PropertyNamingStrategy#LOWER_CAMEL_CASE},
- * snapshot the current thread context class loader, allow a nesting depth of 20, use twice the
- * available processors as the pooled-state concurrency level, retain writer buffers up to 2 MiB,
- * and install no custom type checker. Field mode disables getter and setter discovery but continues
- * to discover eligible instance fields across the class hierarchy.
+ * snapshot the current thread context class loader, allow a nesting depth of 20, cache up to 8192
+ * common field names in each reader, use twice the available processors as the pooled-state
+ * concurrency level, retain writer buffers up to 2 MiB, and install no custom type checker. Field
+ * mode disables getter and setter discovery but continues to discover eligible instance fields
+ * across the class hierarchy.
  */
 public final class ForyJsonBuilder {
   private boolean writeNullFields;
@@ -49,10 +53,12 @@ public final class ForyJsonBuilder {
   private PropertyNamingStrategy propertyNamingStrategy = PropertyNamingStrategy.LOWER_CAMEL_CASE;
   private ClassLoader classLoader;
   private int maxDepth = ForyJson.DEFAULT_MAX_DEPTH;
+  private int maxCachedFieldNames = ForyJson.DEFAULT_MAX_CACHED_FIELD_NAMES;
   private int concurrencyLevel = Math.max(1, Runtime.getRuntime().availableProcessors() * 2);
   private int bufferSizeLimitBytes = 2 * 1024 * 1024;
   private JsonTypeChecker typeChecker;
   private final CodecRegistry codecRegistry = new CodecRegistry();
+  private final Map<Class<?>, Class<?>> mixins = new IdentityHashMap<>();
 
   ForyJsonBuilder() {}
 
@@ -133,6 +139,20 @@ public final class ForyJsonBuilder {
     return this;
   }
 
+  /**
+   * Sets the maximum number of unescaped ASCII object field names of up to 16 characters cached by
+   * each JSON reader.
+   *
+   * <p>The default is {@link ForyJson#DEFAULT_MAX_CACHED_FIELD_NAMES}. The supported range is 0
+   * through 536870912, inclusive; zero disables field-name caching. Other field names are parsed
+   * normally without being cached. The limit does not restrict accepted JSON input.
+   */
+  public ForyJsonBuilder withMaxCachedFieldNames(int maxCachedFieldNames) {
+    JsonConfig.validateMaxCachedFieldNames(maxCachedFieldNames);
+    this.maxCachedFieldNames = maxCachedFieldNames;
+    return this;
+  }
+
   /** Sets the number of reusable execution states available to concurrent root operations. */
   public ForyJsonBuilder withConcurrencyLevel(int concurrencyLevel) {
     if (concurrencyLevel < 1) {
@@ -169,6 +189,42 @@ public final class ForyJsonBuilder {
   }
 
   /**
+   * Registers the JSON Mixin declared by {@code mixinType} for its exact target class.
+   *
+   * <p>Registering another Mixin for the same target replaces the previous registration. Existing
+   * {@link ForyJson} instances retain their immutable configuration snapshot. Only the final source
+   * for each target is structurally resolved when {@link #build()} creates the runtime; a
+   * superseded source is not resolved.
+   *
+   * @throws NullPointerException if {@code mixinType} is null
+   * @throws IllegalArgumentException if {@code mixinType} has no readable {@link JsonMixin}
+   *     declaration
+   */
+  public ForyJsonBuilder registerMixin(Class<?> mixinType) {
+    Objects.requireNonNull(mixinType, "mixinType");
+    JsonMixin declaration;
+    try {
+      declaration = mixinType.getDeclaredAnnotation(JsonMixin.class);
+    } catch (RuntimeException | LinkageError e) {
+      throw new IllegalArgumentException(
+          "Cannot read JSON Mixin declaration " + mixinType.getName(), e);
+    }
+    if (declaration == null) {
+      throw new IllegalArgumentException(
+          "JSON Mixin source is missing @JsonMixin: " + mixinType.getName());
+    }
+    Class<?> target;
+    try {
+      target = declaration.target();
+    } catch (RuntimeException | LinkageError e) {
+      throw new IllegalArgumentException(
+          "Cannot resolve JSON Mixin target for " + mixinType.getName(), e);
+    }
+    mixins.put(target, mixinType);
+    return this;
+  }
+
+  /**
    * Sets the JSON type checker. Pass {@code null} to allow all non-disallowed classes.
    *
    * <p>The checker must be thread-safe because one {@link ForyJson} instance can be used
@@ -200,9 +256,11 @@ public final class ForyJsonBuilder {
             propertyNamingStrategy,
             fixedClassLoader,
             maxDepth,
+            maxCachedFieldNames,
             concurrencyLevel,
             bufferSizeLimitBytes,
             codecRegistry,
+            mixins,
             typeChecker));
   }
 }

@@ -75,6 +75,11 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         public Object fromName(String name) {
           return name;
         }
+
+        @Override
+        public Object readName(JsonReader reader) {
+          return reader.readFieldName();
+        }
       };
   private static final MapKeyCodec OBJECT_KEY_CODEC =
       new MapKeyCodec() {
@@ -95,6 +100,11 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
         @Override
         public Object fromName(String name) {
           return name;
+        }
+
+        @Override
+        public Object readName(JsonReader reader) {
+          return reader.readFieldName();
         }
       };
 
@@ -184,7 +194,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     reader.expectNextToken('{');
     if (!reader.consumeNextToken('}')) {
       do {
-        Object key = STRING_KEY_CODEC.readName(reader);
+        Object key = reader.readFieldName();
         reader.expectNextToken(':');
         map.put(key, codec.readLatin1(reader));
       } while (reader.consumeNextToken(','));
@@ -202,7 +212,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     reader.expectNextToken('{');
     if (!reader.consumeNextToken('}')) {
       do {
-        Object key = STRING_KEY_CODEC.readName(reader);
+        Object key = reader.readFieldName();
         reader.expectNextToken(':');
         map.put(key, codec.readUtf16(reader));
       } while (reader.consumeNextToken(','));
@@ -220,7 +230,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
     reader.expectNextToken('{');
     if (!reader.consumeNextToken('}')) {
       do {
-        Object key = STRING_KEY_CODEC.readName(reader);
+        Object key = reader.readFieldName();
         reader.expectNextToken(':');
         map.put(key, codec.readUtf8(reader));
       } while (reader.consumeNextToken(','));
@@ -470,7 +480,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       reader.expectNextToken('{');
       if (!reader.consumeNextToken('}')) {
         do {
-          String key = reader.readString();
+          String key = reader.readFieldName();
           reader.expectNextToken(':');
           map.put(key, readLatin1Value(reader));
         } while (reader.consumeNextToken(','));
@@ -490,7 +500,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       reader.expectNextToken('{');
       if (!reader.consumeNextToken('}')) {
         do {
-          String key = reader.readString();
+          String key = reader.readFieldName();
           reader.expectNextToken(':');
           map.put(key, readUtf16Value(reader));
         } while (reader.consumeNextToken(','));
@@ -510,7 +520,7 @@ public abstract class MapCodec<T extends Map<?, ?>> implements JsonValueCodec<T>
       reader.expectNextToken('{');
       if (!reader.consumeNextToken('}')) {
         do {
-          String key = reader.readString();
+          String key = reader.readFieldName();
           reader.expectNextToken(':');
           map.put(key, readUtf8Value(reader));
         } while (reader.consumeNextToken(','));

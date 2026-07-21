@@ -6,7 +6,7 @@
 [![Slack Channel](https://img.shields.io/badge/slack-join-3f0e40?logo=slack&style=for-the-badge)](https://join.slack.com/t/fory-project/shared_invite/zt-36g0qouzm-kcQSvV_dtfbtBKHRwT5gsw)
 [![X](https://img.shields.io/badge/@ApacheFory-follow-blue?logo=x&style=for-the-badge)](https://x.com/ApacheFory)
 [![Maven Version](https://img.shields.io/maven-central/v/org.apache.fory/fory-core?style=for-the-badge)](https://search.maven.org/#search|gav|1|g:"org.apache.fory"%20AND%20a:"fory-core")
-[![Crates.io](https://img.shields.io/badge/crates.io-v1.3.0-blue?logo=rust&style=for-the-badge)](https://crates.io/crates/fory)
+[![Crates.io](https://img.shields.io/badge/crates.io-v1.4.0-blue?logo=rust&style=for-the-badge)](https://crates.io/crates/fory)
 [![PyPI](https://img.shields.io/pypi/v/pyfory.svg?logo=PyPI&style=for-the-badge)](https://pypi.org/project/pyfory/)
 [![npm](https://img.shields.io/npm/v/%40apache-fory%2Fcore?logo=npm&style=for-the-badge)](https://www.npmjs.com/package/@apache-fory/core)
 [![NuGet](https://img.shields.io/nuget/v/Apache.Fory?logo=nuget&style=for-the-badge)](https://www.nuget.org/packages/Apache.Fory)
@@ -34,13 +34,31 @@ references.
   directly in the schema, alongside numbers, strings, lists, maps, arrays,
   enums, structs, and unions. Define schemas once, then generate native domain
   objects for each language without forcing wrapper types into user code.
-- **Row-Format Random Access**: Read fields, arrays, and nested values without
-  rebuilding full objects, with zero-copy access and partial reads.
 - **Optimized Implementations**: Java JIT serializers and generated/static serializers
   in other language implementations keep hot paths fast and payloads compact.
 - **Language And Platform Support**: Java, Python, C++, Go, Rust,
   JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin, including GraalVM
   native image, Android, Dart VM/Flutter/web, and Node.js/browser JavaScript.
+
+For same-language workloads, Fory provides native serialization modes that
+support broader language-specific object models:
+
+- **Java Native Serialization**: A high-performance replacement for JDK
+  serialization, Hessian, Kryo, and FST in Java-only systems. It supports JDK
+  custom serialization semantics.
+- **Python Native Serialization**: A faster and more compact replacement for
+  `pickle` and `cloudpickle` in Python-only systems. It supports classes,
+  modules, functions, and custom object state, with fine-grained
+  deserialization controls through `DeserializationPolicy`.
+
+Fory also provides specialized formats for other data-processing requirements:
+
+- **Row Format**: Read fields, arrays, and nested values without rebuilding
+  complete objects, with zero-copy access and partial reads.
+- **Fory JSON**: A Java JSON serialization framework built for maximum
+  throughput through runtime-generated codecs and optimized readers and
+  writers. Supports Java 8 and later on standard JDKs, GraalVM native images,
+  and Android, including Java 17 records.
 
 ## Performance
 
@@ -132,14 +150,14 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.3.0</version>
+  <version>1.4.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```gradle
-implementation "org.apache.fory:fory-core:1.3.0"
+implementation "org.apache.fory:fory-core:1.4.0"
 ```
 
 On JDK25+, open `java.lang.invoke` to Fory. Use `ALL-UNNAMED` when Fory is on
@@ -160,7 +178,7 @@ Use the Fory core module name when Fory is on the module path:
 sbt:
 
 ```scala
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.3.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.4.0"
 ```
 
 **Kotlin**
@@ -168,7 +186,7 @@ libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.3.0"
 Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-kotlin:1.3.0")
+implementation("org.apache.fory:fory-kotlin:1.4.0")
 ```
 
 Maven:
@@ -177,7 +195,7 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>1.3.0</version>
+  <version>1.4.0</version>
 </dependency>
 ```
 
@@ -199,7 +217,7 @@ pip install "pyfory[format]"
 
 ```toml
 [dependencies]
-fory = "1.3.0"
+fory = "1.4.0"
 ```
 
 **C++**
@@ -211,7 +229,7 @@ include(FetchContent)
 FetchContent_Declare(
   fory
   GIT_REPOSITORY https://github.com/apache/fory.git
-  GIT_TAG v1.3.0
+  GIT_TAG v1.4.0
   SOURCE_SUBDIR cpp
 )
 FetchContent_MakeAvailable(fory)
@@ -222,8 +240,8 @@ Bazel:
 
 ```bazel
 # MODULE.bazel
-bazel_dep(name = "fory", version = "1.3.0")
-git_override(module_name = "fory", remote = "https://github.com/apache/fory.git", commit = "v1.3.0")
+bazel_dep(name = "fory", version = "1.4.0")
+git_override(module_name = "fory", remote = "https://github.com/apache/fory.git", commit = "v1.4.0")
 
 # BUILD
 deps = ["@fory//cpp/fory/serialization:fory_serialization"]
@@ -256,13 +274,13 @@ npm install @apache-fory/core @apache-fory/hps
 **C#**
 
 ```bash
-dotnet add package Apache.Fory --version 1.3.0
+dotnet add package Apache.Fory --version 1.4.0
 ```
 
 **Dart**
 
 ```bash
-dart pub add fory:^1.3.0
+dart pub add fory:^1.4.0
 dart pub add dev:build_runner
 ```
 
@@ -272,7 +290,7 @@ Add Fory to `Package.swift`:
 
 ```swift
 dependencies: [
-  .package(url: "https://github.com/apache/fory.git", exact: "1.3.0")
+  .package(url: "https://github.com/apache/fory.git", exact: "1.4.0")
 ],
 targets: [
   .target(
@@ -292,13 +310,14 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 Snapshots for Java, Scala, and Kotlin are available from
 `https://repository.apache.org/snapshots/` with the matching `-SNAPSHOT` version.
 
-## Choose Serialization Mode
+## Choose a Serialization Format
 
-| Mode        | Use it when                                                   | Start here                                               |
-| ----------- | ------------------------------------------------------------- | -------------------------------------------------------- |
-| Xlang mode  | Data crosses language boundaries                              | [Cross-language guide](docs/guide/xlang)                 |
-| Native mode | Producer and consumer are in the same language                | Language guide                                           |
-| Row format  | You need random field access or analytics-style partial reads | [Row format spec](docs/specification/row_format_spec.md) |
+| Format        | Use it when                                                   | Start here                                               |
+| ------------- | ------------------------------------------------------------- | -------------------------------------------------------- |
+| Xlang binary  | Data crosses language boundaries                              | [Cross-language guide](docs/guide/xlang)                 |
+| Native binary | Producer and consumer are in the same language                | Language guide                                           |
+| Row format    | You need random field access or analytics-style partial reads | [Row format spec](docs/specification/row_format_spec.md) |
+| Fory JSON     | Java applications need high-performance standard JSON         | [Fory JSON guide](docs/guide/java/json-support.md)       |
 
 For Java, Scala, Kotlin, Python, C++, Go, and Rust, use native mode for
 same-language traffic. It avoids xlang's cross-language type mapping and
@@ -680,11 +699,25 @@ val fory = ForyKotlin.builder()
 
 ## Schema IDL
 
-Fory IDL is Fory's schema language for shared data models. It supports
-references, nullable fields, lists, maps, arrays, enums, messages, and unions,
-and generates native data structures for Java, Python, C++, Go, Rust,
-JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Use it when multiple
-languages need one shared contract.
+Fory IDL is Fory's schema-first path for shared data models. Use it when
+multiple languages need one explicit contract, stable field identities, and
+generated native domain objects instead of manually coordinating equivalent
+types in every implementation.
+
+The schema supports primitive values, nullable fields, lists, maps, dense
+arrays, enums, messages, unions, imports, and first-class shared or circular
+references. The compiler generates idiomatic models and Fory integration for
+Java, Python, C++, Go, Rust, JavaScript/TypeScript, C#, Swift, Dart, Scala, and
+Kotlin. It can also generate Fory-backed gRPC service companions for supported
+languages.
+
+Install the compiler from PyPI:
+
+```bash
+pip install fory-compiler
+```
+
+Define the shared model in `tree.fdl`:
 
 ```protobuf
 package tree;
@@ -698,7 +731,18 @@ message TreeNode {
 }
 ```
 
-See the [Fory IDL and compiler guide](https://fory.apache.org/docs/compiler).
+Generate native models for the languages used by your application:
+
+```bash
+foryc tree.fdl --lang java,python,rust --output ./generated
+```
+
+Generated types use each language's normal classes, structs, dataclasses,
+annotations, macros, or registration helpers, so application code works with
+native domain objects while all peers share the same Fory schema. See the
+[Fory IDL and compiler guide](https://fory.apache.org/docs/compiler) for the
+complete type system, language-specific output options, schema evolution, and
+gRPC generation.
 
 ## Row Format
 
@@ -760,6 +804,72 @@ deserialization, see the
 [Java row-format guide](https://fory.apache.org/docs/guide/java/row_format), the
 [Python row-format guide](docs/guide/python/row-format.md), and the
 [row-format specification](docs/specification/row_format_spec.md).
+
+## Fory JSON
+
+Fory JSON is a thread-safe JSON serialization framework for Java, extensively
+optimized for maximum performance across JSON encoding, decoding, and Java
+object mapping. It supports Java 8 and later on standard JDKs, GraalVM native
+images, and Android, with Java records supported on Java 17 and later.
+
+Add Fory JSON to your project:
+
+**Maven**
+
+```xml
+<dependency>
+  <groupId>org.apache.fory</groupId>
+  <artifactId>fory-json</artifactId>
+  <version>1.4.0</version>
+</dependency>
+```
+
+**Gradle**
+
+```gradle
+implementation "org.apache.fory:fory-json:1.4.0"
+```
+
+Keep all Fory modules in the same application on the same version.
+
+**Quick Start**
+
+Build one `ForyJson` instance and reuse it across threads:
+
+```java
+import org.apache.fory.json.ForyJson;
+
+public final class JsonExample {
+  private static final ForyJson JSON = ForyJson.builder().build();
+
+  public static final class User {
+    public long id;
+    public String name;
+
+    public User() {}
+
+    public User(long id, String name) {
+      this.id = id;
+      this.name = name;
+    }
+  }
+
+  public static void main(String[] args) {
+    User input = new User(7, "Alice");
+
+    String text = JSON.toJson(input);
+    User fromText = JSON.fromJson(text, User.class);
+
+    byte[] bytes = JSON.toJsonBytes(input);
+    User fromBytes = JSON.fromJson(bytes, User.class);
+
+    System.out.println(fromText.name + " / " + fromBytes.name);
+  }
+}
+```
+
+See the [Fory JSON guide](docs/guide/java/json-support.md) for installation,
+configuration, supported types, custom codecs, and platform-specific setup.
 
 ## Documentation
 

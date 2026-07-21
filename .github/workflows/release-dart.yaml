@@ -23,7 +23,7 @@ run-name: "Dart Release: ${{ github.ref_name }}"
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 permissions:
   contents: read
@@ -45,8 +45,8 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.11"
+          cache: "pip"
 
       - name: Bump Dart package versions for the release tag
         shell: bash
@@ -80,7 +80,7 @@ jobs:
           puts "Verified bumped Dart package versions for #{expected}"
           RUBY
 
-      - uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c  # v1.7.1
+      - uses: dart-lang/setup-dart@65eb853c7ba17dde3be364c3d2858773e7144260 # v1.7.2
 
       - name: Install Dart package dependencies
         shell: bash

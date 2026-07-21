@@ -30,6 +30,8 @@ import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonFieldTable;
 import org.apache.fory.json.meta.JsonSubtypeScanInfo;
+import org.apache.fory.json.resolver.JsonSharedRegistry;
+import org.apache.fory.json.resolver.JsonSharedRegistry.CachedFieldName;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.NativeByteOrder;
@@ -77,10 +79,15 @@ public final class Latin1JsonReader extends JsonReader {
   // Latin1 string content and field-name hashing must keep unsigned byte conversion.
   private byte[] input;
   private byte[] stringDecodeBuffer = new byte[INITIAL_STRING_DECODE_BUFFER_SIZE];
+  // Keep the cache after hot representation fields; an inherited reference shifts their offsets.
+  private final FieldNameCache fieldNameCache;
 
   public Latin1JsonReader(JsonConfig config, JsonTypeResolver typeResolver) {
     super(config, typeResolver);
     input = EMPTY_BYTES;
+    // The configured limit belongs to each reader; pooled-state concurrency must not divide it.
+    int maxEntries = config.maxCachedFieldNames();
+    fieldNameCache = maxEntries == 0 ? null : new FieldNameCache(maxEntries);
   }
 
   @Override
@@ -427,6 +434,7 @@ public final class Latin1JsonReader extends JsonReader {
     throw error("Expected ',' or ']'");
   }
 
+  @Override
   public boolean tryReadNullToken() {
     skipWhitespaceFast();
     return tryReadNullLiteral();
@@ -1603,6 +1611,148 @@ public final class Latin1JsonReader extends JsonReader {
   public String readString() {
     skipWhitespaceFast();
     return readStringToken();
+  }
+
+  @Override
+  public String readFieldName() {
+    FieldNameCache cache = fieldNameCache;
+    if (cache == null) {
+      return readString();
+    }
+    return readCachedFieldName(cache);
+  }
+
+  private String readCachedFieldName(FieldNameCache cache) {
+    skipWhitespaceFast();
+    byte[] bytes = input;
+    int inputLength = bytes.length;
+    if (position >= inputLength || bytes[position++] != '"') {
+      throw error("Expected string");
+    }
+    int start = position;
+    if (start + Long.BYTES <= inputLength) {
+      long word0 = LittleEndian.getInt64(bytes, start);
+      long stopMask = asciiStringStopMask(word0);
+      if (stopMask != 0) {
+        int length = Long.numberOfTrailingZeros(stopMask) >>> 3;
+        int stop = start + length;
+        int ch = bytes[stop];
+        if (ch != '"') {
+          return readStringStop(start, stop, ch);
+        }
+        position = stop + 1;
+        word0 = fieldNameWord(word0, length);
+        long hash = length == 0 ? JsonFieldNameHash.MAGIC_HASH_CODE : word0;
+        CachedFieldName entry = cache.get(hash);
+        if (entry != null) {
+          return entry.matches(length, word0, 0) ? entry.name() : newLatin1String(start, stop);
+        }
+        if (!cache.canPut(hash)) {
+          return newLatin1String(start, stop);
+        }
+        return readFieldNameMiss(cache, start, stop, length, word0, 0, hash);
+      }
+      return readFieldNameAfterWord0(cache, start, word0, inputLength);
+    }
+    return readFieldNameTail(cache, start, start, 0, 0, 0);
+  }
+
+  private String readFieldNameAfterWord0(
+      FieldNameCache cache, int start, long word0, int inputLength) {
+    int offset = start + Long.BYTES;
+    if (offset + Long.BYTES <= inputLength) {
+      long word1 = LittleEndian.getInt64(input, offset);
+      long stopMask = asciiStringStopMask(word1);
+      if (stopMask != 0) {
+        int length = Long.numberOfTrailingZeros(stopMask) >>> 3;
+        int stop = offset + length;
+        int ch = input[stop];
+        if (ch != '"') {
+          return readStringStop(start, stop, ch);
+        }
+        position = stop + 1;
+        return resolveFieldName(
+            cache, start, stop, Long.BYTES + length, word0, fieldNameWord(word1, length));
+      }
+      offset += Long.BYTES;
+      if (offset < inputLength && input[offset] == '"') {
+        position = offset + 1;
+        return resolveFieldName(cache, start, offset, 16, word0, word1);
+      }
+      // Keep the beyond-cache-width scanner out of the short-name and ordinary-string hot paths.
+      return readLongFieldName(start, offset, inputLength);
+    }
+    return readFieldNameTail(cache, start, offset, Long.BYTES, word0, 0);
+  }
+
+  private String readLongFieldName(int start, int offset, int inputLength) {
+    byte[] bytes = input;
+    int wordEnd = inputLength - Long.BYTES;
+    while (offset <= wordEnd) {
+      long stopMask = asciiStringStopMask(LittleEndian.getInt64(bytes, offset));
+      if (stopMask == 0) {
+        offset += Long.BYTES;
+        continue;
+      }
+      int stop = offset + (Long.numberOfTrailingZeros(stopMask) >>> 3);
+      int ch = bytes[stop];
+      if (ch == '"') {
+        position = stop + 1;
+        return newLatin1String(start, stop);
+      }
+      return readStringStop(start, stop, ch);
+    }
+    return readStringTokenTail(start, offset, inputLength);
+  }
+
+  private String readFieldNameTail(
+      FieldNameCache cache, int start, int offset, int length, long word0, long word1) {
+    int inputLength = input.length;
+    while (offset < inputLength) {
+      int ch = input[offset] & 0xff;
+      if (ch == '"') {
+        position = offset + 1;
+        return resolveFieldName(cache, start, offset, length, word0, word1);
+      }
+      if (ch == '\\' || ch >= 0x80 || ch < 0x20) {
+        return readStringStop(start, offset, input[offset]);
+      }
+      if (length < Long.BYTES) {
+        word0 |= ((long) ch) << (length << 3);
+      } else {
+        word1 |= ((long) ch) << ((length - Long.BYTES) << 3);
+      }
+      length++;
+      offset++;
+    }
+    throw error("Unterminated string");
+  }
+
+  private String resolveFieldName(
+      FieldNameCache cache, int start, int end, int length, long word0, long word1) {
+    long hash = fieldNameHash(length, word0, word1);
+    CachedFieldName entry = cache.get(hash);
+    if (entry != null) {
+      return entry.matches(length, word0, word1) ? entry.name() : newLatin1String(start, end);
+    }
+    if (!cache.canPut(hash)) {
+      return newLatin1String(start, end);
+    }
+    return readFieldNameMiss(cache, start, end, length, word0, word1, hash);
+  }
+
+  private String readFieldNameMiss(
+      FieldNameCache cache, int start, int end, int length, long word0, long word1, long hash) {
+    JsonSharedRegistry registry = typeResolver().sharedRegistry();
+    CachedFieldName entry = registry.cachedFieldName(hash);
+    if (entry != null) {
+      cache.put(hash, entry);
+      return entry.matches(length, word0, word1) ? entry.name() : newLatin1String(start, end);
+    }
+    String candidate = newLatin1String(start, end);
+    entry = registry.cacheFieldName(hash, candidate, word0, word1);
+    cache.put(hash, entry);
+    return entry.matches(length, word0, word1) ? entry.name() : candidate;
   }
 
   @Override
