@@ -231,8 +231,12 @@ def test_rust_nested_container_ref_uses_correct_pointer_type():
     )
     assert "::std::vec::Vec<::std::vec::Vec<::std::rc::Rc<Node>>>" not in rust_output
     assert (
-        "pub nodes: ::std::collections::HashMap<::std::string::String, "
-        "::std::collections::HashMap<::std::string::String, ::std::sync::Arc<Node>>>,"
+        "    pub nodes: ::std::collections::HashMap<\n"
+        "        ::std::string::String,\n"
+        "        ::std::collections::HashMap<"
+        "::std::string::String, "
+        "::std::sync::Arc<Node>>,\n"
+        "    >,"
         in rust_output
     )
     assert (
@@ -1095,12 +1099,15 @@ def test_cpp_nested_integer_specs_in_generic_containers():
     )
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert (
-        "FORY_STRUCT(NestedIntegerSpecs, "
-        "(values_, ::fory::F(1).map(::fory::T::uint32().fixed(), "
-        "::fory::T::list(::fory::T::inner(::fory::T::uint64().tagged())))));"
-        in cpp_output
-    )
-
+    "  FORY_STRUCT(\n"
+    "    NestedIntegerSpecs,\n"
+    "    (values_, ::fory::F(1).map("
+    "::fory::T::uint32().fixed(), "
+    "::fory::T::list("
+    "::fory::T::inner(::fory::T::uint64().tagged()))))\n"
+    "  );"
+    in cpp_output
+)
 
 def test_cpp_escapes_keywords_and_generated_helpers():
     schema = parse_fdl(
@@ -1662,7 +1669,10 @@ def test_rust_generated_code_uses_absolute_paths():
     assert "pub value: ::std::string::String," in rust_output
     assert "pub items: ::std::vec::Vec<::std::string::String>," in rust_output
     assert (
-        "pub labels: ::std::collections::HashMap<::std::string::String, ::std::string::String>,"
+        "    pub labels: ::std::collections::HashMap<\n"
+        "        ::std::string::String,\n"
+        "        ::std::string::String,\n"
+        "    >,"
         in rust_output
     )
     assert (
@@ -1670,7 +1680,12 @@ def test_rust_generated_code_uses_absolute_paths():
         in rust_output
     )
     assert "pub parent: ::fory::ArcWeak<String>," in rust_output
-    assert "pub fn register_types(fory: &mut ::fory::Fory)" in rust_output
+    assert (
+        "pub fn register_types(\n"
+        "    fory: &mut ::fory::Fory,\n"
+        ") -> ::std::result::Result<(), ::fory::Error> {"
+        in rust_output
+    )
     assert "static FORY: ::std::sync::OnceLock<::fory::Fory>" in rust_output
 
 
