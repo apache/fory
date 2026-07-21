@@ -202,8 +202,19 @@ func (r *RefResolver) ReadRefOrNull(buffer *ByteBuffer, ctxErr *Error) int8 {
 	}
 	if refTag == RefFlag {
 		// read ref id and get object from ref resolver
-		refId := buffer.ReadVarUint32(ctxErr)
-		r.readObject = r.GetReadObject(int32(refId))
+		refId := int32(buffer.ReadVarUint32(ctxErr))
+		if refId < 0 || int(refId) >= len(r.readObjects) {
+			ctxErr.SetError(InvalidRefIdError(refId))
+			r.readObject = reflect.Value{}
+			return RefFlag
+		}
+		object := r.readObjects[refId]
+		if !object.IsValid() {
+			ctxErr.SetError(InvalidRefIdError(refId))
+			r.readObject = reflect.Value{}
+			return RefFlag
+		}
+		r.readObject = object
 		return RefFlag
 	} else {
 		r.readObject = reflect.Value{}
@@ -228,6 +239,18 @@ func (r *RefResolver) PreserveRefId() (int32, error) {
 	return nextReadRefId, nil
 }
 
+func (r *RefResolver) ReserveSkippedRefId() error {
+	if !r.refTracking {
+		return nil
+	}
+	nextReadRefId := len(r.readObjects)
+	if nextReadRefId > MaxInt32 {
+		return fmt.Errorf("referencable objects exceeds max int32")
+	}
+	r.readObjects = append(r.readObjects, reflect.Value{})
+	return nil
+}
+
 func (r *RefResolver) TryPreserveRefId(buffer *ByteBuffer) (int32, error) {
 	var ctxErr Error
 	headFlag := buffer.ReadInt8(&ctxErr)
@@ -236,11 +259,20 @@ func (r *RefResolver) TryPreserveRefId(buffer *ByteBuffer) (int32, error) {
 	}
 	if headFlag == RefFlag {
 		// read ref id and get object from ref resolver
-		refId := buffer.ReadVarUint32(&ctxErr)
+		refId := int32(buffer.ReadVarUint32(&ctxErr))
 		if ctxErr.HasError() {
 			return 0, ctxErr
 		}
-		r.readObject = r.GetReadObject(int32(refId))
+		if refId < 0 || int(refId) >= len(r.readObjects) {
+			r.readObject = reflect.Value{}
+			return 0, InvalidRefIdError(refId)
+		}
+		object := r.readObjects[refId]
+		if !object.IsValid() {
+			r.readObject = reflect.Value{}
+			return 0, InvalidRefIdError(refId)
+		}
+		r.readObject = object
 	} else {
 		r.readObject = reflect.Value{}
 		if headFlag == RefValueFlag {

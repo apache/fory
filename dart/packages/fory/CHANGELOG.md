@@ -1,6 +1,10 @@
-## 1.3.0-dev
+## 1.4.0-dev
 
-- Start the next development cycle after the 1.2.0 release.
+- Start the next development cycle after the 1.3.0 release.
+
+## 1.3.0
+
+- Release Apache Fory Dart 1.3.0.
 
 ## 1.2.0
 

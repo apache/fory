@@ -64,6 +64,13 @@ Fory policy should reject. This includes bypasses of class or type
 registration, allow-list checkers, strict-mode checks, or language-specific
 deserialization policies.
 
+An application explicitly trusts a class when it registers that class or
+registers a serializer for that class. Both operations are configuration-time
+trust decisions under the class-registration policy. The existence of a
+serializer that Fory discovered, selected, or generated without an explicit
+application registration is serialization mechanics only and does not by
+itself authorize the class.
+
 Disabling registration or dynamic-type checks for trusted data is a caller
 configuration choice. That choice only removes the arbitrary-type materialization
 claim provided by that policy; it does not remove Fory's runtime-safety,
@@ -74,6 +81,13 @@ Fory is not a sandbox for application-owned types. If a registered type or
 serializer is allowed by the active policy, the application owns whether that
 type's construction, hooks, setters, finalizers, or other logic is safe for the
 application's trust boundary.
+
+When policy-approved construction or callable execution is allowed, resource
+accounting should not claim to bound arbitrary code outside Fory's ownership.
+Fory-owned accounting can cover only objects and storage that Fory itself
+clearly creates or copies and that remain reachable from the materialized graph.
+Temporary helper allocations and user-code internals remain outside that
+accounting boundary.
 
 ## Depth And Progress
 
@@ -120,6 +134,12 @@ The following patterns are not vulnerabilities by default:
   read error.
 - Reading an encoded body before later shape validation when the operation
   ultimately returns an error and does not create a security-invariant failure.
+- Materializing an array whose component is an interface already allowed as a
+  class token. Allocating the reference array does not instantiate or execute
+  the interface, and every non-null element must still pass the active policy
+  for its concrete type. Treat this as security-relevant only if the array path
+  bypasses that concrete element check, invokes a policy-forbidden callback, or
+  violates a runtime-safety or resource invariant owned by Fory.
 
 Fory may still reject malformed forms for specification strictness or
 interoperability. That validation should be added only when it is required by
@@ -149,11 +169,18 @@ For buffer-backed input:
   comparison.
 - Multi-byte element arrays should compute the required byte size with overflow
   checks before allocation.
-- Container readers that allocate, reserve, or size-hint from a declared
-  logical element count should first call the byte owner's readability check for
-  that count. This is not a full container-body validation; it is the allocation
-  proof that the sender has supplied at least proportional input bytes before
-  the reader preallocates from the count.
+- Container readers that allocate backing storage or size-hint from a declared
+  logical element count should call the byte owner's readability check for that
+  count before that backing allocation or capacity reservation. This is not a
+  full container-body validation; it is the allocation proof that the sender has
+  supplied at least proportional input bytes before the reader preallocates from
+  the count. Estimated memory-budget accounting may reserve budget before this
+  byte check because it does not allocate backing storage.
+- Readers should not add count-based readability checks merely because a loop
+  will read that many values when the destination grows incrementally and each
+  item read still uses the normal byte-owner checks. The security boundary is
+  direct preallocation from an untrusted count, not the existence of a counted
+  loop.
 
 For stream-backed input:
 
@@ -164,13 +191,18 @@ For stream-backed input:
 - A stream-backed buffer may hold the full requested encoded body after that
   body has been read from the stream. It must not reserve the attacker-declared
   length before input bytes prove that length exists.
-- Stream-backed fill buffers should grow from the current proven buffer size,
-  such as by doubling current capacity, and cap only to the immediate target
-  when the next bounded growth step reaches it. A byte owner may use an
-  owner-local availability signal as a one-shot growth hint when the stream
-  implementation itself is caller-owned trusted code; if that hint is absent or
-  insufficient, the reader must fall back to bounded growth from already
-  buffered bytes. Serializers should not add their own availability branches.
+- Stream-backed fill buffers should grow geometrically from the current proven
+  buffer size, such as by doubling current capacity. Growth must not be capped
+  to the immediate fill target: for small fills the target is barely above the
+  current capacity, so cap-to-target degenerates into constant-size growth
+  steps that copy the whole buffer on every small read and make stream
+  deserialization O(n^2) overall. A byte owner may use an owner-local
+  availability signal as a one-shot growth hint when the stream implementation
+  itself is caller-owned trusted code, and may then reserve the full immediate
+  target at once while keeping at least the geometric growth step; if that hint
+  is absent or insufficient, the reader must fall back to bounded geometric
+  growth from already buffered bytes. Serializers should not add their own
+  availability branches.
 - A truncated stream should fail before allocating the final deserialized value
   and should allocate only for bytes actually read plus bounded spare capacity.
 
@@ -197,6 +229,135 @@ Map or collection chunk validation is security-relevant only when missing
 validation can cause a no-progress loop, unbounded resource growth, retained
 state, or success across a Fory policy boundary. Protocol-allowed chunk
 segmentation is normal input and is not a security issue by itself.
+
+## Graph Memory Budget
+
+Runtimes should enforce a per-operation approximate gate for estimated memory created by one
+materialized graph. This is cumulative accounting for graph owners created by one top-level
+deserialization operation; it is not exact heap measurement and it is not a raw element-slot limit.
+Actual process memory can be higher than the configured gate.
+
+The public configuration is `maxGraphMemoryBytes`. The default is a fixed `128 MiB` for all input
+forms; positive user configuration overrides the default. Explicit non-positive configuration is
+invalid and should be rejected when the runtime is created. The budget is not derived from input
+size, and stream budgeting should not depend on dynamic bytes-read accounting.
+
+Graph budget accounting should:
+
+- be initialized in top-level read state, with cleanup owned by the top-level deserialization
+  `finally`;
+- account only for Fory-created objects or storage that are retained by the
+  returned value graph; temporary helper objects used only during construction
+  are outside the graph budget;
+- not claim to budget arbitrary constructor, callable, descriptor, finalizer,
+  or state-restoration internals that run after an explicit policy allows that
+  code;
+- keep read context/read state limited to raw byte reservation; counted arithmetic and collection,
+  map, array, struct, and object storage formulas belong in the concrete serializer or generated
+  serializer owner;
+- reject arithmetic overflow before comparing budget or allocating;
+- estimate lower-bound shallow owner storage: reference-backed or heap-materialized collections,
+  maps, sets, and reference arrays reserve nonzero shallow self cost plus
+  backing/reference/inline storage, and reference-backed or heap-materialized struct, record,
+  POJO, tuple/product, compatible, generated, and dynamic object owners reserve a nonzero shallow
+  self cost plus shallow field storage;
+- use a 4-byte reference slot when the actual reference slot size is not cheap or reliable to query,
+  and use primitive/value field widths for inline storage;
+- preserve existing byte-availability checks before backing allocation or capacity reservation;
+- skip enum/union as separate owners and skip dedicated string, binary, primitive scalar, primitive
+  array, and primitive dense-array leaf owners.
+
+Skipped leaf owners must still be gated by remaining input bytes. If the unread input does not
+contain enough bytes for a string, binary value, primitive scalar, primitive array, or primitive
+dense array, the runtime must not read or create that leaf value.
+
+Each runtime must inspect the concrete owner path before choosing formulas. Reserve self storage
+exactly once at the owner that stores, boxes, or allocates the value. Deserialization facades may
+reset the budget for each operation, but must not pre-reserve the top-level result type, self bytes,
+or value storage.
+Reference-backed paths reserve parent owner self cost plus reference storage, while each referenced
+heap owner reserves its own shallow self cost when materialized. Inline/value paths reserve inline
+element, field, or boxed storage in the holder/allocation owner; top-level value serializers and
+generated struct/product read paths must not charge their own self storage.
+For inline/value collection or map runtimes, the top-level value container itself is not charged by
+the deserialization facade or by the container serializer only because it is the returned value.
+Nested value containers are charged as inline slots of the parent holder or as backing storage
+elements of the outer collection that actually owns those slots. Pointer, box, smart-pointer, or
+type-erased materialization paths reserve the shallow storage for the heap value they allocate.
+Parents must not recursively include child object, collection, map, string, binary, or primitive
+dense-array contents; the child owner reserves its own shallow memory when it is materialized.
+
+### Runtime-Specific Owner Notes
+
+#### C++
+
+C++ plain structs, products, and standard-library containers are value storage unless a pointer,
+smart pointer, or type-erased owner allocates them on the heap. Top-level deserialization initializes
+the remaining graph budget but does not reserve `sizeof(T)` for the returned value. Plain value
+serializers must not reserve their own `sizeof(T)` only because they are reading a value.
+
+Generic collection and map serializers reserve the lower-bound element, key, and value storage
+owned by the container path. Nested value container headers are charged when they are inline slots
+of a parent object or elements in an outer container backing store. Smart-pointer and type-erased
+materialization paths reserve the shallow storage for the heap value they allocate before publishing
+or returning it. Generic C++ paths must not invent standard-library header, node, bucket, allocator,
+or debug-layout overheads.
+
+#### Rust
+
+Rust structs, tuples, enums, and collection values are inline value storage unless a `Box`, `Rc`,
+`Arc`, or type-erased owner allocates them. Top-level and derived value read paths initialize or
+consume the budget but do not reserve `size_of::<Self>()` for the value being read. `Vec`, `HashMap`,
+`BTreeMap`, and similar serializers reserve backing or entry value storage that they allocate from
+counts; nested value container headers are charged as parent inline fields or outer backing elements.
+
+Boxed, reference-counted, and type-erased materialization paths reserve `size_of::<T>()` for the heap
+payload they create. Compile-time `size_of::<T>()` formulas are acceptable in those allocation
+owners, but value serializers should not add a parallel self-reserve for the same `T`.
+
+#### Swift
+
+Swift structs, enums, tuples, and collection values are value storage. Top-level value reads and
+nested value serializers should not reserve their own self storage. The holder that owns the value,
+such as a struct field, array backing store, dictionary entry storage, or boxed/dynamic
+materialization path, owns the corresponding graph-budget reservation.
+
+Array, dictionary, and set serializers may reserve lower-bound backing storage using stable Swift
+type-size information, such as `MemoryLayout<T>.stride`, when they allocate or reserve that storage.
+Class, existential, or boxed materialization paths reserve owner storage when Fory creates the
+retained object or box. Runtime object-layout probing should not be added to hot read paths.
+
+#### Go
+
+Go structs and slice or map headers are value storage unless a pointer, interface materialization, or
+other heap owner allocates them. Top-level deserialization and struct value serializers should not
+reserve the returned struct or a nested inline struct by themselves. Pointer serializers reserve the
+concrete struct storage when they allocate a retained `*T`.
+
+Slice, array, map, and set serializers reserve the backing or entry storage they allocate from
+declared counts. Element and entry widths should come from stable type information captured by the
+serializer or resolver when possible; read loops should not recompute reflective size information
+when the owner already knows the concrete type. Interface or dynamic paths reserve only storage that
+Fory clearly materializes and retains.
+
+#### C\#
+
+C# combines reference owners and inline value types. Classes, arrays, lists, dictionaries, hash sets,
+and other heap containers reserve a nonzero shallow owner cost plus direct backing, reference-slot,
+or inline element storage. A dictionary is a reference-type container even when its key or value type
+is a struct, so the dictionary owner is still charged separately from its entry storage.
+
+Value structs do not reserve their own self storage when read inline; the holder that stores the
+struct, such as an object field, array element, list backing store, dictionary entry, box, or dynamic
+materialization path, owns that reservation. Boxing, `object`, and dynamic materialization paths
+reserve a boxed owner when Fory creates the retained box. Owner constants should be real portable
+lower bounds for the relevant C# object or container shape, not placeholder markers.
+
+Runtimes should not guess object headers, array headers, allocator headers, debug-mode fields, hash
+buckets, tree links, hash-chain links, node headers, map-entry objects, spare blocks, or runtime
+table layouts unless the owner path has a cheap, stable, explicit lower-bound storage signal and
+documents the formula. Owner constants should be real lower bounds for the owner shape, not
+placeholder markers.
 
 ## Skip Semantics
 
@@ -233,12 +394,33 @@ Metadata readers should:
 - For Java metadata paths, keep name-level checks such as `TypeChecker` and the
   disallowed-class list before `Class.forName` by routing remote class-name
   loading through the existing `TypeResolver.loadClass` owner. Do not bypass
-  that owner with direct class loading from TypeDef or TypeMeta names. Other
-  deserialization checks that require a materialized `Class<?>`, such as
-  post-load class policy checks, remain after loading; do not move them earlier
-  or replace them with string-only approximations that change registration,
-  dynamic-loading, or unknown-type semantics.
+  that owner with direct class loading from TypeDef or TypeMeta names. A rejected
+  input name must not cause class loading. Preserve registration, dynamic-loading,
+  and unknown-type semantics while moving this decision before loading. Checks
+  that require a materialized `Class<?>` remain after loading; do not replace
+  them with string-only approximations.
+- Pass a complete input array descriptor to `TypeChecker`. Input may derive up
+  to six array dimensions from an accepted component class. Higher-dimensional
+  arrays require an exact trusted full-array registration or checked name-cache
+  entry so input cannot make the JVM derive an unbounded family of array classes.
 - Reset or release metadata state at the correct root-operation boundary.
+
+A class-resolution cache reachable from untrusted deserialization may publish
+an entry only from explicit trusted configuration or after the active class
+policy has accepted the resolved class. A cache hit therefore represents an
+already trusted and validated `Class<?>` and should use that cached class
+without repeating class loading or name-level `TypeChecker` work. Only a cache
+miss performs those name-level checks and publishes the accepted result.
+Checks that require the materialized `Class<?>` remain owned by their existing
+caller. A cache entry that stores a data-only unknown-class placeholder may
+return that same placeholder on an exact hit, but must not authorize loading the
+original missed wire name.
+Exact registered-name-table hits are trusted for both ID and name registrations,
+and exact checked name-cache hits are trusted. After both exact lookups miss, a
+reader must not infer another accepted name from inverse registration,
+class-keyed state, or `Class.getName()`. A custom-name registration does not by
+itself publish the Java class name as an additional alias; ID registration does
+publish the Java class name.
 
 Remote metadata that can create persistent read state must be bounded before
 that state is retained. The check is resource control only: it must not change

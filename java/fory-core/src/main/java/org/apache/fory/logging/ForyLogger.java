@@ -31,6 +31,7 @@ public class ForyLogger implements Logger {
   private static final DateTimeFormatter dateTimeFormatter =
       DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
   private final String name;
+  private final LogOnceState logOnceState = new LogOnceState();
 
   public ForyLogger(Class<?> targetClass) {
     this.name = targetClass.getSimpleName();
@@ -94,6 +95,42 @@ public class ForyLogger implements Logger {
   }
 
   @Override
+  public void infoOnce(String msg) {
+    if (LoggerFactory.getLogLevel() >= INFO_LEVEL
+        && logOnceState.shouldLog(INFO_LEVEL, msg, LogOnceState.NO_ARGS)) {
+      log(INFO_LEVEL, msg, LogOnceState.NO_ARGS, false);
+    }
+  }
+
+  @Override
+  public void infoOnce(String msg, Object arg) {
+    if (LoggerFactory.getLogLevel() >= INFO_LEVEL) {
+      Object[] args = new Object[] {arg};
+      if (logOnceState.shouldLog(INFO_LEVEL, msg, args)) {
+        log(INFO_LEVEL, msg, args, false);
+      }
+    }
+  }
+
+  @Override
+  public void infoOnce(String msg, Object arg1, Object arg2) {
+    if (LoggerFactory.getLogLevel() >= INFO_LEVEL) {
+      Object[] args = new Object[] {arg1, arg2};
+      if (logOnceState.shouldLog(INFO_LEVEL, msg, args)) {
+        log(INFO_LEVEL, msg, args, false);
+      }
+    }
+  }
+
+  @Override
+  public void infoOnce(String msg, Object... args) {
+    if (LoggerFactory.getLogLevel() >= INFO_LEVEL
+        && logOnceState.shouldLog(INFO_LEVEL, msg, args)) {
+      log(INFO_LEVEL, msg, args, false);
+    }
+  }
+
+  @Override
   public void warn(String msg) {
     if (LoggerFactory.getLogLevel() >= WARN_LEVEL) {
       log(WARN_LEVEL, msg, new Object[0], false);
@@ -125,6 +162,52 @@ public class ForyLogger implements Logger {
   public void warn(String msg, Throwable t) {
     if (LoggerFactory.getLogLevel() >= WARN_LEVEL) {
       log(WARN_LEVEL, msg, new Object[] {t}, true);
+    }
+  }
+
+  @Override
+  public void warnOnce(String msg) {
+    if (LoggerFactory.getLogLevel() >= WARN_LEVEL
+        && logOnceState.shouldLog(WARN_LEVEL, msg, LogOnceState.NO_ARGS)) {
+      log(WARN_LEVEL, msg, LogOnceState.NO_ARGS, false);
+    }
+  }
+
+  @Override
+  public void warnOnce(String msg, Object arg) {
+    if (LoggerFactory.getLogLevel() >= WARN_LEVEL) {
+      Object[] args = new Object[] {arg};
+      if (logOnceState.shouldLog(WARN_LEVEL, msg, args)) {
+        log(WARN_LEVEL, msg, args, true);
+      }
+    }
+  }
+
+  @Override
+  public void warnOnce(String msg, Object arg1, Object arg2) {
+    if (LoggerFactory.getLogLevel() >= WARN_LEVEL) {
+      Object[] args = new Object[] {arg1, arg2};
+      if (logOnceState.shouldLog(WARN_LEVEL, msg, args)) {
+        log(WARN_LEVEL, msg, args, true);
+      }
+    }
+  }
+
+  @Override
+  public void warnOnce(String msg, Object... args) {
+    if (LoggerFactory.getLogLevel() >= WARN_LEVEL
+        && logOnceState.shouldLog(WARN_LEVEL, msg, args)) {
+      log(WARN_LEVEL, msg, args, true);
+    }
+  }
+
+  @Override
+  public void warnOnce(String msg, Throwable t) {
+    if (LoggerFactory.getLogLevel() >= WARN_LEVEL) {
+      Object[] args = new Object[] {t};
+      if (logOnceState.shouldLog(WARN_LEVEL, msg, args)) {
+        log(WARN_LEVEL, msg, args, true);
+      }
     }
   }
 

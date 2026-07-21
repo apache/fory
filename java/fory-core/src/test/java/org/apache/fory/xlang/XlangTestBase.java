@@ -50,6 +50,7 @@ import org.apache.fory.annotation.UInt16Type;
 import org.apache.fory.annotation.UInt32Type;
 import org.apache.fory.annotation.UInt64Type;
 import org.apache.fory.annotation.UInt8Type;
+import org.apache.fory.codegen.GeneratedClassNames;
 import org.apache.fory.collection.BFloat16List;
 import org.apache.fory.collection.Float16List;
 import org.apache.fory.collection.Int32List;
@@ -312,7 +313,7 @@ public abstract class XlangTestBase extends ForyTestBase {
           fixedSerializer.getClass().getName());
       Assert.assertEquals(
           fixedSerializer.getClass().getName(),
-          XlangTestBase.class.getName() + "_FixedOverrideStruct_ForySerializer");
+          GeneratedClassNames.withSuffix(FixedOverrideStruct.class.getName(), "_ForySerializer"));
     }
 
     EvolvingOverrideStruct evolving = newEvolvingOverrideStruct();

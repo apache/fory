@@ -189,29 +189,48 @@ OptionalInt value = 42;
 
 ## Temporal Types
 
+`fory::Duration`, `fory::Timestamp`, and `fory::Date` are Fory-owned carrier
+types declared by `fory/type/temporal.h`. They support `std::hash` and can be
+used as `std::unordered_map` keys.
+
+FDL/codegen fields and dynamic `std::any` values use these Fory carrier types by
+default. C++ `std::chrono` temporal types are supported as explicit
+serialization and deserialization targets when the caller asks for those types.
+
 ### Duration
 
-`std::chrono::nanoseconds`:
+Signed duration stored as nanoseconds. Construct from any `std::chrono`
+duration that converts to `std::chrono::nanoseconds`, and call `to_chrono()`
+to get the underlying value back:
 
 ```cpp
-using Duration = std::chrono::nanoseconds;
-
-Duration d = std::chrono::seconds(30);
+fory::Duration d(std::chrono::seconds(30));
 auto bytes = fory.serialize(d).value();
-auto decoded = fory.deserialize<Duration>(bytes).value();
+auto decoded = fory.deserialize<fory::Duration>(bytes).value();
+
+// Convert to/from std::chrono
+std::chrono::nanoseconds ns = decoded.to_chrono();
+int64_t count = decoded.count();  // total nanoseconds
 ```
 
 ### Timestamp
 
 Point in time since Unix epoch:
+Construct from a `fory::Timestamp::ChronoType` time_point or from nanoseconds
+since epoch, and call `to_chrono()` to get the value back:
 
 ```cpp
-using Timestamp = std::chrono::time_point<std::chrono::system_clock,
-                                          std::chrono::nanoseconds>;
+using ChronoTs = fory::Timestamp::ChronoType;
+auto now = std::chrono::time_point_cast<std::chrono::nanoseconds>(
+    std::chrono::system_clock::now());
 
-Timestamp now = std::chrono::system_clock::now();
-auto bytes = fory.serialize(now).value();
-auto decoded = fory.deserialize<Timestamp>(bytes).value();
+fory::Timestamp ts(now);
+auto bytes = fory.serialize(ts).value();
+auto decoded = fory.deserialize<fory::Timestamp>(bytes).value();
+
+// Convert to/from std::chrono
+ChronoTs tp = decoded.to_chrono();
+std::chrono::nanoseconds since_epoch = decoded.time_since_epoch();
 ```
 
 ### Date
@@ -219,10 +238,10 @@ auto decoded = fory.deserialize<Timestamp>(bytes).value();
 Days since Unix epoch:
 
 ```cpp
-Date date{18628};  // Days since 1970-01-01
+fory::Date date{18628};  // Days since 1970-01-01
 
 auto bytes = fory.serialize(date).value();
-auto decoded = fory.deserialize<Date>(bytes).value();
+auto decoded = fory.deserialize<fory::Date>(bytes).value();
 ```
 
 ## User-Defined Structs

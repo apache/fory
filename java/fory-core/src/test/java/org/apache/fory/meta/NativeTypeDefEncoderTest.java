@@ -45,7 +45,13 @@ public class NativeTypeDefEncoderTest {
 
   @Test
   public void testBasicTypeDef() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     Class<TypeDefTest.TestFieldsOrderClass1> type = TypeDefTest.TestFieldsOrderClass1.class;
     List<FieldInfo> fieldsInfo = buildFieldsInfo((ClassResolver) fory.getTypeResolver(), type);
     MemoryBuffer buffer =
@@ -63,7 +69,13 @@ public class NativeTypeDefEncoderTest {
         new Class[] {
           MapFields.class, BeanA.class, Struct.createStructClass("TestBigMetaEncoding", 5)
         }) {
-      Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+      Fory fory =
+          Fory.builder()
+              .withXlang(false)
+              .withMetaShare(true)
+              .requireClassRegistration(false)
+              .withCompatible(false)
+              .build();
       TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), type);
       TypeDef typeDef1 =
           TypeDef.readTypeDef(
@@ -84,6 +96,55 @@ public class NativeTypeDefEncoderTest {
         () -> FieldTypes.FieldType.read(buffer, fory.getTypeResolver()));
   }
 
+  @Test
+  public void testUnresolvedRootClass() {
+    Fory rawWriter =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    byte[] rawTypeDef =
+        TypeDef.buildTypeDef(rawWriter.getTypeResolver(), ExpectedType.class).getEncoded();
+
+    Fory namedWriter =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    namedWriter.register(ExpectedType.class, "alias", "ExpectedType");
+    byte[] namedTypeDef =
+        TypeDef.buildTypeDef(namedWriter.getTypeResolver(), ExpectedType.class).getEncoded();
+    Fory namedReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    TypeDef namedRoot =
+        TypeDef.readTypeDefWithoutRootClass(
+            (ClassResolver) namedReader.getTypeResolver(), namedTypeDef);
+    Assert.assertEquals(namedRoot.getClassSpec().entireClassName, "alias.ExpectedType");
+    Assert.assertNull(namedRoot.getClassSpec().type);
+
+    Fory localReader =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(true)
+            .withCompatible(false)
+            .build();
+    TypeDef unresolved =
+        TypeDef.readTypeDefWithoutRootClass(
+            (ClassResolver) localReader.getTypeResolver(), rawTypeDef);
+    Assert.assertEquals(unresolved.getClassSpec().entireClassName, ExpectedType.class.getName());
+    Assert.assertNull(unresolved.getClassSpec().type);
+  }
+
+  public static class ExpectedType implements Serializable {
+    private int value;
+  }
+
   @Data
   public static class Foo1 {
     private int f1;
@@ -96,7 +157,7 @@ public class NativeTypeDefEncoderTest {
     Fory fory =
         Fory.builder()
             .withXlang(false)
-            .requireClassRegistration(true)
+            .requireClassRegistration(false)
             .withCompatible(false)
             .build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo2.class);
@@ -108,7 +169,13 @@ public class NativeTypeDefEncoderTest {
 
   @Test
   public void testBigClassNameObject() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TypeDef typeDef =
         TypeDef.buildTypeDef(
             fory.getTypeResolver(),
@@ -288,7 +355,13 @@ public class NativeTypeDefEncoderTest {
 
   @Test
   public void testDecodeRejectsTrailingTypeDefBodyBytes() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo1.class);
     MemoryBuffer encoded = MemoryBuffer.fromByteArray(typeDef.getEncoded());
     long header = encoded.readInt64();
@@ -307,7 +380,13 @@ public class NativeTypeDefEncoderTest {
 
   @Test
   public void testDecodeRejectsParsedTypeDefWithMismatchedHash() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo1.class);
     MemoryBuffer encoded = MemoryBuffer.fromByteArray(typeDef.getEncoded());
     long header = encoded.readInt64();
@@ -321,7 +400,13 @@ public class NativeTypeDefEncoderTest {
 
   @Test
   public void testDecodeRejectsBodyOnlyHeaderHash() {
-    Fory fory = Fory.builder().withXlang(false).withMetaShare(true).withCompatible(false).build();
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
     TypeDef typeDef = TypeDef.buildTypeDef(fory.getTypeResolver(), Foo1.class);
     byte[] malformed = rewriteHeaderWithBodyOnlyHash(typeDef);
 

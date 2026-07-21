@@ -20,7 +20,7 @@ module github.com/apache/fory/benchmarks/go
 go 1.25.0
 
 require (
-	github.com/apache/fory/go/fory v1.3.0-alpha.0
+	github.com/apache/fory/go/fory v1.4.0-alpha.0
 	github.com/vmihailenco/msgpack/v5 v5.4.1
 	google.golang.org/protobuf v1.36.0
 )

@@ -86,14 +86,14 @@ public class ReplaceResolveSerializer extends Serializer {
         writeReplaceMethod = JavaSerializer.getWriteReplaceMethod(cls);
         readResolveMethod = JavaSerializer.getReadResolveMethod(cls);
         if (writeReplaceMethod != null) {
-          LOG.warn(
+          LOG.warnOnce(
               "{} doesn't implement {}, but defined writeReplace method {}",
               cls,
               Serializable.class,
               writeReplaceMethod);
         }
         if (readResolveMethod != null) {
-          LOG.warn(
+          LOG.warnOnce(
               "{} doesn't implement {}, but defined readResolve method {}",
               cls,
               Serializable.class,

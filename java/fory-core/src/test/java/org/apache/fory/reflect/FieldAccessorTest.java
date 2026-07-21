@@ -71,8 +71,12 @@ public class FieldAccessorTest {
     FieldAccessor intAccessor =
         FieldAccessor.createAccessor(HiddenFields.class.getDeclaredField("i"));
     Assert.assertEquals(intAccessor.getInt(fields), 1);
+    Assert.assertEquals(intAccessor.getObject(fields), 1);
     intAccessor.putInt(fields, 2);
     Assert.assertEquals(intAccessor.getInt(fields), 2);
+    intAccessor.putObject(fields, 3);
+    Assert.assertEquals(intAccessor.getInt(fields), 3);
+    Assert.assertEquals(intAccessor.getObject(fields), 3);
 
     FieldAccessor objectAccessor =
         FieldAccessor.createAccessor(HiddenFields.class.getDeclaredField("text"));

@@ -35,7 +35,17 @@ import org.apache.fory.reflect.TypeRef;
 public interface CustomCodec<T, E> {
 
   /**
-   * Returns the Fory Field for the given field name.
+   * Returns the Fory Field for the given field name, or null to infer it from {@link
+   * #encodedType()}.
+   *
+   * <p>The returned field overrides only the column's logical type and nullability; its physical
+   * row representation must match what the codec reads and writes through {@link #encodedType()}.
+   * In particular, a fixed-width column (for example {@code int64} or {@code fixedWidthBinary(16)})
+   * must equal the exact byte width {@link #encode} produces, because the compact layout sizes the
+   * column's slot from this declaration. Declaring a width the codec does not honor corrupts the
+   * compact row (the eager row format word-pads fixed slots and can mask it). For example {@link
+   * MemoryBufferCodec} declares a variable {@code binary} column, while a UUID codec writing a
+   * 16-byte buffer may declare {@code fixedWidthBinary(16)}.
    *
    * @param fieldName the name of the field
    * @return the Fory field definition, or null to use default inference
@@ -46,6 +56,13 @@ public interface CustomCodec<T, E> {
 
   E encode(T value);
 
+  /**
+   * Reconstructs the value from its encoded representation. A codec keyed on {@link
+   * java.util.Optional} owns the field's absence and must return a non-null {@code Optional} (use
+   * {@link java.util.Optional#empty()} for absence); the decoded value is assigned straight to the
+   * Optional field, so returning {@code null} would surface later as a {@code
+   * NullPointerException}.
+   */
   T decode(E value);
 
   /** Specialized codec base for encoding and decoding to/from {@link MemoryBuffer}. */

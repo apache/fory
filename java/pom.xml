@@ -33,7 +33,7 @@
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-parent</artifactId>
   <packaging>pom</packaging>
-  <version>1.3.0-SNAPSHOT</version>
+  <version>1.4.0-SNAPSHOT</version>
   <name>Fory Project Parent POM</name>
   <description>
     Apache Fory™ is a blazingly fast multi-language serialization framework powered by jit and zero-copy.
@@ -60,6 +60,7 @@
 
   <modules>
     <module>fory-core</module>
+    <module>fory-json</module>
     <module>fory-annotation-processor</module>
     <module>fory-extensions</module>
     <module>fory-test-core</module>
@@ -101,9 +102,9 @@
                 <configuration>
                   <rules>
                     <requireJavaVersion>
-                      <version>[25,26)</version>
+                      <version>[25,)</version>
                       <message>
-                        Apache Fory JVM releases must run with JDK 25 so JDK25 multi-release classes are packaged.
+                        Apache Fory JVM releases must run with JDK 25+ so JDK25 multi-release classes are packaged.
                       </message>
                     </requireJavaVersion>
                   </rules>
@@ -122,15 +123,6 @@
       <modules>
         <module>fory-format</module>
         <module>fory-testsuite</module>
-      </modules>
-    </profile>
-    <profile>
-      <id>jdk17-and-higher</id>
-      <activation>
-        <jdk>[17,]</jdk>
-      </activation>
-      <modules>
-        <module>fory-graalvm-feature</module>
       </modules>
     </profile>
     <profile>

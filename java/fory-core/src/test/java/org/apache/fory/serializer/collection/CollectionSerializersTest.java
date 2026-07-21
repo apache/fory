@@ -25,6 +25,7 @@ import static org.apache.fory.collection.Collections.ofHashSet;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertSame;
 
+import com.google.common.collect.ImmutableBiMap;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
@@ -34,6 +35,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.Serializable;
 import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
 import java.util.AbstractCollection;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -70,18 +72,28 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.Ref;
+import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.config.Int64Encoding;
+import org.apache.fory.config.Language;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.FieldTypes;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.collection.CollectionSerializers.JDKCompatibleCollectionSerializer;
 import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.type.GenericType;
+import org.apache.fory.type.Types;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 import org.testng.collections.Maps;
 
@@ -252,6 +264,200 @@ public class CollectionSerializersTest extends ForyTestBase {
     fory.getWriteContext().getGenerics().popGenericType(fory.getWriteContext().getDepth());
     fory.getReadContext().getGenerics().popGenericType(fory.getReadContext().getDepth());
     assertThrowsCause(RuntimeException.class, () -> fory.deserialize(bytes2));
+  }
+
+  public static class MultiParamList<A, E> extends ArrayList<E> {
+    private A metadata;
+
+    public MultiParamList() {}
+
+    public MultiParamList(A metadata) {
+      this.metadata = metadata;
+    }
+
+    public A getMetadata() {
+      return metadata;
+    }
+
+    public void setMetadata(A metadata) {
+      this.metadata = metadata;
+    }
+  }
+
+  public static class MultiParamListHolder {
+    private String name;
+    private MultiParamList<String, Integer> numbers;
+
+    public MultiParamListHolder() {}
+
+    public MultiParamListHolder(String name, MultiParamList<String, Integer> numbers) {
+      this.name = name;
+      this.numbers = numbers;
+    }
+
+    public String getName() {
+      return name;
+    }
+
+    public MultiParamList<String, Integer> getNumbers() {
+      return numbers;
+    }
+  }
+
+  public static class CollectionRefItem {
+    public int id;
+  }
+
+  public static class MultiParamListRefHolder {
+    private MultiParamList<String, @Ref(enable = false) CollectionRefItem> noRefItems;
+    private MultiParamList<String, @Ref(enable = true) CollectionRefItem> refItems;
+
+    public MultiParamListRefHolder() {}
+  }
+
+  public static class NestedMultiParamListHolder {
+    private MultiParamList<String, List<@Ref(enable = false) CollectionRefItem>> nestedItems;
+
+    public NestedMultiParamListHolder() {}
+  }
+
+  public static class FixedElementList<A> extends ArrayList<CollectionRefItem> {
+    private A metadata;
+
+    public FixedElementList() {}
+
+    public FixedElementList(A metadata) {
+      this.metadata = metadata;
+    }
+  }
+
+  public static class FixedElementListHolder {
+    private FixedElementList<@Ref(enable = false) CollectionRefItem> items;
+
+    public FixedElementListHolder() {}
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testMultiParamCollectionRoundTrip(boolean enableCodegen) {
+    MultiParamList<String, Integer> list = new MultiParamList<>("my-metadata");
+    list.add(1);
+    list.add(2);
+    list.add(3);
+
+    MultiParamListHolder holder = new MultiParamListHolder("test-container", list);
+    Fory fory = collectionGenericFory(enableCodegen);
+    MultiParamListHolder cloned = (MultiParamListHolder) fory.deserialize(fory.serialize(holder));
+
+    Assert.assertEquals(cloned.getName(), "test-container");
+    Assert.assertNotNull(cloned.getNumbers());
+    Assert.assertEquals(cloned.getNumbers().getMetadata(), "my-metadata");
+    Assert.assertEquals(cloned.getNumbers().size(), 3);
+    Assert.assertEquals(cloned.getNumbers().get(0), Integer.valueOf(1));
+    Assert.assertEquals(cloned.getNumbers().get(1), Integer.valueOf(2));
+    Assert.assertEquals(cloned.getNumbers().get(2), Integer.valueOf(3));
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testMultiParamCollectionRefOverride(boolean enableCodegen) {
+    skipMemberGenericTypeUseOnJdk11();
+    CollectionRefItem noRefItem = new CollectionRefItem();
+    noRefItem.id = 1;
+    CollectionRefItem refItem = new CollectionRefItem();
+    refItem.id = 2;
+
+    MultiParamListRefHolder holder = new MultiParamListRefHolder();
+    holder.noRefItems = new MultiParamList<>("no-ref");
+    holder.noRefItems.add(noRefItem);
+    holder.noRefItems.add(noRefItem);
+    holder.refItems = new MultiParamList<>("ref");
+    holder.refItems.add(refItem);
+    holder.refItems.add(refItem);
+
+    Fory fory = collectionGenericFory(enableCodegen);
+    MultiParamListRefHolder cloned =
+        (MultiParamListRefHolder) fory.deserialize(fory.serialize(holder));
+    Assert.assertNotSame(cloned.noRefItems.get(0), cloned.noRefItems.get(1));
+    Assert.assertSame(cloned.refItems.get(0), cloned.refItems.get(1));
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testNestedMultiParamCollectionRef(boolean enableCodegen) {
+    skipMemberGenericTypeUseOnJdk11();
+    CollectionRefItem item = new CollectionRefItem();
+    item.id = 1;
+
+    NestedMultiParamListHolder holder = new NestedMultiParamListHolder();
+    holder.nestedItems = new MultiParamList<>("nested");
+    List<CollectionRefItem> inner = new ArrayList<>();
+    inner.add(item);
+    inner.add(item);
+    holder.nestedItems.add(inner);
+
+    Fory fory = collectionGenericFory(enableCodegen);
+    NestedMultiParamListHolder cloned =
+        (NestedMultiParamListHolder) fory.deserialize(fory.serialize(holder));
+    Assert.assertNotSame(cloned.nestedItems.get(0).get(0), cloned.nestedItems.get(0).get(1));
+  }
+
+  private static void skipMemberGenericTypeUseOnJdk11() {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testFixedElementCollectionRefMeta(boolean enableCodegen) {
+    CollectionRefItem element = new CollectionRefItem();
+    element.id = 1;
+    CollectionRefItem metadata = new CollectionRefItem();
+    metadata.id = 2;
+
+    FixedElementListHolder holder = new FixedElementListHolder();
+    holder.items = new FixedElementList<>(metadata);
+    holder.items.add(element);
+    holder.items.add(element);
+
+    Fory fory = collectionGenericFory(enableCodegen);
+    FixedElementListHolder cloned =
+        (FixedElementListHolder) fory.deserialize(fory.serialize(holder));
+    Assert.assertSame(cloned.items.get(0), cloned.items.get(1));
+  }
+
+  @Test
+  public void testCollectionFieldTypeKeepsDeclaredType() {
+    Fory fory = builder().withXlang(false).requireClassRegistration(false).build();
+    TypeRef<?> declared = new TypeRef<List<Integer>>() {};
+    FieldTypes.CollectionFieldType fieldType =
+        new FieldTypes.CollectionFieldType(
+            Types.LIST,
+            true,
+            true,
+            new FieldTypes.RegisteredFieldType(true, false, Types.INT32, -1));
+
+    TypeRef<?> rebuilt = fieldType.toTypeToken(fory.getTypeResolver(), declared);
+
+    Assert.assertTrue(rebuilt.getType() instanceof ParameterizedType);
+    Assert.assertEquals(rebuilt.getRawType(), List.class);
+    Assert.assertEquals(rebuilt.getTypeArguments().size(), 1);
+    Assert.assertEquals(rebuilt.getTypeExtMeta().typeId(), Types.LIST);
+    Assert.assertTrue(rebuilt.getTypeExtMeta().nullable());
+    Assert.assertTrue(rebuilt.getTypeExtMeta().trackingRef());
+  }
+
+  private static Fory collectionGenericFory(boolean enableCodegen) {
+    return Fory.builder()
+        .withLanguage(Language.JAVA)
+        .requireClassRegistration(false)
+        .withRefTracking(true)
+        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .withAsyncCompilation(false)
+        .withIntCompressed(true)
+        .withCodegen(enableCodegen)
+        .withLongCompressed(Int64Encoding.VARINT)
+        .withIntArrayCompressed(true)
+        .withLongArrayCompressed(true)
+        .build();
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
@@ -1153,6 +1359,14 @@ public class CollectionSerializersTest extends ForyTestBase {
       assertEquals(new ArrayList<>(deserialized), new ArrayList<>(queue));
       assertEquals(deserialized.remainingCapacity() + deserialized.size(), 3);
     }
+    {
+      LinkedBlockingQueue<Integer> queue = new LinkedBlockingQueue<>();
+      queue.add(1);
+      queue.add(2);
+      LinkedBlockingQueue<Integer> deserialized = serDe(fory, queue);
+      assertEquals(new ArrayList<>(deserialized), new ArrayList<>(queue));
+      assertEquals(deserialized.remainingCapacity() + deserialized.size(), Integer.MAX_VALUE);
+    }
   }
 
   @Test
@@ -1599,6 +1813,65 @@ public class CollectionSerializersTest extends ForyTestBase {
     buffer.readerIndex(0);
     assertEquals(set, fory.deserialize(fory.serialize(buffer, set)));
   }
+
+  @Test
+  public void testGuavaListOwnerBudget() {
+    ImmutableList<String> list = ImmutableList.of("fory");
+    int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(list.getClass());
+    long requiredBytes = ownerBytes + GraphMemoryEstimates.REFERENCE_BYTES;
+    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    Fory fory = graphBudgetFory(requiredBytes);
+    GuavaCollectionSerializers.ImmutableListSerializer serializer =
+        new GuavaCollectionSerializers.ImmutableListSerializer(
+            fory.getTypeResolver(), SingletonListSlot.class, ownerBytes);
+    writeSerializer(fory, serializer, buffer, list);
+
+    Fory limitedFory = graphBudgetFory(requiredBytes - 1);
+    GuavaCollectionSerializers.ImmutableListSerializer limitedSerializer =
+        new GuavaCollectionSerializers.ImmutableListSerializer(
+            limitedFory.getTypeResolver(), SingletonListSlot.class, ownerBytes);
+    Assert.assertThrows(
+        InsecureException.class, () -> readSerializer(limitedFory, limitedSerializer, buffer));
+    buffer.readerIndex(0);
+    assertEquals(readSerializer(fory, serializer, buffer), list);
+  }
+
+  @Test
+  public void testGuavaBiMapOwnerBudget() {
+    ImmutableBiMap<String, Integer> biMap = ImmutableBiMap.of("fory", 1);
+    int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(biMap.getClass());
+    long requiredBytes = ownerBytes + 2L * GraphMemoryEstimates.REFERENCE_BYTES;
+    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    Fory fory = graphBudgetFory(requiredBytes);
+    GuavaCollectionSerializers.ImmutableBiMapSerializer serializer =
+        new GuavaCollectionSerializers.ImmutableBiMapSerializer(
+            fory.getTypeResolver(), SingletonBiMapSlot.class, ownerBytes);
+    writeSerializer(fory, serializer, buffer, biMap);
+
+    Fory limitedFory = graphBudgetFory(requiredBytes - 1);
+    GuavaCollectionSerializers.ImmutableBiMapSerializer limitedSerializer =
+        new GuavaCollectionSerializers.ImmutableBiMapSerializer(
+            limitedFory.getTypeResolver(), SingletonBiMapSlot.class, ownerBytes);
+    Assert.assertThrows(
+        InsecureException.class, () -> readSerializer(limitedFory, limitedSerializer, buffer));
+    buffer.readerIndex(0);
+    assertEquals(readSerializer(fory, serializer, buffer), biMap);
+  }
+
+  private static Fory graphBudgetFory(long maxGraphMemoryBytes) {
+    return Fory.builder()
+        .withXlang(false)
+        .registerGuavaTypes(true)
+        .requireClassRegistration(false)
+        .suppressClassRegistrationWarnings(true)
+        .withCompatible(false)
+        .withMaxGraphMemoryBytes(maxGraphMemoryBytes)
+        .build();
+  }
+
+  private static final class SingletonListSlot {}
+
+  private static final class SingletonBiMapSlot {}
 
   @Test(dataProvider = "foryCopyConfig")
   public void testJavaSerialization(Fory fory) {

@@ -39,7 +39,7 @@ Server project:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Apache.Fory" Version="1.2.0" />
+  <PackageReference Include="Apache.Fory" Version="1.3.0" />
   <PackageReference Include="Grpc.AspNetCore" Version="2.71.0" />
 </ItemGroup>
 ```
@@ -48,7 +48,7 @@ Client project:
 
 ```xml
 <ItemGroup>
-  <PackageReference Include="Apache.Fory" Version="1.2.0" />
+  <PackageReference Include="Apache.Fory" Version="1.3.0" />
   <PackageReference Include="Grpc.Core.Api" Version="2.71.0" />
   <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
 </ItemGroup>

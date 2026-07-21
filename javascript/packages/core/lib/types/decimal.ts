@@ -38,9 +38,9 @@ export class Decimal {
 
   equals(other: unknown): boolean {
     return (
-      other instanceof Decimal
-      && other.scale === this.scale
-      && other.unscaledValue === this.unscaledValue
+      other instanceof Decimal &&
+      other.scale === this.scale &&
+      other.unscaledValue === this.unscaledValue
     );
   }
 

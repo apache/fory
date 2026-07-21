@@ -31,33 +31,19 @@ public class CompileUnit {
 
   String pkg;
   String mainClassName;
-  // Non-null only when the compiled class must be defined as a JDK25+ hidden nestmate of this
-  // neighbor. Ordinary generated classes still use the CodeGenerator classloader path.
-  private final Class<?> neighborClass;
   private String code;
   private Supplier<String> genCodeFunc;
 
   public CompileUnit(String pkg, String mainClassName, String code) {
-    this(pkg, mainClassName, code, null);
-  }
-
-  public CompileUnit(String pkg, String mainClassName, String code, Class<?> neighborClass) {
     this.pkg = pkg;
     this.mainClassName = mainClassName;
     this.code = code;
-    this.neighborClass = neighborClass;
   }
 
   public CompileUnit(String pkg, String mainClassName, Supplier<String> genCodeFunc) {
-    this(pkg, mainClassName, genCodeFunc, null);
-  }
-
-  public CompileUnit(
-      String pkg, String mainClassName, Supplier<String> genCodeFunc, Class<?> neighborClass) {
     this.pkg = pkg;
     this.mainClassName = mainClassName;
     this.genCodeFunc = genCodeFunc;
-    this.neighborClass = neighborClass;
   }
 
   public String getCode() {
@@ -77,10 +63,6 @@ public class CompileUnit {
     } else {
       return mainClassName;
     }
-  }
-
-  public Class<?> getNeighborClass() {
-    return neighborClass;
   }
 
   @Override

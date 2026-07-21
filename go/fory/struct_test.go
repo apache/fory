@@ -460,7 +460,7 @@ func TestSetFieldTypeId(t *testing.T) {
 	require.NoError(t, err, "register struct error")
 
 	// Get the struct serializer to inspect the fields
-	typeInfo, err := f.typeResolver.getTypeInfo(reflect.ValueOf(TestStruct{}), false)
+	typeInfo, err := f.typeResolver.GetTypeInfo(reflect.ValueOf(TestStruct{}), false)
 	require.NoError(t, err, "getTypeInfo failed")
 	require.NotNil(t, typeInfo, "typeInfo is nil")
 
@@ -497,7 +497,7 @@ func TestReducedPrecisionSlicesUseListOrdering(t *testing.T) {
 	f := New(WithXlang(true), WithCompatible(false))
 	require.NoError(t, f.RegisterStruct(TestStruct{}, 1004))
 
-	typeInfo, err := f.typeResolver.getTypeInfo(reflect.ValueOf(TestStruct{}), false)
+	typeInfo, err := f.typeResolver.GetTypeInfo(reflect.ValueOf(TestStruct{}), false)
 	require.NoError(t, err)
 
 	structSer, ok := typeInfo.Serializer.(*structSerializer)
@@ -529,7 +529,7 @@ func TestTaggedFieldsKeepGroupedPayloadOrder(t *testing.T) {
 	f := New(WithXlang(true), WithCompatible(true))
 	require.NoError(t, f.RegisterStruct(TaggedSortStruct{}, 1006))
 
-	typeInfo, err := f.typeResolver.getTypeInfo(reflect.ValueOf(TaggedSortStruct{}), false)
+	typeInfo, err := f.typeResolver.GetTypeInfo(reflect.ValueOf(TaggedSortStruct{}), false)
 	require.NoError(t, err)
 	structSer, ok := typeInfo.Serializer.(*structSerializer)
 	require.True(t, ok)
@@ -607,13 +607,13 @@ func TestSkipAnyValueReadsSharedTypeMeta(t *testing.T) {
 	readHeader(f.readCtx)
 	SkipAnyValue(f.readCtx, true)
 	require.NoError(t, f.readCtx.CheckError())
+	nextRootIndex := f.readCtx.Buffer().ReaderIndex()
 
-	f.resetReadState()
-	readHeader(f.readCtx)
+	rootBuffer := NewByteBuffer(buf.Bytes())
+	rootBuffer.SetReaderIndex(nextRootIndex)
 
 	var out any
-	f.readCtx.ReadValue(reflect.ValueOf(&out).Elem(), RefModeTracking, true)
-	require.NoError(t, f.readCtx.CheckError())
+	require.NoError(t, f.DeserializeFrom(rootBuffer, &out))
 
 	result, ok := out.(*Second)
 	require.True(t, ok)

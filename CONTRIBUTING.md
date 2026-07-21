@@ -33,7 +33,8 @@ Key points:
 
 - AI tools are allowed as assistants, but contributors remain fully responsible for all submitted changes.
 - AI-assisted code must be reviewed carefully line by line before submission, and contributors must be able to explain and defend it during review.
-- For substantial AI assistance, contributors must complete a self-review first, then repeat a two-reviewer AI review loop until both reviewers report no further actionable comments, and include the final clean review screenshots in the PR disclosure.
+- For substantial AI assistance, contributors must complete a self-review first, then repeat a two-reviewer AI review loop on the current PR diff or current HEAD after the latest code changes until both reviewers report no further actionable comments. One reviewer must be Fory-guided by `AGENTS.md` and `.agents/ci-and-pr.md`; the other must be an independent general reviewer in a separate clean-context session that is not pointed to `.agents/ci-and-pr.md` or copied Fory-specific review checklist text.
+- Include the final clean review screenshots or equivalent persisted links from both fresh reviewers in the PR disclosure.
 - For substantial AI assistance, provide privacy-safe disclosure in the PR using the [AI Contribution Checklist](./AI_POLICY.md#9-contributor-checklist-for-ai-assisted-prs) template. Minor/narrow AI assistance does not require full disclosure.
 - Include adequate human verification evidence (for example exact build/lint/test commands and pass/fail outcomes), and add/update tests and specs where required.
 - For protocol/type-mapping/wire-format or performance-sensitive changes, provide the required compatibility/performance validation evidence.

@@ -21,66 +21,134 @@ license: |
 
 ## GraalVM Native Image
 
-GraalVM `native image` compiles Java code into native executables ahead-of-time, resulting in faster startup and lower memory usage. However, native images don't support runtime JIT compilation or reflection without explicit configuration.
+GraalVM Native Image compiles Java applications ahead of time. Because a native image cannot
+discover every reflective access or generate serializers at runtime, Fory prepares serializers and
+the required metadata while the image is built.
 
-Apache Fory™ works excellently with GraalVM native image by using **codegen instead of reflection**. All serializer code is generated at build time, eliminating the need for reflection configuration files in most cases.
+`fory-core` contains Fory's GraalVM Feature and activates it automatically. Applications do not need
+an additional Fory artifact or a `--features` option.
 
 ## How It Works
 
-Fory generates serialization code at GraalVM build time when you:
+Prepare each Fory instance during build-time class initialization:
 
-1. Create Fory as a **static** field
-2. **Register** all classes in a static initializer
-3. Call `fory.ensureSerializersCompiled()` to compile serializers
-4. Configure the class to initialize at build time via `native-image.properties`
+1. Store the Fory instance in a static field.
+2. Register every application class that the native executable will serialize.
+3. Call `fory.ensureSerializersCompiled()` after registration is complete.
+4. Configure the owning class for build-time initialization.
 
-**The main benefit**: You don't need to configure [reflection json](https://www.graalvm.org/latest/reference-manual/native-image/metadata/#specifying-reflection-metadata-in-json) or [serialization json](https://www.graalvm.org/latest/reference-manual/native-image/metadata/#serialization) for most serializable classes.
+The Feature uses those registrations to provide the Native Image metadata required by Fory,
+including metadata for private constructors, records, serializer constructors, and registered proxy
+shapes. Application classes still need to be registered with Fory before serializers are compiled.
 
-Note: Fory's `asyncCompilationEnabled` option is automatically disabled for GraalVM native image since runtime JIT is not supported.
+Fory disables asynchronous serializer compilation in a native image because runtime just-in-time
+compilation is unavailable.
+
+## Fory JSON
+
+Fory JSON uses a separate Native Image workflow. Add the Fory annotation processor to the
+application compiler path:
+
+```xml
+<annotationProcessorPaths>
+  <path>
+    <groupId>org.apache.fory</groupId>
+    <artifactId>fory-annotation-processor</artifactId>
+    <version>${fory.version}</version>
+  </path>
+</annotationProcessorPaths>
+```
+
+Then add `@JsonType` to each concrete object model that the native executable reads or writes:
+
+```java
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonType;
+
+@JsonType
+public final class User {
+  public long id;
+  public String name;
+}
+
+public class JsonExample {
+  public static void main(String[] args) {
+    ForyJson json = ForyJson.builder().build();
+    User user = json.fromJson("{\"id\":1,\"name\":\"Ada\"}", User.class);
+    System.out.println(json.toJson(user));
+  }
+}
+```
+
+The processor generates direct property and creator operations. The `fory-json` artifact activates
+its Native Image Feature automatically and retains the generated factories and required model
+metadata. `@JsonType` is not inherited, so annotate every concrete runtime model. An annotated base
+with a class-literal `@JsonSubTypes` table registers those listed subtypes automatically, but each
+concrete object subtype needs its own direct `@JsonType` to receive generated operations. Reachable
+concrete `Collection` and `Map` root types are also supported when they
+have the public no-argument constructor required by Fory JSON. Reachable `@JsonCodec` declarations
+register their codec constructor even when the declaration target is not an object model. A class
+referenced only by a runtime string is not reachable; `JsonSubTypes.Type.className` is therefore
+unsupported in a native image.
+
+Native execution uses Fory JSON's interpreted readers and writers with the generated property and
+creator operations. `ForyJson.builder()` automatically
+disables runtime code generation and asynchronous compilation in the native executable, while all
+other builder options retain their normal behavior. Applications can create differently configured
+`ForyJson` instances at runtime and do not need build-time initialization or reflection
+configuration.
+
+Type, field, effective ordinary getter, setter value parameter, and `JsonCreator` parameter
+`@JsonCodec` annotations are supported. The Feature registers every selected complete-value,
+element, content, Map-key, and Map-value codec constructor. This is the same annotation model used
+on the JVM and Android.
+
+`JsonValue` fields and effective public zero-argument methods are supported, including matching
+one-String `JsonCreator` constructors and public static factories. Fixed `JsonRawValue` fields and
+getters support trusted raw String values, and fixed `JsonBase64` fields and getters support Base64
+`byte[]` values as on the JVM. Annotate each reachable owning model with `JsonType` so Native Image
+retains these members and the Base64 codec constructor. A directly annotated `JsonValue` Record
+uses its generated component accessor and canonical constructor operations.
+
+`JsonAnyProperty` and `JsonAnyGetter` flatten their Map into the enclosing object. Use
+`@JsonCodec(valueCodec = ...)` on that field or getter to customize each dynamic value. A second
+`JsonAnySetter` parameter may use the normal configuration for its own value shape.
+
+Child codecs act on one direct level. `elementCodec` supports `Collection`, Java arrays, and
+`AtomicReferenceArray`; `contentCodec` supports `Optional` and `AtomicReference`; `keyCodec` and
+`valueCodec` support Map keys and values. A complete `value` codec cannot be combined with a child
+codec.
+
+An annotation codec must have the same public no-argument constructor required on the JVM. In a
+named module, export or open its package to `org.apache.fory.json`. A codec instance supplied
+through `registerCodec` is constructed by the application and needs no annotation-constructor
+metadata.
 
 ## Basic Usage
 
-### Step 0: Add the GraalVM Support Dependency
-
-Add `fory-graalvm-feature` to your application dependencies when building a native image:
-
-```xml
-<dependency>
-  <groupId>org.apache.fory</groupId>
-  <artifactId>fory-graalvm-feature</artifactId>
-  <version>${fory.version}</version>
-</dependency>
-```
-
-This dependency already ships GraalVM feature metadata in `META-INF/native-image`, so adding it
-automatically enables `org.apache.fory.graalvm.feature.ForyGraalVMFeature` during native-image
-builds.
-
-### Step 1: Create Fory and Register Classes
+### Create Fory and Register Classes
 
 ```java
 import org.apache.fory.Fory;
 
 public class Example {
-  // Must be static field
-  static Fory fory;
+  private static final Fory FORY;
 
   static {
-    fory = Fory.builder().withXlang(false).build();
-    fory.register(MyClass.class);
-    fory.register(AnotherClass.class);
-    // Compile all serializers at build time
-    fory.ensureSerializersCompiled();
+    FORY = Fory.builder().withXlang(false).build();
+    FORY.register(MyClass.class);
+    FORY.register(AnotherClass.class);
+    FORY.ensureSerializersCompiled();
   }
 
   public static void main(String[] args) {
-    byte[] bytes = fory.serialize(new MyClass());
-    MyClass obj = (MyClass) fory.deserialize(bytes);
+    byte[] bytes = FORY.serialize(new MyClass());
+    MyClass obj = (MyClass) FORY.deserialize(bytes);
   }
 }
 ```
 
-### Step 2: Configure Build-Time Initialization
+### Configure Build-Time Initialization
 
 Create `resources/META-INF/native-image/your-group/your-artifact/native-image.properties`:
 
@@ -88,43 +156,37 @@ Create `resources/META-INF/native-image/your-group/your-artifact/native-image.pr
 Args = --initialize-at-build-time=com.example.Example
 ```
 
-## What `fory-graalvm-feature` Handles
+## Registered Classes
 
-After you add the `fory-graalvm-feature` dependency, Fory automatically registers the extra
-GraalVM metadata needed by advanced cases such as:
+During the native-image build, Fory automatically registers the metadata needed for registered
+classes, including:
 
-- **Private constructors** (classes without accessible no-arg constructor)
-- **Private inner classes/records**
-- **Dynamic proxy serialization**
+- Classes with private constructors
+- Private nested classes and records
+- Serializer constructors
+- Dynamic proxy shapes registered through `GraalvmSupport`
 
-This removes the need for manual `reflect-config.json` in most applications. Your own
-`native-image.properties` still only needs to configure your build-time initialized bootstrap
+For Fory, your application metadata only needs to configure its build-time initialized bootstrap
 class, for example:
 
 ```properties
 Args = --initialize-at-build-time=com.example.Example
 ```
 
-| Scenario                        | Without Feature           | With Feature    |
-| ------------------------------- | ------------------------- | --------------- |
-| Public classes with no-arg ctor | Works                     | Works           |
-| Private constructors            | Needs reflect-config.json | Auto-registered |
-| Private inner records           | Needs reflect-config.json | Auto-registered |
-| Dynamic proxies                 | Needs manual config       | Auto-registered |
-
 ### Example with Private Record
 
 ```java
+import org.apache.fory.Fory;
+
 public class Example {
-  // Private inner record - requires ForyGraalVMFeature
   private record PrivateRecord(int id, String name) {}
 
-  static Fory fory;
+  private static final Fory FORY;
 
   static {
-    fory = Fory.builder().withXlang(false).build();
-    fory.register(PrivateRecord.class);
-    fory.ensureSerializersCompiled();
+    FORY = Fory.builder().withXlang(false).build();
+    FORY.register(PrivateRecord.class);
+    FORY.ensureSerializersCompiled();
   }
 }
 ```
@@ -132,6 +194,7 @@ public class Example {
 ### Example with Dynamic Proxy
 
 ```java
+import org.apache.fory.Fory;
 import org.apache.fory.platform.GraalvmSupport;
 
 public class ProxyExample {
@@ -143,27 +206,26 @@ public class ProxyExample {
     String traceId();
   }
 
-  static Fory fory;
+  private static final Fory FORY;
 
   static {
-    fory = Fory.builder().withXlang(false).build();
-    // Register the exact interface list used by Proxy.newProxyInstance(...)
+    FORY = Fory.builder().withXlang(false).build();
     GraalvmSupport.registerProxySupport(MyService.class, Audited.class);
-    fory.ensureSerializersCompiled();
+    FORY.ensureSerializersCompiled();
   }
 }
 ```
 
 Use `registerProxySupport(MyService.class)` for a single-interface proxy. For proxies that implement
-multiple interfaces, pass the full interface list in the same order used to create the proxy. With
-`fory-graalvm-feature` on the classpath, this replaces manual `proxy-config.json` entries for those
-registered proxy shapes.
+multiple interfaces, pass the full interface list in the same order used to create the proxy. Call
+this method before `ensureSerializersCompiled()`.
 
 ## Thread-Safe Fory
 
 For multi-threaded applications, use `ThreadLocalFory`:
 
 ```java
+import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadLocalFory;
 import org.apache.fory.ThreadSafeFory;
@@ -171,21 +233,23 @@ import org.apache.fory.ThreadSafeFory;
 public class ThreadSafeExample {
   public record Foo(int f1, String f2, List<String> f3) {}
 
-  static ThreadSafeFory fory;
+  private static final ThreadSafeFory FORY;
 
   static {
-    fory = new ThreadLocalFory(builder -> {
-      Fory f = builder.build();
-      f.register(Foo.class);
-      f.ensureSerializersCompiled();
-      return f;
-    });
+    FORY =
+        new ThreadLocalFory(
+            builder -> {
+              Fory f = builder.build();
+              f.register(Foo.class);
+              f.ensureSerializersCompiled();
+              return f;
+            });
   }
 
   public static void main(String[] args) {
     Foo foo = new Foo(10, "abc", List.of("str1", "str2"));
-    byte[] bytes = fory.serialize(foo);
-    Foo result = (Foo) fory.deserialize(bytes);
+    byte[] bytes = FORY.serialize(foo);
+    Foo result = (Foo) FORY.deserialize(bytes);
   }
 }
 ```
@@ -200,26 +264,23 @@ If you see this error:
 Type com.example.MyClass is instantiated reflectively but was never registered
 ```
 
-**Solution**: Register the class with Fory (don't add to reflect-config.json):
+Register the class before compiling serializers:
 
 ```java
 fory.register(MyClass.class);
 fory.ensureSerializersCompiled();
 ```
 
-If the class has a private constructor, either:
-
-1. Make sure `fory-graalvm-feature` is already on the native-image classpath, or
-2. Create a `reflect-config.json` for that specific class
+If registration is conditional, make sure the same branch runs during build-time initialization.
 
 ## Framework Integration
 
 For framework developers integrating Fory:
 
-1. Provide a configuration file for users to list serializable classes
-2. Load those classes and call `fory.register(Class<?>)` for each
-3. Call `fory.ensureSerializersCompiled()` after all registrations
-4. Configure your integration class for build-time initialization
+1. Provide a configuration file for users to list serializable classes.
+2. Load those classes and call `fory.register(Class<?>)` for each.
+3. Call `fory.ensureSerializersCompiled()` after all registrations.
+4. Configure your integration class for build-time initialization.
 
 ## Benchmark
 

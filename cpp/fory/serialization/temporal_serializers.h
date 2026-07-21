@@ -20,6 +20,7 @@
 #pragma once
 
 #include "fory/serialization/serializer.h"
+#include "fory/type/temporal.h"
 #include <chrono>
 #include <limits>
 
@@ -27,43 +28,10 @@ namespace fory {
 namespace serialization {
 
 // ============================================================================
-// Temporal Type Aliases
-// ============================================================================
-
-/// Duration: absolute length of time as nanoseconds
-using Duration = std::chrono::nanoseconds;
-
-/// Timestamp: point in time as nanoseconds since Unix epoch (Jan 1, 1970 UTC)
-using Timestamp = std::chrono::time_point<std::chrono::system_clock,
-                                          std::chrono::nanoseconds>;
-
-/// Date: naive date without timezone as days since Unix epoch
-class Date {
-public:
-  Date() : days_since_epoch_(0) {}
-  explicit Date(int32_t days) : days_since_epoch_(days) {}
-
-  int32_t days_since_epoch() const { return days_since_epoch_; }
-
-  bool operator==(const Date &other) const {
-    return days_since_epoch_ == other.days_since_epoch_;
-  }
-
-  bool operator!=(const Date &other) const { return !(*this == other); }
-
-  bool operator<(const Date &other) const {
-    return days_since_epoch_ < other.days_since_epoch_;
-  }
-
-private:
-  int32_t days_since_epoch_; // Days since Jan 1, 1970 UTC
-};
-
-// ============================================================================
 // Duration Serializer
 // ============================================================================
 
-/// Serializer for Duration (std::chrono::nanoseconds)
+/// Serializer for Duration
 /// Per xlang spec: serialized as signed varint64 seconds + signed int32
 /// nanoseconds
 template <> struct Serializer<Duration> {
@@ -95,8 +63,9 @@ template <> struct Serializer<Duration> {
   }
 
   static inline void write_data(const Duration &duration, WriteContext &ctx) {
-    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration);
-    auto remainder = duration - seconds;
+    auto ns = duration.to_chrono();
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(ns);
+    auto remainder = ns - seconds;
     ctx.write_var_int64(seconds.count());
     ctx.buffer().write_int32(static_cast<int32_t>(remainder.count()));
   }
@@ -110,17 +79,17 @@ template <> struct Serializer<Duration> {
                               bool read_type) {
     bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
-      return Duration(0);
+      return Duration();
     }
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return Duration(0);
+        return Duration();
       }
       if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
-        return Duration(0);
+        return Duration();
       }
     }
     return read_data(ctx);
@@ -129,11 +98,11 @@ template <> struct Serializer<Duration> {
   static inline Duration read_data(ReadContext &ctx) {
     int64_t seconds = ctx.read_var_int64(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return Duration(0);
+      return Duration();
     }
     int32_t nanos = ctx.read_int32(ctx.error());
-    return std::chrono::duration_cast<Duration>(std::chrono::seconds(seconds)) +
-           Duration(nanos);
+    return Duration(std::chrono::seconds(seconds) +
+                    std::chrono::nanoseconds(nanos));
   }
 
   static inline Duration read_with_type_info(ReadContext &ctx, RefMode ref_mode,
@@ -200,17 +169,17 @@ template <> struct Serializer<Timestamp> {
                                bool read_type) {
     bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
-      return Timestamp(std::chrono::nanoseconds(0));
+      return Timestamp();
     }
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return Timestamp(std::chrono::nanoseconds(0));
+        return Timestamp();
       }
       if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
-        return Timestamp(std::chrono::nanoseconds(0));
+        return Timestamp();
       }
     }
     return read_data(ctx);
@@ -219,7 +188,7 @@ template <> struct Serializer<Timestamp> {
   static inline Timestamp read_data(ReadContext &ctx) {
     int64_t seconds = ctx.read_int64(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return Timestamp(std::chrono::nanoseconds(0));
+      return Timestamp();
     }
     uint32_t nanos = ctx.read_uint32(ctx.error());
     return Timestamp(std::chrono::seconds(seconds) +
@@ -311,6 +280,111 @@ template <> struct Serializer<Date> {
 
   static inline Date read_with_type_info(ReadContext &ctx, RefMode ref_mode,
                                          const TypeInfo &type_info) {
+    return read(ctx, ref_mode, false);
+  }
+};
+
+// ============================================================================
+// Chrono serializers
+//
+// These allow users to explicitly request chrono types as the deserialization
+// target (e.g., fory.deserialize<std::chrono::nanoseconds>(...)).  They share
+// the same wire encoding as the Fory-owned carrier serializers above and
+// delegate to them via conversion
+// ============================================================================
+
+/// Serializer for std::chrono::nanoseconds
+/// Per xlang spec: serialized as signed varint64 seconds + signed int32
+/// nanoseconds
+template <> struct Serializer<std::chrono::nanoseconds> {
+  static constexpr TypeId type_id = TypeId::DURATION;
+
+  static inline void write_type_info(WriteContext &ctx) {
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
+  }
+
+  static inline void read_type_info(ReadContext &ctx) {
+    Serializer<Duration>::read_type_info(ctx);
+  }
+
+  static inline void write(const std::chrono::nanoseconds &ns,
+                           WriteContext &ctx, RefMode ref_mode, bool write_type,
+                           bool has_generics = false) {
+    Serializer<Duration>::write(Duration(ns), ctx, ref_mode, write_type,
+                                has_generics);
+  }
+
+  static inline void write_data(const std::chrono::nanoseconds &ns,
+                                WriteContext &ctx) {
+    Serializer<Duration>::write_data(Duration(ns), ctx);
+  }
+
+  static inline void write_data_generic(const std::chrono::nanoseconds &ns,
+                                        WriteContext &ctx, bool has_generics) {
+    write_data(ns, ctx);
+  }
+
+  static inline std::chrono::nanoseconds
+  read(ReadContext &ctx, RefMode ref_mode, bool read_type) {
+    return Serializer<Duration>::read(ctx, ref_mode, read_type).to_chrono();
+  }
+
+  static inline std::chrono::nanoseconds read_data(ReadContext &ctx) {
+    return Serializer<Duration>::read_data(ctx).to_chrono();
+  }
+
+  static inline std::chrono::nanoseconds
+  read_with_type_info(ReadContext &ctx, RefMode ref_mode,
+                      const TypeInfo &type_info) {
+    return read(ctx, ref_mode, false);
+  }
+};
+
+/// Serializer for std::chrono::time_point
+/// Per xlang spec: serialized as int64 seconds + uint32 nanoseconds since Unix
+/// epoch
+template <>
+struct Serializer<std::chrono::time_point<std::chrono::system_clock,
+                                          std::chrono::nanoseconds>> {
+  using ChronoTs = std::chrono::time_point<std::chrono::system_clock,
+                                           std::chrono::nanoseconds>;
+  static constexpr TypeId type_id = TypeId::TIMESTAMP;
+
+  static inline void write_type_info(WriteContext &ctx) {
+    ctx.write_uint8(static_cast<uint8_t>(type_id));
+  }
+
+  static inline void read_type_info(ReadContext &ctx) {
+    Serializer<Timestamp>::read_type_info(ctx);
+  }
+
+  static inline void write(const ChronoTs &tp, WriteContext &ctx,
+                           RefMode ref_mode, bool write_type,
+                           bool has_generics = false) {
+    Serializer<Timestamp>::write(Timestamp(tp), ctx, ref_mode, write_type,
+                                 has_generics);
+  }
+
+  static inline void write_data(const ChronoTs &tp, WriteContext &ctx) {
+    Serializer<Timestamp>::write_data(Timestamp(tp), ctx);
+  }
+
+  static inline void write_data_generic(const ChronoTs &tp, WriteContext &ctx,
+                                        bool has_generics) {
+    write_data(tp, ctx);
+  }
+
+  static inline ChronoTs read(ReadContext &ctx, RefMode ref_mode,
+                              bool read_type) {
+    return Serializer<Timestamp>::read(ctx, ref_mode, read_type).to_chrono();
+  }
+
+  static inline ChronoTs read_data(ReadContext &ctx) {
+    return Serializer<Timestamp>::read_data(ctx).to_chrono();
+  }
+
+  static inline ChronoTs read_with_type_info(ReadContext &ctx, RefMode ref_mode,
+                                             const TypeInfo &type_info) {
     return read(ctx, ref_mode, false);
   }
 };

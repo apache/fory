@@ -17,6 +17,9 @@
 
 use fory_core::{Fory, Reader};
 use fory_derive::{ForyEnum, ForyStruct};
+use std::any::Any;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(ForyStruct, Debug, PartialEq)]
 struct TestSkipFields {
@@ -68,6 +71,66 @@ struct ComplexNestedSkip {
     nested: TestSkipFields,
     #[fory(skip)]
     skipped_nested: TestSkipFields,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct RefSkipItem {
+    #[fory(id = 0)]
+    value: i32,
+}
+
+#[derive(ForyStruct)]
+struct SkippedAnyFieldWriter {
+    #[fory(id = 0)]
+    skipped: Rc<dyn Any>,
+    #[fory(id = 1)]
+    kept: Rc<dyn Any>,
+    #[fory(id = 2)]
+    alias: Rc<dyn Any>,
+}
+
+#[derive(ForyStruct)]
+struct SkippedAnyFieldReader {
+    #[fory(id = 1)]
+    kept: Rc<dyn Any>,
+    #[fory(id = 2)]
+    alias: Rc<dyn Any>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct SkippedRefListWriter {
+    #[fory(id = 0)]
+    skipped: Vec<Rc<RefSkipItem>>,
+    #[fory(id = 1)]
+    kept: Rc<RefSkipItem>,
+    #[fory(id = 2)]
+    alias: Rc<RefSkipItem>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct SkippedRefListReader {
+    #[fory(id = 1)]
+    kept: Rc<RefSkipItem>,
+    #[fory(id = 2)]
+    alias: Rc<RefSkipItem>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct SkippedRefMapWriter {
+    #[fory(id = 0)]
+    skipped: HashMap<i32, Rc<RefSkipItem>>,
+    #[fory(id = 1)]
+    kept: Rc<RefSkipItem>,
+    #[fory(id = 2)]
+    alias: Rc<RefSkipItem>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct SkippedRefMapReader {
+    #[fory(id = 1)]
+    kept: Rc<RefSkipItem>,
+    #[fory(id = 2)]
+    alias: Rc<RefSkipItem>,
 }
 
 #[derive(ForyEnum, Debug, PartialEq)]
@@ -202,6 +265,100 @@ fn test_complex_nested_skip() {
     assert_eq!(decoded.nested.skipped_field, String::default());
     assert_eq!(decoded.skipped_field, String::default());
     assert_eq!(decoded.skipped_nested, TestSkipFields::fory_default());
+}
+
+#[test]
+fn skipped_ref_field_keeps_ref_ids_aligned() {
+    let mut writer = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .track_ref(true)
+        .build();
+    writer.register::<SkippedAnyFieldWriter>(1001).unwrap();
+    let mut reader = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .track_ref(true)
+        .build();
+    reader.register::<SkippedAnyFieldReader>(1001).unwrap();
+
+    let skipped: Rc<dyn Any> = Rc::new("skip".to_string());
+    let kept: Rc<dyn Any> = Rc::new("kept".to_string());
+    let bytes = writer
+        .serialize(&SkippedAnyFieldWriter {
+            skipped,
+            kept: kept.clone(),
+            alias: kept,
+        })
+        .unwrap();
+    let decoded: SkippedAnyFieldReader = reader.deserialize(&bytes).unwrap();
+
+    assert_eq!(decoded.kept.downcast_ref::<String>().unwrap(), "kept");
+    assert!(Rc::ptr_eq(&decoded.kept, &decoded.alias));
+}
+
+#[test]
+fn skipped_ref_list_keeps_ref_ids_aligned() {
+    let mut writer = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .track_ref(true)
+        .build();
+    writer.register::<RefSkipItem>(1002).unwrap();
+    writer.register::<SkippedRefListWriter>(1003).unwrap();
+    let mut reader = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .track_ref(true)
+        .build();
+    reader.register::<RefSkipItem>(1002).unwrap();
+    reader.register::<SkippedRefListReader>(1003).unwrap();
+
+    let skipped = Rc::new(RefSkipItem { value: 8 });
+    let kept = Rc::new(RefSkipItem { value: 43 });
+    let bytes = writer
+        .serialize(&SkippedRefListWriter {
+            skipped: vec![skipped],
+            kept: kept.clone(),
+            alias: kept,
+        })
+        .unwrap();
+    let decoded: SkippedRefListReader = reader.deserialize(&bytes).unwrap();
+
+    assert_eq!(decoded.kept.value, 43);
+    assert!(Rc::ptr_eq(&decoded.kept, &decoded.alias));
+}
+
+#[test]
+fn skipped_ref_map_keeps_ref_ids_aligned() {
+    let mut writer = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .track_ref(true)
+        .build();
+    writer.register::<RefSkipItem>(1004).unwrap();
+    writer.register::<SkippedRefMapWriter>(1005).unwrap();
+    let mut reader = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .track_ref(true)
+        .build();
+    reader.register::<RefSkipItem>(1004).unwrap();
+    reader.register::<SkippedRefMapReader>(1005).unwrap();
+
+    let skipped = Rc::new(RefSkipItem { value: 9 });
+    let kept = Rc::new(RefSkipItem { value: 44 });
+    let bytes = writer
+        .serialize(&SkippedRefMapWriter {
+            skipped: HashMap::from([(1, skipped)]),
+            kept: kept.clone(),
+            alias: kept,
+        })
+        .unwrap();
+    let decoded: SkippedRefMapReader = reader.deserialize(&bytes).unwrap();
+
+    assert_eq!(decoded.kept.value, 44);
+    assert!(Rc::ptr_eq(&decoded.kept, &decoded.alias));
 }
 
 #[test]

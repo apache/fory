@@ -148,10 +148,12 @@ public abstract class BinaryWriter {
   public abstract void write(int ordinal, BigDecimal input);
 
   public final void write(int ordinal, long value) {
+    checkFixedWidth(ordinal, 8);
     buffer.putInt64(getOffset(ordinal), value);
   }
 
   public final void write(int ordinal, double value) {
+    checkFixedWidth(ordinal, 8);
     buffer.putFloat64(getOffset(ordinal), value);
   }
 
@@ -179,6 +181,16 @@ public abstract class BinaryWriter {
   public final void write(int ordinal, BinaryArray array) {
     writeAlignedBytes(ordinal, array.getBuffer(), array.getBaseOffset(), array.getSizeInBytes());
   }
+
+  /**
+   * Hook for layouts that size a fixed-width column's slot from its declared schema width: verify
+   * the codec wrote exactly that many bytes. A mismatch means a custom codec's {@code getForyField}
+   * declares a width its {@code encodedType} does not honor, which would overrun the slot or leave
+   * a schema-trusting reader to read stale bytes. The default layouts pad every slot to a word and
+   * have no per-field width to check, so this does nothing; the compact row and array writers
+   * override it.
+   */
+  protected void checkFixedWidth(int ordinal, int writtenBytes) {}
 
   /** This operation will increase writerIndex by aligned 8-byte. */
   public void writeUnaligned(int ordinal, byte[] input, int offset, int numBytes) {

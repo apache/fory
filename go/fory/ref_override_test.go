@@ -41,6 +41,11 @@ type refSkipTestContainer struct {
 	MapField  map[string]*refOverrideTestElement `fory:"id=3,type=map(value=_(ref=false))"`
 }
 
+type rootSelfRefStruct struct {
+	Value int32              `fory:"id=1"`
+	Self  *rootSelfRefStruct `fory:"id=2"`
+}
+
 func onlyRefOverrideSetElement(t *testing.T, values Set[*refOverrideTestElement]) *refOverrideTestElement {
 	t.Helper()
 	require.Len(t, values, 1)
@@ -123,4 +128,20 @@ func TestCollectionReadFollowsRemoteRefMetadata(t *testing.T) {
 		assert.NotSame(t, setValue, output.MapField["k2"])
 		assert.NotSame(t, output.MapField["k1"], output.MapField["k2"])
 	})
+}
+
+func TestRootStructPublishesSelfReference(t *testing.T) {
+	f := New(WithXlang(true), WithCompatible(false), WithTrackRef(true))
+	require.NoError(t, f.RegisterStruct(rootSelfRefStruct{}, 702))
+
+	input := &rootSelfRefStruct{Value: 7}
+	input.Self = input
+	data, err := f.Serialize(input)
+	require.NoError(t, err)
+
+	var output rootSelfRefStruct
+	require.NoError(t, f.Deserialize(data, &output))
+	require.NotNil(t, output.Self)
+	assert.Same(t, &output, output.Self)
+	assert.Equal(t, int32(7), output.Value)
 }

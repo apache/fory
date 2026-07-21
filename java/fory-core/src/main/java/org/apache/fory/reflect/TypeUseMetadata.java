@@ -58,10 +58,6 @@ public final class TypeUseMetadata {
     return SUPPORT.recordComponentTypeUse(component);
   }
 
-  public static Object[] typeUseArguments(Object typeUse) {
-    return SUPPORT.typeUseArguments(typeUse);
-  }
-
   public static Annotation typeUseAnnotation(Object typeUse, String name) {
     return SUPPORT.typeUseAnnotation(typeUse, name);
   }
@@ -76,9 +72,15 @@ public final class TypeUseMetadata {
   }
 
   private static Support loadSupport() {
+    // ART can load JvmTypeUseMetadata while deferring linkage of missing type-use methods until
+    // their first invocation. Probe the API itself before selecting the implementation so Android
+    // API 26 never reaches those deferred references.
     try {
-      // Keep the JVM implementation loaded by name so Android/R8 can fall back before resolving
-      // JVM-only type-use descriptors from JvmTypeUseMetadata.
+      Field.class.getMethod("getAnnotatedType");
+    } catch (NoSuchMethodException | LinkageError e) {
+      return NoTypeUseSupport.INSTANCE;
+    }
+    try {
       String className = TypeUseMetadata.class.getPackage().getName() + ".Jvm" + "TypeUseMetadata";
       Class<?> cls = Class.forName(className, true, TypeUseMetadata.class.getClassLoader());
       return (Support) cls.getDeclaredConstructor().newInstance();
@@ -99,8 +101,6 @@ public final class TypeUseMetadata {
     Object[] methodParameterTypeUses(Method method);
 
     Object recordComponentTypeUse(RecordComponent component);
-
-    Object[] typeUseArguments(Object typeUse);
 
     Annotation typeUseAnnotation(Object typeUse, String name);
 
@@ -133,11 +133,6 @@ public final class TypeUseMetadata {
 
     @Override
     public Object recordComponentTypeUse(RecordComponent component) {
-      return null;
-    }
-
-    @Override
-    public Object[] typeUseArguments(Object typeUse) {
       return null;
     }
 

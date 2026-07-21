@@ -64,11 +64,11 @@ func listFieldRejectsWrongArgumentLabel() {
         }
         """,
         expandedSource:
-        """
-        struct BadList {
-            var values: [Int32] = []
-        }
-        """,
+            """
+            struct BadList {
+                var values: [Int32] = []
+            }
+            """,
         message: "@ListField supports only the 'element' argument"
     )
 }
@@ -84,11 +84,11 @@ func mapFieldRequiresKeyOrValueHint() {
         }
         """,
         expandedSource:
-        """
-        struct BadMap {
-            var data: [Int32: Int32] = [:]
-        }
-        """,
+            """
+            struct BadMap {
+                var data: [Int32: Int32] = [:]
+            }
+            """,
         message: "@MapField requires a key or value hint"
     )
 }
@@ -104,11 +104,11 @@ func nestedIntegerHintsRejectUnsupportedEncoding() {
         }
         """,
         expandedSource:
-        """
-        struct BadEncoding {
-            var values: [Int32] = []
-        }
-        """,
+            """
+            struct BadEncoding {
+                var values: [Int32] = []
+            }
+            """,
         message: "@ForyField(encoding: .tagged) is not supported for Int32"
     )
 }
@@ -124,11 +124,11 @@ func fullTypeHintsRejectAliasShapeMismatch() {
         }
         """,
         expandedSource:
-        """
-        struct BadAlias {
-            var data: [Int32: [Int32?]] = [:]
-        }
-        """,
+            """
+            struct BadAlias {
+                var data: [Int32: [Int32?]] = [:]
+            }
+            """,
         message: "Fory field type hint .string does not match Swift type Int32"
     )
 }
@@ -146,12 +146,12 @@ func duplicateFieldIDsAreRejected() {
         }
         """,
         expandedSource:
-        """
-        struct BadIDs {
-            var first: Int32 = 0
-            var second: Int32 = 0
-        }
-        """,
+            """
+            struct BadIDs {
+                var first: Int32 = 0
+                var second: Int32 = 0
+            }
+            """,
         message: "duplicate @ForyField(id:) value 1 used by fields 'first' and 'second'"
     )
 }
@@ -169,12 +169,12 @@ func unionPayloadHintsMustMatchPayloadType() {
         }
         """,
         expandedSource:
-        """
-        enum BadUnion {
-            case unknown(UnknownCase)
-            case deleted(UInt32)
-        }
-        """,
+            """
+            enum BadUnion {
+                case unknown(UnknownCase)
+                case deleted(UInt32)
+            }
+            """,
         message: "Fory field type hint .uint64 does not match Swift type UInt32"
     )
 }
@@ -190,11 +190,11 @@ func unionRequiresUnknownCarrier() {
         }
         """,
         expandedSource:
-        """
-        enum BadUnion {
-            case dog(Dog)
-        }
-        """,
+            """
+            enum BadUnion {
+                case dog(Dog)
+            }
+            """,
         message: "@ForyUnion requires @ForyUnknownCase case unknown(UnknownCase)"
     )
 }
@@ -210,11 +210,11 @@ func unionRequiresRealCaseBeyondUnknown() {
         }
         """,
         expandedSource:
-        """
-        enum OnlyUnknown {
-            case unknown(UnknownCase)
-        }
-        """,
+            """
+            enum OnlyUnknown {
+                case unknown(UnknownCase)
+            }
+            """,
         message: "@ForyUnion requires at least one non-unknown case; unknown is a forward-compatibility carrier and cannot be the default"
     )
 }
@@ -235,15 +235,15 @@ func unionRejectsUnknownCaseLookalike() {
         }
         """,
         expandedSource:
-        """
-        enum Local {
-            struct UnknownCase {}
-        }
-        enum BadUnion {
-            case unknown(Local.UnknownCase)
-            case dog(Dog)
-        }
-        """,
+            """
+            enum Local {
+                struct UnknownCase {}
+            }
+            enum BadUnion {
+                case unknown(Local.UnknownCase)
+                case dog(Dog)
+            }
+            """,
         message: "@ForyUnion unknown case must be @ForyUnknownCase case unknown(UnknownCase)"
     )
 }
@@ -261,12 +261,12 @@ func unionRejectsUnknownMarkerWithWrongPayload() {
         }
         """,
         expandedSource:
-        """
-        enum BadUnion {
-            case unknown(String)
-            case dog(Dog)
-        }
-        """,
+            """
+            enum BadUnion {
+                case unknown(String)
+                case dog(Dog)
+            }
+            """,
         message: "@ForyUnion unknown case must be @ForyUnknownCase case unknown(UnknownCase)"
     )
 }
@@ -283,12 +283,12 @@ func unionUnknownRequiresMarker() {
         }
         """,
         expandedSource:
-        """
-        enum BadUnion {
-            case unknown(UnknownCase)
-            case dog(Dog)
-        }
-        """,
+            """
+            enum BadUnion {
+                case unknown(UnknownCase)
+                case dog(Dog)
+            }
+            """,
         message: "@ForyUnion requires @ForyUnknownCase case unknown(UnknownCase)"
     )
 }

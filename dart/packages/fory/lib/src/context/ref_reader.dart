@@ -21,6 +21,8 @@ import 'package:fory/src/memory/buffer.dart';
 import 'package:fory/src/context/ref_writer.dart';
 
 final class RefReader {
+  // Missing compatible structs may surface as null field values, but they are
+  // not published as reference targets; keep ref reads as direct lookups.
   final List<Object?> _refs = <Object?>[];
   final List<int> _preservedIds = <int>[];
   Object? _resolved;

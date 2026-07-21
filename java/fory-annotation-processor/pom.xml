@@ -25,14 +25,15 @@
   <parent>
     <groupId>org.apache.fory</groupId>
     <artifactId>fory-parent</artifactId>
-    <version>1.3.0-SNAPSHOT</version>
+    <version>1.4.0-SNAPSHOT</version>
   </parent>
   <modelVersion>4.0.0</modelVersion>
 
   <artifactId>fory-annotation-processor</artifactId>
 
   <description>
-    Apache Fory annotation processor for build-time @ForyStruct serializer generation.
+    Apache Fory annotation processor for static serializers, generated JSON model operations, and
+    exact JSON R8 rules.
   </description>
 
   <properties>
@@ -42,6 +43,12 @@
   </properties>
 
   <dependencies>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
+      <artifactId>fory-json</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>org.apache.fory</groupId>
       <artifactId>fory-core</artifactId>

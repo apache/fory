@@ -25,7 +25,7 @@ import jdk.incubator.vector.VectorOperators;
 import jdk.incubator.vector.VectorSpecies;
 
 /**
- * Utility methods for optional primitive array compression.
+ * Vector API implementation of primitive-array width compression for JDK 16 and later.
  *
  * <p>The compressed array serializers use these helpers when every value in a primitive array fits
  * in a narrower primitive type:
@@ -35,6 +35,11 @@ import jdk.incubator.vector.VectorSpecies;
  *   <li>{@code int[]} to {@code short[]} when all values are in short range.
  *   <li>{@code long[]} to {@code int[]} when all values are in int range.
  * </ul>
+ *
+ * <p>The multi-release {@code fory-core} JAR selects this implementation automatically on JDK 16
+ * and later; applications must resolve the incubator module with {@code
+ * --add-modules=jdk.incubator.vector}. Earlier JDKs use the scalar base implementation with the
+ * same API, compression decisions, and serialized format.
  */
 public final class ArrayCompressionUtils {
   // Minimum array size to justify compression analysis and the compressed payload marker overhead.

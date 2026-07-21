@@ -41,8 +41,15 @@ def pyx_library(name, deps = [], cc_kwargs = {}, py_deps = [], srcs = [], **kwar
             name = filename + "_cython_translation",
             srcs = [filename],
             outs = [filename.split(".")[0] + ".cpp"],
-            cmd = "PYTHONHASHSEED=0 $(execpath @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
-            tools = ["@cython//:cython_binary"] + pxd_srcs,
+            # rules_python 2.x py_binary bootstrap requires Python 3.9+, while
+            # Fory still compiles extension modules against Python 3.8 headers.
+            cmd = (
+                "CYTHON_RUNFILES=$(execpath @cython//:cython_binary).runfiles/cython+ && " +
+                "PYTHONHASHSEED=0 PYTHONPATH=$$CYTHON_RUNFILES " +
+                "$(execpath @python_3_9//:python3) " +
+                "$$CYTHON_RUNFILES/cython.py --cplus $(SRCS) --output-file $(OUTS)"
+            ),
+            tools = ["@python_3_9//:python3", "@cython//:cython_binary"] + pxd_srcs,
         )
 
     shared_objects = []

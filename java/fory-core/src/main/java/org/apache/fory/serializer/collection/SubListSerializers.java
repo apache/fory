@@ -34,6 +34,7 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class SubListSerializers {
@@ -107,7 +108,7 @@ public class SubListSerializers {
 
   public static final class SubListSerializer extends CollectionSerializer<List> {
     private final ViewFields viewFields;
-    private boolean serializedViewBefore;
+    private final int subListOwnerBytes;
 
     public SubListSerializer(TypeResolver typeResolver, Class<List> type) {
       this(typeResolver, type, false);
@@ -115,6 +116,7 @@ public class SubListSerializers {
 
     private SubListSerializer(TypeResolver typeResolver, Class<List> type, boolean preserveView) {
       super(typeResolver, type, true);
+      subListOwnerBytes = GraphMemoryEstimates.shallowObjectBytes(type);
       viewFields =
           preserveView && typeResolver.trackingRef() && !typeResolver.isCrossLanguage()
               ? ViewFields.create(type)
@@ -148,6 +150,9 @@ public class SubListSerializers {
         int offset = readContext.getBuffer().readVarUInt32Small7();
         int size = readContext.getBuffer().readVarUInt32Small7();
         List source = (List) readContext.readRef();
+        // VIEW_PAYLOAD materializes a retained sublist wrapper over an already-read source list;
+        // reserve only the wrapper owner here because the source list owns element storage.
+        readContext.reserveGraphMemory(subListOwnerBytes);
         List value = source.subList(offset, offset + size);
         readContext.reference(value);
         return value;
@@ -158,7 +163,7 @@ public class SubListSerializers {
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       ArrayList list = new ArrayList(numElements);
       readContext.reference(list);
@@ -187,13 +192,10 @@ public class SubListSerializers {
     }
 
     private void checkViewSerialization(Object value) {
-      if (!serializedViewBefore) {
-        serializedViewBefore = true;
-        LOG.warn(
-            "List view of type {} is being serialized/deserialized. Fory writes the source list, "
-                + "offset, and size so JVM and Android readers can parse the same payload.",
-            value.getClass());
-      }
+      LOG.warnOnce(
+          "List view of type {} is being serialized/deserialized. Fory writes the source list, "
+              + "offset, and size so JVM and Android readers can parse the same payload.",
+          value.getClass());
     }
   }
 

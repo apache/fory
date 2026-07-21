@@ -53,6 +53,7 @@ public class ClassSpec {
         cls.isArray() ? TypeUtils.getArrayDimensions(cls) : 0,
         typeId,
         -1);
+    type = cls;
   }
 
   public ClassSpec(Class<?> cls, int typeId, int userTypeId) {
@@ -63,6 +64,7 @@ public class ClassSpec {
         cls.isArray() ? TypeUtils.getArrayDimensions(cls) : 0,
         typeId,
         userTypeId);
+    type = cls;
   }
 
   public ClassSpec(String entireClassName, boolean isEnum, boolean isArray, int dimension) {

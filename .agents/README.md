@@ -6,7 +6,8 @@ Load `AGENTS.md` first. Do not load every file under `.agents/` by default; read
 
 - `repo-reference.md`: repo layout, protocol overview, compiler notes, and runtime map.
 - `docs-and-formatting.md`: docs, specs, markdown formatting, publishing notes, and generated-artifact rules.
-- `ci-and-pr.md`: GitHub Actions triage, PR expectations, and commit message format.
+- `ci-and-pr.md`: code review workflow, review red flags, validation guidance, GitHub Actions
+  triage, PR expectations, and commit message format.
 - `testing/integration-tests.md`: `integration_tests/` prerequisites, regeneration rules, and commands.
 
 ## Runtime References
@@ -44,12 +45,17 @@ Load `AGENTS.md` first. Do not load every file under `.agents/` by default; read
   - relevant runtime file under `languages/`
   - `docs-and-formatting.md`
   - skill-specific references if using a performance skill
-- PR review or CI triage:
+- Apache Fory PR, branch, commit-range, local-diff code review, or CI triage:
   - `AGENTS.md`
   - `ci-and-pr.md`
   - relevant runtime file under `languages/`
+- Independent general reviewer required by `AI_POLICY.md`:
+  - Follow the `AGENTS.md` independent-review carve-out if tooling auto-loads `AGENTS.md`.
+  - Do not load `ci-and-pr.md` or use copied Fory-specific review checklist prompts.
 
 ## Canonicality
 
 - Treat the files in this directory as the canonical agent-specific guidance.
-- Existing skill reference matrices under `.agents/skills/` are task-focused quick references; when they overlap with runtime rules, prefer the matching file in `languages/` or `testing/`.
+- Review workflow, review red flags, and PR preparation rules belong in `ci-and-pr.md`;
+  runtime-specific details belong in `languages/`, and cross-language validation details belong in
+  `testing/`.

@@ -163,7 +163,7 @@ val fory = ForyScala.builder().withXlang(false)
 Add the dependency with sbt:
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.2.0"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "1.3.0"
 ```
 
 ## Building
@@ -188,8 +188,11 @@ sbt test
 ## Code Format
 
 ```bash
-sbt scalafmt
+cd ..
+ci/format.sh
 ```
+
+The Scala module does not currently wire a `scalafmt` sbt command.
 
 ## Additional Notes
 

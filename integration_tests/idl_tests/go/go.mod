@@ -19,7 +19,7 @@ module github.com/apache/fory/integration_tests/idl_tests/go
 
 go 1.25.0
 
-require github.com/apache/fory/go/fory v1.3.0-alpha.0
+require github.com/apache/fory/go/fory v1.4.0-alpha.0
 
 require github.com/spaolacci/murmur3 v1.1.0 // indirect
 

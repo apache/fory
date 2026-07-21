@@ -20,14 +20,11 @@
 package org.apache.fory.builder;
 
 import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertTrue;
 
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.test.bean.BeanA;
 import org.testng.annotations.Test;
@@ -45,7 +42,6 @@ public class CodecUtilsTest {
             .withCompatible(false)
             .build();
     Class<?> seqCodecClass = fory.getTypeResolver().getSerializerClass(BeanA.class);
-    assertGeneratedClassShape(seqCodecClass, BeanA.class);
     Generated.GeneratedSerializer serializer =
         seqCodecClass
             .asSubclass(Generated.GeneratedSerializer.class)
@@ -57,16 +53,5 @@ public class CodecUtilsTest {
     byte[] bytes = buffer.getBytes(0, buffer.writerIndex());
     Object obj = ForyTestBase.readSerializer(fory, serializer, MemoryUtils.wrap(bytes));
     assertEquals(obj, beanA);
-  }
-
-  private static void assertGeneratedClassShape(Class<?> serializerClass, Class<?> beanClass)
-      throws Exception {
-    if (JdkVersion.MAJOR_VERSION >= 25) {
-      assertTrue((Boolean) Class.class.getMethod("isHidden").invoke(serializerClass));
-      assertSame(Class.class.getMethod("getNestHost").invoke(serializerClass), beanClass);
-    } else {
-      assertSame(
-          serializerClass.getClassLoader().loadClass(serializerClass.getName()), serializerClass);
-    }
   }
 }

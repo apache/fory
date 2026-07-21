@@ -70,7 +70,7 @@ export class BoolArray {
     data = new Uint8Array(this._length);
     let bits = this._packedBits;
     for (let i = 0; i < this._length; i++) {
-      data[i] = bits & 0xFF;
+      data[i] = bits & 0xff;
       bits >>>= 8;
     }
     this._data = data;
@@ -83,7 +83,7 @@ export class BoolArray {
     if (data !== null) {
       return data[index] !== 0;
     }
-    return ((this._packedBits >>> (index * 8)) & 0xFF) !== 0;
+    return ((this._packedBits >>> (index * 8)) & 0xff) !== 0;
   }
 
   at(index: number): boolean | undefined {
@@ -150,9 +150,7 @@ export class BoolArray {
     return {
       next(): IteratorResult<boolean> {
         if (i < len) {
-          const value = data === null
-            ? ((bits >>> ((i++) * 8)) & 0xFF) !== 0
-            : data[i++] !== 0;
+          const value = data === null ? ((bits >>> (i++ * 8)) & 0xff) !== 0 : data[i++] !== 0;
           return { value, done: false };
         }
         return { value: undefined as unknown as boolean, done: true };

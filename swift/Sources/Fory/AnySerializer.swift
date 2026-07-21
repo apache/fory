@@ -71,7 +71,11 @@ extension AnyHashable: Serializer {
         )
     }
 
-    public static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> AnyHashable {
+    public static func foryReadCompatibleData(
+        _ context: ReadContext, remoteTypeInfo: TypeInfo
+    ) throws
+        -> AnyHashable
+    {
         let typeInfo = remoteTypeInfo
         if typeInfo.typeID == .none {
             throw ForyError.invalidData("dynamic AnyHashable key cannot be null")
@@ -179,7 +183,11 @@ struct SerializableAny: Serializer {
         )
     }
 
-    static func foryReadCompatibleData(_ context: ReadContext, remoteTypeInfo: TypeInfo) throws -> SerializableAny {
+    static func foryReadCompatibleData(
+        _ context: ReadContext, remoteTypeInfo: TypeInfo
+    ) throws
+        -> SerializableAny
+    {
         let typeInfo = remoteTypeInfo
         if typeInfo.typeID == .none {
             return .foryDefault()
@@ -541,7 +549,10 @@ public func readAny(
     refMode: RefMode,
     readTypeInfo: Bool = true
 ) throws -> Any? {
-    try SerializableAny.foryRead(context, refMode: refMode, readTypeInfo: readTypeInfo).anyValue()
+    // Swift `Any` cannot conform to `Serializer`, so dynamic-Any readers must enter through
+    // these helpers instead of trying `Any.foryRead(...)`.
+    return try SerializableAny.foryRead(context, refMode: refMode, readTypeInfo: readTypeInfo)
+        .anyValue()
 }
 
 public func writeListOfAny(
@@ -570,7 +581,11 @@ public func readListOfAny(
         refMode: refMode,
         readTypeInfo: readTypeInfo
     )
-    return wrapped?.map { $0.anyValueForCollection() }
+    guard let wrapped else {
+        return nil
+    }
+    try reserveAnyReferenceArrayMemory(context, count: wrapped.count)
+    return wrapped.map { $0.anyValueForCollection() }
 }
 
 public func writeMapStringToAny(
@@ -604,6 +619,7 @@ public func readMapStringToAny(
     guard let wrapped else {
         return nil
     }
+    try reserveAnyReferenceMapMemory(context, [String: Any].self, count: wrapped.count)
     var map: [String: Any] = [:]
     map.reserveCapacity(wrapped.count)
     for pair in wrapped {
@@ -643,6 +659,7 @@ public func readMapInt32ToAny(
     guard let wrapped else {
         return nil
     }
+    try reserveAnyReferenceMapMemory(context, [Int32: Any].self, count: wrapped.count)
     var map: [Int32: Any] = [:]
     map.reserveCapacity(wrapped.count)
     for pair in wrapped {
@@ -682,6 +699,7 @@ public func readMapAnyHashableToAny(
     guard let wrapped else {
         return nil
     }
+    try reserveAnyReferenceMapMemory(context, [AnyHashable: Any].self, count: wrapped.count)
     var map: [AnyHashable: Any] = [:]
     map.reserveCapacity(wrapped.count)
     for pair in wrapped {
@@ -690,11 +708,51 @@ public func readMapAnyHashableToAny(
     return map
 }
 
+private let anyReferenceBytes = 4
+private let anyArrayOwnerBytes = max(1, MemoryLayout<[Any]>.stride)
+
+@inline(never)
+private func throwAnyGraphMemoryOverflow() throws -> Never {
+    throw ForyError.invalidData("graph memory estimate overflows")
+}
+
+@inline(__always)
+private func reserveAnyReferenceArrayMemory(_ context: ReadContext, count: Int) throws {
+    let (slotBytes, overflow) = count.multipliedReportingOverflow(by: anyReferenceBytes)
+    if overflow {
+        try throwAnyGraphMemoryOverflow()
+    }
+    let (bytes, addOverflow) = anyArrayOwnerBytes.addingReportingOverflow(slotBytes)
+    if addOverflow {
+        try throwAnyGraphMemoryOverflow()
+    }
+    try context.reserveGraphMemory(bytes)
+}
+
+@inline(__always)
+private func reserveAnyReferenceMapMemory<Map>(
+    _ context: ReadContext, _ type: Map.Type, count: Int
+) throws {
+    let (slotBytes, overflow) = count.multipliedReportingOverflow(
+        by: 2 * anyReferenceBytes)
+    if overflow {
+        try throwAnyGraphMemoryOverflow()
+    }
+    let ownerBytes = max(1, MemoryLayout<Map>.stride)
+    let (bytes, addOverflow) = ownerBytes.addingReportingOverflow(slotBytes)
+    if addOverflow {
+        try throwAnyGraphMemoryOverflow()
+    }
+    try context.reserveGraphMemory(bytes)
+}
+
 func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
     let map = try readMapAnyHashableToAny(context: context, refMode: .none) ?? [:]
     if map.isEmpty {
+        try reserveAnyReferenceMapMemory(context, [String: Any].self, count: 0)
         return [String: Any]()
     }
+    try reserveAnyReferenceMapMemory(context, [String: Any].self, count: map.count)
     var stringMap: [String: Any] = [:]
     stringMap.reserveCapacity(map.count)
     for pair in map {
@@ -708,6 +766,7 @@ func readDynamicAnyMapValue(context: ReadContext) throws -> Any {
         return stringMap
     }
 
+    try reserveAnyReferenceMapMemory(context, [Int32: Any].self, count: map.count)
     var int32Map: [Int32: Any] = [:]
     int32Map.reserveCapacity(map.count)
     for pair in map {

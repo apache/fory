@@ -29,21 +29,22 @@ import (
 
 // ReadContext holds all state needed during deserialization.
 type ReadContext struct {
-	buffer           *ByteBuffer
-	refReader        *RefReader
-	trackRef         bool // Cached flag to avoid indirection
-	xlang            bool // Cross-language serialization mode
-	rootHeader       byte
-	compatible       bool          // Schema evolution compatibility mode
-	typeResolver     *TypeResolver // For complex type deserialization
-	refResolver      *RefResolver  // For reference tracking in native-mode paths
-	outOfBandBuffers []*ByteBuffer // Out-of-band buffers for deserialization
-	outOfBandIndex   int           // Current index into out-of-band buffers
-	depth            int           // Current nesting depth for cycle detection
-	maxDepth         int           // Maximum allowed nesting depth
-	err              Error         // Accumulated error state for deferred checking
-	lastTypePtr      uintptr
-	lastTypeInfo     *TypeInfo
+	buffer                    *ByteBuffer
+	refReader                 *RefReader
+	trackRef                  bool // Cached flag to avoid indirection
+	xlang                     bool // Cross-language serialization mode
+	rootHeader                byte
+	compatible                bool          // Schema evolution compatibility mode
+	typeResolver              *TypeResolver // For complex type deserialization
+	refResolver               *RefResolver  // For reference tracking in native-mode paths
+	outOfBandBuffers          []*ByteBuffer // Out-of-band buffers for deserialization
+	outOfBandIndex            int           // Current index into out-of-band buffers
+	depth                     int           // Current nesting depth for cycle detection
+	maxDepth                  int           // Maximum allowed nesting depth
+	err                       Error         // Accumulated error state for deferred checking
+	lastTypePtr               uintptr
+	lastTypeInfo              *TypeInfo
+	remainingGraphMemoryBytes int64
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -67,12 +68,35 @@ func (c *ReadContext) Reset() {
 	c.outOfBandBuffers = nil
 	c.outOfBandIndex = 0
 	c.err = Error{} // Clear error state
+	// Graph budget state is overwritten by each root read before deserialization.
+	// Avoid extra reset stores on the successful root hot path.
 	if c.refResolver != nil {
 		c.refResolver.resetRead()
 	}
 	if c.typeResolver != nil {
 		c.typeResolver.resetRead()
 	}
+}
+
+// ReserveGraphMemory reserves raw estimated graph-owner bytes.
+func (c *ReadContext) ReserveGraphMemory(bytes int64) bool {
+	if uint64(bytes) <= uint64(c.remainingGraphMemoryBytes) {
+		c.remainingGraphMemoryBytes -= bytes
+		return true
+	}
+	return c.rejectGraphMemoryReservation(bytes)
+}
+
+//go:noinline
+func (c *ReadContext) rejectGraphMemoryReservation(bytes int64) bool {
+	if bytes < 0 {
+		c.SetError(DeserializationErrorf("estimated graph memory must be non-negative, got %d bytes", bytes))
+		return false
+	}
+	c.SetError(DeserializationErrorf(
+		"estimated graph memory request %d bytes exceeds maxGraphMemoryBytes remaining budget %d bytes",
+		bytes, c.remainingGraphMemoryBytes))
+	return false
 }
 
 // SetData sets new input data (for buffer reuse)
@@ -271,7 +295,7 @@ func (c *ReadContext) ReadBinaryLength() int {
 }
 
 // ============================================================================
-// Typed Read Methods - Fastpath for codegen
+// Typed Read Methods
 // For primitive numeric types, use ctx.Buffer().ReadXXX()
 // For strings, use ctx.ReadString()
 // For slices/maps, use these methods which handle ref tracking
@@ -536,7 +560,7 @@ func (c *ReadContext) ReadStringSlice(refMode RefMode, readType bool) []string {
 	if readType {
 		_ = c.buffer.ReadUint8(err)
 	}
-	return ReadStringSlice(c.buffer, err)
+	return readStringSlice(c)
 }
 
 // ReadStringStringMap reads map[string]string with optional ref/type info
@@ -720,15 +744,15 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		c.SetError(DeserializationError("invalid reflect.Value"))
 		return
 	}
-
+	valueType := value.Type()
 	// Handle array targets (arrays are serialized as slices)
-	if value.Type().Kind() == reflect.Array {
+	if valueType.Kind() == reflect.Array {
 		c.ReadArrayValue(value, refMode, readType)
 		return
 	}
 
 	// For any types, we need to read the actual type from the buffer first
-	if value.Type().Kind() == reflect.Interface {
+	if valueType.Kind() == reflect.Interface {
 		// Handle ref tracking based on refMode
 		var refID int32 = int32(NotNullValueFlag)
 		if refMode == RefModeTracking {
@@ -787,42 +811,48 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 			(internalTypeID == NAMED_STRUCT || internalTypeID == NAMED_COMPATIBLE_STRUCT ||
 				internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT)
 
+		if isNamedStruct {
+			structSer, ok := typeInfo.Serializer.(*structSerializer)
+			if !ok {
+				c.SetError(DeserializationError("expected struct serializer for dynamic named struct"))
+				return
+			}
+			valueBytes := structSer.valueBytes
+			// Dynamic named structs are materialized as pointers for reference
+			// semantics; this branch reserves the heap value it allocates, while
+			// plain struct serializers do not reserve their own storage.
+			if !c.ReserveGraphMemory(int64(valueBytes)) {
+				return
+			}
+			newValue := reflect.New(actualType)
+			if refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
+				c.RefResolver().SetReadObject(refID, newValue)
+			}
+			typeInfo.Serializer.ReadData(c, newValue.Elem())
+			if c.HasError() {
+				return
+			}
+			value.Set(newValue)
+			return
+		}
+
 		if actualType.Kind() == reflect.Ptr {
 			// For pointer types, create a pointer directly
 			// The serializer's ReadData will handle allocating and reading the element
 			newValue = reflect.New(actualType).Elem()
 			valueToSet = newValue
-		} else if isNamedStruct {
-			// For named struct types, create a pointer to support circular references
-			// Create *A instead of A
-			newValue = reflect.New(actualType)
-			valueToSet = newValue
 		} else {
 			newValue = reflect.New(actualType).Elem()
 			valueToSet = newValue
 		}
 
-		// For named structs, register the pointer BEFORE reading data
-		// This is critical for circular references to work correctly
-		if isNamedStruct && refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
-			c.RefResolver().SetReadObject(refID, newValue)
-		}
-
-		// For named structs, read into the pointer's element
-		var readTarget reflect.Value
-		if isNamedStruct {
-			readTarget = newValue.Elem()
-		} else {
-			readTarget = newValue
-		}
-
-		typeInfo.Serializer.ReadData(c, readTarget)
+		typeInfo.Serializer.ReadData(c, newValue)
 		if c.HasError() {
 			return
 		}
 
 		// Register reference after reading data for non-struct types
-		if !isNamedStruct && refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
+		if refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
 			c.RefResolver().SetReadObject(refID, newValue)
 		}
 
@@ -831,23 +861,9 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		return
 	}
 
-	if typeInfo := c.getTypeInfoByType(value.Type()); typeInfo != nil && typeInfo.Serializer != nil {
+	if typeInfo := c.getTypeInfoByType(valueType); typeInfo != nil && typeInfo.Serializer != nil {
 		typeInfo.Serializer.Read(c, refMode, readType, false, value)
 		return
-	}
-
-	// For struct types, use optimized ReadStruct path when using full ref tracking and type info.
-	// Unions use a custom serializer and must bypass ReadStruct.
-	valueType := value.Type()
-	if refMode == RefModeTracking && readType && !c.typeResolver.IsUnionType(valueType) {
-		if valueType.Kind() == reflect.Struct {
-			c.ReadStruct(value)
-			return
-		}
-		if valueType.Kind() == reflect.Ptr && valueType.Elem().Kind() == reflect.Struct {
-			c.ReadStruct(value)
-			return
-		}
 	}
 
 	// Get serializer for the value's type
@@ -859,92 +875,6 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 
 	// Read handles ref tracking and type info internally
 	serializer.Read(c, refMode, readType, false, value)
-}
-
-// ReadStruct reads a struct value with optimized type resolution.
-// This method uses ReadTypeInfoForType to avoid expensive type resolution via map lookups
-// when the expected type is already known.
-func (c *ReadContext) ReadStruct(value reflect.Value) {
-	if !value.IsValid() {
-		c.SetError(DeserializationError("invalid reflect.Value"))
-		return
-	}
-
-	// Handle pointer to struct
-	valueType := value.Type()
-	isPtr := valueType.Kind() == reflect.Ptr
-	var structType reflect.Type
-	if isPtr {
-		structType = valueType.Elem()
-	} else {
-		structType = valueType
-	}
-
-	refResolver := c.RefResolver()
-	refID := int32(NotNullValueFlag)
-	if refResolver.refTracking {
-		var err error
-		refID, err = refResolver.TryPreserveRefId(c.buffer)
-		if err != nil {
-			c.SetError(FromError(err))
-			return
-		}
-		if refID == int32(NullFlag) {
-			if isPtr {
-				value.Set(reflect.Zero(valueType))
-			}
-			return
-		}
-		if refID < int32(NotNullValueFlag) {
-			obj := refResolver.GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
-			}
-			return
-		}
-	} else {
-		refFlag := c.buffer.ReadInt8(c.Err())
-		if refFlag == NullFlag {
-			if isPtr {
-				value.Set(reflect.Zero(valueType))
-			}
-			return
-		}
-		if refFlag == RefFlag {
-			c.buffer.ReadVarUint32(c.Err())
-			return
-		}
-	}
-
-	// Use ReadTypeInfoForType to get serializer directly by type - avoids map lookups
-	ctxErr := c.Err()
-	serializer := c.typeResolver.ReadTypeInfoForType(c.buffer, structType, ctxErr)
-	if ctxErr.HasError() || serializer == nil {
-		if !ctxErr.HasError() {
-			c.SetError(DeserializationErrorf("no serializer registered for struct %v", structType))
-		}
-		return
-	}
-
-	// Allocate pointer if needed
-	var readTarget reflect.Value
-	if isPtr {
-		if value.IsNil() {
-			value.Set(reflect.New(structType))
-		}
-		readTarget = value.Elem()
-		// Register reference before reading (for circular references)
-		refResolver.SetReadObject(refID, value)
-	} else {
-		readTarget = value
-		// For non-pointer structs, register a pointer to enable circular ref resolution
-		if value.CanAddr() {
-			refResolver.SetReadObject(refID, value.Addr())
-		}
-	}
-
-	// Read struct data directly
-	serializer.ReadData(c, readTarget)
 }
 
 // ReadInto reads a value using a specific serializer with optional ref/type info

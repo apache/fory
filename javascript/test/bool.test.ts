@@ -17,27 +17,20 @@
  * under the License.
  */
 
-import Fory from '../packages/core/index';
-import {describe, expect, test} from '@jest/globals';
+import Fory from "../packages/core/index";
+import { describe, expect, test } from "@jest/globals";
 
-describe('bool', () => {
-  test('should false work', () => {
-
+describe("bool", () => {
+  test("should false work", () => {
     const fory = new Fory({ compatible: false, ref: true });
     const input = fory.serialize(false);
-    const result = fory.deserialize(
-        input
-    );
-    expect(result).toEqual(false)
+    const result = fory.deserialize(input);
+    expect(result).toEqual(false);
   });
-  test('should true work', () => {
-
+  test("should true work", () => {
     const fory = new Fory({ compatible: false, ref: true });
     const input = fory.serialize(true);
-    const result = fory.deserialize(
-        input
-    );
-    expect(result).toEqual(true)
+    const result = fory.deserialize(input);
+    expect(result).toEqual(true);
   });
 });
-

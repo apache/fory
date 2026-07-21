@@ -38,9 +38,9 @@ The Rust implementation provides versatile and high-performance serialization wi
 
 | Crate                                                                       | Description                                               | Version                                       |
 | --------------------------------------------------------------------------- | --------------------------------------------------------- | --------------------------------------------- |
-| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | User-facing API, runtime types, and derive macros         | [1.2.0](https://crates.io/crates/fory)        |
-| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Lower-level runtime crate for advanced integrations       | [1.2.0](https://crates.io/crates/fory-core)   |
-| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Lower-level procedural macro crate for direct runtime use | [1.2.0](https://crates.io/crates/fory-derive) |
+| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | User-facing API, runtime types, and derive macros         | [1.3.0](https://crates.io/crates/fory)        |
+| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Lower-level runtime crate for advanced integrations       | [1.3.0](https://crates.io/crates/fory-core)   |
+| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Lower-level procedural macro crate for direct runtime use | [1.3.0](https://crates.io/crates/fory-derive) |
 
 Most applications should depend on `fory` only. It re-exports the derive
 macros and the public runtime types needed by generated code. Use `fory-core`
@@ -53,7 +53,7 @@ Add Apache Fory™ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fory = "1.2.0"
+fory = "1.3.0"
 ```
 
 ### Basic Example

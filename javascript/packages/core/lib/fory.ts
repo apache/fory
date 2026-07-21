@@ -38,32 +38,28 @@ const DEFAULT_MAX_TYPE_FIELDS = 512 as const;
 const DEFAULT_MAX_TYPE_META_BYTES = 4096 as const;
 const DEFAULT_MAX_SCHEMA_VERSIONS_PER_TYPE = 10 as const;
 const DEFAULT_MAX_AVERAGE_SCHEMA_VERSIONS_PER_TYPE = 3 as const;
+const DEFAULT_MAX_GRAPH_MEMORY_BYTES = 128 * 1024 * 1024;
 export default class Fory {
   readonly typeResolver: TypeResolver;
   readonly anySerializer: Serializer;
   readonly config: Config;
   readonly writeContext: WriteContext;
   readonly readContext: ReadContext;
-  private readonly rootSerializers = new WeakMap<
-    Serializer,
-    (data: any) => PlatformBuffer
-  >();
+  private readonly rootSerializers = new WeakMap<Serializer, (data: any) => PlatformBuffer>();
 
-  private readonly rootDeserializers = new WeakMap<
-    Serializer,
-    (bytes: Uint8Array) => any
-  >();
+  private readonly rootDeserializers = new WeakMap<Serializer, (bytes: Uint8Array) => any>();
 
   constructor(config?: Partial<Config>) {
     this.config = this.initConfig(config);
     const maxDepth = this.config.maxDepth ?? DEFAULT_DEPTH_LIMIT;
     if (!Number.isInteger(maxDepth) || maxDepth < MIN_DEPTH_LIMIT) {
-      throw new Error(
-        `maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`,
-      );
+      throw new Error(`maxDepth must be an integer >= ${MIN_DEPTH_LIMIT} but got ${maxDepth}`);
     }
     this.typeResolver = new TypeResolver(this.config);
-    this.writeContext = new WriteContext(this.typeResolver, this.config);
+    this.writeContext = new WriteContext(
+      this.typeResolver,
+      this.config.hps === undefined ? undefined : { hps: this.config.hps },
+    );
     this.readContext = new ReadContext(this.typeResolver, this.config);
     this.typeResolver.bindContexts(this.writeContext, this.readContext);
     this.typeResolver.init();
@@ -73,42 +69,40 @@ export default class Fory {
   private initConfig(config: Partial<Config> | undefined) {
     const maxTypeFields = config?.maxTypeFields ?? DEFAULT_MAX_TYPE_FIELDS;
     if (!Number.isInteger(maxTypeFields) || maxTypeFields <= 0) {
-      throw new Error(
-        `maxTypeFields must be a positive integer but got ${maxTypeFields}`,
-      );
+      throw new Error(`maxTypeFields must be a positive integer but got ${maxTypeFields}`);
     }
-    const maxTypeMetaBytes
-      = config?.maxTypeMetaBytes ?? DEFAULT_MAX_TYPE_META_BYTES;
+    const maxTypeMetaBytes = config?.maxTypeMetaBytes ?? DEFAULT_MAX_TYPE_META_BYTES;
     if (!Number.isInteger(maxTypeMetaBytes) || maxTypeMetaBytes <= 0) {
-      throw new Error(
-        `maxTypeMetaBytes must be a positive integer but got ${maxTypeMetaBytes}`,
-      );
+      throw new Error(`maxTypeMetaBytes must be a positive integer but got ${maxTypeMetaBytes}`);
     }
-    const maxSchemaVersionsPerType
-      = config?.maxSchemaVersionsPerType ?? DEFAULT_MAX_SCHEMA_VERSIONS_PER_TYPE;
-    if (
-      !Number.isInteger(maxSchemaVersionsPerType)
-      || maxSchemaVersionsPerType <= 0
-    ) {
+    const maxSchemaVersionsPerType =
+      config?.maxSchemaVersionsPerType ?? DEFAULT_MAX_SCHEMA_VERSIONS_PER_TYPE;
+    if (!Number.isInteger(maxSchemaVersionsPerType) || maxSchemaVersionsPerType <= 0) {
       throw new Error(
         `maxSchemaVersionsPerType must be a positive integer but got ${maxSchemaVersionsPerType}`,
       );
     }
-    const maxAverageSchemaVersionsPerType
-      = config?.maxAverageSchemaVersionsPerType
-      ?? DEFAULT_MAX_AVERAGE_SCHEMA_VERSIONS_PER_TYPE;
+    const maxAverageSchemaVersionsPerType =
+      config?.maxAverageSchemaVersionsPerType ?? DEFAULT_MAX_AVERAGE_SCHEMA_VERSIONS_PER_TYPE;
     if (
-      !Number.isInteger(maxAverageSchemaVersionsPerType)
-      || maxAverageSchemaVersionsPerType <= 0
+      !Number.isInteger(maxAverageSchemaVersionsPerType) ||
+      maxAverageSchemaVersionsPerType <= 0
     ) {
       throw new Error(
         `maxAverageSchemaVersionsPerType must be a positive integer but got ${maxAverageSchemaVersionsPerType}`,
+      );
+    }
+    const maxGraphMemoryBytes = config?.maxGraphMemoryBytes ?? DEFAULT_MAX_GRAPH_MEMORY_BYTES;
+    if (!Number.isSafeInteger(maxGraphMemoryBytes) || maxGraphMemoryBytes <= 0) {
+      throw new Error(
+        `maxGraphMemoryBytes must be in range [1, ${Number.MAX_SAFE_INTEGER}] but got ${maxGraphMemoryBytes}`,
       );
     }
     return {
       ref: Boolean(config?.ref),
       useSliceString: Boolean(config?.useSliceString),
       maxDepth: config?.maxDepth,
+      maxGraphMemoryBytes,
       maxTypeFields,
       maxTypeMetaBytes,
       maxSchemaVersionsPerType,
@@ -144,9 +138,8 @@ export default class Fory {
   register(constructor: any, customSerializer?: CustomSerializer<any>) {
     let serializer: Serializer;
     if (constructor.prototype?.[ForyTypeInfoSymbol]) {
-      const typeInfo: TypeInfo = (
-        constructor.prototype[ForyTypeInfoSymbol] as WithForyClsInfo
-      ).structTypeInfo;
+      const typeInfo: TypeInfo = (constructor.prototype[ForyTypeInfoSymbol] as WithForyClsInfo)
+        .structTypeInfo;
       typeInfo.freeze();
       serializer = new Gen(this.typeResolver, {
         creator: constructor,
@@ -168,10 +161,7 @@ export default class Fory {
     };
   }
 
-  deserialize<T = any>(
-    bytes: Uint8Array,
-    serializer: Serializer = this.anySerializer,
-  ): T | null {
+  deserialize<T = any>(bytes: Uint8Array, serializer: Serializer = this.anySerializer): T | null {
     this.readContext.reset(bytes);
     const reader = this.readContext.reader;
     const bitmap = reader.readUint8();
@@ -182,12 +172,9 @@ export default class Fory {
   }
 
   private throwInvalidRootHeader(bitmap: number): never {
-    const knownFlags
-      = ConfigFlags.isCrossLanguageFlag | ConfigFlags.isOutOfBandFlag;
+    const knownFlags = ConfigFlags.isCrossLanguageFlag | ConfigFlags.isOutOfBandFlag;
     if ((bitmap & ~knownFlags) !== 0) {
-      throw new Error(
-        `unsupported root header bitmap 0x${bitmap.toString(16)}`,
-      );
+      throw new Error(`unsupported root header bitmap 0x${bitmap.toString(16)}`);
     }
     if ((bitmap & ConfigFlags.isCrossLanguageFlag) === 0) {
       throw new Error("support crosslanguage mode only");

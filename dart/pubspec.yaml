@@ -17,7 +17,7 @@
 
 name: fory_dart
 description: Apache Fory Dart workspace for the runtime package, generated serializers, and integration tests.
-version: 1.3.0-dev
+version: 1.4.0-dev
 # repository: https://github.com/my_org/my_repo
 
 environment:
@@ -25,7 +25,7 @@ environment:
 
 # Add regular dependencies here.
 dependencies:
-  fory: 1.3.0-dev
+  fory: 1.4.0-dev
   build_runner: '>=2.7.0 <3.0.0'
 dev_dependencies:
   lints: ^6.1.0

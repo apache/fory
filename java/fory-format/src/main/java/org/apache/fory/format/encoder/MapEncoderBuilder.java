@@ -58,7 +58,10 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   public MapEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType) {
-    super(new CodegenContext(), beanType);
+    // A top-level map has no enclosing bean, so scope key/value-codec resolution to Object to match
+    // TypeInference's empty-path enclosing type; beanType still names the key/value bean for class
+    // naming and schema generation.
+    super(new CodegenContext(), beanType, Object.class);
     mapToken = clsType;
     ctx.reserveName(ROOT_KEY_WRITER_NAME);
     ctx.reserveName(ROOT_VALUE_WRITER_NAME);

@@ -25,6 +25,10 @@ import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.lang.reflect.WildcardType;
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,9 +43,12 @@ import org.apache.fory.annotation.Ref;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.config.Int32Encoding;
 import org.apache.fory.meta.TypeExtMeta;
+import org.apache.fory.type.GenericType;
+import org.apache.fory.type.ScalaTypes;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class TypeRefTest extends ForyTestBase {
@@ -94,6 +101,191 @@ public class TypeRefTest extends ForyTestBase {
     // see issue https://github.com/apache/fory/issues/1633
     Fory fory = builder().withCodegen(enableCodegen).build();
     serDeCheck(fory, new MyClass());
+  }
+
+  static class MultiParamList<A, E> extends ArrayList<E> {}
+
+  static class Box<T> extends AbstractList<Box<?>> {
+    @Override
+    public Box<?> get(int index) {
+      return null;
+    }
+
+    @Override
+    public int size() {
+      return 0;
+    }
+  }
+
+  static class RecursiveBox<T> extends AbstractList<RecursiveBox<T>> {
+    @Override
+    public RecursiveBox<T> get(int index) {
+      return null;
+    }
+
+    @Override
+    public int size() {
+      return 0;
+    }
+  }
+
+  static class MultiParamMap<A, K, V> extends HashMap<K, V> {}
+
+  static class StringKeyMap<V> extends HashMap<String, V> {}
+
+  static class ArrayElementList<A, E> extends ArrayList<E[]> {}
+
+  static class ArrayValueMap<A, K, V> extends HashMap<K, V[]> {}
+
+  static class TypeUseItem {}
+
+  static class FixedElementList<A> extends ArrayList<TypeUseItem> {}
+
+  static class ContainerTypeUseStruct {
+    MultiParamList<String, List<TypeUseItem>> nestedItems;
+    FixedElementList<@Ref(enable = false) TypeUseItem> fixedItems;
+  }
+
+  @Test
+  public void testCustomContainerTypeRefNormalization() {
+    TypeRef<?> listType = new TypeRef<MultiParamList<String, Integer>>() {};
+    Assert.assertEquals(listType.getTypeArguments().size(), 1);
+    Assert.assertEquals(listType.getTypeArguments().get(0), TypeRef.of(Integer.class));
+    Assert.assertEquals(TypeUtils.getElementType(listType), TypeRef.of(Integer.class));
+
+    GenericType listGenericType = GenericType.build(listType);
+    Assert.assertEquals(listGenericType.getTypeParametersCount(), 1);
+    Assert.assertEquals(listGenericType.getTypeParameter0().getCls(), Integer.class);
+
+    TypeRef<?> mapType = new TypeRef<MultiParamMap<String, Long, Integer>>() {};
+    Assert.assertEquals(mapType.getTypeArguments().size(), 2);
+    Assert.assertEquals(mapType.getTypeArguments().get(0), TypeRef.of(Long.class));
+    Assert.assertEquals(mapType.getTypeArguments().get(1), TypeRef.of(Integer.class));
+
+    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(mapType);
+    Assert.assertEquals(keyValueType.f0, TypeRef.of(Long.class));
+    Assert.assertEquals(keyValueType.f1, TypeRef.of(Integer.class));
+
+    GenericType mapGenericType = GenericType.build(mapType);
+    Assert.assertEquals(mapGenericType.getTypeParametersCount(), 2);
+    Assert.assertEquals(mapGenericType.getTypeParameter0().getCls(), Long.class);
+    Assert.assertEquals(mapGenericType.getTypeParameter1().getCls(), Integer.class);
+
+    TypeRef<?> fixedKeyMapType = new TypeRef<StringKeyMap<List<Integer>>>() {};
+    Assert.assertEquals(fixedKeyMapType.getTypeArguments().size(), 2);
+    Assert.assertEquals(fixedKeyMapType.getTypeArguments().get(0), TypeRef.of(String.class));
+    Assert.assertEquals(fixedKeyMapType.getTypeArguments().get(1), new TypeRef<List<Integer>>() {});
+
+    GenericType fixedKeyMapGenericType = GenericType.build(fixedKeyMapType);
+    Assert.assertEquals(fixedKeyMapGenericType.getTypeParametersCount(), 2);
+    Assert.assertEquals(fixedKeyMapGenericType.getTypeParameter0().getCls(), String.class);
+    Assert.assertEquals(fixedKeyMapGenericType.getTypeParameter1().getCls(), List.class);
+  }
+
+  @Test
+  public void testSelfElementType() {
+    TypeRef<?> boxType = new TypeRef<Box<String>>() {};
+    Assert.assertEquals(boxType.getTypeArguments().size(), 1);
+    TypeRef<?> boxElementType = boxType.getTypeArguments().get(0);
+    Assert.assertEquals(boxElementType.getRawType(), Box.class);
+    Assert.assertTrue(boxElementType.getType() instanceof ParameterizedType);
+    Type boxArgument = ((ParameterizedType) boxElementType.getType()).getActualTypeArguments()[0];
+    Assert.assertTrue(boxArgument instanceof WildcardType);
+    Assert.assertEquals(TypeUtils.getElementType(boxType), boxElementType);
+    Assert.assertNotEquals(boxElementType, TypeRef.of(String.class));
+
+    GenericType boxGenericType = GenericType.build(boxType);
+    Assert.assertEquals(boxGenericType.getTypeParametersCount(), 1);
+    Assert.assertEquals(boxGenericType.getTypeParameter0().getTypeRef(), boxElementType);
+    Assert.assertEquals(boxGenericType.getTypeParameter0().getTypeParametersCount(), 0);
+
+    TypeRef<?> recursiveBoxType = new TypeRef<RecursiveBox<String>>() {};
+    TypeRef<?> recursiveElementType = new TypeRef<RecursiveBox<String>>() {};
+    Assert.assertEquals(recursiveBoxType.getTypeArguments().size(), 1);
+    Assert.assertEquals(recursiveBoxType.getTypeArguments().get(0), recursiveElementType);
+    Assert.assertEquals(TypeUtils.getElementType(recursiveBoxType), recursiveElementType);
+  }
+
+  @Test
+  public void testCustomContainerArrayNormalization() {
+    TypeRef<?> elementType =
+        TypeUtils.getElementType(new TypeRef<ArrayElementList<String, Integer>>() {});
+    Assert.assertEquals(elementType.getRawType(), Integer[].class);
+    Assert.assertEquals(elementType.getComponentType(), TypeRef.of(Integer.class));
+
+    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType =
+        TypeUtils.getMapKeyValueType(new TypeRef<ArrayValueMap<String, Long, Integer>>() {});
+    Assert.assertEquals(keyValueType.f0, TypeRef.of(Long.class));
+    Assert.assertEquals(keyValueType.f1.getRawType(), Integer[].class);
+    Assert.assertEquals(keyValueType.f1.getComponentType(), TypeRef.of(Integer.class));
+  }
+
+  @Test
+  public void testCustomContainerTypeUseMetadata() throws Exception {
+    Field nestedItemsField = ContainerTypeUseStruct.class.getDeclaredField("nestedItems");
+    TypeRef<?> nestedItemsType = TypeRef.ofTypeUse(nestedItemsField.getAnnotatedType());
+    Assert.assertEquals(nestedItemsType.getTypeArguments().size(), 1);
+    TypeRef<?> nestedListType = nestedItemsType.getTypeArguments().get(0);
+    Assert.assertEquals(nestedListType.getRawType(), List.class);
+    Assert.assertEquals(nestedListType.getTypeArguments().get(0), TypeRef.of(TypeUseItem.class));
+
+    TypeExtMeta elementMeta = TypeExtMeta.of(Types.UNKNOWN, true, false);
+    TypeRef<?> refItemsType =
+        TypeRef.of(
+            new TypeRef.ParameterizedTypeImpl(
+                null, MultiParamList.class, new Type[] {String.class, TypeUseItem.class}),
+            null,
+            Arrays.asList(TypeRef.of(String.class), TypeRef.of(TypeUseItem.class, elementMeta)),
+            null);
+    Assert.assertEquals(refItemsType.getTypeArguments().size(), 1);
+    Assert.assertEquals(refItemsType.getTypeArguments().get(0).getTypeExtMeta(), elementMeta);
+
+    TypeExtMeta keyMeta = TypeExtMeta.of(Types.UNKNOWN, true, false);
+    TypeExtMeta valueMeta = TypeExtMeta.of(Types.UNKNOWN, true, true);
+    TypeRef<?> refMapType =
+        TypeRef.of(
+            new TypeRef.ParameterizedTypeImpl(
+                null,
+                MultiParamMap.class,
+                new Type[] {String.class, TypeUseItem.class, TypeUseItem.class}),
+            null,
+            Arrays.asList(
+                TypeRef.of(String.class),
+                TypeRef.of(TypeUseItem.class, keyMeta),
+                TypeRef.of(TypeUseItem.class, valueMeta)),
+            null);
+    Assert.assertEquals(refMapType.getTypeArguments().size(), 2);
+    Assert.assertEquals(refMapType.getTypeArguments().get(0).getTypeExtMeta(), keyMeta);
+    Assert.assertEquals(refMapType.getTypeArguments().get(1).getTypeExtMeta(), valueMeta);
+
+    Field fixedItemsField = ContainerTypeUseStruct.class.getDeclaredField("fixedItems");
+    TypeRef<?> fixedItemsType = TypeRef.ofTypeUse(fixedItemsField.getAnnotatedType());
+    TypeRef<?> fixedElementType = TypeUtils.getElementType(fixedItemsType);
+    Assert.assertEquals(fixedElementType, TypeRef.of(TypeUseItem.class));
+    Assert.assertFalse(fixedElementType.hasTypeExtMeta());
+  }
+
+  @Test
+  public void testScalaContainerTypeRefNormalization() throws Exception {
+    if (!ScalaTypes.SCALA_AVAILABLE) {
+      throw new SkipException("Scala is not available on the Java test classpath");
+    }
+    Class<?> listClass = Class.forName("scala.collection.immutable.List");
+    TypeRef<?> listType =
+        TypeRef.of(new TypeRef.ParameterizedTypeImpl(null, listClass, new Type[] {String.class}));
+    Assert.assertEquals(listType.getTypeArguments().size(), 1);
+    Assert.assertEquals(listType.getTypeArguments().get(0), TypeRef.of(String.class));
+    Assert.assertEquals(TypeUtils.getElementType(listType), TypeRef.of(String.class));
+
+    Class<?> mapClass = Class.forName("scala.collection.immutable.Map");
+    TypeRef<?> mapType =
+        TypeRef.of(
+            new TypeRef.ParameterizedTypeImpl(
+                null, mapClass, new Type[] {String.class, Integer.class}));
+    Tuple2<TypeRef<?>, TypeRef<?>> keyValueType = TypeUtils.getMapKeyValueType(mapType);
+    Assert.assertEquals(mapType.getTypeArguments().size(), 2);
+    Assert.assertEquals(keyValueType.f0, TypeRef.of(String.class));
+    Assert.assertEquals(keyValueType.f1, TypeRef.of(Integer.class));
   }
 
   static class TypeUseMetadataStruct {

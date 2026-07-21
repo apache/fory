@@ -17,31 +17,59 @@
 
 module(
     name = "fory",
-    version = "1.3.0",
+    version = "1.4.0",
 )
 
 # Platforms (needed for platform-specific build configurations)
 bazel_dep(name = "platforms", version = "0.0.11")
 
 # Bazel Skylib
-bazel_dep(name = "bazel_skylib", version = "1.7.1")
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
 
 # Rules CC (C++ rules)
 bazel_dep(name = "rules_cc", version = "0.2.17")
 
 # Rules Python - standard Python rules
-bazel_dep(name = "rules_python", version = "1.4.1")
+bazel_dep(name = "rules_python", version = "2.0.3")
 
 # Configure Python toolchain to use version from BAZEL_PYTHON_VERSION env var
 # This allows building extensions with the correct Python version headers
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+# rules_python 2.x no longer ships Python 3.8 metadata by default, but Fory
+# still tests and releases Python 3.8 wheels.
+python.single_version_override(
+    python_version = "3.8.20",
+    sha256 = {
+        "aarch64-apple-darwin": "2ddfc04bdb3e240f30fb782fa1deec6323799d0e857e0b63fa299218658fd3d4",
+        "aarch64-unknown-linux-gnu": "9d8798f9e79e0fc0f36fcb95bfa28a1023407d51a8ea5944b4da711f1f75f1ed",
+        "x86_64-apple-darwin": "68d060cd373255d2ca5b8b3441363d5aa7cc45b0c11bbccf52b1717c2b5aa8bb",
+        "x86_64-pc-windows-msvc": "41b6709fec9c56419b7de1940d1f87fa62045aff81734480672dcb807eedc47e",
+        "x86_64-unknown-linux-gnu": "285e141c36f88b2e9357654c5f77d1f8fb29cc25132698fe35bb30d787f38e87",
+    },
+    urls = ["20241002/cpython-{python_version}+20241002-{platform}-{build}.tar.gz"],
+)
+python.override(
+    minor_mapping = {
+        "3.8": "3.8.20",
+    },
+)
 python.toolchain(python_version = "3.8")
 python.toolchain(python_version = "3.9")
 python.toolchain(python_version = "3.10")
 python.toolchain(python_version = "3.11")
 python.toolchain(python_version = "3.12")
 python.toolchain(python_version = "3.13")
-use_repo(python, "python_versions")
+python.toolchain(python_version = "3.14")
+use_repo(
+    python,
+    "python_3_8",
+    "python_3_9",
+    "python_3_10",
+    "python_3_11",
+    "python_3_12",
+    "python_3_13",
+    "python_3_14",
+)
 
 # Cython from BCR with official rules
 bazel_dep(name = "cython", version = "3.1.3")

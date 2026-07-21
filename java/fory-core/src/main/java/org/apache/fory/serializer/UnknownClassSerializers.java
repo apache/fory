@@ -21,6 +21,8 @@ package org.apache.fory.serializer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map.Entry;
+import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.MapEntry;
@@ -57,6 +59,17 @@ public final class UnknownClassSerializers {
   }
 
   public static final class UnknownStructSerializer extends Serializer {
+    private static final int UNKNOWN_STRUCT_REFERENCE_BYTES = GraphMemoryEstimates.REFERENCE_BYTES;
+    private static final int UNKNOWN_STRUCT_OWNER_BYTES =
+        GraphMemoryEstimates.shallowObjectBytes(UnknownClass.UnknownStruct.class);
+    private static final int ARRAY_LIST_OWNER_BYTES =
+        GraphMemoryEstimates.shallowObjectBytes(ArrayList.class);
+    private static final int MAP_ENTRY_OWNER_BYTES =
+        GraphMemoryEstimates.shallowObjectBytes(MapEntry.class);
+    private static final int UNKNOWN_STRUCT_ENTRY_BYTES =
+        MAP_ENTRY_OWNER_BYTES + 2 * UNKNOWN_STRUCT_REFERENCE_BYTES;
+    private static final int UNKNOWN_STRUCT_REF_FIELDS = 3;
+
     private static final int NONEXISTENT_META_SHARED_ID_SIZE =
         computeVarUInt32Size(ClassResolver.NONEXISTENT_META_SHARED_ID);
     private final Config config;
@@ -245,17 +258,23 @@ public final class UnknownClassSerializers {
     @Override
     public Object read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      UnknownClass.UnknownStruct obj = new UnknownClass.UnknownStruct(typeDef);
-      readContext.reference(obj);
-      List<MapEntry> entries = new ArrayList<>();
-      // Protocol order: primitive, nullable primitive, then all non-primitives by field identifier.
       ClassFieldsInfo allFieldsInfo = getClassFieldsInfo(typeDef);
+      int numFields = allFieldsInfo.allFields.length;
+      readContext.reserveGraphMemory(
+          UNKNOWN_STRUCT_OWNER_BYTES
+              + (long) UNKNOWN_STRUCT_REF_FIELDS * UNKNOWN_STRUCT_REFERENCE_BYTES
+              + ARRAY_LIST_OWNER_BYTES
+              + (long) numFields * UNKNOWN_STRUCT_REFERENCE_BYTES
+              + (long) numFields * UNKNOWN_STRUCT_ENTRY_BYTES);
+      List<Entry<? extends Object, ? extends Object>> entries = new ArrayList<>(numFields);
+      UnknownClass.UnknownStruct obj = new UnknownClass.UnknownStruct(typeDef, entries);
+      readContext.reference(obj);
+      // Protocol order: primitive, nullable primitive, then all non-primitives by field identifier.
       Generics generics = readContext.getGenerics();
       for (SerializationFieldInfo fieldInfo : allFieldsInfo.allFields) {
         Object fieldValue = readFieldByCodecCategory(readContext, generics, fieldInfo, buffer);
-        entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));
+        entries.add(new MapEntry<>(fieldInfo.qualifiedFieldName, fieldValue));
       }
-      obj.setEntries(entries);
       return obj;
     }
 
@@ -294,21 +313,32 @@ public final class UnknownClassSerializers {
 
     @Override
     public void write(WriteContext writeContext, UnknownEnum value) {
+      writeValue(writeContext, writeContext.getBuffer(), value);
+    }
+
+    @CodegenInvoke
+    public final void writeValue(
+        WriteContext writeContext, MemoryBuffer buffer, UnknownEnum value) {
       if (!config.isXlang() && config.serializeEnumByName()) {
         writeContext.writeString(value.name());
       } else {
-        writeContext.getBuffer().writeVarUInt32Small7(value.ordinal());
+        buffer.writeVarUInt32Small7(value.ordinal());
       }
     }
 
     @Override
     public UnknownEnum read(ReadContext readContext) {
+      return readValue(readContext, readContext.getBuffer());
+    }
+
+    @CodegenInvoke
+    public final UnknownEnum readValue(ReadContext readContext, MemoryBuffer buffer) {
       if (!config.isXlang() && config.serializeEnumByName()) {
         readContext.readString();
         return UnknownEnum.UNKNOWN;
       }
 
-      int ordinal = readContext.getBuffer().readVarUInt32Small7();
+      int ordinal = buffer.readVarUInt32Small7();
       if (ordinal >= enumConstants.length) {
         return UnknownEnum.UNKNOWN;
       }

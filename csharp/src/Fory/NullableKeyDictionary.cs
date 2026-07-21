@@ -16,6 +16,7 @@
 // under the License.
 
 using System.Collections;
+using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
@@ -390,6 +391,26 @@ public sealed class NullableKeyDictionary<TKey, TValue> : IDictionary<TKey, TVal
 
 public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<NullableKeyDictionary<TKey, TValue>>
 {
+    private const int ReferenceBytes = 4;
+    // Lower-bound shallow owner costs for the retained wrapper and inner CLR Dictionary objects.
+    // The IntPtr pairs approximate CLR object headers/method tables; entry storage is charged
+    // separately by count below. These are not Fory wire header sizes.
+    private static readonly int DictionaryOwnerBytes =
+        IntPtr.Size + IntPtr.Size + 4 * ReferenceBytes + 4 * sizeof(int);
+    private static readonly int NullableKeyDictionaryOwnerBytes =
+        IntPtr.Size + IntPtr.Size + 4 * ReferenceBytes + sizeof(bool);
+    private static readonly int MapOwnerBytes = NullableKeyDictionaryOwnerBytes + DictionaryOwnerBytes;
+    private static readonly long MapElementBytes = (long)ElementBytes<TKey>() + ElementBytes<TValue>();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ElementBytes<T>() => typeof(T).IsValueType ? Unsafe.SizeOf<T>() : ReferenceBytes;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void ReserveMapStorage(ReadContext context, int count)
+    {
+        context.ReserveGraphMemory(MapOwnerBytes + count * MapElementBytes);
+    }
+
     public override NullableKeyDictionary<TKey, TValue> DefaultValue => null!;
 
     public override void WriteData(WriteContext context, in NullableKeyDictionary<TKey, TValue> value, bool hasGenerics)
@@ -530,6 +551,55 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
 
     public override NullableKeyDictionary<TKey, TValue> ReadData(ReadContext context)
     {
+        return ReadData(context, publishRef: false, refId: 0);
+    }
+
+    // Dynamic Any consumes the ref flag before selecting this concrete map owner, so the
+    // already-reserved id is published here before entries are read.
+    internal NullableKeyDictionary<TKey, TValue> ReadReservedRefData(ReadContext context, uint refId)
+    {
+        return ReadData(context, publishRef: true, refId);
+    }
+
+    public override NullableKeyDictionary<TKey, TValue> Read(ReadContext context, RefMode refMode, bool readTypeInfo)
+    {
+        if (refMode != RefMode.None)
+        {
+            RefFlag flag = context.RefReader.ReadRefFlag(context.Reader);
+            switch (flag)
+            {
+                case RefFlag.Null:
+                    return DefaultValue;
+                case RefFlag.Ref:
+                    return context.RefReader.GetRef<NullableKeyDictionary<TKey, TValue>>(
+                        context.RefReader.ReadRefId(context.Reader));
+                case RefFlag.RefValue:
+                    {
+                        uint refId = context.RefReader.ReserveRefId();
+                        if (readTypeInfo)
+                        {
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
+
+                        return ReadData(context, publishRef: true, refId);
+                    }
+                case RefFlag.NotNullValue:
+                    break;
+                default:
+                    throw new RefException($"invalid ref flag {(sbyte)flag}");
+            }
+        }
+
+        if (readTypeInfo)
+        {
+            context.TypeResolver.ReadTypeInfo(this, context);
+        }
+
+        return ReadData(context);
+    }
+
+    private NullableKeyDictionary<TKey, TValue> ReadData(ReadContext context, bool publishRef, uint refId)
+    {
         Serializer<TKey> keySerializer = context.TypeResolver.GetSerializer<TKey>();
         Serializer<TValue> valueSerializer = context.TypeResolver.GetSerializer<TValue>();
         TypeInfo keyTypeInfo = context.TypeResolver.GetTypeInfo<TKey>();
@@ -537,11 +607,24 @@ public sealed class NullableKeyDictionarySerializer<TKey, TValue> : Serializer<N
         int totalLength = checked((int)context.Reader.ReadVarUInt32());
         if (totalLength == 0)
         {
-            return new NullableKeyDictionary<TKey, TValue>();
+            ReserveMapStorage(context, totalLength);
+            NullableKeyDictionary<TKey, TValue> empty = new();
+            if (publishRef)
+            {
+                context.RefReader.StoreRefAt(refId, empty);
+            }
+
+            return empty;
         }
 
+        ReserveMapStorage(context, totalLength);
         context.Reader.CheckBound(totalLength);
         NullableKeyDictionary<TKey, TValue> map = new(totalLength);
+        if (publishRef)
+        {
+            context.RefReader.StoreRefAt(refId, map);
+        }
+
         bool keyDynamicType = keyTypeInfo.IsDynamicType;
         bool valueDynamicType = valueTypeInfo.IsDynamicType;
         int readCount = 0;

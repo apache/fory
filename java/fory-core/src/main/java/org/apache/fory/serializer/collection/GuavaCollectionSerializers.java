@@ -39,10 +39,12 @@ import java.util.Map.Entry;
 import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.Serializer;
 
 /** Serializers for common guava types. */
@@ -70,6 +72,10 @@ public class GuavaCollectionSerializers {
           && isClassAvailable(IMMUTABLE_SET_CLASS_NAME)
           && isClassAvailable(IMMUTABLE_SORTED_MAP_CLASS_NAME)
           && isClassAvailable(IMMUTABLE_SORTED_SET_CLASS_NAME);
+  private static final boolean SINGLETON_IMMUTABLE_BI_MAP_AVAILABLE =
+      GUAVA_AVAILABLE && isClassAvailable(PKG + ".SingletonImmutableBiMap");
+  private static final boolean SINGLETON_IMMUTABLE_LIST_AVAILABLE =
+      GUAVA_AVAILABLE && isClassAvailable(PKG + ".SingletonImmutableList");
 
   private interface MapEntryBuilder {
     void put(Object key, Object value);
@@ -82,6 +88,11 @@ public class GuavaCollectionSerializers {
       typeResolver.setSerializer(cls, this);
     }
 
+    GuavaCollectionSerializer(TypeResolver typeResolver, Class<T> cls, int ownerBytes) {
+      super(typeResolver, cls, true, ownerBytes);
+      typeResolver.setSerializer(cls, this);
+    }
+
     protected abstract T xnewInstance(Collection collection);
   }
 
@@ -91,11 +102,17 @@ public class GuavaCollectionSerializers {
       super(typeResolver, cls);
     }
 
+    ImmutableListSerializer(TypeResolver typeResolver, Class<T> cls, int ownerBytes) {
+      super(typeResolver, cls, ownerBytes);
+    }
+
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
+      // This is only a transient element holder. readCollectionSize reserves the final Guava
+      // collection owner and reference slots, so do not reserve this helper separately.
       return new CollectionContainer<>(numElements);
     }
 
@@ -127,8 +144,10 @@ public class GuavaCollectionSerializers {
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
+      // This is only a transient element holder. readCollectionSize reserves the final Guava
+      // collection owner and reference slots, so do not reserve this helper separately.
       return new CollectionContainer(numElements);
     }
 
@@ -161,8 +180,10 @@ public class GuavaCollectionSerializers {
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
+      // This is only a transient element holder. readCollectionSize reserves the final Guava
+      // collection owner and reference slots, so do not reserve this helper separately.
       return new CollectionContainer<>(numElements);
     }
 
@@ -203,9 +224,11 @@ public class GuavaCollectionSerializers {
     @Override
     public Collection newCollection(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readCollectionSize(buffer);
+      int numElements = readCollectionSize(readContext, buffer);
       setNumElements(numElements);
       Comparator comparator = (Comparator) readContext.readRef();
+      // This is only a transient element holder. readCollectionSize reserves the final Guava
+      // collection owner and reference slots, so do not reserve this helper separately.
       return new SortedCollectionContainer(comparator, numElements);
     }
 
@@ -231,13 +254,20 @@ public class GuavaCollectionSerializers {
       typeResolver.setSerializer(cls, this);
     }
 
+    GuavaMapSerializer(TypeResolver typeResolver, Class<T> cls, int ownerBytes) {
+      super(typeResolver, cls, true, ownerBytes);
+      typeResolver.setSerializer(cls, this);
+    }
+
     protected abstract ImmutableMap.Builder makeBuilder(int size);
 
     @Override
     public Map newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(buffer);
+      int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
+      // This is only a transient key/value holder. readMapSize reserves the final Guava map owner
+      // and reference slots, so do not reserve this helper separately.
       return new MapContainer(numElements);
     }
 
@@ -264,7 +294,8 @@ public class GuavaCollectionSerializers {
 
     @Override
     public T read(ReadContext readContext) {
-      int size = readMapSize(readContext.getBuffer());
+      MemoryBuffer buffer = readContext.getBuffer();
+      int size = readMapSize(readContext, buffer);
       Map map = new HashMap();
       readElements(readContext, size, map);
       return xnewInstance(map);
@@ -357,6 +388,10 @@ public class GuavaCollectionSerializers {
       super(typeResolver, cls);
     }
 
+    ImmutableBiMapSerializer(TypeResolver typeResolver, Class<T> cls, int ownerBytes) {
+      super(typeResolver, cls, ownerBytes);
+    }
+
     @Override
     protected ImmutableMap.Builder makeBuilder(int size) {
       return newImmutableBiMapBuilder(size);
@@ -372,12 +407,14 @@ public class GuavaCollectionSerializers {
     private final Constructor<?> constructor;
     private final Method readResolveMethod;
     private final boolean biMap;
+    private final int mapOwnerBytes;
 
     public GuavaMapFormSerializer(TypeResolver typeResolver, Class<?> cls, boolean biMap) {
       super(typeResolver.getConfig(), cls);
       this.biMap = biMap;
+      Class<?> mapClass = biMap ? ImmutableBiMap.class : ImmutableMap.class;
+      mapOwnerBytes = GraphMemoryEstimates.shallowObjectBytes(mapClass);
       try {
-        Class<?> mapClass = biMap ? ImmutableBiMap.class : ImmutableMap.class;
         constructor = cls.getDeclaredConstructor(mapClass);
         constructor.setAccessible(true);
         readResolveMethod = findReadResolve(cls);
@@ -406,6 +443,10 @@ public class GuavaCollectionSerializers {
       if (size != 0) {
         buffer.checkReadableBytes(size);
       }
+      // SerializedForm rebuilds the final ImmutableMap/ImmutableBiMap through a transient builder.
+      // Reserve the final Guava map owner and key/value reference slots, not the builder.
+      readContext.reserveGraphMemory(
+          mapOwnerBytes + (long) size * 2 * GraphMemoryEstimates.REFERENCE_BYTES);
       ImmutableMap.Builder builder =
           biMap ? newImmutableBiMapBuilder(size) : newImmutableMapBuilder(size);
       for (int i = 0; i < size; i++) {
@@ -508,6 +549,8 @@ public class GuavaCollectionSerializers {
   }
 
   public static final class HashBasedTableSerializer extends Serializer<HashBasedTable> {
+    private static final int HASH_BASED_TABLE_OWNER_BYTES =
+        GraphMemoryEstimates.shallowObjectBytes(HashBasedTable.class);
 
     public HashBasedTableSerializer(TypeResolver typeResolver, Class<HashBasedTable> cls) {
       super(typeResolver.getConfig(), cls);
@@ -529,6 +572,17 @@ public class GuavaCollectionSerializers {
     public HashBasedTable read(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
       int size = buffer.readVarUInt32Small7();
+      if (size < 0) {
+        throw new DeserializationException("HashBasedTable size must be non-negative: " + size);
+      }
+      if (size > Integer.MAX_VALUE / 3) {
+        throw new DeserializationException("HashBasedTable body size exceeds int range: " + size);
+      }
+      // HashBasedTable materializes the final table directly; each cell owns row-key,
+      // column-key, and value reference slots in the retained table.
+      readContext.reserveGraphMemory(
+          HASH_BASED_TABLE_OWNER_BYTES + (long) size * 3 * GraphMemoryEstimates.REFERENCE_BYTES);
+      buffer.checkReadableBytes(size * 3);
       HashBasedTable table = HashBasedTable.create();
       if (needToWriteRef) {
         readContext.setReadRef(readContext.lastPreservedRefId(), table);
@@ -574,7 +628,7 @@ public class GuavaCollectionSerializers {
     @Override
     public Map newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(buffer);
+      int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
       Comparator comparator = (Comparator) readContext.readRef();
       return new SortedMapContainer<>(comparator, numElements);
@@ -629,14 +683,36 @@ public class GuavaCollectionSerializers {
     Class cls =
         loadClass(PKG + ".RegularImmutableBiMap", ImmutableBiMap.of("k1", 1, "k2", 4).getClass());
     resolver.registerInternalSerializer(cls, new ImmutableBiMapSerializer(resolver, cls));
-    cls = loadClass(PKG + ".SingletonImmutableBiMap", ImmutableBiMap.of(1, 2).getClass());
-    resolver.registerInternalSerializer(cls, new ImmutableBiMapSerializer(resolver, cls));
+    if (SINGLETON_IMMUTABLE_BI_MAP_AVAILABLE) {
+      cls = loadClass(PKG + ".SingletonImmutableBiMap", ImmutableBiMap.of(1, 2).getClass());
+      resolver.registerInternalSerializer(cls, new ImmutableBiMapSerializer(resolver, cls));
+    } else {
+      // This class only preserves the missing singleton ID slot. Charge the concrete Guava owner
+      // returned by the local factory, which may be the regular implementation.
+      class GuavaSingletonBiMap {}
+
+      cls = GuavaSingletonBiMap.class;
+      int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(ImmutableBiMap.of(1, 2).getClass());
+      resolver.registerInternalSerializer(
+          cls, new ImmutableBiMapSerializer(resolver, cls, ownerBytes));
+    }
     cls = loadClass(PKG + ".RegularImmutableMap", ImmutableMap.of("k1", 1, "k2", 2).getClass());
     resolver.registerInternalSerializer(cls, new ImmutableMapSerializer(resolver, cls));
     cls = loadClass(PKG + ".RegularImmutableList", ImmutableList.of().getClass());
     resolver.registerInternalSerializer(cls, new RegularImmutableListSerializer(resolver, cls));
-    cls = loadClass(PKG + ".SingletonImmutableList", ImmutableList.of(1).getClass());
-    resolver.registerInternalSerializer(cls, new ImmutableListSerializer(resolver, cls));
+    if (SINGLETON_IMMUTABLE_LIST_AVAILABLE) {
+      cls = loadClass(PKG + ".SingletonImmutableList", ImmutableList.of(1).getClass());
+      resolver.registerInternalSerializer(cls, new ImmutableListSerializer(resolver, cls));
+    } else {
+      // This class only preserves the missing singleton ID slot. Charge the concrete Guava owner
+      // returned by the local factory, which may be the regular implementation.
+      class GuavaSingletonList {}
+
+      cls = GuavaSingletonList.class;
+      int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(ImmutableList.of(1).getClass());
+      resolver.registerInternalSerializer(
+          cls, new ImmutableListSerializer(resolver, cls, ownerBytes));
+    }
     cls = loadClass(PKG + ".RegularImmutableSet", ImmutableSet.of(1, 2).getClass());
     resolver.registerInternalSerializer(cls, new ImmutableSetSerializer(resolver, cls));
     cls = loadClass(PKG + ".SingletonImmutableSet", ImmutableSet.of(1).getClass());

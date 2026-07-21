@@ -20,6 +20,7 @@
 package org.apache.fory.integration_tests;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,8 +38,7 @@ import org.testng.annotations.Test;
 
 public class JpmsFieldAccessorTest {
   private static final int JDK_MAJOR_VERSION = Runtime.version().feature();
-  private static final String INSTANCE_ACCESSOR =
-      "org.apache.fory.reflect.InstanceFieldAccessors$InstanceAccessor";
+  private static final String VAR_HANDLE = "java.lang.invoke.VarHandle";
 
   @Test
   public void testPrivateFieldAccess() throws Exception {
@@ -130,10 +130,9 @@ public class JpmsFieldAccessorTest {
     Assert.assertEquals(result.value(), 17);
 
     Class<?> serializerClass = serializerClass(fory, PrivateFieldBean.class);
-    Assert.assertTrue((Boolean) Class.class.getMethod("isHidden").invoke(serializerClass));
-    Assert.assertSame(
-        Class.class.getMethod("getNestHost").invoke(serializerClass), PrivateFieldBean.class);
-    assertAccessorField(serializerClass, "value");
+    // Runtime codegen uses the normal CodeGenerator classloader path. JDK25+ final-field access is
+    // guaranteed by the generated VarHandle field, not by hidden-nestmate source access.
+    assertVarHandleField(serializerClass, "value");
   }
 
   @Test
@@ -174,13 +173,16 @@ public class JpmsFieldAccessorTest {
     return serializer.getClass();
   }
 
-  private static void assertAccessorField(Class<?> serializerClass, String fieldName) {
+  private static void assertVarHandleField(Class<?> serializerClass, String fieldName) {
     for (Field field : serializerClass.getDeclaredFields()) {
-      if (field.getName().contains(fieldName + "_accessor_")) {
-        Assert.assertEquals(field.getType().getName(), INSTANCE_ACCESSOR);
+      if (field.getName().contains(fieldName + "_varHandle_")) {
+        Assert.assertEquals(field.getType().getName(), VAR_HANDLE);
+        int modifiers = field.getModifiers();
+        Assert.assertTrue(Modifier.isStatic(modifiers));
+        Assert.assertTrue(Modifier.isFinal(modifiers));
         return;
       }
     }
-    Assert.fail("Missing generated accessor field for " + fieldName + " in " + serializerClass);
+    Assert.fail("Missing generated VarHandle field for " + fieldName + " in " + serializerClass);
   }
 }

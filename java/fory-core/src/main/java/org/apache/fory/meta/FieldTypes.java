@@ -21,6 +21,7 @@ package org.apache.fory.meta;
 
 import static org.apache.fory.type.TypeUtils.COLLECTION_TYPE;
 import static org.apache.fory.type.TypeUtils.MAP_TYPE;
+import static org.apache.fory.type.TypeUtils.arrayClassName;
 import static org.apache.fory.type.TypeUtils.collectionOf;
 import static org.apache.fory.type.TypeUtils.getArrayComponentInfo;
 import static org.apache.fory.type.TypeUtils.getArrayDimensions;
@@ -47,6 +48,7 @@ import org.apache.fory.collection.UInt32List;
 import org.apache.fory.collection.UInt64List;
 import org.apache.fory.collection.UInt8List;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -278,12 +280,9 @@ public class FieldTypes {
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              genericType.getTypeParameter0() == null
-                  ? GenericType.build(Object.class)
-                  : genericType.getTypeParameter0()));
+              getTypeParameter(genericType, 0)));
     } else if (MAP_TYPE.isSupertypeOf(genericType.getTypeRef())
         || (isXlang && resolver.isMap(rawType))) {
-      Tuple2<TypeRef<?>, TypeRef<?>> mapKeyValueType = getMapKeyValueType(genericType);
       return new MapFieldType(
           typeId,
           nullable,
@@ -291,15 +290,11 @@ public class FieldTypes {
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              mapKeyValueType.f0 == null
-                  ? GenericType.build(Object.class)
-                  : resolver.buildGenericType(mapKeyValueType.f0)),
+              getTypeParameter(genericType, 0)),
           buildFieldType(
               resolver,
               null, // nested fields don't have Field reference
-              mapKeyValueType.f1 == null
-                  ? GenericType.build(Object.class)
-                  : resolver.buildGenericType(mapKeyValueType.f1)));
+              getTypeParameter(genericType, 1)));
     } else if (isUnionType || Union.class.isAssignableFrom(rawType)) {
       return new UnionFieldType(nullable, trackingRef);
     } else if (Types.isEnumType(typeId)) {
@@ -346,16 +341,11 @@ public class FieldTypes {
     }
   }
 
-  private static Tuple2<TypeRef<?>, TypeRef<?>> getMapKeyValueType(GenericType genericType) {
-    if (genericType.getTypeParametersCount() >= 2) {
-      return Tuple2.of(
-          genericType.getTypeParameter0().getTypeRef(),
-          genericType.getTypeParameter1().getTypeRef());
+  private static GenericType getTypeParameter(GenericType genericType, int index) {
+    if (genericType.getTypeParametersCount() <= index) {
+      return GenericType.build(Object.class);
     }
-    if (!MAP_TYPE.isSupertypeOf(genericType.getTypeRef())) {
-      return Tuple2.of(TypeRef.of(Object.class), TypeRef.of(Object.class));
-    }
-    return TypeUtils.getMapKeyValueType(genericType.getTypeRef());
+    return genericType.getTypeParameters()[index];
   }
 
   private static TypeExtMeta primitiveListInlineMeta(TypeRef<?> typeRef) {
@@ -918,16 +908,13 @@ public class FieldTypes {
         return collectionOf(elementType, TypeExtMeta.of(typeId, nullable, trackingRef));
       }
       if (!declaredClass.isArray()) {
-        if (declElementType.equals(elementType)) {
+        TypeExtMeta extMeta = typeExtMeta(typeId, nullable, trackingRef, declared);
+        if (declElementType.equals(elementType)
+            && Objects.equals(declared.getTypeExtMeta(), extMeta)) {
           return declared;
         }
-        TypeExtMeta extMeta = typeExtMeta(typeId, nullable, trackingRef, declared);
-        if (!java.util.Collection.class.isAssignableFrom(declaredClass)
-            && resolver.isCollection(declaredClass)) {
-          return TypeRef.of(
-              declaredClass, extMeta, java.util.Collections.singletonList(elementType), null);
-        }
-        return collectionOf(declaredClass, elementType, extMeta);
+        return TypeRef.of(
+            declared.getType(), extMeta, java.util.Collections.singletonList(elementType), null);
       }
       // Build array type from element type
       // elementType could be base type (int) or intermediate array (int[])
@@ -1028,13 +1015,13 @@ public class FieldTypes {
         TypeExtMeta extMeta = typeExtMeta(typeId, nullable, trackingRef, declared);
         TypeRef<?> keyTypeRef = keyType.toTypeToken(classResolver, keyDecl);
         TypeRef<?> valueTypeRef = valueType.toTypeToken(classResolver, valueDecl);
-        Class<?> declaredClass = declared.getRawType();
-        if (!java.util.Map.class.isAssignableFrom(declaredClass)
-            && classResolver.isMap(declaredClass)) {
-          return TypeRef.of(
-              declaredClass, extMeta, java.util.Arrays.asList(keyTypeRef, valueTypeRef), null);
+        if (keyDecl.equals(keyTypeRef)
+            && valueDecl.equals(valueTypeRef)
+            && Objects.equals(declared.getTypeExtMeta(), extMeta)) {
+          return declared;
         }
-        return mapOf(declaredClass, keyTypeRef, valueTypeRef, extMeta);
+        return TypeRef.of(
+            declared.getType(), extMeta, java.util.Arrays.asList(keyTypeRef, valueTypeRef), null);
       }
       return mapOf(
           keyType.toTypeToken(classResolver, keyDecl),
@@ -1131,15 +1118,23 @@ public class FieldTypes {
       }
       TypeRef<?> componentTypeRef = componentType.toTypeToken(classResolver, declared);
       Class<?> componentRawType = componentTypeRef.getRawType();
-      if (UnknownClass.class.isAssignableFrom(componentRawType)) {
-        return TypeRef.of(
-            UnknownClass.getUnknowClass(componentType instanceof EnumFieldType, dimensions, true),
-            typeExtMeta(typeId, nullable, trackingRef, declared));
-      } else {
-        return TypeRef.of(
-            Array.newInstance(componentRawType, new int[dimensions]).getClass(),
-            typeExtMeta(typeId, nullable, trackingRef, declared));
+      int totalDimensions =
+          dimensions + (componentRawType.isArray() ? getArrayDimensions(componentRawType) : 0);
+      if (UnknownClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(componentRawType))
+          && totalDimensions > 6) {
+        throw new InsecureException("Input-derived arrays cannot exceed 6 dimensions.");
       }
+      Class<?> arrayType;
+      if (classResolver.getConfig().requireClassRegistration() && totalDimensions <= 6) {
+        // The component was already resolved from exact trusted state. Derive only the bounded
+        // array shape here so a custom registration name is not replaced with Class.getName().
+        arrayType = Array.newInstance(componentRawType, new int[dimensions]).getClass();
+      } else {
+        // Non-strict reads must pass the complete descriptor to TypeChecker. Strict arrays above
+        // six dimensions reach loadClass only so an exact array registration can satisfy them.
+        arrayType = classResolver.loadClass(arrayClassName(componentRawType, dimensions));
+      }
+      return TypeRef.of(arrayType, typeExtMeta(typeId, nullable, trackingRef, declared));
     }
 
     @Override

@@ -52,6 +52,13 @@ public class DisallowedListTest extends ForyTestBase {
   }
 
   @Test
+  public void testDisallowedListImmutable() {
+    Set<String> disallowedClasses = DisallowedList.getDisallowedClasses();
+    Assert.assertThrows(
+        UnsupportedOperationException.class, () -> disallowedClasses.add("example.NotAllowed"));
+  }
+
+  @Test
   public void testCheckHitDisallowedList() {
     // Hit the disallowed list.
     Assert.assertThrows(
@@ -85,7 +92,8 @@ public class DisallowedListTest extends ForyTestBase {
               .withCompatible(false)
               .build();
       if (requireClassRegistration) {
-        // Registered or unregistered Classes should be subject to disallowed list restrictions.
+        // Explicit registration is trusted configuration; serializer creation still rejects the
+        // hard-disallowed class below.
         fory.register(Expression.class);
       }
       allFory[i] = fory;

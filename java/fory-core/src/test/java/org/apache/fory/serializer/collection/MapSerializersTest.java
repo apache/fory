@@ -31,6 +31,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.io.Serializable;
+import java.lang.reflect.ParameterizedType;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -58,9 +59,12 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.annotation.Ref;
 import org.apache.fory.collection.LazyMap;
 import org.apache.fory.collection.MapEntry;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.meta.FieldTypes;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.collection.CollectionSerializersTest.TestEnum;
@@ -68,7 +72,9 @@ import org.apache.fory.test.bean.BeanB;
 import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.test.bean.MapFields;
 import org.apache.fory.type.GenericType;
+import org.apache.fory.type.Types;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 public class MapSerializersTest extends ForyTestBase {
@@ -1158,6 +1164,153 @@ public class MapSerializersTest extends ForyTestBase {
         new GenericMapBoundTest(
             new HashMap<>(mapOf(new HashMap<>(mapOf(1, list)), list)),
             new HashMap<>(mapOf(new HashMap<>(mapOf(1, list)), list))));
+  }
+
+  public static class MultiParamMap<A, K, V> extends HashMap<K, V> {}
+
+  @Data
+  public static class MultiParamMapHolder {
+    public MultiParamMap<String, Integer, Long> map;
+  }
+
+  @Data
+  public static class MultiParamMapRefHolder {
+    public MultiParamMap<String, Integer, @Ref(enable = false) MapRefItem> noRefMap;
+    public MultiParamMap<String, Integer, @Ref(enable = true) MapRefItem> refMap;
+  }
+
+  @Data
+  public static class NestedMultiParamMapRefHolder {
+    public MultiParamMap<String, Integer, List<@Ref(enable = false) MapRefItem>> nestedMap;
+  }
+
+  public static class FixedValueMap<K, A> extends HashMap<K, MapRefItem> {}
+
+  @Data
+  public static class FixedValueMapRefHolder {
+    public FixedValueMap<Integer, @Ref(enable = false) MapRefItem> map;
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testMultiParamMapGeneric(boolean enableCodegen) {
+    Fory fory =
+        builder()
+            .withXlang(false)
+            .withCodegen(enableCodegen)
+            .requireClassRegistration(false)
+            .build();
+    MultiParamMapHolder holder = new MultiParamMapHolder();
+    holder.map = new MultiParamMap<>();
+    holder.map.put(1, 2L);
+    holder.map.put(3, 4L);
+    serDeCheck(fory, holder);
+  }
+
+  @Test
+  public void testMapFieldTypeKeepsDeclaredType() {
+    Fory fory = builder().withXlang(false).requireClassRegistration(false).build();
+    TypeRef<?> declared = new TypeRef<Map<String, Integer>>() {};
+    FieldTypes.MapFieldType fieldType =
+        new FieldTypes.MapFieldType(
+            Types.MAP,
+            true,
+            true,
+            new FieldTypes.RegisteredFieldType(true, false, Types.STRING, -1),
+            new FieldTypes.RegisteredFieldType(true, false, Types.INT32, -1));
+
+    TypeRef<?> rebuilt = fieldType.toTypeToken(fory.getTypeResolver(), declared);
+
+    Assert.assertTrue(rebuilt.getType() instanceof ParameterizedType);
+    Assert.assertEquals(rebuilt.getRawType(), Map.class);
+    Assert.assertEquals(rebuilt.getTypeArguments().size(), 2);
+    Assert.assertEquals(rebuilt.getTypeExtMeta().typeId(), Types.MAP);
+    Assert.assertTrue(rebuilt.getTypeExtMeta().nullable());
+    Assert.assertTrue(rebuilt.getTypeExtMeta().trackingRef());
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testMultiParamMapRefOverride(boolean enableCodegen) {
+    skipMemberGenericTypeUseOnJdk11();
+    Fory fory =
+        builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(enableCodegen)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
+    MapRefItem noRefItem = new MapRefItem();
+    noRefItem.id = 1;
+    noRefItem.name = "no-ref";
+    MapRefItem refItem = new MapRefItem();
+    refItem.id = 2;
+    refItem.name = "ref";
+    MultiParamMapRefHolder holder = new MultiParamMapRefHolder();
+    holder.noRefMap = new MultiParamMap<>();
+    holder.noRefMap.put(1, noRefItem);
+    holder.noRefMap.put(2, noRefItem);
+    holder.refMap = new MultiParamMap<>();
+    holder.refMap.put(1, refItem);
+    holder.refMap.put(2, refItem);
+
+    MultiParamMapRefHolder cloned = serDe(fory, holder);
+    Assert.assertNotSame(cloned.noRefMap.get(1), cloned.noRefMap.get(2));
+    Assert.assertSame(cloned.refMap.get(1), cloned.refMap.get(2));
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testNestedMultiParamMapRefOverride(boolean enableCodegen) {
+    skipMemberGenericTypeUseOnJdk11();
+    Fory fory =
+        builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(enableCodegen)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
+    MapRefItem item = new MapRefItem();
+    item.id = 1;
+    item.name = "nested";
+    List<MapRefItem> values = new ArrayList<>();
+    values.add(item);
+    values.add(item);
+
+    NestedMultiParamMapRefHolder holder = new NestedMultiParamMapRefHolder();
+    holder.nestedMap = new MultiParamMap<>();
+    holder.nestedMap.put(1, values);
+
+    NestedMultiParamMapRefHolder cloned = serDe(fory, holder);
+    Assert.assertNotSame(cloned.nestedMap.get(1).get(0), cloned.nestedMap.get(1).get(1));
+  }
+
+  private static void skipMemberGenericTypeUseOnJdk11() {
+    if (JdkVersion.MAJOR_VERSION <= 11) {
+      throw new SkipException(
+          "JDK 11 and earlier do not expose member-class generic field type-use metadata");
+    }
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testFixedValueMapIgnoresMetadataRef(boolean enableCodegen) {
+    Fory fory =
+        builder()
+            .withXlang(false)
+            .withRefTracking(true)
+            .withCodegen(enableCodegen)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
+    MapRefItem value = new MapRefItem();
+    value.id = 1;
+    value.name = "value";
+    FixedValueMapRefHolder holder = new FixedValueMapRefHolder();
+    holder.map = new FixedValueMap<>();
+    holder.map.put(1, value);
+    holder.map.put(2, value);
+
+    FixedValueMapRefHolder cloned = serDe(fory, holder);
+    Assert.assertSame(cloned.map.get(1), cloned.map.get(2));
   }
 
   public static class StringKeyMap<T> extends HashMap<String, T> {}

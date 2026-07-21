@@ -1108,7 +1108,9 @@ public final class MemoryBuffer {
   public void writeByte(byte value) {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + 1;
-    ensure(newIdx);
+    if (newIdx > size) {
+      globalAllocator.grow(this, newIdx);
+    }
     final long pos = address + writerIdx;
     storeByte(pos, value);
     writerIndex = newIdx;

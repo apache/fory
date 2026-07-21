@@ -49,11 +49,14 @@ import org.apache.fory.context.CopyContext;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.ExternalizableSerializer;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
@@ -66,6 +69,10 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class MapSerializers {
+  private static final int HASH_MAP_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(HashMap.class);
+  private static final int SINGLETON_MAP_OWNER_BYTES =
+      GraphMemoryEstimates.shallowObjectBytes(Collections.singletonMap(null, null).getClass());
   private static final Comparator NATURAL_ORDER_COMPARATOR = Comparator.naturalOrder();
 
   private static void requireXlangNaturalOrdering(Class<?> type, Comparator<?> comparator) {
@@ -86,7 +93,7 @@ public class MapSerializers {
     @Override
     public HashMap newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(buffer);
+      int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
       HashMap hashMap = new HashMap(numElements);
       readContext.reference(hashMap);
@@ -107,7 +114,7 @@ public class MapSerializers {
     @Override
     public LinkedHashMap newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(buffer);
+      int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
       LinkedHashMap hashMap = new LinkedHashMap(numElements);
       readContext.reference(hashMap);
@@ -146,7 +153,7 @@ public class MapSerializers {
     @Override
     public LazyMap newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(buffer);
+      int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
       LazyMap map = new LazyMap(numElements);
       readContext.reference(map);
@@ -200,7 +207,7 @@ public class MapSerializers {
     @Override
     public Map newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      setNumElements(readMapSize(buffer));
+      setNumElements(readMapSize(readContext, buffer));
       T map;
       Comparator comparator = config.isXlang() ? null : (Comparator) readContext.readRef();
       if (type == TreeMap.class) {
@@ -309,6 +316,7 @@ public class MapSerializers {
       }
       Object key = readContext.readRef();
       Object value = readContext.readRef();
+      readContext.reserveGraphMemory(SINGLETON_MAP_OWNER_BYTES);
       return Collections.singletonMap(key, value);
     }
   }
@@ -322,7 +330,7 @@ public class MapSerializers {
     @Override
     public ConcurrentHashMap newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(buffer);
+      int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
       ConcurrentHashMap map = new ConcurrentHashMap(numElements);
       readContext.reference(map);
@@ -359,7 +367,7 @@ public class MapSerializers {
     @Override
     public ConcurrentSkipListMap newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(buffer);
+      int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
       Comparator comparator = config.isXlang() ? null : (Comparator) readContext.readRef();
       ConcurrentSkipListMap map = new ConcurrentSkipListMap(comparator);
@@ -423,7 +431,7 @@ public class MapSerializers {
     @Override
     public EnumMap newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      setNumElements(readMapSize(buffer));
+      setNumElements(readMapSize(readContext, buffer));
       Class<?> keyType = typeResolver.readTypeInfo(readContext).getType();
       EnumMap map = new EnumMap(keyType);
       readContext.reference(map);
@@ -504,16 +512,31 @@ public class MapSerializers {
     private Serializer<T> dataSerializer;
 
     public DefaultJavaMapSerializer(TypeResolver typeResolver, Class<T> cls) {
+      this(typeResolver, cls, null, true);
+    }
+
+    public DefaultJavaMapSerializer(TypeResolver typeResolver, Class<T> cls, TypeDef typeDef) {
+      this(typeResolver, cls, typeDef, false);
+    }
+
+    private DefaultJavaMapSerializer(
+        TypeResolver typeResolver, Class<T> cls, TypeDef typeDef, boolean registerSerializer) {
       super(typeResolver, cls, false);
       Preconditions.checkArgument(
           !config.isXlang(),
           "Fory cross-language default map serializer should use " + MapSerializer.class);
-      typeResolver.setSerializer(cls, this);
-      Class<? extends Serializer> serializerClass =
-          ((ClassResolver) typeResolver)
-              .getObjectSerializerClass(
-                  cls, sc -> dataSerializer = Serializers.newSerializer(typeResolver, cls, sc));
-      dataSerializer = Serializers.newSerializer(typeResolver, cls, serializerClass);
+      if (registerSerializer) {
+        typeResolver.setSerializer(cls, this);
+      }
+      if (typeDef == null) {
+        Class<? extends Serializer> serializerClass =
+            ((ClassResolver) typeResolver)
+                .getObjectSerializerClass(
+                    cls, sc -> dataSerializer = Serializers.newSerializer(typeResolver, cls, sc));
+        dataSerializer = Serializers.newSerializer(typeResolver, cls, serializerClass);
+      } else {
+        dataSerializer = new CompatibleSerializer<>(typeResolver, cls, typeDef);
+      }
       // No need to set object serializer to this, it will be set in class resolver later.
       // typeResolver.setSerializer(cls, this);
     }
@@ -601,7 +624,7 @@ public class MapSerializers {
   public static class XlangMapSerializer extends MapLikeSerializer {
 
     public XlangMapSerializer(TypeResolver typeResolver, Class cls) {
-      super(typeResolver, cls, true);
+      super(typeResolver, cls, true, false, HASH_MAP_OWNER_BYTES);
     }
 
     @Override
@@ -619,7 +642,7 @@ public class MapSerializers {
 
     public Map newMap(ReadContext readContext) {
       MemoryBuffer buffer = readContext.getBuffer();
-      int numElements = readMapSize(buffer);
+      int numElements = readMapSize(readContext, buffer);
       setNumElements(numElements);
       HashMap<Object, Object> map = new HashMap<>(numElements);
       readContext.reference(map);

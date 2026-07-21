@@ -78,7 +78,7 @@ checksum = "8591b0bcc8a98a64310a2fae1bb3e9b8564dd10e381e6e28010fde8e8e8568db"
 
 [[package]]
 name = "fory"
-version = "1.3.0-alpha.0"
+version = "1.4.0-alpha.0"
 dependencies = [
  "fory-core",
  "fory-derive",
@@ -86,7 +86,7 @@ dependencies = [
 
 [[package]]
 name = "fory-core"
-version = "1.3.0-alpha.0"
+version = "1.4.0-alpha.0"
 dependencies = [
  "byteorder",
  "chrono",
@@ -99,7 +99,7 @@ dependencies = [
 
 [[package]]
 name = "fory-derive"
-version = "1.3.0-alpha.0"
+version = "1.4.0-alpha.0"
 dependencies = [
  "fory-core",
  "proc-macro-crate",
@@ -140,7 +140,7 @@ dependencies = [
 
 [[package]]
 name = "idl_tests"
-version = "1.3.0-alpha.0"
+version = "1.4.0-alpha.0"
 dependencies = [
  "chrono",
  "fory",

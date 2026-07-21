@@ -26,7 +26,7 @@
 
   <groupId>org.apache.fory.benchmark</groupId>
   <artifactId>java25-memory-access-benchmark</artifactId>
-  <version>1.3.0-SNAPSHOT</version>
+  <version>1.4.0-SNAPSHOT</version>
   <packaging>jar</packaging>
 
   <properties>

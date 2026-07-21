@@ -37,7 +37,7 @@ to build streaming responses or request streams.
 
 ```toml
 [dependencies]
-fory = "1.2.0"
+fory = "1.3.0"
 bytes = "1"
 tonic = { version = "0.14", features = ["transport"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

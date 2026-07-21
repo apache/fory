@@ -124,6 +124,8 @@ type sliceSerializer struct {
 	type_          reflect.Type
 	elemSerializer Serializer
 	referencable   bool
+	elemBytes      int
+	maxLength      int64
 }
 
 // newSliceSerializer creates a sliceSerializer for slices with concrete element types.
@@ -144,10 +146,13 @@ func newSliceSerializer(type_ reflect.Type, elemSerializer Serializer, xlang boo
 		reflect.Uint8, reflect.Float32, reflect.Float64:
 		return nil, fmt.Errorf("sliceSerializer does not support primitive element type %v: use dedicated primitive slice serializer", type_)
 	}
+	elemBytes := int(elem.Size())
 	return &sliceSerializer{
 		type_:          type_,
 		elemSerializer: elemSerializer,
 		referencable:   isRefType(elem, xlang),
+		elemBytes:      elemBytes,
+		maxLength:      maxGraphCount(elemBytes),
 	}, nil
 }
 
@@ -166,7 +171,7 @@ func (s *sliceSerializer) writeDataWithGenerics(ctx *WriteContext, value reflect
 	}
 
 	elemType := s.type_.Elem()
-	elemTypeInfo, _ := ctx.TypeResolver().getTypeInfo(reflect.New(elemType).Elem(), false)
+	elemTypeInfo, _ := ctx.TypeResolver().GetTypeInfo(reflect.New(elemType).Elem(), false)
 	elemDeclared := hasGenerics
 	if elemDeclared && elemTypeInfo != nil && needsElemTypeInfo(TypeId(elemTypeInfo.TypeID)) {
 		elemDeclared = false
@@ -308,6 +313,19 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 	isArrayType := value.Type().Kind() == reflect.Array
 
+	if !isArrayType {
+		if length < 0 {
+			ctx.SetError(DeserializationErrorf("negative graph element count: %d", length))
+			return
+		}
+		if int64(length) > s.maxLength {
+			ctx.SetError(DeserializationErrorf("graph memory estimate overflows: length=%d elementBytes=%d", length, s.elemBytes))
+			return
+		}
+		if !ctx.ReserveGraphMemory(int64(graphSliceOwnerBytes) + int64(length)*int64(s.elemBytes)) {
+			return
+		}
+	}
 	if length == 0 {
 		if !isArrayType {
 			value.Set(reflect.MakeSlice(value.Type(), 0, 0))
@@ -331,7 +349,7 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				elemSerializer = elemTypeInfo.Serializer
 				elemType := value.Type().Elem()
 				if elemTypeInfo.Type != nil {
-					_, elemSerializer = wrapMapSerializerIfNeeded(elemType, elemTypeInfo.Type, elemSerializer)
+					_, elemSerializer = wrapMapSerializerIfNeeded(elemType, elemTypeInfo.Type, elemSerializer, elemTypeInfo.ValueBytes)
 				}
 				if elemType.Kind() != reflect.Ptr {
 					if ptrSer, ok := elemSerializer.(*ptrToValueSerializer); ok {

@@ -1,2 +1,7 @@
 benchmarks export-ignore
 integration_tests export-ignore
+
+javascript/**/*.cjs text eol=lf
+javascript/**/*.js text eol=lf
+javascript/**/*.json text eol=lf
+javascript/**/*.ts text eol=lf

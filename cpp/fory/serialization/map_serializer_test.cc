@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 using namespace fory::serialization;
 
@@ -95,6 +96,15 @@ TEST(MapSerializerTest, NestedMapRoundtrip) {
   std::map<std::string, std::map<std::string, int32_t>> nested{
       {"group1", {{"a", 1}, {"b", 2}}}, {"group2", {{"c", 3}, {"d", 4}}}};
   test_map_roundtrip(nested);
+}
+
+TEST(MapSerializerTest, NestedMapElementRoundtrip) {
+  std::vector<std::map<std::string, int32_t>> ordered{{{"a", 1}, {"b", 2}},
+                                                      {{"c", 3}, {"d", 4}}};
+  test_map_roundtrip(ordered);
+  std::vector<std::unordered_map<std::string, int32_t>> unordered{
+      {{"a", 1}, {"b", 2}}, {{"c", 3}, {"d", 4}}};
+  test_map_roundtrip(unordered);
 }
 
 struct MapsInStruct {

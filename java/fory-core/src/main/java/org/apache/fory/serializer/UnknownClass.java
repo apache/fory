@@ -19,6 +19,9 @@
 
 package org.apache.fory.serializer;
 
+import java.lang.reflect.Array;
+import java.util.List;
+import java.util.Map.Entry;
 import org.apache.fory.collection.LazyMap;
 import org.apache.fory.config.Config;
 import org.apache.fory.meta.TypeDef;
@@ -104,23 +107,14 @@ public interface UnknownClass {
   /** Ensure no fields here to avoid conflicts with peer class fields. */
   class UnknownEmptyStruct implements UnknownClass {}
 
-  class UnknownStruct extends LazyMap implements UnknownClass {
+  class UnknownStruct extends LazyMap<Object, Object> implements UnknownClass {
     final TypeDef typeDef;
 
-    public UnknownStruct(TypeDef typeDef) {
+    public UnknownStruct(TypeDef typeDef, List<Entry<? extends Object, ? extends Object>> entries) {
+      super(entries);
       this.typeDef = typeDef;
     }
   }
-
-  Class<?> UnknownEnum1DArray = UnknownEnum[].class;
-  Class<?> UnknownEnum2DArray = UnknownEnum[][].class;
-  Class<?> UnknownEnum3DArray = UnknownEnum[][][].class;
-  Class<?> UnknownEmptyStruct1DArray = UnknownEmptyStruct[].class;
-  Class<?> UnknownEmptyStruct2DArray = UnknownEmptyStruct[][].class;
-  Class<?> UnknownEmptyStruct3DArray = UnknownEmptyStruct[][][].class;
-  Class<?> UnknownStruct1DArray = UnknownStruct[].class;
-  Class<?> UnknownStruct2DArray = UnknownStruct[][].class;
-  Class<?> UnknownStruct3DArray = UnknownStruct[][][].class;
 
   static boolean isUnknowClass(Class<?> cls) {
     if (cls.isArray()) {
@@ -137,35 +131,14 @@ public interface UnknownClass {
   static Class<?> getUnknowClass(
       String className, boolean isEnum, int arrayDims, boolean shareMeta) {
     if (arrayDims != 0) {
-      if (isEnum) {
-        switch (arrayDims) {
-          case 1:
-            return UnknownEnum1DArray;
-          case 2:
-            return UnknownEnum2DArray;
-          case 3:
-            return UnknownEnum3DArray;
-          default:
-            throw new UnsupportedOperationException(
-                String.format(
-                    "Unsupported array dimensions %s for nonexistent class %s",
-                    arrayDims, className));
-        }
-      } else {
-        switch (arrayDims) {
-          case 1:
-            return shareMeta ? UnknownStruct1DArray : UnknownEmptyStruct1DArray;
-          case 2:
-            return shareMeta ? UnknownStruct2DArray : UnknownEmptyStruct2DArray;
-          case 3:
-            return shareMeta ? UnknownStruct3DArray : UnknownEmptyStruct3DArray;
-          default:
-            throw new UnsupportedOperationException(
-                String.format(
-                    "Unsupported array dimensions %s for nonexistent class %s",
-                    arrayDims, className));
-        }
+      if (arrayDims < 0 || arrayDims > 6) {
+        throw new UnsupportedOperationException(
+            String.format(
+                "Unsupported array dimensions %s for nonexistent class %s", arrayDims, className));
       }
+      Class<?> component =
+          isEnum ? UnknownEnum.class : shareMeta ? UnknownStruct.class : UnknownEmptyStruct.class;
+      return Array.newInstance(component, new int[arrayDims]).getClass();
     } else if (isEnum) {
       return UnknownEnum.class;
     } else {

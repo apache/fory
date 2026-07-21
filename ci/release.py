@@ -17,6 +17,7 @@
 
 
 import argparse
+import json
 import logging
 import os
 import re
@@ -37,6 +38,19 @@ FORY_CORE_JDK25_ENTRY = (
     "META-INF/versions/25/org/apache/fory/reflect/InstanceFieldAccessors.class"
 )
 FORY_CORE_ACCESSOR = "org.apache.fory.reflect.InstanceFieldAccessors$InstanceAccessor"
+FORY_CORE_FEATURE = "org.apache.fory.platform.ForyGraalVMFeature"
+FORY_CORE_FEATURE_ENTRY = (
+    "META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.class"
+)
+FORY_CORE_FEATURE_SOURCE_ENTRY = (
+    "META-INF/versions/17/org/apache/fory/platform/ForyGraalVMFeature.java"
+)
+FORY_CORE_NATIVE_IMAGE_PROPERTIES = (
+    "META-INF/native-image/org.apache.fory/fory-core/native-image.properties"
+)
+GRAALVM_FEATURE_SERVICE_ENTRY = (
+    "META-INF/services/org.graalvm.nativeimage.hosted.Feature"
+)
 MAVEN_RELEASE_CMD = (
     "mvn -T10 clean deploy --no-transfer-progress -DskipTests -Papache-release"
 )
@@ -46,6 +60,21 @@ SCALA_RELEASE_CMDS = (
     "sbt sonatypePrepare",
     "sbt sonatypeBundleUpload",
 )
+RELEASE_DOC_ROOTS = (
+    "README.md",
+    "java/README.md",
+    "rust/README.md",
+    "scala/README.md",
+    "csharp/README.md",
+    "swift/README.md",
+    "dart/packages/fory/README.md",
+    "docs/compiler",
+    "docs/guide",
+    "examples",
+)
+RELEASE_DOC_EXTS = (".md", ".example")
+VERSION_SUFFIX_PATTERN = r"(?i:-snapshot|-dev\d*|\.dev\d+|-(?:alpha|beta|rc)\.\d+)"
+VERSION_PATTERN = rf"\d+\.\d+\.\d+(?:{VERSION_SUFFIX_PATTERN})?"
 
 
 def prepare(v: str):
@@ -345,20 +374,75 @@ def _java_props(output):
 
 def _verify_fory_core_mr_jar():
     jar_path = _fory_core_jar_path()
+    sources_jar_path = _fory_core_jar_path("sources")
     if not os.path.exists(jar_path):
         raise FileNotFoundError(
             f"Missing fory-core release jar: {jar_path}. "
             "Run the Java release before publishing Kotlin or Scala artifacts."
         )
+    if not os.path.exists(sources_jar_path):
+        raise FileNotFoundError(
+            f"Missing fory-core release sources jar: {sources_jar_path}. "
+            "Run the Java release before publishing Kotlin or Scala artifacts."
+        )
     with zipfile.ZipFile(jar_path) as jar:
-        names = set(jar.namelist())
+        names = jar.namelist()
         manifest = jar.read("META-INF/MANIFEST.MF").decode("utf-8")
+        if names.count(FORY_CORE_NATIVE_IMAGE_PROPERTIES) != 1:
+            raise RuntimeError(
+                f"{jar_path} must contain exactly one "
+                f"{FORY_CORE_NATIVE_IMAGE_PROPERTIES}"
+            )
+        native_image_properties = jar.read(FORY_CORE_NATIVE_IMAGE_PROPERTIES).decode(
+            "utf-8"
+        )
     if "Multi-Release: true" not in manifest:
         raise RuntimeError(f"{jar_path} is missing manifest Multi-Release: true")
     if "Build-Jdk-Spec: 25" not in manifest:
         raise RuntimeError(f"{jar_path} was not built with JDK 25")
     if FORY_CORE_JDK25_ENTRY not in names:
         raise RuntimeError(f"{jar_path} is missing {FORY_CORE_JDK25_ENTRY}")
+    feature_entries = [
+        name
+        for name in names
+        if name.endswith("org/apache/fory/platform/ForyGraalVMFeature.class")
+    ]
+    if feature_entries != [FORY_CORE_FEATURE_ENTRY]:
+        raise RuntimeError(
+            f"{jar_path} must contain only the MR17 GraalVM Feature; "
+            f"found {feature_entries}"
+        )
+    feature_service_entries = [
+        name for name in names if name.endswith(GRAALVM_FEATURE_SERVICE_ENTRY)
+    ]
+    if feature_service_entries:
+        raise RuntimeError(
+            f"{jar_path} contains obsolete Feature service metadata: "
+            f"{feature_service_entries}"
+        )
+    feature_options = re.findall(r"--features=[^\s\\]+", native_image_properties)
+    expected_feature_option = f"--features={FORY_CORE_FEATURE}"
+    if feature_options != [expected_feature_option]:
+        raise RuntimeError(
+            f"{FORY_CORE_NATIVE_IMAGE_PROPERTIES} must contain exactly "
+            f"{expected_feature_option}; found {feature_options}"
+        )
+    if "--initialize-at-build-time=" not in native_image_properties:
+        raise RuntimeError(
+            f"{FORY_CORE_NATIVE_IMAGE_PROPERTIES} is missing --initialize-at-build-time"
+        )
+    with zipfile.ZipFile(sources_jar_path) as sources_jar:
+        source_names = sources_jar.namelist()
+    feature_source_entries = [
+        name
+        for name in source_names
+        if name.endswith("org/apache/fory/platform/ForyGraalVMFeature.java")
+    ]
+    if feature_source_entries != [FORY_CORE_FEATURE_SOURCE_ENTRY]:
+        raise RuntimeError(
+            f"{sources_jar_path} must contain only the MR17 GraalVM Feature source; "
+            f"found {feature_source_entries}"
+        )
     javap = subprocess.run(
         [
             _java_tool("javap"),
@@ -368,6 +452,7 @@ def _verify_fory_core_mr_jar():
             jar_path,
             "-p",
             FORY_CORE_ACCESSOR,
+            FORY_CORE_FEATURE,
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -378,17 +463,25 @@ def _verify_fory_core_mr_jar():
         raise RuntimeError(f"{FORY_CORE_ACCESSOR} is not the JDK25 VarHandle class")
     if "sun.misc.Unsafe" in javap.stdout:
         raise RuntimeError(f"{FORY_CORE_ACCESSOR} still exposes sun.misc.Unsafe")
-    logger.info("Verified fory-core Multi-Release JDK25 jar: %s", jar_path)
+    feature_declaration = rf"(?m)^final class {re.escape(FORY_CORE_FEATURE)}\b"
+    if not re.search(feature_declaration, javap.stdout):
+        raise RuntimeError(f"{FORY_CORE_FEATURE} must remain a non-public final class")
+    logger.info(
+        "Verified fory-core Multi-Release release jars: %s, %s",
+        jar_path,
+        sources_jar_path,
+    )
 
 
-def _fory_core_jar_path():
+def _fory_core_jar_path(classifier=None):
     version = _read_java_version()
+    classifier_suffix = f"-{classifier}" if classifier else ""
     return os.path.join(
         PROJECT_ROOT_DIR,
         "java",
         "fory-core",
         "target",
-        f"fory-core-{version}.jar",
+        f"fory-core-{version}{classifier_suffix}.jar",
     )
 
 
@@ -407,6 +500,7 @@ def _read_java_version():
 def bump_version(**kwargs):
     new_version = kwargs["version"]
     langs = kwargs["l"]
+    all_langs = langs == "all"
     if langs == "all":
         langs = [
             "java",
@@ -441,24 +535,26 @@ def bump_version(**kwargs):
         elif lang == "python":
             bump_python_version(new_version)
         elif lang == "javascript":
+            js_version = _normalize_js_version(new_version)
             _bump_version(
                 "javascript/packages/core",
                 "package.json",
-                _normalize_js_version(new_version),
+                js_version,
                 _update_js_version,
             )
             _bump_version(
                 "javascript/packages/hps",
                 "package.json",
-                _normalize_js_version(new_version),
+                js_version,
                 _update_js_version,
             )
             _bump_version(
                 "integration_tests/idl_tests/javascript",
                 "package.json",
-                _normalize_js_version(new_version),
+                js_version,
                 _update_js_version,
             )
+            bump_js_lock_version(js_version)
         elif lang == "cpp":
             bump_cpp_version(new_version)
         elif lang == "go":
@@ -473,6 +569,8 @@ def bump_version(**kwargs):
             bump_compiler_version(new_version)
         else:
             raise NotImplementedError(f"Unsupported {lang}")
+    if all_langs:
+        bump_release_doc_versions(new_version, kwargs.get("release_version"))
 
 
 def _bump_version(path, file, new_version, func):
@@ -495,9 +593,9 @@ def bump_java_version(new_version):
         "integration_tests/idl_tests/java",
         "benchmarks/java",
         "java/fory-core",
+        "java/fory-json",
         "java/fory-format",
         "java/fory-extensions",
-        "java/fory-graalvm-feature",
         "java/fory-test-core",
         "java/fory-testsuite",
         "java/fory-latest-jdk-tests",
@@ -564,6 +662,12 @@ def bump_rust_version(new_version):
         rust_version,
         _update_rust_version,
     )
+    _bump_version(
+        "integration_tests/idl_tests/rust",
+        "Cargo.lock",
+        rust_version,
+        _update_cargo_lock_version,
+    )
 
 
 def bump_kotlin_version(new_version):
@@ -594,10 +698,10 @@ def bump_go_version(new_version):
         "integration_tests/idl_tests/go",
     ]:
         _bump_version(p, "go.mod", new_version, _update_go_mod_version)
-    _bump_version("go/fory/cmd/fory", "main.go", new_version, _update_go_cli_version)
 
 
 def bump_dart_version(new_version):
+    release_version = _resolve_release_doc_version(new_version)
     for p in [
         "dart",
         "dart/packages/fory",
@@ -608,12 +712,11 @@ def bump_dart_version(new_version):
     _bump_version(
         "dart/packages/fory",
         "README.md",
-        new_version,
+        release_version or new_version,
         _update_dart_readme_dependency_version,
     )
-    if _is_release_version(new_version):
-        for p in ["dart", "dart/packages/fory"]:
-            _bump_version(p, "CHANGELOG.md", new_version, _update_dart_changelog)
+    if release_version:
+        bump_dart_changelogs(new_version, release_version)
 
 
 def bump_compiler_version(new_version):
@@ -627,6 +730,7 @@ def bump_compiler_version(new_version):
 
 
 def bump_csharp_version(new_version):
+    release_version = _resolve_release_doc_version(new_version)
     _bump_version(
         "csharp",
         "Directory.Build.props",
@@ -636,24 +740,58 @@ def bump_csharp_version(new_version):
     _bump_version(
         "csharp",
         "README.md",
-        new_version,
+        release_version or new_version,
         _update_csharp_readme_package_version,
     )
     _bump_version(
         "docs/guide/csharp",
         "index.md",
-        new_version,
+        release_version or new_version,
         _update_csharp_readme_package_version,
     )
 
 
 def bump_swift_version(new_version):
+    release_version = _resolve_release_doc_version(new_version)
     _bump_version(
         "swift",
         "README.md",
-        new_version,
+        release_version or new_version,
         _update_swift_readme_dependency_version,
     )
+
+
+def bump_js_lock_version(new_version):
+    package_lock = os.path.join(PROJECT_ROOT_DIR, "javascript", "package-lock.json")
+    with open(package_lock, "r") as f:
+        lock = json.load(f)
+    packages = lock.get("packages", {})
+    for package_path in ["packages/core", "packages/hps"]:
+        package = packages.get(package_path)
+        if package is None:
+            raise ValueError(f"No {package_path} entry found in package-lock.json")
+        package["version"] = new_version
+    with open(package_lock, "w") as f:
+        json.dump(lock, f, indent=2)
+        f.write("\n")
+
+
+def bump_dart_changelogs(new_version, release_version):
+    dev_version = None if _is_release_version(new_version) else new_version.strip()
+    for path, workspace in [
+        ("dart/CHANGELOG.md", True),
+        ("dart/packages/fory/CHANGELOG.md", False),
+    ]:
+        file = os.path.join(PROJECT_ROOT_DIR, path)
+        with open(file, "r") as f:
+            lines = f.readlines()
+        lines = _update_dart_changelog(lines, release_version, workspace)
+        if dev_version:
+            lines = _update_dart_dev_changelog(
+                lines, dev_version, release_version, workspace
+            )
+        with open(file, "w") as f:
+            f.write("".join(lines))
 
 
 def _update_pom_parent_version(lines, new_version):
@@ -794,6 +932,20 @@ def _update_cargo_package_version(lines, v: str):
     return lines
 
 
+def _update_cargo_lock_version(lines, v: str):
+    package_name = None
+    local_packages = {"fory", "fory-core", "fory-derive", "idl_tests"}
+    for index, line in enumerate(lines):
+        name_match = re.match(r'^name = "([^"]+)"$', line.strip())
+        if name_match:
+            package_name = name_match.group(1)
+            continue
+        if package_name in local_packages and line.strip().startswith("version = "):
+            lines[index] = f'version = "{v}"\n'
+            package_name = None
+    return lines
+
+
 def _update_cmake_project_version(lines, v: str):
     cmake_version = _normalize_cmake_version(v)
     in_project = False
@@ -842,17 +994,6 @@ def _update_go_mod_version(lines, v: str):
     return lines
 
 
-def _update_go_cli_version(lines, v: str):
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
-    for index, line in enumerate(lines):
-        if line.startswith("const version = "):
-            lines[index] = f'const version = "{v}"\n'
-            return lines
-    raise ValueError("No Go CLI version constant found")
-
-
 def _update_pubspec_version(lines, v: str):
     for index, line in enumerate(lines):
         if re.match(r"^version\s*:", line):
@@ -873,16 +1014,54 @@ def _update_dart_readme_dependency_version(lines, v: str):
     raise ValueError("No Dart README dependency snippet for fory found")
 
 
-def _update_dart_changelog(lines, v: str):
+def _update_dart_changelog(lines, v: str, workspace=False):
     v = v.strip()
     if v.startswith("v"):
         v = v[1:]
     heading = f"## {v}\n"
-    body = ["\n", f"- Release Apache Fory Dart {v}.\n", "\n"]
+    if workspace:
+        body = [
+            "\n",
+            f"- Align the Dart workspace version with the Apache Fory {v} release.\n",
+            "\n",
+        ]
+    else:
+        body = ["\n", f"- Release Apache Fory Dart {v}.\n", "\n"]
     heading_pattern = re.compile(rf"^##\s+{re.escape(v)}(?:-[^\s]+)?\s*$")
     start_index = -1
     for index, line in enumerate(lines):
         if heading_pattern.match(line):
+            start_index = index
+            break
+    if start_index == -1:
+        return [heading] + body + lines
+
+    end_index = len(lines)
+    for index in range(start_index + 1, len(lines)):
+        if re.match(r"^##\s+", lines[index]):
+            end_index = index
+            break
+    return lines[:start_index] + [heading] + body + lines[end_index:]
+
+
+def _update_dart_dev_changelog(lines, v: str, release_version: str, workspace=False):
+    heading = f"## {v}\n"
+    if workspace:
+        body = [
+            "\n",
+            "- Start the next Dart workspace development cycle after the "
+            f"{release_version} release.\n",
+            "\n",
+        ]
+    else:
+        body = [
+            "\n",
+            f"- Start the next development cycle after the {release_version} release.\n",
+            "\n",
+        ]
+    start_index = -1
+    for index, line in enumerate(lines):
+        if line == heading:
             start_index = index
             break
     if start_index == -1:
@@ -933,6 +1112,135 @@ def _update_swift_readme_dependency_version(lines, v: str):
         )
         return lines
     raise ValueError("No Swift Package dependency snippet for apache/fory.git found")
+
+
+def bump_release_doc_versions(new_version: str, release_version: str = None):
+    release_version = _resolve_release_doc_version(new_version, release_version)
+    if not release_version:
+        logger.info("Skip release documentation version update for %s", new_version)
+        return
+    for file in _release_doc_files():
+        _update_release_doc_file(file, release_version)
+
+
+def _resolve_release_doc_version(new_version: str, release_version: str = None):
+    if release_version:
+        release_version = _strip_version_prefix(release_version)
+        if not _is_release_version(release_version):
+            raise ValueError(
+                f"Invalid release documentation version: {release_version}"
+            )
+        return release_version
+    new_version = _strip_version_prefix(new_version)
+    if _is_release_version(new_version):
+        return new_version
+    dot_dev_version = _dot_dev_release_version(new_version)
+    if dot_dev_version:
+        return dot_dev_version
+    base_match = re.match(r"^(\d+)\.(\d+)\.(\d+)", new_version)
+    if not base_match:
+        return None
+    major, minor, patch = [int(part) for part in base_match.groups()]
+    if patch > 0:
+        patch -= 1
+    elif minor > 0:
+        minor -= 1
+    else:
+        return None
+    return f"{major}.{minor}.{patch}"
+
+
+def _dot_dev_release_version(v: str):
+    match = re.match(r"^(\d+\.\d+\.(\d+))\.dev\d*$", v, flags=re.IGNORECASE)
+    if match and int(match.group(2)) > 0:
+        return match.group(1)
+    return None
+
+
+def _release_doc_files():
+    for root in RELEASE_DOC_ROOTS:
+        path = os.path.join(PROJECT_ROOT_DIR, root)
+        if os.path.isfile(path):
+            yield path
+            continue
+        if not os.path.isdir(path):
+            continue
+        for dirpath, dirnames, filenames in os.walk(path):
+            dirnames[:] = [
+                name
+                for name in dirnames
+                if name not in {"build", "node_modules", "target"}
+            ]
+            for filename in sorted(filenames):
+                if filename.endswith(RELEASE_DOC_EXTS):
+                    yield os.path.join(dirpath, filename)
+
+
+def _update_release_doc_file(file, release_version):
+    with open(file, "r") as f:
+        lines = f.readlines()
+    updated = _update_release_doc_lines(lines, release_version)
+    if updated == lines:
+        return
+    with open(file, "w") as f:
+        f.write("".join(updated))
+
+
+def _update_release_doc_lines(lines, release_version):
+    updated = []
+    in_dependency_block = False
+    in_fory_dependency = False
+    for line in lines:
+        if "<dependency>" in line:
+            in_dependency_block = True
+            in_fory_dependency = False
+        if in_dependency_block and "org.apache.fory" in line:
+            in_fory_dependency = True
+        if in_fory_dependency and "<version>" in line:
+            line = re.sub(VERSION_PATTERN, release_version, line)
+            in_fory_dependency = False
+        else:
+            line = _update_release_doc_line(line, release_version)
+        if "</dependency>" in line:
+            in_dependency_block = False
+            in_fory_dependency = False
+        updated.append(line)
+    return updated
+
+
+def _update_release_doc_line(line, release_version):
+    if not _is_release_doc_line(line):
+        return line
+    if "crates.io-v" in line:
+        return re.sub(
+            r"(crates\.io-v)" + VERSION_PATTERN + r"(?:-blue)?",
+            r"\g<1>" + release_version + "-blue",
+            line,
+        )
+    return re.sub(VERSION_PATTERN, release_version, line)
+
+
+def _is_release_doc_line(line):
+    return (
+        "crates.io-v" in line
+        or "https://crates.io/crates/fory" in line
+        or "org.apache.fory" in line
+        or "Apache.Fory" in line
+        or "dart pub add fory" in line
+        or re.search(r"^\s*fory\s*[:=]", line)
+        or "https://github.com/apache/fory.git" in line
+        or 'bazel_dep(name = "fory"' in line
+        or 'git_override(module_name = "fory"' in line
+        or re.search(r"\bGIT_TAG\s+v" + VERSION_PATTERN, line)
+        or re.search(r'\bcommit\s*=\s*"v' + VERSION_PATTERN, line)
+    )
+
+
+def _strip_version_prefix(v: str) -> str:
+    v = v.strip()
+    if v.startswith("v"):
+        return v[1:]
+    return v
 
 
 def _normalize_python_version(v: str) -> str:
@@ -1048,6 +1356,13 @@ def _parse_args():
     )
     bump_version_parser.add_argument("-version", type=str, help="new version")
     bump_version_parser.add_argument("-l", type=str, help="language")
+    bump_version_parser.add_argument(
+        "-release-version",
+        dest="release_version",
+        type=str,
+        default=None,
+        help="released version to write in user-facing documentation",
+    )
     bump_version_parser.set_defaults(func=bump_version)
 
     prepare_parser = subparsers.add_parser(

@@ -45,12 +45,13 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 
 ## Modules
 
-| Module              | Description                           | Maven Artifact                    |
-| ------------------- | ------------------------------------- | --------------------------------- |
-| **fory-core**       | Core serialization engine             | `org.apache.fory:fory-core`       |
-| **fory-format**     | Row format and Apache Arrow support   | `org.apache.fory:fory-format`     |
-| **fory-extensions** | Protobuf support and meta compression | `org.apache.fory:fory-extensions` |
-| **fory-test-core**  | Testing utilities and data generators | `org.apache.fory:fory-test-core`  |
+| Module                               | Description                           | Maven Artifact                    |
+| ------------------------------------ | ------------------------------------- | --------------------------------- |
+| **fory-core**                        | Core serialization engine             | `org.apache.fory:fory-core`       |
+| **fory-format**                      | Row format and Apache Arrow support   | `org.apache.fory:fory-format`     |
+| [**fory-json**](fory-json/README.md) | JSON serialization and parsing        | `org.apache.fory:fory-json`       |
+| **fory-extensions**                  | Protobuf support and meta compression | `org.apache.fory:fory-extensions` |
+| **fory-test-core**                   | Testing utilities and data generators | `org.apache.fory:fory-test-core`  |
 
 ## Installation
 
@@ -60,21 +61,21 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.2.0</version>
+  <version>1.3.0</version>
 </dependency>
 
 <!-- Optional: Row format support -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
-  <version>1.2.0</version>
+  <version>1.3.0</version>
 </dependency>
 
 <!-- Optional: Serializers for Protobuf data -->
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-extensions</artifactId>
-  <version>1.2.0</version>
+  <version>1.3.0</version>
 </dependency>
 
 ```
@@ -83,10 +84,10 @@ Apache Fory™ Java provides blazingly-fast serialization for the Java ecosystem
 
 ```gradle
 dependencies {
-    implementation 'org.apache.fory:fory-core:1.2.0'
+    implementation 'org.apache.fory:fory-core:1.3.0'
     // Optional modules
-    implementation 'org.apache.fory:fory-format:1.2.0'
-    implementation 'org.apache.fory:fory-extensions:1.2.0'
+    implementation 'org.apache.fory:fory-format:1.3.0'
+    implementation 'org.apache.fory:fory-extensions:1.3.0'
 }
 ```
 
@@ -337,12 +338,12 @@ Foo deserializedFoo = encoder.fromRow(binaryRow);
 
 See the [Java row-format guide](../docs/guide/java/row-format.md) for more details.
 
-### Array Compression (Java 16+)
+### Array Compression
 
-Use SIMD-accelerated compression for integer and long arrays to reduce memory usage when array elements have small values:
+Use width compression for integer and long arrays to reduce serialized size when array elements have small values. JDK 8 through 15 use scalar range analysis; JDK 16 and later automatically select the Vector API implementation from the multi-release JAR.
 
 ```java
-import org.apache.fory.simd.*;
+import org.apache.fory.serializer.CompressedArraySerializers;
 
 Fory fory = Fory.builder().withXlang(false)
   .withIntArrayCompressed(true)
@@ -357,9 +358,18 @@ int[] data = new int[1000000];
 byte[] bytes = fory.serialize(data);
 ```
 
+On JDK 16 or later, resolve the incubator Vector API module when starting the application:
+
+```bash
+java --add-modules=jdk.incubator.vector ...
+```
+
 ### GraalVM Native Image
 
-Fory supports GraalVM native image through code generation, eliminating the need for reflection configuration. Build your native image as follows:
+Fory supports GraalVM Native Image without application reflection configuration. Binary
+serialization generates serializers while the image is built; the Fory annotation processor
+generates type-owned execution companions for Fory JSON `@JsonType` models. Build your native image
+as follows:
 
 ```bash
 # Generate serializers at build time
@@ -425,7 +435,7 @@ mvn -T16 checkstyle:check
 4. **Use native mode**: For Java-only payloads, use `withXlang(false)`. Native mode reduces type metadata overhead and supports more Java-native types not available in xlang mode
 5. **Warm Up**: Allow JIT compilation to complete before benchmarking
 6. **Register Classes**: Class registration reduces metadata overhead
-7. **Use SIMD**: Enable array compression on Java 16+ for numeric arrays
+7. **Compress numeric arrays**: Enable array compression when numeric array values usually fit in narrower primitive types
 
 ## Contributing
 

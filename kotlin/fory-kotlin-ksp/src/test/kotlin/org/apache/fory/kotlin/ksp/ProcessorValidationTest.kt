@@ -21,8 +21,10 @@ package org.apache.fory.kotlin.ksp
 
 import com.google.devtools.ksp.symbol.ClassKind
 import com.google.devtools.ksp.symbol.Modifier
+import org.apache.fory.codegen.GeneratedClassNames
 import org.testng.Assert.assertEquals
 import org.testng.Assert.assertFalse
+import org.testng.Assert.assertNotEquals
 import org.testng.Assert.assertNull
 import org.testng.Assert.assertTrue
 import org.testng.annotations.Test
@@ -827,22 +829,29 @@ class ProcessorValidationTest {
 
   @Test
   fun escapesSerializerNames() {
-    assertEquals(escapeBinarySimpleName("User") + "_ForySerializer", "User_ForySerializer")
     assertEquals(
-      escapeBinarySimpleName("Outer\$Inner") + "_ForySerializer",
-      "Outer_Inner_ForySerializer",
+      GeneratedClassNames.escapeBinarySimpleName("User") + "_ForySerializer",
+      "User_ForySerializer",
     )
     assertEquals(
-      escapeBinarySimpleName("Outer_Inner") + "_ForySerializer",
+      GeneratedClassNames.escapeBinarySimpleName("Outer\$Inner") + "_ForySerializer",
+      "Outer_d_Inner_ForySerializer",
+    )
+    assertEquals(
+      GeneratedClassNames.escapeBinarySimpleName("Outer_Inner") + "_ForySerializer",
       "Outer_u_Inner_ForySerializer",
     )
     assertEquals(
-      escapeBinarySimpleName("Outer__Inner") + "_ForySerializer",
+      GeneratedClassNames.escapeBinarySimpleName("Outer__Inner") + "_ForySerializer",
       "Outer_u__u_Inner_ForySerializer",
     )
     assertEquals(
-      escapeBinarySimpleName("Outer-Inner") + "_ForySerializer",
+      GeneratedClassNames.escapeBinarySimpleName("Outer-Inner") + "_ForySerializer",
       "Outer_x2d_Inner_ForySerializer",
+    )
+    assertNotEquals(
+      GeneratedClassNames.escapeBinarySimpleName("A\$u_X"),
+      GeneratedClassNames.escapeBinarySimpleName("A_u\$X"),
     )
   }
 

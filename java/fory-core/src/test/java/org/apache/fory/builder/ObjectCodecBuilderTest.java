@@ -39,6 +39,7 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.codegen.javalangnameconflict.MethodSpiltObject;
+import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.serializer.collection.CollectionSerializersTest;
 import org.apache.fory.test.bean.AccessBeans;
 import org.apache.fory.test.bean.BeanA;
@@ -226,6 +227,132 @@ public class ObjectCodecBuilderTest extends ForyTestBase {
     nestedContainer.map1 = map1;
     serDeCheck(fory, nestedContainer);
     checkMethodSize(NestedContainer.class, fory);
+  }
+
+  public static final class VarHandleFinalFields {
+    public final int publicFinal;
+    protected final long protectedFinal;
+    final String packageFinal;
+    private final String privateFinal;
+    private int privateValue;
+
+    public VarHandleFinalFields() {
+      this(0, 0, null, null, 0);
+    }
+
+    VarHandleFinalFields(
+        int publicFinal,
+        long protectedFinal,
+        String packageFinal,
+        String privateFinal,
+        int privateValue) {
+      this.publicFinal = publicFinal;
+      this.protectedFinal = protectedFinal;
+      this.packageFinal = packageFinal;
+      this.privateFinal = privateFinal;
+      this.privateValue = privateValue;
+    }
+  }
+
+  @Test
+  public void testJdk25VarHandleFieldAccess() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    String code = new ObjectCodecBuilder(VarHandleFinalFields.class, fory).genCode();
+    if (JdkVersion.MAJOR_VERSION >= 25) {
+      Assert.assertTrue(code.contains("java.lang.invoke.VarHandle"));
+      Assert.assertTrue(code.contains("publicFinal_varHandle_"));
+      Assert.assertTrue(code.contains("protectedFinal_varHandle_"));
+      Assert.assertTrue(code.contains("packageFinal_varHandle_"));
+      Assert.assertTrue(code.contains("privateFinal_varHandle_"));
+      Assert.assertTrue(code.contains("privateValue_varHandle_"));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.getVarHandle"));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.getObject"));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.setInt"));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.setLong"));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.setObject"));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.setInt(publicFinal_varHandle_"));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.setLong(protectedFinal_varHandle_"));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.setObject(packageFinal_varHandle_"));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.setObject(privateFinal_varHandle_"));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.setInt(privateValue_varHandle_"));
+      Assert.assertFalse(code.contains("FieldAccessor.createAccessor"));
+      Assert.assertFalse(code.contains("_varHandle_.get("));
+      Assert.assertFalse(code.contains("_varHandle_.set("));
+    }
+    VarHandleFinalFields bean = new VarHandleFinalFields(1, 2L, "package", "private", 3);
+    VarHandleFinalFields copy = (VarHandleFinalFields) fory.deserialize(fory.serialize(bean));
+    Assert.assertEquals(copy.publicFinal, 1);
+    Assert.assertEquals(copy.protectedFinal, 2L);
+    Assert.assertEquals(copy.packageFinal, "package");
+    Assert.assertEquals(copy.privateFinal, "private");
+    Assert.assertEquals(copy.privateValue, 3);
+  }
+
+  public static class VarHandleDuplicateParent {
+    private final int value;
+
+    public VarHandleDuplicateParent() {
+      this(0);
+    }
+
+    VarHandleDuplicateParent(int value) {
+      this.value = value;
+    }
+
+    public int parentValue() {
+      return value;
+    }
+  }
+
+  public static final class VarHandleDuplicateChild extends VarHandleDuplicateParent {
+    private final int value;
+
+    public VarHandleDuplicateChild() {
+      this(0, 0);
+    }
+
+    VarHandleDuplicateChild(int parentValue, int childValue) {
+      super(parentValue);
+      this.value = childValue;
+    }
+
+    public int childValue() {
+      return value;
+    }
+  }
+
+  @Test
+  public void testJdk25DuplicateVarHandles() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    String code = new ObjectCodecBuilder(VarHandleDuplicateChild.class, fory).genCode();
+    if (JdkVersion.MAJOR_VERSION >= 25) {
+      String parentHandle = duplicateValueVarHandleName(VarHandleDuplicateParent.class);
+      String childHandle = duplicateValueVarHandleName(VarHandleDuplicateChild.class);
+      Assert.assertTrue(code.contains(parentHandle));
+      Assert.assertTrue(code.contains(childHandle));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.getInt(" + parentHandle));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.getInt(" + childHandle));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.setInt(" + parentHandle));
+      Assert.assertTrue(code.contains("VarHandleCodegenSupport.setInt(" + childHandle));
+    }
+    VarHandleDuplicateChild bean = new VarHandleDuplicateChild(1, 2);
+    VarHandleDuplicateChild copy = (VarHandleDuplicateChild) fory.deserialize(fory.serialize(bean));
+    Assert.assertEquals(copy.parentValue(), 1);
+    Assert.assertEquals(copy.childValue(), 2);
+  }
+
+  private static String duplicateValueVarHandleName(Class<?> declaringClass) {
+    return declaringClass.getName().replaceAll("\\.|\\$", "_") + "_value_varHandle_";
   }
 
   @Test

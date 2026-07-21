@@ -26,7 +26,7 @@ use crate::serializer::{ForyDefault, Serializer};
 use crate::type_id::{self, need_to_write_type_for_field, TypeId, PRIMITIVE_ARRAY_TYPES};
 use crate::types::{bfloat16::bfloat16, float16::float16};
 
-const TRACKING_REF: u8 = 0b1;
+pub const TRACKING_REF: u8 = 0b1;
 
 pub const HAS_NULL: u8 = 0b10;
 
@@ -39,6 +39,20 @@ pub const IS_SAME_TYPE: u8 = 0b1000;
 fn check_collection_len(context: &ReadContext, len: u32) -> Result<usize, Error> {
     let len = len as usize;
     context.reader.check_bound(len)?;
+    Ok(len)
+}
+
+#[inline(always)]
+fn reserve_collection_storage(
+    context: &mut ReadContext,
+    len: u32,
+    elem_bytes: usize,
+) -> Result<usize, Error> {
+    let len = len as usize;
+    let bytes = len
+        .checked_mul(elem_bytes)
+        .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
+    context.reserve_graph_memory(bytes)?;
     Ok(len)
 }
 
@@ -239,6 +253,7 @@ where
     C: FromIterator<T>,
 {
     let len = context.reader.read_var_u32()?;
+    let len_usize = reserve_collection_storage(context, len, std::mem::size_of::<T>())?;
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
@@ -257,7 +272,9 @@ where
         (header & IS_SAME_TYPE) != 0,
         Error::type_error("Type inconsistent, target type is not polymorphic")
     );
-    let _ = check_collection_len(context, len)?;
+    if std::mem::size_of::<T>() != 0 {
+        context.reader.check_bound(len_usize)?;
+    }
     if !has_null {
         (0..len)
             .map(|_| T::fory_read_data(context))
@@ -281,6 +298,7 @@ where
     T: Serializer + ForyDefault,
 {
     let len = context.reader.read_var_u32()?;
+    let len_usize = reserve_collection_storage(context, len, std::mem::size_of::<T>())?;
     if len == 0 {
         return Ok(Vec::new());
     }
@@ -297,7 +315,10 @@ where
         (header & IS_SAME_TYPE) != 0,
         Error::type_error("Type inconsistent, target type is not polymorphic")
     );
-    let mut vec = Vec::with_capacity(check_collection_len(context, len)?);
+    if std::mem::size_of::<T>() != 0 {
+        context.reader.check_bound(len_usize)?;
+    }
+    let mut vec = Vec::with_capacity(len_usize);
     if !has_null {
         for _ in 0..len {
             vec.push(T::fory_read_data(context)?);
@@ -343,7 +364,8 @@ where
         } else {
             T::fory_get_type_info(context.get_type_resolver())?
         };
-        let mut vec = Vec::with_capacity(check_collection_len(context, len)?);
+        let len_usize = check_collection_len(context, len)?;
+        let mut vec = Vec::with_capacity(len_usize);
         if elem_ref_mode == RefMode::None {
             for _ in 0..len {
                 vec.push(T::fory_read_with_type_info(
@@ -363,7 +385,8 @@ where
         }
         Ok(vec)
     } else {
-        let mut vec = Vec::with_capacity(check_collection_len(context, len)?);
+        let len_usize = check_collection_len(context, len)?;
+        let mut vec = Vec::with_capacity(len_usize);
         for _ in 0..len {
             vec.push(T::fory_read(context, elem_ref_mode, true)?);
         }
@@ -724,6 +747,7 @@ where
 {
     let element_type = generic_field_type(remote_field_type, 0, "list")?;
     let len = context.reader.read_var_u32()?;
+    let len_usize = reserve_collection_storage(context, len, std::mem::size_of::<T>())?;
     if len == 0 {
         return Ok(Vec::new());
     }
@@ -748,8 +772,8 @@ where
             "array-compatible list must declare element type",
         ));
     }
-    context.reader.check_bound(len as usize)?;
-    let mut vec = Vec::with_capacity(len as usize);
+    context.reader.check_bound(len_usize)?;
+    let mut vec = Vec::with_capacity(len_usize);
     for _ in 0..len {
         vec.push(T::read_list_array_element(context, element_type.type_id)?);
     }

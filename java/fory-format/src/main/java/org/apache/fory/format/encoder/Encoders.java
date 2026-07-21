@@ -110,6 +110,24 @@ public class Encoders {
   /**
    * Register a custom codec handling a given type, when it is enclosed in the given beanType.
    *
+   * <p>A codec may be keyed on {@link java.util.Optional} itself, not only on an element type. The
+   * row format normally unwraps an {@code Optional<X>} field to a nullable {@code X}, mapping
+   * emptiness to the column's null bit; a codec keyed on {@code X} sees only the present value. A
+   * codec keyed on {@code Optional} instead receives the present and empty cases, so it can encode
+   * the present-vs-empty distinction in-band (for example a sentinel value) into a single
+   * non-nullable column to match an external wire format. Key on the element type unless you need
+   * to control how emptiness itself is encoded.
+   *
+   * <p>For an {@code Optional}-keyed codec a {@code null} field reference is passed to the codec as
+   * {@code Optional.empty()}, so the codec cannot distinguish a null reference from an empty
+   * Optional; both round-trip as empty. The codec's {@code decode} must return a non-null {@code
+   * Optional} for the same reason.
+   *
+   * <p>A {@code beanType}-scoped codec applies to the bean's direct fields and to the elements of
+   * its collection and map fields. It does not apply to the elements of a top-level collection or
+   * map encoder, which has no enclosing bean; register against {@code Object.class} (the
+   * two-argument overload) to handle a type everywhere, including top-level collection elements.
+   *
    * @param beanType the enclosing type to limit this custom codec to
    * @param type the type of field to handle
    * @param codec the codec to use

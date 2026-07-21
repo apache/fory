@@ -32,10 +32,13 @@ import java.util.stream.Collectors;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.TestUtils;
+import org.apache.fory.annotation.ForyField;
+import org.apache.fory.annotation.Nullable;
 import org.apache.fory.builder.CompatibleCodecBuilder;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
 import org.apache.fory.config.ForyBuilder;
+import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.meta.NativeTypeDefEncoderTest;
@@ -90,6 +93,46 @@ public class MetaShareCompatibleTest extends ForyTestBase {
       this.id = id;
       this.price = price;
     }
+  }
+
+  public static final class Address {
+    @Nullable
+    @ForyField(id = 1)
+    public String city;
+
+    @Nullable
+    @ForyField(id = 2)
+    public String zip;
+  }
+
+  public static final class UserV1 {
+    @ForyField(id = 1)
+    public Long id;
+
+    @Nullable
+    @ForyField(id = 2)
+    public String name;
+
+    @Nullable
+    @ForyField(id = 3)
+    public Address homeAddress;
+  }
+
+  public static final class UserV2 {
+    @ForyField(id = 1)
+    public Long id;
+
+    @Nullable
+    @ForyField(id = 2)
+    public String name;
+
+    @Nullable
+    @ForyField(id = 3)
+    public Address homeAddress;
+
+    @Nullable
+    @ForyField(id = 4)
+    public Address workAddress;
   }
 
   @DataProvider
@@ -856,6 +899,52 @@ public class MetaShareCompatibleTest extends ForyTestBase {
       Object newObj = fory.deserialize(serialized);
       System.out.println(newObj);
     }
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testRegisteredMissingStruct(boolean enableCodegen) {
+    int userTypeId = 100;
+    int addressTypeId = 101;
+    Fory writer =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withCompatible(true)
+            .withCodegen(enableCodegen)
+            .withAsyncCompilation(false)
+            .requireClassRegistration(true)
+            .build();
+    writer.register(UserV2.class, userTypeId);
+    writer.register(Address.class, addressTypeId);
+
+    UserV2 user = new UserV2();
+    user.id = 1L;
+    user.name = "Alice";
+    Address homeAddress = new Address();
+    homeAddress.city = "NYC";
+    homeAddress.zip = "10001";
+    user.homeAddress = homeAddress;
+    Address workAddress = new Address();
+    workAddress.city = "SF";
+    workAddress.zip = "94000";
+    user.workAddress = workAddress;
+    byte[] bytes = writer.serialize(user);
+
+    Fory reader =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withCompatible(true)
+            .withCodegen(enableCodegen)
+            .withAsyncCompilation(false)
+            .requireClassRegistration(true)
+            .build();
+    reader.register(UserV1.class, userTypeId);
+    reader.register(Address.class, addressTypeId);
+
+    UserV1 result = (UserV1) reader.deserialize(bytes);
+    Assert.assertEquals(result.id, Long.valueOf(1));
+    Assert.assertEquals(result.name, "Alice");
+    Assert.assertEquals(result.homeAddress.city, "NYC");
+    Assert.assertEquals(result.homeAddress.zip, "10001");
   }
 
   @Test

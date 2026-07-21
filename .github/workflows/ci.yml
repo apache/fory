@@ -15,6 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# All `uses:` action pins in this workflow must come from the Apache action allowlist:
+# https://github.com/apache/infrastructure-actions/blob/main/actions.yml
+
 name: Fory CI
 
 concurrency:
@@ -124,7 +127,7 @@ jobs:
             echo "python=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^(java/|integration_tests/graalvm_tests/)' <<< "$changed_files"; then
+          if grep -Eq '^(\.github/workflows/ci\.yml$|ci/run_ci\.(py|sh)$|ci/tasks/(common|java)\.py$|java/|integration_tests/graalvm_tests/)' <<< "$changed_files"; then
             echo "graalvm=true" >> "$GITHUB_OUTPUT"
           else
             echo "graalvm=false" >> "$GITHUB_OUTPUT"
@@ -311,7 +314,7 @@ jobs:
       - name: Install Fory Java artifacts
         run: |
           cd java
-          mvn -T16 --no-transfer-progress -pl fory-core,fory-annotation-processor -am install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+          mvn -T16 --no-transfer-progress -pl fory-json,fory-annotation-processor -am install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -326,7 +329,8 @@ jobs:
           working-directory: integration_tests/android_tests
           script: |
             yes | sdkmanager "platforms;android-${{ matrix.api-level }}" "build-tools;35.0.0"
-            gradle --no-daemon --stacktrace connectedCheck
+            if [ "${{ matrix.api-level }}" = "26" ]; then gradle --no-daemon --stacktrace -PforyTestBuildType=debug connectedCheck; fi
+            gradle --no-daemon --stacktrace -PforyTestBuildType=release connectedCheck
       - name: Upload Android Test Report
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -432,6 +436,13 @@ jobs:
           fi
           cd swift
           swiftlint lint --config .swiftlint.yml
+      - name: Run Swift format check
+        run: |
+          if ! command -v swift-format >/dev/null; then
+            brew install swift-format
+          fi
+          cd swift
+          swift-format lint --configuration .swift-format --recursive --strict Sources Tests Package.swift
 
   swift_xlang:
     name: Swift Xlang Test
@@ -450,20 +461,36 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
+      - name: Compute Swift package cache key
+        id: swift-package-cache
+        run: |
+          {
+            swift --version
+            xcodebuild -version
+          } > "$RUNNER_TEMP/swift-toolchain.txt"
+          cat "$RUNNER_TEMP/swift-toolchain.txt"
+          echo "toolchain=$(shasum -a 256 "$RUNNER_TEMP/swift-toolchain.txt" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - name: Cache Swift package dependencies and build artifacts
+        id: swift-build-cache
         uses: actions/cache@v4
         with:
           path: |
             ~/.swiftpm
             ~/Library/Caches/org.swift.swiftpm
             swift/.build
-          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-xlang-release-${{ steps.swift-package-cache.outputs.toolchain }}-${{ hashFiles('swift/Package.resolved', 'swift/Package.swift', 'swift/Sources/**') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swiftpm-
+            ${{ runner.os }}-${{ runner.arch }}-swiftpm-xlang-release-${{ steps.swift-package-cache.outputs.toolchain }}-
       - name: Prebuild Swift xlang peer for cache reuse
         run: |
           cd swift
+          if [[ "${{ steps.swift-build-cache.outputs.cache-hit }}" == "true" && -x .build/release/ForyXlangTests ]]; then
+            echo "Using cached Swift xlang peer at swift/.build/release/ForyXlangTests"
+            echo "FORY_SWIFT_PEER_PREBUILT=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
           swift build -c release --disable-automatic-resolution --product ForyXlangTests
+          echo "FORY_SWIFT_PEER_PREBUILT=1" >> "$GITHUB_ENV"
       - name: Run Swift Xlang Test
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
@@ -497,19 +524,36 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Generate Swift IDL test code
         run: python ./integration_tests/idl_tests/generate_idl.py --lang swift
+      - name: Compute Swift IDL package cache key
+        id: swift-idl-package-cache
+        run: |
+          {
+            swift --version
+            xcodebuild -version
+          } > "$RUNNER_TEMP/swift-toolchain.txt"
+          cat "$RUNNER_TEMP/swift-toolchain.txt"
+          echo "toolchain=$(shasum -a 256 "$RUNNER_TEMP/swift-toolchain.txt" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - name: Cache Swift IDL package build artifacts
+        id: swift-idl-build-cache
         uses: actions/cache@v4
         with:
           path: |
             integration_tests/idl_tests/swift/idl_package/.build
             integration_tests/idl_tests/swift/idl_package/.swiftpm
-          key: ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-${{ hashFiles('integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Package.resolved', 'swift/Package.swift', 'swift/Package.resolved', 'swift/Sources/ForyMacro/**') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-swiftpm-idl-debug-${{ steps.swift-idl-package-cache.outputs.toolchain }}-${{ hashFiles('integration_tests/idl_tests/swift/idl_package/Package.swift', 'integration_tests/idl_tests/swift/idl_package/Package.resolved', 'integration_tests/idl_tests/swift/idl_package/Sources/**', 'integration_tests/idl_tests/swift/idl_package/Tests/**', 'swift/Package.swift', 'swift/Package.resolved', 'swift/Sources/**') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-swift-idl-package-
+            ${{ runner.os }}-${{ runner.arch }}-swiftpm-idl-debug-${{ steps.swift-idl-package-cache.outputs.toolchain }}-
       - name: Prebuild Swift IDL package
         run: |
           cd integration_tests/idl_tests/swift/idl_package
+          if [[ "${{ steps.swift-idl-build-cache.outputs.cache-hit }}" == "true" && -f .build/fory-swift-idl-prebuilt ]]; then
+            echo "Using cached Swift IDL package build artifacts"
+            echo "FORY_SWIFT_IDL_PREBUILT=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
           swift build --disable-automatic-resolution --build-tests
+          touch .build/fory-swift-idl-prebuilt
+          echo "FORY_SWIFT_IDL_PREBUILT=1" >> "$GITHUB_ENV"
       - name: Run Swift IDL package tests
         env:
           ENABLE_FORY_DEBUG_OUTPUT: "1"
@@ -532,10 +576,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        java-version: ["17", "21", "25"]
+        java-version: ["17", "25"]
     steps:
       - uses: actions/checkout@v5
-      - uses: graalvm/setup-graalvm@f744c72a42b1995d7b0cbc314bde4bace7ac1fe1 # 1.5.0
+      - uses: graalvm/setup-graalvm@6f3fa030c4b8f77c1f554a860f593a654538fa38 # 1.5.6
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "graalvm"
@@ -548,13 +592,36 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Set up Python3.8
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.8
-      - name: Build native image and run
+      - name: Build JPMS native image and run
         shell: bash
-        run: python ./ci/run_ci.py java --version graalvm
+        run: ./ci/run_ci.sh graalvm_test
+
+  graalvm_json:
+    name: GraalVM JSON CI
+    needs: changes
+    if: needs.changes.outputs.graalvm == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: ["17", "25"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: graalvm/setup-graalvm@6f3fa030c4b8f77c1f554a860f593a654538fa38 # 1.5.6
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: "graalvm"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: "true"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Build JSON JPMS native image and run
+        shell: bash
+        run: ./ci/run_ci.sh graalvm_json_tests
 
   kotlin:
     name: Kotlin CI
@@ -873,7 +940,7 @@ jobs:
           python-version: 3.11
           cache: "pip"
       - name: Set up Dart
-        uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c  # v1.7.1
+        uses: dart-lang/setup-dart@e51d8e571e22473a2ddebf0ef8a2123f0ab2c02c # v1.7.1
         with:
           sdk: stable
       - name: Cache Maven local repository
@@ -1071,10 +1138,31 @@ jobs:
         with:
           bazelisk-cache: true
           bazelisk-version: "1.x"
+      - name: Compute Bazel C++ toolchain cache key
+        id: bazel-cpp-toolchain
+        shell: bash
+        run: |
+          {
+            echo "runner-os=${RUNNER_OS}"
+            echo "runner-arch=${RUNNER_ARCH}"
+            if [[ "${RUNNER_OS}" == "macOS" ]]; then
+              xcode-select -p
+              xcrun --sdk macosx --show-sdk-path
+              xcrun --find clang++
+              xcodebuild -version
+            else
+              command -v gcc || true
+              gcc --version || true
+              command -v g++ || true
+              g++ --version || true
+            fi
+          } > bazel-cpp-toolchain-key.txt
+          echo "key=$(shasum -a 256 bazel-cpp-toolchain-key.txt | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
           # setup-bazel uses ~/.bazel on GitHub-hosted runners.
+          # local_config_cc records absolute host compiler and SDK include roots.
           path: |
             ~/.bazel/external
             ~/.cache/bazel/_bazel_*/*/external
@@ -1082,20 +1170,22 @@ jobs:
             ~/Library/Caches/bazel/external
             C:\users\runneradmin\.bazel\external
             C:\users\runneradmin\_bazel_runneradmin\*/external
-          key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
+          key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-${{ steps.bazel-cpp-toolchain.outputs.key }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'WORKSPACE', '.bazelversion', '.bazelrc', 'bazel/**') }}
           restore-keys: |
-            bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-
+            bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-${{ steps.bazel-cpp-toolchain.outputs.key }}-
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:
           # setup-bazel uses ~/.bazel on GitHub-hosted runners.
+          # Keep host toolchain identity in the key so depfiles generated with
+          # one Xcode/SDK path are not restored under another macOS image.
           path: |
             ~/.bazel
             ~/.cache/bazel
             ~/Library/Caches/bazel
             C:\users\runneradmin\.bazel
             C:\users\runneradmin\_bazel_runneradmin
-          key: bazel-build-cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE') }}
+          key: bazel-build-cpp-${{ runner.os }}-${{ runner.arch }}-${{ steps.bazel-cpp-toolchain.outputs.key }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE', 'MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion', '.bazelrc', 'bazel/**') }}
       - name: Run C++ CI with Bazel
         run: python ./ci/run_ci.py cpp
       - name: Upload Bazel Test Logs
@@ -1343,7 +1433,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ["3.8", "3.12", "3.13"]
+        python-version: ["3.8", "3.12", "3.14"]
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
     steps:
       - uses: actions/checkout@v5
@@ -1383,9 +1473,9 @@ jobs:
     runs-on: windows-2022
     strategy:
       matrix:
-        # windows-2022 runners don't have Python 3.8 preinstalled, and pinned 3.13.3
-        # forces a download/reinstall; use cached 3.11/3.12/3.13 on Windows instead.
-        python-version: ["3.11", "3.12", "3.13"]
+        # windows-2022 runners don't have Python 3.8 preinstalled; keep this
+        # matrix compact while covering the latest Python version.
+        python-version: ["3.11", "3.12", "3.14"]
     steps:
       - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
@@ -1859,6 +1949,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20.x
+      - name: Register Checkstyle problem matcher
+        run: echo "::add-matcher::.github/maven-style-matcher.json"
       - name: Check code style
         run: python ./ci/run_ci.py format
 

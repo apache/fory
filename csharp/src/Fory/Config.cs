@@ -28,6 +28,7 @@ public sealed class Config
         bool compatible,
         bool checkStructVersion,
         int maxDepth,
+        long maxGraphMemoryBytes,
         int maxTypeFields,
         int maxTypeMetaBytes,
         int maxSchemaVersionsPerType,
@@ -53,11 +54,16 @@ public sealed class Config
         {
             throw new ArgumentOutOfRangeException(nameof(maxAverageSchemaVersionsPerType), "MaxAverageSchemaVersionsPerType must be greater than 0.");
         }
+        if (maxGraphMemoryBytes <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxGraphMemoryBytes), "MaxGraphMemoryBytes must be greater than 0.");
+        }
 
         TrackRef = trackRef;
         Compatible = compatible;
         CheckStructVersion = checkStructVersion;
         MaxDepth = maxDepth;
+        MaxGraphMemoryBytes = maxGraphMemoryBytes;
         MaxTypeFields = maxTypeFields;
         MaxTypeMetaBytes = maxTypeMetaBytes;
         MaxSchemaVersionsPerType = maxSchemaVersionsPerType;
@@ -83,6 +89,17 @@ public sealed class Config
     /// Gets the maximum allowed nesting depth for dynamic object payload reads.
     /// </summary>
     public int MaxDepth { get; }
+
+    /// <summary>
+    /// Gets the approximate graph-memory gate for one root deserialization.
+    /// </summary>
+    /// <remarks>
+    /// The estimate mainly covers materialized collections, maps, arrays, structs, and objects. It
+    /// skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays;
+    /// those remain gated by byte-availability checks on the unread input. Actual process memory can
+    /// be higher than this value.
+    /// </remarks>
+    public long MaxGraphMemoryBytes { get; }
 
     /// <summary>
     /// Gets the maximum accepted field count in one received struct TypeMeta.
@@ -114,6 +131,7 @@ public sealed class ForyBuilder
     private bool? _compatible;
     private bool _checkStructVersion;
     private int _maxDepth = 20;
+    private long _maxGraphMemoryBytes = 128L * 1024 * 1024;
     private int _maxTypeFields = 512;
     private int _maxTypeMetaBytes = 4096;
     private int _maxSchemaVersionsPerType = 10;
@@ -166,6 +184,26 @@ public sealed class ForyBuilder
         }
 
         _maxDepth = value;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the approximate graph-memory gate for one root deserialization.
+    /// </summary>
+    /// <remarks>
+    /// The estimate mainly covers materialized collections, maps, arrays, structs, and objects. It
+    /// skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays;
+    /// those remain gated by byte-availability checks on the unread input. Actual process memory can
+    /// be higher than this value.
+    /// </remarks>
+    public ForyBuilder MaxGraphMemoryBytes(long value)
+    {
+        if (value <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value), "MaxGraphMemoryBytes must be greater than 0.");
+        }
+
+        _maxGraphMemoryBytes = value;
         return this;
     }
 
@@ -235,6 +273,7 @@ public sealed class ForyBuilder
             compatible: compatible,
             checkStructVersion: compatible ? false : _checkStructVersion,
             maxDepth: _maxDepth,
+            maxGraphMemoryBytes: _maxGraphMemoryBytes,
             maxTypeFields: _maxTypeFields,
             maxTypeMetaBytes: _maxTypeMetaBytes,
             maxSchemaVersionsPerType: _maxSchemaVersionsPerType,

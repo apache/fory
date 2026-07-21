@@ -82,7 +82,7 @@ The processor generates serializer classes in the same Java package as the annot
 - `Order_ForyNativeSerializer` for Java native mode.
 
 For a static nested type such as `Outer.Inner`, the generated top-level classes are
-`Outer_Inner_ForySerializer` and `Outer_Inner_ForyNativeSerializer`.
+`Outer_d_Inner_ForySerializer` and `Outer_d_Inner_ForyNativeSerializer`.
 
 ## Field Debug Tracing
 

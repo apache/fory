@@ -110,6 +110,7 @@ examples/cpp/cmake_example/build
 **/benchmark_results.json
 **/benchmark_report.md
 **/benchmark_*.png
+.cli.params.json
 benchmarks/java/reports/
 **/results/
 benchmarks/**/report/

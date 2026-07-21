@@ -17,7 +17,7 @@
 
 """Fory IDL compiler for Apache Fory."""
 
-__version__ = "1.3.0.dev0"
+__version__ = "1.4.0.dev0"
 
 from fory_compiler.ir.ast import Schema, Message, Enum, Field, EnumValue, Import
 from fory_compiler.frontend.fdl import FDLFrontend

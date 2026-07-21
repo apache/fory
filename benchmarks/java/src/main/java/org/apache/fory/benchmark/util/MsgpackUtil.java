@@ -63,16 +63,16 @@ public class MsgpackUtil {
     messagePacker.packMapHeader(2);
 
     messagePacker.packString("media");
-    if (mediaContent.media != null) {
-      packMedia(messagePacker, mediaContent.media);
+    if (mediaContent.getMedia() != null) {
+      packMedia(messagePacker, mediaContent.getMedia());
     } else {
       messagePacker.packNil();
     }
 
     messagePacker.packString("images");
-    if (mediaContent.images != null) {
-      messagePacker.packArrayHeader(mediaContent.images.size());
-      for (Image image : mediaContent.images) {
+    if (mediaContent.getImages() != null) {
+      messagePacker.packArrayHeader(mediaContent.getImages().size());
+      for (Image image : mediaContent.getImages()) {
         packImage(messagePacker, image);
       }
     } else {
@@ -91,9 +91,9 @@ public class MsgpackUtil {
       switch (key) {
         case "media":
           if (!messageUnpacker.tryUnpackNil()) {
-            mediaContent.media = unpackMedia(messageUnpacker);
+            mediaContent.setMedia(unpackMedia(messageUnpacker));
           } else {
-            mediaContent.media = null;
+            mediaContent.setMedia(null);
           }
           break;
         case "images":
@@ -103,9 +103,9 @@ public class MsgpackUtil {
             for (int j = 0; j < arraySize; j++) {
               images.add(unpackImage(messageUnpacker));
             }
-            mediaContent.images = images;
+            mediaContent.setImages(images);
           } else {
-            mediaContent.images = null;
+            mediaContent.setImages(null);
           }
           break;
         default:
@@ -121,24 +121,24 @@ public class MsgpackUtil {
     messagePacker.packMapHeader(9); // Media object's field count
 
     messagePacker.packString("uri");
-    messagePacker.packString(media.uri);
+    messagePacker.packString(media.getUri());
     messagePacker.packString("width");
-    messagePacker.packInt(media.width);
+    messagePacker.packInt(media.getWidth());
     messagePacker.packString("height");
-    messagePacker.packInt(media.height);
+    messagePacker.packInt(media.getHeight());
     messagePacker.packString("format");
-    messagePacker.packString(media.format);
+    messagePacker.packString(media.getFormat());
     messagePacker.packString("duration");
-    messagePacker.packLong(media.duration);
+    messagePacker.packLong(media.getDuration());
     messagePacker.packString("size");
-    messagePacker.packLong(media.size);
+    messagePacker.packLong(media.getSize());
     messagePacker.packString("player");
-    messagePacker.packString(media.player.name());
+    messagePacker.packString(media.getPlayer().name());
 
-    if (media.persons != null) {
+    if (media.getPersons() != null) {
       messagePacker.packString("persons");
-      messagePacker.packArrayHeader(media.persons.size());
-      for (String person : media.persons) {
+      messagePacker.packArrayHeader(media.getPersons().size());
+      for (String person : media.getPersons()) {
         messagePacker.packString(person);
       }
     } else {
@@ -146,9 +146,9 @@ public class MsgpackUtil {
       messagePacker.packNil();
     }
 
-    if (media.copyright != null) {
+    if (media.getCopyright() != null) {
       messagePacker.packString("copyright");
-      messagePacker.packString(media.copyright);
+      messagePacker.packString(media.getCopyright());
     } else {
       messagePacker.packString("copyright");
       messagePacker.packNil();
@@ -164,44 +164,44 @@ public class MsgpackUtil {
 
       switch (key) {
         case "uri":
-          media.uri = messageUnpacker.unpackString();
+          media.setUri(messageUnpacker.unpackString());
           break;
         case "width":
-          media.width = messageUnpacker.unpackInt();
+          media.setWidth(messageUnpacker.unpackInt());
           break;
         case "height":
-          media.height = messageUnpacker.unpackInt();
+          media.setHeight(messageUnpacker.unpackInt());
           break;
         case "format":
-          media.format = messageUnpacker.unpackString();
+          media.setFormat(messageUnpacker.unpackString());
           break;
         case "duration":
-          media.duration = messageUnpacker.unpackLong();
+          media.setDuration(messageUnpacker.unpackLong());
           break;
         case "size":
-          media.size = messageUnpacker.unpackInt();
+          media.setSize(messageUnpacker.unpackInt());
           break;
         case "player":
-          media.player = Media.Player.valueOf(messageUnpacker.unpackString());
+          media.setPlayer(Media.Player.valueOf(messageUnpacker.unpackString()));
           break;
         case "persons":
           if (!messageUnpacker.tryUnpackNil()) {
             int arraySize = messageUnpacker.unpackArrayHeader();
-            media.persons = new ArrayList<>();
+            media.setPersons(new ArrayList<>());
             for (int j = 0; j < arraySize; j++) {
-              media.persons.add(messageUnpacker.unpackString());
+              media.getPersons().add(messageUnpacker.unpackString());
             }
           } else {
             messageUnpacker.unpackNil();
-            media.persons = null;
+            media.setPersons(null);
           }
           break;
         case "copyright":
           if (!messageUnpacker.tryUnpackNil()) {
-            media.copyright = messageUnpacker.unpackString();
+            media.setCopyright(messageUnpacker.unpackString());
           } else {
             messageUnpacker.unpackNil();
-            media.copyright = null;
+            media.setCopyright(null);
           }
           break;
         default:
@@ -217,22 +217,22 @@ public class MsgpackUtil {
     messagePacker.packMapHeader(6);
 
     messagePacker.packString("uri");
-    messagePacker.packString(image.uri);
+    messagePacker.packString(image.getUri());
     messagePacker.packString("title");
-    if (image.title == null) {
+    if (image.getTitle() == null) {
       messagePacker.packNil();
     } else {
-      messagePacker.packString(image.title);
+      messagePacker.packString(image.getTitle());
     }
     messagePacker.packString("width");
-    messagePacker.packInt(image.width);
+    messagePacker.packInt(image.getWidth());
     messagePacker.packString("height");
-    messagePacker.packInt(image.height);
+    messagePacker.packInt(image.getHeight());
     messagePacker.packString("size");
-    messagePacker.packString(image.size.name());
+    messagePacker.packString(image.getSize().name());
     messagePacker.packString("media");
-    if (image.media != null) {
-      packMedia(messagePacker, image.media);
+    if (image.getMedia() != null) {
+      packMedia(messagePacker, image.getMedia());
     } else {
       messagePacker.packNil();
     }
@@ -247,29 +247,29 @@ public class MsgpackUtil {
 
       switch (key) {
         case "uri":
-          image.uri = messageUnpacker.unpackString();
+          image.setUri(messageUnpacker.unpackString());
           break;
         case "title":
           if (!messageUnpacker.tryUnpackNil()) {
-            image.title = messageUnpacker.unpackString();
+            image.setTitle(messageUnpacker.unpackString());
           } else {
-            image.title = null;
+            image.setTitle(null);
           }
           break;
         case "width":
-          image.width = messageUnpacker.unpackInt();
+          image.setWidth(messageUnpacker.unpackInt());
           break;
         case "height":
-          image.height = messageUnpacker.unpackInt();
+          image.setHeight(messageUnpacker.unpackInt());
           break;
         case "size":
-          image.size = Image.Size.valueOf(messageUnpacker.unpackString());
+          image.setSize(Image.Size.valueOf(messageUnpacker.unpackString()));
           break;
         case "media":
           if (!messageUnpacker.tryUnpackNil()) {
-            image.media = unpackMedia(messageUnpacker);
+            image.setMedia(unpackMedia(messageUnpacker));
           } else {
-            image.media = null;
+            image.setMedia(null);
           }
           break;
         default:

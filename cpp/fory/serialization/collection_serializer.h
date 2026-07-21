@@ -29,6 +29,7 @@
 #include <limits>
 #include <list>
 #include <set>
+#include <type_traits>
 #include <typeindex>
 #include <unordered_set>
 #include <vector>
@@ -388,6 +389,21 @@ inline bool reserve_collection(Container &result, ReadContext &ctx,
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return false;
   }
+  using Elem = typename Container::value_type;
+  constexpr size_t elem_bytes = sizeof(Elem);
+  // Portable lower-bound estimate only: STL node/header/debug-layout details
+  // differ across implementations, so generic collections charge value storage.
+  if (FORY_PREDICT_FALSE(static_cast<size_t>(length) >
+                         std::numeric_limits<size_t>::max() / elem_bytes)) {
+    ctx.set_error(Error::invalid_data(
+        "graph memory estimate overflows: length=" + std::to_string(length) +
+        " elementBytes=" + std::to_string(elem_bytes)));
+    return false;
+  }
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(static_cast<size_t>(length) *
+                                                   elem_bytes))) {
+    return false;
+  }
   if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
     return false;
   }
@@ -397,10 +413,39 @@ inline bool reserve_collection(Container &result, ReadContext &ctx,
   return true;
 }
 
+template <typename Alloc>
+inline bool reserve_collection(std::vector<bool, Alloc> &result,
+                               ReadContext &ctx, uint32_t length) {
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return false;
+  }
+  const size_t element_count = static_cast<size_t>(length);
+  if (FORY_PREDICT_FALSE(element_count >
+                         std::numeric_limits<size_t>::max() - 7)) {
+    ctx.set_error(Error::invalid_data(
+        "graph memory estimate overflows: length=" + std::to_string(length) +
+        " elementBits=1"));
+    return false;
+  }
+  // std::vector<bool> owns packed bit storage even though the wire payload uses
+  // one byte per bool.
+  const size_t packed_bytes = (element_count + 7) / 8;
+  if (FORY_PREDICT_FALSE(!ctx.reserve_graph_memory(packed_bytes))) {
+    return false;
+  }
+  if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(length, ctx.error()))) {
+    return false;
+  }
+  result.reserve(length);
+  return true;
+}
+
 // Helper to insert element into container (vector or set)
 template <typename Container, typename T>
 inline void collection_insert(Container &result, T &&elem) {
-  if constexpr (has_push_back_v<Container, T>) {
+  if constexpr (is_forward_list_v<Container>) {
+    result.push_front(std::forward<T>(elem));
+  } else if constexpr (has_push_back_v<Container, T>) {
     result.push_back(std::forward<T>(elem));
   } else {
     result.insert(std::forward<T>(elem));
@@ -412,9 +457,6 @@ template <typename T, typename Container>
 inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
   Container result;
   if (length == 0) {
-    return result;
-  }
-  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
     return result;
   }
 
@@ -441,6 +483,10 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return result;
     }
+  }
+
+  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+    return result;
   }
 
   // Read elements
@@ -482,8 +528,9 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
         }
         bool has_value = read_null_only_flag(ctx, RefMode::NullOnly);
         if (!has_value) {
-          if constexpr (has_push_back_v<Container, T>) {
-            result.push_back(T{});
+          if constexpr (has_push_back_v<Container, T> ||
+                        is_forward_list_v<Container>) {
+            collection_insert(result, T{});
           }
           // For sets, skip null elements
         } else {
@@ -508,8 +555,9 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
         }
         bool has_value = read_null_only_flag(ctx, RefMode::NullOnly);
         if (!has_value) {
-          if constexpr (has_push_back_v<Container, T>) {
-            result.push_back(T{});
+          if constexpr (has_push_back_v<Container, T> ||
+                        is_forward_list_v<Container>) {
+            collection_insert(result, T{});
           }
         } else {
           // Read type info + data without ref flag
@@ -530,6 +578,9 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
     }
   }
 
+  if constexpr (is_forward_list_v<Container>) {
+    result.reverse();
+  }
   return result;
 }
 
@@ -902,7 +953,6 @@ struct Serializer<
     if (ctx.has_error() || !has_value) {
       return std::vector<T, Alloc>();
     }
-
     // Optional type info for polymorphic containers
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -922,16 +972,16 @@ struct Serializer<
       return std::vector<T, Alloc>();
     }
 
-    // Per xlang spec: header and type_info are omitted when length is 0
-    if (length == 0) {
-      return std::vector<T, Alloc>();
-    }
-
     // Dispatch to slow path for polymorphic/shared-ref elements
     constexpr bool is_slow_path = is_polymorphic_v<T> || is_shared_ref_v<T>;
     if constexpr (is_slow_path) {
       return read_collection_data_slow<T, std::vector<T, Alloc>>(ctx, length);
     } else {
+      std::vector<T, Alloc> result;
+      // Per xlang spec: header and type_info are omitted when length is 0
+      if (length == 0) {
+        return result;
+      }
       // Fast path for non-polymorphic, non-shared-ref elements
 
       // Elements header bitmap (CollectionFlags)
@@ -961,7 +1011,6 @@ struct Serializer<
         }
       }
 
-      std::vector<T, Alloc> result;
       if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
         return result;
       }
@@ -1151,11 +1200,11 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
       return std::vector<bool, Alloc>();
     }
 
-    if (FORY_PREDICT_FALSE(!ctx.buffer().ensure_readable(size, ctx.error()))) {
-      return std::vector<bool, Alloc>();
+    std::vector<bool, Alloc> result;
+    if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
+      return result;
     }
-
-    std::vector<bool, Alloc> result(size);
+    result.resize(size);
     Buffer &buffer = ctx.buffer();
     if (size > 0) {
       const uint8_t *src = buffer.data() + buffer.reader_index();
@@ -1197,7 +1246,6 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
     if (ctx.has_error() || !has_value) {
       return std::list<T, Alloc>();
     }
-
     // Optional type info for polymorphic containers
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -1217,16 +1265,16 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
       return std::list<T, Alloc>();
     }
 
-    // Per xlang spec: header and type_info are omitted when length is 0
-    if (length == 0) {
-      return std::list<T, Alloc>();
-    }
-
     // Dispatch to slow path for polymorphic/shared-ref elements
     constexpr bool is_slow_path = is_polymorphic_v<T> || is_shared_ref_v<T>;
     if constexpr (is_slow_path) {
       return read_collection_data_slow<T, std::list<T, Alloc>>(ctx, length);
     } else {
+      std::list<T, Alloc> result;
+      // Per xlang spec: header and type_info are omitted when length is 0
+      if (length == 0) {
+        return result;
+      }
       // Fast path for non-polymorphic, non-shared-ref elements
 
       // Elements header bitmap (CollectionFlags)
@@ -1256,7 +1304,9 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
         }
       }
 
-      std::list<T, Alloc> result;
+      if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+        return result;
+      }
 
       // Fast path: no tracking, no nulls, elements have declared type
       if (!track_ref && !has_null && is_same_type) {
@@ -1349,6 +1399,12 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
     }
 
     std::list<T, Alloc> result;
+    if (size == 0) {
+      return result;
+    }
+    if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
+      return result;
+    }
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return result;
@@ -1389,7 +1445,6 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
     if (ctx.has_error() || !has_value) {
       return std::deque<T, Alloc>();
     }
-
     // Optional type info for polymorphic containers
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -1409,16 +1464,16 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
       return std::deque<T, Alloc>();
     }
 
-    // Per xlang spec: header and type_info are omitted when length is 0
-    if (length == 0) {
-      return std::deque<T, Alloc>();
-    }
-
     // Dispatch to slow path for polymorphic/shared-ref elements
     constexpr bool is_slow_path = is_polymorphic_v<T> || is_shared_ref_v<T>;
     if constexpr (is_slow_path) {
       return read_collection_data_slow<T, std::deque<T, Alloc>>(ctx, length);
     } else {
+      std::deque<T, Alloc> result;
+      // Per xlang spec: header and type_info are omitted when length is 0
+      if (length == 0) {
+        return result;
+      }
       // Fast path for non-polymorphic, non-shared-ref elements
 
       // Elements header bitmap (CollectionFlags)
@@ -1448,7 +1503,9 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
         }
       }
 
-      std::deque<T, Alloc> result;
+      if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+        return result;
+      }
 
       // Fast path: no tracking, no nulls, elements have declared type
       if (!track_ref && !has_null && is_same_type) {
@@ -1541,6 +1598,12 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
     }
 
     std::deque<T, Alloc> result;
+    if (size == 0) {
+      return result;
+    }
+    if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
+      return result;
+    }
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return result;
@@ -1582,7 +1645,6 @@ struct Serializer<std::forward_list<T, Alloc>> {
     if (ctx.has_error() || !has_value) {
       return std::forward_list<T, Alloc>();
     }
-
     // Optional type info for polymorphic containers
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -1602,25 +1664,25 @@ struct Serializer<std::forward_list<T, Alloc>> {
       return std::forward_list<T, Alloc>();
     }
 
+    std::forward_list<T, Alloc> result;
     // Per xlang spec: header and type_info are omitted when length is 0
     if (length == 0) {
-      return std::forward_list<T, Alloc>();
+      return result;
     }
 
     // Dispatch to slow path for polymorphic/shared-ref elements
-    // Read elements into a temporary vector then build forward_list
-    // (forward_list doesn't have push_back, only push_front)
-    std::vector<T> temp;
     constexpr bool is_slow_path = is_polymorphic_v<T> || is_shared_ref_v<T>;
     if constexpr (is_slow_path) {
-      temp = read_collection_data_slow<T, std::vector<T>>(ctx, length);
+      return read_collection_data_slow<T, std::forward_list<T, Alloc>>(ctx,
+                                                                       length);
     } else {
+      auto tail = result.before_begin();
       // Fast path for non-polymorphic, non-shared-ref elements
 
       // Elements header bitmap (CollectionFlags)
       uint8_t bitmap = ctx.read_uint8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return std::forward_list<T, Alloc>();
+        return result;
       }
       bool track_ref = (bitmap & COLL_TRACKING_REF) != 0;
       bool has_null = (bitmap & COLL_HAS_NULL) != 0;
@@ -1632,7 +1694,7 @@ struct Serializer<std::forward_list<T, Alloc>> {
       if (is_same_type && !is_decl_type) {
         const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return std::forward_list<T, Alloc>();
+          return result;
         }
         using ElemType = nullable_element_t<T>;
         uint32_t expected =
@@ -1644,53 +1706,47 @@ struct Serializer<std::forward_list<T, Alloc>> {
         }
       }
 
-      if (FORY_PREDICT_FALSE(!reserve_collection(temp, ctx, length))) {
-        return std::forward_list<T, Alloc>();
+      if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+        return result;
       }
       // Fast path: no tracking, no nulls, elements have declared type
       if (!track_ref && !has_null && is_same_type) {
         for (uint32_t i = 0; i < length; ++i) {
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
-            break;
+            return result;
           }
           auto elem = Serializer<T>::read(ctx, RefMode::None, false);
-          temp.push_back(std::move(elem));
+          tail = result.insert_after(tail, std::move(elem));
         }
       } else {
         // General path: handle HAS_NULL and/or TRACKING_REF
         for (uint32_t i = 0; i < length; ++i) {
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
-            break;
+            return result;
           }
           if (track_ref) {
             auto elem = Serializer<T>::read(ctx, RefMode::Tracking, false);
-            temp.push_back(std::move(elem));
+            tail = result.insert_after(tail, std::move(elem));
           } else if (has_null) {
             bool has_value_elem = read_null_only_flag(ctx, RefMode::NullOnly);
             if (!has_value_elem) {
-              temp.emplace_back();
+              tail = result.emplace_after(tail);
             } else {
               if constexpr (is_nullable_v<T>) {
                 using Inner = nullable_element_t<T>;
                 auto inner = Serializer<Inner>::read(ctx, RefMode::None, false);
-                temp.emplace_back(std::move(inner));
+                tail = result.emplace_after(tail, std::move(inner));
               } else {
                 auto elem = Serializer<T>::read(ctx, RefMode::None, false);
-                temp.push_back(std::move(elem));
+                tail = result.insert_after(tail, std::move(elem));
               }
             }
           } else {
             auto elem = Serializer<T>::read(ctx, RefMode::None, false);
-            temp.push_back(std::move(elem));
+            tail = result.insert_after(tail, std::move(elem));
           }
         }
       }
-    }
-
-    // Build forward_list in reverse order using push_front
-    std::forward_list<T, Alloc> result;
-    for (auto it = temp.rbegin(); it != temp.rend(); ++it) {
-      result.push_front(std::move(*it));
     }
     return result;
   }
@@ -1968,21 +2024,20 @@ struct Serializer<std::forward_list<T, Alloc>> {
       return std::forward_list<T, Alloc>();
     }
 
-    std::vector<T> temp;
-    if (FORY_PREDICT_FALSE(!reserve_collection(temp, ctx, size))) {
-      return std::forward_list<T, Alloc>();
+    std::forward_list<T, Alloc> result;
+    if (size == 0) {
+      return result;
     }
+    if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
+      return result;
+    }
+    auto tail = result.before_begin();
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        break;
+        return result;
       }
       auto elem = Serializer<T>::read_data(ctx);
-      temp.push_back(std::move(elem));
-    }
-    // Build forward_list in reverse order
-    std::forward_list<T, Alloc> result;
-    for (auto it = temp.rbegin(); it != temp.rend(); ++it) {
-      result.push_front(std::move(*it));
+      tail = result.insert_after(tail, std::move(elem));
     }
     return result;
   }
@@ -2049,7 +2104,6 @@ struct Serializer<std::set<T, Args...>> {
     if (ctx.has_error() || !has_value) {
       return std::set<T, Args...>();
     }
-
     // Read type info
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -2069,16 +2123,16 @@ struct Serializer<std::set<T, Args...>> {
       return std::set<T, Args...>();
     }
 
-    // Per xlang spec: header and type_info are omitted when length is 0
-    if (size == 0) {
-      return std::set<T, Args...>();
-    }
-
     // Dispatch to slow path for polymorphic/shared-ref elements
     constexpr bool is_slow_path = is_polymorphic_v<T> || is_shared_ref_v<T>;
     if constexpr (is_slow_path) {
       return read_collection_data_slow<T, std::set<T, Args...>>(ctx, size);
     } else {
+      std::set<T, Args...> result;
+      // Per xlang spec: header and type_info are omitted when length is 0
+      if (size == 0) {
+        return result;
+      }
       // Fast path for non-polymorphic, non-shared-ref elements
 
       // Read elements header bitmap (CollectionFlags) in xlang mode
@@ -2094,17 +2148,20 @@ struct Serializer<std::set<T, Args...>> {
       if (is_same_type && !is_decl_type) {
         const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return std::set<T, Args...>();
+          return result;
         }
         uint32_t expected = static_cast<uint32_t>(Serializer<T>::type_id);
         if (!type_id_matches(elem_type_info->type_id, expected)) {
           ctx.set_error(
               Error::type_mismatch(elem_type_info->type_id, expected));
-          return std::set<T, Args...>();
+          return result;
         }
       }
 
-      std::set<T, Args...> result;
+      if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
+        return result;
+      }
+
       if (!track_ref && !has_null && is_same_type) {
         for (uint32_t i = 0; i < size; ++i) {
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -2151,6 +2208,12 @@ struct Serializer<std::set<T, Args...>> {
     }
 
     std::set<T, Args...> result;
+    if (size == 0) {
+      return result;
+    }
+    if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
+      return result;
+    }
     for (uint32_t i = 0; i < size; ++i) {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return result;
@@ -2224,7 +2287,6 @@ struct Serializer<std::unordered_set<T, Args...>> {
     if (ctx.has_error() || !has_value) {
       return std::unordered_set<T, Args...>();
     }
-
     // Read type info
     if (read_type) {
       uint32_t type_id_read = ctx.read_uint8(ctx.error());
@@ -2244,17 +2306,17 @@ struct Serializer<std::unordered_set<T, Args...>> {
       return std::unordered_set<T, Args...>();
     }
 
-    // Per xlang spec: header and type_info are omitted when length is 0
-    if (size == 0) {
-      return std::unordered_set<T, Args...>();
-    }
-
     // Dispatch to slow path for polymorphic/shared-ref elements
     constexpr bool is_slow_path = is_polymorphic_v<T> || is_shared_ref_v<T>;
     if constexpr (is_slow_path) {
       return read_collection_data_slow<T, std::unordered_set<T, Args...>>(ctx,
                                                                           size);
     } else {
+      std::unordered_set<T, Args...> result;
+      // Per xlang spec: header and type_info are omitted when length is 0
+      if (size == 0) {
+        return result;
+      }
       // Fast path for non-polymorphic, non-shared-ref elements
 
       // Read elements header bitmap (CollectionFlags) in xlang mode
@@ -2270,20 +2332,20 @@ struct Serializer<std::unordered_set<T, Args...>> {
       if (is_same_type && !is_decl_type) {
         const TypeInfo *elem_type_info = ctx.read_any_type_info(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
-          return std::unordered_set<T, Args...>();
+          return result;
         }
         uint32_t expected = static_cast<uint32_t>(Serializer<T>::type_id);
         if (!type_id_matches(elem_type_info->type_id, expected)) {
           ctx.set_error(
               Error::type_mismatch(elem_type_info->type_id, expected));
-          return std::unordered_set<T, Args...>();
+          return result;
         }
       }
 
-      std::unordered_set<T, Args...> result;
       if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
         return result;
       }
+
       if (!track_ref && !has_null && is_same_type) {
         for (uint32_t i = 0; i < size; ++i) {
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -2330,6 +2392,9 @@ struct Serializer<std::unordered_set<T, Args...>> {
     }
 
     std::unordered_set<T, Args...> result;
+    if (size == 0) {
+      return result;
+    }
     if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, size))) {
       return result;
     }

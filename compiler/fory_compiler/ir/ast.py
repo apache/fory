@@ -56,7 +56,7 @@ class PrimitiveType:
 
 @dataclass
 class NamedType:
-    """A reference to a user-defined type (message or enum)."""
+    """A reference to a user-defined type (message, enum or union)."""
 
     name: str
     location: Optional[SourceLocation] = None

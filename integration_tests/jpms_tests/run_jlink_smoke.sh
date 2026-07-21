@@ -74,24 +74,27 @@ reject_jar_entry() {
   local jar_file="$1"
   local entry="$2"
   if jar tf "$jar_file" | grep -qx "$entry"; then
-    echo "Unexpected root $entry in $jar_file" >&2
+    echo "Unexpected $entry in $jar_file" >&2
     exit 1
   fi
 }
 
 require_jar_entry "$CORE_JAR" "META-INF/versions/9/module-info.class"
 reject_jar_entry "$CORE_JAR" "module-info.class"
+require_jar_entry "$CORE_JAR" "org/apache/fory/serializer/CompressedArraySerializers.class"
+require_jar_entry "$CORE_JAR" "org/apache/fory/util/ArrayCompressionUtils.class"
+require_jar_entry "$CORE_JAR" "org/apache/fory/util/PrimitiveArrayCompressionType.class"
 require_jar_entry "$FORMAT_JAR" "META-INF/versions/11/module-info.class"
 reject_jar_entry "$FORMAT_JAR" "module-info.class"
+if [[ "$JAVA_MAJOR" -ge 17 ]]; then
+  jar --validate --file "$CORE_JAR"
+fi
 
-if [[ "$JAVA_MAJOR" -ge 16 ]] \
-  && jar tf "$CORE_JAR" | grep -qx "META-INF/versions/16/module-info.class"; then
-  require_jar_entry "$CORE_JAR" "META-INF/versions/16/org/apache/fory/serializer/CompressedArraySerializers.class"
+if [[ "$JAVA_MAJOR" -ge 16 ]]; then
+  require_jar_entry "$CORE_JAR" "META-INF/versions/16/module-info.class"
   require_jar_entry "$CORE_JAR" "META-INF/versions/16/org/apache/fory/util/ArrayCompressionUtils.class"
-  require_jar_entry "$CORE_JAR" "META-INF/versions/16/org/apache/fory/util/PrimitiveArrayCompressionType.class"
-  reject_jar_entry "$CORE_JAR" "org/apache/fory/serializer/CompressedArraySerializers.class"
-  reject_jar_entry "$CORE_JAR" "org/apache/fory/util/ArrayCompressionUtils.class"
-  reject_jar_entry "$CORE_JAR" "org/apache/fory/util/PrimitiveArrayCompressionType.class"
+  reject_jar_entry "$CORE_JAR" "META-INF/versions/16/org/apache/fory/serializer/CompressedArraySerializers.class"
+  reject_jar_entry "$CORE_JAR" "META-INF/versions/16/org/apache/fory/util/PrimitiveArrayCompressionType.class"
   jar --file "$CORE_JAR" --describe-module --release 16 | grep -q "requires jdk.incubator.vector static"
 fi
 
@@ -155,7 +158,11 @@ jlink \
   --add-modules jpms.smoke \
   --output "$WORK_DIR/image"
 
-"$WORK_DIR/image/bin/java" -m jpms.smoke/org.apache.fory.jpms.Smoke | grep -qx "ok"
+# JDK25+ zero-Unsafe mode uses Fory as a named module in this image.
+"$WORK_DIR/image/bin/java" \
+  --add-opens=java.base/java.lang.invoke=org.apache.fory.core \
+  -m jpms.smoke/org.apache.fory.jpms.Smoke \
+  | grep -qx "ok"
 
 IMAGE_MODULES="$("$WORK_DIR/image/bin/java" --list-modules)"
 echo "$IMAGE_MODULES" | grep -q "^org.apache.fory.core"
@@ -176,14 +183,59 @@ import org.apache.fory.util.ArrayCompressionUtils;
 import org.apache.fory.util.PrimitiveArrayCompressionType;
 
 public final class VectorSmoke {
-  public static void main(String[] args) throws Exception {
-    int[] values = new int[1024];
-    for (int i = 0; i < values.length; i++) {
-      values[i] = (i & 0xff) - 128;
+  private static void assertIntType(
+      int[] values, PrimitiveArrayCompressionType expected) {
+    PrimitiveArrayCompressionType actual =
+        ArrayCompressionUtils.determineIntCompressionType(values);
+    if (actual != expected) {
+      throw new AssertionError("Expected " + expected + " for int array, got " + actual);
     }
-    if (ArrayCompressionUtils.determineIntCompressionType(values)
-        != PrimitiveArrayCompressionType.INT_TO_BYTE) {
-      throw new AssertionError("Vector compression returned the wrong range");
+  }
+
+  private static void assertLongType(
+      long[] values, PrimitiveArrayCompressionType expected) {
+    PrimitiveArrayCompressionType actual =
+        ArrayCompressionUtils.determineLongCompressionType(values);
+    if (actual != expected) {
+      throw new AssertionError("Expected " + expected + " for long array, got " + actual);
+    }
+  }
+
+  public static void main(String[] args) throws Exception {
+    // Length 513 exercises both the Vector loop and its scalar tail on power-of-two species.
+    int[] byteValues = new int[513];
+    int[] shortValues = new int[513];
+    int[] uncompressedInts = new int[513];
+    int[] byteTail = new int[513];
+    int[] shortTail = new int[513];
+    long[] intValues = new long[513];
+    long[] uncompressedLongs = new long[513];
+    long[] intTail = new long[513];
+    for (int i = 0; i < byteValues.length; i++) {
+      byteValues[i] = i % 2 == 0 ? Byte.MIN_VALUE : Byte.MAX_VALUE;
+      shortValues[i] = i % 2 == 0 ? Short.MIN_VALUE : Short.MAX_VALUE;
+      uncompressedInts[i] = i % 2 == 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+      intValues[i] = i % 2 == 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
+      uncompressedLongs[i] = i % 2 == 0 ? Long.MIN_VALUE : Long.MAX_VALUE;
+    }
+    byteTail[512] = Byte.MAX_VALUE + 1;
+    shortTail[512] = Short.MAX_VALUE + 1;
+    intTail[512] = (long) Integer.MAX_VALUE + 1;
+    assertIntType(byteValues, PrimitiveArrayCompressionType.INT_TO_BYTE);
+    assertIntType(shortValues, PrimitiveArrayCompressionType.INT_TO_SHORT);
+    assertIntType(uncompressedInts, PrimitiveArrayCompressionType.NONE);
+    assertIntType(byteTail, PrimitiveArrayCompressionType.INT_TO_SHORT);
+    assertIntType(shortTail, PrimitiveArrayCompressionType.NONE);
+    assertIntType(new int[511], PrimitiveArrayCompressionType.NONE);
+    assertLongType(intValues, PrimitiveArrayCompressionType.LONG_TO_INT);
+    assertLongType(uncompressedLongs, PrimitiveArrayCompressionType.NONE);
+    assertLongType(intTail, PrimitiveArrayCompressionType.NONE);
+    assertLongType(new long[511], PrimitiveArrayCompressionType.NONE);
+
+    String classResource =
+        ArrayCompressionUtils.class.getResource("ArrayCompressionUtils.class").toString();
+    if (!classResource.contains("META-INF/versions/16/")) {
+      throw new AssertionError("JDK 16+ did not select the Vector implementation: " + classResource);
     }
     System.out.println("vector-ok");
   }

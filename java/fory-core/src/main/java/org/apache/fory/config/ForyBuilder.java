@@ -103,6 +103,7 @@ public final class ForyBuilder {
   int maxTypeMetaBytes = 4096;
   int maxSchemaVersionsPerType = 10;
   int maxAverageSchemaVersionsPerType = 3;
+  long maxGraphMemoryBytes = 128L * 1024 * 1024;
   float mapRefLoadFactor = 0.51f;
   boolean forVirtualThread = false;
   TypeChecker typeChecker;
@@ -233,14 +234,28 @@ public final class ForyBuilder {
     return this;
   }
 
-  /** Whether compress int arrays when values are small. */
+  /**
+   * Whether to compress int arrays when values are small.
+   *
+   * <p>When {@link org.apache.fory.serializer.CompressedArraySerializers} is registered, its range
+   * analysis is scalar on JDK 8 through 15. On JDK 16 and later, the multi-release {@code
+   * fory-core} JAR automatically selects the Vector API implementation when {@code
+   * jdk.incubator.vector} is resolved.
+   */
   public ForyBuilder withIntArrayCompressed(boolean intArrayCompressed) {
     this.compressIntArray = intArrayCompressed;
     recordAction(b -> b.withIntArrayCompressed(intArrayCompressed));
     return this;
   }
 
-  /** Whether compress long arrays when values are small. */
+  /**
+   * Whether to compress long arrays when values are small.
+   *
+   * <p>When {@link org.apache.fory.serializer.CompressedArraySerializers} is registered, its range
+   * analysis is scalar on JDK 8 through 15. On JDK 16 and later, the multi-release {@code
+   * fory-core} JAR automatically selects the Vector API implementation when {@code
+   * jdk.incubator.vector} is resolved.
+   */
   public ForyBuilder withLongArrayCompressed(boolean longArrayCompressed) {
     this.compressLongArray = longArrayCompressed;
     recordAction(b -> b.withLongArrayCompressed(longArrayCompressed));
@@ -367,7 +382,7 @@ public final class ForyBuilder {
    * responsible for security risks if you disable this option. If you disable this option, you can
    * configure {@link org.apache.fory.resolver.TypeChecker} by {@link #withTypeChecker(TypeChecker)}
    * or {@link org.apache.fory.resolver.TypeResolver#setTypeChecker} to control which classes are
-   * allowed being serialized.
+   * allowed for serialization and deserialization.
    */
   public ForyBuilder requireClassRegistration(boolean requireClassRegistration) {
     this.requireClassRegistration = requireClassRegistration;
@@ -377,8 +392,9 @@ public final class ForyBuilder {
 
   /**
    * Configure a {@link TypeChecker} during build time so it is installed on every Fory instance
-   * created by this builder. This checker is only consulted for unknown class names when class
-   * registration checks are disabled.
+   * created by this builder. Unknown input class names are checked when class registration checks
+   * are disabled. Configure {@link org.apache.fory.resolver.AllowListChecker} disallow entries
+   * before registration is frozen.
    */
   public ForyBuilder withTypeChecker(TypeChecker typeChecker) {
     this.typeChecker = typeChecker;
@@ -571,6 +587,21 @@ public final class ForyBuilder {
     return this;
   }
 
+  /**
+   * Sets the approximate graph-memory gate for one root deserialization.
+   *
+   * <p>The estimate mainly covers materialized collections, maps, arrays, structs, and objects. It
+   * skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays;
+   * those remain gated by byte-availability checks on the unread input. Actual process memory can
+   * be higher than this value. The default is a fixed 128 MiB. Values must be positive byte limits.
+   */
+  public ForyBuilder withMaxGraphMemoryBytes(long maxGraphMemoryBytes) {
+    Preconditions.checkArgument(maxGraphMemoryBytes > 0, "maxGraphMemoryBytes must be positive");
+    this.maxGraphMemoryBytes = maxGraphMemoryBytes;
+    recordAction(b -> b.withMaxGraphMemoryBytes(maxGraphMemoryBytes));
+    return this;
+  }
+
   /** Set loadFactor of MapRefResolver writtenObjects. Default value is 0.51 */
   public ForyBuilder withMapRefLoadFactor(float loadFactor) {
     Preconditions.checkArgument(
@@ -642,12 +673,12 @@ public final class ForyBuilder {
     }
     if (ENABLE_CLASS_REGISTRATION_FORCIBLY) {
       if (!requireClassRegistration) {
-        LOG.warn("Class registration is enabled forcibly.");
+        LOG.info("Class registration is enabled forcibly.");
         requireClassRegistration = true;
       }
     }
     if (defaultJDKStreamSerializerType == JavaSerializer.class) {
-      LOG.warn(
+      LOG.info(
           "JDK serialization is used for types which customized java serialization by "
               + "implementing methods such as writeObject/readObject. This is not secure, try to "
               + "use {} instead, or implement a custom {}.",
@@ -681,7 +712,7 @@ public final class ForyBuilder {
         deserializeUnknownClass = false;
       }
       if (scopedMetaShareEnabled != null && scopedMetaShareEnabled) {
-        LOG.warn("Scoped meta share is for compatible mode only, disabling it");
+        LOG.info("Scoped meta share is for compatible mode only, disabling it");
       }
       scopedMetaShareEnabled = false;
       if (metaShareEnabled == null) {
@@ -693,7 +724,7 @@ public final class ForyBuilder {
     }
     if (!requireClassRegistration) {
       if (typeChecker == null) {
-        LOG.warn(
+        LOG.info(
             "Class registration isn't forced, unknown classes can be deserialized. "
                 + "If the environment isn't secure, please enable class registration by "
                 + "`ForyBuilder#requireClassRegistration(true)` or configure TypeChecker by "
@@ -710,7 +741,7 @@ public final class ForyBuilder {
         codeGenEnabled != null ? codeGenEnabled.booleanValue() : !runtimeCodegenUnsupported;
     if (runtimeCodegenUnsupported && resolvedCodegen) {
       if (Boolean.TRUE.equals(codeGenEnabled)) {
-        LOG.warn(
+        LOG.info(
             "The current platform does not support Fory runtime code generation; "
                 + "interpreter serializers will be used instead.");
       }

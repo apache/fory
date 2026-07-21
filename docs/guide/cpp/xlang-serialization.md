@@ -190,11 +190,11 @@ Use the field metadata DSL's array node when the schema is dense `array<T>`.
 
 ### Temporal Types
 
-| C++ Type    | Java Type   | Python Type     | Go Type         |
-| ----------- | ----------- | --------------- | --------------- |
-| `Timestamp` | `Instant`   | `datetime`      | `time.Time`     |
-| `Duration`  | `Duration`  | `timedelta`     | `time.Duration` |
-| `Date`      | `LocalDate` | `datetime.date` | `time.Time`     |
+| C++ Type          | Java Type   | Python Type     | Go Type         |
+| ----------------- | ----------- | --------------- | --------------- |
+| `fory::Timestamp` | `Instant`   | `datetime`      | `time.Time`     |
+| `fory::Duration`  | `Duration`  | `timedelta`     | `time.Duration` |
+| `fory::Date`      | `LocalDate` | `datetime.date` | `time.Time`     |
 
 ## Field Order Requirements
 

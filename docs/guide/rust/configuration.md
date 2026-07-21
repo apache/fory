@@ -110,6 +110,24 @@ let fory = Fory::builder()
 - `max_average_schema_versions_per_type` defaults to `3` and limits the average across accepted
   remote types. The effective global floor is `8192` schemas.
 
+### Graph Memory Budget
+
+`max_graph_memory_bytes(...)` sets an approximate graph-memory gate for one root read. The estimate
+mainly covers materialized collections, maps, arrays, structs, and objects; it is not an exact
+process heap limit. It skips leaf values such as strings, binary data, primitive scalars, and dense
+primitive arrays, so actual process memory can be higher than this value. Leaf values remain
+protected by byte-availability checks: if the unread input does not contain enough bytes, Fory will
+not read or create that leaf value. The default is a fixed `128 MiB` for all root input forms. Set a
+positive byte value when trusted payloads need a larger or smaller gate:
+
+```rust
+let fory = Fory::builder()
+    .max_graph_memory_bytes(256 * 1024 * 1024)
+    .build();
+```
+
+Zero is rejected when the runtime is created.
+
 ### Explicit Xlang Examples
 
 Set `.xlang(true)` explicitly for xlang serialization examples:
@@ -135,6 +153,11 @@ let fory = Fory::builder().xlang(false).compatible(false).build();
 // Custom depth limit
 let fory = Fory::builder().max_dyn_depth(10).build();
 
+// Custom graph memory budget
+let fory = Fory::builder()
+    .max_graph_memory_bytes(256 * 1024 * 1024)
+    .build();
+
 // Combined configuration
 let fory = Fory::builder()
     .xlang(false)
@@ -144,15 +167,16 @@ let fory = Fory::builder()
 
 ## Configuration Summary
 
-| Option                                        | Description                                       | Default |
-| --------------------------------------------- | ------------------------------------------------- | ------- |
-| `compatible(bool)`                            | Enable schema evolution                           | `true`  |
-| `xlang(bool)`                                 | Use xlang mode                                    | `true`  |
-| `max_dyn_depth(u32)`                          | Maximum nesting depth for dynamic types           | `5`     |
-| `max_type_fields(usize)`                      | Max fields in one received struct metadata body   | `512`   |
-| `max_type_meta_bytes(usize)`                  | Max encoded bytes in one received metadata body   | `4096`  |
-| `max_schema_versions_per_type(usize)`         | Max remote metadata versions for one logical type | `10`    |
-| `max_average_schema_versions_per_type(usize)` | Average remote metadata versions across types     | `3`     |
+| Option                                        | Description                                       | Default   |
+| --------------------------------------------- | ------------------------------------------------- | --------- |
+| `compatible(bool)`                            | Enable schema evolution                           | `true`    |
+| `xlang(bool)`                                 | Use xlang mode                                    | `true`    |
+| `max_dyn_depth(u32)`                          | Maximum nesting depth for dynamic types           | `5`       |
+| `max_graph_memory_bytes(usize)`               | Approximate graph-memory gate per root read       | `128 MiB` |
+| `max_type_fields(usize)`                      | Max fields in one received struct metadata body   | `512`     |
+| `max_type_meta_bytes(usize)`                  | Max encoded bytes in one received metadata body   | `4096`    |
+| `max_schema_versions_per_type(usize)`         | Max remote metadata versions for one logical type | `10`      |
+| `max_average_schema_versions_per_type(usize)` | Average remote metadata versions across types     | `3`       |
 
 ## Compatible Mode
 
@@ -169,6 +193,8 @@ Security-related configuration:
 - Register application structs and trait-object implementations before deserializing untrusted
   payloads.
 - Use `max_dyn_depth(...)` to reject unexpectedly deep dynamic object graphs.
+- Keep `max_graph_memory_bytes(...)` at the fixed `128 MiB` default for most inputs, or set a
+  positive byte gate for trusted workloads with different legitimate collection/map/struct sizes.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer concrete typed fields over `dyn Any` or broad trait-object fields for untrusted input.

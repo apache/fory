@@ -1,0 +1,226 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.android;
+
+import java.util.Arrays;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicReferenceArray;
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonType;
+
+/** Android acceptance scenarios for reflection, declaration codecs, and R8 retention. */
+public final class AndroidJsonScenarios {
+  private AndroidJsonScenarios() {}
+
+  public static void plainReflectionWithoutRules(boolean debuggable) {
+    if (!debuggable) {
+      return;
+    }
+    ForyJson json = ForyJson.builder().build();
+    ReflectionJsonModel value = new ReflectionJsonModel(26, "reflection");
+    String encoded = json.toJson(value);
+    checkEquals("{\"id\":26,\"name\":\"reflection\"}", encoded);
+    ReflectionJsonModel decoded = json.fromJson(encoded, ReflectionJsonModel.class);
+    checkEquals(26, decoded.id);
+    checkEquals("reflection", decoded.name);
+  }
+
+  public static void manualPlainRules() {
+    ForyJson json = ForyJson.builder().build();
+    ManualPlainJsonModel value = new ManualPlainJsonModel(27, "manual-plain");
+    String encoded = json.toJson(value);
+    checkEquals("{\"id\":27,\"name\":\"manual-plain\"}", encoded);
+    ManualPlainJsonModel decoded = json.fromJson(encoded, ManualPlainJsonModel.class);
+    checkEquals(27, decoded.id);
+    checkEquals("manual-plain", decoded.name);
+  }
+
+  public static void generatedPlainRules() {
+    ForyJson json = ForyJson.builder().build();
+    GeneratedPlainJsonModel value = new GeneratedPlainJsonModel(28, "generated-plain");
+    String encoded = json.toJson(value);
+    checkEquals("{\"id\":28,\"name\":\"generated-plain\"}", encoded);
+    GeneratedPlainJsonModel decoded = json.fromJson(encoded, GeneratedPlainJsonModel.class);
+    checkEquals(28, decoded.id);
+    checkEquals("generated-plain", decoded.name);
+  }
+
+  public static void generatedRecord() {
+    try {
+      Class.forName(
+          "org.apache.fory.android.GeneratedJsonRecord_ForyJsonCodec",
+          false,
+          GeneratedJsonRecord.class.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      throw new AssertionError("generated Record JSON codec was removed", e);
+    }
+    check(GeneratedJsonRecord.class.isAnnotationPresent(JsonType.class));
+    ForyJson json = ForyJson.builder().build();
+    String encoded = json.toJson(new GeneratedJsonRecord(30, "android"));
+    checkEquals("{\"id\":30,\"name\":\"ANDROID\"}", encoded);
+    GeneratedJsonRecord decoded = json.fromJson(encoded, GeneratedJsonRecord.class);
+    checkEquals(30, decoded.id());
+    checkEquals("ANDROID", decoded.name());
+  }
+
+  public static void generatedValueRecord() {
+    try {
+      Class.forName(
+          "org.apache.fory.android.GeneratedJsonValueRecord_ForyJsonCodec",
+          false,
+          GeneratedJsonValueRecord.class.getClassLoader());
+    } catch (ClassNotFoundException e) {
+      throw new AssertionError("generated value Record JSON codec was removed", e);
+    }
+    ForyJson json = ForyJson.builder().build();
+    GeneratedJsonValueRecord value = new GeneratedJsonValueRecord("android-value");
+    checkEquals("\"android-value\"", json.toJson(value));
+    checkEquals(
+        "decoded-value",
+        json.fromJson("\"decoded-value\"", GeneratedJsonValueRecord.class).value());
+  }
+
+  public static void manualCodecs() {
+    ForyJson json = ForyJson.builder().build();
+    ManualJsonModel value = new ManualJsonModel();
+    value.direct = new ManualJsonModel.DirectValue("direct");
+    value.declaredField = new ManualJsonModel.MemberValue("field");
+    value.setDeclaredProperty(new ManualJsonModel.MemberValue("method"));
+    value.setParameterProperty(new ManualJsonModel.MemberValue("parameter"));
+    value.values.add(new ManualJsonModel.MemberValue("element"));
+    value.array = new ManualJsonModel.MemberValue[] {new ManualJsonModel.MemberValue("array")};
+    value.atomicArray =
+        new AtomicReferenceArray<>(
+            new ManualJsonModel.MemberValue[] {new ManualJsonModel.MemberValue("atomic-array")});
+    value.byName.put(new ManualJsonModel.Key("map"), new ManualJsonModel.MemberValue("map-value"));
+    value.optional = Optional.of(new ManualJsonModel.MemberValue("optional"));
+    value.atomic = new AtomicReference<>(new ManualJsonModel.MemberValue("atomic"));
+    value.extra.put("dynamic", new ManualJsonModel.MemberValue("any"));
+
+    ManualJsonModel.resetCodecCalls();
+    String encoded = json.toJson(value);
+    check(encoded.contains("\"direct\":\"manual:direct\""));
+    check(encoded.contains("\"declaredField\":\"manual:field\""));
+    check(encoded.contains("\"declaredProperty\":\"manual:method\""));
+    check(encoded.contains("\"parameterProperty\":\"manual:parameter\""));
+    check(encoded.contains("\"values\":[\"manual:element\"]"));
+    check(encoded.contains("\"array\":[\"manual:array\"]"));
+    check(encoded.contains("\"atomicArray\":[\"manual:atomic-array\"]"));
+    check(encoded.contains("\"manual-key:map\":\"manual:map-value\""));
+    check(encoded.contains("\"optional\":\"manual:optional\""));
+    check(encoded.contains("\"atomic\":\"manual:atomic\""));
+    check(encoded.contains("\"dynamic\":\"manual:any\""));
+
+    ManualJsonModel decoded = json.fromJson(encoded, ManualJsonModel.class);
+    checkEquals("manual:direct", decoded.direct.text);
+    checkEquals("manual:field", decoded.declaredField.text);
+    checkEquals("manual:method", decoded.getDeclaredProperty().text);
+    checkEquals("manual:parameter", decoded.getParameterProperty().text);
+    checkEquals("manual:element", decoded.values.get(0).text);
+    checkEquals("manual:array", decoded.array[0].text);
+    checkEquals("manual:atomic-array", decoded.atomicArray.get(0).text);
+    checkEquals("manual:map-value", decoded.byName.get(new ManualJsonModel.Key("map")).text);
+    checkEquals("manual:optional", decoded.optional.get().text);
+    checkEquals("manual:atomic", decoded.atomic.get().text);
+    checkEquals("manual:any", decoded.extra.get("dynamic").text);
+    checkEquals(22, ManualJsonModel.codecCalls());
+    checkEquals(2, ManualJsonModel.keyCodecCalls());
+  }
+
+  public static void generatedCodecs() {
+    ForyJson json = ForyJson.builder().build();
+    GeneratedJsonSubtype value = new GeneratedJsonSubtype();
+    value.subtypeId = 29;
+    value.values.add(new GeneratedJsonModel.Value("list"));
+    value.rootValue = new GeneratedJsonModel.Value("root");
+    value.setRootProperty(new GeneratedJsonModel.Value("property"));
+    value.setParameterProperty(new GeneratedJsonModel.Value("parameter"));
+    value.array = new GeneratedJsonModel.Value[] {new GeneratedJsonModel.Value("array")};
+    value.atomicArray =
+        new AtomicReferenceArray<>(
+            new GeneratedJsonModel.Value[] {new GeneratedJsonModel.Value("atomic-array")});
+    value.byName.put(new GeneratedJsonModel.Key("map"), new GeneratedJsonModel.Value("map-value"));
+    value.optional = Optional.of(new GeneratedJsonModel.Value("optional"));
+    value.atomic = new AtomicReference<>(new GeneratedJsonModel.Value("atomic"));
+    value.declared = new GeneratedJsonModel.DeclaredValue("type");
+    value.setInheritedProperty(new GeneratedJsonModel.InheritedPropertyValue("property"));
+    value.extra.put("dynamic", new GeneratedJsonModel.Value("extra"));
+
+    GeneratedJsonModel.resetCodecCalls();
+    String encoded = json.toJson(value, GeneratedJsonModel.class);
+    check(encoded.contains("\"kind\":\"generated\""));
+    check(encoded.contains("\"generated:list\""));
+    check(encoded.contains("\"generated:root\""));
+    check(encoded.contains("\"generated:property\""));
+    check(encoded.contains("\"generated:parameter\""));
+    check(encoded.contains("\"generated:array\""));
+    check(encoded.contains("\"generated:atomic-array\""));
+    check(encoded.contains("\"generated-key:map\":\"generated:map-value\""));
+    check(encoded.contains("\"generated:optional\""));
+    check(encoded.contains("\"generated:atomic\""));
+    check(encoded.contains("\"declared:type\""));
+    check(encoded.contains("\"inherited:property\""));
+    check(encoded.contains("\"dynamic\":\"generated:extra\""));
+
+    GeneratedJsonModel decoded = json.fromJson(encoded, GeneratedJsonModel.class);
+    check(decoded instanceof GeneratedJsonSubtype);
+    GeneratedJsonSubtype subtype = (GeneratedJsonSubtype) decoded;
+    checkEquals(29, subtype.subtypeId);
+    checkEquals("generated:list", subtype.values.get(0).text);
+    checkEquals("generated:root", subtype.rootValue.text);
+    checkEquals("generated:property", subtype.getRootProperty().text);
+    checkEquals("generated:parameter", subtype.getParameterProperty().text);
+    checkEquals("generated:array", subtype.array[0].text);
+    checkEquals("generated:atomic-array", subtype.atomicArray.get(0).text);
+    checkEquals("generated:map-value", subtype.byName.get(new GeneratedJsonModel.Key("map")).text);
+    checkEquals("generated:optional", subtype.optional.get().text);
+    checkEquals("generated:atomic", subtype.atomic.get().text);
+    checkEquals("declared:type", subtype.declared.text);
+    checkEquals("inherited:property", subtype.getInheritedProperty().text);
+    checkEquals("generated:extra", subtype.extra.get("dynamic").text);
+
+    GeneratedJsonModel.CreatedValue created =
+        new GeneratedJsonModel.CreatedValue(
+            Arrays.asList(new GeneratedJsonModel.Value("creator")),
+            new GeneratedJsonModel.Value("direct"));
+    String creatorJson = json.toJson(created);
+    check(creatorJson.contains("\"values\":[\"generated:creator\"]"));
+    check(creatorJson.contains("\"direct\":\"generated:direct\""));
+    GeneratedJsonModel.CreatedValue decodedCreated =
+        json.fromJson(creatorJson, GeneratedJsonModel.CreatedValue.class);
+    checkEquals("generated:creator", decodedCreated.values.get(0).text);
+    checkEquals("generated:direct", decodedCreated.direct.text);
+    checkEquals(28, GeneratedJsonModel.codecCalls());
+    checkEquals(2, GeneratedJsonModel.keyCodecCalls());
+  }
+
+  private static void check(boolean condition) {
+    if (!condition) {
+      throw new AssertionError("check failed");
+    }
+  }
+
+  private static void checkEquals(Object expected, Object actual) {
+    if (expected == null ? actual != null : !expected.equals(actual)) {
+      throw new AssertionError("expected " + expected + " but got " + actual);
+    }
+  }
+}
