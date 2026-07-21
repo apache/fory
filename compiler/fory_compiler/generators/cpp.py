@@ -884,8 +884,9 @@ class CppGenerator(BaseGenerator):
         lines.append(f"{indent}}}")
         lines.append("")
         lines.append(
-            f"{indent}static ::fory::Result<{class_name}, ::fory::Error> from_bytes(const ::std::vector<::uint8_t>& data) {{"
+            f"{indent}static ::fory::Result<{class_name}, ::fory::Error> from_bytes("
         )
+        lines.append(f"{indent}    const ::std::vector<::uint8_t>& data) {{")
         lines.append(
             f"{indent}  return {detail}::get_fory().deserialize<{class_name}>(data);"
         )
@@ -1589,13 +1590,13 @@ class CppGenerator(BaseGenerator):
                     f"{indent}void set_{field_name}(Arg&& arg, Args&&... args) {{"
                 )
                 if field.optional:
-                    lines.append(
-                        f"{indent}  {member_name}.emplace(::std::forward<Arg>(arg), ::std::forward<Args>(args)...);"
-                    )
+                    lines.append(f"{indent}  {member_name}.emplace(")
+                    lines.append(f"{indent}      ::std::forward<Arg>(arg),")
+                    lines.append(f"{indent}      ::std::forward<Args>(args)...);")
                 else:
-                    lines.append(
-                        f"{indent}  {member_name} = {value_type}(::std::forward<Arg>(arg), ::std::forward<Args>(args)...);"
-                    )
+                    lines.append(f"{indent}  {member_name} = {value_type}(")
+                    lines.append(f"{indent}      ::std::forward<Arg>(arg),")
+                    lines.append(f"{indent}      ::std::forward<Args>(args)...);")
                 lines.append(f"{indent}}}")
             else:
                 lines.append(f"{indent}void set_{field_name}({value_type} value) {{")
@@ -1680,7 +1681,14 @@ class CppGenerator(BaseGenerator):
                     self.get_field_eq_expression(field, lineage)
                     for field in message.fields
                 ]
-                lines.append(f"{body_indent}  return {' && '.join(conditions)};")
+                return_line = f"{body_indent}  return {' && '.join(conditions)};"
+                if len(return_line) > 80:
+                    lines.append(f"{body_indent}  return")
+                    for index, condition in enumerate(conditions):
+                        suffix = " &&" if index + 1 < len(conditions) else ";"
+                        lines.append(f"{body_indent}      {condition}{suffix}")
+                else:
+                    lines.append(return_line)
             else:
                 lines.append(f"{body_indent}  return true;")
             lines.append(f"{body_indent}}}")
@@ -1698,12 +1706,23 @@ class CppGenerator(BaseGenerator):
                 lines.append(f"{field_indent}{field_type} {member_name};")
             lines.append("")
             lines.append(f"{body_indent}public:")
-            field_members = ", ".join(
+            macro_entries = [
                 self.get_field_macro_entry(message, f) for f in message.fields
-            )
-            lines.append(
+            ]
+            field_members = ", ".join(macro_entries)
+            macro_line = (
                 f"{body_indent}FORY_STRUCT({struct_type_name}, {field_members});"
             )
+
+            if len(macro_line) > 80:
+                lines.append(f"{body_indent}FORY_STRUCT(")
+                lines.append(f"{body_indent}  {struct_type_name},")
+                for index, entry in enumerate(macro_entries):
+                    suffix = "," if index + 1 < len(macro_entries) else ""
+                    lines.append(f"{body_indent}  {entry}{suffix}")
+                lines.append(f"{body_indent});")
+            else:
+                lines.append(macro_line)
         else:
             lines.append(f"{body_indent}FORY_STRUCT({struct_type_name});")
 
@@ -1747,9 +1766,11 @@ class CppGenerator(BaseGenerator):
             self.get_union_case_type(field, parent_stack) for field in union.fields
         ]
         case_aliases = [
-            f"ForyCase{self.to_pascal_case(field.name)}Type"
-            if "," in case_type
-            else None
+            (
+                f"ForyCase{self.to_pascal_case(field.name)}Type"
+                if "," in case_type
+                else None
+            )
             for field, case_type in zip(union.fields, raw_case_types)
         ]
         case_types = [

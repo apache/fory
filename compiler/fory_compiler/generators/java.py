@@ -2180,9 +2180,12 @@ class JavaGenerator(JavaServiceGeneratorMixin, BaseGenerator):
         lines.append("    }")
         lines.append("")
         lines.append("    private static ThreadSafeFory createFory() {")
-        lines.append(
-            "        return Fory.builder().withXlang(true).withCompatible(true).withRefTracking(true).withModule(INSTANCE).buildThreadSafeFory();"
-        )
+        lines.append("        return Fory.builder()")
+        lines.append("            .withXlang(true)")
+        lines.append("            .withCompatible(true)")
+        lines.append("            .withRefTracking(true)")
+        lines.append("            .withModule(INSTANCE)")
+        lines.append("            .buildThreadSafeFory();")
         lines.append("    }")
         lines.append("")
         lines.append("    private static class Holder {")

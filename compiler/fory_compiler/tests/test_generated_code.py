@@ -231,9 +231,12 @@ def test_rust_nested_container_ref_uses_correct_pointer_type():
     )
     assert "::std::vec::Vec<::std::vec::Vec<::std::rc::Rc<Node>>>" not in rust_output
     assert (
-        "pub nodes: ::std::collections::HashMap<::std::string::String, "
-        "::std::collections::HashMap<::std::string::String, ::std::sync::Arc<Node>>>,"
-        in rust_output
+        "    pub nodes: ::std::collections::HashMap<\n"
+        "        ::std::string::String,\n"
+        "        ::std::collections::HashMap<"
+        "::std::string::String, "
+        "::std::sync::Arc<Node>>,\n"
+        "    >," in rust_output
     )
     assert (
         "::std::collections::HashMap<::std::string::String, "
@@ -1095,10 +1098,13 @@ def test_cpp_nested_integer_specs_in_generic_containers():
     )
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert (
-        "FORY_STRUCT(NestedIntegerSpecs, "
-        "(values_, ::fory::F(1).map(::fory::T::uint32().fixed(), "
-        "::fory::T::list(::fory::T::inner(::fory::T::uint64().tagged())))));"
-        in cpp_output
+        "  FORY_STRUCT(\n"
+        "    NestedIntegerSpecs,\n"
+        "    (values_, ::fory::F(1).map("
+        "::fory::T::uint32().fixed(), "
+        "::fory::T::list("
+        "::fory::T::inner(::fory::T::uint64().tagged()))))\n"
+        "  );" in cpp_output
     )
 
 
@@ -1662,15 +1668,21 @@ def test_rust_generated_code_uses_absolute_paths():
     assert "pub value: ::std::string::String," in rust_output
     assert "pub items: ::std::vec::Vec<::std::string::String>," in rust_output
     assert (
-        "pub labels: ::std::collections::HashMap<::std::string::String, ::std::string::String>,"
-        in rust_output
+        "    pub labels: ::std::collections::HashMap<\n"
+        "        ::std::string::String,\n"
+        "        ::std::string::String,\n"
+        "    >," in rust_output
     )
     assert (
         "pub payload: ::std::sync::Arc<dyn ::std::any::Any + Send + Sync>,"
         in rust_output
     )
     assert "pub parent: ::fory::ArcWeak<String>," in rust_output
-    assert "pub fn register_types(fory: &mut ::fory::Fory)" in rust_output
+    assert (
+        "pub fn register_types(\n"
+        "    fory: &mut ::fory::Fory,\n"
+        ") -> ::std::result::Result<(), ::fory::Error> {" in rust_output
+    )
     assert "static FORY: ::std::sync::OnceLock<::fory::Fory>" in rust_output
 
 
@@ -1807,3 +1819,129 @@ def test_rust_rejects_same_output_path_collisions(
 
     assert exit_code == 1
     assert "Rust output path collision" in captured.err
+
+
+def test_java_generated_helper_builder_is_wrapped():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Person {
+                string first_name = 1;
+            }
+            """
+        )
+    )
+
+    java_output = render_files(generate_files(schema, JavaGenerator))
+
+    assert (
+        "return Fory.builder()\n"
+        "            .withXlang(true)\n"
+        "            .withCompatible(true)\n"
+        "            .withRefTracking(true)\n"
+        "            .withModule(INSTANCE)\n"
+        "            .buildThreadSafeFory();" in java_output
+    )
+
+
+def test_go_generated_helper_options_are_wrapped():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Person {
+                string first_name = 1;
+            }
+            """
+        )
+    )
+
+    go_output = render_files(generate_files(schema, GoGenerator))
+
+    assert (
+        "f := fory.New(\n"
+        "\t\tfory.WithXlang(true),\n"
+        "\t\tfory.WithRefTracking(true),\n"
+        "\t\tfory.WithCompatible(true),\n"
+        "\t)" in go_output
+    )
+
+
+def test_python_field_wrapping_is_generated():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Person {
+                map<string, string> very_long_metadata_field_name_for_wrapping = 1;
+            }
+            """
+        )
+    )
+
+    python_output = render_files(generate_files(schema, PythonGenerator))
+
+    assert (
+        "    very_long_metadata_field_name_for_wrapping: "
+        "Dict[str, str] = pyfory.field(\n"
+        "        id=1,\n"
+        "        default_factory=dict,\n"
+        "    )" in python_output
+    )
+
+
+def test_cpp_equality_and_struct_macros_are_wrapped():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Person {
+                string first_name = 1;
+                string last_name = 2;
+                string email_address = 3;
+                list<string> tags = 4;
+                map<string, string> metadata = 5;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+
+    assert "  return\n" in cpp_output
+    assert "      first_name_ == other.first_name_ &&" in cpp_output
+    assert "  FORY_STRUCT(\n" in cpp_output
+    assert "    Person,\n" in cpp_output
+
+
+def test_rust_map_fields_and_helpers_are_wrapped():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Person {
+                map<string, string> metadata = 1;
+            }
+            """
+        )
+    )
+
+    rust_output = render_files(generate_files(schema, RustGenerator))
+
+    assert (
+        "    pub metadata: ::std::collections::HashMap<\n"
+        "        ::std::string::String,\n"
+        "        ::std::string::String,\n"
+        "    >," in rust_output
+    )
+    assert (
+        "pub fn register_types(\n"
+        "    fory: &mut ::fory::Fory,\n"
+        ") -> ::std::result::Result<(), ::fory::Error> {" in rust_output
+    )
