@@ -1710,7 +1710,9 @@ class CppGenerator(BaseGenerator):
                 self.get_field_macro_entry(message, f) for f in message.fields
             ]
             field_members = ", ".join(macro_entries)
-            macro_line = f"{body_indent}FORY_STRUCT({struct_type_name}, {field_members});"
+            macro_line = (
+                f"{body_indent}FORY_STRUCT({struct_type_name}, {field_members});"
+            )
 
             if len(macro_line) > 80:
                 lines.append(f"{body_indent}FORY_STRUCT(")
@@ -1764,9 +1766,11 @@ class CppGenerator(BaseGenerator):
             self.get_union_case_type(field, parent_stack) for field in union.fields
         ]
         case_aliases = [
-            f"ForyCase{self.to_pascal_case(field.name)}Type"
-            if "," in case_type
-            else None
+            (
+                f"ForyCase{self.to_pascal_case(field.name)}Type"
+                if "," in case_type
+                else None
+            )
             for field, case_type in zip(union.fields, raw_case_types)
         ]
         case_types = [

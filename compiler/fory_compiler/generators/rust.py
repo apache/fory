@@ -617,7 +617,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         lines.append(f"impl {type_name} {{")
         lines.append("    pub fn to_bytes(")
         lines.append("        &self,")
-        lines.append("    ) -> ::std::result::Result<::std::vec::Vec<u8>, ::fory::Error> {")
+        lines.append(
+            "    ) -> ::std::result::Result<::std::vec::Vec<u8>, ::fory::Error> {"
+        )
         lines.append("        let fory = detail::get_fory();")
         lines.append("        fory.serialize(self)")
         lines.append("    }")
@@ -1369,7 +1371,9 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
         if len(f"    {field_line}") > 80 and rust_type.startswith(
             "::std::collections::HashMap<"
         ):
-            inner_type = rust_type.removeprefix("::std::collections::HashMap<").removesuffix(">")
+            inner_type = rust_type.removeprefix(
+                "::std::collections::HashMap<"
+            ).removesuffix(">")
             key_type, value_type = inner_type.split(", ", 1)
 
             lines.append(f"pub {field_name}: ::std::collections::HashMap<")
