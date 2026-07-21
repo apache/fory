@@ -89,9 +89,9 @@ def assert_language_outputs_equal(
             baseline_label = label
             baseline_files = files
             continue
-        assert (
-            files == baseline_files
-        ), f"{generator_cls.language_name} output mismatch for {label} vs {baseline_label}"
+        assert files == baseline_files, (
+            f"{generator_cls.language_name} output mismatch for {label} vs {baseline_label}"
+        )
 
 
 def assert_all_languages_equal(schemas: Dict[str, Schema]) -> None:
@@ -152,7 +152,8 @@ def test_generated_code_scalar_types_equivalent():
 
 
 def test_rust_generated_code_uses_fory_temporal_carriers():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message TemporalTypes {
@@ -160,7 +161,8 @@ def test_rust_generated_code_uses_fory_temporal_carriers():
                 timestamp instant = 2;
                 duration elapsed = 3;
             }
-            """))
+            """)
+    )
 
     rust_output = render_files(generate_files(schema, RustGenerator))
     assert "pub day: ::fory::Date," in rust_output
@@ -170,7 +172,8 @@ def test_rust_generated_code_uses_fory_temporal_carriers():
 
 
 def test_rust_generated_code_can_use_chrono_temporal_types():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
             option rust_use_chrono_temporal_types = true;
 
@@ -179,7 +182,8 @@ def test_rust_generated_code_can_use_chrono_temporal_types():
                 timestamp instant = 2;
                 duration elapsed = 3;
             }
-            """))
+            """)
+    )
 
     rust_output = render_files(generate_files(schema, RustGenerator))
     assert "pub day: ::chrono::NaiveDate," in rust_output
@@ -191,7 +195,8 @@ def test_rust_generated_code_can_use_chrono_temporal_types():
 
 
 def test_rust_nested_container_ref_uses_correct_pointer_type():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message Node {
@@ -202,7 +207,8 @@ def test_rust_nested_container_ref_uses_correct_pointer_type():
                 list<list<ref Node>> groups = 1;
                 map<string, map<string, ref Node>> nodes = 2;
             }
-            """))
+            """)
+    )
 
     rust_output = render_files(generate_files(schema, RustGenerator))
 
@@ -472,7 +478,8 @@ def test_generated_code_map_types_equivalent():
 
 
 def test_rust_generated_ref_pointer_default_and_opt_out():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message Node {
@@ -487,7 +494,8 @@ def test_rust_generated_ref_pointer_default_and_opt_out():
                 list<ref Node> default_ref_list = 5;
                 list<ref(thread_safe=false) Node> rc_ref_list = 6;
             }
-            """))
+            """)
+    )
     rust_output = render_files(generate_files(schema, RustGenerator))
     assert "pub default_ref: ::std::sync::Arc<Node>," in rust_output
     assert "pub rc_ref: ::std::rc::Rc<Node>," in rust_output
@@ -809,14 +817,16 @@ def test_generated_code_tree_ref_options_equivalent():
 
 
 def test_java_float16_equals_hash_contract_generation():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message Float16Contract {
                 float16 f16 = 1;
                 optional float16 opt_f16 = 2;
             }
-            """))
+            """)
+    )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "Objects.equals(f16, that.f16)" in java_output
     assert "Objects.equals(optF16, that.optF16)" in java_output
@@ -824,20 +834,23 @@ def test_java_float16_equals_hash_contract_generation():
 
 
 def test_java_repeated_float16_generation_uses_float16_list():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message RepeatedFloat16 {
                 list<float16> vals = 1;
             }
-            """))
+            """)
+    )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "import org.apache.fory.collection.Float16List;" in java_output
     assert "private Float16List vals;" in java_output
 
 
 def test_java_nested_array_values_use_deep_equals_hash_generation():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message NestedArrays {
@@ -849,7 +862,8 @@ def test_java_nested_array_values_use_deep_equals_hash_generation():
                 list<array<int32>> groups = 1;
                 map<string, array<uint8>> bytes_by_name = 2;
             }
-            """))
+            """)
+    )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert (
         "private static boolean deepValueEquals(Object left, Object right)"
@@ -864,7 +878,8 @@ def test_java_nested_array_values_use_deep_equals_hash_generation():
 
 
 def test_java_unsigned_carriers_and_integer_encoding_annotations():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message UnsignedCarriers {
@@ -875,7 +890,8 @@ def test_java_unsigned_carriers_and_integer_encoding_annotations():
                 optional uint32 maybe_u32 = 5;
                 fixed int32 fixed_i32 = 6;
             }
-            """))
+            """)
+    )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "import org.apache.fory.annotation.Nullable;" in java_output
     assert "import org.apache.fory.config.Int32Encoding;" in java_output
@@ -894,7 +910,8 @@ def test_java_unsigned_carriers_and_integer_encoding_annotations():
 
 
 def test_java_nullable_type_use_annotation_targets_top_level_type():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message Money {
@@ -906,7 +923,8 @@ def test_java_nullable_type_use_annotation_targets_top_level_type():
                 optional bytes payload = 2;
                 optional decimal amount = 3;
             }
-            """))
+            """)
+    )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "private @Nullable Money money;" in java_output
     assert "private byte @Nullable [] payload;" in java_output
@@ -914,7 +932,8 @@ def test_java_nullable_type_use_annotation_targets_top_level_type():
 
 
 def test_java_evolving_false_generation_uses_struct_evolution_enum():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message DefaultEvolving {
@@ -928,7 +947,8 @@ def test_java_evolving_false_generation_uses_struct_evolution_enum():
                     int32 id = 1;
                 }
             }
-            """))
+            """)
+    )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "import org.apache.fory.annotation.ForyStruct;" in java_output
     assert "import org.apache.fory.annotation.ForyStruct.Evolution;" in java_output
@@ -938,13 +958,15 @@ def test_java_evolving_false_generation_uses_struct_evolution_enum():
 
 
 def test_java_nested_integer_annotations_in_generic_containers():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message NestedIntegerAnnotations {
                 map<fixed uint32, list<optional tagged uint64>> values = 1;
             }
-            """))
+            """)
+    )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert (
         "private Map<@UInt32Type(encoding = Int32Encoding.FIXED) Long, "
@@ -960,14 +982,16 @@ def test_java_nested_integer_annotations_in_generic_containers():
 
 
 def test_python_nested_integer_schema_aliases_in_generic_containers():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message NestedIntegerSchemaAliases {
                 map<fixed int32, list<tagged int64>> signed_values = 1;
                 map<fixed uint32, list<tagged uint64>> unsigned_values = 2;
             }
-            """))
+            """)
+    )
     python_output = render_files(generate_files(schema, PythonGenerator))
     assert (
         "signed_values: Dict[pyfory.FixedInt32, List[pyfory.TaggedInt64]]"
@@ -980,13 +1004,15 @@ def test_python_nested_integer_schema_aliases_in_generic_containers():
 
 
 def test_cpp_nested_integer_specs_in_generic_containers():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message NestedIntegerSpecs {
                 map<fixed uint32, list<optional tagged uint64>> values = 1;
             }
-            """))
+            """)
+    )
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert (
         "  FORY_STRUCT(\n"
@@ -1000,7 +1026,8 @@ def test_cpp_nested_integer_specs_in_generic_containers():
 
 
 def test_cpp_escapes_keywords_and_generated_helpers():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package class.demo;
 
             message private {
@@ -1016,7 +1043,8 @@ def test_cpp_escapes_keywords_and_generated_helpers():
                 string visit = 1;
                 string class = 2;
             }
-            """))
+            """)
+    )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert "namespace class_::demo {" in cpp_output
@@ -1159,14 +1187,17 @@ def test_cpp_rejects_normalized_name_collisions():
 def test_cpp_imported_type_uses_sanitized_namespace_and_identifier(tmp_path: Path):
     imported_fdl = tmp_path / "imported.fdl"
     main_fdl = tmp_path / "main.fdl"
-    imported_fdl.write_text(dedent("""
+    imported_fdl.write_text(
+        dedent("""
             package class.imported;
 
             message private {
                 string value = 1;
             }
-            """))
-    main_fdl.write_text(dedent("""
+            """)
+    )
+    main_fdl.write_text(
+        dedent("""
             package demo;
 
             import "imported.fdl";
@@ -1174,7 +1205,8 @@ def test_cpp_imported_type_uses_sanitized_namespace_and_identifier(tmp_path: Pat
             message Holder {
                 private value = 1;
             }
-            """))
+            """)
+    )
     schema = resolve_imports(main_fdl, [tmp_path])
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
@@ -1185,7 +1217,8 @@ def test_cpp_imported_type_uses_sanitized_namespace_and_identifier(tmp_path: Pat
 
 
 def test_cpp_generator_supports_decimal_fields_and_unions():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message Money {
@@ -1196,7 +1229,8 @@ def test_cpp_generator_supports_decimal_fields_and_unions():
                 decimal amount = 1;
                 Money money = 2;
             }
-            """))
+            """)
+    )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert '#include "fory/serialization/decimal_serializers.h"' in cpp_output
@@ -1207,7 +1241,8 @@ def test_cpp_generator_supports_decimal_fields_and_unions():
 
 
 def test_cpp_union_aliases_comma_payload_types():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             union MapChoice {
@@ -1236,7 +1271,8 @@ def test_cpp_union_aliases_comma_payload_types():
                 date day = 16;
                 timestamp ts = 17;
             }
-            """))
+            """)
+    )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert (
@@ -1270,7 +1306,8 @@ def test_cpp_union_aliases_comma_payload_types():
 
 
 def test_cpp_omits_equality_for_any_types():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message Inner {
@@ -1334,7 +1371,8 @@ def test_cpp_omits_equality_for_any_types():
                 string name = 1;
                 int32 code = 2;
             }
-            """))
+            """)
+    )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert "bool operator==(const Inner& other) const" not in cpp_output
@@ -1354,7 +1392,8 @@ def test_cpp_omits_equality_for_any_types():
 
 
 def test_cpp_nested_container_ref_uses_correct_pointer_type():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message Node {
@@ -1367,7 +1406,8 @@ def test_cpp_nested_container_ref_uses_correct_pointer_type():
                 list<list<ref(weak=true) Node>> weak_groups = 3;
                 map<string, map<string, ref(weak=true) Node>> weak_nodes = 4;
             }
-            """))
+            """)
+    )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert (
@@ -1396,7 +1436,8 @@ def test_cpp_nested_container_ref_uses_correct_pointer_type():
 
 
 def test_cpp_temporal_map_keys_use_fory_owned_wrappers():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package demo;
 
             message Holder {
@@ -1404,7 +1445,8 @@ def test_cpp_temporal_map_keys_use_fory_owned_wrappers():
                 map<timestamp, string> timestamps = 2;
                 map<date, string> dates = 3;
             }
-            """))
+            """)
+    )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert (
@@ -1422,14 +1464,16 @@ def test_cpp_temporal_map_keys_use_fory_owned_wrappers():
 
 
 def test_java_enum_generation_uses_fory_enum_ids():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             enum Status {
                 UNKNOWN = 4096;
                 OK = 8192;
             }
-            """))
+            """)
+    )
     java_output = render_files(generate_files(schema, JavaGenerator))
     assert "import org.apache.fory.annotation.ForyEnumId;" in java_output
     assert "public enum Status {" in java_output
@@ -1472,21 +1516,24 @@ def test_go_bfloat16_generation():
 
 
 def test_go_generator_distinguishes_bytes_from_uint8_lists():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package gen;
 
             message ByteSemantics {
                 bytes payload = 1;
                 list<uint8> values = 2;
             }
-            """))
+            """)
+    )
     go_output = render_files(generate_files(schema, GoGenerator))
     assert 'Payload []byte `fory:"id=1,type=bytes"`' in go_output
     assert 'Values []uint8 `fory:"id=2"`' in go_output
 
 
 def test_rust_generated_code_uses_absolute_paths():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package foo;
 
             message String {
@@ -1500,7 +1547,8 @@ def test_rust_generated_code_uses_absolute_paths():
             union Fory {
                 String text = 1;
             }
-            """))
+            """)
+    )
     rust_output = render_files(generate_files(schema, RustGenerator))
     assert "use fory::" not in rust_output
     assert "use std::" not in rust_output
@@ -1532,7 +1580,8 @@ def test_rust_generated_code_uses_absolute_paths():
 
 
 def test_rust_union_conflicting_payload_uses_self_path():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package foo;
 
             message Dog {
@@ -1542,7 +1591,8 @@ def test_rust_union_conflicting_payload_uses_self_path():
             union Animal {
                 Dog dog = 1;
             }
-            """))
+            """)
+    )
 
     rust_output = render_files(generate_files(schema, RustGenerator))
     assert "Dog(self::Dog)," in rust_output
@@ -1553,7 +1603,8 @@ def test_rust_union_conflicting_payload_uses_self_path():
 
 
 def test_rust_escapes_keywords():
-    schema = parse_fdl(dedent("""
+    schema = parse_fdl(
+        dedent("""
             package demo;
 
             message type {
@@ -1567,7 +1618,8 @@ def test_rust_escapes_keywords():
             message _1 {
                 string value = 1;
             }
-            """))
+            """)
+    )
     rust_files = generate_files(schema, RustGenerator)
     rust_output = render_files(rust_files)
 
@@ -1620,20 +1672,24 @@ def test_rust_rejects_same_output_path_collisions(
     first_fdl = tmp_path / "first.fdl"
     second_fdl = tmp_path / "second.fdl"
     rust_out = tmp_path / "rust"
-    first_fdl.write_text(dedent("""
+    first_fdl.write_text(
+        dedent("""
             package foo.bar;
 
             message First {
                 string value = 1;
             }
-            """))
-    second_fdl.write_text(dedent("""
+            """)
+    )
+    second_fdl.write_text(
+        dedent("""
             package foo_bar;
 
             message Second {
                 string value = 1;
             }
-            """))
+            """)
+    )
     exit_code = foryc_main(
         [
             str(first_fdl),
