@@ -88,7 +88,7 @@ public abstract class CompatibleLayerSerializerBase<T> extends AbstractObjectSer
     if (metaWriteContext == null) {
       return;
     }
-    IdentityObjectIntMap<Class<?>> classMap = metaWriteContext.classMap;
+    IdentityObjectIntMap<Object> classMap = metaWriteContext.classMap;
     int newId = classMap.size;
     int id = classMap.putOrGet(layerMarkerClass, newId);
     if (id >= 0) {
