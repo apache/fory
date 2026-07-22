@@ -855,6 +855,79 @@ jobs:
           cd integration_tests/grpc_tests/java
           mvn -T16 --no-transfer-progress -Dtest=RustGrpcTest test
 
+  grpc_java_cpp_tests:
+    name: Java/C++ gRPC Tests
+    needs: changes
+    if: needs.changes.outputs.grpc_tests == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: "pip"
+      - name: Set up Bazel
+        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+        with:
+          bazelisk-cache: true
+          bazelisk-version: "1.x"
+      - name: Compute Bazel C++ toolchain cache key
+        id: bazel-cpp-toolchain
+        shell: bash
+        run: |
+          {
+            echo "runner-os=${RUNNER_OS}"
+            echo "runner-arch=${RUNNER_ARCH}"
+            command -v gcc || true
+            gcc --version || true
+            command -v g++ || true
+            g++ --version || true
+          } > bazel-cpp-toolchain-key.txt
+          echo "key=$(shasum -a 256 bazel-cpp-toolchain-key.txt | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Cache Bazel repository cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bazel/external
+            ~/.cache/bazel/_bazel_*/*/external
+          key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-${{ steps.bazel-cpp-toolchain.outputs.key }}-${{ hashFiles('MODULE.bazel', 'MODULE.bazel.lock', 'WORKSPACE', '.bazelversion', '.bazelrc', 'bazel/**') }}
+          restore-keys: |
+            bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-${{ steps.bazel-cpp-toolchain.outputs.key }}-
+      - name: Cache Bazel build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bazel
+            ~/.cache/bazel
+          key: bazel-build-grpc-${{ runner.os }}-${{ runner.arch }}-${{ steps.bazel-cpp-toolchain.outputs.key }}-${{ hashFiles('cpp/**', 'compiler/fory_compiler/**', 'integration_tests/grpc_tests/**', 'BUILD', 'WORKSPACE', 'MODULE.bazel', 'MODULE.bazel.lock', '.bazelversion', '.bazelrc', 'bazel/**') }}
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Install Java artifacts for gRPC tests
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests -Dmaven.javadoc.skip=true -Dmaven.source.skip=true
+      - name: Generate gRPC test sources
+        run: python integration_tests/grpc_tests/generate_grpc.py
+      - name: Build C++ gRPC peer
+        run: |
+          cd cpp
+          bazel build //integration_tests/grpc_tests/cpp:grpc_interop --config=x86_64
+      - name: Run Java/C++ gRPC tests
+        run: |
+          cd integration_tests/grpc_tests/java
+          mvn -T16 --no-transfer-progress -Dtest=CppGrpcTest test
+
   grpc_java_kotlin_tests:
     name: Java/Kotlin gRPC Tests
     needs: changes

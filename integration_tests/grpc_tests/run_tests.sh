@@ -21,7 +21,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-TEST_CLASSES="${1:-PythonAsyncGrpcTest,PythonSyncGrpcTest,RustGrpcTest,GoGrpcTest,KotlinGrpcTest,DartGrpcTest}"
+TEST_CLASSES="${1:-PythonAsyncGrpcTest,PythonSyncGrpcTest,RustGrpcTest,GoGrpcTest,CppGrpcTest,KotlinGrpcTest,DartGrpcTest}"
 
 has_test_class() {
   [[ ",${TEST_CLASSES}," == *",$1,"* ]]
@@ -40,6 +40,12 @@ if has_test_class "GoGrpcTest"; then
 fi
 if has_test_class "RustGrpcTest"; then
   cargo build --manifest-path "${SCRIPT_DIR}/rust/Cargo.toml" --workspace --quiet
+fi
+if has_test_class "CppGrpcTest"; then
+  (
+    cd "${SCRIPT_DIR}/cpp"
+    bazel build //integration_tests/grpc_tests/cpp:grpc_interop
+  )
 fi
 if has_test_class "KotlinGrpcTest"; then
   cd "${SCRIPT_DIR}/kotlin"
