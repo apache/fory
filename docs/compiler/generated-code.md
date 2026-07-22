@@ -603,6 +603,8 @@ class Person final {
     void set_number(Arg&& arg, Args&&... args);
 
     fory::Result<std::vector<uint8_t>, fory::Error> to_bytes() const;
+    static fory::Result<PhoneNumber, fory::Error> from_bytes(
+        const uint8_t* data, std::size_t size);
     static fory::Result<PhoneNumber, fory::Error> from_bytes(const std::vector<uint8_t>& data);
   };
 
@@ -713,6 +715,53 @@ person.set_name("Alice");
 auto bytes = person.to_bytes();
 auto restored = addressbook::Person::from_bytes(bytes.value());
 ```
+
+### gRPC Service Companions
+
+When a schema contains services and the compiler is run with `--grpc`, C++
+generation emits a service API header file and gRPC binding files. For a schema
+header named `addressbook.h`, those files are `addressbook_service.h`,
+`addressbook_service_grpc.h`, and `addressbook_service_grpc.cc`.
+
+The service API header file contains synchronous business interfaces and gRPC path
+constants under `::<schema namespace>::service`:
+
+```cpp
+namespace addressbook::service {
+
+class AddressBookService {
+ public:
+  virtual ~AddressBookService() = default;
+
+  virtual ::grpc::Status Lookup(
+      ::grpc::ServerContext* context,
+      const ::addressbook::Person* request,
+      ::addressbook::AddressBook* response) = 0;
+};
+
+inline constexpr char AddressBookServiceServiceName[] =
+    "addressbook.AddressBookService";
+inline constexpr char AddressBookServiceLookupPath[] =
+    "/addressbook.AddressBookService/Lookup";
+
+}  // namespace addressbook::service
+```
+
+The gRPC binding header file and source file contain Fory-backed codecs, generated
+`grpc::SerializationTraits` specializations, and synchronous client/server
+wrappers under `::<schema namespace>::service::grpc`. They serialize each
+request or response with the generated model type's `to_bytes` and `from_bytes`
+helpers:
+
+```cpp
+template <>
+class SerializationTraits<::addressbook::Person, void>
+    : public ::fory::grpc::detail::ForyGrpcSerializationTraits<
+          ::addressbook::Person> {};
+```
+
+Applications compiling the generated C++ service files must provide gRPC C++
+and link the generated `_service_grpc.cc` file with Fory serialization.
 
 ## Go
 

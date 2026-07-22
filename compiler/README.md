@@ -10,7 +10,7 @@ The FDL compiler generates cross-language serialization code from schema definit
 - **Type ID and namespace support**: Both numeric IDs and name-based type registration
 - **Field modifiers**: Optional fields, reference tracking, list fields, scalar encoding modifiers
 - **File imports**: Modular schemas with import support
-- **gRPC service generation**: Native gRPC stubs and service bases for Java, Python, Go, Rust, C#, JavaScript, Dart, Kotlin, and Scala
+- **gRPC service generation**: Native gRPC stubs and service bases for Java, Python, Go, Rust, C++, C#, JavaScript, Dart, Kotlin, and Scala
 
 ## Documentation
 
@@ -335,6 +335,7 @@ fory_compiler/
         ├── python.py     # Python gRPC companion module (grpcio style)
         ├── go.py         # Go gRPC stub generator (google.golang.org/grpc)
         ├── rust.py       # Rust gRPC service module (tonic style)
+        ├── cpp.py        # C++ synchronous gRPC service companions
         ├── csharp.py     # C# gRPC service companion (Grpc.Core style)
         ├── javascript.py # JavaScript Node.js and gRPC-Web client generators
         ├── dart.py       # Dart gRPC service companion

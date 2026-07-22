@@ -282,3 +282,4 @@ std::thread t2([&]() {
 - [Supported Types](supported-types.md) - All supported types
 - [Custom Serializers](custom-serializers.md) - Extend serialization behavior
 - [Row Format](row-format.md) - Zero-copy row-based format
+- [gRPC Support](grpc-support.md) - Fory payloads over gRPC C++

@@ -75,7 +75,10 @@ use_repo(
 bazel_dep(name = "cython", version = "3.1.3")
 
 # Google Test
-bazel_dep(name = "googletest", version = "1.15.2")
+bazel_dep(name = "googletest", version = "1.17.0")
+
+# gRPC C++ integration tests
+bazel_dep(name = "grpc", version = "1.75.0")
 
 # Hedron's Compile Commands Extractor for Bazel
 bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
