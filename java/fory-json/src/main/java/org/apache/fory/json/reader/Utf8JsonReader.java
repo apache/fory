@@ -56,14 +56,14 @@ public final class Utf8JsonReader extends JsonReader {
   private static final boolean LITTLE_ENDIAN = NativeByteOrder.IS_LITTLE_ENDIAN;
   private static final long BYTE_ONES = 0x0101010101010101L;
   private static final int INT_BYTE_ONES = 0x01010101;
+  private static final long BYTE_TWOS = 0x0202020202020202L;
+  private static final int INT_BYTE_TWOS = 0x02020202;
   private static final long BYTE_HIGH_BITS = 0x8080808080808080L;
   private static final int INT_BYTE_HIGH_BITS = 0x80808080;
   private static final long BACKSLASH_BYTES = 0x5c5c5c5c5c5c5c5cL;
   private static final int INT_BACKSLASH_BYTES = 0x5c5c5c5c;
-  private static final long CONTROL_LIMIT_BYTES = 0x2020202020202020L;
-  private static final int INT_CONTROL_LIMIT_BYTES = 0x20202020;
-  private static final long QUOTE_BYTES = 0x2222222222222222L;
-  private static final int INT_QUOTE_BYTES = 0x22222222;
+  private static final long QUOTE_CONTROL_LIMIT_BYTES = 0x2121212121212121L;
+  private static final int INT_QUOTE_CONTROL_LIMIT_BYTES = 0x21212121;
   private static final int INT_MAX_DIV_10 = Integer.MAX_VALUE / 10;
   private static final int INT_MAX_MOD_10 = Integer.MAX_VALUE % 10;
   private static final long LONG_MAX_DIV_10 = Long.MAX_VALUE / 10;
@@ -2317,14 +2317,18 @@ public final class Utf8JsonReader extends JsonReader {
     // Subtraction borrow may only create later high bits after an earlier real stop, so the
     // compact syntax/range expression preserves the first-stop position. Latin1JsonReader cannot
     // use this shortcut because high-bit Latin-1 bytes are valid string payload.
-    long syntaxStop = ((word ^ QUOTE_BYTES) - BYTE_ONES) | ((word ^ BACKSLASH_BYTES) - BYTE_ONES);
-    return (syntaxStop | word | (word - CONTROL_LIMIT_BYTES)) & BYTE_HIGH_BITS;
+    // XOR by 2 preserves control bytes below 0x20 and maps quote 0x22 to 0x20. One relaxed
+    // byte-lane comparison against 0x21 can therefore cover both cases without a separate quote
+    // zero detector; printable bytes before the first stop remain at or above the limit.
+    long quoteOrControl = (word ^ BYTE_TWOS) - QUOTE_CONTROL_LIMIT_BYTES;
+    long backslash = (word ^ BACKSLASH_BYTES) - BYTE_ONES;
+    return (quoteOrControl | backslash | word) & BYTE_HIGH_BITS;
   }
 
   private static int stringStopMask(int word) {
-    int syntaxStop =
-        ((word ^ INT_QUOTE_BYTES) - INT_BYTE_ONES) | ((word ^ INT_BACKSLASH_BYTES) - INT_BYTE_ONES);
-    return (syntaxStop | word | (word - INT_CONTROL_LIMIT_BYTES)) & INT_BYTE_HIGH_BITS;
+    int quoteOrControl = (word ^ INT_BYTE_TWOS) - INT_QUOTE_CONTROL_LIMIT_BYTES;
+    int backslash = (word ^ INT_BACKSLASH_BYTES) - INT_BYTE_ONES;
+    return (quoteOrControl | backslash | word) & INT_BYTE_HIGH_BITS;
   }
 
   @Override
