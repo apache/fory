@@ -2609,6 +2609,29 @@ public final class Utf8JsonReader extends JsonReader {
 
   private long readQuotedStringHashToken() {
     byte[] bytes = input;
+    int mark = position;
+    int nameOffset = mark + 1;
+    if (nameOffset + Long.BYTES < bytes.length && bytes[mark] == '"') {
+      long word = LittleEndian.getInt64(bytes, nameOffset);
+      long stopMask = stringStopMask(word);
+      if (stopMask == 0) {
+        if (bytes[nameOffset + Long.BYTES] == '"') {
+          position = nameOffset + Long.BYTES + 1;
+          return word;
+        }
+      } else {
+        int nameLength = Long.numberOfTrailingZeros(stopMask) >>> 3;
+        if (nameLength > 0 && ((word >>> (nameLength << 3)) & 0xFF) == '"') {
+          position = nameOffset + nameLength + 1;
+          return word & ((1L << (nameLength << 3)) - 1);
+        }
+      }
+    }
+    return readQuotedStringHashSlow();
+  }
+
+  private long readQuotedStringHashSlow() {
+    byte[] bytes = input;
     int length = bytes.length;
     if (position >= length || bytes[position++] != '"') {
       throw error("Expected string");
