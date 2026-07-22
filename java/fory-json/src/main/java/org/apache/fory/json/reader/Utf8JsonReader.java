@@ -64,6 +64,8 @@ public final class Utf8JsonReader extends JsonReader {
   private static final int INT_CONTROL_LIMIT_BYTES = 0x20202020;
   private static final long QUOTE_BYTES = 0x2222222222222222L;
   private static final int INT_QUOTE_BYTES = 0x22222222;
+  private static final int INT_MAX_DIV_10 = Integer.MAX_VALUE / 10;
+  private static final int INT_MAX_MOD_10 = Integer.MAX_VALUE % 10;
   private static final long LONG_MAX_DIV_10 = Long.MAX_VALUE / 10;
   private static final int LONG_MAX_MOD_10 = (int) (Long.MAX_VALUE % 10);
   private static final long LONG_MAX_DIV_100 = Long.MAX_VALUE / 100;
@@ -636,18 +638,21 @@ public final class Utf8JsonReader extends JsonReader {
   }
 
   private int readPositiveIntTail(byte[] bytes, int offset, int inputLength, int result) {
-    while (offset < inputLength) {
+    // The caller has consumed exactly nine positive digits. A Java int can contain only one more;
+    // any following digit is necessarily overflow rather than another loop iteration.
+    int digit = bytes[offset] - '0';
+    if (result > INT_MAX_DIV_10 || (result == INT_MAX_DIV_10 && digit > INT_MAX_MOD_10)) {
+      position = offset;
+      throw error("Integer overflow");
+    }
+    result = result * 10 + digit;
+    offset++;
+    if (offset < inputLength) {
       int ch = bytes[offset];
-      if (ch < '0' || ch > '9') {
-        break;
-      }
-      long value = (long) result * 10 + (ch - '0');
-      if (value > Integer.MAX_VALUE) {
+      if (ch >= '0' && ch <= '9') {
         position = offset;
         throw error("Integer overflow");
       }
-      result = (int) value;
-      offset++;
     }
     position = offset;
     rejectFractionOrExponentFast();
