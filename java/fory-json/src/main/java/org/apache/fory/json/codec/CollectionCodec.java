@@ -201,7 +201,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   @Internal
-  final boolean createsArrayList() {
+  public final boolean createsArrayList() {
     return createsArrayList;
   }
 
@@ -837,6 +837,11 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     private ObjectCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
       super(factory);
       this.elementTypeInfo = elementTypeInfo;
+    }
+
+    @Internal
+    public JsonTypeInfo elementTypeInfo() {
+      return elementTypeInfo;
     }
 
     @Override

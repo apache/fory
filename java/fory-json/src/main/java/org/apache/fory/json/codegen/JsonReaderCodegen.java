@@ -60,8 +60,6 @@ import org.apache.fory.type.TypeUtils;
  * entry for each representation.
  */
 abstract class JsonReaderCodegen {
-  private static final int MIN_SPLIT_READ_FIELDS = 8;
-  private static final int READ_FIELD_GROUP_SIZE = 2;
   private static final int READ_FIELD_SWITCH_SIZE = 8;
   private static final boolean LITTLE_ENDIAN = NativeByteOrder.IS_LITTLE_ENDIAN;
   private static final long UTF16_PAIR_MASK = 0x0000FFFF0000FFFFL;
@@ -69,13 +67,29 @@ abstract class JsonReaderCodegen {
 
   final JsonCodegen codegen;
   final JsonTypeResolver resolver;
+  private final boolean finalDependencies;
+  private final int[] fastReadGroupEnds;
   private AnyInfo any;
   private Class<?> ownerType;
   private boolean storesSelfReader;
 
   JsonReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
+    this(codegen, resolver, false, null);
+  }
+
+  JsonReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, boolean finalDependencies) {
+    this(codegen, resolver, finalDependencies, null);
+  }
+
+  JsonReaderCodegen(
+      JsonCodegen codegen,
+      JsonTypeResolver resolver,
+      boolean finalDependencies,
+      int[] fastReadGroupEnds) {
     this.codegen = codegen;
     this.resolver = resolver;
+    this.finalDependencies = finalDependencies;
+    this.fastReadGroupEnds = fastReadGroupEnds;
   }
 
   abstract Class<?> codecFieldType(JsonFieldInfo property);
@@ -119,6 +133,10 @@ abstract class JsonReaderCodegen {
     return JsonCodegen.readNestedType(property, resolver);
   }
 
+  final boolean finalDependencies() {
+    return finalDependencies;
+  }
+
   String genReaderCode(
       JsonGeneratedCodecBuilder builder,
       Class<?> type,
@@ -128,6 +146,7 @@ abstract class JsonReaderCodegen {
     if (creatorInfo != null) {
       return genCreatorReaderCode(builder, type, creatorInfo);
     }
+    validateFastReadGroups(properties);
     Class<?> readerType = readerType();
     String readMethod = readMethod();
     String slowMethod = readMethod + "Slow";
@@ -143,10 +162,10 @@ abstract class JsonReaderCodegen {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
       if (JsonCodegen.usesReadCodec(properties[i], resolver)) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(properties[i])), "r" + i);
+        addCapabilityField(ctx, codecFieldType(properties[i]), "r" + i);
       }
       if (storesReadObjectCodec(type, properties[i])) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "o" + i);
+        addCapabilityField(ctx, readerCapabilityType(), "o" + i);
       }
     }
     addGeneratedConstructor(
@@ -176,6 +195,10 @@ abstract class JsonReaderCodegen {
     return ctx.genCode();
   }
 
+  private void addCapabilityField(CodegenContext ctx, Class<?> type, String name) {
+    ctx.addField(finalDependencies, JsonCodegen.generatedCodecType(ctx, type), name, null);
+  }
+
   String genAnyReaderCode(
       JsonGeneratedCodecBuilder builder,
       Class<?> type,
@@ -189,6 +212,7 @@ abstract class JsonReaderCodegen {
     if (creatorInfo != null) {
       return genAnyCreatorReaderCode(builder, type, creatorInfo);
     }
+    validateFastReadGroups(properties);
     Class<?> concreteReaderType = readerType();
     String readMethod = readMethod();
     String anyReadMethod = readMethod + "Any";
@@ -1083,11 +1107,12 @@ abstract class JsonReaderCodegen {
       Class<?> readerType,
       Class<?> type,
       JsonFieldInfo[] properties) {
-    if (!shouldSplitFastRead(properties)) {
+    if (!shouldSplitFastRead()) {
       return;
     }
-    for (int start = 0; start < properties.length; ) {
-      int end = readGroupEnd(properties, start);
+    int start = 0;
+    for (int group = 0; group < fastReadGroupEnds.length - 1; group++) {
+      int end = fastReadGroupEnds[group];
       if (any == null) {
         addGeneratedMethod(
             ctx,
@@ -2102,7 +2127,7 @@ abstract class JsonReaderCodegen {
       String slowMethod,
       Class<?> type,
       JsonFieldInfo[] properties) {
-    if (shouldSplitFastRead(properties)) {
+    if (shouldSplitFastRead()) {
       return splitFastReadExpression(builder, readMethod, slowMethod, type, properties);
     }
     Expression object = objectExpression(builder);
@@ -2158,11 +2183,22 @@ abstract class JsonReaderCodegen {
     Expression hashes =
         new Expression.Variable("localFieldHashes", fieldRef("fieldHashes", long[].class));
     expressions.add(hashes);
-    for (int start = 0; start < properties.length; ) {
-      int end = readGroupEnd(properties, start);
+    int start = 0;
+    for (int group = 0; group < fastReadGroupEnds.length - 1; group++) {
+      int end = fastReadGroupEnds[group];
       Expression groupCall = inline(readGroupCall(readMethod, start, object, hashes));
       expressions.add(new Expression.If(not(groupCall), returnObject(object)));
       start = end;
+    }
+    Expression[] skips = new Expression[properties.length];
+    for (int i = start + 1; i < properties.length; i++) {
+      skips[i] = new Expression.Variable("skip" + i, Expression.Literal.False);
+      expressions.add(skips[i]);
+    }
+    for (int i = start; i < properties.length; i++) {
+      Expression read =
+          fastReadField(builder, slowMethod, type, properties, i, object, hashes, skips);
+      expressions.add(i == start ? read : new Expression.If(not(skips[i]), read));
     }
     expressions.add(returnObject(object));
     return expressions;
@@ -2188,11 +2224,7 @@ abstract class JsonReaderCodegen {
           fastReadField(builder, slowMethod, type, properties, i, end, true, object, hashes, skips);
       expressions.add(i == start ? read : new Expression.If(not(skips[i]), read));
     }
-    if (end < properties.length) {
-      expressions.add(returnTrue());
-    } else {
-      expressions.add(returnFalse());
-    }
+    expressions.add(returnTrue());
     return expressions;
   }
 
@@ -2461,47 +2493,34 @@ abstract class JsonReaderCodegen {
     return length == Long.BYTES ? -1L : (1L << (length << 3)) - 1L;
   }
 
-  final boolean shouldSplitFastRead(JsonFieldInfo[] properties) {
-    return properties.length >= MIN_SPLIT_READ_FIELDS;
+  private void validateFastReadGroups(JsonFieldInfo[] properties) {
+    if (fastReadGroupEnds == null || fastReadGroupEnds.length == 0) {
+      throw new IllegalArgumentException("Fast-read group boundaries are required");
+    }
+    if (properties.length == 0) {
+      if (fastReadGroupEnds.length != 1 || fastReadGroupEnds[0] != 0) {
+        throw new IllegalArgumentException("Empty readers require one empty group");
+      }
+      return;
+    }
+    int previous = 0;
+    for (int end : fastReadGroupEnds) {
+      if (end <= previous || end > properties.length) {
+        throw new IllegalArgumentException("Invalid fast-read group boundary " + end);
+      }
+      previous = end;
+    }
+    if (previous != properties.length) {
+      throw new IllegalArgumentException("Fast-read groups must cover every property");
+    }
+  }
+
+  final boolean shouldSplitFastRead() {
+    return fastReadGroupEnds.length > 1;
   }
 
   final String readGroupMethod(String readMethod, int start) {
     return readMethod + "Group" + start;
-  }
-
-  final int readGroupEnd(JsonFieldInfo[] properties, int start) {
-    int end = start + 1;
-    while (end < properties.length
-        && end - start < READ_FIELD_GROUP_SIZE
-        && canPairReadFields(properties[end - 1], properties[end])) {
-      end++;
-    }
-    return end;
-  }
-
-  final boolean canPairReadFields(JsonFieldInfo left, JsonFieldInfo right) {
-    JsonFieldKind leftKind = left.readKind();
-    JsonFieldKind rightKind = right.readKind();
-    if (leftKind == null || rightKind == null) {
-      return false;
-    }
-    // Fast-read fallback branches duplicate some field reads in each group. Keep method-size
-    // estimation conservative so generated helpers stay close to the C2-friendly target.
-    if (leftKind == JsonFieldKind.ENUM
-        || rightKind == JsonFieldKind.ENUM
-        || leftKind == JsonFieldKind.COLLECTION
-        || rightKind == JsonFieldKind.COLLECTION
-        || leftKind == JsonFieldKind.MAP
-        || rightKind == JsonFieldKind.MAP) {
-      return false;
-    }
-    if (leftKind == JsonFieldKind.ARRAY || rightKind == JsonFieldKind.ARRAY) {
-      return false;
-    }
-    if (leftKind == JsonFieldKind.OBJECT || rightKind == JsonFieldKind.OBJECT) {
-      return leftKind == JsonFieldKind.BOOLEAN || rightKind == JsonFieldKind.BOOLEAN;
-    }
-    return true;
   }
 
   final boolean shouldSplitFieldSwitch(JsonFieldInfo[] properties) {

@@ -24,6 +24,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.fory.annotation.Internal;
@@ -41,12 +43,11 @@ import org.apache.fory.util.Preconditions;
  * parent notifications. Synchronous mode uses the callback map only to break recursive compilation
  * of the same identifier.
  *
- * <p>{@link JITCallback#id()} correlates active child notifications; it is not a task-request or
- * deduplication key. Every asynchronous registration submits its action and owns its completion
- * callback. Duplicate actions converge on {@link JsonCodegen}'s shared generated-class cache, then
- * may construct and install equivalent resolver-local instances. This is intentional: generated
- * class compilation is single-flight, while resolver-local subscribers, construction, publication,
- * and generated parent-field updates are not deduplicated.
+ * <p>{@link JITCallback#id()} correlates active child notifications. Ordinary callback
+ * registrations retain independent resolver-local publication callbacks; future registrations use
+ * the identifier to reuse one active graph publication request. Generated-class single-flight
+ * belongs to the shared registry, while resolver-local construction, publication, and generated
+ * parent-field updates remain local.
  */
 @Internal
 public final class JsonJITContext {
@@ -91,8 +92,8 @@ public final class JsonJITContext {
           callbacks.remove(id);
         }
       }
-      // Do not skip registration when this ID is already present. JsonCodegen single-flights class
-      // compilation, while every local registration must retain its own publication callback.
+      // Do not skip ordinary registrations when this ID is already present. The shared class owner
+      // single-flights compilation, while every local registration retains its own callback.
       callbacks.computeIfAbsent(callback.id(), ignored -> new ArrayList<>());
       numRunningTasks++;
       ExecutorService service = compilationService;
@@ -113,6 +114,76 @@ public final class JsonJITContext {
     } finally {
       unlock();
     }
+  }
+
+  /**
+   * Registers one resolver-local publication against independently scheduled class futures.
+   *
+   * <p>The future supplier must submit every independent compilation before composing its result.
+   * No compilation worker is used to wait for another worker. Repeated requests with the same ID
+   * reuse the active resolver-local request and return the interpreted capability until the
+   * complete result is published.
+   */
+  public <T> T registerJITFuture(
+      Callable<T> interpretedAction,
+      Callable<CompletableFuture<T>> futureAction,
+      JITCallback<T> callback) {
+    try {
+      lock();
+      Object id = callback.id();
+      if (callbacks.containsKey(id)) {
+        return interpretedAction.call();
+      }
+      callbacks.put(id, new ArrayList<>());
+      if (!asyncCompilationEnabled) {
+        try {
+          T result = futureAction.call().join();
+          callback.onSuccess(result);
+          List<NotifyCallback> notifyCallbacks = callbacks.get(id);
+          for (int i = 0; i < notifyCallbacks.size(); i++) {
+            notifyCallbacks.get(i).onNotifyResult(result);
+          }
+          return result;
+        } catch (Throwable t) {
+          Throwable failure = unwrapFutureFailure(t);
+          callback.onFailure(failure);
+          ExceptionUtils.throwException(failure);
+          throw new IllegalStateException("unreachable");
+        } finally {
+          callbacks.remove(id);
+        }
+      }
+      CompletableFuture<T> future;
+      try {
+        future = futureAction.call();
+      } catch (Throwable t) {
+        callbacks.remove(id);
+        callback.onFailure(t);
+        ExceptionUtils.throwException(t);
+        throw new IllegalStateException("unreachable");
+      }
+      numRunningTasks++;
+      future.whenComplete(
+          (result, failure) -> {
+            if (failure == null) {
+              completeSuccess(callback, result);
+            } else {
+              completeFailure(callback, unwrapFutureFailure(failure));
+            }
+          });
+      return interpretedAction.call();
+    } catch (Exception e) {
+      ExceptionUtils.throwException(e);
+      throw new IllegalStateException("unreachable");
+    } finally {
+      unlock();
+    }
+  }
+
+  private static Throwable unwrapFutureFailure(Throwable failure) {
+    return failure instanceof CompletionException && failure.getCause() != null
+        ? failure.getCause()
+        : failure;
   }
 
   private <T> void runJITAction(Callable<T> jitAction, JITCallback<T> callback) {

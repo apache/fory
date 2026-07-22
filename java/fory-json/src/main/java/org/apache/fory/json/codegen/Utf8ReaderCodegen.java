@@ -29,13 +29,21 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 
 final class Utf8ReaderCodegen extends JsonReaderCodegen {
-  Utf8ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
-    super(codegen, resolver);
+  Utf8ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, boolean finalDependencies) {
+    super(codegen, resolver, finalDependencies);
+  }
+
+  Utf8ReaderCodegen(
+      JsonCodegen codegen,
+      JsonTypeResolver resolver,
+      boolean finalDependencies,
+      int[] fastReadGroupEnds) {
+    super(codegen, resolver, finalDependencies, fastReadGroupEnds);
   }
 
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
-    return codegen.utf8ReaderFieldType(property.readTypeInfo(), resolver);
+    return codegen.utf8ReaderFieldType(property.readTypeInfo(), resolver, finalDependencies());
   }
 
   @Override

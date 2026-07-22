@@ -30,6 +30,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -80,6 +81,8 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -91,6 +94,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.regex.Pattern;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.GeneratedClassNames;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.json.ForyJsonException;
@@ -112,6 +116,7 @@ import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
@@ -185,6 +190,9 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<Class<? extends MapKeyCodec>, MapKeyCodec> mapKeyCodecs;
   private final ConcurrentHashMap<Class<?>, GeneratedJsonCodec<?>> generatedCodecs;
   private final Set<Class<?>> typesWithoutGeneratedCodec;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> finalUtf8ReaderClasses;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> mutableUtf8ReaderClasses;
+  private final ConcurrentHashMap<Type, CompletableFuture<Class<?>>> utf8CollectionReaderClasses;
   private final ConcurrentHashMap<Long, CachedFieldName> cachedFieldNames;
 
   public JsonSharedRegistry(JsonConfig config) {
@@ -214,12 +222,71 @@ public final class JsonSharedRegistry {
     mapKeyCodecs = new ConcurrentHashMap<>();
     generatedCodecs = new ConcurrentHashMap<>();
     typesWithoutGeneratedCodec = ConcurrentHashMap.newKeySet();
+    finalUtf8ReaderClasses = new ConcurrentHashMap<>();
+    mutableUtf8ReaderClasses = new ConcurrentHashMap<>();
+    utf8CollectionReaderClasses = new ConcurrentHashMap<>();
     cachedFieldNames = new ConcurrentHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
     codegen = codegenEnabled ? new JsonCodegen(config.getCodegenHash(), classLoader) : null;
     asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
     this.compilationService = compilationService;
     registerExactCodecs();
+  }
+
+  CompletableFuture<Class<?>> utf8ReaderClass(
+      ObjectCodec<?> owner, JsonTypeResolver resolver, boolean finalDependencies) {
+    return generatedClassFuture(
+        finalDependencies ? finalUtf8ReaderClasses : mutableUtf8ReaderClasses,
+        owner.type(),
+        () -> codegen.compileUtf8Reader(owner, resolver, finalDependencies));
+  }
+
+  CompletableFuture<Class<?>> utf8CollectionReaderClass(
+      Type declaredType, CollectionCodec<?> owner) {
+    return generatedClassFuture(
+        utf8CollectionReaderClasses,
+        declaredType,
+        () -> codegen.compileUtf8CollectionReader(declaredType, owner));
+  }
+
+  private <K> CompletableFuture<Class<?>> generatedClassFuture(
+      ConcurrentHashMap<K, CompletableFuture<Class<?>>> classes,
+      K key,
+      Callable<Class<?>> compiler) {
+    CompletableFuture<Class<?>> existing = classes.get(key);
+    if (existing != null) {
+      return existing;
+    }
+    CompletableFuture<Class<?>> candidate = new CompletableFuture<>();
+    existing = classes.putIfAbsent(key, candidate);
+    if (existing != null) {
+      return existing;
+    }
+    Runnable task =
+        () -> {
+          try {
+            candidate.complete(compiler.call());
+          } catch (Throwable failure) {
+            classes.remove(key, candidate);
+            candidate.completeExceptionally(failure);
+          }
+        };
+    if (!asyncCompilationEnabled) {
+      task.run();
+      return candidate;
+    }
+    ExecutorService service = compilationService;
+    if (service == null) {
+      service = CodeGenerator.getCompilationService();
+    }
+    try {
+      service.execute(task);
+    } catch (RuntimeException | Error failure) {
+      classes.remove(key, candidate);
+      candidate.completeExceptionally(failure);
+      throw failure;
+    }
+    return candidate;
   }
 
   /** Returns the immutable cached entry for {@code hash}, or null when none was published. */

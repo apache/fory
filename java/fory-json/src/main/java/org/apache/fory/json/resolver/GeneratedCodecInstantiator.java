@@ -443,6 +443,24 @@ final class GeneratedCodecInstantiator {
   }
 
   @SuppressWarnings("unchecked")
+  static Utf8ReaderCodec<Object> instantiateUtf8CollectionReader(
+      Class<?> type, Utf8ReaderCodec<Object> elementReader) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor = type.getDeclaredConstructor(Utf8ReaderCodec.class);
+        constructor.setAccessible(true);
+        return (Utf8ReaderCodec<Object>) constructor.newInstance(elementReader);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(type, MethodType.methodType(void.class, Utf8ReaderCodec.class));
+      return (Utf8ReaderCodec<Object>) constructor.invoke(elementReader);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON UTF8 collection reader", e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
   static Utf8ReaderCodec<Object> instantiateAnyUtf8Reader(
       Class<?> type,
       ObjectCodec<?> owner,

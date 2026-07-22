@@ -35,6 +35,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -59,6 +60,7 @@ import org.apache.fory.json.codec.ClosedSubtypeCodec;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.codec.ObjectCodec;
+import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
@@ -683,6 +685,180 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
+  public void utf8GraphPublishesAtomically() throws Exception {
+    ControlledJson controlled = controlledJson();
+    String input =
+        "{\"children\":[{\"id\":1,\"name\":\"a\"},{\"id\":2,\"name\":\"b\"},"
+            + "{\"id\":3,\"name\":\"c\"},{\"id\":4,\"name\":\"d\"},"
+            + "{\"id\":5,\"name\":\"e\"},{\"id\":6,\"name\":\"f\"},"
+            + "{\"id\":7,\"name\":\"g\"},{\"id\":8,\"name\":\"h\"},"
+            + "{\"id\":9,\"name\":\"i\"}],\"friends\":[{\"id\":10}]}";
+    AsyncCollections initial =
+        controlled.json.fromJson(input.getBytes(StandardCharsets.UTF_8), AsyncCollections.class);
+    assertEquals(initial.children.size(), 9);
+    assertEquals(initial.friends.get(0).id, 10);
+
+    JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
+    ObjectCodec<AsyncCollections> rootOwner = resolver.getObjectCodec(AsyncCollections.class);
+    ObjectCodec<AsyncChild> childOwner = resolver.getObjectCodec(AsyncChild.class);
+    ObjectCodec<AsyncFriend> friendOwner = resolver.getObjectCodec(AsyncFriend.class);
+    JsonTypeInfo rootInfo = resolver.getTypeInfo(AsyncCollections.class, AsyncCollections.class);
+    JsonTypeInfo childInfo = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
+    JsonTypeInfo friendInfo = resolver.getTypeInfo(AsyncFriend.class, AsyncFriend.class);
+    JsonFieldInfo[] fields = rootOwner.readFields();
+    JsonTypeInfo childrenInfo = fields[0].readTypeInfo();
+    JsonTypeInfo friendsInfo = fields[1].readTypeInfo();
+    Object initialChildren = childrenInfo.utf8Reader();
+    Object initialFriends = friendsInfo.utf8Reader();
+
+    assertEquals(controlled.executor.pendingTasks(), 5);
+    for (int i = 0; i < 4; i++) {
+      controlled.executor.runNext();
+      assertSame(rootInfo.utf8Reader(), rootOwner);
+      assertSame(childInfo.utf8Reader(), childOwner);
+      assertSame(friendInfo.utf8Reader(), friendOwner);
+      assertSame(childrenInfo.utf8Reader(), initialChildren);
+      assertSame(friendsInfo.utf8Reader(), initialFriends);
+    }
+    controlled.executor.runNext();
+
+    assertNotSame(rootInfo.utf8Reader(), rootOwner);
+    assertNotSame(childInfo.utf8Reader(), childOwner);
+    assertNotSame(friendInfo.utf8Reader(), friendOwner);
+    assertNotSame(childrenInfo.utf8Reader(), initialChildren);
+    assertNotSame(friendsInfo.utf8Reader(), initialFriends);
+    assertTrue(childrenInfo.utf8Reader().getClass() != friendsInfo.utf8Reader().getClass());
+    assertFinalElementReader(childrenInfo.utf8Reader(), childInfo.utf8Reader());
+    assertFinalElementReader(friendsInfo.utf8Reader(), friendInfo.utf8Reader());
+    assertFinalCollectionFields(
+        rootInfo.utf8Reader(), childrenInfo.utf8Reader(), friendsInfo.utf8Reader());
+
+    AsyncCollections generated =
+        controlled.json.fromJson(input.getBytes(StandardCharsets.UTF_8), AsyncCollections.class);
+    assertEquals(generated.children.size(), 9);
+    assertEquals(generated.children.get(8).id, 9);
+    assertEquals(generated.friends.get(0).id, 10);
+    AsyncCollections empty =
+        controlled.json.fromJson(
+            "{\"children\":[],\"friends\":null}".getBytes(StandardCharsets.UTF_8),
+            AsyncCollections.class);
+    assertTrue(empty.children.isEmpty());
+    assertNull(empty.friends);
+  }
+
+  @Test
+  public void utf8GraphNotifiesFallbackParent() throws Exception {
+    ControlledJson controlled = controlledJson();
+    byte[] creatorInput =
+        "{\"child\":{\"id\":1,\"name\":\"creator\"}}".getBytes(StandardCharsets.UTF_8);
+
+    JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
+    ObjectCodec<AsyncCreatorParent> creatorOwner =
+        resolver.getObjectCodec(AsyncCreatorParent.class);
+    ObjectCodec<AsyncGraphParent> graphOwner = resolver.getObjectCodec(AsyncGraphParent.class);
+    ObjectCodec<AsyncChild> childOwner = resolver.getObjectCodec(AsyncChild.class);
+    JsonTypeInfo creatorInfo =
+        resolver.getTypeInfo(AsyncCreatorParent.class, AsyncCreatorParent.class);
+    resolver.getTypeInfo(AsyncGraphParent.class, AsyncGraphParent.class);
+    JsonTypeInfo childInfo = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
+    resolver.lockJIT();
+    try {
+      assertSame(resolver.utf8Reader(creatorOwner), creatorOwner);
+      assertSame(resolver.utf8Reader(graphOwner), graphOwner);
+    } finally {
+      resolver.unlockJIT();
+    }
+
+    assertEquals(controlled.executor.pendingTasks(), 3);
+    controlled.executor.runNext();
+    assertNotSame(creatorInfo.utf8Reader(), creatorOwner);
+    assertCapabilityFields(creatorInfo.utf8Reader(), Utf8ReaderCodec.class, childOwner, 1);
+    controlled.executor.runNext();
+    assertSame(childInfo.utf8Reader(), childOwner);
+    controlled.executor.runNext();
+
+    assertNotSame(childInfo.utf8Reader(), childOwner);
+    assertCapabilityFields(
+        creatorInfo.utf8Reader(), Utf8ReaderCodec.class, childInfo.utf8Reader(), 1);
+    assertEquals(
+        controlled.json.fromJson(creatorInput, AsyncCreatorParent.class).child.name, "creator");
+  }
+
+  @Test
+  public void utf8ScalarCollectionCapability() throws Exception {
+    ControlledJson controlled = controlledJson();
+    String input =
+        "{\"values\":[null,\"\",\"short\",\"abcdefghijklmnopqrstuvwxyz0123456789\","
+            + "\"quote\\\"\",\"slash\\\\\",\"line\\n\",\"你好\"]}";
+    List<String> expected =
+        Arrays.asList(
+            null,
+            "",
+            "short",
+            "abcdefghijklmnopqrstuvwxyz0123456789",
+            "quote\"",
+            "slash\\",
+            "line\n",
+            "你好");
+    AsyncStringCollections initial =
+        controlled.json.fromJson(
+            input.getBytes(StandardCharsets.UTF_8), AsyncStringCollections.class);
+    assertEquals(initial.values, expected);
+
+    JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
+    ObjectCodec<AsyncStringCollections> rootOwner =
+        resolver.getObjectCodec(AsyncStringCollections.class);
+    JsonTypeInfo rootInfo =
+        resolver.getTypeInfo(AsyncStringCollections.class, AsyncStringCollections.class);
+    JsonTypeInfo valuesInfo = rootOwner.readFields()[0].readTypeInfo();
+    Object initialValues = valuesInfo.utf8Reader();
+
+    assertEquals(controlled.executor.pendingTasks(), 2);
+    controlled.executor.runNext();
+    assertSame(rootInfo.utf8Reader(), rootOwner);
+    assertSame(valuesInfo.utf8Reader(), initialValues);
+    controlled.executor.runNext();
+
+    assertNotSame(rootInfo.utf8Reader(), rootOwner);
+    assertNotSame(valuesInfo.utf8Reader(), initialValues);
+    assertFinalElementReader(valuesInfo.utf8Reader(), ScalarCodecs.StringCodec.INSTANCE);
+    assertFinalCollectionFields(rootInfo.utf8Reader(), valuesInfo.utf8Reader());
+    AsyncStringCollections generated =
+        controlled.json.fromJson(
+            input.getBytes(StandardCharsets.UTF_8), AsyncStringCollections.class);
+    assertEquals(generated.values, expected);
+  }
+
+  @Test
+  public void utf8ShapeIgnoresPublishedChild() throws Exception {
+    String input = "{\"creator\":{\"id\":1,\"name\":\"a\"},\"friends\":[{\"id\":2}]}";
+
+    ControlledJson parentFirst = controlledJson();
+    AsyncMixedParent first =
+        parentFirst.json.fromJson(input.getBytes(StandardCharsets.UTF_8), AsyncMixedParent.class);
+    parentFirst.executor.runAll();
+    assertEquals(first.creator.id, 1);
+    JsonTypeResolver firstResolver = primaryTypeResolver(parentFirst.json);
+    JsonTypeInfo firstInfo =
+        firstResolver.getTypeInfo(AsyncMixedParent.class, AsyncMixedParent.class);
+
+    ControlledJson childFirst = controlledJson();
+    childFirst.json.fromJson(
+        "{\"id\":3,\"name\":\"child\"}".getBytes(StandardCharsets.UTF_8), AsyncCreator.class);
+    childFirst.executor.runAll();
+    AsyncMixedParent second =
+        childFirst.json.fromJson(input.getBytes(StandardCharsets.UTF_8), AsyncMixedParent.class);
+    childFirst.executor.runAll();
+    assertEquals(second.friends.get(0).id, 2);
+    JsonTypeResolver secondResolver = primaryTypeResolver(childFirst.json);
+    JsonTypeInfo secondInfo =
+        secondResolver.getTypeInfo(AsyncMixedParent.class, AsyncMixedParent.class);
+
+    assertEquals(
+        declaredFieldShape(firstInfo.utf8Reader()), declaredFieldShape(secondInfo.utf8Reader()));
+  }
+
+  @Test
   public void nestedAndRecursiveTypes() throws Exception {
     ControlledJson controlled = controlledJson();
     ForyJson json = controlled.json;
@@ -857,8 +1033,9 @@ public class JsonAsyncCompilationTest {
     for (Field field : owner.getClass().getDeclaredFields()) {
       if (field.getType() == fieldType) {
         field.setAccessible(true);
-        assertSame(field.get(owner), expected, field.toString());
-        count++;
+        if (field.get(owner) == expected) {
+          count++;
+        }
       }
     }
     assertEquals(count, expectedFields, owner.getClass().getName());
@@ -881,6 +1058,46 @@ public class JsonAsyncCompilationTest {
     return types;
   }
 
+  private static List<String> declaredFieldShape(Object capability) {
+    List<String> shape = new ArrayList<>();
+    for (Field field : capability.getClass().getDeclaredFields()) {
+      shape.add(
+          field.getName()
+              + ":"
+              + field.getType().getName()
+              + ":"
+              + Modifier.isFinal(field.getModifiers()));
+    }
+    Collections.sort(shape);
+    return shape;
+  }
+
+  private static void assertFinalElementReader(Object collection, Object element) throws Exception {
+    Field field = collection.getClass().getDeclaredField("elementReader");
+    field.setAccessible(true);
+    assertTrue(Modifier.isFinal(field.getModifiers()));
+    assertSame(field.get(collection), element);
+  }
+
+  private static void assertFinalCollectionFields(Object root, Object... collections)
+      throws Exception {
+    int count = 0;
+    for (Field field : root.getClass().getDeclaredFields()) {
+      if (field.getType() == Utf8ReaderCodec.class) {
+        field.setAccessible(true);
+        Object value = field.get(root);
+        for (Object collection : collections) {
+          if (value == collection) {
+            assertTrue(Modifier.isFinal(field.getModifiers()));
+            count++;
+            break;
+          }
+        }
+      }
+    }
+    assertEquals(count, collections.length);
+  }
+
   private static <T> StringWriterCodec<T> stringWriter(
       JsonTypeResolver resolver, ObjectCodec<T> owner) {
     resolver.lockJIT();
@@ -899,8 +1116,9 @@ public class JsonAsyncCompilationTest {
     for (Field field : parentReader.getClass().getDeclaredFields()) {
       if (field.getType() == Utf8ReaderCodec.class) {
         field.setAccessible(true);
-        assertSame(field.get(parentReader), childReader);
-        nestedReaders++;
+        if (field.get(parentReader) == childReader) {
+          nestedReaders++;
+        }
       }
     }
     assertEquals(nestedReaders, 1);
@@ -1163,6 +1381,37 @@ public class JsonAsyncCompilationTest {
     public AsyncChild child;
     public Map<String, AsyncChild> children;
     public List<AsyncChild> list;
+  }
+
+  public static final class AsyncCollections {
+    public List<AsyncChild> children;
+    public List<AsyncFriend> friends;
+  }
+
+  public static final class AsyncMixedParent {
+    public AsyncCreator creator;
+    public List<AsyncFriend> friends;
+  }
+
+  public static final class AsyncStringCollections {
+    public List<String> values;
+  }
+
+  public static final class AsyncCreatorParent {
+    public final AsyncChild child;
+
+    @JsonCreator({"child"})
+    public AsyncCreatorParent(AsyncChild child) {
+      this.child = child;
+    }
+  }
+
+  public static final class AsyncGraphParent {
+    public AsyncChild child;
+  }
+
+  public static final class AsyncFriend {
+    public int id;
   }
 
   public static final class AsyncCreator {
