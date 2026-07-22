@@ -70,9 +70,13 @@ public final class Utf8JsonReader extends JsonReader {
   private static final int LONG_MAX_MOD_10 = (int) (Long.MAX_VALUE % 10);
   private static final long LONG_MAX_DIV_100 = Long.MAX_VALUE / 100;
   private static final int LONG_MAX_MOD_100 = (int) (Long.MAX_VALUE % 100);
+  private static final long FOUR_DIGITS = 10_000L;
+  private static final long LONG_MAX_DIV_FOUR_DIGITS = Long.MAX_VALUE / FOUR_DIGITS;
   private static final long LONG_MIN_DIV_10 = Long.MIN_VALUE / 10;
   private static final int LONG_MIN_LAST_DIGIT = (int) -(Long.MIN_VALUE % 10);
   private static final long EIGHT_DIGITS = 100_000_000L;
+  private static final long LONG_MAX_DIV_EIGHT_DIGITS = Long.MAX_VALUE / EIGHT_DIGITS;
+  private static final int LONG_MAX_MOD_EIGHT_DIGITS = (int) (Long.MAX_VALUE % EIGHT_DIGITS);
   private static final long ASCII_ZEROES = 0x3030_3030_3030_3030L;
   private static final long ASCII_NINES = 0x3939_3939_3939_3939L;
   private static final long ASCII_HIGH_BITS = 0x8080_8080_8080_8080L;
@@ -933,6 +937,65 @@ public final class Utf8JsonReader extends JsonReader {
     return (int) ((quads & 0xFFFF) * 10_000 + (quads >>> 32));
   }
 
+  private static int parseFourDigits(byte[] bytes, int offset, int safeEnd) {
+    if (offset + 4 > safeEnd) {
+      return -1;
+    }
+    int chunk = LittleEndian.getInt32(bytes, offset);
+    int digits = chunk - (int) ASCII_ZEROES;
+    if (((digits | ((int) ASCII_NINES - chunk)) & INT_BYTE_HIGH_BITS) != 0) {
+      return -1;
+    }
+    int pairs = (digits * 10 + (digits >>> 8)) & 0x00FF_00FF;
+    return (pairs & 0xFFFF) * 100 + (pairs >>> 16);
+  }
+
+  private static long appendEightDigits(byte[] bytes, int offset, int safeEnd, long unscaled) {
+    int block = parseEightDigits(bytes, offset, safeEnd);
+    if (block < 0 || !canAppendEightDigits(unscaled, block)) {
+      return -1;
+    }
+    return unscaled * EIGHT_DIGITS + block;
+  }
+
+  private static long appendFourDigits(byte[] bytes, int offset, int safeEnd, long unscaled) {
+    int block = parseFourDigits(bytes, offset, safeEnd);
+    if (block < 0) {
+      return -1;
+    }
+    // Callers use a strict divisor bound, so every validated four-digit block is safe here. The
+    // one equality boundary stays on the pair path because its final block determines overflow.
+    return unscaled * FOUR_DIGITS + block;
+  }
+
+  // Positive magnitudes below these power-of-two bounds can append the full decimal chunk without
+  // overflowing a signed long. On the high branch, adding the remainder carry converts the exact
+  // boundary into one unsigned divisor comparison; unsigned order also rejects MAX_VALUE + 1 after
+  // it wraps. The validated digit and pair ranges make the shifts exact zero-or-one carries.
+  private static boolean canAppendDigit(long unscaled, int digit) {
+    if ((unscaled >>> 59) == 0) {
+      return true;
+    }
+    long adjusted = unscaled + (digit >>> 3);
+    return Long.compareUnsigned(adjusted, LONG_MAX_DIV_10) <= 0;
+  }
+
+  private static boolean canAppendTwoDigits(long unscaled, int pair) {
+    if ((unscaled >>> 56) == 0) {
+      return true;
+    }
+    long adjusted = unscaled + ((pair + 120) >>> 7);
+    return Long.compareUnsigned(adjusted, LONG_MAX_DIV_100) <= 0;
+  }
+
+  private static boolean canAppendEightDigits(long unscaled, int block) {
+    if ((unscaled >>> 36) == 0) {
+      return true;
+    }
+    long adjusted = unscaled + (block > LONG_MAX_MOD_EIGHT_DIGITS ? 1 : 0);
+    return Long.compareUnsigned(adjusted, LONG_MAX_DIV_EIGHT_DIGITS) <= 0;
+  }
+
   private BigDecimal readBigDecimalToken() {
     byte[] bytes = input;
     int offset = position;
@@ -1358,6 +1421,8 @@ public final class Utf8JsonReader extends JsonReader {
     return readFloatFallbackValue(start);
   }
 
+  // Keep the complete integer and fraction scan in one token owner. A separate inline-sized
+  // fraction tail makes generated callers depend on which method C2 compiles first.
   private double readPositiveDoubleToken(byte[] bytes, int offset, int inputLength, int ch) {
     int start = offset;
     long unscaled = 0;
@@ -1379,8 +1444,7 @@ public final class Utf8JsonReader extends JsonReader {
           break;
         }
         int pair = high * 10 + low;
-        if (unscaled > LONG_MAX_DIV_100
-            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+        if (!canAppendTwoDigits(unscaled, pair)) {
           return readDoubleFallback(start);
         }
         unscaled = unscaled * 100 + pair;
@@ -1389,8 +1453,7 @@ public final class Utf8JsonReader extends JsonReader {
       if (offset < inputLength) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
-          if (unscaled > LONG_MAX_DIV_10
-              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          if (!canAppendDigit(unscaled, digit)) {
             return readDoubleFallback(start);
           }
           unscaled = unscaled * 10 + digit;
@@ -1400,7 +1463,55 @@ public final class Utf8JsonReader extends JsonReader {
     } else {
       return readDoubleFallback(start);
     }
-    return readPositiveDoubleTail(bytes, offset, inputLength, start, unscaled);
+    int scale = 0;
+    if (offset < inputLength && bytes[offset] == '.') {
+      offset++;
+      int fractionStart = offset;
+      long appended = appendEightDigits(bytes, offset, inputLength, unscaled);
+      while (appended >= 0) {
+        unscaled = appended;
+        scale += 8;
+        offset += 8;
+        appended = appendEightDigits(bytes, offset, inputLength, unscaled);
+      }
+      if (scale != 0 && unscaled < LONG_MAX_DIV_FOUR_DIGITS) {
+        appended = appendFourDigits(bytes, offset, inputLength, unscaled);
+        if (appended >= 0) {
+          unscaled = appended;
+          scale += 4;
+          offset += 4;
+        }
+      }
+      while (offset + 1 < inputLength) {
+        int high = bytes[offset] - '0';
+        int low = bytes[offset + 1] - '0';
+        if (high < 0 || high > 9 || low < 0 || low > 9) {
+          break;
+        }
+        int pair = high * 10 + low;
+        if (!canAppendTwoDigits(unscaled, pair)) {
+          return readDoubleFallback(start);
+        }
+        unscaled = unscaled * 100 + pair;
+        scale += 2;
+        offset += 2;
+      }
+      if (offset < inputLength) {
+        int digit = bytes[offset] - '0';
+        if (digit >= 0 && digit <= 9) {
+          if (!canAppendDigit(unscaled, digit)) {
+            return readDoubleFallback(start);
+          }
+          unscaled = unscaled * 10 + digit;
+          scale++;
+          offset++;
+        }
+      }
+      if (offset == fractionStart) {
+        return readDoubleFallback(start);
+      }
+    }
+    return finishDoubleToken(bytes, offset, inputLength, start, unscaled, scale);
   }
 
   private double readSignedDoubleToken(int start) {
@@ -1430,8 +1541,7 @@ public final class Utf8JsonReader extends JsonReader {
           break;
         }
         int pair = high * 10 + low;
-        if (unscaled > LONG_MAX_DIV_100
-            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+        if (!canAppendTwoDigits(unscaled, pair)) {
           return readDoubleFallback(start);
         }
         unscaled = unscaled * 100 + pair;
@@ -1440,8 +1550,7 @@ public final class Utf8JsonReader extends JsonReader {
       if (offset < inputLength) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
-          if (unscaled > LONG_MAX_DIV_10
-              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          if (!canAppendDigit(unscaled, digit)) {
             return readDoubleFallback(start);
           }
           unscaled = unscaled * 10 + digit;
@@ -1451,15 +1560,25 @@ public final class Utf8JsonReader extends JsonReader {
     } else {
       return readDoubleFallback(start);
     }
-    return readSignedDoubleTail(bytes, offset, inputLength, start, unscaled);
-  }
-
-  private double readPositiveDoubleTail(
-      byte[] bytes, int offset, int inputLength, int start, long unscaled) {
     int scale = 0;
     if (offset < inputLength && bytes[offset] == '.') {
       offset++;
       int fractionStart = offset;
+      long appended = appendEightDigits(bytes, offset, inputLength, unscaled);
+      while (appended >= 0) {
+        unscaled = appended;
+        scale += 8;
+        offset += 8;
+        appended = appendEightDigits(bytes, offset, inputLength, unscaled);
+      }
+      if (scale != 0 && unscaled < LONG_MAX_DIV_FOUR_DIGITS) {
+        appended = appendFourDigits(bytes, offset, inputLength, unscaled);
+        if (appended >= 0) {
+          unscaled = appended;
+          scale += 4;
+          offset += 4;
+        }
+      }
       while (offset + 1 < inputLength) {
         int high = bytes[offset] - '0';
         int low = bytes[offset + 1] - '0';
@@ -1467,8 +1586,7 @@ public final class Utf8JsonReader extends JsonReader {
           break;
         }
         int pair = high * 10 + low;
-        if (unscaled > LONG_MAX_DIV_100
-            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
+        if (!canAppendTwoDigits(unscaled, pair)) {
           return readDoubleFallback(start);
         }
         unscaled = unscaled * 100 + pair;
@@ -1478,48 +1596,7 @@ public final class Utf8JsonReader extends JsonReader {
       if (offset < inputLength) {
         int digit = bytes[offset] - '0';
         if (digit >= 0 && digit <= 9) {
-          if (unscaled > LONG_MAX_DIV_10
-              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
-            return readDoubleFallback(start);
-          }
-          unscaled = unscaled * 10 + digit;
-          scale++;
-          offset++;
-        }
-      }
-      if (offset == fractionStart) {
-        return readDoubleFallback(start);
-      }
-    }
-    return finishDoubleToken(bytes, offset, inputLength, start, unscaled, scale);
-  }
-
-  private double readSignedDoubleTail(
-      byte[] bytes, int offset, int inputLength, int start, long unscaled) {
-    int scale = 0;
-    if (offset < inputLength && bytes[offset] == '.') {
-      offset++;
-      int fractionStart = offset;
-      while (offset + 1 < inputLength) {
-        int high = bytes[offset] - '0';
-        int low = bytes[offset + 1] - '0';
-        if (high < 0 || high > 9 || low < 0 || low > 9) {
-          break;
-        }
-        int pair = high * 10 + low;
-        if (unscaled > LONG_MAX_DIV_100
-            || (unscaled == LONG_MAX_DIV_100 && pair > LONG_MAX_MOD_100)) {
-          return readDoubleFallback(start);
-        }
-        unscaled = unscaled * 100 + pair;
-        scale += 2;
-        offset += 2;
-      }
-      if (offset < inputLength) {
-        int digit = bytes[offset] - '0';
-        if (digit >= 0 && digit <= 9) {
-          if (unscaled > LONG_MAX_DIV_10
-              || (unscaled == LONG_MAX_DIV_10 && digit > LONG_MAX_MOD_10)) {
+          if (!canAppendDigit(unscaled, digit)) {
             return readDoubleFallback(start);
           }
           unscaled = unscaled * 10 + digit;
