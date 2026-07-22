@@ -85,7 +85,7 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
       Class<?> subtype = definition.classes[i];
       JsonTypeInfo child = resolver.getTypeInfo(subtype, subtype);
       if (definition.inclusion == Inclusion.PROPERTY) {
-        if (!child.usesDefaultObjectCodec()) {
+        if (resolver.canonicalObjectCodec(child) == null) {
           throw new ForyJsonException(
               "Inline JSON subtype requires the default object representation: " + subtype);
         }

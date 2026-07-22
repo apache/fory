@@ -24,16 +24,17 @@ import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.json.codec.Utf16ReaderCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.reader.Utf16JsonReader;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 
 final class Utf16ReaderCodegen extends JsonReaderCodegen {
-  Utf16ReaderCodegen(JsonCodegen codegen) {
-    super(codegen);
+  Utf16ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
+    super(codegen, resolver);
   }
 
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
-    return codegen.utf16ReaderFieldType(property.readTypeInfo());
+    return codegen.utf16ReaderFieldType(property.readTypeInfo(), resolver);
   }
 
   @Override

@@ -34,19 +34,20 @@ import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
 
 final class Utf8WriterCodegen extends JsonWriterCodegen {
   private static final int MIN_SPLIT_MEMBERS = 12;
 
-  Utf8WriterCodegen(JsonCodegen codegen) {
-    super(codegen);
+  Utf8WriterCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
+    super(codegen, resolver);
   }
 
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
-    return codegen.utf8WriterFieldType(property.writeTypeInfo());
+    return codegen.utf8WriterFieldType(property.writeTypeInfo(), resolver);
   }
 
   @Override

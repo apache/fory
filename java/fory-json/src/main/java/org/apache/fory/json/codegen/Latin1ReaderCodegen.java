@@ -25,16 +25,17 @@ import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 
 final class Latin1ReaderCodegen extends JsonReaderCodegen {
-  Latin1ReaderCodegen(JsonCodegen codegen) {
-    super(codegen);
+  Latin1ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
+    super(codegen, resolver);
   }
 
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
-    return codegen.latin1ReaderFieldType(property.readTypeInfo());
+    return codegen.latin1ReaderFieldType(property.readTypeInfo(), resolver);
   }
 
   @Override

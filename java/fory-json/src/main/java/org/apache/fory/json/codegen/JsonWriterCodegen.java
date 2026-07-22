@@ -43,6 +43,7 @@ import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 
 /**
@@ -61,10 +62,12 @@ abstract class JsonWriterCodegen {
   private static final int INLINE_TAIL_MEMBERS = 4;
 
   final JsonCodegen codegen;
+  final JsonTypeResolver resolver;
   private Class<?> ownerType;
 
-  JsonWriterCodegen(JsonCodegen codegen) {
+  JsonWriterCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
     this.codegen = codegen;
+    this.resolver = resolver;
   }
 
   abstract Class<?> codecFieldType(JsonFieldInfo property);
@@ -744,7 +747,8 @@ abstract class JsonWriterCodegen {
   }
 
   private boolean storesAnyWriter(AnyInfo any) {
-    return !any.valueTypeInfo().usesDefaultObjectCodec() || any.valueRawType() != ownerType;
+    return resolver.canonicalObjectCodec(any.valueTypeInfo()) == null
+        || any.valueRawType() != ownerType;
   }
 
   static final class PrefixFields {
@@ -1251,7 +1255,7 @@ abstract class JsonWriterCodegen {
 
   private Expression writeCodec(
       JsonFieldInfo property, int id, Expression value, Expression writer) {
-    boolean object = property.writeTypeInfo().usesDefaultObjectCodec();
+    boolean object = resolver.canonicalObjectCodec(property.writeTypeInfo()) != null;
     Expression codec =
         object && property.writeRawType() == ownerType
             ? new Reference("this", TypeRef.of(completeWriterType()))
@@ -1261,7 +1265,7 @@ abstract class JsonWriterCodegen {
 
   private boolean storesWriteCodec(JsonFieldInfo property) {
     return usesWriteCodec(property)
-        && (!property.writeTypeInfo().usesDefaultObjectCodec()
+        && (resolver.canonicalObjectCodec(property.writeTypeInfo()) == null
             || property.writeRawType() != ownerType);
   }
 

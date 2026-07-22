@@ -39,10 +39,11 @@ import org.apache.fory.json.meta.JsonFieldKind;
  * dispatch. These five fields are the sole installed capability state; there are no parallel
  * per-path maps to reconcile on the hot path.
  *
- * <p>Only the canonical exact raw-class {@link ObjectCodec} binding may receive generated
- * replacements. Custom codecs, parameterized object bindings, containers, scalars, and dynamic
- * {@code Object} bindings retain their original semantic owner. Each complete capability is
- * installed in its own independently lazy slot.
+ * <p>{@link JsonTypeResolver} owns canonical exact raw-class {@link ObjectCodec} identity and the
+ * corresponding stable metadata owner. This binding stores only installed capabilities; custom
+ * codecs, parameterized object bindings, containers, scalars, and dynamic {@code Object} bindings
+ * retain their original semantic owner. Each complete capability is installed in its own
+ * independently lazy slot.
  */
 public final class JsonTypeInfo {
   private final Type type;
@@ -53,7 +54,6 @@ public final class JsonTypeInfo {
   private Latin1ReaderCodec<Object> latin1Reader;
   private Utf16ReaderCodec<Object> utf16Reader;
   private Utf8ReaderCodec<Object> utf8Reader;
-  private final boolean defaultObjectCodec;
   private final boolean annotationCodec;
 
   JsonTypeInfo(Type type, Class<?> rawType, JsonFieldKind kind, JsonValueCodec<Object> codec) {
@@ -75,9 +75,6 @@ public final class JsonTypeInfo {
     latin1Reader = codec;
     utf16Reader = codec;
     utf8Reader = codec;
-    // Only the raw-class ObjectCodec can be replaced by raw-class generated capabilities.
-    // ParameterizedObjectCodec owns binding-specific field types and must remain the slot owner.
-    defaultObjectCodec = codec.getClass() == ObjectCodec.class;
   }
 
   public Type type() {
@@ -130,10 +127,6 @@ public final class JsonTypeInfo {
 
   void setUtf8Reader(Utf8ReaderCodec<Object> utf8Reader) {
     this.utf8Reader = utf8Reader;
-  }
-
-  public boolean usesDefaultObjectCodec() {
-    return defaultObjectCodec;
   }
 
   @Internal

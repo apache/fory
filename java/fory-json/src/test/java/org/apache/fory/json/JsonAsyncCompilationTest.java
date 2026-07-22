@@ -25,6 +25,7 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.expectThrows;
@@ -624,7 +625,7 @@ public class JsonAsyncCompilationTest {
     try {
       parameterized = resolver.getTypeInfo(declaredType.getType(), GenericAsyncBox.class);
       parameterizedReader = parameterized.utf8Reader();
-      assertFalse(parameterized.usesDefaultObjectCodec());
+      assertNull(resolver.canonicalObjectCodec(parameterized));
     } finally {
       resolver.unlockJIT();
     }
@@ -633,6 +634,14 @@ public class JsonAsyncCompilationTest {
         "{\"value\":\"raw\"}".getBytes(StandardCharsets.UTF_8), GenericAsyncBox.class);
     controlled.executor.runNext();
     assertSame(parameterized.utf8Reader(), parameterizedReader);
+    resolver.lockJIT();
+    try {
+      JsonTypeInfo raw = resolver.getTypeInfo(GenericAsyncBox.class, GenericAsyncBox.class);
+      assertSame(
+          resolver.canonicalObjectCodec(raw), resolver.getObjectCodec(GenericAsyncBox.class));
+    } finally {
+      resolver.unlockJIT();
+    }
 
     JsonValueCodec<AsyncChild> codec = nullCodec();
     CodecRegistry codecs = new CodecRegistry();
@@ -646,7 +655,31 @@ public class JsonAsyncCompilationTest {
     JsonTypeInfo customInfo =
         primaryTypeResolver(custom.json).getTypeInfo(AsyncChild.class, AsyncChild.class);
     assertCapabilities(customInfo, codec);
+    assertNull(primaryTypeResolver(custom.json).canonicalObjectCodec(customInfo));
     assertEquals(custom.executor.submittedTasks(), 0);
+  }
+
+  @Test
+  public void sourceShapeIgnoresPublicationOrder() {
+    ForyJson parentFirstJson = ForyJson.builder().withAsyncCompilation(false).build();
+    JsonTypeResolver parentFirstResolver = primaryTypeResolver(parentFirstJson);
+    ObjectCodec<AsyncParent> parentFirstOwner =
+        parentFirstResolver.getObjectCodec(AsyncParent.class);
+    parentFirstResolver.getTypeInfo(AsyncParent.class, AsyncParent.class);
+    Object parentFirst = parentFirstResolver.utf8Writer(parentFirstOwner);
+
+    ForyJson childFirstJson = ForyJson.builder().withAsyncCompilation(false).build();
+    JsonTypeResolver childFirstResolver = primaryTypeResolver(childFirstJson);
+    ObjectCodec<AsyncChild> childFirstOwner = childFirstResolver.getObjectCodec(AsyncChild.class);
+    childFirstResolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
+    childFirstResolver.utf8Writer(childFirstOwner);
+    ObjectCodec<AsyncParent> childFirstParent =
+        childFirstResolver.getObjectCodec(AsyncParent.class);
+    childFirstResolver.getTypeInfo(AsyncParent.class, AsyncParent.class);
+    Object childFirst = childFirstResolver.utf8Writer(childFirstParent);
+
+    assertEquals(declaredFieldTypes(parentFirst), declaredFieldTypes(childFirst));
+    assertTrue(declaredFieldTypes(parentFirst).contains(Utf8WriterCodec.class.getName()));
   }
 
   @Test
@@ -837,6 +870,15 @@ public class JsonAsyncCompilationTest {
     assertSame(info.latin1Reader(), expected);
     assertSame(info.utf16Reader(), expected);
     assertSame(info.utf8Reader(), expected);
+  }
+
+  private static List<String> declaredFieldTypes(Object capability) {
+    List<String> types = new ArrayList<>();
+    for (Field field : capability.getClass().getDeclaredFields()) {
+      types.add(field.getType().getName());
+    }
+    Collections.sort(types);
+    return types;
   }
 
   private static <T> StringWriterCodec<T> stringWriter(

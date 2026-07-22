@@ -162,7 +162,7 @@ public final class JsonTypeResolver {
     if (typeInfo != null) {
       // Generated capabilities replace type-info slots; objectCodecs retains the stable metadata
       // owner used to build an unwrapped parent.
-      return typeInfo.usesDefaultObjectCodec() ? objectCodecs.get(key) : null;
+      return canonicalObjectCodec(typeInfo);
     }
     if (customTypeInfo(rawType, rawType) != null || sharedRegistry.subTypesInfo(rawType) != null) {
       return null;
@@ -178,8 +178,32 @@ public final class JsonTypeResolver {
     }
     typeInfo = newTypeInfo(rawType, rawType, codec);
     typeInfos.put(key, typeInfo);
-    registerObjectTypeInfo(typeInfo);
+    registerObjectTypeInfo(typeInfo, codec);
     return codec;
+  }
+
+  /**
+   * Returns the stable metadata owner for a canonical raw-class object binding, or {@code null}.
+   *
+   * <p>This lookup never constructs metadata or requests compilation. Source generation may call it
+   * outside a root operation; the short resolver-local lock protects the ordinary owner maps
+   * without coupling one generated class compilation to another.
+   */
+  @Internal
+  public ObjectCodec<?> canonicalObjectCodec(JsonTypeInfo typeInfo) {
+    jitContext.lock();
+    try {
+      return canonicalObjectOwner(typeInfo);
+    } finally {
+      jitContext.unlock();
+    }
+  }
+
+  private ObjectCodec<?> canonicalObjectOwner(JsonTypeInfo typeInfo) {
+    if (rawObjectTypeInfos.get(typeInfo.rawType()) != typeInfo) {
+      return null;
+    }
+    return objectCodecs.get(typeInfo.rawType());
   }
 
   public JsonTypeInfo getTypeInfo(Type declaredType, Class<?> fallback) {
@@ -301,7 +325,7 @@ public final class JsonTypeResolver {
       return newTypeInfo(
           declaredType,
           rawType,
-          CollectionCodec.create(rawType, elementType.getRawType(), elementInfo));
+          CollectionCodec.create(rawType, elementType.getRawType(), elementInfo, this));
     }
     if (Map.class.isAssignableFrom(rawType)) {
       if (hasElement || hasContent || !hasKey && !hasMapValue) {
@@ -486,14 +510,28 @@ public final class JsonTypeResolver {
   }
 
   private JsonTypeInfo resolveRuntimeTypeInfo(Class<?> runtimeType, Object key) {
-    JsonTypeInfo typeInfo;
-    typeInfo = buildRuntimeTypeInfo(runtimeType);
+    JsonTypeInfo typeInfo = customTypeInfo(runtimeType, runtimeType);
+    JsonValueCodec<?> codec = null;
+    if (typeInfo == null) {
+      sharedRegistry.checkSecure(runtimeType);
+      TypeRef<?> typeRef = TypeRef.of(runtimeType);
+      codec =
+          runtimeType == Object.class
+              ? getObjectCodec(typeRef)
+              : sharedRegistry.createCodec(runtimeType, typeRef, this);
+      if (codec == null) {
+        codec = getObjectCodec(typeRef);
+      }
+      typeInfo = newTypeInfo(runtimeType, runtimeType, codec);
+    }
     JsonTypeInfo recursiveTypeInfo = typeInfos.get(key);
     if (recursiveTypeInfo != null) {
       return recursiveTypeInfo;
     }
     typeInfos.put(key, typeInfo);
-    registerObjectTypeInfo(typeInfo);
+    if (codec != null) {
+      registerObjectTypeInfo(typeInfo, codec);
+    }
     return typeInfo;
   }
 
@@ -518,7 +556,7 @@ public final class JsonTypeResolver {
     if (installed == owner && codegen != null && codegen.canCompileWriter(owner)) {
       jitContext.registerJITCallback(
           () -> owner.getClass(),
-          () -> codegen.compileStringWriter(owner),
+          () -> codegen.compileStringWriter(owner, this),
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
@@ -550,7 +588,7 @@ public final class JsonTypeResolver {
     if (installed == owner && codegen != null && codegen.canCompileWriter(owner)) {
       jitContext.registerJITCallback(
           () -> owner.getClass(),
-          () -> codegen.compileUtf8Writer(owner),
+          () -> codegen.compileUtf8Writer(owner, this),
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
@@ -582,7 +620,7 @@ public final class JsonTypeResolver {
     if (installed == owner && codegen != null && codegen.canCompileReader(owner)) {
       jitContext.registerJITCallback(
           () -> owner.getClass(),
-          () -> codegen.compileLatin1Reader(owner),
+          () -> codegen.compileLatin1Reader(owner, this),
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
@@ -614,7 +652,7 @@ public final class JsonTypeResolver {
     if (installed == owner && codegen != null && codegen.canCompileReader(owner)) {
       jitContext.registerJITCallback(
           () -> owner.getClass(),
-          () -> codegen.compileUtf16Reader(owner),
+          () -> codegen.compileUtf16Reader(owner, this),
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
@@ -646,7 +684,7 @@ public final class JsonTypeResolver {
     if (installed == owner && codegen != null && codegen.canCompileReader(owner)) {
       jitContext.registerJITCallback(
           () -> owner.getClass(),
-          () -> codegen.compileUtf8Reader(owner),
+          () -> codegen.compileUtf8Reader(owner, this),
           new JsonJITContext.JITCallback<Class<?>>() {
             @Override
             public void onSuccess(Class<?> generated) {
@@ -795,7 +833,7 @@ public final class JsonTypeResolver {
       if (JsonCodegen.usesWriteCodec(field)) {
         JsonTypeInfo typeInfo = field.writeTypeInfo();
         StringWriterCodec<Object> codec = typeInfo.stringWriter();
-        if (JsonCodegen.writeNestedType(field) != null
+        if (JsonCodegen.writeNestedType(field, this) != null
             && typeInfo.rawType() != owner.type()
             && codec instanceof ObjectCodec) {
           codec = stringWriter((ObjectCodec<Object>) codec);
@@ -812,7 +850,7 @@ public final class JsonTypeResolver {
           generatedClass, owner, fields, codecs);
     }
     StringWriterCodec<Object> anyCodec = any.valueTypeInfo().stringWriter();
-    if (any.valueTypeInfo().usesDefaultObjectCodec()
+    if (canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && anyCodec instanceof ObjectCodec) {
       anyCodec = stringWriter((ObjectCodec<Object>) anyCodec);
@@ -834,7 +872,7 @@ public final class JsonTypeResolver {
       if (JsonCodegen.usesWriteCodec(field)) {
         JsonTypeInfo typeInfo = field.writeTypeInfo();
         Utf8WriterCodec<Object> codec = typeInfo.utf8Writer();
-        if (JsonCodegen.writeNestedType(field) != null
+        if (JsonCodegen.writeNestedType(field, this) != null
             && typeInfo.rawType() != owner.type()
             && codec instanceof ObjectCodec) {
           codec = utf8Writer((ObjectCodec<Object>) codec);
@@ -851,7 +889,7 @@ public final class JsonTypeResolver {
           generatedClass, owner, fields, codecs);
     }
     Utf8WriterCodec<Object> anyCodec = any.valueTypeInfo().utf8Writer();
-    if (any.valueTypeInfo().usesDefaultObjectCodec()
+    if (canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && anyCodec instanceof ObjectCodec) {
       anyCodec = utf8Writer((ObjectCodec<Object>) anyCodec);
@@ -871,7 +909,7 @@ public final class JsonTypeResolver {
       if (JsonCodegen.usesWriteCodec(field)) {
         JsonTypeInfo child = field.writeTypeInfo();
         StringWriterCodec<Object> codec = child.stringWriter();
-        if (JsonCodegen.writeNestedType(field) != null
+        if (JsonCodegen.writeNestedType(field, this) != null
             && child.rawType() != owner.type()
             && codec instanceof ObjectCodec) {
           codec = stringWriter((ObjectCodec<Object>) codec);
@@ -888,7 +926,7 @@ public final class JsonTypeResolver {
           generatedClass, owner, fields, codecs);
     }
     StringWriterCodec<Object> anyCodec = any.valueTypeInfo().stringWriter();
-    if (any.valueTypeInfo().usesDefaultObjectCodec()
+    if (canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && anyCodec instanceof ObjectCodec) {
       anyCodec = stringWriter((ObjectCodec<Object>) anyCodec);
@@ -908,7 +946,7 @@ public final class JsonTypeResolver {
       if (JsonCodegen.usesWriteCodec(field)) {
         JsonTypeInfo child = field.writeTypeInfo();
         Utf8WriterCodec<Object> codec = child.utf8Writer();
-        if (JsonCodegen.writeNestedType(field) != null
+        if (JsonCodegen.writeNestedType(field, this) != null
             && child.rawType() != owner.type()
             && codec instanceof ObjectCodec) {
           codec = utf8Writer((ObjectCodec<Object>) codec);
@@ -925,7 +963,7 @@ public final class JsonTypeResolver {
           generatedClass, owner, fields, codecs);
     }
     Utf8WriterCodec<Object> anyCodec = any.valueTypeInfo().utf8Writer();
-    if (any.valueTypeInfo().usesDefaultObjectCodec()
+    if (canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && anyCodec instanceof ObjectCodec) {
       anyCodec = utf8Writer((ObjectCodec<Object>) anyCodec);
@@ -968,7 +1006,7 @@ public final class JsonTypeResolver {
             generatedClass, owner, readTable, fields, codecs);
       }
       Latin1ReaderCodec<Object> anyCodec = any.valueTypeInfo().latin1Reader();
-      if (any.valueTypeInfo().usesDefaultObjectCodec()
+      if (canonicalObjectCodec(any.valueTypeInfo()) != null
           && any.valueRawType() != owner.type()
           && anyCodec instanceof ObjectCodec) {
         anyCodec = latin1Reader((ObjectCodec<Object>) anyCodec);
@@ -981,9 +1019,10 @@ public final class JsonTypeResolver {
     for (int i = 0; i < fields.length; i++) {
       JsonFieldInfo field = fields[i];
       JsonTypeInfo typeInfo = field.readTypeInfo();
-      if (JsonCodegen.usesReadCodec(field)) {
+      if (JsonCodegen.usesReadCodec(field, this)) {
         codecs[i] = typeInfo.latin1Reader();
-      } else if (JsonCodegen.readNestedType(field) != null && field.readRawType() != owner.type()) {
+      } else if (JsonCodegen.readNestedType(field, this) != null
+          && field.readRawType() != owner.type()) {
         Latin1ReaderCodec<Object> codec = typeInfo.latin1Reader();
         codecs[i] =
             codec instanceof ObjectCodec ? latin1Reader((ObjectCodec<Object>) codec) : codec;
@@ -999,7 +1038,7 @@ public final class JsonTypeResolver {
           generatedClass, owner, readTable, fields, codecs);
     }
     Latin1ReaderCodec<Object> anyCodec = any.valueTypeInfo().latin1Reader();
-    if (any.valueTypeInfo().usesDefaultObjectCodec()
+    if (canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && anyCodec instanceof ObjectCodec) {
       anyCodec = latin1Reader((ObjectCodec<Object>) anyCodec);
@@ -1038,7 +1077,7 @@ public final class JsonTypeResolver {
             generatedClass, owner, readTable, fields, codecs);
       }
       Utf16ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf16Reader();
-      if (any.valueTypeInfo().usesDefaultObjectCodec()
+      if (canonicalObjectCodec(any.valueTypeInfo()) != null
           && any.valueRawType() != owner.type()
           && anyCodec instanceof ObjectCodec) {
         anyCodec = utf16Reader((ObjectCodec<Object>) anyCodec);
@@ -1051,9 +1090,10 @@ public final class JsonTypeResolver {
     for (int i = 0; i < fields.length; i++) {
       JsonFieldInfo field = fields[i];
       JsonTypeInfo typeInfo = field.readTypeInfo();
-      if (JsonCodegen.usesReadCodec(field)) {
+      if (JsonCodegen.usesReadCodec(field, this)) {
         codecs[i] = typeInfo.utf16Reader();
-      } else if (JsonCodegen.readNestedType(field) != null && field.readRawType() != owner.type()) {
+      } else if (JsonCodegen.readNestedType(field, this) != null
+          && field.readRawType() != owner.type()) {
         Utf16ReaderCodec<Object> codec = typeInfo.utf16Reader();
         codecs[i] = codec instanceof ObjectCodec ? utf16Reader((ObjectCodec<Object>) codec) : codec;
       }
@@ -1068,7 +1108,7 @@ public final class JsonTypeResolver {
           generatedClass, owner, readTable, fields, codecs);
     }
     Utf16ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf16Reader();
-    if (any.valueTypeInfo().usesDefaultObjectCodec()
+    if (canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && anyCodec instanceof ObjectCodec) {
       anyCodec = utf16Reader((ObjectCodec<Object>) anyCodec);
@@ -1107,7 +1147,7 @@ public final class JsonTypeResolver {
             generatedClass, owner, readTable, fields, codecs);
       }
       Utf8ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf8Reader();
-      if (any.valueTypeInfo().usesDefaultObjectCodec()
+      if (canonicalObjectCodec(any.valueTypeInfo()) != null
           && any.valueRawType() != owner.type()
           && anyCodec instanceof ObjectCodec) {
         anyCodec = utf8Reader((ObjectCodec<Object>) anyCodec);
@@ -1120,9 +1160,10 @@ public final class JsonTypeResolver {
     for (int i = 0; i < fields.length; i++) {
       JsonFieldInfo field = fields[i];
       JsonTypeInfo typeInfo = field.readTypeInfo();
-      if (JsonCodegen.usesReadCodec(field)) {
+      if (JsonCodegen.usesReadCodec(field, this)) {
         codecs[i] = typeInfo.utf8Reader();
-      } else if (JsonCodegen.readNestedType(field) != null && field.readRawType() != owner.type()) {
+      } else if (JsonCodegen.readNestedType(field, this) != null
+          && field.readRawType() != owner.type()) {
         Utf8ReaderCodec<Object> codec = typeInfo.utf8Reader();
         codecs[i] = codec instanceof ObjectCodec ? utf8Reader((ObjectCodec<Object>) codec) : codec;
       }
@@ -1137,7 +1178,7 @@ public final class JsonTypeResolver {
           generatedClass, owner, readTable, fields, codecs);
     }
     Utf8ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf8Reader();
-    if (any.valueTypeInfo().usesDefaultObjectCodec()
+    if (canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && anyCodec instanceof ObjectCodec) {
       anyCodec = utf8Reader((ObjectCodec<Object>) anyCodec);
@@ -1156,7 +1197,7 @@ public final class JsonTypeResolver {
     for (int i = 0; i < children.length; i++) {
       JsonTypeInfo child = children[i];
       Latin1ReaderCodec<Object> codec = child.latin1Reader();
-      if (child.usesDefaultObjectCodec()
+      if (canonicalObjectCodec(child) != null
           && child.rawType() != owner.type()
           && codec instanceof ObjectCodec) {
         codec = latin1Reader((ObjectCodec<Object>) codec);
@@ -1173,7 +1214,7 @@ public final class JsonTypeResolver {
           generatedClass, owner, readTable, fields, codecs);
     }
     Latin1ReaderCodec<Object> anyCodec = any.valueTypeInfo().latin1Reader();
-    if (any.valueTypeInfo().usesDefaultObjectCodec()
+    if (canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && anyCodec instanceof ObjectCodec) {
       anyCodec = latin1Reader((ObjectCodec<Object>) anyCodec);
@@ -1192,7 +1233,7 @@ public final class JsonTypeResolver {
     for (int i = 0; i < children.length; i++) {
       JsonTypeInfo child = children[i];
       Utf16ReaderCodec<Object> codec = child.utf16Reader();
-      if (child.usesDefaultObjectCodec()
+      if (canonicalObjectCodec(child) != null
           && child.rawType() != owner.type()
           && codec instanceof ObjectCodec) {
         codec = utf16Reader((ObjectCodec<Object>) codec);
@@ -1209,7 +1250,7 @@ public final class JsonTypeResolver {
           generatedClass, owner, readTable, fields, codecs);
     }
     Utf16ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf16Reader();
-    if (any.valueTypeInfo().usesDefaultObjectCodec()
+    if (canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && anyCodec instanceof ObjectCodec) {
       anyCodec = utf16Reader((ObjectCodec<Object>) anyCodec);
@@ -1228,7 +1269,7 @@ public final class JsonTypeResolver {
     for (int i = 0; i < children.length; i++) {
       JsonTypeInfo child = children[i];
       Utf8ReaderCodec<Object> codec = child.utf8Reader();
-      if (child.usesDefaultObjectCodec()
+      if (canonicalObjectCodec(child) != null
           && child.rawType() != owner.type()
           && codec instanceof ObjectCodec) {
         codec = utf8Reader((ObjectCodec<Object>) codec);
@@ -1245,7 +1286,7 @@ public final class JsonTypeResolver {
           generatedClass, owner, readTable, fields, codecs);
     }
     Utf8ReaderCodec<Object> anyCodec = any.valueTypeInfo().utf8Reader();
-    if (any.valueTypeInfo().usesDefaultObjectCodec()
+    if (canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && anyCodec instanceof ObjectCodec) {
       anyCodec = utf8Reader((ObjectCodec<Object>) anyCodec);
@@ -1329,16 +1370,15 @@ public final class JsonTypeResolver {
     return codec;
   }
 
-  private static <T> void setInlineSelfReader(
-      ObjectCodec<?> owner, T inlineReader, T ordinaryReader) {
-    if (JsonCodegen.storesSelfReader(owner)) {
+  private <T> void setInlineSelfReader(ObjectCodec<?> owner, T inlineReader, T ordinaryReader) {
+    if (JsonCodegen.storesSelfReader(owner, this)) {
       Field field = ReflectionUtils.getField(inlineReader.getClass(), "selfReader");
       ReflectionUtils.setObjectFieldValue(inlineReader, field, ordinaryReader);
     }
   }
 
-  private static boolean storesAnyCodec(ObjectCodec<?> owner, AnyInfo any) {
-    return !any.valueTypeInfo().usesDefaultObjectCodec() || any.valueRawType() != owner.type();
+  private boolean storesAnyCodec(ObjectCodec<?> owner, AnyInfo any) {
+    return canonicalObjectCodec(any.valueTypeInfo()) == null || any.valueRawType() != owner.type();
   }
 
   private Field[] writerChildFields(Object parent, ObjectCodec<?> owner) {
@@ -1346,7 +1386,7 @@ public final class JsonTypeResolver {
     JsonFieldInfo[] fields =
         owner.unwrappedInfo() == null ? owner.writeFields() : unwrappedWriteFields(owner);
     for (int i = 0; i < fields.length; i++) {
-      Class<?> nestedType = JsonCodegen.writeNestedType(fields[i]);
+      Class<?> nestedType = JsonCodegen.writeNestedType(fields[i], this);
       JsonTypeInfo child = fields[i].writeTypeInfo();
       if (nestedType != null
           && nestedType != owner.type()
@@ -1370,7 +1410,7 @@ public final class JsonTypeResolver {
       JsonCreatorFieldInfo[] fields = creator.fields();
       for (int i = 0; i < fields.length; i++) {
         JsonTypeInfo child = fields[i].typeInfo();
-        if (child.usesDefaultObjectCodec()
+        if (canonicalObjectCodec(child) != null
             && child.rawType() != owner.type()
             && rawObjectTypeInfos.get(child.rawType()) == child) {
           if (childFields == null) {
@@ -1383,7 +1423,7 @@ public final class JsonTypeResolver {
     }
     JsonFieldInfo[] fields = owner.readFields();
     for (int i = 0; i < fields.length; i++) {
-      Class<?> nestedType = JsonCodegen.readNestedType(fields[i]);
+      Class<?> nestedType = JsonCodegen.readNestedType(fields[i], this);
       JsonTypeInfo child = fields[i].readTypeInfo();
       if (nestedType != null
           && nestedType != owner.type()
@@ -1405,20 +1445,20 @@ public final class JsonTypeResolver {
     Field[] childFields = null;
     for (int i = 0; i < children.length; i++) {
       JsonTypeInfo child = children[i];
-      if (!child.usesDefaultObjectCodec()
+      if (canonicalObjectCodec(child) == null
           || child.rawType() == owner.type()
           || rawObjectTypeInfos.get(child.rawType()) != child) {
         continue;
       }
       String fieldName;
       if (i < directCount) {
-        if (creator == null && JsonCodegen.readNestedType(owner.readFields()[i]) == null) {
+        if (creator == null && JsonCodegen.readNestedType(owner.readFields()[i], this) == null) {
           continue;
         }
         fieldName = creator == null ? "o" + i : "r" + i;
       } else {
         JsonUnwrappedInfo.ReadRoute route = routes[i - directCount];
-        if (route.field() != null && JsonCodegen.readNestedType(route.field()) == null) {
+        if (route.field() != null && JsonCodegen.readNestedType(route.field(), this) == null) {
           continue;
         }
         fieldName = (route.field() == null ? "r" : "o") + i;
@@ -1764,7 +1804,7 @@ public final class JsonTypeResolver {
   private boolean hasGeneratedAnyWriteChild(ObjectCodec<?> owner, AnyInfo any) {
     return any != null
         && (any.writeField() != null || any.writeGetter() != null)
-        && any.valueTypeInfo().usesDefaultObjectCodec()
+        && canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && rawObjectTypeInfos.get(any.valueRawType()) == any.valueTypeInfo();
   }
@@ -1772,7 +1812,7 @@ public final class JsonTypeResolver {
   private boolean hasGeneratedAnyReadChild(ObjectCodec<?> owner, AnyInfo any) {
     return any != null
         && (any.readField() != null || any.readSetter() != null)
-        && any.valueTypeInfo().usesDefaultObjectCodec()
+        && canonicalObjectCodec(any.valueTypeInfo()) != null
         && any.valueRawType() != owner.type()
         && rawObjectTypeInfos.get(any.valueRawType()) == any.valueTypeInfo();
   }
@@ -1836,7 +1876,7 @@ public final class JsonTypeResolver {
     }
     JsonTypeInfo typeInfo = newTypeInfo(declaredType, rawType, codec);
     typeInfos.put(key, typeInfo);
-    registerObjectTypeInfo(typeInfo);
+    registerObjectTypeInfo(typeInfo, codec);
     return typeInfo;
   }
 
@@ -1854,7 +1894,7 @@ public final class JsonTypeResolver {
       // capability slots. The outer cold-resolution transaction removes both on failure.
       objectCodecs.put(key, codec);
       typeInfos.put(key, typeInfo);
-      registerObjectTypeInfo(typeInfo);
+      registerObjectTypeInfo(typeInfo, codec);
       codec.resolveTypes(this);
       return typeInfo;
     }
@@ -1862,25 +1902,8 @@ public final class JsonTypeResolver {
     // now; the outer owner finishes field resolution before returning the codec to its caller.
     typeInfo = newTypeInfo(ownerType.getType(), ownerType.getRawType(), codec);
     typeInfos.put(key, typeInfo);
-    registerObjectTypeInfo(typeInfo);
+    registerObjectTypeInfo(typeInfo, codec);
     return typeInfo;
-  }
-
-  private JsonTypeInfo buildRuntimeTypeInfo(Class<?> rawType) {
-    JsonTypeInfo custom = customTypeInfo(rawType, rawType);
-    if (custom != null) {
-      return custom;
-    }
-    sharedRegistry.checkSecure(rawType);
-    TypeRef<?> typeRef = TypeRef.of(rawType);
-    JsonValueCodec<?> codec =
-        rawType == Object.class
-            ? getObjectCodec(typeRef)
-            : sharedRegistry.createCodec(rawType, typeRef, this);
-    if (codec == null) {
-      codec = getObjectCodec(typeRef);
-    }
-    return newTypeInfo(rawType, rawType, codec);
   }
 
   private JsonTypeInfo newTypeInfo(Type type, Class<?> rawType, JsonValueCodec<?> codec) {
@@ -1896,11 +1919,11 @@ public final class JsonTypeResolver {
     return new JsonTypeInfo(type, rawType, kind, bindCodec(codec), annotationCodec);
   }
 
-  private void registerObjectTypeInfo(JsonTypeInfo typeInfo) {
-    if (typeInfo.usesDefaultObjectCodec()
+  private void registerObjectTypeInfo(JsonTypeInfo typeInfo, JsonValueCodec<?> initialCodec) {
+    if (initialCodec.getClass() == ObjectCodec.class
         && typeInfo.type() instanceof Class
         && typeInfo.rawType() != Object.class) {
-      ObjectCodec<?> owner = (ObjectCodec<?>) typeInfo.stringWriter();
+      ObjectCodec<?> owner = (ObjectCodec<?>) initialCodec;
       rawObjectTypeInfos.put(typeInfo.rawType(), typeInfo);
       canonicalObjectTypeInfos.put(owner, typeInfo);
     }

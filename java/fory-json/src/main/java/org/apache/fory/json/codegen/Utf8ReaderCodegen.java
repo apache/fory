@@ -25,16 +25,17 @@ import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.reader.Utf8JsonReader;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 
 final class Utf8ReaderCodegen extends JsonReaderCodegen {
-  Utf8ReaderCodegen(JsonCodegen codegen) {
-    super(codegen);
+  Utf8ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
+    super(codegen, resolver);
   }
 
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
-    return codegen.utf8ReaderFieldType(property.readTypeInfo());
+    return codegen.utf8ReaderFieldType(property.readTypeInfo(), resolver);
   }
 
   @Override
