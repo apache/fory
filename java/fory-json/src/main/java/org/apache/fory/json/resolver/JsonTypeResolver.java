@@ -222,18 +222,58 @@ public final class JsonTypeResolver {
   }
 
   private CollectionCodec<?> exactUtf8CollectionOwner(JsonTypeInfo typeInfo) {
-    CollectionCodec<?> owner = collectionCodecs.get(typeInfo);
-    if (owner == null
-        || !owner.createsArrayList()
-        || !(typeInfo.type() instanceof ParameterizedType)) {
+    CollectionCodec<?> owner = exactDeclaredCollectionOwner(typeInfo);
+    if (owner == null || !owner.createsArrayList()) {
       return null;
     }
-    Type declaredElement = CodecUtils.elementType(typeInfo.type());
     JsonTypeInfo element = declaredCollectionElement(typeInfo);
+    if (canonicalObjectOwner(element) == null
+        && !(owner instanceof CollectionCodec.DirectCollectionCodec)) {
+      return null;
+    }
+    return owner;
+  }
+
+  /** Returns an exact declared UTF-8 collection writer owner, or {@code null}. */
+  @Internal
+  public CollectionCodec<?> exactUtf8WriterCollection(JsonTypeInfo typeInfo) {
+    jitContext.lock();
+    try {
+      return exactUtf8WriterCollectionOwner(typeInfo);
+    } finally {
+      jitContext.unlock();
+    }
+  }
+
+  private CollectionCodec<?> exactUtf8WriterCollectionOwner(JsonTypeInfo typeInfo) {
+    CollectionCodec<?> owner = exactDeclaredCollectionOwner(typeInfo);
+    // A generated collection writer owns only the ArrayList common loop. Keep declarations that
+    // cannot legally contain an ArrayList on their existing codec instead of compiling a class
+    // whose common branch is unreachable.
+    if (owner == null || !typeInfo.rawType().isAssignableFrom(ArrayList.class)) {
+      return null;
+    }
+    if (owner instanceof CollectionCodec.DirectCollectionCodec) {
+      return owner;
+    }
+    JsonTypeInfo element = declaredCollectionElement(typeInfo);
+    return owner instanceof CollectionCodec.ObjectCollectionCodec
+            && canonicalObjectOwner(element) != null
+        ? owner
+        : null;
+  }
+
+  private CollectionCodec<?> exactDeclaredCollectionOwner(JsonTypeInfo typeInfo) {
+    CollectionCodec<?> owner = collectionCodecs.get(typeInfo);
+    if (owner == null || !(typeInfo.type() instanceof ParameterizedType)) {
+      return null;
+    }
+    JsonTypeInfo element = declaredCollectionElement(typeInfo);
+    Type declaredElement = CodecUtils.elementType(typeInfo.type());
     if (element == null
-        || !declaredElement.equals(element.type())
-        || canonicalObjectOwner(element) == null
-            && !(owner instanceof CollectionCodec.DirectCollectionCodec)) {
+        || element.rawType() == Object.class
+        || element.usesAnnotationCodec()
+        || !declaredElement.equals(element.type())) {
       return null;
     }
     return owner;
@@ -705,7 +745,7 @@ public final class JsonTypeResolver {
         (Utf8WriterCodec<Object>[]) new Utf8WriterCodec<?>[fields.length];
     for (int i = 0; i < fields.length; i++) {
       JsonFieldInfo field = fields[i];
-      if (JsonCodegen.usesWriteCodec(field)) {
+      if (JsonCodegen.usesUtf8WriteCodec(field, this)) {
         JsonTypeInfo typeInfo = field.writeTypeInfo();
         codecs[i] = resolvedCapability(typeInfo, capabilities, CapabilityKind.UTF8_WRITER);
       }
@@ -763,7 +803,7 @@ public final class JsonTypeResolver {
         (Utf8WriterCodec<Object>[]) new Utf8WriterCodec<?>[fields.length];
     for (int i = 0; i < fields.length; i++) {
       JsonFieldInfo field = fields[i];
-      if (JsonCodegen.usesWriteCodec(field)) {
+      if (JsonCodegen.usesUtf8WriteCodec(field, this)) {
         JsonTypeInfo child = field.writeTypeInfo();
         codecs[i] = resolvedCapability(child, capabilities, CapabilityKind.UTF8_WRITER);
       }
@@ -1143,7 +1183,11 @@ public final class JsonTypeResolver {
           owner.unwrappedInfo() == null ? owner.writeFields() : unwrappedWriteFields(owner);
       for (int i = 0; i < fields.length; i++) {
         JsonFieldInfo field = fields[i];
-        if (JsonCodegen.usesWriteCodec(field)
+        boolean usesCodec =
+            kind == CapabilityKind.UTF8_WRITER
+                ? JsonCodegen.usesUtf8WriteCodec(field, this)
+                : JsonCodegen.usesWriteCodec(field);
+        if (usesCodec
             && (field.writeRawType() != owner.type()
                 || canonicalObjectOwner(field.writeTypeInfo()) == null)) {
           children.add(field.writeTypeInfo());
@@ -1341,7 +1385,13 @@ public final class JsonTypeResolver {
       throw new IllegalStateException("Inline subtype readers reuse child generated classes");
     }
     if (node.collectionOwner != null) {
-      return sharedRegistry.utf8CollectionReaderClass(node.typeInfo.type(), node.collectionOwner);
+      if (kind == CapabilityKind.UTF8_WRITER) {
+        return sharedRegistry.utf8CollectionWriterClass(node.typeInfo.type(), node.collectionOwner);
+      }
+      if (kind == CapabilityKind.UTF8_READER) {
+        return sharedRegistry.utf8CollectionReaderClass(node.typeInfo.type(), node.collectionOwner);
+      }
+      throw new IllegalStateException("Unsupported generated JSON collection capability " + kind);
     }
     switch (kind) {
       case STRING_WRITER:
@@ -1369,9 +1419,22 @@ public final class JsonTypeResolver {
     }
     if (node.collectionOwner != null) {
       JsonTypeInfo element = declaredCollectionElement(node.typeInfo);
-      Utf8ReaderCodec<Object> elementReader = resolvedCapability(element, capabilities, kind);
-      return GeneratedCodecInstantiator.instantiateUtf8CollectionReader(
-          generatedClass, elementReader);
+      if (kind == CapabilityKind.UTF8_WRITER) {
+        Utf8WriterCodec<Object> elementWriter = resolvedCapability(element, capabilities, kind);
+        Utf8WriterCodec<Object> fallback = eraseUtf8Writer(node.collectionOwner);
+        if (node.collectionOwner instanceof CollectionCodec.StringCollectionCodec) {
+          return GeneratedCodecInstantiator.instantiateUtf8CollectionWriter(
+              generatedClass, fallback);
+        }
+        return GeneratedCodecInstantiator.instantiateUtf8CollectionWriter(
+            generatedClass, fallback, elementWriter);
+      }
+      if (kind == CapabilityKind.UTF8_READER) {
+        Utf8ReaderCodec<Object> elementReader = resolvedCapability(element, capabilities, kind);
+        return GeneratedCodecInstantiator.instantiateUtf8CollectionReader(
+            generatedClass, elementReader);
+      }
+      throw new IllegalStateException("Unsupported generated JSON collection capability " + kind);
     }
     switch (kind) {
       case STRING_WRITER:
@@ -1397,6 +1460,11 @@ public final class JsonTypeResolver {
       return (T) capability;
     }
     return (T) currentCapability(typeInfo, kind);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Utf8WriterCodec<Object> eraseUtf8Writer(CollectionCodec<?> codec) {
+    return (Utf8WriterCodec<Object>) (Utf8WriterCodec<?>) codec;
   }
 
   private static void installCapability(
@@ -1592,8 +1660,11 @@ public final class JsonTypeResolver {
       if (objectOwner != null) {
         return addObject(objectOwner, typeInfo, slotEdge);
       }
-      if (kind == CapabilityKind.UTF8_READER) {
-        CollectionCodec<?> collectionOwner = exactUtf8CollectionOwner(typeInfo);
+      if (kind == CapabilityKind.UTF8_WRITER || kind == CapabilityKind.UTF8_READER) {
+        CollectionCodec<?> collectionOwner =
+            kind == CapabilityKind.UTF8_WRITER
+                ? exactUtf8WriterCollectionOwner(typeInfo)
+                : exactUtf8CollectionOwner(typeInfo);
         if (collectionOwner != null) {
           return addCollection(collectionOwner, typeInfo);
         }
@@ -1664,12 +1735,7 @@ public final class JsonTypeResolver {
         return existing.complete;
       }
       JsonTypeInfo element = declaredCollectionElement(typeInfo);
-      if (element == null
-          || element.rawType() == Object.class
-          || element.usesAnnotationCodec()
-          || element.kind() == JsonFieldKind.OBJECT
-              && canonicalObjectOwner(element) == null
-              && !(element.utf8Reader() instanceof ClosedSubtypeCodec)) {
+      if (element == null) {
         return false;
       }
       CapabilityNode node = new CapabilityNode(typeInfo, owner, initial);

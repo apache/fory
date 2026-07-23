@@ -41,8 +41,11 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -677,19 +680,53 @@ public class JsonAsyncCompilationTest {
     JsonFieldInfo[] fields = rootOwner.readFields();
     JsonTypeInfo childrenInfo = fields[0].readTypeInfo();
     JsonTypeInfo friendsInfo = fields[1].readTypeInfo();
+    Object initialRootReader = rootInfo.utf8Reader();
+    Object initialChildReader = childInfo.utf8Reader();
+    Object initialFriendReader = friendInfo.utf8Reader();
     Object initialChildren = childrenInfo.utf8Reader();
     Object initialFriends = friendsInfo.utf8Reader();
+    JsonFieldInfo[] writeFields = rootOwner.writeFields();
+    JsonTypeInfo writtenChildrenInfo = writeFields[0].writeTypeInfo();
+    JsonTypeInfo writtenFriendsInfo = writeFields[1].writeTypeInfo();
+    Object initialRootWriter = rootInfo.utf8Writer();
+    Object initialChildWriter = childInfo.utf8Writer();
+    Object initialFriendWriter = friendInfo.utf8Writer();
+    Object initialChildrenWriter = writtenChildrenInfo.utf8Writer();
+    Object initialFriendsWriter = writtenFriendsInfo.utf8Writer();
+    assertEquals(new String(controlled.json.toJsonBytes(initial), StandardCharsets.UTF_8), input);
 
-    assertEquals(controlled.executor.pendingTasks(), 17);
-    for (int i = 0; i < 16; i++) {
+    int pendingTasks = controlled.executor.pendingTasks();
+    assertEquals(pendingTasks, 19);
+    for (int i = 0; i < pendingTasks; i++) {
       controlled.executor.runNext();
-      assertSame(rootInfo.utf8Reader(), rootOwner);
-      assertSame(childInfo.utf8Reader(), childOwner);
-      assertSame(friendInfo.utf8Reader(), friendOwner);
-      assertSame(childrenInfo.utf8Reader(), initialChildren);
-      assertSame(friendsInfo.utf8Reader(), initialFriends);
+      boolean initialReaderGraph =
+          rootInfo.utf8Reader() == initialRootReader
+              && childInfo.utf8Reader() == initialChildReader
+              && friendInfo.utf8Reader() == initialFriendReader
+              && childrenInfo.utf8Reader() == initialChildren
+              && friendsInfo.utf8Reader() == initialFriends;
+      boolean generatedReaderGraph =
+          rootInfo.utf8Reader() != initialRootReader
+              && childInfo.utf8Reader() != initialChildReader
+              && friendInfo.utf8Reader() != initialFriendReader
+              && childrenInfo.utf8Reader() != initialChildren
+              && friendsInfo.utf8Reader() != initialFriends;
+      assertTrue(initialReaderGraph || generatedReaderGraph);
+
+      boolean initialWriterGraph =
+          rootInfo.utf8Writer() == initialRootWriter
+              && childInfo.utf8Writer() == initialChildWriter
+              && friendInfo.utf8Writer() == initialFriendWriter
+              && writtenChildrenInfo.utf8Writer() == initialChildrenWriter
+              && writtenFriendsInfo.utf8Writer() == initialFriendsWriter;
+      boolean generatedWriterGraph =
+          rootInfo.utf8Writer() != initialRootWriter
+              && childInfo.utf8Writer() != initialChildWriter
+              && friendInfo.utf8Writer() != initialFriendWriter
+              && writtenChildrenInfo.utf8Writer() != initialChildrenWriter
+              && writtenFriendsInfo.utf8Writer() != initialFriendsWriter;
+      assertTrue(initialWriterGraph || generatedWriterGraph);
     }
-    controlled.executor.runNext();
 
     assertNotSame(rootInfo.utf8Reader(), rootOwner);
     assertNotSame(childInfo.utf8Reader(), childOwner);
@@ -697,22 +734,54 @@ public class JsonAsyncCompilationTest {
     assertNotSame(childrenInfo.utf8Reader(), initialChildren);
     assertNotSame(friendsInfo.utf8Reader(), initialFriends);
     assertTrue(childrenInfo.utf8Reader().getClass() != friendsInfo.utf8Reader().getClass());
-    assertFinalElementReader(childrenInfo.utf8Reader(), childInfo.utf8Reader());
-    assertFinalElementReader(friendsInfo.utf8Reader(), friendInfo.utf8Reader());
+    assertFinalField(childrenInfo.utf8Reader(), "elementReader", childInfo.utf8Reader());
+    assertFinalField(friendsInfo.utf8Reader(), "elementReader", friendInfo.utf8Reader());
     assertFinalCollectionFields(
-        rootInfo.utf8Reader(), childrenInfo.utf8Reader(), friendsInfo.utf8Reader());
+        rootInfo.utf8Reader(),
+        Utf8ReaderCodec.class,
+        childrenInfo.utf8Reader(),
+        friendsInfo.utf8Reader());
+
+    assertNotSame(rootInfo.utf8Writer(), initialRootWriter);
+    assertNotSame(childInfo.utf8Writer(), initialChildWriter);
+    assertNotSame(friendInfo.utf8Writer(), initialFriendWriter);
+    assertNotSame(writtenChildrenInfo.utf8Writer(), initialChildrenWriter);
+    assertNotSame(writtenFriendsInfo.utf8Writer(), initialFriendsWriter);
+    assertTrue(
+        writtenChildrenInfo.utf8Writer().getClass() != writtenFriendsInfo.utf8Writer().getClass());
+    assertFinalField(writtenChildrenInfo.utf8Writer(), "elementWriter", childInfo.utf8Writer());
+    assertFinalField(writtenFriendsInfo.utf8Writer(), "elementWriter", friendInfo.utf8Writer());
+    assertFinalField(writtenChildrenInfo.utf8Writer(), "fallback", initialChildrenWriter);
+    assertFinalField(writtenFriendsInfo.utf8Writer(), "fallback", initialFriendsWriter);
+    assertFinalCollectionFields(
+        rootInfo.utf8Writer(),
+        Utf8WriterCodec.class,
+        writtenChildrenInfo.utf8Writer(),
+        writtenFriendsInfo.utf8Writer());
+    assertEquals(writeUtf8(writtenChildrenInfo.utf8Writer(), null), "null");
+    assertEquals(writeUtf8(writtenFriendsInfo.utf8Writer(), new ArrayList<>()), "[]");
 
     AsyncCollections generated =
         controlled.json.fromJson(input.getBytes(StandardCharsets.UTF_8), AsyncCollections.class);
     assertEquals(generated.children.size(), 9);
     assertEquals(generated.children.get(8).id, 9);
     assertEquals(generated.friends.get(0).id, 10);
+    assertEquals(new String(controlled.json.toJsonBytes(generated), StandardCharsets.UTF_8), input);
+
+    AsyncCollections fallback = new AsyncCollections();
+    fallback.children = new LinkedList<>(generated.children);
+    fallback.friends = new LinkedList<>(generated.friends);
+    assertEquals(new String(controlled.json.toJsonBytes(fallback), StandardCharsets.UTF_8), input);
+
     AsyncCollections empty =
         controlled.json.fromJson(
             "{\"children\":[],\"friends\":null}".getBytes(StandardCharsets.UTF_8),
             AsyncCollections.class);
     assertTrue(empty.children.isEmpty());
     assertNull(empty.friends);
+    assertEquals(
+        new String(controlled.json.toJsonBytes(empty), StandardCharsets.UTF_8),
+        "{\"children\":[]}");
   }
 
   @Test
@@ -796,24 +865,61 @@ public class JsonAsyncCompilationTest {
     JsonTypeInfo rootInfo =
         resolver.getTypeInfo(AsyncStringCollections.class, AsyncStringCollections.class);
     JsonTypeInfo valuesInfo = rootOwner.readFields()[0].readTypeInfo();
+    Object initialRootReader = rootInfo.utf8Reader();
     Object initialValues = valuesInfo.utf8Reader();
+    JsonTypeInfo writtenValuesInfo = rootOwner.writeFields()[0].writeTypeInfo();
+    Object initialRootWriter = rootInfo.utf8Writer();
+    Object initialValuesWriter = writtenValuesInfo.utf8Writer();
+    String expectedJson = "{\"values\":[" + String.join(",", tokens) + "]}";
+    assertEquals(
+        new String(controlled.json.toJsonBytes(initial), StandardCharsets.UTF_8), expectedJson);
 
-    assertEquals(controlled.executor.pendingTasks(), 6);
-    for (int i = 0; i < 5; i++) {
+    int pendingTasks = controlled.executor.pendingTasks();
+    assertEquals(pendingTasks, 7);
+    for (int i = 0; i < pendingTasks; i++) {
       controlled.executor.runNext();
-      assertSame(rootInfo.utf8Reader(), rootOwner);
-      assertSame(valuesInfo.utf8Reader(), initialValues);
+      boolean initialReaderGraph =
+          rootInfo.utf8Reader() == initialRootReader && valuesInfo.utf8Reader() == initialValues;
+      boolean generatedReaderGraph =
+          rootInfo.utf8Reader() != initialRootReader && valuesInfo.utf8Reader() != initialValues;
+      assertTrue(initialReaderGraph || generatedReaderGraph);
+      boolean initialWriterGraph =
+          rootInfo.utf8Writer() == initialRootWriter
+              && writtenValuesInfo.utf8Writer() == initialValuesWriter;
+      boolean generatedWriterGraph =
+          rootInfo.utf8Writer() != initialRootWriter
+              && writtenValuesInfo.utf8Writer() != initialValuesWriter;
+      assertTrue(initialWriterGraph || generatedWriterGraph);
     }
-    controlled.executor.runNext();
 
     assertNotSame(rootInfo.utf8Reader(), rootOwner);
     assertNotSame(valuesInfo.utf8Reader(), initialValues);
-    assertFinalElementReader(valuesInfo.utf8Reader(), ScalarCodecs.StringCodec.INSTANCE);
-    assertFinalCollectionFields(rootInfo.utf8Reader(), valuesInfo.utf8Reader());
+    assertFinalField(valuesInfo.utf8Reader(), "elementReader", ScalarCodecs.StringCodec.INSTANCE);
+    assertFinalCollectionFields(
+        rootInfo.utf8Reader(), Utf8ReaderCodec.class, valuesInfo.utf8Reader());
+    assertNotSame(rootInfo.utf8Writer(), initialRootWriter);
+    assertNotSame(writtenValuesInfo.utf8Writer(), initialValuesWriter);
+    assertFinalField(writtenValuesInfo.utf8Writer(), "fallback", initialValuesWriter);
+    assertEquals(writtenValuesInfo.utf8Writer().getClass().getDeclaredFields().length, 1);
+    assertFinalCollectionFields(
+        rootInfo.utf8Writer(), Utf8WriterCodec.class, writtenValuesInfo.utf8Writer());
+    assertEquals(writeUtf8(writtenValuesInfo.utf8Writer(), null), "null");
+
     AsyncStringCollections generated =
         controlled.json.fromJson(
             input.getBytes(StandardCharsets.UTF_8), AsyncStringCollections.class);
     assertEquals(generated.values, expected);
+    assertEquals(
+        new String(controlled.json.toJsonBytes(generated), StandardCharsets.UTF_8), expectedJson);
+    generated.values = new LinkedList<>(expected);
+    assertEquals(
+        new String(controlled.json.toJsonBytes(generated), StandardCharsets.UTF_8), expectedJson);
+    generated.values = new ArrayList<>();
+    assertEquals(
+        new String(controlled.json.toJsonBytes(generated), StandardCharsets.UTF_8),
+        "{\"values\":[]}");
+    generated.values = null;
+    assertEquals(new String(controlled.json.toJsonBytes(generated), StandardCharsets.UTF_8), "{}");
     for (int size = 0; size <= tokens.length; size++) {
       AsyncStringCollections prefix =
           controlled.json.fromJson(
@@ -832,6 +938,35 @@ public class JsonAsyncCompilationTest {
       input.append(tokens[i]);
     }
     return input.append("]}").toString();
+  }
+
+  @Test
+  public void nonListCollectionStaysOnOwner() throws Exception {
+    ControlledJson controlled = controlledJson();
+    AsyncFriend first = new AsyncFriend();
+    first.id = 1;
+    AsyncFriend second = new AsyncFriend();
+    second.id = 2;
+    AsyncSetCollections value = new AsyncSetCollections();
+    value.values = new LinkedHashSet<>(Arrays.asList(first, second));
+    String expected = "{\"values\":[{\"id\":1},{\"id\":2}]}";
+    assertEquals(new String(controlled.json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
+
+    JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
+    ObjectCodec<AsyncSetCollections> rootOwner = resolver.getObjectCodec(AsyncSetCollections.class);
+    JsonTypeInfo rootInfo =
+        resolver.getTypeInfo(AsyncSetCollections.class, AsyncSetCollections.class);
+    JsonTypeInfo valuesInfo = rootOwner.writeFields()[0].writeTypeInfo();
+    Object initialRootWriter = rootInfo.utf8Writer();
+    Object initialValuesWriter = valuesInfo.utf8Writer();
+
+    assertEquals(controlled.executor.pendingTasks(), 10);
+    controlled.executor.runAll();
+    assertNotSame(rootInfo.utf8Writer(), initialRootWriter);
+    assertSame(valuesInfo.utf8Writer(), initialValuesWriter);
+    assertFinalCollectionFields(
+        rootInfo.utf8Writer(), initialValuesWriter.getClass(), initialValuesWriter);
+    assertEquals(new String(controlled.json.toJsonBytes(value), StandardCharsets.UTF_8), expected);
   }
 
   @Test
@@ -1066,11 +1201,12 @@ public class JsonAsyncCompilationTest {
     return shape;
   }
 
-  private static void assertFinalElementReader(Object collection, Object element) throws Exception {
-    Field field = collection.getClass().getDeclaredField("elementReader");
+  private static void assertFinalField(Object owner, String name, Object expected)
+      throws Exception {
+    Field field = owner.getClass().getDeclaredField(name);
     field.setAccessible(true);
     assertTrue(Modifier.isFinal(field.getModifiers()));
-    assertSame(field.get(collection), element);
+    assertSame(field.get(owner), expected);
   }
 
   private static void assertInlineReader(Object[] readers, Object canonical) {
@@ -1081,11 +1217,11 @@ public class JsonAsyncCompilationTest {
     assertSame(readers[0].getClass(), canonical.getClass());
   }
 
-  private static void assertFinalCollectionFields(Object root, Object... collections)
-      throws Exception {
+  private static void assertFinalCollectionFields(
+      Object root, Class<?> fieldType, Object... collections) throws Exception {
     int count = 0;
     for (Field field : root.getClass().getDeclaredFields()) {
-      if (field.getType() == Utf8ReaderCodec.class) {
+      if (field.getType() == fieldType) {
         field.setAccessible(true);
         Object value = field.get(root);
         for (Object collection : collections) {
@@ -1098,6 +1234,12 @@ public class JsonAsyncCompilationTest {
       }
     }
     assertEquals(count, collections.length);
+  }
+
+  private static String writeUtf8(Utf8WriterCodec<Object> codec, Object value) {
+    Utf8JsonWriter writer = JsonTestSupport.newUtf8Writer();
+    codec.writeUtf8(writer, value);
+    return new String(writer.toJsonBytes(), StandardCharsets.UTF_8);
   }
 
   private static <T> StringWriterCodec<T> stringWriter(
@@ -1397,6 +1539,10 @@ public class JsonAsyncCompilationTest {
 
   public static final class AsyncStringCollections {
     public List<String> values;
+  }
+
+  public static final class AsyncSetCollections {
+    public Set<AsyncFriend> values;
   }
 
   public static final class AsyncCreatorParent {

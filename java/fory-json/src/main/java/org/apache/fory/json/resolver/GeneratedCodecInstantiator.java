@@ -458,6 +458,45 @@ final class GeneratedCodecInstantiator {
   }
 
   @SuppressWarnings("unchecked")
+  static Utf8WriterCodec<Object> instantiateUtf8CollectionWriter(
+      Class<?> type, Utf8WriterCodec<Object> fallback) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor = type.getDeclaredConstructor(Utf8WriterCodec.class);
+        constructor.setAccessible(true);
+        return (Utf8WriterCodec<Object>) constructor.newInstance(fallback);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(type, MethodType.methodType(void.class, Utf8WriterCodec.class));
+      return (Utf8WriterCodec<Object>) constructor.invoke(fallback);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON UTF8 collection writer", e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  static Utf8WriterCodec<Object> instantiateUtf8CollectionWriter(
+      Class<?> type, Utf8WriterCodec<Object> fallback, Utf8WriterCodec<Object> elementWriter) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            type.getDeclaredConstructor(Utf8WriterCodec.class, Utf8WriterCodec.class);
+        constructor.setAccessible(true);
+        return (Utf8WriterCodec<Object>) constructor.newInstance(fallback, elementWriter);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(
+                  type,
+                  MethodType.methodType(void.class, Utf8WriterCodec.class, Utf8WriterCodec.class));
+      return (Utf8WriterCodec<Object>) constructor.invoke(fallback, elementWriter);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON UTF8 collection writer", e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
   static Utf8ReaderCodec<Object> instantiateUtf8CollectionReader(
       Class<?> type, Utf8ReaderCodec<Object> elementReader) {
     try {

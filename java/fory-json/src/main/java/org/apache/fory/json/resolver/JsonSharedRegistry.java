@@ -195,6 +195,7 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> latin1ReaderClasses;
   private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> utf16ReaderClasses;
   private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> utf8ReaderClasses;
+  private final ConcurrentHashMap<Type, CompletableFuture<Class<?>>> utf8CollectionWriterClasses;
   private final ConcurrentHashMap<Type, CompletableFuture<Class<?>>> utf8CollectionReaderClasses;
   private final ConcurrentHashMap<Long, CachedFieldName> cachedFieldNames;
 
@@ -230,6 +231,7 @@ public final class JsonSharedRegistry {
     latin1ReaderClasses = new ConcurrentHashMap<>();
     utf16ReaderClasses = new ConcurrentHashMap<>();
     utf8ReaderClasses = new ConcurrentHashMap<>();
+    utf8CollectionWriterClasses = new ConcurrentHashMap<>();
     utf8CollectionReaderClasses = new ConcurrentHashMap<>();
     cachedFieldNames = new ConcurrentHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
@@ -262,6 +264,14 @@ public final class JsonSharedRegistry {
   CompletableFuture<Class<?>> utf8ReaderClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
     return generatedClassFuture(
         utf8ReaderClasses, owner.type(), () -> codegen.compileUtf8Reader(owner, resolver, true));
+  }
+
+  CompletableFuture<Class<?>> utf8CollectionWriterClass(
+      Type declaredType, CollectionCodec<?> owner) {
+    return generatedClassFuture(
+        utf8CollectionWriterClasses,
+        declaredType,
+        () -> codegen.compileUtf8CollectionWriter(declaredType, owner));
   }
 
   CompletableFuture<Class<?>> utf8CollectionReaderClass(

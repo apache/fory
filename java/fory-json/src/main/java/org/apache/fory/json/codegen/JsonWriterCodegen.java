@@ -54,8 +54,8 @@ import org.apache.fory.reflect.TypeRef;
  * capability types. This base shares source-construction algorithms only after the concrete writer
  * is selected; it is not a runtime output mode. Generated writers retain precomputed field tokens
  * and final direct-child capabilities; canonical multi-object cycles retain the final child
- * type-info slot owner. They fuse safe object prefixes and split wide objects into bounded methods
- * to protect compiler and inlining budgets without adding per-field resolver lookup.
+ * type-info slot owner. They fuse safe object prefixes and split ordinary object writers from their
+ * actual emitted bytecode without adding per-field resolver lookup.
  */
 abstract class JsonWriterCodegen {
   // Bound field logic in independently compiled generated methods. The entry method keeps a small
@@ -145,8 +145,12 @@ abstract class JsonWriterCodegen {
 
   abstract Expression writeExactArray(JsonFieldInfo property, Expression value, Expression writer);
 
-  private static boolean usesWriteCodec(JsonFieldInfo property) {
-    return JsonCodegen.usesWriteCodec(property);
+  abstract boolean writesStringCollectionDirectly(JsonFieldInfo property);
+
+  private boolean usesWriteCodec(JsonFieldInfo property) {
+    return property.writeKind() == JsonFieldKind.COLLECTION
+        ? !writesStringCollectionDirectly(property)
+        : JsonCodegen.usesWriteCodec(property);
   }
 
   static Reference fieldRef(String name, Class<?> type) {
@@ -185,7 +189,10 @@ abstract class JsonWriterCodegen {
   }
 
   String genWriterCode(
-      JsonGeneratedCodecBuilder builder, Class<?> type, JsonFieldInfo[] properties) {
+      JsonGeneratedCodecBuilder builder,
+      Class<?> type,
+      JsonFieldInfo[] properties,
+      int[] groupEnds) {
     ownerType = type;
     CodegenContext ctx = builder.context();
     ctx.addImports(writerType());
@@ -212,16 +219,21 @@ abstract class JsonWriterCodegen {
         JsonCodegen.generatedCodecArrayType(ctx, codecArrayType()),
         "codecs");
     String bodyCode;
-    // Keep the sole nullable capability entry small for wide POJOs. Callers can inline its null
-    // ownership without absorbing the independently compiled field graph into a container loop.
-    if (properties.length >= splitMemberThreshold()) {
+    // A non-null group list means the cold bytecode planner proved that the complete schema body
+    // naturally exceeds the ordinary hot-inline limit. Keep null ownership in the capability
+    // entry while the independently compiled object method owns the complete field graph.
+    if (groupEnds != null) {
       String objectMethod = writeMethod() + "Object";
       addGeneratedMethod(
           ctx,
           "private final",
           objectMethod,
           writeExpression(
-              builder, properties, objectStartFused, new Reference("object", TypeRef.of(type))),
+              builder,
+              properties,
+              objectStartFused,
+              new Reference("object", TypeRef.of(type)),
+              groupEnds),
           void.class,
           writerType(),
           "writer",
@@ -237,7 +249,7 @@ abstract class JsonWriterCodegen {
       Expression object =
           properties.length <= 1 ? castObject : new Expression.Variable("object", castObject);
       Code.ExprCode body =
-          writeExpression(builder, properties, objectStartFused, object).genCode(ctx);
+          writeExpression(builder, properties, objectStartFused, object, null).genCode(ctx);
       bodyCode = body.code();
       bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
     }
@@ -847,7 +859,8 @@ abstract class JsonWriterCodegen {
       JsonGeneratedCodecBuilder builder,
       JsonFieldInfo[] properties,
       boolean objectStartFused,
-      Expression object) {
+      Expression object,
+      int[] groupEnds) {
     Reference writer = writerRef();
     Expression.ListExpression expressions = new Expression.ListExpression();
     expressions.add(object);
@@ -887,8 +900,8 @@ abstract class JsonWriterCodegen {
       }
     }
     boolean commaKnown = objectStartFused;
-    boolean splitMembers = properties.length >= splitMemberThreshold();
-    List<Expression> memberGroup = splitMembers ? new ArrayList<>(MAX_MEMBERS_PER_METHOD) : null;
+    List<Expression> memberGroup = groupEnds == null ? null : new ArrayList<>();
+    int memberGroupIndex = 0;
     for (int i = firstProperty; i < properties.length; i++) {
       Expression member;
       if (objectStartFused && i == 0) {
@@ -898,23 +911,29 @@ abstract class JsonWriterCodegen {
       } else {
         member = writeProp(builder, properties[i], i, commaKnown, index, object, writer);
       }
-      if (splitMembers && commaKnown) {
+      if (memberGroup != null && commaKnown) {
         memberGroup.add(member);
-        if (memberGroup.size() == MAX_MEMBERS_PER_METHOD) {
-          addMemberGroup(builder, expressions, memberGroup, object, writer);
+        if (i + 1 == groupEnds[memberGroupIndex]) {
+          boolean rootGroup = memberGroupIndex == groupEnds.length - 1;
+          addWriterGroup(builder, expressions, memberGroup, object, writer, rootGroup);
+          memberGroupIndex++;
         }
       } else {
-        if (splitMembers) {
-          addMemberGroup(builder, expressions, memberGroup, object, writer);
-        }
         expressions.add(member);
       }
       if (properties[i].writeNull()) {
         commaKnown = true;
       }
     }
-    if (splitMembers) {
-      addMemberGroup(builder, expressions, memberGroup, object, writer, true);
+    if (memberGroup != null) {
+      boolean directRoot =
+          memberGroupIndex == 0
+              && memberGroup.isEmpty()
+              && groupEnds.length == 1
+              && groupEnds[0] == properties.length;
+      if (!directRoot && (memberGroupIndex != groupEnds.length || !memberGroup.isEmpty())) {
+        throw new ForyJsonException("Invalid generated writer group boundaries");
+      }
     }
     expressions.add(new Expression.Invoke(writer, "writeObjectEnd"));
     return expressions;
@@ -1052,6 +1071,40 @@ abstract class JsonWriterCodegen {
             written));
   }
 
+  private void addWriterGroup(
+      JsonGeneratedCodecBuilder builder,
+      Expression.ListExpression expressions,
+      List<Expression> memberGroup,
+      Expression object,
+      Reference writer,
+      boolean rootGroup) {
+    if (rootGroup) {
+      for (Expression member : memberGroup) {
+        expressions.add(member);
+      }
+      memberGroup.clear();
+      return;
+    }
+    expressions.add(memberGroupInvoke(builder, memberGroup, object, writer));
+    memberGroup.clear();
+  }
+
+  private Expression memberGroupInvoke(
+      JsonGeneratedCodecBuilder builder,
+      List<Expression> memberGroup,
+      Expression object,
+      Reference writer) {
+    LinkedHashSet<Expression> cutPoints = new LinkedHashSet<>();
+    cutPoints.add(object);
+    cutPoints.add(writer);
+    return ExpressionOptimizer.invokeGenerated(
+        builder.context(),
+        cutPoints,
+        new Expression.ListExpression(new ArrayList<>(memberGroup)),
+        memberGroupMethod(),
+        false);
+  }
+
   private void addMemberGroup(
       JsonGeneratedCodecBuilder builder,
       Expression.ListExpression expressions,
@@ -1078,17 +1131,20 @@ abstract class JsonWriterCodegen {
       memberGroup.clear();
       return;
     }
-    LinkedHashSet<Expression> cutPoints = new LinkedHashSet<>();
-    cutPoints.add(object);
-    cutPoints.add(writer);
-    expressions.add(
-        ExpressionOptimizer.invokeGenerated(
-            builder.context(),
-            cutPoints,
-            new Expression.ListExpression(new ArrayList<>(memberGroup)),
-            memberGroupMethod(),
-            false));
+    expressions.add(memberGroupInvoke(builder, memberGroup, object, writer));
     memberGroup.clear();
+  }
+
+  static int firstGroupMember(JsonFieldInfo[] properties) {
+    if (canFuseObjectStart(properties)) {
+      return 0;
+    }
+    for (int i = 0; i < properties.length; i++) {
+      if (properties[i].writeNull()) {
+        return i + 1;
+      }
+    }
+    return properties.length;
   }
 
   private static boolean canFuseObjectStart(JsonFieldInfo[] properties) {
@@ -1136,8 +1192,7 @@ abstract class JsonWriterCodegen {
           kind == JsonFieldKind.MAP
               || kind == JsonFieldKind.ARRAY && writeExactArray(property, value, writer) == null
               || kind == JsonFieldKind.OBJECT && writeExactScalar(property, value, writer) == null
-              || kind == JsonFieldKind.COLLECTION
-                  && !JsonCodegen.writesStringCollectionDirectly(property);
+              || kind == JsonFieldKind.COLLECTION && !writesStringCollectionDirectly(property);
       if (onlyCodec) {
         return new Expression.ListExpression(
             value,
@@ -1258,7 +1313,7 @@ abstract class JsonWriterCodegen {
       case MAP:
         return writeCodec(property, id, value, writer);
       case COLLECTION:
-        if (JsonCodegen.writesStringCollectionDirectly(property)) {
+        if (writesStringCollectionDirectly(property)) {
           return writeStringCollection(value, writer);
         }
         return writeCodec(property, id, value, writer);

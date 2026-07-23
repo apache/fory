@@ -272,13 +272,85 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   @Override
   public void writeString(String value) {
     if (STRING_BYTES_BACKED) {
-      byte[] bytes = StringSerializer.getStringBytes(value);
-      if (bytes.length == value.length()) {
-        if (writeLatin1String(bytes)) {
-          return;
+      byte[] stringBytes = StringSerializer.getStringBytes(value);
+      int length = stringBytes.length;
+      if (length == value.length()) {
+        ensure(length + 2);
+        int start = position;
+        // Keep the compact Latin1 common path in this concrete entry. Its real work makes the
+        // generated object and collection call sites retain a stable C2 boundary.
+        if (length > 31) {
+          if (writeLongLatin1StringNoEnsure(stringBytes, length)) {
+            return;
+          }
+        } else if (length > 24) {
+          if (writeLatin1String25To31(stringBytes, length)) {
+            return;
+          }
+        } else if (length > 16) {
+          if (writeLatin1String17To24(stringBytes, length)) {
+            return;
+          }
+        } else if (length < 8) {
+          if (writeLatin1String0To7(stringBytes, length)) {
+            return;
+          }
+        } else {
+          byte[] bytes = buffer;
+          int pos = start;
+          bytes[pos++] = (byte) '"';
+          latin1:
+          {
+            long word = LittleEndian.getInt64(stringBytes, 0);
+            if (!isJsonAsciiWord(word)) {
+              break latin1;
+            }
+            LittleEndian.putInt64(bytes, pos, word);
+            pos += Long.BYTES;
+            int index = Long.BYTES;
+            if (index + Long.BYTES <= length) {
+              long tail = LittleEndian.getInt64(stringBytes, index);
+              if (!isJsonAsciiWord(tail)) {
+                break latin1;
+              }
+              LittleEndian.putInt64(bytes, pos, tail);
+              pos += Long.BYTES;
+              index += Long.BYTES;
+            }
+            if (index + Integer.BYTES <= length) {
+              int tail = LittleEndian.getInt32(stringBytes, index);
+              if (!isJsonAsciiInt(tail)) {
+                break latin1;
+              }
+              LittleEndian.putInt32(bytes, pos, tail);
+              pos += Integer.BYTES;
+              index += Integer.BYTES;
+            }
+            if (index + Short.BYTES <= length) {
+              int tail = (stringBytes[index] & 0xFF) | ((stringBytes[index + 1] & 0xFF) << 8);
+              if (!isJsonAsciiShort(tail)) {
+                break latin1;
+              }
+              bytes[pos] = (byte) tail;
+              bytes[pos + 1] = (byte) (tail >>> 8);
+              pos += Short.BYTES;
+              index += Short.BYTES;
+            }
+            if (index < length) {
+              byte tail = stringBytes[index];
+              if (!isJsonAsciiByte(tail)) {
+                break latin1;
+              }
+              bytes[pos++] = tail;
+            }
+            bytes[pos++] = (byte) '"';
+            position = pos;
+            return;
+          }
         }
+        position = start;
       } else {
-        if (writeUtf16String(bytes)) {
+        if (writeUtf16String(stringBytes)) {
           return;
         }
       }
@@ -345,9 +417,35 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     bytes[pos++] = (byte) '"';
     pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
     bytes[pos++] = (byte) 'T';
-    pos =
-        writeTime(
-            bytes, pos, value.getHour(), value.getMinute(), value.getSecond(), value.getNano());
+    pos = writeTwoDigits(bytes, pos, value.getHour());
+    bytes[pos++] = (byte) ':';
+    pos = writeTwoDigits(bytes, pos, value.getMinute());
+    int second = value.getSecond();
+    int nano = value.getNano();
+    if (second != 0 || nano != 0) {
+      bytes[pos++] = (byte) ':';
+      pos = writeTwoDigits(bytes, pos, second);
+      if (nano != 0) {
+        bytes[pos++] = (byte) '.';
+        if (nano % 1_000_000 == 0) {
+          pos = writePadded3(bytes, pos, nano / 1_000_000);
+        } else if (nano % 1000 == 0) {
+          int micros = nano / 1000;
+          int high = micros / 1000;
+          int low = micros - high * 1000;
+          pos = writePadded3(bytes, pos, high);
+          pos = writePadded3(bytes, pos, low);
+        } else {
+          int first = nano / 100000000;
+          int rem = nano - first * 100000000;
+          int middle = rem / 10000;
+          int low = rem - middle * 10000;
+          bytes[pos++] = (byte) ('0' + first);
+          pos = writePadded4(bytes, pos, middle);
+          pos = writePadded4(bytes, pos, low);
+        }
+      }
+    }
     bytes[pos++] = (byte) 'Z';
     bytes[pos++] = (byte) '"';
     position = pos;
@@ -634,12 +732,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeLongNoEnsure(value);
   }
 
-  public void writeObjectStartWithStringField(
-      long prefix0, long prefix1, int prefixLength, String value) {
-    enterDepth();
-    writeStringField(prefix0, prefix1, prefixLength, value);
-  }
-
   public void writeStringField(byte[] namePrefix, byte[] commaNamePrefix, int index, String value) {
     byte[] prefix = index == 0 ? namePrefix : commaNamePrefix;
     writeStringField(prefix, value);
@@ -662,61 +754,13 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeStringField(byte[] prefix, String value) {
-    if (STRING_BYTES_BACKED) {
-      byte[] bytes = StringSerializer.getStringBytes(value);
-      int start = position;
-      if (bytes.length == value.length()) {
-        ensure(prefix.length + bytes.length + 2);
-        writeRawNoEnsure(prefix);
-        if (writeLatin1StringNoEnsure(bytes)) {
-          return;
-        }
-        position = start;
-      } else {
-        ensure(prefix.length + (bytes.length >> 1) * 3 + 2);
-        writeRawNoEnsure(prefix);
-        if (writeUtf16StringNoEnsure(bytes)) {
-          return;
-        }
-        position = start;
-      }
-    }
-    writeStringFieldChars(prefix, value);
+    writeRaw(prefix);
+    writeString(value);
   }
 
   public void writeStringField(long prefix0, long prefix1, int prefixLength, String value) {
-    if (STRING_BYTES_BACKED) {
-      byte[] bytes = StringSerializer.getStringBytes(value);
-      int start = position;
-      if (bytes.length == value.length()) {
-        ensurePackedPrefix(prefixLength, bytes.length + 2);
-        writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
-        if (writeLatin1StringNoEnsure(bytes)) {
-          return;
-        }
-        position = start;
-      } else {
-        ensurePackedPrefix(prefixLength, (bytes.length >> 1) * 3 + 2);
-        writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
-        if (writeUtf16StringNoEnsure(bytes)) {
-          return;
-        }
-        position = start;
-      }
-    }
-    writeStringFieldChars(prefix0, prefix1, prefixLength, value);
-  }
-
-  private void writeStringFieldChars(byte[] prefix, String value) {
-    ensure(prefix.length + value.length() * 3 + 2);
-    writeRawNoEnsure(prefix);
-    writeStringNoEnsure(value);
-  }
-
-  private void writeStringFieldChars(long prefix0, long prefix1, int prefixLength, String value) {
-    ensurePackedPrefix(prefixLength, value.length() * 3 + 2);
-    writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
-    writeStringNoEnsure(value);
+    writeRawValue(prefix0, prefix1, prefixLength);
+    writeString(value);
   }
 
   public void writeStringCollection(Collection<String> values) {
@@ -793,30 +837,10 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       writeNullStringElement(comma);
       return;
     }
-    if (STRING_BYTES_BACKED) {
-      byte[] bytes = StringSerializer.getStringBytes(value);
-      int start = position;
-      if (bytes.length == value.length()) {
-        ensure(comma + bytes.length + 2);
-        if (comma != 0) {
-          buffer[position++] = ',';
-        }
-        if (writeLatin1StringNoEnsure(bytes)) {
-          return;
-        }
-        position = start;
-      } else {
-        ensure(comma + (bytes.length >> 1) * 3 + 2);
-        if (comma != 0) {
-          buffer[position++] = ',';
-        }
-        if (writeUtf16StringNoEnsure(bytes)) {
-          return;
-        }
-        position = start;
-      }
+    if (comma != 0) {
+      writeByteRaw((byte) ',');
     }
-    writeStringElementChars(comma, value);
+    writeString(value);
   }
 
   private void writeNullStringElement(int comma) {
@@ -825,14 +849,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       buffer[position++] = ',';
     }
     writeAsciiNoEnsure("null");
-  }
-
-  private void writeStringElementChars(int comma, String value) {
-    ensure(comma + value.length() * 3 + 2);
-    if (comma != 0) {
-      buffer[position++] = ',';
-    }
-    writeStringNoEnsure(value);
   }
 
   public void writeRawValue(byte[] value) {
@@ -1014,24 +1030,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     }
   }
 
-  private boolean writeLatin1String(byte[] value) {
-    int length = value.length;
-    ensure(length + 2);
-    return writeLatin1StringNoEnsure(value, length);
-  }
-
-  private boolean writeLatin1StringNoEnsure(byte[] value) {
-    int length = value.length;
-    return writeLatin1StringNoEnsure(value, length);
-  }
-
-  private boolean writeLatin1StringNoEnsure(byte[] value, int length) {
-    if (length < 32) {
-      return writeShortLatin1StringNoEnsure(value, length);
-    }
-    return writeLongLatin1StringNoEnsure(value, length);
-  }
-
   private boolean writeLongLatin1StringNoEnsure(byte[] value, int length) {
     byte[] bytes = buffer;
     int start = position;
@@ -1085,73 +1083,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
         return false;
       }
     }
-    return true;
-  }
-
-  private boolean writeShortLatin1StringNoEnsure(byte[] value, int length) {
-    if (length > 24) {
-      return writeLatin1String25To31(value, length);
-    }
-    if (length > 16) {
-      return writeLatin1String17To24(value, length);
-    }
-    byte[] bytes = buffer;
-    int pos = position;
-    bytes[pos++] = (byte) '"';
-    // Short compact strings dominate generated JSON writers. Keep the 8-16 byte path exact here;
-    // longer short-string bands stay in helpers so this common path remains small.
-    // Position is published only after complete validation, so every false return leaves the
-    // writer cursor unchanged even though scratch bytes may already have been overwritten.
-    if (length >= 8) {
-      long word = LittleEndian.getInt64(value, 0);
-      if (!isJsonAsciiWord(word)) {
-        return false;
-      }
-      LittleEndian.putInt64(bytes, pos, word);
-      pos += 8;
-      int index = Long.BYTES;
-      if (index + Long.BYTES <= length) {
-        long tail = LittleEndian.getInt64(value, index);
-        if (!isJsonAsciiWord(tail)) {
-          return false;
-        }
-        LittleEndian.putInt64(bytes, pos, tail);
-        pos += Long.BYTES;
-        index += Long.BYTES;
-      }
-      if (index + Integer.BYTES <= length) {
-        int tail = LittleEndian.getInt32(value, index);
-        if (!isJsonAsciiInt(tail)) {
-          return false;
-        }
-        LittleEndian.putInt32(bytes, pos, tail);
-        pos += Integer.BYTES;
-        index += Integer.BYTES;
-      }
-      if (index + Short.BYTES <= length) {
-        int tail = (value[index] & 0xFF) | ((value[index + 1] & 0xFF) << 8);
-        if (!isJsonAsciiShort(tail)) {
-          return false;
-        }
-        bytes[pos] = (byte) tail;
-        bytes[pos + 1] = (byte) (tail >>> 8);
-        pos += Short.BYTES;
-        index += Short.BYTES;
-      }
-      if (index < length) {
-        byte tail = value[index];
-        if (!isJsonAsciiByte(tail)) {
-          return false;
-        }
-        bytes[pos++] = tail;
-      }
-    } else {
-      // Keep the sub-8 tail outside this method so the common word-sized short-string path stays
-      // small enough to inline into generated object writers.
-      return writeLatin1String0To7(value, length);
-    }
-    bytes[pos++] = (byte) '"';
-    position = pos;
     return true;
   }
 
@@ -1463,59 +1394,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       fraction -= digit * divisor;
       divisor /= 10;
     }
-  }
-
-  private void writeStringNoEnsure(String value) {
-    if (STRING_BYTES_BACKED) {
-      byte[] bytes = StringSerializer.getStringBytes(value);
-      if (bytes.length == value.length()) {
-        if (writeLatin1StringNoEnsure(bytes)) {
-          return;
-        }
-      } else {
-        if (writeUtf16StringNoEnsure(bytes)) {
-          return;
-        }
-      }
-    }
-    writeStringCharsNoEnsure(value);
-  }
-
-  private void writeStringCharsNoEnsure(String value) {
-    int length = value.length();
-    byte[] bytes = buffer;
-    int pos = position;
-    bytes[pos++] = (byte) '"';
-    int i = 0;
-    while (i + 4 <= length) {
-      char c0 = value.charAt(i);
-      char c1 = value.charAt(i + 1);
-      char c2 = value.charAt(i + 2);
-      char c3 = value.charAt(i + 3);
-      if (isJsonAscii(c0) && isJsonAscii(c1) && isJsonAscii(c2) && isJsonAscii(c3)) {
-        bytes[pos] = (byte) c0;
-        bytes[pos + 1] = (byte) c1;
-        bytes[pos + 2] = (byte) c2;
-        bytes[pos + 3] = (byte) c3;
-        pos += 4;
-        i += 4;
-      } else {
-        break;
-      }
-    }
-    while (i < length) {
-      char ch = value.charAt(i);
-      if (isJsonAscii(ch)) {
-        bytes[pos++] = (byte) ch;
-        i++;
-      } else {
-        position = pos;
-        writeStringSlow(value, i, length);
-        return;
-      }
-    }
-    bytes[pos++] = (byte) '"';
-    position = pos;
   }
 
   private void writeCodePoint(int codePoint) {
@@ -2013,41 +1891,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     pos = writeTwoDigits(bytes, pos, month);
     bytes[pos++] = (byte) '-';
     return writeTwoDigits(bytes, pos, day);
-  }
-
-  private static int writeTime(byte[] bytes, int pos, int hour, int minute, int second, int nano) {
-    pos = writeTwoDigits(bytes, pos, hour);
-    bytes[pos++] = (byte) ':';
-    pos = writeTwoDigits(bytes, pos, minute);
-    if (second != 0 || nano != 0) {
-      bytes[pos++] = (byte) ':';
-      pos = writeTwoDigits(bytes, pos, second);
-      if (nano != 0) {
-        bytes[pos++] = (byte) '.';
-        pos = writeNano(bytes, pos, nano);
-      }
-    }
-    return pos;
-  }
-
-  private static int writeNano(byte[] bytes, int pos, int nano) {
-    if (nano % 1_000_000 == 0) {
-      return writePadded3(bytes, pos, nano / 1_000_000);
-    }
-    if (nano % 1000 == 0) {
-      int micros = nano / 1000;
-      int high = micros / 1000;
-      int low = micros - high * 1000;
-      pos = writePadded3(bytes, pos, high);
-      return writePadded3(bytes, pos, low);
-    }
-    int first = nano / 100000000;
-    int rem = nano - first * 100000000;
-    int middle = rem / 10000;
-    int low = rem - middle * 10000;
-    bytes[pos++] = (byte) ('0' + first);
-    pos = writePadded4(bytes, pos, middle);
-    return writePadded4(bytes, pos, low);
   }
 
   private static int writePadded3(byte[] bytes, int pos, int value) {

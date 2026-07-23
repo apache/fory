@@ -82,6 +82,11 @@ final class StringWriterCodegen extends JsonWriterCodegen {
   }
 
   @Override
+  boolean writesStringCollectionDirectly(JsonFieldInfo property) {
+    return JsonCodegen.writesStringCollectionDirectly(property);
+  }
+
+  @Override
   PrefixFields prefixFields(JsonFieldInfo[] properties, boolean objectStartFused) {
     PrefixFields fields = new PrefixFields(properties.length);
     boolean commaKnown = objectStartFused;
