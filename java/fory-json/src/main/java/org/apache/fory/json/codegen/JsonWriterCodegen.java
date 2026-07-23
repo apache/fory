@@ -43,6 +43,7 @@ import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ObjectCodec.AnyInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
+import org.apache.fory.json.resolver.JsonTypeInfo;
 import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 
@@ -52,8 +53,9 @@ import org.apache.fory.reflect.TypeRef;
  * <p>The concrete generators own representation-specific field prefixes, scalar stores, and child
  * capability types. This base shares source-construction algorithms only after the concrete writer
  * is selected; it is not a runtime output mode. Generated writers retain precomputed field tokens
- * and concrete child capabilities, fuse safe object prefixes, and split wide objects into bounded
- * methods to protect compiler and inlining budgets without adding per-field dispatch.
+ * and final direct-child capabilities; canonical multi-object cycles retain the final child
+ * type-info slot owner. They fuse safe object prefixes and split wide objects into bounded methods
+ * to protect compiler and inlining budgets without adding per-field resolver lookup.
  */
 abstract class JsonWriterCodegen {
   // Bound field logic in independently compiled generated methods. The entry method keeps a small
@@ -79,6 +81,8 @@ abstract class JsonWriterCodegen {
   abstract Class<?> completeWriterType();
 
   abstract String writeMethod();
+
+  abstract String writerSlotMethod();
 
   // This names private split methods in ordinary complete writers. It is not a partial-object
   // capability; keep the generated literal stable so unaffected writer source remains identical.
@@ -194,7 +198,7 @@ abstract class JsonWriterCodegen {
         ctx.addField(JsonFieldInfo.class, "wp" + i);
       }
       if (storesWriteCodec(property)) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(property)), "w" + i);
+        addWriterCodecField(ctx, property, "w" + i);
       }
       if (usesPrefix(property)) {
         addPrefixFields(ctx, property, i, prefixFields);
@@ -264,10 +268,10 @@ abstract class JsonWriterCodegen {
     }
     boolean storesAnyWriter = storesAnyWriter(any);
     if (storesAnyWriter) {
-      ctx.addField(JsonCodegen.generatedCodecType(ctx, completeWriterType()), "anyWriter");
+      addAnyWriterField(ctx, any);
       addGeneratedConstructor(
           ctx,
-          anyWriterConstructorExpression(properties, prefixFields, true),
+          anyWriterConstructorExpression(properties, prefixFields, any, true),
           ObjectCodec.class,
           "owner",
           JsonFieldInfo[].class,
@@ -279,7 +283,7 @@ abstract class JsonWriterCodegen {
     } else {
       addGeneratedConstructor(
           ctx,
-          anyWriterConstructorExpression(properties, prefixFields, false),
+          anyWriterConstructorExpression(properties, prefixFields, any, false),
           ObjectCodec.class,
           "owner",
           JsonFieldInfo[].class,
@@ -372,10 +376,10 @@ abstract class JsonWriterCodegen {
         addAnyGetterMethod(ctx, type, any);
       }
       if (storesAnyWriter(any)) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, completeWriterType()), "anyWriter");
+        addAnyWriterField(ctx, any);
         addGeneratedConstructor(
             ctx,
-            anyWriterConstructorExpression(leaves, prefixFields, true),
+            anyWriterConstructorExpression(leaves, prefixFields, any, true),
             ObjectCodec.class,
             "owner",
             JsonFieldInfo[].class,
@@ -387,7 +391,7 @@ abstract class JsonWriterCodegen {
       } else {
         addGeneratedConstructor(
             ctx,
-            anyWriterConstructorExpression(leaves, prefixFields, false),
+            anyWriterConstructorExpression(leaves, prefixFields, any, false),
             ObjectCodec.class,
             "owner",
             JsonFieldInfo[].class,
@@ -721,7 +725,7 @@ abstract class JsonWriterCodegen {
         ctx.addField(JsonFieldInfo.class, "wp" + i);
       }
       if (storesWriteCodec(property)) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(property)), "w" + i);
+        addWriterCodecField(ctx, property, "w" + i);
       }
       if (usesPrefix(property)) {
         addPrefixFields(ctx, property, i, prefixFields);
@@ -730,7 +734,7 @@ abstract class JsonWriterCodegen {
   }
 
   private Expression anyWriterConstructorExpression(
-      JsonFieldInfo[] properties, PrefixFields prefixFields, boolean storesAnyWriter) {
+      JsonFieldInfo[] properties, PrefixFields prefixFields, AnyInfo any, boolean storesAnyWriter) {
     Expression.ListExpression expressions =
         new Expression.ListExpression(
             writerConstructorExpression(properties, prefixFields),
@@ -738,12 +742,43 @@ abstract class JsonWriterCodegen {
                 new Reference("this.owner", TypeRef.of(ObjectCodec.class)),
                 new Reference("owner", TypeRef.of(ObjectCodec.class))));
     if (storesAnyWriter) {
-      expressions.add(
-          new Expression.Assign(
-              new Reference("this.anyWriter", TypeRef.of(completeWriterType())),
-              new Reference("anyWriter", TypeRef.of(completeWriterType()))));
+      if (usesAnyWriterSlot(any)) {
+        Expression owner = new Reference("owner", TypeRef.of(ObjectCodec.class));
+        Expression anyInfo =
+            new Expression.Invoke(owner, "anyInfo", TypeRef.of(AnyInfo.class)).inline();
+        expressions.add(
+            new Expression.Assign(
+                new Reference("this.anyWriter", TypeRef.of(JsonTypeInfo.class)),
+                new Expression.Invoke(anyInfo, "valueTypeInfo", TypeRef.of(JsonTypeInfo.class))
+                    .inline()));
+      } else {
+        expressions.add(
+            new Expression.Assign(
+                new Reference("this.anyWriter", TypeRef.of(completeWriterType())),
+                new Reference("anyWriter", TypeRef.of(completeWriterType()))));
+      }
     }
     return expressions;
+  }
+
+  private void addWriterCodecField(CodegenContext ctx, JsonFieldInfo property, String name) {
+    if (usesWriterSlot(property)) {
+      ctx.addField(true, ctx.type(JsonTypeInfo.class), name, null);
+    } else {
+      addCapabilityField(ctx, codecFieldType(property), name);
+    }
+  }
+
+  private void addAnyWriterField(CodegenContext ctx, AnyInfo any) {
+    if (usesAnyWriterSlot(any)) {
+      ctx.addField(true, ctx.type(JsonTypeInfo.class), "anyWriter", null);
+    } else {
+      addCapabilityField(ctx, completeWriterType(), "anyWriter");
+    }
+  }
+
+  private static void addCapabilityField(CodegenContext ctx, Class<?> type, String name) {
+    ctx.addField(true, JsonCodegen.generatedCodecType(ctx, type), name, null);
   }
 
   private boolean storesAnyWriter(AnyInfo any) {
@@ -786,12 +821,20 @@ abstract class JsonWriterCodegen {
                 new Reference("this.wp" + i, TypeRef.of(JsonFieldInfo.class)), property));
       }
       if (storesWriteCodec(properties[i])) {
-        Class<?> codecType = codecFieldType(properties[i]);
-        expressions.add(
-            new Expression.Assign(
-                new Reference("this.w" + i, TypeRef.of(codecType)),
-                new Expression.Cast(
-                    new Expression.ArrayValue(codecsRef, id), TypeRef.of(codecType))));
+        if (usesWriterSlot(properties[i])) {
+          expressions.add(
+              new Expression.Assign(
+                  new Reference("this.w" + i, TypeRef.of(JsonTypeInfo.class)),
+                  new Expression.Invoke(property, "writeTypeInfo", TypeRef.of(JsonTypeInfo.class))
+                      .inline()));
+        } else {
+          Class<?> codecType = codecFieldType(properties[i]);
+          expressions.add(
+              new Expression.Assign(
+                  new Reference("this.w" + i, TypeRef.of(codecType)),
+                  new Expression.Cast(
+                      new Expression.ArrayValue(codecsRef, id), TypeRef.of(codecType))));
+        }
       }
       if (usesPrefix(properties[i])) {
         addPrefixAssignments(expressions, property, properties[i], i, prefixFields);
@@ -989,6 +1032,13 @@ abstract class JsonWriterCodegen {
     }
     Expression map =
         new Expression.Variable("anyMap", cast(inline(mapValue), TypeRef.of(Map.class)));
+    Expression anyCodec = new Reference("this", TypeRef.of(completeWriterType()));
+    if (storesAnyWriter(any)) {
+      anyCodec =
+          usesAnyWriterSlot(any)
+              ? writerFromSlot(fieldRef("anyWriter", JsonTypeInfo.class))
+              : fieldRef("anyWriter", completeWriterType());
+    }
     return new Expression.ListExpression(
         map,
         new Expression.Invoke(
@@ -998,9 +1048,7 @@ abstract class JsonWriterCodegen {
             false,
             writerRef(),
             map,
-            storesAnyWriter(any)
-                ? fieldRef("anyWriter", completeWriterType())
-                : new Reference("this", TypeRef.of(completeWriterType())),
+            anyCodec,
             written));
   }
 
@@ -1259,14 +1307,30 @@ abstract class JsonWriterCodegen {
     Expression codec =
         object && property.writeRawType() == ownerType
             ? new Reference("this", TypeRef.of(completeWriterType()))
-            : fieldRef("w" + id, codecFieldType(property));
+            : usesWriterSlot(property)
+                ? writerFromSlot(fieldRef("w" + id, JsonTypeInfo.class))
+                : fieldRef("w" + id, codecFieldType(property));
     return new Expression.Invoke(codec, writeMethod(), writer, value);
+  }
+
+  private Expression writerFromSlot(Expression slot) {
+    return new Expression.Invoke(slot, writerSlotMethod(), TypeRef.of(completeWriterType()))
+        .inline();
   }
 
   private boolean storesWriteCodec(JsonFieldInfo property) {
     return usesWriteCodec(property)
         && (resolver.canonicalObjectCodec(property.writeTypeInfo()) == null
             || property.writeRawType() != ownerType);
+  }
+
+  private boolean usesWriterSlot(JsonFieldInfo property) {
+    return storesWriteCodec(property)
+        && resolver.usesWriterSlot(ownerType, property.writeTypeInfo());
+  }
+
+  private boolean usesAnyWriterSlot(AnyInfo any) {
+    return storesAnyWriter(any) && resolver.usesWriterSlot(ownerType, any.valueTypeInfo());
   }
 
   private static Expression writeStringCollection(Expression value, Expression writer) {

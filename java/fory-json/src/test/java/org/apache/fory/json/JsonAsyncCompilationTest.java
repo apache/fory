@@ -44,6 +44,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -78,7 +79,6 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.json.writer.Utf8JsonWriter;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.serializer.StringSerializer;
 import org.testng.annotations.Test;
 
 public class JsonAsyncCompilationTest {
@@ -90,48 +90,34 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
-  public void capabilitiesCompileLazily() throws Exception {
+  public void capabilitiesRegisterAfterResolution() throws Exception {
     ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
     JsonTypeResolver resolver = primaryTypeResolver(json);
     ObjectCodec<AsyncChild> owner = resolver.getObjectCodec(AsyncChild.class);
     JsonTypeInfo info = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
-    assertCapabilities(info, owner);
+    assertNotSame(info.stringWriter(), owner);
+    assertNotSame(info.utf8Writer(), owner);
+    assertNotSame(info.latin1Reader(), owner);
+    assertNotSame(info.utf16Reader(), owner);
+    assertNotSame(info.utf8Reader(), owner);
 
     AsyncChild value = child("root", 1);
     assertEquals(json.toJson(value), "{\"id\":1,\"name\":\"root\"}");
-    assertNotSame(info.stringWriter(), owner);
-    assertSame(info.utf8Writer(), owner);
-    assertSame(info.latin1Reader(), owner);
-    assertSame(info.utf16Reader(), owner);
-    assertSame(info.utf8Reader(), owner);
-
     assertEquals(
         new String(json.toJsonBytes(value), StandardCharsets.UTF_8),
         "{\"id\":1,\"name\":\"root\"}");
-    assertNotSame(info.utf8Writer(), owner);
     assertEquals(json.fromJson("{\"id\":2,\"name\":\"latin\"}", AsyncChild.class).id, 2);
-    if (StringSerializer.isBytesBackedString()) {
-      assertNotSame(info.latin1Reader(), owner);
-      assertSame(info.utf16Reader(), owner);
-    } else {
-      assertSame(info.latin1Reader(), owner);
-      assertNotSame(info.utf16Reader(), owner);
-      resolver.latin1Reader(owner);
-      assertNotSame(info.latin1Reader(), owner);
-    }
     assertEquals(json.fromJson("{\"id\":3,\"name\":\"\u4f60\"}", AsyncChild.class).id, 3);
-    assertNotSame(info.utf16Reader(), owner);
     assertEquals(
         json.fromJson(
                 "{\"id\":4,\"name\":\"utf8\"}".getBytes(StandardCharsets.UTF_8), AsyncChild.class)
             .id,
         4);
-    assertNotSame(info.utf8Reader(), owner);
     assertSame(resolver.getObjectCodec(AsyncChild.class), owner);
   }
 
   @Test
-  public void inlineAnyReadersInstall() throws Exception {
+  public void closedSubtypeBranchesInstall() throws Exception {
     ControlledJson controlled = controlledJson();
     ForyJson json = controlled.json;
     AsyncInlineChild initial =
@@ -140,12 +126,17 @@ public class JsonAsyncCompilationTest {
 
     controlled.executor.runAll();
     JsonTypeResolver resolver = primaryTypeResolver(json);
-    ClosedSubtypeCodec codec =
-        (ClosedSubtypeCodec)
-            resolver.getTypeInfo(AsyncInlineShape.class, AsyncInlineShape.class).latin1Reader();
-    assertNotNull(((Object[]) field(codec, "inlineLatin1Readers"))[0]);
-    assertNotNull(((Object[]) field(codec, "inlineUtf16Readers"))[0]);
-    assertNotNull(((Object[]) field(codec, "inlineUtf8Readers"))[0]);
+    JsonTypeInfo shapeInfo = resolver.getTypeInfo(AsyncInlineShape.class, AsyncInlineShape.class);
+    assertTrue(shapeInfo.latin1Reader() instanceof ClosedSubtypeCodec);
+    ClosedSubtypeCodec subtype = (ClosedSubtypeCodec) shapeInfo.latin1Reader();
+    JsonTypeInfo childInfo = resolver.getTypeInfo(AsyncInlineChild.class, AsyncInlineChild.class);
+    ObjectCodec<AsyncInlineChild> childOwner = resolver.getObjectCodec(AsyncInlineChild.class);
+    assertNotSame(childInfo.latin1Reader(), childOwner);
+    assertNotSame(childInfo.utf16Reader(), childOwner);
+    assertNotSame(childInfo.utf8Reader(), childOwner);
+    assertInlineReader(subtype.inlineLatin1Readers(), childInfo.latin1Reader());
+    assertInlineReader(subtype.inlineUtf16Readers(), childInfo.utf16Reader());
+    assertInlineReader(subtype.inlineUtf8Readers(), childInfo.utf8Reader());
 
     AsyncInlineChild latin1 =
         (AsyncInlineChild) json.fromJson("{\"x\":2,\"kind\":\"child\"}", AsyncInlineShape.class);
@@ -179,17 +170,6 @@ public class JsonAsyncCompilationTest {
         4);
     JsonTypeResolver resolver = primaryTypeResolver(json);
     ObjectCodec<AsyncCreator> owner = resolver.getObjectCodec(AsyncCreator.class);
-    if (!StringSerializer.isBytesBackedString()) {
-      // Java 8 strings are char-backed, so public String reads select the UTF-16 reader and cannot
-      // request Latin-1 compilation. Explicitly request that cold capability to keep this test's
-      // coverage of every asynchronously installed codec independent of the JDK string layout.
-      resolver.lockJIT();
-      try {
-        assertSame(resolver.latin1Reader(owner), owner);
-      } finally {
-        resolver.unlockJIT();
-      }
-    }
     controlled.executor.runAll();
     JsonTypeInfo info = resolver.getTypeInfo(AsyncCreator.class, AsyncCreator.class);
     assertNotSame(info.stringWriter(), owner);
@@ -224,7 +204,7 @@ public class JsonAsyncCompilationTest {
     } finally {
       second.unlockJIT();
     }
-    assertEquals(controlled.executor.pendingTasks(), 2);
+    assertEquals(controlled.executor.pendingTasks(), 5);
     controlled.executor.runAll();
 
     StringWriterCodec<AsyncChild> firstWriter = stringWriter(first, firstOwner);
@@ -304,7 +284,7 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
-  public void duplicateCallbacksPublish() throws Exception {
+  public void accessorsDoNotReregisterCapabilities() throws Exception {
     ControlledJson controlled = controlledJson();
     JsonTypeResolver resolver = new JsonTypeResolver(controlled.registry);
     resolver.lockJIT();
@@ -318,8 +298,13 @@ public class JsonAsyncCompilationTest {
       resolver.unlockJIT();
     }
 
-    assertEquals(controlled.executor.submittedTasks(), 2);
-    assertEquals(controlled.executor.pendingTasks(), 2);
+    assertEquals(controlled.executor.submittedTasks(), 5);
+    assertEquals(controlled.executor.pendingTasks(), 5);
+    for (int i = 0; i < 100; i++) {
+      assertSame(stringWriter(resolver, owner), owner);
+    }
+    assertEquals(controlled.executor.submittedTasks(), 5);
+    assertEquals(controlled.executor.pendingTasks(), 5);
     controlled.executor.runAll();
     assertNotSame(stringWriter(resolver, owner), owner);
   }
@@ -335,22 +320,23 @@ public class JsonAsyncCompilationTest {
       expectThrows(
           ForyJsonException.class,
           () -> resolver.getTypeInfo(BrokenShape.class, BrokenShape.class));
-      assertEquals(controlled.executor.pendingTasks(), 3);
+      assertEquals(controlled.executor.pendingTasks(), 0);
       replacementOwner = resolver.getObjectCodec(RollbackCircle.class);
       replacement = resolver.getTypeInfo(RollbackCircle.class, RollbackCircle.class);
       assertSame(replacement.latin1Reader(), replacementOwner);
       assertSame(replacement.utf16Reader(), replacementOwner);
       assertSame(replacement.utf8Reader(), replacementOwner);
+      assertEquals(controlled.executor.pendingTasks(), 5);
     } finally {
       resolver.unlockJIT();
     }
 
-    // The failed subtype transaction queued parent-local Any readers against its provisional
-    // slots. Completing those tasks must not mutate the replacement generation for the same class.
+    // A failed metadata transaction cannot register a capability graph. The later independent
+    // binding registers exactly its own five representations and cannot be mutated by stale work.
     controlled.executor.runAll();
-    assertSame(replacement.latin1Reader(), replacementOwner);
-    assertSame(replacement.utf16Reader(), replacementOwner);
-    assertSame(replacement.utf8Reader(), replacementOwner);
+    assertNotSame(replacement.latin1Reader(), replacementOwner);
+    assertNotSame(replacement.utf16Reader(), replacementOwner);
+    assertNotSame(replacement.utf8Reader(), replacementOwner);
   }
 
   @Test
@@ -374,33 +360,34 @@ public class JsonAsyncCompilationTest {
 
   @Test
   public void asyncFailureKeepsInterpretedResult() {
-    ControlledExecutor executor = new ControlledExecutor();
-    JsonJITContext context = new JsonJITContext(true, executor);
+    JsonJITContext context = new JsonJITContext(true);
+    CompletableFuture<Integer> future = new CompletableFuture<>();
     AtomicReference<Throwable> failure = new AtomicReference<>();
-    int result =
-        context.registerJITCallback(
-            () -> 1,
-            () -> {
-              throw new IllegalStateException("compile failure");
-            },
-            new JsonJITContext.JITCallback<Integer>() {
-              @Override
-              public void onSuccess(Integer generated) {
-                fail("Unexpected generated result");
-              }
+    JsonJITContext.JITCallback<Integer> callback =
+        new JsonJITContext.JITCallback<Integer>() {
+          @Override
+          public void onSuccess(Integer generated) {
+            fail("Unexpected generated result");
+          }
 
-              @Override
-              public void onFailure(Throwable throwable) {
-                failure.set(throwable);
-              }
+          @Override
+          public void onFailure(Throwable throwable) {
+            failure.set(throwable);
+          }
 
-              @Override
-              public Object id() {
-                return "failure";
-              }
-            });
-    assertEquals(result, 1);
-    executor.runNext();
+          @Override
+          public Object id() {
+            return "failure";
+          }
+        };
+    context.registerJITFuture(() -> future, callback);
+    context.registerJITFuture(
+        () -> {
+          fail("Duplicate active request");
+          return CompletableFuture.completedFuture(2);
+        },
+        callback);
+    future.completeExceptionally(new IllegalStateException("compile failure"));
     assertTrue(failure.get() instanceof IllegalStateException);
   }
 
@@ -411,17 +398,6 @@ public class JsonAsyncCompilationTest {
     CodecRegistry codecs = new CodecRegistry();
     codecs.register(BlockingValue.class, new BlockingCodec(rootEntered, releaseRoot));
     ControlledJson controlled = controlledJson(codecs);
-    JsonTypeResolver compilerResolver = new JsonTypeResolver(controlled.registry);
-    compilerResolver.lockJIT();
-    try {
-      ObjectCodec<AsyncChild> owner = compilerResolver.getObjectCodec(AsyncChild.class);
-      compilerResolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
-      assertSame(compilerResolver.stringWriter(owner), owner);
-    } finally {
-      compilerResolver.unlockJIT();
-    }
-    controlled.executor.runNext();
-
     JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
     resolver.lockJIT();
     ObjectCodec<AsyncChild> owner;
@@ -465,6 +441,7 @@ public class JsonAsyncCompilationTest {
     installer.start();
     await(installStarted);
     assertSame(info.stringWriter(), owner);
+    assertFalse(installFinished.await(100, TimeUnit.MILLISECONDS));
     releaseRoot.countDown();
     root.join();
     await(installFinished);
@@ -578,32 +555,24 @@ public class JsonAsyncCompilationTest {
     second.start();
     await(secondFinished);
     assertFailure(secondFailure.get());
-    assertEquals(controlled.executor.pendingTasks(), 1);
+    assertEquals(controlled.executor.pendingTasks(), 5);
     releaseRoot.countDown();
     first.join();
     assertFailure(firstFailure.get());
-    controlled.executor.runNext();
+    controlled.executor.runAll();
   }
 
   @Test
   public void capabilityFailureIsIndependent() throws Exception {
     ControlledJson controlled = controlledJson();
-    JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
-    resolver.lockJIT();
-    ObjectCodec<AsyncChild> owner;
-    JsonTypeInfo info;
-    try {
-      owner = resolver.getObjectCodec(AsyncChild.class);
-      info = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
-    } finally {
-      resolver.unlockJIT();
-    }
     controlled.executor.rejectNext();
-    expectThrows(RejectedExecutionException.class, () -> controlled.json.toJson(child("x", 1)));
+    JsonTypeResolver resolver = primaryTypeResolver(controlled.json);
+    assertEquals(controlled.json.toJson(child("x", 1)), "{\"id\":1,\"name\":\"x\"}");
+    ObjectCodec<AsyncChild> owner = resolver.getObjectCodec(AsyncChild.class);
+    JsonTypeInfo info = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
     assertSame(info.stringWriter(), owner);
-
-    controlled.json.toJsonBytes(child("x", 1));
-    controlled.executor.runNext();
+    assertEquals(controlled.executor.pendingTasks(), 4);
+    controlled.executor.runAll();
     assertNotSame(info.utf8Writer(), owner);
     assertSame(info.stringWriter(), owner);
   }
@@ -711,8 +680,8 @@ public class JsonAsyncCompilationTest {
     Object initialChildren = childrenInfo.utf8Reader();
     Object initialFriends = friendsInfo.utf8Reader();
 
-    assertEquals(controlled.executor.pendingTasks(), 5);
-    for (int i = 0; i < 4; i++) {
+    assertEquals(controlled.executor.pendingTasks(), 17);
+    for (int i = 0; i < 16; i++) {
       controlled.executor.runNext();
       assertSame(rootInfo.utf8Reader(), rootOwner);
       assertSame(childInfo.utf8Reader(), childOwner);
@@ -747,7 +716,7 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
-  public void utf8GraphNotifiesFallbackParent() throws Exception {
+  public void utf8ParentsCaptureFinalChild() throws Exception {
     ControlledJson controlled = controlledJson();
     byte[] creatorInput =
         "{\"child\":{\"id\":1,\"name\":\"creator\"}}".getBytes(StandardCharsets.UTF_8);
@@ -759,7 +728,7 @@ public class JsonAsyncCompilationTest {
     ObjectCodec<AsyncChild> childOwner = resolver.getObjectCodec(AsyncChild.class);
     JsonTypeInfo creatorInfo =
         resolver.getTypeInfo(AsyncCreatorParent.class, AsyncCreatorParent.class);
-    resolver.getTypeInfo(AsyncGraphParent.class, AsyncGraphParent.class);
+    JsonTypeInfo graphInfo = resolver.getTypeInfo(AsyncGraphParent.class, AsyncGraphParent.class);
     JsonTypeInfo childInfo = resolver.getTypeInfo(AsyncChild.class, AsyncChild.class);
     resolver.lockJIT();
     try {
@@ -769,17 +738,15 @@ public class JsonAsyncCompilationTest {
       resolver.unlockJIT();
     }
 
-    assertEquals(controlled.executor.pendingTasks(), 3);
-    controlled.executor.runNext();
+    assertEquals(controlled.executor.pendingTasks(), 15);
+    controlled.executor.runAll();
     assertNotSame(creatorInfo.utf8Reader(), creatorOwner);
-    assertCapabilityFields(creatorInfo.utf8Reader(), Utf8ReaderCodec.class, childOwner, 1);
-    controlled.executor.runNext();
-    assertSame(childInfo.utf8Reader(), childOwner);
-    controlled.executor.runNext();
-
+    assertNotSame(graphInfo.utf8Reader(), graphOwner);
     assertNotSame(childInfo.utf8Reader(), childOwner);
     assertCapabilityFields(
         creatorInfo.utf8Reader(), Utf8ReaderCodec.class, childInfo.utf8Reader(), 1);
+    assertCapabilityFields(
+        graphInfo.utf8Reader(), Utf8ReaderCodec.class, childInfo.utf8Reader(), 1);
     assertEquals(
         controlled.json.fromJson(creatorInput, AsyncCreatorParent.class).child.name, "creator");
   }
@@ -813,10 +780,12 @@ public class JsonAsyncCompilationTest {
     JsonTypeInfo valuesInfo = rootOwner.readFields()[0].readTypeInfo();
     Object initialValues = valuesInfo.utf8Reader();
 
-    assertEquals(controlled.executor.pendingTasks(), 2);
-    controlled.executor.runNext();
-    assertSame(rootInfo.utf8Reader(), rootOwner);
-    assertSame(valuesInfo.utf8Reader(), initialValues);
+    assertEquals(controlled.executor.pendingTasks(), 6);
+    for (int i = 0; i < 5; i++) {
+      controlled.executor.runNext();
+      assertSame(rootInfo.utf8Reader(), rootOwner);
+      assertSame(valuesInfo.utf8Reader(), initialValues);
+    }
     controlled.executor.runNext();
 
     assertNotSame(rootInfo.utf8Reader(), rootOwner);
@@ -921,7 +890,7 @@ public class JsonAsyncCompilationTest {
     assertSame(recursiveField.writeTypeInfo(), typeInfo);
     assertSame(recursiveField.readTypeInfo(), typeInfo);
     StringWriterCodec<SelfRecursive> writer = resolver.stringWriter(owner);
-    assertTrue(writer != owner);
+    assertNotSame(writer, owner);
     for (Field field : writer.getClass().getDeclaredFields()) {
       assertFalse(field.getType() == StringWriterCodec.class, field.toString());
     }
@@ -968,7 +937,7 @@ public class JsonAsyncCompilationTest {
   }
 
   @Test
-  public void mutualPublication() throws Exception {
+  public void mutualTypesUseCanonicalSlots() throws Exception {
     ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
     JsonTypeResolver resolver = primaryTypeResolver(json);
     ObjectCodec<MutualFirst> firstOwner = resolver.getObjectCodec(MutualFirst.class);
@@ -976,37 +945,16 @@ public class JsonAsyncCompilationTest {
     JsonTypeInfo firstInfo = resolver.getTypeInfo(MutualFirst.class, MutualFirst.class);
     JsonTypeInfo secondInfo = resolver.getTypeInfo(MutualSecond.class, MutualSecond.class);
 
-    Object first = resolver.stringWriter(firstOwner);
-    Object second = secondInfo.stringWriter();
-    assertSame(resolver.stringWriter(secondOwner), second);
-    assertSame(secondInfo.stringWriter(), second);
-    assertMutualFields(
-        firstInfo.stringWriter(), secondInfo.stringWriter(), StringWriterCodec.class);
-
-    first = resolver.utf8Writer(firstOwner);
-    second = secondInfo.utf8Writer();
-    assertSame(resolver.utf8Writer(secondOwner), second);
-    assertSame(secondInfo.utf8Writer(), second);
-    assertMutualFields(firstInfo.utf8Writer(), secondInfo.utf8Writer(), Utf8WriterCodec.class);
-
-    first = resolver.latin1Reader(firstOwner);
-    second = secondInfo.latin1Reader();
-    assertSame(resolver.latin1Reader(secondOwner), second);
-    assertSame(secondInfo.latin1Reader(), second);
-    assertMutualFields(
-        firstInfo.latin1Reader(), secondInfo.latin1Reader(), Latin1ReaderCodec.class);
-
-    first = resolver.utf16Reader(firstOwner);
-    second = secondInfo.utf16Reader();
-    assertSame(resolver.utf16Reader(secondOwner), second);
-    assertSame(secondInfo.utf16Reader(), second);
-    assertMutualFields(firstInfo.utf16Reader(), secondInfo.utf16Reader(), Utf16ReaderCodec.class);
-
-    first = resolver.utf8Reader(firstOwner);
-    second = secondInfo.utf8Reader();
-    assertSame(resolver.utf8Reader(secondOwner), second);
-    assertSame(secondInfo.utf8Reader(), second);
-    assertMutualFields(firstInfo.utf8Reader(), secondInfo.utf8Reader(), Utf8ReaderCodec.class);
+    assertCyclicSlot(firstInfo.stringWriter(), firstOwner, secondInfo);
+    assertCyclicSlot(secondInfo.stringWriter(), secondOwner, firstInfo);
+    assertCyclicSlot(firstInfo.utf8Writer(), firstOwner, secondInfo);
+    assertCyclicSlot(secondInfo.utf8Writer(), secondOwner, firstInfo);
+    assertCyclicSlot(firstInfo.latin1Reader(), firstOwner, secondInfo);
+    assertCyclicSlot(secondInfo.latin1Reader(), secondOwner, firstInfo);
+    assertCyclicSlot(firstInfo.utf16Reader(), firstOwner, secondInfo);
+    assertCyclicSlot(secondInfo.utf16Reader(), secondOwner, firstInfo);
+    assertCyclicSlot(firstInfo.utf8Reader(), firstOwner, secondInfo);
+    assertCyclicSlot(secondInfo.utf8Reader(), secondOwner, firstInfo);
   }
 
   private static void assertPublishedChild(
@@ -1021,12 +969,6 @@ public class JsonAsyncCompilationTest {
     assertCapabilityFields(parent, fieldType, child, expectedFields);
   }
 
-  private static void assertMutualFields(Object first, Object second, Class<?> fieldType)
-      throws Exception {
-    assertCapabilityFields(first, fieldType, second, 1);
-    assertCapabilityFields(second, fieldType, first, 1);
-  }
-
   private static void assertCapabilityFields(
       Object owner, Class<?> fieldType, Object expected, int expectedFields) throws Exception {
     int count = 0;
@@ -1039,6 +981,22 @@ public class JsonAsyncCompilationTest {
       }
     }
     assertEquals(count, expectedFields, owner.getClass().getName());
+  }
+
+  private static void assertCyclicSlot(Object capability, Object owner, JsonTypeInfo target)
+      throws Exception {
+    assertNotSame(capability, owner);
+    int count = 0;
+    for (Field field : capability.getClass().getDeclaredFields()) {
+      if (field.getType() == JsonTypeInfo.class) {
+        field.setAccessible(true);
+        if (field.get(capability) == target) {
+          assertTrue(Modifier.isFinal(field.getModifiers()));
+          count++;
+        }
+      }
+    }
+    assertEquals(count, 1, capability.getClass().getName());
   }
 
   private static void assertCapabilities(JsonTypeInfo info, Object expected) {
@@ -1077,6 +1035,14 @@ public class JsonAsyncCompilationTest {
     field.setAccessible(true);
     assertTrue(Modifier.isFinal(field.getModifiers()));
     assertSame(field.get(collection), element);
+  }
+
+  private static void assertInlineReader(Object[] readers, Object canonical) {
+    assertNotNull(readers);
+    assertEquals(readers.length, 1);
+    assertNotNull(readers[0]);
+    assertNotSame(readers[0], canonical);
+    assertSame(readers[0].getClass(), canonical.getClass());
   }
 
   private static void assertFinalCollectionFields(Object root, Object... collections)

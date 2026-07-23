@@ -67,6 +67,11 @@ final class Utf8ReaderCodegen extends JsonReaderCodegen {
   }
 
   @Override
+  String readerSlotMethod() {
+    return "utf8Reader";
+  }
+
+  @Override
   String readEnumMethod(boolean tokenValueRead, boolean hashFallback) {
     return tokenValueRead
         ? (hashFallback ? "readUtf8EnumHashToken" : "readUtf8EnumToken")

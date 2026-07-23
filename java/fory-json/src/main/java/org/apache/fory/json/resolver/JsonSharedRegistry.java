@@ -148,9 +148,9 @@ import org.apache.fory.util.record.RecordUtils;
  * state. Common short field names admitted by reader-local caches are published here for
  * best-effort String reference reuse across readers. Reader-local admission is the only field-name
  * capacity gate; the shared field-name map has no explicit limit. Source-generated model companions
- * and JIT-generated classes are shared here; concrete JIT codec instances, ordinary type bindings,
- * JIT locks, and callbacks remain resolver-local. A fresh generic {@link JsonJITContext} is
- * therefore created for every pooled JSON state.
+ * and JIT-generated class futures are shared here; concrete JIT codec instances, ordinary type
+ * bindings, graph construction, JIT locks, and publication remain resolver-local. A fresh {@link
+ * JsonJITContext} is therefore created for every pooled JSON state.
  */
 public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
@@ -190,8 +190,11 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<Class<? extends MapKeyCodec>, MapKeyCodec> mapKeyCodecs;
   private final ConcurrentHashMap<Class<?>, GeneratedJsonCodec<?>> generatedCodecs;
   private final Set<Class<?>> typesWithoutGeneratedCodec;
-  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> finalUtf8ReaderClasses;
-  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> mutableUtf8ReaderClasses;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> stringWriterClasses;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> utf8WriterClasses;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> latin1ReaderClasses;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> utf16ReaderClasses;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> utf8ReaderClasses;
   private final ConcurrentHashMap<Type, CompletableFuture<Class<?>>> utf8CollectionReaderClasses;
   private final ConcurrentHashMap<Long, CachedFieldName> cachedFieldNames;
 
@@ -222,8 +225,11 @@ public final class JsonSharedRegistry {
     mapKeyCodecs = new ConcurrentHashMap<>();
     generatedCodecs = new ConcurrentHashMap<>();
     typesWithoutGeneratedCodec = ConcurrentHashMap.newKeySet();
-    finalUtf8ReaderClasses = new ConcurrentHashMap<>();
-    mutableUtf8ReaderClasses = new ConcurrentHashMap<>();
+    stringWriterClasses = new ConcurrentHashMap<>();
+    utf8WriterClasses = new ConcurrentHashMap<>();
+    latin1ReaderClasses = new ConcurrentHashMap<>();
+    utf16ReaderClasses = new ConcurrentHashMap<>();
+    utf8ReaderClasses = new ConcurrentHashMap<>();
     utf8CollectionReaderClasses = new ConcurrentHashMap<>();
     cachedFieldNames = new ConcurrentHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
@@ -233,12 +239,29 @@ public final class JsonSharedRegistry {
     registerExactCodecs();
   }
 
-  CompletableFuture<Class<?>> utf8ReaderClass(
-      ObjectCodec<?> owner, JsonTypeResolver resolver, boolean finalDependencies) {
+  CompletableFuture<Class<?>> stringWriterClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
     return generatedClassFuture(
-        finalDependencies ? finalUtf8ReaderClasses : mutableUtf8ReaderClasses,
-        owner.type(),
-        () -> codegen.compileUtf8Reader(owner, resolver, finalDependencies));
+        stringWriterClasses, owner.type(), () -> codegen.compileStringWriter(owner, resolver));
+  }
+
+  CompletableFuture<Class<?>> utf8WriterClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(
+        utf8WriterClasses, owner.type(), () -> codegen.compileUtf8Writer(owner, resolver));
+  }
+
+  CompletableFuture<Class<?>> latin1ReaderClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(
+        latin1ReaderClasses, owner.type(), () -> codegen.compileLatin1Reader(owner, resolver));
+  }
+
+  CompletableFuture<Class<?>> utf16ReaderClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(
+        utf16ReaderClasses, owner.type(), () -> codegen.compileUtf16Reader(owner, resolver));
+  }
+
+  CompletableFuture<Class<?>> utf8ReaderClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(
+        utf8ReaderClasses, owner.type(), () -> codegen.compileUtf8Reader(owner, resolver, true));
   }
 
   CompletableFuture<Class<?>> utf8CollectionReaderClass(
@@ -823,7 +846,7 @@ public final class JsonSharedRegistry {
   }
 
   JsonJITContext newJITContext() {
-    return new JsonJITContext(asyncCompilationEnabled, compilationService);
+    return new JsonJITContext(asyncCompilationEnabled);
   }
 
   JsonCodegen codegen() {

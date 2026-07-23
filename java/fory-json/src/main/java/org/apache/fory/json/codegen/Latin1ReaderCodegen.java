@@ -30,11 +30,11 @@ import org.apache.fory.reflect.TypeRef;
 
 final class Latin1ReaderCodegen extends JsonReaderCodegen {
   Latin1ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
-    super(codegen, resolver);
+    super(codegen, resolver, true);
   }
 
   Latin1ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, int[] fastReadGroupEnds) {
-    super(codegen, resolver, false, fastReadGroupEnds);
+    super(codegen, resolver, true, fastReadGroupEnds);
   }
 
   @Override
@@ -60,6 +60,11 @@ final class Latin1ReaderCodegen extends JsonReaderCodegen {
   @Override
   String readMethod() {
     return "readLatin1";
+  }
+
+  @Override
+  String readerSlotMethod() {
+    return "latin1Reader";
   }
 
   @Override

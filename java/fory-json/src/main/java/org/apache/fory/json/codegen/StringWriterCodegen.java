@@ -62,6 +62,11 @@ final class StringWriterCodegen extends JsonWriterCodegen {
   }
 
   @Override
+  String writerSlotMethod() {
+    return "stringWriter";
+  }
+
+  @Override
   String memberGroupMethod() {
     return "writeStringMembers";
   }

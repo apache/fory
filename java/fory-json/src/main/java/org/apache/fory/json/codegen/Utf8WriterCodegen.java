@@ -71,6 +71,11 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
   }
 
   @Override
+  String writerSlotMethod() {
+    return "utf8Writer";
+  }
+
+  @Override
   String memberGroupMethod() {
     return "writeUtf8Members";
   }

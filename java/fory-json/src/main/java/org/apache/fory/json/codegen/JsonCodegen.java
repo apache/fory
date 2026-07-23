@@ -56,12 +56,12 @@ import org.apache.fory.json.resolver.JsonTypeResolver;
  * Generates concrete object and exact-collection capability classes.
  *
  * <p>One instance belongs to one {@link org.apache.fory.json.resolver.JsonSharedRegistry}. The
- * registry owns UTF-8 reader class futures; the representation caches here own the other concrete
- * object capabilities. A resolver is passed only to the active source-generation call for short
- * canonical metadata lookups; neither owner retains it.
+ * registry owns every generated-class future and single-flight decision. A resolver is passed only
+ * to the active source-generation call for short canonical metadata lookups; neither owner retains
+ * it.
  *
- * <p>This class owns classes only. Resolver-local generated instances, child capability capture,
- * {@link JsonTypeInfo} slot installation, and generated parent-field updates belong to {@link
+ * <p>This class owns class generation only. Resolver-local generated instances, final direct-child
+ * capture, canonical cycle slots, and {@link JsonTypeInfo} slot installation belong to {@link
  * org.apache.fory.json.resolver.JsonTypeResolver}. The raw types emitted for Janino stop at the
  * generated source and constructor boundary; handwritten runtime capability APIs remain generic.
  */
@@ -74,10 +74,6 @@ public final class JsonCodegen {
   private final int codegenHash;
   private final CodeGenerator codeGenerator;
   private final ClassLoader jsonLoader;
-  private final Map<Class<?>, Class<?>> stringWriterClasses = new ConcurrentHashMap<>();
-  private final Map<Class<?>, Class<?>> utf8WriterClasses = new ConcurrentHashMap<>();
-  private final Map<Class<?>, Class<?>> latin1ReaderClasses = new ConcurrentHashMap<>();
-  private final Map<Class<?>, Class<?>> utf16ReaderClasses = new ConcurrentHashMap<>();
 
   static String generatedCodecType(CodegenContext ctx, Class<?> codecType) {
     // Janino-generated serializers use erased types, matching Fory core code generation. Runtime
@@ -104,19 +100,16 @@ public final class JsonCodegen {
    * depends on mutable capability slots. Active codec classes are inspected only for non-canonical
    * bindings, whose capability fields are never replaced by generated raw-object codecs.
    *
-   * <p>Generated classes are cached here because this object is shared by every pooled resolver of
-   * one Fory JSON instance. Concurrent map computation provides generated-class single-flight;
-   * resolver-local construction and capability publication belong to {@link
-   * org.apache.fory.json.resolver.JsonTypeResolver} and are ordered by its generic {@link
-   * JsonJITContext} callbacks.
+   * <p>The shared registry caches the resulting class future for every pooled resolver of one Fory
+   * JSON instance. Resolver-local construction and capability publication belong to {@link
+   * org.apache.fory.json.resolver.JsonTypeResolver} and are ordered by its {@link JsonJITContext}.
    */
   @Internal
   public Class<?> compileStringWriter(ObjectCodec<?> codec, JsonTypeResolver resolver) {
     if (!canCompileWriter(codec)) {
       return null;
     }
-    return stringWriterClasses.computeIfAbsent(
-        codec.type(), ignored -> buildStringWriter(codec, resolver));
+    return buildStringWriter(codec, resolver);
   }
 
   @Internal
@@ -124,8 +117,7 @@ public final class JsonCodegen {
     if (!canCompileWriter(codec)) {
       return null;
     }
-    return utf8WriterClasses.computeIfAbsent(
-        codec.type(), ignored -> buildUtf8Writer(codec, resolver));
+    return buildUtf8Writer(codec, resolver);
   }
 
   @Internal
@@ -133,8 +125,7 @@ public final class JsonCodegen {
     if (!canCompileReader(codec)) {
       return null;
     }
-    return latin1ReaderClasses.computeIfAbsent(
-        codec.type(), ignored -> buildLatin1Reader(codec, resolver));
+    return buildLatin1Reader(codec, resolver);
   }
 
   @Internal
@@ -142,8 +133,7 @@ public final class JsonCodegen {
     if (!canCompileReader(codec)) {
       return null;
     }
-    return utf16ReaderClasses.computeIfAbsent(
-        codec.type(), ignored -> buildUtf16Reader(codec, resolver));
+    return buildUtf16Reader(codec, resolver);
   }
 
   @Internal
