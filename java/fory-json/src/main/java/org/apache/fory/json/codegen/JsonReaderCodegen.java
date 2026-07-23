@@ -186,10 +186,12 @@ abstract class JsonReaderCodegen {
         fastReadExpression(builder, readMethod, slowMethod, type, properties).genCode(ctx);
     String bodyCode = body.code();
     bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
+    // Generated object entries use the current-token fast path; concrete readers own whitespace
+    // fallback.
     ctx.addMethod(
         "@Override public final",
         readMethod,
-        "if (reader.tryReadNullToken()) {\n" + "  return null;\n" + "}\n" + bodyCode,
+        "if (reader.tryReadNextNullToken()) {\n" + "  return null;\n" + "}\n" + bodyCode,
         Object.class,
         readerType,
         "reader");
@@ -275,7 +277,7 @@ abstract class JsonReaderCodegen {
     ctx.addMethod(
         "@Override public final",
         readMethod,
-        "if (reader.tryReadNullToken()) {\n  return null;\n}\n"
+        "if (reader.tryReadNextNullToken()) {\n  return null;\n}\n"
             + "return this."
             + anyReadMethod
             + "(reader);",
@@ -477,7 +479,7 @@ abstract class JsonReaderCodegen {
     ctx.addMethod(
         "@Override public final",
         readMethod(),
-        "if (reader.tryReadNullToken()) {\n  return null;\n}\n" + code,
+        "if (reader.tryReadNextNullToken()) {\n  return null;\n}\n" + code,
         Object.class,
         readerType(),
         "reader");
@@ -581,7 +583,7 @@ abstract class JsonReaderCodegen {
     ctx.addMethod(
         "@Override public final",
         readMethod(),
-        "if (reader.tryReadNullToken()) {\n  return null;\n}\n" + bodyCode,
+        "if (reader.tryReadNextNullToken()) {\n  return null;\n}\n" + bodyCode,
         Object.class,
         concreteReaderType,
         "reader");
@@ -628,7 +630,7 @@ abstract class JsonReaderCodegen {
     ctx.addMethod(
         "@Override public final",
         readMethod,
-        "if (reader.tryReadNullToken()) {\n  return null;\n}\n"
+        "if (reader.tryReadNextNullToken()) {\n  return null;\n}\n"
             + "return this."
             + anyReadMethod
             + "(reader);",
