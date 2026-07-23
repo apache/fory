@@ -170,16 +170,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
 
   @Override
   public void writeLong(long value) {
-    if (value == Long.MIN_VALUE) {
-      writeRaw(MIN_LONG_BYTES);
-      return;
-    }
     ensure(20);
-    if (value < 0) {
-      buffer[position++] = (byte) '-';
-      value = -value;
-    }
-    writePositiveLongNoEnsure(value);
+    writeLongNoEnsure(value);
   }
 
   @Override
@@ -1546,7 +1538,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       return;
     }
     if (precision == 1) {
-      writePositiveLongNoEnsure(unscaled);
+      writeLongNoEnsure(unscaled);
     } else {
       long divisor = BigNumberDigits.LONG_POWERS_OF_TEN[precision - 1];
       int first = (int) (unscaled / divisor);
@@ -1809,34 +1801,87 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
       buffer[position++] = (byte) '-';
       value = -value;
     }
-    writePositiveLongNoEnsure(value);
+    if (value <= Integer.MAX_VALUE) {
+      writePositiveIntNoEnsure((int) value);
+      return;
+    }
+    position = writePositiveLong(buffer, position, value);
   }
 
   private void writePositiveIntNoEnsure(int value) {
     position = writePositiveInt(buffer, position, value);
   }
 
-  private void writePositiveLongNoEnsure(long value) {
-    if (value <= Integer.MAX_VALUE) {
-      writePositiveIntNoEnsure((int) value);
-      return;
-    }
-    byte[] bytes = buffer;
-    int pos = position;
+  // Keep the full-width formatter behind one natural C2 boundary. The explicit byte/cursor
+  // carrier lets its callers publish the returned cursor once without giving the large callee
+  // ownership of mutable writer state.
+  private static int writePositiveLong(byte[] bytes, int pos, long value) {
     long high = value / EIGHT_DIGITS;
     int low = (int) (value - high * EIGHT_DIGITS);
     if (high <= Integer.MAX_VALUE) {
-      pos = writePositiveInt(bytes, pos, (int) high);
+      int highValue = (int) high;
+      if (highValue < 10000) {
+        if (highValue < 1000) {
+          int digits = DIGIT_TRIPLES[highValue];
+          int skip = digits & 0xFF;
+          LittleEndian.putInt32(bytes, pos, digits >>> ((skip + 1) << 3));
+          pos += 3 - skip;
+        } else {
+          LittleEndian.putInt32(bytes, pos, DIGIT_QUADS[highValue]);
+          pos += 4;
+        }
+      } else {
+        int highHigh = divide10000(highValue);
+        int highLow = highValue - highHigh * 10000;
+        if (highHigh < 10000) {
+          if (highHigh >= 1000) {
+            LittleEndian.putInt64(
+                bytes,
+                pos,
+                (DIGIT_QUADS[highHigh] & 0xFFFFFFFFL) | ((long) DIGIT_QUADS[highLow] << 32));
+            pos += 8;
+          } else {
+            int digits = DIGIT_TRIPLES[highHigh];
+            int skip = digits & 0xFF;
+            LittleEndian.putInt32(bytes, pos, digits >>> ((skip + 1) << 3));
+            pos += 3 - skip;
+            LittleEndian.putInt32(bytes, pos, DIGIT_QUADS[highLow]);
+            pos += 4;
+          }
+        } else {
+          int top = divide10000(highHigh);
+          int middle = highHigh - top * 10000;
+          int digits = DIGIT_TRIPLES[top];
+          int skip = digits & 0xFF;
+          LittleEndian.putInt32(bytes, pos, digits >>> ((skip + 1) << 3));
+          pos += 3 - skip;
+          LittleEndian.putInt64(
+              bytes,
+              pos,
+              (DIGIT_QUADS[middle] & 0xFFFFFFFFL) | ((long) DIGIT_QUADS[highLow] << 32));
+          pos += 8;
+        }
+      }
     } else {
       long top = high / EIGHT_DIGITS;
       int middle = (int) (high - top * EIGHT_DIGITS);
-      // A positive long has at most 19 decimal digits, so removing two eight-digit chunks leaves a
-      // top chunk in [1, 922]. Bypass the general int branch tree for this proven three-digit
-      // bound.
-      pos = writeIntUpTo3(bytes, pos, (int) top);
-      pos = writePadded8Digits(bytes, pos, middle);
+      int digits = DIGIT_TRIPLES[(int) top];
+      int skip = digits & 0xFF;
+      LittleEndian.putInt32(bytes, pos, digits >>> ((skip + 1) << 3));
+      pos += 3 - skip;
+      int middleHigh = divide10000(middle);
+      int middleLow = middle - middleHigh * 10000;
+      LittleEndian.putInt64(
+          bytes,
+          pos,
+          (DIGIT_QUADS[middleHigh] & 0xFFFFFFFFL) | ((long) DIGIT_QUADS[middleLow] << 32));
+      pos += 8;
     }
-    position = writePadded8Digits(bytes, pos, low);
+    int lowHigh = divide10000(low);
+    int lowLow = low - lowHigh * 10000;
+    LittleEndian.putInt64(
+        bytes, pos, (DIGIT_QUADS[lowHigh] & 0xFFFFFFFFL) | ((long) DIGIT_QUADS[lowLow] << 32));
+    return pos + 8;
   }
 
   private static int writePositiveInt(byte[] bytes, int pos, int value) {

@@ -393,6 +393,8 @@ public final class JsonCodegen {
     if (properties.length < 2) {
       return compileCodecClass(generatedPackage, className, source.apply(null));
     }
+    // Group only the bytecode emitted in this generated class. A callee with its own stable
+    // boundary contributes its invocation, not the body that C2 must keep in the callee.
     int[] oneGroup = new int[] {properties.length};
     JaninoUtils.CodeStats oneGroupStats =
         codeStats(generatedPackage, className, source.apply(oneGroup));
