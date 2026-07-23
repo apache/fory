@@ -685,13 +685,13 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   public void writeLongField(byte[] prefix, long value) {
     ensure(prefix.length + 20);
     writeRawNoEnsure(prefix);
-    writeLongNoEnsure(value);
+    writeLongFieldNoEnsure(value);
   }
 
   public void writeLongField(long prefix0, long prefix1, int prefixLength, long value) {
     ensurePackedPrefix(prefixLength, 20);
     writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
-    writeLongNoEnsure(value);
+    writeLongFieldNoEnsure(value);
   }
 
   public void writeLongField(
@@ -715,7 +715,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     ensure(namePrefix.length + 21);
     buffer[position++] = (byte) '{';
     writeRawNoEnsure(namePrefix);
-    writeLongNoEnsure(value);
+    writeLongFieldNoEnsure(value);
   }
 
   public void writeObjectStartWithLongField(
@@ -724,7 +724,7 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     ensurePackedPrefix(prefixLength, 21);
     buffer[position++] = (byte) '{';
     writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
-    writeLongNoEnsure(value);
+    writeLongFieldNoEnsure(value);
   }
 
   public void writeStringField(byte[] namePrefix, byte[] commaNamePrefix, int index, String value) {
@@ -1793,6 +1793,25 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   private void writeLongNoEnsure(long value) {
+    if (value == Long.MIN_VALUE) {
+      writeRawNoEnsure(MIN_LONG_BYTES);
+      return;
+    }
+    if (value < 0) {
+      buffer[position++] = (byte) '-';
+      value = -value;
+    }
+    if (value <= Integer.MAX_VALUE) {
+      writePositiveIntNoEnsure((int) value);
+      return;
+    }
+    position = writePositiveLong(buffer, position, value);
+  }
+
+  // Field values and long-array elements have independent range profiles. Keep their entry
+  // profiles separate so C2 cannot use an int-range array profile to expand the generated object
+  // field path; both entries still share the same positive-Int and positive-Long implementations.
+  private void writeLongFieldNoEnsure(long value) {
     if (value == Long.MIN_VALUE) {
       writeRawNoEnsure(MIN_LONG_BYTES);
       return;
