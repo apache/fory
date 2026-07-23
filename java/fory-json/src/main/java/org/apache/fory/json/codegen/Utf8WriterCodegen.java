@@ -107,10 +107,7 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
             fields.name[i] = true;
           }
         } else if (!commaKnown) {
-          if (property.writesRawString()
-              || !canUsePackedDynamicPrefix(property)
-              || !canPackSinglePrefix(property, false)
-              || !canPackSinglePrefix(property, true)) {
+          if (!canPackPrefix(property, false) || !canPackPrefix(property, true)) {
             fields.name[i] = true;
             fields.comma[i] = true;
           }
@@ -123,22 +120,6 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
       }
     }
     return fields;
-  }
-
-  private boolean canUsePackedDynamicPrefix(JsonFieldInfo property) {
-    if (property.writeNull() && !property.writeRawType().isPrimitive()) {
-      return false;
-    }
-    switch (property.writeKind()) {
-      case BYTE:
-      case SHORT:
-      case INT:
-      case LONG:
-      case STRING:
-        return true;
-      default:
-        return false;
-    }
   }
 
   @Override
@@ -234,7 +215,7 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
       }
       return new Expression.Invoke(writer, method, utf8PrefixRef(true, id), value);
     }
-    if (canPackSinglePrefix(property, false) && canPackSinglePrefix(property, true)) {
+    if (canPackPrefix(property, false) && canPackPrefix(property, true)) {
       return new Expression.ListExpression(
           new Expression.Invoke(writer, method, packedDynamicPrefixArgs(property, index, value)),
           increment(index));
@@ -262,7 +243,7 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
       }
       return new Expression.Invoke(writer, "writeStringField", utf8PrefixRef(true, id), value);
     }
-    if (canPackSinglePrefix(property, false) && canPackSinglePrefix(property, true)) {
+    if (canPackPrefix(property, false) && canPackPrefix(property, true)) {
       return new Expression.ListExpression(
           new Expression.Invoke(
               writer, "writeStringField", packedDynamicPrefixArgs(property, index, value)),
@@ -286,6 +267,11 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
       JsonFieldInfo property, int id, boolean commaKnown, Expression index, Expression writer) {
     if (commaKnown && canPackPrefix(property, true)) {
       return new Expression.Invoke(writer, "writeRawValue", packedPrefixArgs(property, true));
+    }
+    if (!commaKnown && canPackPrefix(property, false) && canPackPrefix(property, true)) {
+      return new Expression.ListExpression(
+          new Expression.Invoke(writer, "writeRawValue", packedDynamicPrefixArgs(property, index)),
+          increment(index));
     }
     Expression prefix =
         commaKnown
@@ -384,23 +370,20 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
       JsonFieldInfo property, Expression index, Expression... extraArgs) {
     byte[] namePrefix = property.utf8NamePrefix();
     byte[] commaPrefix = property.utf8CommaNamePrefix();
-    Expression[] args = new Expression[5 + extraArgs.length];
+    Expression[] args = new Expression[7 + extraArgs.length];
     args[0] = Expression.Literal.ofLong(packedPrefixWord(namePrefix, 0));
-    args[1] = Expression.Literal.ofLong(packedPrefixWord(commaPrefix, 0));
-    args[2] = Expression.Literal.ofInt(namePrefix.length);
-    args[3] = Expression.Literal.ofInt(commaPrefix.length);
-    args[4] = index;
-    System.arraycopy(extraArgs, 0, args, 5, extraArgs.length);
+    args[1] = Expression.Literal.ofLong(packedPrefixWord(namePrefix, Long.BYTES));
+    args[2] = Expression.Literal.ofLong(packedPrefixWord(commaPrefix, 0));
+    args[3] = Expression.Literal.ofLong(packedPrefixWord(commaPrefix, Long.BYTES));
+    args[4] = Expression.Literal.ofInt(namePrefix.length);
+    args[5] = Expression.Literal.ofInt(commaPrefix.length);
+    args[6] = index;
+    System.arraycopy(extraArgs, 0, args, 7, extraArgs.length);
     return args;
   }
 
   private static boolean canPackPrefix(JsonFieldInfo property, boolean comma) {
     int length = comma ? property.utf8CommaNamePrefix().length : property.utf8NamePrefix().length;
     return length <= Long.BYTES * 2;
-  }
-
-  private static boolean canPackSinglePrefix(JsonFieldInfo property, boolean comma) {
-    int length = comma ? property.utf8CommaNamePrefix().length : property.utf8NamePrefix().length;
-    return length <= Long.BYTES;
   }
 }

@@ -540,16 +540,18 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeIntField(
-      long namePrefix,
-      long commaPrefix,
+      long namePrefix0,
+      long namePrefix1,
+      long commaPrefix0,
+      long commaPrefix1,
       int namePrefixLength,
       int commaPrefixLength,
       int index,
       int value) {
     if (index == 0) {
-      writeIntField(namePrefix, 0L, namePrefixLength, value);
+      writeIntField(namePrefix0, namePrefix1, namePrefixLength, value);
     } else {
-      writeIntField(commaPrefix, 0L, commaPrefixLength, value);
+      writeIntField(commaPrefix0, commaPrefix1, commaPrefixLength, value);
     }
   }
 
@@ -599,6 +601,22 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeLongNoEnsure(value);
   }
 
+  public void writeLongField(
+      long namePrefix0,
+      long namePrefix1,
+      long commaPrefix0,
+      long commaPrefix1,
+      int namePrefixLength,
+      int commaPrefixLength,
+      int index,
+      long value) {
+    if (index == 0) {
+      writeLongField(namePrefix0, namePrefix1, namePrefixLength, value);
+    } else {
+      writeLongField(commaPrefix0, commaPrefix1, commaPrefixLength, value);
+    }
+  }
+
   public void writeObjectStartWithLongField(byte[] namePrefix, long value) {
     enterDepth();
     ensure(namePrefix.length + 21);
@@ -628,16 +646,18 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   }
 
   public void writeStringField(
-      long namePrefix,
-      long commaPrefix,
+      long namePrefix0,
+      long namePrefix1,
+      long commaPrefix0,
+      long commaPrefix1,
       int namePrefixLength,
       int commaPrefixLength,
       int index,
       String value) {
     if (index == 0) {
-      writeStringField(namePrefix, 0L, namePrefixLength, value);
+      writeStringField(namePrefix0, namePrefix1, namePrefixLength, value);
     } else {
-      writeStringField(commaPrefix, 0L, commaPrefixLength, value);
+      writeStringField(commaPrefix0, commaPrefix1, commaPrefixLength, value);
     }
   }
 
@@ -858,6 +878,21 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
   public void writeRawValue(long prefix0, long prefix1, int prefixLength) {
     ensure(packedPrefixSize(prefixLength));
     writePackedRawNoEnsure(prefix0, prefix1, prefixLength);
+  }
+
+  public void writeRawValue(
+      long namePrefix0,
+      long namePrefix1,
+      long commaPrefix0,
+      long commaPrefix1,
+      int namePrefixLength,
+      int commaPrefixLength,
+      int index) {
+    if (index == 0) {
+      writeRawValue(namePrefix0, namePrefix1, namePrefixLength);
+    } else {
+      writeRawValue(commaPrefix0, commaPrefix1, commaPrefixLength);
+    }
   }
 
   /** Writes a byte array as a quoted Base64 JSON string without an intermediate String. */
