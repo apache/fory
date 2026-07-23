@@ -155,7 +155,9 @@ public final class JsonCodegen {
     Class<?> elementType = CodecUtils.rawType(CodecUtils.elementType(declaredType), Object.class);
     String generatedPackage = CodeGenerator.getPackage(elementType);
     String className = className(elementType, simpleClassName(rawType) + "Utf8CollectionReader");
-    String code = new Utf8CollectionReaderCodegen().genCode(generatedPackage, className);
+    boolean stringElements = owner instanceof CollectionCodec.StringCollectionCodec;
+    String code =
+        new Utf8CollectionReaderCodegen().genCode(generatedPackage, className, stringElements);
     return compileCodecClass(generatedPackage, className, code);
   }
 

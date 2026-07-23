@@ -25,6 +25,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.UUID;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
@@ -82,6 +83,15 @@ public final class Utf8JsonReader extends JsonReader {
   private static final long ASCII_HIGH_BITS = 0x8080_8080_8080_8080L;
   // Little-endian packed ASCII bytes for "null".
   private static final int NULL_LITERAL = 0x6C6C756E;
+
+  /** The generated String-array loop consumed the closing bracket. */
+  @Internal public static final int STRING_ARRAY_END = 0;
+
+  /** The generated String-array loop consumed both a comma and the next opening quote. */
+  @Internal public static final int STRING_ARRAY_QUOTED = 1;
+
+  /** The generated String-array loop consumed a comma and left the next value unread. */
+  @Internal public static final int STRING_ARRAY_VALUE = 2;
 
   // JSON syntax bytes are ASCII, so hot token checks can compare signed bytes directly.
   // UTF-8 string decoding must keep unsigned byte conversion for non-ASCII content.
@@ -417,6 +427,18 @@ public final class Utf8JsonReader extends JsonReader {
     return consumeToken(expected);
   }
 
+  /** Consumes a string quote without classifying whitespace, null, or malformed input. */
+  @Internal
+  public boolean tryConsumeStringQuote() {
+    byte[] bytes = input;
+    int offset = position;
+    if (offset < bytes.length && bytes[offset] == '"') {
+      position = offset + 1;
+      return true;
+    }
+    return false;
+  }
+
   public void expectToken(char expected) {
     if (!consumeToken(expected)) {
       throw error("Expected '" + expected + "'");
@@ -481,6 +503,60 @@ public final class Utf8JsonReader extends JsonReader {
       return consumeNextArrayEndOrSlow(ch);
     }
     return consumeNextCommaOrEndArraySlow();
+  }
+
+  /**
+   * Consumes an array separator and, when adjacent, the next String's opening quote.
+   *
+   * <p>The concrete reader owns syntax and cursor publication. Generated exact String collections
+   * own value decoding and can therefore continue directly from the returned state without a second
+   * token probe.
+   */
+  @Internal
+  public int consumeNextStringArrayElement() {
+    byte[] bytes = input;
+    int offset = position;
+    if (offset < bytes.length) {
+      int ch = bytes[offset];
+      if (ch == ']') {
+        position = offset + 1;
+        return STRING_ARRAY_END;
+      }
+      if (ch == ',') {
+        offset++;
+        if (offset < bytes.length && bytes[offset] == '"') {
+          position = offset + 1;
+          return STRING_ARRAY_QUOTED;
+        }
+        position = offset;
+        return STRING_ARRAY_VALUE;
+      }
+    }
+    return consumeNextStringArrayElementSlow();
+  }
+
+  private int consumeNextStringArrayElementSlow() {
+    skipWhitespaceFast();
+    byte[] bytes = input;
+    int offset = position;
+    if (offset < bytes.length) {
+      int ch = bytes[offset];
+      if (ch == ']') {
+        position = offset + 1;
+        return STRING_ARRAY_END;
+      }
+      if (ch == ',') {
+        position = offset + 1;
+        skipWhitespaceFast();
+        offset = position;
+        if (offset < bytes.length && bytes[offset] == '"') {
+          position = offset + 1;
+          return STRING_ARRAY_QUOTED;
+        }
+        return STRING_ARRAY_VALUE;
+      }
+    }
+    throw error("Expected ',' or ']'");
   }
 
   private boolean consumeNextArrayEndOrSlow(int ch) {
@@ -2014,6 +2090,30 @@ public final class Utf8JsonReader extends JsonReader {
       return newLatin1String(start, stop);
     }
     return readStringStop(start, stop, b);
+  }
+
+  /** Returns the current UTF-8 input length to generated bounded String probes. */
+  @Internal
+  public int inputLength() {
+    return input.length;
+  }
+
+  /** Scans one in-bounds generated String word without publishing the reader cursor. */
+  @Internal
+  public long scanStringWord(int offset) {
+    return stringStopMask(LittleEndian.getInt64(input, offset));
+  }
+
+  /** Finishes a generated String after a bounded word probe finds its first stop byte. */
+  @Internal
+  public String finishStringWord(int start, int offset, long stopMask) {
+    return readStringWordStop(start, offset, stopMask);
+  }
+
+  /** Continues a String after generated bounded word probes found no stop byte. */
+  @Internal
+  public String readStringTokenLongTail(int start, int offset) {
+    return readStringTokenLongTail(start, offset, input.length);
   }
 
   private String readStringTokenLongTail(int start, int offset, int inputLength) {

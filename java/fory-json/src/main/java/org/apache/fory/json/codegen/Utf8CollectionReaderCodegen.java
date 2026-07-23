@@ -20,13 +20,22 @@
 package org.apache.fory.json.codegen;
 
 import java.util.ArrayList;
+import org.apache.fory.codegen.Code;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.json.codec.Utf8ReaderCodec;
 import org.apache.fory.json.reader.Utf8JsonReader;
 
 /** Generates one exact declared ArrayList-backed UTF-8 collection capability. */
 final class Utf8CollectionReaderCodegen {
-  String genCode(String generatedPackage, String className) {
+  // The ninth value remains scalar until the following separator proves whether the list ends or
+  // continues. Exact size nine therefore allocates nine slots, while a continuation starts at the
+  // same capacity 13 that ArrayList growth would have selected, without creating and copying a
+  // discarded nine-slot array.
+  private static final int ARRAY_LIST_PREFIX_SIZE = 9;
+  private static final int ARRAY_LIST_FIRST_GROWTH =
+      ARRAY_LIST_PREFIX_SIZE + (ARRAY_LIST_PREFIX_SIZE >> 1);
+
+  String genCode(String generatedPackage, String className, boolean stringElements) {
     CodegenContext ctx = new CodegenContext();
     ctx.setPackage(generatedPackage);
     ctx.setClassName(className);
@@ -36,14 +45,303 @@ final class Utf8CollectionReaderCodegen {
     ctx.addField(true, ctx.type(Utf8ReaderCodec.class), "elementReader", null);
     ctx.addConstructor(
         "this.elementReader = elementReader;", Utf8ReaderCodec.class, "elementReader");
+    if (stringElements) {
+      addStringArrayListMethods(ctx);
+    } else {
+      ctx.addMethod(
+          "@Override public final",
+          "readUtf8",
+          readBody(),
+          Object.class,
+          Utf8JsonReader.class,
+          "reader");
+    }
+    return ctx.genCode();
+  }
+
+  private static void addStringArrayListMethods(CodegenContext ctx) {
     ctx.addMethod(
         "@Override public final",
         "readUtf8",
-        readBody(),
+        readStringArrayListCode(ctx),
         Object.class,
         Utf8JsonReader.class,
         "reader");
-    return ctx.genCode();
+    ctx.addMethod(
+        "private final",
+        "readArrayListBody",
+        readStringArrayListBodyCode(ctx),
+        ArrayList.class,
+        Utf8JsonReader.class,
+        "reader",
+        String.class,
+        "e0",
+        String.class,
+        "e1");
+    ctx.addMethod(
+        "private final",
+        "readArrayListTail",
+        readStringArrayListTailCode(ctx),
+        ArrayList.class,
+        Utf8JsonReader.class,
+        "reader",
+        String.class,
+        "e0",
+        String.class,
+        "e1",
+        String.class,
+        "e2",
+        String.class,
+        "e3");
+    ctx.addMethod(
+        "private final",
+        "readArrayListLongTail",
+        readStringArrayListLongTailCode(ctx),
+        ArrayList.class,
+        Utf8JsonReader.class,
+        "reader",
+        String.class,
+        "e0",
+        String.class,
+        "e1",
+        String.class,
+        "e2",
+        String.class,
+        "e3",
+        String.class,
+        "e4",
+        String.class,
+        "e5");
+    ctx.addMethod(
+        "private final",
+        "readArrayListLoop",
+        readStringArrayListLoopCode(ctx),
+        ArrayList.class,
+        Utf8JsonReader.class,
+        "reader",
+        String.class,
+        "e0",
+        String.class,
+        "e1",
+        String.class,
+        "e2",
+        String.class,
+        "e3",
+        String.class,
+        "e4",
+        String.class,
+        "e5",
+        String.class,
+        "e6",
+        String.class,
+        "e7");
+  }
+
+  private static String readStringArrayListCode(CodegenContext ctx) {
+    return "if (reader.tryReadNullToken()) {\n"
+        + "  return null;\n"
+        + "}\n"
+        + "reader.enterDepth();\n"
+        + "reader.expectNextToken('[');\n"
+        + "if (reader.consumeNextToken(']')) {\n"
+        + "  reader.exitDepth();\n"
+        + "  return new ArrayList(0);\n"
+        + "}\n"
+        + readStringElement(ctx, "e0", "E0")
+        + "int nextElement = reader.consumeNextStringArrayElement();\n"
+        + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
+        + "  reader.exitDepth();\n"
+        + "  ArrayList list = new ArrayList(1);\n"
+        + "  list.add(e0);\n"
+        + "  return list;\n"
+        + "}\n"
+        + readStringArrayElement(ctx, "e1", "E1")
+        + "return readArrayListBody(reader, e0, e1);";
+  }
+
+  private static String readStringArrayListBodyCode(CodegenContext ctx) {
+    // Each prefix method consumes its incoming separator state locally. This keeps cursor
+    // publication and the following quote probe in one generated compilation unit.
+    return "int nextElement = reader.consumeNextStringArrayElement();\n"
+        + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
+        + "  reader.exitDepth();\n"
+        + "  ArrayList list = new ArrayList(2);\n"
+        + "  list.add(e0);\n"
+        + "  list.add(e1);\n"
+        + "  return list;\n"
+        + "}\n"
+        + readStringArrayElement(ctx, "e2", "B2")
+        + "nextElement = reader.consumeNextStringArrayElement();\n"
+        + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
+        + "  reader.exitDepth();\n"
+        + "  ArrayList list = new ArrayList(3);\n"
+        + "  list.add(e0);\n"
+        + "  list.add(e1);\n"
+        + "  list.add(e2);\n"
+        + "  return list;\n"
+        + "}\n"
+        + readStringArrayElement(ctx, "e3", "B3")
+        + "return readArrayListTail(reader, e0, e1, e2, e3);";
+  }
+
+  private static String readStringArrayListTailCode(CodegenContext ctx) {
+    return "int nextElement = reader.consumeNextStringArrayElement();\n"
+        + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
+        + "  reader.exitDepth();\n"
+        + "  ArrayList list = new ArrayList(4);\n"
+        + "  list.add(e0);\n"
+        + "  list.add(e1);\n"
+        + "  list.add(e2);\n"
+        + "  list.add(e3);\n"
+        + "  return list;\n"
+        + "}\n"
+        + readStringArrayElement(ctx, "e4", "T4")
+        + "nextElement = reader.consumeNextStringArrayElement();\n"
+        + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
+        + "  reader.exitDepth();\n"
+        + "  ArrayList list = new ArrayList(5);\n"
+        + "  list.add(e0);\n"
+        + "  list.add(e1);\n"
+        + "  list.add(e2);\n"
+        + "  list.add(e3);\n"
+        + "  list.add(e4);\n"
+        + "  return list;\n"
+        + "}\n"
+        + readStringArrayElement(ctx, "e5", "T5")
+        + "return readArrayListLongTail(reader, e0, e1, e2, e3, e4, e5);";
+  }
+
+  private static String readStringArrayListLongTailCode(CodegenContext ctx) {
+    return "int nextElement = reader.consumeNextStringArrayElement();\n"
+        + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
+        + "  reader.exitDepth();\n"
+        + "  ArrayList list = new ArrayList(6);\n"
+        + "  list.add(e0);\n"
+        + "  list.add(e1);\n"
+        + "  list.add(e2);\n"
+        + "  list.add(e3);\n"
+        + "  list.add(e4);\n"
+        + "  list.add(e5);\n"
+        + "  return list;\n"
+        + "}\n"
+        + readStringArrayElement(ctx, "e6", "L6")
+        + "nextElement = reader.consumeNextStringArrayElement();\n"
+        + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
+        + "  reader.exitDepth();\n"
+        + "  ArrayList list = new ArrayList(7);\n"
+        + "  list.add(e0);\n"
+        + "  list.add(e1);\n"
+        + "  list.add(e2);\n"
+        + "  list.add(e3);\n"
+        + "  list.add(e4);\n"
+        + "  list.add(e5);\n"
+        + "  list.add(e6);\n"
+        + "  return list;\n"
+        + "}\n"
+        + readStringArrayElement(ctx, "e7", "L7")
+        + "if (!reader.consumeNextCommaOrEndArray()) {\n"
+        + "  reader.exitDepth();\n"
+        + "  ArrayList list = new ArrayList(8);\n"
+        + "  list.add(e0);\n"
+        + "  list.add(e1);\n"
+        + "  list.add(e2);\n"
+        + "  list.add(e3);\n"
+        + "  list.add(e4);\n"
+        + "  list.add(e5);\n"
+        + "  list.add(e6);\n"
+        + "  list.add(e7);\n"
+        + "  return list;\n"
+        + "}\n"
+        + "return readArrayListLoop(reader, e0, e1, e2, e3, e4, e5, e6, e7);";
+  }
+
+  private static String readStringArrayListLoopCode(CodegenContext ctx) {
+    return "String e8 = (String) elementReader.readUtf8(reader);\n"
+        + "int nextElement = reader.consumeNextStringArrayElement();\n"
+        + "if (nextElement == Utf8JsonReader.STRING_ARRAY_END) {\n"
+        + "  reader.exitDepth();\n"
+        + "  ArrayList list = new ArrayList("
+        + ARRAY_LIST_PREFIX_SIZE
+        + ");\n"
+        + "  list.add(e0);\n"
+        + "  list.add(e1);\n"
+        + "  list.add(e2);\n"
+        + "  list.add(e3);\n"
+        + "  list.add(e4);\n"
+        + "  list.add(e5);\n"
+        + "  list.add(e6);\n"
+        + "  list.add(e7);\n"
+        + "  list.add(e8);\n"
+        + "  return list;\n"
+        + "}\n"
+        + "ArrayList list = new ArrayList("
+        + ARRAY_LIST_FIRST_GROWTH
+        + ");\n"
+        + "list.add(e0);\n"
+        + "list.add(e1);\n"
+        + "list.add(e2);\n"
+        + "list.add(e3);\n"
+        + "list.add(e4);\n"
+        + "list.add(e5);\n"
+        + "list.add(e6);\n"
+        + "list.add(e7);\n"
+        + "list.add(e8);\n"
+        + "do {\n"
+        + "  String element;\n"
+        + "  if (nextElement == Utf8JsonReader.STRING_ARRAY_QUOTED) {\n"
+        + readQuotedStringElement(ctx, "quotedElement", "LoopQuoted")
+        + "    element = quotedElement;\n"
+        + "  } else {\n"
+        + "    element = (String) elementReader.readUtf8(reader);\n"
+        + "  }\n"
+        + "  list.add(element);\n"
+        + "  nextElement = reader.consumeNextStringArrayElement();\n"
+        + "} while (nextElement != Utf8JsonReader.STRING_ARRAY_END);\n"
+        + "reader.exitDepth();\n"
+        + "return list;";
+  }
+
+  private static String readStringElement(CodegenContext ctx, String variable, String id) {
+    ctx.clearExprState();
+    Code.ExprCode expression = Utf8ReaderCodegen.readStringElement(id).genCode(ctx);
+    String expressionCode = expression.code();
+    return (expressionCode == null ? "" : expressionCode + "\n")
+        + "String "
+        + variable
+        + " = "
+        + expression.value()
+        + ";\n";
+  }
+
+  private static String readStringArrayElement(CodegenContext ctx, String variable, String id) {
+    String quoted = variable + "Quoted";
+    return "String "
+        + variable
+        + ";\n"
+        + "if (nextElement == Utf8JsonReader.STRING_ARRAY_QUOTED) {\n"
+        + readQuotedStringElement(ctx, quoted, id)
+        + "  "
+        + variable
+        + " = "
+        + quoted
+        + ";\n"
+        + "} else {\n"
+        + "  "
+        + variable
+        + " = (String) elementReader.readUtf8(reader);\n"
+        + "}\n";
+  }
+
+  private static String readQuotedStringElement(CodegenContext ctx, String variable, String id) {
+    ctx.clearExprState();
+    Code.ExprCode expression = Utf8ReaderCodegen.readQuotedStringElement(id).genCode(ctx);
+    String expressionCode = expression.code();
+    return (expressionCode == null ? "" : expressionCode + "\n")
+        + "String "
+        + variable
+        + " = "
+        + expression.value()
+        + ";\n";
   }
 
   private static String readBody() {

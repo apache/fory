@@ -754,9 +754,21 @@ public class JsonAsyncCompilationTest {
   @Test
   public void utf8ScalarCollectionCapability() throws Exception {
     ControlledJson controlled = controlledJson();
-    String input =
-        "{\"values\":[null,\"\",\"short\",\"abcdefghijklmnopqrstuvwxyz0123456789\","
-            + "\"quote\\\"\",\"slash\\\\\",\"line\\n\",\"你好\"]}";
+    String[] tokens = {
+      "null",
+      "\"\"",
+      "\"short\"",
+      "\"abcdefghijklmnopqrstuvwxyz0123456789\"",
+      "\"quote\\\"\"",
+      "\"slash\\\\\"",
+      "\"line\\n\"",
+      "\"你好\"",
+      "\"eight\"",
+      "\"nine\"",
+      "\"ten\"",
+      "null",
+      "\"tail\""
+    };
     List<String> expected =
         Arrays.asList(
             null,
@@ -766,7 +778,13 @@ public class JsonAsyncCompilationTest {
             "quote\"",
             "slash\\",
             "line\n",
-            "你好");
+            "你好",
+            "eight",
+            "nine",
+            "ten",
+            null,
+            "tail");
+    String input = stringCollectionInput(tokens, tokens.length);
     AsyncStringCollections initial =
         controlled.json.fromJson(
             input.getBytes(StandardCharsets.UTF_8), AsyncStringCollections.class);
@@ -796,6 +814,24 @@ public class JsonAsyncCompilationTest {
         controlled.json.fromJson(
             input.getBytes(StandardCharsets.UTF_8), AsyncStringCollections.class);
     assertEquals(generated.values, expected);
+    for (int size = 0; size <= tokens.length; size++) {
+      AsyncStringCollections prefix =
+          controlled.json.fromJson(
+              stringCollectionInput(tokens, size).getBytes(StandardCharsets.UTF_8),
+              AsyncStringCollections.class);
+      assertEquals(prefix.values, expected.subList(0, size));
+    }
+  }
+
+  private static String stringCollectionInput(String[] tokens, int size) {
+    StringBuilder input = new StringBuilder("{\"values\":[");
+    for (int i = 0; i < size; i++) {
+      if (i != 0) {
+        input.append(i == 10 ? " \n, \t" : ",");
+      }
+      input.append(tokens[i]);
+    }
+    return input.append("]}").toString();
   }
 
   @Test
