@@ -1013,7 +1013,11 @@ public class TypeUtils {
         return false;
       }
       Tuple2<TypeRef<?>, TypeRef<?>> mapKeyValueType = getMapKeyValueType(typeRef);
-      return isSupported(mapKeyValueType.f0) && isSupported(mapKeyValueType.f1);
+      // Thread ctx through both key and value, matching the iterable branch above. The single-arg
+      // isSupported overload builds a fresh context with synthesizeInterfaces=false and the empty
+      // custom-type registry, which would reject an interface bean used as a map key or value even
+      // though the same type is supported as a direct field or list element.
+      return isSupported(mapKeyValueType.f0, ctx) && isSupported(mapKeyValueType.f1, ctx);
     } else if (cls.isEnum()) {
       return true;
     } else {

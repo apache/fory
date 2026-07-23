@@ -99,6 +99,22 @@
 
   <build>
     <plugins>
+      <!--
+        Compile against the Java 11 API, not just to Java 11 bytecode. The parent sets only
+        source/target, which still resolves against the build JDK's bootclasspath, so a newer-than-11
+        API (e.g. the Java 16 record reflection API) compiles silently and then fails at runtime on
+        Java 11. release=11 makes such a leak a compile error here. Per-module: fory-core cannot use
+        release because it depends on sun.misc.Unsafe, which release excludes.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <release>11</release>
+          <source combine.self="override"/>
+          <target combine.self="override"/>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
