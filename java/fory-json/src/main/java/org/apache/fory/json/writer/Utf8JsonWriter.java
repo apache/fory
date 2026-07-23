@@ -345,9 +345,37 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     bytes[pos++] = (byte) '"';
     pos = writeLocalDateBytes(bytes, pos, year, value.getMonthValue(), value.getDayOfMonth());
     bytes[pos++] = (byte) 'T';
-    pos =
-        writeTime(
-            bytes, pos, value.getHour(), value.getMinute(), value.getSecond(), value.getNano());
+    // Keep the complete UTC common path in its representation owner so generated callers see a
+    // natural C2 boundary that does not depend on compilation order.
+    pos = writeTwoDigits(bytes, pos, value.getHour());
+    bytes[pos++] = (byte) ':';
+    pos = writeTwoDigits(bytes, pos, value.getMinute());
+    int second = value.getSecond();
+    int nano = value.getNano();
+    if (second != 0 || nano != 0) {
+      bytes[pos++] = (byte) ':';
+      pos = writeTwoDigits(bytes, pos, second);
+      if (nano != 0) {
+        bytes[pos++] = (byte) '.';
+        if (nano % 1_000_000 == 0) {
+          pos = writePadded3(bytes, pos, nano / 1_000_000);
+        } else if (nano % 1000 == 0) {
+          int micros = nano / 1000;
+          int high = micros / 1000;
+          int low = micros - high * 1000;
+          pos = writePadded3(bytes, pos, high);
+          pos = writePadded3(bytes, pos, low);
+        } else {
+          int first = nano / 100000000;
+          int rem = nano - first * 100000000;
+          int middle = rem / 10000;
+          int low = rem - middle * 10000;
+          bytes[pos++] = (byte) ('0' + first);
+          pos = writePadded4(bytes, pos, middle);
+          pos = writePadded4(bytes, pos, low);
+        }
+      }
+    }
     bytes[pos++] = (byte) 'Z';
     bytes[pos++] = (byte) '"';
     position = pos;
@@ -2013,41 +2041,6 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     pos = writeTwoDigits(bytes, pos, month);
     bytes[pos++] = (byte) '-';
     return writeTwoDigits(bytes, pos, day);
-  }
-
-  private static int writeTime(byte[] bytes, int pos, int hour, int minute, int second, int nano) {
-    pos = writeTwoDigits(bytes, pos, hour);
-    bytes[pos++] = (byte) ':';
-    pos = writeTwoDigits(bytes, pos, minute);
-    if (second != 0 || nano != 0) {
-      bytes[pos++] = (byte) ':';
-      pos = writeTwoDigits(bytes, pos, second);
-      if (nano != 0) {
-        bytes[pos++] = (byte) '.';
-        pos = writeNano(bytes, pos, nano);
-      }
-    }
-    return pos;
-  }
-
-  private static int writeNano(byte[] bytes, int pos, int nano) {
-    if (nano % 1_000_000 == 0) {
-      return writePadded3(bytes, pos, nano / 1_000_000);
-    }
-    if (nano % 1000 == 0) {
-      int micros = nano / 1000;
-      int high = micros / 1000;
-      int low = micros - high * 1000;
-      pos = writePadded3(bytes, pos, high);
-      return writePadded3(bytes, pos, low);
-    }
-    int first = nano / 100000000;
-    int rem = nano - first * 100000000;
-    int middle = rem / 10000;
-    int low = rem - middle * 10000;
-    bytes[pos++] = (byte) ('0' + first);
-    pos = writePadded4(bytes, pos, middle);
-    return writePadded4(bytes, pos, low);
   }
 
   private static int writePadded3(byte[] bytes, int pos, int value) {
