@@ -968,6 +968,13 @@ abstract class JsonWriterCodegen {
     ctx.addImports(JsonTrampolineInvoke.class, bodyType);
     String bodyTypeName = ctx.type(bodyType);
     ctx.addField(true, bodyTypeName, fieldName, null);
+    // The generated receiver below owns the real object body, not a forwarding call to another
+    // generated method. It is constructed once, stored through a final interface-typed field, and
+    // invoked through JsonTrampolineInvoke's one shared invokeinterface BCI. Keeping all three
+    // properties is essential: a concrete field reveals the exact type, a per-class interface call
+    // creates separate profiles, and a forwarding receiver lets compilation order decide whether
+    // the real body is absorbed before it reaches level 4. The enclosing generated codec
+    // constructor finishes all receiver assignment before the resolver publishes that codec.
     ctx.addInitCode(
         "class "
             + bodyClass
@@ -1185,8 +1192,12 @@ abstract class JsonWriterCodegen {
     ctx.addImports(JsonTrampolineInvoke.class, groupType);
     String groupTypeName = ctx.type(groupType);
     ctx.addField(true, groupTypeName, fieldName, null);
-    // The receiver directly owns the field body. A forwarding method creates two valid C2
-    // products depending on whether the body finishes L4 compilation before the receiver.
+    // This receiver directly owns the schema field body and is stored in a final interface-typed
+    // field. Do not extract the body into a generated forwarding method: the forwarding receiver
+    // can then compile either before or after the target body reaches level 4, producing two valid
+    // but materially different C2 layouts. Do not emit invokeinterface here either; every body and
+    // group must contribute its real receiver to JsonTrampolineInvoke's one shared profile. The
+    // enclosing generated codec is published only after every final receiver field is assigned.
     ctx.addInitCode(
         "class "
             + groupClass

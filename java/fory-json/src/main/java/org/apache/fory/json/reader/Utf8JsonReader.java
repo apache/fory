@@ -852,6 +852,13 @@ public final class Utf8JsonReader extends JsonReader {
     return readFloatToken();
   }
 
+  // Long parsing deliberately repeats the initial digit checks, zero handling, block scan, and
+  // short tail used by Int parsing instead of sharing one generic token loop. The widths have
+  // different safe digit counts, overflow rules, and runtime profiles; a small shared helper lets
+  // one profile determine both callers' inline layout and loses the width-specific locals. Keep
+  // malformed input and overflow in their cold tails. Do not deduplicate this common path without
+  // matched intrinsic and aggregate C2 evidence, and never add padding or benchmark-specific
+  // digit-count branches to create an inline boundary.
   private long readLongToken() {
     byte[] bytes = input;
     int offset = position;

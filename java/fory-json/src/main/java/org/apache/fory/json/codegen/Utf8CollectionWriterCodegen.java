@@ -58,9 +58,11 @@ final class Utf8CollectionWriterCodegen {
   }
 
   private static String writeBody(boolean stringElements) {
-    // Object-level compilation boundaries belong to the final element codec. The collection keeps
-    // its one ordinary element call so member-group receiver profiles cannot be skewed by element
-    // cardinality.
+    // The collection owns iteration and calls the final element codec's ordinary writeUtf8 entry.
+    // That entry owns null handling and, for a qualifying generated object, reaches the shared
+    // object-body trampoline itself. Do not call JsonTrampolineInvoke from this loop: collection
+    // cardinality would then dominate the body/group receiver profile and the element entry would
+    // no longer be the owner of its complete value semantics.
     String elementWrite =
         stringElements
             ? "String element = (String) list.get(index);\n"

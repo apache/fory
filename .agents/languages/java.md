@@ -104,6 +104,30 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - In `MemoryBuffer` and `MemoryOps` hot paths, duplicate small straight-line copy/read/write logic
   when that keeps control flow direct. Do not add private helper indirection to hot paths just to
   reduce local code duplication; keep helpers for slow, cold, or error paths.
+- In JDK 25 Fory JSON C2-sensitive code, preserve measured, naturally large hot-method boundaries.
+  A method that exceeds HotSpot's 325-byte hot-inline limit through real representation, scalar,
+  array, collection, or generated-schema work is an independent subtree owner. Generated group
+  planning counts only its invocation bytecodes, not the callee's transitive body. Do not shrink
+  such a method into a wrapper, add its body back into the caller budget, or manufacture a boundary
+  with padding, `@DontInline`, `CompileCommand`, fake receivers, or JVM flags. Keep escape,
+  malformed-input, Unicode, arbitrary-length, and other cold fallback work in separate methods.
+- `JsonTrampolineInvoke` is the generated UTF-8 writer body's single shared
+  `invokeinterface`-bytecode owner. Only fully constructed generated object bodies and member groups
+  held in final interface-typed fields may call it. Root facades, startup `ObjectCodec`s, handwritten
+  codecs, arrays, collections, maps, readers, and writers must not call it. A generated collection
+  loop calls the element codec's ordinary entry; a qualifying generated element entry reaches its
+  own object-body trampoline. The static helper remains tiny and may inline because the shared
+  `invokeinterface` profile, not helper size, creates the boundary. Do not create one trampoline per
+  generated class, pass concrete receivers, add dispatch/state/resolution work, or introduce
+  synthetic receivers; each of those breaks the shared real-receiver profile or its clean owner
+  model.
+- Intentional hot-path source duplication is required when helper extraction loses local
+  buffer/cursor state or makes C2 layout depend on compilation order. In particular, Long read/write
+  paths may repeat Int parsing or formatting logic, and unrolled array lanes may repeat complete
+  signed/range dispatch. Do not deduplicate these blocks without generated-source, `javap`,
+  PrintInlining, LogCompilation, nmethod, allocation, intrinsic, and aggregate evidence that the
+  independent boundary and performance remain stable. Preserve the nearby source comments that
+  record the owner and failure mode.
 - In `MemoryBuffer` small-varint read/write hot paths, once Android has exited through the single
   `MemoryOps` call, keep JVM bulk loads/stores local with raw Unsafe operations instead of routing
   through branchful `_unsafeGet*` or `_unsafePut*` helpers. Add or preserve source comments that

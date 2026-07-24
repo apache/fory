@@ -261,6 +261,25 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeByteRaw((byte) '"');
   }
 
+  /**
+   * Writes one String through a deliberately independent UTF-8 representation boundary.
+   *
+   * <p>The compact-Latin1 common entry is intentionally large enough, through real representation
+   * dispatch, scanning, validation, and copying work, to exceed HotSpot JDK 25's 325-byte
+   * hot-inline limit. Generated object and collection code must call this method directly and
+   * account only for that invocation in its own group budget. If this method is reduced to a small
+   * wrapper around deeper helpers, C2 can absorb the wrapper and choose different transitive String
+   * closures according to compilation order.
+   *
+   * <p>Fixed-length Latin1 paths belong to this representation owner. When a measured layout keeps
+   * those paths directly in this method, repeated loads, predicates, and stores are intentional:
+   * extracting them merely to reduce source duplication can make C2's changing inline budget decide
+   * which String lengths pay another call. The local form also keeps {@code buffer}, {@code
+   * position}, and the cursor visible to C2. Keep escape, Unicode, malformed-input, and
+   * arbitrary-length work in their existing cold or long-tail methods; do not enlarge this method
+   * with cold behavior merely to preserve its size, and never use bytecode padding or compiler
+   * directives.
+   */
   @Override
   public void writeString(String value) {
     if (STRING_BYTES_BACKED) {
@@ -796,14 +815,30 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writeArrayEnd();
   }
 
+  /**
+   * Writes a long array as one naturally independent generated-caller boundary.
+   *
+   * <p>The first element, even-length element, and two pair-loop lanes intentionally contain the
+   * same signed-Long to Int/full-width dispatch. The repeated real work keeps this method above
+   * HotSpot JDK 25's 325-byte hot-inline limit, so a generated object group retains only the array
+   * call and the array loop forms its own level-4 nmethod. A small shared element helper is not an
+   * equivalent cleanup: it can be inlined first and then pull the complete array closure into the
+   * generated caller according to compilation timing.
+   *
+   * <p>The duplication also preserves the pair-unrolled control flow, one capacity check per
+   * unrolled chunk, and direct {@code buffer}/{@code position} state. It is valid for Long encoding
+   * to repeat the Int-range fast path when that is faster than a generic numeric helper. Do not
+   * deduplicate these lanes unless generated-source, {@code javap}, PrintInlining, LogCompilation,
+   * nmethod, allocation, and intrinsic/aggregate benchmarks prove the same stable boundary and no
+   * regression. This is data-shape-independent code; never replace it with fixed array-length
+   * assumptions.
+   */
   public void writeLongArray(long[] values) {
     enterDepth();
     ensure(2);
     buffer[position++] = '[';
     int length = values.length;
     if (length != 0) {
-      // Keep the signed-Long dispatch in each pair-loop lane. Extracting this real work into a
-      // small helper lets compilation order move the array closure into generated object methods.
       ensure(22);
       {
         long value = values[0];
@@ -1857,6 +1892,11 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     writePositiveIntNoEnsure(value);
   }
 
+  // Keep general Long and generated-field Long entries separate even though their common code is
+  // intentionally repeated. They have different range profiles and callers; merging them into a
+  // generic scalar helper lets one profile dictate the other's inline shape. Reusing the
+  // independently compiled positive Int and full-width Long leaves is safe because those leaves
+  // own complete formatting work and pass buffer/cursor state explicitly.
   private void writeLongNoEnsure(long value) {
     if (value == Long.MIN_VALUE) {
       writeRawNoEnsure(MIN_LONG_BYTES);
@@ -1873,8 +1913,9 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     position = writePositiveLong(buffer, position, value);
   }
 
-  // Generated object fields and general scalar Long calls have independent range profiles. Keep
-  // their entries separate; array element dispatch is owned directly by writeLongArray.
+  // This duplicate entry is owned by generated object fields. Do not merge it with
+  // writeLongNoEnsure merely to remove source repetition: field and scalar callers have independent
+  // range/type profiles, while array element dispatch is deliberately owned by writeLongArray.
   private void writeLongFieldNoEnsure(long value) {
     if (value == Long.MIN_VALUE) {
       writeRawNoEnsure(MIN_LONG_BYTES);
@@ -1895,9 +1936,13 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     position = writePositiveInt(buffer, position, value);
   }
 
-  // Keep the full-width formatter behind one natural C2 boundary. The explicit byte/cursor
-  // carrier lets its callers publish the returned cursor once without giving the large callee
-  // ownership of mutable writer state.
+  // The full-width formatter is one real-work owner shared by the deliberately separate scalar,
+  // field, and array entries above. Passing the byte array and cursor and returning the new cursor
+  // lets each caller keep buffer/position state live across the call and publish position once.
+  // Do not replace this with a writer callback, carrier object, or mutable-writer lookup. Whether
+  // this leaf inlines is measured independently; the guaranteed greater-than-325-BCI boundary for
+  // long[] is writeLongArray, so do not copy this formatter into generated callers merely to make
+  // another method large.
   private static int writePositiveLong(byte[] bytes, int pos, long value) {
     long high = value / EIGHT_DIGITS;
     int low = (int) (value - high * EIGHT_DIGITS);

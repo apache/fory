@@ -82,6 +82,9 @@ final class Utf8WriterCodegen extends JsonWriterCodegen {
 
   @Override
   Class<?> memberGroupType() {
+    // Returning the interface type opts only generated UTF-8 object bodies and member groups into
+    // JsonTrampolineInvoke's shared callsite. Collection loops keep their ordinary element-codec
+    // call, and other writer representations keep their own measured method layout.
     return Utf8WriterCodec.class;
   }
 
