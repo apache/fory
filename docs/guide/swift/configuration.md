@@ -31,6 +31,7 @@ public struct Config {
   public let compatible: Bool
   public let checkClassVersion: Bool
   public let maxDepth: Int
+  public let maxGraphMemoryBytes: Int64
   public let maxTypeFields: Int
   public let maxTypeMetaBytes: Int
   public let maxSchemaVersionsPerType: Int
@@ -90,8 +91,17 @@ let fory = Fory(compatible: false, checkClassVersion: true)
 
 ### Size and Depth Limits
 
-`maxDepth` bounds decoded payload nesting depth. Compatible-mode remote metadata
-is also limited:
+`maxDepth` bounds decoded payload nesting depth.
+
+`maxGraphMemoryBytes` sets an approximate graph-memory gate for one root deserialization. The
+estimate mainly covers materialized arrays, dictionaries, sets, structs, classes, and objects. It
+skips leaf values such as strings, binary data, primitive scalars, and dense primitive arrays, so
+actual process memory can be higher than this value. Leaf values remain protected by
+byte-availability checks: if the unread input does not contain enough bytes, Fory will not read or
+create that leaf value. The default limit is a fixed `128 MiB` for all root input forms. A positive
+value overrides the default. Explicit non-positive values are rejected when the runtime is created.
+
+Compatible-mode remote metadata is also limited:
 
 - `maxTypeFields` defaults to `512` and limits fields in one received struct metadata body.
 - `maxTypeMetaBytes` defaults to `4096` and limits encoded body bytes in one received TypeMeta body,
@@ -104,6 +114,7 @@ is also limited:
 ```swift
 let fory = Fory(
   maxDepth: 5,
+  maxGraphMemoryBytes: 128 * 1024 * 1024,
   maxTypeFields: 512,
   maxTypeMetaBytes: 4096,
   maxSchemaVersionsPerType: 10,
@@ -140,5 +151,8 @@ Security-related configuration:
 - Register only the expected generated models before deserializing untrusted payloads.
 - Use `checkClassVersion` with `compatible: false` for intentional same-schema payloads.
 - Set `maxDepth` for the largest nesting depth your service accepts.
+- Set `maxGraphMemoryBytes` as an approximate gate for collection, map, array, struct, class, and
+  object-heavy payloads. It is not an exact heap cap; leaf values are gated by remaining input
+  bytes.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.

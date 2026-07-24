@@ -65,7 +65,6 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.WeakHashMap;
-import java.util.stream.Collectors;
 import org.apache.fory.annotation.Ref;
 import org.apache.fory.collection.BFloat16List;
 import org.apache.fory.collection.BoolList;
@@ -483,7 +482,7 @@ public class TypeUtils {
 
   public static int getArrayDimensions(String className) {
     int dimension = 0;
-    while (className.charAt(dimension) == '[') {
+    while (dimension < className.length() && className.charAt(dimension) == '[') {
       dimension++;
     }
     return dimension;
@@ -521,6 +520,49 @@ public class TypeUtils {
       t = t.getComponentType();
     }
     return Tuple2.of(t, dimension);
+  }
+
+  /**
+   * Returns the component and dimensions of a JVM array class descriptor. Reference arrays use the
+   * component class name and primitive arrays use their descriptor code. The component is null when
+   * the descriptor is malformed.
+   */
+  public static Tuple2<String, Integer> getArrayComponentInfo(String className) {
+    Preconditions.checkArgument(className.startsWith("["));
+    int dimensions = getArrayDimensions(className);
+    if (dimensions == className.length()) {
+      return Tuple2.of(null, dimensions);
+    }
+    int componentIndex = dimensions;
+    if (className.charAt(componentIndex) == 'L') {
+      if (componentIndex + 2 >= className.length() || !className.endsWith(";")) {
+        return Tuple2.of(null, dimensions);
+      }
+      return Tuple2.of(className.substring(componentIndex + 1, className.length() - 1), dimensions);
+    }
+    if (componentIndex + 1 != className.length()) {
+      return Tuple2.of(null, dimensions);
+    }
+    char descriptor = className.charAt(componentIndex);
+    String component = "ZBCSIJFD".indexOf(descriptor) >= 0 ? String.valueOf(descriptor) : null;
+    return Tuple2.of(component, dimensions);
+  }
+
+  /** Returns the JVM array class name for the component type and additional dimensions. */
+  public static String arrayClassName(Class<?> componentType, int dimensions) {
+    StringBuilder builder = new StringBuilder(dimensions + componentType.getName().length() + 2);
+    for (int i = 0; i < dimensions; i++) {
+      builder.append('[');
+    }
+    if (componentType.isArray()) {
+      return builder.append(componentType.getName()).toString();
+    }
+    if (!componentType.isPrimitive()) {
+      return builder.append('L').append(componentType.getName()).append(';').toString();
+    }
+    return builder
+        .append(Array.newInstance(componentType, 0).getClass().getName().charAt(1))
+        .toString();
   }
 
   /** Returns s string that represents array type declaration of type. */
@@ -574,11 +616,10 @@ public class TypeUtils {
   public static TypeRef<?> getElementType(TypeRef<?> typeRef) {
     if (typeRef.hasExplicitTypeArguments()) {
       List<TypeRef<?>> typeArguments = typeRef.getTypeArguments();
-      if (typeArguments.size() == 1) {
-        Class<?> rawType = getRawType(typeRef);
-        if (Iterable.class.isAssignableFrom(rawType) || isScalaCollectionClass(rawType)) {
-          return typeArguments.get(0);
-        }
+      Class<?> rawType = getRawType(typeRef);
+      if (typeArguments.size() == 1
+          && (Iterable.class.isAssignableFrom(rawType) || isScalaIterableClass(rawType))) {
+        return typeArguments.get(0);
       }
     }
     Type type = typeRef.getType();
@@ -593,8 +634,7 @@ public class TypeUtils {
         }
       }
     }
-    if (ScalaTypes.SCALA_AVAILABLE
-        && typeRef.getType().getTypeName().startsWith("scala.collection")) {
+    if (isScalaIterableClass(typeRef.getRawType())) {
       return ScalaTypes.getElementType(typeRef);
     }
     TypeRef<?> supertype = ((TypeRef<? extends Iterable<?>>) typeRef).getSupertype(Iterable.class);
@@ -611,12 +651,10 @@ public class TypeUtils {
   public static Tuple2<TypeRef<?>, TypeRef<?>> getMapKeyValueType(TypeRef<?> typeRef) {
     if (typeRef.hasExplicitTypeArguments()) {
       List<TypeRef<?>> typeArguments = typeRef.getTypeArguments();
-      if (typeArguments.size() == 2) {
-        Class<?> rawType = getRawType(typeRef);
-        if ((Map.class.isAssignableFrom(rawType) || isScalaCollectionClass(rawType))
-            && rawType.getTypeParameters().length == 2) {
-          return Tuple2.of(typeArguments.get(0), typeArguments.get(1));
-        }
+      Class<?> rawType = getRawType(typeRef);
+      if (typeArguments.size() == 2
+          && (Map.class.isAssignableFrom(rawType) || isScalaMapClass(rawType))) {
+        return Tuple2.of(typeArguments.get(0), typeArguments.get(1));
       }
     }
     Type type = typeRef.getType();
@@ -632,8 +670,7 @@ public class TypeUtils {
         }
       }
     }
-    if (ScalaTypes.SCALA_AVAILABLE
-        && typeRef.getType().getTypeName().startsWith("scala.collection")) {
+    if (isScalaMapClass(typeRef.getRawType())) {
       return ScalaTypes.getMapKeyValueType(typeRef);
     }
     @SuppressWarnings("unchecked")
@@ -643,8 +680,16 @@ public class TypeUtils {
     return Tuple2.of(keyType, valueType);
   }
 
-  private static boolean isScalaCollectionClass(Class<?> rawType) {
-    return ScalaTypes.SCALA_AVAILABLE && rawType.getName().startsWith("scala.collection");
+  private static boolean isScalaMapClass(Class<?> rawType) {
+    return ScalaTypes.SCALA_AVAILABLE
+        && rawType.getName().startsWith("scala.collection")
+        && ScalaTypes.getScalaMapType().isAssignableFrom(rawType);
+  }
+
+  private static boolean isScalaIterableClass(Class<?> rawType) {
+    return ScalaTypes.SCALA_AVAILABLE
+        && rawType.getName().startsWith("scala.collection")
+        && ScalaTypes.getScalaIterableType().isAssignableFrom(rawType);
   }
 
   public static void applyRefTrackingOverride(
@@ -656,14 +701,9 @@ public class TypeUtils {
     if (ref != null) {
       genericType.setTrackingRefOverride(ref.enable() && globalTrackingRef);
     }
-    Object[] typeUseArgs = TypeUseMetadata.typeUseArguments(typeUse);
-    if (typeUseArgs != null) {
-      GenericType[] typeParameters = genericType.getTypeParameters();
-      int len = Math.min(typeUseArgs.length, typeParameters.length);
-      for (int i = 0; i < len; i++) {
-        applyRefTrackingOverride(typeParameters[i], typeUseArgs[i], globalTrackingRef);
-      }
-    }
+    // Child type-use metadata is already folded into TypeRef explicit arguments. Replaying JVM
+    // type-use children here is unsafe because collection/map GenericType parameters are normalized
+    // to element or key/value, not necessarily the raw declared type-argument order.
   }
 
   public static TypeRef<?> getFieldTypeRef(Field field) {
@@ -733,13 +773,13 @@ public class TypeUtils {
   public static <E> TypeRef<Collection<E>> collectionOf(TypeRef<E> elemType) {
     TypeRef<Collection<E>> raw =
         new TypeRef<Collection<E>>() {}.where(new TypeParameter<E>() {}, elemType);
-    return TypeRef.of(raw.getType(), null, Arrays.asList(elemType), null);
+    return TypeRef.ofSemanticTypeArguments(raw.getType(), null, Arrays.asList(elemType), null);
   }
 
   public static <E> TypeRef<Collection<E>> collectionOf(TypeRef<E> elemType, TypeExtMeta extMeta) {
     TypeRef<Collection<E>> raw =
         new TypeRef<Collection<E>>(extMeta) {}.where(new TypeParameter<E>() {}, elemType);
-    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(elemType), null);
+    return TypeRef.ofSemanticTypeArguments(raw.getType(), extMeta, Arrays.asList(elemType), null);
   }
 
   public static <E> TypeRef<? extends Collection<E>> collectionOf(
@@ -747,7 +787,7 @@ public class TypeUtils {
     TypeRef<? extends Collection<E>> raw =
         new TypeRef<Collection<E>>(extMeta) {}.where(new TypeParameter<E>() {}, elemType)
             .getSubtype(collectionType);
-    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(elemType), null);
+    return TypeRef.ofSemanticTypeArguments(raw.getType(), extMeta, Arrays.asList(elemType), null);
   }
 
   public static <K, V> TypeRef<Map<K, V>> mapOf(Class<K> keyType, Class<V> valueType) {
@@ -758,7 +798,8 @@ public class TypeUtils {
     TypeRef<Map<K, V>> raw =
         new TypeRef<Map<K, V>>() {}.where(new TypeParameter<K>() {}, keyType)
             .where(new TypeParameter<V>() {}, valueType);
-    return TypeRef.of(raw.getType(), null, Arrays.asList(keyType, valueType), null);
+    return TypeRef.ofSemanticTypeArguments(
+        raw.getType(), null, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<Map<K, V>> mapOf(
@@ -766,7 +807,8 @@ public class TypeUtils {
     TypeRef<Map<K, V>> raw =
         new TypeRef<Map<K, V>>(extMeta) {}.where(new TypeParameter<K>() {}, keyType)
             .where(new TypeParameter<V>() {}, valueType);
-    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(keyType, valueType), null);
+    return TypeRef.ofSemanticTypeArguments(
+        raw.getType(), extMeta, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<? extends Map<K, V>> mapOf(
@@ -775,14 +817,16 @@ public class TypeUtils {
         new TypeRef<Map<K, V>>(extMeta) {}.where(new TypeParameter<K>() {}, keyType)
             .where(new TypeParameter<V>() {}, valueType);
     TypeRef<? extends Map<K, V>> raw = mapTypeRef.getSubtype(mapType);
-    return TypeRef.of(raw.getType(), extMeta, Arrays.asList(keyType, valueType), null);
+    return TypeRef.ofSemanticTypeArguments(
+        raw.getType(), extMeta, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<? extends Map<K, V>> mapOf(
       Class<?> mapType, TypeRef<K> keyType, TypeRef<V> valueType) {
     TypeRef<Map<K, V>> mapTypeRef = mapOf(keyType, valueType);
     TypeRef<? extends Map<K, V>> raw = mapTypeRef.getSubtype(mapType);
-    return TypeRef.of(raw.getType(), null, Arrays.asList(keyType, valueType), null);
+    return TypeRef.ofSemanticTypeArguments(
+        raw.getType(), null, Arrays.asList(keyType, valueType), null);
   }
 
   public static <K, V> TypeRef<? extends Map<K, V>> mapOf(
@@ -1050,17 +1094,7 @@ public class TypeUtils {
 
   /** Returns generic type arguments of <code>typeToken</code>. */
   public static List<TypeRef<?>> getTypeArguments(TypeRef<?> typeRef) {
-    if (typeRef.hasExplicitTypeArguments()) {
-      return typeRef.getTypeArguments();
-    }
-    if (typeRef.getType() instanceof ParameterizedType) {
-      ParameterizedType parameterizedType = (ParameterizedType) typeRef.getType();
-      return Arrays.stream(parameterizedType.getActualTypeArguments())
-          .map(TypeRef::of)
-          .collect(Collectors.toList());
-    } else {
-      return new ArrayList<>();
-    }
+    return typeRef.getTypeArguments();
   }
 
   /**

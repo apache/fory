@@ -38,6 +38,7 @@ final fory = Fory(
   maxTypeMetaBytes: 4096,
   maxSchemaVersionsPerType: 10,
   maxAverageSchemaVersionsPerType: 3,
+  maxGraphMemoryBytes: 64 * 1024 * 1024,
 );
 ```
 
@@ -107,17 +108,37 @@ final fory = Fory(
 - `maxAverageSchemaVersionsPerType` limits the average across accepted remote types. The
   effective global floor is `8192` schemas.
 
+### `maxGraphMemoryBytes`
+
+Sets an approximate graph-memory gate for one root deserialization. The estimate mainly covers
+materialized lists, sets, maps, arrays, structs, and objects. It skips leaf values such as strings,
+binary data, primitive scalars, and dense typed-array payloads, so actual process memory can be
+higher than this value. Leaf values remain protected by byte-availability checks: if the unread
+input does not contain enough bytes, Fory will not read or create that leaf value.
+
+The default is a fixed `128 MiB` and is not derived from input size.
+
+Set a positive value when a trusted workload legitimately needs a larger or smaller
+collection/map/struct gate:
+
+```dart
+final fory = Fory(maxGraphMemoryBytes: 256 * 1024 * 1024);
+```
+
+Explicit non-positive values are rejected when the runtime is created.
+
 ## Defaults
 
-| Option                            | Default |
-| --------------------------------- | ------- |
-| `compatible`                      | `true`  |
-| `checkStructVersion`              | `false` |
-| `maxDepth`                        | 256     |
-| `maxTypeFields`                   | 512     |
-| `maxTypeMetaBytes`                | 4096    |
-| `maxSchemaVersionsPerType`        | 10      |
-| `maxAverageSchemaVersionsPerType` | 3       |
+| Option                            | Default   |
+| --------------------------------- | --------- |
+| `compatible`                      | `true`    |
+| `checkStructVersion`              | `false`   |
+| `maxDepth`                        | 256       |
+| `maxTypeFields`                   | 512       |
+| `maxTypeMetaBytes`                | 4096      |
+| `maxSchemaVersionsPerType`        | 10        |
+| `maxAverageSchemaVersionsPerType` | 3         |
+| `maxGraphMemoryBytes`             | 134217728 |
 
 ## Xlang Notes
 
@@ -134,6 +155,8 @@ Security-related configuration:
 - Register only the expected generated models before deserializing untrusted payloads.
 - Use `checkStructVersion: true` with `compatible: false` for intentional same-schema payloads.
 - Set `maxDepth` to reject unexpectedly deep payload shapes.
+- Keep `maxGraphMemoryBytes` at the default for most inputs, or set an explicit positive byte gate
+  for known trusted collection/map/struct-heavy payloads.
 - Keep the remote schema metadata limits at their defaults unless the data is not malicious and a
   trusted peer sends larger metadata or many schema versions.
 - Prefer generated schemas and explicit field metadata over broad dynamic fields for untrusted input.

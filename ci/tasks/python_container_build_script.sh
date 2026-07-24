@@ -66,11 +66,15 @@ for PY in $PYTHON_VERSIONS; do
     export PATH="$PYTHON_BIN_DIR:$OLD_PATH"
     hash -r
     echo "Using $PYTHON_PATH"
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "aarch64" ]; then
-        export PLAT="manylinux2014_aarch64"
+    if [ -n "${MANYLINUX_PLAT:-}" ]; then
+        export PLAT="$MANYLINUX_PLAT"
     else
-        export PLAT="manylinux2014_x86_64"
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "aarch64" ]; then
+            export PLAT="manylinux2014_aarch64"
+        else
+            export PLAT="manylinux2014_x86_64"
+        fi
     fi
     "$PYTHON_PATH" -m pip install cython wheel pytest auditwheel
     ci/deploy.sh build_pyfory

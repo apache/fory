@@ -12,6 +12,28 @@ Load this file when changing `csharp/` or C# xlang behavior.
 - Generated C# gRPC service companions are compiler-owned files that depend on application-provided gRPC packages, not `csharp/src/Fory`. Keep gRPC package references out of the Fory runtime package.
 - C# generated schema modules are source-file owners. Service companions must use that module's `ThreadSafeFory` and must not introduce namespace-owned aliases or duplicate serializer registration paths.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Recursive matched-field comparison for collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
+- Root deserialization graph memory budget state belongs to `ReadContext`. C# public roots are
+  memory-backed today, but the graph budget uses the same fixed default for every root shape.
+  Root APIs reset the budget only; they must not pre-reserve root type or root self bytes.
+  Do not mirror the configured max into a second active-limit field; use config plus mutable
+  remaining budget.
+  `ReadContext` may expose only raw byte reservation; concrete serializers and generated
+  serializers must compute list, array, map, struct, and object byte formulas before calling it.
+  Treat the option as an approximate collection/map/array/struct/object gate, not an exact heap
+  cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
+- `ReadContext` must not expose ref-publication pause/resume APIs or any non-budget owner
+  controls. Concrete serializers and generated serializers own ref publication timing directly,
+  and must not publish temporary owners.
+- For C# graph budget formulas, distinguish inline value storage from reference storage: use cheap
+  value-type size for `List<T>`/`T[]` value paths and the 4-byte reference fallback for reference
+  paths. Class/reference serializers reserve their own shallow self cost plus field storage when
+  materialized; struct/value serializers do not reserve their own self storage, including generic
+  root reads and generated struct read paths. Fields, lists, arrays, maps, sets, and boxed/dynamic
+  materialization paths reserve the inline or boxed storage they own. Maps reserve key plus value storage, linked/hash/tree
+  conversions must not add guessed node or entry overhead, and independently materialized
+  collection/map/array owners reserve nonzero shallow self cost.
+  Dedicated string, binary, primitive scalar, and primitive dense-array serializers stay skipped and
+  rely on byte availability checks.
 - When extending C# tests from Java references, prioritize xlang spec behavior and the public C# contract before adding complex Java-specific parity cases.
 
 ## Commands

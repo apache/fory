@@ -61,7 +61,15 @@ bool consume_ref_flag(ReadContext &ctx, bool tracking_ref, bool null_only) {
     (void)ctx.read_var_uint32(ctx.error());
     return false;
   }
-  if (ref_flag == NOT_NULL_VALUE_FLAG || ref_flag == REF_VALUE_FLAG) {
+  if (ref_flag == REF_VALUE_FLAG) {
+    // A skipped first occurrence still consumes a producer ref id. Reserve an
+    // empty slot so later Ref ids keep the same numbering as the wire stream.
+    if (tracking_ref) {
+      ctx.ref_reader().reserve_ref_id();
+    }
+    return true;
+  }
+  if (ref_flag == NOT_NULL_VALUE_FLAG) {
     return true;
   }
   ctx.set_error(Error::invalid_data(
@@ -605,22 +613,9 @@ void skip_union(ReadContext &ctx) {
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }
-  // Read ref flag for the union value (Any-style)
-  int8_t ref_flag = ctx.read_int8(ctx.error());
-  if (FORY_PREDICT_FALSE(ctx.has_error())) {
-    return;
-  }
-  if (ref_flag == NULL_FLAG) {
-    return;
-  }
-  if (ref_flag == REF_FLAG) {
-    (void)ctx.read_var_uint32(ctx.error());
-    return;
-  }
-  if (ref_flag != NOT_NULL_VALUE_FLAG && ref_flag != REF_VALUE_FLAG) {
-    ctx.set_error(
-        Error::invalid_data("Unknown reference flag: " +
-                            std::to_string(static_cast<int>(ref_flag))));
+  // Read ref flag for the union value (Any-style).
+  bool has_value = consume_ref_flag(ctx, true, false);
+  if (FORY_PREDICT_FALSE(ctx.has_error()) || !has_value) {
     return;
   }
 

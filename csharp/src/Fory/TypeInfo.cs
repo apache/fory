@@ -19,6 +19,7 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 
 namespace Apache.Fory;
 
@@ -38,6 +39,7 @@ public sealed class TypeInfo
     private readonly TypeMeta? _typeMeta;
     private readonly Action<WriteContext, object?, bool> _writeDataObject;
     private readonly Func<ReadContext, object?> _readDataObject;
+    private readonly Func<ReadContext, uint, object?>? _readReservedRefDataObject;
     private readonly Action<WriteContext, object?, RefMode, bool, bool> _writeObject;
     private readonly Func<ReadContext, RefMode, bool, object?> _readObject;
     private readonly Func<bool, IReadOnlyList<TypeMetaFieldInfo>> _typeMetaFields;
@@ -63,6 +65,7 @@ public sealed class TypeInfo
         MetaString? typeName,
         Action<WriteContext, object?, bool> writeDataObject,
         Func<ReadContext, object?> readDataObject,
+        Func<ReadContext, uint, object?>? readReservedRefDataObject,
         Action<WriteContext, object?, RefMode, bool, bool> writeObject,
         Func<ReadContext, RefMode, bool, object?> readObject,
         Func<bool, IReadOnlyList<TypeMetaFieldInfo>> typeMetaFields,
@@ -86,6 +89,7 @@ public sealed class TypeInfo
         TypeName = typeName;
         _writeDataObject = writeDataObject;
         _readDataObject = readDataObject;
+        _readReservedRefDataObject = readReservedRefDataObject;
         _writeObject = writeObject;
         _readObject = readObject;
         _typeMetaFields = typeMetaFields;
@@ -102,6 +106,7 @@ public sealed class TypeInfo
         bool evolving = ResolveStructEvolving(type, userTypeKind);
         bool isNullableType = !type.IsValueType || Nullable.GetUnderlyingType(type) is not null;
         bool isRefType = type != typeof(string) && !type.IsValueType;
+        long boxedValueBytes = BoxedValueBytes<T>();
         return new TypeInfo(
             type,
             serializer,
@@ -118,7 +123,8 @@ public sealed class TypeInfo
             namespaceName: null,
             typeName: null,
             (context, value, hasGenerics) => WriteDataObject(serializer, context, value, hasGenerics),
-            context => serializer.ReadData(context),
+            context => ReadDataObject(serializer, context, boxedValueBytes),
+            CreateReservedRefDataReader(serializer, boxedValueBytes),
             (context, value, refMode, writeTypeInfo, hasGenerics) =>
                 WriteObject(serializer, context, value, refMode, writeTypeInfo, hasGenerics),
             (context, refMode, readTypeInfo) => serializer.Read(context, refMode, readTypeInfo),
@@ -176,6 +182,84 @@ public sealed class TypeInfo
     private static void WriteDataObject<T>(Serializer<T> serializer, WriteContext context, object? value, bool hasGenerics)
     {
         serializer.WriteData(context, CoerceRuntimeValue(serializer, value), hasGenerics);
+    }
+
+    private static object? ReadDataObject<T>(Serializer<T> serializer, ReadContext context, long boxedValueBytes)
+    {
+        if (boxedValueBytes != 0)
+        {
+            context.ReserveGraphMemory(boxedValueBytes);
+        }
+
+        return serializer.ReadData(context);
+    }
+
+    private static Func<ReadContext, uint, object?>? CreateReservedRefDataReader<T>(
+        Serializer<T> serializer,
+        long boxedValueBytes)
+    {
+        // Dynamic Any consumes the envelope ref flag before the concrete serializer is known.
+        // Generated/container owners expose a private body reader so they can publish the already
+        // reserved id before child reads without adding another public Serializer<T> API.
+        MethodInfo? method = serializer.GetType().GetMethod(
+            "ReadReservedRefData",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            [typeof(ReadContext), typeof(uint)],
+            null);
+        if (method is null || !typeof(T).IsAssignableFrom(method.ReturnType))
+        {
+            return null;
+        }
+
+        try
+        {
+            Func<ReadContext, uint, T> readReservedRefData =
+                method.CreateDelegate<Func<ReadContext, uint, T>>(serializer);
+            return (context, refId) =>
+            {
+                if (boxedValueBytes != 0)
+                {
+                    context.ReserveGraphMemory(boxedValueBytes);
+                }
+
+                return readReservedRefData(context, refId);
+            };
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static long BoxedValueBytes<T>()
+    {
+        Type type = typeof(T);
+        if (!ShouldReserveBoxedValue(type))
+        {
+            return 0;
+        }
+
+        return Unsafe.SizeOf<T>();
+    }
+
+    private static bool ShouldReserveBoxedValue(Type type)
+    {
+        if (!type.IsValueType ||
+            Nullable.GetUnderlyingType(type) is not null ||
+            type.IsEnum ||
+            type.IsPrimitive)
+        {
+            return false;
+        }
+
+        return type != typeof(decimal) &&
+               type != typeof(Half) &&
+               type != typeof(BFloat16) &&
+               type != typeof(DateOnly) &&
+               type != typeof(DateTime) &&
+               type != typeof(DateTimeOffset) &&
+               type != typeof(TimeSpan);
     }
 
     private static void WriteObject<T>(
@@ -530,6 +614,18 @@ public sealed class TypeInfo
         return _readDataObject(context);
     }
 
+    internal object? ReadReservedRefDataObject(ReadContext context, uint refId)
+    {
+        if (_readReservedRefDataObject is not null)
+        {
+            return _readReservedRefDataObject(context, refId);
+        }
+
+        object? value = _readDataObject(context);
+        context.RefReader.StoreRefAt(refId, value);
+        return value;
+    }
+
     internal void WriteObject(WriteContext context, object? value, RefMode refMode, bool writeTypeInfo, bool hasGenerics)
     {
         _writeObject(context, value, refMode, writeTypeInfo, hasGenerics);
@@ -584,6 +680,7 @@ public sealed class TypeInfo
             typeName: null,
             _writeDataObject,
             _readDataObject,
+            _readReservedRefDataObject,
             _writeObject,
             _readObject,
             _typeMetaFields,
@@ -610,6 +707,7 @@ public sealed class TypeInfo
             typeName: typeName,
             _writeDataObject,
             _readDataObject,
+            _readReservedRefDataObject,
             _writeObject,
             _readObject,
             _typeMetaFields,
@@ -661,6 +759,7 @@ public sealed class TypeInfo
             TypeName,
             _writeDataObject,
             _readDataObject,
+            _readReservedRefDataObject,
             _writeObject,
             _readObject,
             _typeMetaFields,

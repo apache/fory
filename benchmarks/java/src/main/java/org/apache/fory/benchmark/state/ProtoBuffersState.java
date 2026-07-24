@@ -287,44 +287,44 @@ public class ProtoBuffersState {
 
   public static byte[] serializeMediaContent(MediaContent mediaContent) {
     ProtoMessage.MediaContent.Builder builder = ProtoMessage.MediaContent.newBuilder();
-    builder.setMedia(serializeMedia(mediaContent.media));
-    mediaContent.images.forEach(image -> builder.addImages(serializeImage(image)));
+    builder.setMedia(serializeMedia(mediaContent.getMedia()));
+    mediaContent.getImages().forEach(image -> builder.addImages(serializeImage(image)));
     return builder.build().toByteArray();
   }
 
   private static ProtoMessage.Image serializeImage(Image image) {
     ProtoMessage.Image.Builder builder = ProtoMessage.Image.newBuilder();
-    builder.setUri(image.uri);
-    if (image.title != null) {
-      builder.setTitle(image.title);
+    builder.setUri(image.getUri());
+    if (image.getTitle() != null) {
+      builder.setTitle(image.getTitle());
     } else {
       builder.clearTitle();
     }
-    builder.setWidth(image.width);
-    builder.setHeight(image.height);
-    builder.setSize(ProtoMessage.Size.forNumber(image.size.ordinal()));
-    Preconditions.checkArgument(image.media == null);
+    builder.setWidth(image.getWidth());
+    builder.setHeight(image.getHeight());
+    builder.setSize(ProtoMessage.Size.forNumber(image.getSize().ordinal()));
+    Preconditions.checkArgument(image.getMedia() == null);
     return builder.build();
   }
 
   private static ProtoMessage.Media serializeMedia(Media media) {
     ProtoMessage.Media.Builder builder = ProtoMessage.Media.newBuilder();
-    builder.setUri(media.uri);
-    if (media.title != null) {
-      builder.setTitle(media.title);
+    builder.setUri(media.getUri());
+    if (media.getTitle() != null) {
+      builder.setTitle(media.getTitle());
     } else {
       builder.clearTitle();
     }
-    builder.setWidth(media.width);
-    builder.setHeight(media.height);
-    builder.setFormat(media.format);
-    builder.setDuration(media.duration);
-    builder.setSize(media.size);
-    builder.setBitrate(media.bitrate);
-    builder.setHasBitrate(media.hasBitrate);
-    builder.addAllPersons(media.persons);
-    builder.setPlayerValue(media.player.ordinal());
-    builder.setCopyright(media.copyright);
+    builder.setWidth(media.getWidth());
+    builder.setHeight(media.getHeight());
+    builder.setFormat(media.getFormat());
+    builder.setDuration(media.getDuration());
+    builder.setSize(media.getSize());
+    builder.setBitrate(media.getBitrate());
+    builder.setHasBitrate(media.isHasBitrate());
+    builder.addAllPersons(media.getPersons());
+    builder.setPlayerValue(media.getPlayer().ordinal());
+    builder.setCopyright(media.getCopyright());
     return builder.build();
   }
 
@@ -336,42 +336,42 @@ public class ProtoBuffersState {
     } catch (InvalidProtocolBufferException e) {
       throw new RuntimeException(e);
     }
-    mediaContent.media = deserializeMedia(builder.getMedia());
-    mediaContent.images =
+    mediaContent.setMedia(deserializeMedia(builder.getMedia()));
+    mediaContent.setImages(
         builder.getImagesList().stream()
             .map(ProtoBuffersState::deserializeImage)
-            .collect(Collectors.toList());
+            .collect(Collectors.toList()));
     return mediaContent;
   }
 
   private static Media deserializeMedia(ProtoMessage.Media mediaProto) {
     Media media = new Media();
-    media.uri = mediaProto.getUri();
+    media.setUri(mediaProto.getUri());
     if (mediaProto.hasTitle()) {
-      media.title = mediaProto.getTitle();
+      media.setTitle(mediaProto.getTitle());
     }
-    media.width = mediaProto.getWidth();
-    media.height = mediaProto.getHeight();
-    media.format = mediaProto.getFormat();
-    media.duration = mediaProto.getDuration();
-    media.size = mediaProto.getSize();
-    media.bitrate = mediaProto.getBitrate();
-    media.hasBitrate = mediaProto.getHasBitrate();
-    media.persons = mediaProto.getPersonsList();
-    media.player = Media.Player.values()[mediaProto.getPlayerValue()];
-    media.copyright = mediaProto.getCopyright();
+    media.setWidth(mediaProto.getWidth());
+    media.setHeight(mediaProto.getHeight());
+    media.setFormat(mediaProto.getFormat());
+    media.setDuration(mediaProto.getDuration());
+    media.setSize(mediaProto.getSize());
+    media.setBitrate(mediaProto.getBitrate());
+    media.setHasBitrate(mediaProto.getHasBitrate());
+    media.setPersons(mediaProto.getPersonsList());
+    media.setPlayer(Media.Player.values()[mediaProto.getPlayerValue()]);
+    media.setCopyright(mediaProto.getCopyright());
     return media;
   }
 
   private static Image deserializeImage(ProtoMessage.Image imageProto) {
     Image image = new Image();
-    image.uri = imageProto.getUri();
+    image.setUri(imageProto.getUri());
     if (imageProto.hasTitle()) {
-      image.title = imageProto.getTitle();
+      image.setTitle(imageProto.getTitle());
     }
-    image.width = imageProto.getWidth();
-    image.height = imageProto.getHeight();
-    image.size = Image.Size.values()[imageProto.getSizeValue()];
+    image.setWidth(imageProto.getWidth());
+    image.setHeight(imageProto.getHeight());
+    image.setSize(Image.Size.values()[imageProto.getSizeValue()]);
     return image;
   }
 

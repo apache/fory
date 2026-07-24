@@ -103,6 +103,11 @@ class NativeTypeDefDecoder {
   }
 
   public static TypeDef decodeTypeDef(ClassResolver resolver, MemoryBuffer buffer, long id) {
+    return decodeTypeDef(resolver, buffer, id, true);
+  }
+
+  static TypeDef decodeTypeDef(
+      ClassResolver resolver, MemoryBuffer buffer, long id, boolean resolveRootClass) {
     Tuple2<byte[], byte[]> decoded = decodeTypeDefBuf(buffer, resolver, id);
     MemoryBuffer typeDefBuf = MemoryBuffer.fromByteArray(decoded.f0);
     int bodyHeader = typeDefBuf.readByte() & 0xff;
@@ -159,7 +164,16 @@ class NativeTypeDefDecoder {
         String typeName = readTypeName(typeDefBuf);
         ClassSpec decodedSpec = Encoders.decodePkgAndClass(pkg, typeName);
         className = decodedSpec.entireClassName;
-        if (resolver.isRegisteredByName(className)) {
+        if (i == numClasses - 1 && !resolveRootClass) {
+          classSpec =
+              new ClassSpec(
+                  className,
+                  decodedSpec.isEnum,
+                  decodedSpec.isArray,
+                  decodedSpec.dimension,
+                  rootTypeId,
+                  -1);
+        } else if (resolver.isRegisteredByName(className)) {
           Class<?> cls = resolver.getRegisteredClass(className);
           className = cls.getName();
           int typeId = i == numClasses - 1 ? rootTypeId : resolver.getTypeIdForTypeDef(cls);
@@ -199,7 +213,7 @@ class NativeTypeDefDecoder {
         }
       }
       if (i == numClasses - 1) {
-        rootClass = currentClass;
+        rootClass = resolveRootClass ? currentClass : null;
         rootClassLayerRegistered = isRegistered;
       }
       List<FieldInfo> fieldInfos = readFieldsInfo(typeDefBuf, resolver, className, numFields);

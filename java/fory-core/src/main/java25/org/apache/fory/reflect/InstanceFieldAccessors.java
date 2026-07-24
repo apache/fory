@@ -26,15 +26,9 @@ import org.apache.fory.annotation.Internal;
 import org.apache.fory.platform.internal._JDKAccess;
 import org.apache.fory.util.Preconditions;
 
-/**
- * Non-record instance field accessor owner.
- *
- * <p>This class is public only so generated serializers can name {@link InstanceAccessor} as a
- * concrete field type on JDK25+. Callers must still create accessors through {@link
- * FieldAccessor#createAccessor(Field)} so platform dispatch stays centralized.
- */
+/** Non-record instance field accessor owner. */
 @Internal
-public final class InstanceFieldAccessors {
+final class InstanceFieldAccessors {
   private static final int BOOLEAN_ACCESS = 1;
   private static final int BYTE_ACCESS = 2;
   private static final int CHAR_ACCESS = 3;
@@ -92,8 +86,7 @@ public final class InstanceFieldAccessors {
         cause);
   }
 
-  /** Public only for generated serializers; use {@link FieldAccessor#createAccessor(Field)}. */
-  public static final class InstanceAccessor extends FieldAccessor {
+  static final class InstanceAccessor extends FieldAccessor {
     private final VarHandle handle;
     private final int accessKind;
 
@@ -285,6 +278,16 @@ public final class InstanceFieldAccessors {
 
     @Override
     public void putDouble(Object obj, double value) {
+      handle.set(obj, value);
+    }
+
+    @Override
+    public Object getObject(Object obj) {
+      return handle.get(obj);
+    }
+
+    @Override
+    public void putObject(Object obj, Object value) {
       handle.set(obj, value);
     }
   }

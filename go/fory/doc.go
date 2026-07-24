@@ -265,26 +265,6 @@ To keep the data, copy it:
 
 The thread-safe wrapper automatically copies data, avoiding this concern.
 
-# Code Generation (Experimental)
-
-For performance-critical paths, Fory provides optional ahead-of-time code
-generation that eliminates reflection overhead:
-
-	//fory:generate
-	type User struct {
-		ID   int64
-		Name string
-	}
-
-	//go:generate fory -pkg .
-
-Run code generation:
-
-	go generate ./...
-
-Generated code integrates transparently - Fory automatically uses generated
-serializers when available.
-
 # Error Handling
 
 Always check errors from serialization operations:

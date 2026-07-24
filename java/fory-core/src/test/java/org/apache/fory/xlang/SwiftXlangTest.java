@@ -42,6 +42,7 @@ public class SwiftXlangTest extends XlangTestBase {
   private static final Logger LOG = LoggerFactory.getLogger(SwiftXlangTest.class);
   private static final String SWIFT_EXECUTABLE = "swift";
   private static final String SWIFT_PEER_TARGET = "ForyXlangTests";
+  private static final String SWIFT_PEER_PREBUILT_ENV = "FORY_SWIFT_PEER_PREBUILT";
   private static final File SWIFT_WORK_DIR = new File("../../swift");
   private static final Path SWIFT_WORK_DIR_PATH = SWIFT_WORK_DIR.toPath();
   private static final Path SWIFT_PEER_BINARY_PATH =
@@ -70,8 +71,16 @@ public class SwiftXlangTest extends XlangTestBase {
     }
     Assert.assertTrue(swiftInstalled, "swift is required for SwiftXlangTest");
 
+    if ("1".equals(System.getenv(SWIFT_PEER_PREBUILT_ENV))) {
+      // CI cache keys include Swift package inputs and toolchain identity. Trust that explicit
+      // signal instead of file mtimes because restored cache entries can predate checkout files.
+      usePeerBinary();
+      LOG.info("Completed ensurePeerReady for Swift xlang tests");
+      return;
+    }
+
     if (isPeerBinaryUpToDate()) {
-      swiftPeerBinaryPath = SWIFT_PEER_BINARY_PATH.toAbsolutePath().toString();
+      usePeerBinary();
       LOG.info("Completed ensurePeerReady for Swift xlang tests");
       return;
     }
@@ -103,6 +112,11 @@ public class SwiftXlangTest extends XlangTestBase {
     }
     Assert.assertTrue(built, "failed to build Swift xlang peer target " + SWIFT_PEER_TARGET);
 
+    usePeerBinary();
+    LOG.info("Completed ensurePeerReady for Swift xlang tests");
+  }
+
+  private void usePeerBinary() {
     Path peerBinary = SWIFT_PEER_BINARY_PATH;
     Assert.assertTrue(
         Files.isRegularFile(peerBinary),
@@ -111,7 +125,6 @@ public class SwiftXlangTest extends XlangTestBase {
         Files.isExecutable(peerBinary),
         "Swift xlang peer binary is not executable: " + peerBinary.toAbsolutePath());
     swiftPeerBinaryPath = peerBinary.toAbsolutePath().toString();
-    LOG.info("Completed ensurePeerReady for Swift xlang tests");
   }
 
   @Override

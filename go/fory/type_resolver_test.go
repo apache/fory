@@ -47,7 +47,7 @@ func TestGetTypeInfo_LazyInitPropagatesError(t *testing.T) {
 	}
 
 	value := reflect.New(ptrPtrInt).Elem() // zero Value of type **int
-	info, err := resolver.getTypeInfo(value, true)
+	info, err := resolver.GetTypeInfo(value, true)
 
 	// The bug: before the fix, err was nil and info had a nil Serializer.
 	// The fix: err must be non-nil; info should be nil.

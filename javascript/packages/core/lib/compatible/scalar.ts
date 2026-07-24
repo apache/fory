@@ -52,8 +52,7 @@ const INT32_MIN = -2147483648n;
 const INT32_MAX = 2147483647n;
 const MAX_COMPATIBLE_DECIMAL_DIGITS = 256;
 const MAX_COMPATIBLE_NUMERIC_TEXT_LENGTH = 320;
-const MAX_COMPATIBLE_DECIMAL_MAGNITUDE
-  = 10n ** BigInt(MAX_COMPATIBLE_DECIMAL_DIGITS);
+const MAX_COMPATIBLE_DECIMAL_MAGNITUDE = 10n ** BigInt(MAX_COMPATIBLE_DECIMAL_DIGITS);
 const INT64_MIN = -(1n << 63n);
 const INT64_MAX = (1n << 63n) - 1n;
 const UINT8_MAX = 255n;
@@ -79,10 +78,7 @@ export function isCompatibleScalarType(typeId: number): boolean {
   return scalarKind(typeId) !== undefined;
 }
 
-export function isCompatibleScalarPair(
-  remoteTypeId: number,
-  localTypeId: number,
-): boolean {
+export function isCompatibleScalarPair(remoteTypeId: number, localTypeId: number): boolean {
   if (remoteTypeId === localTypeId) {
     return scalarKind(remoteTypeId) !== undefined;
   }
@@ -158,12 +154,9 @@ function readDecimal(reader: BinaryReader): Decimal {
   }
   const magnitudeBytes = reader.buffer(length);
   if (magnitudeBytes[length - 1] === 0) {
-    throw new Error(
-      "Non-canonical decimal magnitude bytes: trailing zero byte.",
-    );
+    throw new Error("Non-canonical decimal magnitude bytes: trailing zero byte.");
   }
-  const magnitude
-    = DecimalCodec.fromCanonicalLittleEndianMagnitude(magnitudeBytes);
+  const magnitude = DecimalCodec.fromCanonicalLittleEndianMagnitude(magnitudeBytes);
   if (magnitude === 0n) {
     throw new Error("Big decimal encoding must not represent zero.");
   }
@@ -196,13 +189,8 @@ function normalizeParts(value: DecimalParts): DecimalParts {
     scale--;
   }
   const digits = decimalDigitCount(unscaled);
-  if (
-    scale > MAX_COMPATIBLE_DECIMAL_DIGITS
-    || digits > MAX_COMPATIBLE_DECIMAL_DIGITS
-  ) {
-    throw new Error(
-      "Scalar decimal magnitude exceeds compatible conversion limit.",
-    );
+  if (scale > MAX_COMPATIBLE_DECIMAL_DIGITS || digits > MAX_COMPATIBLE_DECIMAL_DIGITS) {
+    throw new Error("Scalar decimal magnitude exceeds compatible conversion limit.");
   }
   return { unscaled, scale, negativeZero: false };
 }
@@ -214,9 +202,7 @@ function decimalToParts(value: Decimal): DecimalParts {
   if (value.scale < 0) {
     const digits = decimalDigitCount(value.unscaledValue);
     if (digits - value.scale > MAX_COMPATIBLE_DECIMAL_DIGITS) {
-      throw new Error(
-        "Scalar decimal magnitude exceeds compatible conversion limit.",
-      );
+      throw new Error("Scalar decimal magnitude exceeds compatible conversion limit.");
     }
     return normalizeParts({
       unscaled: value.unscaledValue * pow10(-value.scale),
@@ -368,10 +354,7 @@ function parseDecimalString(value: string): DecimalParts {
       exponent = -exponent;
     }
   }
-  if (
-    index !== value.length
-    || significantDigits > MAX_COMPATIBLE_DECIMAL_DIGITS
-  ) {
+  if (index !== value.length || significantDigits > MAX_COMPATIBLE_DECIMAL_DIGITS) {
     throw new Error(`Invalid scalar string magnitude in "${value}".`);
   }
   let scale = fractionEnd - fractionStart - exponent;
@@ -402,9 +385,7 @@ function decimalShapeFits(significantDigits: number, scale: number): boolean {
   if (scale > MAX_COMPATIBLE_DECIMAL_DIGITS) {
     return false;
   }
-  return (
-    scale >= 0 || significantDigits + -scale <= MAX_COMPATIBLE_DECIMAL_DIGITS
-  );
+  return scale >= 0 || significantDigits + -scale <= MAX_COMPATIBLE_DECIMAL_DIGITS;
 }
 
 function decimalDigitCount(value: bigint): number {
@@ -428,9 +409,7 @@ function formatParts(value: DecimalParts, forceDecimal: boolean): string {
     return forceDecimal ? "0.0" : "0";
   }
   const negative = normalized.unscaled < 0n;
-  const digits = (
-    negative ? -normalized.unscaled : normalized.unscaled
-  ).toString();
+  const digits = (negative ? -normalized.unscaled : normalized.unscaled).toString();
   let result: string;
   if (normalized.scale === 0) {
     result = forceDecimal ? `${digits}.0` : digits;
@@ -446,11 +425,7 @@ function formatParts(value: DecimalParts, forceDecimal: boolean): string {
 function partsEqual(left: DecimalParts, right: DecimalParts): boolean {
   const l = normalizeParts(left);
   const r = normalizeParts(right);
-  return (
-    l.unscaled === r.unscaled
-    && l.scale === r.scale
-    && l.negativeZero === r.negativeZero
-  );
+  return l.unscaled === r.unscaled && l.scale === r.scale && l.negativeZero === r.negativeZero;
 }
 
 function partsToNumber(value: DecimalParts): number {
@@ -468,9 +443,7 @@ function exactInteger(value: DecimalParts): bigint {
 function exactFloat(value: DecimalParts, localTypeId: number): number {
   let candidate = partsToNumber(value);
   if (!Number.isFinite(candidate)) {
-    throw new Error(
-      "Scalar value is not exactly representable as a finite float.",
-    );
+    throw new Error("Scalar value is not exactly representable as a finite float.");
   }
   switch (canonicalScalarTypeId(localTypeId)) {
     case TypeId.FLOAT16:
@@ -487,17 +460,12 @@ function exactFloat(value: DecimalParts, localTypeId: number): number {
       break;
   }
   if (!partsEqual(value, floatToParts(candidate))) {
-    throw new Error(
-      "Scalar value is not exactly representable by the target float type.",
-    );
+    throw new Error("Scalar value is not exactly representable by the target float type.");
   }
   return candidate;
 }
 
-function rangeCheckedInteger(
-  value: number | bigint,
-  localTypeId: number,
-): number | bigint {
+function rangeCheckedInteger(value: number | bigint, localTypeId: number): number | bigint {
   const integer = typeof value === "bigint" ? value : BigInt(value);
   switch (canonicalScalarTypeId(localTypeId)) {
     case TypeId.INT8:

@@ -38,6 +38,12 @@ import 'package:fory/src/types/float16.dart';
 import 'package:fory/src/types/int64.dart';
 import 'package:fory/src/types/uint64.dart';
 
+const int _referenceBytes = 4;
+// Conservative lower bound for the retained Dart List/Set owner itself. The six reference-width
+// slots approximate object/runtime metadata and backing-storage state; element slots are charged
+// separately by count below. This is not a Fory wire header or a Dart VM layout probe.
+const int _listOwnerBytes = 6 * _referenceBytes;
+
 @pragma('vm:prefer-inline')
 void _writeDirectTypeInfoValue(
   WriteContext context,
@@ -378,13 +384,25 @@ final class SetSerializer extends Serializer<Set> {
     FieldType? elementFieldType, {
     bool hasPreservedRef = false,
   }) {
-    return Set<Object?>.of(
-      ListSerializer.readPayload(
-        context,
-        elementFieldType,
-        hasPreservedRef: hasPreservedRef,
-      ),
-    );
+    final state = _prepareListRead(context, elementFieldType);
+    context.buffer.checkReadableBytes(state.size);
+    final result = <Object?>{};
+    if (hasPreservedRef) {
+      context.reference(result);
+    }
+    if (state.size == 0) {
+      return result;
+    }
+    if (state.tracksDepth) {
+      context.increaseDepth();
+    }
+    for (var index = 0; index < state.size; index += 1) {
+      result.add(_readPreparedListItem(context, state));
+    }
+    if (state.tracksDepth) {
+      context.decreaseDepth();
+    }
+    return result;
   }
 }
 
@@ -429,7 +447,7 @@ Object? readCompatibleMatchedCollectionArrayField(
       );
     }
     final raw = readCompatibleField(context, remoteField);
-    return _arrayToListValue(raw);
+    return _arrayToListValue(context, raw);
   }
   return readFieldValue<Object?>(context, localField);
 }
@@ -625,11 +643,16 @@ void _setArrayValue(Object target, int arrayTypeId, int index, Object? value) {
   }
 }
 
-Object _arrayToListValue(Object? raw) {
+Object _arrayToListValue(ReadContext context, Object? raw) {
+  // Dedicated primitive-array payloads are leaf values and intentionally skip
+  // graph-memory reservation. This conversion materializes a new Dart List, so
+  // the list reservation below is the first owner charge, not a duplicate.
   if (raw is BoolList) {
+    context.reserveGraphMemory(_listOwnerBytes + raw.length * _referenceBytes);
     return raw.toList();
   }
   if (raw is Iterable) {
+    context.reserveGraphMemory(_listOwnerBytes + raw.length * _referenceBytes);
     return raw.toList();
   }
   throw StateError('Expected compatible array payload.');
@@ -719,7 +742,64 @@ Set<T> readTypedSetPayload<T>(
   FieldType? elementFieldType,
   T Function(Object? value) convert,
 ) {
-  return Set<T>.of(readTypedListPayload(context, elementFieldType, convert));
+  final state = _prepareListRead(context, elementFieldType);
+  context.buffer.checkReadableBytes(state.size);
+  final result = <T>{};
+  if (state.size == 0) {
+    return result;
+  }
+  if (state.tracksDepth) {
+    context.increaseDepth();
+  }
+  final directTypeInfo = state.declaredTypeInfo ?? state.sameTypeInfo;
+  if (directTypeInfo != null && !state.trackRef && !state.hasNull) {
+    final directFieldType =
+        state.declaredTypeInfo != null ? state.elementFieldType : null;
+    if (directTypeInfo.type == T &&
+        directTypeInfo.kind == RegistrationKind.struct) {
+      final structSerializer = directTypeInfo.structSerializer!;
+      for (var index = 0; index < state.size; index += 1) {
+        result.add(
+          directTypeInfo.remoteTypeDef == null
+              ? structSerializer.readValue(context, directTypeInfo) as T
+              : structSerializer.readGeneratedCompatibleValue(
+                    context,
+                    directTypeInfo,
+                  )
+                  as T,
+        );
+      }
+      if (state.tracksDepth) {
+        context.decreaseDepth();
+      }
+      return result;
+    }
+    if (directTypeInfo.type == T && directTypeInfo.typeId == TypeIds.string) {
+      for (var index = 0; index < state.size; index += 1) {
+        result.add(StringSerializer.readPayload(context) as T);
+      }
+      if (state.tracksDepth) {
+        context.decreaseDepth();
+      }
+      return result;
+    }
+    for (var index = 0; index < state.size; index += 1) {
+      result.add(
+        convert(readTypeInfoValue(context, directTypeInfo, directFieldType)),
+      );
+    }
+    if (state.tracksDepth) {
+      context.decreaseDepth();
+    }
+    return result;
+  }
+  for (var index = 0; index < state.size; index += 1) {
+    result.add(convert(_readPreparedListItem(context, state)));
+  }
+  if (state.tracksDepth) {
+    context.decreaseDepth();
+  }
+  return result;
 }
 
 void writeTypedListPayload<T>(
@@ -910,6 +990,7 @@ _PreparedListRead _prepareListRead(
   FieldType? elementFieldType,
 ) {
   final size = context.buffer.readVarUint32();
+  context.reserveGraphMemory(_listOwnerBytes + size * _referenceBytes);
   if (size == 0) {
     return _PreparedListRead(
       size: 0,

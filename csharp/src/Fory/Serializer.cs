@@ -113,22 +113,16 @@ public abstract class Serializer<T>
                 case RefFlag.RefValue:
                     {
                         uint reservedRefId = context.RefReader.ReserveRefId();
-                        context.SetReservedRefId(reservedRefId);
-                        try
+                        if (readTypeInfo)
                         {
-                            if (readTypeInfo)
-                            {
-                                context.TypeResolver.ReadTypeInfo(this, context);
-                            }
+                            context.TypeResolver.ReadTypeInfo(this, context);
+                        }
 
-                            T value = ReadData(context);
-                            context.StoreRef(value);
-                            return value;
-                        }
-                        finally
-                        {
-                            context.ClearReservedRefId();
-                        }
+                        // Default/simple serializers can publish after their payload body is read.
+                        // Owners that must publish before child reads override Read directly.
+                        T value = ReadData(context);
+                        context.RefReader.StoreRefAt(reservedRefId, value);
+                        return value;
                     }
                 case RefFlag.NotNullValue:
                     break;

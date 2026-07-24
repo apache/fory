@@ -20,6 +20,7 @@
 package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
+import org.apache.fory.exception.InsecureException
 import org.apache.fory.scala.ForyScala
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpec
@@ -119,6 +120,25 @@ class ScalaXlangSerializerTest extends AnyWordSpec with Matchers {
       copiedIntArraySeq.getClass shouldBe intArraySeq.getClass
       copiedCyclic should not be theSameInstanceAs(cyclic)
       copiedCyclic(0) shouldBe theSameInstanceAs(copiedCyclic)
+    }
+
+    "enforce graph memory budget" in {
+      val writer = fory
+      val reader = ForyScala.builder()
+        .withXlang(true)
+        .withRefTracking(true)
+        .withRefCopy(true)
+        .requireClassRegistration(false)
+        .suppressClassRegistrationWarnings(false)
+        .withMaxGraphMemoryBytes(23)
+        .build()
+
+      intercept[InsecureException] {
+        reader.deserialize(writer.serialize(List.fill(6)("v")))
+      }
+      intercept[InsecureException] {
+        reader.deserialize(writer.serialize(Map("a" -> 1, "b" -> 2, "c" -> 3)))
+      }
     }
   }
 }

@@ -148,15 +148,16 @@ public class TypeInference {
     Class<?> enclosingType = ctx.getEnclosingType().getRawType();
     CustomCodec<?, ?> customEncoder =
         ((CustomTypeHandler) ctx.getCustomTypeRegistry()).findCodec(enclosingType, rawType);
-    if (rawType == Optional.class) {
-      TypeRef<?> elemType = TypeUtils.getTypeArguments(typeRef).get(0);
-      Field result = inferField(name, elemType, ctx);
-      if (result.nullable()) {
-        return result;
-      }
-      // Make it nullable
-      return result.withNullable(true);
-    } else if (customEncoder != null) {
+    // A codec keyed on the field's raw type wins before structural unwrapping. For Optional this
+    // means a codec registered on Optional itself owns the whole field, including absence, and
+    // encodes it in-band into a non-nullable column; only when no such codec exists does Optional
+    // unwrap to a nullable element. A codec keyed on the element type X (not Optional) is found
+    // below, after the unwrap, so element codecs keep working unchanged inside an Optional.
+    //
+    // This is the canonical ordering. RowEncoderBuilder, serializeFor, and deserializeFor mirror
+    // it; keep all four in lockstep, since they each resolve the codec on a different
+    // representation (inferred type, field walk, encode codegen, decode codegen).
+    if (customEncoder != null) {
       Field replacementField = customEncoder.getForyField(name);
       if (replacementField != null) {
         return replacementField;
@@ -165,6 +166,14 @@ public class TypeInference {
       if (replacementType != null && !typeRef.equals(replacementType)) {
         return inferField(name, replacementType, ctx);
       }
+    } else if (rawType == Optional.class) {
+      TypeRef<?> elemType = TypeUtils.getTypeArguments(typeRef).get(0);
+      Field result = inferField(name, elemType, ctx);
+      if (result.nullable()) {
+        return result;
+      }
+      // Make it nullable
+      return result.withNullable(true);
     }
     if (rawType == boolean.class) {
       return DataTypes.notNullField(name, DataTypes.bool());

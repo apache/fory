@@ -662,10 +662,7 @@ public enum UnsafeUtil {
         let b3 = base[index + 3]
         if b3 < 0x80 {
             index += 4
-            return UInt32(b0 & 0x7F) |
-                (UInt32(b1 & 0x7F) << 7) |
-                (UInt32(b2 & 0x7F) << 14) |
-                (UInt32(b3) << 21)
+            return UInt32(b0 & 0x7F) | (UInt32(b1 & 0x7F) << 7) | (UInt32(b2 & 0x7F) << 14) | (UInt32(b3) << 21)
         }
         guard available >= 5 else {
             throw ForyError.outOfBounds(cursor: index, need: 5, length: bytes.count)
@@ -675,11 +672,7 @@ public enum UnsafeUtil {
             throw ForyError.encodingError("varuint32 overflow")
         }
         index += 5
-        return UInt32(b0 & 0x7F) |
-            (UInt32(b1 & 0x7F) << 7) |
-            (UInt32(b2 & 0x7F) << 14) |
-            (UInt32(b3 & 0x7F) << 21) |
-            (UInt32(b4) << 28)
+        return UInt32(b0 & 0x7F) | (UInt32(b1 & 0x7F) << 7) | (UInt32(b2 & 0x7F) << 14) | (UInt32(b3 & 0x7F) << 21) | (UInt32(b4) << 28)
     }
 
     @inlinable
@@ -709,77 +702,46 @@ public enum UnsafeUtil {
             let b2 = base[offset + 2]
             if b2 < 0x80 {
                 index = offset + 3
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2) << 14)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2) << 14)
             }
 
             let b3 = base[offset + 3]
             if b3 < 0x80 {
                 index = offset + 4
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3) << 21)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3) << 21)
             }
 
             let b4 = base[offset + 4]
             if b4 < 0x80 {
                 index = offset + 5
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4) << 28)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4) << 28)
             }
 
             let b5 = base[offset + 5]
             if b5 < 0x80 {
                 index = offset + 6
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4 & 0x7F) << 28) |
-                    (UInt64(b5) << 35)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                    | (UInt64(b5) << 35)
             }
 
             let b6 = base[offset + 6]
             if b6 < 0x80 {
                 index = offset + 7
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4 & 0x7F) << 28) |
-                    (UInt64(b5 & 0x7F) << 35) |
-                    (UInt64(b6) << 42)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                    | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6) << 42)
             }
 
             let b7 = base[offset + 7]
             if b7 < 0x80 {
                 index = offset + 8
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4 & 0x7F) << 28) |
-                    (UInt64(b5 & 0x7F) << 35) |
-                    (UInt64(b6 & 0x7F) << 42) |
-                    (UInt64(b7) << 49)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                    | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7) << 49)
             }
 
             let b8 = base[offset + 8]
             index = offset + 9
-            let low = UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21)
-            let high = (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5 & 0x7F) << 35) |
-                (UInt64(b6 & 0x7F) << 42) |
-                (UInt64(b7 & 0x7F) << 49) |
-                (UInt64(b8) << 56)
+            let low = UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21)
+            let high = (UInt64(b4 & 0x7F) << 28) | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7 & 0x7F) << 49) | (UInt64(b8) << 56)
             return low | high
         }
 
@@ -801,83 +763,52 @@ public enum UnsafeUtil {
         let b2 = base[index + 2]
         if b2 < 0x80 {
             index += 3
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2) << 14)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2) << 14)
         }
 
         try checkReadable(bytes, index: index, need: 4)
         let b3 = base[index + 3]
         if b3 < 0x80 {
             index += 4
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3) << 21)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3) << 21)
         }
 
         try checkReadable(bytes, index: index, need: 5)
         let b4 = base[index + 4]
         if b4 < 0x80 {
             index += 5
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4) << 28)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4) << 28)
         }
 
         try checkReadable(bytes, index: index, need: 6)
         let b5 = base[index + 5]
         if b5 < 0x80 {
             index += 6
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5) << 35)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                | (UInt64(b5) << 35)
         }
 
         try checkReadable(bytes, index: index, need: 7)
         let b6 = base[index + 6]
         if b6 < 0x80 {
             index += 7
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5 & 0x7F) << 35) |
-                (UInt64(b6) << 42)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6) << 42)
         }
 
         try checkReadable(bytes, index: index, need: 8)
         let b7 = base[index + 7]
         if b7 < 0x80 {
             index += 8
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5 & 0x7F) << 35) |
-                (UInt64(b6 & 0x7F) << 42) |
-                (UInt64(b7) << 49)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7) << 49)
         }
 
         try checkReadable(bytes, index: index, need: 9)
         let b8 = base[index + 8]
         index += 9
-        let low = UInt64(b0 & 0x7F) |
-            (UInt64(b1 & 0x7F) << 7) |
-            (UInt64(b2 & 0x7F) << 14) |
-            (UInt64(b3 & 0x7F) << 21)
-        let high = (UInt64(b4 & 0x7F) << 28) |
-            (UInt64(b5 & 0x7F) << 35) |
-            (UInt64(b6 & 0x7F) << 42) |
-            (UInt64(b7 & 0x7F) << 49) |
-            (UInt64(b8) << 56)
+        let low = UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21)
+        let high = (UInt64(b4 & 0x7F) << 28) | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7 & 0x7F) << 49) | (UInt64(b8) << 56)
         return low | high
     }
 
@@ -942,10 +873,7 @@ public enum UnsafeUtil {
         let b3 = base[index + 3]
         if b3 < 0x80 {
             index += 4
-            return UInt32(b0 & 0x7F) |
-                (UInt32(b1 & 0x7F) << 7) |
-                (UInt32(b2 & 0x7F) << 14) |
-                (UInt32(b3) << 21)
+            return UInt32(b0 & 0x7F) | (UInt32(b1 & 0x7F) << 7) | (UInt32(b2 & 0x7F) << 14) | (UInt32(b3) << 21)
         }
         guard available >= 5 else {
             throw ForyError.outOfBounds(cursor: index, need: 5, length: length)
@@ -955,11 +883,7 @@ public enum UnsafeUtil {
             throw ForyError.encodingError("varuint32 overflow")
         }
         index += 5
-        return UInt32(b0 & 0x7F) |
-            (UInt32(b1 & 0x7F) << 7) |
-            (UInt32(b2 & 0x7F) << 14) |
-            (UInt32(b3 & 0x7F) << 21) |
-            (UInt32(b4) << 28)
+        return UInt32(b0 & 0x7F) | (UInt32(b1 & 0x7F) << 7) | (UInt32(b2 & 0x7F) << 14) | (UInt32(b3 & 0x7F) << 21) | (UInt32(b4) << 28)
     }
 
     @inlinable
@@ -987,77 +911,46 @@ public enum UnsafeUtil {
             let b2 = base[offset + 2]
             if b2 < 0x80 {
                 index = offset + 3
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2) << 14)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2) << 14)
             }
 
             let b3 = base[offset + 3]
             if b3 < 0x80 {
                 index = offset + 4
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3) << 21)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3) << 21)
             }
 
             let b4 = base[offset + 4]
             if b4 < 0x80 {
                 index = offset + 5
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4) << 28)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4) << 28)
             }
 
             let b5 = base[offset + 5]
             if b5 < 0x80 {
                 index = offset + 6
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4 & 0x7F) << 28) |
-                    (UInt64(b5) << 35)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                    | (UInt64(b5) << 35)
             }
 
             let b6 = base[offset + 6]
             if b6 < 0x80 {
                 index = offset + 7
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4 & 0x7F) << 28) |
-                    (UInt64(b5 & 0x7F) << 35) |
-                    (UInt64(b6) << 42)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                    | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6) << 42)
             }
 
             let b7 = base[offset + 7]
             if b7 < 0x80 {
                 index = offset + 8
-                return UInt64(b0 & 0x7F) |
-                    (UInt64(b1 & 0x7F) << 7) |
-                    (UInt64(b2 & 0x7F) << 14) |
-                    (UInt64(b3 & 0x7F) << 21) |
-                    (UInt64(b4 & 0x7F) << 28) |
-                    (UInt64(b5 & 0x7F) << 35) |
-                    (UInt64(b6 & 0x7F) << 42) |
-                    (UInt64(b7) << 49)
+                return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                    | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7) << 49)
             }
 
             let b8 = base[offset + 8]
             index = offset + 9
-            let low = UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21)
-            let high = (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5 & 0x7F) << 35) |
-                (UInt64(b6 & 0x7F) << 42) |
-                (UInt64(b7 & 0x7F) << 49) |
-                (UInt64(b8) << 56)
+            let low = UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21)
+            let high = (UInt64(b4 & 0x7F) << 28) | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7 & 0x7F) << 49) | (UInt64(b8) << 56)
             return low | high
         }
 
@@ -1079,83 +972,52 @@ public enum UnsafeUtil {
         let b2 = base[index + 2]
         if b2 < 0x80 {
             index += 3
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2) << 14)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2) << 14)
         }
 
         try checkReadable(length: length, index: index, need: 4)
         let b3 = base[index + 3]
         if b3 < 0x80 {
             index += 4
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3) << 21)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3) << 21)
         }
 
         try checkReadable(length: length, index: index, need: 5)
         let b4 = base[index + 4]
         if b4 < 0x80 {
             index += 5
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4) << 28)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4) << 28)
         }
 
         try checkReadable(length: length, index: index, need: 6)
         let b5 = base[index + 5]
         if b5 < 0x80 {
             index += 6
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5) << 35)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                | (UInt64(b5) << 35)
         }
 
         try checkReadable(length: length, index: index, need: 7)
         let b6 = base[index + 6]
         if b6 < 0x80 {
             index += 7
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5 & 0x7F) << 35) |
-                (UInt64(b6) << 42)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6) << 42)
         }
 
         try checkReadable(length: length, index: index, need: 8)
         let b7 = base[index + 7]
         if b7 < 0x80 {
             index += 8
-            return UInt64(b0 & 0x7F) |
-                (UInt64(b1 & 0x7F) << 7) |
-                (UInt64(b2 & 0x7F) << 14) |
-                (UInt64(b3 & 0x7F) << 21) |
-                (UInt64(b4 & 0x7F) << 28) |
-                (UInt64(b5 & 0x7F) << 35) |
-                (UInt64(b6 & 0x7F) << 42) |
-                (UInt64(b7) << 49)
+            return UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21) | (UInt64(b4 & 0x7F) << 28)
+                | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7) << 49)
         }
 
         try checkReadable(length: length, index: index, need: 9)
         let b8 = base[index + 8]
         index += 9
-        let low = UInt64(b0 & 0x7F) |
-            (UInt64(b1 & 0x7F) << 7) |
-            (UInt64(b2 & 0x7F) << 14) |
-            (UInt64(b3 & 0x7F) << 21)
-        let high = (UInt64(b4 & 0x7F) << 28) |
-            (UInt64(b5 & 0x7F) << 35) |
-            (UInt64(b6 & 0x7F) << 42) |
-            (UInt64(b7 & 0x7F) << 49) |
-            (UInt64(b8) << 56)
+        let low = UInt64(b0 & 0x7F) | (UInt64(b1 & 0x7F) << 7) | (UInt64(b2 & 0x7F) << 14) | (UInt64(b3 & 0x7F) << 21)
+        let high = (UInt64(b4 & 0x7F) << 28) | (UInt64(b5 & 0x7F) << 35) | (UInt64(b6 & 0x7F) << 42) | (UInt64(b7 & 0x7F) << 49) | (UInt64(b8) << 56)
         return low | high
     }
 

@@ -126,11 +126,12 @@ func structWithEnumFieldRoundTrip() throws {
 
 @Test
 func idEnumDoesNotUseTypeMetaLimits() throws {
-    let fory = Fory(config: .init(
-        trackRef: false,
-        compatible: true,
-        maxTypeMetaBytes: 1,
-        maxSchemaVersionsPerType: 1))
+    let fory = Fory(
+        config: .init(
+            trackRef: false,
+            compatible: true,
+            maxTypeMetaBytes: 1,
+            maxSchemaVersionsPerType: 1))
     fory.register(Color.self, id: 100)
 
     let data = try fory.serialize(Color.green)
@@ -140,11 +141,12 @@ func idEnumDoesNotUseTypeMetaLimits() throws {
 
 @Test
 func idUnionDoesNotUseTypeMetaLimits() throws {
-    let fory = Fory(config: .init(
-        trackRef: false,
-        compatible: true,
-        maxTypeMetaBytes: 1,
-        maxSchemaVersionsPerType: 1))
+    let fory = Fory(
+        config: .init(
+            trackRef: false,
+            compatible: true,
+            maxTypeMetaBytes: 1,
+            maxSchemaVersionsPerType: 1))
     fory.register(StringOrLong.self, id: 101)
 
     let data = try fory.serialize(StringOrLong.text("hello"))

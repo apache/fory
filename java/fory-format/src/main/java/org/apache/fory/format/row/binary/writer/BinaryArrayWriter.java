@@ -148,30 +148,35 @@ public class BinaryArrayWriter extends BinaryWriter {
 
   @Override
   public void write(int ordinal, byte value) {
+    checkFixedWidth(ordinal, 1);
     setNotNullAt(ordinal);
     buffer.putByte(getOffset(ordinal), value);
   }
 
   @Override
   public void write(int ordinal, boolean value) {
+    checkFixedWidth(ordinal, 1);
     setNotNullAt(ordinal);
     buffer.putBoolean(getOffset(ordinal), value);
   }
 
   @Override
   public void write(int ordinal, short value) {
+    checkFixedWidth(ordinal, 2);
     setNotNullAt(ordinal);
     buffer.putInt16(getOffset(ordinal), value);
   }
 
   @Override
   public void write(int ordinal, int value) {
+    checkFixedWidth(ordinal, 4);
     setNotNullAt(ordinal);
     buffer.putInt32(getOffset(ordinal), value);
   }
 
   @Override
   public void write(int ordinal, float value) {
+    checkFixedWidth(ordinal, 4);
     setNotNullAt(ordinal);
     buffer.putFloat32(getOffset(ordinal), value);
   }

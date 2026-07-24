@@ -22,6 +22,7 @@
 #include "fory/util/error.h"
 #include "fory/util/logging.h"
 #include "fory/util/macros.h"
+#include <cstddef>
 #include <new>
 #include <type_traits>
 #include <utility>
@@ -321,8 +322,9 @@ public:
 /// ```
 template <typename E> class Result<void, E> {
 private:
-  using ErrorStorage =
-      typename std::aligned_storage<sizeof(E), alignof(E)>::type;
+  using ErrorStorage = struct alignas(E) {
+    std::byte data[sizeof(E)];
+  };
 
   ErrorStorage error_storage_;
   bool has_value_;

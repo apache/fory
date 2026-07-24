@@ -17,11 +17,11 @@
  * under the License.
  */
 
-export const isNodeEnv: boolean
-  = typeof process !== "undefined"
-  && process.versions != null
-  && process.env.ECMA_ONLY !== "true"
-  && process.versions.node != null;
+export const isNodeEnv: boolean =
+  typeof process !== "undefined" &&
+  process.versions != null &&
+  process.env.ECMA_ONLY !== "true" &&
+  process.versions.node != null;
 
 export const hasBuffer = isNodeEnv && typeof Buffer !== "undefined";
 

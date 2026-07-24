@@ -17,55 +17,49 @@
  * under the License.
  */
 
-import Fory, { Type } from '../packages/core/index';
-import {describe, expect, test} from '@jest/globals';
+import Fory, { Type } from "../packages/core/index";
+import { describe, expect, test } from "@jest/globals";
 
-describe('enum', () => {
-    test('should javascript number enum work', () => {
-        const Foo = {
-            f1: 1,
-            f2: 2
-        }
-        const fory = new Fory({ compatible: false, ref: true });
-        const {serialize, deserialize} = fory.register(Type.enum("example.foo", Foo))
-        const input = serialize(Foo.f1);
-        const result = deserialize(
-            input
-        );
-        expect(result).toEqual(Foo.f1)
-      });
-
-      test('should javascript string enum work', () => {
-        const Foo = {
-            f1: "hello",
-            f2: "world"
-        }
-        const fory = new Fory({ compatible: false, ref: true });
-        fory.register(Type.enum("example.foo", Foo))
-        const input = fory.serialize(Foo.f1);
-        const result = fory.deserialize(
-            input
-        );
-        expect(result).toEqual(Foo.f1)
-      });
-  test('should typescript number enum work', () => {
-    enum Foo {
-        f1 = 1,
-        f2 = 2
-    }
+describe("enum", () => {
+  test("should javascript number enum work", () => {
+    const Foo = {
+      f1: 1,
+      f2: 2,
+    };
     const fory = new Fory({ compatible: false, ref: true });
-    const {serialize, deserialize} = fory.register(Type.enum("example.foo", Foo))
+    const { serialize, deserialize } = fory.register(Type.enum("example.foo", Foo));
     const input = serialize(Foo.f1);
-    const result = deserialize(
-        input
-    );
-    expect(result).toEqual(Foo.f1)
+    const result = deserialize(input);
+    expect(result).toEqual(Foo.f1);
   });
 
-  test('should preserve sparse numeric enum values', () => {
+  test("should javascript string enum work", () => {
+    const Foo = {
+      f1: "hello",
+      f2: "world",
+    };
+    const fory = new Fory({ compatible: false, ref: true });
+    fory.register(Type.enum("example.foo", Foo));
+    const input = fory.serialize(Foo.f1);
+    const result = fory.deserialize(input);
+    expect(result).toEqual(Foo.f1);
+  });
+  test("should typescript number enum work", () => {
+    enum Foo {
+      f1 = 1,
+      f2 = 2,
+    }
+    const fory = new Fory({ compatible: false, ref: true });
+    const { serialize, deserialize } = fory.register(Type.enum("example.foo", Foo));
+    const input = serialize(Foo.f1);
+    const result = deserialize(input);
+    expect(result).toEqual(Foo.f1);
+  });
+
+  test("should preserve sparse numeric enum values", () => {
     const Foo = {
       unknown: 4096,
-      ok: 8192
+      ok: 8192,
     };
     const fory = new Fory({ compatible: false, ref: true });
     const { serialize, deserialize } = fory.register(Type.enum("example.foo", Foo));
@@ -74,17 +68,15 @@ describe('enum', () => {
     expect(result).toEqual(Foo.ok);
   });
 
-  test('should typescript string enum work', () => {
+  test("should typescript string enum work", () => {
     enum Foo {
-        f1 = "hello",
-        f2 = "world"
+      f1 = "hello",
+      f2 = "world",
     }
     const fory = new Fory({ compatible: false, ref: true });
-    fory.register(Type.enum("example.foo", Foo))
+    fory.register(Type.enum("example.foo", Foo));
     const input = fory.serialize(Foo.f1);
-    const result = fory.deserialize(
-        input
-    );
-    expect(result).toEqual(Foo.f1)
+    const result = fory.deserialize(input);
+    expect(result).toEqual(Foo.f1);
   });
 });

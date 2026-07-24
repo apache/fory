@@ -65,6 +65,10 @@ System.Diagnostics.Debug.Assert(object.ReferenceEquals(decoded, decoded.Next));
 
 `TrackRef(false)` can be faster for tree-like, acyclic data where reference identity does not matter.
 
+C# union wrappers are immutable and are created after their case payload is read.
+Reference cycles from a union case payload back to the containing union are not
+supported; Fory rejects unresolved refs instead of returning a partial union.
+
 ## Related Topics
 
 - [Configuration](configuration.md)

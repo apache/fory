@@ -112,6 +112,7 @@ public class FeatureTestExample {
     fory.register(PrivateConstructorClass.class);
     fory.register(SerializablePrivateParentBean.class);
     fory.register(TestInvocationHandler.class);
+    fory.register(TestInterface.class);
     GraalvmSupport.registerProxySupport(TestInterface.class);
     fory.ensureSerializersCompiled();
     return fory;

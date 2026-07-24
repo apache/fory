@@ -151,9 +151,7 @@ public class AbstractClassExample {
             .registerGuavaTypes(false)
             .withCompatible(false)
             .build();
-    // Register enum type - abstract enums need to be registered
-    // The fix for issue #2695 ensures that registering an abstract enum
-    // also registers its inner classes (the anonymous enum value classes)
+    // Enum constants with class bodies use the declaring enum's registered type identity.
     FORY.register(AbstractEnum.class);
     // Register concrete types
     FORY.register(ConcreteA.class);
@@ -162,7 +160,6 @@ public class AbstractClassExample {
     // Register array types - the abstract component type should be handled correctly
     FORY.register(AbstractBase[].class);
     FORY.register(AbstractEnum[].class);
-    // Ensure serializers are compiled - this is where the fix for issue #2695 matters
     FORY.ensureSerializersCompiled();
   }
 

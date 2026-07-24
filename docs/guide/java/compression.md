@@ -49,7 +49,7 @@ If a number is of `long` type but can't be represented by smaller bytes mostly, 
 
 ## Array Compression
 
-Fory supports SIMD-accelerated compression for primitive arrays (`int[]` and `long[]`) when array values can fit in smaller data types. This feature is available on Java 16+ and uses the Vector API for optimal performance.
+Fory can compress primitive arrays (`int[]` and `long[]`) when every value fits in a narrower primitive type. JDK 8 through 15 use scalar range analysis. On JDK 16 and later, the multi-release `fory-core` JAR automatically selects the Vector API implementation.
 
 ### How Array Compression Works
 
@@ -76,7 +76,13 @@ Fory fory = Fory.builder()
 CompressedArraySerializers.registerSerializers(fory);
 ```
 
-Compressed array serializers are included in `fory-core` and use the Java 16+ Vector API when it is available.
+Compressed array serializers are included in `fory-core`. When running on JDK 16 or later, resolve the incubator Vector API module when starting the application:
+
+```bash
+java --add-modules=jdk.incubator.vector ...
+```
+
+No registration or configuration change is required when moving between the scalar and Vector implementations. They make the same compression decisions and use the same serialized format.
 
 ## String Compression
 
@@ -84,18 +90,18 @@ String compression can be enabled via `ForyBuilder#withStringCompressed(true)`. 
 
 ## Configuration Summary
 
-| Option              | Description                                   | Default |
-| ------------------- | --------------------------------------------- | ------- |
-| `compressInt`       | Enable int compression                        | `true`  |
-| `compressLong`      | Enable long compression                       | `true`  |
-| `compressIntArray`  | Enable SIMD int array compression (Java 16+)  | `false` |
-| `compressLongArray` | Enable SIMD long array compression (Java 16+) | `false` |
-| `compressString`    | Enable string compression                     | `false` |
+| Option              | Description                         | Default |
+| ------------------- | ----------------------------------- | ------- |
+| `compressInt`       | Enable int compression              | `true`  |
+| `compressLong`      | Enable long compression             | `true`  |
+| `compressIntArray`  | Enable int array width compression  | `false` |
+| `compressLongArray` | Enable long array width compression | `false` |
+| `compressString`    | Enable string compression           | `false` |
 
 ## Performance Considerations
 
 1. **Disable compression for numeric-heavy data**: If your data is mostly numbers, compression overhead may not be worth it
-2. **Array compression requires Java 16+**: Uses Vector API for SIMD acceleration
+2. **Array compression implementation is JDK-specific**: JDK 8 through 15 use scalar range analysis; JDK 16 and later automatically select the Vector API implementation
 3. **Long compression may not help large values**: If most longs can't fit in smaller representations, disable it
 4. **String compression has overhead**: Only enable if strings are highly compressible
 

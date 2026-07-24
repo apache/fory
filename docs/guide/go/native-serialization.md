@@ -38,7 +38,7 @@ Use native serialization when:
   the writer.
 - You want compatible schema evolution for Go-only rolling deployments without committing to a
   cross-language type mapping.
-- You are using reflection or code-generated serializers for Go structs that never leave Go.
+- You are using Go fast serializers for structs that never leave Go.
 
 ## Create a Native-Mode Fory Instance
 
@@ -126,7 +126,7 @@ Native serialization keeps Go data in Go-native form:
 - Pointers and nil values, including nil slices and maps.
 - Interfaces and dynamic values when registered serializers can resolve their concrete types.
 - Time values such as `time.Time` and `time.Duration`.
-- Reflection-based and code-generated serializers.
+- Fast serializers.
 
 Use [Supported Types](supported-types.md) for the full type surface and xlang mapping details.
 
@@ -174,7 +174,6 @@ _ = data
   schema and wants faster serialization and smaller size.
 - Register structs with explicit numeric IDs.
 - Disable reference tracking unless the graph requires identity or cycles.
-- Use code generation for hot Go structs when reflection overhead matters.
 - Copy returned bytes only when the data must survive the next serialization call.
 
 ## Native And Xlang Comparison
@@ -216,4 +215,3 @@ The default `Fory` instance reuses its buffer. Copy the byte slice or use `threa
 - [Type Registration](type-registration.md) - Struct and enum registration
 - [References](references.md) - Shared and circular references
 - [Schema Evolution](schema-evolution.md) - Compatible mode
-- [Code Generation](codegen.md) - Generated serializers

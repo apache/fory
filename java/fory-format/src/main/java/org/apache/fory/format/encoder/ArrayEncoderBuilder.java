@@ -54,7 +54,10 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   public ArrayEncoderBuilder(TypeRef<?> clsType, TypeRef<?> beanType) {
-    super(new CodegenContext(), beanType);
+    // A top-level collection has no enclosing bean, so scope element-codec resolution to Object to
+    // match TypeInference's empty-path enclosing type; beanType still names the element type for
+    // class naming and the empty-array template below.
+    super(new CodegenContext(), beanType, Object.class);
     arrayToken = clsType;
     ctx.reserveName(ROOT_ARRAY_WRITER_NAME);
     ctx.reserveName(ROOT_ARRAY_NAME);
@@ -180,6 +183,7 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
     ArrayDataForEach addElemsOp =
         new ArrayDataForEach(
             arrayData,
+            codecEnclosingType,
             elemType,
             (i, value) ->
                 new Expression.Invoke(

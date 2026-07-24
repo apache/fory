@@ -22,12 +22,12 @@ package org.apache.fory.benchmark.data;
 import java.io.Serializable;
 
 public class Image implements Serializable {
-  public String uri;
-  public String title; // Can be null.
-  public int width;
-  public int height;
-  public Size size;
-  public Media media; // Can be null.
+  private String uri;
+  private String title; // Can be null.
+  private int width;
+  private int height;
+  private Size size;
+  private Media media; // Can be null.
 
   public Image() {}
 
@@ -37,6 +37,54 @@ public class Image implements Serializable {
     this.uri = uri;
     this.width = width;
     this.size = size;
+    this.media = media;
+  }
+
+  public String getUri() {
+    return uri;
+  }
+
+  public void setUri(String uri) {
+    this.uri = uri;
+  }
+
+  public String getTitle() {
+    return title;
+  }
+
+  public void setTitle(String title) {
+    this.title = title;
+  }
+
+  public int getWidth() {
+    return width;
+  }
+
+  public void setWidth(int width) {
+    this.width = width;
+  }
+
+  public int getHeight() {
+    return height;
+  }
+
+  public void setHeight(int height) {
+    this.height = height;
+  }
+
+  public Size getSize() {
+    return size;
+  }
+
+  public void setSize(Size size) {
+    this.size = size;
+  }
+
+  public Media getMedia() {
+    return media;
+  }
+
+  public void setMedia(Media media) {
     this.media = media;
   }
 

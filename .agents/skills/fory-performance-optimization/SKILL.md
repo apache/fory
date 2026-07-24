@@ -15,6 +15,8 @@ Deliver measurable performance improvements in Apache Fory without protocol drif
 - Profile before changing hot code.
 - Change one bottleneck at a time.
 - Benchmark sequentially on the same machine state (one benchmark process at a time).
+- Compare old/new benchmark results case-by-case in adjacent pairs: run one case on `apache/main`,
+  then immediately run that same case on the current branch before moving to the next case.
 - Keep only measured wins or explicitly requested architecture cleanups.
 - Revert speculative changes that do not pay off.
 - Align with reference runtimes (usually C++ first, then Rust/Java) when behavior and ownership models differ.
@@ -73,6 +75,8 @@ Deliver measurable performance improvements in Apache Fory without protocol drif
 7. Benchmark and compare.
 
 - Run targeted benchmark at least twice sequentially.
+- Pair each baseline case with the matching current-branch case before starting another case, so
+  both measurements see closer machine load conditions.
 - Use longer duration when signal is noisy.
 - Run one short full-suite sanity benchmark to catch collateral regressions.
 

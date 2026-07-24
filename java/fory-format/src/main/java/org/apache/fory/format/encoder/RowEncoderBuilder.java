@@ -306,12 +306,15 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
       Descriptor d = getDescriptorByFieldName(schema.field(i).name());
       TypeRef<?> fieldType = d.getTypeRef();
       Class<?> rawFieldType = fieldType.getRawType();
+      // Resolve a codec on the raw field type before any Optional unwrap; keep in lockstep with the
+      // canonical ordering in TypeInference.inferField.
       TypeRef<?> columnAccessType = fieldType;
-      if (rawFieldType == Optional.class) {
+      TypeRef<?> replacementType = customTypeHandler.replacementTypeFor(beanClass, rawFieldType);
+      if (replacementType == null && rawFieldType == Optional.class) {
         columnAccessType = TypeUtils.getTypeArguments(fieldType).get(0);
+        replacementType =
+            customTypeHandler.replacementTypeFor(beanClass, columnAccessType.getRawType());
       }
-      TypeRef<?> replacementType =
-          customTypeHandler.replacementTypeFor(beanClass, columnAccessType.getRawType());
       if (replacementType != null) {
         columnAccessType = replacementType;
       }

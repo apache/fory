@@ -15,6 +15,9 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# All `uses:` action pins in this workflow must come from the Apache action allowlist:
+# https://github.com/apache/infrastructure-actions/blob/main/actions.yml
+
 name: Build Native PR Wheels
 on:
   pull_request:
@@ -28,7 +31,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ['3.13']
+        python-version: ['3.14']
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
@@ -59,7 +62,7 @@ jobs:
     runs-on: macos-15
     strategy:
       matrix:
-        python-version: ['3.13']
+        python-version: ['3.14']
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
@@ -93,7 +96,7 @@ jobs:
     runs-on: macos-15-intel
     strategy:
       matrix:
-        python-version: ['3.13']
+        python-version: ['3.14']
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
@@ -128,7 +131,7 @@ jobs:
     needs: [build-macos-arm64, build-macos-x86_64]
     strategy:
       matrix:
-        python-version: ['3.13']
+        python-version: ['3.14']
     steps:
       - uses: actions/setup-python@v5
         with:

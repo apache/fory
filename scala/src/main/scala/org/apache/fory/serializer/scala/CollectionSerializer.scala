@@ -48,20 +48,24 @@ abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](
     typeResolver: TypeResolver,
     cls: Class[T])
   extends CollectionLikeSerializer[T](typeResolver, cls) {
+  private val ReferenceBytes = 4L
+  // Lower-bound shallow owner cost for the retained Scala collection wrapper itself. Element
+  // slots are charged separately by count below; this is not a Fory wire header size.
+  private val ScalaCollectionOwnerBytes = 3L * ReferenceBytes
+
   override def onCollectionWrite(
       writeContext: WriteContext,
       value: T): util.Collection[_]
 
   override def newCollection(readContext: ReadContext): util.Collection[_] = {
     val buffer = readContext.getBuffer
-    val numElements = buffer.readVarUInt32()
+    val numElements = buffer.readVarUInt32Small7()
     checkCollectionSize(numElements)
+    readContext.reserveGraphMemory(ScalaCollectionOwnerBytes + numElements.toLong * ReferenceBytes)
     setNumElements(numElements)
     val factory = readContext.readRef().asInstanceOf[Factory[A, T]]
+    buffer.checkReadableBytes(numElements)
     val builder = factory.newBuilder
-    if (numElements != 0) {
-      buffer.checkReadableBytes(numElements)
-    }
     builder.sizeHint(numElements)
     new JavaCollectionBuilder[A, T](builder)
   }

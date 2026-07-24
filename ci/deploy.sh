@@ -150,13 +150,11 @@ build_pyfory() {
 }
 
 install_pyarrow() {
-  pyversion=$($PYTHON_CMD -V | cut -d' ' -f2)
-  if [[ $pyversion  ==  3.13* ]]; then
-    $PIP_CMD install pyarrow==18.0.0
-    $PIP_CMD install numpy
+  # Newer PyArrow and NumPy Linux wheels require manylinux_2_28.
+  if [[ ${PLAT:-} == manylinux2014_* ]]; then
+    $PIP_CMD install "pyarrow<21" "numpy<2.3"
   else
-    $PIP_CMD install pyarrow==15.0.0
-    # Automatically install numpy
+    $PIP_CMD install pyarrow numpy
   fi
 }
 

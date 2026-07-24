@@ -172,7 +172,7 @@ final class UInt64Map<Value> {
 
     func clear() {
         if !isEmpty {
-            for index in 0 ..< tableCapacity {
+            for index in 0..<tableCapacity {
                 entries[index].key = uint64MapEmptyKey
                 entries[index].value = nil
             }
@@ -216,7 +216,7 @@ final class UInt64Map<Value> {
         growThreshold = Int(Double(newCapacity) * loadFactor)
         size = hasMaxKey ? 1 : 0
 
-        for index in 0 ..< oldCapacity {
+        for index in 0..<oldCapacity {
             let oldSlot = oldEntries[index]
             if oldSlot.key != uint64MapEmptyKey {
                 let newIndex = findSlotForInsert(oldSlot.key)

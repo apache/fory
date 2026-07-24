@@ -42,6 +42,20 @@ public class CollectionSerializer<T extends Collection> extends CollectionLikeSe
     super(typeResolver, type, supportCodegenHook, immutable);
   }
 
+  protected CollectionSerializer(
+      TypeResolver typeResolver, Class<T> type, boolean supportCodegenHook, int ownerBytes) {
+    super(typeResolver, type, supportCodegenHook, false, ownerBytes);
+  }
+
+  protected CollectionSerializer(
+      TypeResolver typeResolver,
+      Class<T> type,
+      boolean supportCodegenHook,
+      boolean immutable,
+      int ownerBytes) {
+    super(typeResolver, type, supportCodegenHook, immutable, ownerBytes);
+  }
+
   @Override
   public Collection onCollectionWrite(WriteContext writeContext, T value) {
     writeContext.getBuffer().writeVarUInt32Small7(value.size());

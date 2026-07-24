@@ -245,32 +245,54 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
     return super.isNullAt(ordinal);
   }
 
+  // The compact layout sizes each fixed slot from its declared schema width, so a fixed-slot write
+  // must match that width exactly. This cannot be checked statically -- a MemoryBuffer's length is
+  // not in the Java type system -- so assert it here. Variable-length columns (fixedWidths == -1)
+  // store an offset/length pointer and are not checked.
+  @Override
+  protected void checkFixedWidth(final int ordinal, final int written) {
+    final int slot = layout.fixedWidths[ordinal];
+    assert slot < 0 || slot == written
+        : "field "
+            + getSchema().field(ordinal)
+            + " has a "
+            + slot
+            + "-byte slot but the codec wrote "
+            + written
+            + " bytes; getForyField width must match encodedType";
+  }
+
   @Override
   public void write(final int ordinal, final byte value) {
+    checkFixedWidth(ordinal, 1);
     final int offset = getOffset(ordinal);
     buffer.putByte(offset, value);
   }
 
   @Override
   public void write(final int ordinal, final boolean value) {
+    checkFixedWidth(ordinal, 1);
     final int offset = getOffset(ordinal);
     buffer.putBoolean(offset, value);
   }
 
   @Override
   public void write(final int ordinal, final short value) {
+    checkFixedWidth(ordinal, 2);
     final int offset = getOffset(ordinal);
     buffer.putInt16(offset, value);
   }
 
   @Override
   public void write(final int ordinal, final int value) {
+    checkFixedWidth(ordinal, 4);
     final int offset = getOffset(ordinal);
     buffer.putInt32(offset, value);
   }
 
   @Override
   public void write(final int ordinal, final float value) {
+    checkFixedWidth(ordinal, 4);
     final int offset = getOffset(ordinal);
     buffer.putFloat32(offset, value);
   }
@@ -280,6 +302,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
       final int ordinal, final byte[] input, final int offset, final int numBytes) {
     final int inlineWidth = layout.fixedWidths[ordinal];
     if (inlineWidth > 0) {
+      checkFixedWidth(ordinal, numBytes);
       buffer.put(getOffset(ordinal), input, offset, numBytes);
     } else {
       super.writeUnaligned(ordinal, input, offset, numBytes);
@@ -291,7 +314,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
       final int ordinal, final MemoryBuffer input, final int offset, final int numBytes) {
     final int inlineWidth = layout.fixedWidths[ordinal];
     if (inlineWidth > 0) {
-      assert inlineWidth == numBytes;
+      checkFixedWidth(ordinal, numBytes);
       buffer.copyFrom(getOffset(ordinal), input, offset, numBytes);
     } else {
       super.writeUnaligned(ordinal, input, offset, numBytes);
@@ -303,6 +326,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
       final int ordinal, final MemoryBuffer input, final int baseOffset, final int numBytes) {
     final int inlineWidth = layout.fixedWidths[ordinal];
     if (inlineWidth > 0) {
+      checkFixedWidth(ordinal, numBytes);
       buffer.copyFrom(getOffset(ordinal), input, baseOffset, numBytes);
     } else {
       super.writeAlignedBytes(ordinal, input, baseOffset, numBytes);

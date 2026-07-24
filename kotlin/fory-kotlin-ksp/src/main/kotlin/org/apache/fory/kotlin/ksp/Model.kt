@@ -19,6 +19,11 @@
 
 package org.apache.fory.kotlin.ksp
 
+internal const val JVM_REFERENCE_BYTES = 4
+// Lower-bound shallow owner cost for retained generated Kotlin/JVM objects. Field slots are added
+// separately by generated formulas; this is not a Fory wire header or exact JVM heap layout.
+internal const val JVM_OBJECT_BASE_BYTES = 2 * JVM_REFERENCE_BYTES
+
 internal data class KotlinSourceStruct(
   val packageName: String,
   val typeName: String,
@@ -28,6 +33,7 @@ internal data class KotlinSourceStruct(
   val construction: KotlinStructConstruction = KotlinStructConstruction.CONSTRUCTOR,
   val fields: List<KotlinSourceField>,
   val originatingFiles: List<com.google.devtools.ksp.symbol.KSFile>,
+  val graphMemoryBytes: Int = JVM_OBJECT_BASE_BYTES,
 ) {
   val qualifiedSerializerName: String =
     if (packageName.isEmpty()) serializerName else "$packageName.$serializerName"

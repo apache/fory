@@ -170,7 +170,8 @@ impl<'a> ResolvedField<'a> {
                 let ty = self.value_ty;
                 if serializer_field_can_use_data_path(self.source.field) {
                     quote! {
-                        let #var = <#ty as fory_core::Serializer>::fory_read_data(context)?;
+                        let #var = <fory_core::serializer::codec::SerializerCodec<#ty, false, false>
+                            as fory_core::serializer::codec::Codec<#ty>>::read_field(context)?;
                     }
                 } else {
                     let ref_mode = serializer_ref_mode_for_field(self.source.field);
@@ -241,7 +242,8 @@ impl<'a> ResolvedField<'a> {
                 let ty = self.value_ty;
                 if serializer_field_can_use_data_path(self.source.field) {
                     quote! {
-                        #var = <#ty as fory_core::Serializer>::fory_read_data(context)?;
+                        #var = <fory_core::serializer::codec::SerializerCodec<#ty, false, false>
+                            as fory_core::serializer::codec::Codec<#ty>>::read_field(context)?;
                     }
                 } else {
                     quote! {
@@ -318,22 +320,33 @@ impl<'a> ResolvedField<'a> {
             }
             FieldDispatch::Serializer { .. } => {
                 let ty = self.value_ty;
-                quote! {
-                    let remote_field_type = &_field.field_type;
-                    let read_ref_mode =
-                        fory_core::serializer::codec::field_ref_mode(remote_field_type);
-                    let read_type_info = if context.is_compatible() {
-                        fory_core::serializer::util::field_need_read_type_info(
-                            remote_field_type.type_id
-                        )
-                    } else {
-                        <#ty as fory_core::Serializer>::fory_is_polymorphic()
-                    };
-                    #var = <#ty as fory_core::Serializer>::fory_read(
-                        context,
-                        read_ref_mode,
-                        read_type_info,
-                    )?;
+                if serializer_field_can_use_data_path(self.source.field) {
+                    quote! {
+                        let remote_field_type = &_field.field_type;
+                        #var = <fory_core::serializer::codec::SerializerCodec<#ty, false, false>
+                            as fory_core::serializer::codec::Codec<#ty>>::read_field_with_type(
+                                context,
+                                remote_field_type,
+                            )?;
+                    }
+                } else {
+                    quote! {
+                        let remote_field_type = &_field.field_type;
+                        let read_ref_mode =
+                            fory_core::serializer::codec::field_ref_mode(remote_field_type);
+                        let read_type_info = if context.is_compatible() {
+                            fory_core::serializer::util::field_need_read_type_info(
+                                remote_field_type.type_id
+                            )
+                        } else {
+                            <#ty as fory_core::Serializer>::fory_is_polymorphic()
+                        };
+                        #var = <#ty as fory_core::Serializer>::fory_read(
+                            context,
+                            read_ref_mode,
+                            read_type_info,
+                        )?;
+                    }
                 }
             }
         }

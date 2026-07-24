@@ -19,6 +19,7 @@
 
 package org.apache.fory.builder;
 
+import java.util.Collections;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.Fory;
@@ -26,10 +27,7 @@ import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.collection.Tuple3;
 import org.apache.fory.meta.TypeDef;
-import org.apache.fory.platform.AndroidSupport;
 import org.apache.fory.platform.GraalvmSupport;
-import org.apache.fory.platform.JdkVersion;
-import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
@@ -120,6 +118,12 @@ public class CodecUtils {
   @SuppressWarnings("unchecked")
   static <T> Class<? extends Serializer> loadOrGenCodecClass(
       Class<T> beanClass, Fory fory, BaseObjectCodecBuilder codecBuilder) {
+    // use genCodeFunc to avoid gen code repeatedly
+    CompileUnit compileUnit =
+        new CompileUnit(
+            CodeGenerator.getPackage(beanClass),
+            codecBuilder.codecClassName(beanClass),
+            codecBuilder::genCode);
     CodeGenerator codeGenerator;
     ClassLoader beanClassClassLoader =
         beanClass.getClassLoader() == null
@@ -130,40 +134,15 @@ public class CodecUtils {
     }
     TypeResolver typeResolver = fory.getTypeResolver();
     codeGenerator = getCodeGenerator(beanClassClassLoader, typeResolver);
-    Class<?> neighborClass = codecNeighbor(beanClass, beanClassClassLoader);
-    codecBuilder.setSamePackageAccess(neighborClass != null);
-    // use genCodeFunc to avoid gen code repeatedly
-    CompileUnit compileUnit =
-        new CompileUnit(
-            CodeGenerator.getPackage(beanClass),
-            codecBuilder.codecClassName(beanClass),
-            codecBuilder::genCode,
-            neighborClass);
-    return (Class<? extends Serializer>)
-        codeGenerator.compileAndLoad(compileUnit, compileState -> compileState.lock.lock());
-  }
-
-  private static Class<?> codecNeighbor(Class<?> beanClass, ClassLoader beanClassClassLoader) {
-    // Hidden generated serializers are only a JDK25+ path. JDK8-24 keeps the existing unsafe-backed
-    // field/object access strategy, so broadening this to Java15+ adds complexity without removing
-    // unsafe from those runtimes.
-    if (AndroidSupport.IS_ANDROID
-        || JdkVersion.MAJOR_VERSION < 25
-        || beanClass.getClassLoader() == null) {
-      return null;
-    }
-    if (!CodeGenerator.getPackage(beanClass).equals(ReflectionUtils.getPackage(beanClass))) {
-      return null;
-    }
+    ClassLoader classLoader =
+        codeGenerator.compile(
+            Collections.singletonList(compileUnit), compileState -> compileState.lock.lock());
+    String className = codecBuilder.codecQualifiedClassName(beanClass);
     try {
-      // A generated serializer defined in the bean loader must resolve Fory runtime classes there.
-      if (beanClassClassLoader.loadClass(Fory.class.getName()) == Fory.class) {
-        return beanClass;
-      }
+      return (Class<? extends Serializer>) classLoader.loadClass(className);
     } catch (ClassNotFoundException e) {
-      // The composed-loader path remains the owner when the bean loader cannot see Fory directly.
+      throw new IllegalStateException("Impossible because we just compiled class", e);
     }
-    return null;
   }
 
   private static CodeGenerator getCodeGenerator(

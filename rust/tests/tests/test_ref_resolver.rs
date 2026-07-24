@@ -69,6 +69,23 @@ fn test_rc_storage_and_retrieval() {
 }
 
 #[test]
+fn test_reserved_ref_slot_stays_unresolved() {
+    let mut ref_reader = RefReader::new();
+
+    let skipped_ref_id = ref_reader.reserve_ref_id();
+    let rc = Rc::new(String::from("kept"));
+    let kept_ref_id = ref_reader.store_rc_ref(rc.clone());
+
+    assert_eq!(skipped_ref_id, 0);
+    assert_eq!(kept_ref_id, 1);
+    assert!(ref_reader.get_rc_ref::<String>(skipped_ref_id).is_none());
+
+    let retrieved = ref_reader.get_rc_ref::<String>(kept_ref_id).unwrap();
+    assert_eq!(*retrieved, "kept");
+    assert!(Rc::ptr_eq(&rc, &retrieved));
+}
+
+#[test]
 fn test_arc_storage_and_retrieval() {
     let mut ref_reader = RefReader::new();
     let arc = Arc::new(String::from("test"));

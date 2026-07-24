@@ -254,10 +254,14 @@ func (td *TypeDef) buildTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, 
 		TypeID:       td.typeId,
 		UserTypeID:   td.userTypeId,
 		Serializer:   serializer,
+		ValueBytes:   0,
 		PkgPathBytes: td.nsName,
 		NameBytes:    td.typeName,
 		IsDynamic:    type_ == nil, // Mark as dynamic if type is unknown
 		TypeDef:      td,
+	}
+	if type_ != nil {
+		info.ValueBytes = int(type_.Size())
 	}
 	return info, nil
 }
@@ -383,7 +387,7 @@ func readTypeName(buffer *ByteBuffer, typeNameDecoder *meta.Decoder, err *Error)
 
 // buildTypeDef constructs a TypeDef from a value
 func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
-	infoPtr, err := fory.typeResolver.getTypeInfo(value, true)
+	infoPtr, err := fory.typeResolver.GetTypeInfo(value, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get type info for value %v: %w", value, err)
 	}

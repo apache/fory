@@ -174,12 +174,12 @@ export const TypeId = {
   },
   userDefinedType(id: number) {
     return (
-      this.structType(id)
-      || this.extType(id)
-      || this.enumType(id)
-      || id == TypeId.UNION
-      || id == TypeId.TYPED_UNION
-      || id == TypeId.NAMED_UNION
+      this.structType(id) ||
+      this.extType(id) ||
+      this.enumType(id) ||
+      id == TypeId.UNION ||
+      id == TypeId.TYPED_UNION ||
+      id == TypeId.NAMED_UNION
     );
   },
   isBuiltin(id: number) {
@@ -216,8 +216,7 @@ export const TypeId = {
     // NONE(36), DURATION(37), TIMESTAMP(38), DATE(39), DECIMAL(40), BINARY(41)
     if (typeId >= TypeId.NONE && typeId <= TypeId.BINARY) return true;
     // Typed arrays BOOL_ARRAY(43)..FLOAT64_ARRAY(56)
-    if (typeId >= TypeId.BOOL_ARRAY && typeId <= TypeId.FLOAT64_ARRAY)
-      return true;
+    if (typeId >= TypeId.BOOL_ARRAY && typeId <= TypeId.FLOAT64_ARRAY) return true;
     return false;
   },
 } as const;
@@ -292,6 +291,14 @@ export interface Config {
   ref: boolean;
   useSliceString: boolean;
   maxDepth?: number;
+  /**
+   * Approximate graph-memory gate for one root deserialization.
+   *
+   * Mainly gates materialized arrays, maps, sets, structs, and objects. Leaf
+   * values are gated by unread input bytes instead, and actual heap use can be
+   * higher.
+   */
+  maxGraphMemoryBytes: number;
   maxTypeFields: number;
   maxTypeMetaBytes: number;
   maxSchemaVersionsPerType: number;

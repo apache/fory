@@ -66,6 +66,7 @@ import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.platform.JdkVersion;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.serializer.GraphMemoryEstimates;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Descriptor;
@@ -94,7 +95,6 @@ import org.apache.fory.util.record.RecordUtils;
  */
 public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
   private static final Logger LOG = LoggerFactory.getLogger(ObjectCodecBuilder.class);
-
   private final Literal classVersionHash;
   protected ObjectCodecOptimizer objectCodecOptimizer;
   protected Map<String, Integer> recordReversedMapping;
@@ -799,9 +799,10 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     Expression bean;
     if (!isRecord) {
       bean = newBean();
-      Expression referenceObject = invokeReadContext("reference", bean);
       expressions.add(bean);
-      expressions.add(referenceObject);
+      if (typeResolver.trackingRef()) {
+        expressions.add(invokeReadContext("reference", bean));
+      }
     } else {
       if (recordCtrAccessible) {
         bean = new FieldsCollector();
@@ -829,6 +830,18 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     }
     expressions.add(new Expression.Return(bean));
     return expressions;
+  }
+
+  protected String graphMemoryReserveCode() {
+    int ownerBytes = GraphMemoryEstimates.shallowObjectBytes(beanClass);
+    return READ_CONTEXT_NAME + ".reserveGraphMemory(" + ownerBytes + ");";
+  }
+
+  @Override
+  protected String decodePrefixCode() {
+    // Reserve before the generated buffer local is live; the object owner is still charged before
+    // allocation, but small generated readers keep a leaner hot shape.
+    return graphMemoryReserveCode() + "\n";
   }
 
   protected void deserializeReadGroup(

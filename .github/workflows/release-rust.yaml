@@ -15,12 +15,15 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# All `uses:` action pins in this workflow must come from the Apache action allowlist:
+# https://github.com/apache/infrastructure-actions/blob/main/actions.yml
+
 name: Publish Rust
 run-name: "Rust Release: ${{ github.ref_name }}"
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 permissions:
   contents: read
@@ -33,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
 
       - name: Bump rust version
         shell: bash

@@ -238,6 +238,16 @@ format_swift() {
     else
       echo "WARNING: swiftlint is not installed, skip swift lint check"
     fi
+
+    echo "$(date)" "swift-format check Swift files...."
+    if command -v swift-format >/dev/null; then
+      pushd "$ROOT/swift"
+      swift-format lint --configuration .swift-format --recursive --strict Sources Tests Package.swift
+      popd
+      echo "$(date)" "swift-format done!"
+    else
+      echo "WARNING: swift-format is not installed, skip swift-format check"
+    fi
 }
 
 # Format all files, and print the diff to stdout for travis.

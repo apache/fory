@@ -18,6 +18,31 @@ Load this file when changing `rust/` or Rust xlang behavior.
 - If breakage is explicitly acceptable during a Rust module refactor, rewire macros, tests, and sibling crates directly to the new boundaries instead of adding compatibility re-exports.
 - For panic-safety in hot paths, preserve TLS context reuse. Add scoped guards or owned fallbacks rather than per-call context allocation, and reset reused contexts at entry and successful exit.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Keep recursive matched-field shape classification owned by `fory-core/src/meta/type_meta.rs`; collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
+- Root deserialization graph memory budget state belongs to `ReadContext` and is initialized by the
+  root `Fory` read methods before the header is consumed. Use the fixed `128 MiB` default unless a
+  positive explicit value overrides it; zero is invalid at config
+  creation. Root `Fory` read methods reset the budget only; they must not pre-reserve root type or
+  root self bytes. Do not derive the budget from root input size or add dynamic bytes-read
+  accounting.
+  Do not mirror the configured max into a second active-limit field; keep one configured max plus
+  mutable remaining budget.
+  `ReadContext` may expose only raw byte reservation; `Vec`,
+  collection, map, array, struct, object, and derive codec formulas belong in their serializer
+  owners.
+  Treat the option as an approximate collection/map/array/struct/object gate, not an exact heap
+  cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
+- Rust `Vec<T>` stores inline element storage, so general LIST paths reserve
+  `len * size_of::<T>()`, including `Vec<String>` and `Vec<struct>`. Maps reserve
+  `len * (size_of::<K>() + size_of::<V>())`. Rust struct serializers do not reserve their own
+  memory because structs are inline values; parent fields, collection/map backing storage, and
+  Box/Rc/Arc/dynamic-box owners account for storage they own with direct `size_of::<T>()` formulas.
+  Root deserialization does not reserve root object memory.
+  Dedicated primitive dense ARRAY `Vec<T>` readers, strings, binary, primitive scalars, and
+  primitive fixed-array owners stay skipped and keep their byte checks.
+- Direct `Serializer` collection/map paths and derive `Codec` collection/map paths are separate
+  allocation owners. Keep reservations in both before `Vec::with_capacity`,
+  `HashMap::with_capacity`, or collection materialization. Empty non-leaf owners that allocate an
+  independent owner object or storage reserve nonzero shallow self cost.
 
 ## Key Paths
 

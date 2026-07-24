@@ -175,12 +175,13 @@ public class UnionSerializer extends Serializer<Union> {
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
       // ref value or not-null value
       TypeInfo declared = getFinalCaseTypeInfo(caseId);
-      TypeInfo readTypeInfo = resolver.readTypeInfo(readContext, declared);
       if (declared != null) {
+        TypeInfo readTypeInfo = resolver.readTypeInfo(readContext, declared);
         Serializer serializer = getCaseSerializer(caseId, readTypeInfo.getTypeId(), declared);
         GenericType genericType = getCaseGenericType(caseId, readTypeInfo.getTypeId());
         caseValue = readCaseValue(readContext, serializer, genericType);
       } else {
+        TypeInfo readTypeInfo = resolver.readTypeInfo(readContext);
         caseValue = Serializers.read(readContext, readTypeInfo.getSerializer());
       }
       readContext.setReadRef(nextReadRefId, caseValue);
@@ -333,7 +334,12 @@ public class UnionSerializer extends Serializer<Union> {
     int nextReadRefId = readContext.tryPreserveRefId();
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
       TypeInfo declared = getDeclaredCaseTypeInfo(fieldInfo, typeId);
-      TypeInfo readTypeInfo = resolver.readTypeInfo(readContext, declared);
+      TypeInfo readTypeInfo;
+      if (declared != null) {
+        readTypeInfo = resolver.readTypeInfo(readContext, declared);
+      } else {
+        readTypeInfo = resolver.readTypeInfo(readContext);
+      }
       Serializer serializer = getCaseSerializer(fieldInfo, readTypeInfo.getTypeId(), readTypeInfo);
       Object caseValue =
           readCaseValue(

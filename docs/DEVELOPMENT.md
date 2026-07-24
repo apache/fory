@@ -129,3 +129,7 @@ npx prettier --write "**/*.md"
 ## Contributing
 
 For contribution details, see [How to contribute to Apache Fory™](https://github.com/apache/fory/blob/main/CONTRIBUTING.md).
+For AI-assisted contributions, follow the
+[AI Contribution Policy](https://github.com/apache/fory/blob/main/AI_POLICY.md), including the
+required self-review, two-reviewer AI review loop, disclosure, and verification evidence for
+substantial AI assistance.

@@ -209,7 +209,7 @@ func (s *optionalSerializer) writeNull(ctx *WriteContext, refMode RefMode, write
 		// For RefModeNone, write zero value data without any flag.
 		zero := reflect.New(s.valueType).Elem()
 		if writeType {
-			info, err := ctx.TypeResolver().getTypeInfo(zero, true)
+			info, err := ctx.TypeResolver().GetTypeInfo(zero, true)
 			if err != nil {
 				ctx.SetError(FromError(err))
 				return
@@ -237,7 +237,7 @@ func (s *optionalSerializer) writeValue(ctx *WriteContext, refMode RefMode, writ
 		// No ref/null flag written.
 	}
 	if writeType {
-		info, err := ctx.TypeResolver().getTypeInfo(valueField, true)
+		info, err := ctx.TypeResolver().GetTypeInfo(valueField, true)
 		if err != nil {
 			ctx.SetError(FromError(err))
 			return

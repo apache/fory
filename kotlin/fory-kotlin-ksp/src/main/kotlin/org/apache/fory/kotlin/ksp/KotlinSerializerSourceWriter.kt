@@ -386,11 +386,20 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
     writeConstructorRead()
   }
 
+  private fun appendGraphMemoryReserve(indent: String) {
+    builder
+      .append(indent)
+      .append("readContext.reserveGraphMemory(")
+      .append(struct.graphMemoryBytes)
+      .append(")\n")
+  }
+
   private fun writeConstructorRead() {
     builder
       .append("  private fun readSchemaConstructor(readContext: ReadContext): ")
       .append(struct.typeName)
       .append(" {\n")
+    appendGraphMemoryReserve("    ")
     builder.append("    val fieldValues = arrayOfNulls<Any?>(DESCRIPTORS.size)\n")
     builder.append("    val bufferedFields = newFieldBits(DESCRIPTORS.size)\n")
     builder.append("    beginConstructorRef(readContext)\n")
@@ -654,6 +663,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
   }
 
   private fun writeMutableReadBody() {
+    appendGraphMemoryReserve("    ")
     builder.append("    val value = ").append(struct.typeName).append("()\n")
     builder.append("    if (readContext.hasPreservedRefId()) {\n")
     builder.append("      readContext.reference(value)\n")
@@ -700,6 +710,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       builder.append("  }\n\n")
       return
     }
+    appendGraphMemoryReserve("    ")
     writeCompatibleValueReadBody("    ", constructorRefs = false)
     builder.append("  }\n\n")
   }
@@ -709,6 +720,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
       .append("  private fun readCompatibleConstructor(readContext: ReadContext): ")
       .append(struct.typeName)
       .append(" {\n")
+    appendGraphMemoryReserve("    ")
     builder.append("    beginConstructorRef(readContext)\n")
     builder.append("    try {\n")
     writeCompatibleValueReadBody("      ", constructorRefs = true)
@@ -829,6 +841,7 @@ internal class KotlinSerializerSourceWriter(private val struct: KotlinSourceStru
 
   private fun writeMutableCompatibleReadBody() {
     writePresenceVars()
+    appendGraphMemoryReserve("    ")
     builder.append("    val value = ").append(struct.typeName).append("()\n")
     builder.append("    if (readContext.hasPreservedRefId()) {\n")
     builder.append("      readContext.reference(value)\n")

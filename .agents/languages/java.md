@@ -6,14 +6,42 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 
 - Run all Maven commands from within `java/`.
 - Changes under `java/` must pass code style checks and tests.
+- If tests already passed and the only later change is Maven Spotless formatting, do not rerun
+  tests solely because of that formatting pass. Verify formatting with `spotless:check` and inspect
+  the diff/status instead.
 - Fory Java requires JDK `17+`.
 - Run Java `spotless` with JDK `21+`. If the current runtime is lower than 21, export `JAVA_HOME` to a JDK 21 installation before running `mvn spotless:check` or `mvn spotless:apply`.
 - `fory-core` targets Java 8 bytecode and `fory-format` targets Java 11 bytecode. Do not use newer APIs in those modules.
+- `fory-json` must not depend on or reference `jdk.incubator.vector`, including production and
+  multi-release sources, module descriptors, Maven wiring, and optional runtime paths.
+- JDK25 `fory-json` wide array access must use static-final VarHandles. Do not restore or benchmark
+  Unsafe as a production optimization alternative.
 - Do not use wildcard imports.
 - Import config and annotation types instead of fully qualifying enum constants or annotation
   values; use qualified names only when a real name conflict requires it.
 - If you run temporary tests with `java -cp`, run `mvn -T16 install -DskipTests` first so local Fory jars are current.
 - `WriteContext`, `ReadContext`, and `CopyContext` must stay explicit. Do not reintroduce `ThreadLocal` or ambient runtime-context patterns.
+- Java root deserialization graph memory budgeting belongs to `ReadContext`
+  and is initialized by `Fory` root APIs. Public config is `maxGraphMemoryBytes`
+  with fixed `128 MiB` default. Positive explicit values override the default;
+  explicit non-positive values are invalid and must be rejected at config creation.
+  Byte-array, memory-buffer, and stream roots use the same configured/default
+  budget behavior. Root APIs reset the budget only; they must not pre-reserve
+  root type or root self bytes. Do not mirror the configured max into a second
+  active-limit field; use config plus mutable remaining budget. `ReadContext`
+  may expose only raw byte reservation;
+  collection, map, array, struct, and object formulas belong in the concrete
+  serializer or generated serializer owner. Java collection, map, and
+  object-array owners reserve nonzero shallow self cost plus reference storage;
+  referenced object serializers reserve their own nonzero shallow self memory
+  plus shallow field storage when materialized.
+  Treat the option as an approximate collection/map/array/struct/object gate, not an exact heap
+  cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
+  Reference fields use the 4-byte fallback when the JVM reference size is not
+  queried cheaply; primitive fields use their encoded storage width. Preserve
+  existing `checkReadableBytes` guards before backing allocation or capacity
+  reservation. Do not add nested serializer-path `try/finally`, per-element
+  work, dynamic stream bytes-read accounting, or stale narrower-scope formulas.
 - Generated serializers must not retain runtime context fields. `Fory` should stay a root-operation facade rather than accumulating serializer or convenience state.
 - When the serializer class and constructor shape are known at the call site, prefer direct constructor lambdas or direct instantiation over reflective `Serializers.newSerializer(...)`.
 - For GraalVM, use `fory codegen` to generate serializers when building native images. Do not add reflection configuration except for JDK `proxy`.
@@ -31,6 +59,24 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   names before those name-level checks. Checks that require `Class<?>`,
   including `checkClassForDeserialization`, remain after loading; do not replace
   them with new string-only registration or security checks.
+- Treat exact `registeredClasses` hits as trusted for both ID and name registrations. An exact
+  checked name-cache hit is trusted too. After both exact lookups miss, reader-side class-name
+  resolution must not scan class-keyed state, use inverse registration, or compare
+  `Class.getName()` to infer another accepted name. Writer-side inverse lookup from an already owned
+  local `Class<?>` to its registered ID or name is valid and must not be copied into reader-side
+  miss handling. ObjectStream layer names do not use this reader-side miss path:
+  `ObjectStreamSerializer` owns its layer header and compares the complete wire name directly with
+  the remaining local slots. It resolves registered ID headers through the ID registry, skips
+  unmatched named sender layers as data-only metadata, and does not route layer names through
+  `ClassResolver.readClassInternal`. Inverse registration must not turn a missed input name into an
+  accepted class.
+- Keep JDK interface names that do not require explicit registration in
+  `DefaultJdkClassAllowList`. `TypeResolver.loadClass` and `ClassResolver.isSecure` must both use
+  this single owner. Keep custom `TypeChecker` and fixed disallowed-list checks on their existing
+  paths.
+- Enum constants with class bodies have synthetic runtime subclasses, but their TypeInfo, wire
+  class name, registration ID, and serializer belong to the declaring enum. Never register, cache,
+  emit, or reader-resolve the constant subclass as a separate serialized type.
 - Do not use `instanceof` in Java hot paths, including per-value, per-field, per-element,
   read/write/copy, resolver, serializer, codec, and buffer paths. Choose concrete
   implementations during cold setup or code generation, cache final/static-final shape decisions,
@@ -176,8 +222,8 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   trusted-lookup initialization or cold setup, not inside string hot paths.
 - `FieldAccessor` owns field-accessor dispatch. `RecordFieldAccessors` owns record field access,
   and `InstanceFieldAccessors` owns non-record instance field access. Do not reintroduce a
-  `FieldAccessorFactory` layer. `InstanceFieldAccessors` is public only so generated serializers
-  can name its concrete nested accessor type; treat it as internal owner code, not user API.
+  `FieldAccessorFactory` layer. Treat `InstanceFieldAccessors` as package-owned implementation
+  code, not user API and not generated-serializer API.
 - Android non-record reflection field access belongs inside the root `InstanceFieldAccessors`
   owner. Do not keep a standalone `ReflectionFieldAccessor`; Java25 never needs that path, and
   record reflection fallback remains record-owned in `RecordFieldAccessors`. Keep `sun.misc.Unsafe`
@@ -196,24 +242,23 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   hot-path try/catch blocks and do not call `FieldAccessor.checkObj`; VarHandle validates null and
   receiver type itself. Root Unsafe offset access may keep a debug-only `assert` receiver check
   because Unsafe does not validate the target object; do not add production receiver checks.
-- JDK25+ generated serializers should store field accessors as concrete
-  `InstanceFieldAccessors.InstanceAccessor` static final fields, initialized once through
-  `FieldAccessor.createAccessor(...)` and a static-init cast. This keeps platform dispatch out of
-  generated read/write hot paths and avoids `FieldAccessor` virtual dispatch on final/private field
-  get/set calls.
+- JDK25+ generated serializers should store per-field `static final VarHandle` fields and call
+  `VarHandleCodegenSupport` typed static helpers directly. Do not use `InstanceAccessor` wrappers,
+  hidden generated accessors, `MethodHandle` bridges, boxed primitive VarHandle calls, or dynamic
+  handle containers in generated read/write hot paths. Final field writes must use this path
+  regardless of public, protected, package, or private visibility.
 - `DefineClass#defineHiddenNestmate` belongs in the root `DefineClass` owner. Do not add a Java25
   overlay only to call `Lookup#defineHiddenClass` directly, and do not move it to `java9` because
   `Lookup#defineClass` defines normal package classes, not hidden nestmates. Root code must avoid
   direct `Lookup.ClassOption` linkage and cache the method-handle/option-array setup off the hot
-  path.
-- Hidden generated serializers are Java25+ only. Do not broaden serializer hidden-class definition
-  to Java15-24, because those runtimes still use the unsafe-backed field/object path. Keep
-  `AccessorHelper` as the source-generated same-package helper; do not turn it into a bytecode
+  path. Keep this method available for future Java25+ designs even when runtime codegen does not
+  call it.
+- Runtime generated serializers use the normal `CodeGenerator` classloader path, not hidden
+  nestmate class definition. Janino-generated source still cannot directly access target bean
+  private fields through hidden nestmate definition, so do not reintroduce hidden serializer loading
+  or same-package source-access plumbing without a separate Java25 design and measured proof.
+  `AccessorHelper` remains the source-generated same-package helper; do not turn it into a bytecode
   hidden-field owner unless a separate Java25-only design explicitly requires that.
-- JDK25 hidden generated serializers must not emit private split helper methods. Janino lowers
-  private instance helpers to static bridge methods whose receiver parameter uses the original
-  binary class name, which fails hidden-class verification. Use non-private final split helpers on
-  that path.
 - Runtime codegen must not emit Janino source that names bootstrap JDK implementation classes in
   concealed or non-source-public packages. Generated source in the unnamed module cannot access
   those classes even when Fory's trusted field-access path can read/write their fields; use
@@ -242,7 +287,10 @@ Load this file when changing anything under `java/` or when Java drives a cross-
   `BaseFory.registerConstructor(...)`. Java parameter names, `-parameters`, and
   `@ConstructorProperties` are not a Fory object-creation contract. Runtime serializers for
   ordinary classes must create an empty instance through `TypeResolver.getObjectInstantiator(Class)` and
-  set fields; records and source-generated Kotlin serializers are the constructor-owned paths.
+  set fields; records and source-generated Kotlin serializers are the constructor-owned paths. The
+  narrow exception is Fory JSON's explicit property-based `@JsonCreator`, whose complete read schema
+  is annotation-declared and whose generated readers call the selected public constructor or static
+  factory directly.
 - Source-generated constructor serializers must own their constructor metadata at generation time
   and call constructors directly. They must not depend on runtime `ObjectInstantiator` constructor-field
   metadata or varargs constructor calls.

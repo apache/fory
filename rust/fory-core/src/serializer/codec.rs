@@ -53,6 +53,20 @@ const DECL_VALUE_TYPE: u8 = 0b100000;
 const MAX_CHUNK_SIZE: u8 = 255;
 
 #[inline(always)]
+fn reserve_graph_storage(
+    context: &mut ReadContext,
+    len: u32,
+    elem_bytes: usize,
+) -> Result<usize, Error> {
+    let len = len as usize;
+    let bytes = len
+        .checked_mul(elem_bytes)
+        .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
+    context.reserve_graph_memory(bytes)?;
+    Ok(len)
+}
+
+#[inline(always)]
 pub fn field_ref_mode(field_type: &FieldType) -> RefMode {
     if field_type.track_ref {
         RefMode::Tracking
@@ -626,13 +640,23 @@ where
         )
     }
 
-    #[inline(always)]
+    // Avoid forcing this fast serializer path into large debug-mode generated readers.
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     fn read_field(context: &mut ReadContext) -> Result<T, Error> {
-        T::fory_read(
-            context,
-            serializer_ref_mode::<T, NULLABLE, TRACK_REF>(),
-            serializer_read_type_info::<T>(context),
-        )
+        let ref_mode = serializer_ref_mode::<T, NULLABLE, TRACK_REF>();
+        let read_type_info = serializer_read_type_info::<T>(context);
+        if ref_mode == RefMode::None && !T::fory_is_polymorphic() {
+            if read_type_info {
+                if context.is_compatible() {
+                    let type_info = context.read_any_type_info()?;
+                    return Self::read_data_with_type_info(context, &type_info);
+                }
+                T::fory_read_type_info(context)?;
+            }
+            return T::fory_read_data(context);
+        }
+        T::fory_read(context, ref_mode, read_type_info)
     }
 
     #[inline(always)]
@@ -667,16 +691,25 @@ where
         Ok(type_info.has_exact_local_schema())
     }
 
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     fn read_field_with_type(
         context: &mut ReadContext,
         remote_field_type: &FieldType,
     ) -> Result<T, Error> {
-        T::fory_read(
-            context,
-            field_ref_mode(remote_field_type),
-            field_read_type_info::<T>(context, remote_field_type),
-        )
+        let ref_mode = field_ref_mode(remote_field_type);
+        let read_type_info = field_read_type_info::<T>(context, remote_field_type);
+        if ref_mode == RefMode::None && !T::fory_is_polymorphic() {
+            if read_type_info {
+                if context.is_compatible() {
+                    let type_info = context.read_any_type_info()?;
+                    return Self::read_data_with_type_info(context, &type_info);
+                }
+                T::fory_read_type_info(context)?;
+            }
+            return T::fory_read_data(context);
+        }
+        T::fory_read(context, ref_mode, read_type_info)
     }
 
     #[inline(always)]
@@ -690,12 +723,23 @@ where
         T::fory_write(value, context, ref_mode, write_type_info, has_generics)
     }
 
-    #[inline(always)]
+    #[cfg_attr(debug_assertions, inline(never))]
+    #[cfg_attr(not(debug_assertions), inline(always))]
     fn read_with_mode(
         context: &mut ReadContext,
         ref_mode: RefMode,
         read_type_info: bool,
     ) -> Result<T, Error> {
+        if ref_mode == RefMode::None && !T::fory_is_polymorphic() {
+            if read_type_info {
+                if context.is_compatible() {
+                    let type_info = context.read_any_type_info()?;
+                    return Self::read_data_with_type_info(context, &type_info);
+                }
+                T::fory_read_type_info(context)?;
+            }
+            return T::fory_read_data(context);
+        }
         T::fory_read(context, ref_mode, read_type_info)
     }
 
@@ -1700,6 +1744,7 @@ where
 
     fn read_data(context: &mut ReadContext) -> Result<Vec<T>, Error> {
         let len = context.reader.read_var_u32()?;
+        reserve_graph_storage(context, len, std::mem::size_of::<T>())?;
         if len == 0 {
             return Ok(Vec::new());
         }
@@ -1728,6 +1773,7 @@ where
         remote_field_type: &FieldType,
     ) -> Result<Vec<T>, Error> {
         let len = context.reader.read_var_u32()?;
+        reserve_graph_storage(context, len, std::mem::size_of::<T>())?;
         if len == 0 {
             return Ok(Vec::new());
         }
@@ -2270,6 +2316,10 @@ where
 
     fn read_data(context: &mut ReadContext) -> Result<HashMap<K, V>, Error> {
         let len = context.reader.read_var_u32()?;
+        let elem_bytes = std::mem::size_of::<K>()
+            .checked_add(std::mem::size_of::<V>())
+            .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
+        reserve_graph_storage(context, len, elem_bytes)?;
         if len == 0 {
             return Ok(HashMap::new());
         }
@@ -2289,6 +2339,10 @@ where
         remote_field_type: &FieldType,
     ) -> Result<HashMap<K, V>, Error> {
         let len = context.reader.read_var_u32()?;
+        let elem_bytes = std::mem::size_of::<K>()
+            .checked_add(std::mem::size_of::<V>())
+            .ok_or_else(|| Error::invalid_data("graph memory estimate overflows"))?;
+        let capacity = reserve_graph_storage(context, len, elem_bytes)?;
         if len == 0 {
             return Ok(HashMap::new());
         }
@@ -2299,7 +2353,8 @@ where
         {
             return read_map_dynamic::<K, V, KC, VC>(context, len, remote_field_type);
         }
-        let mut map = HashMap::with_capacity(check_map_len(context, len)?);
+        context.reader.check_bound(capacity)?;
+        let mut map = HashMap::with_capacity(capacity);
         let mut len_counter = 0;
         while len_counter < len {
             let header = context.reader.read_u8()?;

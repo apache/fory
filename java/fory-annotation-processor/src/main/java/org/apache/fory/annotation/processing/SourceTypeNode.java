@@ -29,6 +29,7 @@ final class SourceTypeNode {
   final String typeExtMeta;
   final List<SourceTypeNode> typeArguments;
   final SourceTypeNode componentType;
+  final SourceTypeNode ownerType;
   final boolean primitive;
   final boolean nestedCompatibleStruct;
 
@@ -38,6 +39,7 @@ final class SourceTypeNode {
       String typeExtMeta,
       List<SourceTypeNode> typeArguments,
       SourceTypeNode componentType,
+      SourceTypeNode ownerType,
       boolean primitive,
       boolean nestedCompatibleStruct) {
     this.rawType = rawType;
@@ -48,6 +50,7 @@ final class SourceTypeNode {
             ? Collections.emptyList()
             : Collections.unmodifiableList(new ArrayList<>(typeArguments));
     this.componentType = componentType;
+    this.ownerType = ownerType;
     this.primitive = primitive;
     this.nestedCompatibleStruct = nestedCompatibleStruct;
   }
@@ -55,7 +58,10 @@ final class SourceTypeNode {
   String generatedTypeExpression() {
     // Generated serializers must not reference TypeRef directly: Android javac resolves TypeRef's
     // AnnotatedType overloads while compiling generated source.
-    if (typeExtMeta == null && typeArguments.isEmpty() && componentType == null) {
+    if (typeExtMeta == null
+        && typeArguments.isEmpty()
+        && componentType == null
+        && ownerType == null) {
       return "Descriptor.generatedType(" + rawType + ".class)";
     }
     return "Descriptor.generatedType("
@@ -66,6 +72,8 @@ final class SourceTypeNode {
         + typeArgumentsExpression()
         + ", "
         + (componentType == null ? "null" : componentType.generatedTypeExpression())
+        + ", "
+        + (ownerType == null ? "null" : ownerType.generatedTypeExpression())
         + ")";
   }
 
@@ -89,6 +97,9 @@ final class SourceTypeNode {
       return true;
     }
     if (componentType != null && componentType.hasNestedCompatibleStruct()) {
+      return true;
+    }
+    if (ownerType != null && ownerType.hasNestedCompatibleStruct()) {
       return true;
     }
     for (SourceTypeNode typeArgument : typeArguments) {

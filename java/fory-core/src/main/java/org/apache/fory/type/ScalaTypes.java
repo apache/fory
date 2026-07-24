@@ -21,6 +21,7 @@ package org.apache.fory.type;
 
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
@@ -92,7 +93,8 @@ public class ScalaTypes {
         .resolveType(getScalaNextReturnType());
   }
 
-  private static Type getScalaIteratorReturnType() {
+  @Internal
+  public static Type getScalaIteratorReturnType() {
     if (SCALA_ITERATOR_RETURN_TYPE == null) {
       try {
         SCALA_ITERATOR_RETURN_TYPE =
@@ -104,7 +106,8 @@ public class ScalaTypes {
     return SCALA_ITERATOR_RETURN_TYPE;
   }
 
-  private static Type getScalaNextReturnType() {
+  @Internal
+  public static Type getScalaNextReturnType() {
     if (SCALA_NEXT_RETURN_TYPE == null) {
       Class<?> scalaIteratorType = ReflectionUtils.loadClass("scala.collection.Iterator");
       try {

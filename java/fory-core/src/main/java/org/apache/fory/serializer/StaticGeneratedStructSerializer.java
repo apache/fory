@@ -58,6 +58,9 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
   protected final List<RemoteFieldInfo> remoteFields;
   private final SerializationFieldInfo[] localFieldsById;
 
+  // Descriptor-only generated subclass instances are used by StaticGeneratedSerializerRegistry.
+  // They must not be used for read/write; runtime constructors initialize the real serializer
+  // state.
   protected StaticGeneratedStructSerializer() {
     super();
     this.typeDef = null;
@@ -652,15 +655,10 @@ public abstract class StaticGeneratedStructSerializer<T> extends AbstractObjectS
     if (className.equals(type.getName())) {
       return type;
     }
-    ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
     try {
-      return Class.forName(className, false, contextClassLoader);
-    } catch (ClassNotFoundException | LinkageError e) {
-      try {
-        return Class.forName(className, false, type.getClassLoader());
-      } catch (ClassNotFoundException | LinkageError ignored) {
-        return type;
-      }
+      return typeResolver.loadClass(className);
+    } catch (IllegalStateException | LinkageError e) {
+      return type;
     }
   }
 

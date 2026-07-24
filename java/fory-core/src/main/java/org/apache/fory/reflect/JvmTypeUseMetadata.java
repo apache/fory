@@ -151,15 +151,6 @@ final class JvmTypeUseMetadata implements TypeUseMetadata.Support {
   }
 
   @Override
-  public Object[] typeUseArguments(Object typeUse) {
-    AnnotatedType annotatedType = (AnnotatedType) typeUse;
-    if (annotatedType instanceof AnnotatedParameterizedType) {
-      return ((AnnotatedParameterizedType) annotatedType).getAnnotatedActualTypeArguments();
-    }
-    return null;
-  }
-
-  @Override
   public Annotation typeUseAnnotation(Object typeUse, String name) {
     return getTypeUseAnnotation((AnnotatedType) typeUse, name);
   }

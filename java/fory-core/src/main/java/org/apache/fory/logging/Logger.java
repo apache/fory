@@ -44,6 +44,15 @@ public interface Logger {
 
   void info(String msg, Object... args);
 
+  /** Logs an info message once per logger for the same template and argument values. */
+  void infoOnce(String msg);
+
+  void infoOnce(String msg, Object arg);
+
+  void infoOnce(String msg, Object arg1, Object arg2);
+
+  void infoOnce(String msg, Object... args);
+
   void warn(String msg);
 
   void warn(String msg, Object arg);
@@ -53,6 +62,17 @@ public interface Logger {
   void warn(String msg, Object arg1, Object arg2);
 
   void warn(String msg, Throwable t);
+
+  /** Logs a warning once per logger for the same template and argument values. */
+  void warnOnce(String msg);
+
+  void warnOnce(String msg, Object arg);
+
+  void warnOnce(String msg, Object... args);
+
+  void warnOnce(String msg, Object arg1, Object arg2);
+
+  void warnOnce(String msg, Throwable t);
 
   void error(String msg);
 

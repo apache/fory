@@ -17,8 +17,8 @@
 
 import Foundation
 
-public extension ReadContext {
-    func skipFieldValue(_ fieldType: TypeMeta.FieldType) throws {
+extension ReadContext {
+    public func skipFieldValue(_ fieldType: TypeMeta.FieldType) throws {
         _ = try readSkippedFieldValue(
             fieldType: fieldType,
             readTypeInfo: needsTypeInfoForSkippedField(fieldType.typeID)
@@ -215,7 +215,8 @@ public extension ReadContext {
     private func readSkippedCollection(
         fieldType: TypeMeta.FieldType
     ) throws -> [Any] {
-        let elementFieldType = fieldType.generics.first
+        let elementFieldType =
+            fieldType.generics.first
             ?? TypeMeta.FieldType(typeID: TypeId.unknown.rawValue, nullable: true)
         let length = Int(try buffer.readVarUInt32())
         try ensureCollectionLength(length, label: "compatible_collection")
@@ -308,9 +309,11 @@ public extension ReadContext {
     private func readSkippedMap(
         fieldType: TypeMeta.FieldType
     ) throws -> [AnyHashable: Any] {
-        let keyType = fieldType.generics.first
+        let keyType =
+            fieldType.generics.first
             ?? TypeMeta.FieldType(typeID: TypeId.unknown.rawValue, nullable: true)
-        let valueType = fieldType.generics.dropFirst().first
+        let valueType =
+            fieldType.generics.dropFirst().first
             ?? TypeMeta.FieldType(typeID: TypeId.unknown.rawValue, nullable: true)
 
         let totalLength = Int(try buffer.readVarUInt32())
@@ -392,6 +395,6 @@ public extension ReadContext {
 
     private func readSkippedUnion() throws -> Any {
         _ = try buffer.readVarUInt32()
-        return try readAny(refMode: .tracking, readTypeInfo: true) ?? ForyAnyNullValue()
+        return try readAny(context: self, refMode: .tracking, readTypeInfo: true) ?? ForyAnyNullValue()
     }
 }

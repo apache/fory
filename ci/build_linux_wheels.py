@@ -22,7 +22,7 @@ Host-side wrapper for building Python wheels in manylinux containers.
 
 Usage:
   ./build_linux_wheels.py --arch X86 --python cp38-cp38
-  ./build_linux_wheels.py --arch AARCH64 --python cp313-cp313 --release
+  ./build_linux_wheels.py --arch AARCH64 --python cp314-cp314 --release
 
 Environment:
   - GITHUB_WORKSPACE (optional; defaults to cwd)
@@ -49,6 +49,14 @@ DEFAULT_AARCH64_IMAGES = [
     "quay.io/pypa/manylinux2014_aarch64@sha256:e29044ae873f56799ea849c794a163246ac78120d7a6b458a17f918c05a143e1",
 ]
 
+MANYLINUX_2_28_X86_IMAGES = [
+    "quay.io/pypa/manylinux_2_28_x86_64@sha256:a694e7d81cdc90b1a3f4e8207d95d63a226df973dbd681a3b31599e90dd9436d",
+]
+
+MANYLINUX_2_28_AARCH64_IMAGES = [
+    "quay.io/pypa/manylinux_2_28_aarch64@sha256:817404d425b2edff4657a4bbf59e5a9fdb274609d31c99c1f9edc3be4426b00b",
+]
+
 ARCH_ALIASES = {
     "X86": "x86",
     "X64": "x86",
@@ -60,13 +68,19 @@ ARCH_ALIASES = {
 }
 
 
+def get_platform(python_version: str) -> str:
+    if python_version.startswith(("cp313-", "cp314-")):
+        return "manylinux_2_28"
+    return "manylinux2014"
+
+
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument(
         "--arch", required=True, help="Architecture (e.g. X86, X64, AARCH64)"
     )
     p.add_argument(
-        "--python", required=True, help="Python version (e.g. cp38-cp38, cp313-cp313)"
+        "--python", required=True, help="Python version (e.g. cp38-cp38, cp314-cp314)"
     )
     p.add_argument(
         "--bazel-bin",
@@ -85,13 +99,22 @@ def normalize_arch(raw: str) -> str:
     return ARCH_ALIASES.get(key, raw.strip().lower())
 
 
-def get_image_for_arch(arch_normalized: str) -> str:
+def get_image_for_arch(arch_normalized: str, platform_tag: str) -> str:
     if arch_normalized == "x86":
+        if platform_tag == "manylinux_2_28":
+            return MANYLINUX_2_28_X86_IMAGES[0]
         return DEFAULT_X86_IMAGES[0]
     elif arch_normalized == "arm64":
+        if platform_tag == "manylinux_2_28":
+            return MANYLINUX_2_28_AARCH64_IMAGES[0]
         return DEFAULT_AARCH64_IMAGES[0]
     else:
         raise SystemExit(f"Unsupported arch: {arch_normalized!r}")
+
+
+def auditwheel_plat(platform_tag: str, arch_normalized: str) -> str:
+    arch_tag = "x86_64" if arch_normalized == "x86" else "aarch64"
+    return f"{platform_tag}_{arch_tag}"
 
 
 def build_docker_cmd(
@@ -99,6 +122,8 @@ def build_docker_cmd(
     image: str,
     python_version: str,
     bazel_bin: str,
+    platform_tag: str,
+    arch_normalized: str,
     release: bool = False,
 ) -> List[str]:
     workspace = os.path.abspath(workspace)
@@ -118,6 +143,8 @@ def build_docker_cmd(
         f"PYTHON_VERSIONS={python_version}",
         "-e",
         f"RELEASE_BUILD={'1' if release else '0'}",
+        "-e",
+        f"MANYLINUX_PLAT={auditwheel_plat(platform_tag, arch_normalized)}",
         "-v",
         f"{bazel_bin}:/usr/local/bin/bazel:ro",
     ]
@@ -132,7 +159,8 @@ def build_docker_cmd(
 def main() -> int:
     args = parse_args()
     arch = normalize_arch(args.arch)
-    image = get_image_for_arch(arch)
+    platform_tag = get_platform(args.python)
+    image = get_image_for_arch(arch, platform_tag)
     workspace = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
     bazel_bin = args.bazel_bin or shutil.which("bazel")
 
@@ -151,7 +179,13 @@ def main() -> int:
         return 2
 
     docker_cmd = build_docker_cmd(
-        workspace, image, args.python, bazel_bin, release=args.release
+        workspace,
+        image,
+        args.python,
+        bazel_bin,
+        platform_tag,
+        arch,
+        release=args.release,
     )
     printable = " ".join(shlex.quote(c) for c in docker_cmd)
     print(f"+ {printable}")

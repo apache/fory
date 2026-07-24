@@ -24,7 +24,11 @@ from fory_compiler.frontend.proto import ProtoFrontend
 from fory_compiler.ir.ast import ArrayType, ListType, MapType, PrimitiveType
 from fory_compiler.ir.emitter import FDLEmitter
 from fory_compiler.ir.types import PrimitiveKind
-from fory_compiler.ir.validator import SchemaValidator
+from fory_compiler.ir.validator import (
+    INVALID_MAP_KEY_MESSAGE,
+    OPTIONAL_ANY_MESSAGE,
+    SchemaValidator,
+)
 
 
 def parse_schema(source: str):
@@ -166,6 +170,7 @@ def test_array_rejects_optional_or_ref_elements_at_parse_time():
 @pytest.mark.parametrize(
     "key_type",
     [
+        "any",
         "bytes",
         "float16",
         "bfloat16",
@@ -187,11 +192,182 @@ def test_map_rejects_non_portable_key_types(key_type):
     )
 
     assert not ok
-    assert any(
-        "map keys do not support binary, float, decimal, list, map, or array types"
-        in err.message
-        for err in validator.errors
-    )
+    assert any(INVALID_MAP_KEY_MESSAGE in err.message for err in validator.errors)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        message Key {
+            string id = 1;
+        }
+
+        message InvalidMap {
+            map<Key, string> values = 1;
+        }
+        """,
+        """
+        union Choice {
+            string text = 1;
+        }
+
+        message InvalidMap {
+            map<Choice, string> values = 1;
+        }
+        """,
+        """
+        message Key {
+            string id = 1;
+        }
+
+        union InvalidUnion {
+            map<Key, string> values = 1;
+        }
+        """,
+        """
+        message Outer {
+            message Key {
+                string id = 1;
+            }
+
+            map<Key, string> values = 1;
+        }
+        """,
+        """
+        message Outer {
+            message Key {
+                string id = 1;
+            }
+        }
+
+        message InvalidMap {
+            map<Outer.Key, string> values = 1;
+        }
+        """,
+        """
+        message Outer {
+            union Choice {
+                string text = 1;
+            }
+
+            map<Choice, string> values = 1;
+        }
+        """,
+        """
+        message Outer {
+            union Choice {
+                string text = 1;
+            }
+        }
+
+        message InvalidMap {
+            map<Outer.Choice, string> values = 1;
+        }
+        """,
+    ],
+)
+def test_map_rejects_message_and_union_key_types(source):
+    _schema, validator, ok = validate_schema(source)
+
+    assert not ok
+    assert any(INVALID_MAP_KEY_MESSAGE in err.message for err in validator.errors)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        enum Status {
+            UNKNOWN = 0;
+            READY = 1;
+        }
+
+        message Holder {
+            map<Status, string> values = 1;
+        }
+        """,
+        """
+        message Outer {
+            enum Status {
+                UNKNOWN = 0;
+                READY = 1;
+            }
+
+            map<Status, string> values = 1;
+        }
+        """,
+        """
+        message Outer {
+            enum Status {
+                UNKNOWN = 0;
+                READY = 1;
+            }
+        }
+
+        message Holder {
+            map<Outer.Status, string> values = 1;
+        }
+        """,
+    ],
+)
+def test_map_accepts_enum_key_types(source):
+    _schema, validator, ok = validate_schema(source)
+
+    assert ok, validator.errors
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        message Invalid {
+            optional any value = 1;
+        }
+        """,
+        """
+        message Invalid {
+            any value = 1 [nullable = true];
+        }
+        """,
+        """
+        message Invalid {
+            list<optional any> values = 1;
+        }
+        """,
+        """
+        message Invalid {
+            map<string, optional any> values = 1;
+        }
+        """,
+    ],
+)
+def test_optional_any_is_rejected(source):
+    _schema, validator, ok = validate_schema(source)
+
+    assert not ok
+    assert any(OPTIONAL_ANY_MESSAGE in err.message for err in validator.errors)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        message Valid {
+            any value = 1;
+        }
+        """,
+        """
+        message Valid {
+            optional list<any> values = 1;
+        }
+        """,
+    ],
+)
+def test_non_direct_optional_any_is_accepted(source):
+    _schema, validator, ok = validate_schema(source)
+
+    assert ok, validator.errors
 
 
 def test_proto_repeated_fields_remain_list_type():

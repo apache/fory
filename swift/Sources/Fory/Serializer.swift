@@ -99,34 +99,27 @@ public extension StructSerializer {
 }
 
 public extension Serializer {
-    static func foryReadPayload(
+    /// Returns the explicit or cached TypeInfo for the payload currently being read.
+    /// Macro-generated object readers use this to choose their data or compatible owner path
+    /// without exposing ReadContext's type-info stack.
+    static func foryReadPayloadTypeInfo(
         _ context: ReadContext,
         readTypeInfo: Bool
-    ) throws -> Self {
-        try Self.foryReadPayload(
-            context,
-            readTypeInfo: readTypeInfo,
-            readData: { try Self.foryReadData(context) },
-            readCompatibleData: { remoteTypeInfo in
-                try Self.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
-            }
-        )
+    ) throws -> TypeInfo? {
+        if readTypeInfo {
+            return try Self.foryReadTypeInfo(context)
+        }
+        return context.getTypeInfo(for: Self.self)
     }
 
     static func foryReadPayload(
         _ context: ReadContext,
-        readTypeInfo: Bool,
-        readData: () throws -> Self,
-        readCompatibleData: (TypeInfo) throws -> Self
+        readTypeInfo: Bool
     ) throws -> Self {
-        if readTypeInfo {
-            if let remoteTypeInfo = try Self.foryReadTypeInfo(context) {
-                return try readCompatibleData(remoteTypeInfo)
-            }
-        } else if let remoteTypeInfo = context.getTypeInfo(for: Self.self) {
-            return try readCompatibleData(remoteTypeInfo)
+        if let remoteTypeInfo = try Self.foryReadPayloadTypeInfo(context, readTypeInfo: readTypeInfo) {
+            return try Self.foryReadCompatibleData(context, remoteTypeInfo: remoteTypeInfo)
         }
-        return try readData()
+        return try Self.foryReadData(context)
     }
 
     @inlinable

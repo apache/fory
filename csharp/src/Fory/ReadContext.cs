@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+using System.Runtime.CompilerServices;
+
 namespace Apache.Fory;
 
 public sealed class ReadContext
@@ -29,7 +31,6 @@ public sealed class ReadContext
     private readonly List<MetaString> _readMetaStrings = [];
 
     internal readonly UInt64Map<TypeInfo> _readTypeInfoByType = new();
-    internal readonly List<uint> _reservedRefIds = [];
     private readonly int _maxDynamicReadDepth;
     internal Type? _typeMetaType;
     internal TypeMeta? _typeMeta;
@@ -40,6 +41,7 @@ public sealed class ReadContext
     private readonly Dictionary<object, int> _remoteSchemaVersionsByType = [];
     private readonly Config _config;
     private int _totalAcceptedSchemaVersions;
+    internal long _remainingGraphMemoryBytes;
 
     public ReadContext(
         ByteReader reader,
@@ -68,7 +70,67 @@ public sealed class ReadContext
 
     public bool CheckStructVersion { get; }
 
-    internal RefReader RefReader { get; }
+    /// <summary>
+    /// Low-level reference table reader used by generated and concrete serializers.
+    /// </summary>
+    public RefReader RefReader { get; }
+
+    /// <summary>
+    /// Reserves estimated graph memory for the current root deserialization.
+    /// </summary>
+    /// <remarks>
+    /// Serializer owners compute owner-specific formulas and pass raw bytes here. This
+    /// accounting does not replace byte-availability checks before backing allocation.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(long bytes)
+    {
+        long remaining = _remainingGraphMemoryBytes - bytes;
+        // Failed root reads reset this context, so keep the common valid reserve to one subtract and
+        // one store; invalid or exceeded reserves repair nothing and throw from the cold path.
+        _remainingGraphMemoryBytes = remaining;
+        if ((bytes | remaining) < 0)
+        {
+            ThrowInvalidGraphMemoryReserve(bytes, remaining + bytes);
+            return;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(int bytes)
+    {
+        long remaining = _remainingGraphMemoryBytes - bytes;
+        _remainingGraphMemoryBytes = remaining;
+        if (((long)bytes | remaining) < 0)
+        {
+            ThrowInvalidGraphMemoryReserve(bytes, remaining + bytes);
+            return;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void ReserveGraphMemory(uint bytes)
+    {
+        long remaining = _remainingGraphMemoryBytes - bytes;
+        _remainingGraphMemoryBytes = remaining;
+        if (remaining < 0)
+        {
+            ThrowInvalidGraphMemoryReserve(bytes, remaining + bytes);
+            return;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ThrowInvalidGraphMemoryReserve(long bytes, long remaining)
+    {
+        if (bytes < 0)
+        {
+            throw new InvalidDataException("graph memory estimate overflows");
+        }
+
+        throw new InvalidDataException(
+            $"estimated graph memory request {bytes} bytes exceeds MaxGraphMemoryBytes remaining budget {remaining} bytes out of effective limit {_config.MaxGraphMemoryBytes} bytes");
+    }
 
     internal void ResetFor(ByteReader reader)
     {
@@ -404,29 +466,6 @@ public sealed class ReadContext
         _readTypeInfoByType.Remove(TypeMapKey.Get(type));
     }
 
-    public void StoreRef(object? value)
-    {
-        if (_reservedRefIds.Count == 0)
-        {
-            return;
-        }
-
-        RefReader.StoreRefAt(_reservedRefIds[^1], value);
-    }
-
-    internal void SetReservedRefId(uint refId)
-    {
-        _reservedRefIds.Add(refId);
-    }
-
-    internal void ClearReservedRefId()
-    {
-        if (_reservedRefIds.Count > 0)
-        {
-            _reservedRefIds.RemoveAt(_reservedRefIds.Count - 1);
-        }
-    }
-
     internal void IncreaseReadDepth()
     {
         _currentDynamicReadDepth += 1;
@@ -452,7 +491,6 @@ public sealed class ReadContext
         _typeMeta = null;
         _typeMetaByType?.ClearKeys();
         _readTypeInfoByType.ClearKeys();
-        _reservedRefIds.Clear();
         _cachedTypeMetaType = null;
         _cachedTypeMeta = null;
         _currentDynamicReadDepth = 0;

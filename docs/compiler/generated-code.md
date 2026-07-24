@@ -1062,8 +1062,7 @@ export enum AnimalCase {
 }
 
 export type Animal =
-  | { case: AnimalCase.DOG; value: Dog }
-  | { case: AnimalCase.CAT; value: Cat };
+  { case: AnimalCase.DOG; value: Dog } | { case: AnimalCase.CAT; value: Cat };
 ```
 
 ### Schema Helpers

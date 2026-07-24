@@ -50,7 +50,7 @@ func uint64MapGrowRetainsEntries() {
     let map = UInt64Map<UInt32>(initialCapacity: 8)
     var boxes: [UInt64MapBox] = []
 
-    for index in 0 ..< 64 {
+    for index in 0..<64 {
         let box = UInt64MapBox()
         boxes.append(box)
         let key = UInt64(UInt(bitPattern: ObjectIdentifier(box)))
@@ -62,7 +62,7 @@ func uint64MapGrowRetainsEntries() {
     #expect(map.capacity >= 64)
     #expect(map.count == 64)
 
-    for index in 0 ..< boxes.count {
+    for index in 0..<boxes.count {
         let key = UInt64(UInt(bitPattern: ObjectIdentifier(boxes[index])))
         #expect(map.value(for: key) == UInt32(index))
     }

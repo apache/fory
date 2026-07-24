@@ -19,7 +19,7 @@ use crate::context::ReadContext;
 use crate::ensure;
 use crate::error::Error;
 use crate::meta::FieldType;
-use crate::serializer::collection::{DECL_ELEMENT_TYPE, HAS_NULL, IS_SAME_TYPE};
+use crate::serializer::collection::{DECL_ELEMENT_TYPE, HAS_NULL, IS_SAME_TYPE, TRACKING_REF};
 use crate::serializer::util;
 use crate::type_id as types;
 use crate::util::ENABLE_FORY_DEBUG_OUTPUT;
@@ -34,7 +34,14 @@ pub fn skip_field_value(
     field_type: &FieldType,
     read_ref_flag: bool,
 ) -> Result<(), Error> {
-    skip_value(context, field_type, read_ref_flag, true, &None)
+    skip_value(
+        context,
+        field_type,
+        field_type.track_ref,
+        read_ref_flag && !field_type.track_ref,
+        true,
+        &None,
+    )
 }
 
 #[inline(always)]
@@ -43,10 +50,58 @@ fn unknown_field_type() -> FieldType {
 }
 
 #[inline(always)]
+fn has_unknown_element_type(field_type: &FieldType) -> bool {
+    field_type
+        .generics
+        .first()
+        .is_some_and(|elem_type| elem_type.type_id == types::UNKNOWN)
+}
+
+#[inline(always)]
+fn next_byte_is_null_only_ref_flag(context: &mut ReadContext) -> Result<bool, Error> {
+    let value = context.reader.read_i8()?;
+    context.reader.move_back(1);
+    Ok(value == RefFlag::Null as i8 || value == RefFlag::NotNullValue as i8)
+}
+
+#[inline(always)]
 fn skip_bytes(context: &mut ReadContext, len: usize) -> Result<(), Error> {
     context.reader.check_bound(len)?;
     context.reader.move_next(len);
     Ok(())
+}
+
+#[inline(always)]
+fn consume_ref_flag(
+    context: &mut ReadContext,
+    tracking_ref: bool,
+    null_only: bool,
+) -> Result<bool, Error> {
+    if !tracking_ref && !null_only {
+        return Ok(true);
+    }
+    let ref_flag = context.reader.read_i8()?;
+    if ref_flag == RefFlag::Null as i8 {
+        return Ok(false);
+    }
+    if ref_flag == RefFlag::Ref as i8 {
+        let _ref_index = context.reader.read_var_u32()?;
+        return Ok(false);
+    }
+    if ref_flag == RefFlag::RefValue as i8 {
+        // A skipped first occurrence still consumes a producer ref id. Reserve an
+        // empty slot so later Ref ids keep the same numbering as the wire stream.
+        if tracking_ref {
+            context.ref_reader.reserve_ref_id();
+        }
+        return Ok(true);
+    }
+    if ref_flag == RefFlag::NotNullValue as i8 {
+        return Ok(true);
+    }
+    Err(Error::invalid_ref(format!(
+        "Invalid reference flag: {ref_flag}"
+    )))
 }
 
 #[cold]
@@ -117,18 +172,8 @@ fn skip_decimal(context: &mut ReadContext) -> Result<(), Error> {
 #[cold]
 #[inline(never)]
 pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<(), Error> {
-    // Handle ref flag first if needed
-    if read_ref_flag {
-        let ref_flag = context.reader.read_i8()?;
-        if ref_flag == (RefFlag::Null as i8) {
-            return Ok(());
-        }
-        if ref_flag == (RefFlag::Ref as i8) {
-            // Reference to already-seen object, skip the reference index
-            let _ref_index = context.reader.read_var_u32()?;
-            return Ok(());
-        }
-        // RefValue (0) or NotNullValue (-1) means we need to read the actual object
+    if !consume_ref_flag(context, read_ref_flag, false)? {
+        return Ok(());
     }
 
     // Read type_id first
@@ -209,7 +254,7 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
     };
     // Don't read ref flag again in skip_value since we already handled it.
     // Pass type_info so skip_struct doesn't try to read type_id/meta_index again.
-    skip_value(context, &field_type, false, false, &type_info_opt)
+    skip_value(context, &field_type, false, false, false, &type_info_opt)
 }
 
 #[cold]
@@ -220,16 +265,31 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
         return Ok(());
     }
     let header = context.reader.read_u8()?;
+    let track_ref = (header & TRACKING_REF) != 0;
     let has_null = (header & HAS_NULL) != 0;
     let is_same_type = (header & IS_SAME_TYPE) != 0;
-    let skip_ref_flag = is_same_type && !has_null;
     let is_declared = (header & DECL_ELEMENT_TYPE) != 0;
     if field_type.generics.is_empty() {
         return Err(Error::invalid_data("empty generics"));
     }
     let default_elem_type = field_type.generics.first().unwrap();
+    if !is_same_type {
+        // Tuple fields use LIST<UNKNOWN> metadata and a collection-shaped prefix, but their
+        // compatible elements are still written as NullOnly values with inline type info.
+        let tuple_elements = header == 0
+            && has_unknown_element_type(field_type)
+            && next_byte_is_null_only_ref_flag(context)?;
+        let read_ref_flag = tuple_elements || track_ref || has_null;
+        context.inc_depth()?;
+        for _ in 0..length {
+            skip_any_value(context, read_ref_flag)?;
+        }
+        context.dec_depth();
+        return Ok(());
+    }
+
     let (type_info, elem_field_type);
-    let elem_type = if is_same_type && !is_declared {
+    let elem_type = if !is_declared {
         let type_info_rc = context.read_any_type_info()?;
         elem_field_type = FieldType::new_with_user_type_id(
             type_info_rc.get_type_id() as u32,
@@ -245,8 +305,9 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
         default_elem_type
     };
     context.inc_depth()?;
+    let null_only = has_null && !track_ref;
     for _ in 0..length {
-        skip_value(context, elem_type, !skip_ref_flag, false, &type_info)?;
+        skip_value(context, elem_type, track_ref, null_only, false, &type_info)?;
     }
     context.dec_depth();
     Ok(())
@@ -279,6 +340,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         if header & crate::serializer::map::KEY_NULL != 0 {
             // Read value type info if not declared
             let value_declared = (header & crate::serializer::map::DECL_VALUE_TYPE) != 0;
+            let value_track_ref = (header & crate::serializer::map::TRACKING_VALUE_REF) != 0;
             let (value_type_info, value_field_type);
             let value_type = if !value_declared {
                 let type_info = context.read_any_type_info()?;
@@ -296,7 +358,14 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
                 default_value_type
             };
             context.inc_depth()?;
-            skip_value(context, value_type, false, false, &value_type_info)?;
+            skip_value(
+                context,
+                value_type,
+                value_track_ref,
+                false,
+                false,
+                &value_type_info,
+            )?;
             context.dec_depth();
             len_counter += 1;
             continue;
@@ -304,6 +373,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         if header & crate::serializer::map::VALUE_NULL != 0 {
             // Read key type info if not declared
             let key_declared = (header & crate::serializer::map::DECL_KEY_TYPE) != 0;
+            let key_track_ref = (header & crate::serializer::map::TRACKING_KEY_REF) != 0;
             let (key_type_info, key_field_type);
             let key_type = if !key_declared {
                 let type_info = context.read_any_type_info()?;
@@ -321,7 +391,14 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
                 default_key_type
             };
             context.inc_depth()?;
-            skip_value(context, key_type, false, false, &key_type_info)?;
+            skip_value(
+                context,
+                key_type,
+                key_track_ref,
+                false,
+                false,
+                &key_type_info,
+            )?;
             context.dec_depth();
             len_counter += 1;
             continue;
@@ -330,6 +407,8 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         let chunk_size = context.reader.read_u8()?;
         let key_declared = (header & crate::serializer::map::DECL_KEY_TYPE) != 0;
         let value_declared = (header & crate::serializer::map::DECL_VALUE_TYPE) != 0;
+        let key_track_ref = (header & crate::serializer::map::TRACKING_KEY_REF) != 0;
+        let value_track_ref = (header & crate::serializer::map::TRACKING_VALUE_REF) != 0;
 
         // Read key type info if not declared
         let (key_type_info, key_field_type);
@@ -369,8 +448,22 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
 
         context.inc_depth()?;
         for _ in 0..chunk_size {
-            skip_value(context, key_type, false, false, &key_type_info)?;
-            skip_value(context, value_type, false, false, &value_type_info)?;
+            skip_value(
+                context,
+                key_type,
+                key_track_ref,
+                false,
+                false,
+                &key_type_info,
+            )?;
+            skip_value(
+                context,
+                value_type,
+                value_track_ref,
+                false,
+                false,
+                &value_type_info,
+            )?;
         }
         context.dec_depth();
         len_counter += chunk_size as u32;
@@ -417,11 +510,20 @@ fn skip_struct(
                 field_info.field_name, field_info.field_type.type_id, field_info.field_type.type_id
             );
         }
-        let read_ref_flag = util::field_need_write_ref_into(
-            field_info.field_type.type_id,
-            field_info.field_type.nullable,
-        );
-        skip_value(context, &field_info.field_type, read_ref_flag, true, &None)?;
+        let tracking_ref = field_info.field_type.track_ref;
+        let null_only = !tracking_ref
+            && util::field_need_write_ref_into(
+                field_info.field_type.type_id,
+                field_info.field_type.nullable,
+            );
+        skip_value(
+            context,
+            &field_info.field_type,
+            tracking_ref,
+            null_only,
+            true,
+            &None,
+        )?;
     }
     context.dec_depth();
     Ok(())
@@ -458,21 +560,13 @@ fn skip_ext(
 fn skip_value(
     context: &mut ReadContext,
     field_type: &FieldType,
-    read_ref_flag: bool,
+    tracking_ref: bool,
+    null_only: bool,
     _is_field: bool,
     type_info: &Option<Rc<crate::TypeInfo>>,
 ) -> Result<(), Error> {
-    if read_ref_flag {
-        let ref_flag = context.reader.read_i8()?;
-        if ref_flag == (RefFlag::Null as i8) {
-            return Ok(());
-        }
-        if ref_flag == (RefFlag::Ref as i8) {
-            // Reference to already-seen object, skip the reference index
-            let _ref_index = context.reader.read_var_u32()?;
-            return Ok(());
-        }
-        // RefValue (0) or NotNullValue (-1) means we need to read the actual object
+    if !consume_ref_flag(context, tracking_ref, null_only)? {
+        return Ok(());
     }
     let type_id_num = field_type.type_id;
 
@@ -858,10 +952,15 @@ pub fn skip_enum_variant(
             Ok(())
         }
         0b1 => {
-            // Unnamed variant, skip tuple data (which is serialized as a collection)
-            // Tuple uses collection format but doesn't write type info, so skip directly
-            let field_type = FieldType::new(types::LIST, false, vec![unknown_field_type()]);
-            skip_collection(context, &field_type)
+            let len = context.reader.read_var_u32()? as usize;
+            let _header = context.reader.read_u8()?;
+            // Compatible tuple variants use a collection-shaped prefix, but each element is
+            // encoded as a NullOnly field with inline type info. The list skip path would read a
+            // shared element TypeInfo from the header and shift the stream by one byte.
+            for _ in 0..len {
+                skip_any_value(context, true)?;
+            }
+            Ok(())
         }
         0b10 => {
             // Named variant, skip struct-like data using skip_struct

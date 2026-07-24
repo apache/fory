@@ -104,6 +104,11 @@ byte[] payload = fory.Serialize<object?>(value);
 object? decoded = fory.Deserialize<object?>(payload);
 ```
 
+Dynamic maps normally decode as `Dictionary<object, object?>` when they have no
+null key. If the payload uses reference tracking for the dynamic map itself, C#
+returns `NullableKeyDictionary<object, object?>` so nested references and null
+keys point to the decoded map owner.
+
 ## Buffer Writer API
 
 Serialize directly into `IBufferWriter<byte>` targets.

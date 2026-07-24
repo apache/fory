@@ -40,6 +40,20 @@ public class MapSerializer<T extends Map> extends MapLikeSerializer<T> {
     super(typeResolver, cls, supportCodegenHook, immutable);
   }
 
+  protected MapSerializer(
+      TypeResolver typeResolver, Class<T> cls, boolean supportCodegenHook, int ownerBytes) {
+    super(typeResolver, cls, supportCodegenHook, false, ownerBytes);
+  }
+
+  protected MapSerializer(
+      TypeResolver typeResolver,
+      Class<T> cls,
+      boolean supportCodegenHook,
+      boolean immutable,
+      int ownerBytes) {
+    super(typeResolver, cls, supportCodegenHook, immutable, ownerBytes);
+  }
+
   @Override
   public Map onMapWrite(WriteContext writeContext, T value) {
     writeContext.getBuffer().writeVarUInt32Small7(value.size());

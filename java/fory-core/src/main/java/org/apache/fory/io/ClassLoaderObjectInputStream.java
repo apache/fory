@@ -76,17 +76,10 @@ public class ClassLoaderObjectInputStream extends ObjectInputStream {
   @Override
   protected Class<?> resolveClass(ObjectStreamClass objectStreamClass)
       throws IOException, ClassNotFoundException {
-    Class<?> clazz = Class.forName(objectStreamClass.getName(), false, classLoader);
-    if (clazz != null) {
-      // the classloader knows of the class
-      checkClass(clazz);
-      return clazz;
-    } else {
-      // classloader knows not of class, let the super classloader do it
-      Class<?> superClass = super.resolveClass(objectStreamClass);
-      checkClass(superClass);
-      return superClass;
+    if (typeResolver != null) {
+      return loadCheckedClass(objectStreamClass.getName());
     }
+    return Class.forName(objectStreamClass.getName(), false, classLoader);
   }
 
   /**
@@ -105,26 +98,32 @@ public class ClassLoaderObjectInputStream extends ObjectInputStream {
       throws IOException, ClassNotFoundException {
     Class<?>[] interfaceClasses = new Class[interfaces.length];
     for (int i = 0; i < interfaces.length; i++) {
-      interfaceClasses[i] = Class.forName(interfaces[i], false, classLoader);
-      checkClass(interfaceClasses[i]);
+      interfaceClasses[i] =
+          typeResolver == null
+              ? Class.forName(interfaces[i], false, classLoader)
+              : loadCheckedClass(interfaces[i]);
     }
     try {
       return Proxy.getProxyClass(classLoader, interfaceClasses);
     } catch (IllegalArgumentException e) {
-      Class<?> proxyClass = super.resolveProxyClass(interfaces);
-      checkClass(proxyClass);
-      return proxyClass;
+      if (typeResolver != null) {
+        throw e;
+      }
+      return super.resolveProxyClass(interfaces);
     }
   }
 
-  private void checkClass(Class<?> cls) throws InvalidClassException {
-    if (typeResolver == null) {
-      return;
-    }
+  private Class<?> loadCheckedClass(String className)
+      throws ClassNotFoundException, InvalidClassException {
     try {
+      Class<?> cls = typeResolver.loadClass(className);
       typeResolver.checkClassForDeserialization(cls);
+      return cls;
     } catch (RuntimeException e) {
-      InvalidClassException exception = new InvalidClassException(cls.getName(), e.getMessage());
+      if (e.getCause() instanceof ClassNotFoundException) {
+        throw (ClassNotFoundException) e.getCause();
+      }
+      InvalidClassException exception = new InvalidClassException(className, e.getMessage());
       exception.initCause(e);
       throw exception;
     }

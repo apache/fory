@@ -286,7 +286,7 @@ Generated Schema IDL modules use the same path. They call
 
 The generated serializer is emitted in the same package as the target class.
 Its name is `<target>_ForySerializer`. For nested binary names, `$` is encoded
-as `_`; source underscores are encoded as `_u_`.
+as `_d_`; source underscores are encoded as `_u_`.
 
 These names are an implementation detail. They matter for diagnostics and
 Android shrinking, but user code should only register target classes.

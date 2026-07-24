@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-sidebar_position: 14
+sidebar_position: 13
 id: troubleshooting
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -127,12 +127,6 @@ type User struct {
     ID   int64
     Name string
 }
-```
-
-3. **Regenerate codegen** (if using):
-
-```bash
-go generate ./...
 ```
 
 ### ErrKindMaxDepthExceeded

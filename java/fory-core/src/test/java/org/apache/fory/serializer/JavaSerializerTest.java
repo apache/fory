@@ -31,7 +31,6 @@ import java.nio.ByteBuffer;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.exception.CopyException;
 import org.apache.fory.memory.BigEndian;
 import org.apache.fory.memory.MemoryBuffer;
 import org.testng.Assert;
@@ -158,14 +157,15 @@ public class JavaSerializerTest extends ForyTestBase {
   }
 
   @Test
-  public void testCopyChecksNestedClass() {
+  public void testCopyUsesLocalClasses() {
     Fory fory = Fory.builder().withXlang(false).withCompatible(false).build();
     fory.register(JavaBox.class);
     fory.registerSerializer(JavaBox.class, JavaSerializer.class);
 
-    CopyException exception =
-        Assert.expectThrows(CopyException.class, () -> fory.copy(new JavaBox(new NestedValue())));
-    Assert.assertTrue(exception.getCause() instanceof InvalidClassException);
-    Assert.assertTrue(exception.getCause().getMessage().contains(NestedValue.class.getName()));
+    JavaBox original = new JavaBox(new NestedValue());
+    JavaBox copy = fory.copy(original);
+    Assert.assertNotSame(copy, original);
+    Assert.assertTrue(copy.value instanceof NestedValue);
+    Assert.assertEquals(((NestedValue) copy.value).value, "nested");
   }
 }

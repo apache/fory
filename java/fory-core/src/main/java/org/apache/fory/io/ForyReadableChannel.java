@@ -98,7 +98,7 @@ public class ForyReadableChannel implements ForyStreamReader, ReadableByteChanne
         int position = byteBuf.position();
         int remainingNeeded = minFillSize - totalRead;
         long targetSize = (long) position + remainingNeeded;
-        if (targetSize > Integer.MAX_VALUE) {
+        if (targetSize > MAX_BUFFER_SIZE) {
           throw new DeserializationException("Stream buffer size exceeds supported range");
         }
         if (targetSize > byteBuf.capacity()) {
@@ -107,12 +107,16 @@ public class ForyReadableChannel implements ForyStreamReader, ReadableByteChanne
             checkedSeekableRemaining = true;
             // Query exact channel remaining bytes only as a one-shot fast path. Otherwise grow
             // from bytes already buffered so truncated channels fail before reserving the body.
+            // Grow by at least a doubling step so that repeated small fills stay amortized
+            // O(1); growing to the exact target size would copy the whole buffer on every
+            // small read, making stream deserialization O(n^2) overall.
             if (seekableChannel.size() - seekableChannel.position() >= remainingNeeded) {
-              newCapacity = (int) targetSize;
+              newCapacity =
+                  (int) Math.max(targetSize, ForyStreamReader.nextBufferSize(byteBuf.capacity()));
             }
           }
           if (newCapacity == 0 && position == byteBuf.capacity()) {
-            newCapacity = nextBufferSize(byteBuf.capacity(), (int) targetSize);
+            newCapacity = ForyStreamReader.nextBufferSize(byteBuf.capacity());
           }
           if (newCapacity != 0) {
             byteBuf = growBuffer(byteBuf, memoryBuf, position, newCapacity);
@@ -149,14 +153,6 @@ public class ForyReadableChannel implements ForyStreamReader, ReadableByteChanne
     byteBuffer = newByteBuf;
     memoryBuf.initByteBuffer(newByteBuf, position);
     return newByteBuf;
-  }
-
-  private static int nextBufferSize(int oldCapacity, int targetSize) {
-    long grown = oldCapacity == 0 ? 1L : (long) oldCapacity << 1;
-    if (grown > Integer.MAX_VALUE) {
-      grown = Integer.MAX_VALUE;
-    }
-    return (int) Math.min(grown, targetSize);
   }
 
   @Override

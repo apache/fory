@@ -185,8 +185,10 @@ impl MetaStringWriterResolver {
 
 pub struct MetaStringReaderResolver {
     meta_string_bytes_to_string: HashMap<*const MetaStringBytes, MetaString>,
-    hash_to_meta_string_bytes: HashMap<i64, MetaStringBytes>,
-    long_long_byte_map: HashMap<(u64, u64, u8), MetaStringBytes>,
+    // `dynamic_read` stores raw pointers into these values. Keep the bytes behind
+    // a stable heap owner so HashMap rehashes cannot move the pointee.
+    hash_to_meta_string_bytes: HashMap<i64, Box<MetaStringBytes>>,
+    long_long_byte_map: HashMap<(u64, u64, u8), Box<MetaStringBytes>>,
     dynamic_read: Vec<Option<*const MetaStringBytes>>,
     dynamic_read_id: usize,
 }
@@ -270,12 +272,12 @@ impl MetaStringReaderResolver {
         let mb_ref: &mut MetaStringBytes = match self.hash_to_meta_string_bytes.entry(hash_code) {
             Entry::Occupied(entry) => {
                 reader.skip(len)?;
-                entry.into_mut()
+                entry.into_mut().as_mut()
             }
             Entry::Vacant(entry) => {
                 let bytes = reader.read_bytes(len)?.to_vec();
                 let mb = MetaStringBytes::new(bytes, hash_code)?;
-                entry.insert(mb)
+                entry.insert(Box::new(mb)).as_mut()
             }
         };
 
@@ -318,7 +320,7 @@ impl MetaStringReaderResolver {
         let key = (v1, v2, encoding_val);
 
         let mb_ref = match self.long_long_byte_map.entry(key) {
-            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Occupied(entry) => entry.into_mut().as_mut(),
             Entry::Vacant(entry) => {
                 let mut data = vec![0u8; 16];
                 data[0..8].copy_from_slice(&v1.to_le_bytes());
@@ -329,7 +331,7 @@ impl MetaStringReaderResolver {
                 let hash_code =
                     (hash_code as u64 & 0xffffffffffffff00_u64) as i64 | (encoding_val as i64);
                 let mb = MetaStringBytes::new(data, hash_code)?;
-                entry.insert(mb)
+                entry.insert(Box::new(mb)).as_mut()
             }
         };
         // update dynamic_read

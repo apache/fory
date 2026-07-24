@@ -16,6 +16,8 @@ sbt compile
 # Run tests
 sbt test
 
-# Format code
-sbt scalafmt
+# Repo-owned formatter pass for changed files
+cd .. && ci/format.sh
 ```
+
+The Scala module does not currently wire a `scalafmt` sbt command.

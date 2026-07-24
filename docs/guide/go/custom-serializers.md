@@ -25,7 +25,7 @@ Custom serializers allow you to define exactly how a type is serialized and dese
 
 - **Special encoding**: Types that need a specific binary format
 - **Third-party types**: Types from external libraries that Fory doesn't handle automatically
-- **Optimization**: When you can serialize more efficiently than the default reflection-based approach
+- **Optimization**: When you can serialize more efficiently than the default fast serializer path
 - **Cross-language compatibility**: When you need precise control over the binary format for interoperability
 
 ## ExtensionSerializer Interface

@@ -468,9 +468,6 @@ Container read_union_configured_list_data(ReadContext &ctx) {
   if (length == 0) {
     return result;
   }
-  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
-    return result;
-  }
   uint8_t bitmap = ctx.read_uint8(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return result;
@@ -482,6 +479,9 @@ Container read_union_configured_list_data(ReadContext &ctx) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return result;
     }
+  }
+  if (FORY_PREDICT_FALSE(!reserve_collection(result, ctx, length))) {
+    return result;
   }
   for (uint32_t i = 0; i < length; ++i) {
     if constexpr (ElemNode >= 0) {
@@ -1344,7 +1344,7 @@ private:
       M(A, _14), M(A, _15), M(A, _16)
 
 #define FORY_UNION_CASE_ID(Type, tuple)                                        \
-  static_cast<uint32_t>(FORY_UNION_CASE_META(tuple).id_)
+  static_cast<::std::uint32_t>(FORY_UNION_CASE_META(tuple).id_)
 
 #define FORY_UNION_CASE_REQUIRE_ID(Type, tuple)                                \
   static_assert(FORY_UNION_CASE_META(tuple).has_id_,                           \
@@ -1371,8 +1371,8 @@ private:
 
 #define FORY_UNION_IDS(Type, ...)                                              \
   struct FORY_UNION_IDS_DESCRIPTOR_NAME(__LINE__) {                            \
-    static inline constexpr uint32_t case_ids[] = {__VA_ARGS__};               \
-    static constexpr size_t case_count =                                       \
+    static inline constexpr ::std::uint32_t case_ids[] = {__VA_ARGS__};        \
+    static constexpr ::std::size_t case_count =                                \
         sizeof(case_ids) / sizeof(case_ids[0]);                                \
   };                                                                           \
   constexpr auto fory_union_case_ids(::fory::meta::Identity<Type>) {           \
@@ -1386,11 +1386,13 @@ private:
   struct FORY_UNION_CASE_DESCRIPTOR_NAME(__LINE__) {                           \
     using CaseT = CaseType;                                                    \
     static constexpr ::fory::FieldMeta meta = MetaExpr;                        \
-    static inline Type make(CaseT value) { return Factory(std::move(value)); } \
+    static inline Type make(CaseT value) {                                     \
+      return Factory(::std::move(value));                                      \
+    }                                                                          \
   };                                                                           \
   constexpr auto fory_union_case_meta(                                         \
       ::fory::meta::Identity<Type>,                                            \
-      std::integral_constant<uint32_t, CaseId>) {                              \
+      ::std::integral_constant<::std::uint32_t, CaseId>) {                     \
     return FORY_UNION_CASE_DESCRIPTOR_NAME(__LINE__){};                        \
   }                                                                            \
   static_assert(true)
@@ -1403,17 +1405,17 @@ private:
   FORY_UNION_PP_FOREACH_2(FORY_UNION_CASE_REQUIRE_ID, Type, __VA_ARGS__)       \
   struct FORY_UNION_DESCRIPTOR_NAME(__LINE__) {                                \
     using UnionType = Type;                                                    \
-    static constexpr size_t case_count = FORY_PP_NARG(__VA_ARGS__);            \
-    using CaseTypes = std::tuple<FORY_UNION_PP_FOREACH_2_COMMA(                \
+    static constexpr ::std::size_t case_count = FORY_PP_NARG(__VA_ARGS__);     \
+    using CaseTypes = ::std::tuple<FORY_UNION_PP_FOREACH_2_COMMA(              \
         FORY_UNION_CASE_TYPE_VALUE, Type, __VA_ARGS__)>;                       \
-    static inline constexpr std::array<uint32_t, case_count> case_ids = {      \
-        FORY_UNION_PP_FOREACH_2_COMMA(FORY_UNION_CASE_ID_VALUE, Type,          \
-                                      __VA_ARGS__)};                           \
-    static inline constexpr std::array<::fory::FieldMeta, case_count>          \
+    static inline constexpr ::std::array<::std::uint32_t, case_count>          \
+        case_ids = {FORY_UNION_PP_FOREACH_2_COMMA(FORY_UNION_CASE_ID_VALUE,    \
+                                                  Type, __VA_ARGS__)};         \
+    static inline constexpr ::std::array<::fory::FieldMeta, case_count>        \
         case_metas = {FORY_UNION_PP_FOREACH_2_COMMA(                           \
             FORY_UNION_CASE_META_VALUE, Type, __VA_ARGS__)};                   \
     static inline constexpr auto factories =                                   \
-        std::make_tuple(FORY_UNION_PP_FOREACH_2_COMMA(                         \
+        ::std::make_tuple(FORY_UNION_PP_FOREACH_2_COMMA(                       \
             FORY_UNION_CASE_FACTORY_VALUE, Type, __VA_ARGS__));                \
   };                                                                           \
   constexpr auto fory_union_info(::fory::meta::Identity<Type>) {               \

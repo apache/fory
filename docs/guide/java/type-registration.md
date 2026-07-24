@@ -19,40 +19,46 @@ license: |
   limitations under the License.
 ---
 
-This page covers class registration mechanisms and security configurations.
+This page explains how to register Java classes and how to restrict classes when registration is
+disabled.
 
 ## Class Registration
 
-`ForyBuilder#requireClassRegistration` can be used to disable class registration. This will allow deserializing objects of unknown types, which is more flexible but **may be insecure if the classes contain malicious code**.
+Class registration is enabled by default. It prevents input from selecting unregistered
+application classes. ID registration also reduces class metadata size.
 
-**Do not disable class registration unless you can ensure your environment is secure**. Malicious code in `init/equals/hashCode` can be executed when deserializing unknown/untrusted types when this option is disabled.
-
-Class registration can not only reduce security risks, but also avoid classname serialization cost.
+Keep registration enabled when deserializing untrusted data. If you disable it, configure a
+`TypeChecker` as described below.
 
 ### Register by ID
 
-You can register class with API `Fory#register`:
+Use `Fory#register` with an automatically assigned ID or an explicit ID:
 
 ```java
-Fory fory = xxx;
-fory.register(SomeClass.class);
-fory.register(SomeClass1.class, 1);
+Fory fory = Fory.builder().withXlang(false).build();
+fory.register(Order.class);        // Automatically assigned ID
+fory.register(Customer.class, 10); // Explicit ID
 ```
 
-Note that class registration order is important. Serialization and deserialization peers should have the same registration order.
-Register classes and custom serializers before the first top-level `serialize`, `deserialize`, or
-`copy` call on a `Fory` instance. Fory freezes registration at that point so serializer lookups can use
-the finalized registration state.
+Automatically assigned IDs depend on registration order, so readers and writers must register the
+same classes in the same order. With explicit IDs, the order may differ, but each ID must map to the
+same class on both sides.
 
-Internal type IDs 0-32 are reserved for built-in xlang types. Java native built-ins start at
-`Types.NONE + 1`, and user IDs are encoded as `(user_id << 8) | internal_type_id`.
+Complete class and serializer registration before the first `serialize`, `deserialize`, or `copy`
+call. Later registration attempts are rejected.
+
+`registerSerializer(Foo.class, ...)` is sufficient to use `Foo` when class registration is enabled.
+Use `registerSerializerAndType(Foo.class, ...)` when you also want Fory to assign a numeric type ID.
+A fixed set of common JDK interfaces does not require explicit registration. This includes
+`Serializable`, `CharSequence`, `Comparable`, `Cloneable`, `Runnable`, `Callable`, common time and
+collection interfaces, `Comparator`, `Spliterator`, `Stream`, `Collector`, and types in the
+`java.util.function` package. Concrete implementation classes still follow the normal registration
+rules.
 
 ### Register by Name
 
-Register class by ID has better performance and smaller space overhead. But in some cases,
-management for a bunch of type IDs is complex. In such cases, registering class by name using API
-`register(Class<?> cls, String name)` is recommended. Use `.` inside the name to add a namespace
-prefix:
+Numeric IDs provide the smallest class metadata. Register by name when coordinating numeric IDs is
+inconvenient:
 
 ```java
 fory.register(Foo.class, "demo.Foo");
@@ -61,61 +67,58 @@ fory.register(Foo.class, "demo.Foo");
 If there are no duplicate names for types, use a name without a namespace prefix to reduce
 serialized size.
 
-**Do not use this API to register class since it will increase serialized size a lot compared to registering class by ID.**
+Readers and writers must register the same name for each class. Name registration uses more bytes
+than numeric ID registration, but it does not depend on registration order.
 
 ## Security Configuration
 
 ### Type Checker
 
-If you invoke `ForyBuilder#requireClassRegistration(false)` to disable class registration check, you can configure `org.apache.fory.resolver.TypeChecker` by `ForyBuilder#withTypeChecker` or `TypeResolver#setTypeChecker` to control which classes are allowed for serialization.
-
-For example, you can allow classes started with `org.example.*`:
-
-```java
-Fory fory = Fory.builder().withXlang(false)
-  .requireClassRegistration(false)
-  .withTypeChecker((typeResolver, className) -> className.startsWith("org.example."))
-  .build();
-```
+When class registration is disabled, use `ForyBuilder#withTypeChecker` to restrict the classes Fory
+can serialize and deserialize. Implement `TypeChecker` only when you need custom matching logic.
+Array classes are passed to custom checkers in `Class#getName()` format, such as
+`[[Lorg.example.Foo;`. Custom checkers must handle this format explicitly. `AllowListChecker`
+handles array component names automatically.
 
 ### AllowListChecker
 
-Fory provides a `org.apache.fory.resolver.AllowListChecker` which is an allowed/disallowed list based checker to simplify the customization of class check mechanism:
+`AllowListChecker` provides exact-name and package-prefix allow and disallow rules:
 
 ```java
 AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.STRICT);
 checker.allowClass("org.example.*");
-ThreadSafeFory fory = Fory.builder().withXlang(false)
+checker.disallowClass("org.example.internal.*");
+Fory fory = Fory.builder().withXlang(false)
   .requireClassRegistration(false)
   .withTypeChecker(checker)
-  .buildThreadSafeFory();
+  .build();
 ```
 
-`withTypeChecker` installs the checker on every created Fory instance immediately, which also avoids the
-generic startup warning emitted when class registration is disabled without any checker. You can
-still use `TypeResolver#setTypeChecker` or `ThreadSafeFory#setTypeChecker` later if you need to
-replace the checker after build time.
+`STRICT` rejects every class outside the allow list. `WARN` rejects disallowed classes and logs a
+warning for classes outside the allow list. `DISABLE` skips allow-list checking.
+
+Configure disallow rules before the first `serialize`, `deserialize`, or `copy` call. To use
+different disallow rules later, create a new Fory instance.
 
 ## Limit Max Deserialization Depth
 
-Fory provides `ForyBuilder#withMaxDepth` to limit max deserialization depth. The default max depth is 50.
-
-If max depth is reached, Fory will throw `ForyException`. This can be used to prevent malicious data from causing stack overflow or other issues.
+`ForyBuilder#withMaxDepth` limits nested deserialization depth. The default is 50. Fory throws
+`ForyException` when input exceeds the configured depth.
 
 ```java
 Fory fory = Fory.builder()
   .withXlang(false)
-  .withMaxDepth(100)  // Set custom max depth
+  .withMaxDepth(100)
   .build();
 ```
 
 ## Best Practices
 
-1. **Always enable class registration in production**: Use `requireClassRegistration(true)`
-2. **Use ID-based registration for performance**: Numeric IDs are faster than string names
-3. **Maintain consistent registration order**: Same order on both serialization and deserialization sides
-4. **Set appropriate max depth**: Prevent stack overflow attacks
-5. **Use AllowListChecker for fine-grained control**: When you need flexible class filtering
+1. Keep class registration enabled for untrusted input.
+2. Prefer explicit numeric IDs when readers and writers can share a stable ID mapping.
+3. Use the same registration order on both sides when IDs are assigned automatically.
+4. Configure all classes, serializers, and disallow rules before the first operation.
+5. Configure `AllowListChecker` when class registration is disabled.
 
 ## Related Topics
 

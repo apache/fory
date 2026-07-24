@@ -288,10 +288,10 @@ public class FlatBuffersState {
 
   public static FlatBufferBuilder serializeMediaContent(
       MediaContent mediaContent, FlatBufferBuilder builder) {
-    int mediaOffset = serializeMediaContent(mediaContent.media, builder);
-    int[] imageOffsets = new int[mediaContent.images.size()];
+    int mediaOffset = serializeMediaContent(mediaContent.getMedia(), builder);
+    int[] imageOffsets = new int[mediaContent.getImages().size()];
     for (int i = 0; i < imageOffsets.length; i++) {
-      imageOffsets[i] = serializeImage(mediaContent.images.get(i), builder);
+      imageOffsets[i] = serializeImage(mediaContent.getImages().get(i), builder);
     }
     int imagesOffset = FBSMediaContent.createImagesVector(builder, imageOffsets);
     FBSMediaContent.startFBSMediaContent(builder);
@@ -302,94 +302,94 @@ public class FlatBuffersState {
   }
 
   private static int serializeMediaContent(Media media, FlatBufferBuilder builder) {
-    int uriOffset = builder.createString(media.uri);
+    int uriOffset = builder.createString(media.getUri());
     int titleOffset = 0;
-    if (media.title != null) {
-      titleOffset = builder.createString(media.title);
+    if (media.getTitle() != null) {
+      titleOffset = builder.createString(media.getTitle());
     }
-    int formatOffset = builder.createString(media.format);
-    int[] personsOffsets = new int[media.persons.size()];
+    int formatOffset = builder.createString(media.getFormat());
+    int[] personsOffsets = new int[media.getPersons().size()];
     for (int i = 0; i < personsOffsets.length; i++) {
-      personsOffsets[i] = builder.createString(media.persons.get(i));
+      personsOffsets[i] = builder.createString(media.getPersons().get(i));
     }
     int personsOffset = FBSMedia.createPersonsVector(builder, personsOffsets);
-    int copyrightOffset = builder.createString(media.copyright);
+    int copyrightOffset = builder.createString(media.getCopyright());
     FBSMedia.startFBSMedia(builder);
     FBSMedia.addUri(builder, uriOffset);
-    if (media.title != null) {
+    if (media.getTitle() != null) {
       FBSMedia.addTitle(builder, titleOffset);
     }
     FBSMedia.addFormat(builder, formatOffset);
-    FBSMedia.addWidth(builder, media.width);
-    FBSMedia.addHeight(builder, media.height);
-    FBSMedia.addDuration(builder, media.duration);
-    FBSMedia.addSize(builder, media.size);
-    FBSMedia.addBitrate(builder, media.bitrate);
-    FBSMedia.addHasBitrate(builder, media.hasBitrate);
-    FBSMedia.addPlayer(builder, (byte) media.player.ordinal());
+    FBSMedia.addWidth(builder, media.getWidth());
+    FBSMedia.addHeight(builder, media.getHeight());
+    FBSMedia.addDuration(builder, media.getDuration());
+    FBSMedia.addSize(builder, media.getSize());
+    FBSMedia.addBitrate(builder, media.getBitrate());
+    FBSMedia.addHasBitrate(builder, media.isHasBitrate());
+    FBSMedia.addPlayer(builder, (byte) media.getPlayer().ordinal());
     FBSMedia.addCopyright(builder, copyrightOffset);
     FBSMedia.addPersons(builder, personsOffset);
     return FBSMedia.endFBSMedia(builder);
   }
 
   private static int serializeImage(Image image, FlatBufferBuilder builder) {
-    int uriOffset = builder.createString(image.uri);
+    int uriOffset = builder.createString(image.getUri());
     int titleOffset = 0;
-    if (image.title != null) {
-      titleOffset = builder.createString(image.title);
+    if (image.getTitle() != null) {
+      titleOffset = builder.createString(image.getTitle());
     }
-    Preconditions.checkArgument(image.media == null);
+    Preconditions.checkArgument(image.getMedia() == null);
     FBSImage.startFBSImage(builder);
     FBSImage.addUri(builder, uriOffset);
-    if (image.title != null) {
+    if (image.getTitle() != null) {
       FBSImage.addTitle(builder, titleOffset);
     }
-    FBSImage.addWidth(builder, image.width);
-    FBSImage.addHeight(builder, image.height);
-    FBSImage.addSize(builder, (byte) image.size.ordinal());
+    FBSImage.addWidth(builder, image.getWidth());
+    FBSImage.addHeight(builder, image.getHeight());
+    FBSImage.addSize(builder, (byte) image.getSize().ordinal());
     return FBSImage.endFBSImage(builder);
   }
 
   public static MediaContent deserializeMediaContent(ByteBuffer data) {
     MediaContent mediaContent = new MediaContent();
     FBSMediaContent fbsMediaContent = FBSMediaContent.getRootAsFBSMediaContent(data);
-    mediaContent.media = deserializeMedia(fbsMediaContent.media());
+    mediaContent.setMedia(deserializeMedia(fbsMediaContent.media()));
     List<Image> images = new ArrayList<>();
     for (int i = 0; i < fbsMediaContent.imagesLength(); i++) {
       images.add(deserializeImage(fbsMediaContent.images(i)));
     }
-    mediaContent.images = images;
+    mediaContent.setImages(images);
     return mediaContent;
   }
 
   private static Image deserializeImage(FBSImage fbsImage) {
     Image image = new Image();
-    image.uri = fbsImage.uri();
-    image.title = fbsImage.title();
-    image.width = fbsImage.width();
-    image.height = fbsImage.height();
-    image.size = Image.Size.values()[fbsImage.size()];
+    image.setUri(fbsImage.uri());
+    image.setTitle(fbsImage.title());
+    image.setWidth(fbsImage.width());
+    image.setHeight(fbsImage.height());
+    image.setSize(Image.Size.values()[fbsImage.size()]);
     return image;
   }
 
   private static Media deserializeMedia(FBSMedia fbsMedia) {
     Media media = new Media();
-    media.uri = fbsMedia.uri();
-    media.title = fbsMedia.title();
-    media.width = fbsMedia.width();
-    media.height = fbsMedia.height();
-    media.format = fbsMedia.format();
-    media.duration = fbsMedia.duration();
-    media.size = fbsMedia.size();
-    media.bitrate = fbsMedia.bitrate();
-    media.hasBitrate = fbsMedia.hasBitrate();
+    media.setUri(fbsMedia.uri());
+    media.setTitle(fbsMedia.title());
+    media.setWidth(fbsMedia.width());
+    media.setHeight(fbsMedia.height());
+    media.setFormat(fbsMedia.format());
+    media.setDuration(fbsMedia.duration());
+    media.setSize(fbsMedia.size());
+    media.setBitrate(fbsMedia.bitrate());
+    media.setHasBitrate(fbsMedia.hasBitrate());
     List<String> persons = new ArrayList<>();
     for (int i = 0; i < fbsMedia.personsLength(); i++) {
       persons.add(fbsMedia.persons(i));
     }
-    media.persons = persons;
-    media.player = Media.Player.values()[fbsMedia.player()];
-    media.copyright = fbsMedia.copyright();
+    media.setPersons(persons);
+    media.setPlayer(Media.Player.values()[fbsMedia.player()]);
+    media.setCopyright(fbsMedia.copyright());
     return media;
   }
 

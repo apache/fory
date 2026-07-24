@@ -67,7 +67,7 @@ final class ReusableArray<Element> {
         let newCapacity = capacity << 1
         let newStorage = UnsafeMutablePointer<Element>.allocate(capacity: newCapacity)
         newStorage.initialize(repeating: defaultValue, count: newCapacity)
-        for index in 0 ..< used {
+        for index in 0..<used {
             newStorage.advanced(by: index).pointee = storage.advanced(by: index).pointee
         }
         storage.deinitialize(count: capacity)

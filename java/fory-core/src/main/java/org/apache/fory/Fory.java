@@ -352,7 +352,7 @@ public final class Fory implements BaseFory {
         if (writeContext.getDepth() > 0) {
           throwDepthSerializationException();
         }
-        writeContext.writeRef(obj);
+        writeContext.writeRootRef(obj);
         return buffer;
       } catch (Throwable t) {
         throw processSerializationError(t);
@@ -512,7 +512,7 @@ public final class Fory implements BaseFory {
         if (readContext.getDepth() > 0) {
           throwDepthDeserializationException();
         }
-        return readContext.readRef();
+        return readContext.readRootRef();
       } finally {
         jitContext.unlock();
       }

@@ -19,6 +19,7 @@
 
 package org.apache.fory.serializer;
 
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.ObjectIntMap;
 import org.apache.fory.context.CopyContext;
@@ -135,6 +136,7 @@ public abstract class CompatibleLayerSerializerBase<T> extends AbstractObjectSer
   @Override
   public T read(ReadContext readContext) {
     checkLayerSerializerMeta();
+    readContext.reserveGraphMemory(objectGraphMemoryBytes);
     T obj = newBean();
     readContext.reference(obj);
     return readAndSetFields(readContext, obj);
@@ -153,6 +155,18 @@ public abstract class CompatibleLayerSerializerBase<T> extends AbstractObjectSer
 
   public int getNumFields() {
     return allFields.length;
+  }
+
+  @Internal
+  public final TypeDef getLayerTypeDef() {
+    checkLayerSerializerMeta();
+    return layerTypeDef;
+  }
+
+  @Internal
+  public final Class<?> getLayerMarkerClass() {
+    checkLayerSerializerMeta();
+    return layerMarkerClass;
   }
 
   @SuppressWarnings("rawtypes")

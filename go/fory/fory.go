@@ -69,6 +69,7 @@ type Config struct {
 	MaxDepth                        int
 	IsXlang                         bool
 	Compatible                      bool // Schema evolution compatibility mode
+	MaxGraphMemoryBytes             int64
 	MaxTypeFields                   int
 	MaxTypeMetaBytes                int
 	MaxSchemaVersionsPerType        int
@@ -82,6 +83,7 @@ func defaultConfig() Config {
 		MaxDepth:                        20,
 		IsXlang:                         true,
 		MaxTypeFields:                   512,
+		MaxGraphMemoryBytes:             128 * 1024 * 1024,
 		MaxTypeMetaBytes:                4096,
 		MaxSchemaVersionsPerType:        10,
 		MaxAverageSchemaVersionsPerType: 3,
@@ -107,6 +109,20 @@ func WithRefTracking(enabled bool) Option {
 func WithMaxDepth(depth int) Option {
 	return func(f *Fory) {
 		f.config.MaxDepth = depth
+	}
+}
+
+// WithMaxGraphMemoryBytes sets an approximate graph-memory gate for one root
+// deserialization. It mainly gates materialized slices, maps, arrays, structs,
+// and objects. Leaf values such as strings, binary, primitive scalars, and
+// dense primitive arrays are gated by unread input bytes instead, and actual
+// process memory can be higher.
+func WithMaxGraphMemoryBytes(size int64) Option {
+	if size <= 0 {
+		panic("MaxGraphMemoryBytes must be positive")
+	}
+	return func(f *Fory) {
+		f.config.MaxGraphMemoryBytes = size
 	}
 }
 
@@ -556,14 +572,14 @@ func (f *Fory) Serialize(value any) ([]byte, error) {
 func (f *Fory) Deserialize(data []byte, v any) error {
 	defer f.resetReadState()
 	f.readCtx.SetData(data)
+	target := reflect.ValueOf(v).Elem()
+	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
 
-	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	target := reflect.ValueOf(v).Elem()
 	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
@@ -606,7 +622,7 @@ func (f *Fory) SerializeTo(buf *ByteBuffer, value any) error {
 	if rv.Kind() == reflect.Ptr && !rv.IsNil() && rv.Elem().Kind() == reflect.Struct && !f.config.TrackRef {
 		// Get TypeInfo using fast pointer cache
 		elemValue := rv.Elem()
-		typeInfo, err := f.typeResolver.getTypeInfo(rv, true)
+		typeInfo, err := f.typeResolver.GetTypeInfo(rv, true)
 		if err == nil && typeInfo != nil && typeInfo.Serializer != nil {
 			// Write not-null flag and type ID directly
 			buf.WriteInt8(NotNullValueFlag)
@@ -648,6 +664,8 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	// Temporarily swap buffer
 	origBuffer := f.readCtx.buffer
 	f.readCtx.buffer = buf
+	target := reflect.ValueOf(v).Elem()
+	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
 
 	readHeader(f.readCtx)
 	if f.readCtx.HasError() {
@@ -656,7 +674,6 @@ func (f *Fory) DeserializeFrom(buf *ByteBuffer, v any) error {
 	}
 
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	target := reflect.ValueOf(v).Elem()
 	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		f.readCtx.buffer = origBuffer
@@ -748,12 +765,6 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 		f.readCtx.outOfBandBuffers = buffers
 	}
 
-	// ReadData and validate header
-	readHeader(f.readCtx)
-	if f.readCtx.HasError() {
-		return f.readCtx.TakeError()
-	}
-
 	// v must be a pointer so we can deserialize into it
 	if v == nil {
 		return fmt.Errorf("v cannot be nil")
@@ -766,8 +777,17 @@ func (f *Fory) DeserializeWithCallbackBuffers(buffer *ByteBuffer, v any, buffers
 		return fmt.Errorf("v must be a non-nil pointer")
 	}
 
+	target := rv.Elem()
+	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
+
+	// ReadData and validate header
+	readHeader(f.readCtx)
+	if f.readCtx.HasError() {
+		return f.readCtx.TakeError()
+	}
+
 	// Deserialize the value - TypeMeta is read inline using streaming protocol
-	f.readCtx.ReadValue(rv.Elem(), RefModeTracking, true)
+	f.readCtx.ReadValue(target, RefModeTracking, true)
 	if f.readCtx.HasError() {
 		return f.readCtx.TakeError()
 	}
@@ -847,7 +867,7 @@ func readHeaderSlow(ctx *ReadContext, bitmap byte) {
 
 // Serialize - type T inferred, serializer auto-resolved.
 // The serializer handles its own ref/type info writing internally.
-// Uses reflection-based serializers for supported non-struct types. Structs must
+// Uses fast serializers for supported non-struct types. Structs must
 // be registered explicitly before serialization.
 // Note: For structs, T must be a pointer to struct (*MyStruct), not struct value.
 //
@@ -994,7 +1014,7 @@ func Serialize[T any](f *Fory, value T) ([]byte, error) {
 		f.writeCtx.WriteTypeId(MAP)
 		writeMapIntInt(f.writeCtx.buffer, val, false)
 	default:
-		// Fall back to reflection-based serialization
+		// Fall back to the fast serializer path.
 		return f.serializeReflectValue(reflect.ValueOf(v))
 	}
 
@@ -1016,6 +1036,17 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	// Reuse context, reset and set new data
 	f.readCtx.Reset()
 	f.readCtx.SetData(data)
+	f.readCtx.remainingGraphMemoryBytes = f.config.MaxGraphMemoryBytes
+
+	var targetVal reflect.Value
+	var targetType reflect.Type
+	switch any(target).(type) {
+	case *bool, *int8, *int16, *int32, *int64, *int, *float32, *float64, *string,
+		*[]byte, *[]int8, *[]int16, *[]int32, *[]int64, *[]int, *[]float32, *[]float64, *[]bool:
+	default:
+		targetVal = reflect.ValueOf(target).Elem()
+		targetType = targetVal.Type()
+	}
 
 	// ReadData and validate header
 	readHeader(f.readCtx)
@@ -1154,16 +1185,14 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 		return f.readCtx.CheckError()
 	default:
 		// Slow path: use serializer-based deserialization
-		targetVal := reflect.ValueOf(target).Elem()
-		targetType := targetVal.Type()
-
-		// Get serializer for the target type
+		if !targetVal.IsValid() {
+			targetVal = reflect.ValueOf(target).Elem()
+			targetType = targetVal.Type()
+		}
 		serializer, err := f.typeResolver.getSerializerByType(targetType, false)
 		if err != nil {
 			return fmt.Errorf("failed to get serializer for type %v: %w", targetType, err)
 		}
-
-		// Use Read to deserialize directly into target
 		serializer.Read(f.readCtx, RefModeTracking, true, false, targetVal)
 		return f.readCtx.CheckError()
 	}

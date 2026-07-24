@@ -17,6 +17,31 @@ Load this file when changing `cpp/`, Cython build plumbing, or C++ xlang behavio
 - Do not redesign alias-based or low-level public type shapes to add convenience methods unless the user explicitly asks for that API change.
 - For cross-language feature ports, match protocol behavior but use idiomatic C++ ownership and layering instead of mirroring Java structure literally.
 - Compatible scalar, list-array, and binary/uint8-array adaptations are immediate-field-only. Recursive matched-field comparison for collection elements, array elements, map keys, and map values must require exact nullability, ref tracking, generic arity, and type shape except documented user-type family normalization.
+- Root deserialization graph budget state belongs to `ReadContext` and is initialized by the root
+  `Fory::deserialize` overload. Keep `max_graph_memory_bytes` as a fixed-default graph limit:
+  unset/default is `128 MiB`, positive explicit values override it, and explicit non-positive
+  values are invalid at config creation. Byte and stream roots use the same
+  configured/default budget behavior. Root `Fory` overloads reset the budget only; they must not
+  pre-reserve root type or root self bytes.
+  Do not mirror the configured max into a second active-limit field; use config plus mutable
+  remaining budget.
+  Reserve estimated shallow graph-owner memory before allocation while preserving existing
+  byte-availability checks and their non-empty metadata ordering. `ReadContext` may expose only raw
+  byte reservation; collection, map, array, struct, and object formulas belong in serializer owners.
+  Skip dedicated string, binary, primitive scalar, primitive
+  vector, and primitive dense-array leaf owners; `std::vector<bool>` charges rounded packed-bit
+  storage. Treat the option as an approximate collection/map/array/struct/object gate, not an exact
+  heap cap. Leaf values skipped by graph budgeting remain gated by unread input bytes.
+  General `std::vector<T>` for non-primitive `T` is inline value storage and must be reserved by the
+  vector owner.
+- C++ graph budget formulas must be portable lower-bound estimates, not STL heap-layout accounting.
+  Generic collection-like containers reserve `count_or_capacity * sizeof(value_type)`, map-like
+  containers reserve `count * (sizeof(key_type) + sizeof(mapped_type))`, and set-like containers
+  reserve `count * sizeof(key_type)`. Smart-pointer, box, and dynamic allocation owners reserve
+  `sizeof(T)` when they materialize pointed heap storage; root/plain struct/product serializers do
+  not reserve their own self storage. Do not add guessed
+  node/header/debug-STL overhead, red-black-tree fields, allocator probing, object-layout
+  inspection, generic per-entry pointer overhead, or unordered bucket-table guesses.
 
 ## Key Paths
 

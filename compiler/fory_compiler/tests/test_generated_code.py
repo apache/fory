@@ -496,13 +496,13 @@ def test_generated_code_map_types_equivalent():
     cpp_output = render_files(generate_files(schemas["fdl"], CppGenerator))
     assert "#include <unordered_map>" in cpp_output
     assert "#include <map>" not in cpp_output
-    assert "std::unordered_map<std::string, int32_t> counts_;" in cpp_output
+    assert "::std::unordered_map<::std::string, ::int32_t> counts_;" in cpp_output
     assert (
-        "std::optional<std::unordered_map<std::string, MapValue>> entries_;"
+        "::std::optional<::std::unordered_map<::std::string, MapValue>> entries_;"
         in cpp_output
     )
     assert (
-        "std::unordered_map<std::string, fory::serialization::SharedWeak<MapValue>> "
+        "::std::unordered_map<::std::string, ::fory::serialization::SharedWeak<MapValue>> "
         "weak_entries_;" in cpp_output
     )
     assert "SharedWeak<MapValue>" in cpp_output
@@ -1096,9 +1096,207 @@ def test_cpp_nested_integer_specs_in_generic_containers():
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert (
         "FORY_STRUCT(NestedIntegerSpecs, "
-        "(values_, fory::F(1).map(fory::T::uint32().fixed(), "
-        "fory::T::list(fory::T::inner(fory::T::uint64().tagged())))));" in cpp_output
+        "(values_, ::fory::F(1).map(::fory::T::uint32().fixed(), "
+        "::fory::T::list(::fory::T::inner(::fory::T::uint64().tagged())))));"
+        in cpp_output
     )
+
+
+def test_cpp_escapes_keywords_and_generated_helpers():
+    schema = parse_fdl(
+        dedent(
+            """
+            package class.demo;
+
+            message private {
+                string class = 1;
+                string to_bytes = 2;
+            }
+
+            enum operator {
+                class = 0;
+            }
+
+            union namespace {
+                string visit = 1;
+                string class = 2;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert "namespace class_::demo {" in cpp_output
+    assert "class private_;" in cpp_output
+    assert "enum class operator_ : ::int32_t {" in cpp_output
+    assert "    class_ = 0," in cpp_output
+    assert "class namespace_ final {" in cpp_output
+    assert "static namespace_ visit_(::std::string v)" in cpp_output
+    assert "static namespace_ class_(::std::string v)" in cpp_output
+    assert "FORY_UNION(::class_::demo::namespace_," in cpp_output
+    assert "  (visit_, ::std::string, ::fory::F(1))," in cpp_output
+    assert "  (class_, ::std::string, ::fory::F(2))" in cpp_output
+    assert "FORY_ENUM(::class_::demo::operator_, class_);" in cpp_output
+    assert "class private_ final {" in cpp_output
+    assert "const ::std::string& class_() const" in cpp_output
+    assert "::std::string class__;" in cpp_output
+    assert "const ::std::string& to_bytes_() const" in cpp_output
+    assert "::std::string to_bytes__;" in cpp_output
+    assert (
+        "FORY_STRUCT(private_, (class__, ::fory::F(1)), (to_bytes__, ::fory::F(2)));"
+    ) in cpp_output
+    assert 'fory.register_enum<operator_>("class.demo", "operator");' in cpp_output
+    assert 'fory.register_union<namespace_>("class.demo", "namespace");' in cpp_output
+    assert 'fory.register_struct<private_>("class.demo", "private");' in cpp_output
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            """
+            message int8_t {
+                string value = 1;
+            }
+
+            union uint64_t {
+                string value = 1;
+                int32 id = 2;
+            }
+            """,
+            ("class int8_t_;", "class uint64_t_", "FORY_UNION(::uint64_t_,"),
+        ),
+        (
+            """
+            package int8_t.ns;
+
+            message Holder {
+                string value = 1;
+            }
+            """,
+            ("namespace int8_t_::ns {", "::int8_t_::ns::detail::get_fory()"),
+        ),
+        (
+            """
+            package exp.cpp_any_compile;
+
+            message Holder {
+                any payload = 1;
+            }
+            """,
+            ("namespace exp_::cpp_any_compile {",),
+        ),
+        (
+            """
+            package std.demo;
+
+            message Holder {
+                string value = 1;
+            }
+            """,
+            ("namespace std_::demo {",),
+        ),
+        (
+            """
+            package fory.demo;
+
+            message Holder {
+                string value = 1;
+            }
+            """,
+            ("namespace fory_::demo {",),
+        ),
+    ],
+    ids=(
+        "no-package-types",
+        "typedef-package-segment",
+        "math-package-segment",
+        "std-package-segment",
+        "fory-package-segment",
+    ),
+)
+def test_cpp_global_namespace_identifiers_are_escaped(
+    source: str, expected: Tuple[str, ...]
+):
+    files = generate_files(parse_fdl(dedent(source)), CppGenerator)
+    output = render_files(files)
+
+    for expected_text in expected:
+        assert expected_text in output
+
+
+def test_cpp_rejects_normalized_name_collisions():
+    collision_cases = [
+        """
+        message class {}
+        message class_ {}
+        """,
+        """
+        enum Status {
+            STATUS_OK = 1;
+            OK = 2;
+        }
+        """,
+        """
+        message Holder {
+            string fooBar = 1;
+            string foo_bar = 2;
+        }
+        """,
+        """
+        message Holder {
+            optional string foo = 1;
+            string hasFoo = 2;
+        }
+        """,
+        """
+        union Value {
+            string foo = 1;
+            string isFoo = 2;
+        }
+        """,
+    ]
+
+    for source in collision_cases:
+        schema = parse_fdl(dedent(source))
+        with pytest.raises(ValueError, match=r"C\+\+ name collision"):
+            generate_files(schema, CppGenerator)
+
+
+def test_cpp_imported_type_uses_sanitized_namespace_and_identifier(tmp_path: Path):
+    imported_fdl = tmp_path / "imported.fdl"
+    main_fdl = tmp_path / "main.fdl"
+    imported_fdl.write_text(
+        dedent(
+            """
+            package class.imported;
+
+            message private {
+                string value = 1;
+            }
+            """
+        )
+    )
+    main_fdl.write_text(
+        dedent(
+            """
+            package demo;
+
+            import "imported.fdl";
+
+            message Holder {
+                private value = 1;
+            }
+            """
+        )
+    )
+    schema = resolve_imports(main_fdl, [tmp_path])
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert '#include "class_imported.h"' in cpp_output
+    assert "const ::class_::imported::private_& value() const" in cpp_output
+    assert "::std::unique_ptr<::class_::imported::private_> value_;" in cpp_output
+    assert "::class_::imported::register_types(fory);" in cpp_output
 
 
 def test_cpp_generator_supports_decimal_fields_and_unions():
@@ -1121,9 +1319,165 @@ def test_cpp_generator_supports_decimal_fields_and_unions():
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
     assert '#include "fory/serialization/decimal_serializers.h"' in cpp_output
-    assert "const fory::serialization::Decimal& amount() const" in cpp_output
-    assert "std::variant<fory::serialization::Decimal, Money> value_" in cpp_output
-    assert "(amount, fory::serialization::Decimal, fory::F(1))" in cpp_output
+    assert "const ::fory::serialization::Decimal& amount() const" in cpp_output
+    assert "::std::variant<::fory::serialization::Decimal, Money> value_" in cpp_output
+    assert "FORY_UNION(::gen::Value," in cpp_output
+    assert "  (amount, ::fory::serialization::Decimal, ::fory::F(1))," in cpp_output
+
+
+def test_cpp_union_aliases_comma_payload_types():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            union MapChoice {
+                map<string, any> by_name = 1;
+                map<string, int32> counts = 2;
+                list<any> values = 3;
+                string name = 4;
+            }
+
+            union LargeChoice {
+                map<string, int32> counts = 1;
+                bool enabled = 2;
+                int8 i8 = 3;
+                int16 i16 = 4;
+                int32 i32 = 5;
+                int64 i64 = 6;
+                uint8 u8 = 7;
+                uint16 u16 = 8;
+                uint32 u32 = 9;
+                uint64 u64 = 10;
+                float32 f32 = 11;
+                float64 f64 = 12;
+                string name = 13;
+                bytes blob = 14;
+                decimal amount = 15;
+                date day = 16;
+                timestamp ts = 17;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert (
+        "using ForyCaseByNameType = ::std::unordered_map<::std::string, ::std::any>;"
+        in cpp_output
+    )
+    assert (
+        "using ForyCaseCountsType = ::std::unordered_map<::std::string, ::int32_t>;"
+        in cpp_output
+    )
+    assert (
+        "(by_name, ::gen::MapChoice::ForyCaseByNameType, "
+        "::fory::F(1).map(::fory::T::string(), ::fory::FieldNodeSpec{}))" in cpp_output
+    )
+    assert (
+        "(counts, ::gen::MapChoice::ForyCaseCountsType, "
+        "::fory::F(2).map(::fory::T::string(), ::fory::T::int32().varint()))"
+        in cpp_output
+    )
+    assert (
+        "(values, ::std::vector<::std::any>, "
+        "::fory::F(3).list(::fory::FieldNodeSpec{}))" in cpp_output
+    )
+    assert "(name, ::std::string, ::fory::F(4))" in cpp_output
+    assert (
+        "FORY_UNION_CASE(::gen::LargeChoice, 1, "
+        "::gen::LargeChoice::ForyCaseCountsType, ::gen::LargeChoice::counts, "
+        "::fory::F(1).map(::fory::T::string(), ::fory::T::int32().varint()));"
+        in cpp_output
+    )
+
+
+def test_cpp_omits_equality_for_any_types():
+    schema = parse_fdl(
+        dedent(
+            """
+            package gen;
+
+            message Inner {
+                any value = 1;
+            }
+
+            union AnyChoice {
+                Inner inner = 1;
+                string name = 2;
+            }
+
+            message DirectAny {
+                any value = 1;
+            }
+
+            message AnyList {
+                list<any> values = 1;
+            }
+
+            message AnyMap {
+                map<string, any> values = 1;
+            }
+
+            union DirectChoice {
+                any payload = 1;
+                list<any> values = 2;
+                string name = 3;
+            }
+
+            message DirectOwner {
+                Inner inner = 1;
+            }
+
+            message ListOwner {
+                list<Inner> values = 1;
+            }
+
+            message MapOwner {
+                map<string, Inner> values = 1;
+            }
+
+            message UnionOwner {
+                AnyChoice choice = 1;
+            }
+
+            message DeclaresNestedOnly {
+                message Nested {
+                    any value = 1;
+                }
+
+                string name = 1;
+            }
+
+            message Plain {
+                string name = 1;
+                list<int32> values = 2;
+                map<string, int32> counts = 3;
+            }
+
+            union PlainChoice {
+                string name = 1;
+                int32 code = 2;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert "bool operator==(const Inner& other) const" not in cpp_output
+    assert "bool operator==(const AnyChoice& other) const" not in cpp_output
+    assert "bool operator==(const DirectAny& other) const" not in cpp_output
+    assert "bool operator==(const AnyList& other) const" not in cpp_output
+    assert "bool operator==(const AnyMap& other) const" not in cpp_output
+    assert "bool operator==(const DirectChoice& other) const" not in cpp_output
+    assert "bool operator==(const DirectOwner& other) const" not in cpp_output
+    assert "bool operator==(const ListOwner& other) const" not in cpp_output
+    assert "bool operator==(const MapOwner& other) const" not in cpp_output
+    assert "bool operator==(const UnionOwner& other) const" not in cpp_output
+    assert "bool operator==(const Nested& other) const" not in cpp_output
+    assert "bool operator==(const DeclaresNestedOnly& other) const" in cpp_output
+    assert "bool operator==(const Plain& other) const" in cpp_output
+    assert "bool operator==(const PlainChoice& other) const" in cpp_output
 
 
 def test_cpp_nested_container_ref_uses_correct_pointer_type():
@@ -1147,26 +1501,59 @@ def test_cpp_nested_container_ref_uses_correct_pointer_type():
     )
 
     cpp_output = render_files(generate_files(schema, CppGenerator))
-    assert "std::vector<std::vector<std::shared_ptr<Node>>> groups_;" in cpp_output
-    assert "std::vector<std::vector<Node>> groups_;" not in cpp_output
     assert (
-        "std::unordered_map<std::string, "
-        "std::unordered_map<std::string, std::shared_ptr<Node>>> nodes_;" in cpp_output
+        "::std::vector<::std::vector<::std::shared_ptr<Node>>> groups_;" in cpp_output
     )
+    assert "::std::vector<::std::vector<Node>> groups_;" not in cpp_output
     assert (
-        "std::vector<std::vector<fory::serialization::SharedWeak<Node>>> weak_groups_;"
+        "::std::unordered_map<::std::string, "
+        "::std::unordered_map<::std::string, ::std::shared_ptr<Node>>> nodes_;"
         in cpp_output
     )
     assert (
-        "std::unordered_map<std::string, "
-        "std::unordered_map<std::string, fory::serialization::SharedWeak<Node>>> "
+        "::std::vector<::std::vector<::fory::serialization::SharedWeak<Node>>> weak_groups_;"
+        in cpp_output
+    )
+    assert (
+        "::std::unordered_map<::std::string, "
+        "::std::unordered_map<::std::string, ::fory::serialization::SharedWeak<Node>>> "
         "weak_nodes_;" in cpp_output
     )
     assert (
-        "std::unordered_map<std::string, "
-        "std::unordered_map<std::string, std::shared_ptr<Node>>> weak_nodes_;"
+        "::std::unordered_map<::std::string, "
+        "::std::unordered_map<::std::string, ::std::shared_ptr<Node>>> weak_nodes_;"
         not in cpp_output
     )
+
+
+def test_cpp_temporal_map_keys_use_fory_owned_wrappers():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo;
+
+            message Holder {
+                map<duration, string> durations = 1;
+                map<timestamp, string> timestamps = 2;
+                map<date, string> dates = 3;
+            }
+            """
+        )
+    )
+
+    cpp_output = render_files(generate_files(schema, CppGenerator))
+    assert (
+        "::std::unordered_map<::fory::serialization::Duration, ::std::string>"
+        in cpp_output
+    )
+    assert (
+        "::std::unordered_map<::fory::serialization::Timestamp, ::std::string>"
+        in cpp_output
+    )
+    assert (
+        "::std::unordered_map<::fory::serialization::Date, ::std::string>" in cpp_output
+    )
+    assert "std::map<" not in cpp_output
 
 
 def test_java_enum_generation_uses_fory_enum_ids():

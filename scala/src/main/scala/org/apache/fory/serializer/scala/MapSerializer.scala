@@ -22,6 +22,7 @@ package org.apache.fory.serializer.scala
 import org.apache.fory.collection.MapEntry
 import org.apache.fory.context.ReadContext
 import org.apache.fory.context.WriteContext
+import org.apache.fory.exception.DeserializationException
 import org.apache.fory.resolver.TypeResolver
 import org.apache.fory.serializer.collection.MapLikeSerializer
 
@@ -47,18 +48,26 @@ import scala.collection.{Factory, mutable}
  */
 abstract class AbstractScalaMapSerializer[K, V, T](typeResolver: TypeResolver, cls: Class[T])
   extends MapLikeSerializer[T](typeResolver, cls) {
+  private val ReferenceBytes = 4L
+  // Lower-bound shallow owner cost for the retained Scala map wrapper itself. Key/value slots are
+  // charged separately by count below; this is not a Fory wire header size.
+  private val ScalaMapOwnerBytes = 3L * ReferenceBytes
+
   def onMapWrite(writeContext: WriteContext, value: T): util.Map[_, _]
 
   override def newMap(readContext: ReadContext): util.Map[_, _] = {
     val buffer = readContext.getBuffer
-    val numElements = buffer.readVarUInt32()
+    val numElements = buffer.readVarUInt32Small7()
     checkMapSize(numElements)
+    if (numElements > Integer.MAX_VALUE / 2) {
+      throw new DeserializationException("Map size is too large to read: " + numElements)
+    }
+    readContext.reserveGraphMemory(
+      ScalaMapOwnerBytes + numElements.toLong * 2L * ReferenceBytes)
     setNumElements(numElements)
     val factory = readContext.readRef().asInstanceOf[Factory[(K, V), T]]
+    buffer.checkReadableBytes(numElements << 1)
     val builder = factory.newBuilder
-    if (numElements != 0) {
-      buffer.checkReadableBytes(numElements)
-    }
     builder.sizeHint(numElements)
     new MapBuilder[K, V, T](builder)
   }

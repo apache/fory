@@ -30,7 +30,10 @@ import java.util.Arrays;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.annotation.ForyField;
+import org.apache.fory.annotation.Nullable;
 import org.apache.fory.config.ForyBuilder;
+import org.apache.fory.config.Language;
 import org.apache.fory.context.MetaReadContext;
 import org.apache.fory.context.MetaWriteContext;
 import org.apache.fory.test.bean.Struct;
@@ -48,6 +51,20 @@ public class RecordSerializersTest {
 
   public record BoxedPrimitiveRecord(String lensId, Long from, Long to, Integer type)
       implements Serializable {}
+
+  public record AddressRecord(
+      @Nullable @ForyField(id = 1) String city, @Nullable @ForyField(id = 2) String zip) {}
+
+  public record UserRecordV1(
+      @ForyField(id = 1) Long id,
+      @Nullable @ForyField(id = 2) String name,
+      @Nullable @ForyField(id = 3) AddressRecord homeAddress) {}
+
+  public record UserRecordV2(
+      @ForyField(id = 1) Long id,
+      @Nullable @ForyField(id = 2) String name,
+      @Nullable @ForyField(id = 3) AddressRecord homeAddress,
+      @Nullable @ForyField(id = 4) AddressRecord workAddress) {}
 
   @Test
   public void testIsRecord() {
@@ -91,6 +108,40 @@ public class RecordSerializersTest {
             .build();
     Foo foo = new Foo(10, "abc", new ArrayList<>(Arrays.asList("a", "b")), 'x');
     Assert.assertEquals(fory.deserialize(fory.serialize(foo)), foo);
+  }
+
+  @Test(dataProvider = "codegen")
+  public void testRegisteredMissingStruct(boolean codegen) {
+    int userTypeId = 100;
+    int addressTypeId = 101;
+    Fory writer =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withCompatible(true)
+            .withCodegen(codegen)
+            .withAsyncCompilation(false)
+            .requireClassRegistration(true)
+            .build();
+    writer.register(UserRecordV2.class, userTypeId);
+    writer.register(AddressRecord.class, addressTypeId);
+
+    AddressRecord homeAddress = new AddressRecord("NYC", "10001");
+    AddressRecord workAddress = new AddressRecord("SF", "94000");
+    byte[] bytes = writer.serialize(new UserRecordV2(1L, "Alice", homeAddress, workAddress));
+
+    Fory reader =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withCompatible(true)
+            .withCodegen(codegen)
+            .withAsyncCompilation(false)
+            .requireClassRegistration(true)
+            .build();
+    reader.register(UserRecordV1.class, userTypeId);
+    reader.register(AddressRecord.class, addressTypeId);
+
+    UserRecordV1 result = (UserRecordV1) reader.deserialize(bytes);
+    Assert.assertEquals(result, new UserRecordV1(1L, "Alice", homeAddress));
   }
 
   @Test

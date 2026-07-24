@@ -388,15 +388,70 @@ chunk, nullability, reference, and type-dispatch semantics. It is still the
 right allocation proof for count-based preallocation: after validating a
 non-empty count and reading any serializer-owned header or type metadata that
 precedes allocation, call `checkReadableBytes(logicalCount)` before allocating,
-reserving, or size-hinting from that count. The byte owner handles buffer versus
-stream readiness; the container serializer then allocates with the declared
-count and reads elements through its normal owner path.
+reserving backing capacity, or size-hinting from that count. The byte owner
+handles buffer versus stream readiness; the container serializer then allocates
+with the declared count and reads elements through its normal owner path.
 
 This check is not a full container-body validation. It only prevents a small or
 truncated input from causing a large count-based preallocation. Chunk sizes,
 duplicate keys, element value semantics, and protocol strictness remain owned by
 the container/map serializer and should be validated only when they protect a
 real owner invariant.
+
+Materializing readers should also reserve a root-operation estimated graph
+memory budget before allocation or size hinting. The budget state belongs to
+`ReadContext` or the equivalent root read state, not to ambient thread-local
+state. Root facades set or reset the per-operation budget only; they must not
+pre-reserve root type or root self bytes. `maxGraphMemoryBytes` defaults to a
+fixed `128 MiB`; positive configuration overrides the default; explicit
+non-positive configuration is invalid and must be rejected when the runtime is
+created. Do not derive this budget from root input size, and do not add dynamic
+stream bytes-read accounting for this budget.
+Because the budget is fixed per root, read state should not mirror the
+configured maximum into a second active-limit field. Use the existing
+configuration, or one configured maximum field when the config is not otherwise
+available, plus the mutable remaining budget.
+
+Read context or equivalent read state owns only raw byte reservation. It must
+not expose counted arithmetic helpers or collection, map, array, struct, or
+object semantic reservation APIs. Concrete serializers and generated serializer
+owners compute the storage constants and formulas for the owner path they
+allocate, including counted-byte overflow checks.
+Read state must not grow non-memory-budget APIs for this feature, including
+ref-publication controls, temporary-owner controls, serializer-owner controls,
+conversion helpers, or APIs that encode the kind of value being materialized.
+Concrete serializers and generated serializers own those decisions.
+
+The budget is an approximate gate for materialized graph owners, mainly
+collections, maps, arrays, structs, and objects. It does not measure exact heap
+bytes, and actual process memory can be higher. Reserve self storage exactly
+once at the owner that stores or allocates the value. Root facades reset the
+budget only and must not reserve root value storage. Reference-backed
+containers, maps, sets, and
+object/reference arrays reserve nonzero owner self cost plus reference slots;
+each referenced heap owner then reserves its own shallow self cost when
+materialized. Inline/value containers reserve element storage; inline/value maps
+reserve key plus value storage; pointer, box, and dynamic materialization owners
+reserve the heap or boxed storage they allocate. Value serializers, including
+root and generated struct/product read paths, do not reserve their own self
+storage. Struct/record/POJO/tuple, compatible, generated, and dynamic object
+owners reserve a nonzero shallow self cost plus shallow field storage only in
+reference-object runtimes or dynamic/boxed materialization paths.
+Parents must not recursively include child object, collection, map, string,
+binary, or primitive dense-array contents. Skip enum/union as separate owners and
+skip dedicated string, binary, primitive scalar, primitive array, and primitive
+dense-array leaf owners, but do not skip general inline-value containers such as
+vectors or lists of value objects. If reference slot size is not cheap or
+reliable to query, use a 4-byte reference slot. Native runtimes may use
+conservative lower-bound estimates instead of guessing non-portable object,
+container, allocator, table, node, entry, or debug-layout details. Reject
+arithmetic overflow before budget comparison or allocation, and keep the
+existing `checkReadableBytes` proof before backing
+allocation or capacity reservation.
+Skipped leaf owners must still be gated by remaining input bytes. If unread
+bytes are insufficient for a string, binary value, primitive scalar, primitive
+array, or primitive dense array, the runtime must not read or create that leaf
+value.
 
 For TypeDef or TypeMeta bodies, first prove that the encoded metadata body bytes
 are readable through the byte owner. Field-list allocation should happen after

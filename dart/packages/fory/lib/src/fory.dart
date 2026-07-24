@@ -62,6 +62,7 @@ final class Fory {
     int maxSchemaVersionsPerType = Config.defaultMaxSchemaVersionsPerType,
     int maxAverageSchemaVersionsPerType =
         Config.defaultMaxAverageSchemaVersionsPerType,
+    int maxGraphMemoryBytes = Config.defaultMaxGraphMemoryBytes,
   }) {
     final config = Config(
       compatible: compatible,
@@ -71,6 +72,7 @@ final class Fory {
       maxTypeMetaBytes: maxTypeMetaBytes,
       maxSchemaVersionsPerType: maxSchemaVersionsPerType,
       maxAverageSchemaVersionsPerType: maxAverageSchemaVersionsPerType,
+      maxGraphMemoryBytes: maxGraphMemoryBytes,
     );
     _readBuffer = Buffer();
     _writeBuffer = Buffer();

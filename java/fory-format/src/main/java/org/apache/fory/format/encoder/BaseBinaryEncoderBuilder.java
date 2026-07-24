@@ -107,12 +107,26 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   protected final TypeResolutionContext typeCtx;
   protected final Reference foryRef = new Reference(FORY_NAME, FORY_TYPE, false);
 
+  // Enclosing type for custom-codec resolution (findCodec(enclosing, target)), matching how
+  // TypeInference keys the inferred schema. A row encoder uses the bean being generated; a
+  // standalone array/map encoder has no enclosing bean and scopes to Object, matching
+  // TypeInference's empty-path enclosing type for a top-level collection. Keeping these in
+  // agreement prevents a narrowly registered codec from binding to elements the schema never
+  // applied it to.
+  protected final Class<?> codecEnclosingType;
+
   public BaseBinaryEncoderBuilder(CodegenContext context, Class<?> beanClass) {
     this(context, TypeRef.of(beanClass));
   }
 
   public BaseBinaryEncoderBuilder(CodegenContext context, TypeRef<?> beanType) {
+    this(context, beanType, beanType.getRawType());
+  }
+
+  public BaseBinaryEncoderBuilder(
+      CodegenContext context, TypeRef<?> beanType, Class<?> codecEnclosingType) {
     super(context, beanType);
+    this.codecEnclosingType = codecEnclosingType;
     ctx.reserveName(REFERENCES_NAME);
     ctx.reserveName(FORY_NAME);
 
@@ -172,16 +186,31 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       Expression arrowField,
       Set<TypeRef<?>> visitedCustomTypes) {
     Class<?> rawType = getRawType(typeRef);
-    TypeRef<?> rewrittenType = customTypeHandler.replacementTypeFor(beanType.getRawType(), rawType);
+    TypeRef<?> rewrittenType = customTypeHandler.replacementTypeFor(codecEnclosingType, rawType);
     if (rewrittenType != null
         && !visitedCustomTypes.contains(typeRef)
         && !typeRef.equals(rewrittenType)) {
-      Expression newInputObject = customEncode(inputObject, rewrittenType);
       visitedCustomTypes.add(typeRef);
+      if (rawType == Optional.class) {
+        // Codec keyed on Optional owns absence (canonical ordering, see TypeInference.inferField).
+        // Its column is non-nullable, so a null reference must reach the codec as Optional.empty()
+        // rather than a column null bit. Other codecs keep the column-null mapping below.
+        Expression empty = new Expression.StaticInvoke(Optional.class, "empty", "", typeRef, false);
+        Expression normalized =
+            new If(new Expression.IsNull(inputObject), empty, inputObject, false, typeRef);
+        return serializeFor(
+            ordinal,
+            customEncode(normalized, rewrittenType),
+            writer,
+            rewrittenType,
+            fieldIfKnown,
+            arrowField,
+            visitedCustomTypes);
+      }
       Expression doSerialize =
           serializeFor(
               ordinal,
-              newInputObject,
+              customEncode(inputObject, rewrittenType),
               writer,
               rewrittenType,
               fieldIfKnown,
@@ -616,11 +645,13 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       TypeResolutionContext ctx,
       Set<TypeRef<?>> visitedCustomTypes) {
     Class<?> rawType = getRawType(typeRef);
-    TypeRef<?> rewrittenType = customTypeHandler.replacementTypeFor(beanType.getRawType(), rawType);
+    TypeRef<?> rewrittenType = customTypeHandler.replacementTypeFor(codecEnclosingType, rawType);
     if (rewrittenType != null
         && !visitedCustomTypes.contains(typeRef)
         && !typeRef.equals(rewrittenType)) {
       visitedCustomTypes.add(typeRef);
+      // Canonical ordering (see TypeInference.inferField): an Optional-keyed codec reconstructs the
+      // Optional in customDecode; the unwrap below is only reached when no codec owns the field.
       final Expression deserializedValue =
           deserializeFor(value, rewrittenType, ctx, visitedCustomTypes);
       return customDecode(typeRef, deserializedValue);
@@ -727,6 +758,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     if (typeRef.getRawType() == List.class) {
       return new LazyArrayData(
           arrayData,
+          codecEnclosingType,
           elemType,
           (i, value) -> deserializeFor(value, elemType, typeCtx, new HashSet<>()),
           ExpressionUtils.nullValue(elemType));
@@ -736,6 +768,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       ArrayDataForEach addElemsOp =
           new ArrayDataForEach(
               arrayData,
+              codecEnclosingType,
               elemType,
               (i, value) ->
                   new Invoke(
@@ -831,6 +864,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     if (numDimensions == 2) {
       return new ArrayDataForEach(
           arrayData,
+          codecEnclosingType,
           elemType,
           (i, value) -> {
             Expression[] newIndexes = Arrays.copyOf(indexes, indexes.length + 1);
@@ -842,6 +876,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     } else {
       return new ArrayDataForEach(
           arrayData,
+          codecEnclosingType,
           elemType,
           (i, value) -> {
             Expression[] newIndexes = Arrays.copyOf(indexes, indexes.length + 1);
@@ -905,6 +940,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
         ArrayDataForEach op =
             new ArrayDataForEach(
                 arrayData,
+                codecEnclosingType,
                 elemType,
                 (i, value) -> {
                   Expression elemValue = deserializeFor(value, elemType, typeCtx, new HashSet<>());
@@ -945,7 +981,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
                   false,
                   false,
                   false,
-                  Literal.ofClass(beanType.getRawType()),
+                  Literal.ofClass(codecEnclosingType),
                   Literal.ofClass(ft.getRawType()));
           ctx.addField(true, true, ctx.type(CustomCodec.class), name, init);
           return new Reference(name, TypeRef.of(CustomCodec.class));

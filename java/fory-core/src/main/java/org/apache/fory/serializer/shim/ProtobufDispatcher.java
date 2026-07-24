@@ -19,7 +19,6 @@
 
 package org.apache.fory.serializer.shim;
 
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.fory.Fory;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -35,7 +34,6 @@ public class ProtobufDispatcher {
   private static Class<? extends Serializer> pbByteStringSerializerClass;
   private static Class<?> pbMessageClass;
   private static Class<? extends Serializer> pbMessageSerializerClass;
-  private static final AtomicBoolean warningLogged = new AtomicBoolean(false);
 
   static {
     try {
@@ -63,8 +61,8 @@ public class ProtobufDispatcher {
       return null;
     }
     if (pbMessageSerializerClass == null) {
-      if (type.getName().startsWith("com.google.protobuf") && !warningLogged.getAndSet(true)) {
-        LOG.warn("ProtobufSerializer not loaded, please add fory-extensions dependency.");
+      if (type.getName().startsWith("com.google.protobuf")) {
+        LOG.warnOnce("ProtobufSerializer not loaded, please add fory-extensions dependency.");
       }
       return null;
     }

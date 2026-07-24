@@ -151,7 +151,7 @@ void _rememberLateHolder() {
 }
 
 Uint8List _lateHolderTypeDefBytes({required bool registerExtFirst}) {
-  final resolver = TypeResolver(const Config());
+  final resolver = TypeResolver(Config());
   _rememberLateHolder();
   if (registerExtFirst) {
     resolver.registerSerializer(
@@ -183,7 +183,7 @@ Uint8List _typeMetaBytes(
   String name,
   List<GeneratedFieldInfo> fields,
 ) {
-  final resolver = TypeResolver(const Config());
+  final resolver = TypeResolver(Config());
   _rememberSchema(type, fields);
   final parts = name.split('.');
   resolver.registerGenerated(
@@ -203,7 +203,7 @@ Uint8List _typeMetaBytes(
 }
 
 Uint8List _enumTypeMetaBytes(Type type, String name) {
-  final resolver = TypeResolver(const Config());
+  final resolver = TypeResolver(Config());
   _rememberEnum(type);
   final parts = name.split('.');
   resolver.registerGenerated(
@@ -372,7 +372,7 @@ void main() {
 
     test('remote schema limit rejects extra versions', () {
       const name = 'example.Unknown';
-      final reader = TypeResolver(const Config(maxSchemaVersionsPerType: 1));
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
       _rememberSchema(_SchemaLocal, <GeneratedFieldInfo>[]);
       reader.registerGenerated(
         _SchemaLocal,
@@ -393,7 +393,7 @@ void main() {
 
     test('named enum TypeDef uses metadata byte limit', () {
       const name = 'example.RemoteEnum';
-      final reader = TypeResolver(const Config(maxTypeMetaBytes: 1));
+      final reader = TypeResolver(Config(maxTypeMetaBytes: 1));
       _rememberEnum(_SchemaLocal);
       final bytes = _enumTypeMetaBytes(_SchemaRemoteA, name);
 
@@ -402,7 +402,7 @@ void main() {
 
     test('registered named enum TypeDef uses metadata byte limit', () {
       const name = 'example.RemoteEnum';
-      final reader = TypeResolver(const Config(maxTypeMetaBytes: 1));
+      final reader = TypeResolver(Config(maxTypeMetaBytes: 1));
       _rememberEnum(_SchemaLocal);
       reader.registerGenerated(
         _SchemaLocal,
@@ -416,7 +416,7 @@ void main() {
 
     test('exact local named enum TypeDef is accepted', () {
       const name = 'example.SharedEnum';
-      final reader = TypeResolver(const Config(maxSchemaVersionsPerType: 1));
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
       _rememberEnum(_SchemaLocal);
       reader.registerGenerated(
         _SchemaLocal,
@@ -429,7 +429,7 @@ void main() {
     });
 
     test('type meta field limit rejects large struct', () {
-      final reader = TypeResolver(const Config(maxTypeFields: 1));
+      final reader = TypeResolver(Config(maxTypeFields: 1));
       final bytes = _typeMetaBytes(
         _SchemaRemoteA,
         'example.TooManyFields',
@@ -443,7 +443,7 @@ void main() {
     });
 
     test('type meta body limit rejects large metadata', () {
-      final reader = TypeResolver(const Config(maxTypeMetaBytes: 1));
+      final reader = TypeResolver(Config(maxTypeMetaBytes: 1));
       final bytes = _typeMetaBytes(
         _SchemaRemoteA,
         'example.LargeTypeMeta',
@@ -454,7 +454,7 @@ void main() {
     });
 
     test('remote schema limit keeps unknown types separate', () {
-      final reader = TypeResolver(const Config(maxSchemaVersionsPerType: 1));
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
       _rememberSchema(_SchemaLocal, <GeneratedFieldInfo>[]);
       reader.registerGenerated(
         _SchemaLocal,
@@ -484,7 +484,7 @@ void main() {
 
     test('failed remote schema does not consume schema limit', () {
       const name = 'example.Accepted';
-      final reader = TypeResolver(const Config(maxSchemaVersionsPerType: 1));
+      final reader = TypeResolver(Config(maxSchemaVersionsPerType: 1));
       _rememberSchema(_SchemaLocal, <GeneratedFieldInfo>[
         _generatedField('value'),
       ]);

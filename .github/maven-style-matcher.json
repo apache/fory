@@ -1,0 +1,17 @@
+{
+  "problemMatcher": [
+    {
+      "owner": "maven-checkstyle",
+      "severity": "error",
+      "pattern": [
+        {
+          "regexp": "^\\[WARN\\]\\s+(\\S.*\\.java):(\\d+):(?:(\\d+):)?\\s+(.+)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        }
+      ]
+    }
+  ]
+}

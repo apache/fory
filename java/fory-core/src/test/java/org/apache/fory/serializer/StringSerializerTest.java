@@ -33,6 +33,7 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.collection.Tuple2;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.platform.JdkVersion;
@@ -58,6 +59,41 @@ public class StringSerializerTest extends ForyTestBase {
     buffer._unsafeWriterIndex(writerIndex);
     buffer.writeBytes(new byte[] {1, 2, 3});
     Assert.assertThrows(IllegalArgumentException.class, () -> serializer.readString(buffer));
+  }
+
+  @Test
+  public void testBytesStringWire() {
+    if (!stringValueIsBytes()) {
+      throw new SkipException("Skip when string value is not byte[]");
+    }
+    String[] values = {
+      "",
+      "a",
+      StringUtils.random(31),
+      StringUtils.random(40),
+      StringUtils.random(5000),
+      "你好",
+      "abc你好"
+    };
+    for (String value : values) {
+      int capacity = Math.max(64, value.length() * 8 + 64);
+      MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(capacity);
+      StringSerializer.writeBytesString(buffer, value);
+      Assert.assertEquals(
+          readJDK11String(MemoryBuffer.fromByteArray(buffer.getBytes(0, buffer.writerIndex()))),
+          value);
+    }
+  }
+
+  private static boolean stringValueIsBytes() {
+    try {
+      Field valueIsBytesField =
+          StringSerializer.class.getDeclaredField("STRING_VALUE_FIELD_IS_BYTES");
+      valueIsBytesField.setAccessible(true);
+      return (boolean) valueIsBytesField.get(null);
+    } catch (ReflectiveOperationException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @Test
@@ -418,6 +454,87 @@ public class StringSerializerTest extends ForyTestBase {
       buffer.writeBytes(bytes);
       assertEquals(readSerializer(fory, serializer, buffer), "abc你好");
       assertEquals(buffer.readerIndex(), buffer.writerIndex());
+    }
+  }
+
+  @Test
+  public void testRejectInvalidUtf8DecodedBytes() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withStringCompressed(true)
+            .withWriteNumUtf16BytesForUtf8Encoding(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    StringSerializer serializer = new StringSerializer(fory.getConfig());
+    byte utf8 = 2;
+    for (MemoryBuffer buffer :
+        new MemoryBuffer[] {
+          MemoryUtils.buffer(32), MemoryUtils.wrap(ByteBuffer.allocateDirect(32))
+        }) {
+      buffer.writerIndex(0);
+      buffer.readerIndex(0);
+      buffer.writeVarUInt64(((long) (1 << 20) << 2) | utf8);
+      buffer.writeInt32(1);
+      buffer.writeByte((byte) 'a');
+      buffer.readerIndex(0);
+      Assert.assertThrows(
+          DeserializationException.class, () -> serializer.readCompressedBytesString(buffer));
+    }
+  }
+
+  @Test
+  public void testRejectMismatchedUtf8DecodedBytes() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withStringCompressed(true)
+            .withWriteNumUtf16BytesForUtf8Encoding(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    StringSerializer serializer = new StringSerializer(fory.getConfig());
+    byte[] bytes = "éé".getBytes(StandardCharsets.UTF_8);
+    byte utf8 = 2;
+    for (MemoryBuffer buffer :
+        new MemoryBuffer[] {
+          MemoryUtils.buffer(32), MemoryUtils.wrap(ByteBuffer.allocateDirect(32))
+        }) {
+      buffer.writerIndex(0);
+      buffer.readerIndex(0);
+      buffer.writeVarUInt64((6L << 2) | utf8);
+      buffer.writeInt32(bytes.length);
+      buffer.writeBytes(bytes);
+      buffer.readerIndex(0);
+      Assert.assertThrows(
+          DeserializationException.class, () -> serializer.readCompressedBytesString(buffer));
+    }
+  }
+
+  @Test
+  public void testRejectMismatchedUtf8DecodedChars() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withStringCompressed(true)
+            .withWriteNumUtf16BytesForUtf8Encoding(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    StringSerializer serializer = new StringSerializer(fory.getConfig());
+    byte[] bytes = "éé".getBytes(StandardCharsets.UTF_8);
+    for (MemoryBuffer buffer :
+        new MemoryBuffer[] {
+          MemoryUtils.buffer(32), MemoryUtils.wrap(ByteBuffer.allocateDirect(32))
+        }) {
+      buffer.writerIndex(0);
+      buffer.readerIndex(0);
+      buffer.writeInt32(bytes.length);
+      buffer.writeBytes(bytes);
+      buffer.readerIndex(0);
+      Assert.assertThrows(
+          DeserializationException.class, () -> serializer.readCharsUTF8PerfOptimized(buffer, 6));
     }
   }
 

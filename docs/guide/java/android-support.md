@@ -42,6 +42,144 @@ Android serialization on the non-codegen path and logs a warning.
 Android apps that need generated serializers should use build-time static generated serializers
 instead.
 
+## Fory JSON
+
+Fory JSON supports ordinary classes on Android API level 26 and later through the regular
+`fory-json` artifact. Runtime JSON code generation and asynchronous compilation are disabled
+automatically, so `ForyJson.builder().build()` uses the interpreted object mapper.
+
+Add Fory JSON to the application:
+
+```kotlin
+dependencies {
+  implementation("org.apache.fory:fory-json:${foryVersion}")
+}
+```
+
+`@JsonCodec` has the same declaration behavior on Android and the JVM. It supports complete values,
+direct collection and array elements, `Optional` and `AtomicReference` contents, Map keys and
+values, ordinary getters, setter value parameters, and `JsonCreator` parameters:
+
+```java
+import java.util.List;
+import org.apache.fory.json.annotation.JsonCodec;
+
+public final class Invoice {
+  @JsonCodec(elementCodec = MoneyCodec.class)
+  public List<Money> items;
+  private Money primary;
+
+  public void setPrimary(@JsonCodec(MoneyCodec.class) Money primary) {
+    this.primary = primary;
+  }
+
+  public Invoice() {}
+}
+```
+
+Child codecs act on one direct level only. For example, `elementCodec` on `Money[][]` handles each
+`Money[]`, and `elementCodec` on `AtomicReferenceArray<Money>` handles each `Money`. Use a complete
+`value` codec when deeper custom behavior is required.
+
+Add the annotation processor and mark application object models with `JsonType` to generate direct
+field, getter, setter, Record constructor, and `JsonCreator` operations together with exact R8
+rules:
+
+```kotlin
+dependencies {
+  annotationProcessor("org.apache.fory:fory-annotation-processor:${foryVersion}")
+}
+```
+
+```java
+import org.apache.fory.json.annotation.JsonType;
+
+@JsonType
+public final class Invoice {
+  // ...
+}
+```
+
+The same processor supports Fory JSON Mixins. A Mixin declares one exact target and is registered
+on the runtime that should use it:
+
+```java
+import org.apache.fory.json.ForyJson;
+import org.apache.fory.json.annotation.JsonBase64;
+import org.apache.fory.json.annotation.JsonMixin;
+
+@JsonMixin(target = ThirdPartyInvoice.class)
+public abstract class ThirdPartyInvoiceMixin {
+  @JsonBase64 byte[] signature;
+}
+
+ForyJson json =
+    ForyJson.builder().registerMixin(ThirdPartyInvoiceMixin.class).build();
+```
+
+Compile every non-empty Mixin source with `fory-annotation-processor`. The processor emits exact
+R8 rules and any pair-specific target operations that the runtime can use. Registered codecs,
+effective type codecs, and built-in mappings keep their normal runtime precedence. An empty Mixin
+produces no generated output.
+
+The target does not need `JsonType` merely because it has a Mixin. `JsonMixin` is itself the
+processor entry point for the pair. If a target also uses `JsonType`, the runtime selects the
+pair-specific companion for a non-empty registered Mixin instead of combining the overlay with the
+target's direct companion.
+
+Only one source is enabled for an exact target in one built runtime. A later registration for that
+target replaces an earlier registration on the builder, and `build()` snapshots the selected
+mapping. The processor may generate artifacts for multiple source alternatives; the runtime uses
+only the last registered source.
+
+Use the processor-generated R8 rules for non-empty Mixins instead of broad package keep rules.
+
+Ordinary non-Record classes that omit `JsonType` can supply equivalent exact rules themselves.
+Retain every model
+constructor, field, method, generic signature, declaration annotation, and parameter annotation used
+by Fory JSON, plus the public no-argument constructor of every annotation-selected codec. For the
+previous `Invoice` example:
+
+```proguard
+-keepattributes Signature,RuntimeVisibleAnnotations,RuntimeVisibleParameterAnnotations
+-keepattributes AnnotationDefault,MethodParameters,InnerClasses,EnclosingMethod
+-keep,allowoptimization class com.example.Invoice {
+  public <init>();
+  public java.util.List items;
+  public void setPrimary(com.example.Money);
+}
+-keep,allowoptimization,allowobfuscation class com.example.MoneyCodec {
+  public <init>();
+}
+```
+
+The same exact-rule approach supports every `JsonCodec` member; it is not limited to complete-value
+codecs. `JsonType` is not required for codec selection on an ordinary class.
+
+For `@JsonType` models, the generated R8 rules also retain `JsonValue` fields and effective methods,
+fixed `JsonRawValue` and `JsonBase64` fields and getters, their runtime annotations, and the Base64
+codec constructor. Without `@JsonType`, these annotations still work through reflection, but a
+release-minified application must keep the exact annotated members, annotation attributes, and
+codec constructor itself. A `JsonValue` method may use a non-JavaBean name, so its manual rule must
+name that method explicitly.
+
+Android Fory JSON requires a retained no-argument constructor for an ordinary mutable class; it may
+be non-public when Android reflection can make it accessible. `JsonCreator` constructor-backed
+classes follow the normal creator rules instead. Retain every field and method used for reflection,
+or use an application codec when a model cannot satisfy those requirements. `JsonUnwrapped`
+supports mutable classes, creator-backed classes, and Records through their normal property and
+construction paths. When the containing model and its unwrapped children use `JsonType`, their
+generated companions supply those operations.
+
+Android-desugared Records require processor-generated operations from either a direct `@JsonType`
+declaration or a compiled exact `@JsonMixin` pair. Manual R8 rules alone cannot reconstruct Record
+component order because Android does not provide the Java Record reflection APIs. This also applies
+to a Record whose complete representation is a `JsonValue` String: the generated companion
+identifies the propagated component accessor and calls an annotated one-String canonical
+constructor directly. Generated child codecs act on one level exactly as they do on the JVM. Every
+Record in a `JsonUnwrapped` path needs its own direct `JsonType` declaration or compiled exact
+`JsonMixin` pair. Use a complete value codec for deeper nested behavior.
+
 ## Static Generated Serializers
 
 Use `@ForyStruct` static generated serializers for Android application classes. They are generated by

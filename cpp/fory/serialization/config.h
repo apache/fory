@@ -52,6 +52,12 @@ struct Config {
   /// When enabled, avoids duplicating shared objects and handles cycles.
   bool track_ref = true;
 
+  /// Approximate graph-memory gate for one root deserialization.
+  /// Mainly gates materialized collections, maps, arrays, structs, and objects.
+  /// Leaf values are gated by unread input bytes instead, and actual process
+  /// memory can be higher. Value must be a positive byte limit.
+  int64_t max_graph_memory_bytes = 128LL * 1024LL * 1024LL;
+
   /// Maximum accepted field count in one received struct TypeMeta.
   uint32_t max_type_fields = 512;
 

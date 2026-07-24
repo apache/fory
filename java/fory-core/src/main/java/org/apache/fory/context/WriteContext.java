@@ -56,9 +56,11 @@ public final class WriteContext {
   private final Generics generics;
   private final TypeResolver typeResolver;
   private final RefWriter refWriter;
+  private final TypeInfoHolder rootTypeInfoHolder;
   private final MetaStringWriter metaStringWriter;
   private final StringSerializer stringSerializer;
   private final boolean crossLanguage;
+  private final boolean trackingRef;
   private final boolean compressInt;
   private final Int64Encoding longEncoding;
   private final boolean forVirtualThread;
@@ -85,9 +87,11 @@ public final class WriteContext {
     this.generics = generics;
     this.typeResolver = typeResolver;
     this.refWriter = refWriter;
+    rootTypeInfoHolder = typeResolver.nilTypeInfoHolder();
     this.metaStringWriter = metaStringWriter;
     stringSerializer = (StringSerializer) typeResolver.getSerializer(String.class);
     crossLanguage = config.isXlang();
+    trackingRef = config.trackingRef();
     compressInt = config.compressInt();
     longEncoding = config.longEncoding();
     forVirtualThread = config.forVirtualThread();
@@ -525,6 +529,30 @@ public final class WriteContext {
       serializer.write(this, obj);
       depth--;
     }
+  }
+
+  /** Writes the root object for one serialization operation. */
+  public void writeRootRef(Object obj) {
+    if (trackingRef) {
+      writeRef(obj, rootTypeInfoHolder);
+      return;
+    }
+    MemoryBuffer buffer = this.buffer;
+    if (obj == null) {
+      buffer.writeByte(Fory.NULL_FLAG);
+      return;
+    }
+    buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
+    TypeResolver resolver = typeResolver;
+    TypeInfo typeInfo = resolver.getTypeInfo(obj.getClass(), rootTypeInfoHolder);
+    if (crossLanguage && typeInfo.getType() == UnknownStruct.class) {
+      depth++;
+      typeInfo.getSerializer().write(this, obj);
+      depth--;
+      return;
+    }
+    resolver.writeTypeInfo(this, typeInfo);
+    writeData(typeInfo, obj);
   }
 
   /**

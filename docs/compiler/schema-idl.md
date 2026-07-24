@@ -993,9 +993,12 @@ list_type    := 'list' '<' { 'optional' | 'ref' | scalar_encoding } field_type '
 array_type   := 'array' '<' array_element_type '>'
 ```
 
-`optional` before `list` applies to the collection field. `ref` is only valid
-for named message/union fields; for collection contents, use `list<ref T>` or
-`map<K, ref V>`. `repeated` is accepted as an alias for `list`.
+`optional` before `list` applies to the collection field. `optional` is not
+supported when it is applied directly to `any`; use `any`, `list<any>`, or
+`map<K, any>` instead of `optional any`, `list<optional any>`, or
+`map<K, optional any>`. `ref` is only valid for named message/union fields; for
+collection contents, use `list<ref T>` or `map<K, ref V>`. `repeated` is
+accepted as an alias for `list`.
 
 ### Field Modifiers
 
@@ -1009,6 +1012,10 @@ message User {
     optional string email = 2; // Nullable
 }
 ```
+
+Do not use `optional` or `[nullable = true]` directly on `any`. The compiler
+rejects `optional any`, `any [nullable = true]`, `list<optional any>`, and
+`map<K, optional any>`; use `any`, `list<any>`, or `map<K, any>` instead.
 
 **Generated Code:**
 
@@ -1311,38 +1318,38 @@ Underscore spellings for integer encoding are not FDL type names.
 
 ##### Date
 
-| Language              | Type                        | Notes                                                                       |
-| --------------------- | --------------------------- | --------------------------------------------------------------------------- |
-| Java                  | `java.time.LocalDate`       |                                                                             |
-| Python                | `datetime.date`             |                                                                             |
-| Go                    | `time.Time`                 | Time portion ignored                                                        |
-| Rust                  | `fory::Date`                | Set `rust_use_chrono_temporal_types = true` to generate `chrono::NaiveDate` |
-| C++                   | `fory::serialization::Date` |                                                                             |
-| JavaScript/TypeScript | `Date`                      |                                                                             |
-| Dart                  | `LocalDate`                 | Fory package type                                                           |
+| Language              | Type                  | Notes                                                                       |
+| --------------------- | --------------------- | --------------------------------------------------------------------------- |
+| Java                  | `java.time.LocalDate` |                                                                             |
+| Python                | `datetime.date`       |                                                                             |
+| Go                    | `time.Time`           | Time portion ignored                                                        |
+| Rust                  | `fory::Date`          | Set `rust_use_chrono_temporal_types = true` to generate `chrono::NaiveDate` |
+| C++                   | `fory::Date`          |                                                                             |
+| JavaScript/TypeScript | `Date`                |                                                                             |
+| Dart                  | `LocalDate`           | Fory package type                                                           |
 
 ##### Timestamp
 
-| Language              | Type                             | Notes                                                                           |
-| --------------------- | -------------------------------- | ------------------------------------------------------------------------------- |
-| Java                  | `java.time.Instant`              | UTC-based                                                                       |
-| Python                | `datetime.datetime`              |                                                                                 |
-| Go                    | `time.Time`                      |                                                                                 |
-| Rust                  | `fory::Timestamp`                | Set `rust_use_chrono_temporal_types = true` to generate `chrono::NaiveDateTime` |
-| C++                   | `fory::serialization::Timestamp` |                                                                                 |
-| JavaScript/TypeScript | `Date`                           |                                                                                 |
-| Dart                  | `Timestamp`                      | Fory package type                                                               |
+| Language              | Type                | Notes                                                                           |
+| --------------------- | ------------------- | ------------------------------------------------------------------------------- |
+| Java                  | `java.time.Instant` | UTC-based                                                                       |
+| Python                | `datetime.datetime` |                                                                                 |
+| Go                    | `time.Time`         |                                                                                 |
+| Rust                  | `fory::Timestamp`   | Set `rust_use_chrono_temporal_types = true` to generate `chrono::NaiveDateTime` |
+| C++                   | `fory::Timestamp`   |                                                                                 |
+| JavaScript/TypeScript | `Date`              |                                                                                 |
+| Dart                  | `Timestamp`         | Fory package type                                                               |
 
 ##### Duration
 
-| Language | Type                            | Notes                                                                      |
-| -------- | ------------------------------- | -------------------------------------------------------------------------- |
-| Java     | `java.time.Duration`            |                                                                            |
-| Python   | `datetime.timedelta`            |                                                                            |
-| Go       | `time.Duration`                 |                                                                            |
-| Rust     | `fory::Duration`                | Set `rust_use_chrono_temporal_types = true` to generate `chrono::Duration` |
-| C++      | `fory::serialization::Duration` |                                                                            |
-| Dart     | `Duration`                      |                                                                            |
+| Language | Type                 | Notes                                                                      |
+| -------- | -------------------- | -------------------------------------------------------------------------- |
+| Java     | `java.time.Duration` |                                                                            |
+| Python   | `datetime.timedelta` |                                                                            |
+| Go       | `time.Duration`      |                                                                            |
+| Rust     | `fory::Duration`     | Set `rust_use_chrono_temporal_types = true` to generate `chrono::Duration` |
+| C++      | `fory::Duration`     |                                                                            |
+| Dart     | `Duration`           |                                                                            |
 
 #### Any
 
@@ -1389,6 +1396,9 @@ message Envelope [id=122] {
 **Notes:**
 
 - `any` always writes a null flag (same as `nullable`) because values may be empty.
+- `optional` and `[nullable = true]` are not supported directly on `any`; use
+  `any`, `list<any>`, or `map<K, any>` instead of `optional any`,
+  `list<optional any>`, or `map<K, optional any>`.
 - Allowed dynamic values are limited to `bool`, `string`, `enum`, `message`, and `union`.
   Other primitives (numeric, bytes, date/time) and list/map are not supported; wrap them in a
   message or use explicit fields instead.
@@ -1497,9 +1507,9 @@ message Config {
 - Temporal scalar types (`date`, `timestamp`, `duration`)
 - Enums
 
-Map keys do not support binary `bytes`, floating-point types, `decimal`, `list<T>`, `array<T>`,
-or nested `map<K, V>` types. Put those types in map values or wrap them in a message with a
-portable scalar or enum key.
+Map keys do not support `any`, binary `bytes`, floating-point types, `decimal`, message types,
+union types, `list<T>`, `array<T>`, or nested `map<K, V>` types. Put those types in map values or
+wrap them in a message with a portable scalar or enum key.
 
 ### Type Compatibility Matrix
 

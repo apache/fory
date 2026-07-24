@@ -22,6 +22,7 @@
 #include "fory/serialization/skip.h"
 #include "fory/thirdparty/MurmurHash3.h"
 #include "gtest/gtest.h"
+#include <any>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -31,6 +32,8 @@
 #include <map>
 #include <string>
 #include <thread>
+#include <typeinfo>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -191,6 +194,24 @@ void test_roundtrip(const T &original, bool should_equal = true) {
   if (should_equal) {
     EXPECT_EQ(original, deserialized);
   }
+}
+
+template <typename T> void expect_any_roundtrip(Fory &fory, const T &value) {
+  std::any original = value;
+  auto serialize_result = fory.serialize(original);
+  ASSERT_TRUE(serialize_result.ok())
+      << "Serialization failed: " << serialize_result.error().to_string();
+
+  auto deserialize_result =
+      fory.deserialize<std::any>(serialize_result.value());
+  ASSERT_TRUE(deserialize_result.ok())
+      << "Deserialization failed: " << deserialize_result.error().to_string();
+
+  std::any decoded = std::move(deserialize_result).value();
+  EXPECT_EQ(decoded.type(), typeid(T));
+  const auto *decoded_value = std::any_cast<T>(&decoded);
+  ASSERT_NE(decoded_value, nullptr);
+  EXPECT_EQ(*decoded_value, value);
 }
 
 // ============================================================================
@@ -370,10 +391,11 @@ TEST(SerializationTest, DurationRoundtrip) {
   auto fory =
       Fory::builder().xlang(true).compatible(false).track_ref(false).build();
   std::vector<Duration> values = {
-      Duration(0),
-      std::chrono::seconds(12) + Duration(345678901),
-      -std::chrono::seconds(7) - std::chrono::milliseconds(45) - Duration(67),
-      Duration(-1),
+      Duration(std::chrono::nanoseconds(0)),
+      Duration(std::chrono::seconds(12) + std::chrono::nanoseconds(345678901)),
+      Duration(-std::chrono::seconds(7) - std::chrono::milliseconds(45) -
+               std::chrono::nanoseconds(67)),
+      Duration(std::chrono::nanoseconds(-1)),
   };
 
   for (const Duration &original : values) {
@@ -550,9 +572,9 @@ TEST(SerializationTest, DurationUsesSecondsAndNanosecondsPayload) {
   auto fory =
       Fory::builder().xlang(true).compatible(false).track_ref(false).build();
   std::vector<TestCase> cases = {
-      {Duration(1234567890), 1, 234567890},
-      {Duration(-1234567890), -1, -234567890},
-      {Duration(-1), 0, -1},
+      {Duration(std::chrono::nanoseconds(1234567890)), 1, 234567890},
+      {Duration(std::chrono::nanoseconds(-1234567890)), -1, -234567890},
+      {Duration(std::chrono::nanoseconds(-1)), 0, -1},
   };
 
   for (const TestCase &test_case : cases) {
@@ -579,7 +601,8 @@ TEST(SerializationTest, DurationSkipConsumesSecondsAndNanosecondsPayload) {
   auto fory =
       Fory::builder().xlang(true).compatible(false).track_ref(false).build();
   WriteContext write_ctx(fory.config(), fory.type_resolver().clone());
-  Serializer<Duration>::write_data(Duration(-1), write_ctx);
+  Serializer<Duration>::write_data(Duration(std::chrono::nanoseconds(-1)),
+                                   write_ctx);
   ASSERT_FALSE(write_ctx.has_error()) << write_ctx.error().to_string();
 
   ReadContext read_ctx(fory.config(), fory.type_resolver().clone());
@@ -803,6 +826,13 @@ TEST(SerializationTest, MapStringIntRoundtrip) {
   test_roundtrip(std::map<std::string, int32_t>{{"one", 1}});
   test_roundtrip(
       std::map<std::string, int32_t>{{"one", 1}, {"two", 2}, {"three", 3}});
+}
+
+TEST(SerializationTest, UnorderedMapStringIntRoundtrip) {
+  test_roundtrip(std::unordered_map<std::string, int32_t>{});
+  test_roundtrip(std::unordered_map<std::string, int32_t>{{"one", 1}});
+  test_roundtrip(std::unordered_map<std::string, int32_t>{
+      {"one", 1}, {"two", 2}, {"three", 3}});
 }
 
 TEST(SerializationTest, NestedVectorRoundtrip) {
@@ -1487,6 +1517,113 @@ TEST(SerializationTest, ThreadSafeForyRejectsRegistrationAfterFirstSerialize) {
   EXPECT_EQ(late_registration.error().code(), ErrorCode::Invalid);
   EXPECT_NE(late_registration.error().to_string().find("Cannot register types"),
             std::string::npos);
+}
+
+TEST(SerializationTest, TemporalCarriersAreHashable) {
+  std::unordered_map<Date, std::string> date_map;
+  date_map[Date(0)] = "epoch";
+  date_map[Date(18954)] = "future";
+  date_map[Date(-1)] = "past";
+  EXPECT_EQ(date_map.size(), 3u);
+  EXPECT_EQ(date_map[Date(0)], "epoch");
+
+  std::unordered_map<Duration, std::string> dur_map;
+  dur_map[Duration(std::chrono::nanoseconds(0))] = "zero";
+  dur_map[Duration(std::chrono::seconds(1))] = "one_sec";
+  dur_map[Duration(std::chrono::nanoseconds(-1))] = "neg";
+  EXPECT_EQ(dur_map.size(), 3u);
+  EXPECT_EQ(dur_map[Duration(std::chrono::nanoseconds(0))], "zero");
+
+  std::unordered_map<Timestamp, std::string> ts_map;
+  ts_map[Timestamp()] = "epoch";
+  ts_map[Timestamp(std::chrono::nanoseconds(1000000000LL))] = "one_sec";
+  EXPECT_EQ(ts_map.size(), 2u);
+  EXPECT_EQ(ts_map[Timestamp()], "epoch");
+}
+
+TEST(SerializationTest, DurationChronoConversion) {
+  auto ns = std::chrono::seconds(5) + std::chrono::nanoseconds(123);
+  Duration d(ns);
+  EXPECT_EQ(d.to_chrono(), ns);
+  EXPECT_EQ(d.count(), ns.count());
+
+  Duration zero;
+  EXPECT_EQ(zero.count(), 0);
+  EXPECT_EQ(zero.to_chrono(), std::chrono::nanoseconds(0));
+}
+
+TEST(SerializationTest, TimestampChronoConversion) {
+  auto ns = std::chrono::nanoseconds(1700000000000000000LL);
+  Timestamp ts(ns);
+  EXPECT_EQ(ts.time_since_epoch(), ns);
+  EXPECT_EQ(ts.to_chrono().time_since_epoch(), ns);
+
+  Timestamp epoch;
+  EXPECT_EQ(epoch.time_since_epoch().count(), 0);
+}
+
+TEST(SerializationTest, TemporalAnyUsesCanonicalCarriers) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+  ASSERT_TRUE(register_any_type<Duration>(fory.type_resolver()).ok());
+  ASSERT_TRUE(register_any_type<Timestamp>(fory.type_resolver()).ok());
+
+  expect_any_roundtrip(
+      fory, Duration(std::chrono::seconds(12) + std::chrono::nanoseconds(34)));
+  expect_any_roundtrip(fory,
+                       Timestamp(std::chrono::nanoseconds(1234567890123LL)));
+}
+
+TEST(SerializationTest, ChronoTemporalAnyRegistrationIsRejected) {
+  using ChronoTimestamp = std::chrono::time_point<std::chrono::system_clock,
+                                                  std::chrono::nanoseconds>;
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+
+  auto chrono_duration_registration =
+      register_any_type<std::chrono::nanoseconds>(fory.type_resolver());
+  ASSERT_FALSE(chrono_duration_registration.ok());
+  EXPECT_NE(chrono_duration_registration.error().to_string().find(
+                "explicit static targets"),
+            std::string::npos);
+
+  ASSERT_TRUE(register_any_type<Duration>(fory.type_resolver()).ok());
+  ASSERT_TRUE(register_any_type<Timestamp>(fory.type_resolver()).ok());
+
+  auto chrono_timestamp_registration =
+      register_any_type<ChronoTimestamp>(fory.type_resolver());
+  ASSERT_FALSE(chrono_timestamp_registration.ok());
+  EXPECT_NE(chrono_timestamp_registration.error().to_string().find(
+                "explicit static targets"),
+            std::string::npos);
+
+  expect_any_roundtrip(fory, Duration(std::chrono::nanoseconds(-1)));
+  expect_any_roundtrip(fory, Timestamp(std::chrono::nanoseconds(1000000000LL)));
+}
+
+TEST(SerializationTest, ForyOwnedAndChronoShareWireEncoding) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(false).build();
+
+  auto ns = std::chrono::seconds(7) + std::chrono::nanoseconds(654321);
+  Duration fory_dur(ns);
+  std::chrono::nanoseconds chrono_dur = ns;
+
+  auto fory_bytes = fory.serialize(fory_dur);
+  auto chrono_bytes = fory.serialize(chrono_dur);
+  ASSERT_TRUE(fory_bytes.ok());
+  ASSERT_TRUE(chrono_bytes.ok());
+  EXPECT_EQ(fory_bytes.value(), chrono_bytes.value());
+
+  auto decoded_from_fory = fory.deserialize<std::chrono::nanoseconds>(
+      fory_bytes.value().data(), fory_bytes.value().size());
+  ASSERT_TRUE(decoded_from_fory.ok());
+  EXPECT_EQ(decoded_from_fory.value(), ns);
+
+  auto decoded_from_chrono = fory.deserialize<Duration>(
+      chrono_bytes.value().data(), chrono_bytes.value().size());
+  ASSERT_TRUE(decoded_from_chrono.ok());
+  EXPECT_EQ(decoded_from_chrono.value(), fory_dur);
 }
 
 } // namespace test

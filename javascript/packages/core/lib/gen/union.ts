@@ -47,7 +47,9 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
         const ti = caseTypeInfo as TypeInfo;
         const isNamed = TypeId.isNamedType(ti._typeId);
         const named = isNamed ? `"${ti.named}"` : "null";
-        caseEntries.push(`${caseIdx}: { typeId: ${ti.typeId}, userTypeId: ${ti.userTypeId ?? -1}, named: ${named} }`);
+        caseEntries.push(
+          `${caseIdx}: { typeId: ${ti.typeId}, userTypeId: ${ti.userTypeId ?? -1}, named: ${named} }`,
+        );
         this.caseGenerators.set(
           caseIdx,
           CodegenRegistry.newGeneratorByTypeInfo(ti, this.builder, this.scope),
@@ -115,11 +117,13 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
     if (this.caseGenerators.size === 0) {
       return this.writeDynamicCaseValue(unionValue, caseInfo);
     }
-    const caseStatements = Array.from(this.caseGenerators.entries()).map(([caseIdx, caseGenerator]) => `
+    const caseStatements = Array.from(this.caseGenerators.entries()).map(
+      ([caseIdx, caseGenerator]) => `
       case ${caseIdx}:
         ${this.writeCaseValue(caseGenerator, unionValue)}
         break;
-    `);
+    `,
+    );
     return `
       if (${caseInfo}) {
         switch (${caseIndex}) {
@@ -159,15 +163,22 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
     `;
   }
 
-  private readDeclaredCases(caseIndex: string, unionValue: string, refFlag: string, caseInfo: string) {
+  private readDeclaredCases(
+    caseIndex: string,
+    unionValue: string,
+    refFlag: string,
+    caseInfo: string,
+  ) {
     if (this.caseGenerators.size === 0) {
       return this.readDynamicCaseValue(unionValue, refFlag);
     }
-    const caseStatements = Array.from(this.caseGenerators.entries()).map(([caseIdx, caseGenerator]) => `
+    const caseStatements = Array.from(this.caseGenerators.entries()).map(
+      ([caseIdx, caseGenerator]) => `
       case ${caseIdx}:
         ${caseGenerator.readEmbed().readNoRef((v: string) => `${unionValue} = ${v}`, `${refFlag} === ${RefFlags.RefValueFlag}`)}
         break;
-    `);
+    `,
+    );
     return `
       const ${caseInfo} = ${this.caseTypesVar} ? ${this.caseTypesVar}[${caseIndex}] : null;
       if (${caseInfo}) {
@@ -215,12 +226,28 @@ class UnionSerializerGenerator extends BaseSerializerGenerator {
         break;
       case TypeId.NAMED_UNION:
         if (this.builder.resolver.isCompatible()) {
-          const bytes = this.scope.declare("unionTypeInfoBytes", `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`);
+          const bytes = this.scope.declare(
+            "unionTypeInfoBytes",
+            `new Uint8Array([${TypeMeta.fromTypeInfo(this.typeInfo).toBytes().join(",")}])`,
+          );
           const serializerExpr = `${this.builder.getTypeResolverName()}.getSerializerByName("${CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!)}")`;
-          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(`${serializerExpr}.getTypeInfo()`, bytes);
+          typeMeta = this.builder.typeMetaResolver.writeTypeMeta(
+            `${serializerExpr}.getTypeInfo()`,
+            bytes,
+          );
         } else {
-          const nsBytes = this.scope.declare("unionNsBytes", this.builder.metaStringResolver.encodeNamespace(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.namespace)));
-          const typeNameBytes = this.scope.declare("unionTypeNameBytes", this.builder.metaStringResolver.encodeTypeName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.typeName)));
+          const nsBytes = this.scope.declare(
+            "unionNsBytes",
+            this.builder.metaStringResolver.encodeNamespace(
+              CodecBuilder.replaceBackslashAndQuote(this.typeInfo.namespace),
+            ),
+          );
+          const typeNameBytes = this.scope.declare(
+            "unionTypeNameBytes",
+            this.builder.metaStringResolver.encodeTypeName(
+              CodecBuilder.replaceBackslashAndQuote(this.typeInfo.typeName),
+            ),
+          );
           typeMeta = `
             ${this.builder.metaStringResolver.writeBytes(nsBytes)}
             ${this.builder.metaStringResolver.writeBytes(typeNameBytes)}
