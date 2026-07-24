@@ -58,6 +58,9 @@ final class Utf8CollectionWriterCodegen {
   }
 
   private static String writeBody(boolean stringElements) {
+    // Object-level compilation boundaries belong to the final element codec. The collection keeps
+    // its one ordinary element call so member-group receiver profiles cannot be skewed by element
+    // cardinality.
     String elementWrite =
         stringElements
             ? "String element = (String) list.get(index);\n"

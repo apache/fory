@@ -25,6 +25,7 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -232,7 +233,13 @@ public final class JsonCodegen {
               .genWriterCode(builder, type, properties, groupEnds);
         };
     return compileWriterClass(
-        generatedPackage, className, properties, "writeString", "writeStringMembers", source);
+        generatedPackage,
+        className,
+        properties,
+        "writeString",
+        "writeStringMembers",
+        false,
+        source);
   }
 
   private Class<?> buildUtf8Writer(ObjectCodec<?> codec, JsonTypeResolver resolver) {
@@ -265,7 +272,7 @@ public final class JsonCodegen {
               .genWriterCode(builder, type, properties, groupEnds);
         };
     return compileWriterClass(
-        generatedPackage, className, properties, "writeUtf8", "writeUtf8Members", source);
+        generatedPackage, className, properties, "writeUtf8", "writeUtf8Members", true, source);
   }
 
   private Class<?> buildLatin1Reader(ObjectCodec<?> codec, JsonTypeResolver resolver) {
@@ -389,9 +396,33 @@ public final class JsonCodegen {
       JsonFieldInfo[] properties,
       String writeMethod,
       String memberMethod,
+      boolean trampolineGroups,
       Function<int[], String> source) {
     if (properties.length < 2) {
       return compileCodecClass(generatedPackage, className, source.apply(null));
+    }
+    if (trampolineGroups) {
+      JaninoUtils.CodeStats directStats =
+          codeStats(generatedPackage, className, source.apply(null));
+      if (methodSize(directStats, writeMethod) <= HOT_INLINE_LIMIT) {
+        return compileCodecClass(generatedPackage, className, source.apply(null));
+      }
+      int firstGroupMember = JsonWriterCodegen.firstGroupMember(properties);
+      if (properties.length - firstGroupMember < 2) {
+        return compileCodecClass(generatedPackage, className, source.apply(null));
+      }
+      int[] groupEnds =
+          writerTrampolineGroupEnds(
+              generatedPackage,
+              className,
+              properties.length,
+              firstGroupMember,
+              writeMethod,
+              source);
+      if (groupEnds.length < 2) {
+        return compileCodecClass(generatedPackage, className, source.apply(null));
+      }
+      return compileCodecClass(generatedPackage, className, source.apply(groupEnds));
     }
     // Group only the bytecode emitted in this generated class. A callee with its own stable
     // boundary contributes its invocation, not the body that C2 must keep in the callee.
@@ -411,6 +442,36 @@ public final class JsonCodegen {
             memberMethod,
             source);
     return compileCodecClass(generatedPackage, className, source.apply(groupEnds));
+  }
+
+  private int[] writerTrampolineGroupEnds(
+      String generatedPackage,
+      String className,
+      int propertyCount,
+      int firstGroupMember,
+      String writeMethod,
+      Function<int[], String> source) {
+    List<Integer> ends = new ArrayList<>(propertyCount - firstGroupMember);
+    for (int end = firstGroupMember + 1; end <= propertyCount; end++) {
+      ends.add(end);
+    }
+    boolean merged;
+    do {
+      merged = false;
+      for (int group = 0; group < ends.size() - 1; group++) {
+        List<Integer> candidate = new ArrayList<>(ends);
+        candidate.remove(group);
+        Map<String, JaninoUtils.CodeStats> stats =
+            codeStatsByClass(generatedPackage, className, source.apply(toIntArray(candidate)));
+        if (nestedMethodSize(stats, JsonWriterCodegen.memberGroupClassName(group), writeMethod)
+            <= HOT_INLINE_LIMIT) {
+          ends = candidate;
+          merged = true;
+          break;
+        }
+      }
+    } while (merged);
+    return toIntArray(ends);
   }
 
   private int[] writerGroupEnds(
@@ -492,17 +553,49 @@ public final class JsonCodegen {
   }
 
   private JaninoUtils.CodeStats codeStats(String generatedPackage, String className, String code) {
-    CompileUnit unit = new CompileUnit(generatedPackage, className, code);
-    Map<String, byte[]> classes = JaninoUtils.toBytecode(jsonLoader, "", unit);
+    Map<String, JaninoUtils.CodeStats> stats = codeStatsByClass(generatedPackage, className, code);
+    return statsForMainClass(generatedPackage, className, stats);
+  }
+
+  private JaninoUtils.CodeStats statsForMainClass(
+      String generatedPackage, String className, Map<String, JaninoUtils.CodeStats> stats) {
     String classFile =
         (generatedPackage.isEmpty() ? "" : generatedPackage.replace('.', '/') + "/")
             + className
             + ".class";
-    byte[] bytecode = classes.get(classFile);
-    if (bytecode == null) {
+    JaninoUtils.CodeStats classStats = stats.get(classFile);
+    if (classStats == null) {
       throw new ForyJsonException("Missing generated JSON bytecode " + classFile);
     }
-    return JaninoUtils.getClassStats(bytecode);
+    return classStats;
+  }
+
+  private Map<String, JaninoUtils.CodeStats> codeStatsByClass(
+      String generatedPackage, String className, String code) {
+    CompileUnit unit = new CompileUnit(generatedPackage, className, code);
+    Map<String, byte[]> classes = JaninoUtils.toBytecode(jsonLoader, "", unit);
+    Map<String, JaninoUtils.CodeStats> stats = new LinkedHashMap<>();
+    for (Map.Entry<String, byte[]> entry : classes.entrySet()) {
+      stats.put(entry.getKey(), JaninoUtils.getClassStats(entry.getValue()));
+    }
+    return stats;
+  }
+
+  private int nestedMethodSize(
+      Map<String, JaninoUtils.CodeStats> stats, String nestedClass, String method) {
+    JaninoUtils.CodeStats match = null;
+    for (Map.Entry<String, JaninoUtils.CodeStats> entry : stats.entrySet()) {
+      if (entry.getKey().endsWith(nestedClass + ".class")) {
+        if (match != null) {
+          throw new ForyJsonException("Ambiguous generated JSON class " + nestedClass);
+        }
+        match = entry.getValue();
+      }
+    }
+    if (match == null) {
+      throw new ForyJsonException("Missing generated JSON class " + nestedClass);
+    }
+    return methodSize(match, method);
   }
 
   private int methodSize(JaninoUtils.CodeStats stats, String method) {

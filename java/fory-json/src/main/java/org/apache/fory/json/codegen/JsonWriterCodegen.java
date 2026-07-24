@@ -31,11 +31,13 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import org.apache.fory.codegen.Code;
+import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.codegen.ExpressionOptimizer;
 import org.apache.fory.json.ForyJsonException;
+import org.apache.fory.json.codec.JsonTrampolineInvoke;
 import org.apache.fory.json.codec.JsonUnwrappedInfo;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.Group;
 import org.apache.fory.json.codec.JsonUnwrappedInfo.WriteEntry;
@@ -91,6 +93,10 @@ abstract class JsonWriterCodegen {
   abstract String writeAnyMethod();
 
   abstract int splitMemberThreshold();
+
+  Class<?> memberGroupType() {
+    return null;
+  }
 
   abstract PrefixFields prefixFields(JsonFieldInfo[] properties, boolean objectStartFused);
 
@@ -211,35 +217,35 @@ abstract class JsonWriterCodegen {
         addPrefixFields(ctx, property, i, prefixFields);
       }
     }
-    addGeneratedConstructor(
-        ctx,
-        writerConstructorExpression(properties, prefixFields),
-        JsonFieldInfo[].class,
-        "properties",
-        JsonCodegen.generatedCodecArrayType(ctx, codecArrayType()),
-        "codecs");
     String bodyCode;
-    // A non-null group list means the cold bytecode planner proved that the complete schema body
-    // naturally exceeds the ordinary hot-inline limit. Keep null ownership in the capability
-    // entry while the independently compiled object method owns the complete field graph.
+    // A non-null group list means the exact generated field work needs multiple compilation
+    // units. UTF-8 bodies and groups share one real invocation BCI; other representations retain
+    // their natural generated-method boundaries.
     if (groupEnds != null) {
-      String objectMethod = writeMethod() + "Object";
-      addGeneratedMethod(
-          ctx,
-          "private final",
-          objectMethod,
+      Expression body =
           writeExpression(
               builder,
               properties,
               objectStartFused,
               new Reference("object", TypeRef.of(type)),
-              groupEnds),
-          void.class,
-          writerType(),
-          "writer",
-          type,
-          "object");
-      bodyCode = "this." + objectMethod + "(writer, (" + ctx.type(type) + ") value);\n";
+              groupEnds);
+      Class<?> groupType = memberGroupType();
+      if (groupType == null) {
+        String objectMethod = writeMethod() + "Object";
+        addGeneratedMethod(
+            ctx,
+            "private final",
+            objectMethod,
+            body,
+            void.class,
+            writerType(),
+            "writer",
+            type,
+            "object");
+        bodyCode = "this." + objectMethod + "(writer, (" + ctx.type(type) + ") value);\n";
+      } else {
+        bodyCode = addTrampolineBody(ctx, body, groupType);
+      }
     } else {
       ctx.clearExprState();
       Expression castObject =
@@ -253,6 +259,13 @@ abstract class JsonWriterCodegen {
       bodyCode = body.code();
       bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
     }
+    addGeneratedConstructor(
+        ctx,
+        writerConstructorExpression(properties, prefixFields),
+        JsonFieldInfo[].class,
+        "properties",
+        JsonCodegen.generatedCodecArrayType(ctx, codecArrayType()),
+        "codecs");
     ctx.addMethod(
         "@Override public final",
         writeMethod(),
@@ -914,8 +927,9 @@ abstract class JsonWriterCodegen {
       if (memberGroup != null && commaKnown) {
         memberGroup.add(member);
         if (i + 1 == groupEnds[memberGroupIndex]) {
-          boolean rootGroup = memberGroupIndex == groupEnds.length - 1;
-          addWriterGroup(builder, expressions, memberGroup, object, writer, rootGroup);
+          boolean rootGroup = memberGroupType() == null && memberGroupIndex == groupEnds.length - 1;
+          addWriterGroup(
+              builder, expressions, memberGroup, object, writer, memberGroupIndex, rootGroup);
           memberGroupIndex++;
         }
       } else {
@@ -927,7 +941,8 @@ abstract class JsonWriterCodegen {
     }
     if (memberGroup != null) {
       boolean directRoot =
-          memberGroupIndex == 0
+          memberGroupType() == null
+              && memberGroupIndex == 0
               && memberGroup.isEmpty()
               && groupEnds.length == 1
               && groupEnds[0] == properties.length;
@@ -937,6 +952,45 @@ abstract class JsonWriterCodegen {
     }
     expressions.add(new Expression.Invoke(writer, "writeObjectEnd"));
     return expressions;
+  }
+
+  private String addTrampolineBody(CodegenContext ctx, Expression body, Class<?> bodyType) {
+    ctx.clearExprState();
+    Code.ExprCode bodyExpr = body.genCode(ctx);
+    String bodyCode = bodyExpr.code();
+    bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
+    if (!bodyCode.isEmpty()) {
+      bodyCode = "    " + CodeGenerator.alignIndent(bodyCode, 4) + "\n";
+    }
+
+    String fieldName = "writeBody";
+    String bodyClass = "WriteBody";
+    ctx.addImports(JsonTrampolineInvoke.class, bodyType);
+    String bodyTypeName = ctx.type(bodyType);
+    ctx.addField(true, bodyTypeName, fieldName, null);
+    ctx.addInitCode(
+        "class "
+            + bodyClass
+            + " implements "
+            + bodyTypeName
+            + " {\n"
+            + "  @Override public void writeUtf8("
+            + ctx.type(writerType())
+            + " writer, Object value) {\n"
+            + "    "
+            + ctx.type(ownerType)
+            + " object = ("
+            + ctx.type(ownerType)
+            + ") value;\n"
+            + bodyCode
+            + "  }\n"
+            + "}\n"
+            + "this."
+            + fieldName
+            + " = new "
+            + bodyClass
+            + "();");
+    return ctx.type(JsonTrampolineInvoke.class) + ".writeUtf8(" + fieldName + ", writer, value);\n";
   }
 
   private Expression writeAnyExpression(
@@ -1077,7 +1131,9 @@ abstract class JsonWriterCodegen {
       List<Expression> memberGroup,
       Expression object,
       Reference writer,
+      int groupIndex,
       boolean rootGroup) {
+    Class<?> groupType = memberGroupType();
     if (rootGroup) {
       for (Expression member : memberGroup) {
         expressions.add(member);
@@ -1085,7 +1141,10 @@ abstract class JsonWriterCodegen {
       memberGroup.clear();
       return;
     }
-    expressions.add(memberGroupInvoke(builder, memberGroup, object, writer));
+    expressions.add(
+        groupType != null
+            ? trampolineGroupInvoke(builder, memberGroup, object, writer, groupIndex, groupType)
+            : memberGroupInvoke(builder, memberGroup, object, writer));
     memberGroup.clear();
   }
 
@@ -1103,6 +1162,59 @@ abstract class JsonWriterCodegen {
         new Expression.ListExpression(new ArrayList<>(memberGroup)),
         memberGroupMethod(),
         false);
+  }
+
+  private Expression trampolineGroupInvoke(
+      JsonGeneratedCodecBuilder builder,
+      List<Expression> memberGroup,
+      Expression object,
+      Reference writer,
+      int groupIndex,
+      Class<?> groupType) {
+    CodegenContext ctx = builder.context();
+    ctx.clearExprState();
+    Code.ExprCode body = new Expression.ListExpression(new ArrayList<>(memberGroup)).genCode(ctx);
+    String bodyCode = body.code();
+    bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
+    if (!bodyCode.isEmpty()) {
+      bodyCode = "    " + CodeGenerator.alignIndent(bodyCode, 4) + "\n";
+    }
+
+    String fieldName = "writeGroup" + groupIndex;
+    String groupClass = memberGroupClassName(groupIndex);
+    ctx.addImports(JsonTrampolineInvoke.class, groupType);
+    String groupTypeName = ctx.type(groupType);
+    ctx.addField(true, groupTypeName, fieldName, null);
+    // The receiver directly owns the field body. A forwarding method creates two valid C2
+    // products depending on whether the body finishes L4 compilation before the receiver.
+    ctx.addInitCode(
+        "class "
+            + groupClass
+            + " implements "
+            + groupTypeName
+            + " {\n"
+            + "  @Override public void writeUtf8("
+            + ctx.type(writerType())
+            + " writer, Object value) {\n"
+            + "    "
+            + ctx.type(ownerType)
+            + " object = ("
+            + ctx.type(ownerType)
+            + ") value;\n"
+            + bodyCode
+            + "  }\n"
+            + "}\n"
+            + "this."
+            + fieldName
+            + " = new "
+            + groupClass
+            + "();");
+    return new Expression.StaticInvoke(
+        JsonTrampolineInvoke.class, "writeUtf8", fieldRef(fieldName, groupType), writer, object);
+  }
+
+  static String memberGroupClassName(int groupIndex) {
+    return "WriteGroup" + groupIndex;
   }
 
   private void addMemberGroup(
