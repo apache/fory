@@ -28,7 +28,6 @@ import java.lang.reflect.WildcardType;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
-import org.apache.fory.json.codec.JsonTrampolineInvoke;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -175,7 +174,7 @@ public final class ForyJson {
           writer.writeNull();
         } else {
           JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-          JsonTrampolineInvoke.writeUtf8(typeInfo.utf8Writer(), writer, value);
+          typeInfo.utf8Writer().writeUtf8(writer, value);
         }
       } finally {
         state.typeResolver.unlockJIT();
@@ -224,7 +223,7 @@ public final class ForyJson {
           writer.writeNull();
         } else {
           JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
-          JsonTrampolineInvoke.writeUtf8(typeInfo.utf8Writer(), writer, value);
+          typeInfo.utf8Writer().writeUtf8(writer, value);
         }
       } finally {
         state.typeResolver.unlockJIT();
@@ -289,8 +288,7 @@ public final class ForyJson {
     try {
       state.typeResolver.lockJIT();
       try {
-        JsonTrampolineInvoke.writeUtf8(
-            state.rootTypeInfo(type, fallback).utf8Writer(), writer, value);
+        state.rootTypeInfo(type, fallback).utf8Writer().writeUtf8(writer, value);
       } finally {
         state.typeResolver.unlockJIT();
       }
@@ -312,8 +310,7 @@ public final class ForyJson {
     try {
       state.typeResolver.lockJIT();
       try {
-        JsonTrampolineInvoke.writeUtf8(
-            state.rootTypeInfo(type, fallback).utf8Writer(), writer, value);
+        state.rootTypeInfo(type, fallback).utf8Writer().writeUtf8(writer, value);
       } finally {
         state.typeResolver.unlockJIT();
       }

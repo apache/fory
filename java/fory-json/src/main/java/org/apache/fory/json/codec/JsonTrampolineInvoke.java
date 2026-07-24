@@ -28,12 +28,12 @@ public final class JsonTrampolineInvoke {
   private JsonTrampolineInvoke() {}
 
   /**
-   * Invokes root codecs, generated UTF-8 object bodies, and field groups through one interface-call
-   * BCI.
+   * Invokes generated UTF-8 object bodies and field groups through one interface-call BCI.
    *
-   * <p>Keep this method as the direct invocation only. The receivers are real codec owners from the
-   * current graph; this callsite must not contain type resolution, state checks, or synthetic
-   * receivers.
+   * <p>Keep this method generated-only and as the direct invocation. Root startup codecs would
+   * dominate the type profile before the generated receivers are published. The receivers here are
+   * real codec owners from the current graph; this callsite must not contain type resolution, state
+   * checks, or synthetic receivers.
    */
   public static void writeUtf8(Utf8WriterCodec<Object> codec, Utf8JsonWriter writer, Object value) {
     codec.writeUtf8(writer, value);
