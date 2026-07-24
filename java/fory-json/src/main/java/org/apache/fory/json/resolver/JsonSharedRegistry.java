@@ -30,6 +30,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.net.InetAddress;
@@ -80,6 +81,8 @@ import java.util.OptionalLong;
 import java.util.Set;
 import java.util.TimeZone;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -91,6 +94,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.regex.Pattern;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.GeneratedClassNames;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.json.ForyJsonException;
@@ -112,6 +116,7 @@ import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.MapCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
+import org.apache.fory.json.codec.ObjectCodec;
 import org.apache.fory.json.codec.ScalarCodecs;
 import org.apache.fory.json.codec.SqlJsonCodecs;
 import org.apache.fory.json.codegen.JsonCodegen;
@@ -143,9 +148,9 @@ import org.apache.fory.util.record.RecordUtils;
  * state. Common short field names admitted by reader-local caches are published here for
  * best-effort String reference reuse across readers. Reader-local admission is the only field-name
  * capacity gate; the shared field-name map has no explicit limit. Source-generated model companions
- * and JIT-generated classes are shared here; concrete JIT codec instances, ordinary type bindings,
- * JIT locks, and callbacks remain resolver-local. A fresh generic {@link JsonJITContext} is
- * therefore created for every pooled JSON state.
+ * and JIT-generated class futures are shared here; concrete JIT codec instances, ordinary type
+ * bindings, graph construction, JIT locks, and publication remain resolver-local. A fresh {@link
+ * JsonJITContext} is therefore created for every pooled JSON state.
  */
 public final class JsonSharedRegistry {
   private static final int TYPE_CHECK_CACHE_LIMIT = 8192;
@@ -185,6 +190,13 @@ public final class JsonSharedRegistry {
   private final ConcurrentHashMap<Class<? extends MapKeyCodec>, MapKeyCodec> mapKeyCodecs;
   private final ConcurrentHashMap<Class<?>, GeneratedJsonCodec<?>> generatedCodecs;
   private final Set<Class<?>> typesWithoutGeneratedCodec;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> stringWriterClasses;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> utf8WriterClasses;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> latin1ReaderClasses;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> utf16ReaderClasses;
+  private final ConcurrentHashMap<Class<?>, CompletableFuture<Class<?>>> utf8ReaderClasses;
+  private final ConcurrentHashMap<Type, CompletableFuture<Class<?>>> utf8CollectionWriterClasses;
+  private final ConcurrentHashMap<Type, CompletableFuture<Class<?>>> utf8CollectionReaderClasses;
   private final ConcurrentHashMap<Long, CachedFieldName> cachedFieldNames;
 
   public JsonSharedRegistry(JsonConfig config) {
@@ -214,12 +226,100 @@ public final class JsonSharedRegistry {
     mapKeyCodecs = new ConcurrentHashMap<>();
     generatedCodecs = new ConcurrentHashMap<>();
     typesWithoutGeneratedCodec = ConcurrentHashMap.newKeySet();
+    stringWriterClasses = new ConcurrentHashMap<>();
+    utf8WriterClasses = new ConcurrentHashMap<>();
+    latin1ReaderClasses = new ConcurrentHashMap<>();
+    utf16ReaderClasses = new ConcurrentHashMap<>();
+    utf8ReaderClasses = new ConcurrentHashMap<>();
+    utf8CollectionWriterClasses = new ConcurrentHashMap<>();
+    utf8CollectionReaderClasses = new ConcurrentHashMap<>();
     cachedFieldNames = new ConcurrentHashMap<>();
     boolean codegenEnabled = config.codegenEnabled();
     codegen = codegenEnabled ? new JsonCodegen(config.getCodegenHash(), classLoader) : null;
     asyncCompilationEnabled = codegenEnabled && config.asyncCompilationEnabled();
     this.compilationService = compilationService;
     registerExactCodecs();
+  }
+
+  CompletableFuture<Class<?>> stringWriterClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(
+        stringWriterClasses, owner.type(), () -> codegen.compileStringWriter(owner, resolver));
+  }
+
+  CompletableFuture<Class<?>> utf8WriterClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(
+        utf8WriterClasses, owner.type(), () -> codegen.compileUtf8Writer(owner, resolver));
+  }
+
+  CompletableFuture<Class<?>> latin1ReaderClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(
+        latin1ReaderClasses, owner.type(), () -> codegen.compileLatin1Reader(owner, resolver));
+  }
+
+  CompletableFuture<Class<?>> utf16ReaderClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(
+        utf16ReaderClasses, owner.type(), () -> codegen.compileUtf16Reader(owner, resolver));
+  }
+
+  CompletableFuture<Class<?>> utf8ReaderClass(ObjectCodec<?> owner, JsonTypeResolver resolver) {
+    return generatedClassFuture(
+        utf8ReaderClasses, owner.type(), () -> codegen.compileUtf8Reader(owner, resolver, true));
+  }
+
+  CompletableFuture<Class<?>> utf8CollectionWriterClass(
+      Type declaredType, CollectionCodec<?> owner) {
+    return generatedClassFuture(
+        utf8CollectionWriterClasses,
+        declaredType,
+        () -> codegen.compileUtf8CollectionWriter(declaredType, owner));
+  }
+
+  CompletableFuture<Class<?>> utf8CollectionReaderClass(
+      Type declaredType, CollectionCodec<?> owner) {
+    return generatedClassFuture(
+        utf8CollectionReaderClasses,
+        declaredType,
+        () -> codegen.compileUtf8CollectionReader(declaredType, owner));
+  }
+
+  private <K> CompletableFuture<Class<?>> generatedClassFuture(
+      ConcurrentHashMap<K, CompletableFuture<Class<?>>> classes,
+      K key,
+      Callable<Class<?>> compiler) {
+    CompletableFuture<Class<?>> existing = classes.get(key);
+    if (existing != null) {
+      return existing;
+    }
+    CompletableFuture<Class<?>> candidate = new CompletableFuture<>();
+    existing = classes.putIfAbsent(key, candidate);
+    if (existing != null) {
+      return existing;
+    }
+    Runnable task =
+        () -> {
+          try {
+            candidate.complete(compiler.call());
+          } catch (Throwable failure) {
+            classes.remove(key, candidate);
+            candidate.completeExceptionally(failure);
+          }
+        };
+    if (!asyncCompilationEnabled) {
+      task.run();
+      return candidate;
+    }
+    ExecutorService service = compilationService;
+    if (service == null) {
+      service = CodeGenerator.getCompilationService();
+    }
+    try {
+      service.execute(task);
+    } catch (RuntimeException | Error failure) {
+      classes.remove(key, candidate);
+      candidate.completeExceptionally(failure);
+      throw failure;
+    }
+    return candidate;
   }
 
   /** Returns the immutable cached entry for {@code hash}, or null when none was published. */
@@ -756,7 +856,7 @@ public final class JsonSharedRegistry {
   }
 
   JsonJITContext newJITContext() {
-    return new JsonJITContext(asyncCompilationEnabled, compilationService);
+    return new JsonJITContext(asyncCompilationEnabled);
   }
 
   JsonCodegen codegen() {

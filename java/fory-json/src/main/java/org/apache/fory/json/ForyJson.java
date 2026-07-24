@@ -174,6 +174,8 @@ public final class ForyJson {
           writer.writeNull();
         } else {
           JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
+          // Root startup receivers must bypass the generated-only shared trampoline. Calling it
+          // here lets ObjectCodec dominate that BCI before generated body/group publication.
           typeInfo.utf8Writer().writeUtf8(writer, value);
         }
       } finally {
@@ -223,6 +225,8 @@ public final class ForyJson {
           writer.writeNull();
         } else {
           JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
+          // Keep root dispatch direct; startup ObjectCodec receivers must not enter the
+          // generated body/group profile owned by JsonTrampolineInvoke.
           typeInfo.utf8Writer().writeUtf8(writer, value);
         }
       } finally {
@@ -288,6 +292,8 @@ public final class ForyJson {
     try {
       state.typeResolver.lockJIT();
       try {
+        // Declared root dispatch is still startup/root work. It must remain outside the
+        // generated-only JsonTrampolineInvoke receiver profile.
         state.rootTypeInfo(type, fallback).utf8Writer().writeUtf8(writer, value);
       } finally {
         state.typeResolver.unlockJIT();
@@ -310,6 +316,8 @@ public final class ForyJson {
     try {
       state.typeResolver.lockJIT();
       try {
+        // Declared root dispatch is direct for the same reason as toJsonBytesDeclared: only
+        // completed generated bodies and groups may contribute to the shared trampoline BCI.
         state.rootTypeInfo(type, fallback).utf8Writer().writeUtf8(writer, value);
       } finally {
         state.typeResolver.unlockJIT();

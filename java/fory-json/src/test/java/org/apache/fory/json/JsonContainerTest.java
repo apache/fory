@@ -52,6 +52,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingDeque;
@@ -565,6 +566,42 @@ public class JsonContainerTest extends ForyJsonTestModels {
     assertThrows(
         ForyJsonException.class,
         () -> json.fromJson("[1,null]".getBytes(StandardCharsets.UTF_8), long[].class));
+  }
+
+  @Test
+  public void writeLongArrays() {
+    ForyJson json = newJson();
+    LongArrayUtf16Root root = new LongArrayUtf16Root();
+    root.text = ZH_TEXT;
+    long[][] boundaries = {
+      new long[0],
+      {0L},
+      {
+        -1L,
+        1L,
+        Integer.MIN_VALUE,
+        Integer.MAX_VALUE,
+        (long) Integer.MIN_VALUE - 1L,
+        (long) Integer.MAX_VALUE + 1L,
+        Long.MIN_VALUE,
+        Long.MAX_VALUE
+      }
+    };
+    for (long[] values : boundaries) {
+      root.values = values;
+      assertEquals(new String(json.toJsonBytes(root), StandardCharsets.UTF_8), json.toJson(root));
+    }
+
+    Random random = new Random(0x7a11_5eedL);
+    for (int length = 1; length <= 33; length++) {
+      long[] values = new long[length];
+      for (int i = 0; i < length; i++) {
+        values[i] = random.nextLong();
+      }
+      root.values = values;
+      assertEquals(new String(json.toJsonBytes(root), StandardCharsets.UTF_8), json.toJson(root));
+    }
+    assertGeneratedWhenSupported(json, LongArrayUtf16Root.class);
   }
 
   @Test

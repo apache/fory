@@ -39,10 +39,9 @@ import org.apache.fory.json.writer.Utf8JsonWriter;
  * Resolver-local closed subtype dispatcher whose branch slots follow child JsonTypeInfo updates.
  *
  * <p>Inline discriminator state belongs to this parent. Any-readable children use parent-local
- * field tables and generated reader instances so one child can be shared by parents with different
- * discriminator names without changing the child's canonical metadata. Nested values of the same
- * child type still use its canonical reader; the derived skip table applies only to the outer
- * inline object.
+ * field tables and complete generated-reader arrays so one child can be shared by parents with
+ * different discriminator names without changing canonical child metadata. The derived skip table
+ * applies only to the outer inline object.
  *
  * <p>Writing rejects fixed-schema discriminator collisions when branches are resolved, but never
  * queries an Any Map. Runtime dynamic-key conflicts are owned by the application; probing here
@@ -56,9 +55,9 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
   private final JsonTypeInfo[] children;
   private final ObjectCodec<Object>[] objectCodecs;
   private JsonFieldTable[] inlineReadTables;
-  private Latin1ReaderCodec<Object>[] inlineLatin1Readers;
-  private Utf16ReaderCodec<Object>[] inlineUtf16Readers;
-  private Utf8ReaderCodec<Object>[] inlineUtf8Readers;
+  private volatile Latin1ReaderCodec<Object>[] inlineLatin1Readers;
+  private volatile Utf16ReaderCodec<Object>[] inlineUtf16Readers;
+  private volatile Utf8ReaderCodec<Object>[] inlineUtf8Readers;
 
   /** Creates an unresolved resolver-local dispatcher shell for a validated subtype definition. */
   @Internal
@@ -85,7 +84,7 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
       Class<?> subtype = definition.classes[i];
       JsonTypeInfo child = resolver.getTypeInfo(subtype, subtype);
       if (definition.inclusion == Inclusion.PROPERTY) {
-        if (!child.usesDefaultObjectCodec()) {
+        if (resolver.canonicalObjectCodec(child) == null) {
           throw new ForyJsonException(
               "Inline JSON subtype requires the default object representation: " + subtype);
         }
@@ -96,16 +95,15 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
         if (any != null && (any.readField() != null || any.readSetter() != null)) {
           if (inlineReadTables == null) {
             inlineReadTables = new JsonFieldTable[children.length];
-            inlineLatin1Readers = new Latin1ReaderCodec[children.length];
-            inlineUtf16Readers = new Utf16ReaderCodec[children.length];
-            inlineUtf8Readers = new Utf8ReaderCodec[children.length];
           }
           JsonFieldTable table =
               objectCodec.readTable().withSkippedName(definition.scanInfo.property());
           inlineReadTables[i] = table;
           // The subtype scan restores the cursor, so the outer child rereads the discriminator and
-          // needs this parent-local skip table. Nested child values must use the canonical table.
-          resolver.resolveInlineAnyReaders(this, i, objectCodec, table);
+          // needs this parent-local skip table. The resolver constructs a complete immutable array
+          // of generated readers for each representation and publishes that array in one volatile
+          // write; never publish its elements independently. Nested child values keep the canonical
+          // table and canonical capability.
         }
       }
       children[i] = child;
@@ -178,10 +176,11 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
       int index = reader.scanObjectStringField(definition.scanInfo);
       JsonFieldTable[] tables = inlineReadTables;
       if (tables != null && tables[index] != null) {
-        Latin1ReaderCodec<Object> codec = inlineLatin1Readers[index];
-        return codec == null
-            ? objectCodecs[index].readLatin1Object(reader, tables[index])
-            : codec.readLatin1(reader);
+        Latin1ReaderCodec<Object>[] readers = inlineLatin1Readers;
+        if (readers != null) {
+          return readers[index].readLatin1(reader);
+        }
+        return objectCodecs[index].readLatin1Object(reader, tables[index]);
       }
       return children[index].latin1Reader().readLatin1(reader);
     }
@@ -213,10 +212,11 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
       int index = reader.scanObjectStringField(definition.scanInfo);
       JsonFieldTable[] tables = inlineReadTables;
       if (tables != null && tables[index] != null) {
-        Utf16ReaderCodec<Object> codec = inlineUtf16Readers[index];
-        return codec == null
-            ? objectCodecs[index].readUtf16Object(reader, tables[index])
-            : codec.readUtf16(reader);
+        Utf16ReaderCodec<Object>[] readers = inlineUtf16Readers;
+        if (readers != null) {
+          return readers[index].readUtf16(reader);
+        }
+        return objectCodecs[index].readUtf16Object(reader, tables[index]);
       }
       return children[index].utf16Reader().readUtf16(reader);
     }
@@ -248,10 +248,11 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
       int index = reader.scanObjectStringField(definition.scanInfo);
       JsonFieldTable[] tables = inlineReadTables;
       if (tables != null && tables[index] != null) {
-        Utf8ReaderCodec<Object> codec = inlineUtf8Readers[index];
-        return codec == null
-            ? objectCodecs[index].readUtf8Object(reader, tables[index])
-            : codec.readUtf8(reader);
+        Utf8ReaderCodec<Object>[] readers = inlineUtf8Readers;
+        if (readers != null) {
+          return readers[index].readUtf8(reader);
+        }
+        return objectCodecs[index].readUtf8Object(reader, tables[index]);
       }
       return children[index].utf8Reader().readUtf8(reader);
     }
@@ -284,18 +285,71 @@ public final class ClosedSubtypeCodec implements JsonValueCodec<Object> {
   }
 
   @Internal
-  public void setInlineLatin1Reader(int index, Latin1ReaderCodec<Object> reader) {
-    inlineLatin1Readers[index] = reader;
+  public int childCount() {
+    return children.length;
   }
 
   @Internal
-  public void setInlineUtf16Reader(int index, Utf16ReaderCodec<Object> reader) {
-    inlineUtf16Readers[index] = reader;
+  public JsonTypeInfo child(int index) {
+    return children[index];
   }
 
   @Internal
-  public void setInlineUtf8Reader(int index, Utf8ReaderCodec<Object> reader) {
-    inlineUtf8Readers[index] = reader;
+  public JsonFieldTable inlineReadTable(int index) {
+    return inlineReadTables == null ? null : inlineReadTables[index];
+  }
+
+  @Internal
+  public Latin1ReaderCodec<Object>[] inlineLatin1Readers() {
+    return inlineLatin1Readers;
+  }
+
+  @Internal
+  public Utf16ReaderCodec<Object>[] inlineUtf16Readers() {
+    return inlineUtf16Readers;
+  }
+
+  @Internal
+  public Utf8ReaderCodec<Object>[] inlineUtf8Readers() {
+    return inlineUtf8Readers;
+  }
+
+  @Internal
+  public void installInlineLatin1Readers(Latin1ReaderCodec<Object>[] readers) {
+    validateInlineReaders(readers);
+    if (inlineLatin1Readers != null) {
+      throw new IllegalStateException("Inline Latin1 readers are already installed");
+    }
+    inlineLatin1Readers = readers;
+  }
+
+  @Internal
+  public void installInlineUtf16Readers(Utf16ReaderCodec<Object>[] readers) {
+    validateInlineReaders(readers);
+    if (inlineUtf16Readers != null) {
+      throw new IllegalStateException("Inline UTF16 readers are already installed");
+    }
+    inlineUtf16Readers = readers;
+  }
+
+  @Internal
+  public void installInlineUtf8Readers(Utf8ReaderCodec<Object>[] readers) {
+    validateInlineReaders(readers);
+    if (inlineUtf8Readers != null) {
+      throw new IllegalStateException("Inline UTF8 readers are already installed");
+    }
+    inlineUtf8Readers = readers;
+  }
+
+  private void validateInlineReaders(Object[] readers) {
+    if (inlineReadTables == null || readers == null || readers.length != children.length) {
+      throw new IllegalArgumentException("Inline reader array does not match subtype branches");
+    }
+    for (int i = 0; i < children.length; i++) {
+      if (inlineReadTables[i] != null && readers[i] == null) {
+        throw new IllegalArgumentException("Missing inline reader for subtype branch " + i);
+      }
+    }
   }
 
   private static void rejectDiscriminatorCollision(ObjectCodec<?> codec, String property) {

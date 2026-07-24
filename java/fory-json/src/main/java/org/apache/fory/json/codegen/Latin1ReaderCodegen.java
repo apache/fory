@@ -25,16 +25,21 @@ import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 
 final class Latin1ReaderCodegen extends JsonReaderCodegen {
-  Latin1ReaderCodegen(JsonCodegen codegen) {
-    super(codegen);
+  Latin1ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
+    super(codegen, resolver, true);
+  }
+
+  Latin1ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, int[] fastReadGroupEnds) {
+    super(codegen, resolver, true, fastReadGroupEnds);
   }
 
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
-    return codegen.latin1ReaderFieldType(property.readTypeInfo());
+    return codegen.latin1ReaderFieldType(property.readTypeInfo(), resolver);
   }
 
   @Override
@@ -55,6 +60,11 @@ final class Latin1ReaderCodegen extends JsonReaderCodegen {
   @Override
   String readMethod() {
     return "readLatin1";
+  }
+
+  @Override
+  String readerSlotMethod() {
+    return "latin1Reader";
   }
 
   @Override

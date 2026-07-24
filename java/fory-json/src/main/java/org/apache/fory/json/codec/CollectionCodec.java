@@ -89,17 +89,23 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     Class<?> elementRawType = CodecUtils.rawType(elementType, Object.class);
     CollectionFactory factory = collectionFactory(rawType, elementRawType);
     JsonTypeInfo elementTypeInfo = resolver.getTypeInfo(elementType, elementRawType);
-    return create(factory, elementTypeInfo);
+    return create(factory, elementTypeInfo, resolver.canonicalObjectCodec(elementTypeInfo) != null);
   }
 
   @Internal
   public static CollectionCodec<?> create(
-      Class<?> rawType, Class<?> elementRawType, JsonTypeInfo elementTypeInfo) {
-    return create(collectionFactory(rawType, elementRawType), elementTypeInfo);
+      Class<?> rawType,
+      Class<?> elementRawType,
+      JsonTypeInfo elementTypeInfo,
+      JsonTypeResolver resolver) {
+    return create(
+        collectionFactory(rawType, elementRawType),
+        elementTypeInfo,
+        resolver.canonicalObjectCodec(elementTypeInfo) != null);
   }
 
   private static CollectionCodec<?> create(
-      CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      CollectionFactory factory, JsonTypeInfo elementTypeInfo, boolean objectElement) {
     Object elementCodec = elementTypeInfo.stringWriter();
     if (elementCodec == ScalarCodecs.StringCodec.INSTANCE) {
       return new StringCollectionCodec(factory);
@@ -131,7 +137,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     if (elementCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
       return new BigDecimalCollectionCodec(factory);
     }
-    if (elementTypeInfo.usesDefaultObjectCodec()) {
+    if (objectElement) {
       return new ObjectCollectionCodec(factory, elementTypeInfo);
     }
     return new GenericCollectionCodec(factory, elementTypeInfo);
@@ -195,7 +201,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   @Internal
-  final boolean createsArrayList() {
+  public final boolean createsArrayList() {
     return createsArrayList;
   }
 
@@ -831,6 +837,11 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     private ObjectCollectionCodec(CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
       super(factory);
       this.elementTypeInfo = elementTypeInfo;
+    }
+
+    @Internal
+    public JsonTypeInfo elementTypeInfo() {
+      return elementTypeInfo;
     }
 
     @Override

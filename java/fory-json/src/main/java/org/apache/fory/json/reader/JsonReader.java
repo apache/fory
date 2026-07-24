@@ -98,6 +98,27 @@ public abstract class JsonReader {
   private static final long DOUBLE_FRACTION_MASK = (1L << DOUBLE_FRACTION_BITS) - 1;
   private static final long DOUBLE_INFINITY_BITS = 0x7ff0_0000_0000_0000L;
   private static final long DOUBLE_MAX_FINITE_BITS = 0x7fef_ffff_ffff_ffffL;
+  private static final long[] COMPACT_DOUBLE_MANTISSAS = {
+    0x8000_0000_0000_0000L,
+    0xcccc_cccc_cccc_ccccL,
+    0xa3d7_0a3d_70a3_d70aL,
+    0x8312_6e97_8d4f_df3bL,
+    0xd1b7_1758_e219_652bL,
+    0xa7c5_ac47_1b47_8423L,
+    0x8637_bd05_af6c_69b5L,
+    0xd6bf_94d5_e57a_42bcL,
+    0xabcc_7711_8461_cefcL,
+    0x8970_5f41_36b4_a597L,
+    0xdbe6_fece_bded_d5beL,
+    0xafeb_ff0b_cb24_aafeL,
+    0x8cbc_cc09_6f50_88cbL,
+    0xe12e_1342_4bb4_0e13L,
+    0xb424_dc35_095c_d80fL,
+    0x901d_7cf7_3ab0_acd9L,
+    0xe695_94be_c44d_e15bL,
+    0xb877_aa32_36a4_b449L,
+    0x9392_ee8e_921d_5d07L
+  };
   private static final int DECIMAL_BOUNDARY_DIGITS = 768;
   private static final double[] DOUBLE_POWERS_OF_TEN = {
     1.0d,
@@ -1176,13 +1197,44 @@ public abstract class JsonReader {
     if (unscaled == 0) {
       return negative ? -0.0d : 0.0d;
     }
-    long divisor = LONG_POWERS_OF_TEN[scale];
-    double estimate = (double) unscaled / (double) divisor;
-    long bits = correctCompactDouble(unscaled, divisor, Double.doubleToRawLongBits(estimate));
+    long bits = tryCompactDoubleBits(unscaled, scale);
+    if (bits == 0) {
+      long divisor = LONG_POWERS_OF_TEN[scale];
+      double estimate = (double) unscaled / (double) divisor;
+      bits = correctCompactDouble(unscaled, divisor, Double.doubleToRawLongBits(estimate));
+    }
     if (negative) {
       bits |= DOUBLE_SIGN_BIT;
     }
     return Double.longBitsToDouble(bits);
+  }
+
+  // The caller supplies a nonzero positive long and scale 0..18. A zero result is therefore not a
+  // value; it asks the caller to use the exact midpoint path when the high product cannot prove the
+  // rounding direction. The common path is the Eisel-Lemire decimal conversion specialized to
+  // this bounded compact domain.
+  private static long tryCompactDoubleBits(long unscaled, int scale) {
+    int leadingZeros = Long.numberOfLeadingZeros(unscaled);
+    long upper =
+        DecimalMath.unsignedMultiplyHigh(unscaled << leadingZeros, COMPACT_DOUBLE_MANTISSAS[scale]);
+    int upperBit = (int) (upper >>> 63);
+    long mantissa = upper >>> (upperBit + 9);
+    leadingZeros += 1 ^ upperBit;
+    long roundBits = upper & 0x1ff;
+    if (roundBits == 0x1ff || (roundBits == 0 && (mantissa & 3) == 1)) {
+      return 0;
+    }
+    mantissa = (mantissa + 1) >>> 1;
+    if (mantissa >= (1L << (DOUBLE_FRACTION_BITS + 1))) {
+      mantissa = 1L << DOUBLE_FRACTION_BITS;
+      leadingZeros--;
+    }
+    mantissa &= DOUBLE_FRACTION_MASK;
+    long exponent = ((217706L * -scale) >> 16) + 1023 + 64 - leadingZeros;
+    if (exponent < 1 || exponent > 2046) {
+      return 0;
+    }
+    return mantissa | (exponent << DOUBLE_FRACTION_BITS);
   }
 
   private static long correctCompactDouble(long unscaled, long divisor, long bits) {
@@ -1298,7 +1350,7 @@ public abstract class JsonReader {
   private static int compareDecimalToBinary(
       long unscaled, long divisor, long numerator, int binaryExponent) {
     long productLow = divisor * numerator;
-    long productHigh = multiplyHigh(divisor, numerator);
+    long productHigh = DecimalMath.unsignedMultiplyHigh(divisor, numerator);
     int productBits = bitLength(productHigh, productLow);
     int unscaledBits = Long.SIZE - Long.numberOfLeadingZeros(unscaled);
     if (binaryExponent < 0) {
@@ -1331,17 +1383,6 @@ public abstract class JsonReader {
   private static int doubleBinaryExponent(long bits) {
     int exponent = (int) ((bits >>> DOUBLE_FRACTION_BITS) & 0x7ffL);
     return exponent == 0 ? -1074 : exponent - 1075;
-  }
-
-  private static long multiplyHigh(long x, long y) {
-    long xlo = x & 0xffff_ffffL;
-    long xhi = x >>> 32;
-    long ylo = y & 0xffff_ffffL;
-    long yhi = y >>> 32;
-    long lowProduct = xlo * ylo;
-    long carryProduct = xhi * ylo + (lowProduct >>> 32);
-    long middle = (carryProduct & 0xffff_ffffL) + xlo * yhi;
-    return xhi * yhi + (carryProduct >>> 32) + (middle >>> 32);
   }
 
   protected final double readDoubleFallbackValue(int start) {

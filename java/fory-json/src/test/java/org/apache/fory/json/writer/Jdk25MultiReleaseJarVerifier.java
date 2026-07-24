@@ -24,6 +24,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -43,6 +44,9 @@ public final class Jdk25MultiReleaseJarVerifier {
   private static final String CLASS_NAME = "org.apache.fory.json.writer.BigDecimalFields";
   private static final String CLASS_PATH = CLASS_NAME.replace('.', '/') + ".class";
   private static final String SOURCE_PATH = CLASS_NAME.replace('.', '/') + ".java";
+  private static final String DECIMAL_MATH_NAME = "org.apache.fory.json.reader.DecimalMath";
+  private static final String DECIMAL_MATH_PATH = DECIMAL_MATH_NAME.replace('.', '/') + ".class";
+  private static final String DECIMAL_MATH_SOURCE = DECIMAL_MATH_NAME.replace('.', '/') + ".java";
   private static final String VERSION_PREFIX = "META-INF/versions/25/";
 
   private Jdk25MultiReleaseJarVerifier() {}
@@ -63,6 +67,7 @@ public final class Jdk25MultiReleaseJarVerifier {
 
   static void verify(Path jarPath, Path sourcesPath) throws Exception {
     byte[] versionClass;
+    byte[] decimalMathClass;
     try (JarFile jar = new JarFile(jarPath.toFile())) {
       Manifest manifest = jar.getManifest();
       require(manifest != null, "missing manifest");
@@ -70,11 +75,16 @@ public final class Jdk25MultiReleaseJarVerifier {
       require("true".equalsIgnoreCase(attributes.getValue("Multi-Release")), "missing manifest");
       require(jar.getJarEntry(CLASS_PATH) != null, "missing root BigDecimalFields class");
       versionClass = read(jar, VERSION_PREFIX + CLASS_PATH);
+      require(jar.getJarEntry(DECIMAL_MATH_PATH) != null, "missing root DecimalMath class");
+      decimalMathClass = read(jar, VERSION_PREFIX + DECIMAL_MATH_PATH);
     }
     try (JarFile sources = new JarFile(sourcesPath.toFile())) {
       require(
           sources.getJarEntry(VERSION_PREFIX + SOURCE_PATH) != null,
           "missing JDK25 BigDecimalFields source");
+      require(
+          sources.getJarEntry(VERSION_PREFIX + DECIMAL_MATH_SOURCE) != null,
+          "missing JDK25 DecimalMath source");
     }
 
     Class<?> type = new VersionClassLoader().define(versionClass);
@@ -82,6 +92,12 @@ public final class Jdk25MultiReleaseJarVerifier {
     requireVarHandle(type, "INT_COMPACT");
     requireVarHandle(type, "INT_VAL");
     requireVarHandle(type, "SCALE");
+
+    Class<?> decimalMath = new VersionClassLoader().define(decimalMathClass);
+    require(DECIMAL_MATH_NAME.equals(decimalMath.getName()), "wrong JDK25 DecimalMath name");
+    Method multiply = decimalMath.getDeclaredMethod("unsignedMultiplyHigh", long.class, long.class);
+    require(Modifier.isStatic(multiply.getModifiers()), "unsignedMultiplyHigh must be static");
+    require(multiply.getReturnType() == long.class, "unsignedMultiplyHigh return type");
   }
 
   private static void requireVarHandle(Class<?> type, String name) throws NoSuchFieldException {

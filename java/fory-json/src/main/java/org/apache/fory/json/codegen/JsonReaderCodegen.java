@@ -44,6 +44,8 @@ import org.apache.fory.json.meta.JsonCreatorInfo;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldKind;
 import org.apache.fory.json.meta.JsonFieldTable;
+import org.apache.fory.json.resolver.JsonTypeInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.memory.NativeByteOrder;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.TypeUtils;
@@ -54,25 +56,42 @@ import org.apache.fory.type.TypeUtils;
  * <p>The three concrete generators own representation-specific token, field-name, enum, and direct
  * value expressions. This base shares only source-construction algorithms after the concrete reader
  * is selected; it is not a runtime reader mode. Generated readers retain immutable field lookup
- * metadata and concrete child capability fields, avoiding per-field resolver lookup. Wide objects
- * split generated methods to bound compiler size while preserving a single nullable capability
- * entry for each representation.
+ * metadata and final direct-child capabilities. Canonical multi-object cycles retain the final
+ * child type-info slot owner instead of a later-mutated capability field. Wide objects split
+ * generated methods to bound compiler size while preserving one capability entry per
+ * representation.
  */
 abstract class JsonReaderCodegen {
-  private static final int MIN_SPLIT_READ_FIELDS = 8;
-  private static final int READ_FIELD_GROUP_SIZE = 2;
   private static final int READ_FIELD_SWITCH_SIZE = 8;
   private static final boolean LITTLE_ENDIAN = NativeByteOrder.IS_LITTLE_ENDIAN;
   private static final long UTF16_PAIR_MASK = 0x0000FFFF0000FFFFL;
   private static final long UTF16_BYTE_MASK = 0x00FF00FF00FF00FFL;
 
   final JsonCodegen codegen;
+  final JsonTypeResolver resolver;
+  private final boolean finalDependencies;
+  private final int[] fastReadGroupEnds;
   private AnyInfo any;
   private Class<?> ownerType;
   private boolean storesSelfReader;
 
-  JsonReaderCodegen(JsonCodegen codegen) {
+  JsonReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
+    this(codegen, resolver, false, null);
+  }
+
+  JsonReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, boolean finalDependencies) {
+    this(codegen, resolver, finalDependencies, null);
+  }
+
+  JsonReaderCodegen(
+      JsonCodegen codegen,
+      JsonTypeResolver resolver,
+      boolean finalDependencies,
+      int[] fastReadGroupEnds) {
     this.codegen = codegen;
+    this.resolver = resolver;
+    this.finalDependencies = finalDependencies;
+    this.fastReadGroupEnds = fastReadGroupEnds;
   }
 
   abstract Class<?> codecFieldType(JsonFieldInfo property);
@@ -84,6 +103,8 @@ abstract class JsonReaderCodegen {
   abstract Class<?> readerArrayType();
 
   abstract String readMethod();
+
+  abstract String readerSlotMethod();
 
   abstract String readEnumMethod(boolean tokenValueRead, boolean hashFallback);
 
@@ -113,7 +134,11 @@ abstract class JsonReaderCodegen {
   abstract Reference readerRef();
 
   final Class<?> readNestedType(JsonFieldInfo property) {
-    return JsonCodegen.readNestedType(property);
+    return JsonCodegen.readNestedType(property, resolver);
+  }
+
+  final boolean finalDependencies() {
+    return finalDependencies;
   }
 
   String genReaderCode(
@@ -125,25 +150,26 @@ abstract class JsonReaderCodegen {
     if (creatorInfo != null) {
       return genCreatorReaderCode(builder, type, creatorInfo);
     }
+    validateFastReadGroups(properties);
     Class<?> readerType = readerType();
     String readMethod = readMethod();
     String slowMethod = readMethod + "Slow";
     CodegenContext ctx = builder.context();
     ctx.addImports(ObjectCodec.class, readerType, JsonFieldTable.class);
     ctx.implementsInterfaces(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()));
-    // Generated mutable readers retain immutable lookup metadata directly. Creator-backed readers
-    // are selected above and consume the exact executable owned by JsonCreatorInfo.
+    // Generated readers retain immutable lookup metadata directly. Creator-backed readers are
+    // selected above and consume the exact executable owned by JsonCreatorInfo.
     ctx.addField(JsonFieldTable.class, "readTable");
     ctx.addField(long[].class, "fieldHashes");
     for (int i = 0; i < properties.length; i++) {
       if (usesReadInfo(properties[i])) {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
-      if (JsonCodegen.usesReadCodec(properties[i])) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(properties[i])), "r" + i);
+      if (JsonCodegen.usesReadCodec(properties[i], resolver)) {
+        addCapabilityField(ctx, codecFieldType(properties[i]), "r" + i);
       }
       if (storesReadObjectCodec(type, properties[i])) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "o" + i);
+        addObjectReaderField(ctx, properties[i], "o" + i);
       }
     }
     addGeneratedConstructor(
@@ -160,10 +186,12 @@ abstract class JsonReaderCodegen {
         fastReadExpression(builder, readMethod, slowMethod, type, properties).genCode(ctx);
     String bodyCode = body.code();
     bodyCode = bodyCode == null ? "" : ctx.optimizeMethodCode(bodyCode);
+    // Generated object entries use the current-token fast path; concrete readers own whitespace
+    // fallback.
     ctx.addMethod(
         "@Override public final",
         readMethod,
-        "if (reader.tryReadNullToken()) {\n" + "  return null;\n" + "}\n" + bodyCode,
+        "if (reader.tryReadNextNullToken()) {\n" + "  return null;\n" + "}\n" + bodyCode,
         Object.class,
         readerType,
         "reader");
@@ -171,6 +199,34 @@ abstract class JsonReaderCodegen {
     addReadFieldMethods(ctx, builder, readMethod, readerType, type, properties);
     addSlowReadMethods(ctx, builder, slowMethod, readerType, type, properties);
     return ctx.genCode();
+  }
+
+  private void addCapabilityField(CodegenContext ctx, Class<?> type, String name) {
+    ctx.addField(finalDependencies, JsonCodegen.generatedCodecType(ctx, type), name, null);
+  }
+
+  private void addObjectReaderField(CodegenContext ctx, JsonFieldInfo field, String name) {
+    if (usesReaderSlot(field.readTypeInfo())) {
+      ctx.addField(true, ctx.type(JsonTypeInfo.class), name, null);
+    } else {
+      addCapabilityField(ctx, readerCapabilityType(), name);
+    }
+  }
+
+  private void addCreatorReaderField(CodegenContext ctx, JsonCreatorFieldInfo field, String name) {
+    if (usesReaderSlot(field.typeInfo())) {
+      ctx.addField(true, ctx.type(JsonTypeInfo.class), name, null);
+    } else {
+      addCapabilityField(ctx, readerCapabilityType(), name);
+    }
+  }
+
+  private void addAnyReaderField(CodegenContext ctx, AnyInfo any) {
+    if (usesReaderSlot(any.valueTypeInfo())) {
+      ctx.addField(true, ctx.type(JsonTypeInfo.class), "anyReader", null);
+    } else {
+      addCapabilityField(ctx, readerCapabilityType(), "anyReader");
+    }
   }
 
   String genAnyReaderCode(
@@ -181,10 +237,12 @@ abstract class JsonReaderCodegen {
       AnyInfo any) {
     this.any = any;
     ownerType = type;
-    storesSelfReader = JsonCodegen.storesSelfReader(type, properties, creatorInfo != null, any);
+    storesSelfReader =
+        JsonCodegen.storesSelfReader(type, properties, creatorInfo != null, any, resolver);
     if (creatorInfo != null) {
       return genAnyCreatorReaderCode(builder, type, creatorInfo);
     }
+    validateFastReadGroups(properties);
     Class<?> concreteReaderType = readerType();
     String readMethod = readMethod();
     String anyReadMethod = readMethod + "Any";
@@ -198,7 +256,7 @@ abstract class JsonReaderCodegen {
     addSelfReaderField(ctx);
     boolean storesAnyReader = storesAnyReader(type);
     if (storesAnyReader) {
-      ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "anyReader");
+      addAnyReaderField(ctx, any);
     }
     if (any.readField() != null && Modifier.isFinal(any.readField().getModifiers())) {
       addFinalAnyMapMethod(ctx);
@@ -207,33 +265,7 @@ abstract class JsonReaderCodegen {
       addAnySetterMethod(ctx, type, any);
     }
     addReaderFields(ctx, type, properties);
-    if (storesAnyReader) {
-      addGeneratedConstructor(
-          ctx,
-          readerConstructorExpression(type, properties),
-          ObjectCodec.class,
-          "owner",
-          JsonFieldTable.class,
-          "readTable",
-          JsonFieldInfo[].class,
-          "properties",
-          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
-          "codecs",
-          JsonCodegen.generatedCodecType(ctx, readerCapabilityType()),
-          "anyReader");
-    } else {
-      addGeneratedConstructor(
-          ctx,
-          readerConstructorExpression(type, properties),
-          ObjectCodec.class,
-          "owner",
-          JsonFieldTable.class,
-          "readTable",
-          JsonFieldInfo[].class,
-          "properties",
-          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
-          "codecs");
-    }
+    addAnyReaderConstructor(ctx, readerConstructorExpression(type, properties), storesAnyReader);
     addGeneratedMethod(
         ctx,
         "private final",
@@ -245,7 +277,7 @@ abstract class JsonReaderCodegen {
     ctx.addMethod(
         "@Override public final",
         readMethod,
-        "if (reader.tryReadNullToken()) {\n  return null;\n}\n"
+        "if (reader.tryReadNextNullToken()) {\n  return null;\n}\n"
             + "return this."
             + anyReadMethod
             + "(reader);",
@@ -292,11 +324,11 @@ abstract class JsonReaderCodegen {
     if (rootCreator != null) {
       ctx.addField(JsonCreatorInfo.class, "creator");
     }
-    storesSelfReader = JsonCodegen.storesSelfReader(owner);
+    storesSelfReader = JsonCodegen.storesSelfReader(owner, resolver);
     addSelfReaderField(ctx);
     boolean storesAnyReader = any != null && storesAnyReader(type);
     if (storesAnyReader) {
-      ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "anyReader");
+      addAnyReaderField(ctx, any);
     }
     if (any != null
         && any.readField() != null
@@ -311,7 +343,7 @@ abstract class JsonReaderCodegen {
     } else {
       for (int i = 0; i < directCreatorFields.length; i++) {
         if (!isDirectCreatorPrimitive(directCreatorFields[i])) {
-          ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "r" + i);
+          addCreatorReaderField(ctx, directCreatorFields[i], "r" + i);
         }
       }
     }
@@ -322,14 +354,14 @@ abstract class JsonReaderCodegen {
         if (usesReadInfo(field)) {
           ctx.addField(JsonFieldInfo.class, "rp" + id);
         }
-        if (JsonCodegen.usesReadCodec(field)) {
-          ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(field)), "r" + id);
+        if (JsonCodegen.usesReadCodec(field, resolver)) {
+          addCapabilityField(ctx, codecFieldType(field), "r" + id);
         }
         if (storesReadObjectCodec(type, field)) {
-          ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "o" + id);
+          addObjectReaderField(ctx, field, "o" + id);
         }
       } else if (!isDirectCreatorPrimitive(routes[i].creatorField())) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "r" + id);
+        addCreatorReaderField(ctx, routes[i].creatorField(), "r" + id);
       }
     }
     if (groups.length != 0) {
@@ -347,32 +379,8 @@ abstract class JsonReaderCodegen {
             directCount,
             storesAnyReader,
             any != null);
-    if (storesAnyReader) {
-      addGeneratedConstructor(
-          ctx,
-          constructor,
-          ObjectCodec.class,
-          "owner",
-          JsonFieldTable.class,
-          "readTable",
-          JsonFieldInfo[].class,
-          "properties",
-          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
-          "codecs",
-          JsonCodegen.generatedCodecType(ctx, readerCapabilityType()),
-          "anyReader");
-    } else if (any != null) {
-      addGeneratedConstructor(
-          ctx,
-          constructor,
-          ObjectCodec.class,
-          "owner",
-          JsonFieldTable.class,
-          "readTable",
-          JsonFieldInfo[].class,
-          "properties",
-          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
-          "codecs");
+    if (any != null) {
+      addAnyReaderConstructor(ctx, constructor, storesAnyReader);
     } else {
       addGeneratedConstructor(
           ctx,
@@ -471,7 +479,7 @@ abstract class JsonReaderCodegen {
     ctx.addMethod(
         "@Override public final",
         readMethod(),
-        "if (reader.tryReadNullToken()) {\n  return null;\n}\n" + code,
+        "if (reader.tryReadNextNullToken()) {\n  return null;\n}\n" + code,
         Object.class,
         readerType(),
         "reader");
@@ -483,11 +491,11 @@ abstract class JsonReaderCodegen {
       if (usesReadInfo(properties[i])) {
         ctx.addField(JsonFieldInfo.class, "rp" + i);
       }
-      if (JsonCodegen.usesReadCodec(properties[i])) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, codecFieldType(properties[i])), "r" + i);
+      if (JsonCodegen.usesReadCodec(properties[i], resolver)) {
+        addCapabilityField(ctx, codecFieldType(properties[i]), "r" + i);
       }
       if (storesReadObjectCodec(type, properties[i])) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "o" + i);
+        addObjectReaderField(ctx, properties[i], "o" + i);
       }
     }
   }
@@ -555,7 +563,7 @@ abstract class JsonReaderCodegen {
     ctx.addField(JsonCreatorInfo.class, "creator");
     for (int i = 0; i < fields.length; i++) {
       if (!isDirectCreatorPrimitive(fields[i])) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "r" + i);
+        addCreatorReaderField(ctx, fields[i], "r" + i);
       }
     }
     addGeneratedConstructor(
@@ -575,7 +583,7 @@ abstract class JsonReaderCodegen {
     ctx.addMethod(
         "@Override public final",
         readMethod(),
-        "if (reader.tryReadNullToken()) {\n  return null;\n}\n" + bodyCode,
+        "if (reader.tryReadNextNullToken()) {\n  return null;\n}\n" + bodyCode,
         Object.class,
         concreteReaderType,
         "reader");
@@ -602,40 +610,14 @@ abstract class JsonReaderCodegen {
     addSelfReaderField(ctx);
     boolean storesAnyReader = storesAnyReader(type);
     if (storesAnyReader) {
-      ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "anyReader");
+      addAnyReaderField(ctx, any);
     }
     for (int i = 0; i < fields.length; i++) {
       if (!isDirectCreatorPrimitive(fields[i])) {
-        ctx.addField(JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "r" + i);
+        addCreatorReaderField(ctx, fields[i], "r" + i);
       }
     }
-    if (storesAnyReader) {
-      addGeneratedConstructor(
-          ctx,
-          creatorConstructorExpression(fields),
-          ObjectCodec.class,
-          "owner",
-          JsonFieldTable.class,
-          "readTable",
-          JsonFieldInfo[].class,
-          "properties",
-          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
-          "codecs",
-          JsonCodegen.generatedCodecType(ctx, readerCapabilityType()),
-          "anyReader");
-    } else {
-      addGeneratedConstructor(
-          ctx,
-          creatorConstructorExpression(fields),
-          ObjectCodec.class,
-          "owner",
-          JsonFieldTable.class,
-          "readTable",
-          JsonFieldInfo[].class,
-          "properties",
-          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
-          "codecs");
-    }
+    addAnyReaderConstructor(ctx, creatorConstructorExpression(fields), storesAnyReader);
     addCreatorMethod(ctx, type, creatorInfo.executable());
     addGeneratedMethod(
         ctx,
@@ -648,7 +630,7 @@ abstract class JsonReaderCodegen {
     ctx.addMethod(
         "@Override public final",
         readMethod,
-        "if (reader.tryReadNullToken()) {\n  return null;\n}\n"
+        "if (reader.tryReadNextNullToken()) {\n  return null;\n}\n"
             + "return this."
             + anyReadMethod
             + "(reader);",
@@ -818,22 +800,72 @@ abstract class JsonReaderCodegen {
               new Reference("this.readTable", TypeRef.of(JsonFieldTable.class)),
               new Reference("readTable", TypeRef.of(JsonFieldTable.class))));
       if (storesAnyReader(ownerType)) {
-        expressions.add(
-            new Expression.Assign(
-                new Reference("this.anyReader", TypeRef.of(readerCapabilityType())),
-                new Reference("anyReader", TypeRef.of(readerCapabilityType()))));
+        addAnyReaderAssignment(expressions, owner);
       }
     }
+    addSelfReaderAssignment(expressions);
     Reference codecs = new Reference("codecs", TypeRef.of(readerArrayType()));
     for (int i = 0; i < fields.length; i++) {
       if (!isDirectCreatorPrimitive(fields[i])) {
-        expressions.add(
-            new Expression.Assign(
-                new Reference("this.r" + i, TypeRef.of(readerCapabilityType())),
-                new Expression.ArrayValue(codecs, Expression.Literal.ofInt(i))));
+        if (usesReaderSlot(fields[i].typeInfo())) {
+          Expression creator =
+              new Expression.Invoke(owner, "creatorInfo", TypeRef.of(JsonCreatorInfo.class))
+                  .inline();
+          Expression creatorFields =
+              new Expression.Invoke(creator, "fields", TypeRef.of(JsonCreatorFieldInfo[].class))
+                  .inline();
+          Expression field = new Expression.ArrayValue(creatorFields, Expression.Literal.ofInt(i));
+          expressions.add(
+              new Expression.Assign(
+                  new Reference("this.r" + i, TypeRef.of(JsonTypeInfo.class)),
+                  new Expression.Invoke(field, "typeInfo", TypeRef.of(JsonTypeInfo.class))
+                      .inline()));
+        } else {
+          expressions.add(
+              new Expression.Assign(
+                  new Reference("this.r" + i, TypeRef.of(readerCapabilityType())),
+                  new Expression.ArrayValue(codecs, Expression.Literal.ofInt(i))));
+        }
       }
     }
     return expressions;
+  }
+
+  private void addAnyReaderAssignment(Expression.ListExpression expressions, Expression owner) {
+    if (usesReaderSlot(any.valueTypeInfo())) {
+      Expression anyInfo =
+          new Expression.Invoke(owner, "anyInfo", TypeRef.of(AnyInfo.class)).inline();
+      expressions.add(
+          new Expression.Assign(
+              new Reference("this.anyReader", TypeRef.of(JsonTypeInfo.class)),
+              new Expression.Invoke(anyInfo, "valueTypeInfo", TypeRef.of(JsonTypeInfo.class))
+                  .inline()));
+    } else {
+      expressions.add(
+          new Expression.Assign(
+              new Reference("this.anyReader", TypeRef.of(readerCapabilityType())),
+              new Reference("anyReader", TypeRef.of(readerCapabilityType()))));
+    }
+  }
+
+  private void addSelfReaderAssignment(Expression.ListExpression expressions) {
+    if (!storesSelfReader) {
+      return;
+    }
+    Expression nestedReader = selfRef();
+    if (any != null) {
+      Reference supplied = new Reference("selfReader", TypeRef.of(readerCapabilityType()));
+      nestedReader =
+          new Expression.Ternary(
+              eq(supplied, new Expression.Null(TypeRef.of(readerCapabilityType()), false)),
+              selfRef(),
+              supplied,
+              true,
+              TypeRef.of(readerCapabilityType()));
+    }
+    expressions.add(
+        new Expression.Assign(
+            new Reference("this.selfReader", TypeRef.of(readerCapabilityType())), nestedReader));
   }
 
   private Expression creatorReadExpression(Class<?> type, JsonCreatorInfo creatorInfo) {
@@ -1009,12 +1041,12 @@ abstract class JsonReaderCodegen {
   private Expression readCreatorValue(JsonCreatorFieldInfo field, int id) {
     Class<?> type = field.rawType();
     if (!isDirectCreatorPrimitive(field)) {
+      Expression codec =
+          usesReaderSlot(field.typeInfo())
+              ? readerFromSlot(fieldRef("r" + id, JsonTypeInfo.class))
+              : fieldRef("r" + id, readerCapabilityType());
       Expression value =
-          new Expression.Invoke(
-              fieldRef("r" + id, readerCapabilityType()),
-              readMethod(),
-              TypeRef.of(Object.class),
-              readerRef());
+          new Expression.Invoke(codec, readMethod(), TypeRef.of(Object.class), readerRef());
       if (type.isPrimitive()) {
         value =
             new Expression.StaticInvoke(
@@ -1079,11 +1111,12 @@ abstract class JsonReaderCodegen {
       Class<?> readerType,
       Class<?> type,
       JsonFieldInfo[] properties) {
-    if (!shouldSplitFastRead(properties)) {
+    if (!shouldSplitFastRead()) {
       return;
     }
-    for (int start = 0; start < properties.length; ) {
-      int end = readGroupEnd(properties, start);
+    int start = 0;
+    for (int group = 0; group < fastReadGroupEnds.length - 1; group++) {
+      int end = fastReadGroupEnds[group];
       if (any == null) {
         addGeneratedMethod(
             ctx,
@@ -1249,6 +1282,41 @@ abstract class JsonReaderCodegen {
     ctx.addConstructor(code, params);
   }
 
+  private void addAnyReaderConstructor(
+      CodegenContext ctx, Expression expression, boolean storesAnyReader) {
+    if (storesAnyReader) {
+      addGeneratedConstructor(
+          ctx,
+          expression,
+          ObjectCodec.class,
+          "owner",
+          JsonFieldTable.class,
+          "readTable",
+          JsonFieldInfo[].class,
+          "properties",
+          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
+          "codecs",
+          JsonCodegen.generatedCodecType(ctx, readerCapabilityType()),
+          "selfReader",
+          JsonCodegen.generatedCodecType(ctx, readerCapabilityType()),
+          "anyReader");
+    } else {
+      addGeneratedConstructor(
+          ctx,
+          expression,
+          ObjectCodec.class,
+          "owner",
+          JsonFieldTable.class,
+          "readTable",
+          JsonFieldInfo[].class,
+          "properties",
+          JsonCodegen.generatedCodecArrayType(ctx, readerArrayType()),
+          "codecs",
+          JsonCodegen.generatedCodecType(ctx, readerCapabilityType()),
+          "selfReader");
+    }
+  }
+
   private Expression readerConstructorExpression(Class<?> type, JsonFieldInfo[] properties) {
     Expression.ListExpression expressions = new Expression.ListExpression();
     Reference propertiesRef = new Reference("properties", TypeRef.of(JsonFieldInfo[].class));
@@ -1265,12 +1333,10 @@ abstract class JsonReaderCodegen {
       expressions.add(
           new Expression.Assign(new Reference("this.owner", TypeRef.of(ObjectCodec.class)), owner));
     }
+    addSelfReaderAssignment(expressions);
     if (any != null) {
       if (storesAnyReader(ownerType)) {
-        expressions.add(
-            new Expression.Assign(
-                new Reference("this.anyReader", TypeRef.of(readerCapabilityType())),
-                new Reference("anyReader", TypeRef.of(readerCapabilityType()))));
+        addAnyReaderAssignment(expressions, owner);
       }
     }
     Reference hashes = new Reference("this.fieldHashes", TypeRef.of(long[].class));
@@ -1295,7 +1361,7 @@ abstract class JsonReaderCodegen {
               hashes,
               new Expression.Invoke(property, "nameHash", TypeRef.of(long.class)).inline(),
               id));
-      if (JsonCodegen.usesReadCodec(properties[i])) {
+      if (JsonCodegen.usesReadCodec(properties[i], resolver)) {
         Class<?> codecType = codecFieldType(properties[i]);
         expressions.add(
             new Expression.Assign(
@@ -1303,10 +1369,18 @@ abstract class JsonReaderCodegen {
                 new Expression.Cast(
                     new Expression.ArrayValue(codecsRef, id), TypeRef.of(codecType))));
       } else if (storesReadObjectCodec(type, properties[i])) {
-        expressions.add(
-            new Expression.Assign(
-                new Reference("this.o" + i, TypeRef.of(readerCapabilityType())),
-                new Expression.ArrayValue(codecsRef, id)));
+        if (usesReaderSlot(properties[i].readTypeInfo())) {
+          expressions.add(
+              new Expression.Assign(
+                  new Reference("this.o" + i, TypeRef.of(JsonTypeInfo.class)),
+                  new Expression.Invoke(property, "readTypeInfo", TypeRef.of(JsonTypeInfo.class))
+                      .inline()));
+        } else {
+          expressions.add(
+              new Expression.Assign(
+                  new Reference("this.o" + i, TypeRef.of(readerCapabilityType())),
+                  new Expression.ArrayValue(codecsRef, id)));
+        }
       }
     }
     return expressions;
@@ -1338,6 +1412,7 @@ abstract class JsonReaderCodegen {
             unwrapped,
             new Expression.Invoke(owner, "unwrappedInfo", TypeRef.of(JsonUnwrappedInfo.class))
                 .inline()));
+    addSelfReaderAssignment(expressions);
     if (creatorFields != null) {
       expressions.add(
           new Expression.Assign(
@@ -1414,7 +1489,7 @@ abstract class JsonReaderCodegen {
           new Expression.Assign(
               new Reference("this.rp" + id, TypeRef.of(JsonFieldInfo.class)), property));
     }
-    if (JsonCodegen.usesReadCodec(field)) {
+    if (JsonCodegen.usesReadCodec(field, resolver)) {
       Class<?> codecType = codecFieldType(field);
       expressions.add(
           new Expression.Assign(
@@ -2098,7 +2173,7 @@ abstract class JsonReaderCodegen {
       String slowMethod,
       Class<?> type,
       JsonFieldInfo[] properties) {
-    if (shouldSplitFastRead(properties)) {
+    if (shouldSplitFastRead()) {
       return splitFastReadExpression(builder, readMethod, slowMethod, type, properties);
     }
     Expression object = objectExpression(builder);
@@ -2154,11 +2229,22 @@ abstract class JsonReaderCodegen {
     Expression hashes =
         new Expression.Variable("localFieldHashes", fieldRef("fieldHashes", long[].class));
     expressions.add(hashes);
-    for (int start = 0; start < properties.length; ) {
-      int end = readGroupEnd(properties, start);
+    int start = 0;
+    for (int group = 0; group < fastReadGroupEnds.length - 1; group++) {
+      int end = fastReadGroupEnds[group];
       Expression groupCall = inline(readGroupCall(readMethod, start, object, hashes));
       expressions.add(new Expression.If(not(groupCall), returnObject(object)));
       start = end;
+    }
+    Expression[] skips = new Expression[properties.length];
+    for (int i = start + 1; i < properties.length; i++) {
+      skips[i] = new Expression.Variable("skip" + i, Expression.Literal.False);
+      expressions.add(skips[i]);
+    }
+    for (int i = start; i < properties.length; i++) {
+      Expression read =
+          fastReadField(builder, slowMethod, type, properties, i, object, hashes, skips);
+      expressions.add(i == start ? read : new Expression.If(not(skips[i]), read));
     }
     expressions.add(returnObject(object));
     return expressions;
@@ -2184,11 +2270,7 @@ abstract class JsonReaderCodegen {
           fastReadField(builder, slowMethod, type, properties, i, end, true, object, hashes, skips);
       expressions.add(i == start ? read : new Expression.If(not(skips[i]), read));
     }
-    if (end < properties.length) {
-      expressions.add(returnTrue());
-    } else {
-      expressions.add(returnFalse());
-    }
+    expressions.add(returnTrue());
     return expressions;
   }
 
@@ -2457,47 +2539,34 @@ abstract class JsonReaderCodegen {
     return length == Long.BYTES ? -1L : (1L << (length << 3)) - 1L;
   }
 
-  final boolean shouldSplitFastRead(JsonFieldInfo[] properties) {
-    return properties.length >= MIN_SPLIT_READ_FIELDS;
+  private void validateFastReadGroups(JsonFieldInfo[] properties) {
+    if (fastReadGroupEnds == null || fastReadGroupEnds.length == 0) {
+      throw new IllegalArgumentException("Fast-read group boundaries are required");
+    }
+    if (properties.length == 0) {
+      if (fastReadGroupEnds.length != 1 || fastReadGroupEnds[0] != 0) {
+        throw new IllegalArgumentException("Empty readers require one empty group");
+      }
+      return;
+    }
+    int previous = 0;
+    for (int end : fastReadGroupEnds) {
+      if (end <= previous || end > properties.length) {
+        throw new IllegalArgumentException("Invalid fast-read group boundary " + end);
+      }
+      previous = end;
+    }
+    if (previous != properties.length) {
+      throw new IllegalArgumentException("Fast-read groups must cover every property");
+    }
+  }
+
+  final boolean shouldSplitFastRead() {
+    return fastReadGroupEnds.length > 1;
   }
 
   final String readGroupMethod(String readMethod, int start) {
     return readMethod + "Group" + start;
-  }
-
-  final int readGroupEnd(JsonFieldInfo[] properties, int start) {
-    int end = start + 1;
-    while (end < properties.length
-        && end - start < READ_FIELD_GROUP_SIZE
-        && canPairReadFields(properties[end - 1], properties[end])) {
-      end++;
-    }
-    return end;
-  }
-
-  final boolean canPairReadFields(JsonFieldInfo left, JsonFieldInfo right) {
-    JsonFieldKind leftKind = left.readKind();
-    JsonFieldKind rightKind = right.readKind();
-    if (leftKind == null || rightKind == null) {
-      return false;
-    }
-    // Fast-read fallback branches duplicate some field reads in each group. Keep method-size
-    // estimation conservative so generated helpers stay close to the C2-friendly target.
-    if (leftKind == JsonFieldKind.ENUM
-        || rightKind == JsonFieldKind.ENUM
-        || leftKind == JsonFieldKind.COLLECTION
-        || rightKind == JsonFieldKind.COLLECTION
-        || leftKind == JsonFieldKind.MAP
-        || rightKind == JsonFieldKind.MAP) {
-      return false;
-    }
-    if (leftKind == JsonFieldKind.ARRAY || rightKind == JsonFieldKind.ARRAY) {
-      return false;
-    }
-    if (leftKind == JsonFieldKind.OBJECT || rightKind == JsonFieldKind.OBJECT) {
-      return leftKind == JsonFieldKind.BOOLEAN || rightKind == JsonFieldKind.BOOLEAN;
-    }
-    return true;
   }
 
   final boolean shouldSplitFieldSwitch(JsonFieldInfo[] properties) {
@@ -3033,13 +3102,10 @@ abstract class JsonReaderCodegen {
 
   private void addSelfReaderField(CodegenContext ctx) {
     if (storesSelfReader) {
-      // Canonical readers keep this self-reference. A parent-local inline instance is rewired to
-      // the canonical reader before publication so its derived skip table cannot reach children.
+      // Canonical construction supplies null and stores this. A parent-local inline construction
+      // supplies the final canonical reader so its derived skip table cannot reach nested values.
       ctx.addField(
-          false,
-          JsonCodegen.generatedCodecType(ctx, readerCapabilityType()),
-          "selfReader",
-          selfRef());
+          true, JsonCodegen.generatedCodecType(ctx, readerCapabilityType()), "selfReader", null);
     }
   }
 
@@ -3048,13 +3114,26 @@ abstract class JsonReaderCodegen {
   }
 
   private boolean storesAnyReader(Class<?> type) {
-    return !any.valueTypeInfo().usesDefaultObjectCodec() || any.valueTypeInfo().rawType() != type;
+    return resolver.canonicalObjectCodec(any.valueTypeInfo()) == null
+        || any.valueTypeInfo().rawType() != type;
   }
 
   private Expression anyReaderRef() {
-    return storesAnyReader(ownerType)
-        ? fieldRef("anyReader", readerCapabilityType())
-        : nestedSelfReaderRef();
+    if (!storesAnyReader(ownerType)) {
+      return nestedSelfReaderRef();
+    }
+    return usesReaderSlot(any.valueTypeInfo())
+        ? readerFromSlot(fieldRef("anyReader", JsonTypeInfo.class))
+        : fieldRef("anyReader", readerCapabilityType());
+  }
+
+  private boolean usesReaderSlot(JsonTypeInfo child) {
+    return resolver.usesReaderSlot(ownerType, child);
+  }
+
+  private Expression readerFromSlot(Expression slot) {
+    return new Expression.Invoke(slot, readerSlotMethod(), TypeRef.of(readerCapabilityType()))
+        .inline();
   }
 
   final Reference fieldRef(String name, Class<?> type) {
@@ -3462,7 +3541,7 @@ abstract class JsonReaderCodegen {
   final boolean usesReadObjectCodec(JsonFieldInfo property) {
     return property.readKind() == JsonFieldKind.OBJECT
         && property.readRawType() != Object.class
-        && property.readTypeInfo().usesDefaultObjectCodec();
+        && resolver.canonicalObjectCodec(property.readTypeInfo()) != null;
   }
 
   final boolean storesReadObjectCodec(Class<?> type, JsonFieldInfo property) {
@@ -3644,7 +3723,7 @@ abstract class JsonReaderCodegen {
       int id,
       Expression object) {
     if (property.readRawType() == Object.class
-        || !property.readTypeInfo().usesDefaultObjectCodec()) {
+        || resolver.canonicalObjectCodec(property.readTypeInfo()) == null) {
       return readResolvedField(builder, property, id, object);
     }
     return builder.setField(property, object, readObjectValue(type, property, id));
@@ -3715,7 +3794,9 @@ abstract class JsonReaderCodegen {
     Expression codec =
         property.readRawType() == type
             ? nestedSelfReaderRef()
-            : fieldRef("o" + id, readerCapabilityType());
+            : usesReaderSlot(property.readTypeInfo())
+                ? readerFromSlot(fieldRef("o" + id, JsonTypeInfo.class))
+                : fieldRef("o" + id, readerCapabilityType());
     return new Expression.Cast(
         inline(
             new Expression.Invoke(
