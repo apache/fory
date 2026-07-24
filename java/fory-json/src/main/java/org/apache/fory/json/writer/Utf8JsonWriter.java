@@ -802,21 +802,86 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     buffer[position++] = '[';
     int length = values.length;
     if (length != 0) {
+      // Keep the signed-Long dispatch in each pair-loop lane. Extracting this real work into a
+      // small helper lets compilation order move the array closure into generated object methods.
       ensure(22);
-      writeLongNoEnsure(values[0]);
+      {
+        long value = values[0];
+        if (value == Long.MIN_VALUE) {
+          writeRawNoEnsure(MIN_LONG_BYTES);
+        } else {
+          if (value < 0) {
+            buffer[position++] = (byte) '-';
+            value = -value;
+          }
+          if (value <= Integer.MAX_VALUE) {
+            writePositiveIntNoEnsure((int) value);
+          } else {
+            position = writePositiveLong(buffer, position, value);
+          }
+        }
+      }
+
       int i = 1;
       if ((length & 1) == 0) {
         ensure(22);
         buffer[position++] = ',';
-        writeLongNoEnsure(values[i]);
+        {
+          long value = values[i];
+          if (value == Long.MIN_VALUE) {
+            writeRawNoEnsure(MIN_LONG_BYTES);
+          } else {
+            if (value < 0) {
+              buffer[position++] = (byte) '-';
+              value = -value;
+            }
+            if (value <= Integer.MAX_VALUE) {
+              writePositiveIntNoEnsure((int) value);
+            } else {
+              position = writePositiveLong(buffer, position, value);
+            }
+          }
+        }
         i++;
       }
+
       for (; i < length; i += 2) {
         ensure(44);
         buffer[position++] = ',';
-        writeLongNoEnsure(values[i]);
+        {
+          long value = values[i];
+          if (value == Long.MIN_VALUE) {
+            writeRawNoEnsure(MIN_LONG_BYTES);
+          } else {
+            if (value < 0) {
+              buffer[position++] = (byte) '-';
+              value = -value;
+            }
+            if (value <= Integer.MAX_VALUE) {
+              writePositiveIntNoEnsure((int) value);
+            } else {
+              position = writePositiveLong(buffer, position, value);
+            }
+          }
+        }
+
         buffer[position++] = ',';
-        writeLongNoEnsure(values[i + 1]);
+        {
+          long value = values[i + 1];
+          if (value == Long.MIN_VALUE) {
+            writeRawNoEnsure(MIN_LONG_BYTES);
+          } else {
+            if (value < 0) {
+              buffer[position++] = (byte) '-';
+              value = -value;
+            }
+            if (value <= Integer.MAX_VALUE) {
+              writePositiveIntNoEnsure((int) value);
+            } else {
+              position = writePositiveLong(buffer, position, value);
+            }
+          }
+        }
       }
     }
     buffer[position++] = ']';
@@ -1808,9 +1873,8 @@ public final class Utf8JsonWriter extends JsonWriter implements Appendable {
     position = writePositiveLong(buffer, position, value);
   }
 
-  // Field values and long-array elements have independent range profiles. Keep their entry
-  // profiles separate so C2 cannot use an int-range array profile to expand the generated object
-  // field path; both entries still share the same positive-Int and positive-Long implementations.
+  // Generated object fields and general scalar Long calls have independent range profiles. Keep
+  // their entries separate; array element dispatch is owned directly by writeLongArray.
   private void writeLongFieldNoEnsure(long value) {
     if (value == Long.MIN_VALUE) {
       writeRawNoEnsure(MIN_LONG_BYTES);
