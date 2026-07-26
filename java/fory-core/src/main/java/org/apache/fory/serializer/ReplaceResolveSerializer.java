@@ -398,7 +398,9 @@ public class ReplaceResolveSerializer extends Serializer {
       int nextReadRefId = readContext.tryPreserveRefId();
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
         // ref value or not-null value
-        Object o = readContext.readData(classResolver.readTypeInfo(readContext));
+        TypeInfo typeInfo = classResolver.readTypeInfo(readContext);
+        readContext.preserveNotNullValueRefId(nextReadRefId, typeInfo.getSerializer());
+        Object o = readContext.readData(typeInfo);
         readContext.setReadRef(nextReadRefId, o);
         readContext.setReadRef(outerRefId, o);
         return o;
@@ -409,7 +411,9 @@ public class ReplaceResolveSerializer extends Serializer {
       int outerRefId = readContext.lastPreservedRefId();
       int nextReadRefId = readContext.tryPreserveRefId();
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
-        // ref value or not-null value
+        // ref value or not-null value; the nested JDK object serializer binds through
+        // `readContext.reference`, so mirror this serializer's ref participation
+        readContext.preserveNotNullValueRefId(nextReadRefId, this);
         Object o = readObject(readContext);
         readContext.setReadRef(nextReadRefId, o);
         readContext.setReadRef(outerRefId, o);

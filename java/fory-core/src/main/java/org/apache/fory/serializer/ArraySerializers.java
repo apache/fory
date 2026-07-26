@@ -579,8 +579,11 @@ public final class ArraySerializers {
       Class<?> declaredElementType) {
     int nextReadRefId = readContext.tryPreserveRefId();
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
-      Object element =
-          readNonRefElement(readContext, typeResolver, elementTypeInfoHolder, declaredElementType);
+      TypeInfo elementTypeInfo = typeResolver.readTypeInfo(readContext, elementTypeInfoHolder);
+      Serializer serializer =
+          resolveElementSerializer(typeResolver, declaredElementType, elementTypeInfo);
+      readContext.preserveNotNullValueRefId(nextReadRefId, serializer);
+      Object element = readElement(readContext, elementTypeInfo, serializer);
       readContext.setReadRef(nextReadRefId, element);
       return element;
     }
@@ -595,6 +598,16 @@ public final class ArraySerializers {
     TypeInfo elementTypeInfo = typeResolver.readTypeInfo(readContext, elementTypeInfoHolder);
     Serializer serializer =
         resolveElementSerializer(typeResolver, declaredElementType, elementTypeInfo);
+    if (serializer.needToWriteRef()) {
+      // elements written without ref flags may still bind through `readContext.reference`;
+      // reserve a placeholder so the pop stays balanced
+      readContext.preserveRefId(-1);
+    }
+    return readElement(readContext, elementTypeInfo, serializer);
+  }
+
+  private static Object readElement(
+      ReadContext readContext, TypeInfo elementTypeInfo, Serializer serializer) {
     if (serializer == elementTypeInfo.getSerializer()) {
       return readContext.readNonRef(elementTypeInfo);
     }

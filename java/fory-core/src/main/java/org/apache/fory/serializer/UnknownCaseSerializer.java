@@ -52,6 +52,7 @@ public final class UnknownCaseSerializer {
       // UnknownCase owns only the union payload envelope. It does not create a separate
       // depth frame; nested payload serializers and the root-context reset own depth state.
       TypeInfo typeInfo = readContext.getTypeResolver().readTypeInfo(readContext);
+      readContext.preserveNotNullValueRefId(nextReadRefId, typeInfo.getSerializer());
       Object value = readContext.readNonRef(typeInfo);
       readContext.setReadRef(nextReadRefId, value);
       return UnknownCase.ofRuntime(caseId, typeInfo.getTypeId(), value);

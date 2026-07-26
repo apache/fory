@@ -561,6 +561,7 @@ public final class Fory implements BaseFory {
         return (T) refReader.getReadRef();
       }
       TypeInfo typeInfo = typeResolver.readTypeInfo(readContext, type);
+      readContext.preserveNotNullValueRefId(nextReadRefId, typeInfo.getSerializer());
       Object value = readContext.readNonRef(typeInfo);
       refReader.setReadRef(nextReadRefId, value);
       return (T) value;

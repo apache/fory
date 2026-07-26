@@ -153,6 +153,9 @@ public abstract class Serializer<T> {
       T obj;
       int nextReadRefId = readContext.tryPreserveRefId();
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
+        // a peer without ref tracking for this type sends NOT_NULL; reserve a placeholder so a
+        // read implementation that invokes `readContext.reference` stays balanced
+        readContext.preserveNotNullValueRefId(nextReadRefId, this);
         obj = read(readContext);
         readContext.setReadRef(nextReadRefId, obj);
         return obj;

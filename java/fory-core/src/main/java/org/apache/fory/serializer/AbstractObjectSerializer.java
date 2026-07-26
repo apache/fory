@@ -190,11 +190,10 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     if (refMode == RefMode.TRACKING) {
       int nextReadRefId = readContext.tryPreserveRefId();
       if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
-        Object value =
-            typeResolver
-                .readTypeInfo(readContext, fieldInfo.type)
-                .getSerializer()
-                .read(readContext);
+        Serializer<?> serializer =
+            typeResolver.readTypeInfo(readContext, fieldInfo.type).getSerializer();
+        readContext.preserveNotNullValueRefId(nextReadRefId, serializer);
+        Object value = serializer.read(readContext);
         refReader.setReadRef(nextReadRefId, value);
         return value;
       }
@@ -554,11 +553,16 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
       Object value;
       if (fieldInfo.containerSerializerOverride != null) {
+        readContext.preserveNotNullValueRefId(nextReadRefId, fieldInfo.containerSerializerOverride);
         value = readContext.readNonRef(fieldInfo.containerSerializerOverride);
       } else if (readContext.getConfig().isXlang()) {
+        readContext.preserveNotNullValueRefId(
+            nextReadRefId, fieldInfo.containerTypeInfo.getSerializer());
         value = readContext.readNonRef(fieldInfo.containerTypeInfo);
       } else {
-        value = readContext.readData(typeResolver.readTypeInfo(readContext));
+        TypeInfo typeInfo = typeResolver.readTypeInfo(readContext);
+        readContext.preserveNotNullValueRefId(nextReadRefId, typeInfo.getSerializer());
+        value = readContext.readData(typeInfo);
       }
       refReader.setReadRef(nextReadRefId, value);
       return value;
