@@ -17,28 +17,29 @@
 
 """Codegen smoke tests for schemas that contain service definitions."""
 
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 from textwrap import dedent
-from typing import Dict, Tuple, Type
 
 import pytest
 
 from fory_compiler.cli import (
     cmd_compile,
     compile_file,
-    main as foryc_main,
     parse_args,
     resolve_imports,
     validate_scala_generation,
     validate_swift_files,
 )
-from fory_compiler.frontend.fdl.lexer import Lexer
-from fory_compiler.frontend.fdl.parser import Parser
+from fory_compiler.cli import (
+    main as foryc_main,
+)
 from fory_compiler.frontend.fbs.lexer import Lexer as FbsLexer
 from fory_compiler.frontend.fbs.parser import Parser as FbsParser
 from fory_compiler.frontend.fbs.translator import FbsTranslator
+from fory_compiler.frontend.fdl.lexer import Lexer
+from fory_compiler.frontend.fdl.parser import Parser
 from fory_compiler.frontend.proto.lexer import Lexer as ProtoLexer
 from fory_compiler.frontend.proto.parser import Parser as ProtoParser
 from fory_compiler.frontend.proto.translator import ProtoTranslator
@@ -57,8 +58,7 @@ from fory_compiler.generators.swift import SwiftGenerator
 from fory_compiler.ir.ast import Schema
 from fory_compiler.ir.validator import SchemaValidator
 
-
-GENERATOR_CLASSES: Tuple[Type[BaseGenerator], ...] = (
+GENERATOR_CLASSES: tuple[type[BaseGenerator], ...] = (
     JavaGenerator,
     PythonGenerator,
     CppGenerator,
@@ -120,16 +120,16 @@ def parse_fbs(source: str) -> Schema:
 
 
 def generate_files(
-    schema: Schema, generator_cls: Type[BaseGenerator]
-) -> Dict[str, str]:
+    schema: Schema, generator_cls: type[BaseGenerator]
+) -> dict[str, str]:
     options = GeneratorOptions(output_dir=Path("/tmp"))
     generator = generator_cls(schema, options)
     return {item.path: item.content for item in generator.generate()}
 
 
 def generate_service_files(
-    schema: Schema, generator_cls: Type[BaseGenerator]
-) -> Dict[str, str]:
+    schema: Schema, generator_cls: type[BaseGenerator]
+) -> dict[str, str]:
     options = GeneratorOptions(output_dir=Path("/tmp"), grpc=True)
     generator = generator_cls(schema, options)
     return {item.path: item.content for item in generator.generate_services()}
@@ -3810,9 +3810,9 @@ def test_dart_grpc_method_aliases(tmp_path: Path):
 
 
 def test_dart_grpc_reserved_methods():
-    from fory_compiler.generators.dart import DartGenerator
-
     import pytest
+
+    from fory_compiler.generators.dart import DartGenerator
 
     for rpc_name, emitted in [("ToString", "toString"), ("HashCode", "hashCode")]:
         schema = parse_fdl(
