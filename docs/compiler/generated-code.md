@@ -430,8 +430,9 @@ Unions map to Rust enums with `#[fory(id = ...)]` schema case attributes.
 forward-compatibility carrier. The marker only selects the carrier and does not
 add an entry to the schema case table; schema cases still use the full `0..N`
 ID range. A generated typed union must have at least one non-`Unknown` case. The
-compiler marks the first declared non-`Unknown` case as `#[fory(default)]` and
-emits `Default` from that case:
+compiler marks the first declared non-`Unknown` case as `#[fory(default)]`.
+When that case's payload implements Rust's standard `Default` trait, the
+compiler also emits a standard `Default` implementation from that case:
 
 ```rust
 #[derive(::fory::ForyUnion, Clone, Debug, PartialEq, Eq, Hash)]
@@ -446,10 +447,16 @@ pub enum Animal {
 
 impl ::std::default::Default for Animal {
     fn default() -> Self {
-        Self::Dog(<self::Dog as ::fory::ForyDefault>::fory_default())
+        Self::Dog(<self::Dog as ::std::default::Default>::default())
     }
 }
 ```
+
+If the selected payload does not implement standard `Default`, such as an
+`any` payload, the generated union has no infallible `Default`
+implementation. This model-level default is independent of Fory's fallible
+deserialization default, which reconstructs the selected case through its
+codecs and active read context.
 
 Nested types generate nested modules:
 
@@ -1165,7 +1172,8 @@ public enum Addressbook {
         @ForyField(id: 1)
         public var name: String = ""
         @ForyField(id: 8)
-        public var pet: Addressbook.Animal = .foryDefault()
+        public var pet: Addressbook.Animal =
+            Addressbook.Animal.dog(Addressbook.Dog())
     }
 }
 ```
@@ -1180,7 +1188,12 @@ public struct Addressbook_Person: Equatable { ... }
 The CLI flag `--swift_namespace_style` overrides schema option `swift_namespace_style` when both are set.
 
 Unions are generated as tagged Swift enums with associated payload values.
+Recursive unions are emitted as `indirect` enums. The first known union case
+must have a finite recursively constructible default; the compiler rejects a
+first-case default cycle instead of emitting a non-terminating initializer.
 Messages with `ref`/`weak_ref` fields are generated as `final class` models to preserve reference semantics.
+A directly stored message cycle must mark at least one cycle edge `ref`; otherwise
+the compiler rejects the schema because Swift value types cannot represent it.
 Fixed or tagged integer encodings inside list/map fields are emitted as Swift
 field type hints, for example `@ListField(element: .encoding(.fixed))` or
 `@MapField(value: .encoding(.tagged))`.
@@ -1196,8 +1209,8 @@ Each schema includes a `ForyModule` owner with transitive import installation:
 public enum ForyModule {
     public static func install(_ fory: Fory) throws {
         try ComplexPb.ForyModule.install(fory)
-        fory.register(Addressbook.Person.self, id: 100)
-        fory.register(Addressbook.Animal.self, id: 106)
+        try fory.register(Addressbook.Person.self, id: 100)
+        try fory.register(Addressbook.Animal.self, id: 106)
     }
 }
 ```

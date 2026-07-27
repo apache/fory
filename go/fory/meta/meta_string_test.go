@@ -71,6 +71,22 @@ func TestEncodeAndDecodeMetaString(t *testing.T) {
 	require.Equal(t, "", dst)
 }
 
+func TestDecodeMalformedMetaString(t *testing.T) {
+	decoder := NewDecoder('.', '_')
+
+	value, err := decoder.Decode(make([]byte, 0), LOWER_SPECIAL)
+	require.NoError(t, err)
+	require.Empty(t, value)
+
+	_, err = decoder.Decode([]byte{0x80}, FIRST_TO_LOWER_SPECIAL)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "missing first character")
+
+	_, err = decoder.Decode([]byte{0x74}, ALL_TO_LOWER_SPECIAL)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "trailing escape")
+}
+
 func calcTotalBytes(src string, bitsPerChar int, encoding Encoding) int {
 	if encoding == UTF_8 {
 		return len(src)

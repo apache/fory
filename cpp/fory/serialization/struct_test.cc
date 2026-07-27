@@ -307,6 +307,18 @@ struct UnsignedEncodingStruct {
               (tagged_u64, fory::F().tagged()));
 };
 
+struct TaggedIntStruct {
+  int64_t value;
+
+  FORY_STRUCT(TaggedIntStruct, (value, fory::F().tagged()));
+};
+
+struct TaggedUintStruct {
+  uint64_t value;
+
+  FORY_STRUCT(TaggedUintStruct, (value, fory::F().tagged()));
+};
+
 // String handling
 struct StringTestStruct {
   std::string empty;
@@ -817,6 +829,45 @@ TEST(StructComprehensiveTest, UnsignedEncodingsRoundTrip) {
       0x0405060708090aULL,
       0x05060708090a0bULL,
   });
+}
+
+TEST(StructComprehensiveTest, TaggedIntTruncationFails) {
+  const bool compatible_modes[] = {false, true};
+  for (bool compatible : compatible_modes) {
+    SCOPED_TRACE(::testing::Message() << "compatible=" << compatible);
+    auto check_truncation = [&](auto original, uint32_t type_id,
+                                const char *kind) {
+      using StructType = decltype(original);
+      SCOPED_TRACE(::testing::Message() << "kind=" << kind);
+      auto fory = Fory::builder()
+                      .xlang(true)
+                      .compatible(compatible)
+                      .track_ref(false)
+                      .build();
+      ASSERT_TRUE(fory.register_struct<StructType>(type_id).ok());
+
+      auto serialized = fory.serialize(original);
+      ASSERT_TRUE(serialized.ok()) << serialized.error().to_string();
+      const std::vector<uint8_t> bytes = std::move(serialized).value();
+      ASSERT_GE(bytes.size(), 9u);
+      ASSERT_EQ(bytes[bytes.size() - 9] & 1u, 1u);
+      ASSERT_TRUE(fory.deserialize<StructType>(bytes).ok());
+
+      for (size_t missing_bytes = 1; missing_bytes <= 9; ++missing_bytes) {
+        SCOPED_TRACE(::testing::Message() << "missing_bytes=" << missing_bytes);
+        std::vector<uint8_t> truncated(bytes.begin(),
+                                       bytes.end() - missing_bytes);
+        auto result =
+            fory.deserialize<StructType>(truncated.data(), truncated.size());
+        ASSERT_FALSE(result.ok());
+        EXPECT_EQ(result.error().code(), ErrorCode::BufferOutOfBound);
+      }
+    };
+    check_truncation(TaggedIntStruct{std::numeric_limits<int64_t>::max()}, 612,
+                     "signed");
+    check_truncation(TaggedUintStruct{std::numeric_limits<uint64_t>::max()},
+                     613, "unsigned");
+  }
 }
 
 TEST(StructComprehensiveTest, UnsignedEncodingFieldMeta) {

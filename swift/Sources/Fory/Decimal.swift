@@ -225,7 +225,7 @@ extension Decimal {
 }
 
 extension Decimal: Serializer {
-    public static func foryDefault() -> Decimal {
+    public static func defaultValue(_ context: ReadContext) throws -> Decimal {
         .zero
     }
 
@@ -233,9 +233,8 @@ extension Decimal: Serializer {
         .decimal
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        let state = foundationDecimalWireState(self)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        let state = foundationDecimalWireState(value)
         context.buffer.writeVarInt32(state.scale)
         if let small = smallUnscaledValueForWire(state) {
             let header = encodeDecimalZigZag64(small) << 1
@@ -253,7 +252,7 @@ extension Decimal: Serializer {
         context.buffer.writeBytes(state.magnitude)
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Decimal {
+    public static func readData(_ context: ReadContext) throws -> Decimal {
         let scale = try context.buffer.readVarInt32()
         let header = try context.buffer.readVarUInt64()
         if (header & 1) == 0 {

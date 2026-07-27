@@ -1,6 +1,6 @@
 ---
 title: Xlang Serialization
-sidebar_position: 4
+sidebar_position: 5
 id: xlang_serialization
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -58,6 +58,32 @@ ModelsForyModule.register(
 ```
 
 Do not mix the two strategies for the same type across implementations.
+
+## External Types
+
+For a struct class owned by another Dart package, define an
+[external structural serializer](external-types.md) and register the target
+with the same ID or name used by every peer:
+
+```dart
+@ForyStruct(target: third_party.User)
+abstract final class UserSerializer {
+  @ForyField(id: 1)
+  late final String name;
+
+  @ForyField(id: 2, type: Int32Type())
+  late final int age;
+}
+
+ExternalSerializersForyModule.register(
+  fory,
+  third_party.User,
+  id: 100,
+);
+```
+
+The declaration's field IDs, names, nullability, and wire-width annotations
+define the Dart-side xlang schema.
 
 ## Dart to Java Example
 
@@ -215,5 +241,6 @@ dart test
 ## Related Topics
 
 - [Type Registration](type-registration.md)
+- [External-Type Serialization](external-types.md)
 - [Schema Evolution](schema-evolution.md)
 - [Xlang guide](../xlang/index.md)

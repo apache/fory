@@ -26,8 +26,7 @@ import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
 import java.lang.reflect.WildcardType;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.AtomicReferenceArray;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
 import org.apache.fory.json.reader.Utf8JsonReader;
@@ -68,11 +67,9 @@ import org.apache.fory.serializer.StringSerializer;
  * and is rejected for primitive root targets.
  */
 public final class ForyJson {
-  private static final int PREFERRED_SLOT_RETRIES = 2;
+  private static final int HOME_SLOT_RETRIES = 2;
   private static final int INITIAL_BUFFER_SIZE = 8192;
   private static final int RETAINED_UTF16_BYTES = 64 * 1024;
-  private static final int PRIMARY_SLOT = -1;
-  private static final int UNPOOLED_SLOT = -2;
   private static final byte[] EMPTY_BYTES = new byte[0];
 
   /** Default maximum nested JSON object/array depth accepted while reading or writing. */
@@ -83,9 +80,8 @@ public final class ForyJson {
 
   private final JsonConfig config;
   private final JsonSharedRegistry sharedRegistry;
-  private final int secondaryPoolSize;
-  private final AtomicReference<PooledState> primarySlot;
-  private final AtomicReferenceArray<PooledState> slots;
+  private final int homeSlotMask;
+  private final PooledState[] slots;
 
   ForyJson(JsonConfig config) {
     this(config, new JsonSharedRegistry(config));
@@ -94,12 +90,11 @@ public final class ForyJson {
   ForyJson(JsonConfig config, JsonSharedRegistry sharedRegistry) {
     this.config = config;
     this.sharedRegistry = sharedRegistry;
-    secondaryPoolSize = config.concurrencyLevel() - 1;
-    primarySlot =
-        new AtomicReference<>(new PooledState(new JsonState(config, sharedRegistry), PRIMARY_SLOT));
-    slots = new AtomicReferenceArray<>(secondaryPoolSize);
-    for (int i = 0; i < secondaryPoolSize; i++) {
-      slots.set(i, new PooledState(new JsonState(config, sharedRegistry), i));
+    int poolSize = config.concurrencyLevel();
+    homeSlotMask = Integer.highestOneBit(poolSize) - 1;
+    slots = new PooledState[poolSize];
+    for (int i = 0; i < poolSize; i++) {
+      slots[i] = new PooledState(new JsonState(config, sharedRegistry), true);
     }
   }
 
@@ -223,6 +218,7 @@ public final class ForyJson {
           writer.writeNull();
         } else {
           JsonTypeInfo typeInfo = state.rootTypeInfo(value.getClass());
+          // Keep root dispatch direct so generated codecs own their own compilation boundaries.
           typeInfo.utf8Writer().writeUtf8(writer, value);
         }
       } finally {
@@ -288,6 +284,7 @@ public final class ForyJson {
     try {
       state.typeResolver.lockJIT();
       try {
+        // Declared root dispatch stays direct; generated codecs own their own boundaries.
         state.rootTypeInfo(type, fallback).utf8Writer().writeUtf8(writer, value);
       } finally {
         state.typeResolver.unlockJIT();
@@ -490,64 +487,56 @@ public final class ForyJson {
   }
 
   private PooledState acquire() {
-    PooledState entry = primarySlot.get();
-    if (entry != null && primarySlot.compareAndSet(entry, null)) {
-      return entry;
+    PooledState[] slots = this.slots;
+    if (slots.length == 1) {
+      PooledState entry = slots[0];
+      return entry.tryAcquire() ? entry : newOverflowState();
     }
-    if (secondaryPoolSize == 0) {
-      return new PooledState(new JsonState(config, sharedRegistry), UNPOOLED_SLOT);
-    }
-    int slotIndex = slotIndexForCurrentThread();
-    entry = tryBorrowPreferredSlots(slotIndex);
-    if (entry != null) {
-      return entry;
-    }
-    return new PooledState(new JsonState(config, sharedRegistry), UNPOOLED_SLOT);
+    // A Thread's identity hash is stable for both platform and virtual threads, but retaining the
+    // Thread is unnecessary. The hash selects only a cache-affine home state; the lease remains
+    // the exclusive ownership authority, and the contended path can still use every configured
+    // state.
+    int slotIndex = spread(System.identityHashCode(Thread.currentThread())) & homeSlotMask;
+    PooledState entry = slots[slotIndex];
+    return entry.tryAcquire() ? entry : acquireContended(slotIndex);
+  }
+
+  private PooledState newOverflowState() {
+    return new PooledState(new JsonState(config, sharedRegistry), false);
   }
 
   private void release(PooledState entry) {
-    if (entry.homeIndex == PRIMARY_SLOT) {
-      primarySlot.lazySet(entry);
-    } else if (entry.homeIndex >= 0) {
-      slots.lazySet(entry.homeIndex, entry);
-    }
+    entry.release();
   }
 
-  private PooledState tryBorrowPreferredSlots(int slotIndex) {
-    PooledState entry = tryBorrowSlot(slotIndex);
-    if (entry != null) {
-      return entry;
-    }
-    for (int i = 1; i < PREFERRED_SLOT_RETRIES; i++) {
+  private PooledState acquireContended(int slotIndex) {
+    PooledState entry;
+    for (int i = 1; i < HOME_SLOT_RETRIES; i++) {
       entry = tryBorrowSlot(slotIndex);
       if (entry != null) {
         return entry;
       }
     }
     int index = slotIndex + 1;
-    if (index == secondaryPoolSize) {
+    if (index == slots.length) {
       index = 0;
     }
-    for (int i = 1; i < secondaryPoolSize; i++) {
+    for (int i = 1; i < slots.length; i++) {
       entry = tryBorrowSlot(index);
       if (entry != null) {
         return entry;
       }
       index++;
-      if (index == secondaryPoolSize) {
+      if (index == slots.length) {
         index = 0;
       }
     }
-    return null;
+    return newOverflowState();
   }
 
   private PooledState tryBorrowSlot(int index) {
-    return slots.getAndSet(index, null);
-  }
-
-  private int slotIndexForCurrentThread() {
-    return Math.floorMod(
-        spread(System.identityHashCode(Thread.currentThread())), secondaryPoolSize);
+    PooledState entry = slots[index];
+    return entry.tryAcquire() ? entry : null;
   }
 
   private static int spread(int hash) {
@@ -620,14 +609,28 @@ public final class ForyJson {
     return new ForyJsonException("Cannot read null into primitive " + type);
   }
 
-  /** Associates a reusable state with the slot to which it may be returned. */
+  /** Permanently owns one execution state and leases it to at most one root operation. */
   private static final class PooledState {
     private final JsonState state;
-    private final int homeIndex;
+    private final boolean pooled;
+    private final AtomicInteger leased;
 
-    private PooledState(JsonState state, int homeIndex) {
+    private PooledState(JsonState state, boolean pooled) {
       this.state = state;
-      this.homeIndex = homeIndex;
+      this.pooled = pooled;
+      leased = new AtomicInteger(pooled ? 0 : 1);
+    }
+
+    private boolean tryAcquire() {
+      return leased.compareAndSet(0, 1);
+    }
+
+    private void release() {
+      if (pooled) {
+        // A slot keeps its state reference for its whole lifetime. Publishing only the lease avoids
+        // a reference-store GC barrier and still makes all state cleanup visible to the next owner.
+        leased.lazySet(0);
+      }
     }
   }
 

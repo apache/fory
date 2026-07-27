@@ -14,8 +14,12 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - `fory-core` targets Java 8 bytecode and `fory-format` targets Java 11 bytecode. Do not use newer APIs in those modules.
 - `fory-json` must not depend on or reference `jdk.incubator.vector`, including production and
   multi-release sources, module descriptors, Maven wiring, and optional runtime paths.
-- JDK25 `fory-json` wide array access must use static-final VarHandles. Do not restore or benchmark
-  Unsafe as a production optimization alternative.
+- Put a `fory-json` optimization in the earliest multi-release overlay whose public JDK APIs
+  support it. In particular, `Math.multiplyHigh` and `VarHandle` implementations belong in the
+  Java 9 overlay, not the Java 25 overlay; keep only the Java 8 compatibility implementation in
+  the root sources.
+- JDK 9+ `fory-json` direct backing-array access must use static-final VarHandles. Do not restore
+  or benchmark Unsafe as a production optimization alternative.
 - Do not use wildcard imports.
 - Import config and annotation types instead of fully qualifying enum constants or annotation
   values; use qualified names only when a real name conflict requires it.
@@ -104,6 +108,28 @@ Load this file when changing anything under `java/` or when Java drives a cross-
 - In `MemoryBuffer` and `MemoryOps` hot paths, duplicate small straight-line copy/read/write logic
   when that keeps control flow direct. Do not add private helper indirection to hot paths just to
   reduce local code duplication; keep helpers for slow, cold, or error paths.
+- In JDK 25 Fory JSON C2-sensitive code, preserve measured, naturally large hot-method boundaries.
+  A method that exceeds HotSpot's 325-byte hot-inline limit through real representation, scalar,
+  array, collection, or generated-schema work is an independent subtree owner. Generated group
+  planning counts only its invocation bytecodes, not the callee's transitive body. Do not shrink
+  such a method into a wrapper, add its body back into the caller budget, or manufacture a boundary
+  with padding, `@DontInline`, `CompileCommand`, fake receivers, or JVM flags. Keep escape,
+  malformed-input, Unicode, arbitrary-length, and other cold fallback work in separate methods.
+- Generated UTF-8 object writers own their C2 boundaries in their actual emitted bytecode. A split
+  writer keeps object framing and the final declaration-order field range in public `writeUtf8`;
+  every preceding range is a direct private final helper. Cold source generation compiles each
+  candidate and requires the root and every helper to be strictly larger than HotSpot's 325-byte
+  hot-inline limit. Independently compiled String, scalar, child-object, and container leaves count
+  only as calls. If the schema cannot form at least two naturally large units, keep one direct
+  method. Do not replace these type-owned calls with interface receivers, shared profiles,
+  trampolines, padding, duplicate field logic, dummy branches, or field-count estimates.
+- Intentional hot-path source duplication is required when helper extraction loses local
+  buffer/cursor state or makes C2 layout depend on compilation order. In particular, Long read/write
+  paths may repeat Int parsing or formatting logic, and unrolled array lanes may repeat complete
+  signed/range dispatch. Do not deduplicate these blocks without generated-source, `javap`,
+  PrintInlining, LogCompilation, nmethod, allocation, intrinsic, and aggregate evidence that the
+  independent boundary and performance remain stable. Preserve the nearby source comments that
+  record the owner and failure mode.
 - In `MemoryBuffer` small-varint read/write hot paths, once Android has exited through the single
   `MemoryOps` call, keep JVM bulk loads/stores local with raw Unsafe operations instead of routing
   through branchful `_unsafeGet*` or `_unsafePut*` helpers. Add or preserve source comments that

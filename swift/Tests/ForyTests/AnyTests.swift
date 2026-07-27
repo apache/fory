@@ -64,7 +64,6 @@ private struct AnyHashableMapHolder {
 private struct AnyCoreFieldHolder {
     var anyValue: Any = ForyAnyNullValue()
     var anyObjectValue: AnyObject = NSNull()
-    var anySerializerValue: any Serializer = ForyAnyNullValue()
     var anyList: [Any] = []
     var stringAnyMap: [String: Any] = [:]
     var int32AnyMap: [Int32: Any] = [:]
@@ -81,6 +80,14 @@ private struct AnyHashableValueHolder {
     var value: AnyHashable = AnyHashable(Int32(0))
 }
 
+private typealias AnyArraySerializer = ArraySerializer<DynamicSerializer<Any>>
+private typealias StringAnyMapSerializer =
+    DictionarySerializer<String, DynamicSerializer<Any>>
+private typealias Int32AnyMapSerializer =
+    DictionarySerializer<Int32, DynamicSerializer<Any>>
+private typealias AnyHashableAnyMapSerializer =
+    DictionarySerializer<DynamicSerializer<AnyHashable>, DynamicSerializer<Any>>
+
 private func nestedDynamicAnyList(depth: Int) -> Any {
     var value: Any = Int32(1)
     if depth <= 0 {
@@ -92,29 +99,57 @@ private func nestedDynamicAnyList(depth: Int) -> Any {
     return value
 }
 
-private func readAnyRoot<R>(
-    _ fory: Fory,
-    data: Data,
-    _ body: (ReadContext) throws -> R
-) throws -> R {
-    try fory.withReusableReadContext(data: data) { context in
-        try fory.readHead(buffer: context.buffer)
-        let value = try body(context)
-        #expect(context.buffer.remaining == 0)
-        return value
-    }
+@Test
+func directDynamicRootsRoundTrip() throws {
+    let fory = Fory(config: .init(trackRef: true, compatible: false))
+    try fory.register(AnyObjectDynamicNode.self, id: 512)
+
+    let anyValue: Any = Int32(7)
+    let anyData = try fory.serialize(anyValue)
+    let explicitAnyData = try fory.serialize(
+        anyValue,
+        with: DynamicSerializer<Any>.self
+    )
+    #expect(anyData == explicitAnyData)
+
+    let anyDecoded: Any = try fory.deserialize(anyData)
+    #expect(anyDecoded as? Int32 == 7)
+
+    var anyBuffer = Data()
+    try fory.serialize(anyValue, to: &anyBuffer)
+    #expect(anyBuffer == explicitAnyData)
+    let bufferedAny: Any = try fory.deserialize(from: ByteBuffer(data: anyBuffer))
+    #expect(bufferedAny as? Int32 == 7)
+
+    let objectValue: AnyObject = AnyObjectDynamicNode(value: 8)
+    let objectData = try fory.serialize(objectValue)
+    let explicitObjectData = try fory.serialize(
+        objectValue,
+        with: DynamicSerializer<AnyObject>.self
+    )
+    #expect(objectData == explicitObjectData)
+
+    let objectDecoded: AnyObject = try fory.deserialize(objectData)
+    #expect((objectDecoded as? AnyObjectDynamicNode)?.value == 8)
+
+    var objectBuffer = Data()
+    try fory.serialize(objectValue, to: &objectBuffer)
+    #expect(objectBuffer == explicitObjectData)
+    let bufferedObject: AnyObject = try fory.deserialize(
+        from: ByteBuffer(data: objectBuffer)
+    )
+    #expect((bufferedObject as? AnyObjectDynamicNode)?.value == 8)
 }
 
 @Test
-func topLevelAnyReadersRoundTrip() throws {
+func explicitDynamicRootsRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(AnyHashableDynamicKey.self, id: 510)
-    fory.register(AnyHashableDynamicValue.self, id: 511)
+    try fory.register(AnyHashableDynamicKey.self, id: 510)
+    try fory.register(AnyHashableDynamicValue.self, id: 511)
 
     let anyValue: Any = AnyHashableDynamicValue(label: "context-any", score: 1)
-    let anyDecoded = try readAnyRoot(fory, data: try fory.serialize(anyValue)) { context in
-        try readAny(context: context, refMode: .nullOnly, readTypeInfo: true)
-    }
+    let anyData = try fory.serialize(anyValue, with: DynamicSerializer<Any>.self)
+    let anyDecoded = try fory.deserialize(anyData, with: DynamicSerializer<Any>.self)
     #expect(
         anyDecoded as? AnyHashableDynamicValue
             == AnyHashableDynamicValue(label: "context-any", score: 1)
@@ -125,13 +160,12 @@ func topLevelAnyReadersRoundTrip() throws {
         "context-list",
         AnyHashableDynamicValue(label: "context-list-obj", score: 3)
     ]
-    let listDecoded = try readAnyRoot(fory, data: try fory.serialize(listValue)) { context in
-        try readListOfAny(context: context, refMode: .nullOnly, readTypeInfo: true)
-    }
-    #expect(listDecoded?[0] as? Int32 == 2)
-    #expect(listDecoded?[1] as? String == "context-list")
+    let listData = try fory.serialize(listValue, with: AnyArraySerializer.self)
+    let listDecoded = try fory.deserialize(listData, with: AnyArraySerializer.self)
+    #expect(listDecoded[0] as? Int32 == 2)
+    #expect(listDecoded[1] as? String == "context-list")
     #expect(
-        listDecoded?[2] as? AnyHashableDynamicValue
+        listDecoded[2] as? AnyHashableDynamicValue
             == AnyHashableDynamicValue(label: "context-list-obj", score: 3)
     )
 
@@ -139,12 +173,11 @@ func topLevelAnyReadersRoundTrip() throws {
         "a": Int32(4),
         "b": AnyHashableDynamicValue(label: "context-string-map", score: 5)
     ]
-    let stringMapDecoded = try readAnyRoot(fory, data: try fory.serialize(stringMapValue)) { context in
-        try readMapStringToAny(context: context, refMode: .nullOnly, readTypeInfo: true)
-    }
-    #expect(stringMapDecoded?["a"] as? Int32 == 4)
+    let stringMapData = try fory.serialize(stringMapValue, with: StringAnyMapSerializer.self)
+    let stringMapDecoded = try fory.deserialize(stringMapData, with: StringAnyMapSerializer.self)
+    #expect(stringMapDecoded["a"] as? Int32 == 4)
     #expect(
-        stringMapDecoded?["b"] as? AnyHashableDynamicValue
+        stringMapDecoded["b"] as? AnyHashableDynamicValue
             == AnyHashableDynamicValue(label: "context-string-map", score: 5)
     )
 
@@ -152,12 +185,11 @@ func topLevelAnyReadersRoundTrip() throws {
         6: "context-int-map",
         7: AnyHashableDynamicValue(label: "context-int-map-obj", score: 8)
     ]
-    let int32MapDecoded = try readAnyRoot(fory, data: try fory.serialize(int32MapValue)) { context in
-        try readMapInt32ToAny(context: context, refMode: .nullOnly, readTypeInfo: true)
-    }
-    #expect(int32MapDecoded?[6] as? String == "context-int-map")
+    let int32MapData = try fory.serialize(int32MapValue, with: Int32AnyMapSerializer.self)
+    let int32MapDecoded = try fory.deserialize(int32MapData, with: Int32AnyMapSerializer.self)
+    #expect(int32MapDecoded[6] as? String == "context-int-map")
     #expect(
-        int32MapDecoded?[7] as? AnyHashableDynamicValue
+        int32MapDecoded[7] as? AnyHashableDynamicValue
             == AnyHashableDynamicValue(label: "context-int-map-obj", score: 8)
     )
 
@@ -166,12 +198,18 @@ func topLevelAnyReadersRoundTrip() throws {
         AnyHashable(AnyHashableDynamicKey(id: 10)):
             AnyHashableDynamicValue(label: "context-any-map", score: 11)
     ]
-    let anyHashableMapDecoded = try readAnyRoot(fory, data: try fory.serialize(anyHashableMapValue)) { context in
-        try readMapAnyHashableToAny(context: context, refMode: .nullOnly, readTypeInfo: true)
-    }
-    #expect(anyHashableMapDecoded?[AnyHashable("x")] as? Int32 == 9)
+    let anyHashableMapData = try fory.serialize(
+        anyHashableMapValue,
+        with: AnyHashableAnyMapSerializer.self
+    )
+    let anyHashableMapDecoded = try fory.deserialize(
+        anyHashableMapData,
+        with: AnyHashableAnyMapSerializer.self
+    )
+    #expect(anyHashableMapDecoded[AnyHashable("x")] as? Int32 == 9)
     #expect(
-        anyHashableMapDecoded?[AnyHashable(AnyHashableDynamicKey(id: 10))] as? AnyHashableDynamicValue
+        anyHashableMapDecoded[AnyHashable(AnyHashableDynamicKey(id: 10))]
+            as? AnyHashableDynamicValue
             == AnyHashableDynamicValue(label: "context-any-map", score: 11)
     )
 }
@@ -194,8 +232,8 @@ func topLevelAnyHashableRoundTrip() throws {
 @Test
 func topLevelAnyHashableAnyMapRoundTrip() throws {
     let fory = Fory()
-    fory.register(AnyHashableDynamicKey.self, id: 410)
-    fory.register(AnyHashableDynamicValue.self, id: 411)
+    try fory.register(AnyHashableDynamicKey.self, id: 410)
+    try fory.register(AnyHashableDynamicValue.self, id: 411)
 
     let value: [AnyHashable: Any] = [
         AnyHashable("name"): "fory",
@@ -204,21 +242,24 @@ func topLevelAnyHashableAnyMapRoundTrip() throws {
         AnyHashable(AnyHashableDynamicKey(id: 3)): AnyHashableDynamicValue(label: "swift", score: 99)
     ]
 
-    let data = try fory.serialize(value)
-    let decoded: [AnyHashable: Any] = try fory.deserialize(data)
+    let data = try fory.serialize(value, with: AnyHashableAnyMapSerializer.self)
+    let decoded = try fory.deserialize(data, with: AnyHashableAnyMapSerializer.self)
 
     #expect(decoded.count == value.count)
     #expect(decoded[AnyHashable("name")] as? String == "fory")
     #expect(decoded[AnyHashable(Int32(7))] as? Int64 == 9001)
-    #expect(decoded[AnyHashable(true)] is NSNull)
+    #expect(decoded[AnyHashable(true)] is ForyAnyNullValue)
     #expect(
         decoded[AnyHashable(AnyHashableDynamicKey(id: 3))] as? AnyHashableDynamicValue
             == AnyHashableDynamicValue(label: "swift", score: 99)
     )
 
     var buffer = Data()
-    try fory.serialize(value, to: &buffer)
-    let decodedFrom: [AnyHashable: Any] = try fory.deserialize(from: ByteBuffer(data: buffer))
+    try fory.serialize(value, with: AnyHashableAnyMapSerializer.self, to: &buffer)
+    let decodedFrom = try fory.deserialize(
+        from: ByteBuffer(data: buffer),
+        with: AnyHashableAnyMapSerializer.self
+    )
     #expect(decodedFrom.count == value.count)
     #expect(decodedFrom[AnyHashable("name")] as? String == "fory")
 }
@@ -226,7 +267,7 @@ func topLevelAnyHashableAnyMapRoundTrip() throws {
 @Test
 func topLevelAnyHashableSetRoundTrip() throws {
     let fory = Fory()
-    fory.register(AnyHashableDynamicKey.self, id: 412)
+    try fory.register(AnyHashableDynamicKey.self, id: 412)
 
     let value: Set<AnyHashable> = [
         AnyHashable("name"),
@@ -248,7 +289,7 @@ func topLevelAnyHashableSetRoundTrip() throws {
 @Test
 func topLevelDynamicAnySetRoundTrip() throws {
     let fory = Fory()
-    fory.register(AnyHashableDynamicKey.self, id: 413)
+    try fory.register(AnyHashableDynamicKey.self, id: 413)
 
     let value: Any = Set<AnyHashable>([
         AnyHashable("name"),
@@ -256,8 +297,8 @@ func topLevelDynamicAnySetRoundTrip() throws {
         AnyHashable(AnyHashableDynamicKey(id: 12))
     ])
 
-    let data = try fory.serialize(value)
-    let decoded: Any = try fory.deserialize(data)
+    let data = try fory.serialize(value, with: DynamicSerializer<Any>.self)
+    let decoded = try fory.deserialize(data, with: DynamicSerializer<Any>.self)
     let set = decoded as? Set<AnyHashable>
     #expect(set != nil)
     #expect(set?.contains(AnyHashable("name")) == true)
@@ -268,9 +309,9 @@ func topLevelDynamicAnySetRoundTrip() throws {
 @Test
 func macroAnyHashableAnyMapFieldsRoundTrip() throws {
     let fory = Fory()
-    fory.register(AnyHashableDynamicKey.self, id: 420)
-    fory.register(AnyHashableDynamicValue.self, id: 421)
-    fory.register(AnyHashableMapHolder.self, id: 422)
+    try fory.register(AnyHashableDynamicKey.self, id: 420)
+    try fory.register(AnyHashableDynamicValue.self, id: 421)
+    try fory.register(AnyHashableMapHolder.self, id: 422)
 
     let value = AnyHashableMapHolder(
         map: [
@@ -292,14 +333,14 @@ func macroAnyHashableAnyMapFieldsRoundTrip() throws {
         decoded.map[AnyHashable(AnyHashableDynamicKey(id: 5))] as? AnyHashableDynamicValue
             == AnyHashableDynamicValue(label: "nested", score: 8)
     )
-    #expect(decoded.optionalMap?[AnyHashable(false)] is NSNull)
+    #expect(decoded.optionalMap?[AnyHashable(false)] is ForyAnyNullValue)
 }
 
 @Test
 func macroAnyHashableSetFieldsRoundTrip() throws {
     let fory = Fory()
-    fory.register(AnyHashableDynamicKey.self, id: 423)
-    fory.register(AnyHashableSetHolder.self, id: 424)
+    try fory.register(AnyHashableDynamicKey.self, id: 423)
+    try fory.register(AnyHashableSetHolder.self, id: 424)
 
     let value = AnyHashableSetHolder(
         set: [
@@ -325,14 +366,13 @@ func macroAnyHashableSetFieldsRoundTrip() throws {
 @Test
 func macroCoreAnyFieldsRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(AnyHashableDynamicValue.self, id: 425)
-    fory.register(AnyObjectDynamicNode.self, id: 426)
-    fory.register(AnyCoreFieldHolder.self, id: 427)
+    try fory.register(AnyHashableDynamicValue.self, id: 425)
+    try fory.register(AnyObjectDynamicNode.self, id: 426)
+    try fory.register(AnyCoreFieldHolder.self, id: 427)
 
     let value = AnyCoreFieldHolder(
         anyValue: AnyHashableDynamicValue(label: "core-any", score: 41),
         anyObjectValue: AnyObjectDynamicNode(value: 42),
-        anySerializerValue: AnyHashableDynamicValue(label: "core-serializer", score: 43),
         anyList: [Int32(44), "core-list", AnyHashableDynamicValue(label: "core-list-obj", score: 45)],
         stringAnyMap: [
             "k1": Int32(46),
@@ -349,7 +389,6 @@ func macroCoreAnyFieldsRoundTrip() throws {
 
     #expect(decoded.anyValue as? AnyHashableDynamicValue == AnyHashableDynamicValue(label: "core-any", score: 41))
     #expect((decoded.anyObjectValue as? AnyObjectDynamicNode)?.value == 42)
-    #expect(decoded.anySerializerValue as? AnyHashableDynamicValue == AnyHashableDynamicValue(label: "core-serializer", score: 43))
 
     #expect(decoded.anyList.count == 3)
     #expect(decoded.anyList[0] as? Int32 == 44)
@@ -366,8 +405,8 @@ func macroCoreAnyFieldsRoundTrip() throws {
 @Test
 func macroAnyHashableValueFieldRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(AnyHashableDynamicKey.self, id: 428)
-    fory.register(AnyHashableValueHolder.self, id: 429)
+    try fory.register(AnyHashableDynamicKey.self, id: 428)
+    try fory.register(AnyHashableValueHolder.self, id: 429)
 
     let value = AnyHashableValueHolder(value: AnyHashable(AnyHashableDynamicKey(id: 51)))
     let data = try fory.serialize(value)
@@ -377,7 +416,7 @@ func macroAnyHashableValueFieldRoundTrip() throws {
 }
 
 @Test
-func dynamicAnyMapNormalizationForAnyHashableKeys() throws {
+func anyHashableMapPreservesTarget() throws {
     let fory = Fory()
 
     let heterogeneous: Any =
@@ -385,8 +424,8 @@ func dynamicAnyMapNormalizationForAnyHashableKeys() throws {
             AnyHashable("k"): Int32(1),
             AnyHashable(Int32(2)): "v2"
         ] as [AnyHashable: Any]
-    let heteroData = try fory.serialize(heterogeneous)
-    let heteroDecoded: Any = try fory.deserialize(heteroData)
+    let heteroData = try fory.serialize(heterogeneous, with: DynamicSerializer<Any>.self)
+    let heteroDecoded = try fory.deserialize(heteroData, with: DynamicSerializer<Any>.self)
     let heteroMap = heteroDecoded as? [AnyHashable: Any]
     #expect(heteroMap != nil)
     #expect(heteroMap?[AnyHashable("k")] as? Int32 == 1)
@@ -397,35 +436,39 @@ func dynamicAnyMapNormalizationForAnyHashableKeys() throws {
             AnyHashable("a"): Int32(10),
             AnyHashable("b"): Int32(20)
         ] as [AnyHashable: Any]
-    let homogeneousData = try fory.serialize(homogeneous)
-    let homogeneousDecoded: Any = try fory.deserialize(homogeneousData)
-    let homogeneousMap = homogeneousDecoded as? [String: Any]
+    let homogeneousData = try fory.serialize(homogeneous, with: DynamicSerializer<Any>.self)
+    let homogeneousDecoded = try fory.deserialize(
+        homogeneousData,
+        with: DynamicSerializer<Any>.self
+    )
+    let homogeneousMap = homogeneousDecoded as? [AnyHashable: Any]
     #expect(homogeneousMap != nil)
-    #expect(homogeneousMap?["a"] as? Int32 == 10)
-    #expect(homogeneousMap?["b"] as? Int32 == 20)
+    #expect(homogeneousMap?[AnyHashable("a")] as? Int32 == 10)
+    #expect(homogeneousMap?[AnyHashable("b")] as? Int32 == 20)
 }
 
 @Test
 func topLevelAllSupportedAnyTypesRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(AnyHashableDynamicKey.self, id: 500)
-    fory.register(AnyHashableDynamicValue.self, id: 501)
-    fory.register(AnyObjectDynamicNode.self, id: 502)
+    try fory.register(AnyHashableDynamicKey.self, id: 500)
+    try fory.register(AnyHashableDynamicValue.self, id: 501)
+    try fory.register(AnyObjectDynamicNode.self, id: 502)
 
     let anyValue: Any = AnyHashableDynamicValue(label: "root-any", score: 1)
-    let anyData = try fory.serialize(anyValue)
-    let anyDecoded: Any = try fory.deserialize(anyData)
+    let anyData = try fory.serialize(anyValue, with: DynamicSerializer<Any>.self)
+    let anyDecoded = try fory.deserialize(anyData, with: DynamicSerializer<Any>.self)
     #expect(anyDecoded as? AnyHashableDynamicValue == AnyHashableDynamicValue(label: "root-any", score: 1))
 
     let anyObjectValue: AnyObject = AnyObjectDynamicNode(value: 10)
-    let anyObjectData = try fory.serialize(anyObjectValue)
-    let anyObjectDecoded: AnyObject = try fory.deserialize(anyObjectData)
+    let anyObjectData = try fory.serialize(
+        anyObjectValue,
+        with: DynamicSerializer<AnyObject>.self
+    )
+    let anyObjectDecoded = try fory.deserialize(
+        anyObjectData,
+        with: DynamicSerializer<AnyObject>.self
+    )
     #expect((anyObjectDecoded as? AnyObjectDynamicNode)?.value == 10)
-
-    let anySerializerValue: any Serializer = AnyHashableDynamicValue(label: "root-serializer", score: 2)
-    let anySerializerData = try fory.serialize(anySerializerValue)
-    let anySerializerDecoded: any Serializer = try fory.deserialize(anySerializerData)
-    #expect(anySerializerDecoded as? AnyHashableDynamicValue == AnyHashableDynamicValue(label: "root-serializer", score: 2))
 
     let anyHashableValue = AnyHashable(AnyHashableDynamicKey(id: 3))
     let anyHashableData = try fory.serialize(anyHashableValue)
@@ -437,24 +480,36 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
         "list",
         AnyHashableDynamicValue(label: "list-obj", score: 5)
     ]
-    let anyListData = try fory.serialize(anyListValue)
-    let anyListDecoded: [Any] = try fory.deserialize(anyListData)
+    let anyListData = try fory.serialize(anyListValue, with: AnyArraySerializer.self)
+    let anyListDecoded = try fory.deserialize(anyListData, with: AnyArraySerializer.self)
     #expect(anyListDecoded.count == 3)
     #expect(anyListDecoded[0] as? Int32 == 4)
     #expect(anyListDecoded[1] as? String == "list")
     #expect(anyListDecoded[2] as? AnyHashableDynamicValue == AnyHashableDynamicValue(label: "list-obj", score: 5))
 
     let primitiveArrayValue: Any = [Int32(14), Int32(15)] as [Int32]
-    let primitiveArrayData = try fory.serialize(primitiveArrayValue)
-    let primitiveArrayDecoded: Any = try fory.deserialize(primitiveArrayData)
+    let primitiveArrayData = try fory.serialize(
+        primitiveArrayValue,
+        with: DynamicSerializer<Any>.self
+    )
+    let primitiveArrayDecoded = try fory.deserialize(
+        primitiveArrayData,
+        with: DynamicSerializer<Any>.self
+    )
     #expect(primitiveArrayDecoded as? [Int32] == [Int32(14), Int32(15)])
 
     let stringAnyMapValue: [String: Any] = [
         "a": Int32(6),
         "b": AnyHashableDynamicValue(label: "map-a", score: 7)
     ]
-    let stringAnyMapData = try fory.serialize(stringAnyMapValue)
-    let stringAnyMapDecoded: [String: Any] = try fory.deserialize(stringAnyMapData)
+    let stringAnyMapData = try fory.serialize(
+        stringAnyMapValue,
+        with: StringAnyMapSerializer.self
+    )
+    let stringAnyMapDecoded = try fory.deserialize(
+        stringAnyMapData,
+        with: StringAnyMapSerializer.self
+    )
     #expect(stringAnyMapDecoded["a"] as? Int32 == 6)
     #expect(stringAnyMapDecoded["b"] as? AnyHashableDynamicValue == AnyHashableDynamicValue(label: "map-a", score: 7))
 
@@ -462,8 +517,14 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
         8: "v8",
         9: AnyHashableDynamicValue(label: "map-b", score: 9)
     ]
-    let int32AnyMapData = try fory.serialize(int32AnyMapValue)
-    let int32AnyMapDecoded: [Int32: Any] = try fory.deserialize(int32AnyMapData)
+    let int32AnyMapData = try fory.serialize(
+        int32AnyMapValue,
+        with: Int32AnyMapSerializer.self
+    )
+    let int32AnyMapDecoded = try fory.deserialize(
+        int32AnyMapData,
+        with: Int32AnyMapSerializer.self
+    )
     #expect(int32AnyMapDecoded[8] as? String == "v8")
     #expect(int32AnyMapDecoded[9] as? AnyHashableDynamicValue == AnyHashableDynamicValue(label: "map-b", score: 9))
 
@@ -471,8 +532,14 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
         AnyHashable("x"): Int32(10),
         AnyHashable(Int32(11)): AnyHashableDynamicValue(label: "map-c", score: 11)
     ]
-    let anyHashableAnyMapData = try fory.serialize(anyHashableAnyMapValue)
-    let anyHashableAnyMapDecoded: [AnyHashable: Any] = try fory.deserialize(anyHashableAnyMapData)
+    let anyHashableAnyMapData = try fory.serialize(
+        anyHashableAnyMapValue,
+        with: AnyHashableAnyMapSerializer.self
+    )
+    let anyHashableAnyMapDecoded = try fory.deserialize(
+        anyHashableAnyMapData,
+        with: AnyHashableAnyMapSerializer.self
+    )
     #expect(anyHashableAnyMapDecoded[AnyHashable("x")] as? Int32 == 10)
     #expect(
         anyHashableAnyMapDecoded[AnyHashable(Int32(11))] as? AnyHashableDynamicValue
@@ -493,52 +560,72 @@ func topLevelAllSupportedAnyTypesRoundTrip() throws {
 }
 
 @Test
-func topLevelAnyHomogeneousListAndMapRoundTrip() throws {
+func homogeneousCarrierRootsRoundTrip() throws {
     let fory = Fory()
 
-    let listValue: Any = ["alpha", "beta"] as [String]
-    let listData = try fory.serialize(listValue)
-    let listDecoded: Any = try fory.deserialize(listData)
-    let list = listDecoded as? [Any]
-    #expect(list?.count == 2)
-    #expect(list?[0] as? String == "alpha")
-    #expect(list?[1] as? String == "beta")
+    let listValue = ["alpha", "beta"]
+    let listData = try fory.serialize(listValue, with: ArraySerializer<String>.self)
+    let listDecoded = try fory.deserialize(listData, with: ArraySerializer<String>.self)
+    #expect(listDecoded == listValue)
 
-    let mapValue: Any = ["k1": "v1", "k2": "v2"] as [String: String]
-    let mapData = try fory.serialize(mapValue)
-    let mapDecoded: Any = try fory.deserialize(mapData)
-    let map = mapDecoded as? [String: Any]
-    #expect(map?.count == 2)
-    #expect(map?["k1"] as? String == "v1")
-    #expect(map?["k2"] as? String == "v2")
+    let mapValue = ["k1": "v1", "k2": "v2"]
+    let mapData = try fory.serialize(
+        mapValue,
+        with: DictionarySerializer<String, String>.self
+    )
+    let mapDecoded = try fory.deserialize(
+        mapData,
+        with: DictionarySerializer<String, String>.self
+    )
+    #expect(mapDecoded == mapValue)
 }
 
 @Test
 func dynamicAnyListTracksRefs() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(AnyObjectDynamicGraphNode.self, id: 503)
+    try fory.register(AnyObjectDynamicGraphNode.self, id: 503)
 
     let shared = AnyObjectDynamicGraphNode(value: 17)
-    let payload = try fory.serialize([shared, shared] as [Any])
-    let decoded: Any = try fory.deserialize(payload)
-    let list = decoded as? [Any]
-    let first = list?.first as? AnyObjectDynamicGraphNode
-    let second = list?.dropFirst().first as? AnyObjectDynamicGraphNode
+    let payload = try fory.serialize([shared, shared] as [Any], with: AnyArraySerializer.self)
+    let decoded = try fory.deserialize(payload, with: AnyArraySerializer.self)
+    let first = decoded.first as? AnyObjectDynamicGraphNode
+    let second = decoded.dropFirst().first as? AnyObjectDynamicGraphNode
 
-    #expect(list?.count == 2)
+    #expect(decoded.count == 2)
     #expect(first != nil)
     #expect(first === second)
 }
 
 @Test
+func dynamicMapNullsTrackRefs() throws {
+    let fory = Fory(config: .init(trackRef: true, compatible: false))
+    try fory.register(AnyHashableDynamicKey.self, id: 505)
+    try fory.register(AnyObjectDynamicNode.self, id: 506)
+
+    let nullKey = AnyHashable(ForyAnyNullValue())
+    let nullValueKey = AnyHashable(AnyHashableDynamicKey(id: 32))
+    let value: [AnyHashable: Any] = [
+        nullKey: AnyObjectDynamicNode(value: 31),
+        nullValueKey: NSNull()
+    ]
+
+    let payload = try fory.serialize(value, with: AnyHashableAnyMapSerializer.self)
+    let decoded = try fory.deserialize(payload, with: AnyHashableAnyMapSerializer.self)
+
+    #expect((decoded[nullKey] as? AnyObjectDynamicNode)?.value == 31)
+    #expect(decoded[nullValueKey] is ForyAnyNullValue)
+}
+
+@Test
 func dynamicAnyObjectTracksCycle() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(AnyObjectDynamicGraphNode.self, id: 504)
+    try fory.register(AnyObjectDynamicGraphNode.self, id: 504)
 
     let node = AnyObjectDynamicGraphNode(value: 21)
     node.next = node
 
-    let decoded: AnyObject = try fory.deserialize(try fory.serialize(node as AnyObject))
+    let payload = try fory.serialize(node as AnyObject, with: DynamicSerializer<AnyObject>.self)
+    let decoded = try fory.deserialize(payload, with: DynamicSerializer<AnyObject>.self)
     let graphNode = decoded as? AnyObjectDynamicGraphNode
 
     #expect(graphNode != nil)
@@ -550,11 +637,11 @@ func dynamicAnyObjectTracksCycle() throws {
 func dynamicAnyMaxDepthRejectsDeepNesting() throws {
     let value = nestedDynamicAnyList(depth: 3)
     let writer = Fory(config: .init(maxDepth: 8))
-    let payload = try writer.serialize(value)
+    let payload = try writer.serialize(value, with: DynamicSerializer<Any>.self)
 
     let limited = Fory(config: .init(maxDepth: 3))
     do {
-        let _: Any = try limited.deserialize(payload)
+        _ = try limited.deserialize(payload, with: DynamicSerializer<Any>.self)
         #expect(Bool(false))
     } catch {
         #expect(String(describing: error).contains("maxDepth"))
@@ -566,8 +653,8 @@ func dynamicAnyMaxDepthAllowsBoundaryDepth() throws {
     let value = nestedDynamicAnyList(depth: 3)
     let fory = Fory(config: .init(maxDepth: 4))
 
-    let payload = try fory.serialize(value)
-    let decoded: Any = try fory.deserialize(payload)
+    let payload = try fory.serialize(value, with: DynamicSerializer<Any>.self)
+    let decoded = try fory.deserialize(payload, with: DynamicSerializer<Any>.self)
 
     let level1 = decoded as? [Any]
     let level2 = level1?.first as? [Any]

@@ -23,11 +23,58 @@ This page covers macro-level schema metadata in Swift.
 
 ## Available Macro Attributes
 
-- `@ForyStruct` on struct/class models
-- `@ForyEnum` on C-style enum models
-- `@ForyUnion` and `@ForyCase` on associated-value enum models
+- `@ForyStruct` on struct/class models and external structural serializers
+- `@ForyEnum` on C-style enum models and external enum serializers
+- `@ForyUnion` and `@ForyCase` on associated-value enum models and external union serializers
 - `@ForyField(encoding: ...)` on numeric fields
+- `@ForyField(with: ...)` for exact serializer selection
 - `@ListField`, `@ArrayField`, `@SetField`, and `@MapField` for collection field metadata
+
+## External Targets
+
+Use `target:` when the serializer declaration and serialized value type are
+different:
+
+```swift
+@ForyStruct(target: ThirdParty.User.self)
+struct UserSerializer {
+    var name: String
+    var age: UInt32
+}
+```
+
+Equivalent target arguments are available on `@ForyEnum` and `@ForyUnion`.
+See [External-Type Serialization](external-types.md) for target access and
+construction requirements.
+
+## `@ForyField(with:)`
+
+An unannotated field implicitly selects its declared type when that type
+implements `Serializer` with `Target == Self`, including an intentional
+retroactive external conformance. Use `with` to select a separate serializer
+for one exact field node:
+
+```swift
+@ForyStruct
+struct Account {
+    @ForyField(with: UserSerializer.self)
+    var owner: ThirdParty.User
+}
+```
+
+The serializer target must exactly match the declared field type. Optional and
+whole-carrier nodes select their carrier serializer explicitly:
+
+```swift
+@ForyField(with: OptionalSerializer<UserSerializer>.self)
+var owner: ThirdParty.User?
+
+@ForyField(with: ArraySerializer<UserSerializer>.self)
+var users: [ThirdParty.User]
+```
+
+`with` may be combined with `id`, but not with `encoding`, `type`, or another
+type selection at the same node.
 
 ## `@ForyField(encoding:)`
 
@@ -80,6 +127,15 @@ struct NestedMetrics: Equatable {
 
     @MapField(value: .list(element: .encoding(.fixed)))
     var groups: [String: [Int32?]] = [:]
+
+    @ListField(element: .with(UserSerializer.self))
+    var users: [ThirdParty.User] = []
+
+    @MapField(
+        key: .with(KeySerializer.self),
+        value: .list(element: .with(UserSerializer.self))
+    )
+    var usersByKey: [ThirdParty.Key: [ThirdParty.User]] = [:]
 }
 ```
 
@@ -119,11 +175,21 @@ enum Event {
 }
 ```
 
+External payloads select a serializer with `.with(...)`:
+
+```swift
+@ForyCase(id: 2, payload: .with(UserSerializer.self))
+case user(ThirdParty.User)
+```
+
 Every `@ForyUnion` must declare `@ForyUnknownCase case unknown(UnknownCase)` and
 at least one non-`unknown` case. The unknown case is only the Fory-owned
 forward-compatibility carrier and cannot be the default value source. It is
 omitted from the schema case table because the marker only selects the carrier
 and does not add a schema entry. Schema cases use non-negative IDs.
+
+A known union case has zero or one associated value. Use a struct payload when
+one alternative contains multiple logical fields.
 
 ## Model Macro Requirements
 
@@ -147,17 +213,21 @@ final class Node {
 }
 ```
 
+An external class serializer uses a class declaration. Its target must expose
+an accessible zero-argument initializer and writable matching fields so Fory
+can preserve shared and circular references.
+
 ## Dynamic Any Fields in Macro Types
 
 Fory model macros support dynamic fields and nested containers:
 
-- `Any`, `AnyObject`, `any Serializer`
+- `Any`, `AnyObject`, and arbitrary `any Protocol` existentials
 - `AnyHashable`
 - `[Any]`
 - `[String: Any]`
 - `[Int32: Any]`
 - `[AnyHashable: Any]`
 
-Current limitations:
-
-- `Dictionary<K, Any>` is only supported when `K` is `String`, `Int32`, or `AnyHashable`
+Other dictionary key types work when the key is `Hashable` and implements
+`Serializer` with `Target == Self`. For an external key using a separate
+serializer, select it with `@MapField(key: .with(KeySerializer.self))`.

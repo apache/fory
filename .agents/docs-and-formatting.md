@@ -18,11 +18,13 @@ Load this file when changing documentation, public APIs, protocol specs, benchma
 - Update the relevant docs under `docs/` when important public APIs change.
 - Update `docs/specification/**` when protocol behavior changes.
 - Keep examples working and aligned with the current API and protocol behavior.
+- Published guides and specifications describe only the current supported API.
+  Keep migration history, removed API names, and before/after narratives in
+  task-local design records, not in final guides or specifications.
 - Do not use emoji in documentation, including headings, feature lists, status
   tables, callouts, or READMEs. Use plain words such as "Supported" or
   "Unsupported" instead.
 - Provide or update working examples when adding new features or materially changing workflows.
-- Add migration guidance when a change is breaking or materially changes workflow.
 - `docs/DEVELOPMENT.md` plus updates under `docs/guide/` and `docs/benchmarks/` are synced to `apache/fory-site`; other website content should be changed there instead of this repo.
 - When benchmark logic, scripts, config, or compared serializers change, rerun the relevant benchmarks and refresh the report and plots under `docs/benchmarks/**`.
 - Never manually edit generated code for compiler or IDL outputs; regenerate from the source schema or IDL.

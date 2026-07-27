@@ -22,7 +22,10 @@ This module implements the decoding of TypeDef objects according to the xlang se
 """
 
 from dataclasses import make_dataclass
-from typing import List, Any
+from typing import Any, List
+
+# Python 3.8 must be able to evaluate these annotations at runtime.
+
 from pyfory.serialization import Buffer
 from pyfory.meta.typedef import TypeDef, FieldInfo, FieldType
 from pyfory.meta.typedef import (
@@ -226,15 +229,15 @@ def _validate_parsed_typedef_hash(header: int, encoded_meta_data: bytes) -> None
 
 def read_namespace(buffer: Buffer) -> str:
     """Read namespace from the buffer."""
-    return read_meta_string(buffer, NAMESPACE_DECODER, NAMESPACE_ENCODINGS)
+    return read_meta_string(buffer, NAMESPACE_DECODER, NAMESPACE_ENCODINGS, "namespace")
 
 
 def read_typename(buffer: Buffer) -> str:
     """Read typename from the buffer."""
-    return read_meta_string(buffer, TYPENAME_DECODER, TYPE_NAME_ENCODINGS)
+    return read_meta_string(buffer, TYPENAME_DECODER, TYPE_NAME_ENCODINGS, "type name")
 
 
-def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder, encodings: List[Encoding]) -> str:
+def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder, encodings: List[Encoding], name_kind: str) -> str:
     """Read a big meta string (namespace/typename) from the buffer using 6-bit size field."""
     # Read encoding and length combined in first byte
     header = buffer.read_uint8()
@@ -243,6 +246,8 @@ def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder, encodings: List
     encoding_value = header & 0b11
     size_value = (header >> 2) & 0b111111
 
+    if encoding_value >= len(encodings):
+        raise ValueError(f"Invalid TypeDef {name_kind} encoding {encoding_value}")
     encoding = encodings[encoding_value]
 
     # Read length - same logic as encoder

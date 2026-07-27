@@ -48,13 +48,13 @@ struct Dog : Animal {
   std::string speak() const override { return "Woof!"; }
   std::string breed;
 };
-FORY_STRUCT(Dog, age, breed);
+FORY_STRUCT(Dog, FORY_BASE(Animal), breed);
 
 struct Cat : Animal {
   std::string speak() const override { return "Meow!"; }
   std::string color;
 };
-FORY_STRUCT(Cat, age, color);
+FORY_STRUCT(Cat, FORY_BASE(Animal), color);
 
 // Struct with polymorphic field
 struct Zoo {
@@ -337,7 +337,7 @@ FORY_STRUCT(GraphNode, id, neighbors);
 struct WeightedNode : GraphNode {
   double weight = 0.0;
 };
-FORY_STRUCT(WeightedNode, id, neighbors, weight);
+FORY_STRUCT(WeightedNode, FORY_BASE(GraphNode), weight);
 
 // Enable ref tracking to handle shared references and cycles
 auto fory = Fory::builder().xlang(true).track_ref(true).build();
@@ -392,14 +392,25 @@ auto fory = Fory::builder()
    };
    ```
 
-4. **Register all concrete types** before serialization/deserialization:
+4. **Declare every serialized base relationship** with `FORY_BASE`:
+
+   ```cpp
+   FORY_STRUCT(DerivedType, FORY_BASE(BaseType), derived_field);
+   ```
+
+   This lets Fory validate polymorphic values and correctly adjust pointers for
+   multiple inheritance during deserialization. A derived value whose base
+   relationship is not declared cannot be deserialized through that base smart
+   pointer type.
+
+5. **Register all concrete types** before serialization/deserialization:
 
    ```cpp
    fory.register_struct<Derived1>(100);
    fory.register_struct<Derived2>(101);
    ```
 
-5. **Use `dynamic_cast`** to downcast after deserialization:
+6. **Use `dynamic_cast`** to downcast after deserialization:
 
    ```cpp
    auto* derived = dynamic_cast<DerivedType*>(base_ptr.get());
@@ -408,13 +419,13 @@ auto fory = Fory::builder()
    }
    ```
 
-6. **Adjust `max_dyn_depth`** based on your data structure depth:
+7. **Adjust `max_dyn_depth`** based on your data structure depth:
 
    ```cpp
    auto fory = Fory::builder().xlang(true).max_dyn_depth(10).build();
    ```
 
-7. **Use `nullable()`** for optional polymorphic fields:
+8. **Use `nullable()`** for optional polymorphic fields:
 
    ```cpp
    FORY_STRUCT(Holder, (optional_ptr, fory::F().nullable()));

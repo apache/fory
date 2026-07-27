@@ -191,7 +191,7 @@ struct Serializer<CustomType> {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       auto result = ctx.write_any_type_info(
-          static_cast<uint32_t>(TypeId::UNKNOWN),
+          static_cast<uint32_t>(type_id),
           std::type_index(typeid(CustomType)));
       if (!result.ok()) {
         ctx.set_error(std::move(result).error());

@@ -119,27 +119,31 @@ func (r *MetaStringResolver) WriteMetaStringBytes(buf *ByteBuffer, m *MetaString
 	}
 }
 
-// ReadMetaStringBytes reads a string from buffer, handling dynamic references
-func (r *MetaStringResolver) ReadMetaStringBytes(buf *ByteBuffer, ctxErr *Error) (*MetaStringBytes, error) {
+// ReadMetaStringBytes reads a string from buffer, handling dynamic references.
+// All failures are stored in ctxErr so callers have one error channel.
+func (r *MetaStringResolver) ReadMetaStringBytes(buf *ByteBuffer, ctxErr *Error) *MetaStringBytes {
 	// ReadData header containing length/reference info (uses VarUint32Small7 to match Java)
 	header := buf.ReadVarUint32Small7(ctxErr)
 	if ctxErr.HasError() {
-		return nil, *ctxErr
+		return nil
 	}
 
 	lengthValue := header >> 1
 	if header&1 != 0 {
 		if lengthValue == 0 || uint64(lengthValue) > uint64(MaxInt) {
-			return nil, fmt.Errorf("invalid dynamic index: %d", lengthValue)
+			ctxErr.SetError(fmt.Errorf("invalid dynamic index: %d", lengthValue))
+			return nil
 		}
 		index := int(lengthValue) - 1
 		if index < 0 || index >= len(r.dynamicIDToEnumString) {
-			return nil, fmt.Errorf("invalid dynamic index: %d", index)
+			ctxErr.SetError(fmt.Errorf("invalid dynamic index: %d", index))
+			return nil
 		}
-		return r.dynamicIDToEnumString[index], nil
+		return r.dynamicIDToEnumString[index]
 	}
 	if lengthValue > uint32(MaxInt16) {
-		return nil, fmt.Errorf("meta string length %d exceeds maximum supported length %d", lengthValue, MaxInt16)
+		ctxErr.SetError(fmt.Errorf("meta string length %d exceeds maximum supported length %d", lengthValue, MaxInt16))
+		return nil
 	}
 	length := int(lengthValue)
 
@@ -154,22 +158,24 @@ func (r *MetaStringResolver) ReadMetaStringBytes(buf *ByteBuffer, ctxErr *Error)
 	if length <= SmallStringThreshold {
 		if length == 0 {
 			r.dynamicIDToEnumString = append(r.dynamicIDToEnumString, emptyMetaStringBytes)
-			return emptyMetaStringBytes, nil
+			return emptyMetaStringBytes
 		}
 		encByte := buf.ReadByte(ctxErr)
 		var encErr error
 		encoding, encErr = meta.EncodingFromByte(encByte)
 		if encErr != nil {
-			return nil, encErr
+			ctxErr.SetError(encErr)
+			return nil
 		}
 
 		if !buf.CheckReadable(length, ctxErr) {
-			return nil, *ctxErr
+			return nil
 		}
 		data = make([]byte, length)
 		_, err := buf.Read(data)
 		if err != nil {
-			return nil, err
+			ctxErr.SetError(err)
+			return nil
 		}
 
 		words := smallMetaStringWords(data)
@@ -183,24 +189,28 @@ func (r *MetaStringResolver) ReadMetaStringBytes(buf *ByteBuffer, ctxErr *Error)
 		// Large string handling
 		err := binary.Read(buf, binary.LittleEndian, &hashcode)
 		if err != nil {
-			return nil, err
+			ctxErr.SetError(err)
+			return nil
 		}
 		var encErr error
 		encoding, encErr = meta.EncodingFromByte(byte(hashcode & 0xFF))
 		if encErr != nil {
-			return nil, encErr
+			ctxErr.SetError(encErr)
+			return nil
 		}
 		if !buf.CheckReadable(length, ctxErr) {
-			return nil, *ctxErr
+			return nil
 		}
 		data = make([]byte, length)
 		_, err = buf.Read(data)
 		if err != nil {
-			return nil, err
+			ctxErr.SetError(err)
+			return nil
 		}
 		canonicalHashcode := ComputeMetaStringHash(data, encoding)
 		if canonicalHashcode != hashcode {
-			return nil, fmt.Errorf("meta string body hash mismatch")
+			ctxErr.SetError(fmt.Errorf("meta string body hash mismatch"))
+			return nil
 		}
 	}
 
@@ -208,12 +218,12 @@ func (r *MetaStringResolver) ReadMetaStringBytes(buf *ByteBuffer, ctxErr *Error)
 	if length <= SmallStringThreshold {
 		if m, ok := r.smallHashToMetaStrBytes[key]; ok {
 			r.dynamicIDToEnumString = append(r.dynamicIDToEnumString, m)
-			return m, nil
+			return m
 		}
 	} else {
 		if m, ok := r.hashToMetaStrBytes[hashcode]; ok {
 			r.dynamicIDToEnumString = append(r.dynamicIDToEnumString, m)
-			return m, nil
+			return m
 		}
 	}
 
@@ -231,7 +241,7 @@ func (r *MetaStringResolver) ReadMetaStringBytes(buf *ByteBuffer, ctxErr *Error)
 	}
 	r.dynamicIDToEnumString = append(r.dynamicIDToEnumString, m)
 
-	return m, nil
+	return m
 }
 
 // GetMetaStrBytes converts MetaString to optimized MetaStringBytes

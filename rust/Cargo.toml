@@ -20,6 +20,7 @@ members = [
     "fory-core",
     "fory",
     "fory-derive",
+    "api-tests/external-model",
     "api-tests/facade-only",
     "api-tests/renamed-facade",
     "tests",

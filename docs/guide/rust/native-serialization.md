@@ -32,8 +32,9 @@ Kotlin, or another non-Rust Fory implementation.
 Use native serialization when:
 
 - A payload is produced and consumed only by Rust applications.
-- The data model uses Rust-specific object graph features such as `Rc<T>`, `Arc<T>`, weak
-  pointers, `RefCell<T>`, `Mutex<T>`, trait objects, or `dyn Any`.
+- The data model uses Rust-specific object graph features such as typed `Rc<T>`, `Arc<T>`, weak
+  pointers, `RefCell<T>`, or `Mutex<T>`, or uses native-only concrete targets behind trait objects
+  or `dyn Any`.
 - You want faster serialization and smaller size, and every reader uses the same schema as the
   writer.
 - You need compatible schema evolution for Rust-only rolling deployments.
@@ -87,8 +88,11 @@ every reader and writer always uses the same Rust schema.
 Register application structs and enum-like types before serialization:
 
 ```rust
+// Choose a numeric ID:
 fory.register::<Order>(100)?;
-fory.register_by_name::<Order>("example.Order")?;
+
+// Or, on a different Fory instance, choose a qualified name:
+// fory.register_by_name::<Order>("example.Order")?;
 ```
 
 Use explicit numeric IDs for compact payloads and stable deployments. Use named registration
@@ -106,8 +110,9 @@ Native serialization owns the Rust-specific object surface:
 - Trait objects such as `Box<dyn Trait>`, `Rc<dyn Trait>`, and `Arc<dyn Trait>`.
 - Runtime type dispatch with `Box<dyn Any>`, `Rc<dyn Any>`, and
   `Arc<dyn Any + Send + Sync>` for registered non-container payloads. Wrap
-  containers in registered structs, enums, or unions before using them behind
-  erased `Any` carriers.
+  containers in registered structs, enums, or unions, or register an
+  exact-target manual serializer when an opaque EXT/NAMED_EXT representation
+  is appropriate.
 - Date and time carriers, including optional `chrono` support.
 
 Use [Basic Serialization](basic-serialization.md), [References](references.md), and
@@ -144,12 +149,13 @@ when the target has been dropped.
 
 ## Trait Objects
 
-Trait objects are Rust language features and belong in native serialization:
+Trait objects are Rust language features, but their registered concrete targets
+can use either native or xlang serialization. This example uses native mode:
 
 ```rust
-use fory::{register_trait_type, Error, Fory, ForyStruct, Serializer};
+use fory::{register_trait_type, Error, Fory, ForyObject, ForyStruct};
 
-trait Animal: Serializer {
+trait Animal: ForyObject {
     fn name(&self) -> &str;
 }
 
@@ -180,6 +186,36 @@ fn main() -> Result<(), Error> {
 
 Register every concrete implementation that can appear behind the trait object.
 
+## Third-Party Struct-Style Enums
+
+Native mode supports external structural serializers for Rust enums with unit,
+tuple, and named multi-field variants:
+
+```rust
+use fory::{Fory, ForyUnion};
+
+#[derive(ForyUnion)]
+#[fory(target = third_party::Command)]
+enum CommandSerializer {
+    #[fory(default)]
+    Idle,
+    Move(i32, i32),
+    Create { id: u128, label: String },
+}
+
+let mut fory = Fory::builder()
+    .xlang(false)
+    .compatible(true)
+    .build();
+fory.register::<CommandSerializer>(101)?;
+```
+
+The same serializer works with `compatible(false)` when both peers use the
+same schema. Multi-field tuple and named variants have no xlang union mapping,
+so registering this serializer with `xlang(true)` returns an error. See
+[External-Type Serialization](external-types.md) for field, carrier, root, and
+manual serializer composition.
+
 ## Performance Guidelines
 
 - Reuse a configured `Fory` instance and register types before concurrent use.
@@ -195,11 +231,15 @@ Register every concrete implementation that can appear behind the trait object.
 | -------------------------------------- | ------------------------ | ----------------------- |
 | Rust-only payloads                     | Yes                      | Optional                |
 | Non-Rust readers or writers            | No                       | Yes                     |
-| `Rc`, `Arc`, weak pointers             | Yes                      | No                      |
-| Trait objects and `dyn Any`            | Yes                      | No                      |
-| Same-schema compact payloads           | Yes                      | No                      |
+| Typed shared and weak references       | Yes                      | No                      |
+| Trait objects and `dyn Any`            | Yes                      | Conditional             |
+| Same-schema compact payloads           | Yes                      | Yes                     |
 | Compatible schema evolution by default | Yes                      | Yes                     |
 | Portable type mapping across languages | No                       | Yes                     |
+
+Trait objects and `dyn Any` work in xlang mode only when every selected
+concrete target has an xlang-compatible structural or EXT identity. The Rust
+trait or erased-carrier identity is not written to the wire.
 
 ## Troubleshooting
 

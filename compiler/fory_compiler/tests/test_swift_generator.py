@@ -17,6 +17,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
 from fory_compiler.generators.base import GeneratorOptions
@@ -61,7 +63,7 @@ def test_swift_generator_emits_field_ids_and_encodings():
     assert "@ForyField(id: 1, encoding: .fixed)" in content
     assert "@ForyField(id: 2)" in content
     assert "@ForyField(id: 3, encoding: .tagged)" in content
-    assert "fory.register(Demo.Scalar.self, id: 100)" in content
+    assert "try fory.register(Demo.Scalar.self, id: 100)" in content
 
 
 def test_swift_generator_emits_nested_field_encoding_hints():
@@ -96,8 +98,8 @@ def test_swift_generator_emits_nested_field_encoding_hints():
     assert "public var maybeFixedValues: [Int32?] = []" in content
     assert "public var maybeUnsignedValues: [UInt64?] = []" in content
     assert "public var maybeFloatValues: [String: Float16?] = [:]" in content
-    assert "public var bfloatValue: BFloat16 = BFloat16.foryDefault()" in content
-    assert "bfloatValue: BFloat16 = BFloat16.foryDefault()" in content
+    assert "public var bfloatValue: BFloat16 = BFloat16()" in content
+    assert "bfloatValue: BFloat16 = BFloat16()" in content
     assert "public var denseValues: [Int32] = []" in content
     assert "public var bytesByName: [String: [UInt8]] = [:]" in content
     assert (
@@ -141,7 +143,119 @@ def test_swift_generator_emits_tagged_union_case_ids():
     assert "case node(Demo.Node)" in content
     assert "@ForyCase(id: 7, payload: .string)" in content
     assert "case note(String)" in content
-    assert "fory.register(Demo.Animal.self, id: 101)" in content
+    assert "try fory.register(Demo.Animal.self, id: 101)" in content
+
+
+def test_swift_native_defaults():
+    source = """
+    package demo;
+
+    enum State [id=100] {
+        STATE_READY = 0;
+        STATE_BUSY = 1;
+    }
+
+    message User [id=101] {
+        string name = 1;
+    }
+
+    union Value [id=102] {
+        User user = 1;
+        string text = 2;
+    }
+
+    message Holder [id=103] {
+        State state = 1;
+        User user = 2;
+        Value value = 3;
+    }
+    """
+    content = generate_swift(source)
+    assert "public var state: Demo.State = Demo.State.ready" in content
+    assert "public var user: Demo.User? = nil" in content
+    assert "public var value: Demo.Value = Demo.Value.user(Demo.User())" in content
+
+
+def test_swift_nested_defaults():
+    source = """
+    package demo;
+
+    message Envelope [id=100] {
+        enum State [id=101] {
+            STATE_READY = 0;
+            STATE_BUSY = 1;
+        }
+
+        union Inner [id=102] {
+            State state = 1;
+        }
+
+        union Outer [id=103] {
+            Inner inner = 1;
+        }
+
+        Outer value = 1;
+    }
+    """
+    content = generate_swift(source)
+    assert (
+        "public var value: Demo.Envelope.Outer = "
+        "Demo.Envelope.Outer.inner("
+        "Demo.Envelope.Inner.state(Demo.Envelope.State.ready))"
+    ) in content
+
+
+def test_swift_recursive_union():
+    source = """
+    package demo;
+
+    union Chain [id=100] {
+        string end = 1;
+        Chain next = 2;
+    }
+
+    message Holder [id=101] {
+        Chain value = 1;
+    }
+    """
+    content = generate_swift(source)
+    assert "public indirect enum Chain: Equatable {" in content
+    assert 'public var value: Demo.Chain = Demo.Chain.end("")' in content
+
+
+def test_swift_default_cycle():
+    source = """
+    package demo;
+
+    union Chain [id=100] {
+        Chain next = 1;
+        string end = 2;
+    }
+    """
+    with pytest.raises(
+        ValueError,
+        match=r"Swift generated default is recursive: Demo\.Chain -> Demo\.Chain",
+    ):
+        generate_swift(source)
+
+
+def test_swift_value_cycle():
+    source = """
+    package demo;
+
+    message Left [id=100] {
+        Right right = 1;
+    }
+
+    message Right [id=101] {
+        Left left = 1;
+    }
+    """
+    with pytest.raises(
+        ValueError,
+        match=r"Swift value message Demo\.Left is recursively stored",
+    ):
+        generate_swift(source)
 
 
 def test_swift_union_field_preserves_synthesized_equatable():
@@ -176,7 +290,7 @@ def test_swift_generator_supports_decimal_fields_and_unions():
     }
     """
     content = generate_swift(source)
-    assert "public var amount: Decimal = Decimal.foryDefault()" in content
+    assert "public var amount: Decimal = Decimal.zero" in content
     assert "case amount(Decimal)" in content
 
 
@@ -200,9 +314,9 @@ def test_swift_generator_maps_date_to_local_date():
     assert "@ForyField(id: 1)" in content
     assert "@ForyField(id: 2)" in content
     assert "@ForyField(id: 3)" in content
-    assert "public var day: LocalDate = LocalDate.foryDefault()" in content
-    assert "public var instant: Date = Date.foryDefault()" in content
-    assert "public var elapsed: Duration = Duration.foryDefault()" in content
+    assert "public var day: LocalDate = LocalDate()" in content
+    assert "public var instant: Date = Date(timeIntervalSince1970: 0)" in content
+    assert "public var elapsed: Duration = Duration.zero" in content
     assert "case day(LocalDate)" in content
     assert "case instant(Date)" in content
     assert "case elapsed(Duration)" in content
@@ -286,7 +400,7 @@ def test_swift_generator_no_namespace_wrapper_when_package_empty():
     assert "public enum Generated" not in content
     assert "public struct User" in content
     assert "try ForyModule.getFory().serialize(self)" in content
-    assert "fory.register(User.self, id: 1)" in content
+    assert "try fory.register(User.self, id: 1)" in content
 
 
 def test_swift_generator_supports_flatten_namespace_style_option():

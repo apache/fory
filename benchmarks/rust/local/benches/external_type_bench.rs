@@ -16,7 +16,8 @@
 // under the License.
 
 use criterion::{criterion_group, criterion_main, Criterion};
-use fory_benchmarks::run_serialization_benchmarks;
+
+mod external_types;
 
 fn config() -> Criterion {
     Criterion::default()
@@ -25,6 +26,6 @@ fn config() -> Criterion {
 criterion_group! {
     name = benches;
     config = config();
-    targets = run_serialization_benchmarks
+    targets = external_types::run_external_type_benchmarks
 }
 criterion_main!(benches);

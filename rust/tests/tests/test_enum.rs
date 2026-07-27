@@ -22,6 +22,29 @@ use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
 use std::collections::HashMap;
 
 #[test]
+fn union_declares_carrier_schema() {
+    #[derive(ForyUnion)]
+    enum ArrayListUnion {
+        #[fory(unknown)]
+        Unknown(fory_core::UnknownCase),
+        #[fory(id = 1, default)]
+        Values(#[fory(list(element(array)))] Vec<Vec<i32>>),
+    }
+
+    let value = ArrayListUnion::Values(vec![vec![11, 12], vec![13, 14]]);
+    let mut context = fory_core::WriteContext::new(
+        fory_core::resolver::TypeResolver::default(),
+        fory_core::Config::default(),
+    );
+    <ArrayListUnion as fory_core::Serializer>::write_data(&value, &mut context).unwrap();
+
+    assert_eq!(
+        context.writer.dump(),
+        vec![1, 255, 22, 2, 12, 8, 11, 0, 0, 0, 12, 0, 0, 0, 8, 13, 0, 0, 0, 14, 0, 0, 0,],
+    );
+}
+
+#[test]
 fn basic() {
     #[derive(ForyUnion, Debug, PartialEq)]
     enum Token {
@@ -130,12 +153,9 @@ fn struct_with_enum_field() {
 
     // Verify Color is recognized as ENUM TypeId
     assert!(
-        matches!(
-            Color::fory_static_type_id(),
-            TypeId::ENUM | TypeId::NAMED_ENUM
-        ),
+        matches!(Color::static_type_id(), TypeId::ENUM | TypeId::NAMED_ENUM),
         "Color should have ENUM TypeId, got {:?}",
-        Color::fory_static_type_id()
+        Color::static_type_id()
     );
 
     let mut fory = Fory::builder().xlang(true).compatible(false).build();
@@ -180,7 +200,7 @@ fn id_enum_does_not_use_type_meta_limits() {
 /// which should be compatible with Java's Union: index + xwriteRef(value)
 #[test]
 fn union_compatible_enum_xlang_format() {
-    use fory_core::serializer::{ForyDefault, Serializer};
+    use fory_core::serializer::Serializer;
     use fory_core::type_id::TypeId;
 
     // Define a Union-compatible enum (each variant has exactly one field)
@@ -208,12 +228,12 @@ fn union_compatible_enum_xlang_format() {
 
     // Verify it's recognized as UNION TypeId
     assert_eq!(
-        StringOrLong::fory_static_type_id(),
+        StringOrLong::static_type_id(),
         TypeId::UNION,
         "Union-compatible enum should have UNION TypeId"
     );
     assert_eq!(
-        ForwardStringOrLong::fory_default(),
+        ForwardStringOrLong::Text(String::new()),
         ForwardStringOrLong::Text(String::new())
     );
     // Struct containing the Union-compatible enum
@@ -224,7 +244,6 @@ fn union_compatible_enum_xlang_format() {
 
     // Test xlang mode serialization
     let mut fory = Fory::builder().xlang(true).compatible(false).build();
-    fory.register::<StringOrLong>(300).unwrap();
     fory.register::<StructWithUnion>(301).unwrap();
 
     // Test with String variant (index 0)
@@ -295,7 +314,7 @@ fn unknown_case_reads_send_sync_payload() {
         .build();
     writer.register::<FutureLeaf>(400).unwrap();
     writer.register::<FuturePayload>(401).unwrap();
-    writer.register::<NewUnion>(402).unwrap();
+    writer.register_union::<NewUnion>(402).unwrap();
     writer.register::<FutureNode>(403).unwrap();
 
     let mut reader = Fory::builder()
@@ -305,7 +324,7 @@ fn unknown_case_reads_send_sync_payload() {
         .build();
     reader.register::<FutureLeaf>(400).unwrap();
     reader.register::<FuturePayload>(401).unwrap();
-    reader.register::<OldUnion>(402).unwrap();
+    reader.register_union::<OldUnion>(402).unwrap();
     reader.register::<FutureNode>(403).unwrap();
 
     let shared = Arc::new("shared".to_string());
@@ -363,7 +382,7 @@ fn union_payload_nested_codec_annotations_roundtrip() {
     }
 
     let mut fory = Fory::builder().xlang(false).compatible(true).build();
-    fory.register::<Payload>(320).unwrap();
+    fory.register_union::<Payload>(320).unwrap();
 
     let values = Payload::Values(vec![Some(1), None, Some(-300)]);
     let bytes = fory.serialize(&values).unwrap();
@@ -398,10 +417,7 @@ fn struct_with_enum_field_explicit_nullable() {
     }
 
     assert!(
-        matches!(
-            Status::fory_static_type_id(),
-            TypeId::ENUM | TypeId::NAMED_ENUM
-        ),
+        matches!(Status::static_type_id(), TypeId::ENUM | TypeId::NAMED_ENUM),
         "Status should have ENUM TypeId"
     );
 

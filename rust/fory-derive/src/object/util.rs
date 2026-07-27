@@ -34,21 +34,15 @@ pub(super) fn get_field_name(field: &Field, index: usize) -> String {
     }
 }
 
-/// Get the field accessor token for a field.
-/// For named fields: `self.field_name`
-/// For tuple struct fields: `self.0`, `self.1`, etc.
-pub(super) fn get_field_accessor(field: &Field, index: usize, use_self: bool) -> TokenStream {
-    let prefix = if use_self {
-        quote! { self. }
-    } else {
-        quote! {}
-    };
-
+/// Get the target-value field accessor token for a field.
+/// For named fields: `value.field_name`
+/// For tuple struct fields: `value.0`, `value.1`, etc.
+pub(super) fn get_field_accessor(field: &Field, index: usize) -> TokenStream {
     match &field.ident {
-        Some(ident) => quote! { #prefix #ident },
+        Some(ident) => quote! { value.#ident },
         None => {
             let idx = Index::from(index);
-            quote! { #prefix #idx }
+            quote! { value.#idx }
         }
     }
 }
@@ -266,16 +260,6 @@ fn get_primitive_type_id(ty: &str) -> u32 {
     }
 }
 
-pub(crate) fn get_type_id_by_type_ast(ty: &Type) -> u32 {
-    let ty_str: String = ty
-        .to_token_stream()
-        .to_string()
-        .chars()
-        .filter(|c| !c.is_whitespace())
-        .collect::<String>();
-    get_type_id_by_name(&ty_str)
-}
-
 /// Get the type ID for a given type string.
 ///
 /// Returns:
@@ -460,6 +444,14 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
             .chars()
             .filter(|c| !c.is_whitespace())
             .collect::<String>();
+
+        // A selected serializer can own an EXT-shaped leaf even when its target is a
+        // canonical Rust scalar. Keep schema ordering aligned with the selected codec rather than
+        // classifying the target's source syntax as a primitive field.
+        if meta.with.is_some() {
+            non_primitive_fields.push((ident, sort_key, TypeId::UNKNOWN as u32));
+            continue;
+        }
 
         // Closure to group non-option fields, considering encoding attributes
         let mut group_field =
@@ -689,7 +681,9 @@ fn build_type_fingerprint(
         .chars()
         .filter(|c| !c.is_whitespace())
         .collect::<String>();
-    let type_id = fingerprint_type_id(if meta.bytes {
+    let type_id = fingerprint_type_id(if meta.with.is_some() {
+        TypeId::UNKNOWN as u32
+    } else if meta.bytes {
         TypeId::BINARY as u32
     } else if meta.array {
         array_type_id_for_vec_name(&container_ty_str).unwrap_or(TypeId::UNKNOWN as u32)
@@ -837,7 +831,7 @@ pub(crate) fn gen_struct_version_hash_ts(fields: &[&Field]) -> TokenStream {
             if fory_core::util::ENABLE_FORY_DEBUG_OUTPUT {
                 println!(
                     "[rust][fory-debug] struct {} version fingerprint=\"{}\" hash={}",
-                    ::std::any::type_name::<Self>(),
+                    ::std::any::type_name::<Self::Target>(),
                     #fingerprint,
                     VERSION_HASH
                 );
@@ -914,20 +908,11 @@ pub(crate) fn is_unknown_case_type(ty: &Type) -> bool {
     let Type::Path(type_path) = ty else {
         return false;
     };
-    let segments: Vec<String> = type_path
+    type_path
         .path
         .segments
-        .iter()
-        .map(|segment| segment.ident.to_string())
-        .collect();
-    let segments: Vec<&str> = segments.iter().map(String::as_str).collect();
-    matches!(
-        segments.as_slice(),
-        [owner, "UnknownCase"] if *owner == "fory" || *owner == "fory_core"
-    ) || matches!(
-        segments.as_slice(),
-        [owner, "types", "UnknownCase"] if *owner == "fory_core"
-    )
+        .last()
+        .is_some_and(|segment| segment.ident == "UnknownCase")
 }
 
 pub(crate) fn type_param_send_sync_bounds(generics: &syn::Generics) -> HashSet<String> {
@@ -1237,5 +1222,23 @@ mod tests {
             sorted_names,
             vec!["one".to_string(), "two".to_string(), "ten".to_string()]
         );
+    }
+
+    #[test]
+    fn selected_scalar_is_external() {
+        let fields: Vec<syn::Field> = vec![
+            parse_quote!(pub ordinary: i32),
+            parse_quote!(#[fory(with = ExternalI32Serializer)] pub external: i32),
+        ];
+        let field_refs: Vec<&syn::Field> = fields.iter().collect();
+
+        let (primitive, nullable_primitive, non_primitive) = group_fields_by_type(&field_refs);
+        assert_eq!(primitive[0].0, "ordinary");
+        assert!(nullable_primitive.is_empty());
+        assert_eq!(non_primitive[0].0, "external");
+
+        let fingerprint = compute_struct_fingerprint(&field_refs);
+        let unknown = TypeId::UNKNOWN as u32;
+        assert!(fingerprint.contains(&format!("external,{unknown},0,0;")));
     }
 }

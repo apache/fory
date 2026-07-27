@@ -97,7 +97,7 @@ private:
 
 class RefReader {
 public:
-  using UpdateCallback = std::function<void(const RefReader &)>;
+  using UpdateCallback = std::function<void(const RefReader &, Error &)>;
 
   RefReader() = default;
 
@@ -146,12 +146,15 @@ public:
 
   template <typename T>
   void add_update_callback(uint32_t ref_id, std::shared_ptr<T> *target) {
-    callbacks_.emplace_back([ref_id, target](const RefReader &reader) {
-      auto ref_result = reader.template get_shared_ref<T>(ref_id);
-      if (ref_result.ok()) {
-        *target = ref_result.value();
-      }
-    });
+    callbacks_.emplace_back(
+        [ref_id, target](const RefReader &reader, Error &error) {
+          auto ref_result = reader.template get_shared_ref<T>(ref_id);
+          if (FORY_PREDICT_FALSE(!ref_result.ok())) {
+            error = std::move(ref_result).error();
+            return;
+          }
+          *target = ref_result.value();
+        });
   }
 
   /// Add a callback that will be invoked when references are resolved.
@@ -167,15 +170,24 @@ public:
     callbacks_.emplace_back(std::move(callback));
   }
 
-  void resolve_callbacks() {
+  void resolve_callbacks(Error &error) {
+    if (callbacks_.empty()) {
+      return;
+    }
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      callbacks_.clear();
+      return;
+    }
     for (const auto &cb : callbacks_) {
-      cb(*this);
+      cb(*this, error);
+      if (FORY_PREDICT_FALSE(!error.ok())) {
+        break;
+      }
     }
     callbacks_.clear();
   }
 
   void reset() {
-    resolve_callbacks();
     refs_.clear();
     callbacks_.clear();
   }
@@ -194,6 +206,10 @@ public:
   uint32_t reserve_ref_id() {
     refs_.emplace_back();
     return static_cast<uint32_t>(refs_.size() - 1);
+  }
+
+  bool is_pending_ref(uint32_t ref_id) const {
+    return ref_id < refs_.size() && !refs_[ref_id].ptr;
   }
 
 private:

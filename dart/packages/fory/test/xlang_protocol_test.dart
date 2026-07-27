@@ -25,6 +25,7 @@ import 'package:fory/src/codegen/generated_registry.dart';
 import 'package:fory/src/context/meta_string_reader.dart';
 import 'package:fory/src/context/meta_string_writer.dart';
 import 'package:fory/src/meta/field_info.dart';
+import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/meta/type_def.dart';
 import 'package:fory/src/meta/type_meta.dart';
 import 'package:fory/src/resolver/type_resolver.dart';
@@ -336,6 +337,24 @@ void main() {
             (error) => error.toString(),
             'message',
             contains('Out-of-band buffers'),
+          ),
+        ),
+      );
+    });
+
+    test('rejects a trailing meta string escape', () {
+      expect(
+        () => decodeMetaString(
+          const <int>[0x74],
+          metaStringAllToLowerSpecialEncoding,
+          specialChar1: r'$',
+          specialChar2: '_',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.toString(),
+            'message',
+            contains('trailing escape'),
           ),
         ),
       );

@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_core::{Error, ForyDefault, ReadContext, Serializer, TypeResolver, WriteContext};
+use fory_core::{Error, ReadContext, Serializer, WriteContext};
 use fory_derive::{ForyEnum, ForyStruct};
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
@@ -235,8 +235,7 @@ fn nonexistent_struct() {
     };
     let bin = fory1.serialize(&person).unwrap();
     let obj: Person2 = fory2.deserialize(&bin).unwrap();
-    use fory_core::ForyDefault;
-    assert_eq!(obj.f2, Item2::fory_default());
+    assert_eq!(obj.f2, Item2 { f1: 0 });
     assert_eq!(obj.f3, 24);
     assert_eq!(obj.last, person.last);
 }
@@ -507,8 +506,14 @@ fn nullable_struct() {
     let person2: Person2 = fory2.deserialize(&bin).unwrap();
 
     assert_eq!(person2.f1.unwrap(), person1.f1);
-    use fory_core::ForyDefault;
-    assert_eq!(person2.f2, Item::fory_default());
+    assert_eq!(
+        person2.f2,
+        Item {
+            name: String::new(),
+            data: Vec::new(),
+            last: 0,
+        }
+    );
     assert_eq!(person2.f3, person1.f3.unwrap());
     assert_eq!(person2.last, person1.last);
 }
@@ -756,18 +761,20 @@ fn test_struct_with_generic() {
         f1: i32,
     }
 
-    impl<T: 'static + Serializer + ForyDefault> Serializer for Wrapper<T> {
-        fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-            context.writer.write_var_u32(self.value.len() as u32);
-            context.writer.write_utf8_string(&self.value);
-            self.data.fory_write_data(context)?;
+    impl<T: Serializer<Target = T>> Serializer for Wrapper<T> {
+        type Target = Self;
+
+        fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_var_u32(value.value.len() as u32);
+            context.writer.write_utf8_string(&value.value);
+            T::write_data(&value.data, context)?;
             Ok(())
         }
 
-        fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
             let len = context.reader.read_var_u32()? as usize;
             let value = context.reader.read_utf8_string(len)?;
-            let data = T::fory_read_data(context)?;
+            let data = T::read_data(context)?;
             Ok(Self {
                 value,
                 _marker: PhantomData,
@@ -775,25 +782,12 @@ fn test_struct_with_generic() {
             })
         }
 
-        fn fory_type_id_dyn(
-            &self,
-            type_resolver: &TypeResolver,
-        ) -> Result<fory_core::TypeId, Error> {
-            Self::fory_get_type_id(type_resolver)
-        }
-
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
-    }
-
-    impl<T: ForyDefault> ForyDefault for Wrapper<T> {
-        fn fory_default() -> Self {
-            Self {
-                value: "".into(),
+        fn default_value(context: &mut ReadContext) -> Result<Self, Error> {
+            Ok(Self {
+                value: String::new(),
                 _marker: PhantomData,
-                data: T::fory_default(),
-            }
+                data: T::default_value(context)?,
+            })
         }
     }
 

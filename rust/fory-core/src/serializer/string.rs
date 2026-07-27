@@ -15,14 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::context::ReadContext;
-use crate::context::WriteContext;
+use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
-use crate::serializer::{ForyDefault, Serializer};
+use crate::serializer::Serializer;
 use crate::type_id::TypeId;
-use std::mem;
+use std::sync::Arc;
 
 #[allow(dead_code)]
 enum StrEncoding {
@@ -32,95 +30,62 @@ enum StrEncoding {
 }
 
 impl Serializer for String {
+    type Target = Self;
+
     #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        let bitor = (self.len() as i32 as u64) << 2 | StrEncoding::Utf8 as u64;
-        context.writer.write_var_u36_small(bitor);
-        context.writer.write_utf8_string(self);
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        let header = (value.len() as i32 as u64) << 2 | StrEncoding::Utf8 as u64;
+        context.writer.write_var_u36_small(header);
+        context.writer.write_utf8_string(value);
         Ok(())
     }
 
     #[inline(always)]
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        // xlang mode: read encoding header and decode accordingly
-        let bitor = context.reader.read_var_u36_small()?;
-        let len = bitor >> 2;
-        let encoding = bitor & 0b11;
-        let s = match encoding {
-            0 => context.reader.read_latin1_string(len as usize),
-            1 => context.reader.read_utf16_string(len as usize),
-            2 => {
-                let len = len as usize;
-                if context.is_check_string_read() {
-                    context.reader.read_utf8_string(len)
-                } else {
-                    context.reader.read_utf8_string_unchecked(len)
-                }
-            }
-            _ => {
-                return Err(Error::encoding_error(format!(
-                    "wrong encoding value: {}",
-                    encoding
-                )))
-            }
-        }?;
-        Ok(s)
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        let header = context.reader.read_var_u36_small()?;
+        let len = (header >> 2) as usize;
+        match header & 0b11 {
+            0 => context.reader.read_latin1_string(len),
+            1 => context.reader.read_utf16_string(len),
+            2 if context.is_check_string_read() => context.reader.read_utf8_string(len),
+            2 => context.reader.read_utf8_string_unchecked(len),
+            encoding => Err(Error::encoding_error(format!(
+                "wrong encoding value: {}",
+                encoding
+            ))),
+        }
     }
-    #[inline]
-    fn fory_read_data_as_send_sync_any(
+
+    #[inline(always)]
+    fn default_value(_: &mut ReadContext) -> Result<Self, Error> {
+        Ok(String::new())
+    }
+
+    #[inline(always)]
+    fn read_arc_any(
         context: &mut ReadContext,
-    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-            context,
-        )?))
+    ) -> Result<Arc<dyn std::any::Any + Send + Sync>, Error> {
+        Ok(Arc::new(Self::read_data(context)?))
     }
 
     #[inline(always)]
-    fn fory_reserved_space() -> usize {
-        mem::size_of::<i32>()
+    fn reserved_space() -> usize {
+        std::mem::size_of::<i32>()
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::STRING)
-    }
-
-    #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::STRING)
-    }
-
-    #[inline(always)]
-    fn fory_static_type_id() -> TypeId
-    where
-        Self: Sized,
-    {
+    fn static_type_id() -> TypeId {
         TypeId::STRING
     }
 
     #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+    fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
         context.writer.write_u8(TypeId::STRING as u8);
         Ok(())
     }
 
     #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+    fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         read_basic_type_info::<Self>(context)
-    }
-}
-
-impl ForyDefault for String {
-    #[inline(always)]
-    fn fory_default() -> Self {
-        String::new()
     }
 }

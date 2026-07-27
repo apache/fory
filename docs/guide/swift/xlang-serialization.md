@@ -39,7 +39,7 @@ struct Order {
 }
 
 let fory = Fory()
-fory.register(Order.self, id: 100)
+try fory.register(Order.self, id: 100)
 ```
 
 ### Name-based registration
@@ -52,7 +52,11 @@ try fory.register(Order.self, name: "com.example.Order")
 
 - Keep type registration mapping consistent across languages
 - Keep compatible mode enabled when independently evolving schemas. Swift enables it by default.
-- Register all user-defined concrete types used by dynamic fields (`Any`, `any Serializer`)
+- Register all user-defined concrete targets used by dynamic fields and
+  application protocol values
+- Use an external structural serializer, a separate manual serializer, or one
+  intentional retroactive self-target conformance for a type owned by another
+  module
 
 ## Lists and Dense Arrays
 
@@ -76,6 +80,35 @@ numeric data.
 | `array<bfloat16>` | `@ArrayField(element: .bfloat16) var values: [BFloat16]` |
 | `array<float32>`  | `@ArrayField(element: .float32) var values: [Float]`     |
 | `array<float64>`  | `@ArrayField(element: .float64) var values: [Double]`    |
+
+An array that uses a separate element serializer still uses normal list
+encoding. Use `@ArrayField` only for supported dense bool or numeric arrays.
+
+## External Targets
+
+External structural serializers produce the same xlang STRUCT, ENUM, or UNION
+schema and value bytes as an equivalent ordinary Swift model:
+
+```swift
+@ForyStruct(target: ThirdParty.Order.self)
+struct OrderSerializer {
+    var id: Int64
+    var amount: Double
+}
+
+try fory.register(OrderSerializer.self, id: 100)
+```
+
+Use `.with(...)` in field metadata and `with:` at a root. See
+[External-Type Serialization](external-types.md).
+
+That explicit selection is required because the structural serializer is a
+separate declaration. An external type with one intentional retroactive
+`Target == Self` conformance instead uses ordinary roots, fields, and carriers.
+
+Swift has no native serialization mode. A known `@ForyUnion` case has zero or
+one associated value. Use a struct payload for a union alternative with
+multiple logical fields.
 
 ## Swift IDL Workflow
 

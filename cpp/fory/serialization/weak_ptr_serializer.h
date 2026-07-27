@@ -350,7 +350,12 @@ template <typename T> struct Serializer<SharedWeak<T>> {
         return SharedWeak<T>::from(ref_result.value());
       }
 
-      // Forward reference - create empty weak and register callback
+      if (FORY_PREDICT_FALSE(!ctx.ref_reader().is_pending_ref(ref_id))) {
+        ctx.set_error(std::move(ref_result).error());
+        return SharedWeak<T>();
+      }
+
+      // Forward reference - create empty weak and register callback.
       SharedWeak<T> result;
       add_weak_update_callback(ctx.ref_reader(), ref_id, result);
       return result;
@@ -415,7 +420,12 @@ template <typename T> struct Serializer<SharedWeak<T>> {
         return SharedWeak<T>::from(ref_result.value());
       }
 
-      // Forward reference
+      if (FORY_PREDICT_FALSE(!ctx.ref_reader().is_pending_ref(ref_id))) {
+        ctx.set_error(std::move(ref_result).error());
+        return SharedWeak<T>();
+      }
+
+      // Forward reference.
       SharedWeak<T> result;
       add_weak_update_callback(ctx.ref_reader(), ref_id, result);
       return result;
@@ -448,11 +458,14 @@ private:
     // Capture a copy of the SharedWeak - it shares internal storage
     SharedWeak<T> weak_copy = weak;
     ref_reader.add_update_callback(
-        ref_id, [weak_copy, ref_id](const RefReader &reader) mutable {
+        ref_id,
+        [weak_copy, ref_id](const RefReader &reader, Error &error) mutable {
           auto ref_result = reader.template get_shared_ref<T>(ref_id);
-          if (ref_result.ok()) {
-            weak_copy.update(std::weak_ptr<T>(ref_result.value()));
+          if (FORY_PREDICT_FALSE(!ref_result.ok())) {
+            error = std::move(ref_result).error();
+            return;
           }
+          weak_copy.update(std::weak_ptr<T>(ref_result.value()));
         });
   }
 };

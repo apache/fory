@@ -35,8 +35,8 @@ let mut fory = Fory::builder().xlang(true).build();
 // Register types with consistent IDs across languages
 fory.register::<MyStruct>(100)?;
 
-// Or use name-based registration
-fory.register_by_name::<MyStruct>("com.example.MyStruct")?;
+// Or, on a different Fory instance, use name-based registration
+// fory.register_by_name::<MyStruct>("com.example.MyStruct")?;
 ```
 
 ## Type Registration for Xlang
@@ -85,6 +85,48 @@ let person = Person {
 let bytes = fory.serialize(&person)?;
 // bytes can be deserialized by Java, Python, etc.
 ```
+
+### Third-Party Rust Types
+
+An external structural serializer gives a third-party Rust type the same xlang
+schema as an equivalent local derive:
+
+```rust
+#[derive(ForyStruct)]
+#[fory(target = third_party::User)]
+struct UserSerializer {
+    name: String,
+    age: u32,
+}
+
+let mut fory = Fory::builder().xlang(true).build();
+fory.register::<UserSerializer>(100)?;
+
+let bytes = fory.serialize_with::<UserSerializer>(&user)?;
+```
+
+Container roots compose with carrier serializers and keep the ordinary xlang
+LIST, MAP, tuple, or array representation:
+
+```rust
+use fory::VecSerializer;
+
+let bytes =
+    fory.serialize_with::<VecSerializer<UserSerializer>>(&users)?;
+```
+
+Only xlang-representable schemas are accepted. A native Rust enum variant with
+multiple tuple or named fields is supported with `xlang(false)`, but its
+serializer registration is rejected in xlang mode. See
+[External-Type Serialization](external-types.md).
+
+### Dynamic Rust Carriers
+
+`Box<dyn Any>`, `Rc<dyn Any>`, `Arc<dyn Any + Send + Sync>`, and application
+`dyn Trait` carriers can be used in xlang mode when every selected concrete
+target has an xlang-compatible structural or EXT identity. Fory writes the
+concrete registered target identity; the Rust trait or erased-carrier identity
+does not appear on the wire.
 
 ### Java (Deserializer)
 
@@ -188,3 +230,4 @@ explicit array field attribute when the schema is dense `array<T>`.
 - [Configuration](configuration.md) - xlang mode configuration
 - [Schema Evolution](schema-evolution.md) - Compatible mode
 - [Type Registration](type-registration.md) - Registration methods
+- [External-Type Serialization](external-types.md) - Third-party values in xlang mode

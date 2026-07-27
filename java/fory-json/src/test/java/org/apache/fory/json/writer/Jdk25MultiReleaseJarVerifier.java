@@ -24,6 +24,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -38,12 +39,19 @@ import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.stream.Stream;
 
-/** Verifies the packaged JDK25 BigDecimal field-access implementation. */
+/** Verifies the packaged JSON multi-release implementations from a JDK 25 build. */
 public final class Jdk25MultiReleaseJarVerifier {
   private static final String CLASS_NAME = "org.apache.fory.json.writer.BigDecimalFields";
   private static final String CLASS_PATH = CLASS_NAME.replace('.', '/') + ".class";
   private static final String SOURCE_PATH = CLASS_NAME.replace('.', '/') + ".java";
-  private static final String VERSION_PREFIX = "META-INF/versions/25/";
+  private static final String DECIMAL_MATH_NAME = "org.apache.fory.json.reader.DecimalMath";
+  private static final String DECIMAL_MATH_PATH = DECIMAL_MATH_NAME.replace('.', '/') + ".class";
+  private static final String DECIMAL_MATH_SOURCE = DECIMAL_MATH_NAME.replace('.', '/') + ".java";
+  private static final String ARRAY_LIST_NAME = "org.apache.fory.json.codec.ArrayListCodecSupport";
+  private static final String ARRAY_LIST_PATH = ARRAY_LIST_NAME.replace('.', '/') + ".class";
+  private static final String ARRAY_LIST_SOURCE = ARRAY_LIST_NAME.replace('.', '/') + ".java";
+  private static final String JDK9_PREFIX = "META-INF/versions/9/";
+  private static final String JDK25_PREFIX = "META-INF/versions/25/";
 
   private Jdk25MultiReleaseJarVerifier() {}
 
@@ -63,18 +71,30 @@ public final class Jdk25MultiReleaseJarVerifier {
 
   static void verify(Path jarPath, Path sourcesPath) throws Exception {
     byte[] versionClass;
+    byte[] decimalMathClass;
+    byte[] arrayListClass;
     try (JarFile jar = new JarFile(jarPath.toFile())) {
       Manifest manifest = jar.getManifest();
       require(manifest != null, "missing manifest");
       Attributes attributes = manifest.getMainAttributes();
       require("true".equalsIgnoreCase(attributes.getValue("Multi-Release")), "missing manifest");
       require(jar.getJarEntry(CLASS_PATH) != null, "missing root BigDecimalFields class");
-      versionClass = read(jar, VERSION_PREFIX + CLASS_PATH);
+      versionClass = read(jar, JDK25_PREFIX + CLASS_PATH);
+      require(jar.getJarEntry(DECIMAL_MATH_PATH) != null, "missing root DecimalMath class");
+      decimalMathClass = read(jar, JDK9_PREFIX + DECIMAL_MATH_PATH);
+      require(jar.getJarEntry(ARRAY_LIST_PATH) != null, "missing root ArrayListCodecSupport class");
+      arrayListClass = read(jar, JDK9_PREFIX + ARRAY_LIST_PATH);
     }
     try (JarFile sources = new JarFile(sourcesPath.toFile())) {
       require(
-          sources.getJarEntry(VERSION_PREFIX + SOURCE_PATH) != null,
+          sources.getJarEntry(JDK25_PREFIX + SOURCE_PATH) != null,
           "missing JDK25 BigDecimalFields source");
+      require(
+          sources.getJarEntry(JDK9_PREFIX + DECIMAL_MATH_SOURCE) != null,
+          "missing JDK9 DecimalMath source");
+      require(
+          sources.getJarEntry(JDK9_PREFIX + ARRAY_LIST_SOURCE) != null,
+          "missing JDK9 ArrayListCodecSupport source");
     }
 
     Class<?> type = new VersionClassLoader().define(versionClass);
@@ -82,6 +102,17 @@ public final class Jdk25MultiReleaseJarVerifier {
     requireVarHandle(type, "INT_COMPACT");
     requireVarHandle(type, "INT_VAL");
     requireVarHandle(type, "SCALE");
+
+    Class<?> decimalMath = new VersionClassLoader().define(decimalMathClass);
+    require(DECIMAL_MATH_NAME.equals(decimalMath.getName()), "wrong JDK9 DecimalMath name");
+    Method multiply = decimalMath.getDeclaredMethod("unsignedMultiplyHigh", long.class, long.class);
+    require(Modifier.isStatic(multiply.getModifiers()), "unsignedMultiplyHigh must be static");
+    require(multiply.getReturnType() == long.class, "unsignedMultiplyHigh return type");
+
+    Class<?> arrayList = new VersionClassLoader().define(arrayListClass);
+    require(
+        ARRAY_LIST_NAME.equals(arrayList.getName()), "wrong JDK9 ArrayListCodecSupport class name");
+    requireVarHandle(arrayList, "ELEMENTS");
   }
 
   private static void requireVarHandle(Class<?> type, String name) throws NoSuchFieldException {
@@ -220,7 +251,7 @@ public final class Jdk25MultiReleaseJarVerifier {
 
   private static void require(boolean condition, String message) {
     if (!condition) {
-      throw new AssertionError("Invalid JDK25 fory-json multi-release jar: " + message);
+      throw new AssertionError("Invalid fory-json multi-release jar: " + message);
     }
   }
 

@@ -32,7 +32,13 @@
   },
   "overrides": {
     "@typescript-eslint/typescript-estree": {
-      "minimatch": "^9.0.9"
+      "minimatch": "^10.2.5"
+    },
+    "editorconfig": {
+      "minimatch": "^10.2.5"
+    },
+    "glob@^10.0.0": {
+      "minimatch": "^10.2.5"
     }
   }
 }

@@ -530,6 +530,22 @@ public final class Latin1JsonReader extends JsonReader {
     if (safeEnd > inputLength) {
       safeEnd = inputLength;
     }
+    // The first digit plus eight more digits cannot overflow int. Consume that safe range in
+    // pairs and finish at its separator; a tenth digit continues into the checked tail below.
+    while (offset + 1 < safeEnd) {
+      int high = bytes[offset] - '0';
+      if (high < 0 || high > 9) {
+        break;
+      }
+      int low = bytes[offset + 1] - '0';
+      if (low < 0 || low > 9) {
+        result = result * 10 + high;
+        offset++;
+        break;
+      }
+      result = result * 100 + high * 10 + low;
+      offset += 2;
+    }
     while (offset < safeEnd) {
       ch = bytes[offset];
       if (ch < '0' || ch > '9') {
@@ -1863,11 +1879,11 @@ public final class Latin1JsonReader extends JsonReader {
       }
       return readStringStop(start, stop, ch);
     }
-    return readStringTokenTail(start, offset, inputLength);
-  }
-
-  private String readStringTokenTail(int start, int offset, int inputLength) {
-    byte[] bytes = input;
+    // Keep this real four-byte common tail in the token owner. Besides avoiding a helper call for
+    // short tails, it makes the complete Latin1 String common path a natural C2 boundary. Moving
+    // it into readStringTokenTail lets generated object and collection callers absorb the whole
+    // String closure and makes their nmethod shape depend on compilation order. Escape, malformed
+    // input, and the remaining scalar tail stay in the cold helper below.
     if (offset + Integer.BYTES <= inputLength) {
       int stopMask = stringStopMask(LittleEndian.getInt32(bytes, offset));
       if (stopMask == 0) {
@@ -1882,6 +1898,11 @@ public final class Latin1JsonReader extends JsonReader {
         return readStringStop(start, stop, ch);
       }
     }
+    return readStringTokenTail(start, offset, inputLength);
+  }
+
+  private String readStringTokenTail(int start, int offset, int inputLength) {
+    byte[] bytes = input;
     while (offset < inputLength) {
       int ch = bytes[offset++] & 0xFF;
       if (ch == '"') {
@@ -2416,6 +2437,29 @@ public final class Latin1JsonReader extends JsonReader {
   }
 
   private long readQuotedStringHashToken() {
+    byte[] bytes = input;
+    int mark = position;
+    int nameOffset = mark + 1;
+    if (nameOffset + Long.BYTES < bytes.length && bytes[mark] == '"') {
+      long word = LittleEndian.getInt64(bytes, nameOffset);
+      long stopMask = asciiStringStopMask(word);
+      if (stopMask == 0) {
+        if (bytes[nameOffset + Long.BYTES] == '"') {
+          position = nameOffset + Long.BYTES + 1;
+          return word;
+        }
+      } else {
+        int nameLength = Long.numberOfTrailingZeros(stopMask) >>> 3;
+        if (nameLength > 0 && ((word >>> (nameLength << 3)) & 0xFF) == '"') {
+          position = nameOffset + nameLength + 1;
+          return word & ((1L << (nameLength << 3)) - 1);
+        }
+      }
+    }
+    return readQuotedStringHashSlow();
+  }
+
+  private long readQuotedStringHashSlow() {
     byte[] bytes = input;
     int length = bytes.length;
     if (position >= length || bytes[position++] != '"') {

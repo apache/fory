@@ -52,9 +52,10 @@ import org.apache.fory.reflect.TypeRef;
  *
  * <p>{@link #resolveTypes(JsonTypeResolver)} installs the resolved read and write {@link
  * JsonTypeInfo} bindings after recursive object metadata has been published. Those bindings are the
- * only mutable lifecycle phase; generated instances capture the current concrete child capability
- * under the resolver-local JIT lock and receive later child replacements through resolver
- * callbacks.
+ * only mutable lifecycle phase. Generated classes are compiled independently from this stable
+ * metadata; generated instances are constructed bottom-up with final direct child capabilities. A
+ * canonical multi-object cycle instead captures the final child type-info slot owner. The complete
+ * graph is published under the resolver-local JIT lock.
  */
 public final class JsonFieldInfo {
   private static final int KIND_BOOLEAN = 1;

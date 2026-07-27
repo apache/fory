@@ -24,8 +24,15 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import lombok.Data;
+import org.apache.fory.Fory;
+import org.apache.fory.annotation.ForyStruct;
+import org.apache.fory.annotation.UInt32Type;
+import org.apache.fory.memory.MemoryBuffer;
+import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
@@ -48,6 +55,13 @@ public class RustXlangTest extends XlangTestBase {
           "--exact");
 
   private static final int RUST_TESTCASE_INDEX = 4;
+
+  @Data
+  @ForyStruct
+  static class ExternalUser {
+    String name;
+    @UInt32Type long age;
+  }
 
   @Override
   protected void ensurePeerReady() {
@@ -134,6 +148,42 @@ public class RustXlangTest extends XlangTestBase {
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
   public void testStructEvolvingOverride(boolean enableCodegen) throws java.io.IOException {
     super.testStructEvolvingOverride(enableCodegen);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testExternalTypeComposition(boolean enableCodegen) throws IOException {
+    String caseName = "test_external_type_composition";
+    Fory fory =
+        Fory.builder().withXlang(true).withCompatible(false).withCodegen(enableCodegen).build();
+    fory.register(ExternalUser.class, 801);
+
+    ExternalUser user = new ExternalUser();
+    user.name = "Ada";
+    user.age = 37;
+    List<ExternalUser> users = new ArrayList<>();
+    users.add(user);
+    List<Object> entry = new ArrayList<>();
+    entry.add("lead");
+    entry.add(user);
+    List<List<Object>> entries = new ArrayList<>();
+    entries.add(entry);
+    Map<String, List<List<Object>>> nested = new HashMap<>();
+    nested.put("team", entries);
+
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
+    fory.serialize(buffer, user);
+    fory.serialize(buffer, users);
+    fory.serialize(buffer, entry);
+    fory.serialize(buffer, nested);
+
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+
+    MemoryBuffer result = readBuffer(ctx.dataFile());
+    Assert.assertEquals(fory.deserialize(result), user);
+    Assert.assertEquals(fory.deserialize(result), users);
+    Assert.assertEquals(fory.deserialize(result), entry);
+    Assert.assertEquals(fory.deserialize(result), nested);
   }
 
   @Test(groups = "xlang", dataProvider = "enableCodegenParallel")

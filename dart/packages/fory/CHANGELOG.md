@@ -1,6 +1,8 @@
 ## 1.5.0-dev
 
 - Start the next development cycle after the 1.4.0 release.
+- Add generated external-type serialization with direct target construction
+  and existing registration, carrier, reference, and schema-evolution support.
 
 ## 1.4.0
 

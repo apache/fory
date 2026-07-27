@@ -282,6 +282,48 @@ TEST(MapSerializerTest, MapWithCircularReferences) {
   EXPECT_EQ(deserialized[3].get(), deserialized[4].get());
 }
 
+TEST(MapSerializerTest, NullChunksPreserveSharedRefs) {
+  auto fory =
+      Fory::builder().xlang(true).compatible(false).track_ref(true).build();
+
+  auto first = std::make_shared<int32_t>(11);
+  auto second = std::make_shared<int32_t>(22);
+  std::map<std::shared_ptr<int32_t>, std::shared_ptr<int32_t>> map;
+  map.emplace(first, nullptr);
+  map.emplace(second, first);
+  map.emplace(nullptr, second);
+
+  auto bytes = fory.serialize(map);
+  ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+  auto result = fory.deserialize<
+      std::map<std::shared_ptr<int32_t>, std::shared_ptr<int32_t>>>(
+      bytes->data(), bytes->size());
+  ASSERT_TRUE(result.ok()) << result.error().to_string();
+  ASSERT_EQ(result->size(), 3u);
+
+  std::shared_ptr<int32_t> null_value_key;
+  std::shared_ptr<int32_t> null_key_value;
+  std::shared_ptr<int32_t> pair_key;
+  std::shared_ptr<int32_t> pair_value;
+  for (const auto &[key, value] : *result) {
+    if (!key) {
+      null_key_value = value;
+    } else if (!value) {
+      null_value_key = key;
+    } else {
+      pair_key = key;
+      pair_value = value;
+    }
+  }
+
+  ASSERT_TRUE(null_value_key);
+  ASSERT_TRUE(null_key_value);
+  ASSERT_TRUE(pair_key);
+  ASSERT_TRUE(pair_value);
+  EXPECT_EQ(null_value_key.get(), pair_value.get());
+  EXPECT_EQ(null_key_value.get(), pair_key.get());
+}
+
 // ============================================================================
 // Protocol Compliance Tests
 // ============================================================================
@@ -473,6 +515,31 @@ constexpr uint32_t DERIVED_KEY_A_TYPE_ID = 1000;
 constexpr uint32_t DERIVED_KEY_B_TYPE_ID = 1001;
 constexpr uint32_t DERIVED_VALUE_X_TYPE_ID = 1002;
 constexpr uint32_t DERIVED_VALUE_Y_TYPE_ID = 1003;
+
+TEST(MapSerializerTest, RejectsUnrelatedPolymorphicValue) {
+  using namespace polymorphic_test;
+
+  for (bool compatible : {false, true}) {
+    SCOPED_TRACE(compatible);
+    auto fory = Fory::builder()
+                    .xlang(true)
+                    .compatible(compatible)
+                    .track_ref(true)
+                    .build();
+    ASSERT_TRUE(fory.register_struct<DerivedKeyA>(DERIVED_KEY_A_TYPE_ID).ok());
+
+    std::map<int32_t, std::shared_ptr<BaseKey>> values;
+    values.emplace(1, std::make_shared<DerivedKeyA>(1, "unrelated"));
+    auto bytes = fory.serialize(values);
+    ASSERT_TRUE(bytes.ok()) << bytes.error().to_string();
+
+    auto rejected =
+        fory.deserialize<std::map<int32_t, std::shared_ptr<BaseValue>>>(
+            bytes->data(), bytes->size());
+    ASSERT_FALSE(rejected.ok());
+    EXPECT_EQ(rejected.error().code(), fory::ErrorCode::TypeError);
+  }
+}
 
 // Test map with polymorphic value types (most common case)
 TEST(MapSerializerTest, PolymorphicValueTypes) {

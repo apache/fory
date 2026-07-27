@@ -30,6 +30,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAccessor;
 import java.util.Objects;
 import java.util.UUID;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.JsonConfig;
 import org.apache.fory.json.meta.JsonFieldInfo;
@@ -68,6 +69,18 @@ public abstract class JsonWriter {
 
   public void reset() {
     depth = 0;
+  }
+
+  @Internal
+  public final int getDepth() {
+    return depth;
+  }
+
+  // Generated codecs update depth only after they have emitted the complete common object-end
+  // path. Keep the state owned here rather than exposing the field itself.
+  @Internal
+  public final void setDepth(int depth) {
+    this.depth = depth;
   }
 
   protected final void enterDepth() {

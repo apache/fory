@@ -17,7 +17,9 @@
 
 from collections import namedtuple
 from enum import Enum
-from typing import List
+from typing import List, Optional
+
+# Python 3.8 must be able to evaluate these public annotations at runtime.
 
 
 class Encoding(Enum):
@@ -249,6 +251,8 @@ class MetaStringDecoder:
                 skip = False
                 continue
             if char == "|":
+                if i + 1 >= len(decoded_str):
+                    raise ValueError("Invalid ALL_TO_LOWER_SPECIAL meta string: trailing escape")
                 result.append(decoded_str[i + 1].upper())
                 skip = True
             else:
@@ -268,7 +272,7 @@ class MetaStringEncoder:
         self.special_char1 = special_char1
         self.special_char2 = special_char2
 
-    def encode(self, input_string: str, encodings: List[Encoding] = None) -> MetaString:
+    def encode(self, input_string: str, encodings: Optional[List[Encoding]] = None) -> MetaString:
         """
         Encodes the input string into a MetaString object.
 
@@ -285,7 +289,7 @@ class MetaStringEncoder:
             return MetaString(
                 input_string,
                 Encoding.UTF_8,
-                bytes(),
+                b"",
                 0,
                 self.special_char1,
                 self.special_char2,
@@ -312,7 +316,7 @@ class MetaStringEncoder:
             return MetaString(
                 input_string,
                 Encoding.UTF_8,
-                bytes(),
+                b"",
                 0,
                 self.special_char1,
                 self.special_char2,
@@ -372,7 +376,7 @@ class MetaStringEncoder:
                 self.special_char2,
             )
 
-    def compute_encoding(self, input_string: str, encodings: List[Encoding] = None) -> Encoding:
+    def compute_encoding(self, input_string: str, encodings: Optional[List[Encoding]] = None) -> Encoding:
         """
         Determines the encoding type of the input string.
 
@@ -422,12 +426,12 @@ class MetaStringEncoder:
         digit_count = 0
         upper_count = 0
         for c in chars:
-            if can_lower_upper_digit_special_encoded:
-                if not (c.islower() or c.isupper() or c.isdigit() or c in {self.special_char1, self.special_char2}):
-                    can_lower_upper_digit_special_encoded = False
-            if can_lower_special_encoded:
-                if not (c.islower() or c in {".", "_", "$", "|"}):
-                    can_lower_special_encoded = False
+            if can_lower_upper_digit_special_encoded and not (
+                c.islower() or c.isupper() or c.isdigit() or c in {self.special_char1, self.special_char2}
+            ):
+                can_lower_upper_digit_special_encoded = False
+            if can_lower_special_encoded and not (c.islower() or c in {".", "_", "$", "|"}):
+                can_lower_special_encoded = False
             if c.isdigit():
                 digit_count += 1
             if c.isupper():

@@ -459,7 +459,12 @@ String _decodeAllToLowerSpecial(List<int> bytes) {
   final buffer = StringBuffer();
   for (var index = 0; index < decoded.length; index += 1) {
     final character = decoded[index];
-    if (character == '|' && index + 1 < decoded.length) {
+    if (character == '|') {
+      if (index + 1 >= decoded.length) {
+        throw StateError(
+          'Invalid ALL_TO_LOWER_SPECIAL meta string: trailing escape.',
+        );
+      }
       index += 1;
       buffer.write(decoded[index].toUpperCase());
       continue;

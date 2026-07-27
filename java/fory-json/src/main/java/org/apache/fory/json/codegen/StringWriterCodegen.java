@@ -25,19 +25,20 @@ import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.json.ForyJsonException;
 import org.apache.fory.json.codec.StringWriterCodec;
 import org.apache.fory.json.meta.JsonFieldInfo;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.json.writer.StringJsonWriter;
 import org.apache.fory.reflect.TypeRef;
 
 final class StringWriterCodegen extends JsonWriterCodegen {
   private static final int MIN_SPLIT_MEMBERS = 10;
 
-  StringWriterCodegen(JsonCodegen codegen) {
-    super(codegen);
+  StringWriterCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
+    super(codegen, resolver);
   }
 
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
-    return codegen.stringWriterFieldType(property.writeTypeInfo());
+    return codegen.stringWriterFieldType(property.writeTypeInfo(), resolver);
   }
 
   @Override
@@ -61,6 +62,11 @@ final class StringWriterCodegen extends JsonWriterCodegen {
   }
 
   @Override
+  String writerSlotMethod() {
+    return "stringWriter";
+  }
+
+  @Override
   String memberGroupMethod() {
     return "writeStringMembers";
   }
@@ -73,6 +79,11 @@ final class StringWriterCodegen extends JsonWriterCodegen {
   @Override
   int splitMemberThreshold() {
     return MIN_SPLIT_MEMBERS;
+  }
+
+  @Override
+  boolean writesStringCollectionDirectly(JsonFieldInfo property) {
+    return JsonCodegen.writesStringCollectionDirectly(property);
   }
 
   @Override
@@ -232,27 +243,9 @@ final class StringWriterCodegen extends JsonWriterCodegen {
       boolean commaKnown,
       Expression index,
       Expression writer) {
-    if (commaKnown) {
-      if (canPackUtf16Prefix(property, true)) {
-        return new Expression.Invoke(
-            writer, "writeStringField", stringPackedPrefixArgs(property, id, true, value));
-      }
-      return new Expression.Invoke(
-          writer, "writeStringField", stringPrefixRef(true, id), utf16PrefixRef(true, id), value);
-    }
-    Expression.ListExpression expressions =
-        new Expression.ListExpression(
-            new Expression.Invoke(
-                writer,
-                "writeStringField",
-                stringPrefixRef(false, id),
-                stringPrefixRef(true, id),
-                utf16PrefixRef(false, id),
-                utf16PrefixRef(true, id),
-                index,
-                value));
-    expressions.add(increment(index));
-    return expressions;
+    return new Expression.ListExpression(
+        writeFieldName(property, id, commaKnown, index, writer),
+        new Expression.Invoke(writer, "writeString", value));
   }
 
   @Override

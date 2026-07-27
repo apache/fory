@@ -326,15 +326,30 @@ struct NonPrimitiveArrayDefaultWire {
     values: [String; 2],
 }
 
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NestedNonVecCollectionWire {
+    values: VecDeque<LinkedList<String>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct NestedArrayCollectionWire {
+    values: [VecDeque<String>; 1],
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct BoxedCollectionWire {
+    values: Box<[VecDeque<String>; 1]>,
+}
+
 fn only_field_type<T: StructSerializer>(type_resolver: &TypeResolver) -> FieldType {
-    let fields = T::fory_fields_info(type_resolver).unwrap();
+    let fields = T::fields_info(type_resolver).unwrap();
     assert_eq!(fields.len(), 1);
     fields.into_iter().next().unwrap().field_type
 }
 
-fn write_struct_data<T: Serializer>(value: &T) -> Vec<u8> {
+fn write_struct_data<T: Serializer<Target = T>>(value: &T) -> Vec<u8> {
     let mut context = WriteContext::new(TypeResolver::default(), Config::default());
-    T::fory_write_data(value, &mut context).unwrap();
+    T::write_data(value, &mut context).unwrap();
     context.writer.dump()
 }
 
@@ -480,7 +495,7 @@ fn serializer_backed_set_and_map_fields_keep_declared_generic_type_meta() {
 #[test]
 fn nested_array_values_keep_array_type_meta() {
     let type_resolver = TypeResolver::default();
-    let fields = NestedArrayValueWire::fory_fields_info(&type_resolver).unwrap();
+    let fields = NestedArrayValueWire::fields_info(&type_resolver).unwrap();
     assert_eq!(fields.len(), 2);
 
     let list_field = fields
@@ -513,7 +528,7 @@ fn nested_array_values_keep_array_type_meta() {
 #[test]
 fn any_container_fields_keep_dynamic_generic_type_meta() {
     let type_resolver = TypeResolver::default();
-    let fields = AnyContainerDefaultWire::fory_fields_info(&type_resolver).unwrap();
+    let fields = AnyContainerDefaultWire::fields_info(&type_resolver).unwrap();
     assert_eq!(fields.len(), 2);
 
     let list_field = fields
@@ -608,6 +623,24 @@ fn serializer_backed_container_fields_write_declared_generic_payloads() {
     assert_eq!(map_bytes[0], 1);
     assert_eq!(map_bytes[1], 0b100100);
     assert_eq!(map_bytes[2], 1);
+}
+
+#[test]
+fn nested_carriers_declare_payloads() {
+    let nested_list_bytes = write_struct_data(&NestedNonVecCollectionWire {
+        values: VecDeque::from([LinkedList::from(["value".to_string()])]),
+    });
+    assert_eq!(&nested_list_bytes[..4], &[1, 0b1100, 1, 0b1100]);
+
+    let nested_array_bytes = write_struct_data(&NestedArrayCollectionWire {
+        values: [VecDeque::from(["value".to_string()])],
+    });
+    assert_eq!(&nested_array_bytes[..4], &[1, 0b1100, 1, 0b1100]);
+
+    let boxed_list_bytes = write_struct_data(&BoxedCollectionWire {
+        values: Box::new([VecDeque::from(["value".to_string()])]),
+    });
+    assert_eq!(&boxed_list_bytes[..4], &[1, 0b1100, 1, 0b1100]);
 }
 
 #[test]

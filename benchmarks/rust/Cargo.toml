@@ -15,44 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 
-[package]
-name = "fory-benchmarks"
+[workspace]
+members = ["local", "xlang"]
+resolver = "2"
+
+[workspace.package]
 version = "1.5.0-alpha.0"
 edition = "2021"
-
-[[bin]]
-name = "fory_profiler"
-path = "src/main.rs"
-
-[[bench]]
-name = "serialization_bench"
-path = "benches/serialization_bench.rs"
-harness = false
-
-[[bench]]
-name = "buffer_write_bench"
-path = "benches/buffer_write_bench.rs"
-harness = false
-
-[[bench]]
-name = "buffer_read_bench"
-path = "benches/buffer_read_bench.rs"
-harness = false
-
-[[bench]]
-name = "threaded_bench"
-path = "benches/threaded_bench.rs"
-harness = false
-
-[dependencies]
-fory = { path = "../../rust/fory" }
-fory-core = { path = "../../rust/fory-core" }
-fory-derive = { path = "../../rust/fory-derive" }
-prost = "0.12"
-criterion = "0.5"
-clap = { version = "4.0", features = ["derive"] }
-rmp-serde = "1.3"
-serde = { version = "1.0", features = ["derive"] }
-
-[build-dependencies]
-prost-build = "0.12"

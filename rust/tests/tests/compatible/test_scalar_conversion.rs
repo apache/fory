@@ -22,7 +22,7 @@ use num_bigint::BigInt;
 
 fn compatible_fory<T>(type_id: u32) -> Fory
 where
-    T: fory_core::Serializer + fory_core::StructSerializer + fory_core::ForyDefault,
+    T: fory_core::StructSerializer<Target = T>,
 {
     let mut fory = Fory::builder().xlang(false).compatible(true).build();
     fory.register::<T>(type_id).unwrap();
@@ -31,8 +31,8 @@ where
 
 fn convert<W, R>(type_id: u32, value: &W) -> Result<R, Error>
 where
-    W: fory_core::Serializer + fory_core::StructSerializer + fory_core::ForyDefault,
-    R: fory_core::Serializer + fory_core::StructSerializer + fory_core::ForyDefault,
+    W: fory_core::StructSerializer<Target = W>,
+    R: fory_core::StructSerializer<Target = R>,
 {
     let writer = compatible_fory::<W>(type_id);
     let reader = compatible_fory::<R>(type_id);

@@ -25,9 +25,11 @@ environment:
   sdk: ^3.7.0
 
 dependencies:
+  external_type_test_models: 1.0.0
   fory: 1.5.0-dev
 
 dev_dependencies:
   build_runner: '>=2.7.0 <3.0.0'
   lints: ^6.1.0
   test: ^1.31.1
+  vm_service: ^15.0.0

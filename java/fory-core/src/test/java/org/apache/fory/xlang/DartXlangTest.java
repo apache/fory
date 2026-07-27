@@ -27,7 +27,14 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import lombok.Data;
+import org.apache.fory.Fory;
+import org.apache.fory.annotation.ForyField;
+import org.apache.fory.annotation.ForyStruct;
+import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.TestUtils;
+import org.testng.Assert;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
@@ -42,6 +49,10 @@ public class DartXlangTest extends XlangTestBase {
       new File(DART_FORY_TEST_WORK_DIR, "lib/entity/xlang_test_models.dart");
   private static final File DART_XLANG_GENERATED_FILE =
       new File(DART_FORY_TEST_WORK_DIR, "lib/entity/xlang_test_models.fory.dart");
+  private static final File DART_EXTERNAL_SOURCE_FILE =
+      new File(DART_FORY_TEST_WORK_DIR, "lib/model/external_serializers.dart");
+  private static final File DART_EXTERNAL_GENERATED_FILE =
+      new File(DART_FORY_TEST_WORK_DIR, "lib/model/external_serializers.fory.dart");
   private static final String DART_MODULE =
       "packages/fory-test/test/cross_lang_test/xlang_test_main.dart";
   private static final List<String> DART_CODEGEN_COMMAND =
@@ -89,7 +100,10 @@ public class DartXlangTest extends XlangTestBase {
 
   private static synchronized void ensureGeneratedXlangSpecs() {
     if (DART_XLANG_GENERATED_FILE.isFile()
-        && DART_XLANG_GENERATED_FILE.lastModified() >= DART_XLANG_SOURCE_FILE.lastModified()) {
+        && DART_XLANG_GENERATED_FILE.lastModified() >= DART_XLANG_SOURCE_FILE.lastModified()
+        && DART_EXTERNAL_GENERATED_FILE.isFile()
+        && DART_EXTERNAL_GENERATED_FILE.lastModified()
+            >= DART_EXTERNAL_SOURCE_FILE.lastModified()) {
       return;
     }
     if (!TestUtils.executeCommand(
@@ -106,6 +120,48 @@ public class DartXlangTest extends XlangTestBase {
   // ============================================================================
   // Test methods - duplicated from XlangTestBase for Maven Surefire discovery
   // ============================================================================
+
+  @Data
+  @ForyStruct
+  static class ExternalUser {
+    @ForyField(id = 1)
+    String name;
+
+    @ForyField(id = 2)
+    int age;
+  }
+
+  private void runExternalUser(boolean enableCodegen, boolean named) throws IOException {
+    Fory fory =
+        Fory.builder().withXlang(true).withCompatible(true).withCodegen(enableCodegen).build();
+    String caseName;
+    if (named) {
+      caseName = "test_external_struct_name";
+      fory.register(ExternalUser.class, "test", "external_user");
+    } else {
+      caseName = "test_external_struct_id";
+      fory.register(ExternalUser.class, 1001);
+    }
+    ExternalUser user = new ExternalUser();
+    user.name = "Ada";
+    user.age = 36;
+    MemoryBuffer buffer = MemoryUtils.buffer(64);
+    fory.serialize(buffer, user);
+
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+    Assert.assertEquals(fory.deserialize(readBuffer(ctx.dataFile())), user);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testExternalStructId(boolean enableCodegen) throws IOException {
+    runExternalUser(enableCodegen, false);
+  }
+
+  @Test(groups = "xlang", dataProvider = "enableCodegenParallel")
+  public void testExternalStructName(boolean enableCodegen) throws IOException {
+    runExternalUser(enableCodegen, true);
+  }
 
   @Test(groups = "xlang")
   public void testBuffer() throws java.io.IOException {

@@ -26,6 +26,7 @@
 #include <cstring>
 #include <deque>
 #include <forward_list>
+#include <functional>
 #include <limits>
 #include <list>
 #include <set>
@@ -207,6 +208,16 @@ inline void write_collection_data_fast(const Container &coll, WriteContext &ctx,
   }
 }
 
+template <typename T, typename Elem>
+FORY_ALWAYS_INLINE const T &collection_value(const Elem &elem) {
+  if constexpr (std::is_same_v<std::decay_t<Elem>,
+                               std::reference_wrapper<const T>>) {
+    return elem.get();
+  } else {
+    return elem;
+  }
+}
+
 /// write collection data for polymorphic or shared-ref elements.
 template <typename T, typename Container>
 inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
@@ -220,6 +231,8 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
 
   constexpr bool elem_is_polymorphic = is_polymorphic_v<T>;
   constexpr bool elem_is_shared_ref = is_shared_ref_v<T>;
+  constexpr bool elem_is_smart_ptr =
+      is_std_shared_ptr_v<T> || is_std_unique_ptr_v<T>;
 
   using ElemType = nullable_element_t<T>;
   bool is_elem_declared =
@@ -231,7 +244,8 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
   std::type_index first_type{typeid(void)};
   bool first_type_set = false;
 
-  for (const auto &elem : coll) {
+  for (const auto &raw_elem : coll) {
+    const T &elem = collection_value<T>(raw_elem);
     // Check for nulls
     if constexpr (is_nullable_v<T>) {
       if (is_null_value(elem)) {
@@ -283,6 +297,8 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
   ctx.write_uint8(bitmap);
 
   // write element type info if IS_SAME_TYPE && !IS_DECL_ELEMENT_TYPE
+  const TypeInfo *elem_type_info = nullptr;
+  Harness::WriteDataFn elem_writer = nullptr;
   if (is_same_type && !(bitmap & COLL_DECL_ELEMENT_TYPE)) {
     if constexpr (elem_is_polymorphic) {
       // write concrete type info for polymorphic elements
@@ -291,11 +307,15 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
         ctx.set_error(std::move(type_info_res).error());
         return;
       }
+      elem_type_info = type_info_res.value();
       auto write_res =
-          ctx.write_any_type_info(type_info_res.value()->type_id, first_type);
+          ctx.write_any_type_info(elem_type_info->type_id, first_type);
       if (FORY_PREDICT_FALSE(!write_res.ok())) {
         ctx.set_error(std::move(write_res).error());
         return;
+      }
+      if constexpr (elem_is_smart_ptr) {
+        elem_writer = elem_type_info->harness.write_data_fn;
       }
     } else {
       Serializer<ElemType>::write_type_info(ctx);
@@ -310,13 +330,24 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
     // All elements have same type - type info written once above
     if (tracking_refs) {
       // Track refs - write ref flag per element per xlang spec
-      for (const auto &elem : coll) {
-        Serializer<T>::write(elem, ctx, RefMode::Tracking, false, has_generics);
+      for (const auto &raw_elem : coll) {
+        const T &elem = collection_value<T>(raw_elem);
+        if constexpr (elem_is_polymorphic && elem_is_smart_ptr) {
+          Serializer<T>::write_with_data(elem, ctx, RefMode::Tracking,
+                                         elem_writer, has_generics);
+        } else {
+          Serializer<T>::write(elem, ctx, RefMode::Tracking, false,
+                               has_generics);
+        }
       }
     } else if (!has_null) {
       // No nulls, no ref tracking - write data directly without null flag
-      for (const auto &elem : coll) {
-        if constexpr (is_nullable_v<T>) {
+      for (const auto &raw_elem : coll) {
+        const T &elem = collection_value<T>(raw_elem);
+        if constexpr (elem_is_polymorphic && elem_is_smart_ptr) {
+          Serializer<T>::write_with_data(elem, ctx, RefMode::None, elem_writer,
+                                         has_generics);
+        } else if constexpr (is_nullable_v<T>) {
           using Inner = nullable_element_t<T>;
           Serializer<Inner>::write_data(deref_nullable(elem), ctx);
         } else if constexpr (elem_is_shared_ref) {
@@ -332,25 +363,35 @@ inline void write_collection_data_slow(const Container &coll, WriteContext &ctx,
       }
     } else {
       // Has null elements - write with null flag
-      for (const auto &elem : coll) {
-        Serializer<T>::write(elem, ctx, RefMode::NullOnly, false, has_generics);
+      for (const auto &raw_elem : coll) {
+        const T &elem = collection_value<T>(raw_elem);
+        if constexpr (elem_is_polymorphic && elem_is_smart_ptr) {
+          Serializer<T>::write_with_data(elem, ctx, RefMode::NullOnly,
+                                         elem_writer, has_generics);
+        } else {
+          Serializer<T>::write(elem, ctx, RefMode::NullOnly, false,
+                               has_generics);
+        }
       }
     }
   } else {
     // Heterogeneous types - write type info per element
     if (tracking_refs) {
       // Track refs - write ref flag + type info per element
-      for (const auto &elem : coll) {
+      for (const auto &raw_elem : coll) {
+        const T &elem = collection_value<T>(raw_elem);
         Serializer<T>::write(elem, ctx, RefMode::Tracking, true, has_generics);
       }
     } else if (!has_null) {
       // No nulls - write without null flag (RefMode::None)
-      for (const auto &elem : coll) {
+      for (const auto &raw_elem : coll) {
+        const T &elem = collection_value<T>(raw_elem);
         Serializer<T>::write(elem, ctx, RefMode::None, true, has_generics);
       }
     } else {
       // Has null elements - write with null flag (RefMode::NullOnly)
-      for (const auto &elem : coll) {
+      for (const auto &raw_elem : coll) {
+        const T &elem = collection_value<T>(raw_elem);
         Serializer<T>::write(elem, ctx, RefMode::NullOnly, true, has_generics);
       }
     }
@@ -461,6 +502,8 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
   }
 
   constexpr bool elem_is_polymorphic = is_polymorphic_v<T>;
+  constexpr bool elem_is_smart_ptr =
+      is_std_shared_ptr_v<T> || is_std_unique_ptr_v<T>;
 
   uint8_t bitmap = ctx.read_uint8(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -476,12 +519,29 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
   bool is_decl_type = (bitmap & COLL_DECL_ELEMENT_TYPE) != 0;
   bool is_same_type = (bitmap & COLL_IS_SAME_TYPE) != 0;
 
+  if constexpr (elem_is_polymorphic) {
+    if (FORY_PREDICT_FALSE(is_same_type && is_decl_type)) {
+      ctx.set_error(Error::invalid_data(
+          "Polymorphic collection elements require concrete type "
+          "information"));
+      return result;
+    }
+  }
+
   // Read element type info if IS_SAME_TYPE && !IS_DECL_ELEMENT_TYPE
   const TypeInfo *elem_type_info = nullptr;
+  Harness::ReadAsFn elem_reader = nullptr;
   if (is_same_type && !is_decl_type) {
     elem_type_info = ctx.read_any_type_info(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return result;
+    }
+    if constexpr (elem_is_polymorphic && elem_is_smart_ptr) {
+      elem_reader = resolve_polymorphic_reader<nullable_element_t<T>>(
+          ctx, elem_type_info);
+      if (FORY_PREDICT_FALSE(ctx.has_error())) {
+        return result;
+      }
     }
   }
 
@@ -498,9 +558,15 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
         }
         if constexpr (elem_is_polymorphic) {
           // Use RefMode::Tracking to read ref flag per element
-          auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::Tracking,
-                                                         *elem_type_info);
-          collection_insert(result, std::move(elem));
+          if constexpr (elem_is_smart_ptr) {
+            auto elem = Serializer<T>::template read_with_type_info<true>(
+                ctx, RefMode::Tracking, *elem_type_info, elem_reader);
+            collection_insert(result, std::move(elem));
+          } else {
+            auto elem = Serializer<T>::read_with_type_info(
+                ctx, RefMode::Tracking, *elem_type_info);
+            collection_insert(result, std::move(elem));
+          }
         } else {
           auto elem = Serializer<T>::read(ctx, RefMode::Tracking, false);
           collection_insert(result, std::move(elem));
@@ -512,9 +578,15 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
           return result;
         }
         if constexpr (elem_is_polymorphic) {
-          auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::None,
-                                                         *elem_type_info);
-          collection_insert(result, std::move(elem));
+          if constexpr (elem_is_smart_ptr) {
+            auto elem = Serializer<T>::template read_with_type_info<true>(
+                ctx, RefMode::None, *elem_type_info, elem_reader);
+            collection_insert(result, std::move(elem));
+          } else {
+            auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::None,
+                                                           *elem_type_info);
+            collection_insert(result, std::move(elem));
+          }
         } else {
           auto elem = Serializer<T>::read(ctx, RefMode::None, false);
           collection_insert(result, std::move(elem));
@@ -535,9 +607,15 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
           // For sets, skip null elements
         } else {
           if constexpr (elem_is_polymorphic) {
-            auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::None,
-                                                           *elem_type_info);
-            collection_insert(result, std::move(elem));
+            if constexpr (elem_is_smart_ptr) {
+              auto elem = Serializer<T>::template read_with_type_info<true>(
+                  ctx, RefMode::None, *elem_type_info, elem_reader);
+              collection_insert(result, std::move(elem));
+            } else {
+              auto elem = Serializer<T>::read_with_type_info(ctx, RefMode::None,
+                                                             *elem_type_info);
+              collection_insert(result, std::move(elem));
+            }
           } else {
             auto elem = Serializer<T>::read(ctx, RefMode::None, false);
             collection_insert(result, std::move(elem));
@@ -1787,15 +1865,20 @@ struct Serializer<std::forward_list<T, Alloc>> {
       temp.push_back(std::cref(elem));
     }
 
+    // Dispatch to fast or slow path based on element type characteristics
+    constexpr bool is_fast_path = !is_polymorphic_v<T> && !is_shared_ref_v<T>;
+
+    if constexpr (!is_fast_path) {
+      write_collection_data_slow<T>(temp, ctx, has_generics);
+      return;
+    }
+
     // write length
     ctx.write_var_uint32(static_cast<uint32_t>(temp.size()));
 
     if (temp.empty()) {
       return;
     }
-
-    // Dispatch to fast or slow path based on element type characteristics
-    constexpr bool is_fast_path = !is_polymorphic_v<T> && !is_shared_ref_v<T>;
 
     if constexpr (is_fast_path) {
       // Check for null elements
@@ -1871,141 +1954,6 @@ struct Serializer<std::forward_list<T, Alloc>> {
             }
           } else {
             Serializer<T>::write(elem, ctx, RefMode::None, false);
-          }
-        }
-      }
-    } else {
-      // Slow path for polymorphic or shared-ref elements
-      constexpr bool elem_is_polymorphic = is_polymorphic_v<T>;
-      constexpr bool elem_is_shared_ref = is_shared_ref_v<T>;
-
-      using ElemType = nullable_element_t<T>;
-      bool is_elem_declared =
-          has_generics && !need_type_for_collection_elem<ElemType>();
-
-      // Scan collection to determine header flags
-      bool has_null = false;
-      bool is_same_type = true;
-      std::type_index first_type{typeid(void)};
-      bool first_type_set = false;
-
-      for (const auto &elem_ref : temp) {
-        const auto &elem = elem_ref.get();
-        // Check for nulls
-        if constexpr (is_nullable_v<T>) {
-          if (is_null_value(elem)) {
-            has_null = true;
-            continue;
-          }
-        }
-        // Check runtime types for polymorphic elements
-        if constexpr (elem_is_polymorphic) {
-          if (is_same_type) {
-            auto concrete_id = get_concrete_type_id(elem);
-            if (!first_type_set) {
-              first_type = concrete_id;
-              first_type_set = true;
-            } else if (concrete_id != first_type) {
-              is_same_type = false;
-            }
-          }
-        }
-      }
-
-      // If all polymorphic elements are null, treat as heterogeneous
-      if constexpr (elem_is_polymorphic) {
-        if (is_same_type && !first_type_set) {
-          is_same_type = false;
-        }
-      }
-
-      // Build header bitmap
-      uint8_t bitmap = 0;
-      if (has_null) {
-        bitmap |= COLL_HAS_NULL;
-      }
-      if (is_elem_declared && !elem_is_polymorphic) {
-        bitmap |= COLL_DECL_ELEMENT_TYPE;
-      }
-      if (is_same_type) {
-        bitmap |= COLL_IS_SAME_TYPE;
-      }
-      // Only set TRACKING_REF if element is shared ref AND global ref tracking
-      // is enabled
-      if constexpr (elem_is_shared_ref) {
-        if (ctx.track_ref()) {
-          bitmap |= COLL_TRACKING_REF;
-        }
-      }
-
-      // write header
-      ctx.write_uint8(bitmap);
-
-      // write element type info if IS_SAME_TYPE && !IS_DECL_ELEMENT_TYPE
-      if (is_same_type && !(bitmap & COLL_DECL_ELEMENT_TYPE)) {
-        if constexpr (elem_is_polymorphic) {
-          auto type_info_res = ctx.type_resolver().get_type_info(first_type);
-          if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
-            ctx.set_error(std::move(type_info_res).error());
-            return;
-          }
-          auto write_res = ctx.write_any_type_info(
-              type_info_res.value()->type_id, first_type);
-          if (FORY_PREDICT_FALSE(!write_res.ok())) {
-            ctx.set_error(std::move(write_res).error());
-            return;
-          }
-        } else {
-          Serializer<ElemType>::write_type_info(ctx);
-        }
-      }
-
-      // write elements
-      if (is_same_type) {
-        if (!has_null) {
-          if constexpr (elem_is_shared_ref) {
-            for (const auto &elem_ref : temp) {
-              Serializer<T>::write(elem_ref.get(), ctx, RefMode::NullOnly,
-                                   false, has_generics);
-            }
-          } else {
-            for (const auto &elem_ref : temp) {
-              const auto &elem = elem_ref.get();
-              if constexpr (is_nullable_v<T>) {
-                using Inner = nullable_element_t<T>;
-                Serializer<Inner>::write_data(deref_nullable(elem), ctx);
-              } else {
-                if constexpr (is_generic_type_v<T>) {
-                  Serializer<T>::write_data_generic(elem, ctx, has_generics);
-                } else {
-                  Serializer<T>::write_data(elem, ctx);
-                }
-              }
-            }
-          }
-        } else {
-          for (const auto &elem_ref : temp) {
-            Serializer<T>::write(elem_ref.get(), ctx, RefMode::NullOnly, false,
-                                 has_generics);
-          }
-        }
-      } else {
-        if (!has_null) {
-          if constexpr (elem_is_shared_ref) {
-            for (const auto &elem_ref : temp) {
-              Serializer<T>::write(elem_ref.get(), ctx, RefMode::NullOnly, true,
-                                   has_generics);
-            }
-          } else {
-            for (const auto &elem_ref : temp) {
-              Serializer<T>::write(elem_ref.get(), ctx, RefMode::None, true,
-                                   has_generics);
-            }
-          }
-        } else {
-          for (const auto &elem_ref : temp) {
-            Serializer<T>::write(elem_ref.get(), ctx, RefMode::NullOnly, true,
-                                 has_generics);
           }
         }
       }

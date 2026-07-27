@@ -17,9 +17,11 @@
 
 @attached(
     member,
-    names: named(staticTypeId),
+    names: named(Target),
+    named(staticTypeId),
     named(foryEvolving),
     named(isRefType),
+    named(__foryValidateReferenceTarget),
     named(__foryNormalizeSchemaFingerprintTypeID),
     named(__forySchemaHash),
     named(__forySchemaHashTrackRefDisabled),
@@ -27,24 +29,29 @@
     named(foryFieldsInfo),
     named(__foryFieldsInfoTrackRefDisabled),
     named(__foryFieldsInfoTrackRefEnabled),
-    named(foryDefault),
-    named(foryWrite),
-    named(foryRead),
-    named(foryWriteData),
-    named(foryReadData),
-    named(foryReadCompatibleData),
+    named(defaultValue),
+    named(write),
+    named(read),
+    named(writeData),
+    named(readData),
+    named(readCompatible),
+    named(__foryInvalidRefFlag),
+    named(__foryVersionMismatch),
     named(__foryReadChangedData),
     named(__foryReadPayload),
     named(__foryReadDataImpl),
     named(__foryReadCompatibleDataImpl)
 )
 @attached(extension, conformances: Serializer, StructSerializer)
-public macro ForyStruct(evolving: Bool = true) =
+/// Generates structural serialization for the declaration itself or for the
+/// external `target` type.
+public macro ForyStruct(target: Any.Type? = nil, evolving: Bool = true) =
     #externalMacro(module: "ForyMacro", type: "ForyStructMacro")
 
 @attached(
     member,
-    names: named(staticTypeId),
+    names: named(Target),
+    named(staticTypeId),
     named(foryEvolving),
     named(isRefType),
     named(__foryNormalizeSchemaFingerprintTypeID),
@@ -54,23 +61,28 @@ public macro ForyStruct(evolving: Bool = true) =
     named(foryFieldsInfo),
     named(__foryFieldsInfoTrackRefDisabled),
     named(__foryFieldsInfoTrackRefEnabled),
-    named(foryDefault),
-    named(foryWrite),
-    named(foryRead),
-    named(foryWriteData),
-    named(foryReadData),
-    named(foryReadCompatibleData),
+    named(defaultValue),
+    named(write),
+    named(read),
+    named(writeData),
+    named(readData),
+    named(readCompatible),
+    named(__foryInvalidRefFlag),
+    named(__foryUnknownEnumValue),
     named(__foryReadChangedData),
     named(__foryReadPayload),
-    named(__foryReadDataImpl),
     named(__foryReadCompatibleDataImpl)
 )
 @attached(extension, conformances: Serializer, StructSerializer)
-public macro ForyEnum() = #externalMacro(module: "ForyMacro", type: "ForyEnumMacro")
+/// Generates ordinal-enum serialization for the declaration itself or for the
+/// external `target` type.
+public macro ForyEnum(target: Any.Type? = nil) =
+    #externalMacro(module: "ForyMacro", type: "ForyEnumMacro")
 
 @attached(
     member,
-    names: named(staticTypeId),
+    names: named(Target),
+    named(staticTypeId),
     named(foryEvolving),
     named(isRefType),
     named(__foryNormalizeSchemaFingerprintTypeID),
@@ -80,19 +92,22 @@ public macro ForyEnum() = #externalMacro(module: "ForyMacro", type: "ForyEnumMac
     named(foryFieldsInfo),
     named(__foryFieldsInfoTrackRefDisabled),
     named(__foryFieldsInfoTrackRefEnabled),
-    named(foryDefault),
-    named(foryWrite),
-    named(foryRead),
-    named(foryWriteData),
-    named(foryReadData),
-    named(foryReadCompatibleData),
+    named(defaultValue),
+    named(write),
+    named(read),
+    named(writeData),
+    named(readData),
+    named(readCompatible),
+    named(__foryInvalidRefFlag),
     named(__foryReadChangedData),
     named(__foryReadPayload),
-    named(__foryReadDataImpl),
     named(__foryReadCompatibleDataImpl)
 )
 @attached(extension, conformances: Serializer, StructSerializer)
-public macro ForyUnion() = #externalMacro(module: "ForyMacro", type: "ForyUnionMacro")
+/// Generates xlang union serialization for the declaration itself or for the
+/// external `target` type.
+public macro ForyUnion(target: Any.Type? = nil) =
+    #externalMacro(module: "ForyMacro", type: "ForyUnionMacro")
 
 public enum ForyFieldEncoding: String {
     case varint
@@ -218,13 +233,21 @@ public struct ForyFieldType: Sendable {
         _ = value
         return .init()
     }
+
+    /// Selects `serializer` for this exact field-schema node.
+    public static func with<S: Serializer>(_ serializer: S.Type) -> ForyFieldType {
+        _ = serializer
+        return .init()
+    }
 }
 
 @attached(peer)
+/// Configures a generated field and optionally selects its exact serializer.
 public macro ForyField(
     id: Int? = nil,
     encoding: ForyFieldEncoding? = nil,
-    type: ForyFieldType? = nil
+    type: ForyFieldType? = nil,
+    with serializer: Any.Type? = nil
 ) = #externalMacro(module: "ForyMacro", type: "ForyFieldMacro")
 
 @attached(peer)

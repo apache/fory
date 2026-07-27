@@ -59,14 +59,29 @@ let mut fory = Fory::builder().xlang(true).build();
 fory.register_by_name::<MyStruct>("com.example.MyStruct")?;
 ```
 
-## Register Custom Serializer
+## Register a Manual Serializer
 
-For types that need custom serialization logic:
+For types that need customized serialization logic, register the manual
+serializer:
 
 ```rust
 let mut fory = Fory::builder().xlang(false).build();
-fory.register_serializer::<CustomType>(100)?;
+fory.register_serializer::<UuidSerializer>(100)?;
 ```
+
+An external structural serializer uses the ordinary structural registration
+API:
+
+```rust
+fory.register::<UserSerializer>(101)?;
+```
+
+The serializer's `Target` is the runtime value type. Registration does not
+require a separate external-type API. At fields, `with` can select an exact
+carrier serializer such as `VecSerializer<UserSerializer>`, while recursive
+`list`, `map`, or `tuple` annotations select serializers at child nodes. At
+roots, compose the same carrier serializers. Carrier serializers are not
+registered.
 
 ## Registration Consistency
 
@@ -122,4 +137,5 @@ let handles: Vec<_> = (0..4)
 
 - [Configuration](configuration.md) - Fory builder options
 - [Xlang Serialization](xlang-serialization.md) - xlang mode registration
-- [Custom Serializers](custom-serializers.md) - Custom serialization
+- [Manual Serializers](manual-serializers.md) - Customized serialization
+- [External-Type Serialization](external-types.md) - Third-party targets and carrier roots

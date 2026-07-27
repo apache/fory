@@ -711,6 +711,59 @@ public class TypeDefEncoderTest {
   }
 
   @Test
+  public void testRejectsNamespaceEncoding() {
+    Fory fory = Fory.builder().withXlang(true).withCompatible(false).withMetaShare(true).build();
+    MemoryBuffer body = MemoryBuffer.newHeapBuffer(2);
+    body.writeByte(TypeDefEncoder.STRUCT_FLAG | TypeDefEncoder.REGISTER_BY_NAME_FLAG);
+    body.writeByte(0b11);
+    MemoryBuffer encoded = NativeTypeDefEncoder.prependHeader(body, false);
+
+    DeserializationException exception =
+        Assert.expectThrows(
+            DeserializationException.class,
+            () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
+    Assert.assertTrue(exception.getMessage().contains("namespace encoding"));
+  }
+
+  @Test
+  public void testRejectsExtendedNameSize() {
+    Fory fory = Fory.builder().withXlang(true).withCompatible(false).withMetaShare(true).build();
+    for (int extendedSize : new int[] {-1, Integer.MAX_VALUE}) {
+      MemoryBuffer body = MemoryBuffer.newHeapBuffer(8);
+      body.writeByte(TypeDefEncoder.STRUCT_FLAG | TypeDefEncoder.REGISTER_BY_NAME_FLAG);
+      body.writeByte(NativeTypeDefEncoder.BIG_NAME_THRESHOLD << 2);
+      body.writeVarUInt32Small7(extendedSize);
+      MemoryBuffer encoded = NativeTypeDefEncoder.prependHeader(body, false);
+
+      DeserializationException exception =
+          Assert.expectThrows(
+              DeserializationException.class,
+              () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
+      Assert.assertTrue(exception.getMessage().contains("namespace size"));
+    }
+  }
+
+  @Test
+  public void testRejectsExtendedFieldNameSize() {
+    Fory fory = Fory.builder().withXlang(true).withCompatible(false).withMetaShare(true).build();
+    for (int extendedSize : new int[] {-1, Integer.MAX_VALUE}) {
+      MemoryBuffer body = MemoryBuffer.newHeapBuffer(16);
+      body.writeByte(TypeDefEncoder.STRUCT_FLAG | 1);
+      body.writeVarUInt32(0);
+      body.writeByte(TypeDefEncoder.FIELD_NAME_SIZE_THRESHOLD << 2);
+      body.writeVarUInt32Small7(extendedSize);
+      body.writeUInt8(Types.INT32);
+      MemoryBuffer encoded = NativeTypeDefEncoder.prependHeader(body, false);
+
+      DeserializationException exception =
+          Assert.expectThrows(
+              DeserializationException.class,
+              () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
+      Assert.assertTrue(exception.getMessage().contains("field name size"));
+    }
+  }
+
+  @Test
   public void testSkipTypeDefRejectsExtendedSizeOverflow() {
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(8);
     buffer.writeVarUInt32(-1);

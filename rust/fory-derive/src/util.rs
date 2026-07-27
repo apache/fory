@@ -46,24 +46,26 @@ impl<'a> SourceField<'a> {
     }
 }
 
-/// Generate Self construction syntax.
-/// - tuple struct: `Self(field0, field1, ...)`
-/// - named struct: `Self { field0, field1, ... }`
-pub fn self_construction(is_tuple_struct: bool, field_inits: &[TokenStream]) -> TokenStream {
-    if is_tuple_struct {
-        quote! { Self( #(#field_inits),* ) }
-    } else {
-        quote! { Self { #(#field_inits),* } }
+/// Render a type path for use in expression and pattern position.
+///
+/// Generic arguments need a turbofish in expression paths, while the parsed
+/// type-level `target` syntax naturally omits it.
+pub fn target_expr_path(target: &Type) -> syn::Result<TokenStream> {
+    let Type::Path(type_path) = target else {
+        return Err(syn::Error::new_spanned(
+            target,
+            "fory target must be a struct or enum type path",
+        ));
+    };
+    let mut type_path = type_path.clone();
+    if type_path.qself.is_none() {
+        if let Some(last) = type_path.path.segments.last_mut() {
+            if let PathArguments::AngleBracketed(arguments) = &mut last.arguments {
+                arguments.colon2_token = Some(Default::default());
+            }
+        }
     }
-}
-
-/// Generate Ok(Self(...)) construction syntax for Result return.
-pub fn ok_self_construction(is_tuple_struct: bool, field_inits: &[TokenStream]) -> TokenStream {
-    if is_tuple_struct {
-        quote! { Ok(Self( #(#field_inits),* )) }
-    } else {
-        quote! { Ok(Self { #(#field_inits),* }) }
-    }
+    Ok(quote! { #type_path })
 }
 
 /// Returns source fields with their original indices preserved.

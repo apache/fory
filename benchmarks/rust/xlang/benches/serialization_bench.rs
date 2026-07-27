@@ -15,15 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-fn main() {
-    let proto_dir = std::path::PathBuf::from("../proto");
-    let proto_files = [proto_dir.join("bench.proto")];
+use criterion::{criterion_group, criterion_main, Criterion};
+use fory_rust_xlang_benchmarks::run_serialization_benchmarks;
 
-    for proto_file in &proto_files {
-        println!("cargo:rerun-if-changed={}", proto_file.display());
-    }
-
-    prost_build::Config::new()
-        .compile_protos(&proto_files, &[proto_dir])
-        .expect("failed to compile benchmarks/proto/bench.proto");
+fn config() -> Criterion {
+    Criterion::default()
 }
+
+criterion_group! {
+    name = benches;
+    config = config();
+    targets = run_serialization_benchmarks
+}
+criterion_main!(benches);

@@ -18,6 +18,7 @@
 package fory
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"strings"
@@ -1181,10 +1182,23 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		}
 
 		info, exists := fory.typeResolver.nsTypeToTypeInfo[nsTypeKey{nsBytes.Hashcode, nameBytes.Hashcode}]
+		if exists &&
+			(!sameMetaStringBytes(nsBytes, info.PkgPathBytes) ||
+				!sameMetaStringBytes(nameBytes, info.NameBytes)) {
+			// Hash lookup is only a candidate match; exact encoded identity is required.
+			info = nil
+			exists = false
+		}
 		if !exists {
 			// Try fallback: decode strings and look up by name
-			ns, _ := fory.typeResolver.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
-			typeName, _ := fory.typeResolver.typeNameDecoder.Decode(nameBytes.Data, nameBytes.Encoding)
+			ns, err := fory.typeResolver.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode TypeDef namespace: %w", err)
+			}
+			typeName, err := fory.typeResolver.typeNameDecoder.Decode(nameBytes.Data, nameBytes.Encoding)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode TypeDef typename: %w", err)
+			}
 			nameKey := [2]string{ns, typeName}
 
 			if fallbackInfo, fallbackExists := fory.typeResolver.namedTypeToTypeInfo[nameKey]; fallbackExists {
@@ -1269,6 +1283,13 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		}
 	}
 	return typeDef, nil
+}
+
+func sameMetaStringBytes(left, right *MetaStringBytes) bool {
+	return left != nil &&
+		right != nil &&
+		left.Encoding == right.Encoding &&
+		bytes.Equal(left.Data, right.Data)
 }
 
 func buildTypeDefEncoded(header int64, metaSizeBits, extraMetaSize int, metaBytes []byte) []byte {

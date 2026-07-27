@@ -112,7 +112,7 @@ final class RefValueFlagValueSerializer extends Serializer<RefValueFlagValue> {
 }
 
 void main() {
-  test('registers custom serializer through public registerSerializer api', () {
+  test('registers manual serializer through public api', () {
     final fory = Fory();
     fory.registerSerializer(
       ManualValue,

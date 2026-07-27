@@ -19,13 +19,13 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.currentTypeResolver;
 import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
 import static org.apache.fory.json.JsonTestSupport.newStringWriter;
 import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Writer;
 import static org.apache.fory.json.JsonTestSupport.nullCodec;
-import static org.apache.fory.json.JsonTestSupport.primaryTypeResolver;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
@@ -351,6 +351,23 @@ public class JsonScalarTest extends ForyJsonTestModels {
         () ->
             json.fromJson(
                 "{\"intMax\":2147483648,\"text\":\"" + ZH_TEXT + "\"}", NumericBoundaries.class));
+  }
+
+  @Test
+  public void readLatin1IntTokens() {
+    int[] values = {
+      1, 12, 123, 1234, 12345, 123456, 1234567, 12345678, 123456789, Integer.MAX_VALUE
+    };
+    for (int value : values) {
+      Latin1JsonReader reader = newLatin1Reader(latin1Bytes(value + ",0"));
+      assertEquals(reader.readIntTokenValue(), value);
+      reader.expectNextToken(',');
+      assertEquals(reader.readIntTokenValue(), 0);
+      reader.finish();
+    }
+    assertThrows(
+        ForyJsonException.class,
+        () -> newLatin1Reader(latin1Bytes("2147483648,0")).readIntTokenValue());
   }
 
   @Test
@@ -2522,7 +2539,7 @@ public class JsonScalarTest extends ForyJsonTestModels {
   }
 
   private static Object generatedReader(ForyJson json, Class<?> type) throws Exception {
-    JsonTypeResolver typeResolver = primaryTypeResolver(json);
+    JsonTypeResolver typeResolver = currentTypeResolver(json);
     Object owner = typeResolver.getObjectCodec(type);
     JsonTypeInfo typeInfo = typeResolver.getTypeInfo(type, type);
     Object codec =

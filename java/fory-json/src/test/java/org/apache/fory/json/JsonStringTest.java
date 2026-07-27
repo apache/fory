@@ -19,11 +19,11 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.currentStateField;
 import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
 import static org.apache.fory.json.JsonTestSupport.newStringWriter;
 import static org.apache.fory.json.JsonTestSupport.newUtf16Reader;
 import static org.apache.fory.json.JsonTestSupport.pooledStateCount;
-import static org.apache.fory.json.JsonTestSupport.primaryStateField;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertThrows;
@@ -246,13 +246,13 @@ public class JsonStringTest extends ForyJsonTestModels {
     assertEquals(pooledStateCount(ForyJson.builder().withConcurrencyLevel(1).build()), 1);
 
     String value = repeat('a', bufferLimit + 1);
-    StringJsonWriter stringWriter = (StringJsonWriter) primaryStateField(json, "stringWriter");
+    StringJsonWriter stringWriter = (StringJsonWriter) currentStateField(json, "stringWriter");
     stringWriter.writeString(value);
     assertTrue(writerBufferLength(stringWriter) > bufferLimit);
     stringWriter.reset();
     assertEquals(writerBufferLength(stringWriter), bufferLimit);
 
-    Utf8JsonWriter utf8Writer = (Utf8JsonWriter) primaryStateField(json, "utf8Writer");
+    Utf8JsonWriter utf8Writer = (Utf8JsonWriter) currentStateField(json, "utf8Writer");
     utf8Writer.writeString(value);
     assertTrue(writerBufferLength(utf8Writer) > bufferLimit);
     utf8Writer.reset();

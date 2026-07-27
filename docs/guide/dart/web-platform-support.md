@@ -1,6 +1,6 @@
 ---
 title: Web Platform Support
-sidebar_position: 10
+sidebar_position: 11
 id: web_platform_support
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -36,6 +36,7 @@ Fory Dart supports:
 - Flutter web applications.
 - Generated `@ForyStruct` serializers and manually registered serializers on
   all supported targets.
+- External structural serializers generated with `@ForyStruct(target: ...)`.
 
 ## Code Generation Is Required
 
@@ -135,9 +136,9 @@ class StorageExtent {
 }
 ```
 
-## Custom Serializers
+## Manual Serializers
 
-Custom serializers can use the same `Buffer`, `WriteContext`, and `ReadContext`
+Manual serializers can use the same `Buffer`, `WriteContext`, and `ReadContext`
 APIs on VM/AOT, Flutter, and web. For 64-bit values:
 
 - Use `buffer.writeInt64(Int64(...))` and `buffer.readInt64()` for full-range

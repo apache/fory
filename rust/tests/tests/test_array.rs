@@ -17,7 +17,7 @@
 
 use fory_core::fory::Fory;
 use fory_core::register_trait_type;
-use fory_core::serializer::Serializer;
+use fory_core::{ArraySerializer, ForyObject};
 use fory_derive::ForyStruct;
 use std::rc::Rc;
 
@@ -64,6 +64,34 @@ fn test_array_bool() {
     let bin = fory.serialize(&arr).unwrap();
     let obj: [bool; 4] = fory.deserialize(&bin).expect("deserialize");
     assert_eq!(arr, obj);
+}
+
+#[test]
+fn test_bool_vec_invalid() {
+    let fory = Fory::builder().xlang(false).compatible(false).build();
+    for len in [4, 8, 9] {
+        let mut bin = fory.serialize(&vec![false; len]).unwrap();
+        *bin.last_mut().unwrap() = 2;
+        let error = fory.deserialize::<Vec<bool>>(&bin).unwrap_err();
+        assert!(error.to_string().contains("Invalid bool array value"));
+    }
+}
+
+#[test]
+fn test_bool_array_invalid() {
+    macro_rules! assert_invalid {
+        ($fory:expr, $value:expr, $target:ty) => {{
+            let mut bin = $fory.serialize(&$value).unwrap();
+            *bin.last_mut().unwrap() = 2;
+            let error = $fory.deserialize::<$target>(&bin).unwrap_err();
+            assert!(error.to_string().contains("Invalid bool array value"));
+        }};
+    }
+
+    let fory = Fory::builder().xlang(false).compatible(false).build();
+    assert_invalid!(fory, [false; 4], [bool; 4]);
+    assert_invalid!(fory, [false; 8], [bool; 8]);
+    assert_invalid!(fory, [false; 9], [bool; 9]);
 }
 
 #[test]
@@ -217,7 +245,7 @@ fn test_array_size_mismatch() {
 
 // Trait object tests
 
-trait Shape: Serializer {
+trait Shape: ForyObject {
     fn area(&self) -> f64;
     fn name(&self) -> &str;
 }
@@ -337,7 +365,7 @@ fn test_array_rc_trait_objects() {
     fory.register::<Circle>(9001).unwrap();
     fory.register::<Rectangle>(9002).unwrap();
 
-    // Create Rc<dyn Shape> instances and convert to wrappers
+    // Create the final Rc trait carriers directly.
     let circle1: Rc<dyn Shape> = Rc::new(Circle { radius: 2.0 });
     let rect: Rc<dyn Shape> = Rc::new(Rectangle {
         width: 3.0,
@@ -345,12 +373,7 @@ fn test_array_rc_trait_objects() {
     });
     let circle2: Rc<dyn Shape> = Rc::new(Circle { radius: 7.0 });
 
-    // Convert to wrapper types for serialization
-    let shapes: [ShapeRc; 3] = [
-        ShapeRc::from(circle1),
-        ShapeRc::from(rect),
-        ShapeRc::from(circle2),
-    ];
+    let shapes: [Rc<dyn Shape>; 3] = [circle1, rect, circle2];
 
     // Calculate expected areas
     let expected_areas: [f64; 3] = [
@@ -359,14 +382,16 @@ fn test_array_rc_trait_objects() {
         std::f64::consts::PI * 49.0, // Circle radius 7.0
     ];
 
-    let bin = fory.serialize(&shapes).unwrap();
-    let deserialized: [ShapeRc; 3] = fory.deserialize(&bin).expect("deserialize");
+    let bin = fory
+        .serialize_with::<ArraySerializer<ShapeRcSerializer, 3>>(&shapes)
+        .unwrap();
+    let deserialized = fory
+        .deserialize_with::<ArraySerializer<ShapeRcSerializer, 3>>(&bin)
+        .expect("deserialize");
 
-    // Verify by unwrapping and calling trait methods
     assert_eq!(deserialized.len(), 3);
     for i in 0..3 {
-        let shape: Rc<dyn Shape> = deserialized[i].clone().into();
-        assert!((shape.area() - expected_areas[i]).abs() < 0.001);
+        assert!((deserialized[i].area() - expected_areas[i]).abs() < 0.001);
     }
 }
 

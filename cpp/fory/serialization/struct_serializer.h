@@ -4080,10 +4080,8 @@ FORY_ALWAYS_INLINE FieldType read_configurable_int_at_checked(Buffer &buffer,
       return read_fixed_primitive_at_checked<FieldType>(buffer, offset, error);
     }
     if constexpr (enc == Encoding::Tagged) {
-      if constexpr (is_configurable_int64_v<FieldType>) {
-        return static_cast<FieldType>(
-            read_tagged_int64_at_checked(buffer, offset, error));
-      }
+      return static_cast<FieldType>(
+          read_tagged_int64_at_checked(buffer, offset, error));
     }
     return read_varint_at_checked<FieldType>(buffer, offset, error);
   } else {
@@ -4116,7 +4114,8 @@ FORY_ALWAYS_INLINE T read_primitive_at_checked(Buffer &buffer, uint32_t &offset,
 /// Handles both standard varint and tagged encoding based on field config.
 template <typename T, size_t SortedPos>
 FORY_ALWAYS_INLINE void read_single_varint_field(T &obj, Buffer &buffer,
-                                                 uint32_t &offset) {
+                                                 uint32_t &offset,
+                                                 Error &error) {
   using Helpers = CompileTimeFieldHelpers<T>;
   constexpr size_t original_index = Helpers::sorted_indices[SortedPos];
   const auto field_info = fory_field_info(obj);
@@ -4129,8 +4128,16 @@ FORY_ALWAYS_INLINE void read_single_varint_field(T &obj, Buffer &buffer,
 
   FieldType result;
   if constexpr (is_configurable_int_v<FieldType>) {
-    result =
-        read_configurable_int_at<FieldType, T, original_index>(buffer, offset);
+    constexpr Encoding enc = field_int_encoding<FieldType, T, original_index>();
+    if constexpr (enc == Encoding::Tagged) {
+      // Tagged integers issue fixed-width loads, so the local-offset batch must
+      // use the reader that proves the 4-byte or 9-byte range first.
+      result = read_configurable_int_at_checked<FieldType, T, original_index>(
+          buffer, offset, error);
+    } else {
+      result = read_configurable_int_at<FieldType, T, original_index>(buffer,
+                                                                      offset);
+    }
   } else {
     result = read_varint_at<FieldType>(buffer, offset);
   }
@@ -4143,16 +4150,19 @@ FORY_ALWAYS_INLINE void read_single_varint_field(T &obj, Buffer &buffer,
 }
 
 /// Fast read consecutive varint primitive fields (int32, int64).
-/// Caller must ensure buffer bounds are pre-checked for max varint bytes.
+/// Tagged fields use checked local-offset readers; genuine varint helpers
+/// bounds-check their bulk and slow-path loads.
 /// Optimized: tracks offset locally and updates reader_index once at the end.
 /// StartIdx is the sorted index to start reading from.
 template <typename T, size_t StartIdx, size_t... Is>
 FORY_ALWAYS_INLINE void
 read_varint_primitive_fields(T &obj, Buffer &buffer, uint32_t &offset,
-                             std::index_sequence<Is...>) {
+                             Error &error, std::index_sequence<Is...>) {
   // Read each varint field using helper function - no lambda overhead
   // Is are 0, 1, 2, ... so actual sorted position is StartIdx + Is
-  (read_single_varint_field<T, StartIdx + Is>(obj, buffer, offset), ...);
+  // Checked tagged readers set Error without advancing a failed field's
+  // offset. Preserve lazy propagation; the root read boundary observes it.
+  (read_single_varint_field<T, StartIdx + Is>(obj, buffer, offset, error), ...);
 }
 
 /// Helper to read remaining fields starting from Offset
@@ -4199,8 +4209,6 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
     }
 
     // Phase 2: Read consecutive varint primitives (int32, int64) if any
-    // Note: varint bounds checking is done per-byte during reading since
-    // varint lengths are variable (actual size << max possible size)
     if constexpr (varint_count > 0) {
       if (FORY_PREDICT_FALSE(buffer.has_input_stream())) {
         // Stream-backed buffers may not have all varint bytes materialized yet.
@@ -4210,10 +4218,9 @@ void read_struct_fields_impl(T &obj, ReadContext &ctx,
       }
       // Track offset locally for batch varint reading
       uint32_t offset = buffer.reader_index();
-      // Fast read varint primitives (bounds checking happens in
-      // get_var_uint32/64)
       read_varint_primitive_fields<T, fixed_count>(
-          obj, buffer, offset, std::make_index_sequence<varint_count>{});
+          obj, buffer, offset, ctx.error(),
+          std::make_index_sequence<varint_count>{});
       // Update reader_index once after all varints
       buffer.reader_index(offset);
     }
@@ -4265,10 +4272,9 @@ read_struct_fields_impl_fast(T &obj, ReadContext &ctx,
     }
     // Track offset locally for batch varint reading
     uint32_t offset = buffer.reader_index();
-    // Fast read varint primitives (bounds checking happens in
-    // get_var_uint32/64)
     read_varint_primitive_fields<T, fixed_count>(
-        obj, buffer, offset, std::make_index_sequence<varint_count>{});
+        obj, buffer, offset, ctx.error(),
+        std::make_index_sequence<varint_count>{});
     // Update reader_index once after all varints
     buffer.reader_index(offset);
   }

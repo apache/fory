@@ -109,7 +109,7 @@ public class JsonFieldNameCacheTest {
         json.fromJson("{\"7\":1}", new TypeRef<Map<Integer, Integer>>() {});
     assertEquals(values.get(7), Integer.valueOf(1));
     assertNull(
-        JsonTestSupport.primaryTypeResolver(json)
+        JsonTestSupport.currentTypeResolver(json)
             .sharedRegistry()
             .cachedFieldName(JsonFieldNameHash.hash("7")));
   }
@@ -156,7 +156,7 @@ public class JsonFieldNameCacheTest {
     ForyJson disabled = newJson(0);
     assertNotCached(disabled, "name");
     assertNull(
-        JsonTestSupport.primaryTypeResolver(disabled)
+        JsonTestSupport.currentTypeResolver(disabled)
             .sharedRegistry()
             .cachedFieldName(JsonFieldNameHash.hash("name")));
 
@@ -197,10 +197,13 @@ public class JsonFieldNameCacheTest {
   @Test
   public void localLimitSkipsShared() {
     ForyJson json = newJson(1, 2);
-    JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
-    Latin1JsonReader secondary =
-        (Latin1JsonReader) JsonTestSupport.secondaryStateField(json, 0, "latin1Reader");
-    String sharedName = secondary.reset(latin1Bytes("\"b\"")).readFieldName();
+    JsonSharedRegistry registry = JsonTestSupport.currentTypeResolver(json).sharedRegistry();
+    int homeIndex = JsonTestSupport.currentPooledStateIndex(json);
+    Latin1JsonReader other =
+        (Latin1JsonReader)
+            JsonTestSupport.pooledStateField(
+                json, (homeIndex + 1) % JsonTestSupport.pooledStateCount(json), "latin1Reader");
+    String sharedName = other.reset(latin1Bytes("\"b\"")).readFieldName();
     CachedFieldName shared = registry.cachedFieldName(JsonFieldNameHash.hash("b"));
     assertNotNull(shared);
     assertSame(shared.name(), sharedName);
@@ -213,9 +216,9 @@ public class JsonFieldNameCacheTest {
     assertNotSame(fallback2, fallback1);
     assertSame(firstKey(json.fromJson("{\"a\":1}", JsonObject.class)), first);
     assertSame(registry.cachedFieldName(JsonFieldNameHash.hash("b")), shared);
-    CachedFieldName primaryEntry = registry.cachedFieldName(JsonFieldNameHash.hash("a"));
-    assertNotNull(primaryEntry);
-    assertSame(primaryEntry.name(), first);
+    CachedFieldName localEntry = registry.cachedFieldName(JsonFieldNameHash.hash("a"));
+    assertNotNull(localEntry);
+    assertSame(localEntry.name(), first);
   }
 
   @Test
@@ -231,10 +234,13 @@ public class JsonFieldNameCacheTest {
   @Test
   public void localConflictSkipsShared() {
     ForyJson json = newJson(3, 2);
-    JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
-    Latin1JsonReader secondary =
-        (Latin1JsonReader) JsonTestSupport.secondaryStateField(json, 0, "latin1Reader");
-    String sharedName = secondary.reset(latin1Bytes("\"q\"")).readFieldName();
+    JsonSharedRegistry registry = JsonTestSupport.currentTypeResolver(json).sharedRegistry();
+    int homeIndex = JsonTestSupport.currentPooledStateIndex(json);
+    Latin1JsonReader other =
+        (Latin1JsonReader)
+            JsonTestSupport.pooledStateField(
+                json, (homeIndex + 1) % JsonTestSupport.pooledStateCount(json), "latin1Reader");
+    String sharedName = other.reset(latin1Bytes("\"q\"")).readFieldName();
     CachedFieldName shared = registry.cachedFieldName(JsonFieldNameHash.hash("q"));
     assertNotNull(shared);
     assertSame(shared.name(), sharedName);
@@ -260,13 +266,16 @@ public class JsonFieldNameCacheTest {
             .withConcurrencyLevel(2)
             .withMaxCachedFieldNames(1)
             .build();
-    Latin1JsonReader primary =
-        (Latin1JsonReader) JsonTestSupport.primaryStateField(json, "latin1Reader");
-    Latin1JsonReader secondary =
-        (Latin1JsonReader) JsonTestSupport.secondaryStateField(json, 0, "latin1Reader");
+    int homeIndex = JsonTestSupport.currentPooledStateIndex(json);
+    Latin1JsonReader current =
+        (Latin1JsonReader) JsonTestSupport.currentStateField(json, "latin1Reader");
+    Latin1JsonReader other =
+        (Latin1JsonReader)
+            JsonTestSupport.pooledStateField(
+                json, (homeIndex + 1) % JsonTestSupport.pooledStateCount(json), "latin1Reader");
 
-    String first = primary.reset(latin1Bytes("\"shared\"")).readFieldName();
-    String second = secondary.reset(latin1Bytes("\"shared\"")).readFieldName();
+    String first = current.reset(latin1Bytes("\"shared\"")).readFieldName();
+    String second = other.reset(latin1Bytes("\"shared\"")).readFieldName();
     assertSame(second, first);
   }
 
@@ -312,7 +321,7 @@ public class JsonFieldNameCacheTest {
 
     byte[] invalidUtf8 = {'{', '"', (byte) 0xc0, (byte) 0x80, '"', ':', '1', '}'};
     assertThrows(ForyJsonException.class, () -> json.fromJson(invalidUtf8, JsonObject.class));
-    JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
+    JsonSharedRegistry registry = JsonTestSupport.currentTypeResolver(json).sharedRegistry();
     assertNull(registry.cachedFieldName(JsonFieldNameHash.hash("bad")));
     assertNull(registry.cachedFieldName(JsonFieldNameHash.hash("")));
   }
@@ -335,7 +344,7 @@ public class JsonFieldNameCacheTest {
     String different = "differentKey";
     long hash = JsonFieldNameHash.hash(expected);
     long[] words = pack(different);
-    JsonSharedRegistry registry = JsonTestSupport.primaryTypeResolver(json).sharedRegistry();
+    JsonSharedRegistry registry = JsonTestSupport.currentTypeResolver(json).sharedRegistry();
     CachedFieldName collision =
         registry.cacheFieldName(hash, new String(different), words[0], words[1]);
 
@@ -416,7 +425,7 @@ public class JsonFieldNameCacheTest {
     TypedFields value = json.fromJson("{\"value\":1}", TypedFields.class);
     assertEquals(value.value, 1);
     assertNull(
-        JsonTestSupport.primaryTypeResolver(json)
+        JsonTestSupport.currentTypeResolver(json)
             .sharedRegistry()
             .cachedFieldName(JsonFieldNameHash.hash("value")));
   }
@@ -426,7 +435,7 @@ public class JsonFieldNameCacheTest {
     String second = firstKey(json.fromJson(jsonForName(name), JsonObject.class));
     assertSame(second, first);
     CachedFieldName entry =
-        JsonTestSupport.primaryTypeResolver(json)
+        JsonTestSupport.currentTypeResolver(json)
             .sharedRegistry()
             .cachedFieldName(JsonFieldNameHash.hash(name));
     assertNotNull(entry);

@@ -1,6 +1,6 @@
 ---
 title: Type Registration
-sidebar_position: 6
+sidebar_position: 7
 id: type_registration
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -65,9 +65,23 @@ Call the generated `register` function from the `.fory.dart` file. It installs a
 UserModelsForyModule.register(fory, User, id: 100);
 ```
 
-## Registering a Custom Serializer
+External structural serializers use the same generated registration API. Pass
+the external target type:
 
-For types that you cannot annotate with `@ForyStruct()`, pass a serializer instance directly:
+```dart
+ExternalSerializersForyModule.register(
+  fory,
+  third_party.User,
+  id: 100,
+);
+```
+
+See [External-Type Serialization](external-types.md) for the declaration.
+
+## Registering a Manual Serializer
+
+Pass a serializer instance directly when a type needs custom wire or
+construction logic:
 
 ```dart
 fory.registerSerializer(
@@ -77,7 +91,7 @@ fory.registerSerializer(
 );
 ```
 
-See [Custom Serializers](custom-serializers.md) for how to implement a serializer.
+See [Manual Serializers](custom-serializers.md) for how to implement a serializer.
 
 ## Rules to Follow
 
@@ -93,5 +107,6 @@ The same numeric ID or name must be used in every peer that reads or writes the 
 ## Related Topics
 
 - [Code Generation](code-generation.md)
+- [External-Type Serialization](external-types.md)
 - [Xlang Serialization](xlang-serialization.md)
-- [Custom Serializers](custom-serializers.md)
+- [Manual Serializers](custom-serializers.md)

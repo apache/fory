@@ -17,58 +17,68 @@
 
 import Foundation
 
+@usableFromInline
 enum CollectionHeader {
-    static let trackingRef: UInt8 = 0b0000_0001
-    static let hasNull: UInt8 = 0b0000_0010
-    static let declaredElementType: UInt8 = 0b0000_0100
-    static let sameType: UInt8 = 0b0000_1000
+    @usableFromInline static let trackingRef: UInt8 = 0b0000_0001
+    @usableFromInline static let hasNull: UInt8 = 0b0000_0010
+    @usableFromInline static let declaredElementType: UInt8 = 0b0000_0100
+    @usableFromInline static let sameType: UInt8 = 0b0000_1000
 }
 
+@usableFromInline
 enum MapHeader {
-    static let trackingKeyRef: UInt8 = 0b0000_0001
-    static let keyNull: UInt8 = 0b0000_0010
-    static let declaredKeyType: UInt8 = 0b0000_0100
+    @usableFromInline static let trackingKeyRef: UInt8 = 0b0000_0001
+    @usableFromInline static let keyNull: UInt8 = 0b0000_0010
+    @usableFromInline static let declaredKeyType: UInt8 = 0b0000_0100
 
-    static let trackingValueRef: UInt8 = 0b0000_1000
-    static let valueNull: UInt8 = 0b0001_0000
-    static let declaredValueType: UInt8 = 0b0010_0000
+    @usableFromInline static let trackingValueRef: UInt8 = 0b0000_1000
+    @usableFromInline static let valueNull: UInt8 = 0b0001_0000
+    @usableFromInline static let declaredValueType: UInt8 = 0b0010_0000
 }
 
-private let storedReferenceBytes = 4
+@usableFromInline
+internal let storedReferenceBytes = 4
 
+@inlinable
 @inline(__always)
-private func storedElementBytes<Element: Serializer>(_ type: Element.Type) -> Int {
-    type.isRefType ? storedReferenceBytes : max(1, MemoryLayout<Element>.stride)
+internal func storedElementBytes<Element: Serializer>(_ type: Element.Type) -> Int {
+    if type.staticTypeId == .unknown {
+        return max(1, MemoryLayout<Element.Target>.stride)
+    }
+    return type.isRefType ? storedReferenceBytes : max(1, MemoryLayout<Element.Target>.stride)
 }
 
+@inlinable
 @inline(__always)
-private func storedOwnerBytes<T>(_ type: T.Type) -> Int {
+internal func storedOwnerBytes<T>(_ type: T.Type) -> Int {
     max(1, MemoryLayout<T>.stride)
 }
 
+@usableFromInline
 @inline(__always)
-private func reserveGraphElements(
+internal func reserveGraphElements(
     _ context: ReadContext,
     ownerBytes: Int,
     count: Int,
     elementBytes: Int
 ) throws {
     if ownerBytes < 0 || count < 0 || elementBytes < 0 {
-        throw ForyError.invalidData("graph memory estimate overflows")
+        throw graphEstimateOverflow()
     }
     let (storageBytes, overflow) = count.multipliedReportingOverflow(by: elementBytes)
     if overflow {
-        throw ForyError.invalidData("graph memory estimate overflows")
+        throw graphEstimateOverflow()
     }
     let (bytes, addOverflow) = ownerBytes.addingReportingOverflow(storageBytes)
     if addOverflow {
-        throw ForyError.invalidData("graph memory estimate overflows")
+        throw graphEstimateOverflow()
     }
     try context.reserveGraphMemory(bytes)
 }
 
+@inlinable
 @inline(__always)
-private func reserveGraphArrayMemory<Element: Serializer>(
+internal func reserveGraphArrayMemory<Element: Serializer>(
     _ context: ReadContext,
     _ type: Element.Type,
     ownerBytes: Int,
@@ -78,8 +88,9 @@ private func reserveGraphArrayMemory<Element: Serializer>(
         context, ownerBytes: ownerBytes, count: count, elementBytes: storedElementBytes(type))
 }
 
+@inlinable
 @inline(__always)
-private func reserveGraphMapMemory<Key: Serializer, Value: Serializer>(
+internal func reserveGraphMapMemory<Key: Serializer, Value: Serializer>(
     _ context: ReadContext,
     key: Key.Type,
     value: Value.Type,
@@ -90,9 +101,15 @@ private func reserveGraphMapMemory<Key: Serializer, Value: Serializer>(
     let valueBytes = storedElementBytes(value)
     let (elementBytes, overflow) = keyBytes.addingReportingOverflow(valueBytes)
     if overflow {
-        throw ForyError.invalidData("graph memory estimate overflows")
+        throw graphEstimateOverflow()
     }
     try reserveGraphElements(context, ownerBytes: ownerBytes, count: count, elementBytes: elementBytes)
+}
+
+@usableFromInline
+@inline(never)
+internal func graphEstimateOverflow() -> ForyError {
+    ForyError.invalidData("graph memory estimate overflows")
 }
 
 private let hostIsLittleEndian = Int(littleEndian: 1) == 1
@@ -103,8 +120,9 @@ private func uncheckedArrayCast<From, To>(_ array: [From], to _: To.Type) -> [To
     return unsafeBitCast(array, to: [To].self)
 }
 
+@usableFromInline
 @inline(__always)
-private func readArrayUninitialized<Element>(
+internal func readArrayUninitialized<Element>(
     count: Int,
     _ initializer: (UnsafeMutablePointer<Element>) throws -> Void
 ) rethrows -> [Element] {
@@ -293,6 +311,9 @@ private func preparePrimitiveArray<Element: Serializer>(
     }
 }
 
+// Keep the primitive type branches in one generic body so specialization removes every
+// nonmatching branch without adding forwarding calls to packed-array reads.
+// swiftlint:disable:next function_body_length
 func readPrimitiveArray<Element: Serializer>(
     _ context: ReadContext,
     reserveGraphStorage: Bool = false
@@ -332,7 +353,7 @@ func readPrimitiveArray<Element: Serializer>(
     }
 
     if Element.self == Int16.self {
-        if byteSize % 2 != 0 { throw ForyError.invalidData("int16 array byte size mismatch") }
+        if byteSize % 2 != 0 { throw primitiveArraySizeMismatch("int16") }
         let count = byteSize / 2
         try preparePrimitiveArray(
             context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
@@ -353,7 +374,7 @@ func readPrimitiveArray<Element: Serializer>(
     }
 
     if Element.self == Int32.self {
-        if byteSize % 4 != 0 { throw ForyError.invalidData("int32 array byte size mismatch") }
+        if byteSize % 4 != 0 { throw primitiveArraySizeMismatch("int32") }
         let count = byteSize / 4
         try preparePrimitiveArray(
             context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
@@ -374,7 +395,7 @@ func readPrimitiveArray<Element: Serializer>(
     }
 
     if Element.self == UInt32.self {
-        if byteSize % 4 != 0 { throw ForyError.invalidData("uint32 array byte size mismatch") }
+        if byteSize % 4 != 0 { throw primitiveArraySizeMismatch("uint32") }
         let count = byteSize / 4
         try preparePrimitiveArray(
             context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
@@ -395,7 +416,7 @@ func readPrimitiveArray<Element: Serializer>(
     }
 
     if Element.self == Int64.self {
-        if byteSize % 8 != 0 { throw ForyError.invalidData("int64 array byte size mismatch") }
+        if byteSize % 8 != 0 { throw primitiveArraySizeMismatch("int64") }
         let count = byteSize / 8
         try preparePrimitiveArray(
             context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
@@ -416,7 +437,7 @@ func readPrimitiveArray<Element: Serializer>(
     }
 
     if Element.self == UInt64.self {
-        if byteSize % 8 != 0 { throw ForyError.invalidData("uint64 array byte size mismatch") }
+        if byteSize % 8 != 0 { throw primitiveArraySizeMismatch("uint64") }
         let count = byteSize / 8
         try preparePrimitiveArray(
             context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
@@ -437,7 +458,7 @@ func readPrimitiveArray<Element: Serializer>(
     }
 
     if Element.self == UInt16.self {
-        if byteSize % 2 != 0 { throw ForyError.invalidData("uint16 array byte size mismatch") }
+        if byteSize % 2 != 0 { throw primitiveArraySizeMismatch("uint16") }
         let count = byteSize / 2
         try preparePrimitiveArray(
             context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
@@ -458,7 +479,7 @@ func readPrimitiveArray<Element: Serializer>(
     }
 
     if Element.self == Float16.self {
-        if byteSize % 2 != 0 { throw ForyError.invalidData("float16 array byte size mismatch") }
+        if byteSize % 2 != 0 { throw primitiveArraySizeMismatch("float16") }
         let count = byteSize / 2
         try preparePrimitiveArray(
             context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
@@ -473,7 +494,7 @@ func readPrimitiveArray<Element: Serializer>(
     }
 
     if Element.self == BFloat16.self {
-        if byteSize % 2 != 0 { throw ForyError.invalidData("bfloat16 array byte size mismatch") }
+        if byteSize % 2 != 0 { throw primitiveArraySizeMismatch("bfloat16") }
         let count = byteSize / 2
         try preparePrimitiveArray(
             context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
@@ -488,7 +509,7 @@ func readPrimitiveArray<Element: Serializer>(
     }
 
     if Element.self == Float.self {
-        if byteSize % 4 != 0 { throw ForyError.invalidData("float32 array byte size mismatch") }
+        if byteSize % 4 != 0 { throw primitiveArraySizeMismatch("float32") }
         let count = byteSize / 4
         try preparePrimitiveArray(
             context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
@@ -508,7 +529,7 @@ func readPrimitiveArray<Element: Serializer>(
         return uncheckedArrayCast(out, to: Element.self)
     }
 
-    if byteSize % 8 != 0 { throw ForyError.invalidData("float64 array byte size mismatch") }
+    if byteSize % 8 != 0 { throw primitiveArraySizeMismatch("float64") }
     let count = byteSize / 8
     try preparePrimitiveArray(
         context, reserveGraphStorage: reserveGraphStorage, type: Element.self, count: count,
@@ -528,43 +549,66 @@ func readPrimitiveArray<Element: Serializer>(
     return uncheckedArrayCast(out, to: Element.self)
 }
 
-extension Array: Serializer where Element: Serializer {
-    public static func foryDefault() -> [Element] {
-        []
+@inline(never)
+private func primitiveArraySizeMismatch(_ element: String) -> ForyError {
+    ForyError.invalidData("\(element) array byte size mismatch")
+}
+
+/// A LIST carrier serializer whose target is an array of `Element.Target`.
+public enum ArraySerializer<Element: Serializer>: Serializer {
+    public typealias Target = [Element.Target]
+
+    public static var staticTypeId: TypeId { .list }
+
+    public static func defaultValue(_: ReadContext) throws -> Target { [] }
+
+    public static func writeTypeInfo(_ context: WriteContext) throws {
+        context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static var staticTypeId: TypeId {
-        .list
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
-        context.buffer.writeUInt8(UInt8(truncatingIfNeeded: staticTypeId.rawValue))
+    @inlinable
+    @inline(__always)
+    public static func writeData(_ value: Target, _ context: WriteContext) throws {
+        try writeElements(
+            value,
+            context,
+            codec: SerializerCodec<Element>.self,
+            hasDeclaredChildren: false
+        )
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
-        let rawTypeID = try context.buffer.readVarUInt32()
-        guard let actualTypeID = TypeId(rawValue: rawTypeID) else {
-            throw ForyError.invalidData("unknown type id \(rawTypeID)")
-        }
-
-        let expectedTypeID = staticTypeId
-        if actualTypeID != expectedTypeID {
-            throw ForyError.typeMismatch(expected: expectedTypeID.rawValue, actual: rawTypeID)
-        }
-        return nil
+    @inlinable
+    @inline(__always)
+    public static func readData(_ context: ReadContext) throws -> Target {
+        try readElements(
+            context,
+            codec: SerializerCodec<Element>.self,
+            ownerBytes: storedOwnerBytes(Target.self)
+        )
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+    @inlinable
+    internal static func writeElements<Codec: FieldCodec>(
+        _ value: [Codec.Target],
+        _ context: WriteContext,
+        codec _: Codec.Type,
+        hasDeclaredChildren: Bool
+    ) throws where Codec.Target == Element.Target {
         let buffer = context.buffer
-        buffer.writeVarUInt32(UInt32(self.count))
-        if self.isEmpty {
+        buffer.writeVarUInt32(UInt32(value.count))
+        if value.isEmpty {
             return
         }
 
-        let hasNull = Element.isNullableType && self.contains(where: { $0.foryIsNone })
-        let trackRef = context.trackRef && Element.isRefType
-        let declaredElementType = hasGenerics && !TypeId.needsTypeInfoForField(Element.staticTypeId)
-        let dynamicElementType = Element.staticTypeId == .unknown
+        let hasNull = Codec.isNullableType && value.contains(where: Codec.isNone)
+        let trackRef = context.trackRef && Codec.isRefType
+        let declaredElementType =
+            hasDeclaredChildren && !TypeId.needsTypeInfoForField(Codec.staticTypeId)
+        let dynamicElementType = Codec.staticTypeId == .unknown
 
         var header: UInt8 = dynamicElementType ? 0 : CollectionHeader.sameType
         if trackRef {
@@ -579,124 +623,117 @@ extension Array: Serializer where Element: Serializer {
 
         buffer.writeUInt8(header)
         if !dynamicElementType && !declaredElementType {
-            try Element.foryWriteStaticTypeInfo(context)
+            try Codec.writeFieldTypeInfo(context)
         }
 
         if dynamicElementType {
-            let refMode: RefMode
-            if trackRef {
-                refMode = .tracking
-            } else if hasNull {
-                refMode = .nullOnly
-            } else {
-                refMode = .none
-            }
-            for element in self {
-                try element.foryWrite(
-                    context, refMode: refMode, writeTypeInfo: true, hasGenerics: hasGenerics)
+            let refMode = RefMode.from(nullable: hasNull, trackRef: trackRef)
+            for element in value {
+                try Codec.writeField(
+                    element,
+                    context,
+                    refMode: refMode,
+                    writeTypeInfo: true,
+                    hasDeclaredChildren: hasDeclaredChildren
+                )
             }
             return
         }
 
         if trackRef {
-            for element in self {
-                try element.foryWrite(
-                    context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
+            for element in value {
+                try Codec.writeField(
+                    element,
+                    context,
+                    refMode: .tracking,
+                    writeTypeInfo: false,
+                    hasDeclaredChildren: hasDeclaredChildren
+                )
             }
         } else if hasNull {
-            for element in self {
-                if element.foryIsNone {
+            for element in value {
+                if Codec.isNone(element) {
                     buffer.writeInt8(RefFlag.null.rawValue)
                 } else {
                     buffer.writeInt8(RefFlag.notNullValue.rawValue)
-                    try element.foryWriteData(context, hasGenerics: hasGenerics)
+                    try Codec.writeFieldData(
+                        element,
+                        context,
+                        hasDeclaredChildren: hasDeclaredChildren
+                    )
                 }
             }
         } else {
-            for element in self {
-                try element.foryWriteData(context, hasGenerics: hasGenerics)
+            for element in value {
+                try Codec.writeFieldData(
+                    element,
+                    context,
+                    hasDeclaredChildren: hasDeclaredChildren
+                )
             }
         }
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> [Element] {
-        try readData(context, graphOwnerBytes: storedOwnerBytes([Element].self))
-    }
-
-    fileprivate static func readData(
+    @inlinable
+    internal static func readElements<Codec: FieldCodec>(
         _ context: ReadContext,
-        graphOwnerBytes: Int?
-    ) throws -> [Element] {
+        codec _: Codec.Type,
+        ownerBytes: Int
+    ) throws -> [Codec.Target] where Codec.Target == Element.Target {
         let buffer = context.buffer
         let length = Int(try buffer.readVarUInt32())
         try context.ensureCollectionLength(length, label: "array")
-        let ownerBytes = graphOwnerBytes ?? 0
         if length == 0 {
-            if graphOwnerBytes != nil {
-                try reserveGraphArrayMemory(
-                    context, Element.self, ownerBytes: ownerBytes, count: length)
-            }
+            try reserveGraphArrayMemory(
+                context,
+                Codec.self,
+                ownerBytes: ownerBytes,
+                count: length
+            )
             return []
         }
 
         let header = try buffer.readUInt8()
+        // The wire header owns ref/null policy; local field metadata may differ.
         let trackRef = (header & CollectionHeader.trackingRef) != 0
         let hasNull = (header & CollectionHeader.hasNull) != 0
         let declared = (header & CollectionHeader.declaredElementType) != 0
         let sameType = (header & CollectionHeader.sameType) != 0
+
+        try reserveGraphArrayMemory(
+            context,
+            Codec.self,
+            ownerBytes: ownerBytes,
+            count: length
+        )
+        try context.ensureRemainingBytes(length, label: "array")
+
         if !sameType {
-            if graphOwnerBytes != nil {
-                try reserveGraphArrayMemory(
-                    context, Element.self, ownerBytes: ownerBytes, count: length)
-            }
-            try context.ensureRemainingBytes(length, label: "array")
-            if trackRef {
-                return try readArrayUninitialized(count: length) { destination in
-                    for index in 0..<length {
-                        destination.advanced(by: index).initialize(
-                            to: try Element.foryRead(context, refMode: .tracking, readTypeInfo: true)
-                        )
-                    }
-                }
-            }
-
-            if hasNull {
-                return try readArrayUninitialized(count: length) { destination in
-                    for index in 0..<length {
-                        let refFlag = try buffer.readInt8()
-                        if refFlag == RefFlag.null.rawValue {
-                            destination.advanced(by: index).initialize(to: Element.foryDefault())
-                        } else if refFlag == RefFlag.notNullValue.rawValue {
-                            destination.advanced(by: index).initialize(
-                                to: try Element.foryRead(context, refMode: .none, readTypeInfo: true)
-                            )
-                        } else {
-                            throw ForyError.refError("invalid nullability flag \(refFlag)")
-                        }
-                    }
-                }
-            }
-
+            let refMode = RefMode.from(nullable: hasNull, trackRef: trackRef)
             return try readArrayUninitialized(count: length) { destination in
                 for index in 0..<length {
                     destination.advanced(by: index).initialize(
-                        to: try Element.foryRead(context, refMode: .none, readTypeInfo: true)
+                        to: try Codec.readField(
+                            context,
+                            refMode: refMode,
+                            readTypeInfo: true
+                        )
                     )
                 }
             }
         }
 
-        let elementTypeInfo = declared ? nil : try Element.foryReadTypeInfo(context)
-        if graphOwnerBytes != nil {
-            try reserveGraphArrayMemory(context, Element.self, ownerBytes: ownerBytes, count: length)
-        }
-        try context.ensureRemainingBytes(length, label: "array")
-        return try context.withTypeInfo(elementTypeInfo, for: Element.self) {
+        let elementTypeInfo = declared ? nil : try Codec.readFieldTypeInfo(context)
+        return try Codec.withFieldTypeInfo(elementTypeInfo, context) {
             if trackRef {
                 return try readArrayUninitialized(count: length) { destination in
                     for index in 0..<length {
                         destination.advanced(by: index).initialize(
-                            to: try Element.foryRead(context, refMode: .tracking, readTypeInfo: false)
+                            to: try Codec.readField(
+                                context,
+                                refMode: .tracking,
+                                readTypeInfo: false
+                            )
                         )
                     }
                 }
@@ -707,13 +744,15 @@ extension Array: Serializer where Element: Serializer {
                     for index in 0..<length {
                         let refFlag = try buffer.readInt8()
                         if refFlag == RefFlag.null.rawValue {
-                            destination.advanced(by: index).initialize(to: Element.foryDefault())
+                            destination.advanced(by: index).initialize(
+                                to: try Codec.defaultValue(context)
+                            )
                         } else if refFlag == RefFlag.notNullValue.rawValue {
                             destination.advanced(by: index).initialize(
-                                to: try Element.foryRead(context, refMode: .none, readTypeInfo: false)
+                                to: try Codec.readFieldData(context)
                             )
                         } else {
-                            throw ForyError.refError("invalid nullability flag \(refFlag)")
+                            throw invalidCollectionRefFlag(refFlag)
                         }
                     }
                 }
@@ -722,7 +761,7 @@ extension Array: Serializer where Element: Serializer {
             return try readArrayUninitialized(count: length) { destination in
                 for index in 0..<length {
                     destination.advanced(by: index).initialize(
-                        to: try Element.foryRead(context, refMode: .none, readTypeInfo: false)
+                        to: try Codec.readFieldData(context)
                     )
                 }
             }
@@ -730,129 +769,449 @@ extension Array: Serializer where Element: Serializer {
     }
 }
 
-extension Set: Serializer where Element: Serializer & Hashable {
-    public static func foryDefault() -> Set<Element> { [] }
+public extension ArraySerializer where Element: FieldCodec {
+    static func fieldType(
+        nullable: Bool,
+        trackRef: Bool,
+        resolveSerializerTypeId: (Any.Type) throws -> TypeId
+    ) throws -> TypeMeta.FieldType {
+        TypeMeta.FieldType(
+            typeID: TypeId.list.rawValue,
+            nullable: nullable,
+            trackRef: trackRef,
+            generics: [
+                try Element.fieldType(
+                    nullable: Element.isNullableType,
+                    trackRef: trackRef && Element.isRefType,
+                    resolveSerializerTypeId: resolveSerializerTypeId
+                )
+            ]
+        )
+    }
+
+    @inlinable
+    @inline(__always)
+    static func writeFieldData(
+        _ value: Target,
+        _ context: WriteContext,
+        hasDeclaredChildren: Bool
+    ) throws {
+        try writeElements(
+            value,
+            context,
+            codec: Element.self,
+            hasDeclaredChildren: hasDeclaredChildren
+        )
+    }
+
+    @inlinable
+    @inline(__always)
+    static func readFieldData(_ context: ReadContext) throws -> Target {
+        try readElements(
+            context,
+            codec: Element.self,
+            ownerBytes: storedOwnerBytes(Target.self)
+        )
+    }
+}
+
+extension ArraySerializer: FieldCodec where Element: FieldCodec {}
+
+extension Array: Serializer where Element: Serializer, Element.Target == Element {
+    public typealias Target = Self
+
+    @inlinable
+    @inline(__always)
+    public static var staticTypeId: TypeId { ArraySerializer<Element>.staticTypeId }
+
+    @inlinable
+    @inline(__always)
+    public static func defaultValue(_ context: ReadContext) throws -> Self {
+        try ArraySerializer<Element>.defaultValue(context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        try ArraySerializer<Element>.writeData(value, context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readData(_ context: ReadContext) throws -> Self {
+        try ArraySerializer<Element>.readData(context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func writeTypeInfo(_ context: WriteContext) throws {
+        try ArraySerializer<Element>.writeTypeInfo(context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try ArraySerializer<Element>.readTypeInfo(context)
+    }
+}
+
+/// A SET carrier serializer whose target is a set of `Element.Target`.
+public enum SetSerializer<Element: Serializer>: Serializer where Element.Target: Hashable {
+    public typealias Target = Set<Element.Target>
 
     public static var staticTypeId: TypeId { .set }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func defaultValue(_: ReadContext) throws -> Target { [] }
+
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        try Array(self).foryWriteData(context, hasGenerics: hasGenerics)
+    @inlinable
+    @inline(__always)
+    public static func writeData(_ value: Target, _ context: WriteContext) throws {
+        try writeElements(
+            value,
+            context,
+            codec: SerializerCodec<Element>.self,
+            hasDeclaredChildren: false
+        )
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> Set<Element> {
+    @inlinable
+    @inline(__always)
+    public static func readData(_ context: ReadContext) throws -> Target {
+        try readElements(
+            context,
+            codec: SerializerCodec<Element>.self,
+            ownerBytes: storedOwnerBytes(Target.self)
+        )
+    }
+
+    @inlinable
+    internal static func writeElements<Codec: FieldCodec>(
+        _ value: Set<Codec.Target>,
+        _ context: WriteContext,
+        codec _: Codec.Type,
+        hasDeclaredChildren: Bool
+    ) throws where Codec.Target == Element.Target {
+        let buffer = context.buffer
+        buffer.writeVarUInt32(UInt32(value.count))
+        if value.isEmpty {
+            return
+        }
+
+        let hasNull = Codec.isNullableType && value.contains(where: Codec.isNone)
+        let trackRef = context.trackRef && Codec.isRefType
+        let declaredElementType =
+            hasDeclaredChildren && !TypeId.needsTypeInfoForField(Codec.staticTypeId)
+        let dynamicElementType = Codec.staticTypeId == .unknown
+
+        var header: UInt8 = dynamicElementType ? 0 : CollectionHeader.sameType
+        if trackRef {
+            header |= CollectionHeader.trackingRef
+        }
+        if hasNull {
+            header |= CollectionHeader.hasNull
+        }
+        if declaredElementType {
+            header |= CollectionHeader.declaredElementType
+        }
+
+        buffer.writeUInt8(header)
+        if !dynamicElementType && !declaredElementType {
+            try Codec.writeFieldTypeInfo(context)
+        }
+
+        if dynamicElementType {
+            let refMode = RefMode.from(nullable: hasNull, trackRef: trackRef)
+            for element in value {
+                try Codec.writeField(
+                    element,
+                    context,
+                    refMode: refMode,
+                    writeTypeInfo: true,
+                    hasDeclaredChildren: hasDeclaredChildren
+                )
+            }
+            return
+        }
+
+        if trackRef {
+            for element in value {
+                try Codec.writeField(
+                    element,
+                    context,
+                    refMode: .tracking,
+                    writeTypeInfo: false,
+                    hasDeclaredChildren: hasDeclaredChildren
+                )
+            }
+        } else if hasNull {
+            for element in value {
+                if Codec.isNone(element) {
+                    buffer.writeInt8(RefFlag.null.rawValue)
+                } else {
+                    buffer.writeInt8(RefFlag.notNullValue.rawValue)
+                    try Codec.writeFieldData(
+                        element,
+                        context,
+                        hasDeclaredChildren: hasDeclaredChildren
+                    )
+                }
+            }
+        } else {
+            for element in value {
+                try Codec.writeFieldData(
+                    element,
+                    context,
+                    hasDeclaredChildren: hasDeclaredChildren
+                )
+            }
+        }
+    }
+
+    @inlinable
+    internal static func readElements<Codec: FieldCodec>(
+        _ context: ReadContext,
+        codec _: Codec.Type,
+        ownerBytes: Int
+    ) throws -> Set<Codec.Target> where Codec.Target == Element.Target {
         let buffer = context.buffer
         let length = Int(try buffer.readVarUInt32())
         try context.ensureCollectionLength(length, label: "set")
+        try reserveGraphArrayMemory(
+            context,
+            Codec.self,
+            ownerBytes: ownerBytes,
+            count: length
+        )
         if length == 0 {
-            try reserveGraphArrayMemory(
-                context, Element.self, ownerBytes: storedOwnerBytes(Set<Element>.self), count: length)
             return []
         }
 
         let header = try buffer.readUInt8()
+        // The wire header owns ref/null policy; local field metadata may differ.
         let trackRef = (header & CollectionHeader.trackingRef) != 0
         let hasNull = (header & CollectionHeader.hasNull) != 0
         let declared = (header & CollectionHeader.declaredElementType) != 0
         let sameType = (header & CollectionHeader.sameType) != 0
+        try context.ensureRemainingBytes(length, label: "set")
+
+        var result = Set<Codec.Target>()
+        result.reserveCapacity(length)
         if !sameType {
-            try reserveGraphArrayMemory(
-                context, Element.self, ownerBytes: storedOwnerBytes(Set<Element>.self), count: length)
-            try context.ensureRemainingBytes(length, label: "set")
-            var values = Set<Element>()
-            values.reserveCapacity(length)
-            if trackRef {
-                for _ in 0..<length {
-                    try values.insert(Element.foryRead(context, refMode: .tracking, readTypeInfo: true))
-                }
-            } else if hasNull {
-                for _ in 0..<length {
-                    let refFlag = try buffer.readInt8()
-                    if refFlag == RefFlag.null.rawValue {
-                        values.insert(Element.foryDefault())
-                    } else if refFlag == RefFlag.notNullValue.rawValue {
-                        try values.insert(Element.foryRead(context, refMode: .none, readTypeInfo: true))
-                    } else {
-                        throw ForyError.refError("invalid nullability flag \(refFlag)")
-                    }
-                }
-            } else {
-                for _ in 0..<length {
-                    try values.insert(Element.foryRead(context, refMode: .none, readTypeInfo: true))
-                }
+            let refMode = RefMode.from(nullable: hasNull, trackRef: trackRef)
+            for _ in 0..<length {
+                result.insert(
+                    try Codec.readField(
+                        context,
+                        refMode: refMode,
+                        readTypeInfo: true
+                    )
+                )
             }
-            return values
+            return result
         }
 
-        let elementTypeInfo = declared ? nil : try Element.foryReadTypeInfo(context)
-        try reserveGraphArrayMemory(
-            context, Element.self, ownerBytes: storedOwnerBytes(Set<Element>.self), count: length)
-        try context.ensureRemainingBytes(length, label: "set")
-        return try context.withTypeInfo(elementTypeInfo, for: Element.self) {
-            var values = Set<Element>()
-            values.reserveCapacity(length)
+        let elementTypeInfo = declared ? nil : try Codec.readFieldTypeInfo(context)
+        return try Codec.withFieldTypeInfo(elementTypeInfo, context) {
             if trackRef {
                 for _ in 0..<length {
-                    try values.insert(Element.foryRead(context, refMode: .tracking, readTypeInfo: false))
+                    result.insert(
+                        try Codec.readField(
+                            context,
+                            refMode: .tracking,
+                            readTypeInfo: false
+                        )
+                    )
                 }
             } else if hasNull {
                 for _ in 0..<length {
                     let refFlag = try buffer.readInt8()
                     if refFlag == RefFlag.null.rawValue {
-                        values.insert(Element.foryDefault())
+                        result.insert(try Codec.defaultValue(context))
                     } else if refFlag == RefFlag.notNullValue.rawValue {
-                        try values.insert(Element.foryRead(context, refMode: .none, readTypeInfo: false))
+                        result.insert(try Codec.readFieldData(context))
                     } else {
-                        throw ForyError.refError("invalid nullability flag \(refFlag)")
+                        throw invalidCollectionRefFlag(refFlag)
                     }
                 }
             } else {
                 for _ in 0..<length {
-                    try values.insert(Element.foryRead(context, refMode: .none, readTypeInfo: false))
+                    result.insert(try Codec.readFieldData(context))
                 }
             }
-            return values
+            return result
         }
     }
 }
 
-extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serializer {
-    public static func foryDefault() -> [Key: Value] { [:] }
+public extension SetSerializer where Element: FieldCodec {
+    static func fieldType(
+        nullable: Bool,
+        trackRef: Bool,
+        resolveSerializerTypeId: (Any.Type) throws -> TypeId
+    ) throws -> TypeMeta.FieldType {
+        TypeMeta.FieldType(
+            typeID: TypeId.set.rawValue,
+            nullable: nullable,
+            trackRef: trackRef,
+            generics: [
+                try Element.fieldType(
+                    nullable: Element.isNullableType,
+                    trackRef: trackRef && Element.isRefType,
+                    resolveSerializerTypeId: resolveSerializerTypeId
+                )
+            ]
+        )
+    }
+
+    @inlinable
+    @inline(__always)
+    static func writeFieldData(
+        _ value: Target,
+        _ context: WriteContext,
+        hasDeclaredChildren: Bool
+    ) throws {
+        try writeElements(
+            value,
+            context,
+            codec: Element.self,
+            hasDeclaredChildren: hasDeclaredChildren
+        )
+    }
+
+    @inlinable
+    @inline(__always)
+    static func readFieldData(_ context: ReadContext) throws -> Target {
+        try readElements(
+            context,
+            codec: Element.self,
+            ownerBytes: storedOwnerBytes(Target.self)
+        )
+    }
+}
+
+extension SetSerializer: FieldCodec where Element: FieldCodec {}
+
+extension Set: Serializer
+where Element: Serializer & Hashable, Element.Target == Element {
+    public typealias Target = Self
+
+    @inlinable
+    @inline(__always)
+    public static var staticTypeId: TypeId { SetSerializer<Element>.staticTypeId }
+
+    @inlinable
+    @inline(__always)
+    public static func defaultValue(_ context: ReadContext) throws -> Self {
+        try SetSerializer<Element>.defaultValue(context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        try SetSerializer<Element>.writeData(value, context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readData(_ context: ReadContext) throws -> Self {
+        try SetSerializer<Element>.readData(context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func writeTypeInfo(_ context: WriteContext) throws {
+        try SetSerializer<Element>.writeTypeInfo(context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try SetSerializer<Element>.readTypeInfo(context)
+    }
+}
+
+/// A MAP carrier serializer whose key and value targets are formed recursively
+/// from `Key` and `Value`.
+public enum DictionarySerializer<Key: Serializer, Value: Serializer>: Serializer
+where Key.Target: Hashable {
+    public typealias Target = [Key.Target: Value.Target]
 
     public static var staticTypeId: TypeId { .map }
 
-    public static func foryWriteStaticTypeInfo(_ context: WriteContext) throws {
+    public static func defaultValue(_: ReadContext) throws -> Target { [:] }
+
+    public static func writeTypeInfo(_ context: WriteContext) throws {
         context.writeStaticTypeInfo(staticTypeId)
     }
 
-    public static func foryReadTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
         try context.readStaticTypeInfo(staticTypeId)
     }
 
-    public func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        context.buffer.writeVarUInt32(UInt32(self.count))
-        if self.isEmpty {
+    @inlinable
+    @inline(__always)
+    public static func writeData(_ value: Target, _ context: WriteContext) throws {
+        try writeEntries(
+            value,
+            context,
+            keyCodec: SerializerCodec<Key>.self,
+            valueCodec: SerializerCodec<Value>.self,
+            hasDeclaredChildren: false
+        )
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readData(_ context: ReadContext) throws -> Target {
+        try readEntries(
+            context,
+            keyCodec: SerializerCodec<Key>.self,
+            valueCodec: SerializerCodec<Value>.self,
+            ownerBytes: storedOwnerBytes(Target.self)
+        )
+    }
+
+    // Dynamic and static map chunks stay in one specialized body so the static hot path does not
+    // retain a forwarding layer or runtime dispatch after generic specialization.
+    @inlinable
+    // swiftlint:disable:next function_body_length
+    internal static func writeEntries<KeyCodec: FieldCodec, ValueCodec: FieldCodec>(
+        _ value: [KeyCodec.Target: ValueCodec.Target],
+        _ context: WriteContext,
+        keyCodec _: KeyCodec.Type,
+        valueCodec _: ValueCodec.Type,
+        hasDeclaredChildren: Bool
+    ) throws
+    where
+        KeyCodec.Target == Key.Target,
+        ValueCodec.Target == Value.Target
+    {
+        context.buffer.writeVarUInt32(UInt32(value.count))
+        if value.isEmpty {
             return
         }
 
-        let trackKeyRef = context.trackRef && Key.isRefType
-        let trackValueRef = context.trackRef && Value.isRefType
-        let keyDeclared = hasGenerics && !TypeId.needsTypeInfoForField(Key.staticTypeId)
-        let valueDeclared = hasGenerics && !TypeId.needsTypeInfoForField(Value.staticTypeId)
-        let keyDynamicType = Key.staticTypeId == .unknown
-        let valueDynamicType = Value.staticTypeId == .unknown
+        let trackKeyRef = context.trackRef && KeyCodec.isRefType
+        let trackValueRef = context.trackRef && ValueCodec.isRefType
+        let keyDeclared =
+            hasDeclaredChildren && !TypeId.needsTypeInfoForField(KeyCodec.staticTypeId)
+        let valueDeclared =
+            hasDeclaredChildren && !TypeId.needsTypeInfoForField(ValueCodec.staticTypeId)
+        let keyDynamicType = KeyCodec.staticTypeId == .unknown
+        let valueDynamicType = ValueCodec.staticTypeId == .unknown
 
         if keyDynamicType || valueDynamicType {
-            for pair in self {
-                let keyIsNil = pair.key.foryIsNone
-                let valueIsNil = pair.value.foryIsNone
+            for pair in value {
+                let keyIsNil = KeyCodec.isNone(pair.key)
+                let valueIsNil = ValueCodec.isNone(pair.value)
                 var header: UInt8 = 0
                 if trackKeyRef {
                     header |= MapHeader.trackingKeyRef
@@ -876,95 +1235,93 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     continue
                 }
                 if keyIsNil {
-                    if !valueDeclared {
-                        if valueDynamicType {
-                            try pair.value.foryWriteTypeInfo(context)
-                        } else {
-                            try Value.foryWriteStaticTypeInfo(context)
-                        }
-                    }
-                    if trackValueRef {
-                        try pair.value.foryWrite(
-                            context,
-                            refMode: .tracking,
-                            writeTypeInfo: false,
-                            hasGenerics: hasGenerics
-                        )
-                    } else {
-                        try pair.value.foryWriteData(context, hasGenerics: hasGenerics)
-                    }
+                    try ValueCodec.writeField(
+                        pair.value,
+                        context,
+                        refMode: trackValueRef ? .tracking : .none,
+                        writeTypeInfo: !valueDeclared,
+                        hasDeclaredChildren: hasDeclaredChildren
+                    )
                     continue
                 }
-
                 if valueIsNil {
-                    if !keyDeclared {
-                        if keyDynamicType {
-                            try pair.key.foryWriteTypeInfo(context)
-                        } else {
-                            try Key.foryWriteStaticTypeInfo(context)
-                        }
-                    }
-                    if trackKeyRef {
-                        try pair.key.foryWrite(
-                            context,
-                            refMode: .tracking,
-                            writeTypeInfo: false,
-                            hasGenerics: hasGenerics
-                        )
-                    } else {
-                        try pair.key.foryWriteData(context, hasGenerics: hasGenerics)
-                    }
+                    try KeyCodec.writeField(
+                        pair.key,
+                        context,
+                        refMode: trackKeyRef ? .tracking : .none,
+                        writeTypeInfo: !keyDeclared,
+                        hasDeclaredChildren: hasDeclaredChildren
+                    )
                     continue
                 }
 
                 context.buffer.writeUInt8(1)
-
-                if !keyDeclared {
-                    if keyDynamicType {
-                        try pair.key.foryWriteTypeInfo(context)
-                    } else {
-                        try Key.foryWriteStaticTypeInfo(context)
-                    }
-                }
-                if !valueDeclared {
-                    if valueDynamicType {
-                        try pair.value.foryWriteTypeInfo(context)
-                    } else {
-                        try Value.foryWriteStaticTypeInfo(context)
-                    }
-                }
-
-                if trackKeyRef {
-                    try pair.key.foryWrite(
-                        context,
-                        refMode: .tracking,
-                        writeTypeInfo: false,
-                        hasGenerics: hasGenerics
+                let keyTypeInfo: TypeInfo?
+                if keyDynamicType {
+                    keyTypeInfo = try writeDynamicTypeInfo(
+                        for: pair.key,
+                        context
                     )
                 } else {
-                    try pair.key.foryWriteData(context, hasGenerics: hasGenerics)
+                    keyTypeInfo = nil
+                    if !keyDeclared {
+                        try KeyCodec.writeFieldTypeInfo(context)
+                    }
                 }
-                if trackValueRef {
-                    try pair.value.foryWrite(
-                        context,
-                        refMode: .tracking,
-                        writeTypeInfo: false,
-                        hasGenerics: hasGenerics
+                let valueTypeInfo: TypeInfo?
+                if valueDynamicType {
+                    valueTypeInfo = try writeDynamicTypeInfo(
+                        for: pair.value,
+                        context
                     )
                 } else {
-                    try pair.value.foryWriteData(context, hasGenerics: hasGenerics)
+                    valueTypeInfo = nil
+                    if !valueDeclared {
+                        try ValueCodec.writeFieldTypeInfo(context)
+                    }
+                }
+
+                if let keyTypeInfo {
+                    try writeDynamicValue(
+                        pair.key,
+                        typeInfo: keyTypeInfo,
+                        context,
+                        refMode: trackKeyRef ? .tracking : .none
+                    )
+                } else {
+                    try KeyCodec.writeField(
+                        pair.key,
+                        context,
+                        refMode: trackKeyRef ? .tracking : .none,
+                        writeTypeInfo: false,
+                        hasDeclaredChildren: hasDeclaredChildren
+                    )
+                }
+                if let valueTypeInfo {
+                    try writeDynamicValue(
+                        pair.value,
+                        typeInfo: valueTypeInfo,
+                        context,
+                        refMode: trackValueRef ? .tracking : .none
+                    )
+                } else {
+                    try ValueCodec.writeField(
+                        pair.value,
+                        context,
+                        refMode: trackValueRef ? .tracking : .none,
+                        writeTypeInfo: false,
+                        hasDeclaredChildren: hasDeclaredChildren
+                    )
                 }
             }
             return
         }
 
-        var iterator = makeIterator()
+        var iterator = value.makeIterator()
         var pendingPair = iterator.next()
-
         while let pair = pendingPair {
-            let keyIsNil = pair.key.foryIsNone
-            let valueIsNil = pair.value.foryIsNone
-
+            let keyIsNil = KeyCodec.isNone(pair.key)
+            let valueIsNil = ValueCodec.isNone(pair.value)
             if keyIsNil || valueIsNil {
                 var header: UInt8 = 0
                 if trackKeyRef {
@@ -973,72 +1330,85 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                 if trackValueRef {
                     header |= MapHeader.trackingValueRef
                 }
-                if keyIsNil { header |= MapHeader.keyNull }
-                if valueIsNil { header |= MapHeader.valueNull }
-                if !keyIsNil && keyDeclared { header |= MapHeader.declaredKeyType }
-                if !valueIsNil && valueDeclared { header |= MapHeader.declaredValueType }
+                if keyIsNil {
+                    header |= MapHeader.keyNull
+                }
+                if valueIsNil {
+                    header |= MapHeader.valueNull
+                }
+                if !keyIsNil && keyDeclared {
+                    header |= MapHeader.declaredKeyType
+                }
+                if !valueIsNil && valueDeclared {
+                    header |= MapHeader.declaredValueType
+                }
 
                 context.buffer.writeUInt8(header)
                 if !keyIsNil {
-                    if !keyDeclared {
-                        try Key.foryWriteStaticTypeInfo(context)
-                    }
-                    if trackKeyRef {
-                        try pair.key.foryWrite(
-                            context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
-                    } else {
-                        try pair.key.foryWriteData(context, hasGenerics: hasGenerics)
-                    }
+                    try KeyCodec.writeField(
+                        pair.key,
+                        context,
+                        refMode: trackKeyRef ? .tracking : .none,
+                        writeTypeInfo: !keyDeclared,
+                        hasDeclaredChildren: hasDeclaredChildren
+                    )
                 }
                 if !valueIsNil {
-                    if !valueDeclared {
-                        try Value.foryWriteStaticTypeInfo(context)
-                    }
-                    if trackValueRef {
-                        try pair.value.foryWrite(
-                            context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
-                    } else {
-                        try pair.value.foryWriteData(context, hasGenerics: hasGenerics)
-                    }
+                    try ValueCodec.writeField(
+                        pair.value,
+                        context,
+                        refMode: trackValueRef ? .tracking : .none,
+                        writeTypeInfo: !valueDeclared,
+                        hasDeclaredChildren: hasDeclaredChildren
+                    )
                 }
                 pendingPair = iterator.next()
                 continue
             }
 
             var header: UInt8 = 0
-            if trackKeyRef { header |= MapHeader.trackingKeyRef }
-            if trackValueRef { header |= MapHeader.trackingValueRef }
-            if keyDeclared { header |= MapHeader.declaredKeyType }
-            if valueDeclared { header |= MapHeader.declaredValueType }
+            if trackKeyRef {
+                header |= MapHeader.trackingKeyRef
+            }
+            if trackValueRef {
+                header |= MapHeader.trackingValueRef
+            }
+            if keyDeclared {
+                header |= MapHeader.declaredKeyType
+            }
+            if valueDeclared {
+                header |= MapHeader.declaredValueType
+            }
 
             context.buffer.writeUInt8(header)
             let chunkSizeOffset = context.buffer.count
             context.buffer.writeUInt8(0)
-
             if !keyDeclared {
-                try Key.foryWriteStaticTypeInfo(context)
+                try KeyCodec.writeFieldTypeInfo(context)
             }
             if !valueDeclared {
-                try Value.foryWriteStaticTypeInfo(context)
+                try ValueCodec.writeFieldTypeInfo(context)
             }
 
             var chunkSize: UInt8 = 0
             while chunkSize < UInt8.max, let current = pendingPair {
-                if current.key.foryIsNone || current.value.foryIsNone {
+                if KeyCodec.isNone(current.key) || ValueCodec.isNone(current.value) {
                     break
                 }
-                if trackKeyRef {
-                    try current.key.foryWrite(
-                        context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
-                } else {
-                    try current.key.foryWriteData(context, hasGenerics: hasGenerics)
-                }
-                if trackValueRef {
-                    try current.value.foryWrite(
-                        context, refMode: .tracking, writeTypeInfo: false, hasGenerics: hasGenerics)
-                } else {
-                    try current.value.foryWriteData(context, hasGenerics: hasGenerics)
-                }
+                try KeyCodec.writeField(
+                    current.key,
+                    context,
+                    refMode: trackKeyRef ? .tracking : .none,
+                    writeTypeInfo: false,
+                    hasDeclaredChildren: hasDeclaredChildren
+                )
+                try ValueCodec.writeField(
+                    current.value,
+                    context,
+                    refMode: trackValueRef ? .tracking : .none,
+                    writeTypeInfo: false,
+                    hasDeclaredChildren: hasDeclaredChildren
+                )
                 chunkSize &+= 1
                 pendingPair = iterator.next()
             }
@@ -1046,79 +1416,93 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
         }
     }
 
-    public static func foryReadData(_ context: ReadContext) throws -> [Key: Value] {
+    @inlinable
+    internal static func readEntries<KeyCodec: FieldCodec, ValueCodec: FieldCodec>(
+        _ context: ReadContext,
+        keyCodec _: KeyCodec.Type,
+        valueCodec _: ValueCodec.Type,
+        ownerBytes: Int
+    ) throws -> [KeyCodec.Target: ValueCodec.Target]
+    where
+        KeyCodec.Target == Key.Target,
+        ValueCodec.Target == Value.Target
+    {
         let totalLength = Int(try context.buffer.readVarUInt32())
         try context.ensureCollectionLength(totalLength, label: "map")
-        let ownerBytes = storedOwnerBytes(Dictionary<Key, Value>.self)
+        try reserveGraphMapMemory(
+            context,
+            key: KeyCodec.self,
+            value: ValueCodec.self,
+            ownerBytes: ownerBytes,
+            count: totalLength
+        )
         if totalLength == 0 {
-            try reserveGraphMapMemory(
-                context, key: Key.self, value: Value.self, ownerBytes: ownerBytes, count: totalLength)
             return [:]
         }
 
-        try reserveGraphMapMemory(
-            context, key: Key.self, value: Value.self, ownerBytes: ownerBytes, count: totalLength)
         try context.ensureRemainingBytes(totalLength, label: "map")
-        var map: [Key: Value] = [:]
+        var map: [KeyCodec.Target: ValueCodec.Target] = [:]
         map.reserveCapacity(totalLength)
-        let keyDynamicType = Key.staticTypeId == .unknown
-        let valueDynamicType = Value.staticTypeId == .unknown
+        let keyDynamicType = KeyCodec.staticTypeId == .unknown
+        let valueDynamicType = ValueCodec.staticTypeId == .unknown
+        // A one-null entry uses complete-field order: ref envelope, optional TypeInfo, then body.
+        // Keep it distinct from non-null chunks, whose shared TypeInfo values precede all bodies.
         if keyDynamicType || valueDynamicType {
-            var dynamicReadCount = 0
-            while dynamicReadCount < totalLength {
+            var readCount = 0
+            while readCount < totalLength {
                 let header = try context.buffer.readUInt8()
                 let trackKeyRef = (header & MapHeader.trackingKeyRef) != 0
                 let keyNull = (header & MapHeader.keyNull) != 0
                 let keyDeclared = (header & MapHeader.declaredKeyType) != 0
-
                 let trackValueRef = (header & MapHeader.trackingValueRef) != 0
                 let valueNull = (header & MapHeader.valueNull) != 0
                 let valueDeclared = (header & MapHeader.declaredValueType) != 0
 
                 if keyNull && valueNull {
-                    map[Key.foryDefault()] = Value.foryDefault()
-                    dynamicReadCount += 1
+                    map[try KeyCodec.defaultValue(context)] =
+                        try ValueCodec.defaultValue(context)
+                    readCount += 1
                     continue
                 }
-
                 if keyNull {
-                    let value = try Value.foryRead(
+                    let value = try ValueCodec.readField(
                         context,
                         refMode: trackValueRef ? .tracking : .none,
-                        readTypeInfo: valueDynamicType || !valueDeclared
+                        readTypeInfo: !valueDeclared
                     )
-                    map[Key.foryDefault()] = value
-                    dynamicReadCount += 1
+                    map[try KeyCodec.defaultValue(context)] = value
+                    readCount += 1
                     continue
                 }
-
                 if valueNull {
-                    let key = try Key.foryRead(
+                    let key = try KeyCodec.readField(
                         context,
                         refMode: trackKeyRef ? .tracking : .none,
-                        readTypeInfo: keyDynamicType || !keyDeclared
+                        readTypeInfo: !keyDeclared
                     )
-                    map[key] = Value.foryDefault()
-                    dynamicReadCount += 1
+                    map[key] = try ValueCodec.defaultValue(context)
+                    readCount += 1
                     continue
                 }
 
                 let chunkSize = Int(try context.buffer.readUInt8())
-                if chunkSize > (totalLength - dynamicReadCount) {
-                    throw ForyError.invalidData("map dynamic chunk size exceeds remaining entries")
+                if chunkSize == 0 || chunkSize > totalLength - readCount {
+                    throw invalidMapChunkSize(dynamic: true)
                 }
-                let keyTypeInfo = keyDeclared ? nil : try Key.foryReadTypeInfo(context)
-                let valueTypeInfo = valueDeclared ? nil : try Value.foryReadTypeInfo(context)
+                let keyTypeInfo =
+                    keyDeclared ? nil : try KeyCodec.readFieldTypeInfo(context)
+                let valueTypeInfo =
+                    valueDeclared ? nil : try ValueCodec.readFieldTypeInfo(context)
                 for _ in 0..<chunkSize {
-                    let key = try context.withTypeInfo(keyTypeInfo, for: Key.self) {
-                        try Key.foryRead(
+                    let key = try KeyCodec.withFieldTypeInfo(keyTypeInfo, context) {
+                        try KeyCodec.readField(
                             context,
                             refMode: trackKeyRef ? .tracking : .none,
                             readTypeInfo: false
                         )
                     }
-                    let value = try context.withTypeInfo(valueTypeInfo, for: Value.self) {
-                        try Value.foryRead(
+                    let value = try ValueCodec.withFieldTypeInfo(valueTypeInfo, context) {
+                        try ValueCodec.readField(
                             context,
                             refMode: trackValueRef ? .tracking : .none,
                             readTypeInfo: false
@@ -1126,7 +1510,7 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
                     }
                     map[key] = value
                 }
-                dynamicReadCount += chunkSize
+                readCount += chunkSize
             }
             return map
         }
@@ -1134,58 +1518,59 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
         var readCount = 0
         while readCount < totalLength {
             let header = try context.buffer.readUInt8()
+            // The wire header owns key/value reference policy; local metadata may differ.
             let trackKeyRef = (header & MapHeader.trackingKeyRef) != 0
             let keyNull = (header & MapHeader.keyNull) != 0
             let keyDeclared = (header & MapHeader.declaredKeyType) != 0
-
             let trackValueRef = (header & MapHeader.trackingValueRef) != 0
             let valueNull = (header & MapHeader.valueNull) != 0
             let valueDeclared = (header & MapHeader.declaredValueType) != 0
 
             if keyNull && valueNull {
-                map[Key.foryDefault()] = Value.foryDefault()
+                map[try KeyCodec.defaultValue(context)] =
+                    try ValueCodec.defaultValue(context)
                 readCount += 1
                 continue
             }
-
             if keyNull {
-                let value = try Value.foryRead(
+                let value = try ValueCodec.readField(
                     context,
                     refMode: trackValueRef ? .tracking : .none,
                     readTypeInfo: !valueDeclared
                 )
-                map[Key.foryDefault()] = value
+                map[try KeyCodec.defaultValue(context)] = value
                 readCount += 1
                 continue
             }
-
             if valueNull {
-                let key = try Key.foryRead(
+                let key = try KeyCodec.readField(
                     context,
                     refMode: trackKeyRef ? .tracking : .none,
                     readTypeInfo: !keyDeclared
                 )
-                map[key] = Value.foryDefault()
+                map[key] = try ValueCodec.defaultValue(context)
                 readCount += 1
                 continue
             }
 
             let chunkSize = Int(try context.buffer.readUInt8())
-            if chunkSize > (totalLength - readCount) {
-                throw ForyError.invalidData("map chunk size exceeds remaining entries")
+            if chunkSize == 0 || chunkSize > totalLength - readCount {
+                throw invalidMapChunkSize(dynamic: false)
             }
-            let keyTypeInfo = keyDeclared ? nil : try Key.foryReadTypeInfo(context)
-            let valueTypeInfo = valueDeclared ? nil : try Value.foryReadTypeInfo(context)
+            let keyTypeInfo =
+                keyDeclared ? nil : try KeyCodec.readFieldTypeInfo(context)
+            let valueTypeInfo =
+                valueDeclared ? nil : try ValueCodec.readFieldTypeInfo(context)
             for _ in 0..<chunkSize {
-                let key = try context.withTypeInfo(keyTypeInfo, for: Key.self) {
-                    try Key.foryRead(
+                let key = try KeyCodec.withFieldTypeInfo(keyTypeInfo, context) {
+                    try KeyCodec.readField(
                         context,
                         refMode: trackKeyRef ? .tracking : .none,
                         readTypeInfo: false
                     )
                 }
-                let value = try context.withTypeInfo(valueTypeInfo, for: Value.self) {
-                    try Value.foryRead(
+                let value = try ValueCodec.withFieldTypeInfo(valueTypeInfo, context) {
+                    try ValueCodec.readField(
                         context,
                         refMode: trackValueRef ? .tracking : .none,
                         readTypeInfo: false
@@ -1195,7 +1580,123 @@ extension Dictionary: Serializer where Key: Serializer & Hashable, Value: Serial
             }
             readCount += chunkSize
         }
-
         return map
     }
 }
+
+extension Dictionary: Serializer
+where
+    Key: Serializer & Hashable,
+    Value: Serializer,
+    Key.Target == Key,
+    Value.Target == Value
+{
+    public typealias Target = Self
+
+    @inlinable
+    @inline(__always)
+    public static var staticTypeId: TypeId {
+        DictionarySerializer<Key, Value>.staticTypeId
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func defaultValue(_ context: ReadContext) throws -> Self {
+        try DictionarySerializer<Key, Value>.defaultValue(context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func writeData(_ value: Self, _ context: WriteContext) throws {
+        try DictionarySerializer<Key, Value>.writeData(value, context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readData(_ context: ReadContext) throws -> Self {
+        try DictionarySerializer<Key, Value>.readData(context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func writeTypeInfo(_ context: WriteContext) throws {
+        try DictionarySerializer<Key, Value>.writeTypeInfo(context)
+    }
+
+    @inlinable
+    @inline(__always)
+    public static func readTypeInfo(_ context: ReadContext) throws -> TypeInfo? {
+        try DictionarySerializer<Key, Value>.readTypeInfo(context)
+    }
+}
+
+@usableFromInline
+@inline(never)
+internal func invalidCollectionRefFlag(_ rawFlag: Int8) -> ForyError {
+    ForyError.refError("invalid nullability flag \(rawFlag)")
+}
+
+@usableFromInline
+@inline(never)
+internal func invalidMapChunkSize(dynamic: Bool) -> ForyError {
+    ForyError.invalidData(
+        dynamic
+            ? "map dynamic chunk size must be positive and not exceed remaining entries"
+            : "map chunk size must be positive and not exceed remaining entries"
+    )
+}
+
+public extension DictionarySerializer where Key: FieldCodec, Value: FieldCodec {
+    static func fieldType(
+        nullable: Bool,
+        trackRef: Bool,
+        resolveSerializerTypeId: (Any.Type) throws -> TypeId
+    ) throws -> TypeMeta.FieldType {
+        TypeMeta.FieldType(
+            typeID: TypeId.map.rawValue,
+            nullable: nullable,
+            trackRef: trackRef,
+            generics: [
+                try Key.fieldType(
+                    nullable: Key.isNullableType,
+                    trackRef: trackRef && Key.isRefType,
+                    resolveSerializerTypeId: resolveSerializerTypeId
+                ),
+                try Value.fieldType(
+                    nullable: Value.isNullableType,
+                    trackRef: trackRef && Value.isRefType,
+                    resolveSerializerTypeId: resolveSerializerTypeId
+                )
+            ]
+        )
+    }
+
+    @inlinable
+    @inline(__always)
+    static func writeFieldData(
+        _ value: Target,
+        _ context: WriteContext,
+        hasDeclaredChildren: Bool
+    ) throws {
+        try writeEntries(
+            value,
+            context,
+            keyCodec: Key.self,
+            valueCodec: Value.self,
+            hasDeclaredChildren: hasDeclaredChildren
+        )
+    }
+
+    @inlinable
+    @inline(__always)
+    static func readFieldData(_ context: ReadContext) throws -> Target {
+        try readEntries(
+            context,
+            keyCodec: Key.self,
+            valueCodec: Value.self,
+            ownerBytes: storedOwnerBytes(Target.self)
+        )
+    }
+}
+
+extension DictionarySerializer: FieldCodec where Key: FieldCodec, Value: FieldCodec {}

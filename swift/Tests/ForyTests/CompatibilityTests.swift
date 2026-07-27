@@ -182,6 +182,21 @@ private struct LocalFallbackStringBox: Equatable {
 }
 
 @ForyStruct
+private struct SkippedDynamicMapV1 {
+    @ForyField(id: 1)
+    var removed: [AnyHashable: Any] = [:]
+
+    @ForyField(id: 2)
+    var keep: Int32 = 0
+}
+
+@ForyStruct
+private struct SkippedDynamicMapV2 {
+    @ForyField(id: 2)
+    var keep: Int32 = 0
+}
+
+@ForyStruct
 private struct RemoteNestedFixedMapV1: Equatable {
     @ForyField(id: 1)
     @MapField(value: .list(element: .encoding(.fixed)))
@@ -323,12 +338,12 @@ private func compatibleDecode<Writer: Serializer, Reader: Serializer>(
     _ value: Writer,
     as _: Reader.Type,
     id: UInt32
-) throws -> Reader {
+) throws -> Reader where Writer.Target == Writer, Reader.Target == Reader {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(Writer.self, id: id)
+    try writer.register(Writer.self, id: id)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(Reader.self, id: id)
+    try reader.register(Reader.self, id: id)
 
     return try reader.deserialize(try writer.serialize(value))
 }
@@ -360,10 +375,10 @@ private func expectInvalidDataOrRefError(_ body: () throws -> Void) throws {
 @Test
 func compatibleModeSupportsAddedAndRemovedFields() throws {
     let writerV1 = Fory(config: .init(trackRef: false, compatible: true))
-    writerV1.register(CompatibleProfileV1.self, id: 9901)
+    try writerV1.register(CompatibleProfileV1.self, id: 9901)
 
     let readerV2 = Fory(config: .init(trackRef: false, compatible: true))
-    readerV2.register(CompatibleProfileV2.self, id: 9901)
+    try readerV2.register(CompatibleProfileV2.self, id: 9901)
 
     let sourceV1 = CompatibleProfileV1(id: 7, name: "swift")
     let bytesFromV1 = try writerV1.serialize(sourceV1)
@@ -374,15 +389,34 @@ func compatibleModeSupportsAddedAndRemovedFields() throws {
     #expect(decodedAsV2.scores.isEmpty)
 
     let writerV2 = Fory(config: .init(trackRef: false, compatible: true))
-    writerV2.register(CompatibleProfileV2.self, id: 9901)
+    try writerV2.register(CompatibleProfileV2.self, id: 9901)
 
     let readerV1 = Fory(config: .init(trackRef: false, compatible: true))
-    readerV1.register(CompatibleProfileV1.self, id: 9901)
+    try readerV1.register(CompatibleProfileV1.self, id: 9901)
 
     let sourceV2 = CompatibleProfileV2(id: 9, name: "fory", nickname: "macro", scores: [1, 2, 3])
     let bytesFromV2 = try writerV2.serialize(sourceV2)
     let decodedAsV1: CompatibleProfileV1 = try readerV1.deserialize(bytesFromV2)
     #expect(decodedAsV1 == CompatibleProfileV1(id: sourceV2.id, name: sourceV2.name))
+}
+
+@Test
+func skipsDynamicMapNullEntries() throws {
+    let writer = Fory(config: .init(trackRef: true, compatible: true))
+    try writer.register(SkippedDynamicMapV1.self, id: 9962)
+
+    let reader = Fory(config: .init(trackRef: true, compatible: true))
+    try reader.register(SkippedDynamicMapV2.self, id: 9962)
+
+    let source = SkippedDynamicMapV1(
+        removed: [
+            AnyHashable(ForyAnyNullValue()): "value",
+            AnyHashable("null-value"): NSNull()
+        ],
+        keep: 37
+    )
+    let decoded: SkippedDynamicMapV2 = try reader.deserialize(try writer.serialize(source))
+    #expect(decoded.keep == source.keep)
 }
 
 @Test
@@ -412,10 +446,10 @@ func scalarBoolStringConverts() throws {
 @Test
 func compatibleScalarRejectsInvalidBoolPayload() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(ScalarBoolBox.self, id: 9953)
+    try writer.register(ScalarBoolBox.self, id: 9953)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(ScalarStringBox.self, id: 9953)
+    try reader.register(ScalarStringBox.self, id: 9953)
 
     let bytes = try writer.serialize(ScalarBoolBox(value: true))
     let decoded: ScalarStringBox = try reader.deserialize(bytes)
@@ -540,10 +574,10 @@ func scalarOptionalComposes() throws {
 @Test
 func sameTypeNullableScalarUsesStrictSourceRead() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(ScalarBoolOptBox.self, id: 9958)
+    try writer.register(ScalarBoolOptBox.self, id: 9958)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(ScalarBoolBox.self, id: 9958)
+    try reader.register(ScalarBoolBox.self, id: 9958)
 
     let bytes = try writer.serialize(ScalarBoolOptBox(value: true))
     let flagByte = UInt8(bitPattern: RefFlag.notNullValue.rawValue)
@@ -1016,7 +1050,7 @@ func scalarConversionFailures() throws {
 @Test
 func sameSchemaScalarPreserved() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(ScalarStringBox.self, id: 9948)
+    try fory.register(ScalarStringBox.self, id: 9948)
 
     let value = ScalarStringBox(value: "+1")
     let decoded: ScalarStringBox = try fory.deserialize(try fory.serialize(value))
@@ -1033,7 +1067,7 @@ func encodedExactReadsUseCodecs() throws {
     )
 
     let sameSchema = Fory(config: .init(trackRef: false, compatible: true))
-    sameSchema.register(ExactEncodedV1.self, id: 9960)
+    try sameSchema.register(ExactEncodedV1.self, id: 9960)
     let sameDecoded: ExactEncodedV1 = try sameSchema.deserialize(try sameSchema.serialize(value))
     #expect(sameDecoded == value)
 
@@ -1058,10 +1092,10 @@ func scalarConversionDoesNotDriveFallbackMatch() throws {
 @Test
 func schemaConsistentModeRejectsVersionHashMismatch() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: false, checkClassVersion: true))
-    writer.register(SchemaVersionV1.self, id: 9902)
+    try writer.register(SchemaVersionV1.self, id: 9902)
 
     let reader = Fory(config: .init(trackRef: false, compatible: false, checkClassVersion: true))
-    reader.register(SchemaVersionV2.self, id: 9902)
+    try reader.register(SchemaVersionV2.self, id: 9902)
 
     let bytes = try writer.serialize(SchemaVersionV1(id: 1, name: "shape"))
     do {
@@ -1075,8 +1109,8 @@ func schemaConsistentModeRejectsVersionHashMismatch() throws {
 @Test
 func compatibleModePreservesSharedAndCircularReferencesForMacroObjects() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: true))
-    fory.register(CompatibleGraphNode.self, id: 9903)
-    fory.register(CompatibleGraphContainer.self, id: 9904)
+    try fory.register(CompatibleGraphNode.self, id: 9903)
+    try fory.register(CompatibleGraphContainer.self, id: 9904)
 
     let shared = CompatibleGraphNode(value: 11)
     shared.next = shared
@@ -1112,7 +1146,7 @@ func schemaHashMatchesJavaFingerprintForTaggedUnsignedFields() {
 @Test
 func schemaHashUsesNestedAnnotatedContainerTypeIDs() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: false, checkClassVersion: true))
-    fory.register(SchemaHashNestedAnnotatedContainer.self, id: 9912)
+    try fory.register(SchemaHashNestedAnnotatedContainer.self, id: 9912)
 
     let bytes = try fory.serialize(
         SchemaHashNestedAnnotatedContainer(
@@ -1136,12 +1170,12 @@ func schemaHashUsesNestedAnnotatedContainerTypeIDs() throws {
 @Test
 func compatibleNestedArrayEvolves() throws {
     let writerV1 = Fory(config: .init(trackRef: false, compatible: true))
-    writerV1.register(CompatibleNestedProfileV1.self, id: 9910)
-    writerV1.register(CompatibleNestedArrayV1.self, id: 9911)
+    try writerV1.register(CompatibleNestedProfileV1.self, id: 9910)
+    try writerV1.register(CompatibleNestedArrayV1.self, id: 9911)
 
     let readerV2 = Fory(config: .init(trackRef: false, compatible: true))
-    readerV2.register(CompatibleNestedProfileV2.self, id: 9910)
-    readerV2.register(CompatibleNestedArrayV2.self, id: 9911)
+    try readerV2.register(CompatibleNestedProfileV2.self, id: 9910)
+    try readerV2.register(CompatibleNestedArrayV2.self, id: 9911)
 
     let sourceV1 = CompatibleNestedArrayV1(
         items: [
@@ -1157,12 +1191,12 @@ func compatibleNestedArrayEvolves() throws {
     #expect(decodedAsV2.items.allSatisfy { $0.scores.isEmpty })
 
     let writerV2 = Fory(config: .init(trackRef: false, compatible: true))
-    writerV2.register(CompatibleNestedProfileV2.self, id: 9910)
-    writerV2.register(CompatibleNestedArrayV2.self, id: 9911)
+    try writerV2.register(CompatibleNestedProfileV2.self, id: 9910)
+    try writerV2.register(CompatibleNestedArrayV2.self, id: 9911)
 
     let readerV1 = Fory(config: .init(trackRef: false, compatible: true))
-    readerV1.register(CompatibleNestedProfileV1.self, id: 9910)
-    readerV1.register(CompatibleNestedArrayV1.self, id: 9911)
+    try readerV1.register(CompatibleNestedProfileV1.self, id: 9910)
+    try readerV1.register(CompatibleNestedArrayV1.self, id: 9911)
 
     let sourceV2 = CompatibleNestedArrayV2(
         items: [
@@ -1182,10 +1216,10 @@ func compatibleNestedArrayEvolves() throws {
 @Test
 func compatibleReadConvertsFixedUInt32() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(RemoteFixedUInt32V1.self, id: 9920)
+    try writer.register(RemoteFixedUInt32V1.self, id: 9920)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(LocalVarUInt32V2.self, id: 9920)
+    try reader.register(LocalVarUInt32V2.self, id: 9920)
 
     let source = RemoteFixedUInt32V1(id: UInt32.max, keep: 42)
     let decoded: LocalVarUInt32V2 = try reader.deserialize(try writer.serialize(source))
@@ -1196,10 +1230,10 @@ func compatibleReadConvertsFixedUInt32() throws {
 @Test
 func compatibleRejectsNestedMapListMismatch() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(RemoteNestedFixedMapV1.self, id: 9921)
+    try writer.register(RemoteNestedFixedMapV1.self, id: 9921)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(LocalNestedVarintMapV2.self, id: 9921)
+    try reader.register(LocalNestedVarintMapV2.self, id: 9921)
 
     let source = RemoteNestedFixedMapV1(
         data: [
@@ -1220,10 +1254,10 @@ func compatibleRejectsNestedMapListMismatch() throws {
 @Test
 func compatibleReadAdaptsImmediateListAndArrayFieldPair() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(CompatibleListFieldV1.self, id: 9922)
+    try writer.register(CompatibleListFieldV1.self, id: 9922)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(CompatibleArrayFieldV2.self, id: 9922)
+    try reader.register(CompatibleArrayFieldV2.self, id: 9922)
 
     let decoded: CompatibleArrayFieldV2 = try reader.deserialize(
         try writer.serialize(CompatibleListFieldV1(values: [1, 2, 3], extra: 9))
@@ -1234,10 +1268,10 @@ func compatibleReadAdaptsImmediateListAndArrayFieldPair() throws {
 @Test
 func compatibleReadAdaptsDefaultVarintListAndArrayFieldPair() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(CompatibleVarintListFieldV1.self, id: 9924)
+    try writer.register(CompatibleVarintListFieldV1.self, id: 9924)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(CompatibleArrayFieldV2.self, id: 9924)
+    try reader.register(CompatibleArrayFieldV2.self, id: 9924)
 
     let decoded: CompatibleArrayFieldV2 = try reader.deserialize(
         try writer.serialize(CompatibleVarintListFieldV1(values: [-1, 2, 3], extra: 9))
@@ -1248,10 +1282,10 @@ func compatibleReadAdaptsDefaultVarintListAndArrayFieldPair() throws {
 @Test
 func compatibleReadAdaptsArrayFieldToDefaultVarintListField() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(CompatibleArrayFieldV2.self, id: 9925)
+    try writer.register(CompatibleArrayFieldV2.self, id: 9925)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(CompatibleVarintListFieldV1.self, id: 9925)
+    try reader.register(CompatibleVarintListFieldV1.self, id: 9925)
 
     let decoded: CompatibleVarintListFieldV1 = try reader.deserialize(
         try writer.serialize(CompatibleArrayFieldV2(values: [-1, 2, 3]))
@@ -1262,10 +1296,10 @@ func compatibleReadAdaptsArrayFieldToDefaultVarintListField() throws {
 @Test
 func compatibleReadAcceptsNullableListSchemaForArrayField() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(CompatibleNullableListFieldV1.self, id: 9923)
+    try writer.register(CompatibleNullableListFieldV1.self, id: 9923)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(CompatibleArrayFieldV2.self, id: 9923)
+    try reader.register(CompatibleArrayFieldV2.self, id: 9923)
 
     let bytes = try writer.serialize(CompatibleNullableListFieldV1(values: [1, 2, 3], extra: 9))
     let decoded: CompatibleArrayFieldV2 = try reader.deserialize(bytes)
@@ -1282,10 +1316,10 @@ func compatibleReadAcceptsNullableListSchemaForArrayField() throws {
 @Test
 func compatibleRejectsNestedListArrayPair() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(CompatibleNestedListArrayFieldV1.self, id: 9926)
+    try writer.register(CompatibleNestedListArrayFieldV1.self, id: 9926)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(CompatibleNestedArrayListFieldV2.self, id: 9926)
+    try reader.register(CompatibleNestedArrayListFieldV2.self, id: 9926)
 
     let bytes = try writer.serialize(CompatibleNestedListArrayFieldV1(values: [[1, 2]], keep: 7))
     #expect(
@@ -1298,10 +1332,10 @@ func compatibleRejectsNestedListArrayPair() throws {
 @Test
 func compatibleReadsNestedNullableScalarWithoutNulls() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(CompatibleNestedNullableListV1.self, id: 9927)
+    try writer.register(CompatibleNestedNullableListV1.self, id: 9927)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(CompatibleNestedRequiredListV2.self, id: 9927)
+    try reader.register(CompatibleNestedRequiredListV2.self, id: 9927)
 
     let bytes = try writer.serialize(CompatibleNestedNullableListV1(values: [[1, 2]]))
     let decoded: CompatibleNestedRequiredListV2 = try reader.deserialize(bytes)
@@ -1315,12 +1349,12 @@ func compatibleReadsNestedNullableScalarWithoutNulls() throws {
 @Test
 func compatibleNestedMapEvolves() throws {
     let writerV1 = Fory(config: .init(trackRef: false, compatible: true))
-    writerV1.register(CompatibleNestedProfileV1.self, id: 9910)
-    writerV1.register(CompatibleNestedMapV1.self, id: 9912)
+    try writerV1.register(CompatibleNestedProfileV1.self, id: 9910)
+    try writerV1.register(CompatibleNestedMapV1.self, id: 9912)
 
     let readerV2 = Fory(config: .init(trackRef: false, compatible: true))
-    readerV2.register(CompatibleNestedProfileV2.self, id: 9910)
-    readerV2.register(CompatibleNestedMapV2.self, id: 9912)
+    try readerV2.register(CompatibleNestedProfileV2.self, id: 9910)
+    try readerV2.register(CompatibleNestedMapV2.self, id: 9912)
 
     let sourceV1 = CompatibleNestedMapV1(
         items: [
@@ -1343,12 +1377,12 @@ func compatibleNestedMapEvolves() throws {
 @Test
 func compatibleNestedReadsReuseTypeMeta() throws {
     let writerV1 = Fory(config: .init(trackRef: false, compatible: true))
-    writerV1.register(CompatibleNestedProfileV1.self, id: 9910)
-    writerV1.register(CompatibleNestedArrayV1.self, id: 9911)
+    try writerV1.register(CompatibleNestedProfileV1.self, id: 9910)
+    try writerV1.register(CompatibleNestedArrayV1.self, id: 9911)
 
     let readerV2 = Fory(config: .init(trackRef: false, compatible: true))
-    readerV2.register(CompatibleNestedProfileV2.self, id: 9910)
-    readerV2.register(CompatibleNestedArrayV2.self, id: 9911)
+    try readerV2.register(CompatibleNestedProfileV2.self, id: 9910)
+    try readerV2.register(CompatibleNestedArrayV2.self, id: 9911)
 
     let first = CompatibleNestedArrayV1(
         items: [

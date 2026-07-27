@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from __future__ import annotations
 
 import argparse
 import json
@@ -109,6 +110,7 @@ def build(v: str):
         f"git show-ref --verify --quiet refs/heads/{branch}",
         shell=True,
         capture_output=True,
+        check=False,
     )
     if result.returncode == 0:
         # Branch exists, checkout
@@ -147,10 +149,12 @@ def _check_release_version(v: str):
 
 
 def _check_all_committed():
-    proc = subprocess.run("git diff --quiet", capture_output=True, shell=True)
+    proc = subprocess.run(
+        "git diff --quiet", capture_output=True, shell=True, check=False
+    )
     result = proc.returncode
     if result != 0:
-        raise Exception(
+        raise RuntimeError(
             f"There are some uncommitted files: {proc.stdout}, please commit it."
         )
 
@@ -302,9 +306,9 @@ def _brew_command():
 def _homebrew_prefix(brew, formula):
     proc = subprocess.run(
         [brew, "--prefix", formula],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if proc.returncode != 0:
         return None
@@ -327,7 +331,7 @@ def _read_java_runtime(java_cmd):
             [java_cmd, "-XshowSettings:properties", "-version"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            universal_newlines=True,
+            text=True,
             check=True,
         )
     except (OSError, subprocess.CalledProcessError):
@@ -457,7 +461,7 @@ def _verify_fory_core_mr_jar():
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        universal_newlines=True,
+        text=True,
         check=True,
     )
     if "java.lang.invoke.VarHandle" not in javap.stdout:
@@ -650,7 +654,7 @@ def bump_rust_version(new_version, release_version=None):
         "benchmarks/rust",
         "Cargo.toml",
         rust_version,
-        _update_cargo_package_version,
+        _update_rust_version,
     )
     _bump_version(
         "integration_tests/idl_tests/rust",
@@ -1031,9 +1035,7 @@ def _update_dart_readme_dependency_version(lines, v: str):
 
 
 def _update_dart_changelog(lines, v: str, workspace=False):
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
+    v = _strip_version_prefix(v)
     heading = f"## {v}\n"
     if workspace:
         body = [
@@ -1065,8 +1067,10 @@ def _update_dart_dev_changelog(lines, v: str, release_version: str, workspace=Fa
     if workspace:
         body = [
             "\n",
-            "- Start the next Dart workspace development cycle after the "
-            f"{release_version} release.\n",
+            (
+                "- Start the next Dart workspace development cycle after the "
+                f"{release_version} release.\n"
+            ),
             "\n",
         ]
     else:
@@ -1130,7 +1134,7 @@ def _update_swift_readme_dependency_version(lines, v: str):
     raise ValueError("No Swift Package dependency snippet for apache/fory.git found")
 
 
-def bump_release_doc_versions(new_version: str, release_version: str = None):
+def bump_release_doc_versions(new_version: str, release_version: str | None = None):
     release_version = _resolve_release_doc_version(new_version, release_version)
     if not release_version:
         logger.info("Skip release documentation version update for %s", new_version)
@@ -1139,7 +1143,7 @@ def bump_release_doc_versions(new_version: str, release_version: str = None):
         _update_release_doc_file(file, release_version)
 
 
-def _resolve_release_doc_version(new_version: str, release_version: str = None):
+def _resolve_release_doc_version(new_version: str, release_version: str | None = None):
     if release_version:
         release_version = _strip_version_prefix(release_version)
         if not _is_release_version(release_version):
@@ -1282,9 +1286,7 @@ def _normalize_java_version(v: str) -> str:
 
 
 def _normalize_go_version(v: str) -> str:
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
+    v = _strip_version_prefix(v)
     v = re.sub(r"-(alpha|beta|rc)(\d+)$", r"-\1.\2", v)
     if re.search(r"(?i)-(alpha|beta)\.0$", v):
         return f"v{v}"
@@ -1303,9 +1305,7 @@ def _normalize_go_version(v: str) -> str:
 
 
 def _normalize_cmake_version(v: str) -> str:
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
+    v = _strip_version_prefix(v)
     v = re.split(r"[-+]", v, maxsplit=1)[0]
     return v
 
@@ -1335,9 +1335,7 @@ def _normalize_js_version(v: str) -> str:
 
 
 def _is_release_version(v: str) -> bool:
-    v = v.strip()
-    if v.startswith("v"):
-        v = v[1:]
+    v = _strip_version_prefix(v)
     return re.match(r"^\d+\.\d+\.\d+$", v) is not None
 
 

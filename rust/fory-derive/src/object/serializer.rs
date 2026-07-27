@@ -17,23 +17,23 @@
 
 use crate::object::util::is_default_value_variant;
 use crate::object::{derive_enum, misc, read, write};
-use crate::util::{extract_fields, source_fields};
+use crate::util::{extract_fields, source_fields, target_expr_path};
 use crate::ForyAttrs;
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::Data;
+use quote::{format_ident, quote};
+use syn::{Data, Fields, Type};
 
-fn has_existing_default(ast: &syn::DeriveInput, trait_name: &str) -> bool {
+fn has_derive(ast: &syn::DeriveInput, trait_name: &str) -> bool {
     ast.attrs.iter().any(|attr| {
         attr.path().is_ident("derive") && {
-            let mut has_default = false;
+            let mut found = false;
             let _ = attr.parse_nested_meta(|meta| {
                 if meta.path.is_ident(trait_name) {
-                    has_default = true;
+                    found = true;
                 }
                 Ok(())
             });
-            has_default
+            found
         }
     })
 }
@@ -45,229 +45,434 @@ pub fn derive_serializer(
 ) -> TokenStream {
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+    let provider_ty: Type = match syn::parse2(quote! { #name #ty_generics }) {
+        Ok(provider) => provider,
+        Err(err) => return err.into_compile_error().into(),
+    };
+    let is_external = attrs.target.is_some();
+    let target_ty: Type = match attrs.target.clone() {
+        Some(target) => target,
+        None => provider_ty.clone(),
+    };
+    let target_path = match target_expr_path(&target_ty) {
+        Ok(path) => path,
+        Err(err) => return err.into_compile_error().into(),
+    };
+    let provider_path = match target_expr_path(&provider_ty) {
+        Ok(path) => path,
+        Err(err) => return err.into_compile_error().into(),
+    };
+    let schema_use = if is_external {
+        gen_external_schema_use(ast, &provider_ty, &provider_path)
+    } else {
+        quote! {}
+    };
+    let write_data_attr = if is_external {
+        quote! { #[inline(never)] }
+    } else {
+        quote! { #[inline] }
+    };
 
     use crate::object::util::{clear_struct_context, set_struct_context};
     set_struct_context(&name.to_string(), attrs.debug_enabled);
 
-    // Check if ForyDefault is already derived/implemented
-    let has_existing_default = has_existing_default(ast, "ForyDefault");
-    let default_impl = if !has_existing_default {
-        generate_default_impl(ast, attrs.generate_default)
+    let default_impl = if attrs.generate_default && !has_derive(ast, "Default") {
+        generate_default_impl(ast)
     } else {
         quote! {}
     };
-    let send_sync_tokens = generate_send_sync_tokens(ast);
-    let serializer_send_sync_ts = send_sync_tokens.serializer.clone();
+    let send_sync = generate_send_sync_tokens(ast);
 
-    // StructSerializer
     let (
-        actual_type_id_ts,
-        get_sorted_field_names_ts,
-        fields_info_ts,
-        variants_fields_info_ts,
-        read_compatible_ts,
-        read_compatible_as_send_sync_any_ts,
-        enum_variant_meta_types,
+        actual_type_id,
+        sorted_field_names,
+        fields_info,
+        variants_fields_info,
+        read_compatible,
+        variant_meta_types,
+        write_complete,
+        write_data,
+        write_type_info,
+        read_complete,
+        read_with_type_info,
+        read_data,
+        read_type_info,
+        default_value,
+        reserved_space,
+        static_type_id,
     ) = match &ast.data {
-        syn::Data::Struct(s) => {
-            let source_fields = source_fields(&s.fields);
-            let fields = extract_fields(&source_fields);
-            let actual_type_id_ts = if attrs.evolving == Some(false) {
+        Data::Struct(data) => {
+            let source = source_fields(&data.fields);
+            let fields = extract_fields(&source);
+            let actual_type_id = if attrs.evolving == Some(false) {
                 misc::gen_actual_type_id_no_evolving()
             } else {
                 misc::gen_actual_type_id()
             };
             (
-                actual_type_id_ts,
+                actual_type_id,
                 misc::gen_get_sorted_field_names(&fields),
-                misc::gen_field_fields_info(&source_fields),
-                quote! { ::std::result::Result::Ok(::std::vec::Vec::new()) }, // No variants for structs
-                read::gen_read_compatible(&source_fields),
-                send_sync_tokens.struct_read_compatible.clone(),
-                vec![], // No variant meta types for structs
-            )
-        }
-        syn::Data::Enum(s) => {
-            // Generate variant meta types for named variants
-            let variant_meta_types =
-                derive_enum::gen_all_variant_meta_types_with_enum_name(name, s);
-            (
-                derive_enum::gen_actual_type_id(s),
-                quote! { &[] },
-                derive_enum::gen_field_fields_info(s),
-                derive_enum::gen_variants_fields_info(name, s),
+                misc::gen_field_fields_info(&source),
                 quote! {
-                    ::std::result::Result::Err(fory_core::Error::not_allowed("`fory_read_compatible` should only be invoked at struct type"
-                ))
+                    let _ = type_resolver;
+                    Ok(::std::vec::Vec::new())
                 },
-                quote! {},
-                variant_meta_types,
-            )
-        }
-        syn::Data::Union(_) => {
-            panic!("Union is not supported")
-        }
-    };
-    // Serializer
-    let (
-        write_ts,
-        write_data_ts,
-        write_type_info_ts,
-        read_ts,
-        read_with_type_info_ts,
-        read_data_ts,
-        read_type_info_ts,
-        reserved_space_ts,
-        static_type_id_ts,
-    ) = match &ast.data {
-        syn::Data::Struct(s) => {
-            let source_fields = source_fields(&s.fields);
-            (
+                read::gen_read_compatible(&data.fields, &source, &target_path),
+                Vec::new(),
                 write::gen_write(),
-                write::gen_write_data(&source_fields),
+                write::gen_write_data(&source),
                 write::gen_write_type_info(),
-                read::gen_read(name),
+                read::gen_read(),
                 read::gen_read_with_type_info(),
-                read::gen_read_data(&source_fields),
+                read::gen_read_data(&data.fields, &source, &target_path),
                 read::gen_read_type_info(),
-                write::gen_reserved_space(&source_fields),
+                read::gen_default_value(&data.fields, &source, &target_path),
+                write::gen_reserved_space(&source),
                 quote! { fory_core::TypeId::STRUCT },
             )
         }
-        syn::Data::Enum(e) => (
-            derive_enum::gen_write(e),
-            derive_enum::gen_write_data(e),
-            derive_enum::gen_write_type_info(e),
-            derive_enum::gen_read(e),
-            derive_enum::gen_read_with_type_info(e),
-            derive_enum::gen_read_data(e),
-            derive_enum::gen_read_type_info(e),
+        Data::Enum(data) => (
+            derive_enum::gen_actual_type_id(data),
+            quote! { &[] },
+            derive_enum::gen_field_fields_info(data),
+            derive_enum::gen_variants_fields_info(name, &ast.generics, data),
+            quote! {
+                let _ = (context, type_info);
+                Err(fory_core::Error::not_allowed(
+                    "read_compatible is valid only for struct targets",
+                ))
+            },
+            derive_enum::gen_variant_meta_types(name, &ast.generics, data),
+            derive_enum::gen_write(data),
+            derive_enum::gen_write_data(data, &ast.generics, &target_path),
+            derive_enum::gen_write_type_info(data),
+            derive_enum::gen_read(data),
+            derive_enum::gen_read_with_type_info(data),
+            derive_enum::gen_read_data(data, &ast.generics, &target_path),
+            derive_enum::gen_read_type_info(data),
+            derive_enum::gen_default_value(data, &target_path),
             derive_enum::gen_reserved_space(),
-            derive_enum::gen_static_type_id(e),
+            derive_enum::gen_static_type_id(data),
         ),
-        syn::Data::Union(_) => {
-            panic!("Union is not supported")
+        Data::Union(_) => {
+            clear_struct_context();
+            return syn::Error::new_spanned(name, "Rust unions are not supported")
+                .into_compile_error()
+                .into();
         }
     };
 
-    // Allocate a unique type ID once and share it between both functions
-    let type_idx = misc::allocate_type_id();
-
-    let gen = quote! {
+    let type_index = misc::allocate_type_id();
+    let serializer_arc = send_sync.serializer;
+    let compatible_arc = send_sync.struct_read_compatible;
+    let generated = quote! {
         const _: () = {
         use #runtime_root as fory_core;
-        use fory_core::ForyDefault as _;
 
-        // Generate variant meta types before impls so enum field metadata can reference them.
-        #(#enum_variant_meta_types)*
+        #schema_use
+
+        #(#variant_meta_types)*
 
         #default_impl
 
         impl #impl_generics fory_core::StructSerializer for #name #ty_generics #where_clause {
             #[inline(always)]
-            fn fory_type_index() -> u32 {
-                #type_idx
+            fn type_index() -> u32 {
+                #type_index
             }
 
-            #[inline(always)]
-            fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool, xlang: bool) -> u32 {
-                #actual_type_id_ts
-            }
-
-            fn fory_get_sorted_field_names() -> &'static [&'static str] {
-                #get_sorted_field_names_ts
-            }
-
-            fn fory_fields_info(type_resolver: &fory_core::resolver::TypeResolver) -> ::std::result::Result<::std::vec::Vec<fory_core::meta::FieldInfo>, fory_core::error::Error> {
-                #fields_info_ts
-            }
-
-            fn fory_variants_fields_info(type_resolver: &fory_core::resolver::TypeResolver) -> ::std::result::Result<::std::vec::Vec<(::std::string::String, ::std::any::TypeId, ::std::vec::Vec<fory_core::meta::FieldInfo>)>, fory_core::error::Error> {
-                #variants_fields_info_ts
-            }
-
+            #[cold]
             #[inline(never)]
-            fn fory_read_compatible(context: &mut fory_core::ReadContext, type_info: ::std::rc::Rc<fory_core::TypeInfo>) -> ::std::result::Result<Self, fory_core::error::Error> {
-                #read_compatible_ts
+            fn actual_type_id(
+                type_id: u32,
+                register_by_name: bool,
+                compatible: bool,
+                xlang: bool,
+            ) -> ::std::result::Result<u32, fory_core::Error> {
+                #actual_type_id
             }
 
-            #read_compatible_as_send_sync_any_ts
+            fn sorted_field_names() -> &'static [&'static str] {
+                #sorted_field_names
+            }
+
+            fn fields_info(
+                type_resolver: &fory_core::resolver::TypeResolver,
+            ) -> ::std::result::Result<
+                ::std::vec::Vec<fory_core::meta::FieldInfo>,
+                fory_core::Error,
+            > {
+                #fields_info
+            }
+
+            fn variants_fields_info(
+                type_resolver: &fory_core::resolver::TypeResolver,
+            ) -> ::std::result::Result<
+                ::std::vec::Vec<(
+                    ::std::string::String,
+                    ::std::any::TypeId,
+                    ::std::vec::Vec<fory_core::meta::FieldInfo>,
+                )>,
+                fory_core::Error,
+            > {
+                #variants_fields_info
+            }
+
+            // Compatible mode enters this for every structural read, so this
+            // normal mode-specific path must not be marked cold.
+            #[inline(never)]
+            fn read_compatible(
+                context: &mut fory_core::ReadContext,
+                type_info: &::std::rc::Rc<fory_core::TypeInfo>,
+            ) -> ::std::result::Result<Self::Target, fory_core::Error> {
+                #read_compatible
+            }
+
+            #compatible_arc
         }
 
         impl #impl_generics fory_core::Serializer for #name #ty_generics #where_clause {
-            #[inline(always)]
-            fn fory_get_type_id(type_resolver: &fory_core::resolver::TypeResolver) -> ::std::result::Result<fory_core::TypeId, fory_core::error::Error> {
-                let type_id = type_resolver
-                    .get_type_id(&::std::any::TypeId::of::<Self>(), #type_idx)
-                    .map_err(fory_core::error::Error::enhance_type_error::<Self>)?;
-                ::std::result::Result::Ok(type_id)
-            }
+            type Target = #target_ty;
 
-            #[inline(always)]
-            fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::TypeResolver) -> ::std::result::Result<fory_core::TypeId, fory_core::error::Error> {
-                Self::fory_get_type_id(type_resolver)
-            }
-
-            #[inline(always)]
-            fn as_any(&self) -> &dyn ::std::any::Any {
-                self
-            }
-
-            #[inline(always)]
-            fn fory_static_type_id() -> fory_core::TypeId
-            where
-                Self: Sized,
-            {
-                #static_type_id_ts
-            }
-
-            #[inline(always)]
-            fn fory_reserved_space() -> usize {
-                #reserved_space_ts
-            }
-
-            #[inline(always)]
-            fn fory_write(&self, context: &mut fory_core::WriteContext, ref_mode: fory_core::RefMode, write_type_info: bool, _: bool) -> ::std::result::Result<(), fory_core::error::Error> {
-                #write_ts
+            // External structural serializers need a stable body boundary:
+            // recursive carrier composition would otherwise duplicate the
+            // generated body into every child monomorph. Self-owned serializers
+            // retain the normal heuristic so small bodies can still inline.
+            #write_data_attr
+            fn write_data(
+                value: &Self::Target,
+                context: &mut fory_core::WriteContext,
+            ) -> ::std::result::Result<(), fory_core::Error> {
+                #write_data
             }
 
             #[inline]
-            fn fory_write_data(&self, context: &mut fory_core::WriteContext) -> ::std::result::Result<(), fory_core::error::Error> {
-                #write_data_ts
+            fn read_data(
+                context: &mut fory_core::ReadContext,
+            ) -> ::std::result::Result<Self::Target, fory_core::Error> {
+                #read_data
             }
 
             #[inline(always)]
-            fn fory_write_type_info(context: &mut fory_core::WriteContext) -> ::std::result::Result<(), fory_core::error::Error> {
-                #write_type_info_ts
+            fn default_value(
+                context: &mut fory_core::ReadContext,
+            ) -> ::std::result::Result<Self::Target, fory_core::Error> {
+                #default_value
             }
 
             #[inline(always)]
-            fn fory_read(context: &mut fory_core::ReadContext, ref_mode: fory_core::RefMode, read_type_info: bool) -> ::std::result::Result<Self, fory_core::error::Error> {
-                #read_ts
+            fn write(
+                value: &Self::Target,
+                context: &mut fory_core::WriteContext,
+                ref_mode: fory_core::RefMode,
+                write_type_info: bool,
+            ) -> ::std::result::Result<(), fory_core::Error> {
+                #write_complete
             }
 
             #[inline(always)]
-            fn fory_read_with_type_info(context: &mut fory_core::ReadContext, ref_mode: fory_core::RefMode, type_info: ::std::rc::Rc<fory_core::TypeInfo>) -> ::std::result::Result<Self, fory_core::error::Error> {
-                #read_with_type_info_ts
+            fn read(
+                context: &mut fory_core::ReadContext,
+                ref_mode: fory_core::RefMode,
+                read_type_info: bool,
+            ) -> ::std::result::Result<Self::Target, fory_core::Error> {
+                #read_complete
             }
-
-            #[inline]
-            fn fory_read_data( context: &mut fory_core::ReadContext) -> ::std::result::Result<Self, fory_core::error::Error> {
-                #read_data_ts
-            }
-
-            #serializer_send_sync_ts
 
             #[inline(always)]
-            fn fory_read_type_info(context: &mut fory_core::ReadContext) -> ::std::result::Result<(), fory_core::error::Error> {
-                #read_type_info_ts
+            fn read_with_type_info(
+                context: &mut fory_core::ReadContext,
+                ref_mode: fory_core::RefMode,
+                type_info: &::std::rc::Rc<fory_core::TypeInfo>,
+            ) -> ::std::result::Result<Self::Target, fory_core::Error> {
+                #read_with_type_info
             }
+
+            #[inline(always)]
+            fn write_type_info(
+                context: &mut fory_core::WriteContext,
+            ) -> ::std::result::Result<(), fory_core::Error> {
+                #write_type_info
+            }
+
+            #[inline(always)]
+            fn read_type_info(
+                context: &mut fory_core::ReadContext,
+            ) -> ::std::result::Result<(), fory_core::Error> {
+                #read_type_info
+            }
+
+            #[inline(always)]
+            fn static_type_id() -> fory_core::TypeId {
+                #static_type_id
+            }
+
+            #[inline(always)]
+            fn reserved_space() -> usize {
+                #reserved_space
+            }
+
+            #serializer_arc
         }
         };
     };
-    let code = gen.into();
     clear_struct_context();
-    code
+    generated.into()
+}
+
+fn gen_external_schema_use(
+    ast: &syn::DeriveInput,
+    provider_ty: &Type,
+    provider_path: &proc_macro2::TokenStream,
+) -> proc_macro2::TokenStream {
+    let (impl_generics, _, where_clause) = ast.generics.split_for_impl();
+    let body = match &ast.data {
+        Data::Struct(data) => {
+            let field_reads = data.fields.iter().enumerate().map(|(index, field)| {
+                let access = match &field.ident {
+                    Some(ident) => quote! { value.#ident },
+                    None => {
+                        let index = syn::Index::from(index);
+                        quote! { value.#index }
+                    }
+                };
+                quote! { let _ = &#access; }
+            });
+            quote! {
+                let _ = value;
+                #(#field_reads)*
+            }
+        }
+        Data::Enum(data) => {
+            let constructors = data
+                .variants
+                .iter()
+                .enumerate()
+                .map(|(variant_index, variant)| {
+                    let variant_ident = &variant.ident;
+                    match &variant.fields {
+                        Fields::Unit => quote! {
+                            let _ = || #provider_path::#variant_ident;
+                        },
+                        Fields::Unnamed(fields) => {
+                            let args: Vec<_> = fields
+                                .unnamed
+                                .iter()
+                                .enumerate()
+                                .map(|(field_index, field)| {
+                                    let ident = format_ident!(
+                                        "__fory_variant_{variant_index}_field_{field_index}"
+                                    );
+                                    (ident, &field.ty)
+                                })
+                                .collect();
+                            let idents = args.iter().map(|(ident, _)| ident);
+                            let params = args.iter().map(|(ident, ty)| quote! { #ident: #ty });
+                            quote! {
+                                let _ = |#(#params),*| {
+                                    #provider_path::#variant_ident(#(#idents),*)
+                                };
+                            }
+                        }
+                        Fields::Named(fields) => {
+                            let args: Vec<_> = fields
+                                .named
+                                .iter()
+                                .enumerate()
+                                .map(|(field_index, field)| {
+                                    let field_ident = field.ident.as_ref().unwrap();
+                                    let binding = format_ident!(
+                                        "__fory_variant_{variant_index}_field_{field_index}"
+                                    );
+                                    (field_ident, binding, &field.ty)
+                                })
+                                .collect();
+                            let params =
+                                args.iter().map(|(_, binding, ty)| quote! { #binding: #ty });
+                            let inits = args
+                                .iter()
+                                .map(|(field, binding, _)| quote! { #field: #binding });
+                            quote! {
+                                let _ = |#(#params),*| {
+                                    #provider_path::#variant_ident { #(#inits),* }
+                                };
+                            }
+                        }
+                    }
+                });
+            let match_arms = data
+                .variants
+                .iter()
+                .enumerate()
+                .map(|(variant_index, variant)| {
+                    let variant_ident = &variant.ident;
+                    match &variant.fields {
+                        Fields::Unit => quote! {
+                            #provider_path::#variant_ident => {}
+                        },
+                        Fields::Unnamed(fields) => {
+                            let bindings: Vec<_> = fields
+                                .unnamed
+                                .iter()
+                                .enumerate()
+                                .map(|(field_index, _)| {
+                                    format_ident!(
+                                        "__fory_variant_{variant_index}_field_{field_index}"
+                                    )
+                                })
+                                .collect();
+                            quote! {
+                                #provider_path::#variant_ident(#(#bindings),*) => {
+                                    let _ = (#(#bindings),*);
+                                }
+                            }
+                        }
+                        Fields::Named(fields) => {
+                            let bindings: Vec<_> = fields
+                                .named
+                                .iter()
+                                .enumerate()
+                                .map(|(field_index, field)| {
+                                    let field_ident = field.ident.as_ref().unwrap();
+                                    let binding = format_ident!(
+                                        "__fory_variant_{variant_index}_field_{field_index}"
+                                    );
+                                    (field_ident, binding)
+                                })
+                                .collect();
+                            let patterns = bindings
+                                .iter()
+                                .map(|(field, binding)| quote! { #field: #binding });
+                            let values = bindings.iter().map(|(_, binding)| binding);
+                            quote! {
+                                #provider_path::#variant_ident { #(#patterns),* } => {
+                                    let _ = (#(#values),*);
+                                }
+                            }
+                        }
+                    }
+                });
+            // Exhaustive borrowed matching proves payload fields are used. The constructor
+            // closures are never called; they exist only because rustc's dead-code lint does not
+            // count pattern-only enum use as variant construction.
+            quote! {
+                #(#constructors)*
+                match value {
+                    #(#match_arms),*
+                }
+            }
+        }
+        Data::Union(_) => quote! { let _ = value; },
+    };
+
+    quote! {
+        #[allow(dead_code)]
+        fn __fory_use_schema #impl_generics(
+            value: &#provider_ty,
+        ) #where_clause {
+            #body
+        }
+    }
 }
 
 struct SendSyncTokens {
@@ -282,15 +487,19 @@ fn generate_send_sync_tokens(ast: &syn::DeriveInput) -> SendSyncTokens {
             struct_read_compatible: quote! {},
         };
     }
-    let struct_read_compatible = if matches!(ast.data, syn::Data::Struct(_)) {
+    let struct_read_compatible = if matches!(ast.data, Data::Struct(_)) {
         quote! {
             #[inline]
-            fn fory_read_compatible_as_send_sync_any(
+            fn read_compatible_arc_any(
                 context: &mut fory_core::ReadContext,
-                type_info: ::std::rc::Rc<fory_core::TypeInfo>,
-            ) -> ::std::result::Result<::std::boxed::Box<dyn ::std::any::Any + Send + Sync>, fory_core::error::Error> {
-                let value = <Self as fory_core::StructSerializer>::fory_read_compatible(context, type_info)?;
-                ::std::result::Result::Ok(fory_core::serializer::box_send_sync(value))
+                type_info: &::std::rc::Rc<fory_core::TypeInfo>,
+            ) -> ::std::result::Result<
+                ::std::sync::Arc<dyn ::std::any::Any + Send + Sync>,
+                fory_core::Error,
+            > {
+                let value =
+                    <Self as fory_core::StructSerializer>::read_compatible(context, type_info)?;
+                Ok(::std::sync::Arc::new(value))
             }
         }
     } else {
@@ -299,14 +508,14 @@ fn generate_send_sync_tokens(ast: &syn::DeriveInput) -> SendSyncTokens {
     SendSyncTokens {
         serializer: quote! {
             #[inline]
-            fn fory_read_data_as_send_sync_any(
+            fn read_arc_any(
                 context: &mut fory_core::ReadContext,
-            ) -> ::std::result::Result<::std::boxed::Box<dyn ::std::any::Any + Send + Sync>, fory_core::error::Error>
-            where
-                Self: Sized + fory_core::ForyDefault,
-            {
-                let value = <Self as fory_core::Serializer>::fory_read_data(context)?;
-                ::std::result::Result::Ok(fory_core::serializer::box_send_sync(value))
+            ) -> ::std::result::Result<
+                ::std::sync::Arc<dyn ::std::any::Any + Send + Sync>,
+                fory_core::Error,
+            > {
+                let value = <Self as fory_core::Serializer>::read_data(context)?;
+                Ok(::std::sync::Arc::new(value))
             }
         },
         struct_read_compatible,
@@ -318,166 +527,87 @@ fn derive_type_is_send_sync(ast: &syn::DeriveInput) -> bool {
         all_type_params_send_sync, type_is_send_sync, type_param_send_sync_bounds,
     };
 
-    // This syntactic filter rejects field types that are known not to satisfy
-    // `Send + Sync`. Opaque custom field types are allowed through, and Rust
-    // validates the final `Self: Send + Sync` bound when compiling the reader.
     if !all_type_params_send_sync(&ast.generics) {
         return false;
     }
     let send_sync_params = type_param_send_sync_bounds(&ast.generics);
     match &ast.data {
-        syn::Data::Struct(data) => data
+        Data::Struct(data) => data
             .fields
             .iter()
             .all(|field| type_is_send_sync(&field.ty, &send_sync_params)),
-        syn::Data::Enum(data) => data.variants.iter().all(|variant| {
+        Data::Enum(data) => data.variants.iter().all(|variant| {
             variant
                 .fields
                 .iter()
                 .all(|field| type_is_send_sync(&field.ty, &send_sync_params))
         }),
-        syn::Data::Union(_) => false,
+        Data::Union(_) => false,
     }
 }
 
-fn generate_default_impl(
-    ast: &syn::DeriveInput,
-    generate_default: bool,
-) -> proc_macro2::TokenStream {
+fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
     let name = &ast.ident;
     let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
-
-    // By default, we don't generate Default impl to avoid conflicts.
-    // Only generate if generate_default is true AND there's no existing Default.
-    let should_generate_default = generate_default && !has_existing_default(ast, "Default");
-
-    match &ast.data {
-        Data::Struct(s) => {
-            let source_fields = source_fields(&s.fields);
-            let is_tuple_struct = source_fields
-                .first()
-                .map(|sf| sf.is_tuple_struct)
-                .unwrap_or(false);
-
-            // Generate field initializations with original index for sorting
-            let mut indexed: Vec<_> = source_fields
+    let construction = match &ast.data {
+        Data::Struct(data) => {
+            let mut fields: Vec<_> = data
+                .fields
                 .iter()
-                .map(|sf| {
-                    let value = super::field_codec::default_expr_for_type(&sf.field.ty);
-                    (sf.original_index, sf.field_init(value))
+                .enumerate()
+                .map(|(index, field)| {
+                    let value = quote! { ::std::default::Default::default() };
+                    let init = match &field.ident {
+                        Some(ident) => quote! { #ident: #value },
+                        None => value,
+                    };
+                    (index, init)
                 })
                 .collect();
-
-            // For tuple structs, sort by original index
-            if is_tuple_struct {
-                indexed.sort_by_key(|(idx, _)| *idx);
-            }
-
-            let field_inits: Vec<_> = indexed.into_iter().map(|(_, ts)| ts).collect();
-            let self_construction = crate::util::self_construction(is_tuple_struct, &field_inits);
-
-            if should_generate_default {
-                // User requested Default generation via #[fory(generate_default)]
-                quote! {
-                    impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
-                        fn fory_default() -> Self {
-                            #self_construction
-                        }
-                    }
-                    impl #impl_generics ::std::default::Default for #name #ty_generics #where_clause {
-                        fn default() -> Self {
-                            Self::fory_default()
-                        }
-                    }
-                }
-            } else {
-                // Default case: only generate ForyDefault, not Default
-                // This avoids conflicts with existing Default implementations
-                quote! {
-                   impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
-                        fn fory_default() -> Self {
-                            #self_construction
-                        }
-                    }
-                }
+            fields.sort_by_key(|(index, _)| *index);
+            let values: Vec<_> = fields.into_iter().map(|(_, value)| value).collect();
+            match &data.fields {
+                Fields::Named(_) => quote! { Self { #(#values),* } },
+                Fields::Unnamed(_) => quote! { Self( #(#values),* ) },
+                Fields::Unit => quote! { Self },
             }
         }
-        Data::Enum(e) => {
-            // Check if any variant has #[default] attribute (indicates user is deriving Default)
-            let has_std_default_variant = e
-                .variants
-                .iter()
-                .any(|v| v.attrs.iter().any(|attr| attr.path().is_ident("default")));
-
-            // Check if user has #[derive(Default)] on the enum
-            let has_derived_default = has_existing_default(ast, "Default");
-
-            let default_variant = e
+        Data::Enum(data) => {
+            let Some(variant) = data
                 .variants
                 .iter()
                 .find(|variant| is_default_value_variant(variant))
-                .or_else(|| e.variants.first());
-
-            if let Some(first_variant) = default_variant {
-                let variant_ident = &first_variant.ident;
-                let field_defaults = match &first_variant.fields {
-                    syn::Fields::Unit => quote! {},
-                    syn::Fields::Unnamed(fields) => {
-                        let defaults = fields.unnamed.iter().map(|f| {
-                            let ty = &f.ty;
-                            quote! { <#ty as fory_core::ForyDefault>::fory_default() }
-                        });
-                        quote! { (#(#defaults),*) }
-                    }
-                    syn::Fields::Named(fields) => {
-                        let field_inits = fields.named.iter().map(|f| {
-                            let ident = &f.ident;
-                            let ty = &f.ty;
-                            quote! { #ident: <#ty as fory_core::ForyDefault>::fory_default() }
-                        });
-                        quote! { { #(#field_inits),* } }
-                    }
-                };
-
-                if has_derived_default || has_std_default_variant {
-                    // User has #[derive(Default)] or #[default] attribute
-                    // Only generate ForyDefault that delegates to Default
-                    quote! {
-                        impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
-                            fn fory_default() -> Self {
-                                Self::default()
-                            }
-                        }
-                    }
-                } else if should_generate_default {
-                    // User requested Default generation via #[fory(generate_default)]
-                    quote! {
-                        impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
-                            fn fory_default() -> Self {
-                                Self::#variant_ident #field_defaults
-                            }
-                        }
-
-                        impl #impl_generics ::std::default::Default for #name #ty_generics #where_clause {
-                            fn default() -> Self {
-                                Self::#variant_ident #field_defaults
-                            }
-                        }
-                    }
-                } else {
-                    // Default case: only generate ForyDefault, not Default
-                    quote! {
-                        impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
-                            fn fory_default() -> Self {
-                                Self::#variant_ident #field_defaults
-                            }
-                        }
-                    }
+                .or_else(|| data.variants.first())
+            else {
+                return quote! {};
+            };
+            let ident = &variant.ident;
+            match &variant.fields {
+                Fields::Unit => quote! { Self::#ident },
+                Fields::Unnamed(fields) => {
+                    let values = fields
+                        .unnamed
+                        .iter()
+                        .map(|_| quote! { ::std::default::Default::default() });
+                    quote! { Self::#ident( #(#values),* ) }
                 }
-            } else {
-                quote! {}
+                Fields::Named(fields) => {
+                    let values = fields.named.iter().map(|field| {
+                        let ident = field.ident.as_ref().unwrap();
+                        quote! { #ident: ::std::default::Default::default() }
+                    });
+                    quote! { Self::#ident { #(#values),* } }
+                }
             }
         }
-        Data::Union(_) => quote! {},
+        Data::Union(_) => return quote! {},
+    };
+
+    quote! {
+        impl #impl_generics ::std::default::Default for #name #ty_generics #where_clause {
+            fn default() -> Self {
+                #construction
+            }
+        }
     }
 }

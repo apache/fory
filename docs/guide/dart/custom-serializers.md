@@ -1,6 +1,6 @@
 ---
-title: Custom Serializers
-sidebar_position: 9
+title: Manual Serializers
+sidebar_position: 10
 id: custom_serializers
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -19,13 +19,18 @@ license: |
   limitations under the License.
 ---
 
-A custom serializer lets you control exactly how a type is encoded and decoded. You only need one when:
+A manual serializer lets you control exactly how a type is encoded and decoded.
+Use one when:
 
-- the type comes from a package you cannot modify and cannot be annotated with `@ForyStruct()`
 - you need a completely custom binary layout
+- the target requires field-name translation or value conversion
+- the target exposes only factory or private construction
+- the target's complete state is not available through matching public members
 - you are implementing a union/discriminated type
 
-For your own models, `@ForyStruct()` with code generation is almost always the better choice.
+Use `@ForyStruct()` for your own models. For a structurally matching class in
+another package, use an
+[external structural serializer](external-types.md).
 
 ## Implement `Serializer<T>`
 
@@ -113,7 +118,7 @@ final class ShapeSerializer extends UnionSerializer<Shape> {
 }
 ```
 
-## Circular References in Custom Serializers
+## Circular References in Manual Serializers
 
 If your serializer can encounter circular object graphs, bind the object to the reference tracker **before** reading its nested fields:
 
@@ -134,5 +139,6 @@ Skipping this step causes back-references to that object to resolve to `null`.
 ## Related Topics
 
 - [Type Registration](type-registration.md)
+- [External-Type Serialization](external-types.md)
 - [Xlang Serialization](xlang-serialization.md)
 - [Troubleshooting](troubleshooting.md)

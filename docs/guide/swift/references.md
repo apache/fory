@@ -59,8 +59,8 @@ final class AnimalPair {
 }
 
 let fory = Fory(ref: true)
-fory.register(Animal.self, id: 200)
-fory.register(AnimalPair.self, id: 201)
+try fory.register(Animal.self, id: 200)
+try fory.register(AnimalPair.self, id: 201)
 
 let shared = Animal(name: "cat")
 let input = AnimalPair(first: shared, second: shared)
@@ -93,7 +93,7 @@ final class Node {
 }
 
 let fory = Fory(ref: true)
-fory.register(Node.self, id: 300)
+try fory.register(Node.self, id: 300)
 
 let node = Node(value: 7)
 node.next = node

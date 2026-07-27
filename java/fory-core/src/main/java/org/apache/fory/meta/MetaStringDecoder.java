@@ -166,6 +166,10 @@ public class MetaStringDecoder {
     char[] chars = str.toCharArray();
     for (int i = 0; i < chars.length; i++) {
       if (chars[i] == '|') {
+        if (i + 1 >= chars.length) {
+          throw new IllegalArgumentException(
+              "Invalid ALL_TO_LOWER_SPECIAL meta string: trailing escape");
+        }
         char c = chars[++i];
         builder.append(Character.toUpperCase(c));
       } else {

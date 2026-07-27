@@ -17,13 +17,13 @@
 
 use fory_core::buffer::{Reader, Writer};
 use fory_core::error::Error;
-use fory_core::resolver::TypeResolver;
-use fory_core::serializer::{ForyDefault, Serializer};
+use fory_core::serializer::{HashMapSerializer, Serializer, Tuple2Serializer, VecSerializer};
 use fory_core::type_id::TypeId;
 use fory_core::util::murmurhash3_x64_128;
 use fory_core::{read_data, write_data, BFloat16, Date, Decimal, Float16, Fory, Timestamp};
 use fory_core::{ReadContext, WriteContext};
 use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
+use fory_external_model::User;
 use num_bigint::BigInt;
 use std::collections::{HashMap, HashSet};
 use std::{fs, vec};
@@ -78,6 +78,13 @@ struct EvolvingOverrideStruct {
 #[fory(evolving = false)]
 struct FixedOverrideStruct {
     f1: String,
+}
+
+#[derive(ForyStruct)]
+#[fory(target = User)]
+struct ExternalUserSerializer {
+    name: String,
+    age: u32,
 }
 
 #[test]
@@ -505,6 +512,58 @@ fn test_struct_evolving_override() {
 
 #[test]
 #[ignore]
+fn test_external_type_composition() {
+    type EntrySerializer = Tuple2Serializer<String, ExternalUserSerializer>;
+    type EntriesSerializer = VecSerializer<EntrySerializer>;
+    type NestedSerializer = HashMapSerializer<String, EntriesSerializer>;
+
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+    let mut reader = Reader::new(bytes.as_slice());
+    let mut fory = Fory::builder().compatible(false).xlang(true).build();
+    fory.register::<ExternalUserSerializer>(801).unwrap();
+
+    let user = fory
+        .deserialize_from_with::<ExternalUserSerializer>(&mut reader)
+        .unwrap();
+    let users = fory
+        .deserialize_from_with::<VecSerializer<ExternalUserSerializer>>(&mut reader)
+        .unwrap();
+    let entry = fory
+        .deserialize_from_with::<EntrySerializer>(&mut reader)
+        .unwrap();
+    let nested = fory
+        .deserialize_from_with::<NestedSerializer>(&mut reader)
+        .unwrap();
+
+    assert_eq!(
+        user,
+        User {
+            name: "Ada".to_string(),
+            age: 37,
+        }
+    );
+    assert_eq!(users, vec![user.clone()]);
+    assert_eq!(entry, ("lead".to_string(), user.clone()));
+    assert_eq!(
+        nested,
+        HashMap::from([("team".to_string(), vec![("lead".to_string(), user.clone())],)])
+    );
+
+    let mut output = Vec::new();
+    fory.serialize_to_with::<ExternalUserSerializer>(&mut output, &user)
+        .unwrap();
+    fory.serialize_to_with::<VecSerializer<ExternalUserSerializer>>(&mut output, &users)
+        .unwrap();
+    fory.serialize_to_with::<EntrySerializer>(&mut output, &entry)
+        .unwrap();
+    fory.serialize_to_with::<NestedSerializer>(&mut output, &nested)
+        .unwrap();
+    fs::write(data_file_path, output).unwrap();
+}
+
+#[test]
+#[ignore]
 fn test_list() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
@@ -719,30 +778,20 @@ struct MyExt {
     id: i32,
 }
 impl Serializer for MyExt {
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), fory_core::error::Error> {
-        write_data(&self.id, context)
+    type Target = Self;
+
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        write_data::<i32>(&value.id, context)
     }
 
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
         Ok(Self {
-            id: read_data(context)?,
+            id: read_data::<i32>(context)?,
         })
     }
 
-    fn fory_type_id_dyn(
-        &self,
-        type_resolver: &TypeResolver,
-    ) -> Result<fory_core::TypeId, fory_core::error::Error> {
-        Self::fory_get_type_id(type_resolver)
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-impl ForyDefault for MyExt {
-    fn fory_default() -> Self {
-        Self::default()
+    fn default_value(_context: &mut ReadContext) -> Result<Self, Error> {
+        Ok(Self::default())
     }
 }
 #[derive(ForyStruct, Debug, PartialEq)]
@@ -2010,6 +2059,109 @@ struct RefOverrideContainer {
     list_field: Vec<Rc<RefOverrideElement>>,
     set_field: HashSet<Rc<RefOverrideElement>>,
     map_field: HashMap<String, Rc<RefOverrideElement>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct RefDisabledContainer {
+    #[fory(list(element(ref = false)))]
+    list_field: Vec<Rc<RefOverrideElement>>,
+    #[fory(list(element(ref = false)))]
+    set_field: HashSet<Rc<RefOverrideElement>>,
+    #[fory(map(value(ref = false)))]
+    map_field: HashMap<String, Rc<RefOverrideElement>>,
+}
+
+#[derive(ForyStruct, Debug, PartialEq)]
+struct RefPlainContainer {
+    list_field: Vec<RefOverrideElement>,
+    set_field: HashSet<RefOverrideElement>,
+    map_field: HashMap<String, RefOverrideElement>,
+}
+
+#[test]
+fn collection_ref_header_override() {
+    fn value() -> Rc<RefOverrideElement> {
+        Rc::new(RefOverrideElement {
+            id: 7,
+            name: "shared_element".to_string(),
+        })
+    }
+
+    let shared = value();
+    let mut set = HashSet::new();
+    set.insert(shared.as_ref().clone());
+    let mut map = HashMap::new();
+    map.insert("k1".to_string(), shared.as_ref().clone());
+    map.insert("k2".to_string(), shared.as_ref().clone());
+    let untracked = RefPlainContainer {
+        list_field: vec![shared.as_ref().clone(), shared.as_ref().clone()],
+        set_field: set,
+        map_field: map,
+    };
+
+    let mut writer = Fory::builder()
+        .compatible(false)
+        .xlang(true)
+        .track_ref(true)
+        .build();
+    writer.register::<RefOverrideElement>(701).unwrap();
+    writer.register::<RefPlainContainer>(702).unwrap();
+    let bytes = writer.serialize(&untracked).unwrap();
+
+    let mut reader = Fory::builder()
+        .compatible(false)
+        .xlang(true)
+        .track_ref(true)
+        .build();
+    reader.register::<RefOverrideElement>(701).unwrap();
+    reader.register::<RefOverrideContainer>(702).unwrap();
+    let decoded: RefOverrideContainer = reader.deserialize(&bytes).unwrap();
+    let set_value = decoded.set_field.iter().next().unwrap();
+    assert!(!Rc::ptr_eq(&decoded.list_field[0], &decoded.list_field[1]));
+    assert!(!Rc::ptr_eq(&decoded.list_field[0], set_value));
+    assert!(!Rc::ptr_eq(
+        &decoded.map_field["k1"],
+        &decoded.map_field["k2"],
+    ));
+    assert!(!Rc::ptr_eq(&decoded.map_field["k1"], set_value));
+
+    let shared = value();
+    let mut set = HashSet::new();
+    set.insert(shared.clone());
+    let mut map = HashMap::new();
+    map.insert("k1".to_string(), shared.clone());
+    map.insert("k2".to_string(), shared.clone());
+    let tracked = RefOverrideContainer {
+        list_field: vec![shared.clone(), shared],
+        set_field: set,
+        map_field: map,
+    };
+
+    let mut writer = Fory::builder()
+        .compatible(false)
+        .xlang(true)
+        .track_ref(true)
+        .build();
+    writer.register::<RefOverrideElement>(701).unwrap();
+    writer.register::<RefOverrideContainer>(702).unwrap();
+    let bytes = writer.serialize(&tracked).unwrap();
+
+    let mut reader = Fory::builder()
+        .compatible(false)
+        .xlang(true)
+        .track_ref(true)
+        .build();
+    reader.register::<RefOverrideElement>(701).unwrap();
+    reader.register::<RefDisabledContainer>(702).unwrap();
+    let decoded: RefDisabledContainer = reader.deserialize(&bytes).unwrap();
+    let set_value = decoded.set_field.iter().next().unwrap();
+    assert!(Rc::ptr_eq(&decoded.list_field[0], &decoded.list_field[1]));
+    assert!(Rc::ptr_eq(&decoded.list_field[0], set_value));
+    assert!(Rc::ptr_eq(
+        &decoded.map_field["k1"],
+        &decoded.map_field["k2"],
+    ));
+    assert!(Rc::ptr_eq(&decoded.map_field["k1"], set_value));
 }
 
 /// Test cross-language reference tracking in SCHEMA_CONSISTENT mode (compatible=false).

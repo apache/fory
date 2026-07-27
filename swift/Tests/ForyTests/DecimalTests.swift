@@ -95,7 +95,7 @@ func decimalRoundTripPreservesUnscaledValueAndScale() throws {
 @Test
 func decimalFieldRoundTripUsesGeneratedSerializerMetadata() throws {
     let fory = Fory()
-    fory.register(DecimalEnvelope.self, id: 240)
+    try fory.register(DecimalEnvelope.self, id: 240)
 
     let expected = try makeDecimal(
         unscaled: "123456789012345678901234567890123456789",

@@ -40,10 +40,11 @@ func TestMetaStringResolverNegativeIndexPanic(t *testing.T) {
 	var ctxErr Error
 	// This should NOT panic. The fix handles the negative index.
 	require.NotPanics(t, func() {
-		_, err := resolver.ReadMetaStringBytes(buffer, &ctxErr)
-		if err == nil {
+		result := resolver.ReadMetaStringBytes(buffer, &ctxErr)
+		if !ctxErr.HasError() {
 			t.Errorf("Expected error for negative index, got nil")
 		}
+		require.Nil(t, result)
 	}, "MetaStringResolver should not panic on negative index")
 }
 
@@ -64,8 +65,8 @@ func TestMetaStringResolverBoundaryRegression(t *testing.T) {
 	buffer.SetReaderIndex(0)
 
 	var ctxErr Error
-	result, err := resolver.ReadMetaStringBytes(buffer, &ctxErr)
-	require.NoError(t, err)
+	result := resolver.ReadMetaStringBytes(buffer, &ctxErr)
+	require.False(t, ctxErr.HasError())
 	require.Equal(t, m, result, "Should correctly resolve the first dynamic string (index 0)")
 }
 
@@ -80,8 +81,8 @@ func TestMetaStringResolverRejectsLargeBodyHashMismatch(t *testing.T) {
 	buffer.SetReaderIndex(0)
 
 	var ctxErr Error
-	_, err := resolver.ReadMetaStringBytes(buffer, &ctxErr)
-	require.Error(t, err)
+	require.Nil(t, resolver.ReadMetaStringBytes(buffer, &ctxErr))
+	require.True(t, ctxErr.HasError())
 	require.Empty(t, resolver.hashToMetaStrBytes)
 	require.Empty(t, resolver.dynamicIDToEnumString)
 }
@@ -93,9 +94,9 @@ func TestMetaStringResolverRejectsOversizedLengthBeforeAllocation(t *testing.T) 
 	buffer.SetReaderIndex(0)
 
 	var ctxErr Error
-	_, err := resolver.ReadMetaStringBytes(buffer, &ctxErr)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "meta string length")
+	require.Nil(t, resolver.ReadMetaStringBytes(buffer, &ctxErr))
+	require.True(t, ctxErr.HasError())
+	require.Contains(t, ctxErr.Error(), "meta string length")
 	require.Empty(t, resolver.hashToMetaStrBytes)
 	require.Empty(t, resolver.smallHashToMetaStrBytes)
 	require.Empty(t, resolver.dynamicIDToEnumString)
@@ -110,8 +111,8 @@ func TestMetaStringResolverSmallCacheKeyIncludesLengthAndEncoding(t *testing.T) 
 	oneByte.WriteByte(1)
 	oneByte.SetReaderIndex(0)
 	var oneErr Error
-	first, err := resolver.ReadMetaStringBytes(oneByte, &oneErr)
-	require.NoError(t, err)
+	first := resolver.ReadMetaStringBytes(oneByte, &oneErr)
+	require.False(t, oneErr.HasError())
 	require.Equal(t, []byte{1}, first.Data)
 
 	twoBytes := NewByteBuffer(nil)
@@ -120,8 +121,8 @@ func TestMetaStringResolverSmallCacheKeyIncludesLengthAndEncoding(t *testing.T) 
 	twoBytes.Write([]byte{1, 0})
 	twoBytes.SetReaderIndex(0)
 	var twoErr Error
-	second, err := resolver.ReadMetaStringBytes(twoBytes, &twoErr)
-	require.NoError(t, err)
+	second := resolver.ReadMetaStringBytes(twoBytes, &twoErr)
+	require.False(t, twoErr.HasError())
 	require.Equal(t, []byte{1, 0}, second.Data)
 	require.NotSame(t, first, second)
 
@@ -131,8 +132,8 @@ func TestMetaStringResolverSmallCacheKeyIncludesLengthAndEncoding(t *testing.T) 
 	differentEncoding.WriteByte(1)
 	differentEncoding.SetReaderIndex(0)
 	var encodingErr Error
-	third, err := resolver.ReadMetaStringBytes(differentEncoding, &encodingErr)
-	require.NoError(t, err)
+	third := resolver.ReadMetaStringBytes(differentEncoding, &encodingErr)
+	require.False(t, encodingErr.HasError())
 	require.Equal(t, []byte{1}, third.Data)
 	require.Equal(t, meta.LOWER_SPECIAL, third.Encoding)
 	require.NotSame(t, first, third)
@@ -172,8 +173,8 @@ func TestMetaStringResolverReadCachesAreCapped(t *testing.T) {
 	smallBuffer.WriteByte(1)
 	smallBuffer.SetReaderIndex(0)
 	var smallErr Error
-	_, err := resolver.ReadMetaStringBytes(smallBuffer, &smallErr)
-	require.NoError(t, err)
+	resolver.ReadMetaStringBytes(smallBuffer, &smallErr)
+	require.False(t, smallErr.HasError())
 	require.Len(t, resolver.smallHashToMetaStrBytes, maxCachedMetaStrings)
 	require.NotContains(t, resolver.smallHashToMetaStrBytes, smallKey)
 
@@ -185,8 +186,8 @@ func TestMetaStringResolverReadCachesAreCapped(t *testing.T) {
 	largeBuffer.Write(largeData)
 	largeBuffer.SetReaderIndex(0)
 	var largeErr Error
-	_, err = resolver.ReadMetaStringBytes(largeBuffer, &largeErr)
-	require.NoError(t, err)
+	resolver.ReadMetaStringBytes(largeBuffer, &largeErr)
+	require.False(t, largeErr.HasError())
 	require.Len(t, resolver.hashToMetaStrBytes, maxCachedMetaStrings)
 	require.NotContains(t, resolver.hashToMetaStrBytes, largeHash)
 }

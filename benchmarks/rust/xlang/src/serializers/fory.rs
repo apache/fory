@@ -17,7 +17,7 @@
 
 use crate::data::{register_fory_types, register_fory_types_v2};
 use crate::serializers::{BenchmarkSerializer, BoxError};
-use fory::{Fory, ForyDefault, Serializer as ForyValueSerializer};
+use fory::{Fory, Serializer as ForyValueSerializer};
 
 #[derive(Default)]
 pub struct ForySerializer {
@@ -39,9 +39,9 @@ impl ForySerializer {
         Self { writer, reader }
     }
 
-    pub fn deserialize_as<T>(&self, data: &[u8]) -> Result<T, BoxError>
+    pub fn deserialize_value<T>(&self, data: &[u8]) -> Result<T, BoxError>
     where
-        T: ForyValueSerializer + ForyDefault,
+        T: ForyValueSerializer<Target = T>,
     {
         Ok(self.reader.deserialize(data)?)
     }
@@ -53,13 +53,13 @@ pub fn schema_mismatch_enabled() -> bool {
 
 impl<T> BenchmarkSerializer<T> for ForySerializer
 where
-    T: ForyValueSerializer + ForyDefault,
+    T: ForyValueSerializer<Target = T>,
 {
     fn serialize(&self, data: &T) -> Result<Vec<u8>, BoxError> {
         Ok(self.writer.serialize(data)?)
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<T, BoxError> {
-        self.deserialize_as(data)
+        self.deserialize_value(data)
     }
 }

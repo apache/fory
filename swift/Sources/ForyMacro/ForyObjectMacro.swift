@@ -46,7 +46,7 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
         in _: some MacroExpansionContext
     ) throws -> [DeclSyntax] {
         let accessPrefix = serializerMemberAccessPrefix(declaration)
-        let objectConfig = try parseForyObjectConfiguration(attribute)
+        let objectConfig = try parseForyObjectConfiguration(attribute, macroName: "@ForyStruct")
 
         if declaration.is(EnumDeclSyntax.self) {
             throw MacroExpansionErrorMessage("@ForyStruct supports struct and class declarations only")
@@ -54,7 +54,21 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
 
         let parsed = try parseFields(declaration)
         let sortedFields = sortFields(parsed.fields)
+        let targetType =
+            objectConfig.targetType
+            ?? declaration.as(ClassDeclSyntax.self)?.name.text
+            ?? "Self"
+        let successBodyAttribute =
+            objectConfig.targetType != nil
+                && parsed.fields.contains(where: {
+                    $0.isCollection || ($0.isOptional && $0.customCodecType != nil)
+                })
+            ? "@inline(never)"
+            : "@inline(__always)"
 
+        let targetDecl: DeclSyntax = """
+            \(raw: accessPrefix)typealias Target = \(raw: targetType)
+            """
         let staticTypeIDDecl: DeclSyntax = """
             \(raw: accessPrefix)static var staticTypeId: TypeId { .structType }
             """
@@ -67,29 +81,55 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
             ? """
             \(raw: accessPrefix)static var isRefType: Bool { true }
             """ : nil
+        let referenceTargetValidationDecl: DeclSyntax? =
+            parsed.isClass && objectConfig.targetType != nil
+            ? """
+            private static func __foryValidateReferenceTarget() {
+                func requireReferenceTarget<T: AnyObject>(_: T.Type) {}
+                requireReferenceTarget(Target.self)
+            }
+            """ : nil
 
         let schemaHashDecl: DeclSyntax = DeclSyntax(stringLiteral: try buildSchemaHashDecl(fields: parsed.fields))
         let compatibleTypeMetaDecl: DeclSyntax = DeclSyntax(
             stringLiteral: buildCompatibleTypeMetaFieldsDecl(sortedFields: sortedFields, accessPrefix: accessPrefix)
         )
         let defaultDecl: DeclSyntax = DeclSyntax(
-            stringLiteral: buildDefaultDecl(isClass: parsed.isClass, fields: parsed.fields, accessPrefix: accessPrefix)
+            stringLiteral: buildDefaultDecl(
+                isClass: parsed.isClass,
+                fields: parsed.fields,
+                accessPrefix: accessPrefix
+            )
         )
         let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl(accessPrefix: accessPrefix))
         let readWrapperDecl: DeclSyntax =
             DeclSyntax(
                 stringLiteral: parsed.isClass
                     ? buildClassReadWrapperDecl(accessPrefix: accessPrefix)
-                    : buildStructReadWrapperDecl(accessPrefix: accessPrefix))
+                    : buildStructReadWrapperDecl(
+                        accessPrefix: accessPrefix,
+                        dataReadExpression: "Self.readData(context)"
+                    ))
+        let invalidRefFlagDecl: DeclSyntax = DeclSyntax(
+            stringLiteral: buildInvalidRefFlagDecl()
+        )
+        let versionMismatchDecl: DeclSyntax = DeclSyntax(
+            stringLiteral: buildVersionMismatchDecl()
+        )
         let writeDecl: DeclSyntax = DeclSyntax(
-            stringLiteral: buildWriteDataDecl(sortedFields: sortedFields, accessPrefix: accessPrefix)
+            stringLiteral: buildWriteDataDecl(
+                sortedFields: sortedFields,
+                accessPrefix: accessPrefix,
+                successBodyAttribute: successBodyAttribute
+            )
         )
         let readDecl: DeclSyntax = DeclSyntax(
             stringLiteral: buildReadDataDecl(
                 isClass: parsed.isClass,
                 fields: parsed.fields,
                 sortedFields: sortedFields,
-                accessPrefix: accessPrefix
+                accessPrefix: accessPrefix,
+                successBodyAttribute: successBodyAttribute
             )
         )
         let readCompatibleDecl: DeclSyntax = DeclSyntax(
@@ -101,14 +141,18 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
             )
         )
         return [
+            targetDecl,
             staticTypeIDDecl,
             evolvingDecl,
             referenceTrackDecl,
+            referenceTargetValidationDecl,
             schemaHashDecl,
             compatibleTypeMetaDecl,
             defaultDecl,
             writeWrapperDecl,
             readWrapperDecl,
+            invalidRefFlagDecl,
+            versionMismatchDecl,
             writeDecl,
             readDecl,
             readCompatibleDecl
@@ -137,7 +181,7 @@ public struct ForyStructMacro: MemberMacro, ExtensionMacro {
 
 public struct ForyEnumMacro: MemberMacro, ExtensionMacro {
     public static func expansion(
-        of _: AttributeSyntax,
+        of attribute: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
         conformingTo _: [TypeSyntax],
         in _: some MacroExpansionContext
@@ -146,11 +190,20 @@ public struct ForyEnumMacro: MemberMacro, ExtensionMacro {
         guard let enumDecl = declaration.as(EnumDeclSyntax.self) else {
             throw MacroExpansionErrorMessage("@ForyEnum supports enum declarations only")
         }
+        let objectConfig = try parseForyObjectConfiguration(
+            attribute,
+            macroName: "@ForyEnum",
+            supportsEvolving: false
+        )
         let parsedEnum = try parseEnumDecl(enumDecl)
         guard parsedEnum.kind == .ordinal else {
             throw MacroExpansionErrorMessage("@ForyEnum cases cannot have associated values; use @ForyUnion")
         }
-        return try buildEnumDecls(parsedEnum, accessPrefix: accessPrefix)
+        return try buildEnumDecls(
+            parsedEnum,
+            targetType: objectConfig.targetType ?? "Self",
+            accessPrefix: accessPrefix
+        )
     }
 
     public static func expansion(
@@ -164,13 +217,13 @@ public struct ForyEnumMacro: MemberMacro, ExtensionMacro {
         guard !typeName.isEmpty else {
             return []
         }
-        return [try ExtensionDeclSyntax("extension \(raw: typeName): Serializer {}")]
+        return [try ExtensionDeclSyntax("extension \(raw: typeName): Serializer, StructSerializer {}")]
     }
 }
 
 public struct ForyUnionMacro: MemberMacro, ExtensionMacro {
     public static func expansion(
-        of _: AttributeSyntax,
+        of attribute: AttributeSyntax,
         providingMembersOf declaration: some DeclGroupSyntax,
         conformingTo _: [TypeSyntax],
         in _: some MacroExpansionContext
@@ -179,11 +232,20 @@ public struct ForyUnionMacro: MemberMacro, ExtensionMacro {
         guard let enumDecl = declaration.as(EnumDeclSyntax.self) else {
             throw MacroExpansionErrorMessage("@ForyUnion supports enum declarations only")
         }
+        let objectConfig = try parseForyObjectConfiguration(
+            attribute,
+            macroName: "@ForyUnion",
+            supportsEvolving: false
+        )
         let parsedEnum = try parseEnumDecl(enumDecl)
         guard parsedEnum.kind == .taggedUnion else {
             throw MacroExpansionErrorMessage("@ForyUnion requires at least one associated-value case; use @ForyEnum")
         }
-        return try buildEnumDecls(parsedEnum, accessPrefix: accessPrefix)
+        return try buildEnumDecls(
+            parsedEnum,
+            targetType: objectConfig.targetType ?? "Self",
+            accessPrefix: accessPrefix
+        )
     }
 
     public static func expansion(
@@ -197,7 +259,7 @@ public struct ForyUnionMacro: MemberMacro, ExtensionMacro {
         guard !typeName.isEmpty else {
             return []
         }
-        return [try ExtensionDeclSyntax("extension \(raw: typeName): Serializer {}")]
+        return [try ExtensionDeclSyntax("extension \(raw: typeName): Serializer, StructSerializer {}")]
     }
 }
 
@@ -287,15 +349,6 @@ private enum FieldEncoding: String {
     case tagged
 }
 
-enum DynamicAnyCodecKind {
-    case anyValue
-    case anyHashableValue
-    case anyList
-    case stringAnyMap
-    case int32AnyMap
-    case anyHashableAnyMap
-}
-
 struct ParsedField {
     let name: String
     let typeText: String
@@ -313,7 +366,6 @@ struct ParsedField {
     let isCompressedNumeric: Bool
     let primitiveSize: Int
     let customCodecType: String?
-    let dynamicAnyCodec: DynamicAnyCodecKind?
 }
 
 private struct ParsedDecl {
@@ -330,7 +382,7 @@ private struct ParsedEnumPayloadField {
     let label: String?
     let typeText: String
     let isOptional: Bool
-    let hasGenerics: Bool
+    let hasDeclaredChildren: Bool
     let customCodecType: String?
 }
 
@@ -355,6 +407,7 @@ private struct FieldTypeResolution {
 private indirect enum FieldTypeHint {
     case inferredEncoding(FieldEncoding)
     case scalar(name: String, nullable: Bool?, encoding: FieldEncoding?)
+    case with(serializerType: String)
     case list(element: FieldTypeHint)
     case array(element: FieldTypeHint)
     case set(element: FieldTypeHint)
@@ -365,6 +418,7 @@ private struct ParsedForyFieldConfiguration {
     let encoding: FieldEncoding?
     let id: Int?
     let typeHint: FieldTypeHint?
+    let serializerType: String?
 }
 
 private struct ParsedForyCaseConfiguration {
@@ -374,6 +428,7 @@ private struct ParsedForyCaseConfiguration {
 
 private struct ParsedForyObjectConfiguration {
     let evolving: Bool
+    let targetType: String?
 }
 
 private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl {
@@ -405,6 +460,11 @@ private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl 
 
             var payloadFields: [ParsedEnumPayloadField] = []
             if let parameterClause = element.parameterClause {
+                if parameterClause.parameters.count > 1 {
+                    throw MacroExpansionErrorMessage(
+                        "@ForyUnion cases support zero or exactly one associated value"
+                    )
+                }
                 for parameter in parameterClause.parameters {
                     if parameter.defaultValue != nil {
                         throw MacroExpansionErrorMessage(
@@ -418,9 +478,25 @@ private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl 
                     }
                     let optional = unwrapOptional(payloadType)
                     let classification = classifyType(optional.type)
-                    let hasGenerics = classification.isCollection || classification.isMap
-                    let customCodecType = try caseConfig?.payloadHint.map {
+                    let hasDeclaredChildren = classification.isCollection || classification.isMap
+                    var customCodecType = try caseConfig?.payloadHint.map {
                         try codecTypeExpression(typeText: optional.type, hint: $0)
+                    }
+                    if customCodecType == nil,
+                        classification.isCollection || classification.isMap
+                            || containsDynamicAny(typeText: payloadType)
+                    {
+                        customCodecType = try codecTypeExpression(
+                            typeText: optional.type,
+                            hint: nil
+                        )
+                    }
+                    if optional.isOptional, let codecType = customCodecType {
+                        if case .some(.with) = caseConfig?.payloadHint {
+                            customCodecType = codecType
+                        } else {
+                            customCodecType = "OptionalSerializer<\(codecType)>"
+                        }
                     }
                     let label: String?
                     if let firstName = parameter.firstName, firstName.text != "_" {
@@ -434,7 +510,7 @@ private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl 
                             label: label,
                             typeText: payloadType,
                             isOptional: optional.isOptional,
-                            hasGenerics: hasGenerics,
+                            hasDeclaredChildren: hasDeclaredChildren,
                             customCodecType: customCodecType
                         )
                     )
@@ -477,16 +553,32 @@ private func parseEnumDecl(_ enumDecl: EnumDeclSyntax) throws -> ParsedEnumDecl 
     return .init(kind: .ordinal, cases: cases)
 }
 
-private func buildEnumDecls(_ parsedEnum: ParsedEnumDecl, accessPrefix: String) throws -> [DeclSyntax] {
+private func buildEnumDecls(
+    _ parsedEnum: ParsedEnumDecl,
+    targetType: String,
+    accessPrefix: String
+) throws -> [DeclSyntax] {
     switch parsedEnum.kind {
     case .ordinal:
-        return buildOrdinalEnumDecls(parsedEnum.cases, accessPrefix: accessPrefix)
+        return buildOrdinalEnumDecls(
+            parsedEnum.cases,
+            targetType: targetType,
+            accessPrefix: accessPrefix
+        )
     case .taggedUnion:
-        return try buildTaggedUnionEnumDecls(parsedEnum.cases, accessPrefix: accessPrefix)
+        return try buildTaggedUnionEnumDecls(
+            parsedEnum.cases,
+            targetType: targetType,
+            accessPrefix: accessPrefix
+        )
     }
 }
 
-private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: String) -> [DeclSyntax] {
+private func buildOrdinalEnumDecls(
+    _ cases: [ParsedEnumCase],
+    targetType: String,
+    accessPrefix: String
+) -> [DeclSyntax] {
     let defaultCase = cases[0].name
     let useExplicitWireValues = cases.allSatisfy { $0.wireValue != nil }
     let writeSwitchCases = cases.enumerated().map { index, enumCase in
@@ -504,23 +596,43 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: Stri
 
     let defaultDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
-            \(accessPrefix)static func foryDefault() -> Self {
-                .\(defaultCase)
+            \(accessPrefix)static func defaultValue(_ context: ReadContext) throws -> Target {
+                _ = context
+                return .\(defaultCase)
             }
             """
     )
 
+    let targetDecl: DeclSyntax = """
+        \(raw: accessPrefix)typealias Target = \(raw: targetType)
+        """
     let staticTypeIDDecl: DeclSyntax = """
         \(raw: accessPrefix)static var staticTypeId: TypeId { .enumType }
         """
     let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl(accessPrefix: accessPrefix))
+    let readWrapperDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: buildStructReadWrapperDecl(
+            accessPrefix: accessPrefix,
+            dataReadExpression: "Self.readData(context)"
+        )
+    )
+    let invalidRefFlagDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: buildInvalidRefFlagDecl()
+    )
+    let unknownEnumValueDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: """
+            @inline(never)
+            private static func __foryUnknownEnumValue(_ ordinal: UInt32) -> ForyError {
+                ForyError.invalidData("unknown \(errorLabel) \\(ordinal)")
+            }
+            """
+    )
 
     let writeDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
             @inline(__always)
-            \(accessPrefix)func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-                _ = hasGenerics
-                switch self {
+            \(accessPrefix)static func writeData(_ value: Target, _ context: WriteContext) throws {
+                switch value {
                 \(writeSwitchCases)
                 }
             }
@@ -530,18 +642,42 @@ private func buildOrdinalEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: Stri
     let readDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
             @inline(__always)
-            \(accessPrefix)static func foryReadData(_ context: ReadContext) throws -> Self {
+            \(accessPrefix)static func readData(_ context: ReadContext) throws -> Target {
                 let ordinal = try context.buffer.readVarUInt32()
                 switch ordinal {
                 \(readSwitchCases)
                 default:
-                    throw ForyError.invalidData("unknown \(errorLabel) \\(ordinal)")
+                    throw Self.__foryUnknownEnumValue(ordinal)
                 }
             }
             """
     )
 
-    return [defaultDecl, staticTypeIDDecl, writeWrapperDecl, writeDecl, readDecl]
+    let compatibleDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: """
+            @inline(never)
+            \(accessPrefix)static func readCompatible(
+                _ context: ReadContext,
+                typeInfo: TypeInfo
+            ) throws -> Target {
+                _ = typeInfo
+                return try readData(context)
+            }
+            """
+    )
+
+    return [
+        targetDecl,
+        defaultDecl,
+        staticTypeIDDecl,
+        writeWrapperDecl,
+        readWrapperDecl,
+        invalidRefFlagDecl,
+        unknownEnumValueDecl,
+        writeDecl,
+        readDecl,
+        compatibleDecl
+    ]
 }
 
 private func enumDeclUsesExplicitIntegerRawValues(_ enumDecl: EnumDeclSyntax) -> Bool {
@@ -574,7 +710,11 @@ private func parseEnumCaseWireValue(_ element: EnumCaseElementSyntax) -> UInt32?
     return parsed
 }
 
-private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: String) throws -> [DeclSyntax] {
+private func buildTaggedUnionEnumDecls(
+    _ cases: [ParsedEnumCase],
+    targetType: String,
+    accessPrefix: String
+) throws -> [DeclSyntax] {
     for enumCase in cases {
         if enumCase.unknownCase && !isRuntimeUnknownCase(enumCase) {
             throw MacroExpansionErrorMessage(
@@ -623,15 +763,22 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
         lines.append("    context.buffer.writeVarUInt32(\(caseID))")
         for (payloadIndex, payloadField) in enumCase.payload.enumerated() {
             let variableName = "__value\(payloadIndex)"
-            let hasGenerics = payloadField.hasGenerics ? "true" : "false"
             if let codecType = payloadField.customCodecType {
-                let payloadCodec = payloadField.isOptional ? "OptionalFieldCodec<\(codecType)>" : codecType
-                lines.append(
-                    "    try \(payloadCodec).write(\(variableName), context, refMode: .tracking, writeTypeInfo: true)"
-                )
+                if let serializerType = selectedLeafSerializerType(codecType) {
+                    lines.append(
+                        "    try \(serializerType).write(\(variableName), context, "
+                            + "refMode: .tracking, writeTypeInfo: true)"
+                    )
+                } else {
+                    lines.append(
+                        "    try \(codecType).writeField(\(variableName), context, "
+                            + "refMode: .tracking, writeTypeInfo: true, "
+                            + "hasDeclaredChildren: \(payloadField.hasDeclaredChildren ? "true" : "false"))"
+                    )
+                }
             } else {
                 lines.append(
-                    "    try \(variableName).foryWrite(context, refMode: .tracking, writeTypeInfo: true, hasGenerics: \(hasGenerics))"
+                    "    try \(payloadField.typeText).write(\(variableName), context, refMode: .tracking, writeTypeInfo: true)"
                 )
             }
         }
@@ -654,13 +801,18 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
         var lines: [String] = ["case \(caseID):"]
         for (payloadIndex, payloadField) in enumCase.payload.enumerated() {
             if let codecType = payloadField.customCodecType {
-                let payloadCodec = payloadField.isOptional ? "OptionalFieldCodec<\(codecType)>" : codecType
-                lines.append(
-                    "    let __value\(payloadIndex) = try \(payloadCodec).read(context, refMode: .tracking, readTypeInfo: true)"
-                )
+                if let serializerType = selectedLeafSerializerType(codecType) {
+                    lines.append(
+                        "    let __value\(payloadIndex) = try \(serializerType).read(context, refMode: .tracking, readTypeInfo: true)"
+                    )
+                } else {
+                    lines.append(
+                        "    let __value\(payloadIndex) = try \(codecType).readField(context, refMode: .tracking, readTypeInfo: true)"
+                    )
+                }
             } else {
                 lines.append(
-                    "    let __value\(payloadIndex) = try \(payloadField.typeText).foryRead(context, refMode: .tracking, readTypeInfo: true)"
+                    "    let __value\(payloadIndex) = try \(payloadField.typeText).read(context, refMode: .tracking, readTypeInfo: true)"
                 )
             }
         }
@@ -680,23 +832,35 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
 
     let defaultDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
-            \(accessPrefix)static func foryDefault() -> Self {
-                \(defaultExpr)
+            \(accessPrefix)static func defaultValue(_ context: ReadContext) throws -> Target {
+                _ = context
+                return \(defaultExpr)
             }
             """
     )
 
+    let targetDecl: DeclSyntax = """
+        \(raw: accessPrefix)typealias Target = \(raw: targetType)
+        """
     let staticTypeIDDecl: DeclSyntax = """
         \(raw: accessPrefix)static var staticTypeId: TypeId { .typedUnion }
         """
     let writeWrapperDecl: DeclSyntax = DeclSyntax(stringLiteral: buildWriteWrapperDecl(accessPrefix: accessPrefix))
+    let readWrapperDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: buildStructReadWrapperDecl(
+            accessPrefix: accessPrefix,
+            dataReadExpression: "Self.readData(context)"
+        )
+    )
+    let invalidRefFlagDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: buildInvalidRefFlagDecl()
+    )
 
     let writeDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
             @inline(__always)
-            \(accessPrefix)func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-                _ = hasGenerics
-                switch self {
+            \(accessPrefix)static func writeData(_ value: Target, _ context: WriteContext) throws {
+                switch value {
                 \(writeSwitchCases)
                 }
             }
@@ -706,7 +870,7 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
     let readDecl: DeclSyntax = DeclSyntax(
         stringLiteral: """
             @inline(__always)
-            \(accessPrefix)static func foryReadData(_ context: ReadContext) throws -> Self {
+            \(accessPrefix)static func readData(_ context: ReadContext) throws -> Target {
                 let caseID = try context.buffer.readVarUInt32()
                 switch caseID {
                 \(readSwitchCases)
@@ -716,7 +880,30 @@ private func buildTaggedUnionEnumDecls(_ cases: [ParsedEnumCase], accessPrefix: 
             """
     )
 
-    return [defaultDecl, staticTypeIDDecl, writeWrapperDecl, writeDecl, readDecl]
+    let compatibleDecl: DeclSyntax = DeclSyntax(
+        stringLiteral: """
+            @inline(never)
+            \(accessPrefix)static func readCompatible(
+                _ context: ReadContext,
+                typeInfo: TypeInfo
+            ) throws -> Target {
+                _ = typeInfo
+                return try readData(context)
+            }
+            """
+    )
+
+    return [
+        targetDecl,
+        defaultDecl,
+        staticTypeIDDecl,
+        writeWrapperDecl,
+        readWrapperDecl,
+        invalidRefFlagDecl,
+        writeDecl,
+        readDecl,
+        compatibleDecl
+    ]
 }
 
 private func isRuntimeUnknownCase(_ enumCase: ParsedEnumCase) -> Bool {
@@ -738,12 +925,13 @@ private func enumCaseDefaultExpr(_ enumCase: ParsedEnumCase) -> String {
     }
     let args = enumCase.payload.map { payloadField in
         let defaultValue: String
-        if payloadField.isOptional {
+        if let customCodecType = payloadField.customCodecType {
+            defaultValue = "try \(customCodecType).defaultValue(context)"
+        } else if payloadField.isOptional {
             defaultValue = "nil"
         } else {
             defaultValue =
-                payloadField.customCodecType.map { "\($0).defaultValue" }
-                ?? "\(payloadField.typeText).foryDefault()"
+                "try \(payloadField.typeText).defaultValue(context)"
         }
         if let label = payloadField.label {
             return "\(label): \(defaultValue)"
@@ -775,7 +963,13 @@ private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDe
             from: varDecl.attributes,
             supportsEncoding: true
         )
-        let fieldTypeHint = try parseNestedFieldTypeHint(from: varDecl.attributes, existing: fieldConfig?.typeHint)
+        let directTypeHint =
+            fieldConfig?.serializerType.map { FieldTypeHint.with(serializerType: $0) }
+            ?? fieldConfig?.typeHint
+        let fieldTypeHint = try parseNestedFieldTypeHint(
+            from: varDecl.attributes,
+            existing: directTypeHint
+        )
         if fieldConfig != nil || fieldTypeHint != nil, varDecl.bindings.count != 1 {
             throw MacroExpansionErrorMessage("Fory field annotations can only be used on a single stored property")
         }
@@ -796,14 +990,26 @@ private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDe
             let optionalUnwrapped = unwrapOptional(rawType)
             let isOptional = optionalUnwrapped.isOptional
             let concreteType = optionalUnwrapped.type
+            if isSerializerExistentialType(concreteType) {
+                throw MacroExpansionErrorMessage(
+                    "fields cannot use 'any Serializer' as an application value; select a concrete application protocol with DynamicSerializer"
+                )
+            }
 
             let typeResolution = try resolveFieldType(
                 concreteType: concreteType,
                 fieldEncoding: fieldConfig?.encoding,
                 typeHint: fieldTypeHint
             )
-            let dynamicAnyCodec = try resolveDynamicAnyCodec(rawType: rawType)
+            let dynamicCodecType =
+                containsDynamicAny(typeText: rawType)
+                ? try codecTypeExpression(typeText: concreteType, hint: nil)
+                : nil
             let classification = typeResolution.classification
+            let carrierCodecType =
+                classification.isCollection || classification.isMap
+                ? try codecTypeExpression(typeText: concreteType, hint: nil)
+                : nil
             let fieldID = fieldConfig?.id
             let baseIdentifier = toSnakeCase(name)
             let schemaIdentifier = fieldID.map(String.init) ?? baseIdentifier
@@ -830,8 +1036,8 @@ private func parseFields(_ declaration: some DeclGroupSyntax) throws -> ParsedDe
                     typeID: classification.typeID,
                     isCompressedNumeric: classification.isCompressedNumeric,
                     primitiveSize: classification.primitiveSize,
-                    customCodecType: typeResolution.customCodecType,
-                    dynamicAnyCodec: dynamicAnyCodec
+                    customCodecType:
+                        typeResolution.customCodecType ?? dynamicCodecType ?? carrierCodecType
                 )
             )
             originalIndex += 1
@@ -861,6 +1067,7 @@ private func parseForyFieldConfiguration(
     var parsedEncoding: FieldEncoding?
     var parsedID: Int?
     var parsedTypeHint: FieldTypeHint?
+    var parsedSerializerType: String?
     for element in attributes {
         guard let attr = element.as(AttributeSyntax.self) else {
             continue
@@ -912,24 +1119,43 @@ private func parseForyFieldConfiguration(
                 continue
             }
 
+            if label == "with" {
+                if parsedSerializerType != nil {
+                    throw MacroExpansionErrorMessage("conflicting @ForyField serializer selections on the same declaration")
+                }
+                parsedSerializerType = try parseSerializerMetatype(
+                    arg.expression,
+                    message: "@ForyField(with:) requires a serializer metatype ending in '.self'"
+                )
+                continue
+            }
+
             throw MacroExpansionErrorMessage(
-                "@ForyField supports only 'id', 'encoding', and 'type' arguments"
+                "@ForyField supports only 'id', 'encoding', 'type', and 'with' arguments"
             )
         }
     }
 
+    if parsedSerializerType != nil, parsedEncoding != nil || parsedTypeHint != nil {
+        throw MacroExpansionErrorMessage(
+            "@ForyField 'with' cannot be combined with 'encoding' or 'type'"
+        )
+    }
     if parsedEncoding != nil, parsedTypeHint != nil {
-        throw MacroExpansionErrorMessage("@ForyField cannot specify both 'encoding' and 'type'")
+        throw MacroExpansionErrorMessage(
+            "@ForyField cannot specify both 'encoding' and 'type'"
+        )
     }
 
-    if parsedEncoding == nil, parsedID == nil, parsedTypeHint == nil {
+    if parsedEncoding == nil, parsedID == nil, parsedTypeHint == nil, parsedSerializerType == nil {
         return nil
     }
 
     return ParsedForyFieldConfiguration(
         encoding: parsedEncoding,
         id: parsedID,
-        typeHint: parsedTypeHint
+        typeHint: parsedTypeHint,
+        serializerType: parsedSerializerType
     )
 }
 
@@ -1109,30 +1335,64 @@ private func attributeArgumentList(
     return argList
 }
 
-private func parseForyObjectConfiguration(_ attribute: AttributeSyntax) throws -> ParsedForyObjectConfiguration {
+private func parseForyObjectConfiguration(
+    _ attribute: AttributeSyntax,
+    macroName: String,
+    supportsEvolving: Bool = true
+) throws -> ParsedForyObjectConfiguration {
     guard let args = attribute.arguments else {
-        return .init(evolving: true)
+        return .init(evolving: true, targetType: nil)
     }
     guard case .argumentList(let argList) = args else {
-        throw MacroExpansionErrorMessage("@ForyStruct arguments are invalid")
+        throw MacroExpansionErrorMessage("\(macroName) arguments are invalid")
     }
     guard !argList.isEmpty else {
-        return .init(evolving: true)
+        return .init(evolving: true, targetType: nil)
     }
 
     var evolving = true
+    var targetType: String?
     for arg in argList {
         let label = arg.label?.text
-        if label == nil || label == "evolving" {
+        if supportsEvolving && (label == nil || label == "evolving") {
             evolving = try parseBoolLiteralExpression(
                 arg.expression,
-                message: "@ForyStruct evolving must be a boolean literal"
+                message: "\(macroName) evolving must be a boolean literal"
             )
             continue
         }
-        throw MacroExpansionErrorMessage("@ForyStruct supports only the 'evolving' argument")
+        if label == "target" {
+            let raw = trimType(arg.expression.trimmedDescription)
+            if raw == "nil" {
+                targetType = nil
+            } else {
+                targetType = try parseSerializerMetatype(
+                    arg.expression,
+                    message: "\(macroName) target must be a concrete metatype ending in '.self'"
+                )
+            }
+            continue
+        }
+        let supportedArguments =
+            supportsEvolving ? "'target' and 'evolving'" : "the 'target' argument"
+        throw MacroExpansionErrorMessage("\(macroName) supports only \(supportedArguments)")
     }
-    return .init(evolving: evolving)
+    return .init(evolving: evolving, targetType: targetType)
+}
+
+private func parseSerializerMetatype(
+    _ expr: ExprSyntax,
+    message: String
+) throws -> String {
+    let raw = expr.trimmedDescription
+    guard raw.hasSuffix(".self") else {
+        throw MacroExpansionErrorMessage(message)
+    }
+    let type = String(raw.dropLast(".self".count))
+    guard !type.isEmpty else {
+        throw MacroExpansionErrorMessage(message)
+    }
+    return type
 }
 
 private func parseBoolLiteralExpression(_ expr: ExprSyntax, message: String) throws -> Bool {
@@ -1186,6 +1446,18 @@ private func parseFieldTypeHintExpression(_ expr: ExprSyntax) throws -> FieldTyp
     }
 
     switch functionName {
+    case "with":
+        guard call.arguments.count == 1, let argument = call.arguments.first,
+            argument.label == nil
+        else {
+            throw MacroExpansionErrorMessage(".with requires exactly one serializer metatype")
+        }
+        return .with(
+            serializerType: try parseSerializerMetatype(
+                argument.expression,
+                message: ".with requires a serializer metatype ending in '.self'"
+            )
+        )
     case "encoding":
         guard let first = call.arguments.first else {
             throw MacroExpansionErrorMessage(".encoding requires an integer encoding")
@@ -1423,6 +1695,8 @@ private func resolveFieldType(
 
 private func classification(for typeText: String, hint: FieldTypeHint) throws -> TypeClassification {
     switch hint {
+    case .with:
+        return classifyType(typeText)
     case .list(let elementHint):
         _ = elementHint
         return .init(
@@ -1651,6 +1925,8 @@ private func codecTypeExpression(typeText: String, hint: FieldTypeHint?) throws 
     switch hint {
     case .none:
         baseCodec = try defaultCodecTypeExpression(typeText: concreteType)
+    case .with(let serializerType):
+        return try selectedSerializerFieldCodec(serializerType)
     case .inferredEncoding(let encoding):
         baseCodec = try integerCodecTypeExpression(typeText: concreteType, encoding: encoding)
     case .scalar(let name, let nullable, let encoding):
@@ -1660,7 +1936,7 @@ private func codecTypeExpression(typeText: String, hint: FieldTypeHint?) throws 
         }
         baseCodec = try scalarCodecTypeExpression(name: name, encoding: encoding)
         if nullable == true {
-            return "OptionalFieldCodec<\(baseCodec)>"
+            return "OptionalSerializer<\(baseCodec)>"
         }
         if nullable == false, optional.isOptional {
             throw MacroExpansionErrorMessage("non-nullable Fory field type hint .\(name) cannot target optional Swift type")
@@ -1671,7 +1947,7 @@ private func codecTypeExpression(typeText: String, hint: FieldTypeHint?) throws 
             throw MacroExpansionErrorMessage("list field hint requires an Array/List Swift type or a full element type hint")
         }
         let elementCodec = try codecTypeExpression(typeText: elementType, hint: elementHint)
-        baseCodec = "ListFieldCodec<\(elementCodec)>"
+        baseCodec = "ArraySerializer<\(elementCodec)>"
     case .array(let elementHint):
         let elementType = parseArrayElement(concreteType) ?? hintedValueTypeName(elementHint)
         guard let elementType else {
@@ -1685,7 +1961,7 @@ private func codecTypeExpression(typeText: String, hint: FieldTypeHint?) throws 
             throw MacroExpansionErrorMessage("set field hint requires a Set Swift type or a full element type hint")
         }
         let elementCodec = try codecTypeExpression(typeText: elementType, hint: elementHint)
-        baseCodec = "SetFieldCodec<\(elementCodec)>"
+        baseCodec = "SetSerializer<\(elementCodec)>"
     case .map(let keyHint, let valueHint):
         let parsedMap = parseDictionary(concreteType)
         let keyType = parsedMap?.0 ?? keyHint.flatMap(hintedValueTypeName)
@@ -1695,13 +1971,44 @@ private func codecTypeExpression(typeText: String, hint: FieldTypeHint?) throws 
         }
         let keyCodec = try codecTypeExpression(typeText: keyType, hint: keyHint)
         let valueCodec = try codecTypeExpression(typeText: valueType, hint: valueHint)
-        baseCodec = "MapFieldCodec<\(keyCodec), \(valueCodec)>"
+        baseCodec = "DictionarySerializer<\(keyCodec), \(valueCodec)>"
     }
 
     if optional.isOptional {
-        return "OptionalFieldCodec<\(baseCodec)>"
+        return "OptionalSerializer<\(baseCodec)>"
     }
     return baseCodec
+}
+
+private func selectedSerializerFieldCodec(_ serializerType: String) throws -> String {
+    let normalized = trimOuterWhitespace(serializerType)
+    if let wrapped = extractGenericTypeContent(
+        normalized,
+        baseNames: ["OptionalSerializer", "Fory.OptionalSerializer"]
+    ) {
+        return "OptionalSerializer<\(try selectedSerializerFieldCodec(wrapped))>"
+    }
+    if let element = extractGenericTypeContent(
+        normalized,
+        baseNames: ["ArraySerializer", "Fory.ArraySerializer"]
+    ) {
+        return "ArraySerializer<\(try selectedSerializerFieldCodec(element))>"
+    }
+    if let element = extractGenericTypeContent(
+        normalized,
+        baseNames: ["SetSerializer", "Fory.SetSerializer"]
+    ) {
+        return "SetSerializer<\(try selectedSerializerFieldCodec(element))>"
+    }
+    if let contents = extractGenericTypeContent(
+        normalized,
+        baseNames: ["DictionarySerializer", "Fory.DictionarySerializer"]
+    ), let comma = findTopLevelSeparatorIndex(in: contents, separator: ",") {
+        let key = trimOuterWhitespace(String(contents[..<comma]))
+        let value = trimOuterWhitespace(String(contents[contents.index(after: comma)...]))
+        return "DictionarySerializer<\(try selectedSerializerFieldCodec(key)), \(try selectedSerializerFieldCodec(value))>"
+    }
+    return "SerializerCodec<\(normalized)>"
 }
 
 private func arrayElementCodecTypeExpression(typeText: String, hint: FieldTypeHint) throws -> String {
@@ -1815,20 +2122,23 @@ private func defaultCodecTypeExpression(typeText: String) throws -> String {
     case "Data":
         baseCodec = "DataCodec"
     default:
-        if let elementType = parseArrayElement(concreteType) {
-            baseCodec = "ListFieldCodec<\(try codecTypeExpression(typeText: elementType, hint: nil))>"
+        if isDynamicAnyConcreteType(concreteType) {
+            let targetType = dynamicSerializerTargetType(optional.type)
+            baseCodec = "SerializerCodec<DynamicSerializer<\(targetType)>>"
+        } else if let elementType = parseArrayElement(concreteType) {
+            baseCodec = "ArraySerializer<\(try codecTypeExpression(typeText: elementType, hint: nil))>"
         } else if let elementType = parseSetElement(concreteType) {
-            baseCodec = "SetFieldCodec<\(try codecTypeExpression(typeText: elementType, hint: nil))>"
+            baseCodec = "SetSerializer<\(try codecTypeExpression(typeText: elementType, hint: nil))>"
         } else if let (keyType, valueType) = parseDictionary(concreteType) {
             let keyCodec = try codecTypeExpression(typeText: keyType, hint: nil)
             let valueCodec = try codecTypeExpression(typeText: valueType, hint: nil)
-            baseCodec = "MapFieldCodec<\(keyCodec), \(valueCodec)>"
+            baseCodec = "DictionarySerializer<\(keyCodec), \(valueCodec)>"
         } else {
             baseCodec = "SerializerCodec<\(optional.type)>"
         }
     }
     if optional.isOptional {
-        return "OptionalFieldCodec<\(baseCodec)>"
+        return "OptionalSerializer<\(baseCodec)>"
     }
     return baseCodec
 }
@@ -1993,6 +2303,8 @@ private func hintedValueTypeName(_ hint: FieldTypeHint) -> String? {
             return nil
         }
         return "[\(keyType): \(valueType)]"
+    case .with(let serializerType):
+        return "\(serializerType).Target"
     case .inferredEncoding:
         return nil
     }
@@ -2000,47 +2312,6 @@ private func hintedValueTypeName(_ hint: FieldTypeHint) -> String? {
 
 private func typeMatchesHint(actual: String, expected: String) -> Bool {
     trimKnownModulePrefix(trimType(unwrapOptional(actual).type)) == expected
-}
-
-private func resolveDynamicAnyCodec(rawType: String) throws -> DynamicAnyCodecKind? {
-    let optional = unwrapOptional(rawType)
-    let concreteType = trimType(optional.type)
-
-    if concreteType == "AnyHashable" {
-        return .anyHashableValue
-    }
-
-    if isDynamicAnyConcreteType(concreteType) {
-        return .anyValue
-    }
-
-    if let elementType = parseArrayElement(concreteType), containsDynamicAny(typeText: elementType) {
-        return .anyList
-    }
-
-    if let elementType = parseSetElement(concreteType), containsDynamicAny(typeText: elementType) {
-        throw MacroExpansionErrorMessage("Set<...> with Any elements is not supported by @ForyStruct yet")
-    }
-
-    if let (keyType, valueType) = parseDictionary(concreteType),
-        containsDynamicAny(typeText: keyType) || containsDynamicAny(typeText: valueType)
-    {
-        let normalizedKeyType = trimType(unwrapOptional(keyType).type)
-        if normalizedKeyType == "String" {
-            return .stringAnyMap
-        }
-        if normalizedKeyType == "Int32" {
-            return .int32AnyMap
-        }
-        if normalizedKeyType == "AnyHashable" {
-            return .anyHashableAnyMap
-        }
-        throw MacroExpansionErrorMessage(
-            "Dictionary<\(keyType), ...> with Any values is only supported for String, Int32, or AnyHashable keys"
-        )
-    }
-
-    return nil
 }
 
 private func containsDynamicAny(typeText: String) -> Bool {
@@ -2172,7 +2443,7 @@ private func buildCompatibleTypeMetaFieldsDecl(sortedFields: [ParsedField], acce
 
         \(accessPrefix)static func foryFieldsInfo(
             trackRef: Bool,
-            resolveFieldTypeID: (Any.Type) throws -> TypeId
+            resolveSerializerTypeId: (Any.Type) throws -> TypeId
         ) throws -> [TypeMeta.FieldInfo] {
             \(resolvedBody)
         }
@@ -2238,21 +2509,94 @@ private func buildSchemaFieldTypeFingerprint(
     trackRefExpression: String
 ) throws -> String {
     let fieldTrackRefExpression: String
-    if let dynamicAnyCodec = field.dynamicAnyCodec {
-        fieldTrackRefExpression = dynamicAnyUsesContextTrackRef(dynamicAnyCodec) ? trackRefExpression : "false"
-    } else if let customCodecType = field.customCodecType {
-        fieldTrackRefExpression = "\(trackRefExpression) && \(customCodecType).isRefType"
+    if let fieldCodec = selectedFieldCodecType(field) {
+        fieldTrackRefExpression = "\(trackRefExpression) && \(fieldCodec).isRefType"
     } else {
         fieldTrackRefExpression = "\(trackRefExpression) && \(field.typeText).isRefType"
     }
 
+    let fingerprintHint: FieldTypeHint?
+    if case .some(.with(let serializerType)) = field.typeHint {
+        fingerprintHint = selectedSerializerSchemaHint(
+            serializerType: serializerType,
+            targetType: field.typeText
+        )
+    } else {
+        fingerprintHint = field.typeHint
+    }
+    let explicitTypeIDExpression: String?
+    if field.customCodecType != nil, case nil = fingerprintHint,
+        !containsDynamicAny(typeText: field.typeText)
+    {
+        explicitTypeIDExpression = "\(field.typeID)"
+    } else {
+        explicitTypeIDExpression = nil
+    }
     return try buildSchemaTypeFingerprint(
         typeText: field.typeText,
-        hint: field.typeHint,
+        hint: fingerprintHint,
         nullableExpression: field.isOptional ? "true" : "false",
         trackRefExpression: fieldTrackRefExpression,
-        explicitTypeIDExpression: field.customCodecType != nil ? "\(field.typeID)" : nil
+        explicitTypeIDExpression: explicitTypeIDExpression
     )
+}
+
+private func selectedSerializerSchemaHint(
+    serializerType: String,
+    targetType: String
+) -> FieldTypeHint {
+    let serializer = trimOuterWhitespace(serializerType)
+    let target = unwrapOptional(targetType).type
+    if let wrapped = extractGenericTypeContent(
+        serializer,
+        baseNames: ["OptionalSerializer", "Fory.OptionalSerializer"]
+    ) {
+        return selectedSerializerSchemaHint(serializerType: wrapped, targetType: target)
+    }
+    if let elementSerializer = extractGenericTypeContent(
+        serializer,
+        baseNames: ["ArraySerializer", "Fory.ArraySerializer"]
+    ), let elementType = parseArrayElement(target) {
+        return .list(
+            element: selectedSerializerSchemaHint(
+                serializerType: elementSerializer,
+                targetType: elementType
+            )
+        )
+    }
+    if let elementSerializer = extractGenericTypeContent(
+        serializer,
+        baseNames: ["SetSerializer", "Fory.SetSerializer"]
+    ), let elementType = parseSetElement(target) {
+        return .set(
+            element: selectedSerializerSchemaHint(
+                serializerType: elementSerializer,
+                targetType: elementType
+            )
+        )
+    }
+    if let serializers = extractGenericTypeContent(
+        serializer,
+        baseNames: ["DictionarySerializer", "Fory.DictionarySerializer"]
+    ), let comma = findTopLevelSeparatorIndex(in: serializers, separator: ","),
+        let (keyType, valueType) = parseDictionary(target)
+    {
+        let keySerializer = trimOuterWhitespace(String(serializers[..<comma]))
+        let valueSerializer = trimOuterWhitespace(
+            String(serializers[serializers.index(after: comma)...])
+        )
+        return .map(
+            key: selectedSerializerSchemaHint(
+                serializerType: keySerializer,
+                targetType: keyType
+            ),
+            value: selectedSerializerSchemaHint(
+                serializerType: valueSerializer,
+                targetType: valueType
+            )
+        )
+    }
+    return .with(serializerType: serializer)
 }
 
 private func buildSchemaTypeFingerprint(
@@ -2272,6 +2616,8 @@ private func buildSchemaTypeFingerprint(
 
     if let hint {
         switch hint {
+        case .with(let serializerType):
+            return "\"\\(__foryNormalizeSchemaFingerprintTypeID(UInt32(\(serializerType).staticTypeId.rawValue))),\\(\(trackFlagExpr)),\(nullableLiteral)\""
         case .list(let elementHint):
             let listClassification = try classification(for: concreteType, hint: hint)
             if listClassification.typeID != 22 {
@@ -2415,16 +2761,18 @@ private func buildSchemaTypeFingerprint(
 private func buildDefaultDecl(isClass: Bool, fields: [ParsedField], accessPrefix: String) -> String {
     if isClass {
         return """
-            \(accessPrefix)static func foryDefault() -> Self {
-                Self.init()
+            \(accessPrefix)static func defaultValue(_ context: ReadContext) throws -> Target {
+                try context.reserveGraphMemory(\(classGraphOwnerBytesExpr(fields)))
+                return Target.init()
             }
             """
     }
 
     if fields.isEmpty {
         return """
-            \(accessPrefix)static func foryDefault() -> Self {
-                Self()
+            \(accessPrefix)static func defaultValue(_ context: ReadContext) throws -> Target {
+                _ = context
+                return Target()
             }
             """
     }
@@ -2438,8 +2786,8 @@ private func buildDefaultDecl(isClass: Bool, fields: [ParsedField], accessPrefix
         .joined(separator: ",\n            ")
 
     return """
-        \(accessPrefix)static func foryDefault() -> Self {
-            Self(
+        \(accessPrefix)static func defaultValue(_ context: ReadContext) throws -> Target {
+            Target(
                 \(args)
             )
         }
@@ -2448,15 +2796,15 @@ private func buildDefaultDecl(isClass: Bool, fields: [ParsedField], accessPrefix
 
 private func buildWriteWrapperDecl(accessPrefix: String) -> String {
     """
-    \(accessPrefix)func foryWrite(
+    \(accessPrefix)static func write(
+        _ value: Target,
         _ context: WriteContext,
         refMode: RefMode,
-        writeTypeInfo: Bool,
-        hasGenerics: Bool
+        writeTypeInfo: Bool
     ) throws {
         let __buffer = context.buffer
         if refMode != .none {
-            if refMode == .tracking, Self.isRefType, let object = self as AnyObject? {
+            if refMode == .tracking, Self.isRefType, let object = value as AnyObject? {
                 if context.refWriter.tryWriteRef(buffer: __buffer, object: object) {
                     return
                 }
@@ -2466,15 +2814,37 @@ private func buildWriteWrapperDecl(accessPrefix: String) -> String {
         }
 
         if writeTypeInfo {
-            try Self.foryWriteStaticTypeInfo(context)
+            try Self.writeTypeInfo(context)
         }
 
-        try foryWriteData(context, hasGenerics: hasGenerics)
+        try Self.writeData(value, context)
     }
     """
 }
 
-private func buildWriteDataDecl(sortedFields: [ParsedField], accessPrefix: String) -> String {
+private func buildInvalidRefFlagDecl() -> String {
+    """
+    @inline(never)
+    private static func __foryInvalidRefFlag(_ rawFlag: Int8) -> ForyError {
+        ForyError.refError("invalid ref flag \\(rawFlag)")
+    }
+    """
+}
+
+private func buildVersionMismatchDecl() -> String {
+    """
+    @inline(never)
+    private static func __foryVersionMismatch(expected: UInt32, actual: UInt32) -> ForyError {
+        ForyError.invalidData("class version hash mismatch: expected \\(expected), got \\(actual)")
+    }
+    """
+}
+
+private func buildWriteDataDecl(
+    sortedFields: [ParsedField],
+    accessPrefix: String,
+    successBodyAttribute: String
+) -> String {
     let allFieldLines = sortedFields.map { field in
         writeLine(for: field)
     }
@@ -2504,14 +2874,14 @@ private func buildWriteDataDecl(sortedFields: [ParsedField], accessPrefix: Strin
 
     let fieldBody: String
     if allFieldLines.isEmpty {
-        fieldBody = "_ = hasGenerics"
+        fieldBody = "_ = value"
     } else {
         fieldBody = fastFieldLines.joined(separator: "\n        ")
     }
 
     return """
-        @inline(__always)
-        \(accessPrefix)func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
+        \(successBodyAttribute)
+        \(accessPrefix)static func writeData(_ value: Target, _ context: WriteContext) throws {
             let __buffer = context.buffer
             if !context.compatible {
                 \(schemaHeader)
@@ -2531,7 +2901,7 @@ private func schemaPrimitiveReserveBytes(for field: ParsedField) -> Int {
     guard !field.isOptional else {
         return 0
     }
-    guard field.dynamicAnyCodec == nil, field.typeID != MacroTypeId.structType else {
+    guard field.typeID != MacroTypeId.structType else {
         return 0
     }
 
@@ -2567,34 +2937,29 @@ private func schemaPrimitiveReserveBytes(for field: ParsedField) -> Int {
 }
 
 private func writeLine(for field: ParsedField) -> String {
-    if let dynamicAnyCodec = field.dynamicAnyCodec {
+    if let fieldCodec = selectedFieldCodecType(field) {
         let refMode = fieldRefModeExpression(field)
-        return dynamicAnyWriteLine(
-            field: field,
-            dynamicAnyCodec: dynamicAnyCodec,
-            refModeExpr: refMode
-        )
-    }
-    let hasGenerics = field.isCollection ? "true" : "false"
-    if let codecType = field.customCodecType {
-        let refMode = fieldRefModeExpression(field)
-        let fieldCodec = field.isOptional ? "OptionalFieldCodec<\(codecType)>" : codecType
-        if field.isOptional {
+        if let serializerType = selectedLeafSerializerType(fieldCodec) {
             return """
-                try \(fieldCodec).write(
-                    self.\(field.name),
+                try \(serializerType).write(
+                    value.\(field.name),
                     context,
                     refMode: \(refMode),
-                    writeTypeInfo: false
+                    writeTypeInfo: \(serializerType).staticTypeId == .unknown
+                        || (context.compatible
+                            && TypeId.needsTypeInfoForField(\(serializerType).staticTypeId))
                 )
                 """
         }
         return """
-            try \(fieldCodec).write(
-                self.\(field.name),
+            try \(fieldCodec).writeField(
+                value.\(field.name),
                 context,
                 refMode: \(refMode),
-                writeTypeInfo: false
+                writeTypeInfo: \(fieldCodec).staticTypeId == .unknown
+                    || (context.compatible
+                        && TypeId.needsTypeInfoForField(\(fieldCodec).staticTypeId)),
+                hasDeclaredChildren: \(field.isCollection ? "true" : "false")
             )
             """
     }
@@ -2602,18 +2967,38 @@ private func writeLine(for field: ParsedField) -> String {
         if let primitiveLine = primitiveSchemaWriteLine(field) {
             return primitiveLine
         }
-        return "try self.\(field.name).foryWriteData(context, hasGenerics: \(hasGenerics))"
+        return "try \(field.typeText).writeData(value.\(field.name), context)"
     }
     let refMode = fieldRefModeExpression(field)
     let writeTypeInfoExpr = "context.compatible ? TypeId.needsTypeInfoForField(\(field.typeText).staticTypeId) : false"
     return """
-        try self.\(field.name).foryWrite(
+        try \(field.typeText).write(
+            value.\(field.name),
             context,
             refMode: \(refMode),
-            writeTypeInfo: \(writeTypeInfoExpr),
-            hasGenerics: \(hasGenerics)
+            writeTypeInfo: \(writeTypeInfoExpr)
         )
         """
+}
+
+func selectedFieldCodecType(_ field: ParsedField) -> String? {
+    guard let codecType = field.customCodecType else {
+        return nil
+    }
+    if field.isOptional {
+        if case .some(.with) = field.typeHint {
+            return codecType
+        }
+        return "OptionalSerializer<\(codecType)>"
+    }
+    return codecType
+}
+
+func selectedLeafSerializerType(_ codecType: String) -> String? {
+    extractGenericTypeContent(
+        trimOuterWhitespace(codecType),
+        baseNames: ["SerializerCodec", "Fory.SerializerCodec"]
+    )
 }
 
 enum MacroTypeId {
@@ -2650,58 +3035,40 @@ private func primitiveSchemaWriteLine(_ field: ParsedField) -> String? {
     let type = trimType(field.typeText)
     switch type {
     case "Bool":
-        return "__buffer.writeUInt8(self.\(field.name) ? 1 : 0)"
+        return "__buffer.writeUInt8(value.\(field.name) ? 1 : 0)"
     case "Int8":
-        return "__buffer.writeInt8(self.\(field.name))"
+        return "__buffer.writeInt8(value.\(field.name))"
     case "Int16":
-        return "__buffer.writeInt16(self.\(field.name))"
+        return "__buffer.writeInt16(value.\(field.name))"
     case "Int32":
-        return "__buffer.writeVarInt32(self.\(field.name))"
+        return "__buffer.writeVarInt32(value.\(field.name))"
     case "Int64":
-        return "__buffer.writeVarInt64(self.\(field.name))"
+        return "__buffer.writeVarInt64(value.\(field.name))"
     case "Int":
-        return "__buffer.writeVarInt64(Int64(self.\(field.name)))"
+        return "__buffer.writeVarInt64(Int64(value.\(field.name)))"
     case "UInt8":
-        return "__buffer.writeUInt8(self.\(field.name))"
+        return "__buffer.writeUInt8(value.\(field.name))"
     case "UInt16":
-        return "__buffer.writeUInt16(self.\(field.name))"
+        return "__buffer.writeUInt16(value.\(field.name))"
     case "UInt32":
-        return "__buffer.writeVarUInt32(self.\(field.name))"
+        return "__buffer.writeVarUInt32(value.\(field.name))"
     case "UInt64":
-        return "__buffer.writeVarUInt64(self.\(field.name))"
+        return "__buffer.writeVarUInt64(value.\(field.name))"
     case "UInt":
-        return "__buffer.writeVarUInt64(UInt64(self.\(field.name)))"
+        return "__buffer.writeVarUInt64(UInt64(value.\(field.name)))"
     case "Float":
-        return "__buffer.writeFloat32(self.\(field.name))"
+        return "__buffer.writeFloat32(value.\(field.name))"
     case "Double":
-        return "__buffer.writeFloat64(self.\(field.name))"
+        return "__buffer.writeFloat64(value.\(field.name))"
     default:
         return nil
     }
 }
 
-private func dynamicAnyWriteLine(
-    field: ParsedField,
-    dynamicAnyCodec: DynamicAnyCodecKind,
-    refModeExpr: String
-) -> String {
-    if dynamicAnyCodec == .anyValue || dynamicAnyCodec == .anyHashableValue {
-        return "try context.writeAny(self.\(field.name), refMode: \(refModeExpr), writeTypeInfo: true, hasGenerics: false)"
-    }
-    let method = dynamicAnyWriteMethodName(dynamicAnyCodec)
-    let castType = dynamicAnyCastType(dynamicAnyCodec)
-    let optionalSuffix = field.isOptional ? "?" : ""
-    return "try context.\(method)(self.\(field.name) as \(castType)\(optionalSuffix), refMode: \(refModeExpr), hasGenerics: true)"
-}
-
 func fieldRefModeExpression(_ field: ParsedField) -> String {
     let nullable = field.isOptional ? "true" : "false"
-    if let dynamicAnyCodec = field.dynamicAnyCodec {
-        let trackRefExpr = dynamicAnyUsesContextTrackRef(dynamicAnyCodec) ? "context.trackRef" : "false"
-        return "RefMode.from(nullable: \(nullable), trackRef: \(trackRefExpr))"
-    }
-    if let customCodecType = field.customCodecType {
-        return "RefMode.from(nullable: \(nullable), trackRef: context.trackRef && \(customCodecType).isRefType)"
+    if let fieldCodec = selectedFieldCodecType(field) {
+        return "RefMode.from(nullable: \(nullable), trackRef: context.trackRef && \(fieldCodec).isRefType)"
     }
     return "RefMode.from(nullable: \(nullable), trackRef: context.trackRef && \(field.typeText).isRefType)"
 }
@@ -2711,19 +3078,30 @@ private func compatibleTypeMetaFieldExpression(
     trackRefExpression: String
 ) -> String {
     let fieldTrackRefExpression: String
-    if let dynamicAnyCodec = field.dynamicAnyCodec {
-        fieldTrackRefExpression = dynamicAnyUsesContextTrackRef(dynamicAnyCodec) ? trackRefExpression : "false"
-    } else if let customCodecType = field.customCodecType {
-        fieldTrackRefExpression = "\(trackRefExpression) && \(customCodecType).isRefType"
+    if let fieldCodec = selectedFieldCodecType(field) {
+        fieldTrackRefExpression = "\(trackRefExpression) && \(fieldCodec).isRefType"
     } else {
         fieldTrackRefExpression = "\(trackRefExpression) && \(field.typeText).isRefType"
     }
 
-    if let customCodecType = field.customCodecType {
+    if let fieldCodec = selectedFieldCodecType(field) {
         return """
-            \(customCodecType).fieldType(
+            try! \(fieldCodec).fieldType(
                 nullable: \(field.isOptional ? "true" : "false"),
-                trackRef: \(fieldTrackRefExpression)
+                trackRef: \(fieldTrackRefExpression),
+                resolveSerializerTypeId: { serializerType in
+                    guard let serializer = serializerType as? any Serializer.Type else {
+                        throw ForyError.invalidData("field serializer does not conform to Serializer")
+                    }
+                    switch serializer.staticTypeId {
+                    case .structType:
+                        return .compatibleStruct
+                    case .typedUnion, .namedUnion:
+                        return .union
+                    default:
+                        return serializer.staticTypeId
+                    }
+                }
             )
             """
     }
@@ -2738,19 +3116,18 @@ private func compatibleTypeMetaFieldExpression(
 
 private func resolvedTypeMetaFieldExpr(_ field: ParsedField) -> String {
     let fieldTrackRefExpression: String
-    if let dynamicAnyCodec = field.dynamicAnyCodec {
-        fieldTrackRefExpression = dynamicAnyUsesContextTrackRef(dynamicAnyCodec) ? "trackRef" : "false"
-    } else if let customCodecType = field.customCodecType {
-        fieldTrackRefExpression = "trackRef && \(customCodecType).isRefType"
+    if let fieldCodec = selectedFieldCodecType(field) {
+        fieldTrackRefExpression = "trackRef && \(fieldCodec).isRefType"
     } else {
         fieldTrackRefExpression = "trackRef && \(field.typeText).isRefType"
     }
 
-    if let customCodecType = field.customCodecType {
+    if let fieldCodec = selectedFieldCodecType(field) {
         return """
-            \(customCodecType).fieldType(
+            try \(fieldCodec).fieldType(
                 nullable: \(field.isOptional ? "true" : "false"),
-                trackRef: \(fieldTrackRefExpression)
+                trackRef: \(fieldTrackRefExpression),
+                resolveSerializerTypeId: resolveSerializerTypeId
             )
             """
     }
@@ -2762,67 +3139,11 @@ private func resolvedTypeMetaFieldExpr(_ field: ParsedField) -> String {
     )
 }
 
-func dynamicAnyWriteMethodName(_ codec: DynamicAnyCodecKind) -> String {
-    switch codec {
-    case .anyValue, .anyHashableValue:
-        return "writeAny"
-    case .anyList:
-        return "writeListOfAny"
-    case .stringAnyMap:
-        return "writeMapStringToAny"
-    case .int32AnyMap:
-        return "writeMapInt32ToAny"
-    case .anyHashableAnyMap:
-        return "writeMapAnyHashableToAny"
-    }
-}
-
-func dynamicAnyReadMethodName(_ codec: DynamicAnyCodecKind) -> String {
-    switch codec {
-    case .anyValue, .anyHashableValue:
-        return "readAny"
-    case .anyList:
-        return "readListOfAny"
-    case .stringAnyMap:
-        return "readMapStringToAny"
-    case .int32AnyMap:
-        return "readMapInt32ToAny"
-    case .anyHashableAnyMap:
-        return "readMapAnyHashableToAny"
-    }
-}
-
-func dynamicAnyCastType(_ codec: DynamicAnyCodecKind) -> String {
-    switch codec {
-    case .anyList:
-        return "[Any]"
-    case .stringAnyMap:
-        return "[String: Any]"
-    case .int32AnyMap:
-        return "[Int32: Any]"
-    case .anyHashableAnyMap:
-        return "[AnyHashable: Any]"
-    case .anyValue, .anyHashableValue:
-        return "Any"
-    }
-}
-
-func dynamicAnyUsesContextTrackRef(_ codec: DynamicAnyCodecKind) -> Bool {
-    codec == .anyValue
-}
-
-func dynamicAnyReadsTypeInfo(_ codec: DynamicAnyCodecKind) -> Bool {
-    codec == .anyValue || codec == .anyHashableValue
-}
-
 func fieldDefaultExpr(_ field: ParsedField) -> String {
-    if field.dynamicAnyCodec != nil {
-        return dynamicAnyDefaultExpr(typeText: field.typeText)
+    if let fieldCodec = selectedFieldCodecType(field) {
+        return "try \(fieldCodec).defaultValue(context)"
     }
-    if let customCodecType = field.customCodecType {
-        return field.isOptional ? "nil" : "\(customCodecType).defaultValue"
-    }
-    return "\(field.typeText).foryDefault()"
+    return "try \(field.typeText).defaultValue(context)"
 }
 
 private func buildCompatibleFieldTypeExpression(
@@ -2981,7 +3302,7 @@ private func resolvedFieldTypeExpr(
     let typeIDExpr =
         isDynamicAnyConcreteType(concreteType)
         ? "TypeId.unknown.rawValue"
-        : "try resolveFieldTypeID(\(concreteType).self).rawValue"
+        : "try resolveSerializerTypeId(\(concreteType).self).rawValue"
 
     return """
         TypeMeta.FieldType(
@@ -3021,6 +3342,10 @@ private func unwrapOptional(_ typeText: String) -> (isOptional: Bool, type: Stri
 
 func trimType(_ type: String) -> String {
     type.replacingOccurrences(of: " ", with: "")
+}
+
+private func trimOuterWhitespace(_ text: String) -> String {
+    String(text.drop(while: \.isWhitespace).reversed().drop(while: \.isWhitespace).reversed())
 }
 
 private struct TypeClassification {
@@ -3120,40 +3445,23 @@ private func parseArrayElement(_ type: String) -> String? {
     return extractGenericTypeContent(normalized, baseNames: ["Array", "Swift.Array"])
 }
 
-func dynamicAnyDefaultExpr(typeText: String) -> String {
-    let optional = unwrapOptional(typeText)
-    if optional.isOptional {
-        return "nil"
-    }
-
-    let concreteType = normalizeTypeForDynamicAny(optional.type)
-    if concreteType == "AnyObject" {
-        return "NSNull()"
-    }
-    if concreteType == "AnyHashable" {
-        return "AnyHashable(Int32(0))"
-    }
-    if concreteType == "Any" || isAnySerializerExistentialType(concreteType) {
-        return "ForyAnyNullValue()"
-    }
-    if parseArrayElement(concreteType) != nil {
-        return "[]"
-    }
-    if parseDictionary(concreteType) != nil {
-        return "[:]"
-    }
-    return "\(typeText)()"
-}
-
 private func isDynamicAnyConcreteType(_ typeText: String) -> Bool {
     let normalized = normalizeTypeForDynamicAny(typeText)
-    if normalized == "Any" || normalized == "AnyObject" {
+    if normalized == "Any" || normalized == "AnyObject" || normalized == "AnyHashable" {
         return true
     }
-    return isAnySerializerExistentialType(normalized)
+    return normalized.hasPrefix("any") && normalized.count > 3
 }
 
-private func isAnySerializerExistentialType(_ normalizedType: String) -> Bool {
+private func dynamicSerializerTargetType(_ typeText: String) -> String {
+    let normalized = normalizeTypeForDynamicAny(typeText)
+    if normalized.hasPrefix("any"), normalized.count > 3 {
+        return "any \(normalized.dropFirst(3))"
+    }
+    return normalized
+}
+
+private func isSerializerExistentialType(_ normalizedType: String) -> Bool {
     let normalized = normalizeTypeForDynamicAny(normalizedType)
     guard normalized.hasPrefix("any") else {
         return false
@@ -3210,7 +3518,7 @@ private func trimKnownModulePrefix(_ type: String) -> String {
     return type
 }
 
-private func extractGenericTypeContent(_ type: String, baseNames: [String]) -> String? {
+func extractGenericTypeContent(_ type: String, baseNames: [String]) -> String? {
     for baseName in baseNames {
         let prefix = "\(baseName)<"
         if type.hasPrefix(prefix), type.hasSuffix(">") {

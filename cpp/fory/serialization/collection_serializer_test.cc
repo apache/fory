@@ -83,6 +83,24 @@ void register_types(Fory &fory) {
 // Polymorphic Vector Tests
 // ============================================================================
 
+TEST(CollectionSerializerTest, RejectsMissingConcreteType) {
+  Config config;
+  ReadContext ctx(config, std::make_unique<TypeResolver>());
+  Buffer buffer;
+  buffer.write_uint8(COLL_IS_SAME_TYPE | COLL_DECL_ELEMENT_TYPE);
+  ctx.attach(buffer);
+
+  using Values = std::vector<std::shared_ptr<Animal>>;
+  auto result =
+      read_collection_data_slow<std::shared_ptr<Animal>, Values>(ctx, 1);
+
+  EXPECT_TRUE(result.empty());
+  ASSERT_TRUE(ctx.has_error());
+  EXPECT_EQ(ctx.error().code(), ErrorCode::InvalidData);
+  EXPECT_NE(ctx.error().message().find("concrete type information"),
+            std::string::npos);
+}
+
 TEST(CollectionSerializerTest, VectorPolymorphicHeterogeneousElements) {
   auto fory = create_fory();
   register_types(fory);

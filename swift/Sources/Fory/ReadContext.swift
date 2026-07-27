@@ -19,6 +19,17 @@ import Foundation
 
 private let typeMetaSizeMask = 0xFF
 
+@inline(never)
+private func invalidReadDynamicDepth(_ maxDepth: Int) throws -> Never {
+    throw ForyError.invalidData("configured maxDepth \(maxDepth) is negative")
+}
+
+@inline(never)
+private func readDynamicDepthExceeded(_ depth: Int, maxDepth: Int) throws -> Never {
+    throw ForyError.invalidData(
+        "dynamic Any nesting depth \(depth) exceeds configured maxDepth \(maxDepth)")
+}
+
 public final class ReadContext {
     public let buffer: ByteBuffer
     let typeResolver: TypeResolver
@@ -79,13 +90,11 @@ public final class ReadContext {
     @inline(__always)
     func enterDynamicAnyDepth() throws {
         if maxDepth < 0 {
-            throw ForyError.invalidData("configured maxDepth \(maxDepth) is negative")
+            try invalidReadDynamicDepth(maxDepth)
         }
         let nextDepth = dynamicAnyDepth + 1
         if nextDepth > maxDepth {
-            throw ForyError.invalidData(
-                "dynamic Any nesting depth \(nextDepth) exceeds configured maxDepth \(maxDepth)"
-            )
+            try readDynamicDepthExceeded(nextDepth, maxDepth: maxDepth)
         }
         dynamicAnyDepth = nextDepth
     }
@@ -97,30 +106,58 @@ public final class ReadContext {
         }
     }
 
+    @usableFromInline
     @inline(__always)
-    func ensureCollectionLength(_ length: Int, label: String) throws {
+    internal func ensureCollectionLength(_ length: Int, label: String) throws {
         if length < 0 {
-            throw ForyError.invalidData("\(label) length is negative")
+            throw invalidCollectionLength(label: label)
         }
     }
 
+    @usableFromInline
     @inline(__always)
-    func ensureRemainingBytes(_ byteCount: Int, label: String) throws {
+    internal func ensureRemainingBytes(_ byteCount: Int, label: String) throws {
         if byteCount < 0 {
-            throw ForyError.invalidData("\(label) size is negative")
+            throw invalidRemainingByteCount(label: label)
         }
         let remainingBytes = buffer.remaining
         if byteCount > remainingBytes {
-            throw ForyError.invalidData(
-                "\(label) requires \(byteCount) bytes but only \(remainingBytes) remain in buffer"
+            throw insufficientRemainingBytes(
+                byteCount,
+                remaining: remainingBytes,
+                label: label
             )
         }
+    }
+
+    @usableFromInline
+    @inline(never)
+    internal func invalidCollectionLength(label: String) -> ForyError {
+        ForyError.invalidData("\(label) length is negative")
+    }
+
+    @usableFromInline
+    @inline(never)
+    internal func invalidRemainingByteCount(label: String) -> ForyError {
+        ForyError.invalidData("\(label) size is negative")
+    }
+
+    @usableFromInline
+    @inline(never)
+    internal func insufficientRemainingBytes(
+        _ byteCount: Int,
+        remaining: Int,
+        label: String
+    ) -> ForyError {
+        ForyError.invalidData(
+            "\(label) requires \(byteCount) bytes but only \(remaining) remain in buffer"
+        )
     }
 
     @inline(__always)
     func typeInfo<T: Serializer>(for type: T.Type) throws -> TypeInfo {
         let typeID = ObjectIdentifier(type)
-        if lastTypeInfo.swiftTypeID == typeID {
+        if lastTypeInfo.serializerTypeID == typeID {
             return lastTypeInfo
         }
         let info = try typeResolver.requireTypeInfo(for: type)
@@ -132,10 +169,10 @@ public final class ReadContext {
     func readStaticTypeInfo(_ typeID: TypeId) throws -> TypeInfo? {
         let rawTypeID = UInt32(try buffer.readUInt8())
         guard let actualTypeID = TypeId(rawValue: rawTypeID) else {
-            throw ForyError.invalidData("unknown type id \(rawTypeID)")
+            throw unknownStaticTypeID(rawTypeID)
         }
         if actualTypeID != typeID {
-            throw ForyError.typeMismatch(expected: typeID.rawValue, actual: rawTypeID)
+            throw staticTypeMismatch(expected: typeID.rawValue, actual: rawTypeID)
         }
         return nil
     }
@@ -526,7 +563,7 @@ public final class ReadContext {
         return remoteTypeInfo
     }
 
-    @inline(__always)
+    @inline(never)
     private func validateCompatibleTypeMeta(
         _ remoteTypeMeta: TypeMeta,
         for localTypeInfo: TypeInfo,
@@ -582,112 +619,28 @@ public final class ReadContext {
         }
     }
 
-    func readAnyValue(typeInfo: TypeInfo) throws -> Any {
-        try enterDynamicAnyDepth()
-        defer { leaveDynamicAnyDepth() }
-
-        let value: Any
-        switch typeInfo.typeID {
-        case .bool:
-            value = try Bool.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .int8:
-            value = try Int8.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .int16:
-            value = try Int16.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .int32:
-            value = try buffer.readInt32()
-        case .varint32:
-            value = try Int32.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .int64:
-            value = try buffer.readInt64()
-        case .varint64:
-            value = try Int64.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .taggedInt64:
-            value = try buffer.readTaggedInt64()
-        case .uint8:
-            value = try UInt8.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .uint16:
-            value = try UInt16.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .uint32:
-            value = try buffer.readUInt32()
-        case .varUInt32:
-            value = try UInt32.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .uint64:
-            value = try buffer.readUInt64()
-        case .varUInt64:
-            value = try UInt64.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .taggedUInt64:
-            value = try buffer.readTaggedUInt64()
-        case .float16:
-            value = try Float16.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .bfloat16:
-            value = try BFloat16.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .float32:
-            value = try Float.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .float64:
-            value = try Double.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .string:
-            value = try String.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .duration:
-            value = try Duration.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .timestamp:
-            value = try Date.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .date:
-            value = try LocalDate.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .decimal:
-            value = try Decimal.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .binary:
-            value = try Data.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .boolArray:
-            value = try readPrimitiveArray(self) as [Bool]
-        case .int8Array:
-            value = try readPrimitiveArray(self) as [Int8]
-        case .int16Array:
-            value = try readPrimitiveArray(self) as [Int16]
-        case .int32Array:
-            value = try readPrimitiveArray(self) as [Int32]
-        case .int64Array:
-            value = try readPrimitiveArray(self) as [Int64]
-        case .uint8Array:
-            value = try readPrimitiveArray(self) as [UInt8]
-        case .uint16Array:
-            value = try readPrimitiveArray(self) as [UInt16]
-        case .uint32Array:
-            value = try readPrimitiveArray(self) as [UInt32]
-        case .uint64Array:
-            value = try readPrimitiveArray(self) as [UInt64]
-        case .float16Array:
-            value = try readPrimitiveArray(self) as [Float16]
-        case .bfloat16Array:
-            value = try readPrimitiveArray(self) as [BFloat16]
-        case .float32Array:
-            value = try readPrimitiveArray(self) as [Float]
-        case .float64Array:
-            value = try readPrimitiveArray(self) as [Double]
-        case .array, .list:
-            value = try readListOfAny(context: self, refMode: .none) ?? []
-        case .set:
-            value = try Set<AnyHashable>.foryRead(self, refMode: .none, readTypeInfo: false)
-        case .map:
-            value = try readDynamicAnyMapValue(context: self)
-        case .none:
-            value = ForyAnyNullValue()
-        default:
-            if typeInfo.typeID.isUserTypeKind {
-                value = try typeInfo.read(self)
-            } else {
-                throw ForyError.invalidData("unsupported dynamic type id \(typeInfo.typeID)")
-            }
-        }
-        return value
+    @inline(never)
+    private func unknownStaticTypeID(_ rawTypeID: UInt32) -> ForyError {
+        ForyError.invalidData("unknown type id \(rawTypeID)")
     }
 
+    @inline(never)
+    private func staticTypeMismatch(expected: UInt32, actual: UInt32) -> ForyError {
+        ForyError.typeMismatch(expected: expected, actual: actual)
+    }
+
+    func readAnyValue(typeInfo: TypeInfo) throws -> Any {
+        try typeInfo.readDynamic(self)
+    }
+
+    /// Returns compatible metadata currently scoped to the selected serializer.
     @inline(__always)
-    func getTypeInfo<T: Serializer>(for type: T.Type) -> TypeInfo? {
+    public func getTypeInfo<T: Serializer>(for type: T.Type) -> TypeInfo? {
         typeInfoStack.value(for: UInt64(UInt(bitPattern: ObjectIdentifier(type))))
     }
 
-    func withTypeInfo<T: Serializer, R>(
+    @usableFromInline
+    internal func withTypeInfo<T: Serializer, R>(
         _ typeInfo: TypeInfo?,
         for type: T.Type,
         _ body: () throws -> R

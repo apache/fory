@@ -243,43 +243,8 @@ final class GeneratedCodecInstantiator {
       ObjectCodec<?> owner,
       JsonFieldTable readTable,
       JsonFieldInfo[] fields,
-      Latin1ReaderCodec<Object>[] codecs) {
-    try {
-      if (AndroidSupport.IS_ANDROID) {
-        Constructor<?> constructor =
-            type.getDeclaredConstructor(
-                ObjectCodec.class,
-                JsonFieldTable.class,
-                JsonFieldInfo[].class,
-                Latin1ReaderCodec[].class);
-        constructor.setAccessible(true);
-        return (Latin1ReaderCodec<Object>)
-            constructor.newInstance(owner, readTable, fields, codecs);
-      }
-      MethodHandle constructor =
-          _JDKAccess._trustedLookup(type)
-              .findConstructor(
-                  type,
-                  MethodType.methodType(
-                      void.class,
-                      ObjectCodec.class,
-                      JsonFieldTable.class,
-                      JsonFieldInfo[].class,
-                      Latin1ReaderCodec[].class));
-      return (Latin1ReaderCodec<Object>) constructor.invoke(owner, readTable, fields, codecs);
-    } catch (Throwable e) {
-      throw new ForyJsonException("Cannot instantiate generated JSON Any Latin1 reader", e);
-    }
-  }
-
-  @SuppressWarnings("unchecked")
-  static Latin1ReaderCodec<Object> instantiateAnyLatin1Reader(
-      Class<?> type,
-      ObjectCodec<?> owner,
-      JsonFieldTable readTable,
-      JsonFieldInfo[] fields,
       Latin1ReaderCodec<Object>[] codecs,
-      Latin1ReaderCodec<Object> anyCodec) {
+      Latin1ReaderCodec<Object> selfReader) {
     try {
       if (AndroidSupport.IS_ANDROID) {
         Constructor<?> constructor =
@@ -291,7 +256,7 @@ final class GeneratedCodecInstantiator {
                 Latin1ReaderCodec.class);
         constructor.setAccessible(true);
         return (Latin1ReaderCodec<Object>)
-            constructor.newInstance(owner, readTable, fields, codecs, anyCodec);
+            constructor.newInstance(owner, readTable, fields, codecs, selfReader);
       }
       MethodHandle constructor =
           _JDKAccess._trustedLookup(type)
@@ -305,7 +270,49 @@ final class GeneratedCodecInstantiator {
                       Latin1ReaderCodec[].class,
                       Latin1ReaderCodec.class));
       return (Latin1ReaderCodec<Object>)
-          constructor.invoke(owner, readTable, fields, codecs, anyCodec);
+          constructor.invoke(owner, readTable, fields, codecs, selfReader);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON Any Latin1 reader", e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  static Latin1ReaderCodec<Object> instantiateAnyLatin1Reader(
+      Class<?> type,
+      ObjectCodec<?> owner,
+      JsonFieldTable readTable,
+      JsonFieldInfo[] fields,
+      Latin1ReaderCodec<Object>[] codecs,
+      Latin1ReaderCodec<Object> selfReader,
+      Latin1ReaderCodec<Object> anyCodec) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            type.getDeclaredConstructor(
+                ObjectCodec.class,
+                JsonFieldTable.class,
+                JsonFieldInfo[].class,
+                Latin1ReaderCodec[].class,
+                Latin1ReaderCodec.class,
+                Latin1ReaderCodec.class);
+        constructor.setAccessible(true);
+        return (Latin1ReaderCodec<Object>)
+            constructor.newInstance(owner, readTable, fields, codecs, selfReader, anyCodec);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(
+                  type,
+                  MethodType.methodType(
+                      void.class,
+                      ObjectCodec.class,
+                      JsonFieldTable.class,
+                      JsonFieldInfo[].class,
+                      Latin1ReaderCodec[].class,
+                      Latin1ReaderCodec.class,
+                      Latin1ReaderCodec.class));
+      return (Latin1ReaderCodec<Object>)
+          constructor.invoke(owner, readTable, fields, codecs, selfReader, anyCodec);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot instantiate generated JSON Any Latin1 reader", e);
     }
@@ -346,42 +353,8 @@ final class GeneratedCodecInstantiator {
       ObjectCodec<?> owner,
       JsonFieldTable readTable,
       JsonFieldInfo[] fields,
-      Utf16ReaderCodec<Object>[] codecs) {
-    try {
-      if (AndroidSupport.IS_ANDROID) {
-        Constructor<?> constructor =
-            type.getDeclaredConstructor(
-                ObjectCodec.class,
-                JsonFieldTable.class,
-                JsonFieldInfo[].class,
-                Utf16ReaderCodec[].class);
-        constructor.setAccessible(true);
-        return (Utf16ReaderCodec<Object>) constructor.newInstance(owner, readTable, fields, codecs);
-      }
-      MethodHandle constructor =
-          _JDKAccess._trustedLookup(type)
-              .findConstructor(
-                  type,
-                  MethodType.methodType(
-                      void.class,
-                      ObjectCodec.class,
-                      JsonFieldTable.class,
-                      JsonFieldInfo[].class,
-                      Utf16ReaderCodec[].class));
-      return (Utf16ReaderCodec<Object>) constructor.invoke(owner, readTable, fields, codecs);
-    } catch (Throwable e) {
-      throw new ForyJsonException("Cannot instantiate generated JSON Any UTF16 reader", e);
-    }
-  }
-
-  @SuppressWarnings("unchecked")
-  static Utf16ReaderCodec<Object> instantiateAnyUtf16Reader(
-      Class<?> type,
-      ObjectCodec<?> owner,
-      JsonFieldTable readTable,
-      JsonFieldInfo[] fields,
       Utf16ReaderCodec<Object>[] codecs,
-      Utf16ReaderCodec<Object> anyCodec) {
+      Utf16ReaderCodec<Object> selfReader) {
     try {
       if (AndroidSupport.IS_ANDROID) {
         Constructor<?> constructor =
@@ -393,7 +366,7 @@ final class GeneratedCodecInstantiator {
                 Utf16ReaderCodec.class);
         constructor.setAccessible(true);
         return (Utf16ReaderCodec<Object>)
-            constructor.newInstance(owner, readTable, fields, codecs, anyCodec);
+            constructor.newInstance(owner, readTable, fields, codecs, selfReader);
       }
       MethodHandle constructor =
           _JDKAccess._trustedLookup(type)
@@ -407,7 +380,49 @@ final class GeneratedCodecInstantiator {
                       Utf16ReaderCodec[].class,
                       Utf16ReaderCodec.class));
       return (Utf16ReaderCodec<Object>)
-          constructor.invoke(owner, readTable, fields, codecs, anyCodec);
+          constructor.invoke(owner, readTable, fields, codecs, selfReader);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON Any UTF16 reader", e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  static Utf16ReaderCodec<Object> instantiateAnyUtf16Reader(
+      Class<?> type,
+      ObjectCodec<?> owner,
+      JsonFieldTable readTable,
+      JsonFieldInfo[] fields,
+      Utf16ReaderCodec<Object>[] codecs,
+      Utf16ReaderCodec<Object> selfReader,
+      Utf16ReaderCodec<Object> anyCodec) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            type.getDeclaredConstructor(
+                ObjectCodec.class,
+                JsonFieldTable.class,
+                JsonFieldInfo[].class,
+                Utf16ReaderCodec[].class,
+                Utf16ReaderCodec.class,
+                Utf16ReaderCodec.class);
+        constructor.setAccessible(true);
+        return (Utf16ReaderCodec<Object>)
+            constructor.newInstance(owner, readTable, fields, codecs, selfReader, anyCodec);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(
+                  type,
+                  MethodType.methodType(
+                      void.class,
+                      ObjectCodec.class,
+                      JsonFieldTable.class,
+                      JsonFieldInfo[].class,
+                      Utf16ReaderCodec[].class,
+                      Utf16ReaderCodec.class,
+                      Utf16ReaderCodec.class));
+      return (Utf16ReaderCodec<Object>)
+          constructor.invoke(owner, readTable, fields, codecs, selfReader, anyCodec);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot instantiate generated JSON Any UTF16 reader", e);
     }
@@ -443,36 +458,59 @@ final class GeneratedCodecInstantiator {
   }
 
   @SuppressWarnings("unchecked")
-  static Utf8ReaderCodec<Object> instantiateAnyUtf8Reader(
-      Class<?> type,
-      ObjectCodec<?> owner,
-      JsonFieldTable readTable,
-      JsonFieldInfo[] fields,
-      Utf8ReaderCodec<Object>[] codecs) {
+  static Utf8WriterCodec<Object> instantiateUtf8CollectionWriter(
+      Class<?> type, Utf8WriterCodec<Object> fallback) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor = type.getDeclaredConstructor(Utf8WriterCodec.class);
+        constructor.setAccessible(true);
+        return (Utf8WriterCodec<Object>) constructor.newInstance(fallback);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(type, MethodType.methodType(void.class, Utf8WriterCodec.class));
+      return (Utf8WriterCodec<Object>) constructor.invoke(fallback);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON UTF8 collection writer", e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  static Utf8WriterCodec<Object> instantiateUtf8CollectionWriter(
+      Class<?> type, Utf8WriterCodec<Object> fallback, Utf8WriterCodec<Object> elementWriter) {
     try {
       if (AndroidSupport.IS_ANDROID) {
         Constructor<?> constructor =
-            type.getDeclaredConstructor(
-                ObjectCodec.class,
-                JsonFieldTable.class,
-                JsonFieldInfo[].class,
-                Utf8ReaderCodec[].class);
+            type.getDeclaredConstructor(Utf8WriterCodec.class, Utf8WriterCodec.class);
         constructor.setAccessible(true);
-        return (Utf8ReaderCodec<Object>) constructor.newInstance(owner, readTable, fields, codecs);
+        return (Utf8WriterCodec<Object>) constructor.newInstance(fallback, elementWriter);
       }
       MethodHandle constructor =
           _JDKAccess._trustedLookup(type)
               .findConstructor(
                   type,
-                  MethodType.methodType(
-                      void.class,
-                      ObjectCodec.class,
-                      JsonFieldTable.class,
-                      JsonFieldInfo[].class,
-                      Utf8ReaderCodec[].class));
-      return (Utf8ReaderCodec<Object>) constructor.invoke(owner, readTable, fields, codecs);
+                  MethodType.methodType(void.class, Utf8WriterCodec.class, Utf8WriterCodec.class));
+      return (Utf8WriterCodec<Object>) constructor.invoke(fallback, elementWriter);
     } catch (Throwable e) {
-      throw new ForyJsonException("Cannot instantiate generated JSON Any UTF8 reader", e);
+      throw new ForyJsonException("Cannot instantiate generated JSON UTF8 collection writer", e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  static Utf8ReaderCodec<Object> instantiateUtf8CollectionReader(
+      Class<?> type, Utf8ReaderCodec<Object> elementReader) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor = type.getDeclaredConstructor(Utf8ReaderCodec.class);
+        constructor.setAccessible(true);
+        return (Utf8ReaderCodec<Object>) constructor.newInstance(elementReader);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(type, MethodType.methodType(void.class, Utf8ReaderCodec.class));
+      return (Utf8ReaderCodec<Object>) constructor.invoke(elementReader);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON UTF8 collection reader", e);
     }
   }
 
@@ -483,7 +521,7 @@ final class GeneratedCodecInstantiator {
       JsonFieldTable readTable,
       JsonFieldInfo[] fields,
       Utf8ReaderCodec<Object>[] codecs,
-      Utf8ReaderCodec<Object> anyCodec) {
+      Utf8ReaderCodec<Object> selfReader) {
     try {
       if (AndroidSupport.IS_ANDROID) {
         Constructor<?> constructor =
@@ -495,7 +533,7 @@ final class GeneratedCodecInstantiator {
                 Utf8ReaderCodec.class);
         constructor.setAccessible(true);
         return (Utf8ReaderCodec<Object>)
-            constructor.newInstance(owner, readTable, fields, codecs, anyCodec);
+            constructor.newInstance(owner, readTable, fields, codecs, selfReader);
       }
       MethodHandle constructor =
           _JDKAccess._trustedLookup(type)
@@ -509,7 +547,49 @@ final class GeneratedCodecInstantiator {
                       Utf8ReaderCodec[].class,
                       Utf8ReaderCodec.class));
       return (Utf8ReaderCodec<Object>)
-          constructor.invoke(owner, readTable, fields, codecs, anyCodec);
+          constructor.invoke(owner, readTable, fields, codecs, selfReader);
+    } catch (Throwable e) {
+      throw new ForyJsonException("Cannot instantiate generated JSON Any UTF8 reader", e);
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  static Utf8ReaderCodec<Object> instantiateAnyUtf8Reader(
+      Class<?> type,
+      ObjectCodec<?> owner,
+      JsonFieldTable readTable,
+      JsonFieldInfo[] fields,
+      Utf8ReaderCodec<Object>[] codecs,
+      Utf8ReaderCodec<Object> selfReader,
+      Utf8ReaderCodec<Object> anyCodec) {
+    try {
+      if (AndroidSupport.IS_ANDROID) {
+        Constructor<?> constructor =
+            type.getDeclaredConstructor(
+                ObjectCodec.class,
+                JsonFieldTable.class,
+                JsonFieldInfo[].class,
+                Utf8ReaderCodec[].class,
+                Utf8ReaderCodec.class,
+                Utf8ReaderCodec.class);
+        constructor.setAccessible(true);
+        return (Utf8ReaderCodec<Object>)
+            constructor.newInstance(owner, readTable, fields, codecs, selfReader, anyCodec);
+      }
+      MethodHandle constructor =
+          _JDKAccess._trustedLookup(type)
+              .findConstructor(
+                  type,
+                  MethodType.methodType(
+                      void.class,
+                      ObjectCodec.class,
+                      JsonFieldTable.class,
+                      JsonFieldInfo[].class,
+                      Utf8ReaderCodec[].class,
+                      Utf8ReaderCodec.class,
+                      Utf8ReaderCodec.class));
+      return (Utf8ReaderCodec<Object>)
+          constructor.invoke(owner, readTable, fields, codecs, selfReader, anyCodec);
     } catch (Throwable e) {
       throw new ForyJsonException("Cannot instantiate generated JSON Any UTF8 reader", e);
     }

@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/apache/fory/go/fory/meta"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -695,6 +696,42 @@ func TestTypeDefRejectsFieldNameLengthBeyondMetadata(t *testing.T) {
 	_, err := decodeTypeDef(fory, frame, header)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "field name length")
+}
+
+func TestTypeDefRejectsMalformedName(t *testing.T) {
+	tests := []struct {
+		name     string
+		cacheHit bool
+	}{
+		{name: "cache miss"},
+		{name: "hash cache hit", cacheHit: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fory := NewFory(WithXlang(false), WithCompatible(false))
+			if test.cacheHit {
+				require.NoError(t, fory.RegisterStructByName(SimpleStruct{}, "example.SimpleStruct"))
+				info := fory.typeResolver.namedTypeToTypeInfo[[2]string{"example", "SimpleStruct"}]
+				require.NotNil(t, info)
+				key := nsTypeKey{
+					ComputeMetaStringHash(nil, meta.ALL_TO_LOWER_SPECIAL),
+					ComputeMetaStringHash([]byte{0x80}, meta.FIRST_TO_LOWER_SPECIAL),
+				}
+				fory.typeResolver.nsTypeToTypeInfo[key] = info
+			}
+
+			body := NewByteBuffer(nil)
+			body.WriteByte(StructTypeDefFlag | RegisterByNameFlag)
+			body.WriteByte(1)        // Empty namespace using ALL_TO_LOWER_SPECIAL.
+			body.WriteByte(1<<2 | 3) // One-byte typename using FIRST_TO_LOWER_SPECIAL.
+			body.WriteByte(0x80)
+			frame, header := typeDefTestFrame(t, body.Bytes(), false)
+
+			_, err := decodeTypeDef(fory, frame, header)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "missing first character")
+		})
+	}
 }
 
 func bodyOnlyTypeDefHeaderHash(data []byte) uint64 {

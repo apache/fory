@@ -120,7 +120,7 @@ private func runMain() throws {
     }
     print("Schema mismatch: \(config.schemaMismatch)")
 
-    let suite = BenchmarkSuite(config: config)
+    let suite = try BenchmarkSuite(config: config)
     let output = try suite.run()
 
     try writeOutput(output, to: outputPath)

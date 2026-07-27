@@ -221,6 +221,9 @@ export class MetaStringDecoder {
     const chars = [...str];
     for (let i = 0; i < chars.length; i++) {
       if (chars[i] === "|") {
+        if (i + 1 >= chars.length) {
+          throw new Error("Malformed ALL_TO_LOWER_SPECIAL encoding: trailing uppercase marker");
+        }
         const c = chars[++i];
         builder.push(c.toUpperCase());
       } else {

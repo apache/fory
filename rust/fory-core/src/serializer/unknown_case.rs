@@ -18,24 +18,33 @@
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::resolver::{RefFlag, RefMode};
-use crate::serializer::any::check_erased_any_payload_type;
-use crate::serializer::{ForyDefault, Serializer};
+use crate::serializer::any::check_erased_target_type;
+use crate::serializer::Serializer;
 use crate::type_id::{self, TypeId};
 use crate::types::UnknownCase;
 use std::any::Any;
 use std::sync::Arc;
 
 #[doc(hidden)]
-pub fn write_payload(context: &mut WriteContext, unknown: &UnknownCase) -> Result<(), Error> {
-    if write_typed_payload(context, unknown)? {
+pub fn write_unknown_case_body(
+    context: &mut WriteContext,
+    unknown: &UnknownCase,
+) -> Result<(), Error> {
+    if write_typed_unknown_case_body(context, unknown)? {
         return Ok(());
     }
-    unknown
-        .value_arc()
-        .fory_write(context, RefMode::Tracking, true, false)
+    <Arc<dyn Any + Send + Sync> as Serializer>::write(
+        unknown.value_arc(),
+        context,
+        RefMode::Tracking,
+        true,
+    )
 }
 
-fn write_typed_payload(context: &mut WriteContext, unknown: &UnknownCase) -> Result<bool, Error> {
+fn write_typed_unknown_case_body(
+    context: &mut WriteContext,
+    unknown: &UnknownCase,
+) -> Result<bool, Error> {
     let type_id = unknown.type_id();
     if type_id == type_id::UNKNOWN && unknown.downcast_ref::<()>().is_some() {
         context.writer.write_i8(RefFlag::Null as i8);
@@ -46,7 +55,7 @@ fn write_typed_payload(context: &mut WriteContext, unknown: &UnknownCase) -> Res
     }
     // UnknownCase carriers intentionally keep only a wire type id plus the
     // polymorphic value. For internal numeric ids, the id byte is the complete
-    // Any type metadata. Scalar Any payloads are not ref-tracked, so their ref
+    // Any type metadata. Scalar Any values are not ref-tracked, so their ref
     // metadata is always NotNullValue before the original numeric encoding.
     // Other types fall back to the normal Arc<dyn Any + Send + Sync> path.
     context.writer.write_i8(RefFlag::NotNullValue as i8);
@@ -122,7 +131,10 @@ fn has_typed_value(unknown: &UnknownCase) -> bool {
 }
 
 #[doc(hidden)]
-pub fn read_payload(context: &mut ReadContext, case_id: u32) -> Result<UnknownCase, Error> {
+pub fn read_unknown_case_body(
+    context: &mut ReadContext,
+    case_id: u32,
+) -> Result<UnknownCase, Error> {
     let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
     match ref_flag {
         RefFlag::Null => Ok(UnknownCase::new(case_id, ())),
@@ -142,23 +154,20 @@ pub fn read_payload(context: &mut ReadContext, case_id: u32) -> Result<UnknownCa
         }
         RefFlag::NotNullValue | RefFlag::RefValue => {
             let ref_id = if matches!(ref_flag, RefFlag::RefValue) {
-                // The wire ref id belongs to the unknown payload itself. Reserve it
-                // before reading nested payload fields so their own refs keep the
+                // The wire ref id belongs to the unknown value itself. Reserve it
+                // before reading nested fields so their own refs keep the
                 // same ids written by the normal reference engine.
                 Some(context.ref_reader.reserve_ref_id())
             } else {
                 None
             };
-            // The unknown-case serializer owns only the union payload envelope. It must
+            // The unknown-case serializer owns only the union body envelope. It must
             // not add a depth frame here: the decoded Any value is not a new nesting
-            // boundary by itself, and real nested payload serializers perform their
+            // boundary by itself, and real nested value serializers perform their
             // own depth checks.
             let type_info = context.read_any_type_info()?;
-            check_erased_any_payload_type(&type_info)?;
-            let boxed = type_info
-                .get_harness()
-                .read_polymorphic_data_as_send_sync_any(context, &type_info)?;
-            let value: Arc<dyn std::any::Any + Send + Sync> = Arc::from(boxed);
+            check_erased_target_type(&type_info)?;
+            let value = type_info.get_harness().read_arc_any(context, &type_info)?;
             if let Some(ref_id) = ref_id {
                 context.ref_reader.store_arc_ref_at(ref_id, value.clone());
             }
@@ -171,64 +180,47 @@ pub fn read_payload(context: &mut ReadContext, case_id: u32) -> Result<UnknownCa
     }
 }
 
-impl ForyDefault for UnknownCase {
-    fn fory_default() -> Self {
-        UnknownCase::new(0, ())
-    }
-}
-
 impl Serializer for UnknownCase {
-    fn fory_write(
-        &self,
+    type Target = Self;
+
+    fn write(
+        value: &Self,
         context: &mut WriteContext,
         ref_mode: RefMode,
         write_type_info: bool,
-        _has_generics: bool,
     ) -> Result<(), Error> {
         let _ = ref_mode;
         let _ = write_type_info;
-        write_payload(context, self)
+        write_unknown_case_body(context, value)
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        write_payload(context, self)
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        write_unknown_case_body(context, value)
     }
 
-    fn fory_read(
+    fn read(
         context: &mut ReadContext,
         ref_mode: RefMode,
         read_type_info: bool,
     ) -> Result<Self, Error> {
         let _ = ref_mode;
         let _ = read_type_info;
-        read_payload(context, 0)
+        read_unknown_case_body(context, 0)
     }
 
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        read_payload(context, 0)
-    }
-    fn fory_read_data_as_send_sync_any(
-        context: &mut ReadContext,
-    ) -> Result<Box<dyn Any + Send + Sync>, Error> {
-        Ok(crate::serializer::box_send_sync(read_payload(context, 0)?))
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        read_unknown_case_body(context, 0)
     }
 
-    fn fory_get_type_id(_: &crate::resolver::TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::UNKNOWN)
+    fn default_value(_: &mut ReadContext) -> Result<Self, Error> {
+        Ok(UnknownCase::new(0, ()))
     }
 
-    fn fory_type_id_dyn(
-        &self,
-        _type_resolver: &crate::resolver::TypeResolver,
-    ) -> Result<TypeId, Error> {
-        Ok(TypeId::UNKNOWN)
+    fn read_arc_any(context: &mut ReadContext) -> Result<Arc<dyn Any + Send + Sync>, Error> {
+        Ok(Arc::new(read_unknown_case_body(context, 0)?))
     }
 
-    fn fory_static_type_id() -> TypeId {
+    fn static_type_id() -> TypeId {
         TypeId::UNKNOWN
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 }

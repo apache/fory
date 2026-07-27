@@ -175,9 +175,11 @@ struct CompatibleNestedMapHolder: Equatable {
 }
 
 struct LateMetaExt: Serializer, Equatable {
+    typealias Target = Self
+
     var value: Int32 = 0
 
-    static func foryDefault() -> LateMetaExt {
+    static func defaultValue(_: ReadContext) throws -> Self {
         LateMetaExt()
     }
 
@@ -185,11 +187,11 @@ struct LateMetaExt: Serializer, Equatable {
         .ext
     }
 
-    func foryWriteData(_ context: WriteContext, hasGenerics _: Bool) throws {
-        context.buffer.writeVarInt32(value)
+    static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeVarInt32(value.value)
     }
 
-    static func foryReadData(_ context: ReadContext) throws -> LateMetaExt {
+    static func readData(_ context: ReadContext) throws -> Self {
         LateMetaExt(value: try context.buffer.readVarInt32())
     }
 }
@@ -225,6 +227,11 @@ final class WeakNode {
     }
 }
 
+private protocol StoredValue {}
+
+extension Address: StoredValue {}
+extension Node: StoredValue {}
+
 @ForyStruct
 struct AnyObjectHolder {
     var value: AnyObject
@@ -233,10 +240,10 @@ struct AnyObjectHolder {
 }
 
 @ForyStruct
-struct AnySerializerHolder {
-    var value: any Serializer
-    var items: [any Serializer]
-    var map: [String: any Serializer]
+private struct ProtocolValueHolder {
+    var value: any StoredValue
+    var items: [any StoredValue]
+    var map: [String: any StoredValue]
 }
 
 @ForyStruct
@@ -438,8 +445,8 @@ func namedInitializerBuildsConfig() {
 @Test
 func structEvolvingOverrideUsesSmallerCompatiblePayload() throws {
     let fory = Fory(compatible: true)
-    fory.register(EvolvingOverrideValue.self, id: 1001)
-    fory.register(FixedOverrideValue.self, id: 1002)
+    try fory.register(EvolvingOverrideValue.self, id: 1001)
+    try fory.register(FixedOverrideValue.self, id: 1002)
 
     let evolving = EvolvingOverrideValue(f1: "payload")
     let fixed = FixedOverrideValue(f1: "payload")
@@ -580,8 +587,8 @@ func typeMetaBodyLimitRejectsLargeMetadata() throws {
 func schemaLimitTracksStructTypesSeparately() throws {
     let config = Config(maxSchemaVersionsPerType: 1)
     let resolver = TypeResolver(config: config)
-    resolver.register(Person.self, id: 901)
-    resolver.register(Address.self, id: 902)
+    try resolver.register(Person.self, id: 901)
+    try resolver.register(Address.self, id: 902)
     try resolver.finishRegistration()
 
     func remoteTypeMeta(userTypeID: UInt32, fieldName: String) throws -> TypeMeta {
@@ -734,8 +741,8 @@ func typeMetaUsesFinalRegistration() throws {
 func failedSchemaDoesNotConsumeLimit() throws {
     let config = Config(maxSchemaVersionsPerType: 1)
     let resolver = TypeResolver(config: config)
-    resolver.register(Person.self, id: 901)
-    resolver.register(Address.self, id: 902)
+    try resolver.register(Person.self, id: 901)
+    try resolver.register(Address.self, id: 902)
     try resolver.finishRegistration()
 
     func remoteTypeMeta(fieldName: String, fieldType: TypeMeta.FieldType) throws -> TypeMeta {
@@ -796,8 +803,8 @@ func failedSchemaDoesNotConsumeLimit() throws {
 func staticTypeRejectsWrongMetaOwner() throws {
     let config = Config(compatible: true)
     let resolver = TypeResolver(config: config)
-    resolver.register(Person.self, id: 901)
-    resolver.register(Address.self, id: 902)
+    try resolver.register(Person.self, id: 901)
+    try resolver.register(Address.self, id: 902)
     try resolver.finishRegistration()
     let wrongTypeMeta = try TypeMeta(
         typeID: TypeId.compatibleStruct.rawValue,
@@ -836,8 +843,8 @@ func staticTypeRejectsWrongMetaOwner() throws {
 func failedStaticMetaDoesNotCount() throws {
     let config = Config(compatible: true, maxSchemaVersionsPerType: 1)
     let resolver = TypeResolver(config: config)
-    resolver.register(Person.self, id: 901)
-    resolver.register(Address.self, id: 902)
+    try resolver.register(Person.self, id: 901)
+    try resolver.register(Address.self, id: 902)
     try resolver.finishRegistration()
 
     func typeMeta(userTypeID: UInt32, fieldName: String) throws -> TypeMeta {
@@ -881,8 +888,8 @@ func failedStaticMetaDoesNotCount() throws {
 @Test
 func macroStructRoundTrip() throws {
     let fory = Fory()
-    fory.register(Address.self, id: 100)
-    fory.register(Person.self, id: 101)
+    try fory.register(Address.self, id: 100)
+    try fory.register(Person.self, id: 101)
 
     let person = Person(
         id: 42,
@@ -902,7 +909,7 @@ func macroStructRoundTrip() throws {
 @Test
 func macroClassRefTracking() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(Node.self, id: 200)
+    try fory.register(Node.self, id: 200)
 
     let node = Node(value: 7)
     node.next = node
@@ -917,7 +924,7 @@ func macroClassRefTracking() throws {
 @Test
 func macroClassWeakRefTracking() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(WeakNode.self, id: 201)
+    try fory.register(WeakNode.self, id: 201)
 
     let node = WeakNode(value: 13)
     node.next = node
@@ -932,33 +939,39 @@ func macroClassWeakRefTracking() throws {
 @Test
 func topLevelAnyRoundTrip() throws {
     let fory = Fory()
-    fory.register(Address.self, id: 209)
+    try fory.register(Address.self, id: 209)
 
     let value: Any = Address(street: "AnyTop", zip: 8080)
-    let data = try fory.serialize(value)
-    let decoded: Any = try fory.deserialize(data)
+    let data = try fory.serialize(value, with: DynamicSerializer<Any>.self)
+    let decoded = try fory.deserialize(data, with: DynamicSerializer<Any>.self)
     #expect(decoded as? Address == Address(street: "AnyTop", zip: 8080))
 
     var buffer = Data()
-    try fory.serialize(value, to: &buffer)
-    let decodedFrom: Any = try fory.deserialize(from: ByteBuffer(data: buffer))
+    try fory.serialize(value, with: DynamicSerializer<Any>.self, to: &buffer)
+    let decodedFrom = try fory.deserialize(
+        from: ByteBuffer(data: buffer),
+        with: DynamicSerializer<Any>.self
+    )
     #expect(decodedFrom as? Address == Address(street: "AnyTop", zip: 8080))
 
     let nullAny: Any = Optional<Int32>.none as Any
-    let nullData = try fory.serialize(nullAny)
-    let nullDecoded: Any = try fory.deserialize(nullData)
+    let nullData = try fory.serialize(nullAny, with: DynamicSerializer<Any>.self)
+    let nullDecoded = try fory.deserialize(
+        nullData,
+        with: DynamicSerializer<Any>.self
+    )
     #expect(nullDecoded is ForyAnyNullValue)
 }
 
 @Test
 func dynamicUserTypesDecodeByID() throws {
     let fory = Fory()
-    fory.register(Address.self, id: 600)
+    try fory.register(Address.self, id: 600)
     try fory.register(Person.self, name: "demo.person")
 
     let value: Any = Address(street: "mixed", zip: 7788)
-    let data = try fory.serialize(value)
-    let decoded: Any = try fory.deserialize(data)
+    let data = try fory.serialize(value, with: DynamicSerializer<Any>.self)
+    let decoded = try fory.deserialize(data, with: DynamicSerializer<Any>.self)
     #expect(decoded as? Address == Address(street: "mixed", zip: 7788))
 }
 
@@ -1089,47 +1102,63 @@ func rootBufferHonorsCursor() throws {
 @Test
 func topLevelAnyObjectRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(Node.self, id: 210)
+    try fory.register(Node.self, id: 210)
 
     let value: AnyObject = Node(value: 123)
-    let data = try fory.serialize(value)
-    let decoded: AnyObject = try fory.deserialize(data)
+    let data = try fory.serialize(value, with: DynamicSerializer<AnyObject>.self)
+    let decoded = try fory.deserialize(data, with: DynamicSerializer<AnyObject>.self)
 
     let node = decoded as? Node
     #expect(node != nil)
     #expect(node?.value == 123)
 
     var buffer = Data()
-    try fory.serialize(value, to: &buffer)
-    let decodedFrom: AnyObject = try fory.deserialize(from: ByteBuffer(data: buffer))
+    try fory.serialize(value, with: DynamicSerializer<AnyObject>.self, to: &buffer)
+    let decodedFrom = try fory.deserialize(
+        from: ByteBuffer(data: buffer),
+        with: DynamicSerializer<AnyObject>.self
+    )
     #expect((decodedFrom as? Node)?.value == 123)
 }
 
 @Test
-func topLevelAnySerializerRoundTrip() throws {
+func applicationProtocolRootRoundTrip() throws {
     let fory = Fory()
-    fory.register(Address.self, id: 211)
+    try fory.register(Address.self, id: 211)
 
-    let value: any Serializer = Address(street: "AnyStreet", zip: 9090)
-    let data = try fory.serialize(value)
-    let decoded: any Serializer = try fory.deserialize(data)
+    let value: any StoredValue = Address(street: "ProtocolStreet", zip: 9090)
+    let data = try fory.serialize(
+        value,
+        with: DynamicSerializer<any StoredValue>.self
+    )
+    let decoded = try fory.deserialize(
+        data,
+        with: DynamicSerializer<any StoredValue>.self
+    )
 
     let address = decoded as? Address
-    #expect(address == Address(street: "AnyStreet", zip: 9090))
+    #expect(address == Address(street: "ProtocolStreet", zip: 9090))
 
     var buffer = Data()
-    try fory.serialize(value, to: &buffer)
-    let decodedFrom: any Serializer = try fory.deserialize(from: ByteBuffer(data: buffer))
-    #expect(decodedFrom as? Address == Address(street: "AnyStreet", zip: 9090))
+    try fory.serialize(
+        value,
+        with: DynamicSerializer<any StoredValue>.self,
+        to: &buffer
+    )
+    let decodedFrom = try fory.deserialize(
+        from: ByteBuffer(data: buffer),
+        with: DynamicSerializer<any StoredValue>.self
+    )
+    #expect(decodedFrom as? Address == Address(street: "ProtocolStreet", zip: 9090))
 }
 
 @Test
-func macroDynamicAnyObjectAndAnySerializerFieldsRoundTrip() throws {
+func protocolFieldsRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(Node.self, id: 220)
-    fory.register(Address.self, id: 221)
-    fory.register(AnyObjectHolder.self, id: 222)
-    fory.register(AnySerializerHolder.self, id: 223)
+    try fory.register(Node.self, id: 220)
+    try fory.register(Address.self, id: 221)
+    try fory.register(AnyObjectHolder.self, id: 222)
+    try fory.register(ProtocolValueHolder.self, id: 223)
 
     let sharedNode = Node(value: 77)
     let objectHolder = AnyObjectHolder(
@@ -1145,40 +1174,43 @@ func macroDynamicAnyObjectAndAnySerializerFieldsRoundTrip() throws {
     #expect((objectDecoded.items[0] as? Node)?.value == 77)
     #expect(objectDecoded.items[1] is NSNull)
 
-    let serializerHolder = AnySerializerHolder(
+    let protocolHolder = ProtocolValueHolder(
         value: Address(street: "Root", zip: 10001),
-        items: [Int32(11), Address(street: "Nested", zip: 10002)],
+        items: [
+            Node(value: 11),
+            Address(street: "Nested", zip: 10002)
+        ],
         map: [
-            "age": Int64(19),
+            "node": Node(value: 19),
             "address": Address(street: "Mapped", zip: 10003)
         ]
     )
-    let serializerData = try fory.serialize(serializerHolder)
-    let serializerDecoded: AnySerializerHolder = try fory.deserialize(serializerData)
+    let protocolData = try fory.serialize(protocolHolder)
+    let protocolDecoded: ProtocolValueHolder = try fory.deserialize(protocolData)
 
-    #expect(serializerDecoded.value as? Address == Address(street: "Root", zip: 10001))
-    #expect(serializerDecoded.items.count == 2)
-    #expect(serializerDecoded.items[0] as? Int32 == 11)
-    #expect(serializerDecoded.items[1] as? Address == Address(street: "Nested", zip: 10002))
-    #expect(serializerDecoded.map["age"] as? Int64 == 19)
-    #expect(serializerDecoded.map["address"] as? Address == Address(street: "Mapped", zip: 10003))
+    #expect(protocolDecoded.value as? Address == Address(street: "Root", zip: 10001))
+    #expect(protocolDecoded.items.count == 2)
+    #expect((protocolDecoded.items[0] as? Node)?.value == 11)
+    #expect(protocolDecoded.items[1] as? Address == Address(street: "Nested", zip: 10002))
+    #expect((protocolDecoded.map["node"] as? Node)?.value == 19)
+    #expect(protocolDecoded.map["address"] as? Address == Address(street: "Mapped", zip: 10003))
 }
 
 @Test
-func dynamicAnySerializerTracksRefs() throws {
+func dynamicProtocolTracksRefs() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(Node.self, id: 226)
-    fory.register(AnySerializerHolder.self, id: 227)
+    try fory.register(Node.self, id: 226)
+    try fory.register(ProtocolValueHolder.self, id: 227)
 
     let shared = Node(value: 88)
     shared.next = shared
-    let value = AnySerializerHolder(
+    let value = ProtocolValueHolder(
         value: shared,
         items: [shared],
         map: ["shared": shared]
     )
 
-    let decoded: AnySerializerHolder = try fory.deserialize(try fory.serialize(value))
+    let decoded: ProtocolValueHolder = try fory.deserialize(try fory.serialize(value))
     let root = decoded.value as? Node
     let item = decoded.items.first as? Node
     let mapped = decoded.map["shared"] as? Node
@@ -1192,8 +1224,8 @@ func dynamicAnySerializerTracksRefs() throws {
 @Test
 func macroAnyFieldsRoundTrip() throws {
     let fory = Fory()
-    fory.register(Address.self, id: 224)
-    fory.register(AnyFieldHolder.self, id: 225)
+    try fory.register(Address.self, id: 224)
+    try fory.register(AnyFieldHolder.self, id: 225)
 
     let value = AnyFieldHolder(
         value: Address(street: "AnyRoot", zip: 11001),
@@ -1221,21 +1253,21 @@ func macroAnyFieldsRoundTrip() throws {
     #expect(decoded.list[0] as? Int32 == 7)
     #expect(decoded.list[1] as? String == "hello")
     #expect(decoded.list[2] as? Address == Address(street: "AnyList", zip: 11002))
-    #expect(decoded.list[3] is NSNull)
+    #expect(decoded.list[3] is ForyAnyNullValue)
     #expect(decoded.stringMap["count"] as? Int64 == 3)
     #expect(decoded.stringMap["name"] as? String == "map")
     #expect(decoded.stringMap["address"] as? Address == Address(street: "AnyMap", zip: 11003))
-    #expect(decoded.stringMap["empty"] is NSNull)
+    #expect(decoded.stringMap["empty"] is ForyAnyNullValue)
     #expect(decoded.int32Map[1] as? Int32 == -9)
     #expect(decoded.int32Map[2] as? String == "v2")
     #expect(decoded.int32Map[3] as? Address == Address(street: "AnyIntMap", zip: 11004))
-    #expect(decoded.int32Map[4] is NSNull)
+    #expect(decoded.int32Map[4] is ForyAnyNullValue)
 }
 
 @Test
 func collectionAndMapRefTracking() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(Node.self, id: 200)
+    try fory.register(Node.self, id: 200)
 
     let shared = Node(value: 11)
     let list: [Node?] = [shared, shared, nil]
@@ -1274,7 +1306,7 @@ func collectionAndMapRefTracking() throws {
 @Test
 func macroFieldOrderFollowsForyRules() throws {
     let fory = Fory(compatible: false)
-    fory.register(FieldOrder.self, id: 300)
+    try fory.register(FieldOrder.self, id: 300)
 
     let value = FieldOrder(textTail: "tail", longValue: 123_456_789, shortValue: 17, intValue: 99)
     let data = try fory.serialize(value)
@@ -1292,7 +1324,7 @@ func macroFieldOrderFollowsForyRules() throws {
 
     let tailContext = ReadContext(
         buffer: buffer, typeResolver: fory.typeResolver, config: fory.config)
-    let fourth = try String.foryReadData(tailContext)
+    let fourth = try String.readData(tailContext)
 
     #expect(first == value.shortValue)
     #expect(second == value.longValue)
@@ -1303,7 +1335,7 @@ func macroFieldOrderFollowsForyRules() throws {
 @Test
 func macroTaggedFieldsKeepGroupedPayloadOrder() throws {
     let fory = Fory(compatible: false)
-    fory.register(TaggedFieldOrder.self, id: 303)
+    try fory.register(TaggedFieldOrder.self, id: 303)
 
     let fields = TaggedFieldOrder.foryFieldsInfo(trackRef: false)
     #expect(fields.map(\.fieldName) == ["intValue", "textTail"])
@@ -1321,7 +1353,7 @@ func macroTaggedFieldsKeepGroupedPayloadOrder() throws {
     #expect(try buffer.readVarInt32() == value.intValue)
     let tailContext = ReadContext(
         buffer: buffer, typeResolver: fory.typeResolver, config: fory.config)
-    #expect(try String.foryReadData(tailContext) == value.textTail)
+    #expect(try String.readData(tailContext) == value.textTail)
 }
 
 @Test
@@ -1338,7 +1370,7 @@ func macroNonPrimitiveFieldsSortByFieldIdentifier() throws {
 @Test
 func macroFieldEncodingOverridesForUnsignedTypes() throws {
     let fory = Fory(compatible: false)
-    fory.register(EncodedNumberFields.self, id: 301)
+    try fory.register(EncodedNumberFields.self, id: 301)
 
     let value = EncodedNumberFields(
         u32Fixed: 0x1122_3344,
@@ -1362,7 +1394,7 @@ func macroFieldEncodingOverridesForUnsignedTypes() throws {
 @Test
 func macroEnumUsesExplicitIntegerRawValue() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(SparseStatus.self, id: 302)
+    try fory.register(SparseStatus.self, id: 302)
 
     let data = try fory.serialize(SparseStatus.ok)
     let buffer = ByteBuffer(data: data)
@@ -1422,10 +1454,10 @@ func macroFieldIDsPopulateCompatibleTypeMeta() {
 @Test
 func macroFieldIDsDriveCompatibleStructDecodeAcrossRenames() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(FieldIdSource.self, id: 9101)
+    try writer.register(FieldIdSource.self, id: 9101)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(FieldIdTarget.self, id: 9101)
+    try reader.register(FieldIdTarget.self, id: 9101)
 
     let source = FieldIdSource(value: 42, label: "alpha")
     let bytes = try writer.serialize(source)
@@ -1442,10 +1474,10 @@ func macroFieldIDsDriveCompatibleStructDecodeAcrossRenames() throws {
 @Test
 func macroFieldIDsDriveTaggedUnionDecodeAcrossRenames() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(FieldIdUnionSource.self, id: 9102)
+    try writer.register(FieldIdUnionSource.self, id: 9102)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(FieldIdUnionTarget.self, id: 9102)
+    try reader.register(FieldIdUnionTarget.self, id: 9102)
 
     let source = FieldIdUnionSource.number(123)
     let bytes = try writer.serialize(source)
@@ -1462,12 +1494,12 @@ func macroFieldIDsDriveTaggedUnionDecodeAcrossRenames() throws {
 @Test
 func compatibleNestedStructArrayRoundTrip() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(CompatibleNestedItem.self, id: 9103)
-    writer.register(CompatibleNestedArrayHolder.self, id: 9104)
+    try writer.register(CompatibleNestedItem.self, id: 9103)
+    try writer.register(CompatibleNestedArrayHolder.self, id: 9104)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(CompatibleNestedItem.self, id: 9103)
-    reader.register(CompatibleNestedArrayHolder.self, id: 9104)
+    try reader.register(CompatibleNestedItem.self, id: 9103)
+    try reader.register(CompatibleNestedArrayHolder.self, id: 9104)
 
     let value = CompatibleNestedArrayHolder(
         items: [
@@ -1483,12 +1515,12 @@ func compatibleNestedStructArrayRoundTrip() throws {
 @Test
 func compatibleNestedStructOptionalArrayRoundTrip() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(CompatibleNestedItem.self, id: 9103)
-    writer.register(CompatibleNestedOptionalArrayHolder.self, id: 9105)
+    try writer.register(CompatibleNestedItem.self, id: 9103)
+    try writer.register(CompatibleNestedOptionalArrayHolder.self, id: 9105)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(CompatibleNestedItem.self, id: 9103)
-    reader.register(CompatibleNestedOptionalArrayHolder.self, id: 9105)
+    try reader.register(CompatibleNestedItem.self, id: 9103)
+    try reader.register(CompatibleNestedOptionalArrayHolder.self, id: 9105)
 
     let value = CompatibleNestedOptionalArrayHolder(
         items: [
@@ -1505,12 +1537,12 @@ func compatibleNestedStructOptionalArrayRoundTrip() throws {
 @Test
 func compatibleNestedStructMapRoundTrip() throws {
     let writer = Fory(config: .init(trackRef: false, compatible: true))
-    writer.register(CompatibleNestedItem.self, id: 9103)
-    writer.register(CompatibleNestedMapHolder.self, id: 9106)
+    try writer.register(CompatibleNestedItem.self, id: 9103)
+    try writer.register(CompatibleNestedMapHolder.self, id: 9106)
 
     let reader = Fory(config: .init(trackRef: false, compatible: true))
-    reader.register(CompatibleNestedItem.self, id: 9103)
-    reader.register(CompatibleNestedMapHolder.self, id: 9106)
+    try reader.register(CompatibleNestedItem.self, id: 9103)
+    try reader.register(CompatibleNestedMapHolder.self, id: 9106)
 
     let value = CompatibleNestedMapHolder(
         items: [

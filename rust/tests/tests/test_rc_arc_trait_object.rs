@@ -15,554 +15,176 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory_core::fory::Fory;
-use fory_core::register_trait_type;
-use fory_core::serializer::Serializer;
-use fory_core::{unwrap_rc, wrap_rc, wrap_vec_rc};
+use fory_core::{
+    register_trait_type, Fory, ForyObject, HashMapSerializer, Serializer, VecSerializer,
+};
 use fory_derive::ForyStruct;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-fn fory_compatible() -> Fory {
-    Fory::builder().xlang(false).compatible(true).build()
-}
-
-trait Animal: Serializer + Send + Sync {
-    fn speak(&self) -> String;
+trait Animal: ForyObject + Send + Sync {
     fn name(&self) -> &str;
-    fn set_name(&mut self, name: String);
 }
 
 #[derive(ForyStruct, Debug, PartialEq)]
 struct Dog {
     name: String,
-    breed: String,
 }
 
 impl Animal for Dog {
-    fn speak(&self) -> String {
-        "Woof!".to_string()
-    }
-
     fn name(&self) -> &str {
         &self.name
-    }
-
-    fn set_name(&mut self, name: String) {
-        self.name = name;
     }
 }
 
 #[derive(ForyStruct, Debug, PartialEq)]
 struct Cat {
     name: String,
-    color: String,
 }
 
 impl Animal for Cat {
-    fn speak(&self) -> String {
-        "Meow!".to_string()
-    }
-
     fn name(&self) -> &str {
         &self.name
     }
-
-    fn set_name(&mut self, name: String) {
-        self.name = name;
-    }
 }
 
-register_trait_type!(Animal, Dog, Cat);
+register_trait_type!(sync Animal, Dog, Cat);
+
+const _: () = {
+    assert!(AnimalRcSerializer::IS_POLYMORPHIC);
+    assert!(AnimalRcSerializer::IS_SHARED_REF);
+    assert!(AnimalRcSerializer::IS_WRAPPER);
+    assert!(!AnimalRcSerializer::REQUIRES_SCOPED_ACCESS);
+    assert!(AnimalArcSerializer::IS_POLYMORPHIC);
+    assert!(AnimalArcSerializer::IS_SHARED_REF);
+    assert!(AnimalArcSerializer::IS_WRAPPER);
+    assert!(!AnimalArcSerializer::REQUIRES_SCOPED_ACCESS);
+};
+
+#[derive(ForyStruct)]
+struct SharedZoo {
+    rc_featured: Rc<dyn Animal>,
+    rc_alias: Rc<dyn Animal>,
+    rc_residents: Vec<Rc<dyn Animal>>,
+    arc_featured: Arc<dyn Animal>,
+    arc_alias: Arc<dyn Animal>,
+    arc_by_name: HashMap<String, Arc<dyn Animal>>,
+}
+
+fn fory(track_ref: bool) -> Fory {
+    let mut fory = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .track_ref(track_ref)
+        .build();
+    fory.register::<Dog>(8_101).unwrap();
+    fory.register::<Cat>(8_102).unwrap();
+    fory.register::<SharedZoo>(8_103).unwrap();
+    fory
+}
 
 #[test]
-fn test_automatic_rc_wrapper_basic() {
-    // Test that wrapper types are automatically generated with trait-specific names
-    let dog_rc: Rc<dyn Animal> = Rc::new(Dog {
+fn rc_arc_roots_are_direct() {
+    let fory = fory(false);
+
+    let rc_value: Rc<dyn Animal> = Rc::new(Dog {
         name: "Rex".to_string(),
-        breed: "Golden Retriever".to_string(),
     });
+    let rc_bytes = fory
+        .serialize_with::<AnimalRcSerializer>(&rc_value)
+        .unwrap();
+    let rc_decoded = fory
+        .deserialize_with::<AnimalRcSerializer>(&rc_bytes)
+        .unwrap();
+    assert_eq!(rc_decoded.name(), "Rex");
+    assert!(rc_decoded.as_ref().as_any().downcast_ref::<Dog>().is_some());
 
-    // Convert to wrapper
-    let wrapper = AnimalRc::from(dog_rc.clone());
-
-    // Test wrapper functionality
-    assert_eq!(wrapper.as_ref().name(), "Rex");
-    assert_eq!(wrapper.as_ref().speak(), "Woof!");
-
-    // Test unwrap method (as suggested by user)
-    let unwrapped = wrapper.clone().unwrap();
-    assert_eq!(unwrapped.name(), "Rex");
-    assert_eq!(unwrapped.speak(), "Woof!");
-
-    // Convert back to Rc<dyn Animal> using From trait
-    let back_to_rc = Rc::<dyn Animal>::from(wrapper);
-    assert_eq!(back_to_rc.name(), "Rex");
-    assert_eq!(back_to_rc.speak(), "Woof!");
-}
-
-#[test]
-fn test_automatic_arc_wrapper_basic() {
-    // Test that Arc wrapper types are automatically generated with trait-specific names
-    let cat_arc: Arc<dyn Animal> = Arc::new(Cat {
-        name: "Whiskers".to_string(),
-        color: "Orange".to_string(),
+    let arc_value: Arc<dyn Animal> = Arc::new(Cat {
+        name: "Luna".to_string(),
     });
-
-    // Convert to wrapper
-    let wrapper = AnimalArc::from(cat_arc.clone());
-
-    // Test wrapper functionality
-    assert_eq!(wrapper.as_ref().name(), "Whiskers");
-    assert_eq!(wrapper.as_ref().speak(), "Meow!");
-
-    // Test unwrap method (as suggested by user)
-    let unwrapped = wrapper.clone().unwrap();
-    assert_eq!(unwrapped.name(), "Whiskers");
-    assert_eq!(unwrapped.speak(), "Meow!");
-
-    // Convert back to Arc<dyn Animal> using From trait
-    let back_to_arc = Arc::<dyn Animal>::from(wrapper);
-    assert_eq!(back_to_arc.name(), "Whiskers");
-    assert_eq!(back_to_arc.speak(), "Meow!");
+    let arc_bytes = fory
+        .serialize_with::<AnimalArcSerializer>(&arc_value)
+        .unwrap();
+    let arc_decoded = fory
+        .deserialize_with::<AnimalArcSerializer>(&arc_bytes)
+        .unwrap();
+    assert_eq!(arc_decoded.name(), "Luna");
+    assert!(arc_decoded
+        .as_ref()
+        .as_any()
+        .downcast_ref::<Cat>()
+        .is_some());
 }
 
 #[test]
-fn test_wrapper_polymorphism() {
-    // Test that different concrete types work through the wrapper interface
-    let dog_wrapper = AnimalRc::from(Rc::new(Dog {
-        name: "Buddy".to_string(),
-        breed: "Labrador".to_string(),
-    }) as Rc<dyn Animal>);
-
-    let cat_wrapper = AnimalRc::from(Rc::new(Cat {
-        name: "Mittens".to_string(),
-        color: "Gray".to_string(),
-    }) as Rc<dyn Animal>);
-
-    // Test that both wrappers work correctly with polymorphism
-    assert_eq!(dog_wrapper.as_ref().name(), "Buddy");
-    assert_eq!(dog_wrapper.as_ref().speak(), "Woof!");
-
-    assert_eq!(cat_wrapper.as_ref().name(), "Mittens");
-    assert_eq!(cat_wrapper.as_ref().speak(), "Meow!");
-
-    // Test conversion back to trait objects
-    let dog_back = dog_wrapper.unwrap();
-    let cat_back = cat_wrapper.unwrap();
-
-    assert_eq!(dog_back.name(), "Buddy");
-    assert_eq!(dog_back.speak(), "Woof!");
-    assert_eq!(cat_back.name(), "Mittens");
-    assert_eq!(cat_back.speak(), "Meow!");
-}
-
-#[test]
-fn test_wrapper_default_implementations() {
-    use fory_core::ForyDefault;
-    // Test that wrapper types have proper ForyDefault implementations
-    let default_rc = AnimalRc::fory_default();
-    // Dog::fory_default() should have empty name
-    assert_eq!(default_rc.as_ref().name(), "");
-
-    let default_arc = AnimalArc::fory_default();
-    // Dog::fory_default() should have empty name
-    assert_eq!(default_arc.as_ref().name(), "");
-}
-
-#[test]
-fn test_wrapper_debug_formatting() {
-    let dog_wrapper = AnimalRc::from(Rc::new(Dog {
-        name: "Rex".to_string(),
-        breed: "Golden Retriever".to_string(),
-    }) as Rc<dyn Animal>);
-
-    let debug_string = format!("{:?}", dog_wrapper);
-    println!("Debug string: {}", debug_string);
-    // Debug shows memory address, not content - this is expected for trait objects
-    assert!(debug_string.contains("Animal")); // Debug should show the trait name
-}
-
-#[test]
-fn test_conversion_helper_macros() {
-    // Test the conversion helper macros that would be used by derive code
-    let dog_rc: Rc<dyn Animal> = Rc::new(Dog {
-        name: "Rex".to_string(),
-        breed: "Golden Retriever".to_string(),
+fn shared_trait_identity() {
+    let fory = fory(true);
+    let rc: Rc<dyn Animal> = Rc::new(Dog {
+        name: "Scout".to_string(),
     });
+    let arc: Arc<dyn Animal> = Arc::new(Cat {
+        name: "Miso".to_string(),
+    });
+    let value = SharedZoo {
+        rc_featured: rc.clone(),
+        rc_alias: rc.clone(),
+        rc_residents: vec![rc],
+        arc_featured: arc.clone(),
+        arc_alias: arc.clone(),
+        arc_by_name: HashMap::from([("cat".to_string(), arc)]),
+    };
 
-    // Test wrap_rc! macro
-    let wrapper = wrap_rc!(dog_rc.clone(), Animal);
-    assert_eq!(wrapper.as_ref().name(), "Rex");
+    let bytes = fory.serialize(&value).unwrap();
+    let decoded: SharedZoo = fory.deserialize(&bytes).unwrap();
 
-    // Test unwrap_rc! macro
-    let back_to_rc = unwrap_rc!(wrapper, Animal);
-    assert_eq!(back_to_rc.name(), "Rex");
+    assert!(Rc::ptr_eq(&decoded.rc_featured, &decoded.rc_alias));
+    assert!(Rc::ptr_eq(&decoded.rc_featured, &decoded.rc_residents[0]));
+    assert!(Arc::ptr_eq(&decoded.arc_featured, &decoded.arc_alias));
+    assert!(Arc::ptr_eq(
+        &decoded.arc_featured,
+        &decoded.arc_by_name["cat"]
+    ));
+    assert_eq!(decoded.rc_featured.name(), "Scout");
+    assert_eq!(decoded.arc_featured.name(), "Miso");
+}
 
-    // Test collection conversion macros
-    let animals = vec![
+#[test]
+fn shared_trait_collections() {
+    let fory = fory(true);
+
+    let rc: Rc<dyn Animal> = Rc::new(Dog {
+        name: "Scout".to_string(),
+    });
+    let rc_values = vec![
+        rc.clone(),
+        rc,
         Rc::new(Dog {
-            name: "Dog1".to_string(),
-            breed: "Breed1".to_string(),
-        }) as Rc<dyn Animal>,
-        Rc::new(Cat {
-            name: "Cat1".to_string(),
-            color: "Color1".to_string(),
+            name: "Rex".to_string(),
         }) as Rc<dyn Animal>,
     ];
+    let bytes = fory
+        .serialize_with::<VecSerializer<AnimalRcSerializer>>(&rc_values)
+        .unwrap();
+    let decoded = fory
+        .deserialize_with::<VecSerializer<AnimalRcSerializer>>(&bytes)
+        .unwrap();
+    assert!(Rc::ptr_eq(&decoded[0], &decoded[1]));
+    assert_eq!(decoded[2].name(), "Rex");
 
-    let wrapped_animals: Vec<AnimalRc> = wrap_vec_rc!(animals.clone(), Animal);
-    assert_eq!(wrapped_animals.len(), 2);
-    assert_eq!(wrapped_animals[0].as_ref().name(), "Dog1");
-    assert_eq!(wrapped_animals[1].as_ref().name(), "Cat1");
-
-    let back_to_animals: Vec<Rc<dyn Animal>> = wrapped_animals
-        .into_iter()
-        .map(Rc::<dyn Animal>::from)
-        .collect();
-    assert_eq!(back_to_animals.len(), 2);
-    assert_eq!(back_to_animals[0].name(), "Dog1");
-    assert_eq!(back_to_animals[1].name(), "Cat1");
-}
-
-#[test]
-fn test_nested_wrapper_collections() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(100).unwrap();
-    fory.register::<Cat>(101).unwrap();
-
-    // Wrapper types are not registered since they're transparent
-
-    // First test simple Vec<AnimalRc> to isolate the issue
-    let simple_wrappers: Vec<AnimalRc> = vec![
-        AnimalRc::from(Rc::new(Dog {
-            name: "Dog1".to_string(),
-            breed: "Breed1".to_string(),
-        }) as Rc<dyn Animal>),
-        AnimalRc::from(Rc::new(Cat {
-            name: "Cat1".to_string(),
-            color: "Color1".to_string(),
-        }) as Rc<dyn Animal>),
-    ];
-    let serialized_simple = fory.serialize(&simple_wrappers).unwrap();
-    let deserialized_simple: Vec<AnimalRc> = fory.deserialize(&serialized_simple).unwrap();
-
-    assert_eq!(deserialized_simple.len(), 2);
-    assert_eq!(deserialized_simple[0].as_ref().name(), "Dog1");
-    assert_eq!(deserialized_simple[1].as_ref().name(), "Cat1");
-
-    // Test Vec<Vec<AnimalRc>>
-    let nested_wrappers: Vec<Vec<AnimalRc>> = vec![
-        vec![
-            AnimalRc::from(Rc::new(Dog {
-                name: "Dog1".to_string(),
-                breed: "Breed1".to_string(),
-            }) as Rc<dyn Animal>),
-            AnimalRc::from(Rc::new(Cat {
-                name: "Cat1".to_string(),
-                color: "Color1".to_string(),
-            }) as Rc<dyn Animal>),
-        ],
-        vec![AnimalRc::from(Rc::new(Dog {
-            name: "Dog2".to_string(),
-            breed: "Breed2".to_string(),
-        }) as Rc<dyn Animal>)],
-    ];
-
-    let serialized = fory.serialize(&nested_wrappers).unwrap();
-    let deserialized: Vec<Vec<AnimalRc>> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 2);
-    assert_eq!(deserialized[0].len(), 2);
-    assert_eq!(deserialized[1].len(), 1);
-    assert_eq!(deserialized[0][0].as_ref().name(), "Dog1");
-    assert_eq!(deserialized[0][0].as_ref().speak(), "Woof!");
-    assert_eq!(deserialized[0][1].as_ref().name(), "Cat1");
-    assert_eq!(deserialized[0][1].as_ref().speak(), "Meow!");
-    assert_eq!(deserialized[1][0].as_ref().name(), "Dog2");
-    assert_eq!(deserialized[1][0].as_ref().speak(), "Woof!");
-}
-
-#[test]
-fn test_empty_wrapper_collections() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-
-    // Test empty collections
-    let empty_rc_vec: Vec<AnimalRc> = vec![];
-    let serialized = fory.serialize(&empty_rc_vec).unwrap();
-    let deserialized: Vec<AnimalRc> = fory.deserialize(&serialized).unwrap();
-    assert_eq!(deserialized.len(), 0);
-
-    let empty_arc_vec: Vec<AnimalArc> = vec![];
-    let serialized = fory.serialize(&empty_arc_vec).unwrap();
-    let deserialized: Vec<AnimalArc> = fory.deserialize(&serialized).unwrap();
-    assert_eq!(deserialized.len(), 0);
-
-    let empty_map: HashMap<String, AnimalRc> = HashMap::new();
-    let serialized = fory.serialize(&empty_map).unwrap();
-    let deserialized: HashMap<String, AnimalRc> = fory.deserialize(&serialized).unwrap();
-    assert_eq!(deserialized.len(), 0);
-}
-
-#[derive(ForyStruct)]
-struct AnimalShelter {
-    animals_rc: Vec<Rc<dyn Animal>>,
-    animals_arc: Vec<Arc<dyn Animal>>,
-    animal_registry: HashMap<String, Arc<dyn Animal>>,
-}
-
-#[derive(ForyStruct)]
-struct AnimalByCodeVarKey {
-    #[fory(id = 0)]
-    animals: HashMap<u32, Rc<dyn Animal>>,
-}
-
-#[derive(ForyStruct)]
-struct AnimalByCodeFixedKey {
-    #[fory(id = 0, map(key(encoding = fixed)))]
-    animals: HashMap<u32, Rc<dyn Animal>>,
-}
-
-#[test]
-fn test_collections_of_wrappers() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(8001).unwrap();
-    fory.register::<Cat>(8002).unwrap();
-    fory.register::<AnimalShelter>(8011).unwrap();
-
-    let shelter = AnimalShelter {
-        animals_rc: vec![
-            Rc::new(Dog {
-                name: "Rex".to_string(),
-                breed: "Golden Retriever".to_string(),
-            }) as Rc<dyn Animal>,
-            Rc::new(Cat {
-                name: "Mittens".to_string(),
-                color: "Gray".to_string(),
-            }) as Rc<dyn Animal>,
-        ],
-        animals_arc: vec![Arc::new(Dog {
-            name: "Buddy".to_string(),
-            breed: "Labrador".to_string(),
-        }) as Arc<dyn Animal>],
-        animal_registry: {
-            let mut map: HashMap<String, Arc<dyn Animal>> = HashMap::new();
-            map.insert(
-                "pet1".to_string(),
-                Arc::new(Dog {
-                    name: "Max".to_string(),
-                    breed: "German Shepherd".to_string(),
-                }) as Arc<dyn Animal>,
-            );
-            map.insert(
-                "pet2".to_string(),
-                Arc::new(Cat {
-                    name: "Luna".to_string(),
-                    color: "Black".to_string(),
-                }) as Arc<dyn Animal>,
-            );
-            map
-        },
-    };
-
-    let serialized = fory.serialize(&shelter).unwrap();
-    let deserialized: AnimalShelter = fory.deserialize(&serialized).unwrap();
-
-    // Test Vec<AnimalRc>
-    assert_eq!(deserialized.animals_rc.len(), 2);
-    assert_eq!(deserialized.animals_rc[0].as_ref().name(), "Rex");
-    assert_eq!(deserialized.animals_rc[0].as_ref().speak(), "Woof!");
-    assert_eq!(deserialized.animals_rc[1].as_ref().name(), "Mittens");
-    assert_eq!(deserialized.animals_rc[1].as_ref().speak(), "Meow!");
-
-    // Test Vec<AnimalArc>
-    assert_eq!(deserialized.animals_arc.len(), 1);
-    assert_eq!(deserialized.animals_arc[0].as_ref().name(), "Buddy");
-    assert_eq!(deserialized.animals_arc[0].as_ref().speak(), "Woof!");
-
-    // Test HashMap<String, AnimalRc>
-    assert_eq!(deserialized.animal_registry.len(), 2);
-    assert_eq!(
-        deserialized
-            .animal_registry
-            .get("pet1")
-            .unwrap()
-            .as_ref()
-            .name(),
-        "Max"
-    );
-    assert_eq!(
-        deserialized
-            .animal_registry
-            .get("pet1")
-            .unwrap()
-            .as_ref()
-            .speak(),
-        "Woof!"
-    );
-    assert_eq!(
-        deserialized
-            .animal_registry
-            .get("pet2")
-            .unwrap()
-            .as_ref()
-            .name(),
-        "Luna"
-    );
-    assert_eq!(
-        deserialized
-            .animal_registry
-            .get("pet2")
-            .unwrap()
-            .as_ref()
-            .speak(),
-        "Meow!"
-    );
-}
-
-#[test]
-fn test_hashmap_fixed_key_rc_trait_object_field_compatible() {
-    let mut writer = fory_compatible();
-    writer.register::<Dog>(8101).unwrap();
-    writer.register::<Cat>(8102).unwrap();
-    writer.register::<AnimalByCodeFixedKey>(8111).unwrap();
-
-    let mut reader = fory_compatible();
-    reader.register::<Dog>(8101).unwrap();
-    reader.register::<Cat>(8102).unwrap();
-    reader.register::<AnimalByCodeVarKey>(8111).unwrap();
-
-    let animals = AnimalByCodeFixedKey {
-        animals: HashMap::from([
-            (
-                10,
-                Rc::new(Dog {
-                    name: "Rex".to_string(),
-                    breed: "Collie".to_string(),
-                }) as Rc<dyn Animal>,
-            ),
-            (
-                20,
-                Rc::new(Cat {
-                    name: "Misty".to_string(),
-                    color: "Gray".to_string(),
-                }) as Rc<dyn Animal>,
-            ),
-        ]),
-    };
-
-    let serialized = writer.serialize(&animals).unwrap();
-    let decoded: AnimalByCodeVarKey = reader.deserialize(&serialized).unwrap();
-
-    assert_eq!(decoded.animals.get(&10).unwrap().name(), "Rex");
-    assert_eq!(decoded.animals.get(&10).unwrap().speak(), "Woof!");
-    assert_eq!(decoded.animals.get(&20).unwrap().name(), "Misty");
-    assert_eq!(decoded.animals.get(&20).unwrap().speak(), "Meow!");
-}
-
-#[test]
-fn test_rc_shared_ref_tracking() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(200).unwrap();
-    fory.register::<Cat>(201).unwrap();
-
-    let dog = Rc::new(Dog {
-        name: "Rex".to_string(),
-        breed: "Golden Retriever".to_string(),
-    }) as Rc<dyn Animal>;
-
-    let shared_animals: Vec<AnimalRc> = vec![
-        AnimalRc::from(dog.clone()),
-        AnimalRc::from(dog.clone()),
-        AnimalRc::from(dog.clone()),
-    ];
-
-    let serialized = fory.serialize(&shared_animals).unwrap();
-    let deserialized: Vec<AnimalRc> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 3);
-    assert_eq!(deserialized[0].as_ref().name(), "Rex");
-    assert_eq!(deserialized[1].as_ref().name(), "Rex");
-    assert_eq!(deserialized[2].as_ref().name(), "Rex");
-
-    let rc0 = Rc::<dyn Animal>::from(deserialized[0].clone());
-    let rc1 = Rc::<dyn Animal>::from(deserialized[1].clone());
-    let rc2 = Rc::<dyn Animal>::from(deserialized[2].clone());
-    assert!(Rc::ptr_eq(&rc0, &rc1));
-    assert!(Rc::ptr_eq(&rc1, &rc2));
-}
-
-#[test]
-fn test_arc_shared_ref_tracking() {
-    let mut fory = fory_compatible();
-    fory.register::<Dog>(200).unwrap();
-    fory.register::<Cat>(201).unwrap();
-
-    let cat = Arc::new(Cat {
-        name: "Whiskers".to_string(),
-        color: "Orange".to_string(),
-    }) as Arc<dyn Animal>;
-
-    let shared_animals: Vec<AnimalArc> = vec![
-        AnimalArc::from(cat.clone()),
-        AnimalArc::from(cat.clone()),
-        AnimalArc::from(cat.clone()),
-    ];
-
-    let serialized = fory.serialize(&shared_animals).unwrap();
-    let deserialized: Vec<AnimalArc> = fory.deserialize(&serialized).unwrap();
-
-    assert_eq!(deserialized.len(), 3);
-    assert_eq!(deserialized[0].as_ref().name(), "Whiskers");
-    assert_eq!(deserialized[1].as_ref().name(), "Whiskers");
-    assert_eq!(deserialized[2].as_ref().name(), "Whiskers");
-
-    let arc0 = Arc::<dyn Animal>::from(deserialized[0].clone());
-    let arc1 = Arc::<dyn Animal>::from(deserialized[1].clone());
-    let arc2 = Arc::<dyn Animal>::from(deserialized[2].clone());
-    assert!(Arc::ptr_eq(&arc0, &arc1));
-    assert!(Arc::ptr_eq(&arc1, &arc2));
-}
-
-#[test]
-fn test_deref_wrapper() {
-    let dog_rc = AnimalRc::from(Rc::new(Dog {
-        name: "Rex".to_string(),
-        breed: "Golden Retriever".to_string(),
-    }) as Rc<dyn Animal>);
-
-    assert_eq!(dog_rc.name(), "Rex");
-    assert_eq!(dog_rc.speak(), "Woof!");
-
-    let cat_arc = AnimalArc::from(Arc::new(Cat {
-        name: "Whiskers".to_string(),
-        color: "Orange".to_string(),
-    }) as Arc<dyn Animal>);
-
-    assert_eq!(cat_arc.name(), "Whiskers");
-    assert_eq!(cat_arc.speak(), "Meow!");
-}
-
-#[test]
-fn test_deref_mut_wrapper() {
-    let mut dog_rc = AnimalRc::from(Rc::new(Dog {
-        name: "Rex".to_string(),
-        breed: "Golden Retriever".to_string(),
-    }) as Rc<dyn Animal>);
-
-    assert_eq!(dog_rc.name(), "Rex");
-    dog_rc.set_name("Max".to_string());
-    assert_eq!(dog_rc.name(), "Max");
-
-    let mut cat_arc = AnimalArc::from(Arc::new(Cat {
-        name: "Whiskers".to_string(),
-        color: "Orange".to_string(),
-    }) as Arc<dyn Animal>);
-
-    assert_eq!(cat_arc.name(), "Whiskers");
-    cat_arc.set_name("Mittens".to_string());
-    assert_eq!(cat_arc.name(), "Mittens");
+    let arc: Arc<dyn Animal> = Arc::new(Cat {
+        name: "Miso".to_string(),
+    });
+    let arc_values = HashMap::from([
+        ("featured".to_string(), arc.clone()),
+        ("alias".to_string(), arc),
+    ]);
+    let bytes = fory
+        .serialize_with::<HashMapSerializer<String, AnimalArcSerializer>>(&arc_values)
+        .unwrap();
+    let decoded = fory
+        .deserialize_with::<HashMapSerializer<String, AnimalArcSerializer>>(&bytes)
+        .unwrap();
+    assert!(Arc::ptr_eq(&decoded["featured"], &decoded["alias"]));
+    assert_eq!(decoded["featured"].name(), "Miso");
 }

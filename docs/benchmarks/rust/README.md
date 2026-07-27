@@ -6,8 +6,9 @@ _Generated on 2026-05-08 17:55:12_
 
 ```bash
 cd benchmarks/rust
-cargo bench --bench serialization_bench 2>&1 | tee results/cargo_bench.log
-cargo run --release --bin fory_profiler -- --print-all-serialized-sizes | tee results/serialized_sizes.txt
+cargo bench --manifest-path xlang/Cargo.toml --bench serialization_bench 2>&1 | tee results/cargo_bench.log
+cargo bench --manifest-path local/Cargo.toml --bench external_type_bench 2>&1 | tee -a results/cargo_bench.log
+cargo run --release --manifest-path xlang/Cargo.toml --bin fory_profiler -- --print-all-serialized-sizes | tee results/serialized_sizes.txt
 python benchmark_report.py --log-file results/cargo_bench.log --size-file results/serialized_sizes.txt --output-dir results
 ```
 

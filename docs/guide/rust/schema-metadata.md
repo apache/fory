@@ -221,8 +221,49 @@ struct Data {
 }
 ```
 
+An unannotated `Vec<i32>` field is `list<int32>` with the default varint
+element encoding. The `fixed_values` field above remains a LIST and changes only
+its element encoding to fixed-width `int32`. Use `#[fory(array)]` when the field
+schema itself is a dense primitive array, or `#[fory(bytes)]` for binary
+`Vec<u8>`.
+
 `compress` has been removed. Use `encoding = varint` or `encoding = fixed`
 directly.
+
+### External-Type Field Selection
+
+Use `with` to select a serializer whose target is the exact field type. The
+serializer can be external structural, manual, or a carrier composition:
+
+```rust
+use fory::{ForyStruct, VecSerializer};
+use std::collections::HashMap;
+
+#[derive(ForyStruct)]
+struct Envelope {
+    #[fory(with = UserSerializer)]
+    user: third_party::User,
+
+    #[fory(with = VecSerializer<UserSerializer>)]
+    direct_users: Vec<third_party::User>,
+
+    #[fory(list(element(with = UserSerializer)))]
+    users: Vec<third_party::User>,
+
+    #[fory(map(value(with = UserSerializer)))]
+    by_name: HashMap<String, third_party::User>,
+
+    #[fory(tuple(element(index = 1, with = UserSerializer)))]
+    selected: (String, third_party::User),
+}
+```
+
+`with` selects a serializer whose target is the exact field node, so
+`direct_users` uses a carrier serializer for the whole Vec. Each recursive
+annotation applies only at its child node. For example, a map key and value can
+select different serializers. Tuple indices are zero-based. See
+[External-Type Serialization](external-types.md) for the complete recursive
+grammar and supported carriers.
 
 ## Type Classification
 
@@ -449,11 +490,14 @@ struct User {
 | `nullable` | `nullable` or `nullable = bool`  | Control null flag writing            | All fields                 |
 | `ref`      | `ref` or `ref = bool`            | Control reference tracking           | `Rc`, `Arc`, weak types    |
 | `encoding` | `encoding = varint/fixed/tagged` | Integer encoding method              | `i32`, `u32`, `i64`, `u64` |
-| `list`     | `list(element(...))`             | Element schema metadata              | `Vec<T>`                   |
-| `map`      | `map(key(...), value(...))`      | Key/value schema metadata            | `HashMap<K, V>`            |
+| `list`     | `list(element(...))`             | Element schema metadata              | Lists, sets, arrays        |
+| `map`      | `map(key(...), value(...))`      | Key/value schema metadata            | `HashMap`, `BTreeMap`      |
+| `tuple`    | `tuple(element(index = N, ...))` | Tuple-position schema metadata       | Tuples                     |
+| `with`     | `with = Serializer`              | Select a field serializer            | External target nodes      |
 
 ## Related Topics
 
 - [Basic Serialization](basic-serialization.md) - Getting started with Fory serialization
 - [Schema Evolution](schema-evolution.md) - Compatible mode and schema evolution
 - [Xlang Serialization](xlang-serialization.md) - Interoperability with Java, C++, Go, Python
+- [External-Type Serialization](external-types.md) - Selecting serializers for third-party fields

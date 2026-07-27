@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory::{Error, Fory, ForyDefault, Serializer as ForyValueSerializer};
+use fory::{Error, Fory, Serializer as ForyValueSerializer};
 use fory_derive::{ForyEnum, ForyStruct};
 use serde::{Deserialize, Serialize};
 
@@ -71,7 +71,7 @@ pub trait BenchmarkCase: Clone + PartialEq + Sized + 'static {
 }
 
 pub trait SchemaMismatchCase: BenchmarkCase {
-    type Read: ForyValueSerializer + ForyDefault + 'static;
+    type Read: ForyValueSerializer<Target = Self::Read> + 'static;
 
     fn verify_mismatch(decoded: &Self::Read, expected: &Self);
 }

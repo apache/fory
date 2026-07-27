@@ -3,7 +3,7 @@
 Apache Fory™ Dart is the Dart xlang implementation for
 [Apache Fory™](https://github.com/apache/fory). It reads and writes Fory's
 cross-language wire format and is designed around generated serializers for
-annotated Dart models, with customized serializers available for advanced use
+annotated Dart models, with manual serializers available for advanced use
 cases.
 
 ## Features
@@ -11,9 +11,10 @@ cases.
 - Cross-language serialization with the Fory xlang format
 - Dart VM/AOT, Flutter, and web platform support
 - Generated serializers for annotated structs and enums
+- External structural serializers for classes owned by another package
 - Compatible mode for schema evolution
 - Optional reference tracking for shared and circular object graphs
-- Manual serializers for external types, custom payloads, and unions
+- Manual serializers for custom payloads, construction, and unions
 - Explicit exact-width value classes for `Int64`, `Uint64`, `Float32`,
   `LocalDate`, and `Timestamp`, plus `Duration` support
 
@@ -88,6 +89,44 @@ Generate the companion file before running the program:
 ```bash
 dart run build_runner build --delete-conflicting-outputs
 ```
+
+## External-Type Serialization
+
+Use `ForyStruct.target` when another package owns a class whose public schema
+can be read and reconstructed directly:
+
+```dart
+import 'package:fory/fory.dart';
+import 'package:third_party/models.dart' as third_party;
+
+part 'external_serializers.fory.dart';
+
+@ForyStruct(target: third_party.User)
+abstract final class UserSerializer {
+  @ForyField(id: 1)
+  late final String name;
+
+  @ForyField(id: 2, type: Int32Type())
+  late final int age;
+}
+```
+
+The declaration is schema-only. Register and serialize the target:
+
+```dart
+ExternalSerializersForyModule.register(
+  fory,
+  third_party.User,
+  name: 'example.User',
+);
+
+final bytes = fory.serialize(user);
+final decoded = fory.deserialize<third_party.User>(bytes);
+```
+
+Fields and nested `List`, `Set`, and `Map` values use the same target
+registration. Select a public named generative constructor with
+`constructor: 'name'` when the unnamed constructor is not appropriate.
 
 ## Type Registration
 
@@ -178,10 +217,10 @@ class NodeList {
 Map<String, List<int?>> nested = <String, List<int?>>{};
 ```
 
-## Customized Serializers
+## Manual Serializers
 
-Use `Serializer<T>` when a type cannot use generated struct support or when you
-need custom wire behavior.
+Use `Serializer<T>` when a type needs custom wire behavior, field conversion,
+or construction that an external structural serializer cannot express.
 
 ```dart
 import 'package:fory/fory.dart';
@@ -278,7 +317,8 @@ The main exported API includes:
 
 - `Fory` — main serialization facade
 - `Config` — Fory configuration
-- `ForyStruct`, `ForyField`, `ListField`, `SetField`, `MapField` — struct annotations
+- `ForyStruct`, including `target` and `constructor`, plus `ForyField`,
+  `ListField`, `SetField`, and `MapField` — struct annotations
 - `ForyUnion` — union type annotation
 - `Serializer`, `UnionSerializer`, `EnumSerializer` — serializer base classes
 - `Buffer`, `WriteContext`, `ReadContext` — low-level I/O

@@ -2000,8 +2000,12 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 			return r.readSharedTypeMeta(buffer, err)
 		}
 		// ReadData namespace and type name metadata bytes
-		nsBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
-		typeBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		nsBytes := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		// Stop here because a following buffer read may replace the first metadata error.
+		if err.HasError() {
+			return nil
+		}
+		typeBytes := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
 		if err.HasError() {
 			return nil
 		}
@@ -2053,8 +2057,12 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 			return r.readSharedTypeMeta(buffer, err)
 		}
 		// ReadData namespace and type name metadata bytes
-		nsBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
-		typeBytes, _ := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		nsBytes := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		// Stop here because a following buffer read may replace the first metadata error.
+		if err.HasError() {
+			return nil
+		}
+		typeBytes := r.metaStringResolver.ReadMetaStringBytes(buffer, err)
 		if err.HasError() {
 			return nil
 		}
@@ -2111,7 +2119,14 @@ func (r *TypeResolver) readTypeInfoForType(buffer *ByteBuffer, expectedType refl
 			return nil
 		}
 		r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		// Stop here because a following buffer read may replace the first metadata error.
+		if err.HasError() {
+			return nil
+		}
 		r.metaStringResolver.ReadMetaStringBytes(buffer, err)
+		if err.HasError() {
+			return nil
+		}
 		if internalTypeID == NAMED_STRUCT {
 			return r.typeToSerializers[expectedType]
 		}

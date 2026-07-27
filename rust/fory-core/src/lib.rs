@@ -15,173 +15,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! # Fory Core
+//! Core runtime for Apache Fory's Rust implementation.
 //!
-//! This is the core implementation of the Fory serialization framework.
-//! It provides the fundamental building blocks for high-performance serialization
-//! and deserialization in Rust.
+//! [`Serializer`] statically handles one associated [`Serializer::Target`]. An ordinary local
+//! type serializes itself. A local external structural serializer or manual serializer can
+//! target a type owned by another crate without creating a wrapper value.
 //!
-//! ## Architecture
+//! [`Fory`] exposes ordinary roots for self-serializing types and four explicit-serializer roots:
+//! [`Fory::serialize_with`], [`Fory::serialize_to_with`], [`Fory::deserialize_with`], and
+//! [`Fory::deserialize_from_with`]. Fory-owned carrier serializers such as [`VecSerializer`] and
+//! [`HashMapSerializer`] recursively compose child serializers while preserving standard carrier
+//! wire formats.
 //!
-//! The core library is organized into several key modules:
-//!
-//! - **`fory`**: Main serialization engine and public API
-//! - **`buffer`**: Efficient binary buffer management with Reader/Writer
-//! - **`context`**: Per-operation read/write state and context pooling types
-//! - **`row`**: Row-based serialization for zero-copy operations
-//! - **`serializer`**: Type-specific serialization implementations
-//! - **`resolver`**: Type resolution and metadata management
-//! - **`meta`**: Metadata handling for schema evolution
-//! - **`types`**: Runtime value carriers such as temporal values, decimal, Float16, BFloat16, and weak refs
-//! - **`type_id`**: Type IDs and protocol header helpers
-//! - **`error`**: Error handling and result types
-//! - **`util`**: Utility functions and helpers
-//!
-//! ## Key Concepts
-//!
-//! ### Wire Modes And Schema Evolution
-//!
-//! Fory supports two wire modes:
-//!
-//! - **Xlang mode**: the default cross-language wire format, selected with
-//!   `.xlang(true)` and compatible schema evolution when `compatible` is
-//!   omitted.
-//! - **Native mode**: the Rust-only wire format, selected with `.xlang(false)`
-//!   with compatible schema evolution when `compatible` is omitted. Add
-//!   `.compatible(false)` only when every reader and writer always uses the same
-//!   schema and you need smaller, faster payloads.
-//!
-//! ### Type System
-//!
-//! The framework uses a comprehensive type system that supports:
-//! - Primitive types (bool, integers, floats, strings)
-//! - Collections (Vec, HashMap, BTreeMap)
-//! - Optional types (`Option<T>`)
-//! - Date/time carriers with optional chrono integration
-//! - Custom structs and enums
-//! - Trait objects (Box, Rc, Arc)
-//!
-//! ### Performance Optimizations
-//!
-//! - **Zero-copy deserialization** in row mode
-//! - **Buffer pre-allocation** to minimize allocations
-//! - **Variable-length encoding** for compact representation
-//! - **Little-endian byte order** for cross-platform compatibility
-//!
-//! ### Trait Object Serialization
-//!
-//! Fory supports polymorphic serialization through trait objects:
-//!
-//! #### Box-Based Trait Objects
-//!
-//! Define custom traits and register implementations:
-//!
-//! ```rust,ignore
-//! use fory_core::{Fory, register_trait_type, Serializer};
-//! use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
-//!
-//! trait Animal: Serializer {
-//!     fn speak(&self) -> String;
-//! }
-//!
-//! #[derive(ForyStruct, Debug)]
-//! struct Dog { name: String }
-//!
-//! #[derive(ForyStruct, Debug)]
-//! struct Cat { name: String }
-//!
-//! impl Animal for Dog {
-//!     fn speak(&self) -> String { "Woof!".to_string() }
-//! }
-//!
-//! impl Animal for Cat {
-//!     fn speak(&self) -> String { "Meow!".to_string() }
-//! }
-//!
-//! register_trait_type!(Animal, Dog, Cat);
-//!
-//! #[derive(ForyStruct)]
-//! struct Zoo {
-//!     star_animal: Box<dyn Animal>,
-//! }
-//!
-//! # fn main() {
-//! let mut fory = Fory::builder().xlang(false).build();
-//! fory.register::<Dog>(100).unwrap();
-//! fory.register::<Cat>(101).unwrap();
-//! fory.register::<Zoo>(102).unwrap();
-//!
-//! let zoo = Zoo {
-//!     star_animal: Box::new(Dog { name: "Buddy".to_string() }),
-//! };
-//!
-//! let bytes = fory.serialize(&zoo).unwrap();
-//! let decoded: Zoo = fory.deserialize(&bytes).unwrap();
-//! assert_eq!(decoded.star_animal.speak(), "Woof!");
-//! # }
-//! ```
-//!
-//! #### Rc/Arc-Based Trait Objects
-//!
-//! For reference-counted trait objects, use them directly in struct fields:
-//!
-//! ```rust,ignore
-//! # use fory_core::Serializer;
-//! # use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
-//! # use std::rc::Rc;
-//! # use std::sync::Arc;
-//! # trait Animal: Serializer { fn speak(&self) -> String; }
-//! #[derive(ForyStruct)]
-//! struct Shelter {
-//!     animals_rc: Vec<Rc<dyn Animal>>,
-//!     animals_arc: Vec<Arc<dyn Animal>>,
-//! }
-//! ```
-//!
-//! For standalone serialization, use auto-generated wrapper types (e.g., `AnimalRc`, `AnimalArc`)
-//! created by `register_trait_type!` due to Rust's orphan rule limitations.
-//!
-//! ## Usage
-//!
-//! This crate is typically used through the higher-level `fory` crate,
-//! which provides derive macros and a more convenient API. However,
-//! you can use the core types directly for advanced use cases.
-//!
-//! ```rust
-//! use fory_core::fory::Fory;
-//! use fory_core::error::Error;
-//! use fory_core::row::{to_row, from_row};
-//! use std::collections::HashMap;
-//!
-//! // Create a Fory instance
-//! let mut fory = Fory::builder().xlang(false).build();
-//!
-//! // Serialize String
-//! let text = String::from("Hello, Fory!");
-//! let serialized_str = fory.serialize(&text).unwrap();
-//! let deserialized_str: String = fory.deserialize(&serialized_str).unwrap();
-//! assert_eq!(text, deserialized_str);
-//!
-//! // Serialize Vec
-//! let vec_data = vec![1, 2, 3, 4, 5];
-//! let serialized_vec = fory.serialize(&vec_data).unwrap();
-//! let deserialized_vec: Vec<i32> = fory.deserialize(&serialized_vec).unwrap();
-//! assert_eq!(vec_data, deserialized_vec);
-//!
-//! // Serialize HashMap
-//! let mut map = HashMap::new();
-//! map.insert("key1".to_string(), 100);
-//! map.insert("key2".to_string(), 200);
-//! let serialized_map = fory.serialize(&map).unwrap();
-//! let deserialized_map: HashMap<String, i32> = fory.deserialize(&serialized_map).unwrap();
-//! assert_eq!(map, deserialized_map);
-//! // Register types for object serialization
-//! // fory.register::<MyStruct>(type_id);
-//!
-//! // Use row-based serialization for zero-copy operations
-//! // let row_data = to_row(&my_data);
-//! // let row = from_row::<MyStruct>(&row_data);
-//! ```
+//! Application traits extend [`ForyObject`] and use [`register_trait_type!`] with a closed list of
+//! concrete target types. Concrete targets are dispatched through their registered serializer;
+//! serializer declarations and Rust trait names never appear on the wire.
 
 // Direct lower-level derive users may resolve this crate through `::fory_core`, including
 // doctests where `crate` is the doctest crate instead of this runtime crate.
@@ -200,7 +48,7 @@ pub mod type_id;
 pub mod types;
 pub mod util;
 
-// Re-export paste for use in macros
+// Re-exported for generated macro code.
 pub use paste;
 
 pub use crate::buffer::{Reader, Writer};
@@ -210,7 +58,19 @@ pub use crate::error::Error;
 pub use crate::fory::{Fory, ForyBuilder};
 pub use crate::meta::{compute_field_hash, compute_struct_hash};
 pub use crate::resolver::{RefFlag, RefMode, TypeInfo, TypeResolver};
-pub use crate::serializer::{read_data, write_data, ForyDefault, Serializer, StructSerializer};
+pub use crate::serializer::trait_object::ForyObject;
+#[doc(hidden)]
+pub use crate::serializer::{
+    read_data, write_data, ArcSerializer, ArcWeakSerializer, ArraySerializer, BTreeMapSerializer,
+    BTreeSetSerializer, BinaryHeapSerializer, BoxSerializer, HashMapSerializer, HashSetSerializer,
+    LinkedListSerializer, MutexSerializer, OptionSerializer, RcSerializer, RcWeakSerializer,
+    RefCellSerializer, Serializer, StructSerializer, Tuple10Serializer, Tuple11Serializer,
+    Tuple12Serializer, Tuple13Serializer, Tuple14Serializer, Tuple15Serializer, Tuple16Serializer,
+    Tuple17Serializer, Tuple18Serializer, Tuple19Serializer, Tuple1Serializer, Tuple20Serializer,
+    Tuple21Serializer, Tuple22Serializer, Tuple2Serializer, Tuple3Serializer, Tuple4Serializer,
+    Tuple5Serializer, Tuple6Serializer, Tuple7Serializer, Tuple8Serializer, Tuple9Serializer,
+    VecDequeSerializer, VecSerializer,
+};
 pub use crate::type_id::TypeId;
 pub use crate::types::bfloat16::bfloat16 as BFloat16;
 pub use crate::types::float16::float16 as Float16;

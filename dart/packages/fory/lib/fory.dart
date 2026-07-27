@@ -21,7 +21,7 @@
 ///
 /// Most applications only need [Fory], [Config], [ForyStruct], and [ForyField].
 /// [Buffer], [WriteContext], [ReadContext], and [Serializer] are advanced APIs
-/// used by generated code, custom serializers, and low-level integrations.
+/// used by generated code, manual serializers, and low-level integrations.
 // ignore_for_file: invalid_export_of_internal_element
 library;
 

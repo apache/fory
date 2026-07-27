@@ -86,8 +86,7 @@ final class ForyGenerator extends Generator {
     inPackage: 'fory',
   );
 
-  final Map<String, String> _importPrefixByLibraryIdentifier =
-      <String, String>{};
+  final Map<Element, String?> _importPrefixByElement = <Element, String?>{};
 
   @override
   FutureOr<String> generate(LibraryReader library, BuildStep buildStep) {
@@ -108,9 +107,23 @@ final class ForyGenerator extends Generator {
         !_declaresGeneratedApiOwner(library, buildStep, generatedApiName);
 
     final enumSpecs = enumElements.map(_analyzeEnum).toList(growable: false);
-    final structSpecs = annotatedClasses
-        .map(_analyzeStruct)
-        .toList(growable: false);
+    final structSpecs = <_GeneratedStructSpec>[];
+    for (final element in annotatedClasses) {
+      final structSpec = _analyzeStruct(element);
+      final duplicate =
+          structSpecs
+              .where((existing) => existing.targetType == structSpec.targetType)
+              .firstOrNull;
+      if (duplicate != null) {
+        throw InvalidGenerationSourceError(
+          'Fory struct declarations ${duplicate.name} and ${structSpec.name} '
+          'both target ${structSpec.targetTypeLiteral}. Declare exactly one '
+          'structural schema for each target type in a library.',
+          element: element,
+        );
+      }
+      structSpecs.add(structSpec);
+    }
     final output =
         StringBuffer()
           ..writeln(
@@ -153,34 +166,333 @@ final class ForyGenerator extends Generator {
     final objectAnnotation = _foryStructChecker.firstAnnotationOf(element);
     final objectReader = ConstantReader(objectAnnotation);
     final evolving = objectReader.peek('evolving')?.boolValue ?? true;
+    final targetReader = objectReader.peek('target');
+    final annotatedTarget =
+        targetReader == null || targetReader.isNull
+            ? null
+            : targetReader.typeValue;
+    final constructorReader = objectReader.peek('constructor');
+    final constructorName =
+        constructorReader == null || constructorReader.isNull
+            ? null
+            : constructorReader.stringValue;
+    if (annotatedTarget == null && constructorName != null) {
+      throw InvalidGenerationSourceError(
+        'ForyStruct.constructor is valid only when ForyStruct.target is set.',
+        element: element,
+      );
+    }
+
+    final targetType =
+        annotatedTarget == null
+            ? element.thisType
+            : _validateExternalTarget(element, annotatedTarget);
+    if (annotatedTarget != null) {
+      _validateExternalDeclaration(element, targetType);
+    }
+    final targetTypeLiteral =
+        annotatedTarget == null
+            ? _typeReferenceLiteral(targetType)
+            : _externalTargetTypeLiteral(targetType, element);
+    final selectedConstructor = _selectConstructor(
+      element,
+      targetType,
+      targetTypeLiteral,
+      constructorName,
+      external: annotatedTarget != null,
+    );
 
     final fields = element.fields
         .where(
           (field) => !field.isStatic && identical(field.nonSynthetic, field),
         )
         .where((field) => !_isSkipped(field))
-        .map(_analyzeField)
+        .map(
+          (field) =>
+              _analyzeField(element, targetType, targetTypeLiteral, field),
+        )
         .toList(growable: false);
 
     final sortedFields = _sortFields(fields);
-    final constructionModel = _buildConstructionModel(element, sortedFields);
+    final constructionModel = _buildConstructionModel(
+      element,
+      targetType,
+      targetTypeLiteral,
+      selectedConstructor,
+      constructorName,
+      sortedFields,
+    );
     return _GeneratedStructSpec(
       name: element.displayName,
+      targetType: targetType,
+      targetTypeLiteral: targetTypeLiteral,
       evolving: evolving,
       fields: sortedFields,
       constructionModel: constructionModel,
     );
   }
 
+  InterfaceType _validateExternalTarget(
+    ClassElement declaration,
+    DartType annotatedTarget,
+  ) {
+    if (annotatedTarget is! InterfaceType ||
+        annotatedTarget.element is! ClassElement) {
+      throw InvalidGenerationSourceError(
+        'ForyStruct.target on ${declaration.displayName} must name a concrete '
+        'Dart class. Built-in values, carriers, enums, unions, records, '
+        'functions, extension types, and type parameters are not external '
+        'struct targets.',
+        element: declaration,
+      );
+    }
+    final targetType = annotatedTarget;
+    final targetElement = targetType.element as ClassElement;
+    final targetName = targetType.getDisplayString();
+    if (targetType == declaration.thisType) {
+      throw InvalidGenerationSourceError(
+        'ForyStruct.target on ${declaration.displayName} must name another '
+        'class. Remove target to serialize the annotated class itself.',
+        element: declaration,
+      );
+    }
+    if (targetType.nullabilitySuffix != NullabilitySuffix.none) {
+      throw InvalidGenerationSourceError(
+        'ForyStruct.target on ${declaration.displayName} must be non-nullable; '
+        '$targetName is not a valid structural target.',
+        element: declaration,
+      );
+    }
+    if (_containsTypeParameter(targetType)) {
+      throw InvalidGenerationSourceError(
+        'ForyStruct.target $targetName on ${declaration.displayName} must be a '
+        'closed type with no unresolved type parameters.',
+        element: declaration,
+      );
+    }
+    final targetLibrary = targetElement.library;
+    final targetUri = targetLibrary.uri;
+    final foryBuiltin =
+        targetUri.scheme == 'package' &&
+        targetUri.pathSegments.firstOrNull == 'fory' &&
+        _typeIdFor(targetType) != TypeIds.compatibleStruct;
+    if (targetLibrary.isDartCore ||
+        targetUri.toString() == 'dart:typed_data' ||
+        foryBuiltin ||
+        _isList(targetType) ||
+        _isSet(targetType) ||
+        _isMap(targetType) ||
+        _foryUnionChecker.hasAnnotationOf(targetElement)) {
+      throw InvalidGenerationSourceError(
+        'ForyStruct.target $targetName on ${declaration.displayName} is owned '
+        'by an existing built-in, carrier, enum, or union serializer. Use that '
+        'serializer directly.',
+        element: declaration,
+      );
+    }
+    if (targetElement.isAbstract || !targetElement.isConstructable) {
+      throw InvalidGenerationSourceError(
+        'ForyStruct.target $targetName on ${declaration.displayName} must be a '
+        'concrete constructable Dart class.',
+        element: declaration,
+      );
+    }
+    return targetType;
+  }
+
+  void _validateExternalDeclaration(
+    ClassElement declaration,
+    InterfaceType targetType,
+  ) {
+    final targetName = targetType.getDisplayString();
+    if (!declaration.isAbstract || !declaration.isFinal) {
+      throw InvalidGenerationSourceError(
+        'External structural serializer declaration '
+        '${declaration.displayName} for $targetName must be declared '
+        'abstract final.',
+        element: declaration,
+      );
+    }
+    if (declaration.typeParameters.isNotEmpty) {
+      throw InvalidGenerationSourceError(
+        'External structural serializer declaration '
+        '${declaration.displayName} for $targetName cannot declare type '
+        'parameters. Target one closed generic instantiation instead.',
+        element: declaration,
+      );
+    }
+    for (final field in declaration.fields.where(
+      (field) =>
+          !field.isStatic &&
+          identical(field.nonSynthetic, field) &&
+          !_isSkipped(field),
+    )) {
+      if (!field.isLate || !field.isFinal || field.hasInitializer) {
+        throw InvalidGenerationSourceError(
+          'Schema field ${declaration.displayName}.${field.displayName} for '
+          '$targetName must be a late final field without an initializer.',
+          element: field,
+        );
+      }
+    }
+  }
+
+  ConstructorElement _selectConstructor(
+    ClassElement declaration,
+    InterfaceType targetType,
+    String targetTypeLiteral,
+    String? constructorName, {
+    required bool external,
+  }) {
+    if (constructorName != null &&
+        (constructorName.isEmpty || constructorName.startsWith('_'))) {
+      throw InvalidGenerationSourceError(
+        'ForyStruct.constructor on ${declaration.displayName} must name a '
+        'public named generative constructor on $targetTypeLiteral.',
+        element: declaration,
+      );
+    }
+    final constructor = targetType.lookUpConstructor(
+      constructorName,
+      declaration.library,
+    );
+    if (constructor == null) {
+      final selected =
+          constructorName == null ? 'unnamed constructor' : '.$constructorName';
+      final remedy =
+          external
+              ? 'Expose that constructor, select another public named '
+                  'generative constructor, or use a manual serializer.'
+              : 'Add an accessible generative constructor.';
+      throw InvalidGenerationSourceError(
+        'Target $targetTypeLiteral for ${declaration.displayName} has no '
+        'accessible $selected. $remedy',
+        element: declaration,
+      );
+    }
+    if (!constructor.isGenerative || constructor.isFactory) {
+      final selected =
+          constructorName == null ? 'unnamed constructor' : '.$constructorName';
+      throw InvalidGenerationSourceError(
+        'Target constructor $targetTypeLiteral$selected selected by '
+        '${declaration.displayName} must be generative, not a factory. Select '
+        'a public generative constructor or use a manual serializer.',
+        element: declaration,
+      );
+    }
+    return constructor;
+  }
+
+  bool _containsTypeParameter(DartType type) {
+    if (type is TypeParameterType || type is InvalidType) {
+      return true;
+    }
+    if (type is InterfaceType) {
+      return type.typeArguments.any(_containsTypeParameter);
+    }
+    if (type is FunctionType) {
+      if (type.typeParameters.isNotEmpty ||
+          _containsTypeParameter(type.returnType)) {
+        return true;
+      }
+      return type.formalParameters.any(
+        (parameter) => _containsTypeParameter(parameter.type),
+      );
+    }
+    if (type is RecordType) {
+      return type.positionalFields.any(
+            (field) => _containsTypeParameter(field.type),
+          ) ||
+          type.namedFields.any((field) => _containsTypeParameter(field.type));
+    }
+    return false;
+  }
+
+  String _externalTargetTypeLiteral(
+    InterfaceType targetType,
+    ClassElement declaration,
+  ) {
+    String render(DartType type) {
+      final alias = type.alias;
+      if (alias != null) {
+        final base = _visibleTypeName(alias.element, declaration, targetType);
+        final arguments =
+            alias.typeArguments.isEmpty
+                ? ''
+                : '<${alias.typeArguments.map(render).join(', ')}>';
+        final nullable =
+            alias.nullabilitySuffix == NullabilitySuffix.question ? '?' : '';
+        return '$base$arguments$nullable';
+      }
+      if (type is DynamicType) {
+        return 'dynamic';
+      }
+      if (type is NeverType) {
+        return 'Never';
+      }
+      if (type is VoidType) {
+        return 'void';
+      }
+      if (type is InterfaceType) {
+        final base = _visibleTypeName(type.element, declaration, targetType);
+        final arguments =
+            type.typeArguments.isEmpty
+                ? ''
+                : '<${type.typeArguments.map(render).join(', ')}>';
+        final nullable =
+            type.nullabilitySuffix == NullabilitySuffix.question ? '?' : '';
+        return '$base$arguments$nullable';
+      }
+      throw InvalidGenerationSourceError(
+        'ForyStruct.target ${targetType.getDisplayString()} on '
+        '${declaration.displayName} contains a type that cannot be rendered '
+        'from the declaration library. Import a public closed class type '
+        'directly or use a manual serializer.',
+        element: declaration,
+      );
+    }
+
+    return render(targetType);
+  }
+
+  String _visibleTypeName(
+    Element typeElement,
+    ClassElement declaration,
+    InterfaceType targetType,
+  ) {
+    if (typeElement.library == declaration.library ||
+        typeElement.library?.isDartCore == true) {
+      return typeElement.displayName;
+    }
+    if (_importPrefixByElement.containsKey(typeElement)) {
+      final prefix = _importPrefixByElement[typeElement];
+      return prefix == null
+          ? typeElement.displayName
+          : '$prefix.${typeElement.displayName}';
+    }
+    throw InvalidGenerationSourceError(
+      'ForyStruct.target ${targetType.getDisplayString()} on '
+      '${declaration.displayName} cannot be rendered from this library. '
+      'Import the public target and every generic argument directly.',
+      element: declaration,
+    );
+  }
+
   void _buildImportPrefixMap(LibraryReader library) {
-    _importPrefixByLibraryIdentifier.clear();
+    _importPrefixByElement.clear();
     for (final import in library.element.firstFragment.libraryImports) {
       final importedLibrary = import.importedLibrary;
       final prefix = import.prefix?.element.displayName;
-      if (importedLibrary == null || prefix == null || prefix.isEmpty) {
+      if (importedLibrary == null) {
         continue;
       }
-      _importPrefixByLibraryIdentifier[importedLibrary.identifier] = prefix;
+      final normalizedPrefix = prefix == null || prefix.isEmpty ? null : prefix;
+      for (final importedElement in import.namespace.definedNames2.values) {
+        if (!_importPrefixByElement.containsKey(importedElement) ||
+            normalizedPrefix == null) {
+          _importPrefixByElement[importedElement] = normalizedPrefix;
+        }
+      }
     }
   }
 
@@ -191,7 +503,12 @@ final class ForyGenerator extends Generator {
     );
   }
 
-  _GeneratedFieldSpec _analyzeField(FieldElement field) {
+  _GeneratedFieldSpec _analyzeField(
+    ClassElement declaration,
+    InterfaceType targetType,
+    String targetTypeLiteral,
+    FieldElement field,
+  ) {
     final annotation = _fieldAnnotationOf(field);
     final reader = annotation == null ? null : ConstantReader(annotation);
     final idValue = reader?.peek('id');
@@ -216,6 +533,51 @@ final class ForyGenerator extends Generator {
             : dynamicValue.boolValue;
     final ref = reader?.peek('ref')?.boolValue ?? false;
     final typeSpec = _analyzeTypeSpecAnnotation(field, reader);
+    final getter = targetType.lookUpGetter(
+      field.displayName,
+      declaration.library,
+    );
+    if (getter == null || getter.isStatic) {
+      throw InvalidGenerationSourceError(
+        'Fory struct declaration ${declaration.displayName} targets '
+        '$targetTypeLiteral, which must expose an accessible '
+        'instance getter named ${field.displayName}. Expose the getter or use '
+        'a manual serializer.',
+        element: field,
+      );
+    }
+    if (getter.returnType != field.type) {
+      throw InvalidGenerationSourceError(
+        'Getter ${field.displayName} on target '
+        '$targetTypeLiteral has type '
+        '${_typeCodeString(getter.returnType)}, but serializer declaration '
+        '${declaration.displayName}.${field.displayName} has type '
+        '${_typeCodeString(field.type)}. The types must match exactly.',
+        element: field,
+      );
+    }
+    final setter = targetType.lookUpSetter(
+      field.displayName,
+      declaration.library,
+    );
+    if (setter != null) {
+      final parameters = setter.formalParameters;
+      if (parameters.length != 1 || parameters.single.type != field.type) {
+        final setterType =
+            parameters.length == 1
+                ? _typeCodeString(parameters.single.type)
+                : 'an invalid parameter list';
+        throw InvalidGenerationSourceError(
+          'Setter ${field.displayName} on target '
+          '$targetTypeLiteral accepts $setterType, but '
+          'serializer declaration '
+          '${declaration.displayName}.${field.displayName} has type '
+          '${_typeCodeString(field.type)}. Getter, setter, and declaration '
+          'types must match exactly.',
+          element: field,
+        );
+      }
+    }
 
     return _GeneratedFieldSpec(
       name: field.displayName,
@@ -227,7 +589,7 @@ final class ForyGenerator extends Generator {
       nullable: nullable,
       ref: ref,
       dynamic: dynamic,
-      writable: field.setter != null,
+      writable: setter != null,
       fieldType: _fieldTypeForType(
         field.type,
         nullable: nullable,
@@ -378,26 +740,18 @@ final class ForyGenerator extends Generator {
   }
 
   _ConstructionModel _buildConstructionModel(
-    ClassElement element,
+    ClassElement declaration,
+    InterfaceType targetType,
+    String targetTypeLiteral,
+    ConstructorElement constructor,
+    String? constructorName,
     List<_GeneratedFieldSpec> fields,
   ) {
-    final unnamedConstructor = element.unnamedConstructor;
-    final hasZeroArgConstructor =
-        unnamedConstructor != null &&
-        !unnamedConstructor.isFactory &&
-        unnamedConstructor.formalParameters.every(
-          (parameter) => parameter.isOptional,
-        );
+    final hasZeroArgConstructor = constructor.formalParameters.every(
+      (parameter) => parameter.isOptional,
+    );
     if (hasZeroArgConstructor && fields.every((field) => field.writable)) {
-      return const _ConstructionModel.mutable();
-    }
-
-    if (unnamedConstructor == null || unnamedConstructor.isFactory) {
-      throw InvalidGenerationSourceError(
-        'Generated Fory serializers require either a writable zero-argument constructor '
-        'or an unnamed generative constructor whose parameters map to fields.',
-        element: element,
-      );
+      return _ConstructionModel.mutable(constructorName: constructorName);
     }
 
     final fieldByName = <String, _GeneratedFieldSpec>{
@@ -405,17 +759,46 @@ final class ForyGenerator extends Generator {
     };
     final arguments = <_ConstructorArgumentSpec>[];
     final constructorFieldNames = <String>{};
-    for (final parameter in unnamedConstructor.formalParameters) {
+    var omittedOptionalPositional = false;
+    for (final parameter in constructor.formalParameters) {
       final parameterName = parameter.displayName;
       final field = fieldByName[parameterName];
       if (field == null) {
         if (parameter.isRequiredNamed || parameter.isRequiredPositional) {
           throw InvalidGenerationSourceError(
-            'Constructor parameter $parameterName does not match a serializable field.',
-            element: parameter,
+            'Required constructor parameter $parameterName on '
+            '$targetTypeLiteral does not match a field in serializer '
+            'declaration ${declaration.displayName}. Add an exact matching '
+            'schema field or select another constructor.',
+            element: declaration,
+          );
+        }
+        if (parameter.isOptionalPositional) {
+          omittedOptionalPositional = true;
+        }
+        continue;
+      }
+      if (parameter.isPositional && omittedOptionalPositional) {
+        if (!field.writable) {
+          throw InvalidGenerationSourceError(
+            'Constructor ${_constructorReference(targetTypeLiteral, constructorName)} '
+            'cannot map positional field $parameterName after an omitted '
+            'optional positional parameter, and the target has no matching '
+            'setter. Add the earlier schema field, expose a setter, or select '
+            'another constructor.',
+            element: declaration,
           );
         }
         continue;
+      }
+      if (parameter.type != field.type) {
+        throw InvalidGenerationSourceError(
+          'Constructor parameter $parameterName on $targetTypeLiteral has type '
+          '${_typeCodeString(parameter.type)}, but serializer declaration '
+          '${declaration.displayName}.$parameterName has type '
+          '${_typeCodeString(field.type)}. The types must match exactly.',
+          element: declaration,
+        );
       }
       constructorFieldNames.add(field.name);
       arguments.add(
@@ -430,22 +813,36 @@ final class ForyGenerator extends Generator {
     for (final field in fields) {
       if (!constructorFieldNames.contains(field.name) && !field.writable) {
         throw InvalidGenerationSourceError(
-          'Field ${field.name} must be writable or provided by the unnamed constructor.',
-          element: element,
+          'Field ${declaration.displayName}.${field.name} is not consumed by '
+          '${_constructorReference(targetTypeLiteral, constructorName)} and '
+          'target $targetTypeLiteral has no accessible exact-type setter. '
+          'Expose a matching setter, map the field through the constructor, or '
+          'use a manual serializer.',
+          element: declaration,
         );
       }
     }
 
+    // Constructor arguments are read before the target can be published, so a
+    // tracked path through carrier metadata cannot resolve back to this target.
     final selfRefField =
         fields
-            .where((field) => field.ref)
-            .where((field) => _sameType(field.type, element.thisType))
+            .where(
+              (field) => _hasTrackedTargetReference(
+                field.type,
+                field.fieldType,
+                targetType,
+              ),
+            )
             .firstOrNull;
     if (selfRefField != null) {
       throw InvalidGenerationSourceError(
-        'Constructor-based generated serializers cannot bind self references early. '
-        'Use a writable zero-argument constructor for ${element.displayName}.',
-        element: selfRefField.type.element,
+        'Constructor-based generated serializers cannot bind '
+        'reference-tracked self paths before construction. '
+        'Use a writable zero-required-argument generative constructor for '
+        '$targetTypeLiteral or a manual serializer. Offending field: '
+        '${declaration.displayName}.${selfRefField.name}.',
+        element: declaration,
       );
     }
 
@@ -455,10 +852,19 @@ final class ForyGenerator extends Generator {
         .toList(growable: false);
 
     return _ConstructionModel.constructor(
+      constructorName: constructorName,
       arguments: arguments,
       postConstructionFieldNames: postConstructionFields,
     );
   }
+
+  String _constructorReference(
+    String targetTypeLiteral,
+    String? constructorName,
+  ) =>
+      constructorName == null
+          ? targetTypeLiteral
+          : '$targetTypeLiteral.$constructorName';
 
   void _writeEnum(StringBuffer output, _GeneratedEnumSpec enumSpec) {
     final serializerClassName = '_${enumSpec.name}ForySerializer';
@@ -529,10 +935,10 @@ final class ForyGenerator extends Generator {
       ..writeln('];')
       ..writeln()
       ..writeln(
-        'final GeneratedStructSchema<${structSpec.name}> $schemaName = GeneratedStructSchema<${structSpec.name}>(',
+        'final GeneratedStructSchema<${structSpec.targetTypeLiteral}> $schemaName = GeneratedStructSchema<${structSpec.targetTypeLiteral}>(',
       );
     output
-      ..writeln('  type: ${structSpec.name},')
+      ..writeln('  type: ${structSpec.targetTypeLiteral},')
       ..writeln('  serializerFactory: _${structSpec.name}ForySerializer.new,')
       ..writeln('  evolving: ${structSpec.evolving},')
       ..writeln(
@@ -545,7 +951,7 @@ final class ForyGenerator extends Generator {
       ..writeln(');')
       ..writeln()
       ..writeln(
-        'final class $serializerClassName extends Serializer<${structSpec.name}> implements GeneratedStructSerializer<${structSpec.name}> {',
+        'final class $serializerClassName extends Serializer<${structSpec.targetTypeLiteral}> implements GeneratedStructSerializer<${structSpec.targetTypeLiteral}> {',
       )
       ..writeln('  List<GeneratedStructFieldDescriptor>? _fieldDescriptors;')
       ..writeln()
@@ -574,7 +980,7 @@ final class ForyGenerator extends Generator {
       ..writeln('  }')
       ..writeln('  @override')
       ..writeln(
-        '  void write(WriteContext context, ${structSpec.name} value) {',
+        '  void write(WriteContext context, ${structSpec.targetTypeLiteral} value) {',
       );
     if (writeUsesBuffer) {
       output.writeln('      final buffer = context.buffer;');
@@ -632,13 +1038,17 @@ final class ForyGenerator extends Generator {
       ..writeln('  }')
       ..writeln()
       ..writeln('  @override')
-      ..writeln('  ${structSpec.name} read(ReadContext context) {');
+      ..writeln(
+        '  ${structSpec.targetTypeLiteral} read(ReadContext context) {',
+      );
     final graphObjectBytes = _graphObjectBytes(structSpec);
 
     switch (structSpec.constructionModel.mode) {
       case _ConstructorMode.mutable:
         output.writeln('    context.reserveGraphMemory($graphObjectBytes);');
-        output.writeln('    final value = ${structSpec.name}();');
+        output.writeln(
+          '    final value = ${_constructorReference(structSpec.targetTypeLiteral, structSpec.constructionModel.constructorName)}();',
+        );
         if (_structNeedsEarlyReadReference(structSpec)) {
           output
             ..writeln('    if (context.hasPreservedRefId) {')
@@ -813,14 +1223,16 @@ final class ForyGenerator extends Generator {
       ..writeln()
       ..writeln('  @override')
       ..writeln(
-        '  ${structSpec.name} readCompatibleStruct(ReadContext context, CompatibleStructReadLayout layout) {',
+        '  ${structSpec.targetTypeLiteral} readCompatibleStruct(ReadContext context, CompatibleStructReadLayout layout) {',
       );
     switch (structSpec.constructionModel.mode) {
       case _ConstructorMode.mutable:
         output.writeln(
           '    context.reserveGraphMemory(${_graphObjectBytes(structSpec)});',
         );
-        output.writeln('    final value = ${structSpec.name}();');
+        output.writeln(
+          '    final value = ${_constructorReference(structSpec.targetTypeLiteral, structSpec.constructionModel.constructorName)}();',
+        );
         if (_structNeedsEarlyReadReference(structSpec)) {
           output
             ..writeln('    if (context.hasPreservedRefId) {')
@@ -874,12 +1286,13 @@ final class ForyGenerator extends Generator {
   }) {
     final mutable =
         structSpec.constructionModel.mode == _ConstructorMode.mutable;
-    final valueParameter = mutable ? ', ${structSpec.name} value' : '';
+    final valueParameter =
+        mutable ? ', ${structSpec.targetTypeLiteral} value' : '';
     output
       ..writeln()
       ..writeln("  @pragma('vm:never-inline')")
       ..writeln(
-        '  ${structSpec.name} _readCompatibleStructFallback(ReadContext context, CompatibleStructReadLayout layout$valueParameter) {',
+        '  ${structSpec.targetTypeLiteral} _readCompatibleStructFallback(ReadContext context, CompatibleStructReadLayout layout$valueParameter) {',
       );
     if (readUsesBuffer) {
       output.writeln('    final buffer = context.buffer;');
@@ -938,7 +1351,7 @@ final class ForyGenerator extends Generator {
     output
       ..writeln('        default:')
       ..writeln(
-        "          throw StateError('Compatible matched id is out of range for ${structSpec.name}.');",
+        "          throw StateError('Compatible matched id is out of range for ${structSpec.targetTypeLiteral}.');",
       )
       ..writeln('      }')
       ..writeln('    }')
@@ -997,7 +1410,7 @@ final class ForyGenerator extends Generator {
     output
       ..writeln('        default:')
       ..writeln(
-        "          throw StateError('Compatible matched id is out of range for ${structSpec.name}.');",
+        "          throw StateError('Compatible matched id is out of range for ${structSpec.targetTypeLiteral}.');",
       )
       ..writeln('      }')
       ..writeln('    }');
@@ -1192,7 +1605,7 @@ final class ForyGenerator extends Generator {
     }
     for (final structSpec in structSpecs) {
       final schemaName = '_${_toCamelCase(structSpec.name)}ForySchema';
-      output.writeln('  if (type == ${structSpec.name}) {');
+      output.writeln('  if (type == ${structSpec.targetTypeLiteral}) {');
       output.writeln('    registerGeneratedStruct(');
       output.writeln('      fory,');
       output.writeln('      $schemaName,');
@@ -1229,7 +1642,7 @@ final class ForyGenerator extends Generator {
       ...positionalArguments,
       ...namedArguments,
     ].join(', ');
-    return '${structSpec.name}($arguments)';
+    return '${_constructorReference(structSpec.targetTypeLiteral, structSpec.constructionModel.constructorName)}($arguments)';
   }
 
   int _graphObjectBytes(_GeneratedStructSpec structSpec) =>
@@ -3602,8 +4015,36 @@ GeneratedFieldType(
   }
 
   bool _sameType(DartType left, DartType right) =>
-      _typeLiteral(_withoutNullability(left)) ==
-      _typeLiteral(_withoutNullability(right));
+      _withoutNullability(left) == _withoutNullability(right);
+
+  bool _hasTrackedTargetReference(
+    DartType type,
+    _GeneratedFieldTypeSpec fieldType,
+    InterfaceType targetType,
+  ) {
+    if (fieldType.ref && _sameType(type, targetType)) {
+      return true;
+    }
+    final nonNullable = _withoutNullability(type);
+    if (nonNullable is! InterfaceType) {
+      return false;
+    }
+    final typeArguments = nonNullable.typeArguments;
+    final argumentCount =
+        typeArguments.length < fieldType.arguments.length
+            ? typeArguments.length
+            : fieldType.arguments.length;
+    for (var index = 0; index < argumentCount; index++) {
+      if (_hasTrackedTargetReference(
+        typeArguments[index],
+        fieldType.arguments[index],
+        targetType,
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   bool? _autoDynamic(DartType type) {
     final nonNullable = _withoutNullability(type);
@@ -3678,14 +4119,27 @@ GeneratedFieldType(
   }
 
   String _typeReferenceLiteral(DartType type) {
-    final nonNullable = _withoutNullability(type);
-    if (nonNullable is DynamicType || nonNullable is InvalidType) {
+    if (type is DynamicType || type is InvalidType) {
       return 'Object';
     }
+    // Rebuilding a nullable interface type drops its alias, so preserve the
+    // visible alias before removing nullability from the underlying type.
+    final alias = type.alias;
+    if (alias != null) {
+      final aliasElement = alias.element;
+      final prefix = _importPrefixByElement[aliasElement];
+      final elementName = aliasElement.displayName;
+      final baseName = prefix == null ? elementName : '$prefix.$elementName';
+      if (alias.typeArguments.isEmpty) {
+        return baseName;
+      }
+      final typeArguments = alias.typeArguments.map(_typeCodeString).join(', ');
+      return '$baseName<$typeArguments>';
+    }
+    final nonNullable = _withoutNullability(type);
     if (nonNullable is InterfaceType) {
       final element = nonNullable.element;
-      final prefix =
-          _importPrefixByLibraryIdentifier[element.library.identifier];
+      final prefix = _importPrefixByElement[element];
       final elementName = element.displayName;
       final baseName = prefix == null ? elementName : '$prefix.$elementName';
       if (nonNullable.typeArguments.isEmpty) {
@@ -3785,12 +4239,16 @@ final class _GeneratedEnumSpec {
 
 final class _GeneratedStructSpec {
   final String name;
+  final InterfaceType targetType;
+  final String targetTypeLiteral;
   final bool evolving;
   final List<_GeneratedFieldSpec> fields;
   final _ConstructionModel constructionModel;
 
   const _GeneratedStructSpec({
     required this.name,
+    required this.targetType,
+    required this.targetTypeLiteral,
     required this.evolving,
     required this.fields,
     required this.constructionModel,
@@ -3867,15 +4325,17 @@ enum _ConstructorMode { mutable, constructor }
 
 final class _ConstructionModel {
   final _ConstructorMode mode;
+  final String? constructorName;
   final List<_ConstructorArgumentSpec> arguments;
   final List<String> postConstructionFieldNames;
 
-  const _ConstructionModel.mutable()
+  const _ConstructionModel.mutable({required this.constructorName})
     : mode = _ConstructorMode.mutable,
       arguments = const <_ConstructorArgumentSpec>[],
       postConstructionFieldNames = const <String>[];
 
   const _ConstructionModel.constructor({
+    required this.constructorName,
     required this.arguments,
     required this.postConstructionFieldNames,
   }) : mode = _ConstructorMode.constructor;

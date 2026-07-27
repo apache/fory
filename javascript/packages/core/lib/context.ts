@@ -263,7 +263,7 @@ export class MetaStringWriter {
 
   writeBytes(writer: BinaryWriter, bytes: MetaStringBytes) {
     if (bytes.dynamicWriteStringId !== -1) {
-      writer.writeVarUInt32(((this.dynamicNameId + 1) << 1) | 1);
+      writer.writeVarUInt32(((bytes.dynamicWriteStringId + 1) << 1) | 1);
     } else {
       bytes.dynamicWriteStringId = this.dynamicNameId;
       this.dynamicNameId += 1;
@@ -301,7 +301,7 @@ export class MetaStringReader {
   readTypeName(reader: BinaryReader) {
     const idOrLen = reader.readVarUInt32();
     if (idOrLen & 1) {
-      return this.names[idOrLen >> 1];
+      return this.names[(idOrLen >>> 1) - 1];
     }
     const len = idOrLen >> 1;
     if (len === 0) {
@@ -317,7 +317,7 @@ export class MetaStringReader {
   readNamespace(reader: BinaryReader) {
     const idOrLen = reader.readVarUInt32();
     if (idOrLen & 1) {
-      return this.names[idOrLen >> 1];
+      return this.names[(idOrLen >>> 1) - 1];
     }
     const len = idOrLen >> 1;
     if (len === 0) {

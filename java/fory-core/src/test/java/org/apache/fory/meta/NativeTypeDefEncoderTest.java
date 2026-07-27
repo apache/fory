@@ -425,6 +425,80 @@ public class NativeTypeDefEncoderTest {
         RuntimeException.class, () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
   }
 
+  @Test
+  public void testRejectsNamespaceEncoding() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    MemoryBuffer body = MemoryBuffer.newHeapBuffer(3);
+    body.writeByte(NativeTypeDefEncoder.nativeKindCode(Types.NAMED_STRUCT) << 4);
+    body.writeVarUInt32Small7(0);
+    body.writeByte(0b11);
+    MemoryBuffer encoded = NativeTypeDefEncoder.prependHeader(body, false);
+
+    DeserializationException exception =
+        Assert.expectThrows(
+            DeserializationException.class,
+            () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
+    Assert.assertTrue(exception.getMessage().contains("namespace encoding"));
+  }
+
+  @Test
+  public void testRejectsExtendedNameSize() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    for (int extendedSize : new int[] {-1, Integer.MAX_VALUE}) {
+      MemoryBuffer body = MemoryBuffer.newHeapBuffer(8);
+      body.writeByte(NativeTypeDefEncoder.nativeKindCode(Types.NAMED_STRUCT) << 4);
+      body.writeVarUInt32Small7(0);
+      body.writeByte(NativeTypeDefEncoder.BIG_NAME_THRESHOLD << 2);
+      body.writeVarUInt32Small7(extendedSize);
+      MemoryBuffer encoded = NativeTypeDefEncoder.prependHeader(body, false);
+
+      DeserializationException exception =
+          Assert.expectThrows(
+              DeserializationException.class,
+              () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
+      Assert.assertTrue(exception.getMessage().contains("namespace size"));
+    }
+  }
+
+  @Test
+  public void testRejectsExtendedFieldNameSize() {
+    Fory fory =
+        Fory.builder()
+            .withXlang(false)
+            .withMetaShare(true)
+            .requireClassRegistration(false)
+            .withCompatible(false)
+            .build();
+    for (int extendedSize : new int[] {-1, Integer.MAX_VALUE}) {
+      MemoryBuffer body = MemoryBuffer.newHeapBuffer(16);
+      body.writeByte(NativeTypeDefEncoder.nativeKindCode(Types.STRUCT) << 4);
+      body.writeVarUInt32Small7(3);
+      body.writeUInt8(Types.STRUCT);
+      body.writeVarUInt32(0);
+      body.writeByte(7 << 4);
+      body.writeVarUInt32Small7(extendedSize);
+      MemoryBuffer encoded = NativeTypeDefEncoder.prependHeader(body, false);
+
+      DeserializationException exception =
+          Assert.expectThrows(
+              DeserializationException.class,
+              () -> TypeDef.readTypeDef(fory.getTypeResolver(), encoded));
+      Assert.assertTrue(exception.getMessage().contains("field name size"));
+    }
+  }
+
   private static byte[] corruptEncodedBody(TypeDef typeDef, String needle) {
     byte[] malformed = typeDef.getEncoded().clone();
     byte[] needleBytes = Encoders.encodeFieldName(needle).getBytes();

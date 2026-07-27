@@ -121,8 +121,9 @@ public final class Fory {
         self.config = config
     }
 
-    public func register<T: Serializer>(_ type: T.Type, id: UInt32) {
-        typeResolver.register(type, id: id)
+    /// Registers a user serializer by numeric type ID.
+    public func register<T: Serializer>(_ type: T.Type, id: UInt32) throws {
+        try typeResolver.register(type, id: id)
     }
 
     /// Registers a user type by name. The last `.` separates namespace from the final type name.
@@ -130,312 +131,150 @@ public final class Fory {
         try typeResolver.register(type, name: name)
     }
 
-    public func serialize<T: Serializer>(_ value: T) throws -> Data {
+    public func serialize<T>(_ value: T) throws -> Data
+    where T: Serializer, T.Target == T {
         try serializeRoot { context in
-            try writeRootTypedValue(value, context: context)
+            try writeRootValue(value, with: T.self, context: context)
         }
     }
 
-    public func deserialize<T: Serializer>(_ data: Data, as _: T.Type = T.self) throws -> T {
+    public func deserialize<T>(_ data: Data, as _: T.Type = T.self) throws -> T
+    where T: Serializer, T.Target == T {
         try deserializeRoot(
             data: data
         ) { context in
-            try readRootTypedValue(context: context)
+            try readRootValue(with: T.self, context: context)
         }
     }
 
-    public func serialize<T: Serializer>(_ value: T, to buffer: inout Data) throws {
+    public func serialize<T>(_ value: T, to buffer: inout Data) throws
+    where T: Serializer, T.Target == T {
         try appendSerializedRoot(to: &buffer) { context in
-            try writeRootTypedValue(value, context: context)
+            try writeRootValue(value, with: T.self, context: context)
         }
     }
 
-    public func deserialize<T: Serializer>(from buffer: ByteBuffer, as _: T.Type = T.self) throws -> T {
+    public func deserialize<T>(from buffer: ByteBuffer, as _: T.Type = T.self) throws -> T
+    where T: Serializer, T.Target == T {
         try deserializeRoot(
             from: buffer
         ) { context in
-            try readRootTypedValue(context: context)
+            try readRootValue(with: T.self, context: context)
         }
     }
 
+    /// Serializes an `Any` root through its concrete target serializer.
     @_disfavoredOverload
+    @inlinable
+    @inline(__always)
     public func serialize(_ value: Any) throws -> Data {
-        try serializeRoot { context in
-            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
+        try serialize(value, with: DynamicSerializer<Any>.self)
     }
 
+    /// Deserializes an `Any` root through its concrete target serializer.
     @_disfavoredOverload
+    @inlinable
+    @inline(__always)
     public func deserialize(_ data: Data, as _: Any.Type = Any.self) throws -> Any {
-        try deserializeRoot(
-            data: data
-        ) { context in
-            try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
-                to: Any.self
-            )
-        }
+        try deserialize(data, with: DynamicSerializer<Any>.self)
     }
 
+    /// Appends an `Any` root serialized through its concrete target serializer.
     @_disfavoredOverload
-    public func serialize(_ value: AnyObject) throws -> Data {
-        try serializeRoot { context in
-            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    @_disfavoredOverload
-    public func deserialize(_ data: Data, as _: AnyObject.Type = AnyObject.self) throws -> AnyObject {
-        try deserializeRoot(
-            data: data
-        ) { context in
-            try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
-                to: AnyObject.self
-            )
-        }
-    }
-
-    @_disfavoredOverload
-    public func serialize(_ value: any Serializer) throws -> Data {
-        try serializeRoot { context in
-            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    @_disfavoredOverload
-    public func deserialize(
-        _ data: Data, as _: (any Serializer).Type = (any Serializer).self
-    ) throws
-        -> any Serializer
-    {
-        try deserializeRoot(
-            data: data
-        ) { context in
-            try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
-                to: (any Serializer).self
-            )
-        }
-    }
-
-    @_disfavoredOverload
-    public func serialize(_ value: [Any]) throws -> Data {
-        try serializeRoot { context in
-            try context.writeListOfAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    @_disfavoredOverload
-    public func deserialize(_ data: Data, as _: [Any].Type = [Any].self) throws -> [Any] {
-        try deserializeRoot(
-            data: data
-        ) { context in
-            try readListOfAny(context: context, refMode: refMode, readTypeInfo: true) ?? []
-        }
-    }
-
-    @_disfavoredOverload
-    public func serialize(_ value: [String: Any]) throws -> Data {
-        try serializeRoot { context in
-            try context.writeMapStringToAny(
-                value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    @_disfavoredOverload
-    public func deserialize(
-        _ data: Data, as _: [String: Any].Type = [String: Any].self
-    ) throws
-        -> [String: Any]
-    {
-        try deserializeRoot(
-            data: data
-        ) { context in
-            try readMapStringToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
-        }
-    }
-
-    @_disfavoredOverload
-    public func serialize(_ value: [Int32: Any]) throws -> Data {
-        try serializeRoot { context in
-            try context.writeMapInt32ToAny(
-                value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    @_disfavoredOverload
-    public func deserialize(
-        _ data: Data, as _: [Int32: Any].Type = [Int32: Any].self
-    ) throws
-        -> [Int32: Any]
-    {
-        try deserializeRoot(
-            data: data
-        ) { context in
-            try readMapInt32ToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
-        }
-    }
-
-    @_disfavoredOverload
-    public func serialize(_ value: [AnyHashable: Any]) throws -> Data {
-        try serializeRoot { context in
-            try context.writeMapAnyHashableToAny(
-                value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    @_disfavoredOverload
-    public func deserialize(
-        _ data: Data, as _: [AnyHashable: Any].Type = [AnyHashable: Any].self
-    )
-        throws -> [AnyHashable: Any]
-    {
-        try deserializeRoot(
-            data: data
-        ) { context in
-            try readMapAnyHashableToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
-        }
-    }
-
-    @_disfavoredOverload
-    public func serialize(_ value: [Any], to buffer: inout Data) throws {
-        try appendSerializedRoot(to: &buffer) { context in
-            try context.writeListOfAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    @_disfavoredOverload
+    @inlinable
+    @inline(__always)
     public func serialize(_ value: Any, to buffer: inout Data) throws {
-        try appendSerializedRoot(to: &buffer) { context in
-            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
+        try serialize(value, with: DynamicSerializer<Any>.self, to: &buffer)
     }
 
+    /// Deserializes an `Any` root from a byte buffer through its concrete target serializer.
     @_disfavoredOverload
+    @inlinable
+    @inline(__always)
     public func deserialize(from buffer: ByteBuffer, as _: Any.Type = Any.self) throws -> Any {
-        try deserializeRoot(
-            from: buffer
-        ) { context in
-            try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
-                to: Any.self
-            )
-        }
+        try deserialize(from: buffer, with: DynamicSerializer<Any>.self)
     }
 
+    /// Serializes an `AnyObject` root through its concrete target serializer.
     @_disfavoredOverload
-    public func serialize(_ value: AnyObject, to buffer: inout Data) throws {
-        try appendSerializedRoot(to: &buffer) { context in
-            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
+    @inlinable
+    @inline(__always)
+    public func serialize(_ value: AnyObject) throws -> Data {
+        try serialize(value, with: DynamicSerializer<AnyObject>.self)
     }
 
+    /// Deserializes an `AnyObject` root through its concrete target serializer.
     @_disfavoredOverload
+    @inlinable
+    @inline(__always)
     public func deserialize(
-        from buffer: ByteBuffer, as _: AnyObject.Type = AnyObject.self
-    ) throws
-        -> AnyObject
-    {
-        try deserializeRoot(
-            from: buffer
-        ) { context in
-            try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
-                to: AnyObject.self
-            )
-        }
+        _ data: Data,
+        as _: AnyObject.Type = AnyObject.self
+    ) throws -> AnyObject {
+        try deserialize(data, with: DynamicSerializer<AnyObject>.self)
     }
 
+    /// Appends an `AnyObject` root serialized through its concrete target serializer.
     @_disfavoredOverload
-    public func serialize(_ value: any Serializer, to buffer: inout Data) throws {
-        try appendSerializedRoot(to: &buffer) { context in
-            try context.writeAny(value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
+    @inlinable
+    @inline(__always)
+    public func serialize(_ value: AnyObject, to buffer: inout Data) throws {
+        try serialize(value, with: DynamicSerializer<AnyObject>.self, to: &buffer)
     }
 
+    /// Deserializes an `AnyObject` root from a byte buffer through its concrete target serializer.
     @_disfavoredOverload
+    @inlinable
+    @inline(__always)
     public func deserialize(
         from buffer: ByteBuffer,
-        as _: (any Serializer).Type = (any Serializer).self
-    ) throws -> any Serializer {
-        try deserializeRoot(
-            from: buffer
-        ) { context in
-            try castAnyDynamicValue(
-                readAny(context: context, refMode: refMode, readTypeInfo: true),
-                to: (any Serializer).self
-            )
+        as _: AnyObject.Type = AnyObject.self
+    ) throws -> AnyObject {
+        try deserialize(from: buffer, with: DynamicSerializer<AnyObject>.self)
+    }
+
+    /// Serializes a root value with an explicitly selected serializer.
+    public func serialize<S: Serializer>(
+        _ value: S.Target,
+        with _: S.Type
+    ) throws -> Data {
+        try serializeRoot { context in
+            try writeRootValue(value, with: S.self, context: context)
         }
     }
 
-    @_disfavoredOverload
-    public func deserialize(from buffer: ByteBuffer, as _: [Any].Type = [Any].self) throws -> [Any] {
+    /// Deserializes a root value with an explicitly selected serializer.
+    public func deserialize<T, S: Serializer>(
+        _ data: Data,
+        with _: S.Type
+    ) throws -> T where S.Target == T {
         try deserializeRoot(
-            from: buffer
+            data: data
         ) { context in
-            try readListOfAny(context: context, refMode: refMode, readTypeInfo: true) ?? []
+            try readRootValue(with: S.self, context: context)
         }
     }
 
-    @_disfavoredOverload
-    public func serialize(_ value: [String: Any], to buffer: inout Data) throws {
+    /// Appends a root value serialized with an explicitly selected serializer.
+    public func serialize<S: Serializer>(
+        _ value: S.Target,
+        with _: S.Type,
+        to buffer: inout Data
+    ) throws {
         try appendSerializedRoot(to: &buffer) { context in
-            try context.writeMapStringToAny(
-                value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
+            try writeRootValue(value, with: S.self, context: context)
         }
     }
 
-    @_disfavoredOverload
-    public func deserialize(
-        from buffer: ByteBuffer, as _: [String: Any].Type = [String: Any].self
-    )
-        throws -> [String: Any]
-    {
+    /// Deserializes a root value from a byte buffer with an explicitly selected serializer.
+    public func deserialize<T, S: Serializer>(
+        from buffer: ByteBuffer,
+        with _: S.Type
+    ) throws -> T where S.Target == T {
         try deserializeRoot(
             from: buffer
         ) { context in
-            try readMapStringToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
-        }
-    }
-
-    @_disfavoredOverload
-    public func serialize(_ value: [Int32: Any], to buffer: inout Data) throws {
-        try appendSerializedRoot(to: &buffer) { context in
-            try context.writeMapInt32ToAny(
-                value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    @_disfavoredOverload
-    public func serialize(_ value: [AnyHashable: Any], to buffer: inout Data) throws {
-        try appendSerializedRoot(to: &buffer) { context in
-            try context.writeMapAnyHashableToAny(
-                value, refMode: refMode, writeTypeInfo: true, hasGenerics: false)
-        }
-    }
-
-    @_disfavoredOverload
-    public func deserialize(
-        from buffer: ByteBuffer, as _: [Int32: Any].Type = [Int32: Any].self
-    )
-        throws -> [Int32: Any]
-    {
-        try deserializeRoot(
-            from: buffer
-        ) { context in
-            try readMapInt32ToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
-        }
-    }
-
-    @_disfavoredOverload
-    public func deserialize(
-        from buffer: ByteBuffer, as _: [AnyHashable: Any].Type = [AnyHashable: Any].self
-    ) throws -> [AnyHashable: Any] {
-        try deserializeRoot(
-            from: buffer
-        ) { context in
-            try readMapAnyHashableToAny(context: context, refMode: refMode, readTypeInfo: true) ?? [:]
+            try readRootValue(with: S.self, context: context)
         }
     }
 
@@ -471,23 +310,26 @@ public final class Fory {
         config.trackRef ? .tracking : .nullOnly
     }
 
-    private func writeRootTypedValue<T: Serializer>(
-        _ value: T,
+    @inline(__always)
+    private func writeRootValue<S: Serializer>(
+        _ value: S.Target,
+        with _: S.Type,
         context: WriteContext
     ) throws {
-        try value.foryWrite(
+        try S.write(
+            value,
             context,
             refMode: refMode,
-            writeTypeInfo: true,
-            hasGenerics: false
+            writeTypeInfo: true
         )
     }
 
     @inline(__always)
-    private func readRootTypedValue<T: Serializer>(
+    private func readRootValue<S: Serializer>(
+        with _: S.Type,
         context: ReadContext
-    ) throws -> T {
-        return try T.foryRead(
+    ) throws -> S.Target {
+        return try S.read(
             context,
             refMode: refMode,
             readTypeInfo: true
@@ -495,7 +337,7 @@ public final class Fory {
     }
 
     @inline(__always)
-    func withReusableReadContext<R>(
+    private func withReusableReadContext<R>(
         data: Data,
         _ body: (ReadContext) throws -> R
     ) throws -> R {
@@ -548,8 +390,7 @@ public final class Fory {
             try readHead(buffer: context.buffer)
             let value = try body(context)
             if context.buffer.remaining != 0 {
-                throw ForyError.invalidData(
-                    "unexpected trailing bytes at root: \(context.buffer.remaining)")
+                throw unexpectedTrailingBytes(context.buffer.remaining)
             }
             return value
         }
@@ -569,5 +410,10 @@ public final class Fory {
         }
         try readHead(buffer: readContext.buffer)
         return try body(readContext)
+    }
+
+    @inline(never)
+    private func unexpectedTrailingBytes(_ remaining: Int) -> ForyError {
+        ForyError.invalidData("unexpected trailing bytes at root: \(remaining)")
     }
 }

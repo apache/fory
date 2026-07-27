@@ -32,43 +32,25 @@ pub fn allocate_type_id() -> u32 {
     TYPE_ID_COUNTER.fetch_add(1, Ordering::SeqCst)
 }
 
-#[allow(dead_code)]
-fn hash(fields: &[&Field]) -> TokenStream {
-    let props = fields.iter().enumerate().map(|(idx, field)| {
-        let ty = &field.ty;
-        let name = super::util::get_field_name(field, idx);
-        quote! {
-            (#name, <#ty as fory_core::serializer::Serializer>::fory_get_type_id())
-        }
-    });
-
-    quote! {
-        fn fory_hash() -> u32 {
-            static mut name_hash: u32 = 0u32;
-            static name_hash_once: ::std::sync::Once = ::std::sync::Once::new();
-            unsafe {
-                name_hash_once.call_once(|| {
-                        name_hash = fory_core::meta::compute_struct_hash(::std::vec![#(#props),*]);
-                });
-                name_hash
-            }
-        }
-    }
-}
-
 pub fn gen_actual_type_id() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::actual_type_id(type_id, register_by_name, compatible)
+        let _ = xlang;
+        Ok(fory_core::serializer::struct_::actual_type_id(
+            type_id,
+            register_by_name,
+            compatible,
+        ))
     }
 }
 
 pub fn gen_actual_type_id_no_evolving() -> TokenStream {
     quote! {
-        if register_by_name {
+        let _ = (type_id, compatible, xlang);
+        Ok(if register_by_name {
             fory_core::type_id::TypeId::NAMED_STRUCT as u32
         } else {
             fory_core::type_id::TypeId::STRUCT as u32
-        }
+        })
     }
 }
 
@@ -93,6 +75,7 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
     let static_field_names = get_sort_fields_ts(&fields);
 
     quote! {
+        let _ = type_resolver;
         let mut field_infos: ::std::vec::Vec<fory_core::meta::FieldInfo> = ::std::vec![#(#field_infos),*];
         let sorted_field_names = #static_field_names;
         fory_core::meta::sort_fields(&mut field_infos, sorted_field_names)?;

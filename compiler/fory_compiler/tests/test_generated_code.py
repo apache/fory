@@ -17,32 +17,33 @@
 
 """Tests for generated code consistency across frontends."""
 
+from __future__ import annotations
+
 from pathlib import Path
 from textwrap import dedent
-from typing import Dict, Tuple, Type
 
 import pytest
 
-from fory_compiler.cli import main as foryc_main, resolve_imports
+from fory_compiler.cli import main as foryc_main
+from fory_compiler.cli import resolve_imports
 from fory_compiler.frontend.fbs import FBSFrontend
 from fory_compiler.frontend.fdl.lexer import Lexer
 from fory_compiler.frontend.fdl.parser import Parser
 from fory_compiler.frontend.proto import ProtoFrontend
 from fory_compiler.generators.base import BaseGenerator, GeneratorOptions
 from fory_compiler.generators.cpp import CppGenerator
+from fory_compiler.generators.csharp import CSharpGenerator
+from fory_compiler.generators.dart import DartGenerator
 from fory_compiler.generators.go import GoGenerator
 from fory_compiler.generators.java import JavaGenerator
+from fory_compiler.generators.javascript import JavaScriptGenerator
 from fory_compiler.generators.python import PythonGenerator
 from fory_compiler.generators.rust import RustGenerator
-from fory_compiler.generators.csharp import CSharpGenerator
-from fory_compiler.generators.javascript import JavaScriptGenerator
 from fory_compiler.generators.swift import SwiftGenerator
-from fory_compiler.generators.dart import DartGenerator
 from fory_compiler.ir.ast import Schema
 from fory_compiler.ir.validator import SchemaValidator
 
-
-GENERATOR_CLASSES: Tuple[Type[BaseGenerator], ...] = (
+GENERATOR_CLASSES: tuple[type[BaseGenerator], ...] = (
     JavaGenerator,
     PythonGenerator,
     CppGenerator,
@@ -68,22 +69,22 @@ def parse_fbs(source: str) -> Schema:
 
 
 def generate_files(
-    schema: Schema, generator_cls: Type[BaseGenerator]
-) -> Dict[str, str]:
+    schema: Schema, generator_cls: type[BaseGenerator]
+) -> dict[str, str]:
     options = GeneratorOptions(output_dir=Path("/tmp"))
     generator = generator_cls(schema, options)
     return {item.path: item.content for item in generator.generate()}
 
 
-def render_files(files: Dict[str, str]) -> str:
+def render_files(files: dict[str, str]) -> str:
     return "\n".join(content for _, content in sorted(files.items()))
 
 
 def assert_language_outputs_equal(
-    schemas: Dict[str, Schema], generator_cls: Type[BaseGenerator]
+    schemas: dict[str, Schema], generator_cls: type[BaseGenerator]
 ) -> None:
     baseline_label = None
-    baseline_files: Dict[str, str] = {}
+    baseline_files: dict[str, str] = {}
     for label, schema in schemas.items():
         files = generate_files(schema, generator_cls)
         if baseline_label is None:
@@ -95,7 +96,7 @@ def assert_language_outputs_equal(
         )
 
 
-def assert_all_languages_equal(schemas: Dict[str, Schema]) -> None:
+def assert_all_languages_equal(schemas: dict[str, Schema]) -> None:
     for generator_cls in GENERATOR_CLASSES:
         assert_language_outputs_equal(schemas, generator_cls)
 
@@ -1216,7 +1217,7 @@ def test_cpp_escapes_keywords_and_generated_helpers():
     ),
 )
 def test_cpp_global_namespace_identifiers_are_escaped(
-    source: str, expected: Tuple[str, ...]
+    source: str, expected: tuple[str, ...]
 ):
     files = generate_files(parse_fdl(dedent(source)), CppGenerator)
     output = render_files(files)
@@ -1598,7 +1599,7 @@ def test_go_bfloat16_generation():
     files = generate_files(schema, GoGenerator)
 
     assert len(files) == 1
-    content = list(files.values())[0]
+    content = next(iter(files.values()))
 
     # Check imports
     assert 'bfloat16 "github.com/apache/fory/go/fory/bfloat16"' in content
@@ -1658,7 +1659,7 @@ def test_rust_generated_code_uses_absolute_paths():
     assert "#[fory(unknown)]" in rust_output
     assert "Unknown(::fory::UnknownCase)," in rust_output
     assert "#[fory(id = 1, default)]" in rust_output
-    assert "impl ::std::default::Default for Fory" in rust_output
+    assert "impl ::std::default::Default for Fory" not in rust_output
     assert "pub value: ::std::string::String," in rust_output
     assert "pub items: ::std::vec::Vec<::std::string::String>," in rust_output
     assert (
@@ -1693,10 +1694,55 @@ def test_rust_union_conflicting_payload_uses_self_path():
 
     rust_output = render_files(generate_files(schema, RustGenerator))
     assert "Dog(self::Dog)," in rust_output
-    assert (
-        "Self::Dog(<self::Dog as ::fory::ForyDefault>::fory_default())" in rust_output
-    )
+    assert "Self::Dog(<self::Dog as ::std::default::Default>::default())" in rust_output
     assert "Dog(Dog)," not in rust_output
+
+
+def test_rust_union_any_has_no_default():
+    schema = parse_fdl(
+        dedent(
+            """
+            package foo;
+
+            union DynamicValue {
+                any value = 1;
+            }
+
+            message Envelope {
+                DynamicValue value = 1;
+            }
+            """
+        )
+    )
+
+    rust_output = render_files(generate_files(schema, RustGenerator))
+    assert "impl ::std::default::Default for DynamicValue" not in rust_output
+    envelope_derive = rust_output.split("pub struct Envelope", maxsplit=1)[
+        0
+    ].splitlines()[-1]
+    assert "Default" not in envelope_derive
+
+
+def test_rust_union_uses_first_default():
+    schema = parse_fdl(
+        dedent(
+            """
+            package foo;
+
+            union Mixed {
+                string text = 1;
+                any dynamic = 2;
+            }
+            """
+        )
+    )
+
+    rust_output = render_files(generate_files(schema, RustGenerator))
+    assert "impl ::std::default::Default for Mixed" in rust_output
+    assert (
+        "Self::Text(<::std::string::String as ::std::default::Default>::default())"
+        in rust_output
+    )
 
 
 def test_rust_escapes_keywords():

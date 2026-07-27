@@ -16,12 +16,17 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_core::{ArcWeak, RcWeak};
+use fory_core::{ArcWeak, RcWeak, Serializer};
 use fory_derive::ForyStruct;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
+
+const _: () = {
+    assert!(!<RcWeak<i32> as Serializer>::IS_OPTIONAL);
+    assert!(!<ArcWeak<String> as Serializer>::IS_OPTIONAL);
+};
 
 #[test]
 fn test_rc_weak_null_serialization() {
@@ -97,6 +102,11 @@ fn test_rc_weak_dead_pointer_serializes_as_null() {
 
     // Weak is now dead
     assert!(weak.upgrade().is_none());
+    assert!(!<RcWeak<i32> as Serializer>::is_none(&weak));
+    assert_eq!(
+        <RcWeak<i32> as Serializer>::dynamic_type_id(&weak).unwrap(),
+        None
+    );
 
     // Should serialize as Null
     let serialized = fory.serialize(&weak).unwrap();
@@ -121,6 +131,11 @@ fn test_arc_weak_dead_pointer_serializes_as_null() {
 
     // Weak is now dead
     assert!(weak.upgrade().is_none());
+    assert!(!<ArcWeak<String> as Serializer>::is_none(&weak));
+    assert_eq!(
+        <ArcWeak<String> as Serializer>::dynamic_type_id(&weak).unwrap(),
+        None
+    );
 
     // Should serialize as Null
     let serialized = fory.serialize(&weak).unwrap();

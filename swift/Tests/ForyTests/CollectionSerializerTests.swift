@@ -265,9 +265,9 @@ func nestedCollectionsAndNullabilityRoundTrip() throws {
 @Test
 func annotatedNestedFieldCodecsRoundTrip() throws {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(AnnotatedFieldCodecHolder.self, id: 9601)
-    fory.register(DeepAnnotatedFieldCodecHolder.self, id: 9602)
-    fory.register(AliasAnnotatedFieldCodecHolder.self, id: 9603)
+    try fory.register(AnnotatedFieldCodecHolder.self, id: 9601)
+    try fory.register(DeepAnnotatedFieldCodecHolder.self, id: 9602)
+    try fory.register(AliasAnnotatedFieldCodecHolder.self, id: 9603)
 
     let value = AnnotatedFieldCodecHolder(
         id: UInt32.max,
@@ -305,21 +305,49 @@ func annotatedNestedFieldCodecsRoundTrip() throws {
 }
 
 @Test
-func annotatedNestedFieldCodecsEmitRecursiveMetadata() {
+func annotatedCarrierMetadata() throws {
+    let resolveSerializerTypeId: (Any.Type) throws -> TypeId = { type in
+        guard let serializer = type as? any Serializer.Type else {
+            throw ForyError.invalidData("expected serializer type")
+        }
+        return serializer.staticTypeId
+    }
     let fields = Dictionary(
         uniqueKeysWithValues: AnnotatedFieldCodecHolder.foryFieldsInfo(trackRef: false).map {
             ($0.fieldName, $0.fieldType)
         }
     )
-    #expect(fields["id"] == UInt32FixedCodec.fieldType(nullable: false, trackRef: false))
     #expect(
-        fields["values"] == ListFieldCodec<OptionalFieldCodec<Int32FixedCodec>>.fieldType(nullable: false, trackRef: false)
+        fields["id"]
+            == (try UInt32FixedCodec.fieldType(
+                nullable: false,
+                trackRef: false,
+                resolveSerializerTypeId: resolveSerializerTypeId
+            ))
     )
     #expect(
-        fields["packedValues"] == ListFieldCodec<Int32FixedCodec>.fieldType(nullable: false, trackRef: false)
+        fields["values"]
+            == (try ArraySerializer<OptionalSerializer<Int32FixedCodec>>.fieldType(
+                nullable: false,
+                trackRef: false,
+                resolveSerializerTypeId: resolveSerializerTypeId
+            ))
     )
     #expect(
-        fields["packedUInt64Values"] == ListFieldCodec<UInt64FixedCodec>.fieldType(nullable: false, trackRef: false)
+        fields["packedValues"]
+            == (try ArraySerializer<Int32FixedCodec>.fieldType(
+                nullable: false,
+                trackRef: false,
+                resolveSerializerTypeId: resolveSerializerTypeId
+            ))
+    )
+    #expect(
+        fields["packedUInt64Values"]
+            == (try ArraySerializer<UInt64FixedCodec>.fieldType(
+                nullable: false,
+                trackRef: false,
+                resolveSerializerTypeId: resolveSerializerTypeId
+            ))
     )
     #expect(
         fields["denseValues"] == TypeMeta.FieldType(typeID: TypeId.int32Array.rawValue, nullable: false, trackRef: false)
@@ -328,18 +356,32 @@ func annotatedNestedFieldCodecsEmitRecursiveMetadata() {
         fields["denseUInt64Values"] == TypeMeta.FieldType(typeID: TypeId.uint64Array.rawValue, nullable: false, trackRef: false)
     )
     #expect(
-        fields["fixedSet"] == SetFieldCodec<OptionalFieldCodec<Int32FixedCodec>>.fieldType(nullable: false, trackRef: false)
+        fields["fixedSet"]
+            == (try SetSerializer<OptionalSerializer<Int32FixedCodec>>.fieldType(
+                nullable: false,
+                trackRef: false,
+                resolveSerializerTypeId: resolveSerializerTypeId
+            ))
     )
     #expect(
-        fields["fixedNonNullSet"] == SetFieldCodec<Int32FixedCodec>.fieldType(nullable: false, trackRef: false)
+        fields["fixedNonNullSet"]
+            == (try SetSerializer<Int32FixedCodec>.fieldType(
+                nullable: false,
+                trackRef: false,
+                resolveSerializerTypeId: resolveSerializerTypeId
+            ))
     )
     #expect(fields["fixedNonNullSet"]?.typeID == TypeId.set.rawValue)
     #expect(
         fields["data"]
-            == MapFieldCodec<
-                OptionalFieldCodec<Int32FixedCodec>,
-                OptionalFieldCodec<Int32FixedCodec>
-            >.fieldType(nullable: false, trackRef: false)
+            == (try DictionarySerializer<
+                OptionalSerializer<Int32FixedCodec>,
+                OptionalSerializer<Int32FixedCodec>
+            >.fieldType(
+                nullable: false,
+                trackRef: false,
+                resolveSerializerTypeId: resolveSerializerTypeId
+            ))
     )
 
     let deepFields = Dictionary(
@@ -349,15 +391,19 @@ func annotatedNestedFieldCodecsEmitRecursiveMetadata() {
     )
     #expect(
         deepFields["data"]
-            == MapFieldCodec<
+            == (try DictionarySerializer<
                 StringCodec,
-                ListFieldCodec<
-                    MapFieldCodec<
+                ArraySerializer<
+                    DictionarySerializer<
                         Int32FixedCodec,
-                        ListFieldCodec<UInt32FixedCodec>
+                        ArraySerializer<UInt32FixedCodec>
                     >
                 >
-            >.fieldType(nullable: false, trackRef: false)
+            >.fieldType(
+                nullable: false,
+                trackRef: false,
+                resolveSerializerTypeId: resolveSerializerTypeId
+            ))
     )
 
     let aliasFields = Dictionary(
@@ -367,18 +413,22 @@ func annotatedNestedFieldCodecsEmitRecursiveMetadata() {
     )
     #expect(
         aliasFields["data"]
-            == MapFieldCodec<
+            == (try DictionarySerializer<
                 StringCodec,
-                ListFieldCodec<OptionalFieldCodec<Int32FixedCodec>>
-            >.fieldType(nullable: false, trackRef: false)
+                ArraySerializer<OptionalSerializer<Int32FixedCodec>>
+            >.fieldType(
+                nullable: false,
+                trackRef: false,
+                resolveSerializerTypeId: resolveSerializerTypeId
+            ))
     )
 }
 
 @Test
 func mapRefKeysTrackIdentity() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: true))
-    fory.register(RefKeyNode.self, id: 9501)
-    fory.register(RefKeyHolder.self, id: 9502)
+    try fory.register(RefKeyNode.self, id: 9501)
+    try fory.register(RefKeyHolder.self, id: 9502)
 
     let sharedKey = RefKeyNode(id: 7)
     let value = RefKeyHolder(key: sharedKey, map: [sharedKey: 99])
@@ -396,8 +446,8 @@ func mapRefKeysTrackIdentity() throws {
 @Test
 func mapRefKeyAndValueShareIdentity() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: true))
-    fory.register(RefKeyNode.self, id: 9501)
-    fory.register(RefKeyValueHolder.self, id: 9503)
+    try fory.register(RefKeyNode.self, id: 9501)
+    try fory.register(RefKeyValueHolder.self, id: 9503)
 
     let shared = RefKeyNode(id: 11)
     let value = RefKeyValueHolder(map: [shared: shared])
@@ -412,10 +462,31 @@ func mapRefKeyAndValueShareIdentity() throws {
 }
 
 @Test
+func staticMapNullsTrackRefs() throws {
+    let fory = Fory(config: .init(trackRef: true, compatible: false))
+    try fory.register(RefKeyNode.self, id: 9501)
+
+    let value: [RefKeyNode?: RefKeyNode?] = [
+        nil: RefKeyNode(id: 21),
+        RefKeyNode(id: 22): nil
+    ]
+    let decoded: [RefKeyNode?: RefKeyNode?] =
+        try fory.deserialize(try fory.serialize(value))
+
+    let nullKeyEntry = decoded.first { $0.key == nil }
+    #expect(nullKeyEntry != nil)
+    #expect(nullKeyEntry?.value?.id == 21)
+
+    let nullValueEntry = decoded.first { $0.key?.id == 22 }
+    #expect(nullValueEntry != nil)
+    #expect(nullValueEntry?.value == nil)
+}
+
+@Test
 func mapRefKeysChunkAcross255Entries() throws {
     let fory = Fory(config: .init(trackRef: true, compatible: true))
-    fory.register(RefKeyNode.self, id: 9501)
-    fory.register(RefKeyChunkHolder.self, id: 9504)
+    try fory.register(RefKeyNode.self, id: 9501)
+    try fory.register(RefKeyChunkHolder.self, id: 9504)
 
     var keys: [RefKeyNode] = []
     var map: [RefKeyNode: Int32] = [:]
@@ -452,7 +523,7 @@ func collectionSerializersRejectMalformedPrimitivePayloads() throws {
         config: Config(trackRef: false)
     )
     do {
-        let _: [Int16] = try ArrayFieldCodec<Int16Codec>.readPayload(int16Context)
+        let _: [Int16] = try ArrayFieldCodec<Int16Codec>.readFieldData(int16Context)
         #expect(Bool(false))
     } catch {
         #expect("\(error)".contains("byte size mismatch"))
@@ -467,9 +538,37 @@ func collectionSerializersRejectMalformedPrimitivePayloads() throws {
         config: Config(trackRef: false)
     )
     do {
-        let _: [Double] = try ArrayFieldCodec<DoubleCodec>.readPayload(float64Context)
+        let _: [Double] = try ArrayFieldCodec<DoubleCodec>.readFieldData(float64Context)
         #expect(Bool(false))
     } catch {
         #expect("\(error)".contains("byte size mismatch"))
+    }
+}
+
+@Test
+func mapRejectsZeroChunks() throws {
+    func zeroChunkContext() -> ReadContext {
+        let buffer = ByteBuffer()
+        buffer.writeVarUInt32(1)
+        buffer.writeUInt8(MapHeader.declaredKeyType | MapHeader.declaredValueType)
+        buffer.writeUInt8(0)
+        let config = Config(trackRef: false, compatible: false)
+        let context = ReadContext(
+            buffer: buffer,
+            typeResolver: TypeResolver(config: config),
+            config: config
+        )
+        context.remainingGraphMemoryBytes = Int(config.maxGraphMemoryBytes)
+        return context
+    }
+
+    #expect(throws: invalidMapChunkSize(dynamic: false)) {
+        _ = try DictionarySerializer<Int32, Int32>.readData(zeroChunkContext())
+    }
+    #expect(throws: invalidMapChunkSize(dynamic: true)) {
+        _ = try DictionarySerializer<
+            DynamicSerializer<AnyHashable>,
+            DynamicSerializer<Any>
+        >.readData(zeroChunkContext())
     }
 }

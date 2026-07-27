@@ -23,7 +23,7 @@ use crate::serializer::collection::{DECL_ELEMENT_TYPE, HAS_NULL, IS_SAME_TYPE, T
 use crate::serializer::util;
 use crate::type_id as types;
 use crate::util::ENABLE_FORY_DEBUG_OUTPUT;
-use crate::RefFlag;
+use crate::{RefFlag, RefMode};
 use std::rc::Rc;
 
 #[cold]
@@ -40,28 +40,13 @@ pub fn skip_field_value(
         field_type.track_ref,
         read_ref_flag && !field_type.track_ref,
         true,
-        &None,
+        None,
     )
 }
 
 #[inline(always)]
 fn unknown_field_type() -> FieldType {
     FieldType::new(types::UNKNOWN, true, Vec::new())
-}
-
-#[inline(always)]
-fn has_unknown_element_type(field_type: &FieldType) -> bool {
-    field_type
-        .generics
-        .first()
-        .is_some_and(|elem_type| elem_type.type_id == types::UNKNOWN)
-}
-
-#[inline(always)]
-fn next_byte_is_null_only_ref_flag(context: &mut ReadContext) -> Result<bool, Error> {
-    let value = context.reader.read_i8()?;
-    context.reader.move_back(1);
-    Ok(value == RefFlag::Null as i8 || value == RefFlag::NotNullValue as i8)
 }
 
 #[inline(always)]
@@ -254,7 +239,56 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
     };
     // Don't read ref flag again in skip_value since we already handled it.
     // Pass type_info so skip_struct doesn't try to read type_id/meta_index again.
-    skip_value(context, &field_type, false, false, false, &type_info_opt)
+    skip_value(
+        context,
+        &field_type,
+        false,
+        false,
+        false,
+        type_info_opt.as_ref(),
+    )
+}
+
+#[cold]
+#[inline(never)]
+pub(super) fn skip_known_value(
+    context: &mut ReadContext,
+    field_type: Option<&FieldType>,
+    ref_mode: RefMode,
+    type_info: Option<&Rc<crate::TypeInfo>>,
+) -> Result<(), Error> {
+    let known_field_type;
+    let field_type = if let Some(field_type) = field_type {
+        field_type
+    } else {
+        let type_info =
+            type_info.ok_or_else(|| Error::invalid_data("known value metadata is missing"))?;
+        let type_id = type_info.get_type_id() as u32;
+        known_field_type = match type_id {
+            types::LIST | types::SET => FieldType::new(type_id, true, vec![unknown_field_type()]),
+            types::MAP => FieldType::new(
+                type_id,
+                true,
+                vec![unknown_field_type(), unknown_field_type()],
+            ),
+            _ => FieldType::new_with_user_type_id(
+                type_id,
+                type_info.get_user_type_id(),
+                ref_mode.is_nullable(),
+                ref_mode.tracks_refs(),
+                Vec::new(),
+            ),
+        };
+        &known_field_type
+    };
+    skip_value(
+        context,
+        field_type,
+        ref_mode.tracks_refs(),
+        ref_mode == RefMode::NullOnly,
+        false,
+        type_info,
+    )
 }
 
 #[cold]
@@ -274,12 +308,7 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
     }
     let default_elem_type = field_type.generics.first().unwrap();
     if !is_same_type {
-        // Tuple fields use LIST<UNKNOWN> metadata and a collection-shaped prefix, but their
-        // compatible elements are still written as NullOnly values with inline type info.
-        let tuple_elements = header == 0
-            && has_unknown_element_type(field_type)
-            && next_byte_is_null_only_ref_flag(context)?;
-        let read_ref_flag = tuple_elements || track_ref || has_null;
+        let read_ref_flag = track_ref || has_null;
         context.inc_depth()?;
         for _ in 0..length {
             skip_any_value(context, read_ref_flag)?;
@@ -307,10 +336,23 @@ fn skip_collection(context: &mut ReadContext, field_type: &FieldType) -> Result<
     context.inc_depth()?;
     let null_only = has_null && !track_ref;
     for _ in 0..length {
-        skip_value(context, elem_type, track_ref, null_only, false, &type_info)?;
+        skip_value(
+            context,
+            elem_type,
+            track_ref,
+            null_only,
+            false,
+            type_info.as_ref(),
+        )?;
     }
     context.dec_depth();
     Ok(())
+}
+
+#[cold]
+#[inline(never)]
+fn invalid_map_chunk() -> Error {
+    Error::invalid_data("map chunk size must be within the remaining entry count")
 }
 
 #[cold]
@@ -364,7 +406,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
                 value_track_ref,
                 false,
                 false,
-                &value_type_info,
+                value_type_info.as_ref(),
             )?;
             context.dec_depth();
             len_counter += 1;
@@ -397,7 +439,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
                 key_track_ref,
                 false,
                 false,
-                &key_type_info,
+                key_type_info.as_ref(),
             )?;
             context.dec_depth();
             len_counter += 1;
@@ -405,6 +447,10 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
         }
         // Both key and value are non-null
         let chunk_size = context.reader.read_u8()?;
+        let remaining = length - len_counter;
+        if chunk_size == 0 || chunk_size as u32 > remaining {
+            return Err(invalid_map_chunk());
+        }
         let key_declared = (header & crate::serializer::map::DECL_KEY_TYPE) != 0;
         let value_declared = (header & crate::serializer::map::DECL_VALUE_TYPE) != 0;
         let key_track_ref = (header & crate::serializer::map::TRACKING_KEY_REF) != 0;
@@ -454,7 +500,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
                 key_track_ref,
                 false,
                 false,
-                &key_type_info,
+                key_type_info.as_ref(),
             )?;
             skip_value(
                 context,
@@ -462,7 +508,7 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
                 value_track_ref,
                 false,
                 false,
-                &value_type_info,
+                value_type_info.as_ref(),
             )?;
         }
         context.dec_depth();
@@ -476,24 +522,26 @@ fn skip_map(context: &mut ReadContext, field_type: &FieldType) -> Result<(), Err
 fn skip_struct(
     context: &mut ReadContext,
     type_id_num: u32,
-    type_info: &Option<Rc<crate::TypeInfo>>,
+    type_info: Option<&Rc<crate::TypeInfo>>,
 ) -> Result<(), Error> {
-    let type_info_rc: Option<Rc<crate::TypeInfo>>;
-    let type_info_value = if type_info.is_none() {
-        let remote_type_info = context.read_any_type_info()?;
-        let remote_type_id = remote_type_info.get_type_id() as u32;
+    let owned_type_info;
+    let type_info_value = if let Some(type_info) = type_info {
+        type_info
+    } else {
+        owned_type_info = context.read_any_type_info()?;
+        let remote_type_id = owned_type_info.get_type_id() as u32;
         if type_id_num != types::UNKNOWN && remote_type_id != types::UNKNOWN {
             ensure!(
                 type_id_num == remote_type_id,
                 Error::type_mismatch(type_id_num, remote_type_id)
             );
         }
-        type_info_rc = Some(remote_type_info);
-        type_info_rc.as_ref().unwrap()
-    } else {
-        type_info.as_ref().unwrap()
+        &owned_type_info
     };
     let type_meta = type_info_value.get_type_meta();
+    if context.is_check_struct_version() {
+        let _version = context.reader.read_i32()?;
+    }
     if ENABLE_FORY_DEBUG_OUTPUT {
         eprintln!(
             "[skip_struct] type_name: {:?}, num_fields: {}",
@@ -501,9 +549,9 @@ fn skip_struct(
             type_meta.get_field_infos().len()
         );
     }
-    let field_infos = type_meta.get_field_infos().to_vec();
+    let field_infos = type_meta.get_field_infos();
     context.inc_depth()?;
-    for field_info in field_infos.iter() {
+    for field_info in field_infos {
         if ENABLE_FORY_DEBUG_OUTPUT {
             eprintln!(
                 "[skip_struct] field: {:?}, type_id: {}, internal_id: {}",
@@ -522,7 +570,7 @@ fn skip_struct(
             tracking_ref,
             null_only,
             true,
-            &None,
+            None,
         )?;
     }
     context.dec_depth();
@@ -534,22 +582,23 @@ fn skip_struct(
 fn skip_ext(
     context: &mut ReadContext,
     type_id_num: u32,
-    type_info: &Option<Rc<crate::TypeInfo>>,
+    type_info: Option<&Rc<crate::TypeInfo>>,
 ) -> Result<(), Error> {
-    let type_info_rc: Option<Rc<crate::TypeInfo>>;
-    let type_info_value = if type_info.is_none() {
-        let remote_type_info = context.read_any_type_info()?;
-        let remote_type_id = remote_type_info.get_type_id() as u32;
+    let owned_type_info;
+    let type_info_value = if let Some(type_info) = type_info {
+        type_info
+    } else {
+        owned_type_info = context.read_any_type_info()?;
+        let remote_type_id = owned_type_info.get_type_id() as u32;
         ensure!(
             type_id_num == remote_type_id,
             Error::type_mismatch(type_id_num, remote_type_id)
         );
-        type_info_rc = Some(remote_type_info);
-        type_info_rc.as_ref().unwrap()
-    } else {
-        type_info.as_ref().unwrap()
+        &owned_type_info
     };
-    type_info_value.get_harness().get_read_data_fn()(context)?;
+    let _ = type_info_value
+        .get_harness()
+        .read_box_any(context, type_info_value)?;
     Ok(())
 }
 
@@ -563,7 +612,7 @@ fn skip_value(
     tracking_ref: bool,
     null_only: bool,
     _is_field: bool,
-    type_info: &Option<Rc<crate::TypeInfo>>,
+    type_info: Option<&Rc<crate::TypeInfo>>,
 ) -> Result<(), Error> {
     if !consume_ref_flag(context, tracking_ref, null_only)? {
         return Ok(());
@@ -967,13 +1016,12 @@ pub fn skip_enum_variant(
             // For named variants, we need the type_info which should have been read already
             if type_info.is_some() {
                 let type_id = type_info.as_ref().unwrap().get_type_id() as u32;
-                skip_struct(context, type_id, type_info)
+                skip_struct(context, type_id, type_info.as_ref())
             } else {
                 // If no type_info provided, read it inline using streaming protocol
                 let type_info_rc = context.read_type_meta()?;
                 let type_id = type_info_rc.get_type_id() as u32;
-                let type_info_opt = Some(type_info_rc);
-                skip_struct(context, type_id, &type_info_opt)
+                skip_struct(context, type_id, Some(&type_info_rc))
             }
         }
         _ => {

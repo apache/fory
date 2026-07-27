@@ -117,6 +117,32 @@ struct SameSchemaMessage {
 }
 ```
 
+## External Types
+
+An external structural serializer is the local schema for its target. Compatible
+mode matches its declared fields and variants exactly as it does for an
+equivalent locally derived type:
+
+```rust
+#[derive(ForyStruct)]
+#[fory(target = third_party::User)]
+struct UserSerializer {
+    name: String,
+    age: u32,
+}
+
+let mut fory = Fory::builder().xlang(false).compatible(true).build();
+fory.register::<UserSerializer>(100)?;
+
+let decoded: third_party::User =
+    fory.deserialize_with::<UserSerializer>(&bytes)?;
+```
+
+Peers must use the same numeric ID or registered name for the logical type.
+Adding or removing fields follows the normal compatible-mode rules. A manual
+serializer owns an opaque EXT body instead, so its implementation must define
+any versioning inside that body.
+
 ## Enum Support
 
 Apache Fory™ supports three types of enum variants with full schema evolution in Compatible mode:
@@ -157,8 +183,9 @@ locally before deserializing unknown cases you need to preserve.
 
 `UnknownCase` stores its payload as `Arc<dyn Any + Send + Sync>`, so preserved
 payload types must satisfy `Send + Sync`. Direct generic containers are not
-supported as erased `Any` payloads; wrap the container in a registered derived
-type if an unknown case needs to preserve it.
+supported as erased `Any` payloads by their structural carrier registration.
+Wrap the container in a registered derived type, or register an exact-target
+manual serializer when an opaque EXT/NAMED_EXT body is intentional.
 
 ### Enum Schema Evolution
 
@@ -187,13 +214,17 @@ enum NewEvent {
     KeyPress(String),  // New variant
 }
 
-let mut fory = Fory::builder().xlang(false).build();
+let mut writer = Fory::builder().xlang(false).build();
+writer.register::<OldEvent>(100)?;
+
+let mut reader = Fory::builder().xlang(false).build();
+reader.register::<NewEvent>(100)?;
 
 // Serialize with old schema
-let old_bytes = fory.serialize(&OldEvent::Click { x: 100, y: 200 })?;
+let old_bytes = writer.serialize(&OldEvent::Click { x: 100, y: 200 })?;
 
 // Deserialize with new schema - timestamp gets default value (0)
-let new_event: NewEvent = fory.deserialize(&old_bytes)?;
+let new_event: NewEvent = reader.deserialize(&old_bytes)?;
 assert!(matches!(new_event, NewEvent::Click { x: 100, y: 200, timestamp: 0 }));
 ```
 
@@ -248,3 +279,4 @@ assert_eq!(data, decoded);
 - [Configuration](configuration.md) - Compatible mode settings
 - [Polymorphism](polymorphism.md) - Trait objects with schema evolution
 - [Xlang Serialization](xlang-serialization.md) - Schema evolution across languages
+- [External-Type Serialization](external-types.md) - Compatible schemas for third-party values

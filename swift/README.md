@@ -13,7 +13,8 @@ The Swift implementation provides high-performance object graph serialization wi
 - **Macro-Driven Models**: Use `@ForyStruct`, `@ForyEnum`, and `@ForyUnion` to generate serializers
 - **Cross-Language**: Exchange payloads with Java, Rust, Go, Python, and other Fory language implementations via xlang
 - **Shared/Circular References**: Preserve object identity with `trackRef` for reference graphs
-- **Dynamic Values**: Serialize `Any`, `AnyObject`, `any Serializer`, `AnyHashable`, and dynamic containers
+- **External-Type Serialization**: Generate structural serializers for types owned by another module
+- **Dynamic Values**: Serialize `Any`, `AnyObject`, arbitrary application protocols, `AnyHashable`, and dynamic containers
 - **Schema Evolution**: Enable compatible mode for add/remove/reorder field evolution
 
 ## Package Layout
@@ -63,7 +64,7 @@ struct User: Equatable {
 }
 
 let fory = Fory()
-fory.register(User.self, id: 1)
+try fory.register(User.self, id: 1)
 
 let input = User(name: "alice", age: 30)
 let data = try fory.serialize(input)
@@ -83,7 +84,7 @@ let output2: User = try fory.deserialize(from: buffer)
 assert(output2 == input)
 ```
 
-### 4. Threading
+### 5. Threading
 
 `Fory` is the fastest option for single-threaded reuse. Keep one instance per thread.
 
@@ -114,8 +115,8 @@ struct Person: Equatable {
 }
 
 let fory = Fory()
-fory.register(Address.self, id: 100)
-fory.register(Person.self, id: 101)
+try fory.register(Address.self, id: 100)
+try fory.register(Person.self, id: 101)
 
 let person = Person(
     id: 42,
@@ -170,8 +171,8 @@ final class AnimalPair {
 }
 
 let fory = Fory(ref: true)
-fory.register(Animal.self, id: 200)
-fory.register(AnimalPair.self, id: 201)
+try fory.register(Animal.self, id: 200)
+try fory.register(AnimalPair.self, id: 201)
 
 let shared = Animal(name: "cat")
 let input = AnimalPair(first: shared, second: shared)
@@ -199,7 +200,7 @@ Top-level and field-level dynamic serialization is supported for:
 
 - `Any`
 - `AnyObject`
-- `any Serializer`
+- arbitrary `any Protocol` existentials
 - `AnyHashable`
 - `[Any]`
 - `[String: Any]`
@@ -207,6 +208,9 @@ Top-level and field-level dynamic serialization is supported for:
 - `[AnyHashable: Any]`
 
 If dynamic payloads contain user-defined concrete types, register those types before serialization/deserialization.
+`Any` and `AnyObject` roots use direct APIs. Arbitrary application protocols
+and dynamic carriers explicitly select `DynamicSerializer<T>` and the
+applicable carrier serializers.
 
 ```swift
 import Fory
@@ -218,7 +222,11 @@ struct DynamicAddress {
 }
 
 let fory = Fory()
-fory.register(DynamicAddress.self, id: 410)
+try fory.register(DynamicAddress.self, id: 410)
+
+let dynamic: Any = DynamicAddress(street: "main", zip: 94107)
+let dynamicData = try fory.serialize(dynamic)
+let dynamicOutput: Any = try fory.deserialize(dynamicData)
 
 let payload: [String: Any] = [
     "id": Int32(7),
@@ -226,8 +234,19 @@ let payload: [String: Any] = [
     "addr": DynamicAddress(street: "main", zip: 94107),
 ]
 
-let data = try fory.serialize(payload)
-let decoded: [String: Any] = try fory.deserialize(data)
+typealias PayloadSerializer = DictionarySerializer<
+    String,
+    DynamicSerializer<Any>
+>
+
+let data = try fory.serialize(
+    payload,
+    with: PayloadSerializer.self
+)
+let decoded = try fory.deserialize(
+    data,
+    with: PayloadSerializer.self
+)
 assert(decoded["id"] as? Int32 == 7)
 ```
 
@@ -235,6 +254,8 @@ Null decoding semantics:
 
 - `Any` null is represented as `ForyAnyNullValue`
 - `AnyObject` null is represented as `NSNull`
+- an `AnyHashable` dynamic null key is represented as
+  `AnyHashable(ForyAnyNullValue())`
 
 ### 4. Schema Evolution (Compatible Mode)
 
@@ -258,10 +279,10 @@ struct PersonV2 {
 }
 
 let writer = Fory()
-writer.register(PersonV1.self, id: 1)
+try writer.register(PersonV1.self, id: 1)
 
 let reader = Fory()
-reader.register(PersonV2.self, id: 1)
+try reader.register(PersonV2.self, id: 1)
 
 let v1 = PersonV1(name: "alice", age: 30, address: "main st")
 let bytes = try writer.serialize(v1)
@@ -358,8 +379,8 @@ enum StringOrLong: Equatable {
 }
 
 let fory = Fory(compatible: false)
-fory.register(Color.self, id: 300)
-fory.register(StringOrLong.self, id: 301)
+try fory.register(Color.self, id: 300)
+try fory.register(StringOrLong.self, id: 301)
 
 let a = try fory.serialize(Color.green)
 let b = try fory.serialize(StringOrLong.text("hello"))
@@ -371,10 +392,47 @@ assert(color == .green)
 assert(value == .text("hello"))
 ```
 
-### 7. Custom Serializers
+### 7. External-Type Serialization
 
-For types that should not use Fory model macros, implement `Serializer` manually and register the type.
-See `../docs/guide/swift/custom-serializers.md` for a complete example.
+Define an external structural serializer when the value type belongs to another
+module:
+
+```swift
+@ForyStruct(target: ThirdParty.User.self)
+struct UserSerializer {
+    var name: String
+    var age: UInt32
+}
+
+try fory.register(UserSerializer.self, id: 400)
+
+let data = try fory.serialize(user, with: UserSerializer.self)
+let decoded = try fory.deserialize(data, with: UserSerializer.self)
+```
+
+Root carriers compose recursively:
+
+```swift
+let data = try fory.serialize(
+    users,
+    with: ArraySerializer<UserSerializer>.self
+)
+```
+
+See `../docs/guide/swift/external-types.md`.
+
+### 8. Manual Serializers
+
+A type that implements `Serializer` with `Target == Self` uses ordinary roots,
+generated fields, and carriers without `with:`. An application may give an
+external type one retroactive self-target conformance, but that conformance is
+process-global and must be the single binding for the `(Target, Serializer)`
+pair.
+
+A separate serializer whose `Target` is another type is selected explicitly at
+every required root, field, or carrier child. Use separate serializers for
+public libraries and for multiple or alternative implementations.
+See `../docs/guide/swift/manual-serializers.md`.
 
 ## Cross-Language Serialization
 
@@ -387,7 +445,7 @@ let fory = Fory()
 Type registration can be ID-based or name-based:
 
 ```swift
-fory.register(MyType.self, id: 100)
+try fory.register(MyType.self, id: 100)
 try fory.register(MyType.self, name: "com.example.MyType")
 ```
 
@@ -426,7 +484,9 @@ ENABLE_FORY_DEBUG_OUTPUT=1 FORY_SWIFT_JAVA_CI=1 mvn -T16 test -Dtest=org.apache.
 - [Configuration](../docs/guide/swift/configuration.md)
 - [Type Registration](../docs/guide/swift/type-registration.md)
 - [Schema Evolution](../docs/guide/swift/schema-evolution.md)
-- [Cross-Language Guide](../docs/guide/swift/cross-language.md)
+- [External-Type Serialization](../docs/guide/swift/external-types.md)
+- [Manual Serializers](../docs/guide/swift/manual-serializers.md)
+- [Xlang Serialization](../docs/guide/swift/xlang-serialization.md)
 - [Xlang Specification](../docs/specification/xlang_serialization_spec.md)
 - [Xlang Type Mapping](../docs/specification/xlang_type_mapping.md)
 

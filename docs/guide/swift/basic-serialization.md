@@ -47,8 +47,8 @@ struct Person: Equatable {
 }
 
 let fory = Fory()
-fory.register(Address.self, id: 100)
-fory.register(Person.self, id: 101)
+try fory.register(Address.self, id: 100)
+try fory.register(Person.self, id: 101)
 
 let person = Person(
     id: 42,
@@ -78,6 +78,56 @@ let fromBuffer: Person = try fory.deserialize(from: inputBuffer)
 assert(fromBuffer == person)
 ```
 
+## Selecting a Serializer
+
+A type that implements `Serializer` with `Target == Self` selects itself:
+
+```swift
+let data = try fory.serialize(person)
+let decoded: Person = try fory.deserialize(data)
+```
+
+This implicit selection composes through generated fields and ordinary
+optionals, arrays, sets, and dictionaries. It also applies when an application
+intentionally gives an external type one retroactive self-target conformance.
+
+When a separate serializer targets the value, select it with `with`:
+
+```swift
+try fory.register(UserSerializer.self, id: 200)
+
+let data = try fory.serialize(
+    externalUser,
+    with: UserSerializer.self
+)
+let decoded = try fory.deserialize(
+    data,
+    with: UserSerializer.self
+)
+```
+
+The same selection works with existing buffers:
+
+```swift
+var output = Data()
+try fory.serialize(
+    externalUser,
+    with: UserSerializer.self,
+    to: &output
+)
+
+let input = ByteBuffer(data: output)
+let decoded = try fory.deserialize(
+    from: input,
+    with: UserSerializer.self
+)
+```
+
+See [External-Type Serialization](external-types.md) for structural
+serializers and recursive carrier roots. See
+[Manual Serializers](manual-serializers.md) for serializers implemented
+directly by a type, retroactive conformances, and separate manual serializers.
+
 ## Built-in Supported Types
 
 ### Primitive and scalar
@@ -101,18 +151,26 @@ supports epoch-day and `Date` conversions through `fromEpochDay(_:)`,
 
 ### Collections
 
-- `[T]` where `T: Serializer`
-- `Set<T>` where `T: Serializer & Hashable`
-- `[K: V]` where `K: Serializer & Hashable`, `V: Serializer`
-- Optional variants (`T?`)
+- Optionals and arrays whose values directly implement `Serializer`
+- Sets whose elements directly implement `Serializer` and are `Hashable`
+- Dictionaries whose keys and values directly implement `Serializer`, with
+  `Hashable` keys
+
+Children that use a separate serializer compose with:
+
+- `OptionalSerializer<S>`
+- `ArraySerializer<S>`
+- `SetSerializer<S>`
+- `DictionarySerializer<KS, VS>`
 
 ### Dynamic
 
-- `Any`
-- `AnyObject`
-- `any Serializer`
+- `Any` and `AnyObject`
 - `AnyHashable`
-- `[Any]`
-- `[String: Any]`
-- `[Int32: Any]`
-- `[AnyHashable: Any]`
+- Arbitrary application protocol values
+- Supported heterogeneous arrays and dictionaries
+
+`Any` and `AnyObject` roots use direct root APIs. Arbitrary application
+protocol roots and dynamic values nested in carriers use explicit `with:`
+selection.
+See [Polymorphism and Dynamic Types](polymorphism.md).

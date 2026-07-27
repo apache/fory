@@ -2,6 +2,13 @@
 
 This benchmark compares serialization and deserialization throughput for Apache Fory, Protocol Buffers, and JSON in Swift.
 
+## Benchmark Products
+
+The ordinary/xlang cases are built by `swift-benchmark`. External-type and
+carrier comparisons are built by the separate `swift-external-benchmark`
+product, so building the ordinary product does not compile those models or
+serializer specializations.
+
 ## Throughput Plot
 
 ![Throughput](throughput.png)

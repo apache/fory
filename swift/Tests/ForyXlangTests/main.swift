@@ -47,7 +47,7 @@ private struct SimpleStruct {
     // sample payload contains only non-null values.
     var f1: [Int32?: Double?] = [:]
     var f2: Int32 = 0
-    var f3: Item = .foryDefault()
+    var f3: Item = Item()
     var f4: String = ""
     var f5: PeerColor = .green
     var f6: [String?] = []
@@ -291,9 +291,11 @@ private struct MyStruct {
 }
 
 private struct MyExt: Serializer, Equatable {
+    typealias Target = Self
+
     var id: Int32 = 0
 
-    static func foryDefault() -> MyExt {
+    static func defaultValue(_: ReadContext) throws -> Self {
         MyExt()
     }
 
@@ -301,12 +303,11 @@ private struct MyExt: Serializer, Equatable {
         .ext
     }
 
-    func foryWriteData(_ context: WriteContext, hasGenerics: Bool) throws {
-        _ = hasGenerics
-        context.buffer.writeVarInt32(id)
+    static func writeData(_ value: Self, _ context: WriteContext) throws {
+        context.buffer.writeVarInt32(value.id)
     }
 
-    static func foryReadData(_ context: ReadContext) throws -> MyExt {
+    static func readData(_ context: ReadContext) throws -> Self {
         MyExt(id: try context.buffer.readVarInt32())
     }
 }
@@ -314,8 +315,8 @@ private struct MyExt: Serializer, Equatable {
 @ForyStruct
 private struct MyWrapper {
     var color: PeerColor = .green
-    var myExt: MyExt = .foryDefault()
-    var myStruct: MyStruct = .foryDefault()
+    var myExt: MyExt = MyExt()
+    var myStruct: MyStruct = MyStruct()
 }
 
 @ForyStruct
@@ -355,7 +356,7 @@ private enum StringOrLong {
 
 @ForyStruct
 private struct StructWithUnion2 {
-    var union: StringOrLong = .foryDefault()
+    var union: StringOrLong = .text("")
 }
 
 @ForyStruct
@@ -556,7 +557,7 @@ private func roundTripSingle<T: Serializer>(
     _ bytes: [UInt8],
     fory: Fory,
     as _: T.Type = T.self
-) throws -> [UInt8] {
+) throws -> [UInt8] where T.Target == T {
     let decoded: T = try fory.deserialize(Data(bytes))
     return [UInt8](try fory.serialize(decoded))
 }
@@ -579,7 +580,10 @@ private func readDynamicArray<Element>(
     from buffer: ByteBuffer,
     as _: Element.Type
 ) throws -> [Element] {
-    let value = try fory.deserialize(from: buffer, as: Any.self)
+    let value = try fory.deserialize(
+        from: buffer,
+        with: DynamicSerializer<Any>.self
+    )
     guard let array = value as? [Element] else {
         throw ForyError.invalidData("expected dynamic array \(Element.self), got \(type(of: value))")
     }
@@ -619,7 +623,7 @@ private func handleStringSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleCrossLanguageSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(PeerColor.self, id: 101)
+    try fory.register(PeerColor.self, id: 101)
 
     return try roundTripStream(bytes) { buffer, out in
         let b1: Bool = try fory.deserialize(from: buffer)
@@ -666,13 +670,13 @@ private func handleCrossLanguageSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
         try fory.serialize(str, to: &out)
         try fory.serialize(day, to: &out)
         try fory.serialize(ts, to: &out)
-        try fory.serialize(boolArray as Any, to: &out)
+        try fory.serialize(boolArray as Any, with: DynamicSerializer<Any>.self, to: &out)
         try fory.serialize(byteArray, to: &out)
-        try fory.serialize(shortArray as Any, to: &out)
-        try fory.serialize(intArray as Any, to: &out)
-        try fory.serialize(longArray as Any, to: &out)
-        try fory.serialize(floatArray as Any, to: &out)
-        try fory.serialize(doubleArray as Any, to: &out)
+        try fory.serialize(shortArray as Any, with: DynamicSerializer<Any>.self, to: &out)
+        try fory.serialize(intArray as Any, with: DynamicSerializer<Any>.self, to: &out)
+        try fory.serialize(longArray as Any, with: DynamicSerializer<Any>.self, to: &out)
+        try fory.serialize(floatArray as Any, with: DynamicSerializer<Any>.self, to: &out)
+        try fory.serialize(doubleArray as Any, with: DynamicSerializer<Any>.self, to: &out)
         try fory.serialize(list, to: &out)
         try fory.serialize(set, to: &out)
         try fory.serialize(map, to: &out)
@@ -682,9 +686,9 @@ private func handleCrossLanguageSerializer(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleSimpleStruct(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(PeerColor.self, id: 101)
-    fory.register(Item.self, id: 102)
-    fory.register(SimpleStruct.self, id: 103)
+    try fory.register(PeerColor.self, id: 101)
+    try fory.register(Item.self, id: 102)
+    try fory.register(SimpleStruct.self, id: 103)
     return try roundTripSingle(bytes, fory: fory, as: SimpleStruct.self)
 }
 
@@ -710,7 +714,7 @@ private func handleStructEvolvingOverride(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleList(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(Item.self, id: 102)
+    try fory.register(Item.self, id: 102)
     return try roundTripStream(bytes) { buffer, out in
         let v1: [String?] = try fory.deserialize(from: buffer)
         let v2: [String?] = try fory.deserialize(from: buffer)
@@ -725,7 +729,7 @@ private func handleList(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleMap(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(Item.self, id: 102)
+    try fory.register(Item.self, id: 102)
     return try roundTripStream(bytes) { buffer, out in
         let v1: [String?: String?] = try fory.deserialize(from: buffer)
         let v2: [String?: Item?] = try fory.deserialize(from: buffer)
@@ -736,7 +740,7 @@ private func handleMap(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleInteger(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(Item1.self, id: 101)
+    try fory.register(Item1.self, id: 101)
     return try roundTripStream(bytes) { buffer, out in
         let item: Item1 = try fory.deserialize(from: buffer)
         let f1: Int32 = try fory.deserialize(from: buffer)
@@ -757,7 +761,7 @@ private func handleInteger(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleItem(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(Item.self, id: 102)
+    try fory.register(Item.self, id: 102)
     return try roundTripStream(bytes) { buffer, out in
         let i1: Item = try fory.deserialize(from: buffer)
         let i2: Item = try fory.deserialize(from: buffer)
@@ -770,7 +774,7 @@ private func handleItem(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleColor(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(PeerColor.self, id: 101)
+    try fory.register(PeerColor.self, id: 101)
     return try roundTripStream(bytes) { buffer, out in
         for _ in 0..<4 {
             let color: PeerColor = try fory.deserialize(from: buffer)
@@ -799,7 +803,7 @@ private func handleDecimal(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleStructWithList(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(StructWithList.self, id: 201)
+    try fory.register(StructWithList.self, id: 201)
     return try roundTripStream(bytes) { buffer, out in
         let v1: StructWithList = try fory.deserialize(from: buffer)
         let v2: StructWithList = try fory.deserialize(from: buffer)
@@ -810,7 +814,7 @@ private func handleStructWithList(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleStructWithMap(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(StructWithMap.self, id: 202)
+    try fory.register(StructWithMap.self, id: 202)
     return try roundTripStream(bytes) { buffer, out in
         let v1: StructWithMap = try fory.deserialize(from: buffer)
         let v2: StructWithMap = try fory.deserialize(from: buffer)
@@ -821,22 +825,22 @@ private func handleStructWithMap(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleNestedAnnotatedContainerSchemaConsistent(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(NestedAnnotatedContainerSchemaConsistent.self, id: 801)
+    try fory.register(NestedAnnotatedContainerSchemaConsistent.self, id: 801)
     return try roundTripSingle(bytes, fory: fory, as: NestedAnnotatedContainerSchemaConsistent.self)
 }
 
 private func handleNestedAnnotatedContainerCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(NestedAnnotatedContainerCompatible.self, id: 802)
+    try fory.register(NestedAnnotatedContainerCompatible.self, id: 802)
     return try roundTripSingle(bytes, fory: fory, as: NestedAnnotatedContainerCompatible.self)
 }
 
 private func handleSkipIDCustom(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(PeerColor.self, id: 101)
-    fory.register(MyStruct.self, id: 102)
-    fory.register(MyExt.self, id: 103)
-    fory.register(MyWrapper.self, id: 104)
+    try fory.register(PeerColor.self, id: 101)
+    try fory.register(MyStruct.self, id: 102)
+    try fory.register(MyExt.self, id: 103)
+    try fory.register(MyWrapper.self, id: 104)
     return try roundTripSingle(bytes, fory: fory, as: MyWrapper.self)
 }
 
@@ -872,42 +876,56 @@ private func handleConsistentNamed(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleStructVersionCheck(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(VersionCheckStruct.self, id: 201)
+    try fory.register(VersionCheckStruct.self, id: 201)
     return try roundTripSingle(bytes, fory: fory, as: VersionCheckStruct.self)
 }
 
-private func registerPolymorphicTypes(_ fory: Fory) {
-    fory.register(Dog.self, id: 302)
-    fory.register(Cat.self, id: 303)
-    fory.register(AnimalListHolder.self, id: 304)
-    fory.register(AnimalMapHolder.self, id: 305)
+private func registerPolymorphicTypes(_ fory: Fory) throws {
+    try fory.register(Dog.self, id: 302)
+    try fory.register(Cat.self, id: 303)
+    try fory.register(AnimalListHolder.self, id: 304)
+    try fory.register(AnimalMapHolder.self, id: 305)
 }
 
 private func handlePolymorphicList(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    registerPolymorphicTypes(fory)
+    try registerPolymorphicTypes(fory)
     return try roundTripStream(bytes) { buffer, out in
-        let animals: [Any] = try fory.deserialize(from: buffer)
+        let animals = try fory.deserialize(
+            from: buffer,
+            with: ArraySerializer<DynamicSerializer<Any>>.self
+        )
         let holder: AnimalListHolder = try fory.deserialize(from: buffer)
-        try fory.serialize(animals, to: &out)
+        try fory.serialize(
+            animals,
+            with: ArraySerializer<DynamicSerializer<Any>>.self,
+            to: &out
+        )
         try fory.serialize(holder, to: &out)
     }
 }
 
 private func handlePolymorphicMap(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    registerPolymorphicTypes(fory)
+    try registerPolymorphicTypes(fory)
     return try roundTripStream(bytes) { buffer, out in
-        let animalMap: [String: Any] = try fory.deserialize(from: buffer)
+        let animalMap = try fory.deserialize(
+            from: buffer,
+            with: DictionarySerializer<String, DynamicSerializer<Any>>.self
+        )
         let holder: AnimalMapHolder = try fory.deserialize(from: buffer)
-        try fory.serialize(animalMap, to: &out)
+        try fory.serialize(
+            animalMap,
+            with: DictionarySerializer<String, DynamicSerializer<Any>>.self,
+            to: &out
+        )
         try fory.serialize(holder, to: &out)
     }
 }
 
 private func handleUnionXlang(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(StructWithUnion2.self, id: 301)
+    try fory.register(StructWithUnion2.self, id: 301)
     return try roundTripStream(bytes) { buffer, out in
         let v1: StructWithUnion2 = try fory.deserialize(from: buffer)
         let v2: StructWithUnion2 = try fory.deserialize(from: buffer)
@@ -918,99 +936,99 @@ private func handleUnionXlang(_ bytes: [UInt8]) throws -> [UInt8] {
 
 private func handleOneStringFieldSchema(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(OneStringFieldStruct.self, id: 200)
+    try fory.register(OneStringFieldStruct.self, id: 200)
     return try roundTripSingle(bytes, fory: fory, as: OneStringFieldStruct.self)
 }
 
 private func handleOneStringFieldCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(OneStringFieldStruct.self, id: 200)
+    try fory.register(OneStringFieldStruct.self, id: 200)
     return try roundTripSingle(bytes, fory: fory, as: OneStringFieldStruct.self)
 }
 
 private func handleTwoStringFieldCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(TwoStringFieldStruct.self, id: 201)
+    try fory.register(TwoStringFieldStruct.self, id: 201)
     return try roundTripSingle(bytes, fory: fory, as: TwoStringFieldStruct.self)
 }
 
 private func handleSchemaEvolutionCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(EmptyStructEvolution.self, id: 200)
+    try fory.register(EmptyStructEvolution.self, id: 200)
     return try roundTripSingle(bytes, fory: fory, as: EmptyStructEvolution.self)
 }
 
 private func handleSchemaEvolutionCompatibleReverse(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(TwoStringFieldStruct.self, id: 200)
+    try fory.register(TwoStringFieldStruct.self, id: 200)
     return try roundTripSingle(bytes, fory: fory, as: TwoStringFieldStruct.self)
 }
 
 private func handleOneEnumFieldSchema(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(PeerTestEnum.self, id: 210)
-    fory.register(OneEnumFieldStruct.self, id: 211)
+    try fory.register(PeerTestEnum.self, id: 210)
+    try fory.register(OneEnumFieldStruct.self, id: 211)
     return try roundTripSingle(bytes, fory: fory, as: OneEnumFieldStruct.self)
 }
 
 private func handleOneEnumFieldCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(PeerTestEnum.self, id: 210)
-    fory.register(OneEnumFieldStruct.self, id: 211)
+    try fory.register(PeerTestEnum.self, id: 210)
+    try fory.register(OneEnumFieldStruct.self, id: 211)
     return try roundTripSingle(bytes, fory: fory, as: OneEnumFieldStruct.self)
 }
 
 private func handleTwoEnumFieldCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(PeerTestEnum.self, id: 210)
-    fory.register(TwoEnumFieldStruct.self, id: 212)
+    try fory.register(PeerTestEnum.self, id: 210)
+    try fory.register(TwoEnumFieldStruct.self, id: 212)
     return try roundTripSingle(bytes, fory: fory, as: TwoEnumFieldStruct.self)
 }
 
 private func handleEnumSchemaEvolutionCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(PeerTestEnum.self, id: 210)
-    fory.register(EmptyStructEvolution.self, id: 211)
+    try fory.register(PeerTestEnum.self, id: 210)
+    try fory.register(EmptyStructEvolution.self, id: 211)
     return try roundTripSingle(bytes, fory: fory, as: EmptyStructEvolution.self)
 }
 
 private func handleEnumSchemaEvolutionCompatibleReverse(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(PeerTestEnum.self, id: 210)
-    fory.register(TwoEnumFieldStruct.self, id: 211)
+    try fory.register(PeerTestEnum.self, id: 210)
+    try fory.register(TwoEnumFieldStruct.self, id: 211)
     return try roundTripSingle(bytes, fory: fory, as: TwoEnumFieldStruct.self)
 }
 
 private func handleNullableFieldSchemaConsistent(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(NullableComprehensiveSchemaConsistent.self, id: 401)
+    try fory.register(NullableComprehensiveSchemaConsistent.self, id: 401)
     return try roundTripSingle(bytes, fory: fory, as: NullableComprehensiveSchemaConsistent.self)
 }
 
 private func handleNullableFieldCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(NullableComprehensiveCompatibleSwift.self, id: 402)
+    try fory.register(NullableComprehensiveCompatibleSwift.self, id: 402)
     return try roundTripSingle(bytes, fory: fory, as: NullableComprehensiveCompatibleSwift.self)
 }
 
 private func handleRefSchemaConsistent(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(RefInnerSchemaConsistent.self, id: 501)
-    fory.register(RefOuterSchemaConsistent.self, id: 502)
+    try fory.register(RefInnerSchemaConsistent.self, id: 501)
+    try fory.register(RefOuterSchemaConsistent.self, id: 502)
     return try roundTripSingle(bytes, fory: fory, as: RefOuterSchemaConsistent.self)
 }
 
 private func handleRefCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: true, compatible: true))
-    fory.register(RefInnerCompatible.self, id: 503)
-    fory.register(RefOuterCompatible.self, id: 504)
+    try fory.register(RefInnerCompatible.self, id: 503)
+    try fory.register(RefOuterCompatible.self, id: 504)
     return try roundTripSingle(bytes, fory: fory, as: RefOuterCompatible.self)
 }
 
 private func handleCollectionElementRefOverride(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(RefOverrideElement.self, id: 701)
-    fory.register(RefOverrideContainer.self, id: 702)
+    try fory.register(RefOverrideElement.self, id: 701)
+    try fory.register(RefOverrideContainer.self, id: 702)
     let container: RefOverrideContainer = try fory.deserialize(Data(bytes))
     guard let shared = container.listField.first else {
         throw PeerError.invalidFieldValue("listField should not be empty")
@@ -1044,8 +1062,8 @@ private func handleCollectionElementRefOverride(_ bytes: [UInt8]) throws -> [UIn
 private func handleCollectionElementRefRemoteTracking(_ bytes: [UInt8]) throws -> [UInt8] {
     _ = bytes
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(RefOverrideElement.self, id: 701)
-    fory.register(RefOverrideContainer.self, id: 702)
+    try fory.register(RefOverrideElement.self, id: 701)
+    try fory.register(RefOverrideContainer.self, id: 702)
 
     let shared = RefOverrideElement()
     shared.id = 7
@@ -1067,61 +1085,61 @@ private func handleCollectionElementRefRemoteTracking(_ bytes: [UInt8]) throws -
 
 private func handleCircularRefSchemaConsistent(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: true, compatible: false))
-    fory.register(CircularRefStruct.self, id: 601)
+    try fory.register(CircularRefStruct.self, id: 601)
     return try roundTripSingle(bytes, fory: fory, as: CircularRefStruct.self)
 }
 
 private func handleCircularRefCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: true, compatible: true))
-    fory.register(CircularRefStruct.self, id: 602)
+    try fory.register(CircularRefStruct.self, id: 602)
     return try roundTripSingle(bytes, fory: fory, as: CircularRefStruct.self)
 }
 
 private func handleUnsignedSchemaConsistentSimple(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(UnsignedSchemaConsistentSimple.self, id: 1)
+    try fory.register(UnsignedSchemaConsistentSimple.self, id: 1)
     return try roundTripSingle(bytes, fory: fory, as: UnsignedSchemaConsistentSimple.self)
 }
 
 private func handleUnsignedSchemaConsistent(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(UnsignedSchemaConsistent.self, id: 501)
+    try fory.register(UnsignedSchemaConsistent.self, id: 501)
     return try roundTripSingle(bytes, fory: fory, as: UnsignedSchemaConsistent.self)
 }
 
 private func handleUnsignedSchemaCompatible(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(UnsignedSchemaCompatible.self, id: 502)
+    try fory.register(UnsignedSchemaCompatible.self, id: 502)
     return try roundTripSingle(bytes, fory: fory, as: UnsignedSchemaCompatible.self)
 }
 
 private func handleReducedPrecisionFloatStruct(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: false))
-    fory.register(ReducedPrecisionFloatStruct.self, id: 213)
+    try fory.register(ReducedPrecisionFloatStruct.self, id: 213)
     return try roundTripSingle(bytes, fory: fory, as: ReducedPrecisionFloatStruct.self)
 }
 
 private func handleReducedPrecisionFloatStructCompatibleSkip(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(EmptyStructEvolution.self, id: 213)
+    try fory.register(EmptyStructEvolution.self, id: 213)
     return try roundTripSingle(bytes, fory: fory, as: EmptyStructEvolution.self)
 }
 
 private func handleListArrayCompatibleListToArray(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(CompatibleInt32ArrayField.self, id: 901)
+    try fory.register(CompatibleInt32ArrayField.self, id: 901)
     return try roundTripSingle(bytes, fory: fory, as: CompatibleInt32ArrayField.self)
 }
 
 private func handleListArrayCompatibleArrayToList(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(CompatibleInt32ListField.self, id: 901)
+    try fory.register(CompatibleInt32ListField.self, id: 901)
     return try roundTripSingle(bytes, fory: fory, as: CompatibleInt32ListField.self)
 }
 
 private func handleListArrayCompatibleNullableListToArrayError(_ bytes: [UInt8]) throws -> [UInt8] {
     let fory = Fory(config: .init(trackRef: false, compatible: true))
-    fory.register(CompatibleInt32ArrayField.self, id: 901)
+    try fory.register(CompatibleInt32ArrayField.self, id: 901)
     do {
         let _: CompatibleInt32ArrayField = try fory.deserialize(Data(bytes))
     } catch {
@@ -1132,6 +1150,9 @@ private func handleListArrayCompatibleNullableListToArrayError(_ bytes: [UInt8])
     )
 }
 
+// Each branch names one independent xlang fixture; decomposing this exhaustive dispatch would
+// obscure the peer protocol without reducing decision complexity.
+// swiftlint:disable:next cyclomatic_complexity
 private func rewritePayload(caseName: String, bytes: [UInt8]) throws -> [UInt8] {
     switch caseName {
     case "test_buffer", "test_buffer_var":

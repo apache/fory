@@ -38,8 +38,20 @@ fory.register::<MyStruct>(100)?;  // Register before use
 
 Confirm that:
 
-- Every serializable struct or trait implementation calls `fory.register::<T>(type_id)`
-- The same IDs are reused on the deserialize side
+- Every concrete dynamic target is registered through the matching structural,
+  union, or manual serializer API.
+- The same ID or name mapping is reused on the deserialize side.
+
+For external-type serialization, register the selected external structural or
+manual serializer, not its third-party target:
+
+```rust
+fory.register::<UserSerializer>(100)?;
+```
+
+Do not register `VecSerializer<UserSerializer>` or another carrier serializer.
+Register `UserSerializer`, then use recursive `list`, `map`, or `tuple`
+annotations at fields, or select the carrier serializer at a root.
 
 ### Type Mismatch Errors
 
@@ -56,6 +68,45 @@ let fory = Fory::builder()
     // existing options
     .build();
 ```
+
+### External-Type Serialization Selection Errors
+
+If derive reports that `with` targets the wrong type, verify that the selected
+serializer declares the exact field target:
+
+```rust
+impl Serializer for UserSerializer {
+    type Target = third_party::User;
+    // ...
+}
+```
+
+For a transparent holder, select the carrier serializer whose target is the
+exact field type:
+
+```rust
+#[fory(with = OptionSerializer<UserSerializer>)]
+user: Option<third_party::User>
+```
+
+For an exact container field, a carrier serializer is also valid:
+
+```rust
+#[fory(with = VecSerializer<UserSerializer>)]
+users: Vec<third_party::User>
+```
+
+Use recursive collection syntax when selecting an element, map child, or tuple
+position:
+
+```rust
+#[fory(list(element(with = UserSerializer)))]
+users: Vec<third_party::User>
+```
+
+If registration fails only in xlang mode, check whether the external structural
+serializer contains a native Rust enum variant with multiple fields. That shape
+has no xlang UNION representation; use native mode or change the shared schema.
 
 ## Debugging Techniques
 
@@ -165,3 +216,4 @@ This keeps diagnostics consistent and makes opt-in panics work correctly.
 - [Configuration](configuration.md) - Fory options
 - [Type Registration](type-registration.md) - Registration best practices
 - [Schema Evolution](schema-evolution.md) - Compatible mode
+- [External-Type Serialization](external-types.md) - Field and root serializer selection

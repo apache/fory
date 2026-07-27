@@ -1,6 +1,6 @@
 ---
 title: Schema Metadata
-sidebar_position: 5
+sidebar_position: 6
 id: schema_metadata
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -20,6 +20,9 @@ license: |
 ---
 
 Add `@ForyField(...)` to a field inside a `@ForyStruct()` class to change how that field is serialized.
+
+The same annotations apply to fields in an
+[external structural serializer declaration](external-types.md).
 
 ## Quick Reference
 
@@ -141,5 +144,6 @@ When the same model is defined in multiple languages:
 ## Related Topics
 
 - [Code Generation](code-generation.md)
+- [External-Type Serialization](external-types.md)
 - [Schema Evolution](schema-evolution.md)
 - [Xlang Serialization](xlang-serialization.md)

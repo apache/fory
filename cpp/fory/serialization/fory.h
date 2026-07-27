@@ -868,12 +868,12 @@ private:
     const RefMode top_level_ref_mode =
         read_ctx_->track_ref() ? RefMode::Tracking : RefMode::NullOnly;
     T result = Serializer<T>::read(*read_ctx_, top_level_ref_mode, true);
+    read_ctx_->ref_reader().resolve_callbacks(read_ctx_->error());
     // Check for errors at deserialization boundary
     if (FORY_PREDICT_FALSE(read_ctx_->has_error())) {
       return Unexpected(read_ctx_->take_error());
     }
 
-    read_ctx_->ref_reader().resolve_callbacks();
     return result;
   }
 

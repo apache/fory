@@ -66,7 +66,7 @@ private func isPrimitiveFastPathField(_ field: ParsedField) -> Bool {
     guard !field.isOptional else {
         return false
     }
-    guard field.dynamicAnyCodec == nil, field.customCodecType == nil else {
+    guard field.customCodecType == nil else {
         return false
     }
     guard field.typeID != MacroTypeId.structType, !compatibleFieldNeedsTypeInfo(field) else {
@@ -90,7 +90,7 @@ func buildPrimitiveFastWriteBlock(_ fields: [ParsedField]) -> String? {
         return nil
     }
     let locals = fields.map { field in
-        "let __\(field.name) = self.\(field.name)"
+        "let __\(field.name) = value.\(field.name)"
     }.joined(separator: "\n        ")
     var fixedOffset = 0
     let fixedWrites = fixedFields.compactMap { field -> String? in
@@ -366,7 +366,7 @@ func buildPrimitiveFastStructReadDeclarations(_ fields: [ParsedField]) -> String
         return nil
     }
     return fields.map { field in
-        "var __\(field.name): \(field.typeText) = \(field.typeText).foryDefault()"
+        "var __\(field.name): \(field.typeText) = try \(field.typeText).defaultValue(context)"
     }.joined(separator: "\n        ")
 }
 

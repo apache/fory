@@ -25,16 +25,21 @@ import org.apache.fory.json.codec.Latin1ReaderCodec;
 import org.apache.fory.json.meta.JsonAsciiToken;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.reader.Latin1JsonReader;
+import org.apache.fory.json.resolver.JsonTypeResolver;
 import org.apache.fory.reflect.TypeRef;
 
 final class Latin1ReaderCodegen extends JsonReaderCodegen {
-  Latin1ReaderCodegen(JsonCodegen codegen) {
-    super(codegen);
+  Latin1ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver) {
+    super(codegen, resolver, true);
+  }
+
+  Latin1ReaderCodegen(JsonCodegen codegen, JsonTypeResolver resolver, int[] fastReadGroupEnds) {
+    super(codegen, resolver, true, fastReadGroupEnds);
   }
 
   @Override
   Class<?> codecFieldType(JsonFieldInfo property) {
-    return codegen.latin1ReaderFieldType(property.readTypeInfo());
+    return codegen.latin1ReaderFieldType(property.readTypeInfo(), resolver);
   }
 
   @Override
@@ -58,6 +63,11 @@ final class Latin1ReaderCodegen extends JsonReaderCodegen {
   }
 
   @Override
+  String readerSlotMethod() {
+    return "latin1Reader";
+  }
+
+  @Override
   String readEnumMethod(boolean tokenValueRead, boolean hashFallback) {
     return tokenValueRead
         ? (hashFallback ? "readLatin1EnumHashToken" : "readLatin1EnumToken")
@@ -72,6 +82,15 @@ final class Latin1ReaderCodegen extends JsonReaderCodegen {
   @Override
   String readFieldMethod() {
     return "readLatin1";
+  }
+
+  @Override
+  boolean directSlowFieldIndex() {
+    // Latin1 arbitrary-order input makes this schema dispatch hot. Emit it in the generated slow
+    // owner itself: large schemas then form a boundary from real field work, while small schemas
+    // remain naturally inlineable. A per-codec forwarding helper would reintroduce compilation
+    // order as the owner of that boundary.
+    return true;
   }
 
   @Override

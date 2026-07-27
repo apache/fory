@@ -329,7 +329,11 @@ class NativeTypeDefDecoder {
       boolean useTagID = encodingFlags == 3;
       int size = header >>> 4;
       if (size == 7) {
-        size += buffer.readVarUInt32Small7();
+        int extendedSize = buffer.readVarUInt32Small7();
+        if (extendedSize < 0 || extendedSize > Integer.MAX_VALUE - size - 1) {
+          throw new DeserializationException("Invalid TypeDef field name size");
+        }
+        size += extendedSize;
       }
       size += 1;
 
@@ -369,7 +373,7 @@ class NativeTypeDefDecoder {
     //      The `6 bits size: 0~63`  will be used to indicate size `0~63`,
     //      the value `63` the size need more byte to read, the encoding will encode `size - 63` as
     // a varint next.
-    return readName(Encoders.PACKAGE_DECODER, buffer, pkgEncodings);
+    return readName(Encoders.PACKAGE_DECODER, buffer, pkgEncodings, "namespace");
   }
 
   static String readTypeName(MemoryBuffer buffer) {
@@ -380,17 +384,25 @@ class NativeTypeDefDecoder {
     //      The `6 bits size: 0~63`  will be used to indicate size `0~63`,
     //       the value `63` the size need more byte to read, the encoding will encode `size - 63` as
     // a varint next.
-    return readName(Encoders.TYPE_NAME_DECODER, buffer, typeNameEncodings);
+    return readName(Encoders.TYPE_NAME_DECODER, buffer, typeNameEncodings, "type name");
   }
 
   private static String readName(
-      MetaStringDecoder decoder, MemoryBuffer buffer, Encoding[] encodings) {
+      MetaStringDecoder decoder, MemoryBuffer buffer, Encoding[] encodings, String nameKind) {
     int header = buffer.readByte() & 0xff;
     int encodingFlags = header & 0b11;
+    if (encodingFlags >= encodings.length) {
+      throw new DeserializationException(
+          "Invalid TypeDef " + nameKind + " encoding " + encodingFlags);
+    }
     Encoding encoding = encodings[encodingFlags];
     int size = header >> 2;
     if (size == BIG_NAME_THRESHOLD) {
-      size = buffer.readVarUInt32Small7() + BIG_NAME_THRESHOLD;
+      int extendedSize = buffer.readVarUInt32Small7();
+      if (extendedSize < 0 || extendedSize > Integer.MAX_VALUE - BIG_NAME_THRESHOLD) {
+        throw new DeserializationException("Invalid TypeDef " + nameKind + " size");
+      }
+      size = extendedSize + BIG_NAME_THRESHOLD;
     }
     return decoder.decode(buffer.readBytes(size), encoding);
   }

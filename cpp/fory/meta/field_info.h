@@ -649,6 +649,12 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
   ::fory::meta::details::wrap_tuple(decltype(::fory::meta::fory_field_info(    \
       ::std::declval<FORY_BASE_TYPE(arg)>()))::entries),
 
+#define FORY_BASE_TYPE_ARG(arg)                                                \
+  FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
+  (FORY_BASE_TYPE_ARG_IMPL(arg), FORY_PP_EMPTY())
+#define FORY_BASE_TYPE_ARG_IMPL(arg)                                           \
+  ::fory::meta::Identity<FORY_BASE_TYPE(arg)>{},
+
 #define FORY_BASE_SIZE_ADD(arg)                                                \
   FORY_PP_IF(FORY_PP_IS_BASE(arg))                                             \
   (+decltype(::fory::meta::fory_field_info(                                    \
@@ -684,7 +690,7 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
             ::std::tuple{FORY_PP_FOREACH(FORY_BASE_CONFIG_ARG, __VA_ARGS__)}); \
     static inline constexpr auto FieldConfigEntries = ::std::tuple{            \
         FORY_PP_FOREACH(FORY_FIELD_INFO_CONFIG_FUNC, __VA_ARGS__)};            \
-    static constexpr bool has_config = true;                                   \
+    [[maybe_unused]] static constexpr bool has_config = true;                  \
     static inline constexpr auto entries =                                     \
         ::fory::meta::concat_tuples(BaseConfigEntries, FieldConfigEntries);    \
     using FieldConfigEntriesType = ::std::decay_t<decltype(entries)>;          \
@@ -694,6 +700,8 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
         ::fory::meta::concat_arrays(BaseNames, FieldNames);                    \
     using BasePtrsType = decltype(::fory::meta::concat_tuples_from_tuple(      \
         ::std::tuple{FORY_PP_FOREACH(FORY_BASE_PTRS_ARG, __VA_ARGS__)}));      \
+    using DirectBaseTypes = decltype(::std::tuple{                             \
+        FORY_PP_FOREACH(FORY_BASE_TYPE_ARG, __VA_ARGS__)});                    \
     static constexpr BasePtrsType base_ptrs() {                                \
       return ::fory::meta::concat_tuples_from_tuple(                           \
           ::std::tuple{FORY_PP_FOREACH(FORY_BASE_PTRS_ARG, __VA_ARGS__)});     \
@@ -744,6 +752,7 @@ constexpr auto concat_tuples_from_tuple(const Tuple &tuple) {
     [[maybe_unused]] static constexpr bool has_config = false;                 \
     [[maybe_unused]] static inline constexpr auto entries = ::std::tuple{};    \
     [[maybe_unused]] static constexpr ::std::size_t field_count = 0;           \
+    using DirectBaseTypes = ::std::tuple<>;                                    \
     using PtrsType = decltype(::std::tuple{});                                 \
     static constexpr PtrsType ptrs() { return {}; }                            \
     static const PtrsType &ptrs_ref() {                                        \

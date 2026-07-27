@@ -19,7 +19,7 @@
 
 package org.apache.fory.json;
 
-import static org.apache.fory.json.JsonTestSupport.primaryTypeResolver;
+import static org.apache.fory.json.JsonTestSupport.currentTypeResolver;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotSame;
 import static org.testng.Assert.assertSame;
@@ -215,7 +215,7 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
   @Test
   public void generatedCapabilities() {
     ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
-    JsonTypeResolver resolver = primaryTypeResolver(json);
+    JsonTypeResolver resolver = currentTypeResolver(json);
     ObjectCodec<Person> owner = resolver.getObjectCodec(Person.class);
     JsonTypeInfo info = resolver.getTypeInfo(Person.class, Person.class);
     Person value = person();
@@ -246,7 +246,7 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
   @Test
   public void generatedChildBeforeParent() {
     ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
-    JsonTypeResolver resolver = primaryTypeResolver(json);
+    JsonTypeResolver resolver = currentTypeResolver(json);
     ObjectCodec<Name> child = resolver.getObjectCodec(Name.class);
     Name name = new Name();
     name.first = "generated";
@@ -270,7 +270,7 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
             WriteOnlyAnyParent.class);
     assertEquals(value.name.first, "read");
     assertEquals(value.extra.isEmpty(), true);
-    JsonTypeResolver resolver = primaryTypeResolver(json);
+    JsonTypeResolver resolver = currentTypeResolver(json);
     ObjectCodec<WriteOnlyAnyParent> owner = resolver.getObjectCodec(WriteOnlyAnyParent.class);
     assertNotSame(resolver.latin1Reader(owner), owner);
   }
@@ -315,7 +315,7 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     assertEquals(interpreted.toJson(interpreted.fromJson(expected, type)), expected);
 
     ForyJson generated = ForyJson.builder().withAsyncCompilation(false).build();
-    JsonTypeResolver resolver = primaryTypeResolver(generated);
+    JsonTypeResolver resolver = currentTypeResolver(generated);
     ObjectCodec<?> owner = resolver.getObjectCodec(type);
     JsonTypeInfo info = resolver.getTypeInfo(type, type);
     Object value = generated.fromJson(expected, type);
@@ -371,7 +371,7 @@ public class JsonUnwrappedTest extends ForyJsonTestModels {
     expected.append('}');
     Class<?> type = compileRecordClass("WideUnwrappedModel", source.toString());
     ForyJson json = ForyJson.builder().withAsyncCompilation(false).build();
-    JsonTypeResolver resolver = primaryTypeResolver(json);
+    JsonTypeResolver resolver = currentTypeResolver(json);
     ObjectCodec<?> owner = resolver.getObjectCodec(type);
     JsonTypeInfo info = resolver.getTypeInfo(type, type);
 

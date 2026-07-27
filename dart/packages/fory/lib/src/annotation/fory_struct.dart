@@ -17,7 +17,7 @@
  * under the License.
  */
 
-/// Marks a class for Fory struct code generation.
+/// Configures Fory struct code generation for the annotated class or [target].
 final class ForyStruct {
   /// Whether the generated struct should use evolving field metadata.
   ///
@@ -25,6 +25,20 @@ final class ForyStruct {
   /// field evolution.
   final bool evolving;
 
+  /// The external Dart class serialized by this declaration.
+  ///
+  /// Leave this unset when annotating the class that Fory serializes. When it
+  /// is set, the annotated class is a schema-only external structural
+  /// serializer declaration and generated code reads and constructs [target]
+  /// directly.
+  final Type? target;
+
+  /// The named generative constructor used to rebuild [target].
+  ///
+  /// Leave this unset to use the unnamed constructor. This option is valid only
+  /// with [target].
+  final String? constructor;
+
   /// Creates struct-level generation options.
-  const ForyStruct({this.evolving = true});
+  const ForyStruct({this.evolving = true, this.target, this.constructor});
 }

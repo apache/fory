@@ -19,20 +19,23 @@
 
 package org.apache.fory.json;
 
+import static org.apache.fory.json.JsonTestSupport.currentTypeResolver;
 import static org.apache.fory.json.JsonTestSupport.newLatin1Reader;
 import static org.apache.fory.json.JsonTestSupport.newUtf8Reader;
-import static org.apache.fory.json.JsonTestSupport.primaryTypeResolver;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertTrue;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.apache.fory.json.codec.Utf8WriterCodec;
 import org.apache.fory.json.data.GeneratedCollectionFields;
 import org.apache.fory.json.data.PublicFields;
 import org.apache.fory.json.data.RecursiveChild;
@@ -284,6 +287,38 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     assertGeneratedWhenSupported(json, WideFields.class, codegen);
   }
 
+  @Test
+  public void writeSplitGeneratedFields() throws Exception {
+    ForyJson json = newJson(true);
+    WideWriterFields value = new WideWriterFields();
+    StringBuilder expected = new StringBuilder("{\"field00\":1");
+    for (int i = 1; i < 24; i++) {
+      expected.append(",\"field");
+      if (i < 10) {
+        expected.append('0');
+      }
+      expected.append(i).append("\":\"v");
+      if (i < 10) {
+        expected.append('0');
+      }
+      expected.append(i).append('"');
+    }
+    expected.append('}');
+    assertEquals(new String(json.toJsonBytes(value), StandardCharsets.UTF_8), expected.toString());
+
+    Class<?> generated = generatedCodecClass(json, WideWriterFields.class);
+    int groups = 0;
+    for (Method method : generated.getDeclaredMethods()) {
+      if (method.getName().startsWith("writeUtf8Group")) {
+        groups++;
+      }
+    }
+    assertTrue(groups > 0, generated.getName());
+    for (Field field : generated.getDeclaredFields()) {
+      assertFalse(Utf8WriterCodec.class.isAssignableFrom(field.getType()), field.toString());
+    }
+  }
+
   private static void assertWideFields(WideFields value) {
     assertEquals(value.f0, 0);
     assertEquals(value.f1, "one");
@@ -336,6 +371,33 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
     public String f13;
   }
 
+  public static class WideWriterFields {
+    public int field00 = 1;
+    public String field01 = "v01";
+    public String field02 = "v02";
+    public String field03 = "v03";
+    public String field04 = "v04";
+    public String field05 = "v05";
+    public String field06 = "v06";
+    public String field07 = "v07";
+    public String field08 = "v08";
+    public String field09 = "v09";
+    public String field10 = "v10";
+    public String field11 = "v11";
+    public String field12 = "v12";
+    public String field13 = "v13";
+    public String field14 = "v14";
+    public String field15 = "v15";
+    public String field16 = "v16";
+    public String field17 = "v17";
+    public String field18 = "v18";
+    public String field19 = "v19";
+    public String field20 = "v20";
+    public String field21 = "v21";
+    public String field22 = "v22";
+    public String field23 = "v23";
+  }
+
   public static final class ObjectCollections {
     public List<TokenValues> values;
     public Set<TokenValues> set;
@@ -385,7 +447,7 @@ public class JsonGeneratedCodecTest extends ForyJsonTestModels {
   }
 
   private static Class<?> generatedCodecClass(ForyJson json, Class<?> type) throws Exception {
-    JsonTypeResolver typeResolver = primaryTypeResolver(json);
+    JsonTypeResolver typeResolver = currentTypeResolver(json);
     Object owner = typeResolver.getObjectCodec(type);
     Object codec = typeResolver.getTypeInfo(type, type).utf8Writer();
     assertTrue(codec != owner, codec.getClass().getName());

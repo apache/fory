@@ -24,7 +24,12 @@ public enum UnknownCaseSerializer {
         if try writeTypedPayload(value, context) {
             return
         }
-        try context.writeAny(value.value, refMode: .tracking, writeTypeInfo: true)
+        try DynamicSerializer<Any>.write(
+            value.value as Any,
+            context,
+            refMode: .tracking,
+            writeTypeInfo: true
+        )
     }
 
     public static func readPayload(caseId: UInt32, _ context: ReadContext) throws -> UnknownCase {

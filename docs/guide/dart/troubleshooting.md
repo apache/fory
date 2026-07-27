@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-sidebar_position: 11
+sidebar_position: 12
 id: troubleshooting
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -48,6 +48,22 @@ dart run build_runner build --delete-conflicting-outputs
 
 If you moved files or renamed types, rebuild before re-running analysis or tests.
 
+## External target generation fails
+
+An external structural serializer requires:
+
+- an `abstract final` serializer declaration with `late final` schema fields;
+- a concrete imported target class;
+- an accessible target getter with the same name and exact Dart type for every
+  field;
+- a public generative constructor whose parameters map to fields, or a
+  zero-required-argument constructor plus matching setters.
+
+Select a public named constructor with
+`@ForyStruct(target: Type, constructor: 'name')`. Use a
+[manual serializer](custom-serializers.md) when the target requires a factory,
+private state, field conversion, or name translation.
+
 ## `Deserialized value has type ..., expected ...`
 
 The payload describes a different type than `T` in `deserialize<T>`. Common causes:
@@ -64,7 +80,7 @@ To preserve identity:
 
 - For fields inside a `@ForyStruct`, add `@ForyField(ref: true)` to those fields.
 - For a top-level collection, pass `trackRef: true` to `fory.serialize(...)`.
-- In a custom serializer, use `context.writeRef` / `context.readRef` and call `context.reference(obj)` before reading nested fields.
+- In a manual serializer, use `context.writeRef` / `context.readRef` and call `context.reference(obj)` before reading nested fields.
 
 ## Cross-language field mismatch (missing data or wrong values)
 
@@ -158,6 +174,6 @@ separate protobuf service endpoint for generic protobuf clients.
 
 - [Xlang Serialization](xlang-serialization.md)
 - [Code Generation](code-generation.md)
-- [Custom Serializers](custom-serializers.md)
+- [Manual Serializers](custom-serializers.md)
 - [Web Platform Support](web-platform-support.md)
 - [gRPC Support](grpc-support.md)

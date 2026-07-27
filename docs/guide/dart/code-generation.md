@@ -52,6 +52,10 @@ class User {
 
 Enums defined in the same file are automatically included in the generated registration.
 
+For a class owned by another library, define an
+[external structural serializer](external-types.md) with
+`@ForyStruct(target: ExternalType)`.
+
 ## Step 2 — Run the Generator
 
 From the directory that contains your `pubspec.yaml`:
@@ -103,12 +107,16 @@ class Event {
 
 When using evolving structs, also assign stable field IDs with `@ForyField(id: ...)` before you ship your first payload — those IDs are how Fory matches fields after a schema change.
 
-## When Not to Use Code Generation
+## Choosing Generated or Manual Serialization
 
-If you cannot annotate a type (e.g., it comes from a package you do not own), write a [Custom Serializer](custom-serializers.md) instead.
+Use an [external structural serializer](external-types.md) when another
+package's class exposes matching public getters and a safe public construction
+path. Use a [manual serializer](custom-serializers.md) when the wire body,
+field names, values, or construction need custom logic.
 
 ## Related Topics
 
 - [Type Registration](type-registration.md)
+- [External-Type Serialization](external-types.md)
 - [Schema Metadata](schema-metadata.md)
 - [Schema Evolution](schema-evolution.md)

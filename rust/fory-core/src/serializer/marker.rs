@@ -15,60 +15,37 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Serializer implementations for marker types like `PhantomData<T>`.
-
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::TypeResolver;
-use crate::serializer::{ForyDefault, Serializer};
+use crate::serializer::Serializer;
 use crate::type_id::TypeId;
 use std::marker::PhantomData;
 
 impl<T: 'static> Serializer for PhantomData<T> {
+    type Target = Self;
+
     #[inline(always)]
-    fn fory_write_data(&self, _context: &mut WriteContext) -> Result<(), Error> {
-        // PhantomData has no data to write
+    fn write_data(_: &Self, _: &mut WriteContext) -> Result<(), Error> {
         Ok(())
     }
 
     #[inline(always)]
-    fn fory_read_data(_context: &mut ReadContext) -> Result<Self, Error> {
-        // PhantomData has no data to read
+    fn read_data(_: &mut ReadContext) -> Result<Self, Error> {
         Ok(PhantomData)
     }
 
     #[inline(always)]
-    fn fory_reserved_space() -> usize {
+    fn default_value(_: &mut ReadContext) -> Result<Self, Error> {
+        Ok(PhantomData)
+    }
+
+    #[inline(always)]
+    fn reserved_space() -> usize {
         0
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        // Use NONE - PhantomData<T> has no runtime data, skip can return early
-        Ok(TypeId::NONE)
-    }
-
-    #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-        // Use NONE - PhantomData<T> has no runtime data, skip can return early
-        Ok(TypeId::NONE)
-    }
-
-    #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
-        // Use NONE - PhantomData<T> has no runtime data, skip can return early
+    fn static_type_id() -> TypeId {
         TypeId::NONE
-    }
-
-    #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-impl<T: 'static> ForyDefault for PhantomData<T> {
-    #[inline(always)]
-    fn fory_default() -> Self {
-        PhantomData
     }
 }

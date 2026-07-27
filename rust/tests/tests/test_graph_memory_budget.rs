@@ -90,7 +90,7 @@ struct DenseWireInts {
 #[derive(ForyStruct, Debug, PartialEq)]
 struct GenericBudgetNode<T>
 where
-    T: fory_core::Serializer + fory_core::ForyDefault + Send + Sync + 'static,
+    T: fory_core::Serializer<Target = T> + Send + Sync + 'static,
 {
     value: T,
     children: Vec<GenericBudgetNode<T>>,
@@ -115,7 +115,7 @@ fn fory_with_budget(max_graph_memory_bytes: usize) -> Fory {
 
 fn compatible_fory<T>(max_graph_memory_bytes: usize) -> Fory
 where
-    T: fory_core::Serializer + fory_core::StructSerializer + fory_core::ForyDefault,
+    T: fory_core::StructSerializer<Target = T>,
 {
     let mut fory = Fory::builder()
         .xlang(false)

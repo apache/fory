@@ -20,9 +20,8 @@
 package org.apache.fory.json;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Collections;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.AtomicReferenceArray;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.reader.Latin1JsonReader;
 import org.apache.fory.json.reader.Utf16JsonReader;
@@ -123,25 +122,43 @@ final class JsonTestSupport {
     return (JsonValueCodec<T>) NULL_CODEC;
   }
 
-  static JsonTypeResolver primaryTypeResolver(ForyJson json) {
-    return (JsonTypeResolver) primaryStateField(json, "typeResolver");
+  static JsonTypeResolver currentTypeResolver(ForyJson json) {
+    return (JsonTypeResolver) currentStateField(json, "typeResolver");
   }
 
-  static Object primaryStateField(ForyJson json, String name) {
+  static Object currentStateField(ForyJson json, String name) {
+    Object pooledState = acquire(json);
     try {
-      AtomicReference<?> primarySlot = (AtomicReference<?>) field(json, "primarySlot");
-      Object pooledState = primarySlot.get();
       Object state = field(pooledState, "state");
       return field(state, name);
     } catch (ReflectiveOperationException e) {
       throw new AssertionError(e);
+    } finally {
+      release(json, pooledState);
     }
   }
 
-  static Object secondaryStateField(ForyJson json, int index, String name) {
+  static int currentPooledStateIndex(ForyJson json) {
+    Object pooledState = acquire(json);
     try {
-      AtomicReferenceArray<?> slots = (AtomicReferenceArray<?>) field(json, "slots");
-      Object pooledState = slots.get(index);
+      Object[] slots = (Object[]) field(json, "slots");
+      for (int i = 0; i < slots.length; i++) {
+        if (slots[i] == pooledState) {
+          return i;
+        }
+      }
+      throw new AssertionError("Current operation did not borrow a pooled state");
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    } finally {
+      release(json, pooledState);
+    }
+  }
+
+  static Object pooledStateField(ForyJson json, int index, String name) {
+    try {
+      Object[] slots = (Object[]) field(json, "slots");
+      Object pooledState = slots[index];
       Object state = field(pooledState, "state");
       return field(state, name);
     } catch (ReflectiveOperationException e) {
@@ -166,7 +183,27 @@ final class JsonTestSupport {
 
   static int pooledStateCount(ForyJson json) {
     try {
-      return ((AtomicReferenceArray<?>) field(json, "slots")).length() + 1;
+      return ((Object[]) field(json, "slots")).length;
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  private static void release(ForyJson json, Object pooledState) {
+    try {
+      Method release = ForyJson.class.getDeclaredMethod("release", pooledState.getClass());
+      release.setAccessible(true);
+      release.invoke(json, pooledState);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+  }
+
+  private static Object acquire(ForyJson json) {
+    try {
+      Method acquire = ForyJson.class.getDeclaredMethod("acquire");
+      acquire.setAccessible(true);
+      return acquire.invoke(json);
     } catch (ReflectiveOperationException e) {
       throw new AssertionError(e);
     }

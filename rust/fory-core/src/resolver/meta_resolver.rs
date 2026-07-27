@@ -30,7 +30,9 @@ use std::rc::Rc;
 /// - (index << 1) | 1 for reference to previously written type
 #[derive(Default)]
 pub struct MetaWriterResolver {
-    type_id_index_map: HashMap<std::any::TypeId, usize>,
+    // Provider and target indexes share one Rc<TypeInfo>; pointer identity keeps
+    // their streaming metadata references in one sequence without probing maps.
+    type_info_index_map: HashMap<*const TypeInfo, usize>,
     type_index_index_map: Vec<usize>,
     next_index: usize,
 }
@@ -46,10 +48,21 @@ impl MetaWriterResolver {
     pub fn write_type_meta(
         &mut self,
         writer: &mut Writer,
-        type_id: std::any::TypeId,
+        provider_type_id: std::any::TypeId,
         type_resolver: &TypeResolver,
     ) -> Result<(), Error> {
-        match self.type_id_index_map.get(&type_id) {
+        let type_info = type_resolver.get_provider_type_info(&provider_type_id)?;
+        self.write_resolved_type_meta(writer, &type_info)
+    }
+
+    #[inline(always)]
+    pub(crate) fn write_resolved_type_meta(
+        &mut self,
+        writer: &mut Writer,
+        type_info: &Rc<TypeInfo>,
+    ) -> Result<(), Error> {
+        let identity = Rc::as_ptr(type_info);
+        match self.type_info_index_map.get(&identity) {
             Some(&index) => {
                 // Reference to previously written type: (index << 1) | 1, LSB=1
                 writer.write_var_u32(((index as u32) << 1) | 1);
@@ -59,9 +72,8 @@ impl MetaWriterResolver {
                 let index = self.next_index;
                 self.next_index += 1;
                 writer.write_var_u32((index as u32) << 1);
-                self.type_id_index_map.insert(type_id, index);
-                // Write TypeMeta bytes inline
-                let type_def = type_resolver.get_type_info(&type_id)?.get_type_def();
+                self.type_info_index_map.insert(identity, index);
+                let type_def = type_info.get_type_def();
                 writer.write_bytes(&type_def);
             }
         }
@@ -100,7 +112,7 @@ impl MetaWriterResolver {
 
     #[inline(always)]
     pub fn reset(&mut self) {
-        self.type_id_index_map.clear();
+        self.type_info_index_map.clear();
         self.type_index_index_map.clear();
         self.next_index = 0;
     }
@@ -343,32 +355,20 @@ mod tests {
         FieldInfo, FieldType, MetaString, NAMESPACE_ENCODER, NAMESPACE_ENCODINGS,
         TYPE_NAME_ENCODER, TYPE_NAME_ENCODINGS,
     };
-    use crate::serializer::{ForyDefault, Serializer};
+    use crate::serializer::Serializer;
     use crate::TypeId;
 
     struct LocalExt;
 
-    impl ForyDefault for LocalExt {
-        fn fory_default() -> Self {
-            LocalExt
-        }
-    }
-
     impl Serializer for LocalExt {
-        fn fory_write_data(&self, _context: &mut WriteContext) -> Result<(), Error> {
+        type Target = Self;
+
+        fn write_data(_value: &Self, _context: &mut WriteContext) -> Result<(), Error> {
             Ok(())
         }
 
-        fn fory_read_data(_context: &mut ReadContext) -> Result<Self, Error> {
+        fn read_data(_context: &mut ReadContext) -> Result<Self, Error> {
             Ok(LocalExt)
-        }
-
-        fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<TypeId, Error> {
-            Self::fory_get_type_id(type_resolver)
-        }
-
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
         }
     }
 

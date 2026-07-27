@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/apache/fory/go/fory/optional"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,5 +61,93 @@ func TestGetTypeInfo_LazyInitPropagatesError(t *testing.T) {
 	if ok {
 		require.NotNil(t, cached.Serializer,
 			"typePointerCache must not hold an entry with a nil Serializer")
+	}
+}
+
+func TestTypeInfoPropagatesMetaError(t *testing.T) {
+	expectedType := reflect.TypeOf(SimpleStruct{})
+	tests := []struct {
+		name string
+		read func(*TypeResolver, *ByteBuffer, *Error) any
+	}{
+		{
+			name: "with type id",
+			read: func(resolver *TypeResolver, buffer *ByteBuffer, readErr *Error) any {
+				return resolver.ReadTypeInfo(buffer, readErr)
+			},
+		},
+		{
+			name: "known type id",
+			read: func(resolver *TypeResolver, buffer *ByteBuffer, readErr *Error) any {
+				buffer.ReadUint8(readErr)
+				return resolver.readTypeInfoWithTypeID(buffer, uint32(NAMED_STRUCT), readErr)
+			},
+		},
+		{
+			name: "expected type",
+			read: func(resolver *TypeResolver, buffer *ByteBuffer, readErr *Error) any {
+				return resolver.readTypeInfoForType(buffer, expectedType, readErr)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fory := NewFory(WithXlang(false), WithCompatible(false))
+			buffer := NewByteBuffer(nil)
+			buffer.WriteByte(byte(NAMED_STRUCT))
+			buffer.WriteVarUint32Small7(1)
+			buffer.SetReaderIndex(0)
+			var readErr Error
+
+			result := test.read(fory.typeResolver, buffer, &readErr)
+
+			require.Nil(t, result)
+			require.True(t, readErr.HasError())
+			require.Contains(t, readErr.Error(), "invalid dynamic index")
+		})
+	}
+}
+
+func TestReadersStopOnTypeInfoError(t *testing.T) {
+	optionalType := reflect.TypeOf(optional.None[*SimpleStruct]())
+	info, ok := getOptionalInfo(optionalType)
+	require.True(t, ok)
+
+	tests := []struct {
+		name string
+		read func(*ReadContext)
+	}{
+		{
+			name: "pointer",
+			read: func(ctx *ReadContext) {
+				var value *SimpleStruct
+				serializer := &ptrToValueSerializer{}
+				serializer.Read(ctx, RefModeNone, true, false, reflect.ValueOf(&value).Elem())
+			},
+		},
+		{
+			name: "optional",
+			read: func(ctx *ReadContext) {
+				value := reflect.New(optionalType).Elem()
+				serializer := newOptionalSerializer(optionalType, info, nil)
+				serializer.Read(ctx, RefModeNone, true, false, value)
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fory := NewFory(WithXlang(false), WithCompatible(false))
+			ctx := fory.readCtx
+			ctx.Reset()
+			ctx.SetData([]byte{byte(NAMED_STRUCT), 1})
+
+			require.NotPanics(t, func() {
+				test.read(ctx)
+			})
+			require.True(t, ctx.HasError())
+			require.Contains(t, ctx.Err().Error(), "invalid dynamic index")
+		})
 	}
 }

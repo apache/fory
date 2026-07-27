@@ -152,6 +152,10 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Favor zero-copy techniques, JIT or codegen opportunities, and cache-friendly memory access patterns in performance-critical paths.
 - Keep hot paths allocation-minimal. Avoid per-call or per-element object allocation, boxing, wrapper round-trips, callbacks, iterator carriers, or holder objects unless there is a measured reason and no lower-allocation design preserves the same behavior.
 - Keep hot-path control flow direct and predictable. Hoist repeated buffer/cache/state lookups into locals for multi-step operations, keep cold rebuild or restoration logic on slow branches, and avoid tiny forwarding helpers that only obscure the owner.
+- When a language supports cold and no-inline annotations, mark cold entrances reachable from
+  serialization hot paths so error construction, cache misses, schema mismatches, unsupported
+  capabilities, and other slow work cannot be inlined into the hot path. Do not mark successful
+  dynamic dispatch cold.
 - In unified native/xlang hot paths, branch only where the wire format or protocol behavior actually differs. Do not add mode booleans or mode-specific helper parameters for equivalent behavior.
 - Public APIs must be well-documented and easy to understand. When adding a public API, write source-level API documentation in the owning code.
 - Implement comprehensive error handling with meaningful messages.
@@ -192,8 +196,17 @@ This is the entry point for AI guidance in Apache Fory. Read this file first, th
 - Run applicable test commands in a subagent with a thinking budget one level lower than the main task budget, using medium when the current budget is unclear, unless the change is docs-only or the user explicitly asks to run them locally.
 - Reuse the same test subagent for repeated runs within one task and subsystem so it keeps failure context; create a fresh subagent when switching unrelated subsystems or when prior context may be stale or misleading.
 - Use `integration_tests/` for cross-language compatibility validation when behavior crosses runtimes.
-- If xlang behavior or type mapping changes, run `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.CSharpXlangTest`, `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and `org.apache.fory.xlang.PythonXlangTest`.
-- If Swift xlang behavior changes, run `org.apache.fory.xlang.SwiftXlangTest` too.
+- For a runtime-local xlang implementation or fixture change that does not alter the shared
+  protocol, type mapping, wire semantics, or another runtime, run only that runtime's Java-driven
+  xlang suite. For example, a Rust-only implementation change runs
+  `org.apache.fory.xlang.RustXlangTest`; do not run unrelated language peers merely because the
+  feature operates in xlang mode.
+- Run the full xlang matrix only when the shared protocol, type mapping, wire semantics, or
+  cross-runtime behavior changes:
+  `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.CSharpXlangTest`,
+  `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and
+  `org.apache.fory.xlang.PythonXlangTest`. Include `org.apache.fory.xlang.SwiftXlangTest` when the
+  shared change affects Swift or when Swift xlang behavior itself changes.
 - For performance regressions or optimizations, profile or otherwise measure the current branch and a fresh `apache/main` baseline before changing code; optimize the measured hotspot, not guessed code.
 - When comparing benchmark results against `apache/main`, use a separate sibling worktree named `fory-benchmark-baseline` by default. Before creating a new worktree, check whether `../fory-benchmark-baseline` already exists and reuse it to avoid repeated benchmark dependency rebuilds. Always fetch and sync that baseline worktree to the latest `apache/main` before measuring it, and store benchmark result files under that worktree so older runs remain available as reference data. Treat stored benchmark results as historical references, not truth, because machine load and benchmark variance change over time. Create a different baseline worktree only when explicitly requested.
 - Before benchmarking a checked-out version, install or build the required Fory packages for that version, such as the Java artifacts, Python package, and the target runtime package needed by the benchmark.

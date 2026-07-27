@@ -36,10 +36,7 @@ pub fn gen_reserved_space(source_fields: &[SourceField<'_>]) -> TokenStream {
             FieldBinding::Skipped(_) => None,
         })
         .collect();
-    if reserved_size_expr.is_empty() {
-        return quote! { 0 };
-    }
-    quote! { #(#reserved_size_expr)+* }
+    quote! { 0usize #(+ #reserved_size_expr)* }
 }
 
 pub fn gen_write_type_info() -> TokenStream {
@@ -60,11 +57,8 @@ pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
             FieldBinding::Codec(binding) => {
                 let base = binding.write_field();
                 if is_debug_enabled() {
-                    let value_ts = get_field_accessor(
-                        binding.source.field,
-                        binding.source.original_index,
-                        true,
-                    );
+                    let value_ts =
+                        get_field_accessor(binding.source.field, binding.source.original_index);
                     let struct_name = get_struct_name().expect("struct context not set");
                     let struct_name_lit =
                         syn::LitStr::new(&struct_name, proc_macro2::Span::call_site());
@@ -97,6 +91,7 @@ pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
 
     let version_hash_ts = gen_struct_version_hash_ts(&fields);
     quote! {
+        let _ = value;
         if context.is_check_struct_version() {
             let version_hash: i32 = #version_hash_ts;
             context.writer.write_i32(version_hash);
@@ -108,6 +103,19 @@ pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
 
 pub fn gen_write() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::write::<Self>(self, context, ref_mode, write_type_info)
+        match ref_mode {
+            fory_core::RefMode::None => {}
+            fory_core::RefMode::NullOnly => {
+                context.writer.write_i8(fory_core::RefFlag::NotNullValue as i8);
+            }
+            fory_core::RefMode::Tracking => {
+                context.writer.write_i8(fory_core::RefFlag::RefValue as i8);
+                context.ref_writer.reserve_ref_id();
+            }
+        }
+        if write_type_info {
+            <Self as fory_core::Serializer>::write_type_info(context)?;
+        }
+        <Self as fory_core::Serializer>::write_data(value, context)
     }
 }

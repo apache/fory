@@ -52,15 +52,16 @@ This specification defines the Fory xlang binary format. The format is dynamic r
 - float32: a 32-bit floating point number.
 - float64: a 64-bit floating point number including NaN and Infinity.
 - string: a text string encoded using Latin1/UTF16/UTF-8 encoding.
-- enum: a data type consisting of a set of named values. Rust enum with non-predefined field values are not supported as
-  an enum.
+- enum: a data type consisting of a set of named values. A Rust data-carrying enum is not an xlang
+  enum. It may map to a union only when every case is representable as one union alternative value
+  or no value; multi-field tuple or named variants remain host-native shapes.
 - named_enum: an enum whose value will be serialized as the registered name.
 - struct: a dynamic(final) type serialized by Fory Struct serializer. i.e. it doesn't have subclasses. Suppose we're
   deserializing `List<SomeClass>`, we can save dynamic serializer dispatch since `SomeClass` is dynamic(final).
 - compatible_struct: a dynamic(final) type serialized by Fory compatible Struct serializer.
 - named_struct: a `struct` whose type mapping will be encoded as a name.
 - named_compatible_struct: a `compatible_struct` whose type mapping will be encoded as a name.
-- ext: a type which will be serialized by a customized serializer.
+- ext: a type which will be serialized by a manual serializer.
 - named_ext: an `ext` type whose type mapping will be encoded as a name.
 - list: a sequence of objects.
 - set: an unordered set of unique elements.
@@ -97,6 +98,62 @@ This specification defines the Fory xlang binary format. The format is dynamic r
 Note:
 
 - Unsigned integer types use the same byte sizes as their signed counterparts; the difference is in value interpretation. See [Type mapping](xlang_type_mapping.md) for language-specific type mappings.
+
+### Host external-type serialization
+
+A language binding MAY separate the host type that supplies serialization
+behavior from the host value type being serialized. That separation is not a
+wire identity.
+
+- An external structural serializer MUST emit the same STRUCT, ENUM, or UNION
+  schema and value bytes as an equivalent directly supported host type.
+- A host-native structural shape with no xlang mapping is outside this
+  specification and MAY be supported by a binding's separate native mode. The
+  binding MUST reject that shape when xlang mode is enabled; it MUST NOT discard
+  fields, coerce it to ENUM or UNION, synthesize an undeclared struct
+  alternative, or silently encode it as EXT. A Rust enum variant with multiple
+  tuple or named fields is such a host-native shape.
+- A binding-owned static carrier serializer recursively parameterized by child
+  serializers over an existing transparent, LIST, SET, MAP, host fixed-array, or
+  heterogeneous tuple/product shape MUST emit the same outer type ID, existing
+  generic `FieldType` shape, type metadata, reference framing, and value bytes
+  as the corresponding directly supported composition. The carrier serializer
+  is not a user wire identity; only selected user-type children use their
+  registered IDs or names.
+- That equivalence includes canonical specialized carrier mappings. For
+  example, a Rust vector carrier serializer over the canonical `i32` serializer
+  uses `INT32_ARRAY`, one over the canonical `u8` serializer uses BINARY, and one
+  over an external structural or manual serializer uses LIST. A nested carrier
+  MUST preserve the selected child type ID and recursive `FieldType`; serializer
+  composition
+  MUST NOT replace a canonical primitive-array or binary mapping with LIST.
+  Conversely, a Swift `Array` carrier serializer MUST remain LIST because that
+  is Swift's canonical statically selected `Array` mapping. Swift dense
+  `@ArrayField` and dynamic exact primitive-array mappings are separate
+  canonical selections; a serializer whose target happens to be numeric does
+  not acquire either mapping.
+- A heterogeneous tuple/product carrier serializer MUST preserve the binding's
+  existing direct tuple encoding and its existing xlang LIST encoding. Selected
+  child positions MUST NOT add a serializer name, position index, generic schema node,
+  or other marker that the directly supported tuple does not encode. Missing
+  and extra compatible positions follow the binding's ordinary tuple rules.
+- An absent or empty carrier branch that ordinarily accesses no child identity
+  or registration-backed metadata MUST NOT gain synthetic child metadata
+  solely to validate a selected serializer. Registration is required when the
+  normal schema or value path actually uses a registered child identity. A
+  declared-type child body continues to use its statically selected behavior
+  without adding a wire identity or repeated registration lookup; any
+  containing schema metadata owns the prior identity validation. The carrier
+  serializer itself remains unregistered in every case.
+- A manual serializer that is not the runtime's
+  canonical implementation of an existing built-in MUST use the existing EXT
+  or NAMED_EXT form. This serializer-provider separation does not replace runtime-owned
+  built-in mappings.
+- Serializer-provider, external structural serializer, or generated-code type names MUST
+  NOT change the encoded type ID, registered user ID or name, TypeDef, field order, schema hash,
+  reference framing, or value bytes.
+- Registration and polymorphic dispatch MUST identify the serialized target
+  value, even when another host type supplies its behavior.
 
 ### Polymorphisms
 
@@ -1398,7 +1455,7 @@ else:
             fory.write_nullable(buffer, elem)
     else:
         for elem in elems:
-            fory.write_value(buffer, elem)
+            fory.write(buffer, elem)
 ```
 
 [`CollectionSerializer#writeElements`](https://github.com/apache/fory/blob/20a1a78b17a75a123a6f5b7094c06ff77defc0fe/java/fory-core/src/main/java/org/apache/fory/serializer/collection/CollectionLikeSerializer.java#L302)
@@ -1481,8 +1538,9 @@ The KV header is a single byte encoding metadata for both keys and values:
 
 #### Chunk Size
 
-- Maximum chunk size: 255 pairs (fits in 1 byte)
+- A non-null chunk size is from 1 through 255 pairs (fits in 1 byte); zero is invalid
 - When key or value is null, that entry is serialized as a separate chunk with implicit size 1 (chunk size byte is skipped)
+- For an entry with exactly one null side, the non-null side uses complete-field order: its reference envelope when present, then any type information not declared by the header, then its body
 - Reader tracks accumulated count against total map size to know when to stop reading chunks
 
 #### Why Chunk-Based Format?
@@ -1740,6 +1798,9 @@ Rules:
 - A union schema MUST declare at least one schema-defined alternative. The
   unknown-case carrier used by some language bindings is implementation-provided and is
   omitted from the schema's alternative table.
+- Each schema-defined alternative contains exactly one declared value type or
+  `none`. Multiple logical fields require an explicitly declared struct value;
+  a binding MUST NOT synthesize that struct from a host enum variant.
 - Each union alternative MUST have a stable non-negative tag number (`= 0`, `= 1`, ...).
 - Tag numbers MUST be unique within the union and MUST NOT be reused.
 - Unknown-case carriers exposed by language bindings have no local schema tag of

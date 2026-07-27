@@ -45,6 +45,10 @@ cd "$it_dir/cpython_benchmark" && pip install -r requirements.txt && python benc
 
 ## Cross-Language Validation Note
 
-When a change affects xlang behavior, combine these integration checks with the relevant Java-driven xlang tests from the language-specific files under `.agents/languages/`.
+When a change affects xlang behavior, combine these integration checks with the relevant
+Java-driven xlang tests from the language-specific files under `.agents/languages/`. A
+runtime-local implementation or fixture change runs only that runtime's peer suite. Run the full
+language matrix only when the shared protocol, type mapping, wire semantics, or cross-runtime
+behavior changes.
 
 Local package tests and smoke tests do not replace the Java-driven xlang path when runtime wire behavior, IDL peers, or generated xlang code changed.

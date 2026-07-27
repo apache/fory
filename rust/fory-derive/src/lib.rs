@@ -119,10 +119,15 @@
 //!   generated serializer, retaining compatibility with previous releases.
 //! - **`#[fory(generate_default)]`**: Enables the macro to generate `Default` implementation.
 //!   By default, `ForyStruct` does NOT generate `impl Default` to avoid conflicts with existing
-//!   `Default` implementations. Use this attribute when you want the macro to generate both
-//!   `ForyDefault` and `Default` for you.
-//! - **`#[fory(default)]`**: Marks the default `ForyUnion` variant. `ForyUnion` requires exactly
-//!   one default variant so schema evolution and null fallback have an explicit owner.
+//!   `Default` implementations. This attribute is not valid with `target`.
+//! - **`#[fory(target = path::Type)]`**: Makes the derived declaration an external structural
+//!   serializer for the target type. Generated code accesses and constructs the target directly;
+//!   the serializer declaration itself is never instantiated.
+//! - **`#[fory(with = SerializerType)]`**: Selects a serializer whose target is the exact field
+//!   value node. Use carrier serializers for exact wrapper or container nodes, and use `list`,
+//!   `map`, or `tuple` metadata to select serializers recursively at child nodes.
+//! - **`#[fory(default)]`**: Marks the fallible deserialization default `ForyUnion` variant.
+//!   `ForyUnion` requires exactly one default variant.
 //!
 //! ## Field Types
 //!
@@ -193,7 +198,9 @@
 
 use fory_row::derive_row;
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Fields, LitBool};
+use syn::{
+    parse_macro_input, spanned::Spanned, Attribute, Data, DeriveInput, Fields, LitBool, Type,
+};
 
 mod fory_row;
 mod object;
@@ -239,7 +246,11 @@ pub fn proc_macro_derive_fory_enum(input: proc_macro::TokenStream) -> TokenStrea
     derive_serializer(input)
 }
 
-/// Derive macro for tagged union serialization.
+/// Derives serialization for data-carrying Rust enums.
+///
+/// Xlang-compatible unit and single-payload variants use the Fory `UNION`
+/// representation. Native multi-field tuple and named variants use the native
+/// `ENUM` representation.
 #[proc_macro_derive(ForyUnion, attributes(fory))]
 pub fn proc_macro_derive_fory_union(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -296,6 +307,7 @@ pub(crate) struct ForyAttrs {
     pub debug_enabled: bool,
     pub generate_default: bool,
     pub evolving: Option<bool>,
+    pub target: Option<Type>,
 }
 
 /// Parse fory attributes and return ForyAttrs
@@ -303,6 +315,7 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
     let mut debug_flag: Option<bool> = None;
     let mut generate_default_flag: Option<bool> = None;
     let mut evolving_flag: Option<bool> = None;
+    let mut target: Option<Type> = None;
 
     for attr in attrs {
         if attr.path().is_ident("fory") {
@@ -358,6 +371,14 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
                         Some(_) => evolving_flag,
                         None => Some(value),
                     };
+                } else if meta.path.is_ident("target") {
+                    if target.is_some() {
+                        return Err(syn::Error::new(
+                            meta.path.span(),
+                            "duplicate `target` attribute",
+                        ));
+                    }
+                    target = Some(meta.value()?.parse()?);
                 } else {
                     return Err(meta.error("unsupported type-level fory attribute"));
                 }
@@ -366,9 +387,56 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
         }
     }
 
+    if let Some(target) = &target {
+        if generate_default_flag == Some(true) {
+            return Err(syn::Error::new(
+                target.span(),
+                "`generate_default` is not valid for an external structural serializer",
+            ));
+        }
+    }
+
     Ok(ForyAttrs {
         debug_enabled: debug_flag.unwrap_or(false),
         generate_default: generate_default_flag.unwrap_or(false),
         evolving: evolving_flag,
+        target,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quote::ToTokens;
+    use syn::parse_quote;
+
+    #[test]
+    fn parses_external_target() {
+        let input: DeriveInput = parse_quote! {
+            #[fory(target = external::User)]
+            struct UserSerializer {
+                name: String,
+            }
+        };
+        let attrs = parse_fory_attrs(&input.attrs).unwrap();
+        assert_eq!(
+            attrs.target.unwrap().to_token_stream().to_string(),
+            "external :: User"
+        );
+    }
+
+    #[test]
+    fn rejects_external_std_default() {
+        let input: DeriveInput = parse_quote! {
+            #[fory(target = external::User, generate_default)]
+            struct UserSerializer {
+                name: String,
+            }
+        };
+        let err = match parse_fory_attrs(&input.attrs) {
+            Ok(_) => panic!("external structural serializers must reject `generate_default`"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("generate_default` is not valid"));
+    }
 }

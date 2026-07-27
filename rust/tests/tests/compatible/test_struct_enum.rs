@@ -180,8 +180,7 @@ fn nonexistent_struct() {
     };
     let bin = fory1.serialize(&person).unwrap();
     let obj: Person2 = fory2.deserialize(&bin).unwrap();
-    use fory_core::ForyDefault;
-    assert_eq!(obj.f2, Item2::fory_default());
+    assert_eq!(obj.f2, Item2 { f1: 0 });
     assert_eq!(obj.f3, 24);
     assert_eq!(obj.last, person.last);
 }
@@ -421,8 +420,14 @@ fn nullable_struct() {
     let person2: Person2 = fory2.deserialize(&bin).unwrap();
 
     assert_eq!(person2.f1.unwrap(), person1.f1);
-    use fory_core::ForyDefault;
-    assert_eq!(person2.f2, Item::fory_default());
+    assert_eq!(
+        person2.f2,
+        Item {
+            name: String::new(),
+            data: Vec::new(),
+            last: 0,
+        }
+    );
     assert_eq!(person2.f3, person1.f3.unwrap());
     assert_eq!(person2.last, person1.last);
 }

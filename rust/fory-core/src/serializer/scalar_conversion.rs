@@ -20,7 +20,7 @@ use crate::context::ReadContext;
 use crate::error::Error;
 use crate::meta::{FieldInfo, FieldType};
 use crate::resolver::{RefFlag, RefMode};
-use crate::serializer::{ForyDefault, Serializer};
+use crate::serializer::Serializer;
 use crate::type_id;
 use crate::types::{bfloat16::bfloat16, float16::float16, Decimal};
 use num_bigint::BigInt;
@@ -59,13 +59,13 @@ pub(super) fn read_scalar_field<T, C>(
 ) -> Result<Option<T>, Error>
 where
     T: 'static,
-    C: Codec<T> + ?Sized,
+    C: Codec<T>,
 {
     if !scalar_field_types_compatible(local_field_type, remote_field_type) {
         return Ok(None);
     }
     if !read_present_ref(context, remote_field_type)? {
-        return Ok(Some(C::default_value()));
+        return Ok(Some(C::default_value(context)?));
     }
     let converted = read_and_convert(context, local_field_type.type_id, remote_field_type)?;
     boxed_to_value(converted).map(Some)
@@ -91,7 +91,7 @@ where
 }
 
 macro_rules! scalar_target_reader {
-    ($read:ident, $read_option:ident, $ty:ty, $payload:ident) => {
+    ($read:ident, $read_option:ident, $ty:ty, $read_scalar_value:ident) => {
         #[inline(never)]
         pub(super) fn $read(
             context: &mut ReadContext,
@@ -100,12 +100,12 @@ macro_rules! scalar_target_reader {
         ) -> Result<$ty, Error> {
             let remote_field_type = &remote_field.field_type;
             if !read_present_ref(context, remote_field_type)? {
-                return Ok(<$ty as ForyDefault>::fory_default());
+                return <$ty as Serializer>::default_value(context);
             }
             // The doubled compatible arm is reached only after schema-pair
             // classification accepts a scalar pair. This dispatch only chooses
-            // the remote wire payload reader.
-            $payload(context, local_type, remote_field_type.type_id)
+            // the remote wire-value reader.
+            $read_scalar_value(context, local_type, remote_field_type.type_id)
         }
 
         #[inline(never)]
@@ -118,7 +118,7 @@ macro_rules! scalar_target_reader {
             if !read_present_ref(context, remote_field_type)? {
                 return Ok(None);
             }
-            $payload(context, local_type, remote_field_type.type_id).map(Some)
+            $read_scalar_value(context, local_type, remote_field_type.type_id).map(Some)
         }
     };
 }
@@ -127,75 +127,85 @@ scalar_target_reader!(
     read_bool_target,
     read_bool_option_target,
     bool,
-    read_bool_payload
+    read_bool_wire_value
 );
 scalar_target_reader!(
     read_string_target,
     read_string_option_target,
     String,
-    read_string_payload
+    read_string_wire_value
 );
-scalar_target_reader!(read_i8_target, read_i8_option_target, i8, read_i8_payload);
+scalar_target_reader!(
+    read_i8_target,
+    read_i8_option_target,
+    i8,
+    read_i8_wire_value
+);
 scalar_target_reader!(
     read_i16_target,
     read_i16_option_target,
     i16,
-    read_i16_payload
+    read_i16_wire_value
 );
 scalar_target_reader!(
     read_i32_target,
     read_i32_option_target,
     i32,
-    read_i32_payload
+    read_i32_wire_value
 );
-scalar_target_reader!(read_u8_target, read_u8_option_target, u8, read_u8_payload);
+scalar_target_reader!(
+    read_u8_target,
+    read_u8_option_target,
+    u8,
+    read_u8_wire_value
+);
 scalar_target_reader!(
     read_u16_target,
     read_u16_option_target,
     u16,
-    read_u16_payload
+    read_u16_wire_value
 );
 scalar_target_reader!(
     read_u32_target,
     read_u32_option_target,
     u32,
-    read_u32_payload
+    read_u32_wire_value
 );
 scalar_target_reader!(
     read_u64_target,
     read_u64_option_target,
     u64,
-    read_u64_payload
+    read_u64_wire_value
 );
 scalar_target_reader!(
     read_f32_target,
     read_f32_option_target,
     f32,
-    read_f32_payload
+    read_f32_wire_value
 );
 scalar_target_reader!(
     read_f64_target,
     read_f64_option_target,
     f64,
-    read_f64_payload
+    read_f64_wire_value
 );
 scalar_target_reader!(
     read_float16_target,
     read_float16_option_target,
     float16,
-    read_float16_payload
+    read_float16_wire_value
 );
 scalar_target_reader!(
     read_bfloat16_target,
     read_bfloat16_option_target,
     bfloat16,
-    read_bfloat16_payload
+    read_bfloat16_wire_value
 );
 scalar_target_reader!(
     read_decimal_target,
     read_decimal_option_target,
     Decimal,
-    read_decimal_payload
+    read_decimal_wire_value
 );
 
 #[inline(never)]
@@ -206,9 +216,9 @@ pub(super) fn read_i64_target(
 ) -> Result<i64, Error> {
     let remote_field_type = &remote_field.field_type;
     if !read_present_ref(context, remote_field_type)? {
-        return Ok(<i64 as ForyDefault>::fory_default());
+        return <i64 as Serializer>::default_value(context);
     }
-    read_i64_payload(context, local_type, remote_field_type.type_id)
+    read_i64_wire_value(context, local_type, remote_field_type.type_id)
 }
 
 #[inline(never)]
@@ -221,11 +231,11 @@ pub(super) fn read_i64_option_target(
     if !read_present_ref(context, remote_field_type)? {
         return Ok(None);
     }
-    read_i64_payload(context, local_type, remote_field_type.type_id).map(Some)
+    read_i64_wire_value(context, local_type, remote_field_type.type_id).map(Some)
 }
 
 #[inline(always)]
-fn read_i64_payload(
+fn read_i64_wire_value(
     context: &mut ReadContext,
     local_type: u32,
     remote_type: u32,
@@ -237,7 +247,7 @@ fn read_i64_payload(
             _ => Err(conversion_error(
                 remote_type,
                 local_type,
-                "invalid bool payload",
+                "invalid bool encoding",
             )),
         },
         type_id::INT8 => Ok(i64::from(context.reader.read_i8()?)),
@@ -279,11 +289,11 @@ fn read_i64_cold(
             float_to_integral_num(value, remote_type, local_type, false)
         }
         type_id::STRING => {
-            let value = String::fory_read_data(context)?;
+            let value = <String as Serializer>::read_data(context)?;
             string_to_integral_num(&value, remote_type, local_type, false)
         }
         type_id::DECIMAL => {
-            let value = Decimal::fory_read_data(context)?;
+            let value = <Decimal as Serializer>::read_data(context)?;
             decimal_to_integral_num(&value, remote_type, local_type, false)
         }
         _ => Err(Error::invalid_data("invalid compatible scalar remote type")),
@@ -291,7 +301,7 @@ fn read_i64_cold(
 }
 
 #[inline(always)]
-fn read_bool_payload(
+fn read_bool_wire_value(
     context: &mut ReadContext,
     local_type: u32,
     remote_type: u32,
@@ -304,7 +314,7 @@ fn read_bool_payload(
                 _ => Err(conversion_error(
                     remote_type,
                     local_type,
-                    "invalid bool payload",
+                    "invalid bool encoding",
                 )),
             };
         }
@@ -314,7 +324,7 @@ fn read_bool_payload(
         | type_id::VARINT32
         | type_id::INT64
         | type_id::VARINT64
-        | type_id::TAGGED_INT64 => read_i64_payload(context, local_type, remote_type)?,
+        | type_id::TAGGED_INT64 => read_i64_wire_value(context, local_type, remote_type)?,
         type_id::UINT8
         | type_id::UINT16
         | type_id::UINT32
@@ -322,7 +332,7 @@ fn read_bool_payload(
         | type_id::UINT64
         | type_id::VAR_UINT64
         | type_id::TAGGED_UINT64 => {
-            let unsigned = read_u64_payload(context, local_type, remote_type)?;
+            let unsigned = read_u64_wire_value(context, local_type, remote_type)?;
             if unsigned == 0 {
                 return Ok(false);
             }
@@ -349,7 +359,7 @@ fn read_bool_payload(
 }
 
 #[inline(always)]
-fn read_string_payload(
+fn read_string_wire_value(
     context: &mut ReadContext,
     local_type: u32,
     remote_type: u32,
@@ -361,10 +371,10 @@ fn read_string_payload(
             _ => Err(conversion_error(
                 remote_type,
                 local_type,
-                "invalid bool payload",
+                "invalid bool encoding",
             )),
         },
-        type_id::STRING => String::fory_read_data(context),
+        type_id::STRING => <String as Serializer>::read_data(context),
         type_id::INT8
         | type_id::INT16
         | type_id::INT32
@@ -372,7 +382,7 @@ fn read_string_payload(
         | type_id::INT64
         | type_id::VARINT64
         | type_id::TAGGED_INT64 => {
-            read_i64_payload(context, local_type, remote_type).map(|value| value.to_string())
+            read_i64_wire_value(context, local_type, remote_type).map(|value| value.to_string())
         }
         type_id::UINT8
         | type_id::UINT16
@@ -381,13 +391,13 @@ fn read_string_payload(
         | type_id::UINT64
         | type_id::VAR_UINT64
         | type_id::TAGGED_UINT64 => {
-            read_u64_payload(context, local_type, remote_type).map(|value| value.to_string())
+            read_u64_wire_value(context, local_type, remote_type).map(|value| value.to_string())
         }
         _ => read_string_cold(context, local_type, remote_type),
     }
 }
 
-macro_rules! signed_payload {
+macro_rules! signed_wire_value {
     ($name:ident, $ty:ty) => {
         #[inline(always)]
         fn $name(
@@ -395,7 +405,7 @@ macro_rules! signed_payload {
             local_type: u32,
             remote_type: u32,
         ) -> Result<$ty, Error> {
-            let value = read_i64_payload(context, local_type, remote_type)?;
+            let value = read_i64_wire_value(context, local_type, remote_type)?;
             <$ty>::try_from(value).map_err(|_| {
                 conversion_error(remote_type, local_type, "integer value is out of range")
             })
@@ -403,12 +413,12 @@ macro_rules! signed_payload {
     };
 }
 
-signed_payload!(read_i8_payload, i8);
-signed_payload!(read_i16_payload, i16);
-signed_payload!(read_i32_payload, i32);
+signed_wire_value!(read_i8_wire_value, i8);
+signed_wire_value!(read_i16_wire_value, i16);
+signed_wire_value!(read_i32_wire_value, i32);
 
 #[inline(always)]
-fn read_u64_payload(
+fn read_u64_wire_value(
     context: &mut ReadContext,
     local_type: u32,
     remote_type: u32,
@@ -420,7 +430,7 @@ fn read_u64_payload(
             _ => Err(conversion_error(
                 remote_type,
                 local_type,
-                "invalid bool payload",
+                "invalid bool encoding",
             )),
         },
         type_id::INT8 => signed_to_u64(
@@ -465,7 +475,7 @@ fn signed_to_u64(value: i64, remote_type: u32, local_type: u32) -> Result<u64, E
         .map_err(|_| conversion_error(remote_type, local_type, "integer value is out of range"))
 }
 
-macro_rules! unsigned_payload {
+macro_rules! unsigned_wire_value {
     ($name:ident, $ty:ty) => {
         #[inline(always)]
         fn $name(
@@ -473,7 +483,7 @@ macro_rules! unsigned_payload {
             local_type: u32,
             remote_type: u32,
         ) -> Result<$ty, Error> {
-            let value = read_u64_payload(context, local_type, remote_type)?;
+            let value = read_u64_wire_value(context, local_type, remote_type)?;
             <$ty>::try_from(value).map_err(|_| {
                 conversion_error(remote_type, local_type, "integer value is out of range")
             })
@@ -481,12 +491,12 @@ macro_rules! unsigned_payload {
     };
 }
 
-unsigned_payload!(read_u8_payload, u8);
-unsigned_payload!(read_u16_payload, u16);
-unsigned_payload!(read_u32_payload, u32);
+unsigned_wire_value!(read_u8_wire_value, u8);
+unsigned_wire_value!(read_u16_wire_value, u16);
+unsigned_wire_value!(read_u32_wire_value, u32);
 
 #[inline(always)]
-fn read_f32_payload(
+fn read_f32_wire_value(
     context: &mut ReadContext,
     local_type: u32,
     remote_type: u32,
@@ -498,7 +508,7 @@ fn read_f32_payload(
             _ => Err(conversion_error(
                 remote_type,
                 local_type,
-                "invalid bool payload",
+                "invalid bool encoding",
             )),
         },
         type_id::INT8
@@ -508,7 +518,7 @@ fn read_f32_payload(
         | type_id::INT64
         | type_id::VARINT64
         | type_id::TAGGED_INT64 => {
-            let value = read_i64_payload(context, local_type, remote_type)?;
+            let value = read_i64_wire_value(context, local_type, remote_type)?;
             signed_integer_to_f32(value, remote_type, local_type)
         }
         type_id::UINT8
@@ -518,7 +528,7 @@ fn read_f32_payload(
         | type_id::UINT64
         | type_id::VAR_UINT64
         | type_id::TAGGED_UINT64 => {
-            let value = read_u64_payload(context, local_type, remote_type)?;
+            let value = read_u64_wire_value(context, local_type, remote_type)?;
             unsigned_integer_to_f32(value, remote_type, local_type)
         }
         type_id::FLOAT16 => {
@@ -536,7 +546,7 @@ fn read_f32_payload(
 }
 
 #[inline(always)]
-fn read_f64_payload(
+fn read_f64_wire_value(
     context: &mut ReadContext,
     local_type: u32,
     remote_type: u32,
@@ -548,7 +558,7 @@ fn read_f64_payload(
             _ => Err(conversion_error(
                 remote_type,
                 local_type,
-                "invalid bool payload",
+                "invalid bool encoding",
             )),
         },
         type_id::INT8
@@ -558,7 +568,7 @@ fn read_f64_payload(
         | type_id::INT64
         | type_id::VARINT64
         | type_id::TAGGED_INT64 => {
-            let value = read_i64_payload(context, local_type, remote_type)?;
+            let value = read_i64_wire_value(context, local_type, remote_type)?;
             signed_integer_to_f64(value, remote_type, local_type)
         }
         type_id::UINT8
@@ -568,7 +578,7 @@ fn read_f64_payload(
         | type_id::UINT64
         | type_id::VAR_UINT64
         | type_id::TAGGED_UINT64 => {
-            let value = read_u64_payload(context, local_type, remote_type)?;
+            let value = read_u64_wire_value(context, local_type, remote_type)?;
             unsigned_integer_to_f64(value, remote_type, local_type)
         }
         type_id::FLOAT16 => {
@@ -588,7 +598,7 @@ fn read_f64_payload(
 }
 
 #[inline(always)]
-fn read_float16_payload(
+fn read_float16_wire_value(
     context: &mut ReadContext,
     local_type: u32,
     remote_type: u32,
@@ -597,15 +607,15 @@ fn read_float16_payload(
         type_id::FLOAT16 => checked_float16(context.reader.read_f16()?, remote_type, local_type),
         _ => match remote_type {
             type_id::STRING => {
-                let value = String::fory_read_data(context)?;
+                let value = <String as Serializer>::read_data(context)?;
                 string_to_float16_value(&value, remote_type, local_type)
             }
             type_id::DECIMAL => {
-                let value = Decimal::fory_read_data(context)?;
+                let value = <Decimal as Serializer>::read_data(context)?;
                 decimal_to_float16(&value, false, remote_type, local_type)
             }
             _ => {
-                let value = read_f32_payload(context, local_type, remote_type)?;
+                let value = read_f32_wire_value(context, local_type, remote_type)?;
                 f32_to_float16_exact(value, remote_type, local_type)
             }
         },
@@ -613,7 +623,7 @@ fn read_float16_payload(
 }
 
 #[inline(always)]
-fn read_bfloat16_payload(
+fn read_bfloat16_wire_value(
     context: &mut ReadContext,
     local_type: u32,
     remote_type: u32,
@@ -622,15 +632,15 @@ fn read_bfloat16_payload(
         type_id::BFLOAT16 => checked_bfloat16(context.reader.read_bf16()?, remote_type, local_type),
         _ => match remote_type {
             type_id::STRING => {
-                let value = String::fory_read_data(context)?;
+                let value = <String as Serializer>::read_data(context)?;
                 string_to_bfloat16_value(&value, remote_type, local_type)
             }
             type_id::DECIMAL => {
-                let value = Decimal::fory_read_data(context)?;
+                let value = <Decimal as Serializer>::read_data(context)?;
                 decimal_to_bfloat16(&value, false, remote_type, local_type)
             }
             _ => {
-                let value = read_f32_payload(context, local_type, remote_type)?;
+                let value = read_f32_wire_value(context, local_type, remote_type)?;
                 f32_to_bfloat16_exact(value, remote_type, local_type)
             }
         },
@@ -638,7 +648,7 @@ fn read_bfloat16_payload(
 }
 
 #[inline(always)]
-fn read_decimal_payload(
+fn read_decimal_wire_value(
     context: &mut ReadContext,
     local_type: u32,
     remote_type: u32,
@@ -650,7 +660,7 @@ fn read_decimal_payload(
             _ => Err(conversion_error(
                 remote_type,
                 local_type,
-                "invalid bool payload",
+                "invalid bool encoding",
             )),
         },
         type_id::INT8
@@ -660,7 +670,7 @@ fn read_decimal_payload(
         | type_id::INT64
         | type_id::VARINT64
         | type_id::TAGGED_INT64 => {
-            let value = read_i64_payload(context, local_type, remote_type)?;
+            let value = read_i64_wire_value(context, local_type, remote_type)?;
             Ok(Decimal::new(BigInt::from(value), 0))
         }
         type_id::UINT8
@@ -670,7 +680,7 @@ fn read_decimal_payload(
         | type_id::UINT64
         | type_id::VAR_UINT64
         | type_id::TAGGED_UINT64 => {
-            let value = read_u64_payload(context, local_type, remote_type)?;
+            let value = read_u64_wire_value(context, local_type, remote_type)?;
             Ok(Decimal::new(BigInt::from(value), 0))
         }
         type_id::FLOAT16 | type_id::BFLOAT16 | type_id::FLOAT32 | type_id::FLOAT64 => {
@@ -678,10 +688,10 @@ fn read_decimal_payload(
             float_to_decimal_value(value, remote_type, local_type)
         }
         type_id::STRING => {
-            let value = String::fory_read_data(context)?;
+            let value = <String as Serializer>::read_data(context)?;
             string_to_decimal_value(&value, remote_type, local_type).map(|(decimal, _)| decimal)
         }
-        type_id::DECIMAL => canonical_decimal(Decimal::fory_read_data(context)?),
+        type_id::DECIMAL => canonical_decimal(<Decimal as Serializer>::read_data(context)?),
         _ => Err(Error::invalid_data("invalid compatible scalar remote type")),
     }
 }
@@ -699,11 +709,11 @@ fn read_bool_cold(
             float_to_bool_value(value, remote_type, local_type)
         }
         type_id::STRING => {
-            let value = String::fory_read_data(context)?;
+            let value = <String as Serializer>::read_data(context)?;
             string_to_bool_value(&value, remote_type, local_type)
         }
         type_id::DECIMAL => {
-            let value = Decimal::fory_read_data(context)?;
+            let value = <Decimal as Serializer>::read_data(context)?;
             decimal_to_bool_value(&value, remote_type, local_type)
         }
         _ => Err(Error::invalid_data("invalid compatible scalar remote type")),
@@ -723,7 +733,7 @@ fn read_string_cold(
             float_to_string(value, remote_type, local_type)
         }
         type_id::DECIMAL => {
-            let value = canonical_decimal(Decimal::fory_read_data(context)?)?;
+            let value = canonical_decimal(<Decimal as Serializer>::read_data(context)?)?;
             Ok(decimal_to_string(&value))
         }
         _ => Err(Error::invalid_data("invalid compatible scalar remote type")),
@@ -743,11 +753,11 @@ fn read_u64_cold(
             float_to_integral_num(value, remote_type, local_type, true)
         }
         type_id::STRING => {
-            let value = String::fory_read_data(context)?;
+            let value = <String as Serializer>::read_data(context)?;
             string_to_integral_num(&value, remote_type, local_type, true)
         }
         type_id::DECIMAL => {
-            let value = Decimal::fory_read_data(context)?;
+            let value = <Decimal as Serializer>::read_data(context)?;
             decimal_to_integral_num(&value, remote_type, local_type, true)
         }
         _ => Err(Error::invalid_data("invalid compatible scalar remote type")),
@@ -763,11 +773,11 @@ fn read_f32_cold(
 ) -> Result<f32, Error> {
     match remote_type {
         type_id::STRING => {
-            let value = String::fory_read_data(context)?;
+            let value = <String as Serializer>::read_data(context)?;
             string_to_f32_value(&value, remote_type, local_type)
         }
         type_id::DECIMAL => {
-            let value = Decimal::fory_read_data(context)?;
+            let value = <Decimal as Serializer>::read_data(context)?;
             decimal_to_f32(&value, false, remote_type, local_type)
         }
         _ => Err(Error::invalid_data("invalid compatible scalar remote type")),
@@ -783,11 +793,11 @@ fn read_f64_cold(
 ) -> Result<f64, Error> {
     match remote_type {
         type_id::STRING => {
-            let value = String::fory_read_data(context)?;
+            let value = <String as Serializer>::read_data(context)?;
             string_to_f64_value(&value, remote_type, local_type)
         }
         type_id::DECIMAL => {
-            let value = Decimal::fory_read_data(context)?;
+            let value = <Decimal as Serializer>::read_data(context)?;
             decimal_to_f64(&value, false, remote_type, local_type)
         }
         _ => Err(Error::invalid_data("invalid compatible scalar remote type")),
@@ -1087,7 +1097,7 @@ fn read_scalar_value(context: &mut ReadContext, type_id: u32) -> Result<ScalarVa
                     return Err(conversion_error(
                         type_id::BOOL,
                         type_id::BOOL,
-                        "invalid bool payload",
+                        "invalid bool encoding",
                     ))
                 }
             }
@@ -1110,8 +1120,8 @@ fn read_scalar_value(context: &mut ReadContext, type_id: u32) -> Result<ScalarVa
         type_id::BFLOAT16 => ScalarValue::Float(FloatValue::BF16(context.reader.read_bf16()?)),
         type_id::FLOAT32 => ScalarValue::Float(FloatValue::F32(context.reader.read_f32()?)),
         type_id::FLOAT64 => ScalarValue::Float(FloatValue::F64(context.reader.read_f64()?)),
-        type_id::STRING => ScalarValue::String(String::fory_read_data(context)?),
-        type_id::DECIMAL => ScalarValue::Decimal(Decimal::fory_read_data(context)?),
+        type_id::STRING => ScalarValue::String(<String as Serializer>::read_data(context)?),
+        type_id::DECIMAL => ScalarValue::Decimal(<Decimal as Serializer>::read_data(context)?),
         _ => {
             return Err(conversion_error(
                 type_id,

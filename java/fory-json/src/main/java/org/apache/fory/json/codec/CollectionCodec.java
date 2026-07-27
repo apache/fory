@@ -89,17 +89,23 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     Class<?> elementRawType = CodecUtils.rawType(elementType, Object.class);
     CollectionFactory factory = collectionFactory(rawType, elementRawType);
     JsonTypeInfo elementTypeInfo = resolver.getTypeInfo(elementType, elementRawType);
-    return create(factory, elementTypeInfo);
+    return create(factory, elementTypeInfo, resolver.canonicalObjectCodec(elementTypeInfo) != null);
   }
 
   @Internal
   public static CollectionCodec<?> create(
-      Class<?> rawType, Class<?> elementRawType, JsonTypeInfo elementTypeInfo) {
-    return create(collectionFactory(rawType, elementRawType), elementTypeInfo);
+      Class<?> rawType,
+      Class<?> elementRawType,
+      JsonTypeInfo elementTypeInfo,
+      JsonTypeResolver resolver) {
+    return create(
+        collectionFactory(rawType, elementRawType),
+        elementTypeInfo,
+        resolver.canonicalObjectCodec(elementTypeInfo) != null);
   }
 
   private static CollectionCodec<?> create(
-      CollectionFactory factory, JsonTypeInfo elementTypeInfo) {
+      CollectionFactory factory, JsonTypeInfo elementTypeInfo, boolean objectElement) {
     Object elementCodec = elementTypeInfo.stringWriter();
     if (elementCodec == ScalarCodecs.StringCodec.INSTANCE) {
       return new StringCollectionCodec(factory);
@@ -131,7 +137,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
     if (elementCodec == ScalarCodecs.BigDecimalCodec.INSTANCE) {
       return new BigDecimalCollectionCodec(factory);
     }
-    if (elementTypeInfo.usesDefaultObjectCodec()) {
+    if (objectElement) {
       return new ObjectCollectionCodec(factory, elementTypeInfo);
     }
     return new GenericCollectionCodec(factory, elementTypeInfo);
@@ -195,7 +201,7 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
   }
 
   @Internal
-  final boolean createsArrayList() {
+  public final boolean createsArrayList() {
     return createsArrayList;
   }
 
@@ -988,16 +994,10 @@ public abstract class CollectionCodec<T extends Collection<?>> implements JsonVa
         list.add(e3);
         return list;
       }
-      return readLatin1ArrayListTail(reader, codec, e0, e1, e2, e3);
-    }
-
-    private ArrayList<Object> readLatin1ArrayListTail(
-        Latin1JsonReader reader,
-        Latin1ReaderCodec<Object> codec,
-        Object e0,
-        Object e1,
-        Object e2,
-        Object e3) {
+      // Keep this real exact-allocation prefix in the collection owner. Splitting here makes each
+      // method smaller than C2's hot-inline limit, so a generated caller can absorb the collection
+      // and element closure solely according to compilation order. The uncommon longer tail stays
+      // separate below.
       Object e4 = codec.readLatin1(reader);
       if (!reader.consumeNextCommaOrEndArray()) {
         reader.exitDepth();

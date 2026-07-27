@@ -24,6 +24,8 @@ cd "$SCRIPT_DIR"
 
 OUTPUT_DIR="$SCRIPT_DIR/results"
 DOCS_DIR="$SCRIPT_DIR/../../docs/benchmarks/rust"
+LOCAL_MANIFEST="$SCRIPT_DIR/local/Cargo.toml"
+XLANG_MANIFEST="$SCRIPT_DIR/xlang/Cargo.toml"
 LOG_FILE="$OUTPUT_DIR/cargo_bench.log"
 SIZE_FILE="$OUTPUT_DIR/serialized_sizes.txt"
 GENERATE_REPORT=true
@@ -35,7 +37,7 @@ CUSTOM_FILTER=""
 usage() {
     echo "Usage: $0 [options]"
     echo ""
-    echo "Build and run Rust shared benchmark cases from benchmarks/proto/bench.proto"
+    echo "Build and run the Rust xlang and Rust-local benchmark packages"
     echo ""
     echo "Options:"
     echo "  --data <type>       Filter by data type: struct, sample, mediacontent,"
@@ -156,11 +158,6 @@ build_filter() {
 mkdir -p "$OUTPUT_DIR"
 FILTER_REGEX="$(build_filter)"
 
-BENCH_CMD=(cargo bench --bench serialization_bench)
-if [[ -n "$FILTER_REGEX" ]]; then
-    BENCH_CMD+=(-- "$FILTER_REGEX")
-fi
-
 echo "============================================"
 echo "Fory Rust Benchmark"
 echo "============================================"
@@ -176,15 +173,29 @@ echo ""
 echo "============================================"
 echo "Running benchmarks..."
 echo "============================================"
-echo "Running: ${BENCH_CMD[*]}"
-echo ""
-"${BENCH_CMD[@]}" 2>&1 | tee "$LOG_FILE"
+: > "$LOG_FILE"
+
+run_benchmark() {
+    local manifest="$1"
+    local bench_target="$2"
+    local bench_cmd=(cargo bench --manifest-path "$manifest" --bench "$bench_target")
+    if [[ -n "$FILTER_REGEX" ]]; then
+        bench_cmd+=(-- "$FILTER_REGEX")
+    fi
+    echo "Running: ${bench_cmd[*]}"
+    echo ""
+    "${bench_cmd[@]}" 2>&1 | tee -a "$LOG_FILE"
+}
+
+run_benchmark "$XLANG_MANIFEST" serialization_bench
+run_benchmark "$LOCAL_MANIFEST" external_type_bench
 
 echo ""
 echo "============================================"
 echo "Collecting serialized sizes..."
 echo "============================================"
-cargo run --release --bin fory_profiler -- --print-all-serialized-sizes | tee "$SIZE_FILE"
+cargo run --release --manifest-path "$XLANG_MANIFEST" --bin fory_profiler -- \
+    --print-all-serialized-sizes | tee "$SIZE_FILE"
 
 if $GENERATE_REPORT; then
     echo ""

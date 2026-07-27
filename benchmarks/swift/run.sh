@@ -34,6 +34,8 @@ DATA=""
 SERIALIZER=""
 DURATION="3"
 OUTPUT_JSON="results/benchmark_results.json"
+EXTERNAL_OUTPUT_JSON="results/external_benchmark_results.json"
+EXTERNAL=false
 NO_REPORT=false
 COPY_DOCS=true
 
@@ -48,6 +50,7 @@ usage() {
     echo "  --serializer <fory|protobuf|json>"
     echo "                               Filter benchmark by serializer"
     echo "  --duration <seconds>         Minimum time to run each benchmark (default: 3)"
+    echo "  --external                   Also run isolated external-type benchmarks"
     echo "  --no-report                  Skip Python report generation"
     echo "  --no-copy-docs               Skip copying report/plots into docs/benchmarks/swift"
     echo "  --help                       Show this help message"
@@ -57,6 +60,7 @@ usage() {
     echo "  $0 --data struct"
     echo "  $0 --serializer protobuf"
     echo "  $0 --data sample --serializer json --duration 5"
+    echo "  $0 --external --duration 5"
     exit 0
 }
 
@@ -73,6 +77,10 @@ while [[ $# -gt 0 ]]; do
         --duration)
             DURATION="$2"
             shift 2
+            ;;
+        --external)
+            EXTERNAL=true
+            shift
             ;;
         --no-report)
             NO_REPORT=true
@@ -102,12 +110,12 @@ mkdir -p results
 echo -e "${GREEN}=== Fory Swift Benchmark ===${NC}"
 echo ""
 
-echo -e "${YELLOW}[1/3] Building benchmark...${NC}"
-swift build -c release
+echo -e "${YELLOW}Building ordinary benchmark...${NC}"
+swift build -c release --product swift-benchmark
 echo -e "${GREEN}Build complete!${NC}"
 echo ""
 
-echo -e "${YELLOW}[2/3] Running benchmark...${NC}"
+echo -e "${YELLOW}Running ordinary benchmark...${NC}"
 ARGS=("--duration" "$DURATION" "--output" "$OUTPUT_JSON")
 if [[ -n "$DATA" ]]; then
     ARGS+=("--data" "$DATA")
@@ -116,29 +124,49 @@ if [[ -n "$SERIALIZER" ]]; then
     ARGS+=("--serializer" "$SERIALIZER")
 fi
 
-swift run -c release swift-benchmark "${ARGS[@]}"
+swift run -c release --skip-build swift-benchmark "${ARGS[@]}"
 echo -e "${GREEN}Benchmark complete!${NC}"
+
+if [[ "$EXTERNAL" == true ]]; then
+    echo ""
+    echo -e "${YELLOW}Building isolated external-type benchmark...${NC}"
+    swift build -c release --product swift-external-benchmark
+    echo -e "${GREEN}External-type build complete!${NC}"
+    echo ""
+    echo -e "${YELLOW}Running external-type benchmark...${NC}"
+    swift run -c release --skip-build swift-external-benchmark \
+        --duration "$DURATION" \
+        --output "$EXTERNAL_OUTPUT_JSON"
+    echo -e "${GREEN}External-type benchmark complete!${NC}"
+fi
 
 if [[ "$NO_REPORT" == true ]]; then
     echo ""
     echo -e "${YELLOW}Skipping report generation (--no-report).${NC}"
     echo -e "JSON output: ${OUTPUT_JSON}"
+    if [[ "$EXTERNAL" == true ]]; then
+        echo -e "External JSON output: ${EXTERNAL_OUTPUT_JSON}"
+    fi
     exit 0
 fi
 
 echo ""
-echo -e "${YELLOW}[3/3] Generating report...${NC}"
+echo -e "${YELLOW}Generating report...${NC}"
 if ! command -v python3 >/dev/null 2>&1; then
     echo -e "${RED}python3 is required for report generation${NC}"
     exit 1
 fi
 
-if ! python3 -c "import matplotlib" >/dev/null 2>&1; then
-    echo -e "${YELLOW}Installing Python report dependencies...${NC}"
-    pip3 install matplotlib numpy
+if ! python3 -c "import matplotlib, numpy" >/dev/null 2>&1; then
+    echo -e "${RED}matplotlib and numpy are required for report generation${NC}"
+    exit 1
 fi
 
-python3 benchmark_report.py --json-file "$OUTPUT_JSON" --output-dir results
+REPORT_ARGS=("--json-file" "$OUTPUT_JSON" "--output-dir" "results")
+if [[ "$EXTERNAL" == true ]]; then
+    REPORT_ARGS+=("--external-json-file" "$EXTERNAL_OUTPUT_JSON")
+fi
+python3 benchmark_report.py "${REPORT_ARGS[@]}"
 if [[ "$COPY_DOCS" == true ]]; then
     mkdir -p "$DOCS_DIR"
     cp results/README.md "$DOCS_DIR/README.md"

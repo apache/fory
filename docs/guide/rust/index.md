@@ -100,7 +100,7 @@ fn main() -> Result<(), Error> {
 
 Use xlang mode for cross-language payloads and schemas shared with other Fory implementations. Xlang mode is the default Rust wire mode, and Rust examples that use it set `.xlang(true)` explicitly so the mode choice is visible.
 
-Use native mode for Rust-only traffic. Native mode is selected with `.xlang(false)` and keeps Rust object serialization in Rust-native form. It is optimized for Rust's type system and covers Rust-specific object features such as trait objects and shared-reference patterns that are not portable xlang payloads. Compatible mode is enabled by default. Set `.compatible(false)` only when every reader and writer uses the same Rust schema and you want faster serialization and smaller size.
+Use native mode for Rust-only traffic. Native mode is selected with `.xlang(false)` and keeps Rust object serialization in Rust-native form. It supports native-only concrete targets and data-enum shapes that have no xlang representation. Dynamic `Any`, application trait, and shared-reference carriers can also be used in xlang mode when every selected concrete target is xlang-compatible. Compatible mode is enabled by default. Set `.compatible(false)` only when every reader and writer uses the same Rust schema and you want faster serialization and smaller size.
 
 See [Xlang Serialization](xlang-serialization.md) for Rust xlang registration and interoperability rules, and [Native Serialization](native-serialization.md) for Rust-only payloads.
 
@@ -196,6 +196,8 @@ fory-derive/           # Procedural macros
 - [Native Serialization](native-serialization.md) - Rust-only serialization
 - [References](references.md) - Shared and circular references
 - [Polymorphism](polymorphism.md) - Trait object serialization
-- [Custom Serializers](custom-serializers.md) - Extend serialization behavior
+- [Manual Serializers](manual-serializers.md) - Implement customized serialization behavior
+- [External-Type Serialization](external-types.md) - External structural and manual serializers
+  plus carrier composition
 - [Row Format](row-format.md) - Zero-copy row-based format
 - [gRPC Support](grpc-support.md) - Fory payloads over tonic

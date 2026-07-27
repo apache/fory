@@ -1,6 +1,6 @@
 ---
 title: Supported Types
-sidebar_position: 7
+sidebar_position: 8
 id: supported_types
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -131,6 +131,10 @@ class User {
 ```
 
 See [Code Generation](code-generation.md).
+
+Classes owned by another library can use an
+[external structural serializer](external-types.md) when their public fields
+and construction match a local Fory schema declaration.
 
 ## Collections
 

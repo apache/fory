@@ -3,7 +3,7 @@
 Apache Fory™ Dart is the Dart xlang implementation for Apache Fory™. It reads and
 writes Fory's cross-language wire format and works in both Dart and Flutter
 applications. Because Flutter prohibits `dart:mirrors`, Fory Dart uses static
-code generation for type handling.
+code generation for annotated models and external structural serializers.
 
 The publishable package lives at `packages/fory/`. See its
 [README](packages/fory/README.md) for the full user-facing documentation
@@ -11,13 +11,14 @@ including getting started, API reference, and code examples.
 
 ## Project Structure
 
-| Directory                        | Description                             |
-| -------------------------------- | --------------------------------------- |
-| `packages/fory/lib/`             | Core implementation and public API      |
-| `packages/fory/lib/src/codegen/` | Build-runner code generator             |
-| `packages/fory/example/`         | Annotated example with generated output |
-| `packages/fory/test/`            | Unit and integration tests              |
-| `test/`                          | Cross-language integration tests        |
+| Directory                             | Description                                         |
+| ------------------------------------- | --------------------------------------------------- |
+| `packages/fory/lib/`                  | Core implementation and public API                  |
+| `packages/fory/lib/src/codegen/`      | Build-runner code generator                         |
+| `packages/fory/example/`              | Annotated example with generated output             |
+| `packages/fory/test/`                 | Unit and integration tests                          |
+| `packages/external-type-test-models/` | Fory-free dependency models for external-type tests |
+| `test/`                               | Cross-language integration tests                    |
 
 ## Type Mapping
 

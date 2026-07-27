@@ -41,6 +41,7 @@
     <maven.source.skip>false</maven.source.skip>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
     <fory.json.mr.classes>${project.build.directory}/multi-release-classes</fory.json.mr.classes>
+    <fory.json.java9.test.classes>${project.build.directory}/java9-test-classes</fory.json.java9.test.classes>
     <fory.json.jdk25.test.classes>${project.build.directory}/jdk25-test-classes</fory.json.jdk25.test.classes>
     <fory.core.jdk25.test.classes>${project.basedir}/../fory-core/target/jdk25-test-classes</fory.core.jdk25.test.classes>
   </properties>
@@ -109,14 +110,15 @@
             <version>3.1.0</version>
             <executions>
               <execution>
-                <id>compile-java9-module-info</id>
+                <id>compile-java9-classes</id>
                 <phase>process-classes</phase>
                 <goals>
                   <goal>run</goal>
                 </goals>
                 <configuration>
                   <target>
-                    <mkdir dir="${project.build.directory}/jpms-classes/java9"/>
+                    <delete dir="${fory.json.mr.classes}/9"/>
+                    <mkdir dir="${fory.json.mr.classes}/9"/>
                     <condition
                         property="fory.core.module.jar"
                         value="${project.basedir}/../fory-core/target/fory-core-${project.version}.jar"
@@ -139,12 +141,13 @@
                     <pathconvert property="compile.module.path" refid="compile.module.path.elements"
                                  pathsep="${path.separator}"/>
                     <javac srcdir="${project.basedir}/src/main/java9"
-                           destdir="${project.build.directory}/jpms-classes/java9"
+                           destdir="${fory.json.mr.classes}/9"
                            includeantruntime="false"
                            fork="true"
                            executable="${java.home}/bin/javac"
                            debug="true">
                       <include name="module-info.java"/>
+                      <include name="org/**/*.java"/>
                       <compilerarg value="--release"/>
                       <compilerarg value="9"/>
                       <compilerarg value="--module-path"/>
@@ -156,7 +159,7 @@
                 </configuration>
               </execution>
               <execution>
-                <id>inject-java9-module-info</id>
+                <id>inject-java9-classes</id>
                 <phase>package</phase>
                 <goals>
                   <goal>run</goal>
@@ -164,14 +167,44 @@
                 <configuration>
                   <target>
                     <jar destfile="${project.build.directory}/${project.build.finalName}.jar" update="true">
-                      <zipfileset dir="${project.build.directory}/jpms-classes/java9"
+                      <zipfileset dir="${fory.json.mr.classes}/9"
                                   prefix="META-INF/versions/9"
-                                  includes="module-info.class"/>
+                                  includes="**/*.class"/>
                     </jar>
                   </target>
                 </configuration>
               </execution>
+              <execution>
+                <id>prepare-java9-test-classes</id>
+                <phase>process-test-classes</phase>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+                <configuration>
+                  <target>
+                    <delete dir="${fory.json.java9.test.classes}"/>
+                    <mkdir dir="${fory.json.java9.test.classes}"/>
+                    <copy todir="${fory.json.java9.test.classes}">
+                      <fileset dir="${project.build.outputDirectory}">
+                        <exclude name="module-info.class"/>
+                      </fileset>
+                    </copy>
+                    <copy todir="${fory.json.java9.test.classes}" overwrite="true">
+                      <fileset dir="${fory.json.mr.classes}/9">
+                        <exclude name="module-info.class"/>
+                      </fileset>
+                    </copy>
+                  </target>
+                </configuration>
+              </execution>
             </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <configuration>
+              <classesDirectory>${fory.json.java9.test.classes}</classesDirectory>
+            </configuration>
           </plugin>
         </plugins>
       </build>
@@ -384,6 +417,11 @@
                          path as packaged JDK25 runs. -->
                     <copy todir="${fory.json.jdk25.test.classes}">
                       <fileset dir="${project.build.outputDirectory}">
+                        <exclude name="module-info.class"/>
+                      </fileset>
+                    </copy>
+                    <copy todir="${fory.json.jdk25.test.classes}" overwrite="true">
+                      <fileset dir="${fory.json.mr.classes}/9">
                         <exclude name="module-info.class"/>
                       </fileset>
                     </copy>

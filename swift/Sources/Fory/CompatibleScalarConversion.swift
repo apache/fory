@@ -792,47 +792,45 @@ private func readCompatibleRemoteScalarPayload(
     case .bool:
         return .bool(try readCompatibleBoolPayload(context))
     case .string:
-        return .string(try StringCodec.read(context, refMode: .none, readTypeInfo: false))
+        return .string(try StringCodec.readFieldData(context))
     case .int8:
-        return .signed(Int64(try Int8Codec.read(context, refMode: .none, readTypeInfo: false)))
+        return .signed(Int64(try Int8Codec.readFieldData(context)))
     case .int16:
-        return .signed(Int64(try Int16Codec.read(context, refMode: .none, readTypeInfo: false)))
+        return .signed(Int64(try Int16Codec.readFieldData(context)))
     case .int32:
-        return .signed(Int64(try Int32FixedCodec.read(context, refMode: .none, readTypeInfo: false)))
+        return .signed(Int64(try Int32FixedCodec.readFieldData(context)))
     case .varint32:
-        return .signed(Int64(try Int32VarintCodec.read(context, refMode: .none, readTypeInfo: false)))
+        return .signed(Int64(try Int32VarintCodec.readFieldData(context)))
     case .int64:
-        return .signed(try Int64FixedCodec.read(context, refMode: .none, readTypeInfo: false))
+        return .signed(try Int64FixedCodec.readFieldData(context))
     case .varint64:
-        return .signed(try Int64VarintCodec.read(context, refMode: .none, readTypeInfo: false))
+        return .signed(try Int64VarintCodec.readFieldData(context))
     case .taggedInt64:
-        return .signed(try Int64TaggedCodec.read(context, refMode: .none, readTypeInfo: false))
+        return .signed(try Int64TaggedCodec.readFieldData(context))
     case .uint8:
-        return .unsigned(UInt64(try UInt8Codec.read(context, refMode: .none, readTypeInfo: false)))
+        return .unsigned(UInt64(try UInt8Codec.readFieldData(context)))
     case .uint16:
-        return .unsigned(UInt64(try UInt16Codec.read(context, refMode: .none, readTypeInfo: false)))
+        return .unsigned(UInt64(try UInt16Codec.readFieldData(context)))
     case .uint32:
-        return .unsigned(
-            UInt64(try UInt32FixedCodec.read(context, refMode: .none, readTypeInfo: false)))
+        return .unsigned(UInt64(try UInt32FixedCodec.readFieldData(context)))
     case .varUInt32:
-        return .unsigned(
-            UInt64(try UInt32VarintCodec.read(context, refMode: .none, readTypeInfo: false)))
+        return .unsigned(UInt64(try UInt32VarintCodec.readFieldData(context)))
     case .uint64:
-        return .unsigned(try UInt64FixedCodec.read(context, refMode: .none, readTypeInfo: false))
+        return .unsigned(try UInt64FixedCodec.readFieldData(context))
     case .varUInt64:
-        return .unsigned(try UInt64VarintCodec.read(context, refMode: .none, readTypeInfo: false))
+        return .unsigned(try UInt64VarintCodec.readFieldData(context))
     case .taggedUInt64:
-        return .unsigned(try UInt64TaggedCodec.read(context, refMode: .none, readTypeInfo: false))
+        return .unsigned(try UInt64TaggedCodec.readFieldData(context))
     case .float16:
-        return .float16(try Float16Codec.read(context, refMode: .none, readTypeInfo: false))
+        return .float16(try Float16Codec.readFieldData(context))
     case .bfloat16:
-        return .bfloat16(try BFloat16Codec.read(context, refMode: .none, readTypeInfo: false))
+        return .bfloat16(try BFloat16Codec.readFieldData(context))
     case .float32:
-        return .float32(try FloatCodec.read(context, refMode: .none, readTypeInfo: false))
+        return .float32(try FloatCodec.readFieldData(context))
     case .float64:
-        return .float64(try DoubleCodec.read(context, refMode: .none, readTypeInfo: false))
+        return .float64(try DoubleCodec.readFieldData(context))
     case .decimal:
-        return .decimal(try DecimalCodec.read(context, refMode: .none, readTypeInfo: false))
+        return .decimal(try DecimalCodec.readFieldData(context))
     default:
         throw ForyError.invalidData("unsupported compatible scalar type \(remoteTypeID.rawValue)")
     }

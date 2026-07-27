@@ -81,16 +81,13 @@ def test_metastring():
     decoder = MetaStringDecoder(special_char1=".", special_char2="_")
 
     for i in range(1, 128):
-        try:
-            string = create_string(i)
-            metastring = encoder.encode(string)
-            assert metastring.encoding != Encoding.UTF_8
-            assert metastring.original == string
+        string = create_string(i)
+        metastring = encoder.encode(string)
+        assert metastring.encoding != Encoding.UTF_8, f"Failed at {i}"
+        assert metastring.original == string, f"Failed at {i}"
 
-            new_string = decoder.decode(metastring.encoded_data, metastring.encoding)
-            assert new_string == string
-        except Exception as e:
-            pytest.fail(f"Failed at {i} with exception: {str(e)}")
+        new_string = decoder.decode(metastring.encoded_data, metastring.encoding)
+        assert new_string == string, f"Failed at {i}"
 
 
 def test_encode_empty_string():
@@ -108,6 +105,15 @@ def test_encode_empty_string():
         assert len(metastring.encoded_data) == 0
         decoded = decoder.decode(metastring.encoded_data, metastring.encoding)
         assert decoded == ""
+
+
+def test_trailing_escape():
+    encoder = MetaStringEncoder(special_char1=".", special_char2="_")
+    decoder = MetaStringDecoder(special_char1=".", special_char2="_")
+    encoded = encoder._encode_lower_special("|")
+
+    with pytest.raises(ValueError, match="ALL_TO_LOWER_SPECIAL"):
+        decoder.decode(encoded, Encoding.ALL_TO_LOWER_SPECIAL)
 
 
 def test_encode_characters_outside_of_lower_special():
@@ -168,7 +174,7 @@ def test_empty_string():
     decoder = MetaStringDecoder(special_char1=".", special_char2="_")
 
     metastring = encoder.encode("")
-    assert metastring.encoded_data == bytes()
+    assert metastring.encoded_data == b""
 
     decoded = decoder.decode(metastring.encoded_data, metastring.encoding)
     assert decoded == ""

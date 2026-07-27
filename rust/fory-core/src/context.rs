@@ -175,8 +175,19 @@ impl<'a> WriteContext<'a> {
     }
 
     #[inline(always)]
-    pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Rc<TypeInfo>, Error> {
-        self.type_resolver.get_type_info(type_id)
+    pub fn get_provider_type_info(
+        &self,
+        provider_type_id: &std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        self.type_resolver.get_provider_type_info(provider_type_id)
+    }
+
+    #[inline(always)]
+    pub fn get_target_type_info(
+        &self,
+        target_type_id: &std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        self.type_resolver.get_target_type_info(target_type_id)
     }
 
     /// Check if compatible mode is enabled
@@ -227,7 +238,7 @@ impl<'a> WriteContext<'a> {
     #[inline(always)]
     pub fn write_struct_type_info<T: StructSerializer>(&mut self) -> Result<(), Error> {
         let rust_type_id = std::any::TypeId::of::<T>();
-        let type_index = T::fory_type_index();
+        let type_index = T::type_index();
         let type_id = self.type_resolver.get_type_id_by_index(type_index)?;
         match type_id {
             TypeId::STRUCT | TypeId::ENUM | TypeId::EXT | TypeId::TYPED_UNION => {
@@ -258,51 +269,61 @@ impl<'a> WriteContext<'a> {
                 )?;
             }
             _ => {
-                self.write_any_type_info(type_id as u32, rust_type_id)?;
+                self.write_provider_type_info(type_id as u32, rust_type_id)?;
             }
         }
         Ok(())
     }
 
-    pub fn write_any_type_info(
+    pub fn write_provider_type_info(
         &mut self,
-        fory_type_id: u32,
-        concrete_type_id: std::any::TypeId,
+        wire_type_id: u32,
+        provider_type_id: std::any::TypeId,
     ) -> Result<Rc<TypeInfo>, Error> {
-        if types::is_internal_type(fory_type_id) {
-            self.writer.write_u8(fory_type_id as u8);
-            return self
-                .type_resolver
-                .get_type_info_by_id(fory_type_id)
-                .ok_or_else(|| Error::type_error("Type info for internal type not found"));
+        let type_info = self
+            .type_resolver
+            .get_provider_type_info(&provider_type_id)?;
+        self.write_resolved_type_info(wire_type_id, type_info)
+    }
+
+    pub fn write_target_type_info(
+        &mut self,
+        wire_type_id: u32,
+        target_type_id: std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        let type_info = self.type_resolver.get_target_type_info(&target_type_id)?;
+        self.write_resolved_type_info(wire_type_id, type_info)
+    }
+
+    #[doc(hidden)]
+    #[inline(always)]
+    pub fn write_resolved_type_info(
+        &mut self,
+        wire_type_id: u32,
+        type_info: Rc<TypeInfo>,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        if types::is_internal_type(wire_type_id) {
+            self.writer.write_u8(wire_type_id as u8);
+            return Ok(type_info);
         }
-        let type_info = self.type_resolver.get_type_info(&concrete_type_id)?;
-        let fory_type_id = type_info.get_type_id();
+        let wire_type_id = type_info.get_type_id();
         let namespace = type_info.get_namespace();
         let type_name = type_info.get_type_name();
-        self.writer.write_u8(fory_type_id as u8);
+        self.writer.write_u8(wire_type_id as u8);
         // should be compiled to jump table generation
-        match fory_type_id {
+        match wire_type_id {
             TypeId::ENUM | TypeId::STRUCT | TypeId::EXT | TypeId::TYPED_UNION => {
                 let user_type_id = type_info.get_user_type_id();
                 self.writer.write_var_u32(user_type_id);
             }
             TypeId::COMPATIBLE_STRUCT | TypeId::NAMED_COMPATIBLE_STRUCT => {
-                // Write type meta inline using streaming protocol
-                self.meta_resolver.write_type_meta(
-                    &mut self.writer,
-                    concrete_type_id,
-                    &self.type_resolver,
-                )?;
+                self.meta_resolver
+                    .write_resolved_type_meta(&mut self.writer, &type_info)?;
             }
             TypeId::NAMED_ENUM | TypeId::NAMED_EXT | TypeId::NAMED_STRUCT | TypeId::NAMED_UNION => {
                 if self.is_share_meta() {
-                    // Write type meta inline using streaming protocol
-                    self.meta_resolver.write_type_meta(
-                        &mut self.writer,
-                        concrete_type_id,
-                        &self.type_resolver,
-                    )?;
+                    self.meta_resolver
+                        .write_resolved_type_meta(&mut self.writer, &type_info)?;
                 } else {
                     self.write_meta_string_bytes(namespace)?;
                     self.write_meta_string_bytes(type_name)?;
@@ -532,8 +553,19 @@ impl<'a> ReadContext<'a> {
     }
 
     #[inline(always)]
-    pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Rc<TypeInfo>, Error> {
-        self.type_resolver.get_type_info(type_id)
+    pub fn get_provider_type_info(
+        &self,
+        provider_type_id: &std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        self.type_resolver.get_provider_type_info(provider_type_id)
+    }
+
+    #[inline(always)]
+    pub fn get_target_type_info(
+        &self,
+        target_type_id: &std::any::TypeId,
+    ) -> Result<Rc<TypeInfo>, Error> {
+        self.type_resolver.get_target_type_info(target_type_id)
     }
 
     #[inline(always)]

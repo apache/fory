@@ -16,12 +16,28 @@
 // under the License.
 
 use fory_core::fory::Fory;
+use fory_core::{ArcWeak, RcWeak, Serializer};
 use fory_derive::{ForyEnum, ForyStruct, ForyUnion};
 use std::any::Any;
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, LinkedList};
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::vec;
+
+const _: () = {
+    assert!(<Box<dyn Any> as Serializer>::IS_POLYMORPHIC);
+    assert!(<Box<dyn Any> as Serializer>::IS_WRAPPER);
+    assert!(!<Box<dyn Any> as Serializer>::REQUIRES_SCOPED_ACCESS);
+    assert!(<Rc<dyn Any> as Serializer>::IS_POLYMORPHIC);
+    assert!(<Rc<dyn Any> as Serializer>::IS_SHARED_REF);
+    assert!(<Rc<dyn Any> as Serializer>::IS_WRAPPER);
+    assert!(!<Rc<dyn Any> as Serializer>::REQUIRES_SCOPED_ACCESS);
+    assert!(<Arc<dyn Any + Send + Sync> as Serializer>::IS_POLYMORPHIC);
+    assert!(<Arc<dyn Any + Send + Sync> as Serializer>::IS_SHARED_REF);
+    assert!(<Arc<dyn Any + Send + Sync> as Serializer>::IS_WRAPPER);
+    assert!(!<Arc<dyn Any + Send + Sync> as Serializer>::REQUIRES_SCOPED_ACCESS);
+};
 
 fn assert_erased_container_error(message: String) {
     assert!(
@@ -154,6 +170,7 @@ fn test_box_dyn_any() {
 #[test]
 fn test_rc_dyn_any() {
     let fory = Fory::builder().xlang(false).compatible(false).build();
+
     let value: Rc<dyn Any> = Rc::new("world".to_string());
     let bytes = fory.serialize(&value).unwrap();
     let deserialized: Rc<dyn Any> = fory.deserialize(&bytes).unwrap();
@@ -296,6 +313,303 @@ fn test_mixed_any_types() {
     assert_eq!(item_result.value, "test");
 
     assert_eq!(deserialized[3].downcast_ref::<f64>().unwrap(), &3.15f64);
+}
+
+#[test]
+fn any_collection_type_handoff() {
+    let fory = Fory::builder().xlang(false).compatible(true).build();
+
+    let homogeneous: Vec<Box<dyn Any>> = vec![Box::new(1_i32), Box::new(2_i32)];
+    let bytes = fory.serialize(&homogeneous).unwrap();
+    let decoded: Vec<Box<dyn Any>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded[0].downcast_ref::<i32>(), Some(&1));
+    assert_eq!(decoded[1].downcast_ref::<i32>(), Some(&2));
+
+    let heterogeneous: Vec<Box<dyn Any>> = vec![Box::new(3_i32), Box::new("four".to_string())];
+    let bytes = fory.serialize(&heterogeneous).unwrap();
+    let decoded: Vec<Box<dyn Any>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded[0].downcast_ref::<i32>(), Some(&3));
+    assert_eq!(
+        decoded[1].downcast_ref::<String>(),
+        Some(&"four".to_string())
+    );
+
+    let nested_homogeneous: Vec<Option<Box<dyn Any>>> =
+        vec![Some(Box::new(5_i32)), None, Some(Box::new(6_i32))];
+    let bytes = fory.serialize(&nested_homogeneous).unwrap();
+    let decoded: Vec<Option<Box<dyn Any>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded[0].as_ref().unwrap().downcast_ref::<i32>(), Some(&5));
+    assert!(decoded[1].is_none());
+    assert_eq!(decoded[2].as_ref().unwrap().downcast_ref::<i32>(), Some(&6));
+
+    let nested_heterogeneous: Vec<Option<Box<dyn Any>>> = vec![
+        Some(Box::new(7_i32)),
+        None,
+        Some(Box::new("eight".to_string())),
+    ];
+    let bytes = fory.serialize(&nested_heterogeneous).unwrap();
+    let decoded: Vec<Option<Box<dyn Any>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded[0].as_ref().unwrap().downcast_ref::<i32>(), Some(&7));
+    assert!(decoded[1].is_none());
+    assert_eq!(
+        decoded[2].as_ref().unwrap().downcast_ref::<String>(),
+        Some(&"eight".to_string())
+    );
+}
+
+#[test]
+fn any_map_type_handoff() {
+    let fory = Fory::builder().xlang(false).compatible(true).build();
+
+    let homogeneous: HashMap<String, Box<dyn Any>> = HashMap::from([
+        ("one".to_string(), Box::new(1_i32) as Box<dyn Any>),
+        ("two".to_string(), Box::new(2_i32) as Box<dyn Any>),
+    ]);
+    let bytes = fory.serialize(&homogeneous).unwrap();
+    let decoded: HashMap<String, Box<dyn Any>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded["one"].downcast_ref::<i32>(), Some(&1));
+    assert_eq!(decoded["two"].downcast_ref::<i32>(), Some(&2));
+
+    let heterogeneous: HashMap<String, Box<dyn Any>> = HashMap::from([
+        ("number".to_string(), Box::new(3_i32) as Box<dyn Any>),
+        (
+            "text".to_string(),
+            Box::new("four".to_string()) as Box<dyn Any>,
+        ),
+    ]);
+    let bytes = fory.serialize(&heterogeneous).unwrap();
+    let decoded: HashMap<String, Box<dyn Any>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded["number"].downcast_ref::<i32>(), Some(&3));
+    assert_eq!(
+        decoded["text"].downcast_ref::<String>(),
+        Some(&"four".to_string())
+    );
+
+    let nested_homogeneous: HashMap<String, Option<Rc<dyn Any>>> = HashMap::from([
+        ("five".to_string(), Some(Rc::new(5_i32) as Rc<dyn Any>)),
+        ("none".to_string(), None),
+        ("six".to_string(), Some(Rc::new(6_i32) as Rc<dyn Any>)),
+    ]);
+    let bytes = fory.serialize(&nested_homogeneous).unwrap();
+    let decoded: HashMap<String, Option<Rc<dyn Any>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(
+        decoded["five"].as_ref().unwrap().downcast_ref::<i32>(),
+        Some(&5)
+    );
+    assert!(decoded["none"].is_none());
+    assert_eq!(
+        decoded["six"].as_ref().unwrap().downcast_ref::<i32>(),
+        Some(&6)
+    );
+
+    let nested_heterogeneous: HashMap<String, Option<Rc<dyn Any>>> = HashMap::from([
+        ("number".to_string(), Some(Rc::new(7_i32) as Rc<dyn Any>)),
+        ("none".to_string(), None),
+        (
+            "text".to_string(),
+            Some(Rc::new("eight".to_string()) as Rc<dyn Any>),
+        ),
+    ]);
+    let bytes = fory.serialize(&nested_heterogeneous).unwrap();
+    let decoded: HashMap<String, Option<Rc<dyn Any>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(
+        decoded["number"].as_ref().unwrap().downcast_ref::<i32>(),
+        Some(&7)
+    );
+    assert!(decoded["none"].is_none());
+    assert_eq!(
+        decoded["text"].as_ref().unwrap().downcast_ref::<String>(),
+        Some(&"eight".to_string())
+    );
+}
+
+#[test]
+fn any_holder_collection_handoff() {
+    let fory = Fory::builder().xlang(false).compatible(true).build();
+
+    let values: Vec<RefCell<Option<Box<dyn Any>>>> = vec![
+        RefCell::new(Some(Box::new(1_i32))),
+        RefCell::new(None),
+        RefCell::new(Some(Box::new("two".to_string()))),
+    ];
+    let bytes = fory.serialize(&values).unwrap();
+    let decoded: Vec<RefCell<Option<Box<dyn Any>>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(
+        decoded[0].borrow().as_ref().unwrap().downcast_ref::<i32>(),
+        Some(&1)
+    );
+    assert!(decoded[1].borrow().is_none());
+    assert_eq!(
+        decoded[2]
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<String>(),
+        Some(&"two".to_string())
+    );
+
+    let values: Vec<Mutex<Box<dyn Any>>> = vec![
+        Mutex::new(Box::new(3_i32)),
+        Mutex::new(Box::new("four".to_string())),
+    ];
+    let bytes = fory.serialize(&values).unwrap();
+    let decoded: Vec<Mutex<Box<dyn Any>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded[0].lock().unwrap().downcast_ref::<i32>(), Some(&3));
+    assert_eq!(
+        decoded[1].lock().unwrap().downcast_ref::<String>(),
+        Some(&"four".to_string())
+    );
+
+    let values: Vec<Mutex<Option<Box<dyn Any>>>> = vec![
+        Mutex::new(Some(Box::new(5_i32))),
+        Mutex::new(None),
+        Mutex::new(Some(Box::new("six".to_string()))),
+    ];
+    let bytes = fory.serialize(&values).unwrap();
+    let decoded: Vec<Mutex<Option<Box<dyn Any>>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(
+        decoded[0]
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<i32>(),
+        Some(&5)
+    );
+    assert!(decoded[1].lock().unwrap().is_none());
+    assert_eq!(
+        decoded[2]
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<String>(),
+        Some(&"six".to_string())
+    );
+
+    let values: Vec<RefCell<Option<Box<dyn Any>>>> = vec![RefCell::new(Some(Box::new(5_i32)))];
+    let _borrow = values[0].borrow_mut();
+    let err = fory.serialize(&values).unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("cannot serialize RefCell while it is mutably borrowed"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn any_holder_map_handoff() {
+    let fory = Fory::builder().xlang(false).compatible(true).build();
+
+    let values: HashMap<String, RefCell<Option<Box<dyn Any>>>> = HashMap::from([
+        (
+            "one".to_string(),
+            RefCell::new(Some(Box::new(1_i32) as Box<dyn Any>)),
+        ),
+        ("none".to_string(), RefCell::new(None)),
+        (
+            "two".to_string(),
+            RefCell::new(Some(Box::new("two".to_string()) as Box<dyn Any>)),
+        ),
+    ]);
+    let bytes = fory.serialize(&values).unwrap();
+    let decoded: HashMap<String, RefCell<Option<Box<dyn Any>>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(
+        decoded["one"]
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<i32>(),
+        Some(&1)
+    );
+    assert!(decoded["none"].borrow().is_none());
+    assert_eq!(
+        decoded["two"]
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .downcast_ref::<String>(),
+        Some(&"two".to_string())
+    );
+
+    let values: HashMap<String, Mutex<Box<dyn Any>>> = HashMap::from([
+        (
+            "three".to_string(),
+            Mutex::new(Box::new(3_i32) as Box<dyn Any>),
+        ),
+        (
+            "four".to_string(),
+            Mutex::new(Box::new("four".to_string()) as Box<dyn Any>),
+        ),
+    ]);
+    let bytes = fory.serialize(&values).unwrap();
+    let decoded: HashMap<String, Mutex<Box<dyn Any>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(
+        decoded["three"].lock().unwrap().downcast_ref::<i32>(),
+        Some(&3)
+    );
+    assert_eq!(
+        decoded["four"].lock().unwrap().downcast_ref::<String>(),
+        Some(&"four".to_string())
+    );
+}
+
+#[test]
+fn any_weak_type_handoff() {
+    let fory = Fory::builder()
+        .xlang(false)
+        .compatible(true)
+        .track_ref(true)
+        .build();
+
+    let one: Rc<Box<dyn Any>> = Rc::new(Box::new(1_i32));
+    let two: Rc<Box<dyn Any>> = Rc::new(Box::new("two".to_string()));
+    let values = vec![RcWeak::from(&one), RcWeak::new(), RcWeak::from(&two)];
+    let bytes = fory.serialize(&values).unwrap();
+    let decoded: Vec<RcWeak<Box<dyn Any>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded.len(), 3);
+
+    let values = HashMap::from([
+        ("one".to_string(), RcWeak::from(&one)),
+        ("none".to_string(), RcWeak::new()),
+        ("two".to_string(), RcWeak::from(&two)),
+    ]);
+    let bytes = fory.serialize(&values).unwrap();
+    let decoded: HashMap<String, RcWeak<Box<dyn Any>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded.len(), 3);
+    assert!(decoded.contains_key("one"));
+    assert!(decoded.contains_key("none"));
+    assert!(decoded.contains_key("two"));
+
+    let three: Arc<Arc<dyn Any + Send + Sync>> =
+        Arc::new(Arc::new(3_i32) as Arc<dyn Any + Send + Sync>);
+    let four: Arc<Arc<dyn Any + Send + Sync>> =
+        Arc::new(Arc::new("four".to_string()) as Arc<dyn Any + Send + Sync>);
+    let values = vec![ArcWeak::from(&three), ArcWeak::new(), ArcWeak::from(&four)];
+    let bytes = fory.serialize(&values).unwrap();
+    let decoded: Vec<ArcWeak<Arc<dyn Any + Send + Sync>>> = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded.len(), 3);
+
+    let unsupported: Rc<Box<dyn Any>> = Rc::new(Box::new(vec![1_i32, 2, 3]));
+    let values = vec![RcWeak::from(&unsupported)];
+    let err = fory.serialize(&values).unwrap_err();
+    assert_erased_container_error(err.to_string());
+}
+
+#[test]
+fn nested_any_container_rejected() {
+    let fory = Fory::builder().xlang(false).compatible(true).build();
+
+    let values: Vec<Option<Box<dyn Any>>> = vec![Some(Box::new(vec![1_i32, 2, 3]) as Box<dyn Any>)];
+    let err = fory.serialize(&values).unwrap_err();
+    assert_erased_container_error(err.to_string());
+
+    let values: HashMap<String, Option<Rc<dyn Any>>> = HashMap::from([(
+        "map".to_string(),
+        Some(Rc::new(HashMap::from([("one".to_string(), 1_i32)])) as Rc<dyn Any>),
+    )]);
+    let err = fory.serialize(&values).unwrap_err();
+    assert_erased_container_error(err.to_string());
 }
 
 #[derive(ForyStruct, PartialEq, Debug)]

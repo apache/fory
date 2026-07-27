@@ -314,7 +314,7 @@ public abstract class ForyJsonTestModels {
   }
 
   protected static boolean hasGeneratedCapability(ForyJson json, Class<?> type) {
-    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
     resolver.lockJIT();
     try {
       JsonTypeInfo info = resolver.getTypeInfo(type, type);

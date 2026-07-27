@@ -59,10 +59,10 @@ struct PersonV2 {
 }
 
 let writer = Fory()
-writer.register(PersonV1.self, id: 1)
+try writer.register(PersonV1.self, id: 1)
 
 let reader = Fory()
-reader.register(PersonV2.self, id: 1)
+try reader.register(PersonV2.self, id: 1)
 
 let v1 = PersonV1(name: "alice", age: 30, address: "main st")
 let bytes = try writer.serialize(v1)
@@ -72,6 +72,33 @@ assert(v2.name == "alice")
 assert(v2.age == 30)
 assert(v2.phone == nil)
 ```
+
+## External Targets
+
+An external structural serializer declaration defines the local schema used
+for compatibility:
+
+```swift
+@ForyStruct(target: ThirdParty.User.self)
+struct UserV2Serializer {
+    var name: String
+    var age: Int32
+    var phone: String?
+}
+```
+
+Register the serializer with the same logical ID or name used by the peer, then
+select it at the root:
+
+```swift
+try reader.register(UserV2Serializer.self, id: 1)
+let user = try reader.deserialize(
+    bytes,
+    with: UserV2Serializer.self
+)
+```
+
+The serializer declaration name does not affect the wire schema.
 
 ## What Is Safe in Compatible Mode
 

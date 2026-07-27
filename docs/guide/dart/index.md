@@ -37,7 +37,7 @@ languages.
 
 ### Requirements
 
-- Dart SDK 3.6 or later
+- Dart SDK 3.7 or later
 - `build_runner` (generates the serializer code)
 
 ### Install
@@ -117,6 +117,7 @@ dart run build_runner build --delete-conflicting-outputs
 - `fory.serialize(value)` — returns `Uint8List` bytes
 - `fory.deserialize<T>(bytes)` — returns a `T`
 - `@ForyStruct()` — marks a class for code generation
+- `@ForyStruct(target: Type)` — generates an external structural serializer
 - `@ForyField(...)` — per-field options and canonical `type:` overrides
 - `@ListField(...)`, `@SetField(...)`, `@MapField(...)` — container sugar for nested `type:` trees
 - Exact-value wrappers: `Int64`, `Uint64`, `Float32`
@@ -126,20 +127,21 @@ dart run build_runner build --delete-conflicting-outputs
 
 ## Documentation
 
-| Topic                                           | Description                                                     |
-| ----------------------------------------------- | --------------------------------------------------------------- |
-| [Configuration](configuration.md)               | Fory options, compatible mode, and safety limits                |
-| [Basic Serialization](basic-serialization.md)   | `serialize`, `deserialize`, generated registration, root graphs |
-| [Code Generation](code-generation.md)           | `@ForyStruct`, build runner, and generated modules              |
-| [Xlang Serialization](xlang-serialization.md)   | Interoperability rules and field alignment                      |
-| [Schema Metadata](schema-metadata.md)           | `@ForyField`, field IDs, nullability, references, polymorphism  |
-| [Type Registration](type-registration.md)       | ID-based vs name-based registration and registration rules      |
-| [Custom Serializers](custom-serializers.md)     | Manual `Serializer<T>` implementations and unions               |
-| [Supported Types](supported-types.md)           | Built-in xlang values, wrappers, collections, and structs       |
-| [Schema Evolution](schema-evolution.md)         | Compatible structs and evolving schemas                         |
-| [Web Platform Support](web-platform-support.md) | Dart VM/AOT, Flutter, and web support, limits, and validation   |
-| [gRPC Support](grpc-support.md)                 | Generated Fory-backed gRPC service companions                   |
-| [Troubleshooting](troubleshooting.md)           | Common errors, diagnostics, and validation steps                |
+| Topic                                            | Description                                                     |
+| ------------------------------------------------ | --------------------------------------------------------------- |
+| [Configuration](configuration.md)                | Fory options, compatible mode, and safety limits                |
+| [Basic Serialization](basic-serialization.md)    | `serialize`, `deserialize`, generated registration, root graphs |
+| [Code Generation](code-generation.md)            | `@ForyStruct`, build runner, and generated modules              |
+| [External-Type Serialization](external-types.md) | Generated serializers for classes owned by another package      |
+| [Xlang Serialization](xlang-serialization.md)    | Interoperability rules and field alignment                      |
+| [Schema Metadata](schema-metadata.md)            | `@ForyField`, field IDs, nullability, references, polymorphism  |
+| [Type Registration](type-registration.md)        | ID-based vs name-based registration and registration rules      |
+| [Manual Serializers](custom-serializers.md)      | Manual `Serializer<T>` implementations and unions               |
+| [Supported Types](supported-types.md)            | Built-in xlang values, wrappers, collections, and structs       |
+| [Schema Evolution](schema-evolution.md)          | Compatible structs and evolving schemas                         |
+| [Web Platform Support](web-platform-support.md)  | Dart VM/AOT, Flutter, and web support, limits, and validation   |
+| [gRPC Support](grpc-support.md)                  | Generated Fory-backed gRPC service companions                   |
+| [Troubleshooting](troubleshooting.md)            | Common errors, diagnostics, and validation steps                |
 
 ## Related Resources
 

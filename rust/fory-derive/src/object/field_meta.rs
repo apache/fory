@@ -27,6 +27,8 @@
 //! - `array`: Dense numeric/vector array schema for `Vec<T>`
 //! - `bytes`: Binary blob schema for `Vec<u8>`
 //! - `map(key(...), value(...))`: Nested map key/value configuration
+//! - `tuple(element(index = N, ...))`: Sparse heterogeneous tuple configuration
+//! - `with = S`: Select a serializer for this exact value node
 
 use quote::ToTokens;
 use std::collections::HashMap;
@@ -34,7 +36,7 @@ use syn::spanned::Spanned;
 use syn::{Field, GenericArgument, PathArguments, Type};
 
 /// Represents parsed `#[fory(...)]` field attributes
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct ForyFieldMeta {
     /// Field tag ID: None = use field name, Some(>=0) = use tag ID
     pub id: Option<i32>,
@@ -54,6 +56,32 @@ pub struct ForyFieldMeta {
     pub bytes: bool,
     /// Nested map key/value configuration.
     pub map: Option<ForyMapMeta>,
+    /// Sparse heterogeneous tuple position configuration.
+    pub tuple: Option<ForyTupleMeta>,
+    /// Serializer selected for this exact value node.
+    pub with: Option<Type>,
+}
+
+impl std::fmt::Debug for ForyFieldMeta {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let with = self
+            .with
+            .as_ref()
+            .map(|ty| ty.to_token_stream().to_string());
+        f.debug_struct("ForyFieldMeta")
+            .field("id", &self.id)
+            .field("nullable", &self.nullable)
+            .field("ref", &self.r#ref)
+            .field("skip", &self.skip)
+            .field("encoding", &self.encoding)
+            .field("list", &self.list)
+            .field("array", &self.array)
+            .field("bytes", &self.bytes)
+            .field("map", &self.map)
+            .field("tuple", &self.tuple)
+            .field("with", &with)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -65,6 +93,17 @@ pub struct ForyListMeta {
 pub struct ForyMapMeta {
     pub key: Option<Box<ForyFieldMeta>>,
     pub value: Option<Box<ForyFieldMeta>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ForyTupleMeta {
+    pub elements: Vec<ForyTupleElementMeta>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ForyTupleElementMeta {
+    pub index: usize,
+    pub element: Box<ForyFieldMeta>,
 }
 
 /// Integer wire encoding selected by `#[fory(encoding = ...)]`.
@@ -157,6 +196,14 @@ impl ForyFieldMeta {
             .map(|meta| (**meta).clone())
             .unwrap_or_default()
     }
+
+    pub fn tuple_element_meta(&self, index: usize) -> ForyFieldMeta {
+        self.tuple
+            .as_ref()
+            .and_then(|tuple| tuple.elements.iter().find(|element| element.index == index))
+            .map(|element| (*element.element).clone())
+            .unwrap_or_default()
+    }
 }
 
 /// Parse `#[fory(...)]` attributes from a field
@@ -171,6 +218,7 @@ pub fn parse_field_meta(field: &Field) -> syn::Result<ForyFieldMeta> {
         attr.parse_nested_meta(|nested| parse_meta_item(&mut meta, nested, true))?;
     }
 
+    validate_node_meta(&meta)?;
     Ok(meta)
 }
 
@@ -183,7 +231,7 @@ fn parse_meta_item(
         if !allow_field_keys {
             return Err(syn::Error::new(
                 nested.path.span(),
-                "id is only valid on a struct field, not inside nested list/map config",
+                "id is only valid on a direct field, not inside recursive field config",
             ));
         }
         let lit: syn::LitInt = nested.value()?.parse()?;
@@ -214,7 +262,7 @@ fn parse_meta_item(
         if !allow_field_keys {
             return Err(syn::Error::new(
                 nested.path.span(),
-                "skip is only valid on a struct field, not inside nested list/map config",
+                "skip is only valid on a direct field, not inside recursive field config",
             ));
         }
         if meta.skip {
@@ -230,6 +278,11 @@ fn parse_meta_item(
             ));
         }
         meta.encoding = Some(encoding);
+    } else if nested.path.is_ident("with") {
+        if meta.with.is_some() {
+            return Err(syn::Error::new(nested.path.span(), "duplicate with config"));
+        }
+        meta.with = Some(nested.value()?.parse()?);
     } else if nested.path.is_ident("list") {
         if meta.list.is_some() {
             return Err(syn::Error::new(nested.path.span(), "duplicate list config"));
@@ -268,6 +321,19 @@ fn parse_meta_item(
             return Err(syn::Error::new(nested.path.span(), "duplicate map config"));
         }
         parse_map_meta(meta, nested)?;
+    } else if nested.path.is_ident("tuple") {
+        if meta.tuple.is_some() {
+            return Err(syn::Error::new(
+                nested.path.span(),
+                "duplicate tuple config",
+            ));
+        }
+        parse_tuple_meta(meta, nested)?;
+    } else if nested.path.is_ident("index") {
+        return Err(syn::Error::new(
+            nested.path.span(),
+            "index is only valid directly inside tuple(element(...))",
+        ));
     } else if nested.path.is_ident("type_id") {
         return Err(syn::Error::new(
             nested.path.span(),
@@ -347,6 +413,104 @@ fn parse_map_meta(meta: &mut ForyFieldMeta, nested: syn::meta::ParseNestedMeta) 
         }
     })?;
     meta.map = Some(map_meta);
+    Ok(())
+}
+
+fn parse_tuple_meta(
+    meta: &mut ForyFieldMeta,
+    nested: syn::meta::ParseNestedMeta,
+) -> syn::Result<()> {
+    let mut tuple_meta = meta.tuple.clone().unwrap_or_default();
+    nested.parse_nested_meta(|item| {
+        if !item.path.is_ident("element") {
+            return Err(syn::Error::new(
+                item.path.span(),
+                "tuple config supports only element(index = N, ...)",
+            ));
+        }
+        let mut index = None;
+        let mut element = ForyFieldMeta::default();
+        item.parse_nested_meta(|child| {
+            if child.path.is_ident("index") {
+                if index.is_some() {
+                    return Err(syn::Error::new(
+                        child.path.span(),
+                        "duplicate tuple element index",
+                    ));
+                }
+                let lit: syn::LitInt = child.value()?.parse()?;
+                index = Some(lit.base10_parse::<usize>()?);
+                Ok(())
+            } else {
+                parse_meta_item(&mut element, child, false)
+            }
+        })?;
+        let index = index.ok_or_else(|| {
+            syn::Error::new(
+                item.path.span(),
+                "tuple element requires a zero-based index",
+            )
+        })?;
+        if tuple_meta
+            .elements
+            .iter()
+            .any(|existing| existing.index == index)
+        {
+            return Err(syn::Error::new(
+                item.path.span(),
+                format!("duplicate tuple element index {index}"),
+            ));
+        }
+        validate_node_meta(&element)?;
+        tuple_meta.elements.push(ForyTupleElementMeta {
+            index,
+            element: Box::new(element),
+        });
+        Ok(())
+    })?;
+    meta.tuple = Some(tuple_meta);
+    Ok(())
+}
+
+fn validate_node_meta(meta: &ForyFieldMeta) -> syn::Result<()> {
+    let shape_count = usize::from(meta.encoding.is_some())
+        + usize::from(meta.list.is_some())
+        + usize::from(meta.array)
+        + usize::from(meta.bytes)
+        + usize::from(meta.map.is_some())
+        + usize::from(meta.tuple.is_some());
+    if shape_count != 0 {
+        if let Some(with) = &meta.with {
+            return Err(syn::Error::new(
+                with.span(),
+                "with cannot be combined at the same value node with encoding, array, bytes, list, map, or tuple",
+            ));
+        }
+    }
+    if shape_count > 1 {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "encoding, array, bytes, list, map, and tuple are mutually exclusive at one value node",
+        ));
+    }
+    if let Some(list) = &meta.list {
+        if let Some(element) = &list.element {
+            validate_node_meta(element)?;
+        }
+    }
+    if let Some(map) = &meta.map {
+        if let Some(key) = &map.key {
+            validate_node_meta(key)?;
+        }
+        if let Some(value) = &map.value {
+            validate_node_meta(value)?;
+        }
+    }
+    if let Some(tuple) = &meta.tuple {
+        for element in &tuple.elements {
+            validate_node_meta(&element.element)?;
+        }
+    }
     Ok(())
 }
 
@@ -730,6 +894,8 @@ mod tests {
             array: false,
             bytes: false,
             map: None,
+            tuple: None,
+            with: None,
         };
         assert!(meta.effective_nullable(FieldTypeClass::Primitive)); // Would be false by default
 
@@ -744,6 +910,8 @@ mod tests {
             array: false,
             bytes: false,
             map: None,
+            tuple: None,
+            with: None,
         };
         assert!(!meta.effective_ref(FieldTypeClass::Rc)); // Would be true by default
     }
@@ -869,7 +1037,7 @@ mod tests {
         let err = parse_field_meta(&field).unwrap_err();
         assert!(err
             .to_string()
-            .contains("id is only valid on a struct field"));
+            .contains("id is only valid on a direct field"));
     }
 
     #[test]
@@ -909,7 +1077,7 @@ mod tests {
         let err = parse_field_meta(&field).unwrap_err();
         assert!(err
             .to_string()
-            .contains("skip is only valid on a struct field"));
+            .contains("skip is only valid on a direct field"));
 
         let field: Field = parse_quote! {
             #[fory(map(key(type_id = 123)))]
@@ -967,5 +1135,79 @@ mod tests {
         };
         let err = parse_field_meta(&field).unwrap_err();
         assert!(err.to_string().contains("duplicate map value config"));
+    }
+
+    #[test]
+    fn parses_with_in_tuple() {
+        let field: Field = parse_quote! {
+            #[fory(tuple(
+                element(index = 0, with = KeySerializer),
+                element(index = 2, list(element(with = UserSerializer)))
+            ))]
+            value: (Key, String, Vec<User>)
+        };
+        let meta = parse_field_meta(&field).unwrap();
+        let tuple = meta.tuple.as_ref().unwrap();
+        assert_eq!(tuple.elements.len(), 2);
+        assert_eq!(tuple.elements[0].index, 0);
+        assert_eq!(
+            tuple.elements[0]
+                .element
+                .with
+                .as_ref()
+                .unwrap()
+                .to_token_stream()
+                .to_string(),
+            "KeySerializer"
+        );
+        assert_eq!(tuple.elements[1].index, 2);
+        assert_eq!(
+            tuple.elements[1]
+                .element
+                .element_meta()
+                .with
+                .as_ref()
+                .unwrap()
+                .to_token_stream()
+                .to_string(),
+            "UserSerializer"
+        );
+    }
+
+    #[test]
+    fn rejects_duplicate_tuple_index() {
+        let field: Field = parse_quote! {
+            #[fory(tuple(
+                element(index = 1, with = FirstSerializer),
+                element(index = 1, with = SecondSerializer)
+            ))]
+            value: (String, User)
+        };
+        let err = parse_field_meta(&field).unwrap_err();
+        assert!(err.to_string().contains("duplicate tuple element index 1"));
+    }
+
+    #[test]
+    fn rejects_with_shape_conflict() {
+        let field: Field = parse_quote! {
+            #[fory(with = UsersSerializer, list(element(with = UserSerializer)))]
+            users: Vec<User>
+        };
+        let err = parse_field_meta(&field).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("with cannot be combined at the same value node"));
+    }
+
+    #[test]
+    fn rejects_misplaced_tuple_index() {
+        let field: Field = parse_quote! {
+            #[fory(list(element(index = 0, with = UserSerializer)))]
+            users: Vec<User>
+        };
+        let err = parse_field_meta(&field).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("index is only valid directly inside tuple"));
     }
 }

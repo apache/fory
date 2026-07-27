@@ -21,9 +21,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:external_type_test_models/models.dart' as third_party;
 import 'package:fory/fory.dart';
 import 'package:fory/src/util/hash_util.dart';
 import 'package:fory_test/entity/xlang_test_models.dart';
+import 'package:fory_test/model/external_serializers.dart';
 
 String _dataFilePath() {
   final path = Platform.environment['DATA_FILE'];
@@ -305,6 +307,21 @@ void _registerNamedCustomTypes(Fory fory) {
   registerXlangType(fory, MyWrapper, name: 'my_wrapper');
 }
 
+void _runExternalUser({int? id, String? name}) {
+  final fory = _newFory(compatible: true);
+  ExternalSerializersForyModule.register(
+    fory,
+    third_party.User,
+    id: id,
+    name: name,
+  );
+  final user = fory.deserialize<third_party.User>(_readFile());
+  if (user.name != 'Ada' || user.age != 36) {
+    throw StateError('Unexpected external user: ${user.name}/${user.age}.');
+  }
+  _writeFile(fory.serialize(user));
+}
+
 void _runCollectionElementRefOverride() {
   final fory = _newFory();
   registerXlangType(fory, RefOverrideElement, id: 701);
@@ -445,6 +462,12 @@ void _runCase(String caseName) {
       final fory = _newFory(compatible: true);
       _registerStructEvolvingOverrideByName(fory);
       _roundTripFory(fory);
+      return;
+    case 'test_external_struct_id':
+      _runExternalUser(id: 1001);
+      return;
+    case 'test_external_struct_name':
+      _runExternalUser(name: 'test.external_user');
       return;
     case 'test_list':
     case 'test_map':

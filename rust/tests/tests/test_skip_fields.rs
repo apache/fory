@@ -186,8 +186,7 @@ fn test_nested_skip_functionality() {
 
     assert_eq!(original.normal_field, decoded.normal_field);
     assert_eq!(original.nested, decoded.nested);
-    use fory_core::ForyDefault;
-    assert_eq!(decoded.skipped_nested, NestedStruct::fory_default());
+    assert_eq!(decoded.skipped_nested, NestedStruct { value: 0 });
 }
 
 #[test]
@@ -261,10 +260,16 @@ fn test_complex_nested_skip() {
         original.nested.serialized_field,
         decoded.nested.serialized_field
     );
-    use fory_core::ForyDefault;
     assert_eq!(decoded.nested.skipped_field, String::default());
     assert_eq!(decoded.skipped_field, String::default());
-    assert_eq!(decoded.skipped_nested, TestSkipFields::fory_default());
+    assert_eq!(
+        decoded.skipped_nested,
+        TestSkipFields {
+            serialized_field: 0,
+            skipped_field: String::new(),
+            another_serialized: 0.0,
+        }
+    );
 }
 
 #[test]
@@ -375,8 +380,7 @@ fn test_enum_skip() {
     let original_skip = TestEnumSkip::Deleted;
     let bytes = fory.serialize(&original_skip).unwrap();
     let decoded: TestEnumSkip = fory.deserialize(&bytes).unwrap();
-    use fory_core::ForyDefault;
-    assert_eq!(decoded, TestEnumSkip::fory_default());
+    assert_eq!(decoded, TestEnumSkip::Pending);
 }
 
 #[test]
@@ -458,14 +462,13 @@ fn test_skip_with_different_types() {
 
 #[test]
 fn test_trait_object_serialization() {
-    use fory_core::Serializer;
-    use fory_core::{register_trait_type, Fory};
+    use fory_core::{register_trait_type, Fory, ForyObject};
     use fory_derive::ForyStruct;
     use std::collections::HashMap;
     use std::rc::Rc;
     use std::sync::Arc;
 
-    trait Animal: Serializer {
+    trait Animal: ForyObject + Send + Sync {
         fn speak(&self) -> String;
         fn name(&self) -> &str;
     }
@@ -500,7 +503,7 @@ fn test_trait_object_serialization() {
         }
     }
 
-    register_trait_type!(Animal, Dog, Cat);
+    register_trait_type!(sync Animal, Dog, Cat);
 
     #[derive(ForyStruct)]
     struct Zoo {
@@ -511,6 +514,7 @@ fn test_trait_object_serialization() {
     struct ZooWithSkip {
         regular_animal: Box<dyn Animal>,
         #[fory(skip)]
+        #[allow(dead_code)]
         skipped_animal: Box<dyn Animal>,
     }
 
@@ -519,6 +523,17 @@ fn test_trait_object_serialization() {
     fory.register::<Cat>(101).unwrap();
     fory.register::<Zoo>(102).unwrap();
     fory.register::<ZooWithSkip>(103).unwrap();
+
+    let zoo = Zoo {
+        star_animal: Box::new(Dog {
+            name: "Speedy".to_string(),
+            breed: "Greyhound".to_string(),
+        }),
+    };
+    let bytes = fory.serialize(&zoo).unwrap();
+    let decoded: Zoo = fory.deserialize(&bytes).unwrap();
+    assert_eq!(decoded.star_animal.name(), "Speedy");
+    assert_eq!(decoded.star_animal.speak(), "Woof!");
 
     let zoo_with_skip = ZooWithSkip {
         regular_animal: Box::new(Dog {
@@ -532,19 +547,14 @@ fn test_trait_object_serialization() {
     };
 
     let bytes_skip = fory.serialize(&zoo_with_skip).unwrap();
-
-    let decoded_skip: ZooWithSkip = fory.deserialize(&bytes_skip).unwrap();
-
-    assert_eq!(decoded_skip.regular_animal.name(), "Speedy");
-    assert_eq!(decoded_skip.regular_animal.speak(), "Woof!");
-
-    assert_eq!(decoded_skip.skipped_animal.name(), "".to_string());
-    assert_eq!(decoded_skip.skipped_animal.speak(), "Woof!".to_string());
+    let error = match fory.deserialize::<ZooWithSkip>(&bytes_skip) {
+        Ok(_) => panic!("skipped application trait field must not select a target default"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("has no default"), "{error}");
 
     #[derive(ForyStruct)]
     struct ComplexSkipExample {
-        #[fory(skip)]
-        boxed_dyn: Box<dyn Animal>,
         #[fory(skip)]
         animals_arc: Vec<Arc<dyn Animal>>,
         #[fory(skip)]
@@ -558,10 +568,6 @@ fn test_trait_object_serialization() {
     fory.register::<ComplexSkipExample>(106).unwrap();
 
     let complex = ComplexSkipExample {
-        boxed_dyn: Box::new(Dog {
-            name: "BoxTest".to_string(),
-            breed: "BoxTestBreed".to_string(),
-        }) as Box<dyn Animal>,
         animals_rc: vec![Rc::new(Cat {
             name: "RcTest".to_string(),
             color: "RcTestColor".to_string(),
@@ -585,7 +591,6 @@ fn test_trait_object_serialization() {
 
     assert_eq!(decoded_complex.normal_field, "test_value");
 
-    assert_eq!(decoded_complex.boxed_dyn.name(), "".to_string());
     assert!(decoded_complex.animals_rc.is_empty());
     assert!(decoded_complex.animals_arc.is_empty());
     assert!(decoded_complex.registry.is_empty());

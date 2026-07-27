@@ -122,7 +122,12 @@ implementation, CI-fix, or verification task, or when the user explicitly asks f
   `swift-format lint --configuration .swift-format --recursive --strict Sources Tests Package.swift`,
   `swift build`, and `swift test`
 - Go: from `go/fory/`, `go fmt ./...` and `go test -v ./...`
-- Xlang matrix triggers: for xlang behavior, type mapping, protocol bytes, compatible mode, `TypeMeta`, or cross-language container semantics, require `org.apache.fory.xlang.CPPXlangTest`, `org.apache.fory.xlang.CSharpXlangTest`, `org.apache.fory.xlang.RustXlangTest`, `org.apache.fory.xlang.GoXlangTest`, and `org.apache.fory.xlang.PythonXlangTest`; include `org.apache.fory.xlang.SwiftXlangTest` when Swift xlang behavior changes.
+- Xlang validation scope: a runtime-local xlang implementation or fixture change that leaves the
+  shared protocol, type mapping, wire semantics, and other runtimes unchanged requires only that
+  runtime's Java-driven peer suite. Require the full CPP, CSharp, Rust, Go, and Python xlang matrix
+  only for shared protocol, type-mapping, wire-semantic, `TypeMeta`, compatible-mode, or
+  cross-runtime container changes; include Swift when the shared change affects Swift or Swift
+  xlang behavior changes directly.
 
 ## Common CI Failures
 

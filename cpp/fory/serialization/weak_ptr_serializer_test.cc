@@ -171,6 +171,50 @@ struct NodeWithParent {
   FORY_STRUCT(NodeWithParent, value, parent, children);
 };
 
+TEST(WeakPtrSerializerTest, RejectsResolvedTypeMismatch) {
+  Config config;
+  config.track_ref = true;
+  ReadContext ctx(config, std::make_unique<TypeResolver>());
+  ctx.ref_reader().store_shared_ref_at(0, std::make_shared<int32_t>(42));
+  Buffer buffer;
+  buffer.write_int8(REF_FLAG);
+  buffer.write_var_uint32(0);
+  ctx.attach(buffer);
+
+  auto result =
+      Serializer<SharedWeak<SimpleStruct>>::read(ctx, RefMode::Tracking, false);
+
+  EXPECT_TRUE(result.expired());
+  ASSERT_TRUE(ctx.has_error());
+  EXPECT_EQ(ctx.error().code(), ErrorCode::InvalidRef);
+  EXPECT_NE(ctx.error().message().find("Reference type mismatch"),
+            std::string::npos);
+}
+
+TEST(WeakPtrSerializerTest, RejectsForwardTypeMismatch) {
+  Config config;
+  config.track_ref = true;
+  ReadContext ctx(config, std::make_unique<TypeResolver>());
+  uint32_t ref_id = ctx.ref_reader().reserve_ref_id();
+  Buffer buffer;
+  buffer.write_int8(REF_FLAG);
+  buffer.write_var_uint32(ref_id);
+  ctx.attach(buffer);
+
+  auto result =
+      Serializer<SharedWeak<SimpleStruct>>::read(ctx, RefMode::Tracking, false);
+  ASSERT_FALSE(ctx.has_error());
+  EXPECT_TRUE(result.expired());
+
+  ctx.ref_reader().store_shared_ref_at(ref_id, std::make_shared<int32_t>(42));
+  ctx.ref_reader().resolve_callbacks(ctx.error());
+
+  ASSERT_TRUE(ctx.has_error());
+  EXPECT_EQ(ctx.error().code(), ErrorCode::InvalidRef);
+  EXPECT_NE(ctx.error().message().find("Reference type mismatch"),
+            std::string::npos);
+}
+
 // ============================================================================
 // Serialization Tests
 // ============================================================================

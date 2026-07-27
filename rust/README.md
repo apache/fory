@@ -6,7 +6,7 @@
 
 **Apache Fory™** is a blazing fast multi-language serialization framework powered by **JIT compilation** and **zero-copy** techniques, providing up to **ultra-fast performance** while maintaining ease of use and safety.
 
-The Rust implementation provides versatile and high-performance serialization with automatic memory management and compile-time type safety. It defaults to xlang mode for cross-language payloads; use native mode with `.xlang(false)` for Rust-only traffic when you need Rust-specific object features such as trait objects and shared-reference patterns.
+The Rust implementation provides versatile and high-performance serialization with automatic memory management and compile-time type safety. It defaults to xlang mode for cross-language payloads; use native mode with `.xlang(false)` for Rust-only traffic and native-only data shapes. Trait objects and `dyn Any` also work in xlang mode when every selected concrete target has an xlang-compatible structural or EXT identity.
 
 ## Why Apache Fory™ Rust?
 
@@ -242,11 +242,14 @@ for child in &decoded.borrow().children {
 }
 ```
 
-### 3. Native-Mode Trait Object Serialization
+### 3. Trait Object Serialization
 
 Apache Fory™ supports polymorphic serialization through trait objects, enabling dynamic dispatch and type flexibility. This is essential for plugin systems, heterogeneous collections, and extensible architectures.
 
-The examples in this section use native mode because Rust trait objects and `dyn Any` dispatch are Rust runtime features.
+The examples in this section use native mode. The same trait-object and `dyn Any`
+carriers work in xlang mode when every selected concrete target has an
+xlang-compatible structural or EXT identity; the Rust trait or erased-carrier
+identity is not written to the wire.
 
 **Supported trait object types:**
 
@@ -265,17 +268,16 @@ the erased payload.
 Generic containers such as `Vec<T>`, `HashMap<K, V>`, `HashSet<T>`, and
 `LinkedList<T>` are not supported directly as top-level erased `Any` payloads
 behind any of those carriers. This also includes primitive vector encodings such
-as `Vec<u8>`. Wrap the container in a registered derived type when it needs to
-travel behind an erased `Any` carrier.
+as `Vec<u8>`. Wrap the container in a registered derived type, or register an
+exact-target manual serializer when an opaque EXT/NAMED_EXT representation is
+appropriate.
 
 **Basic Trait Object Serialization Example:**
 
 ```rust
-use fory::{Fory, register_trait_type};
-use fory::Serializer;
-use fory::{ForyEnum, ForyStruct, ForyUnion};
+use fory::{register_trait_type, Fory, ForyObject, ForyStruct};
 
-trait Animal: Serializer {
+trait Animal: ForyObject {
     fn speak(&self) -> String;
     fn name(&self) -> &str;
 }
@@ -399,15 +401,15 @@ Apache Fory™ supports three types of enum variants with full schema evolution 
 
 - Efficient varint encoding for variant ordinals
 - Schema evolution support (add/remove variants, add/remove fields)
-- Default variant support with `#[default]`
+- Default variant support with `#[fory(default)]`
 - Automatic type mismatch handling
 
 ```rust
-use fory::{Fory, ForyEnum, ForyStruct, ForyUnion};
+use fory::{Fory, ForyUnion};
 
-#[derive(Default, ForyStruct, Debug, PartialEq)]
+#[derive(ForyUnion, Debug, PartialEq)]
 enum Value {
-    #[default]
+    #[fory(default)]
     Null,
     Bool(bool),
     Number(f64),
@@ -433,7 +435,7 @@ assert_eq!(value, decoded);
 
 **Best practices:**
 
-- Always mark a default variant with `#[default]`
+- Always mark a default variant with `#[fory(default)]`
 - Named variants provide better evolution than unnamed
 - Use compatible mode for cross-version communication
 
@@ -470,67 +472,58 @@ let decoded: (i32, String, bool, Vec<i32>) = fory.deserialize(&bytes)?;
 assert_eq!(data, decoded);
 ```
 
-### 7. Native-Mode Custom Serializers
+### 7. Manual Serializers
 
-For types that don't support `#[derive(ForyStruct)]`, implement the `Serializer` trait manually. This is useful for:
+For a type that needs an opaque encoding, implement `Serializer` manually. A
+separate serializer type can also target a type from another crate; see the
+[external-type serialization guide](../docs/guide/rust/external-types.md).
+Manual serializers work in native and xlang modes when the chosen EXT identity
+and opaque body format are supported by every peer. The example below uses
+native mode.
 
-- External types from other crates
 - Types with special serialization requirements
 - Existing data format compatibility
-- Performance-critical custom encoding
+- Performance-critical opaque encoding
 
 ```rust
-use fory::{Fory, ReadContext, WriteContext, Serializer, ForyDefault, Error};
-use std::any::Any;
+use fory::{Error, Fory, ReadContext, Serializer, WriteContext};
 
-#[derive(Debug, PartialEq, Default)]
-struct CustomType {
+#[derive(Debug, PartialEq)]
+struct Point {
     value: i32,
-    name: String,
 }
 
-impl Serializer for CustomType {
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-        context.writer.write_i32(self.value);
-        context.writer.write_var_u32(self.name.len() as u32);
-        context.writer.write_utf8_string(&self.name);
+impl Serializer for Point {
+    type Target = Self;
+
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        context.writer.write_i32(value.value);
+        Ok(())
     }
 
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        let value = context.reader.read_i32();
-        let len = context.reader.read_var_u32() as usize;
-        let name = context.reader.read_utf8_string(len);
-        Ok(Self { value, name })
-    }
-
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> u32 {
-        Self::fory_get_type_id(type_resolver)
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-impl ForyDefault for CustomType {
-    fn fory_default() -> Self {
-        Self::default()
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        Ok(Self {
+            value: context.reader.read_i32()?,
+        })
     }
 }
 
 let mut fory = Fory::builder().xlang(false).build();
-fory.register_serializer::<CustomType>(100)?;
+fory.register_serializer::<Point>(100)?;
 
-let custom = CustomType {
+let point = Point {
     value: 42,
-    name: "test".to_string(),
 };
-let bytes = fory.serialize(&custom)?;
-let decoded: CustomType = fory.deserialize(&bytes)?;
-assert_eq!(custom, decoded);
+let bytes = fory.serialize(&point)?;
+let decoded: Point = fory.deserialize(&bytes)?;
+assert_eq!(point, decoded);
 ```
 
-### 7. Row-Based Serialization
+Manual serializers implement the body-only `write_data` and `read_data`
+operations. Fory's complete-value `write` and `read` operations add reference
+and type-information framing.
+
+### 8. Row-Based Serialization
 
 Apache Fory™ provides a high-performance **row format** for zero-copy deserialization. Unlike traditional object serialization that reconstructs entire objects in memory, row format enables **random access** to fields directly from binary data without full deserialization.
 
@@ -650,7 +643,7 @@ Run benchmarks:
 
 ```bash
 cd benchmarks/rust
-cargo bench
+./run.sh
 ```
 
 ## Documentation

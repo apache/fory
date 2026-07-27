@@ -25,12 +25,19 @@ This page covers common Swift issues and how to debug them.
 
 ### `Type not registered: ...`
 
-Cause: user type was not registered on the current `Fory` instance.
+Cause: the selected user serializer was not registered on the current `Fory`
+instance.
 
 Fix:
 
 ```swift
-fory.register(MyType.self, id: 100)
+try fory.register(MyType.self, id: 100)
+```
+
+For an external target, register its serializer:
+
+```swift
+try fory.register(UserSerializer.self, id: 100)
 ```
 
 ### `Type mismatch: expected ..., got ...`
@@ -69,13 +76,29 @@ Add explicit type annotations to stored properties.
 
 Remove default values from enum case associated values.
 
-### `Set<...> with Any elements is not supported by @ForyStruct yet`
+### Selected serializer target does not match the field type
 
-Use `[Any]` or a typed set instead.
+The serializer selected by `with` must target the exact field node. Select the
+matching carrier for optional or collection fields:
 
-### `Dictionary<..., ...> with Any values is only supported for String, Int32, or AnyHashable keys`
+```swift
+@ForyField(with: OptionalSerializer<UserSerializer>.self)
+var user: ThirdParty.User?
+```
 
-Switch key type to `String`, `Int32`, or `AnyHashable`, or avoid dynamic `Any` map values.
+### External target construction errors
+
+An external struct needs readable matching properties and an accessible
+matching initializer. An external class needs an accessible zero-argument
+initializer and writable matching properties.
+
+Use a [manual serializer](manual-serializers.md) when the target does not expose
+that construction surface.
+
+### Union case has multiple associated values
+
+Swift uses the xlang union format, whose known cases contain zero or one value.
+Move multiple logical fields into an explicit `@ForyStruct` payload.
 
 ## Debugging Commands
 

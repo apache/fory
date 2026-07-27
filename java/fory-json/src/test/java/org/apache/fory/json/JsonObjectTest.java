@@ -20,11 +20,13 @@
 package org.apache.fory.json;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertThrows;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +41,8 @@ import org.apache.fory.json.data.MethodsIgnored;
 import org.apache.fory.json.data.ParentValue;
 import org.apache.fory.json.data.PrivateFields;
 import org.apache.fory.json.data.PublicFields;
+import org.apache.fory.platform.JdkVersion;
+import org.testng.SkipException;
 import org.testng.annotations.Factory;
 import org.testng.annotations.Test;
 
@@ -117,19 +121,47 @@ public class JsonObjectTest extends ForyJsonTestModels {
                 () -> {
                   start.await();
                   for (int i = 0; i < iterations; i++) {
-                    assertEquals(json.toJson(new PublicFields()), expected);
-                    assertEquals(
-                        new String(json.toJsonBytes(new PublicFields()), StandardCharsets.UTF_8),
-                        expected);
-                    PublicFields value = json.fromJson(expected, PublicFields.class);
-                    assertEquals(value.name, "fory");
-                    assertEquals(value.id, 7);
-                    assertEquals(value.active, true);
+                    assertFacadeRoundTrip(json, expected);
                   }
                   return null;
                 }));
       }
       start.countDown();
+      for (Future<?> future : futures) {
+        future.get();
+      }
+    } finally {
+      executor.shutdownNow();
+    }
+  }
+
+  @Test
+  public void sharedFacadeVirtualThreads() throws Exception {
+    if (JdkVersion.MAJOR_VERSION < 21) {
+      throw new SkipException("Virtual threads require JDK 21+");
+    }
+    ForyJson json = newJson();
+    String expected = "{\"active\":true,\"id\":7,\"name\":\"fory\"}";
+    Method newExecutor = Executors.class.getMethod("newVirtualThreadPerTaskExecutor");
+    ExecutorService executor = (ExecutorService) newExecutor.invoke(null);
+    List<Future<?>> futures = new ArrayList<>();
+    try {
+      Future<?> affinity =
+          executor.submit(
+              () -> {
+                Object first = JsonTestSupport.currentTypeResolver(json);
+                assertSame(JsonTestSupport.currentTypeResolver(json), first);
+              });
+      affinity.get();
+      for (int task = 0; task < 64; task++) {
+        futures.add(
+            executor.submit(
+                () -> {
+                  for (int i = 0; i < 20; i++) {
+                    assertFacadeRoundTrip(json, expected);
+                  }
+                }));
+      }
       for (Future<?> future : futures) {
         future.get();
       }
@@ -165,6 +197,16 @@ public class JsonObjectTest extends ForyJsonTestModels {
     assertEquals(utf8.id, 7);
     assertEquals(utf8.name, "fory");
     assertGeneratedWhenSupported(json, PublicFields.class);
+  }
+
+  private static void assertFacadeRoundTrip(ForyJson json, String expected) {
+    assertEquals(json.toJson(new PublicFields()), expected);
+    assertEquals(
+        new String(json.toJsonBytes(new PublicFields()), StandardCharsets.UTF_8), expected);
+    PublicFields value = json.fromJson(expected, PublicFields.class);
+    assertEquals(value.name, "fory");
+    assertEquals(value.id, 7);
+    assertEquals(value.active, true);
   }
 
   @Test

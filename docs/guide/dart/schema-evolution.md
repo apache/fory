@@ -1,6 +1,6 @@
 ---
 title: Schema Evolution
-sidebar_position: 8
+sidebar_position: 9
 id: schema_evolution
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -62,6 +62,10 @@ class UserProfile {
 
 If you add field IDs after payloads are already in production, existing stored messages won't have them and evolution won't work correctly.
 
+For an [external structural serializer](external-types.md), the local
+serializer declaration supplies the evolving schema and each declaration field
+must match the corresponding target property.
+
 ## What You Can Safely Change
 
 **Safe changes** (compatible on both sides):
@@ -101,5 +105,6 @@ final fory = Fory(compatible: false);
 ## Related Topics
 
 - [Configuration](configuration.md)
+- [External-Type Serialization](external-types.md)
 - [Schema Metadata](schema-metadata.md)
 - [Xlang Serialization](xlang-serialization.md)

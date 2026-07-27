@@ -79,9 +79,9 @@ func unsignedFieldCodecsPreserveExpectedWireWidths() throws {
         typeResolver: TypeResolver(config: Config(trackRef: false)),
         trackRef: false
     )
-    UInt32FixedCodec.writePayload(fixed32, fixed32Context)
+    UInt32FixedCodec.writeFieldData(fixed32, fixed32Context, hasDeclaredChildren: false)
     #expect(fixed32Context.buffer.count == 4)
-    let fixed32Decoded = try UInt32FixedCodec.readPayload(
+    let fixed32Decoded = try UInt32FixedCodec.readFieldData(
         ReadContext(buffer: fixed32Context.buffer, typeResolver: TypeResolver(config: Config(trackRef: false)), config: Config(trackRef: false))
     )
     #expect(fixed32Decoded == fixed32)
@@ -92,9 +92,9 @@ func unsignedFieldCodecsPreserveExpectedWireWidths() throws {
         typeResolver: TypeResolver(config: Config(trackRef: false)),
         trackRef: false
     )
-    UInt64FixedCodec.writePayload(fixed64, fixed64Context)
+    UInt64FixedCodec.writeFieldData(fixed64, fixed64Context, hasDeclaredChildren: false)
     #expect(fixed64Context.buffer.count == 8)
-    let fixed64Decoded = try UInt64FixedCodec.readPayload(
+    let fixed64Decoded = try UInt64FixedCodec.readFieldData(
         ReadContext(buffer: fixed64Context.buffer, typeResolver: TypeResolver(config: Config(trackRef: false)), config: Config(trackRef: false))
     )
     #expect(fixed64Decoded == fixed64)
@@ -105,9 +105,9 @@ func unsignedFieldCodecsPreserveExpectedWireWidths() throws {
         typeResolver: TypeResolver(config: Config(trackRef: false)),
         trackRef: false
     )
-    UInt64TaggedCodec.writePayload(compactTagged, compactContext)
+    UInt64TaggedCodec.writeFieldData(compactTagged, compactContext, hasDeclaredChildren: false)
     #expect(compactContext.buffer.count == 4)
-    let compactDecoded = try UInt64TaggedCodec.readPayload(
+    let compactDecoded = try UInt64TaggedCodec.readFieldData(
         ReadContext(buffer: compactContext.buffer, typeResolver: TypeResolver(config: Config(trackRef: false)), config: Config(trackRef: false))
     )
     #expect(compactDecoded == compactTagged)
@@ -118,9 +118,9 @@ func unsignedFieldCodecsPreserveExpectedWireWidths() throws {
         typeResolver: TypeResolver(config: Config(trackRef: false)),
         trackRef: false
     )
-    UInt64TaggedCodec.writePayload(wideTagged, wideContext)
+    UInt64TaggedCodec.writeFieldData(wideTagged, wideContext, hasDeclaredChildren: false)
     #expect(wideContext.buffer.count == 9)
-    let wideDecoded = try UInt64TaggedCodec.readPayload(
+    let wideDecoded = try UInt64TaggedCodec.readFieldData(
         ReadContext(buffer: wideContext.buffer, typeResolver: TypeResolver(config: Config(trackRef: false)), config: Config(trackRef: false))
     )
     #expect(wideDecoded == wideTagged)
@@ -180,10 +180,10 @@ func unsignedMacroFieldsRoundTripAcrossSchemaModes() throws {
     ]
 
     let schemaConsistent = Fory(config: .init(trackRef: false, compatible: false))
-    schemaConsistent.register(UnsignedFieldBundle.self, id: 9801)
+    try schemaConsistent.register(UnsignedFieldBundle.self, id: 9801)
 
     let compatible = Fory(config: .init(trackRef: false, compatible: true))
-    compatible.register(UnsignedFieldBundle.self, id: 9801)
+    try compatible.register(UnsignedFieldBundle.self, id: 9801)
 
     for value in cases {
         let decodedSchema: UnsignedFieldBundle = try schemaConsistent.deserialize(try schemaConsistent.serialize(value))

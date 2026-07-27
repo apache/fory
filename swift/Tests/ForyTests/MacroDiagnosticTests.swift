@@ -23,6 +23,7 @@ import Testing
 private func foryMacros() -> [String: Macro.Type] {
     [
         "ForyStruct": ForyStructMacro.self,
+        "ForyEnum": ForyEnumMacro.self,
         "ForyUnion": ForyUnionMacro.self,
         "ForyField": ForyFieldMacro.self,
         "ForyCase": ForyCaseMacro.self,
@@ -290,5 +291,107 @@ func unionUnknownRequiresMarker() {
             }
             """,
         message: "@ForyUnion requires @ForyUnknownCase case unknown(UnknownCase)"
+    )
+}
+
+@Test
+func unionRejectsMultiplePayloadValues() {
+    assertForyDiagnostic(
+        """
+        @ForyUnion
+        enum BadUnion {
+            @ForyUnknownCase
+            case unknown(UnknownCase)
+            case assign(target: String, value: Int32)
+        }
+        """,
+        expandedSource:
+            """
+            enum BadUnion {
+                case unknown(UnknownCase)
+                case assign(target: String, value: Int32)
+            }
+            """,
+        message: "@ForyUnion cases support zero or exactly one associated value"
+    )
+}
+
+@Test
+func fieldRejectsSerializerConflict() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadField {
+            @ForyField(type: .string, with: String.self)
+            var value: String = ""
+        }
+        """,
+        expandedSource:
+            """
+            struct BadField {
+                var value: String = ""
+            }
+            """,
+        message: "@ForyField 'with' cannot be combined with 'encoding' or 'type'"
+    )
+}
+
+@Test
+func fieldRejectsEncodingAndTypeConflict() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadField {
+            @ForyField(encoding: .fixed, type: .int32())
+            var value: Int32 = 0
+        }
+        """,
+        expandedSource:
+            """
+            struct BadField {
+                var value: Int32 = 0
+            }
+            """,
+        message: "@ForyField cannot specify both 'encoding' and 'type'"
+    )
+}
+
+@Test
+func packedArrayRejectsSerializer() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadArray {
+            @ArrayField(element: .with(Int32.self))
+            var values: [Int32] = []
+        }
+        """,
+        expandedSource:
+            """
+            struct BadArray {
+                var values: [Int32] = []
+            }
+            """,
+        message: "array field hint requires a numeric or bool scalar element"
+    )
+}
+
+@Test
+func serializerExistentialRejected() {
+    assertForyDiagnostic(
+        """
+        @ForyStruct
+        struct BadValue {
+            var value: any Serializer
+        }
+        """,
+        expandedSource:
+            """
+            struct BadValue {
+                var value: any Serializer
+            }
+            """,
+        message:
+            "fields cannot use 'any Serializer' as an application value; select a concrete application protocol with DynamicSerializer"
     )
 }

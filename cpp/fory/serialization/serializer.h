@@ -170,6 +170,31 @@ inline bool type_id_matches(uint32_t actual, uint32_t expected) {
   return actual == expected;
 }
 
+/// Resolve a declared polymorphic target before materializing the wire type.
+template <typename T>
+inline Harness::ReadAsFn resolve_polymorphic_reader(ReadContext &ctx,
+                                                    const TypeInfo *type_info) {
+  if (FORY_PREDICT_FALSE(type_info->harness.find_read_as_fn == nullptr)) {
+    ctx.set_error(
+        Error::type_error("No C++ type information for polymorphic read"));
+    return nullptr;
+  }
+  const std::type_info &target = typeid(T);
+  Harness::ReadAsFn read_as;
+  if (FORY_PREDICT_TRUE(type_info->cached_read_target == &target)) {
+    read_as = type_info->cached_read_as_fn;
+  } else {
+    read_as = type_info->harness.find_read_as_fn(target);
+    type_info->cached_read_as_fn = read_as;
+    type_info->cached_read_target = &target;
+  }
+  if (FORY_PREDICT_FALSE(read_as == nullptr)) {
+    ctx.set_error(Error::type_error(
+        "Wire type is not compatible with the polymorphic target"));
+  }
+  return read_as;
+}
+
 // ============================================================================
 // Core Serializer API
 // ============================================================================

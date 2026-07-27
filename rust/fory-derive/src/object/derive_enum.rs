@@ -38,7 +38,7 @@ fn gen_write_named_variant_fields(
             .iter()
             .zip(field_idents.iter())
             .filter_map(|(binding, ident)| match binding {
-                FieldBinding::Codec(binding) => Some(binding.write_value_field(quote! { #ident })),
+                FieldBinding::Codec(binding) => Some(binding.write_field_value(quote! { #ident })),
                 FieldBinding::Skipped(_) => None,
             })
             .collect(),
@@ -60,6 +60,36 @@ fn unnamed_source_fields(fields: &syn::FieldsUnnamed) -> Vec<SourceField<'_>> {
         .collect()
 }
 
+fn variant_default_value(variant: &syn::Variant, target_path: &TokenStream) -> TokenStream {
+    let ident = &variant.ident;
+    match &variant.fields {
+        Fields::Unit => quote! { #target_path::#ident },
+        Fields::Unnamed(fields) => {
+            let source = unnamed_source_fields(fields);
+            let bindings = match build_bindings(&source) {
+                Ok(bindings) => bindings,
+                Err(err) => return err.to_compile_error(),
+            };
+            let defaults = bindings.iter().map(FieldBinding::default_value_expr);
+            quote! { #target_path::#ident( #(#defaults),* ) }
+        }
+        Fields::Named(fields) => {
+            let fields = Fields::Named(fields.clone());
+            let source = source_fields(&fields);
+            let bindings = match build_bindings(&source) {
+                Ok(bindings) => bindings,
+                Err(err) => return err.to_compile_error(),
+            };
+            let defaults = source.iter().zip(bindings.iter()).map(|(source, binding)| {
+                let ident = source.field.ident.as_ref().unwrap();
+                let value = binding.default_value_expr();
+                quote! { #ident: #value }
+            });
+            quote! { #target_path::#ident { #(#defaults),* } }
+        }
+    }
+}
+
 fn gen_write_variant_fields(
     source_fields: &[SourceField<'_>],
     field_idents: &[Ident],
@@ -69,7 +99,7 @@ fn gen_write_variant_fields(
             .iter()
             .zip(field_idents.iter())
             .filter_map(|(binding, ident)| match binding {
-                FieldBinding::Codec(binding) => Some(binding.write_value_field(quote! { #ident })),
+                FieldBinding::Codec(binding) => Some(binding.write_field_value(quote! { #ident })),
                 FieldBinding::Skipped(_) => None,
             })
             .collect(),
@@ -86,10 +116,11 @@ fn gen_write_variant_elements(
             .iter()
             .zip(field_idents.iter())
             .filter_map(|(binding, ident)| match binding {
-                FieldBinding::Codec(binding) => Some(binding.write_value_with_mode(
+                FieldBinding::Codec(binding) => Some(binding.write_with_mode(
                     quote! { #ident },
                     quote! { fory_core::RefMode::NullOnly },
                     quote! { true },
+                    quote! { false },
                 )),
                 FieldBinding::Skipped(_) => None,
             })
@@ -101,9 +132,13 @@ fn gen_write_variant_elements(
 fn gen_write_single_payload(source_fields: &[SourceField<'_>], value: TokenStream) -> TokenStream {
     match build_bindings(source_fields) {
         Ok(bindings) => match bindings.as_slice() {
-            [FieldBinding::Codec(binding)] => binding.write_value_with_mode(
+            [FieldBinding::Codec(binding)] => binding.write_with_mode(
                 value,
                 quote! { fory_core::RefMode::Tracking },
+                quote! { true },
+                // The union case declaration owns the recursive payload schema.
+                // Losing this flag writes redundant child type metadata that
+                // monomorphic peer readers interpret as carrier body bytes.
                 quote! { true },
             ),
             [FieldBinding::Skipped(_)] => {
@@ -150,17 +185,16 @@ fn gen_read_variant_elements(
                 match binding {
                     FieldBinding::Codec(binding) => {
                         let var = binding.private_ident.clone();
-                        let default_expr =
-                            super::field_codec::default_expr_for_type(binding.value_ty);
+                        let default_expr = binding.default_value_expr();
                         let index = serialized_index;
                         serialized_index += 1;
-                        let read_value = binding.read_with_mode_expr(
+                        let read_element = binding.read_with_mode_expr(
                             quote! { fory_core::RefMode::NullOnly },
                             quote! { true },
                         );
                         read_fields.push(quote! {
                             let #var = if #index < len {
-                                #read_value
+                                #read_element
                             } else {
                                 #default_expr
                             };
@@ -168,9 +202,8 @@ fn gen_read_variant_elements(
                         private_idents.push(var);
                     }
                     FieldBinding::Skipped(binding) => {
-                        let var = binding.private_ident;
-                        let default_expr =
-                            super::field_codec::default_expr_for_type(&binding.source.field.ty);
+                        let default_expr = binding.default_value_expr();
+                        let var = binding.private_ident.clone();
                         read_fields.push(quote! {
                             let #var = #default_expr;
                         });
@@ -209,7 +242,7 @@ pub fn gen_actual_type_id(data_enum: &DataEnum) -> TokenStream {
     if is_union_compatible && has_data_variants {
         // Union-compatible enum: use typed/named union IDs in xlang mode
         quote! {
-            if xlang {
+            Ok(if xlang {
                 if register_by_name {
                     fory_core::type_id::TypeId::NAMED_UNION as u32
                 } else {
@@ -217,23 +250,47 @@ pub fn gen_actual_type_id(data_enum: &DataEnum) -> TokenStream {
                 }
             } else {
                 fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
+            })
+        }
+    } else if has_data_variants {
+        quote! {
+            if xlang {
+                Err(fory_core::Error::not_allowed(
+                    "multi-field tuple and named enum variants are not representable in xlang mode",
+                ))
+            } else {
+                Ok(fory_core::serializer::enum_::actual_type_id(
+                    type_id,
+                    register_by_name,
+                    compatible,
+                ))
             }
         }
     } else {
         quote! {
             let _ = xlang;
-            fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
+            Ok(fory_core::serializer::enum_::actual_type_id(
+                type_id,
+                register_by_name,
+                compatible,
+            ))
         }
     }
 }
 
 pub fn gen_field_fields_info(_data_enum: &DataEnum) -> TokenStream {
     quote! {
+        let _ = type_resolver;
         ::std::result::Result::Ok(::std::vec::Vec::new())
     }
 }
 
-pub fn gen_variants_fields_info(enum_name: &syn::Ident, data_enum: &DataEnum) -> TokenStream {
+pub fn gen_variants_fields_info(
+    enum_name: &syn::Ident,
+    generics: &syn::Generics,
+    data_enum: &DataEnum,
+) -> TokenStream {
+    let (_, ty_generics, _) = generics.split_for_impl();
     let variant_info: Vec<TokenStream> = data_enum
         .variants
         .iter()
@@ -250,8 +307,8 @@ pub fn gen_variants_fields_info(enum_name: &syn::Ident, data_enum: &DataEnum) ->
                     quote! {
                         (
                             #variant_name.to_string(),
-                            ::std::any::TypeId::of::<#meta_type_ident>(),
-                            <#meta_type_ident as fory_core::serializer::enum_::NamedEnumVariantMetaTrait>::fory_fields_info(type_resolver)?
+                            ::std::any::TypeId::of::<#meta_type_ident #ty_generics>(),
+                            <#meta_type_ident #ty_generics as fory_core::serializer::enum_::NamedEnumVariantMetaTrait>::fields_info(type_resolver)?
                         )
                     }
                 }
@@ -270,6 +327,7 @@ pub fn gen_variants_fields_info(enum_name: &syn::Ident, data_enum: &DataEnum) ->
         .collect();
 
     quote! {
+        let _ = type_resolver;
         ::std::result::Result::Ok(::std::vec![
             #(#variant_info),*
         ])
@@ -282,9 +340,28 @@ pub fn gen_reserved_space() -> TokenStream {
     }
 }
 
+pub fn gen_default_value(data_enum: &DataEnum, target_path: &TokenStream) -> TokenStream {
+    let Some(variant) = data_enum
+        .variants
+        .iter()
+        .find(|variant| is_default_value_variant(variant))
+        .or_else(|| data_enum.variants.first())
+    else {
+        return quote! {
+            Err(fory_core::Error::type_error("an enum serializer requires one variant"))
+        };
+    };
+    let value = variant_default_value(variant, target_path);
+    quote! {
+        let _ = &*context;
+        Ok(#value)
+    }
+}
+
 /// Generate all variant meta types for an enum with the enum name
-pub(crate) fn gen_all_variant_meta_types_with_enum_name(
+pub(crate) fn gen_variant_meta_types(
     enum_name: &syn::Ident,
+    generics: &syn::Generics,
     data_enum: &DataEnum,
 ) -> Vec<TokenStream> {
     data_enum
@@ -296,9 +373,10 @@ pub(crate) fn gen_all_variant_meta_types_with_enum_name(
             }
             if let Fields::Named(fields_named) = &v.fields {
                 let ident = &v.ident;
-                Some(gen_named_variant_meta_type_impl_with_enum_name(
+                Some(gen_named_variant_meta(
                     enum_name,
                     ident,
+                    generics,
                     fields_named,
                 ))
             } else {
@@ -310,9 +388,10 @@ pub(crate) fn gen_all_variant_meta_types_with_enum_name(
 
 /// Generate a meta type that implements NamedEnumVariantMetaTrait for a named variant
 /// with enum name to avoid collisions
-pub(crate) fn gen_named_variant_meta_type_impl_with_enum_name(
+pub(crate) fn gen_named_variant_meta(
     enum_ident: &Ident,
     variant_ident: &Ident,
+    generics: &syn::Generics,
     fields: &syn::FieldsNamed,
 ) -> TokenStream {
     let fields_clone = syn::Fields::Named(fields.clone());
@@ -336,16 +415,21 @@ pub(crate) fn gen_named_variant_meta_type_impl_with_enum_name(
         &format!("{}_{}VariantMeta", enum_ident, variant_ident),
         proc_macro2::Span::call_site(),
     );
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     quote! {
-        struct #meta_type_ident;
+        struct #meta_type_ident #impl_generics (
+            ::std::marker::PhantomData<fn() -> #enum_ident #ty_generics>
+        ) #where_clause;
 
-        impl fory_core::serializer::enum_::NamedEnumVariantMetaTrait for #meta_type_ident {
-            fn fory_get_sorted_field_names() -> &'static [&'static str] {
+        impl #impl_generics fory_core::serializer::enum_::NamedEnumVariantMetaTrait
+            for #meta_type_ident #ty_generics #where_clause
+        {
+            fn sorted_field_names() -> &'static [&'static str] {
                 &[#(#field_name_literals),*]
             }
 
-            fn fory_fields_info(type_resolver: &fory_core::resolver::TypeResolver) -> ::std::result::Result<::std::vec::Vec<fory_core::meta::FieldInfo>, fory_core::error::Error> {
+            fn fields_info(type_resolver: &fory_core::resolver::TypeResolver) -> ::std::result::Result<::std::vec::Vec<fory_core::meta::FieldInfo>, fory_core::error::Error> {
                 #fields_info_ts
             }
         }
@@ -354,11 +438,20 @@ pub(crate) fn gen_named_variant_meta_type_impl_with_enum_name(
 
 pub fn gen_write(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        fory_core::serializer::enum_::write::<Self>(self, context, ref_mode, write_type_info)
+        fory_core::serializer::enum_::write::<Self>(
+            value,
+            context,
+            ref_mode,
+            write_type_info,
+        )
     }
 }
 
-fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Vec<TokenStream> {
+fn xlang_variant_branches(
+    data_enum: &DataEnum,
+    target_path: &TokenStream,
+    default_variant_value: u32,
+) -> Vec<TokenStream> {
     let is_union_compatible = is_union_compatible_enum(data_enum);
 
     data_enum
@@ -369,9 +462,12 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
             let ident = &v.ident;
             if is_runtime_unknown_variant(v) {
                 return quote! {
-                    Self::#ident(ref unknown) => {
+                    #target_path::#ident(ref unknown) => {
                         context.writer.write_var_u32(unknown.case_id());
-                        fory_core::serializer::unknown_case::write_payload(context, unknown)?;
+                        fory_core::serializer::unknown_case::write_unknown_case_body(
+                            context,
+                            unknown,
+                        )?;
                     }
                 };
             }
@@ -390,7 +486,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                     if is_union_compatible {
                         // Union-compatible: write tag + null flag (matches Java/C++ Union with null value)
                         quote! {
-                            Self::#ident => {
+                            #target_path::#ident => {
                                 context.writer.write_var_u32(#tag_value);
                                 // Write null flag for unit variant (no value)
                                 context.writer.write_i8(fory_core::RefFlag::Null as i8);
@@ -398,7 +494,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                         }
                     } else {
                         quote! {
-                            Self::#ident => {
+                            #target_path::#ident => {
                                 context.writer.write_var_u32(#tag_value);
                             }
                         }
@@ -410,14 +506,14 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                         let write_payload =
                             gen_write_single_payload(&source_fields, quote! { value });
                         quote! {
-                            Self::#ident(ref value) => {
+                            #target_path::#ident(ref value) => {
                                 context.writer.write_var_u32(#tag_value);
                                 #write_payload
                             }
                         }
                     } else {
                         quote! {
-                            Self::#ident(..) => {
+                            #target_path::#ident(..) => {
                                 context.writer.write_var_u32(#tag_value);
                             }
                         }
@@ -432,14 +528,14 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                         let write_payload =
                             gen_write_single_payload(&source_fields, quote! { #field_ident });
                         quote! {
-                            Self::#ident { ref #field_ident } => {
+                            #target_path::#ident { ref #field_ident } => {
                                 context.writer.write_var_u32(#tag_value);
                                 #write_payload
                             }
                         }
                     } else {
                         quote! {
-                            Self::#ident { .. } => {
+                            #target_path::#ident { .. } => {
                                 context.writer.write_var_u32(#tag_value);
                             }
                         }
@@ -450,7 +546,11 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
         .collect()
 }
 
-fn rust_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Vec<TokenStream> {
+fn rust_variant_branches(
+    data_enum: &DataEnum,
+    target_path: &TokenStream,
+    default_variant_value: u32,
+) -> Vec<TokenStream> {
     data_enum
         .variants
         .iter()
@@ -465,7 +565,7 @@ fn rust_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Ve
             match &v.fields {
                 Fields::Unit => {
                     quote! {
-                        Self::#ident => {
+                        #target_path::#ident => {
                             context.writer.write_var_u32(#tag_value);
                         }
                     }
@@ -479,7 +579,7 @@ fn rust_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Ve
                     let write_fields = gen_write_variant_fields(&source_fields, &field_idents);
 
                     quote! {
-                        Self::#ident( #(#field_idents),* ) => {
+                        #target_path::#ident( #(#field_idents),* ) => {
                             context.writer.write_var_u32(#tag_value);
                             #(#write_fields)*
                         }
@@ -500,7 +600,7 @@ fn rust_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Ve
                         gen_write_named_variant_fields(&source_fields, &field_idents);
 
                     quote! {
-                        Self::#ident { #(#field_idents),* } => {
+                        #target_path::#ident { #(#field_idents),* } => {
                             context.writer.write_var_u32(#tag_value) ;
                             #(#write_fields)*
                         }
@@ -511,12 +611,15 @@ fn rust_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Ve
         .collect()
 }
 
-fn rust_compatible_variant_write_branches(
+fn compatible_variant_writes(
     data_enum: &DataEnum,
+    generics: &syn::Generics,
+    target_path: &TokenStream,
     default_variant_value: u32,
 ) -> Vec<TokenStream> {
     use crate::object::util::get_struct_name;
     let enum_name = get_struct_name().expect("enum context not set");
+    let (_, ty_generics, _) = generics.split_for_impl();
 
     data_enum
         .variants
@@ -532,7 +635,7 @@ fn rust_compatible_variant_write_branches(
             match &v.fields {
                 Fields::Unit => {
                     quote! {
-                        Self::#ident => {
+                        #target_path::#ident => {
                             context.writer.write_var_u32((#tag_value << 2) | 0b0);
                         }
                     }
@@ -547,7 +650,7 @@ fn rust_compatible_variant_write_branches(
                     let field_count = write_fields.len();
 
                     quote! {
-                        Self::#ident( #(ref #field_idents),* ) => {
+                        #target_path::#ident( #(ref #field_idents),* ) => {
                             context.writer.write_var_u32((#tag_value << 2) | 0b1);
                             // Write as collection format (same as tuple)
                             context.writer.write_var_u32(#field_count as u32);
@@ -574,10 +677,12 @@ fn rust_compatible_variant_write_branches(
                         gen_write_named_variant_fields(&source_fields, &field_idents);
 
                     quote! {
-                        Self::#ident { #(#field_idents),* } => {
+                        #target_path::#ident { #(#field_idents),* } => {
                             context.writer.write_var_u32((#tag_value << 2) | 0b10);
                             // Write type meta inline using streaming protocol
-                            context.write_type_meta(::std::any::TypeId::of::<#meta_type_ident>())?;
+                            context.write_type_meta(
+                                ::std::any::TypeId::of::<#meta_type_ident #ty_generics>(),
+                            )?;
                             // Write fields same as struct
                             #(#write_fields)*
                         }
@@ -588,7 +693,16 @@ fn rust_compatible_variant_write_branches(
         .collect()
 }
 
-pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
+pub fn gen_write_data(
+    data_enum: &DataEnum,
+    generics: &syn::Generics,
+    target_path: &TokenStream,
+) -> TokenStream {
+    let native_only = data_enum
+        .variants
+        .iter()
+        .any(|variant| !matches!(variant.fields, Fields::Unit))
+        && !is_union_compatible_enum(data_enum);
     let default_variant_value = data_enum
         .variants
         .iter()
@@ -596,26 +710,37 @@ pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
         .unwrap_or(0) as u32;
 
     let xlang_variant_branches: Vec<TokenStream> =
-        xlang_variant_branches(data_enum, default_variant_value);
+        xlang_variant_branches(data_enum, target_path, default_variant_value);
     let rust_variant_branches: Vec<TokenStream> =
-        rust_variant_branches(data_enum, default_variant_value);
+        rust_variant_branches(data_enum, target_path, default_variant_value);
     let rust_compatible_variant_branches: Vec<TokenStream> =
-        rust_compatible_variant_write_branches(data_enum, default_variant_value);
-
-    quote! {
-        if context.is_xlang() {
-            match self {
+        compatible_variant_writes(data_enum, generics, target_path, default_variant_value);
+    let xlang_write = if native_only {
+        quote! {
+            Err(fory_core::Error::not_allowed(
+                "multi-field tuple and named enum variants are not representable in xlang mode",
+            ))
+        }
+    } else {
+        quote! {
+            match value {
                 #(#xlang_variant_branches)*
             }
             Ok(())
+        }
+    };
+
+    quote! {
+        if context.is_xlang() {
+            #xlang_write
         } else {
             if context.is_compatible() {
-                match self {
+                match value {
                     #(#rust_compatible_variant_branches)*
                 }
                 Ok(())
             } else {
-                match self {
+                match value {
                     #(#rust_variant_branches)*
                 }
                 Ok(())
@@ -635,8 +760,11 @@ pub fn gen_write_type_info(data_enum: &DataEnum) -> TokenStream {
         // Union-compatible with data: write typed/named union type info in xlang mode
         quote! {
             if context.is_xlang() {
-                let rs_type_id = ::std::any::TypeId::of::<Self>();
-                context.write_any_type_info(fory_core::type_id::UNKNOWN, rs_type_id)?;
+                let provider_type_id = ::std::any::TypeId::of::<Self>();
+                context.write_provider_type_info(
+                    fory_core::type_id::UNKNOWN,
+                    provider_type_id,
+                )?;
                 Ok(())
             } else {
                 fory_core::serializer::enum_::write_type_info::<Self>(context)
@@ -709,6 +837,7 @@ pub fn gen_static_type_id(data_enum: &DataEnum) -> TokenStream {
 
 fn xlang_variant_read_branches(
     data_enum: &DataEnum,
+    target_path: &TokenStream,
     default_variant_value: u32,
 ) -> Vec<TokenStream> {
     let is_union_compatible = is_union_compatible_enum(data_enum);
@@ -739,12 +868,12 @@ fn xlang_variant_read_branches(
                         quote! {
                             #tag_value => {
                                 let _ = context.reader.read_i8()?;
-                                Ok(Self::#ident)
+                                Ok(#target_path::#ident)
                             }
                         }
                     } else {
                         quote! {
-                            #tag_value => Ok(Self::#ident),
+                            #tag_value => Ok(#target_path::#ident),
                         }
                     }
                 }
@@ -755,17 +884,13 @@ fn xlang_variant_read_branches(
                         quote! {
                             #tag_value => {
                                 let value = #read_payload;
-                                Ok(Self::#ident(value))
+                                Ok(#target_path::#ident(value))
                             }
                         }
                     } else {
-                        let default_fields: Vec<TokenStream> = fields_unnamed
-                            .unnamed
-                            .iter()
-                            .map(|f| super::field_codec::default_expr_for_type(&f.ty))
-                            .collect();
+                        let default_value = variant_default_value(v, target_path);
                         quote! {
-                            #tag_value => Ok(Self::#ident( #(#default_fields),* )),
+                            #tag_value => Ok(#default_value),
                         }
                     }
                 }
@@ -779,21 +904,13 @@ fn xlang_variant_read_branches(
                         quote! {
                             #tag_value => {
                                 let value = #read_payload;
-                                Ok(Self::#ident { #field_ident: value })
+                                Ok(#target_path::#ident { #field_ident: value })
                             }
                         }
                     } else {
-                        let default_fields: Vec<TokenStream> = fields_named
-                            .named
-                            .iter()
-                            .map(|f| {
-                                let field_ident = f.ident.as_ref().unwrap();
-                                let default_expr = super::field_codec::default_expr_for_type(&f.ty);
-                                quote! { #field_ident: #default_expr }
-                            })
-                            .collect();
+                        let default_value = variant_default_value(v, target_path);
                         quote! {
-                            #tag_value => Ok(Self::#ident { #(#default_fields),* }),
+                            #tag_value => Ok(#default_value),
                         }
                     }
                 }
@@ -804,6 +921,7 @@ fn xlang_variant_read_branches(
 
 fn rust_variant_read_branches(
     data_enum: &DataEnum,
+    target_path: &TokenStream,
     default_variant_value: u32,
 ) -> Vec<TokenStream> {
     data_enum
@@ -820,7 +938,7 @@ fn rust_variant_read_branches(
             match &v.fields {
                 Fields::Unit => {
                     quote! {
-                        #tag_value => Ok(Self::#ident),
+                        #tag_value => Ok(#target_path::#ident),
                     }
                 }
                 Fields::Unnamed(fields_unnamed) => {
@@ -830,7 +948,7 @@ fn rust_variant_read_branches(
                     quote! {
                         #tag_value => {
                             #(#read_fields;)*
-                            Ok(Self::#ident( #(#field_idents),* ))
+                            Ok(#target_path::#ident( #(#field_idents),* ))
                         }
                     }
                 }
@@ -851,7 +969,7 @@ fn rust_variant_read_branches(
                     quote! {
                         #tag_value => {
                             #(#read_fields;)*
-                            Ok(Self::#ident { #(#field_inits),* })
+                            Ok(#target_path::#ident { #(#field_inits),* })
                         }
                     }
                 }
@@ -860,10 +978,15 @@ fn rust_variant_read_branches(
         .collect()
 }
 
-fn rust_compatible_variant_read_branches(
+fn compatible_variant_reads(
     data_enum: &DataEnum,
+    generics: &syn::Generics,
+    target_path: &TokenStream,
     default_variant_value: u32,
 ) -> Vec<TokenStream> {
+    use crate::object::util::get_struct_name;
+    let enum_name = get_struct_name().expect("enum context not set");
+    let (_, ty_generics, _) = generics.split_for_impl();
     data_enum
         .variants
         .iter()
@@ -878,7 +1001,7 @@ fn rust_compatible_variant_read_branches(
             match &v.fields {
                 Fields::Unit => {
                     // Generate default value for this variant
-                    let default_value = quote! { Self::#ident };
+                    let default_value = quote! { #target_path::#ident };
 
                     quote! {
                         #tag_value => {
@@ -889,7 +1012,7 @@ fn rust_compatible_variant_read_branches(
                                 skip_enum_variant(context, variant_type, &None)?;
                                 return Ok(#default_value);
                             }
-                            Ok(Self::#ident)
+                            Ok(#target_path::#ident)
                         }
                     }
                 }
@@ -899,12 +1022,7 @@ fn rust_compatible_variant_read_branches(
                     let (read_fields, field_idents, field_count) =
                         gen_read_variant_elements(&source_fields);
 
-                    // Generate default value for this variant
-                    let default_fields: Vec<TokenStream> = source_fields
-                        .iter()
-                        .map(|sf| super::field_codec::default_expr_for_type(&sf.field.ty))
-                        .collect();
-                    let default_value = quote! { Self::#ident( #(#default_fields),* ) };
+                    let default_value = variant_default_value(v, target_path);
 
                     quote! {
                         #tag_value => {
@@ -927,7 +1045,7 @@ fn rust_compatible_variant_read_branches(
                                 skip_any_value(context, true)?;
                             }
 
-                            Ok(Self::#ident( #(#field_idents),* ))
+                            Ok(#target_path::#ident( #(#field_idents),* ))
                         }
                     }
                 }
@@ -937,25 +1055,22 @@ fn rust_compatible_variant_read_branches(
                     // Sort fields to match the meta type generation
                     let fields_clone = syn::Fields::Named(fields_named.clone());
                     let source_fields = source_fields(&fields_clone);
+                    let meta_type_ident = Ident::new(
+                        &format!("{}_{}VariantMeta", enum_name, ident),
+                        proc_macro2::Span::call_site(),
+                    );
+                    let meta_type = quote! { #meta_type_ident #ty_generics };
 
-                    // Generate compatible read logic using gen_read_compatible_with_construction
-                    let compatible_read_body =
-                        crate::object::read::gen_read_compatible_with_construction(
-                            &source_fields,
-                            Some(ident),
-                        );
+                    // Generate compatible reads that construct the runtime target.
+                    let compatible_read_body = crate::object::read::gen_read_compatible_target(
+                        &fields_clone,
+                        &source_fields,
+                        target_path,
+                        Some(ident),
+                        Some(&meta_type),
+                    );
 
-                    // Generate default value for this variant
-                    let default_fields: Vec<TokenStream> = fields_named
-                        .named
-                        .iter()
-                        .map(|f| {
-                            let field_ident = f.ident.as_ref().unwrap();
-                            let default_expr = super::field_codec::default_expr_for_type(&f.ty);
-                            quote! { #field_ident: #default_expr }
-                        })
-                        .collect();
-                    let default_value = quote! { Self::#ident { #(#default_fields),* } };
+                    let default_value = variant_default_value(v, target_path);
 
                     quote! {
                         #tag_value => {
@@ -979,7 +1094,11 @@ fn rust_compatible_variant_read_branches(
         .collect()
 }
 
-pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
+pub fn gen_read_data(
+    data_enum: &DataEnum,
+    generics: &syn::Generics,
+    target_path: &TokenStream,
+) -> TokenStream {
     let is_union_compatible = is_union_compatible_enum(data_enum);
     let has_data_variants = data_enum
         .variants
@@ -992,11 +1111,11 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
         .unwrap_or(0) as u32;
 
     let xlang_variant_branches: Vec<TokenStream> =
-        xlang_variant_read_branches(data_enum, default_variant_value);
+        xlang_variant_read_branches(data_enum, target_path, default_variant_value);
     let rust_variant_branches: Vec<TokenStream> =
-        rust_variant_read_branches(data_enum, default_variant_value);
+        rust_variant_read_branches(data_enum, target_path, default_variant_value);
     let rust_compatible_variant_branches: Vec<TokenStream> =
-        rust_compatible_variant_read_branches(data_enum, default_variant_value);
+        compatible_variant_reads(data_enum, generics, target_path, default_variant_value);
 
     // Get the default variant for compatible mode fallback
     let default_variant = data_enum
@@ -1006,32 +1125,7 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
         .or_else(|| data_enum.variants.first())
         .unwrap();
 
-    let default_variant_ident = &default_variant.ident;
-    let default_variant_construction = match &default_variant.fields {
-        Fields::Unit => {
-            quote! { Self::#default_variant_ident }
-        }
-        Fields::Unnamed(fields_unnamed) => {
-            let default_fields: Vec<TokenStream> = fields_unnamed
-                .unnamed
-                .iter()
-                .map(|f| super::field_codec::default_expr_for_type(&f.ty))
-                .collect();
-            quote! { Self::#default_variant_ident( #(#default_fields),* ) }
-        }
-        Fields::Named(fields_named) => {
-            let default_fields: Vec<TokenStream> = fields_named
-                .named
-                .iter()
-                .map(|f| {
-                    let field_ident = f.ident.as_ref().unwrap();
-                    let default_expr = super::field_codec::default_expr_for_type(&f.ty);
-                    quote! { #field_ident: #default_expr }
-                })
-                .collect();
-            quote! { Self::#default_variant_ident { #(#default_fields),* } }
-        }
-    };
+    let default_variant_construction = variant_default_value(default_variant, target_path);
 
     let unknown_xlang_branch = if is_union_compatible && has_data_variants {
         // ForyUnion validation guarantees xlang-compatible ADTs have the
@@ -1045,8 +1139,11 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
         let ident = &variant.ident;
         quote! {
             _ => {
-                let value = fory_core::serializer::unknown_case::read_payload(context, ordinal)?;
-                Ok(Self::#ident(value))
+                let value = fory_core::serializer::unknown_case::read_unknown_case_body(
+                    context,
+                    ordinal,
+                )?;
+                Ok(#target_path::#ident(value))
             }
         }
     } else {
@@ -1061,13 +1158,24 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
             }
         }
     };
-    quote! {
-        if context.is_xlang() {
+    let xlang_read = if has_data_variants && !is_union_compatible {
+        quote! {
+            Err(fory_core::Error::not_allowed(
+                "multi-field tuple and named enum variants are not representable in xlang mode",
+            ))
+        }
+    } else {
+        quote! {
             let ordinal = context.reader.read_var_u32()?;
             match ordinal {
                 #(#xlang_variant_branches)*
                 #unknown_xlang_branch
             }
+        }
+    };
+    quote! {
+        if context.is_xlang() {
+            #xlang_read
         } else {
             if context.is_compatible() {
                 let encoded_tag = context.reader.read_var_u32()?;
@@ -1109,7 +1217,10 @@ pub fn gen_read_type_info(data_enum: &DataEnum) -> TokenStream {
         // Union-compatible with data: read typed/named union type info in xlang mode
         quote! {
             if context.is_xlang() {
-                let expected_type_id = Self::fory_get_type_id(context.get_type_resolver())?;
+                let expected_type_id = context
+                    .get_type_resolver()
+                    .get_provider_type_info(&::std::any::TypeId::of::<Self>())?
+                    .get_type_id();
                 let type_info = context.read_any_type_info()?;
                 let remote_type_id = type_info.get_type_id();
                 if remote_type_id != expected_type_id {

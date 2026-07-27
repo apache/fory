@@ -53,7 +53,7 @@ pub enum RefMode {
 
     /// Only null check without reference tracking.
     /// Write: NullFlag (-3) for None, NotNullValueFlag (-1) for Some.
-    /// Read: Read flag and return ForyDefault on null.
+    /// Read: Read the flag and use the selected serializer's default on null.
     NullOnly = 1,
 
     /// Full reference tracking with circular reference support.

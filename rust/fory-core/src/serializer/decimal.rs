@@ -18,78 +18,59 @@
 use crate::buffer::{Reader, Writer};
 use crate::context::{ReadContext, WriteContext};
 use crate::error::Error;
-use crate::resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
-use crate::serializer::{ForyDefault, Serializer};
+use crate::serializer::Serializer;
 use crate::type_id::TypeId;
 use crate::types::Decimal;
 use num_bigint::{BigInt, Sign};
 use std::convert::TryFrom;
+use std::sync::Arc;
 
 impl Serializer for Decimal {
+    type Target = Self;
+
     #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_var_i32(self.scale);
-        write_decimal_unscaled(&self.unscaled, &mut context.writer)
+    fn write_data(value: &Self, context: &mut WriteContext) -> Result<(), Error> {
+        context.writer.write_var_i32(value.scale);
+        write_decimal_unscaled(&value.unscaled, &mut context.writer)
     }
 
     #[inline(always)]
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+    fn read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let scale = context.reader.read_var_i32()?;
         let unscaled = read_decimal_unscaled(&mut context.reader)?;
         Ok(Self { unscaled, scale })
     }
-    #[inline]
-    fn fory_read_data_as_send_sync_any(
+
+    #[inline(always)]
+    fn default_value(_: &mut ReadContext) -> Result<Self, Error> {
+        Ok(Self {
+            unscaled: BigInt::from(0),
+            scale: 0,
+        })
+    }
+
+    #[inline(always)]
+    fn read_arc_any(
         context: &mut ReadContext,
-    ) -> Result<Box<dyn std::any::Any + Send + Sync>, Error>
-    where
-        Self: Sized + ForyDefault,
-    {
-        Ok(crate::serializer::box_send_sync(Self::fory_read_data(
-            context,
-        )?))
+    ) -> Result<Arc<dyn std::any::Any + Send + Sync>, Error> {
+        Ok(Arc::new(Self::read_data(context)?))
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::DECIMAL)
-    }
-
-    #[inline(always)]
-    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<TypeId, Error> {
-        Ok(TypeId::DECIMAL)
-    }
-
-    #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
+    fn static_type_id() -> TypeId {
         TypeId::DECIMAL
     }
 
     #[inline(always)]
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+    fn write_type_info(context: &mut WriteContext) -> Result<(), Error> {
         context.writer.write_var_u32(TypeId::DECIMAL as u32);
         Ok(())
     }
 
     #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+    fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         read_basic_type_info::<Self>(context)
-    }
-}
-
-impl ForyDefault for Decimal {
-    #[inline(always)]
-    fn fory_default() -> Self {
-        Self {
-            unscaled: BigInt::from(0),
-            scale: 0,
-        }
     }
 }
 
@@ -99,15 +80,15 @@ fn write_decimal_unscaled(value: &BigInt, writer: &mut Writer) -> Result<(), Err
         return Ok(());
     }
 
-    let (sign, payload) = value.to_bytes_le();
-    if payload.is_empty() {
+    let (sign, magnitude_bytes) = value.to_bytes_le();
+    if magnitude_bytes.is_empty() {
         return Err(Error::invalid_data(
             "zero must use the small decimal encoding".to_string(),
         ));
     }
-    let meta = ((payload.len() as u64) << 1) | u64::from(matches!(sign, Sign::Minus));
+    let meta = ((magnitude_bytes.len() as u64) << 1) | u64::from(matches!(sign, Sign::Minus));
     writer.write_var_u64((meta << 1) | 1);
-    writer.write_bytes(&payload);
+    writer.write_bytes(&magnitude_bytes);
     Ok(())
 }
 
@@ -125,13 +106,13 @@ fn read_decimal_unscaled(reader: &mut Reader) -> Result<BigInt, Error> {
             "invalid decimal magnitude length 0".to_string(),
         ));
     }
-    let payload = reader.read_bytes(len)?;
-    if payload[len - 1] == 0 {
+    let magnitude_bytes = reader.read_bytes(len)?;
+    if magnitude_bytes[len - 1] == 0 {
         return Err(Error::invalid_data(
-            "non-canonical decimal payload: trailing zero byte".to_string(),
+            "non-canonical decimal magnitude: trailing zero byte".to_string(),
         ));
     }
-    let magnitude = BigInt::from_bytes_le(Sign::Plus, payload);
+    let magnitude = BigInt::from_bytes_le(Sign::Plus, magnitude_bytes);
     if magnitude == BigInt::from(0) {
         return Err(Error::invalid_data(
             "big decimal encoding must not represent zero".to_string(),

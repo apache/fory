@@ -18,7 +18,7 @@
 //! Tests for structs with associated types (e.g., `C::NodeId`)
 
 use fory_core::fory::Fory;
-use fory_core::{ForyDefault, Serializer};
+use fory_core::Serializer;
 use fory_derive::ForyStruct;
 
 /// A trait that defines associated types, similar to OpenRaft's RaftTypeConfig
@@ -29,8 +29,7 @@ pub trait TypeConfig: Sized + Send + Sync + 'static {
         + std::fmt::Debug
         + Send
         + Sync
-        + Serializer
-        + ForyDefault
+        + Serializer<Target = Self::NodeId>
         + 'static;
     type Term: Clone
         + Default
@@ -38,8 +37,7 @@ pub trait TypeConfig: Sized + Send + Sync + 'static {
         + std::fmt::Debug
         + Send
         + Sync
-        + Serializer
-        + ForyDefault
+        + Serializer<Target = Self::Term>
         + 'static;
 }
 
@@ -58,8 +56,8 @@ impl TypeConfig for TestConfig {
 pub struct LeaderId<C>
 where
     C: TypeConfig,
-    C::NodeId: Serializer + ForyDefault,
-    C::Term: Serializer + ForyDefault,
+    C::NodeId: Serializer<Target = C::NodeId>,
+    C::Term: Serializer<Target = C::Term>,
 {
     pub term: C::Term,
     pub node_id: C::NodeId,

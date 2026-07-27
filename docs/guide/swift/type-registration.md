@@ -23,7 +23,8 @@ This page covers registration APIs for user-defined types.
 
 ## Why Registration Is Required
 
-User types (`struct`, `class`, enum/union, ext types) must be registered before serialization/deserialization.
+Register user-defined structs, classes, enums, unions, and external targets
+before serialization or deserialization.
 
 If a type is missing, deserialization fails with:
 
@@ -41,8 +42,31 @@ struct User {
 }
 
 let fory = Fory()
-fory.register(User.self, id: 1)
+try fory.register(User.self, id: 1)
 ```
+
+For an external structural serializer, register the separate serializer
+declaration:
+
+```swift
+@ForyStruct(target: ThirdParty.User.self)
+struct UserSerializer {
+    var name: String
+    var age: UInt32
+}
+
+try fory.register(UserSerializer.self, id: 1)
+```
+
+If an application intentionally gives an external type one retroactive
+`Serializer` conformance with `Target == Self`, register the target itself:
+
+```swift
+try fory.register(UUID.self, id: 2)
+```
+
+After registering a separate serializer, select it explicitly at each root,
+field, or carrier child where it is required.
 
 ## Register by Name
 
@@ -66,7 +90,14 @@ Keep registration mapping consistent across peers:
 - ID mode: same type uses same numeric ID on all peers
 - Name mode: same type uses same namespace and type name on all peers
 - Do not mix ID and name mapping for the same logical type across services
+- Register only one serializer for each target type on a `Fory` instance
+
+Registration closes after the first root serialization or deserialization.
+Complete all registrations before the first root operation.
 
 ## Dynamic Types and Registration
 
-When serializing dynamic values (`Any`, `AnyObject`, `any Serializer`) that contain user-defined types, the concrete types must still be registered.
+When serializing `Any`, `AnyObject`, or application protocol values, register
+each concrete target through its ordinary, external structural, or manual
+serializer. `Any` and `AnyObject` use direct root APIs; application protocols
+select `DynamicSerializer<T>` explicitly.

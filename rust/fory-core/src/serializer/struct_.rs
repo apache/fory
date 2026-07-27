@@ -18,8 +18,7 @@
 use crate::context::{ReadContext, WriteContext};
 use crate::ensure;
 use crate::error::Error;
-use crate::resolver::{RefFlag, RefMode};
-use crate::serializer::{Serializer, StructSerializer};
+use crate::serializer::StructSerializer;
 use crate::type_id::TypeId;
 use crate::util::ENABLE_FORY_DEBUG_OUTPUT;
 use std::any::Any;
@@ -40,20 +39,12 @@ pub fn actual_type_id(_type_id: u32, register_by_name: bool, compatible: bool) -
 }
 
 #[inline(always)]
-pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
-    let rs_type_id = std::any::TypeId::of::<T>();
-    let type_id = T::fory_get_type_id(context.get_type_resolver())?;
-    context.write_any_type_info(type_id as u32, rs_type_id)?;
-    Ok(())
-}
-
-#[inline(always)]
 pub fn write_type_info_fast<T: StructSerializer>(context: &mut WriteContext) -> Result<(), Error> {
     context.write_struct_type_info::<T>()
 }
 
 #[inline(always)]
-pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
+pub fn read_type_info(context: &mut ReadContext) -> Result<(), Error> {
     context.read_any_type_info()?;
     Ok(())
 }
@@ -61,14 +52,14 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
 #[inline(always)]
 pub fn read_type_info_fast<T: StructSerializer>(context: &mut ReadContext) -> Result<(), Error> {
     if context.is_compatible() || context.is_xlang() {
-        return read_type_info::<T>(context);
+        return read_type_info(context);
     }
     let local_type_id = context
         .get_type_resolver()
-        .get_type_id_by_index(T::fory_type_index())?;
+        .get_type_id_by_index(T::type_index())?;
     let local_type_id_u32 = local_type_id as u32;
     if !crate::type_id::needs_user_type_id(local_type_id_u32) {
-        return read_type_info::<T>(context);
+        return read_type_info(context);
     }
     let remote_type_id = context.reader.read_u8()? as u32;
     ensure!(
@@ -78,7 +69,7 @@ pub fn read_type_info_fast<T: StructSerializer>(context: &mut ReadContext) -> Re
     let remote_user_type_id = context.reader.read_var_u32()?;
     let local_user_type_id = context
         .get_type_resolver()
-        .get_user_type_id_by_index(&std::any::TypeId::of::<T>(), T::fory_type_index())?;
+        .get_user_type_id_by_index(&std::any::TypeId::of::<T>(), T::type_index())?;
     if remote_user_type_id != local_user_type_id {
         return Err(Error::type_error(format!(
             "User type id mismatch: local {} vs remote {}",
@@ -88,29 +79,11 @@ pub fn read_type_info_fast<T: StructSerializer>(context: &mut ReadContext) -> Re
     Ok(())
 }
 
-#[inline(always)]
-pub fn write<T: Serializer>(
-    this: &T,
-    context: &mut WriteContext,
-    ref_mode: RefMode,
-    write_type_info: bool,
-) -> Result<(), Error> {
-    match ref_mode {
-        RefMode::None => {}
-        RefMode::NullOnly => {
-            context.writer.write_i8(RefFlag::NotNullValue as i8);
-        }
-        RefMode::Tracking => {
-            // For ref tracking mode, write RefValue flag and reserve a ref_id
-            // so this struct participates in reference tracking.
-            context.writer.write_i8(RefFlag::RefValue as i8);
-            context.ref_writer.reserve_ref_id();
-        }
-    }
-    if write_type_info {
-        T::fory_write_type_info(context)?;
-    }
-    this.fory_write_data(context)
+#[doc(hidden)]
+#[cold]
+#[inline(never)]
+pub fn invalid_ref_flag(ref_flag: i8) -> Error {
+    Error::invalid_ref(format!("Unknown ref flag, value:{ref_flag}"))
 }
 
 pub type BeforeWriteFieldFunc =

@@ -920,7 +920,7 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
   }
 
   private void assertGeneratedCapabilities(ForyJson json, Class<?> type) {
-    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
     resolver.lockJIT();
     try {
       Object owner = resolver.getObjectCodec(type);
@@ -939,7 +939,7 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
   }
 
   private void assertGeneratedWriters(ForyJson json, Class<?> type) {
-    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
     resolver.lockJIT();
     try {
       Object owner = resolver.getObjectCodec(type);
@@ -952,7 +952,7 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
   }
 
   private void assertGeneratedReaders(ForyJson json, Class<?> type) {
-    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
     resolver.lockJIT();
     try {
       ObjectCodec<?> owner = resolver.getObjectCodec(type);
@@ -969,7 +969,7 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
   }
 
   private static void assertInterpretedCapabilities(ForyJson json, TypeRef<?> type) {
-    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
     resolver.lockJIT();
     try {
       JsonTypeInfo info = resolver.getTypeInfo(type.getType(), type.getRawType());
@@ -984,7 +984,7 @@ public class JsonAnyPropertyTest extends ForyJsonTestModels {
   }
 
   private static void assertInterpretedReaders(ForyJson json, Class<?> type) {
-    JsonTypeResolver resolver = JsonTestSupport.primaryTypeResolver(json);
+    JsonTypeResolver resolver = JsonTestSupport.currentTypeResolver(json);
     resolver.lockJIT();
     try {
       Object owner = resolver.getObjectCodec(type);

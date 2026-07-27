@@ -20,7 +20,7 @@ use crate::ensure;
 use crate::error::Error;
 use crate::meta::FieldInfo;
 use crate::resolver::{RefFlag, RefMode, TypeResolver};
-use crate::serializer::{ForyDefault, Serializer};
+use crate::serializer::Serializer;
 use crate::type_id::TypeId;
 
 #[inline(always)]
@@ -33,8 +33,8 @@ pub fn actual_type_id(_type_id: u32, register_by_name: bool, _compatible: bool) 
 }
 
 #[inline(always)]
-pub fn write<T: Serializer>(
-    this: &T,
+pub fn write<S: Serializer>(
+    value: &S::Target,
     context: &mut WriteContext,
     ref_mode: RefMode,
     write_type_info: bool,
@@ -43,26 +43,27 @@ pub fn write<T: Serializer>(
         context.writer.write_i8(RefFlag::NotNullValue as i8);
     }
     if write_type_info {
-        T::fory_write_type_info(context)?;
+        S::write_type_info(context)?;
     }
-    this.fory_write_data(context)
+    S::write_data(value, context)
 }
 
 #[inline(always)]
-pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
-    let type_id = T::fory_get_type_id(context.get_type_resolver())?;
+pub fn write_type_info<S: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
+    let provider_type_id = std::any::TypeId::of::<S>();
+    let type_info = context
+        .get_type_resolver()
+        .get_provider_type_info(&provider_type_id)?;
+    let type_id = type_info.get_type_id();
     context.writer.write_u8(type_id as u8);
-    let rs_type_id = std::any::TypeId::of::<T>();
     if type_id == TypeId::ENUM {
-        let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
         context.writer.write_var_u32(type_info.get_user_type_id());
         return Ok(());
     }
     if context.is_share_meta() {
         // Write type meta inline using streaming protocol
-        context.write_type_meta(rs_type_id)?;
+        context.write_type_meta(provider_type_id)?;
     } else {
-        let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
         let namespace = type_info.get_namespace();
         let type_name = type_info.get_type_name();
         context.write_meta_string_bytes(namespace)?;
@@ -72,23 +73,23 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
 }
 
 #[inline(always)]
-pub fn read<T: Serializer + ForyDefault>(
+pub fn read<S: Serializer>(
     context: &mut ReadContext,
     ref_mode: RefMode,
     read_type_info: bool,
-) -> Result<T, Error> {
+) -> Result<S::Target, Error> {
     let ref_flag = if ref_mode != RefMode::None {
         context.reader.read_i8()?
     } else {
         RefFlag::NotNullValue as i8
     };
     if ref_flag == RefFlag::Null as i8 {
-        Ok(T::fory_default())
+        S::default_value(context)
     } else if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
         if read_type_info {
-            T::fory_read_type_info(context)?;
+            S::read_type_info(context)?;
         }
-        T::fory_read_data(context)
+        S::read_data(context)
     } else if ref_flag == (RefFlag::Ref as i8) {
         Err(Error::invalid_ref("Invalid ref, enum type is not a ref"))
     } else {
@@ -100,8 +101,11 @@ pub fn read<T: Serializer + ForyDefault>(
 }
 
 #[inline(always)]
-pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
-    let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
+pub fn read_type_info<S: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
+    let local_type_id = context
+        .get_type_resolver()
+        .get_provider_type_info(&std::any::TypeId::of::<S>())?
+        .get_type_id();
     let remote_type_id = context.reader.read_u8()?;
     ensure!(
         local_type_id as u8 == remote_type_id,
@@ -122,12 +126,12 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
 }
 
 pub trait NamedEnumVariantMetaTrait: 'static {
-    fn fory_get_sorted_field_names() -> &'static [&'static str] {
+    fn sorted_field_names() -> &'static [&'static str] {
         &[]
     }
 
     #[allow(unused_variables)]
-    fn fory_fields_info(type_resolver: &TypeResolver) -> Result<Vec<FieldInfo>, Error> {
+    fn fields_info(type_resolver: &TypeResolver) -> Result<Vec<FieldInfo>, Error> {
         Ok(Vec::default())
     }
 }

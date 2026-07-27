@@ -38,8 +38,8 @@ func NewDecoder(specialCh1 byte, specialCh2 byte) *Decoder {
 func (d *Decoder) Decode(data []byte, encoding Encoding) (result string, err error) {
 	// we prepend one bit at the start to indicate whether strip last char
 	// so checking empty here will be convenient for decoding procedure
-	if data == nil {
-		return "", err
+	if len(data) == 0 {
+		return "", nil
 	}
 	var chars []byte
 	switch encoding {
@@ -50,6 +50,9 @@ func (d *Decoder) Decode(data []byte, encoding Encoding) (result string, err err
 	case FIRST_TO_LOWER_SPECIAL:
 		chars, err = d.decodeGeneric(data, LOWER_SPECIAL)
 		if err == nil {
+			if len(chars) == 0 {
+				return "", fmt.Errorf("invalid FIRST_TO_LOWER_SPECIAL meta string: missing first character")
+			}
 			chars[0] = chars[0] - 'a' + 'A'
 		}
 	case ALL_TO_LOWER_SPECIAL:
@@ -111,6 +114,9 @@ func (d *Decoder) decodeRepAllToLowerSpecial(data []byte, algorithm Encoding) ([
 	j := 0
 	for i := 0; i < len(str); i++ {
 		if str[i] == '|' {
+			if i+1 >= len(str) {
+				return nil, fmt.Errorf("invalid ALL_TO_LOWER_SPECIAL meta string: trailing escape")
+			}
 			chars[j] = str[i+1] - 'a' + 'A'
 			i++
 		} else {
