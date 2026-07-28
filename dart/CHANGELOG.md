@@ -1,6 +1,6 @@
-## 1.5.0-dev
+## 1.5.0
 
-- Start the next Dart workspace development cycle after the 1.4.0 release.
+- Align the Dart workspace version with the Apache Fory 1.5.0 release.
 
 ## 1.4.0
 

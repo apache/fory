@@ -67,7 +67,7 @@ application on the same version.
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>1.4.0</version>
+  <version>1.5.0</version>
 </dependency>
 ```
 
@@ -75,7 +75,7 @@ application on the same version.
 
 ```kotlin
 // Binary object serialization
-implementation("org.apache.fory:fory-core:1.4.0")
+implementation("org.apache.fory:fory-core:1.5.0")
 ```
 
 #### JDK 25 and Later
@@ -267,14 +267,14 @@ partial reads, and analytics workloads.
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
-  <version>1.4.0</version>
+  <version>1.5.0</version>
 </dependency>
 ```
 
 #### Gradle
 
 ```kotlin
-implementation("org.apache.fory:fory-format:1.4.0")
+implementation("org.apache.fory:fory-format:1.5.0")
 ```
 
 See [Row Format](row-format.md) for encoding, typed field access, partial
@@ -305,14 +305,14 @@ version when another dependency also brings `fory-core` into the application.
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.4.0</version>
+  <version>1.5.0</version>
 </dependency>
 ```
 
 #### Gradle
 
 ```kotlin
-implementation("org.apache.fory:fory-json:1.4.0")
+implementation("org.apache.fory:fory-json:1.5.0")
 ```
 
 On JDK 25 and later, use the same `java.lang.invoke` module open described in
