@@ -460,7 +460,7 @@ case $1 in
     ;;
     format)
       echo "Install format tools"
-      pip install ruff
+      pip install ruff==0.15.22
       echo "Executing format check"
       bash ci/format.sh
       cd "$ROOT/java"

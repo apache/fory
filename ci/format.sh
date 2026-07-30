@@ -26,7 +26,7 @@ install_nodejs() {
 
 # Check for ruff
 if ! [ -x "$(command -v ruff)" ]; then
-    echo "ruff not installed. Install with: pip install ruff"
+    echo "ruff not installed. Install with: pip install ruff==0.15.22"
     exit 1
 fi
 
@@ -197,7 +197,7 @@ format_python() {
       git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs ruff check --fix
       echo "$(date)" "Python formatting done!"
     else
-      echo "ERROR: ruff is not installed! Install with: pip install ruff"
+      echo "ERROR: ruff is not installed! Install with: pip install ruff==0.15.22"
       exit 1
     fi
 }

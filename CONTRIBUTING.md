@@ -118,7 +118,7 @@ mvn checkstyle:check
 ```bash
 cd python
 # install dependencies for formatting
-pip install ruff
+pip install ruff==0.15.22
 # format python code
 ruff format
 ```
