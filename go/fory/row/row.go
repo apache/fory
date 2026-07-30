@@ -135,7 +135,7 @@ func (r *Row) varData(i int) []byte {
 		return nil
 	}
 	offset, size := decodeOffsetAndSize(binary.LittleEndian.Uint64(r.data[r.slot(i):]))
-	return r.data[offset : offset+size]
+	return boundedSlice(r.data, offset, size)
 }
 
 // Binary returns a zero-copy view of field i's bytes.
@@ -196,6 +196,17 @@ func NewArrayData(elem Field, data []byte) *ArrayData {
 
 func (a *ArrayData) NumElements() int { return a.numElements }
 func (a *ArrayData) SizeBytes() int   { return len(a.data) }
+
+// validateBounds rejects arrays whose declared element count is not
+// covered by the available bytes, so decoders can check before
+// allocating from an attacker-declared count.
+func (a *ArrayData) validateBounds() error {
+	need := int64(a.headerBytes) + int64(a.numElements)*int64(a.elemSize)
+	if a.numElements < 0 || need > int64(len(a.data)) {
+		return fmt.Errorf("row: array declares %d elements but holds only %d bytes", a.numElements, len(a.data))
+	}
+	return nil
+}
 
 func (a *ArrayData) IsNullAt(i int) bool {
 	if uint(i) >= uint(a.numElements) {
@@ -275,7 +286,7 @@ func (a *ArrayData) varData(i int) []byte {
 		return nil
 	}
 	offset, size := decodeOffsetAndSize(binary.LittleEndian.Uint64(a.data[a.slot(i):]))
-	return a.data[offset : offset+size]
+	return boundedSlice(a.data, offset, size)
 }
 
 // Binary returns a zero-copy view of element i's bytes.
@@ -316,10 +327,24 @@ type MapData struct {
 
 func NewMapData(mapType *MapType, data []byte) *MapData {
 	keysSize := int(binary.LittleEndian.Uint64(data))
+	keysData := boundedSlice(data, 8, keysSize)
+	valuesData := boundedSlice(data, 8+keysSize, len(data)-8-keysSize)
 	return &MapData{
-		keys:   NewArrayData(mapType.Key, data[8:8+keysSize]),
-		values: NewArrayData(mapType.Value, data[8+keysSize:]),
+		keys:   NewArrayData(mapType.Key, keysData),
+		values: NewArrayData(mapType.Value, valuesData),
 	}
+}
+
+// boundedSlice checks declared bounds against the data LENGTH
+// and caps the view so nested
+// readers cannot reach outside it either. Out-of-bounds panics are
+// converted to errors by the encoder's decode entry points.
+func boundedSlice(data []byte, offset, size int) []byte {
+	end := offset + size
+	if offset < 0 || size < 0 || end > len(data) {
+		panic(fmt.Sprintf("row: value bytes [%d:%d] exceed the enclosing %d-byte region", offset, end, len(data)))
+	}
+	return data[offset:end:end]
 }
 
 func (m *MapData) NumElements() int   { return m.keys.numElements }
