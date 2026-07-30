@@ -15,19 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package row implements the Fory standard row format defined in
-// docs/specification/row_format_spec.md: a random-access binary format
-// where each record is laid out as a null bitmap, fixed 8-byte field
-// slots, and an 8-byte-aligned variable data region.
+// Package row implements the Fory standard row format.
 package row
 
-// The null bitmap tracks one bit per field or array element. Unlike the
-// Arrow validity bitmap, a set bit means the value is NULL. Bits are
-// LSB-first: bit 0 of byte 0 corresponds to index 0.
+// The null bitmap tracks one bit per field or array element.
 
 // bitmapWidthInBytes returns the null bitmap size for n fields or
-// elements, rounded up to a whole 8-byte word per the spec:
-// ((n + 63) / 64) * 8.
+// elements, rounded up to a whole 8-byte word.
 func bitmapWidthInBytes(n int) int {
 	return ((n + 63) / 64) * 8
 }
@@ -47,7 +41,7 @@ func getBit(bitmap []byte, i int) bool {
 	return bitmap[i>>3]&(1<<(uint(i)&7)) != 0
 }
 
-// roundToWord rounds n up to the nearest multiple of 8. The spec requires
+// roundToWord rounds n up to the nearest multiple of 8. Row Format requires
 // every variable-length value and data region to be zero-padded to an
 // 8-byte boundary.
 func roundToWord(n int) int {
