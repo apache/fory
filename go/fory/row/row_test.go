@@ -242,6 +242,18 @@ func TestOutOfRangeIndexPanics(t *testing.T) {
 	require.Panics(t, func() { r.IsNullAt(-1) })
 }
 
+// The wire format packs offset and size into 32 bits each; larger
+// values must be rejected, never silently truncated.
+func TestOffsetAndSizeRejectWireLimit(t *testing.T) {
+	w := NewRowWriter(int64StringSchema())
+	w.Reset()
+	require.Error(t, w.SetOffsetAndSize(1, w.Buffer().WriterIndex(), 1<<33))
+
+	aw := NewArrayWriter(List(StringType{}).Elem, w.Buffer())
+	require.NoError(t, aw.Reset(1))
+	require.Error(t, aw.SetOffsetAndSize(0, w.Buffer().WriterIndex(), 1<<33))
+}
+
 func TestConcurrentReads(t *testing.T) {
 	w := NewRowWriter(int64StringSchema())
 	w.Reset()

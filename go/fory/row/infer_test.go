@@ -121,16 +121,28 @@ func TestInferTypeMapping(t *testing.T) {
 	require.Equal(t, DurationType{}, byName("dur").Type)
 }
 
+// Ignore semantics must match the core fory tag parser: "-",
+// "ignore", and "ignore=true" skip; "ignore=false" keeps.
 func TestInferSkipsIgnoredAndUnexported(t *testing.T) {
 	type tagged struct {
 		A       int64
 		hidden  int64
 		Skipped string `fory:"ignore"`
+		Dash    string `fory:"-"`
+		True    string `fory:"ignore=true"`
+		Kept    int32  `fory:"ignore=false"`
 	}
 	s, err := InferSchema(reflect.TypeOf(tagged{}))
 	require.NoError(t, err)
-	require.Equal(t, 1, s.NumFields())
+	require.Equal(t, 2, s.NumFields())
 	require.Equal(t, "a", s.Field(0).Name)
+	require.Equal(t, "kept", s.Field(1).Name)
+
+	type badTag struct {
+		A int64 `fory:"ignore=yes"`
+	}
+	_, err = InferSchema(reflect.TypeOf(badTag{}))
+	requireErrorContains(t, err, "invalid ignore value")
 }
 
 func TestInferRejectsUnsupportedTypes(t *testing.T) {

@@ -39,6 +39,8 @@ import (
 const (
 	schemaVersion          = 1
 	fieldNameSizeThreshold = 15
+	// Caps readField/readType recursion.
+	maxSchemaNestingDepth = 64
 )
 
 // Header bits 0-1 store the INDEX into this table (matching Java
@@ -178,14 +180,20 @@ func SchemaFromBytes(data []byte) (*Schema, error) {
 }
 
 type schemaReader struct {
-	buf  *fory.ByteBuffer
-	size int
-	err  fory.Error
+	buf   *fory.ByteBuffer
+	size  int
+	depth int
+	err   fory.Error
 }
 
 func (r *schemaReader) remaining() int { return r.size - r.buf.ReaderIndex() }
 
 func (r *schemaReader) readField() (Field, error) {
+	if r.depth >= maxSchemaNestingDepth {
+		return Field{}, fmt.Errorf("row: schema nesting exceeds %d levels", maxSchemaNestingDepth)
+	}
+	r.depth++
+	defer func() { r.depth-- }()
 	header := int(r.buf.ReadUint8(&r.err))
 	if err := r.err.CheckError(); err != nil {
 		return Field{}, err

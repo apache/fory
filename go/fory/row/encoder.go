@@ -127,9 +127,9 @@ type slotWriter interface {
 	WriteDate(i int, d fory.Date) error
 	WriteTimestamp(i int, t time.Time)
 	WriteDuration(i int, d time.Duration)
-	WriteString(i int, s string)
-	WriteBytes(i int, b []byte)
-	SetOffsetAndSize(i, absStart, size int)
+	WriteString(i int, s string) error
+	WriteBytes(i int, b []byte) error
+	SetOffsetAndSize(i, absStart, size int) error
 }
 
 // valueReader is the shared read surface of Row and ArrayData.
@@ -303,7 +303,7 @@ func newValueCodec(goType reflect.Type, dataType DataType, buf *fory.ByteBuffer)
 		}, nil
 	case StringType:
 		return valueCodec{
-			write: func(w slotWriter, i int, v reflect.Value) error { w.WriteString(i, v.String()); return nil },
+			write: func(w slotWriter, i int, v reflect.Value) error { return w.WriteString(i, v.String()) },
 			read:  func(g valueReader, i int, v reflect.Value) error { v.SetString(g.String(i)); return nil },
 		}, nil
 	case BinaryType:
@@ -313,8 +313,7 @@ func newValueCodec(goType reflect.Type, dataType DataType, buf *fory.ByteBuffer)
 					w.SetNullAt(i)
 					return nil
 				}
-				w.WriteBytes(i, v.Bytes())
-				return nil
+				return w.WriteBytes(i, v.Bytes())
 			},
 			read: func(g valueReader, i int, v reflect.Value) error {
 				b := g.Binary(i)
@@ -344,8 +343,7 @@ func newValueCodec(goType reflect.Type, dataType DataType, buf *fory.ByteBuffer)
 				if err := child.writeStruct(v); err != nil {
 					return err
 				}
-				w.SetOffsetAndSize(i, start, child.writer.buf.WriterIndex()-start)
-				return nil
+				return w.SetOffsetAndSize(i, start, child.writer.buf.WriterIndex()-start)
 			},
 			read: func(g valueReader, i int, v reflect.Value) error {
 				nested := g.Struct(i)
@@ -383,8 +381,7 @@ func newListCodec(goType reflect.Type, listType *ListType, buf *fory.ByteBuffer)
 					return err
 				}
 			}
-			w.SetOffsetAndSize(i, start, buf.WriterIndex()-start)
-			return nil
+			return w.SetOffsetAndSize(i, start, buf.WriterIndex()-start)
 		},
 		read: func(g valueReader, i int, v reflect.Value) error {
 			arr := g.Array(i)
@@ -455,8 +452,7 @@ func newMapCodec(goType reflect.Type, mapType *MapType, buf *fory.ByteBuffer) (v
 					return err
 				}
 			}
-			w.SetOffsetAndSize(i, start, buf.WriterIndex()-start)
-			return nil
+			return w.SetOffsetAndSize(i, start, buf.WriterIndex()-start)
 		},
 		read: func(g valueReader, i int, v reflect.Value) error {
 			md := g.Map(i)

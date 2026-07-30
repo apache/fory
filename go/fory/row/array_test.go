@@ -18,6 +18,8 @@
 package row
 
 import (
+	"encoding/binary"
+	"math"
 	"testing"
 
 	fory "github.com/apache/fory/go/fory"
@@ -105,4 +107,20 @@ func TestArrayResetRejectsInvalidLength(t *testing.T) {
 	w := NewArrayWriter(List(Int64Type{}).Elem, fory.NewByteBuffer(nil))
 	require.Error(t, w.Reset(-1))
 	require.Error(t, w.Reset(1<<40))
+}
+
+// Forged element counts must fail validation even when the arithmetic
+// would overflow int64 and wrap the required size negative.
+func TestArrayValidateBoundsRejectsForgedCounts(t *testing.T) {
+	for _, count := range []uint64{
+		math.MaxUint64,              // negative after int conversion
+		math.MaxInt64,               // bitmap width and product overflow
+		uint64(math.MaxInt64/8) + 1, // product overflow with 8-byte elements
+		1 << 32,                     // plausible-looking but far beyond the data
+	} {
+		data := make([]byte, 16)
+		binary.LittleEndian.PutUint64(data, count)
+		a := NewArrayData(List(Int64Type{}).Elem, data)
+		require.Error(t, a.validateBounds(), "count %d", count)
+	}
 }

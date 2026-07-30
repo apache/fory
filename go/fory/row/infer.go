@@ -87,7 +87,14 @@ func inferStructLayout(t reflect.Type, path []reflect.Type) (*structLayout, erro
 	var members []member
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if f.PkgPath != "" || hasIgnoreTag(f.Tag.Get("fory")) {
+		if f.PkgPath != "" {
+			continue
+		}
+		ignored, err := hasIgnoreTag(f.Tag.Get("fory"))
+		if err != nil {
+			return nil, fmt.Errorf("%w (field %s of %v)", err, f.Name, t)
+		}
+		if ignored {
 			continue
 		}
 		members = append(members, member{lowerFirst(f.Name), i, f.Type})
@@ -185,13 +192,32 @@ func inferField(name string, t reflect.Type, path []reflect.Type) (Field, error)
 	}
 }
 
-func hasIgnoreTag(tag string) bool {
+// hasIgnoreTag mirrors the ignore semantics of the core fory tag
+// parser (parseFieldTag in field_spec.go): a whole tag of "-" or an
+// ignore/ignore=true part skips the field, ignore=false keeps it, and
+// any other ignore value is an error. Other tag keys are not used by
+// the row format.
+func hasIgnoreTag(tag string) (bool, error) {
+	if tag == "-" {
+		return true, nil
+	}
+	ignore := false
 	for _, part := range strings.Split(tag, ",") {
-		if strings.TrimSpace(part) == "ignore" {
-			return true
+		part = strings.TrimSpace(part)
+		if part == "ignore" {
+			ignore = true
+		} else if strings.HasPrefix(part, "ignore=") {
+			switch strings.TrimPrefix(part, "ignore=") {
+			case "true":
+				ignore = true
+			case "false":
+				ignore = false
+			default:
+				return false, fmt.Errorf("row: invalid ignore value in fory tag %q", tag)
+			}
 		}
 	}
-	return false
+	return ignore, nil
 }
 
 func lowerFirst(s string) string {

@@ -159,22 +159,28 @@ func (w *RowWriter) WriteDuration(i int, d time.Duration) {
 	w.WriteInt64(i, d.Microseconds())
 }
 
-func (w *RowWriter) WriteString(i int, s string) {
+func (w *RowWriter) WriteString(i int, s string) error {
 	start := appendStringRegion(w.buf, s)
-	w.SetOffsetAndSize(i, start, len(s))
+	return w.SetOffsetAndSize(i, start, len(s))
 }
 
-func (w *RowWriter) WriteBytes(i int, b []byte) {
+func (w *RowWriter) WriteBytes(i int, b []byte) error {
 	start := appendBytesRegion(w.buf, b)
-	w.SetOffsetAndSize(i, start, len(b))
+	return w.SetOffsetAndSize(i, start, len(b))
 }
 
 // SetOffsetAndSize patches field i's slot with the row-relative offset
 // and byte size of a value already appended to the variable data region.
 // Use it after writing a nested struct, array, or map at absStart.
-func (w *RowWriter) SetOffsetAndSize(i, absStart, size int) {
+// Offsets and sizes beyond 32 bits are rejected: the wire format packs
+// both into one slot, and truncating would corrupt the row silently.
+func (w *RowWriter) SetOffsetAndSize(i, absStart, size int) error {
 	rel := absStart - w.base
-	binary.LittleEndian.PutUint64(w.buf.GetData()[w.slot(i):], uint64(rel)<<32|uint64(uint32(size)))
+	if uint64(rel) > math.MaxUint32 || uint64(size) > math.MaxUint32 {
+		return fmt.Errorf("row: value at offset %d with %d bytes exceeds the 32-bit wire format limit", rel, size)
+	}
+	binary.LittleEndian.PutUint64(w.buf.GetData()[w.slot(i):], uint64(rel)<<32|uint64(size))
+	return nil
 }
 
 // ArrayWriter writes one array: an 8-byte element count, a null bitmap,
@@ -295,21 +301,26 @@ func (w *ArrayWriter) WriteDuration(i int, d time.Duration) {
 	w.WriteInt64(i, d.Microseconds())
 }
 
-func (w *ArrayWriter) WriteString(i int, s string) {
+func (w *ArrayWriter) WriteString(i int, s string) error {
 	start := appendStringRegion(w.buf, s)
-	w.SetOffsetAndSize(i, start, len(s))
+	return w.SetOffsetAndSize(i, start, len(s))
 }
 
-func (w *ArrayWriter) WriteBytes(i int, b []byte) {
+func (w *ArrayWriter) WriteBytes(i int, b []byte) error {
 	start := appendBytesRegion(w.buf, b)
-	w.SetOffsetAndSize(i, start, len(b))
+	return w.SetOffsetAndSize(i, start, len(b))
 }
 
 // SetOffsetAndSize patches element i's slot with the array-relative
-// offset and byte size of a value already appended after the array.
-func (w *ArrayWriter) SetOffsetAndSize(i, absStart, size int) {
+// offset and byte size of a value already appended after the array,
+// with the same 32-bit wire limit as RowWriter.SetOffsetAndSize.
+func (w *ArrayWriter) SetOffsetAndSize(i, absStart, size int) error {
 	rel := absStart - w.base
-	binary.LittleEndian.PutUint64(w.buf.GetData()[w.slot(i):], uint64(rel)<<32|uint64(uint32(size)))
+	if uint64(rel) > math.MaxUint32 || uint64(size) > math.MaxUint32 {
+		return fmt.Errorf("row: value at offset %d with %d bytes exceeds the 32-bit wire format limit", rel, size)
+	}
+	binary.LittleEndian.PutUint64(w.buf.GetData()[w.slot(i):], uint64(rel)<<32|uint64(size))
+	return nil
 }
 
 // MapWriter writes one map: an 8-byte keys-array size, the keys array,

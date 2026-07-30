@@ -201,9 +201,16 @@ func (a *ArrayData) SizeBytes() int   { return len(a.data) }
 // covered by the available bytes, so decoders can check before
 // allocating from an attacker-declared count.
 func (a *ArrayData) validateBounds() error {
-	need := int64(a.headerBytes) + int64(a.numElements)*int64(a.elemSize)
-	if a.numElements < 0 || need > int64(len(a.data)) {
+	// The coarse count check involves no arithmetic, so it cannot be
+	// defeated by overflow: every element occupies at least one data
+	// byte. It also bounds numElements low enough that headerBytes
+	// (computed in NewArrayData) and the product below are exact.
+	if a.numElements < 0 || a.numElements > len(a.data) {
 		return fmt.Errorf("row: array declares %d elements but holds only %d bytes", a.numElements, len(a.data))
+	}
+	need := int64(a.headerBytes) + int64(a.numElements)*int64(a.elemSize)
+	if need > int64(len(a.data)) {
+		return fmt.Errorf("row: array declares %d elements needing %d bytes but holds only %d", a.numElements, need, len(a.data))
 	}
 	return nil
 }

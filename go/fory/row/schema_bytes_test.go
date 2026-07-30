@@ -159,3 +159,16 @@ func TestSchemaToBytesRejectsEmptyName(t *testing.T) {
 	_, err := SchemaToBytes(NewSchema([]Field{NewField("", Int32Type{}, true)}))
 	requireErrorContains(t, err, "empty name")
 }
+
+// A crafted chain of nested LIST type-infos costs ~3 bytes per level;
+// without a depth limit it would fatally overflow the goroutine stack.
+func TestSchemaFromBytesRejectsDeepNesting(t *testing.T) {
+	data := []byte{0x01, 0x01}
+	for i := 0; i < 10*maxSchemaNestingDepth; i++ {
+		// field: header (UTF_8 encoding, 1-byte name, non-null),
+		// name "a", type LIST -> recurses into the next field.
+		data = append(data, 0x00, 'a', 0x16)
+	}
+	_, err := SchemaFromBytes(data)
+	requireErrorContains(t, err, "nesting")
+}
