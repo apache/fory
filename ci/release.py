@@ -1049,6 +1049,8 @@ def _update_dart_changelog(lines, v: str, workspace=False):
     start_index = -1
     for index, line in enumerate(lines):
         if heading_pattern.match(line):
+            if line == heading:
+                return lines
             start_index = index
             break
     if start_index == -1:
@@ -1059,7 +1061,17 @@ def _update_dart_changelog(lines, v: str, workspace=False):
         if re.match(r"^##\s+", lines[index]):
             end_index = index
             break
-    return lines[:start_index] + [heading] + body + lines[end_index:]
+    updated = list(lines)
+    updated[start_index] = heading
+    dev_cycle = re.compile(
+        r"^- Start the next (?:Dart workspace )?development cycle after "
+        r"the \S+ release\.\s*$"
+    )
+    for index in range(start_index + 1, end_index):
+        if dev_cycle.match(updated[index]):
+            updated[index] = body[1]
+            break
+    return updated
 
 
 def _update_dart_dev_changelog(lines, v: str, release_version: str, workspace=False):
@@ -1079,20 +1091,10 @@ def _update_dart_dev_changelog(lines, v: str, release_version: str, workspace=Fa
             f"- Start the next development cycle after the {release_version} release.\n",
             "\n",
         ]
-    start_index = -1
-    for index, line in enumerate(lines):
+    for line in lines:
         if line == heading:
-            start_index = index
-            break
-    if start_index == -1:
-        return [heading] + body + lines
-
-    end_index = len(lines)
-    for index in range(start_index + 1, len(lines)):
-        if re.match(r"^##\s+", lines[index]):
-            end_index = index
-            break
-    return lines[:start_index] + [heading] + body + lines[end_index:]
+            return lines
+    return [heading] + body + lines
 
 
 def _update_csharp_props_version(lines, v: str):

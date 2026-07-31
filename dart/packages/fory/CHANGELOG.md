@@ -1,6 +1,10 @@
-## 1.5.0-dev
+## 1.6.0-dev
 
-- Start the next development cycle after the 1.4.0 release.
+- Start the next development cycle after the 1.5.0 release.
+
+## 1.5.0
+
+- Release Apache Fory Dart 1.5.0.
 - Add generated external-type serialization with direct target construction
   and existing registration, carrier, reference, and schema-evolution support.
 - Replace `ForyField.skip` with `ForyField.ignore`, remove `skip` from container

@@ -42,14 +42,14 @@ Maven:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-json</artifactId>
-  <version>1.4.0</version>
+  <version>1.5.0</version>
 </dependency>
 ```
 
 Gradle:
 
 ```kotlin
-implementation("org.apache.fory:fory-json:1.4.0")
+implementation("org.apache.fory:fory-json:1.5.0")
 ```
 
 Keep all Fory modules on the same version.
