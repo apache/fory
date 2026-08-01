@@ -17,7 +17,8 @@
 
 use std::collections::BTreeMap;
 
-use fory_core::row::{from_row, to_row};
+use fory_core::row::{from_row, from_row_in, to_row, to_row_in};
+use fory_core::Reader;
 use fory_derive::ForyRow;
 
 #[test]
@@ -138,4 +139,50 @@ fn row() {
     let f5 = binding.to_btree_map().expect("should be map");
     assert_eq!(f5.get("k1").expect("should exists"), &"v1");
     assert_eq!(f5.get("k2").expect("should exists"), &"v2");
+}
+
+#[test]
+fn test_to_row_in() {
+    #[derive(ForyRow)]
+    struct Data {
+        id: i32,
+        val: String,
+    }
+
+    let data = Data {
+        id: 123,
+        val: "test".to_string(),
+    };
+
+    let mut buffer = vec![1, 2, 3];
+    to_row_in(&mut buffer, &data).unwrap();
+
+    assert!(buffer.len() > 3);
+    let row = from_row::<Data>(&buffer[3..]);
+    assert_eq!(row.id(), 123);
+    assert_eq!(row.val(), "test");
+}
+
+#[test]
+fn test_from_row_in() {
+    #[derive(ForyRow)]
+    struct Data {
+        id: i32,
+        val: String,
+    }
+
+    let data = Data {
+        id: 456,
+        val: "reader_test".to_string(),
+    };
+
+    let mut buffer = vec![0u8; 5]; // padding
+    to_row_in(&mut buffer, &data).unwrap();
+
+    let mut reader = Reader::new(&buffer);
+    reader.skip(5).unwrap(); // skip padding
+
+    let row = from_row_in::<Data>(&reader);
+    assert_eq!(row.id(), 456);
+    assert_eq!(row.val(), "reader_test");
 }

@@ -190,3 +190,10 @@ pub fn to_row<'a, T: Row<'a>>(v: &T) -> Result<Vec<u8>, Error> {
     T::write(v, &mut writer)?;
     Ok(buffer)
 }
+
+pub fn to_row_in<'a, T: Row<'a>>(buffer: &mut Vec<u8>, v: &T) -> Result<usize, Error> {
+    let start = buffer.len();
+    let mut writer = Writer::from_buffer(buffer);
+    T::write(v, &mut writer)?;
+    Ok(writer.len() - start)
+}
