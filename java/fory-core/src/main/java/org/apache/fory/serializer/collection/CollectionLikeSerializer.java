@@ -22,6 +22,7 @@ package org.apache.fory.serializer.collection;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
 import java.util.Collection;
+import java.util.HashSet;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.config.Config;
@@ -52,6 +53,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   private MethodHandle constructor;
   private int numElements;
   private final int collectionOwnerBytes;
+  private final boolean repairsMutableHash;
   protected final Config config;
   protected final boolean supportCodegenHook;
   protected final TypeInfoHolder elementTypeInfoHolder;
@@ -94,6 +96,8 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     super(typeResolver.getConfig(), cls, immutable);
     this.config = typeResolver.getConfig();
     this.collectionOwnerBytes = collectionOwnerBytes;
+    repairsMutableHash =
+        typeResolver.getConfig().trackingRef() && !immutable && HashSet.class.isAssignableFrom(cls);
     this.supportCodegenHook = supportCodegenHook;
     elementTypeInfoHolder = typeResolver.nilTypeInfoHolder();
     this.typeResolver = typeResolver;
@@ -126,6 +130,12 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
    */
   public final boolean supportCodegenHook() {
     return supportCodegenHook;
+  }
+
+  /** Captures the active-back-reference epoch for mutable hash Set reads. */
+  @CodegenInvoke
+  public final long hashRefEpoch(ReadContext readContext) {
+    return repairsMutableHash ? readContext.getRefReader().getMaterializingRefEpoch() : -1;
   }
 
   /**
@@ -447,12 +457,16 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
 
   @Override
   public T read(ReadContext readContext) {
+    long hashRefEpoch = hashRefEpoch(readContext);
     Collection collection = newCollection(readContext);
     int numElements = getAndClearNumElements();
     if (numElements != 0) {
       readElements(readContext, collection, numElements);
     }
-    return onCollectionRead(collection);
+    if (hashRefEpoch < 0) {
+      return onCollectionRead(collection);
+    }
+    return onCollectionRead(readContext, collection, hashRefEpoch);
   }
 
   /**
@@ -596,6 +610,18 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   }
 
   public abstract T onCollectionRead(Collection collection);
+
+  /** Completes a generated or interpreted collection read using the same hash repair owner. */
+  @CodegenInvoke
+  public final T onCollectionRead(
+      ReadContext readContext, Collection collection, long hashRefEpoch) {
+    T value = onCollectionRead(collection);
+    if (hashRefEpoch >= 0
+        && hashRefEpoch != readContext.getRefReader().getMaterializingRefEpoch()) {
+      HashContainerReadState.trackCollection(readContext, collection);
+    }
+    return value;
+  }
 
   protected void readElements(ReadContext readContext, Collection collection, int numElements) {
     MemoryBuffer buffer = readContext.getBuffer();

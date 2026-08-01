@@ -28,6 +28,11 @@ import org.apache.fory.memory.MemoryBuffer;
  * materialized, and resolve previously read references by id.
  */
 public interface RefReader {
+  /** Listener notified when every early-published read reference has finished materializing. */
+  interface RefReadListener {
+    void onRefReadsComplete();
+  }
+
   /** Reads a ref-or-null header and returns the raw header byte. */
   byte readRefOrNull(MemoryBuffer buffer);
 
@@ -46,7 +51,10 @@ public interface RefReader {
   /** Returns whether there is a preserved id waiting to be bound to an object. */
   boolean hasPreservedRefId();
 
-  /** Binds the most recently preserved reference id to {@code object}. */
+  /**
+   * Publishes {@code object} under the most recently preserved id before its read is complete. The
+   * outer read wrapper must later call {@link #setReadRef(int, Object)} for that id.
+   */
   void reference(Object object);
 
   /** Returns the previously materialized object for a specific ref id. */
@@ -55,8 +63,24 @@ public interface RefReader {
   /** Returns the object resolved by the last ref-header read. */
   Object getReadRef();
 
-  /** Replaces the object stored for a previously preserved ref id. */
+  /** Stores a completed object, ending any early publication for {@code id}. */
   void setReadRef(int id, Object object);
+
+  /**
+   * Returns an operation-local epoch incremented when a back-reference resolves to an object that
+   * is still materializing.
+   */
+  default long getMaterializingRefEpoch() {
+    return 0;
+  }
+
+  /** Returns whether any early-published reference is still materializing. */
+  default boolean hasMaterializingRefs() {
+    return false;
+  }
+
+  /** Installs the single operation-local listener for reference materialization completion. */
+  default void setRefReadListener(RefReadListener listener) {}
 
   /** Clears all per-operation ref-tracking state. */
   void reset();

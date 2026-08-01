@@ -19,6 +19,7 @@
 
 package org.apache.fory.context;
 
+import java.util.Arrays;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.IntArray;
 import org.apache.fory.collection.ObjectArray;
@@ -38,14 +39,20 @@ public final class MapRefReader implements RefReader {
   private long readTotalObjectSize = 0;
   private final ObjectArray readObjects = new ObjectArray(DEFAULT_ARRAY_CAPACITY);
   private final IntArray readRefIds = new IntArray(DEFAULT_ARRAY_CAPACITY);
+  private boolean[] materializingRefs = new boolean[DEFAULT_ARRAY_CAPACITY];
   private Object readObject;
+  private int materializingRefCount;
+  private long materializingRefEpoch;
+  private RefReadListener refReadListener;
 
   /** Reads a ref-or-null header and resolves cached references immediately when present. */
   @Override
   public byte readRefOrNull(MemoryBuffer buffer) {
     byte headFlag = buffer.readByte();
     if (headFlag == Fory.REF_FLAG) {
-      readObject = getReadRef(buffer.readVarUInt32Small14());
+      int refId = buffer.readVarUInt32Small14();
+      readObject = getReadRef(refId);
+      recordMaterializingRef(refId);
     } else {
       readObject = null;
     }
@@ -73,7 +80,9 @@ public final class MapRefReader implements RefReader {
   public int tryPreserveRefId(MemoryBuffer buffer) {
     byte headFlag = buffer.readByte();
     if (headFlag == Fory.REF_FLAG) {
-      readObject = getReadRef(buffer.readVarUInt32Small14());
+      int refId = buffer.readVarUInt32Small14();
+      readObject = getReadRef(refId);
+      recordMaterializingRef(refId);
     } else {
       readObject = null;
       if (headFlag == Fory.REF_VALUE_FLAG) {
@@ -97,11 +106,20 @@ public final class MapRefReader implements RefReader {
     return readRefIds.size > 0;
   }
 
-  /** Binds the most recently reserved ref id to {@code object}. */
+  /** Early-publishes the most recently reserved ref id while its serializer is still reading. */
   @Override
   public void reference(Object object) {
     int refId = readRefIds.pop();
-    setReadRef(refId, object);
+    if (refId >= 0) {
+      readObjects.set(refId, object);
+      if (refId >= materializingRefs.length) {
+        materializingRefs = Arrays.copyOf(materializingRefs, readObjects.objects.length);
+      }
+      if (!materializingRefs[refId]) {
+        materializingRefs[refId] = true;
+        materializingRefCount++;
+      }
+    }
   }
 
   /** Returns the previously materialized object stored at {@code id}. */
@@ -116,11 +134,42 @@ public final class MapRefReader implements RefReader {
     return readObject;
   }
 
-  /** Stores {@code object} under an already reserved read ref id. */
+  /** Stores the completed object and closes a matching early publication. */
   @Override
   public void setReadRef(int id, Object object) {
     if (id >= 0) {
       readObjects.set(id, object);
+      if (id < materializingRefs.length && materializingRefs[id]) {
+        materializingRefs[id] = false;
+        materializingRefCount--;
+        if (materializingRefCount == 0 && refReadListener != null) {
+          refReadListener.onRefReadsComplete();
+        }
+      }
+    }
+  }
+
+  @Override
+  public long getMaterializingRefEpoch() {
+    return materializingRefEpoch;
+  }
+
+  @Override
+  public boolean hasMaterializingRefs() {
+    return materializingRefCount != 0;
+  }
+
+  @Override
+  public void setRefReadListener(RefReadListener listener) {
+    if (refReadListener != null && refReadListener != listener) {
+      throw new IllegalStateException("A read-reference listener is already installed");
+    }
+    refReadListener = listener;
+  }
+
+  private void recordMaterializingRef(int refId) {
+    if (refId < materializingRefs.length && materializingRefs[refId]) {
+      materializingRefEpoch++;
     }
   }
 
@@ -146,6 +195,12 @@ public final class MapRefReader implements RefReader {
     }
     readObjects.clearApproximate(avg);
     readRefIds.clear();
+    if (materializingRefCount != 0) {
+      Arrays.fill(materializingRefs, false);
+    }
     readObject = null;
+    materializingRefCount = 0;
+    materializingRefEpoch = 0;
+    refReadListener = null;
   }
 }

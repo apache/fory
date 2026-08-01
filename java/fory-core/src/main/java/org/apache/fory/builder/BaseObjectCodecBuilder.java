@@ -2729,13 +2729,32 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
           serializer.type());
     }
     Invoke supportHook = inlineInvoke(serializer, "supportCodegenHook", PRIMITIVE_BOOLEAN_TYPE);
+    Class<?> collectionType = getRawType(typeRef);
+    boolean mayReadHashSet =
+        Set.class.isAssignableFrom(collectionType) || collectionType.isAssignableFrom(Set.class);
     Expression collection =
         new Invoke(serializer, "newCollection", COLLECTION_TYPE, readContextRef);
     Expression size = new Invoke(serializer, "getAndClearNumElements", "size", PRIMITIVE_INT_TYPE);
     // Do not add an ArrayList-specific branch here: it pushes generated code over 325 bytes, and
     // List#add is more likely to inline when the call site has only one receiver subclass.
     Expression hookRead = readCollectionCodegen(buffer, collection, size, elementType);
-    hookRead = new Invoke(serializer, "onCollectionRead", OBJECT_TYPE, hookRead);
+    Expression hashRefEpoch = null;
+    if (mayReadHashSet) {
+      hashRefEpoch =
+          new Invoke(
+              serializer,
+              "hashRefEpoch",
+              "hashRefEpoch",
+              PRIMITIVE_LONG_TYPE,
+              false,
+              false,
+              readContextRef);
+      hookRead =
+          new Invoke(
+              serializer, "onCollectionRead", OBJECT_TYPE, readContextRef, hookRead, hashRefEpoch);
+    } else {
+      hookRead = new Invoke(serializer, "onCollectionRead", OBJECT_TYPE, hookRead);
+    }
     Expression fallbackAction = read(serializer, buffer, OBJECT_TYPE);
     Expression fallbackRead =
         invokeGenerated(
@@ -2744,8 +2763,11 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             new ListExpression(fallbackAction, new Return(fallbackAction)),
             "readCollectionFallback",
             false);
-    Expression action =
-        new If(supportHook, new ListExpression(collection, hookRead), fallbackRead, false);
+    Expression hookAction =
+        mayReadHashSet
+            ? new ListExpression(hashRefEpoch, collection, hookRead)
+            : new ListExpression(collection, hookRead);
+    Expression action = new If(supportHook, hookAction, fallbackRead, false);
     if (invokeHint != null && invokeHint.genNewMethod) {
       invokeHint.add(buffer);
       invokeHint.add(readContextRef());
@@ -2986,6 +3008,21 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     Expression mapSerializer = serializer;
     Invoke supportHook = inlineInvoke(serializer, "supportCodegenHook", PRIMITIVE_BOOLEAN_TYPE);
     ListExpression expressions = new ListExpression();
+    Class<?> mapType = getRawType(typeRef);
+    boolean mayReadHashMap =
+        HashMap.class.isAssignableFrom(mapType) || mapType.isAssignableFrom(HashMap.class);
+    Expression hashRefEpoch = null;
+    if (mayReadHashMap) {
+      hashRefEpoch =
+          new Invoke(
+              serializer,
+              "hashRefEpoch",
+              "hashRefEpoch",
+              PRIMITIVE_LONG_TYPE,
+              false,
+              false,
+              readContextRef);
+    }
     Expression newMap = new Invoke(serializer, "newMap", MAP_TYPE, readContextRef);
     Expression size = new Invoke(serializer, "getAndClearNumElements", "size", PRIMITIVE_INT_TYPE);
     Expression chunkHeader =
@@ -2993,6 +3030,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             eq(size, ofInt(0)),
             ofInt(0),
             inlineInvoke(buffer, "readUnsignedByte", PRIMITIVE_INT_TYPE));
+    if (mayReadHashMap) {
+      expressions.add(hashRefEpoch);
+    }
     expressions.add(newMap, size, chunkHeader);
     Class<?> keyCls = keyType.getRawType();
     Class<?> valueCls = valueType.getRawType();
@@ -3052,7 +3092,14 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         invokeGenerated(ctx, chunkLoopCutPoints, chunksLoop, "readMapChunks", false);
     expressions.add(chunkLoopExpr, newMap);
     // first newMap to create map, last newMap as expr value
-    Expression map = inlineInvoke(serializer, "onMapRead", OBJECT_TYPE, expressions);
+    Expression map;
+    if (mayReadHashMap) {
+      map =
+          inlineInvoke(
+              serializer, "onMapRead", OBJECT_TYPE, readContextRef, expressions, hashRefEpoch);
+    } else {
+      map = inlineInvoke(serializer, "onMapRead", OBJECT_TYPE, expressions);
+    }
     Expression action = new If(supportHook, map, read(serializer, buffer, OBJECT_TYPE), false);
     if (invokeHint != null && invokeHint.genNewMethod) {
       invokeHint.add(buffer);

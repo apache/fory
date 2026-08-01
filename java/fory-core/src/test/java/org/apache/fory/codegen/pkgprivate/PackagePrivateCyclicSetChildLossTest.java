@@ -20,10 +20,12 @@
 package org.apache.fory.codegen.pkgprivate;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertSame;
 import static org.testng.Assert.assertTrue;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -37,24 +39,19 @@ import org.apache.fory.ThreadSafeFory;
 import org.testng.annotations.Test;
 
 /**
- * Regression test: a wide fan-out (one parent, many children) cyclic graph of package-private
- * nodes silently loses entries from a {@code Set<PackagePrivateType>} field during
- * deserialization - no exception is thrown, so unlike {@link PackagePrivateMapKeyTest} (which
- * catches the codegen CompileException for this same field shape) this defect only surfaces as
- * missing data.
+ * Regression test for a package-private cyclic graph whose child inserts an early parent
+ * back-reference into a {@link LinkedHashSet}.
  *
- * <p>Reproduced from a production graph with 100+ children under one parent node; the
- * child->parent edge (an EnumMap-keyed back-reference) survives the round trip intact, but the
- * parent->child edge (a plain HashSet) loses a handful of entries. Both edges are set together,
- * atomically, at construction time, so the source object graph itself is never inconsistent -
- * the asymmetry is introduced purely by fory's serialize/deserialize round trip.
+ * <p>The set still iterates the exact deserialized parent, but lookup fails after the parent's
+ * hash-relevant fields finish materializing. A wide fan-out makes the resulting asymmetric lookup
+ * easy to observe without changing the object graph or throwing an exception.
  */
 public class PackagePrivateCyclicSetChildLossTest {
 
   private static final int CHILD_COUNT = 200;
 
   @Test
-  public void testWideFanOutDoesNotLoseChildrenFromPackagePrivateSet() {
+  public void testCyclicSetMembership() {
     ThreadSafeFory fury =
         Fory.builder()
             .withXlang(false)
@@ -80,20 +77,28 @@ public class PackagePrivateCyclicSetChildLossTest {
     FanOutContainer result = (FanOutContainer) fury.deserialize(bytes);
 
     FanOutNode resultParent = result.nodes.get(FanOutType.TYPE_A).get("parent");
-    assertEquals(resultParent.children.size(), CHILD_COUNT, "parent lost children from its Set field");
+    assertEquals(
+        resultParent.children.size(), CHILD_COUNT, "parent lost children from its Set field");
 
-    // Every child must still be reachable BOTH ways: down (parent.children) and up
-    // (child.parents), and both directions must point at the exact same object (fory's
-    // refTracking should unify identical (type,id) instances, not duplicate them).
+    // Inspect the child set by iteration before using contains so the test distinguishes stale
+    // hash buckets from a lost reference-table edge.
     List<String> asymmetric = new ArrayList<>();
     for (String childId : expectedChildIds) {
       FanOutNode resultChild = result.nodes.get(FanOutType.TYPE_B).get(childId);
       boolean parentListsChild = resultParent.children.contains(resultChild);
-      boolean childListsParent =
-          resultChild.parents.getOrDefault(FanOutType.TYPE_A, Set.of()).contains(resultParent);
+      Set<FanOutNode> resultParents =
+          resultChild.parents.getOrDefault(FanOutType.TYPE_A, Collections.emptySet());
+      assertEquals(resultParents.size(), 1);
+      assertSame(resultParents.iterator().next(), resultParent);
+      boolean childListsParent = resultParents.contains(resultParent);
       if (!parentListsChild || !childListsParent) {
         asymmetric.add(
-            childId + " (parentListsChild=" + parentListsChild + ", childListsParent=" + childListsParent + ")");
+            childId
+                + " (parentListsChild="
+                + parentListsChild
+                + ", childListsParent="
+                + childListsParent
+                + ")");
       }
     }
     assertTrue(
@@ -102,7 +107,7 @@ public class PackagePrivateCyclicSetChildLossTest {
   }
 }
 
-// All package-private — this triggers the bug
+// Package-private model retained from the original reproduction.
 enum FanOutType implements Serializable {
   TYPE_A,
   TYPE_B

@@ -33,6 +33,7 @@ import static org.apache.fory.serializer.collection.MapFlags.VALUE_HAS_NULL;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Constructor;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -78,6 +79,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
   protected MethodHandle constructor;
   protected final Config config;
   private final int mapOwnerBytes;
+  private final boolean repairsMutableHash;
   protected final boolean supportCodegenHook;
   private final GenericType objType;
   // For subclass whose kv type are instantiated already, such as
@@ -120,6 +122,8 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     super(typeResolver.getConfig(), cls, immutable);
     this.config = typeResolver.getConfig();
     this.mapOwnerBytes = mapOwnerBytes;
+    repairsMutableHash =
+        typeResolver.getConfig().trackingRef() && !immutable && HashMap.class.isAssignableFrom(cls);
     this.typeResolver = typeResolver;
     trackRef = typeResolver.getConfig().trackingRef();
     this.supportCodegenHook = supportCodegenHook;
@@ -589,10 +593,20 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
 
   @Override
   public T read(ReadContext readContext) {
+    long hashRefEpoch = hashRefEpoch(readContext);
     Map map = newMap(readContext);
     int size = getAndClearNumElements();
     readElements(readContext, size, map);
-    return onMapRead(map);
+    if (hashRefEpoch < 0) {
+      return onMapRead(map);
+    }
+    return onMapRead(readContext, map, hashRefEpoch);
+  }
+
+  /** Captures the active-back-reference epoch for mutable hash Map reads. */
+  @CodegenInvoke
+  public final long hashRefEpoch(ReadContext readContext) {
+    return repairsMutableHash ? readContext.getRefReader().getMaterializingRefEpoch() : -1;
   }
 
   public void readElements(ReadContext readContext, int size, Map map) {
@@ -1012,4 +1026,15 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
   public abstract T onMapCopy(Map map);
 
   public abstract T onMapRead(Map map);
+
+  /** Completes a generated or interpreted map read using the same hash repair owner. */
+  @CodegenInvoke
+  public final T onMapRead(ReadContext readContext, Map map, long hashRefEpoch) {
+    T value = onMapRead(map);
+    if (hashRefEpoch >= 0
+        && hashRefEpoch != readContext.getRefReader().getMaterializingRefEpoch()) {
+      HashContainerReadState.trackMap(readContext, map);
+    }
+    return value;
+  }
 }
