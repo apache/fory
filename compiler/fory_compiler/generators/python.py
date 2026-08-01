@@ -623,14 +623,26 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
                 field_args.append(f"default_factory={default_factory}")
             else:
                 field_args.append(f"default={default_expr}")
-            field_default = f"pyfory.field({', '.join(field_args)}){trailing_comment}"
+
+            field_line = (
+                f"{field_name}: {python_type} = "
+                f"pyfory.field({', '.join(field_args)}){trailing_comment}"
+            )
+
+            if len(f"    {field_line}") > 80:
+                lines.append(f"{field_name}: {python_type} = pyfory.field(")
+                for arg in field_args:
+                    lines.append(f"    {arg},")
+                lines.append(f"){trailing_comment}")
+            else:
+                lines.append(field_line)
         else:
             if default_factory is not None:
                 field_default = f"field(default_factory={default_factory})"
             else:
                 field_default = f"{default_expr}{trailing_comment}"
 
-        lines.append(f"{field_name}: {python_type} = {field_default}")
+            lines.append(f"{field_name}: {python_type} = {field_default}")
 
         return lines
 
@@ -683,7 +695,14 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
                 expr = f"({placeholder_literal} if self.{field_name} is not None else 'None')"
             else:
                 expr = f"repr(self.{field_name})"
-            lines.append(f'{ind}        parts.append("{field_name}=" + {expr})')
+            line = f'{ind}        parts.append("{field_name}=" + {expr})'
+            if len(line) > 80:
+                lines.append(f"{ind}        parts.append(")
+                lines.append(f'{ind}            "{field_name}="')
+                lines.append(f"{ind}            + {expr}")
+                lines.append(f"{ind}        )")
+            else:
+                lines.append(line)
         lines.append(f'{ind}        return "{message.name}(" + ", ".join(parts) + ")"')
         return lines
 
@@ -1013,9 +1032,9 @@ class PythonGenerator(PythonServiceGeneratorMixin, BaseGenerator):
         lines.append("    if _threadsafe_fory is None:")
         lines.append("        with _fory_lock:")
         lines.append("            if _threadsafe_fory is None:")
-        lines.append(
-            "                _threadsafe_fory = pyfory.ThreadSafeFory(fory_factory=_create_fory)"
-        )
+        lines.append("                _threadsafe_fory = pyfory.ThreadSafeFory(")
+        lines.append("                    fory_factory=_create_fory")
+        lines.append("                )")
         lines.append("    return _threadsafe_fory")
         return lines
 
