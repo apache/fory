@@ -290,6 +290,13 @@ public class CompatibleFieldConvertTest extends ForyTestBase {
     public BigDecimal value = new BigDecimal("0.5");
   }
 
+  public static final class DecimalConverterSink {
+    @ForyField(id = 6)
+    public int decimalInt;
+
+    public ForyExtraFields extraFields;
+  }
+
   public static final class NanStringWriter {
     @ForyField(id = 0)
     public double value = Double.NaN;

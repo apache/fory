@@ -29,8 +29,8 @@ import org.apache.fory.collection.IdentityObjectIntMap;
  */
 public class MetaWriteContext {
   /**
-   * Classes whose definitions have already been announced to the peer, mapped to the protocol id
-   * used by the current or shared meta-share session.
+   * Keys already announced to the peer, mapped to the protocol id used by the current or shared
+   * meta-share session.
    */
-  public final IdentityObjectIntMap<Class<?>> classMap = new IdentityObjectIntMap<>(1, 0.5f);
+  public final IdentityObjectIntMap<Object> classMap = new IdentityObjectIntMap<>(1, 0.5f);
 }

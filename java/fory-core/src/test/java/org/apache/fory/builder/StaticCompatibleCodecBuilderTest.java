@@ -48,6 +48,7 @@ import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.FieldCodecCategory;
+import org.apache.fory.serializer.ForyExtraFields;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.StaticGeneratedStructSerializer;
 import org.apache.fory.serializer.StaticGeneratedStructSerializer.RemoteFieldInfo;
@@ -316,6 +317,71 @@ public class StaticCompatibleCodecBuilderTest {
       Object result = reader.deserialize(bytes);
       Assert.assertSame(result.getClass(), readerType);
       Assert.assertEquals(invoke(readerType, result, "id"), 73);
+    }
+  }
+
+  @Test
+  public void testRecordExtraFieldsSinkRejected() throws Exception {
+    // A record cannot host an extra-fields sink: it is built from constructor arguments and is
+    // immutable, so unmatched fields cannot be captured into it mid-read.
+    assumeRecordSupport();
+    CompilationResult recordResult =
+        compile(
+            "test.RecordWithExtraFieldsSink",
+            "package test;\n"
+                + "import org.apache.fory.serializer.ForyExtraFields;\n"
+                + "public record RecordWithExtraFieldsSink(int id, ForyExtraFields extraFields) {}\n");
+    CompilationResult writerResult =
+        compile(
+            "test.RecordWithExtraFieldsSink",
+            "package test;\n"
+                + "public class RecordWithExtraFieldsSink {\n"
+                + "  public int id;\n"
+                + "  public int extra;\n"
+                + "  public RecordWithExtraFieldsSink() {}\n"
+                + "}\n");
+    Assert.assertTrue(recordResult.success, recordResult.diagnostics());
+    Assert.assertTrue(writerResult.success, writerResult.diagnostics());
+    try (URLClassLoader recordLoader = recordResult.classLoader();
+        URLClassLoader writerLoader = writerResult.classLoader()) {
+      Class<?> recordType = recordLoader.loadClass("test.RecordWithExtraFieldsSink");
+      Class<?> writerType = writerLoader.loadClass("test.RecordWithExtraFieldsSink");
+
+      // The rejection is enforced at the descriptor-exclusion choke point in
+      // TypeResolver.buildFieldDescriptors, which every serializer builds through
+      Object record =
+          recordType.getDeclaredConstructor(int.class, ForyExtraFields.class).newInstance(7, null);
+      Object writerValue = writerType.getConstructor().newInstance();
+      setField(writerType, writerValue, "id", 7);
+      setField(writerType, writerValue, "extra", 42);
+
+      for (boolean codegen : new boolean[] {false, true}) {
+        // Write side
+        Fory recordFory =
+            compatibleFory(recordLoader, recordType, false, "record-write-" + codegen, codegen);
+        recordFory.setMetaWriteContext(new MetaWriteContext());
+        RuntimeException onWrite =
+            Assert.expectThrows(RuntimeException.class, () -> recordFory.serialize(record));
+        Assert.assertTrue(
+            rootCauseMessage(onWrite).contains("not supported on records"),
+            "write codegen=" + codegen + " -> " + rootCauseMessage(onWrite));
+
+        // Read side
+        Fory writer =
+            compatibleFory(
+                writerLoader, writerType, false, "record-read-writer-" + codegen, codegen);
+        writer.setMetaWriteContext(new MetaWriteContext());
+        byte[] bytes = writer.serialize(writerValue);
+        Fory reader =
+            compatibleFory(
+                recordLoader, recordType, false, "record-read-reader-" + codegen, codegen);
+        reader.setMetaReadContext(new MetaReadContext());
+        RuntimeException onRead =
+            Assert.expectThrows(RuntimeException.class, () -> reader.deserialize(bytes));
+        Assert.assertTrue(
+            rootCauseMessage(onRead).contains("not supported on records"),
+            "read codegen=" + codegen + " -> " + rootCauseMessage(onRead));
+      }
     }
   }
 
@@ -747,6 +813,14 @@ public class StaticCompatibleCodecBuilderTest {
   @SuppressWarnings("unchecked")
   private static Class<Object> cast(Class<?> type) {
     return (Class<Object>) type;
+  }
+
+  private static String rootCauseMessage(Throwable t) {
+    Throwable cause = t;
+    while (cause.getCause() != null && cause.getCause() != cause) {
+      cause = cause.getCause();
+    }
+    return String.valueOf(cause.getMessage());
   }
 
   private static CompilationResult compile(String typeName, String source) throws IOException {

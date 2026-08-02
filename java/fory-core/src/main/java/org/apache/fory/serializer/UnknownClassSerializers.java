@@ -93,29 +93,21 @@ public final class UnknownClassSerializers {
       }
     }
 
-    /**
-     * Multiple un existed class will correspond to this `UnknownStruct`. When querying classinfo by
-     * `class`, it may dispatch to same `UnknownClassSerializer`, so we can't use `typeDef` in this
-     * serializer, but use `typeDef` in `UnknownStruct` instead.
-     *
-     * <p>UnknownStruct is registered with a fixed internal typeId for dispatch. This serializer
-     * rewinds that placeholder typeId and writes the original class's typeId, then writes the
-     * shared TypeDef inline using the stream meta protocol.
-     */
-    private void writeTypeDef(WriteContext writeContext, UnknownClass.UnknownStruct value) {
+    /** Writes the shared {@code typeDef} inline using the stream meta protocol. */
+    private static void writeTypeDefMeta(WriteContext writeContext, TypeDef typeDef) {
       MemoryBuffer buffer = writeContext.getBuffer();
       MetaWriteContext metaWriteContext = writeContext.getMetaWriteContext();
-      IdentityObjectIntMap classMap = metaWriteContext.classMap;
+      IdentityObjectIntMap<Object> classMap = metaWriteContext.classMap;
       int newId = classMap.size;
-      // class not exist, use class def id for identity.
-      int id = classMap.putOrGet(value.typeDef.getId(), newId);
+      // Key by TypeDef identity; see MetaWriteContext#classMap for the shared dedup contract.
+      int id = classMap.putOrGet(typeDef, newId);
       if (id >= 0) {
         // Reference to previously written type: (index << 1) | 1, LSB=1
         buffer.writeVarUInt32((id << 1) | 1);
       } else {
         // New type: index << 1, LSB=0, followed by TypeDef bytes inline
         buffer.writeVarUInt32(newId << 1);
-        buffer.writeBytes(value.typeDef.getEncoded());
+        buffer.writeBytes(typeDef.getEncoded());
       }
     }
 
@@ -135,7 +127,7 @@ public final class UnknownClassSerializers {
       return 5;
     }
 
-    private int resolveTypeId(TypeDef typeDef) {
+    private static int resolveTypeId(TypeDef typeDef) {
       if (typeDef.getClassSpec().isEnum) {
         if (typeDef.isNamed()) {
           return Types.NAMED_ENUM;
@@ -148,15 +140,23 @@ public final class UnknownClassSerializers {
       return typeDef.isCompatible() ? Types.COMPATIBLE_STRUCT : Types.STRUCT;
     }
 
-    @Override
-    public void write(WriteContext writeContext, Object v) {
+    /**
+     * Writes the real type id for {@code typeDef}, then calls {@link #writeTypeDefMeta} to write
+     * the schema itself.
+     *
+     * <p>UnknownStruct is registered with a fixed internal placeholder typeId for dispatch, since
+     * multiple unknown classes share this one serializer and the real typeId is only known from the
+     * value's own {@code TypeDef}. Callers must have just written that placeholder -- for example
+     * through {@link TypeResolver#writeTypeInfo} -- immediately before calling this method, since
+     * it rewinds the buffer to overwrite it.
+     */
+    public static void writeUnknownStructHeader(WriteContext writeContext, TypeDef typeDef) {
       MemoryBuffer buffer = writeContext.getBuffer();
-      UnknownClass.UnknownStruct value = (UnknownClass.UnknownStruct) v;
-      int typeId = resolveTypeId(value.typeDef);
-      int userTypeId = value.typeDef.isNamed() ? -1 : value.typeDef.getUserTypeId();
+      int typeId = resolveTypeId(typeDef);
+      int userTypeId = typeDef.isNamed() ? -1 : typeDef.getUserTypeId();
       int typeIdSize = 1;
       int userTypeIdSize = userTypeId != -1 ? computeVarUInt32Size(userTypeId) : 0;
-      if (config.isXlang()) {
+      if (writeContext.isCrossLanguage()) {
         buffer.writeUInt8(typeId);
         if (userTypeIdSize > 0) {
           buffer.writeVarUInt32(userTypeId);
@@ -183,8 +183,15 @@ public final class UnknownClassSerializers {
           buffer.writeBytes(payload);
         }
       }
-      writeTypeDef(writeContext, value);
+      writeTypeDefMeta(writeContext, typeDef);
+    }
+
+    @Override
+    public void write(WriteContext writeContext, Object v) {
+      UnknownClass.UnknownStruct value = (UnknownClass.UnknownStruct) v;
       TypeDef typeDef = value.typeDef;
+      writeUnknownStructHeader(writeContext, typeDef);
+      MemoryBuffer buffer = writeContext.getBuffer();
       ClassFieldsInfo fieldsInfo = getClassFieldsInfo(typeDef);
       if (config.checkClassVersion()) {
         buffer.writeInt32(fieldsInfo.classVersionHash);

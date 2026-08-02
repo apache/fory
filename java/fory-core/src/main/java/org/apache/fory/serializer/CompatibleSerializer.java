@@ -26,6 +26,7 @@ import org.apache.fory.builder.CompatibleCodecBuilder;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.context.RefReader;
+import org.apache.fory.context.RefWriter;
 import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -65,13 +66,16 @@ import org.apache.fory.util.record.RecordUtils;
 public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
   private static final Logger LOG = LoggerFactory.getLogger(CompatibleSerializer.class);
 
+  private final TypeDef typeDef;
   private final SerializationFieldInfo[] allFields;
   private final CompatibleCollectionArrayReader.ReadAction[] allCompatibleReadActions;
   private final boolean hasCompatibleCollectionArrayRead;
   private final RecordInfo recordInfo;
+  private final FieldAccessor extraFieldsSinkAccessor;
   private Serializer<T> serializer;
   private final boolean hasDefaultValues;
   private final DefaultValueUtils.DefaultValueField[] defaultValueFields;
+  private static final Object NOT_FOUND = new Object();
 
   public CompatibleSerializer(TypeResolver typeResolver, Class<T> type, TypeDef typeDef) {
     super(typeResolver, type);
@@ -79,6 +83,11 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
         !config.checkClassVersion(),
         "Class version check should be disabled when compatible mode is enabled.");
     Preconditions.checkArgument(config.isMetaShareEnabled(), "Meta share must be enabled.");
+    this.typeDef = typeDef;
+    this.extraFieldsSinkAccessor =
+        (type == null || !ForyExtraFieldsSupport.isEnabled(config))
+            ? null
+            : ForyExtraFieldsSupport.findSinkAccessor(type);
     if (Utils.DEBUG_OUTPUT_ENABLED) {
       LOG.info("========== CompatibleSerializer TypeDef for {} ==========", type.getName());
       LOG.info("TypeDef fieldsInfo count: {}", typeDef.getFieldCount());
@@ -216,6 +225,13 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
   @Override
   public void write(WriteContext writeContext, T value) {
     MemoryBuffer buffer = writeContext.getBuffer();
+    if (extraFieldsSinkAccessor != null) {
+      ForyExtraFields extraField = (ForyExtraFields) extraFieldsSinkAccessor.getObject(value);
+      if (extraField != null && !extraField.isEmpty()) {
+        writeFieldsIncludingExtraFields(writeContext, value, extraField);
+        return;
+      }
+    }
     if (serializer == null) {
       // xlang mode will register class and create serializer in advance, it won't go to here.
       serializer =
@@ -223,6 +239,73 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
               .createSerializerSafe(type, () -> new ObjectSerializer<>(typeResolver, type));
     }
     serializer.write(writeContext, value);
+  }
+
+  /**
+   * Writes all fields in remote-sorted order under the remote TypeDef schema: matched fields are
+   * read from local getters, unmatched fields are read from the {@link ForyExtraFields} map using
+   * fieldInfo.
+   */
+  private void writeFieldsIncludingExtraFields(
+      WriteContext writeContext, T value, ForyExtraFields extraField) {
+    RefWriter refWriter = writeContext.getRefWriter();
+    Generics generics = writeContext.getGenerics();
+    for (SerializationFieldInfo fieldInfo : allFields) {
+      writeFieldByCodecCategory(writeContext, value, refWriter, generics, fieldInfo, extraField);
+    }
+  }
+
+  private void writeFieldByCodecCategory(
+      WriteContext writeContext,
+      T value,
+      RefWriter refWriter,
+      Generics generics,
+      SerializationFieldInfo fieldInfo,
+      ForyExtraFields extraField) {
+
+    MemoryBuffer buffer = writeContext.getBuffer();
+
+    boolean useExtraField = false;
+    Object fieldValue = null;
+
+    Object temp =
+        extraField.getOrDefault(
+            ForyExtraFieldsSupport.fieldIdentity(fieldInfo.descriptor), NOT_FOUND);
+    if (temp != NOT_FOUND) {
+      useExtraField = true;
+      fieldValue = temp; // might be null, which is valid
+    }
+
+    switch (fieldInfo.codecCategory) {
+      case BUILD_IN:
+        if (useExtraField) {
+          AbstractObjectSerializer.writeBuildInFieldValue(
+              writeContext, typeResolver, refWriter, fieldInfo, buffer, fieldValue);
+        } else {
+          AbstractObjectSerializer.writeBuildInField(
+              writeContext, typeResolver, refWriter, fieldInfo, buffer, value);
+        }
+        return;
+
+      case CONTAINER:
+        if (!useExtraField) {
+          fieldValue = fieldInfo.fieldAccessor.getObject(value);
+        }
+        writeContainerFieldValue(
+            writeContext, typeResolver, refWriter, generics, fieldInfo, buffer, fieldValue);
+        return;
+
+      case OTHER:
+        if (!useExtraField) {
+          fieldValue = fieldInfo.fieldAccessor.getObject(value);
+        }
+        AbstractObjectSerializer.writeField(
+            writeContext, typeResolver, refWriter, fieldInfo, buffer, fieldValue);
+        return;
+
+      default:
+        throw new IllegalStateException("Unknown field codec category " + fieldInfo.codecCategory);
+    }
   }
 
   private T newInstance() {
@@ -262,6 +345,23 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
     return targetObject;
   }
 
+  /**
+   * Puts {@code value} into the sink on {@code target}, stashing the remote TypeDef on first use.
+   */
+  private void captureExtraField(
+      ReadContext readContext, Object target, Descriptor descriptor, Object value) {
+    if (target == null) {
+      throw new IllegalArgumentException("Cannot capture extra field for null target");
+    }
+    ForyExtraFieldsSupport.capture(
+        readContext,
+        target,
+        extraFieldsSinkAccessor,
+        typeDef,
+        ForyExtraFieldsSupport.fieldIdentity(descriptor),
+        value);
+  }
+
   private void setFieldValue(T targetObject, SerializationFieldInfo fieldInfo, Object fieldValue) {
     if (fieldInfo.fieldAccessor != null) {
       fieldInfo.fieldAccessor.putObject(targetObject, fieldValue);
@@ -285,15 +385,23 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
     RefReader refReader = readContext.getRefReader();
     Generics generics = readContext.getGenerics();
     for (SerializationFieldInfo fieldInfo : allFields) {
-      fields[counter++] = readField(readContext, refReader, generics, fieldInfo, buffer, null);
+      fields[counter++] =
+          readField(readContext, refReader, generics, fieldInfo, buffer, null, false);
     }
   }
 
+  /**
+   * Reads a converter field: converts the wire value into the local field. When a sink is declared
+   * also preserves the untouched remote-typed value in the sink
+   */
   private void compatibleRead(
       ReadContext readContext, SerializationFieldInfo fieldInfo, Object obj) {
     Object fieldValue =
         FieldConverters.readSourceScalar(readContext, fieldInfo, fieldInfo.fieldConverter);
     fieldInfo.fieldConverter.set(obj, fieldValue);
+    if (extraFieldsSinkAccessor != null) {
+      captureExtraField(readContext, obj, fieldInfo.descriptor, fieldValue);
+    }
   }
 
   private void readFieldsWithCompatibleCollectionArray(ReadContext readContext, T targetObject) {
@@ -323,7 +431,8 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
       if (Utils.DEBUG_OUTPUT_ENABLED) {
         printFieldDebugInfo(fieldInfo, buffer);
       }
-      fields[counter++] = readField(readContext, refReader, generics, fieldInfo, buffer, action);
+      fields[counter++] =
+          readField(readContext, refReader, generics, fieldInfo, buffer, action, false);
     }
   }
 
@@ -339,12 +448,14 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
     if (fieldAccessor == null) {
       if (fieldInfo.codecCategory == FieldGroups.FieldCodecCategory.BUILD_IN) {
         if (fieldInfo.fieldConverter == null) {
-          FieldSkipper.skipField(readContext, typeResolver, refReader, fieldInfo, buffer);
+          readUnmatchedField(
+              readContext, targetObject, refReader, generics, fieldInfo, buffer, action);
         } else {
           compatibleRead(readContext, fieldInfo, targetObject);
         }
       } else {
-        readField(readContext, refReader, generics, fieldInfo, buffer, action);
+        readUnmatchedField(
+            readContext, targetObject, refReader, generics, fieldInfo, buffer, action);
       }
       return;
     }
@@ -354,7 +465,8 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
       return;
     }
     fieldAccessor.putObject(
-        targetObject, readField(readContext, refReader, generics, fieldInfo, buffer, action));
+        targetObject,
+        readField(readContext, refReader, generics, fieldInfo, buffer, action, false));
   }
 
   private Object readField(
@@ -363,7 +475,8 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
       Generics generics,
       SerializationFieldInfo fieldInfo,
       MemoryBuffer buffer,
-      CompatibleCollectionArrayReader.ReadAction action) {
+      CompatibleCollectionArrayReader.ReadAction action,
+      boolean captureUnmatched) {
     if (action != null) {
       return CompatibleCollectionArrayReader.read(readContext, fieldInfo.refMode, action);
     }
@@ -374,7 +487,7 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
               FieldConverters.readSourceScalar(readContext, fieldInfo, fieldInfo.fieldConverter);
           return fieldInfo.fieldConverter.convert(sourceValue);
         }
-        if (fieldInfo.fieldAccessor == null) {
+        if (fieldInfo.fieldAccessor == null && !captureUnmatched) {
           FieldSkipper.skipField(readContext, typeResolver, refReader, fieldInfo, buffer);
           return null;
         }
@@ -389,6 +502,23 @@ public class CompatibleSerializer<T> extends AbstractObjectSerializer<T> {
       default:
         throw new IllegalStateException("Unknown field codec category " + fieldInfo.codecCategory);
     }
+  }
+
+  private void readUnmatchedField(
+      ReadContext readContext,
+      T targetObject,
+      RefReader refReader,
+      Generics generics,
+      SerializationFieldInfo fieldInfo,
+      MemoryBuffer buffer,
+      CompatibleCollectionArrayReader.ReadAction action) {
+    if (extraFieldsSinkAccessor == null) {
+      FieldSkipper.skipField(readContext, typeResolver, refReader, fieldInfo, buffer);
+      return;
+    }
+
+    Object value = readField(readContext, refReader, generics, fieldInfo, buffer, action, true);
+    captureExtraField(readContext, targetObject, fieldInfo.descriptor, value);
   }
 
   private void printFieldDebugInfo(SerializationFieldInfo fieldInfo, MemoryBuffer buffer) {

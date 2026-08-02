@@ -26,11 +26,14 @@ import org.apache.fory.annotation.Internal;
 import org.apache.fory.context.ReadContext;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.meta.TypeDef;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.TypeInfo;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
+import org.apache.fory.serializer.ForyExtraFields;
+import org.apache.fory.serializer.ForyExtraFieldsSupport;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.BFloat16;
 import org.apache.fory.type.Descriptor;
@@ -386,6 +389,26 @@ public class FieldConverters {
         }
         throw new DeserializationException("Unsupported compatible scalar source " + fieldName);
     }
+  }
+
+  /**
+   * Reads a converter field's raw wire value, preserves that untouched remote-typed value in the
+   * {@link ForyExtraFields} sink identified by {@code id}, then converts it via {@code
+   * from.fieldConverter} into the local field's target type. Used by generated compatible codecs in
+   * place of the fused {@code readXTarget} helpers whenever the class declares an extra-fields sink
+   * — see {@code CompatibleCodecBuilder.fieldConverterTargetRead}.
+   */
+  @Internal
+  public static Object readTargetAndCapture(
+      ReadContext readContext,
+      SerializationFieldInfo from,
+      Object target,
+      FieldAccessor sinkAccessor,
+      TypeDef typeDef,
+      ForyExtraFields.FieldIdentity id) {
+    Object sourceValue = readSourceScalar(readContext, from, from.fieldConverter);
+    ForyExtraFieldsSupport.capture(readContext, target, sinkAccessor, typeDef, id, sourceValue);
+    return from.fieldConverter.convert(sourceValue);
   }
 
   @Internal

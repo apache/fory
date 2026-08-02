@@ -83,6 +83,8 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.CodegenSerializer;
 import org.apache.fory.serializer.CodegenSerializer.LazyInitBeanSerializer;
 import org.apache.fory.serializer.CompatibleSerializer;
+import org.apache.fory.serializer.ForyExtraFields;
+import org.apache.fory.serializer.ForyExtraFieldsSupport;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.PrimitiveSerializers;
 import org.apache.fory.serializer.Serializer;
@@ -514,6 +516,30 @@ public abstract class TypeResolver {
 
   public abstract TypeInfo getTypeInfo(Class<?> cls, TypeInfoHolder classInfoHolder);
 
+  public final TypeInfo getTypeInfoByTypeDefId(long typeDefId) {
+    return extRegistry.typeInfoByTypeDefId.get(typeDefId);
+  }
+
+  public final Serializer<?> getExtraFieldsWriteSerializer(Class<?> cls, long typeDefId) {
+    Map<Long, Serializer<?>> idToSerializer = extRegistry.extraFieldsSerializers.get(cls);
+    return idToSerializer != null ? idToSerializer.get(typeDefId) : null;
+  }
+
+  /**
+   * Records the reader-class serializer used to replay {@code cls} under the remote {@code
+   * typeDefId} it was captured from.
+   */
+  private void registerExtraFieldsSerializer(
+      Class<?> cls, long typeDefId, Serializer<?> serializer, boolean generated) {
+    Map<Long, Serializer<?>> idToSerializer =
+        extRegistry.extraFieldsSerializers.computeIfAbsent(cls, k -> new ConcurrentHashMap<>());
+    if (generated) {
+      idToSerializer.put(typeDefId, serializer);
+    } else {
+      idToSerializer.putIfAbsent(typeDefId, serializer);
+    }
+  }
+
   /**
    * Writes class info to buffer using the unified type system. This is the single implementation
    * shared by both ClassResolver and XtypeResolver.
@@ -633,19 +659,22 @@ public abstract class TypeResolver {
       WriteContext writeContext, MemoryBuffer buffer, TypeInfo typeInfo) {
     MetaWriteContext metaWriteContext = writeContext.getMetaWriteContext();
     assert metaWriteContext != null : SET_META_WRITE_CONTEXT_MSG;
-    IdentityObjectIntMap<Class<?>> classMap = metaWriteContext.classMap;
+    TypeDef typeDef = typeInfo.typeDef;
+    if (typeDef == null) {
+      typeDef = buildTypeDef(typeInfo);
+    }
+    // Dedup by TypeDef identity, not by typeInfo.type: one local class can legitimately announce
+    // several distinct TypeDefs in a single graph when forwarding {@code ForyExtraFields} from two
+    // remote versions of the same class.
+    IdentityObjectIntMap<Object> classMap = metaWriteContext.classMap;
     int newId = classMap.size;
-    int id = classMap.putOrGet(typeInfo.type, newId);
+    int id = classMap.putOrGet(typeDef, newId);
     if (id >= 0) {
       // Reference to previously written type: (index << 1) | 1, LSB=1
       buffer.writeVarUInt32((id << 1) | 1);
     } else {
       // New type: index << 1, LSB=0, followed by TypeDef bytes inline
       buffer.writeVarUInt32(newId << 1);
-      TypeDef typeDef = typeInfo.typeDef;
-      if (typeDef == null) {
-        typeDef = buildTypeDef(typeInfo);
-      }
       buffer.writeBytes(typeDef.getEncoded());
     }
   }
@@ -1283,9 +1312,13 @@ public abstract class TypeResolver {
             jitContext.registerSerializerJITCallback(
                 () -> CompatibleSerializer.class,
                 () -> CodecUtils.loadOrGenCompatibleCodecClass(this, cls, typeDef),
-                c ->
-                    typeInfo.setSerializer(
-                        this, newGeneratedCompatibleSerializer(cls, c, typeDef)));
+                c -> {
+                  Serializer<?> gen = newGeneratedCompatibleSerializer(cls, c, typeDef);
+                  typeInfo.setSerializer(this, gen);
+                  if (typeInfo.hasExtraFieldsSink()) {
+                    registerExtraFieldsSerializer(cls, typeDef.getId(), gen, true);
+                  }
+                });
       } else if (sc == null) {
         sc = CompatibleSerializer.class;
       }
@@ -1305,9 +1338,17 @@ public abstract class TypeResolver {
     if (StaticGeneratedStructSerializer.class.isAssignableFrom(sc)) {
       typeInfo.setSerializer(this, newStaticGeneratedStructSerializer(sc, cls, typeDef));
     } else if (sc == CompatibleSerializer.class) {
-      typeInfo.setSerializer(this, new CompatibleSerializer(this, cls, typeDef));
+      CompatibleSerializer<?> cs = new CompatibleSerializer<>(this, cls, typeDef);
+      typeInfo.setSerializer(this, cs);
+      if (typeInfo.hasExtraFieldsSink()) {
+        registerExtraFieldsSerializer(cls, typeDef.getId(), cs, false);
+      }
     } else if (GeneratedCompatibleSerializer.class.isAssignableFrom(sc)) {
-      typeInfo.setSerializer(this, newGeneratedCompatibleSerializer(cls, sc, typeDef));
+      Serializer<?> gen = newGeneratedCompatibleSerializer(cls, sc, typeDef);
+      typeInfo.setSerializer(this, gen);
+      if (typeInfo.hasExtraFieldsSink()) {
+        registerExtraFieldsSerializer(cls, typeDef.getId(), gen, true);
+      }
     } else {
       typeInfo.setSerializer(this, Serializers.newSerializer(this, cls, sc));
     }
@@ -1877,9 +1918,15 @@ public abstract class TypeResolver {
     List<Descriptor> result = new ArrayList<>(descriptors.size());
     boolean globalRefTracking = trackingRef();
     boolean isXlang = isCrossLanguage();
+    // The extra-fields sink is a framework marker type, never a data field
+    boolean excludeExtraFieldsSink = ForyExtraFieldsSupport.isEnabled(config);
 
     for (Descriptor descriptor : descriptors) {
       if (!searchParent && !descriptor.getDeclaringClass().equals(clz.getName())) {
+        continue;
+      }
+      if (excludeExtraFieldsSink && descriptor.getRawType() == ForyExtraFields.class) {
+        ForyExtraFieldsSupport.rejectRecordSink(clz);
         continue;
       }
       // Compute the final isTrackingRef value:
@@ -2460,6 +2507,11 @@ public abstract class TypeResolver {
     final IdentityHashMap<Class<?>, TypeInfo> abstractTypeInfo = new IdentityHashMap<>();
     final IdentityHashMap<Class<?>, TransformedTypeInfo[]> transformedTypeInfo =
         new IdentityHashMap<>();
+    // (reader class, remote TypeDef id) -> reader-class serializer that replays extra fields.
+    // Keyed by both because one remote TypeDef can be read into several local classes, each with
+    // its own replay serializer
+    final ConcurrentIdentityMap<Class<?>, Map<Long, Serializer<?>>> extraFieldsSerializers =
+        new ConcurrentIdentityMap<>();
     // avoid potential recursive call for seq codec generation.
     // ex. A->field1: B, B.field1: A
     final Set<Class<?>> getClassCtx = new HashSet<>();

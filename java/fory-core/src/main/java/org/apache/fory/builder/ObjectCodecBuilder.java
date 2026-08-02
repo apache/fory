@@ -921,6 +921,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
             TypeRef<?> castTypeRef = readValueTypeRef(d);
             Expression action =
                 deserializeField(
+                    bean,
                     buffer,
                     d,
                     // `bean` will be replaced by `Reference` to cut-off expr
@@ -958,7 +959,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     // use Reference to cut-off expr dependency.
     for (Descriptor d : group) {
       TypeRef<?> castTypeRef = readValueTypeRef(d);
-      Expression value = deserializeField(buffer, d, expr -> expr);
+      Expression value = deserializeField(bean, buffer, d, expr -> expr);
       Expression action = setFieldValue(bean, d, tryInlineCast(value, castTypeRef));
       groupExpressions.add(action);
     }
@@ -1299,12 +1300,16 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
 
     @Override
     Set<Expression> fixedScope(Expression bean) {
-      return ofHashSet(bean, heapBuffer, cursor);
+      // readContextRef() is included so {@link CompatibleSerializer.captureExtraField(...)}
+      // resolves correctly if this group is extracted into a generated helper method;
+      // see {@link ExpressionOptimizer#invokeGenerated(...)}: only referenced cutpoints become
+      // helper method parameters.
+      return ofHashSet(bean, heapBuffer, cursor, readContextRef());
     }
 
     @Override
     Set<Expression> compressedScope(Expression bean) {
-      return ofHashSet(bean, buffer, heapBuffer);
+      return ofHashSet(bean, buffer, heapBuffer, readContextRef());
     }
   }
 
@@ -1359,12 +1364,12 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
 
     @Override
     Set<Expression> fixedScope(Expression bean) {
-      return ofHashSet(bean, buffer, cursor);
+      return ofHashSet(bean, buffer, cursor, readContextRef());
     }
 
     @Override
     Set<Expression> compressedScope(Expression bean) {
-      return ofHashSet(bean, buffer, cursor);
+      return ofHashSet(bean, buffer, cursor, readContextRef());
     }
   }
 

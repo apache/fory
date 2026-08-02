@@ -478,6 +478,7 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
     Reference buffer = new Reference(BUFFER_NAME, bufferTypeRef, false);
     Expression readAndSet =
         deserializeField(
+            value,
             buffer,
             descriptor,
             fieldValue ->
@@ -492,7 +493,7 @@ public final class StaticCompatibleCodecBuilder extends ObjectCodecBuilder {
     ctx.clearExprState();
     Reference target = new Reference(recordValue, descriptor.getTypeRef(), false);
     Reference buffer = new Reference(BUFFER_NAME, bufferTypeRef, false);
-    Expression fieldValue = deserializeField(buffer, descriptor, value -> value);
+    Expression fieldValue = deserializeField(target, buffer, descriptor, value -> value);
     Expression assign =
         new Expression.Assign(target, tryInlineCast(fieldValue, descriptor.getTypeRef()));
     Code.ExprCode readCode = assign.genCode(ctx);

@@ -39,20 +39,26 @@ import org.apache.fory.Fory;
 import org.apache.fory.builder.Generated.GeneratedCompatibleSerializer;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.Expression;
+import org.apache.fory.codegen.Expression.Invoke;
 import org.apache.fory.codegen.Expression.Literal;
 import org.apache.fory.codegen.Expression.StaticInvoke;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.context.ReadContext;
+import org.apache.fory.context.WriteContext;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.TypeDef;
 import org.apache.fory.platform.GraalvmSupport;
+import org.apache.fory.reflect.FieldAccessor;
+import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.CodegenSerializer;
 import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
+import org.apache.fory.serializer.ForyExtraFields;
+import org.apache.fory.serializer.ForyExtraFieldsSupport;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
@@ -93,13 +99,22 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
   private static final String REMOTE_FIELD_INFOS_NAME = "_f_remoteFieldInfos";
   private static final String LOCAL_FIELD_INFOS_NAME = "_f_localFieldInfosByRemoteOrder";
   private static final String CONSTRUCTOR_TYPE_DEF_NAME = "_f_typeDef";
+  private static final String EXTRA_FIELDS_SINK_ACCESSOR_NAME = "_f_extraFieldsSinkAccessor";
+  private static final String EXTRA_FIELDS_LOCAL_NAME = "_f_extra";
+  private static final String EXTRA_FIELDS_FIELD_ID_NAME = "_f_extraFieldId";
 
   private final TypeDef typeDef;
   private final String defaultValueLanguage;
   private final DefaultValueUtils.DefaultValueField[] defaultValueFields;
   private final Map<Descriptor, Integer> fieldInfoIds = new IdentityHashMap<>();
+  private final Map<Descriptor, String> extraFieldsFieldIdNames = new IdentityHashMap<>();
+  private final Field extraFieldsSinkField;
   private String remoteFieldInfosName;
   private String localFieldInfosName;
+  private String extraFieldsSinkAccessorName;
+  private String storedTypeDefFieldName;
+  private Expression extraFieldsSinkExprBean;
+  private Expression extraFieldsSinkExpr;
 
   public CompatibleCodecBuilder(TypeRef<?> beanType, Fory fory, TypeDef typeDef) {
     super(beanType, fory, GeneratedCompatibleSerializer.class);
@@ -153,6 +168,10 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
     }
     this.defaultValueLanguage = defaultValueLanguage;
     this.defaultValueFields = defaultValueFields;
+    this.extraFieldsSinkField =
+        ForyExtraFieldsSupport.isEnabled(config)
+            ? ForyExtraFieldsSupport.findSinkField(beanClass)
+            : null;
   }
 
   // Must be static to be shared across the whole process life.
@@ -225,6 +244,16 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
             decodeCode);
     ctx.overrideMethod(
         readMethodName, decodeCode, Object.class, ReadContext.class, READ_CONTEXT_NAME);
+    if (extraFieldsSinkField != null) {
+      ctx.overrideMethod(
+          writeMethodName,
+          buildExtraFieldsWriteCode(),
+          void.class,
+          WriteContext.class,
+          WRITE_CONTEXT_NAME,
+          Object.class,
+          ROOT_OBJECT_NAME);
+    }
     registerJITNotifyCallback();
     ctx.addConstructor(
         constructorCode,
@@ -263,9 +292,62 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
     return Serializers.newSerializer(typeResolver, cls, serializerClass);
   }
 
-  @Override
-  public Expression buildEncodeExpression() {
-    throw new IllegalStateException("unreachable");
+  /**
+   * Generates the body of the {@code write} method for classes that declare a {@link
+   * ForyExtraFields} sink. Mirrors {@link CompatibleSerializer#write}.
+   */
+  private String buildExtraFieldsWriteCode() {
+    extraFieldsSinkAccessorExpr();
+    ctx.clearExprState();
+    String encodeCode = buildEncodeExpression().genCode(ctx).code();
+    encodeCode = ctx.optimizeMethodCode(encodeCode);
+    encodeCode = encodeCode == null ? "" : encodeCode;
+    StringBuilder body = new StringBuilder();
+    appendBufferAndRefWriterDeclarations(body, encodeCode);
+    body.append(
+        StringUtils.format(
+            "${extraType} ${extra} = (${extraType}) ${accessor}.getObject(${obj});\n"
+                + "if (${extra} == null || ${extra}.isEmpty()) {\n"
+                + "  this.${serializer}.write(${writeContext}, ${obj});\n"
+                + "  return;\n"
+                + "}\n",
+            "extraType",
+            ctx.type(ForyExtraFields.class),
+            "extra",
+            EXTRA_FIELDS_LOCAL_NAME,
+            "accessor",
+            extraFieldsSinkAccessorName,
+            "obj",
+            ROOT_OBJECT_NAME,
+            "serializer",
+            SERIALIZER_FIELD_NAME,
+            "writeContext",
+            WRITE_CONTEXT_NAME));
+    body.append(encodeCode);
+    return body.toString();
+  }
+
+  private void appendBufferAndRefWriterDeclarations(StringBuilder body, String encodeCode) {
+    body.append(
+        StringUtils.format(
+            "${bufferType} ${buffer} = ${writeContext}.getBuffer();\n",
+            "bufferType",
+            ctx.type(MemoryBuffer.class),
+            "buffer",
+            BUFFER_NAME,
+            "writeContext",
+            WRITE_CONTEXT_NAME));
+    if (encodeCode.contains(REF_WRITER_NAME)) {
+      body.append(
+          StringUtils.format(
+              "${refWriterType} ${refWriter} = (${refWriterType}) ${writeContext}.getRefWriter();\n",
+              "refWriterType",
+              ctx.type(concreteRefWriterType),
+              "refWriter",
+              REF_WRITER_NAME,
+              "writeContext",
+              WRITE_CONTEXT_NAME));
+    }
   }
 
   @Override
@@ -318,7 +400,7 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
       for (Descriptor descriptor : group) {
         FieldConverter<?> converter = descriptor.getFieldConverter();
         Expression targetValue =
-            converter == null ? null : fieldConverterTargetRead(descriptor, converter);
+            converter == null ? null : fieldConverterTargetRead(bean, descriptor, converter);
         if (targetValue != null) {
           expressions.add(
               new Expression.ListExpression(
@@ -327,6 +409,7 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
         } else {
           expressions.add(
               deserializeField(
+                  bean,
                   buffer,
                   descriptor,
                   value ->
@@ -341,15 +424,18 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
 
   @Override
   protected Expression deserializeField(
-      Expression buffer, Descriptor descriptor, Function<Expression, Expression> callback) {
+      Expression bean,
+      Expression buffer,
+      Descriptor descriptor,
+      Function<Expression, Expression> callback) {
     FieldConverter<?> converter = descriptor.getFieldConverter();
     if (shouldSkipField(descriptor)) {
       return skipField(descriptor);
     }
     if (converter == null) {
-      return super.deserializeField(buffer, descriptor, callback);
+      return super.deserializeField(bean, buffer, descriptor, callback);
     }
-    Expression targetValue = fieldConverterTargetRead(descriptor, converter);
+    Expression targetValue = fieldConverterTargetRead(bean, descriptor, converter);
     Preconditions.checkState(
         targetValue != null,
         "Unsupported compatible scalar converter target " + FieldConverters.toType(converter));
@@ -366,14 +452,15 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
         continue;
       }
       TypeRef<?> castTypeRef = readValueTypeRef(descriptor);
-      Expression value = deserializeField(buffer, descriptor, expression -> expression);
+      Expression value = deserializeField(bean, buffer, descriptor, expression -> expression);
       expressions.add(setFieldValue(bean, descriptor, tryInlineCast(value, castTypeRef)));
     }
     return expressions;
   }
 
   private boolean shouldSkipField(Descriptor descriptor) {
-    return descriptor.getField() == null
+    return extraFieldsSinkField == null
+        && descriptor.getField() == null
         && descriptor.getFieldConverter() == null
         && !descriptor.getRawType().isPrimitive();
   }
@@ -387,19 +474,125 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
   }
 
   @Override
+  protected Expression getFieldValue(Expression bean, Descriptor descriptor) {
+    if (extraFieldsSinkField != null && descriptor.getField() == null) {
+      if (extraFieldsSinkExpr == null || extraFieldsSinkExprBean != bean) {
+        extraFieldsSinkExprBean = bean;
+        extraFieldsSinkExpr =
+            tryInlineCast(
+                new Invoke(extraFieldsSinkAccessorExpr(), "getObject", OBJECT_TYPE, bean),
+                TypeRef.of(ForyExtraFields.class));
+      }
+      Invoke raw =
+          new Invoke(extraFieldsSinkExpr, "get", OBJECT_TYPE, extraFieldsFieldIdExpr(descriptor));
+      return tryInlineCast(raw, descriptor.getTypeRef());
+    }
+    return super.getFieldValue(bean, descriptor);
+  }
+
+  @Override
   protected Expression setFieldValue(Expression bean, Descriptor descriptor, Expression value) {
     if (descriptor.getField() == null) {
       FieldConverter<?> converter = descriptor.getFieldConverter();
       if (converter != null) {
         return setFieldConverterTargetValue(bean, descriptor, converter, value);
       }
-      // Field doesn't exist in current class, skip set this field value.
+      // If Field doesn't exist in current class,
+      if (extraFieldsSinkField != null) {
+        return new StaticInvoke(
+            ForyExtraFieldsSupport.class,
+            "capture",
+            TypeRef.of(void.class),
+            readContextRef(),
+            bean,
+            extraFieldsSinkAccessorExpr(),
+            typeDefFieldExpr(),
+            extraFieldsFieldIdExpr(descriptor),
+            value);
+      }
       // Note that the field value shouldn't be an inlined value, otherwise field value read may
-      // be ignored.
-      // Add an ignored call here to make expression type to void.
+      // be ignored. Add an ignored call here to make expression type to void.
       return new StaticInvoke(ExceptionUtils.class, "ignore", value);
     }
     return super.setFieldValue(bean, descriptor, value);
+  }
+
+  private String ensureLazyFieldGenerated(
+      String cachedFieldName, String nameConstant, TypeRef<?> fieldType, Expression initializer) {
+    if (cachedFieldName == null) {
+      cachedFieldName = ctx.newName(nameConstant);
+      ctx.addField(false, true, ctx.type(fieldType), cachedFieldName, initializer);
+    }
+    return cachedFieldName;
+  }
+
+  /**
+   * Returns a reference to a cached {@link ForyExtraFields.FieldIdentity} field for {@code
+   * descriptor}. The identity is the fory field id when the remote field has one, otherwise the
+   * {@code (declaringClass, name)} pair — mirroring {@link ForyExtraFieldsSupport}.
+   */
+  private Expression extraFieldsFieldIdExpr(Descriptor descriptor) {
+    Expression initializer;
+    if (descriptor.hasForyFieldId()) {
+      initializer =
+          new StaticInvoke(
+              ForyExtraFieldsSupport.class,
+              "fieldIdentity",
+              TypeRef.of(ForyExtraFields.FieldIdentity.class),
+              Literal.ofInt(descriptor.getForyFieldId()));
+    } else {
+      initializer =
+          new StaticInvoke(
+              ForyExtraFieldsSupport.class,
+              "fieldIdentity",
+              TypeRef.of(ForyExtraFields.FieldIdentity.class),
+              Literal.ofString(descriptor.getDeclaringClass()),
+              Literal.ofString(descriptor.getName()));
+    }
+    String cachedName =
+        ensureLazyFieldGenerated(
+            extraFieldsFieldIdNames.get(descriptor),
+            EXTRA_FIELDS_FIELD_ID_NAME,
+            TypeRef.of(ForyExtraFields.FieldIdentity.class),
+            initializer);
+    extraFieldsFieldIdNames.put(descriptor, cachedName);
+    return new Expression.Reference(cachedName, TypeRef.of(ForyExtraFields.FieldIdentity.class));
+  }
+
+  private Expression extraFieldsSinkAccessorExpr() {
+    extraFieldsSinkAccessorName =
+        ensureLazyFieldGenerated(
+            extraFieldsSinkAccessorName,
+            EXTRA_FIELDS_SINK_ACCESSOR_NAME,
+            TypeRef.of(FieldAccessor.class),
+            new StaticInvoke(
+                FieldAccessor.class,
+                "createAccessor",
+                TypeRef.of(FieldAccessor.class),
+                getOrCreateField(
+                    true,
+                    Field.class,
+                    extraFieldsSinkField.getName() + "SinkField",
+                    () ->
+                        new StaticInvoke(
+                            ReflectionUtils.class,
+                            "getField",
+                            TypeRef.of(Field.class),
+                            staticClassFieldExpr(
+                                extraFieldsSinkField.getDeclaringClass(),
+                                extraFieldsSinkField.getName() + "SinkDeclaringClass"),
+                            Literal.ofString(extraFieldsSinkField.getName())))));
+    return new Expression.Reference(extraFieldsSinkAccessorName, TypeRef.of(FieldAccessor.class));
+  }
+
+  private Expression typeDefFieldExpr() {
+    storedTypeDefFieldName =
+        ensureLazyFieldGenerated(
+            storedTypeDefFieldName,
+            "_f_storedTypeDef",
+            TypeRef.of(TypeDef.class),
+            new Expression.Reference(CONSTRUCTOR_TYPE_DEF_NAME, TypeRef.of(TypeDef.class)));
+    return new Expression.Reference(storedTypeDefFieldName, TypeRef.of(TypeDef.class));
   }
 
   private Expression setFieldConverterTargetValue(
@@ -414,8 +607,30 @@ public class CompatibleCodecBuilder extends ObjectCodecBuilder {
     return super.setFieldValue(bean, targetDescriptor, value);
   }
 
-  private Expression fieldConverterTargetRead(Descriptor descriptor, FieldConverter<?> converter) {
+  /**
+   * Builds the read expression for a converter field. When the class declares an extra-fields sink,
+   * replay must be able to emit the exact original remote-typed bytes on re-serialization, so the
+   * untouched pre-conversion value must be captured at read time, which requires the target {@code
+   * bean}. Every {@code deserializeField}/{@code deserializePrimitives} call site passes the real
+   * target bean, so capture works uniformly regardless of the converter field's remote type.
+   */
+  private Expression fieldConverterTargetRead(
+      Expression bean, Descriptor descriptor, FieldConverter<?> converter) {
     Class<?> targetType = converter.getField().getType();
+    if (extraFieldsSinkField != null) {
+      return tryInlineCast(
+          new StaticInvoke(
+              FieldConverters.class,
+              "readTargetAndCapture",
+              OBJECT_TYPE,
+              readContextRef(),
+              remoteFieldInfo(descriptor),
+              bean,
+              extraFieldsSinkAccessorExpr(),
+              typeDefFieldExpr(),
+              extraFieldsFieldIdExpr(descriptor)),
+          TypeRef.of(targetType));
+    }
     String helper = fieldConverterTargetReader(targetType);
     if (helper == null) {
       return null;
