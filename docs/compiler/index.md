@@ -23,9 +23,9 @@ Fory IDL is a schema definition language for Apache Fory that enables type-safe
 cross-language serialization. Define your data structures once and generate
 native data structure code for Java, Python, C++, Go, Rust,
 JavaScript/TypeScript, C#, Swift, Dart, Scala, and Kotlin. Fory IDL can also
-describe RPC services; for Java, Python, Go, Rust, C#, Dart, Scala, Kotlin, and
-JavaScript, the compiler can generate gRPC service companions that use Fory
-serialization for request and response payloads.
+describe RPC services; for Java, Python, Go, Rust, C++, C#, Dart, Scala, Kotlin,
+and JavaScript, the compiler can generate gRPC service companions that use
+Fory serialization for request and response payloads.
 
 ## Example Schema
 
@@ -88,21 +88,23 @@ service AnimalService {
 }
 ```
 
-Generate Java, Python, Go, Rust, C#, Dart, Scala, Kotlin, and JavaScript models
-plus gRPC service companions with:
+Generate Java, Python, Go, Rust, C++, C#, Dart, Scala, Kotlin, and JavaScript
+models plus gRPC service companions with:
 
 ```bash
-foryc animals.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
+foryc animals.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --cpp_out=./generated/cpp --csharp_out=./generated/csharp --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
 ```
 
 The generated service code uses normal gRPC APIs, but request and response
 objects are serialized with Fory. Applications provide their own grpc-java,
 grpc-kotlin, Scala grpc-java APIs, `grpcio`, grpc-go, Rust `tonic` and `bytes`,
-C# `Grpc.Core.Api` and hosting/client dependencies, or Dart `package:grpc`; Fory
-packages do not add gRPC as a hard dependency. Python companions use `grpc.aio`
-by default and can be generated in sync mode with `--grpc-python-mode=sync`.
-JavaScript Node.js companions use `@grpc/grpc-js`; browser clients are generated
-separately with `--grpc-web` and use `grpc-web`.
+gRPC C++ 1.39.0 or later, C# `Grpc.Core.Api` and hosting/client dependencies, or
+Dart `package:grpc`; Fory packages do not add gRPC as a hard dependency. See
+[C++ gRPC Support](../guide/cpp/grpc-support.md) for C++ linking instructions.
+Python companions use `grpc.aio` by default and can be generated in sync mode
+with `--grpc-python-mode=sync`. JavaScript Node.js companions use
+`@grpc/grpc-js`; browser clients are generated separately with `--grpc-web` and
+use `grpc-web`.
 
 ## Why Fory IDL?
 
@@ -176,7 +178,7 @@ message Person {
 foryc example.fdl --output ./generated
 
 # Generate for specific languages
-foryc example.fdl --lang java,python,csharp,javascript,swift,dart,scala,kotlin --output ./generated
+foryc example.fdl --lang java,python,cpp,csharp,javascript,swift,dart,scala,kotlin --output ./generated
 ```
 
 ### 4. Use Generated Code

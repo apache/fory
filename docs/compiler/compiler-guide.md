@@ -149,15 +149,18 @@ foryc user.fdl order.fdl product.fdl --output ./generated
 foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript
 ```
 
-**Generate Java, Python, Go, Rust, C#, Dart, Scala, Kotlin, and Node.js JavaScript gRPC service companions:**
+**Generate Java, Python, Go, Rust, C++, C#, Dart, Scala, Kotlin, and Node.js JavaScript gRPC service companions:**
 
 ```bash
-foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --csharp_out=./generated/csharp --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
+foryc compiler/examples/service.fdl --java_out=./generated/java --python_out=./generated/python --go_out=./generated/go --rust_out=./generated/rust --cpp_out=./generated/cpp --csharp_out=./generated/csharp --dart_out=./generated/dart --scala_out=./generated/scala --kotlin_out=./generated/kotlin --javascript_out=./generated/javascript --grpc
 ```
 
 The generated gRPC service code uses Fory to serialize request and response
 payloads. Java output imports grpc-java APIs, Python output defaults to
 `grpc.aio`, Go output imports grpc-go, Rust output imports `tonic` and `bytes`,
+C++ output includes gRPC C++ `grpcpp` headers; targets compiling it must add the
+generated output directory to their include path and link `fory::serialization`
+and `gRPC::grpc++`.
 Scala output imports grpc-java APIs, and Kotlin output imports grpc-java and
 grpc-kotlin APIs and uses coroutine stubs. C# output imports `Grpc.Core.Api`
 types and can be hosted with normal .NET gRPC packages such as `Grpc.AspNetCore`

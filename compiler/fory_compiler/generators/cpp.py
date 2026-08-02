@@ -17,11 +17,13 @@
 
 """C++ code generator."""
 
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 import typing
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.generators.services.cpp import CppServiceGeneratorMixin
 from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.ir.ast import (
     Message,
@@ -39,7 +41,7 @@ from fory_compiler.ir.ast import (
 from fory_compiler.ir.types import PrimitiveKind
 
 
-class CppGenerator(BaseGenerator):
+class CppGenerator(CppServiceGeneratorMixin, BaseGenerator):
     """Generates C++ classes with FORY_STRUCT macros."""
 
     language_name = "cpp"
@@ -741,7 +743,7 @@ class CppGenerator(BaseGenerator):
     def _ensure_name_caches(self, schema: Schema) -> None:
         """Construct the naming caches once for a schema file."""
         if not hasattr(self, "_named_schema_ids"):
-            # Init everything.
+            # We don't initialize cache for gRPC code generation here.
             self._named_schema_ids: Set[int] = set()
             self._type_identifier_cache: Dict[Tuple[object, ...], str] = {}
             self._field_identifier_cache: Dict[
@@ -883,12 +885,19 @@ class CppGenerator(BaseGenerator):
         lines.append(f"{indent}  return {detail}::get_fory().serialize(*this);")
         lines.append(f"{indent}}}")
         lines.append("")
+        # gRPC payload deserialization would require this.
+        lines.append(
+            f"{indent}static ::fory::Result<{class_name}, ::fory::Error> from_bytes(const ::uint8_t* data, ::std::size_t size) {{"
+        )
+        lines.append(
+            f"{indent}  return {detail}::get_fory().deserialize<{class_name}>(data, size);"
+        )
+        lines.append(f"{indent}}}")
+        lines.append("")
         lines.append(
             f"{indent}static ::fory::Result<{class_name}, ::fory::Error> from_bytes(const ::std::vector<::uint8_t>& data) {{"
         )
-        lines.append(
-            f"{indent}  return {detail}::get_fory().deserialize<{class_name}>(data);"
-        )
+        lines.append(f"{indent}  return from_bytes(data.data(), data.size());")
         lines.append(f"{indent}}}")
         return lines
 
@@ -911,7 +920,7 @@ class CppGenerator(BaseGenerator):
         includes.add("<utility>")
         includes.add('"fory/serialization/fory.h"')
         if self.schema_has_unions():
-            includes.add("<cstddef>")  # todo: what's this??
+            includes.add("<cstddef>")
             includes.add("<utility>")
             includes.add("<variant>")
             includes.add("<memory>")
@@ -936,14 +945,11 @@ class CppGenerator(BaseGenerator):
             self.collect_union_includes(union, includes)
 
         # License header
-        lines.append("/*")
-        for line in self.get_license_header(" *").split("\n"):
-            lines.append(line)
-        lines.append(" */")
+        lines.extend(self._cpp_license_lines())
         lines.append("")
 
         # Header guard
-        guard_name = f"{self.get_header_name().upper()}_H_"
+        guard_name = self._cpp_header_guard(f"{self.get_header_name()}.h")
         lines.append(f"#ifndef {guard_name}")
         lines.append(f"#define {guard_name}")
         lines.append("")
@@ -1023,6 +1029,24 @@ class CppGenerator(BaseGenerator):
             path=f"{self.get_header_name()}.h",
             content="\n".join(lines),
         )
+
+    def _cpp_license_lines(self) -> List[str]:
+        """Generate the Apache license block for generated C++ files."""
+        lines = ["/*"]
+        lines.extend(self.get_license_header(" *").split("\n"))
+        lines.append(" */")
+        return lines
+
+    def _cpp_header_guard(self, path: str) -> str:
+        """Generate a header guard name for a path."""
+        # Header names can contain '.', '-', '/', or other characters outside
+        # the conservative ASCII macro identifier set used by generated headers.
+        return re.sub(r"[^A-Za-z0-9]", "_", path).upper() + "_"
+
+    def indent_lines(self, lines: List[str], level: int) -> List[str]:
+        """Indent a list of lines by the given level."""
+        prefix = "  " * level  # C++ uses two-spaces style.
+        return [f"{prefix}{line}" if line else line for line in lines]
 
     def collect_message_includes(self, message: Message, includes: Set[str]):
         """Collect includes for a message and its nested types recursively."""

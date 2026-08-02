@@ -416,7 +416,7 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
     def _ensure_name_caches(self, schema: Schema) -> None:
         """Construct the naming caches once for a schema file."""
         if not hasattr(self, "_named_schema_ids"):
-            # Init everything.
+            # Rust gRPC naming caches are initialized by the service generator.
             self._named_schema_ids: set[int] = set()
             self._type_identifier_cache: dict[tuple[object, ...], str] = {}
             self._module_identifier_cache: dict[tuple[object, ...], str] = {}
@@ -427,26 +427,6 @@ class RustGenerator(RustServiceGeneratorMixin, BaseGenerator):
                 tuple[object, ...], dict[tuple[object, ...], str]
             ] = {}
             self._union_case_identifier_cache: dict[
-                tuple[object, ...], dict[tuple[object, ...], str]
-            ] = {}
-            self._named_service_schema_ids: set[int] = set()
-            self._service_trait_identifier_cache: dict[tuple[object, ...], str] = {}
-            self._service_client_module_identifier_cache: dict[
-                tuple[object, ...], str
-            ] = {}
-            self._service_server_module_identifier_cache: dict[
-                tuple[object, ...], str
-            ] = {}
-            self._service_name_constant_identifier_cache: dict[
-                tuple[object, ...], str
-            ] = {}
-            self._rpc_method_identifier_cache: dict[
-                tuple[object, ...], dict[tuple[object, ...], str]
-            ] = {}
-            self._rpc_stream_type_identifier_cache: dict[
-                tuple[object, ...], dict[tuple[object, ...], str]
-            ] = {}
-            self._rpc_path_constant_identifier_cache: dict[
                 tuple[object, ...], dict[tuple[object, ...], str]
             ] = {}
         schema_id = id(schema)

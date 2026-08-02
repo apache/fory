@@ -18,6 +18,7 @@
 """Codegen smoke tests for schemas that contain service definitions."""
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 from textwrap import dedent
@@ -158,6 +159,7 @@ def test_unsupported_generators_no_services():
             KotlinGenerator,
             JavaScriptGenerator,
             DartGenerator,
+            CppGenerator,
         ):
             continue
         options = GeneratorOptions(output_dir=Path("/tmp"))
@@ -1037,6 +1039,32 @@ def test_grpc_streaming_method_shapes():
     assert "ServerStreams:\ttrue" in go
     assert "grpc.ClientStream" in go
     assert "grpc.ServerStream" in go
+
+    rust = next(iter(generate_service_files(schema, RustGenerator).values()))
+    assert (
+        "async fn unary(\n"
+        "        &self,\n"
+        "        request: ::tonic::Request<crate::demo_streams::Req>," in rust
+    )
+    assert (
+        "async fn server(\n"
+        "        &self,\n"
+        "        request: ::tonic::Request<crate::demo_streams::Req>," in rust
+    )
+    assert "::tonic::Response<Self::ServerStream>" in rust
+    assert (
+        "async fn client(\n"
+        "        &self,\n"
+        "        request: ::tonic::Request<"
+        "::tonic::Streaming<crate::demo_streams::Req>>," in rust
+    )
+    assert (
+        "async fn bidi(\n"
+        "        &self,\n"
+        "        request: ::tonic::Request<"
+        "::tonic::Streaming<crate::demo_streams::Payload>>," in rust
+    )
+    assert "::tonic::Response<Self::BidiStream>" in rust
 
     kotlin = next(iter(generate_service_files(schema, KotlinGenerator).values()))
     assert "io.grpc.MethodDescriptor.MethodType.UNARY" in kotlin
@@ -1983,6 +2011,9 @@ def test_grpc_flag_compiles_services(tmp_path: Path, capsys):
     assert output.count("demo_greeter_grpc.go") == 1
     assert (lang_dirs["rust"] / "demo_greeter_service.rs").exists()
     assert (lang_dirs["rust"] / "demo_greeter_service_grpc.rs").exists()
+    assert (lang_dirs["cpp"] / "demo_greeter.service.h").exists()
+    assert (lang_dirs["cpp"] / "demo_greeter.service.grpc.h").exists()
+    assert (lang_dirs["cpp"] / "demo_greeter.service.grpc.cc").exists()
     assert (lang_dirs["csharp"] / "demo" / "greeter" / "Service.cs").exists()
     assert (lang_dirs["csharp"] / "demo" / "greeter" / "GreeterGrpc.cs").exists()
     assert (lang_dirs["scala"] / "demo" / "greeter" / "GreeterGrpc.scala").exists()
@@ -3602,3 +3633,427 @@ def test_dart_grpc_reserved_methods():
         msg = str(excinfo.value)
         assert "inherited Dart member" in msg
         assert f"Svc.{rpc_name} -> {emitted}" in msg
+
+
+def test_cpp_grpc_companions_and_codec():
+    schema = parse_fdl(_GREETER_WITH_SERVICE)
+    files = generate_service_files(schema, CppGenerator)
+    assert set(files) == {
+        "demo_greeter.service.h",
+        "demo_greeter.service.grpc.h",
+        "demo_greeter.service.grpc.cc",
+    }
+
+    api = files["demo_greeter.service.h"]
+    assert "namespace demo::greeter::service {" in api
+    assert "class Greeter {" in api
+    assert "virtual ::grpc::Status SayHello(" in api
+    assert 'GreeterServiceName[] = "demo.greeter.Greeter"' in api
+    assert 'GreeterSayHelloPath[] = "/demo.greeter.Greeter/SayHello"' in api
+
+    header = files["demo_greeter.service.grpc.h"]
+    assert '#include "demo_greeter.service.h"' in header
+    assert "FORY_GENERATED_GRPC_SERIALIZATION_TRAITS_" in header
+    assert "class ForyGrpcSerializationTraits" in header
+    assert "SerializationTraits<::demo::greeter::HelloRequest, void>" in header
+    assert "SerializationTraits<::demo::greeter::HelloReply, void>" in header
+    assert "template <class Message, auto GetFory>" in header
+    assert "GetFory().serialize_to(*bytes, message)" in header
+    assert "new ::std::vector<::uint8_t>()" in header
+    assert "message.to_bytes()" not in header
+    assert "&::demo::greeter::detail::get_fory" in header
+    assert "Message::from_bytes(slice.begin(), slice.size())" in header
+    assert "namespace demo::greeter::service::grpc {" in header
+    assert "class GreeterStub final" in header
+    assert "class GreeterServiceGrpc final : public ::grpc::Service" in header
+    assert (
+        "explicit GreeterServiceGrpc(::demo::greeter::service::Greeter* impl);"
+        in header
+    )
+    assert "The caller owns impl; it must outlive this adapter and server." in header
+
+    source = files["demo_greeter.service.grpc.cc"]
+    assert '#include "demo_greeter.service.grpc.h"' in source
+    assert "namespace demo::greeter::service::grpc {" in source
+    assert "::demo::greeter::service::GreeterSayHelloPath" in source
+    assert "BlockingUnaryCall<" in source
+    assert "RpcMethod::NORMAL_RPC" in source
+    assert "RpcMethodHandler<" in source
+
+
+def test_cpp_grpc_streaming_modes():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo.streaming;
+
+            message Req {}
+            message Res {}
+
+            service Streamer {
+                rpc Unary (Req) returns (Res);
+                rpc Upload (stream Req) returns (Res);
+                rpc Download (Req) returns (stream Res);
+                rpc Chat (stream Req) returns (stream Res);
+            }
+            """
+        )
+    )
+    files = generate_service_files(schema, CppGenerator)
+    api = files["demo_streaming.service.h"]
+    header = files["demo_streaming.service.grpc.h"]
+    source = files["demo_streaming.service.grpc.cc"]
+
+    assert "::grpc::ServerReader<::demo::streaming::Req>* reader" in api
+    assert "::grpc::ServerWriter<::demo::streaming::Res>* writer" in api
+    assert "::grpc::ServerReaderWriter<" in api
+    assert "::demo::streaming::Res, ::demo::streaming::Req>* stream" in api
+
+    assert "::grpc::ClientWriter<::demo::streaming::Req>" in header
+    assert "::grpc::ClientReader<::demo::streaming::Res>" in header
+    assert "::grpc::ClientReaderWriter<" in header
+    assert "::demo::streaming::Req, ::demo::streaming::Res" in header
+
+    assert "RpcMethod::NORMAL_RPC" in source
+    assert "RpcMethod::CLIENT_STREAMING" in source
+    assert "RpcMethod::SERVER_STREAMING" in source
+    assert "RpcMethod::BIDI_STREAMING" in source
+    assert "ClientWriterFactory<::demo::streaming::Req>::Create" in source
+    assert "ClientReaderFactory<::demo::streaming::Res>::Create" in source
+    assert "ClientReaderWriterFactory<" in source
+    assert "ClientStreamingHandler<" in source
+    assert "ServerStreamingHandler<" in source
+    assert "BidiStreamingHandler<" in source
+
+
+def test_cpp_grpc_nested_union_and_default_package():
+    schema = parse_fdl(
+        dedent(
+            """
+            message Envelope {
+                message Request {}
+                union Reply {
+                    string text = 1;
+                }
+            }
+
+            service Nested {
+                rpc Call (Envelope.Request) returns (Envelope.Reply);
+            }
+            """
+        )
+    )
+    files = generate_service_files(schema, CppGenerator)
+    assert set(files) == {
+        "generated.service.h",
+        "generated.service.grpc.h",
+        "generated.service.grpc.cc",
+    }
+    api = files["generated.service.h"]
+    header = files["generated.service.grpc.h"]
+    assert "namespace service {" in api
+    assert "namespace service::grpc {" in header
+    assert 'NestedServiceName[] = "Nested"' in api
+    assert 'NestedCallPath[] = "/Nested/Call"' in api
+    assert "const ::Envelope::Request* request" in api
+    assert "::Envelope::Reply* response" in api
+    assert "SerializationTraits<::Envelope::Request, void>" in header
+    assert "SerializationTraits<::Envelope::Reply, void>" in header
+    assert "&::detail::get_fory" in header
+
+
+def test_cpp_grpc_imported_message_paths(tmp_path: Path):
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package demo.common;
+
+            message Envelope {
+                message Request {}
+                union Reply {
+                    string text = 1;
+                }
+            }
+            """
+        )
+    )
+    service = tmp_path / "service.fdl"
+    service.write_text(
+        dedent(
+            """
+            package demo.api;
+            import "common.fdl";
+
+            service Api {
+                rpc Call (demo.common.Envelope.Request)
+                    returns (demo.common.Envelope.Reply);
+            }
+            """
+        )
+    )
+    schema = resolve_imports(service)
+    files = generate_service_files(schema, CppGenerator)
+    assert set(files) == {
+        "demo_api.service.h",
+        "demo_api.service.grpc.h",
+        "demo_api.service.grpc.cc",
+    }
+    api = files["demo_api.service.h"]
+    header = files["demo_api.service.grpc.h"]
+    assert "const ::demo::common::Envelope::Request* request" in api
+    assert "::demo::common::Envelope::Reply* response" in api
+    assert "SerializationTraits<::demo::common::Envelope::Request, void>" in header
+    assert "SerializationTraits<::demo::common::Envelope::Reply, void>" in header
+    assert "&::demo::common::detail::get_fory" in header
+
+
+def test_cpp_grpc_shared_message_specialization_guard(tmp_path: Path):
+    common = tmp_path / "common.fdl"
+    common.write_text(
+        dedent(
+            """
+            package demo.common;
+            message Shared {}
+            """
+        )
+    )
+    headers = []
+    for name in ("first", "second"):
+        service = tmp_path / f"{name}.fdl"
+        service.write_text(
+            dedent(
+                f"""
+                package demo.{name};
+                import "common.fdl";
+                service Api {{
+                    rpc Call (demo.common.Shared) returns (demo.common.Shared);
+                }}
+                """
+            )
+        )
+        schema = resolve_imports(service)
+        files = generate_service_files(schema, CppGenerator)
+        headers.append(files[f"demo_{name}.service.grpc.h"])
+
+    guard_pattern = re.compile(
+        r"FORY_GENERATED_GRPC_TRAITS_DEMO_COMMON_SHARED_[0-9A-F]{12}_"
+    )
+    first_guard = guard_pattern.search(headers[0])
+    second_guard = guard_pattern.search(headers[1])
+    assert first_guard is not None
+    assert second_guard is not None
+    assert first_guard.group(0) == second_guard.group(0)
+    assert headers[0].count("SerializationTraits<::demo::common::Shared, void>") == 1
+    assert headers[1].count("SerializationTraits<::demo::common::Shared, void>") == 1
+
+
+def test_cpp_grpc_name_collisions():
+    schema = parse_fdl(
+        dedent(
+            """
+            package demo.collision;
+            message Greeter {}
+            message Req {}
+            message Res {}
+            service Greeter {
+                rpc Call (Req) returns (Res);
+            }
+            """
+        )
+    )
+    files = generate_service_files(schema, CppGenerator)
+    assert "namespace demo::collision::service {" in files["demo_collision.service.h"]
+    assert "class Greeter {" in files["demo_collision.service.h"]
+
+    service_schema = parse_fdl(
+        dedent(
+            """
+            package demo.collision;
+            message Req {}
+            message Res {}
+            service Greeter {
+                rpc Call (Req) returns (Res);
+            }
+            service GreeterServiceName {
+                rpc Call (Req) returns (Res);
+            }
+            """
+        )
+    )
+    with pytest.raises(ValueError, match="C\\+\\+ name collision"):
+        generate_service_files(service_schema, CppGenerator)
+
+    grpc_namespace_schema = parse_fdl(
+        dedent(
+            """
+            package demo.collision;
+            message Req {}
+            message Res {}
+            service grpc {
+                rpc Call (Req) returns (Res);
+            }
+            """
+        )
+    )
+    with pytest.raises(ValueError, match="generated gRPC transport namespace"):
+        generate_service_files(grpc_namespace_schema, CppGenerator)
+
+    method_schema = parse_fdl(
+        dedent(
+            """
+            package demo.collision;
+            message Req {}
+            message Res {}
+            service Greeter {
+                rpc NewStub (Req) returns (Res);
+            }
+            """
+        )
+    )
+    method_files = generate_service_files(method_schema, CppGenerator)
+    method_header = method_files["demo_collision.service.grpc.h"]
+    method_source = method_files["demo_collision.service.grpc.cc"]
+    assert "  static ::std::unique_ptr<GreeterStub> NewStub(" in method_header
+    assert (
+        "  ::grpc::Status NewStub(\n      ::grpc::ClientContext* context,"
+        in method_header
+    )
+    assert (
+        "::grpc::Status GreeterStub::NewStub(\n    ::grpc::ClientContext* context,"
+        in method_source
+    )
+
+    constructor_schema = parse_fdl(
+        dedent(
+            """
+            package demo.collision;
+            message Req {}
+            message Res {}
+            service Greeter {
+                rpc Greeter (Req) returns (Res);
+                rpc GreeterStub (Req) returns (Res);
+            }
+            """
+        )
+    )
+    constructor_files = generate_service_files(constructor_schema, CppGenerator)
+    constructor_api = constructor_files["demo_collision.service.h"]
+    constructor_header = constructor_files["demo_collision.service.grpc.h"]
+    constructor_source = constructor_files["demo_collision.service.grpc.cc"]
+    assert "virtual ::grpc::Status Greeter_(" in constructor_api
+    assert "::grpc::Status GreeterStub_(" in constructor_header
+    assert "::grpc::Status GreeterStub::Greeter_(" in constructor_source
+    assert "::grpc::Status GreeterStub::GreeterStub_(" in constructor_source
+    assert 'GreeterGreeterPath[] = "/demo.collision.Greeter/Greeter"' in constructor_api
+    assert (
+        'GreeterGreeterStubPath[] = "/demo.collision.Greeter/GreeterStub"'
+        in constructor_api
+    )
+
+    reserved_name_collision_schema = parse_fdl(
+        dedent(
+            """
+            package demo.collision;
+            message Req {}
+            message Res {}
+            service Greeter {
+                rpc Greeter (Req) returns (Res);
+                rpc Greeter_ (Req) returns (Res);
+            }
+            """
+        )
+    )
+    with pytest.raises(ValueError, match="C\\+\\+ name collision"):
+        generate_service_files(reserved_name_collision_schema, CppGenerator)
+
+    channel_member_schema = parse_fdl(
+        dedent(
+            """
+            package demo.collision;
+            message Req {}
+            message Res {}
+            service Greeter {
+                rpc channel_ (Req) returns (Res);
+            }
+            """
+        )
+    )
+    with pytest.raises(ValueError, match="conflicts with member 'channel_'"):
+        generate_service_files(channel_member_schema, CppGenerator)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """
+        message grpc {}
+        message Req {}
+        message Res {}
+        service Api {
+            rpc Call (Req) returns (Res);
+        }
+        """,
+        """
+        package grpc;
+        message Req {}
+        message Res {}
+        service Api {
+            rpc Call (Req) returns (Res);
+        }
+        """,
+    ],
+    ids=("type", "package"),
+)
+def test_cpp_grpc_root_namespace_collision(source: str):
+    with pytest.raises(ValueError, match="gRPC root namespace"):
+        generate_service_files(parse_fdl(dedent(source)), CppGenerator)
+
+
+def test_cpp_grpc_recursive_output_paths(tmp_path: Path):
+    service_model = tmp_path / "service_model.fdl"
+    service_model.write_text(
+        dedent(
+            """
+            package demo_service;
+            message ServiceModel {}
+            """
+        )
+    )
+    grpc_model = tmp_path / "grpc_model.fdl"
+    grpc_model.write_text(
+        dedent(
+            """
+            package demo_service_grpc;
+            message GrpcModel {}
+            """
+        )
+    )
+    root = tmp_path / "root.fdl"
+    root.write_text(
+        dedent(
+            """
+            package demo;
+            import "service_model.fdl";
+            import "grpc_model.fdl";
+
+            message Req {}
+            message Res {}
+            service Api {
+                rpc Call (Req) returns (Res);
+            }
+            """
+        )
+    )
+    cpp_out = tmp_path / "cpp"
+    args = parse_args([str(root), "--cpp_out", str(cpp_out), "--grpc"])
+
+    assert cmd_compile(args) == 0
+    assert {path.name for path in cpp_out.iterdir()} == {
+        "demo.h",
+        "demo.service.h",
+        "demo.service.grpc.h",
+        "demo.service.grpc.cc",
+        "demo_service.h",
+        "demo_service_grpc.h",
+    }
